@@ -1152,7 +1152,7 @@ L6
 file count: 2, sublevels: 1, intervals: 3
 flush split keys(2): [d, g]
 0.0: file count: 2, bytes: 512, width (mean, max): 1.0, 1, interval range: [0, 1]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 compacting file count: 0, base compacting intervals: none
 L0.0:  a--------d---------g
@@ -1186,7 +1186,7 @@ flush split keys(4): [f, g, i, r]
 0.1: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [2, 5]
 	000006:[f#6,SET-i#6,SET]
 0.0: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [0, 8]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 	000009:[q#7,SET-r#7,SET]
 compacting file count: 0, base compacting intervals: none
@@ -1248,7 +1248,7 @@ L0
 file count: 1, sublevels: 1, intervals: 2
 flush split keys(1): [d]
 0.0: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 compacting file count: 0, base compacting intervals: none
 L0.0:  a---------d
        aa bb cc dd
@@ -1259,7 +1259,7 @@ add-l0-files
 file count: 2, sublevels: 1, intervals: 3
 flush split keys(2): [d, g]
 0.0: file count: 2, bytes: 512, width (mean, max): 1.0, 1, interval range: [0, 1]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 compacting file count: 0, base compacting intervals: none
 L0.0:  a--------d---------g
@@ -1273,7 +1273,7 @@ flush split keys(2): [d, g]
 0.1: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [2, 3]
 	000006:[f#6,SET-i#6,SET]
 0.0: file count: 2, bytes: 512, width (mean, max): 1.5, 2, interval range: [0, 2]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 compacting file count: 0, base compacting intervals: none
 L0.1:                 f---------i
@@ -1291,7 +1291,7 @@ flush split keys(4): [d, g, i, r]
 0.1: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [2, 4]
 	000006:[f#6,SET-i#6,SET]
 0.0: file count: 3, bytes: 768, width (mean, max): 1.3, 2, interval range: [0, 7]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 	000009:[q#8,SET-r#8,SET]
 compacting file count: 0, base compacting intervals: none
@@ -1314,7 +1314,7 @@ flush split keys(4): [f, g, i, r]
 0.1: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [2, 5]
 	000006:[f#6,SET-i#6,SET]
 0.0: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [0, 8]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 	000009:[q#8,SET-r#8,SET]
 compacting file count: 0, base compacting intervals: none
@@ -1395,7 +1395,7 @@ flush split keys(5): [d, e, g, i, r]
 	000011:[b#13,SET-e#15,SET]
 	000006:[f#6,SET-i#6,SET]
 0.0: file count: 3, bytes: 768, width (mean, max): 2.7, 4, interval range: [0, 11]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 	000009:[q#8,SET-r#8,SET]
 compacting file count: 0, base compacting intervals: none
@@ -1426,7 +1426,7 @@ flush split keys(4): [d, g, h, i]
 	000011:[b#13,SET-e#15,SET]
 	000006:[f#6,SET-i#6,SET]
 0.0: file count: 3, bytes: 768, width (mean, max): 2.7, 4, interval range: [0, 11]
-	000004:[a#2,SET-d#72057594037927935,RANGEDEL]
+	000004:[a#2,SET-d#inf,RANGEDEL]
 	000005:[d#3,SET-g#5,SET]
 	000009:[q#8,SET-r#8,SET]
 compacting file count: 0, base compacting intervals: none

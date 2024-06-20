@@ -33,7 +33,7 @@ table-props
 # is printed, along with the properties for the block, keyed by the shortID.
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [1, 4)
 
 # Multiple collectors.
@@ -60,7 +60,7 @@ table-props
 
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [1, 4)
   1: [7, 10)
 
@@ -103,7 +103,7 @@ d#4,SET:
 f#6,SET:
   0: [4, 6)
   1: [4, 8)
-i#72057594037927935,SEPARATOR:
+i#inf,SEPARATOR:
   0: [3, 7)
   1: [3, 9)
 
@@ -120,7 +120,7 @@ rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET,c@15#3,SET]
 rangedel: [#0,DEL,#0,DEL]
-rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#inf,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -129,7 +129,7 @@ collectors
 
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [5, 16)
 
 table-props
@@ -148,7 +148,7 @@ rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET,c@15#3,SET]
 rangedel: [#0,DEL,#0,DEL]
-rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#inf,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -157,7 +157,7 @@ collectors
 
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [5, 16)
 
 table-props
@@ -176,7 +176,7 @@ rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET,c@15#3,SET]
 rangedel: [#0,DEL,#0,DEL]
-rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#inf,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -185,7 +185,7 @@ collectors
 
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
 
 table-props
 ----
@@ -205,7 +205,7 @@ rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET,c@15#3,SET]
 rangedel: [#0,DEL,#0,DEL]
-rangekey: [d@10#4,RANGEKEYSET,z@25#72057594037927935,RANGEKEYDEL]
+rangekey: [d@10#4,RANGEKEYSET,z@25#inf,RANGEKEYDEL]
 seqnums:  [1,6]
 
 collectors
@@ -215,11 +215,11 @@ collectors
 
 block-props
 ----
-b#72057594037927935,SEPARATOR:
+b#inf,SEPARATOR:
   0: [5, 6)
-c#72057594037927935,SEPARATOR:
+c#inf,SEPARATOR:
   0: [10, 11)
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [15, 16)
 
 table-props
@@ -319,29 +319,29 @@ table-props
 
 block-props
 ----
-b#72057594037927935,SEPARATOR:
+b#inf,SEPARATOR:
   0: [1, 2)
-  b#72057594037927935,SEPARATOR:
+  b#inf,SEPARATOR:
     0: [1, 2)
-c#72057594037927935,SEPARATOR:
+c#inf,SEPARATOR:
   0: [10, 11)
-  c#72057594037927935,SEPARATOR:
+  c#inf,SEPARATOR:
     0: [10, 11)
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [15, 16)
-  d#72057594037927935,SEPARATOR:
+  d#inf,SEPARATOR:
     0: [15, 16)
-e#72057594037927935,SEPARATOR:
+e#inf,SEPARATOR:
   0: [25, 26)
-  e#72057594037927935,SEPARATOR:
+  e#inf,SEPARATOR:
     0: [25, 26)
-f#72057594037927935,SEPARATOR:
+f#inf,SEPARATOR:
   0: [3, 4)
-  f#72057594037927935,SEPARATOR:
+  f#inf,SEPARATOR:
     0: [3, 4)
-g#72057594037927935,SEPARATOR:
+g#inf,SEPARATOR:
   0: [5, 6)
-  g#72057594037927935,SEPARATOR:
+  g#inf,SEPARATOR:
     0: [5, 6)
 
 # Test the same sstable, but with a larger index block size that fits multiple
@@ -367,21 +367,21 @@ collectors
 
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [1, 16)
-  b#72057594037927935,SEPARATOR:
+  b#inf,SEPARATOR:
     0: [1, 2)
-  c#72057594037927935,SEPARATOR:
+  c#inf,SEPARATOR:
     0: [10, 11)
-  d#72057594037927935,SEPARATOR:
+  d#inf,SEPARATOR:
     0: [15, 16)
-g#72057594037927935,SEPARATOR:
+g#inf,SEPARATOR:
   0: [3, 26)
-  e#72057594037927935,SEPARATOR:
+  e#inf,SEPARATOR:
     0: [25, 26)
-  f#72057594037927935,SEPARATOR:
+  f#inf,SEPARATOR:
     0: [3, 4)
-  g#72057594037927935,SEPARATOR:
+  g#inf,SEPARATOR:
     0: [5, 6)
 
 # Regression test for a bug in boundary checking when skipping over irrelevant
@@ -413,23 +413,23 @@ seqnums:  [1,5]
 
 block-props
 ----
-c#72057594037927935,SEPARATOR:
+c#inf,SEPARATOR:
   0: [1, 11)
-  b#72057594037927935,SEPARATOR:
+  b#inf,SEPARATOR:
     0: [1, 2)
-  c#72057594037927935,SEPARATOR:
+  c#inf,SEPARATOR:
     0: [10, 11)
-e#72057594037927935,SEPARATOR:
+e#inf,SEPARATOR:
   0: [15, 26)
-  d#72057594037927935,SEPARATOR:
+  d#inf,SEPARATOR:
     0: [15, 16)
-  e#72057594037927935,SEPARATOR:
+  e#inf,SEPARATOR:
     0: [25, 26)
-g#72057594037927935,SEPARATOR:
+g#inf,SEPARATOR:
   0: [3, 6)
-  f#72057594037927935,SEPARATOR:
+  f#inf,SEPARATOR:
     0: [3, 4)
-  g#72057594037927935,SEPARATOR:
+  g#inf,SEPARATOR:
     0: [5, 6)
 
 # Regression test for a bug in boundary checking when skipping over irrelevant
@@ -611,13 +611,13 @@ seqnums:  [1,5]
 
 block-props
 ----
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [1, 16)
-  d#72057594037927935,SEPARATOR:
+  d#inf,SEPARATOR:
     0: [1, 16)
-g#72057594037927935,SEPARATOR:
+g#inf,SEPARATOR:
   0: [3, 26)
-  g#72057594037927935,SEPARATOR:
+  g#inf,SEPARATOR:
     0: [3, 26)
 
 iter point-key-filter=(suffix-point-keys-only,1,2)
@@ -652,11 +652,11 @@ seqnums:  [1,5]
 
 block-props
 ----
-c#72057594037927935,SEPARATOR:
+c#inf,SEPARATOR:
   0: [1, 11)
-e#72057594037927935,SEPARATOR:
+e#inf,SEPARATOR:
   0: [15, 26)
-g#72057594037927935,SEPARATOR:
+g#inf,SEPARATOR:
   0: [3, 6)
 
 iter point-key-filter=(suffix-point-keys-only,1,2)
@@ -689,11 +689,11 @@ collectors
 
 block-props
 ----
-b#72057594037927935,SEPARATOR:
+b#inf,SEPARATOR:
   0: [5, 6)
-c#72057594037927935,SEPARATOR:
+c#inf,SEPARATOR:
   0: [8, 9)
-d#72057594037927935,SEPARATOR:
+d#inf,SEPARATOR:
   0: [7, 8)
 
 table-props

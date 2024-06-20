@@ -22,7 +22,7 @@ e.SET.10 g.SET.20
 e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:f
 ----
 Level 1
-  file 0: [a#30,SET-e#72057594037927935,RANGEDEL]
+  file 0: [a#30,SET-e#inf,RANGEDEL]
 Level 2
   file 0: [e#10,SET-g#20,SET]
 
@@ -60,7 +60,7 @@ a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
 Level 1
   file 0: [c#30,SET-f#0,RANGEDEL]
 Level 2
-  file 0: [a#10,SET-c#72057594037927935,RANGEDEL]
+  file 0: [a#10,SET-c#inf,RANGEDEL]
 
 check
 ----
@@ -93,7 +93,7 @@ e.SET.10 g.SET.20
 e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
 ----
 Level 1
-  file 0: [a#30,SET-e#72057594037927935,RANGEDEL]
+  file 0: [a#30,SET-e#inf,RANGEDEL]
 Level 2
   file 0: [e#10,SET-g#20,SET]
 
@@ -109,7 +109,7 @@ a.SET.10 g.SET.20
 a.SET.10:10 c.SET.28:28 g.SET.20:20
 ----
 Level 1
-  file 0: [a#30,SET-e#72057594037927935,RANGEDEL]
+  file 0: [a#30,SET-e#inf,RANGEDEL]
 Level 2
   file 0: [a#10,SET-g#20,SET]
 
@@ -128,7 +128,7 @@ g.SET.10 j.SET.20
 g.SET.10:10 j.SET.20:20
 ----
 Level 1
-  file 0: [a#30,SET-g#72057594037927935,RANGEDEL]
+  file 0: [a#30,SET-g#inf,RANGEDEL]
 Level 2
   file 0: [g#10,SET-j#20,SET]
 
@@ -178,9 +178,9 @@ a.RANGEDEL.6 d.RANGEDEL.72057594037927935
 a.RANGEDEL.6:d b.RANGEDEL.10:c
 ----
 Level 1
-  file 0: [a#8,RANGEDEL-c#72057594037927935,RANGEDEL]
+  file 0: [a#8,RANGEDEL-c#inf,RANGEDEL]
 Level 2
-  file 0: [a#6,RANGEDEL-d#72057594037927935,RANGEDEL]
+  file 0: [a#6,RANGEDEL-d#inf,RANGEDEL]
 
 check
 ----
@@ -230,7 +230,7 @@ a.RANGEDEL.1 g.RANGEDEL.72057594037927935
 d.RANGEDEL.2:e d.RANGEDEL.1:e f.RANGEDEL.3:g a.RANGEDEL.4:b
 ----
 Level 1
-  file 0: [a#1,RANGEDEL-g#72057594037927935,RANGEDEL]
+  file 0: [a#1,RANGEDEL-g#inf,RANGEDEL]
 
 check
 ----
@@ -243,7 +243,7 @@ a.RANGEDEL.1 d.RANGEDEL.72057594037927935
 a.RANGEDEL.1:d b.RANGEDEL.2:c
 ----
 Level 1
-  file 0: [a#1,RANGEDEL-d#72057594037927935,RANGEDEL]
+  file 0: [a#1,RANGEDEL-d#inf,RANGEDEL]
 
 check
 ----
@@ -256,7 +256,7 @@ a.RANGEDEL.1 b.RANGEDEL.72057594037927935
 a.RANGEDEL.1:z d.RANGEDEL.2:e
 ----
 Level 1
-  file 0: [a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
+  file 0: [a#1,RANGEDEL-b#inf,RANGEDEL]
 
 check
 ----
@@ -369,7 +369,7 @@ f@6.SET.6 f@6.SET.6
 f@6.SET.6:f6
 ----
 Level 1
-  file 0: [a@9#9,SET-f#72057594037927935,RANGEDEL]
+  file 0: [a@9#9,SET-f#inf,RANGEDEL]
   file 1: [f@6#6,SET-f@6#6,SET]
 
 check
