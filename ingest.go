@@ -756,7 +756,9 @@ func (d *DB) ingestUnprotectExternalBackings(lr ingestLoadResult) {
 	}
 }
 
-func setSeqNumInMetadata(m *fileMetadata, seqNum uint64, cmp Compare, format base.FormatKey) error {
+func setSeqNumInMetadata(
+	m *fileMetadata, seqNum base.SeqNum, cmp Compare, format base.FormatKey,
+) error {
 	setSeqFn := func(k base.InternalKey) base.InternalKey {
 		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
 	}
@@ -795,7 +797,7 @@ func setSeqNumInMetadata(m *fileMetadata, seqNum uint64, cmp Compare, format bas
 }
 
 func ingestUpdateSeqNum(
-	cmp Compare, format base.FormatKey, seqNum uint64, loadResult ingestLoadResult,
+	cmp Compare, format base.FormatKey, seqNum base.SeqNum, loadResult ingestLoadResult,
 ) error {
 	// Shared sstables are required to be sorted by level ascending. We then
 	// iterate the shared sstables in reverse, assigning the lower sequence
@@ -1181,7 +1183,7 @@ func (d *DB) IngestAndExcise(
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum uint64, logNum base.DiskFileNum, exciseSpan KeyRange,
+	meta []*fileMetadata, seqNum base.SeqNum, logNum base.DiskFileNum, exciseSpan KeyRange,
 ) (*flushableEntry, error) {
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
@@ -1192,7 +1194,7 @@ func (d *DB) newIngestedFlushableEntry(
 	// time, then we'll lose the ingest sequence number information. But this
 	// information will also be reconstructed on node restart.
 	for i, m := range meta {
-		if err := setSeqNumInMetadata(m, seqNum+uint64(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
+		if err := setSeqNumInMetadata(m, seqNum+base.SeqNum(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
 			return nil, err
 		}
 	}
@@ -1228,7 +1230,7 @@ func (d *DB) newIngestedFlushableEntry(
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
 func (d *DB) handleIngestAsFlushable(
-	meta []*fileMetadata, seqNum uint64, exciseSpan KeyRange,
+	meta []*fileMetadata, seqNum base.SeqNum, exciseSpan KeyRange,
 ) error {
 	b := d.NewBatch()
 	for _, m := range meta {
@@ -1264,7 +1266,7 @@ func (d *DB) handleIngestAsFlushable(
 	if err != nil {
 		return err
 	}
-	nextSeqNum := seqNum + uint64(b.Count())
+	nextSeqNum := seqNum + base.SeqNum(b.Count())
 
 	// Set newLogNum to the logNum of the previous flushable. This value is
 	// irrelevant if the WAL is disabled. If the WAL is enabled, then we set
@@ -1382,7 +1384,7 @@ func (d *DB) ingest(
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
-	prepare := func(seqNum uint64) {
+	prepare := func(seqNum base.SeqNum) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
 		// Determine the set of bounds we care about for the purpose of checking
@@ -1550,7 +1552,7 @@ func (d *DB) ingest(
 	}
 
 	var ve *versionEdit
-	apply := func(seqNum uint64) {
+	apply := func(seqNum base.SeqNum) {
 		if err != nil || asFlushable {
 			// An error occurred during prepare.
 			if mut != nil {
@@ -2083,7 +2085,7 @@ func (d *DB) ingestApply(
 	lr ingestLoadResult,
 	mut *memTable,
 	exciseSpan KeyRange,
-	exciseSeqNum uint64,
+	exciseSeqNum base.SeqNum,
 ) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

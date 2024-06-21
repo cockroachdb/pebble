@@ -436,23 +436,23 @@ func (i *blockIter) readFirstKey() error {
 
 // The sstable internal obsolete bit is set when writing a block and unset by
 // blockIter, so no code outside block writing/reading code ever sees it.
-const trailerObsoleteBit = uint64(base.InternalKeyKindSSTableInternalObsoleteBit)
-const trailerObsoleteMask = (InternalKeySeqNumMax << 8) | uint64(base.InternalKeyKindSSTableInternalObsoleteMask)
+const trailerObsoleteBit = base.Trailer(base.InternalKeyKindSSTableInternalObsoleteBit)
+const trailerObsoleteMask = (base.Trailer(InternalKeySeqNumMax) << 8) | base.Trailer(base.InternalKeyKindSSTableInternalObsoleteMask)
 
 func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 	// BlockIter benchmarks.
 	if n := len(key) - 8; n >= 0 {
-		trailer := binary.LittleEndian.Uint64(key[n:])
+		trailer := base.Trailer(binary.LittleEndian.Uint64(key[n:]))
 		hiddenPoint = i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
 		i.ikv.K.Trailer = trailer & trailerObsoleteMask
 		i.ikv.K.UserKey = key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
-			i.ikv.K.SetSeqNum(uint64(n))
+			i.ikv.K.SetSeqNum(base.SeqNum(n))
 		}
 	} else {
-		i.ikv.K.Trailer = uint64(InternalKeyKindInvalid)
+		i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
 		i.ikv.K.UserKey = nil
 	}
 	return hiddenPoint
@@ -652,7 +652,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 	if !hiddenPoint && i.cmp(i.ikv.K.UserKey, key) >= 0 {
 		// Initialize i.lazyValue
 		if !i.lazyValueHandling.hasValuePrefix ||
-			base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+			i.ikv.K.Kind() != InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
 		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -935,7 +935,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 		return nil
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -964,7 +964,7 @@ func (i *blockIter) First() *base.InternalKV {
 	}
 	i.maybeReplaceSuffix()
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -1007,7 +1007,7 @@ func (i *blockIter) Last() *base.InternalKV {
 	}
 	i.maybeReplaceSuffix()
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -1043,13 +1043,13 @@ start:
 	i.readEntry()
 	// Manually inlined version of i.decodeInternalKey(i.key).
 	if n := len(i.key) - 8; n >= 0 {
-		trailer := binary.LittleEndian.Uint64(i.key[n:])
+		trailer := base.Trailer(binary.LittleEndian.Uint64(i.key[n:]))
 		hiddenPoint := i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
 		i.ikv.K.Trailer = trailer & trailerObsoleteMask
 		i.ikv.K.UserKey = i.key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
-			i.ikv.K.SetSeqNum(uint64(n))
+			i.ikv.K.SetSeqNum(base.SeqNum(n))
 		}
 		if hiddenPoint {
 			goto start
@@ -1062,11 +1062,11 @@ start:
 			i.ikv.K.UserKey = i.synthSuffixBuf
 		}
 	} else {
-		i.ikv.K.Trailer = uint64(InternalKeyKindInvalid)
+		i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
 		i.ikv.K.UserKey = nil
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -1323,7 +1323,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		// Manually inlined version of i.decodeInternalKey(i.key).
 		hiddenPoint := false
 		if n := len(i.key) - 8; n >= 0 {
-			trailer := binary.LittleEndian.Uint64(i.key[n:])
+			trailer := base.Trailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint = i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
 			i.ikv.K = base.InternalKey{
@@ -1331,7 +1331,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 				UserKey: i.key[:n:n],
 			}
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
-				i.ikv.K.SetSeqNum(uint64(n))
+				i.ikv.K.SetSeqNum(base.SeqNum(n))
 			}
 			if i.transforms.SyntheticSuffix.IsSet() {
 				// Inlined version of i.maybeReplaceSuffix()
@@ -1341,7 +1341,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 				i.ikv.K.UserKey = i.synthSuffixBuf
 			}
 		} else {
-			i.ikv.K.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
 			i.ikv.K.UserKey = nil
 		}
 		nextCmpCount++
@@ -1357,7 +1357,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			if invariants.Enabled && !i.lazyValueHandling.hasValuePrefix {
 				panic(errors.AssertionFailedf("nextPrefixV3 being run for non-v3 sstable"))
 			}
-			if base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+			if i.ikv.K.Kind() != InternalKeyKindSet {
 				i.ikv.V = base.MakeInPlaceValue(i.val)
 			} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 				i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -1387,7 +1387,7 @@ start:
 		// Manually inlined version of i.decodeInternalKey(i.key).
 		i.key = i.cachedBuf[e.keyStart:e.keyEnd]
 		if n := len(i.key) - 8; n >= 0 {
-			trailer := binary.LittleEndian.Uint64(i.key[n:])
+			trailer := base.Trailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint := i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
 			if hiddenPoint {
@@ -1398,7 +1398,7 @@ start:
 				UserKey: i.key[:n:n],
 			}
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
-				i.ikv.K.SetSeqNum(uint64(n))
+				i.ikv.K.SetSeqNum(base.SeqNum(n))
 			}
 			if i.transforms.SyntheticSuffix.IsSet() {
 				// Inlined version of i.maybeReplaceSuffix()
@@ -1410,12 +1410,12 @@ start:
 				i.ikv.K.UserKey = i.synthSuffixBuf
 			}
 		} else {
-			i.ikv.K.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
 			i.ikv.K.UserKey = nil
 		}
 		i.cached = i.cached[:n]
 		if !i.lazyValueHandling.hasValuePrefix ||
-			base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+			i.ikv.K.Kind() != InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
 		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
@@ -1496,7 +1496,7 @@ start:
 		i.ikv.K.UserKey = i.synthSuffixBuf
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
-		base.TrailerKind(i.ikv.K.Trailer) != InternalKeyKindSet {
+		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
 	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])

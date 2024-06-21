@@ -80,7 +80,11 @@ func TestRangeDel(t *testing.T) {
 				db:     d,
 				seqNum: InternalKeySeqNumMax,
 			}
-			td.MaybeScanArgs(t, "seq", &snap.seqNum)
+			if td.HasArg("seq") {
+				var n uint64
+				td.ScanArgs(t, "seq", &n)
+				snap.seqNum = base.SeqNum(n)
+			}
 			iter, _ := snap.NewIter(nil)
 			return runIterCmd(td, iter, true)
 

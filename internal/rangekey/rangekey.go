@@ -91,7 +91,7 @@ func (e *Encoder) Encode(s *keyspan.Span) error {
 	// sequence number descending, grouping them into sequence numbers. All keys
 	// with identical sequence numbers are flushed together.
 	var del bool
-	var seqNum uint64
+	var seqNum base.SeqNum
 	for i := range s.Keys {
 		if i == 0 || s.Keys[i].SeqNum() != seqNum {
 			if i > 0 {
@@ -127,7 +127,7 @@ func (e *Encoder) Encode(s *keyspan.Span) error {
 
 // flush constructs internal keys for accumulated key state, and emits the
 // internal keys.
-func (e *Encoder) flush(s *keyspan.Span, seqNum uint64, del bool) error {
+func (e *Encoder) flush(s *keyspan.Span, seqNum base.SeqNum, del bool) error {
 	if len(e.sets) > 0 {
 		ik := base.MakeInternalKey(s.Start, seqNum, base.InternalKeyKindRangeKeySet)
 		l := EncodedSetValueLen(s.End, e.sets)

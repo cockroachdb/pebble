@@ -126,7 +126,7 @@ type pointCollapsingIterator struct {
 	comparer *base.Comparer
 	merge    base.Merge
 	err      error
-	seqNum   uint64
+	seqNum   base.SeqNum
 	// The current position of `iter`. Always owned by the underlying iter.
 	iterKV *base.InternalKV
 	// The last saved key. findNextEntry and similar methods are expected to save
@@ -144,7 +144,7 @@ type pointCollapsingIterator struct {
 	savedKeyBuf []byte
 	// If fixedSeqNum is non-zero, all emitted points are verified to have this
 	// fixed sequence number.
-	fixedSeqNum uint64
+	fixedSeqNum base.SeqNum
 }
 
 func (p *pointCollapsingIterator) Span() *keyspan.Span {
@@ -423,7 +423,7 @@ type scanInternalIterator struct {
 	alloc           *iterAlloc
 	newIters        tableNewIters
 	newIterRangeKey keyspanimpl.TableNewSpanIter
-	seqNum          uint64
+	seqNum          base.SeqNum
 	iterLevels      []IteratorLevel
 	mergingIter     *mergingIter
 

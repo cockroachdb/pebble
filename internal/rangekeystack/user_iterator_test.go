@@ -10,7 +10,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,9 +37,7 @@ func TestIter(t *testing.T) {
 			visibleSeqNum := base.InternalKeySeqNumMax
 			for _, arg := range td.CmdArgs {
 				if arg.Key == "visible-seq-num" {
-					var err error
-					visibleSeqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
-					require.NoError(t, err)
+					visibleSeqNum = base.ParseSeqNum(arg.Vals[0])
 				}
 			}
 
@@ -177,7 +174,7 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 		}
 
 		key := keyspan.Key{
-			Trailer: base.MakeTrailer(uint64(i), base.InternalKeyKindRangeKeySet),
+			Trailer: base.MakeTrailer(base.SeqNum(i), base.InternalKeyKindRangeKeySet),
 			Value:   []byte(fmt.Sprintf("v%d", rng.Intn(3))),
 		}
 		// Generate suffixes 0, 1, 2, or 3 with 0 indicating none.
@@ -375,7 +372,7 @@ func BenchmarkTransform(b *testing.B) {
 					var keys []keyspan.Key
 					for k := 0; k < n; k++ {
 						keys = append(keys, keyspan.Key{
-							Trailer: base.MakeTrailer(uint64(n-k), base.InternalKeyKindRangeKeySet),
+							Trailer: base.MakeTrailer(base.SeqNum(n-k), base.InternalKeyKindRangeKeySet),
 							Suffix:  suffixes[k],
 						})
 					}

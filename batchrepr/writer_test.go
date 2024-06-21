@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 )
 
@@ -37,10 +38,7 @@ func TestWriter(t *testing.T) {
 			return prettyBinaryRepr(repr)
 
 		case "set-seqnum":
-			seqNum, err := strconv.ParseUint(td.CmdArgs[0].Key, 10, 64)
-			if err != nil {
-				return err.Error()
-			}
+			seqNum := base.ParseSeqNum(td.CmdArgs[0].Key)
 			SetSeqNum(repr, seqNum)
 			return prettyBinaryRepr(repr)
 

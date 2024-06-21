@@ -33,8 +33,8 @@ type compactionEnv struct {
 	// flushes are longer, slower operations and provide a much looser bound
 	// when available bytes is decreasing.
 	diskAvailBytes          uint64
-	earliestUnflushedSeqNum uint64
-	earliestSnapshotSeqNum  uint64
+	earliestUnflushedSeqNum base.SeqNum
+	earliestSnapshotSeqNum  base.SeqNum
 	inProgressCompactions   []compactionInfo
 	readCompactionEnv       readCompactionEnv
 }
@@ -1041,7 +1041,7 @@ func pickCompactionSeedFile(
 	virtualBackings *manifest.VirtualBackings,
 	opts *Options,
 	level, outputLevel int,
-	earliestSnapshotSeqNum uint64,
+	earliestSnapshotSeqNum base.SeqNum,
 ) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
 	// amplification, but also ensure that (a) deletes are propagated to the

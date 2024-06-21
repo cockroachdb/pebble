@@ -56,7 +56,7 @@ type simpleMergingIterLevel struct {
 
 type simpleMergingIter struct {
 	levels   []simpleMergingIterLevel
-	snapshot uint64
+	snapshot base.SeqNum
 	heap     simpleMergingIterHeap
 	// The last point's key and level. For validation.
 	lastKey     InternalKey
@@ -74,7 +74,7 @@ type simpleMergingIter struct {
 func (m *simpleMergingIter) init(
 	merge Merge,
 	cmp Compare,
-	snapshot uint64,
+	snapshot base.SeqNum,
 	formatKey base.FormatKey,
 	levels ...simpleMergingIterLevel,
 ) {
@@ -358,7 +358,7 @@ type checkConfig struct {
 	comparer  *Comparer
 	readState *readState
 	newIters  tableNewIters
-	seqNum    uint64
+	seqNum    base.SeqNum
 	stats     *CheckLevelsStats
 	merge     Merge
 	formatKey base.FormatKey
@@ -448,7 +448,7 @@ func addTombstonesFromIter(
 	lsmLevel int,
 	fileNum FileNum,
 	tombstones []tombstoneWithLevel,
-	seqNum uint64,
+	seqNum base.SeqNum,
 	cmp Compare,
 	formatKey base.FormatKey,
 ) (_ []tombstoneWithLevel, err error) {

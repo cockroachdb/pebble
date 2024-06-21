@@ -35,6 +35,9 @@ const (
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
 
+// SeqNum exports the base.SeqNum type.
+type SeqNum = base.SeqNum
+
 type internalIterator = base.InternalIterator
 
 type topLevelIterator = base.TopLevelIterator

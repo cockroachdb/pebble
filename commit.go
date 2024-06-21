@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/batchrepr"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 )
 
@@ -126,10 +127,10 @@ func (q *commitQueue) dequeueApplied() *Batch {
 type commitEnv struct {
 	// The next sequence number to give to a batch. Protected by
 	// commitPipeline.mu.
-	logSeqNum *atomic.Uint64
+	logSeqNum *base.AtomicSeqNum
 	// The visible sequence number at which reads should be performed. Ratcheted
 	// upwards atomically as batches are applied to the memtable.
-	visibleSeqNum *atomic.Uint64
+	visibleSeqNum *base.AtomicSeqNum
 
 	// Apply the batch to the specified memtable. Called concurrently.
 	apply func(b *Batch, mem *memTable) error
@@ -360,7 +361,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 // invoked with commitPipeline.mu held, but note that DB.mu is not held and
 // must be locked if necessary.
 func (p *commitPipeline) AllocateSeqNum(
-	count int, prepare func(seqNum uint64), apply func(seqNum uint64),
+	count int, prepare func(seqNum base.SeqNum), apply func(seqNum base.SeqNum),
 ) {
 	// This method is similar to Commit and prepare. Be careful about trying to
 	// share additional code with those methods because Commit and prepare are
@@ -387,7 +388,7 @@ func (p *commitPipeline) AllocateSeqNum(
 	// Assign the batch a sequence number. Note that we use atomic operations
 	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
 	// mutual exclusion for other goroutines writing to logSeqNum.
-	logSeqNum := p.env.logSeqNum.Add(uint64(count)) - uint64(count)
+	logSeqNum := p.env.logSeqNum.Add(base.SeqNum(count)) - base.SeqNum(count)
 	seqNum := logSeqNum
 	if seqNum == 0 {
 		// We can't use the value 0 for the global seqnum during ingestion, because
@@ -461,7 +462,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memT
 	// Assign the batch a sequence number. Note that we use atomic operations
 	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
 	// mutual exclusion for other goroutines writing to logSeqNum.
-	b.setSeqNum(p.env.logSeqNum.Add(n) - n)
+	b.setSeqNum(p.env.logSeqNum.Add(base.SeqNum(n)) - base.SeqNum(n))
 
 	// Write the data to the WAL.
 	mem, err := p.env.write(b, syncWG, syncErr)
@@ -502,7 +503,7 @@ func (p *commitPipeline) publish(b *Batch) {
 		// that the sequence number ratchets up.
 		for {
 			curSeqNum := p.env.visibleSeqNum.Load()
-			newSeqNum := t.SeqNum() + uint64(t.Count())
+			newSeqNum := t.SeqNum() + base.SeqNum(t.Count())
 			if newSeqNum <= curSeqNum {
 				// t's sequence number has already been published.
 				break

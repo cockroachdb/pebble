@@ -17,18 +17,19 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSnapshotListToSlice(t *testing.T) {
 	testCases := []struct {
-		vals []uint64
+		vals []base.SeqNum
 	}{
 		{nil},
-		{[]uint64{1}},
-		{[]uint64{1, 2, 3}},
-		{[]uint64{3, 2, 1}},
+		{[]base.SeqNum{1}},
+		{[]base.SeqNum{1, 2, 3}},
+		{[]base.SeqNum{3, 2, 1}},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {

@@ -1072,7 +1072,7 @@ func testIngestSharedImpl(
 					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
 					return nil
 				},
-				func(start, end []byte, seqNum uint64) error {
+				func(start, end []byte, seqNum base.SeqNum) error {
 					require.NoError(t, w.DeleteRange(start, end))
 					return nil
 				},
@@ -1570,7 +1570,7 @@ func TestConcurrentExcise(t *testing.T) {
 					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
 					return nil
 				},
-				func(start, end []byte, seqNum uint64) error {
+				func(start, end []byte, seqNum base.SeqNum) error {
 					require.NoError(t, w.DeleteRange(start, end))
 					return nil
 				},
@@ -2005,7 +2005,7 @@ func TestIngestExternal(t *testing.T) {
 					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val))
 					return nil
 				},
-				func(start, end []byte, seqNum uint64) error {
+				func(start, end []byte, seqNum base.SeqNum) error {
 					require.NoError(t, w.DeleteRange(start, end))
 					return nil
 				},
@@ -3220,17 +3220,13 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 	}
 
 	var (
-		seqNum uint64
-		err    error
+		seqNum base.SeqNum
 		metas  []*fileMetadata
 	)
 	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "starting-seqnum":
-			seqNum, err = strconv.ParseUint(td.Input, 10, 64)
-			if err != nil {
-				return err.Error()
-			}
+			seqNum = base.ParseSeqNum(td.Input)
 			return ""
 
 		case "reset":
@@ -3301,7 +3297,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 		case "update-files":
 			// Update the bounds across all files.
 			for i, m := range metas {
-				if err := setSeqNumInMetadata(m, seqNum+uint64(i), cmp, base.DefaultFormatter); err != nil {
+				if err := setSeqNumInMetadata(m, seqNum+base.SeqNum(i), cmp, base.DefaultFormatter); err != nil {
 					return err.Error()
 				}
 			}

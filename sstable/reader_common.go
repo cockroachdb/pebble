@@ -62,7 +62,7 @@ var NoTransforms = IterTransforms{}
 // SyntheticSeqNum is used to override all sequence numbers in a table. It is
 // set to a non-zero value when the table was created externally and ingested
 // whole.
-type SyntheticSeqNum uint64
+type SyntheticSeqNum base.SeqNum
 
 // NoSyntheticSeqNum is the default zero value for SyntheticSeqNum, which
 // disables overriding the sequence number.
