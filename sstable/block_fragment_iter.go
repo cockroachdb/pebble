@@ -216,7 +216,8 @@ func (i *fragmentBlockIter) Close() {
 			blockIter:        i.blockIter.resetForReuse(),
 			doubleCloseCheck: i.doubleCloseCheck,
 		}
-		fragmentBlockIterPool.Put(i)
+		// TODO(radu): reenable this, see #3678.
+		//fragmentBlockIterPool.Put(i)
 	}
 }
 
