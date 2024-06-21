@@ -180,8 +180,9 @@ func TestLint(t *testing.T) {
 
 		// Forbidden-import-pkg -> permitted-replacement-pkg
 		forbiddenImports := map[string]string{
-			"errors":     "github.com/cockroachdb/errors",
-			"pkg/errors": "github.com/cockroachdb/errors",
+			"errors":                  "github.com/cockroachdb/errors",
+			"pkg/errors":              "github.com/cockroachdb/errors",
+			"golang.org/x/exp/slices": "slices",
 		}
 
 		// grepBuf creates a grep string that matches any forbidden import pkgs.
