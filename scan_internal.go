@@ -778,7 +778,7 @@ func scanInternalImpl(
 				// call visitRangeKey.
 				keysCopy := make([]keyspan.Key, len(span.Keys))
 				for i := range span.Keys {
-					keysCopy[i] = span.Keys[i]
+					keysCopy[i].CopyFrom(span.Keys[i])
 					keysCopy[i].Trailer = base.MakeTrailer(0, span.Keys[i].Kind())
 				}
 				keyspan.SortKeysByTrailer(&keysCopy)
