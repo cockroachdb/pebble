@@ -502,10 +502,10 @@ type invalidatingIter struct {
 var _ FragmentIterator = (*invalidatingIter)(nil)
 
 func (i *invalidatingIter) invalidate(s *Span, err error) (*Span, error) {
-	// Zero the entirety of the byte bufs and the keys slice.
+	// Mangle the entirety of the byte bufs and the keys slice.
 	for j := range i.bufs {
 		for k := range i.bufs[j] {
-			i.bufs[j][k] = 0x00
+			i.bufs[j][k] = 0xff
 		}
 		i.bufs[j] = nil
 	}
@@ -521,8 +521,9 @@ func (i *invalidatingIter) invalidate(s *Span, err error) (*Span, error) {
 	i.bufs = i.bufs[:0]
 	i.keys = i.keys[:0]
 	i.span = Span{
-		Start: i.saveBytes(s.Start),
-		End:   i.saveBytes(s.End),
+		Start:     i.saveBytes(s.Start),
+		End:       i.saveBytes(s.End),
+		KeysOrder: s.KeysOrder,
 	}
 	for j := range s.Keys {
 		i.keys = append(i.keys, Key{
@@ -550,7 +551,12 @@ func (i *invalidatingIter) First() (*Span, error)            { return i.invalida
 func (i *invalidatingIter) Last() (*Span, error)             { return i.invalidate(i.iter.Last()) }
 func (i *invalidatingIter) Next() (*Span, error)             { return i.invalidate(i.iter.Next()) }
 func (i *invalidatingIter) Prev() (*Span, error)             { return i.invalidate(i.iter.Prev()) }
-func (i *invalidatingIter) Close()                           { i.iter.Close() }
+
+func (i *invalidatingIter) Close() {
+	_, _ = i.invalidate(nil, nil)
+	i.iter.Close()
+}
+
 func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }

@@ -1117,9 +1117,13 @@ func (i *InterleavingIter) savePoint(kv *base.InternalKV) {
 //
 // Span will never return an invalid or empty span.
 func (i *InterleavingIter) Span() *Span {
+	if invariants.Enabled && i.pointIter == nil {
+		panic("Span() called after close")
+	}
 	if !i.withinSpan || len(i.span.Keys) == 0 {
 		return nil
-	} else if i.truncated {
+	}
+	if i.truncated {
 		return &i.truncatedSpan
 	}
 	return i.span
@@ -1153,7 +1157,9 @@ func (i *InterleavingIter) Error() error {
 // Close implements (base.InternalIterator).Close.
 func (i *InterleavingIter) Close() error {
 	err := i.pointIter.Close()
+	i.pointIter = nil
 	i.keyspanIter.Close()
+	i.keyspanIter = nil
 	return err
 }
 
