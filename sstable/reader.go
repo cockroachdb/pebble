@@ -461,7 +461,7 @@ func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.Fragment
 	if err := i.blockIter.initHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
-	return i, nil
+	return keyspan.MaybeAssert(i, r.Compare), nil
 }
 
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
@@ -488,7 +488,7 @@ func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.Fragment
 	if err := i.blockIter.initHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
-	return i, nil
+	return keyspan.MaybeAssert(i, r.Compare), nil
 }
 
 func (r *Reader) readIndex(

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -20,12 +21,21 @@ func Assert(iter FragmentIterator, cmp base.Compare) FragmentIterator {
 	}
 }
 
-// MaybeAssert wraps an iterator and asserts that operations return sane
-// results if we are in testing mode.
+// MaybeAssert potentially wraps an iterator and asserts that operations return
+// sane results if we are in testing mode.
 func MaybeAssert(iter FragmentIterator, cmp base.Compare) FragmentIterator {
-	if invariants.Enabled && iter != nil {
+	if invariants.Enabled && iter != nil && fastrand.Uint32()%4 > 0 {
 		// Don't wrap an assertIter.
-		if _, ok := iter.(*assertIter); !ok {
+		switch iter.(type) {
+		case *assertIter:
+			return iter
+		case *invalidatingIter:
+			return iter
+		default:
+			// Also wrap with an invalidating iterator some of the time.
+			if fastrand.Uint32()%2 > 0 {
+				iter = NewInvalidatingIter(iter)
+			}
 			return Assert(iter, cmp)
 		}
 	}

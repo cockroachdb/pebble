@@ -57,7 +57,8 @@ type FragmentIterator interface {
 
 	// Close closes the iterator. It is not in general valid to call Close
 	// multiple times. Other methods should not be called after the iterator has
-	// been closed.
+	// been closed. Spans returned by a previous method should also not be used
+	// after the iterator has been closed.
 	Close()
 
 	// WrapChildren wraps any child iterators using the given function. The
