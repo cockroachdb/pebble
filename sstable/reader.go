@@ -328,8 +328,8 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 // before the call to NewIterWithBlockPropertyFiltersAndContextEtc, to get the
 // value of hideObsoletePoints and potentially add a block property filter.
 func (r *Reader) TryAddBlockPropertyFilterForHideObsoletePoints(
-	snapshotForHideObsoletePoints uint64,
-	fileLargestSeqNum uint64,
+	snapshotForHideObsoletePoints base.SeqNum,
+	fileLargestSeqNum base.SeqNum,
 	pointKeyFilters []BlockPropertyFilter,
 ) (hideObsoletePoints bool, filters []BlockPropertyFilter) {
 	hideObsoletePoints = r.tableFormat >= TableFormatPebblev4 &&

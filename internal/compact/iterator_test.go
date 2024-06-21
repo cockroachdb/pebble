@@ -158,11 +158,7 @@ func TestCompactionIter(t *testing.T) {
 					switch arg.Key {
 					case "snapshots":
 						for _, val := range arg.Vals {
-							seqNum, err := strconv.Atoi(val)
-							if err != nil {
-								return err.Error()
-							}
-							snapshots = append(snapshots, uint64(seqNum))
+							snapshots = append(snapshots, base.ParseSeqNum(val))
 						}
 					case "elide-tombstones":
 						var err error

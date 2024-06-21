@@ -421,7 +421,7 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 				}
 				val, err := d.readUvarint()
 				require.NoError(t, err)
-				if c.edit.LastSeqNum != val {
+				if c.edit.LastSeqNum != base.SeqNum(val) {
 					t.Fatalf("expected %d, but found %d", c.edit.LastSeqNum, val)
 				}
 			}

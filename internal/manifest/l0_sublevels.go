@@ -1152,7 +1152,7 @@ type L0CompactionFiles struct {
 	// Set for intra-L0 compactions. SSTables with sequence numbers greater
 	// than earliestUnflushedSeqNum cannot be a part of intra-L0 compactions.
 	isIntraL0               bool
-	earliestUnflushedSeqNum uint64
+	earliestUnflushedSeqNum base.SeqNum
 
 	// For debugging purposes only. Used in checkCompaction().
 	preExtensionMinInterval int
@@ -1563,7 +1563,7 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 // compaction is possible (i.e. does not conflict with any base/intra-L0
 // compacting files).
 func (s *L0Sublevels) extendFiles(
-	sl int, earliestUnflushedSeqNum uint64, cFiles *L0CompactionFiles,
+	sl int, earliestUnflushedSeqNum base.SeqNum, cFiles *L0CompactionFiles,
 ) bool {
 	index, _ := slices.BinarySearchFunc(s.levelFiles[sl], cFiles.minIntervalIndex, func(a *FileMetadata, b int) int {
 		return stdcmp.Compare(a.maxIntervalIndex, b)
@@ -1595,7 +1595,7 @@ func (s *L0Sublevels) extendFiles(
 // See comment above [PickBaseCompaction] for heuristics involved in this
 // selection.
 func (s *L0Sublevels) PickIntraL0Compaction(
-	earliestUnflushedSeqNum uint64, minCompactionDepth int,
+	earliestUnflushedSeqNum base.SeqNum, minCompactionDepth int,
 ) (*L0CompactionFiles, error) {
 	scoredIntervals := make([]intervalAndScore, len(s.orderedIntervals))
 	for i := range s.orderedIntervals {
@@ -1663,7 +1663,7 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 }
 
 func (s *L0Sublevels) intraL0CompactionUsingSeed(
-	f *FileMetadata, intervalIndex int, earliestUnflushedSeqNum uint64, minCompactionDepth int,
+	f *FileMetadata, intervalIndex int, earliestUnflushedSeqNum base.SeqNum, minCompactionDepth int,
 ) *L0CompactionFiles {
 	// We know that all the files that overlap with intervalIndex have
 	// LargestSeqNum < earliestUnflushedSeqNum, but for other intervals

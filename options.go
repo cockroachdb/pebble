@@ -204,7 +204,7 @@ type IterOptions struct {
 	// snapshotForHideObsoletePoints is specified for/by levelIter when opening
 	// files and is used to decide whether to hide obsolete points. A value of 0
 	// implies obsolete points should not be hidden.
-	snapshotForHideObsoletePoints uint64
+	snapshotForHideObsoletePoints base.SeqNum
 
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
@@ -264,7 +264,7 @@ type scanInternalOptions struct {
 	IterOptions
 
 	visitPointKey     func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
-	visitRangeDel     func(start, end []byte, seqNum uint64) error
+	visitRangeDel     func(start, end []byte, seqNum SeqNum) error
 	visitRangeKey     func(start, end []byte, keys []rangekey.Key) error
 	visitSharedFile   func(sst *SharedSSTMeta) error
 	visitExternalFile func(sst *ExternalFile) error

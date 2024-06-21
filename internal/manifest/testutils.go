@@ -133,6 +133,11 @@ func (p *debugParser) Uint64() uint64 {
 	return x
 }
 
+// Uint64 parses the next token as a sequence number.
+func (p *debugParser) SeqNum() base.SeqNum {
+	return base.ParseSeqNum(p.Next())
+}
+
 // FileNum parses the next token as a FileNum.
 func (p *debugParser) FileNum() base.FileNum {
 	return base.FileNum(p.Int())

@@ -1423,11 +1423,11 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						hintType:                hintType,
 						start:                   start,
 						end:                     end,
-						fileSmallestSeqNum:      parseUint64(parts[4]),
+						fileSmallestSeqNum:      base.SeqNum(parseUint64(parts[4])),
 						tombstoneLevel:          tombstoneLevel,
 						tombstoneFile:           tombstoneFile,
-						tombstoneSmallestSeqNum: parseUint64(parts[5]),
-						tombstoneLargestSeqNum:  parseUint64(parts[6]),
+						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[5])),
+						tombstoneLargestSeqNum:  base.SeqNum(parseUint64(parts[6])),
 					}
 					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
 					fmt.Fprintln(&buf, h.String())
@@ -1497,10 +1497,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return s
 
 			case "close-snapshot":
-				seqNum, err := strconv.ParseUint(strings.TrimSpace(td.Input), 0, 64)
-				if err != nil {
-					return err.Error()
-				}
+				seqNum := base.ParseSeqNum(strings.TrimSpace(td.Input))
 				d.mu.Lock()
 				var s *Snapshot
 				l := &d.mu.snapshots
@@ -1633,10 +1630,7 @@ func TestCompactionTombstones(t *testing.T) {
 				return runTableStatsCmd(td, d)
 
 			case "close-snapshot":
-				seqNum, err := strconv.ParseUint(strings.TrimSpace(td.Input), 0, 64)
-				if err != nil {
-					return err.Error()
-				}
+				seqNum := base.ParseSeqNum(strings.TrimSpace(td.Input))
 				d.mu.Lock()
 				var s *Snapshot
 				l := &d.mu.snapshots

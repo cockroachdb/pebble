@@ -415,7 +415,7 @@ func (s *Skiplist) getKey(nd uint32) base.InternalKey {
 	n := s.node(nd)
 	kind := base.InternalKeyKind((*s.storage)[n.offset])
 	key := (*s.storage)[n.keyStart:n.keyEnd]
-	return base.MakeInternalKey(key, uint64(n.offset)|base.InternalKeySeqNumBatch, kind)
+	return base.MakeInternalKey(key, base.SeqNum(n.offset)|base.InternalKeySeqNumBatch, kind)
 }
 
 func (s *Skiplist) getNext(nd, h uint32) uint32 {

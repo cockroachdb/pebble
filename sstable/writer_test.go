@@ -951,7 +951,7 @@ func TestWriterRace(t *testing.T) {
 			for ki := 0; ki < len(keys); ki++ {
 				require.NoError(
 					t,
-					w.Add(base.MakeInternalKey(keys[ki], uint64(ki), InternalKeyKindSet), val),
+					w.Add(base.MakeInternalKey(keys[ki], base.SeqNum(ki), InternalKeyKindSet), val),
 				)
 				require.Equal(
 					t, w.dataBlockBuf.dataBlock.getCurKey().UserKey, keys[ki],

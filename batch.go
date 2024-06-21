@@ -317,7 +317,7 @@ type batchInternal struct {
 	// tombstonesSeqNum. This is the case for all new iterators created over a
 	// batch but it's not the case for all cloned iterators.
 	tombstones       []keyspan.Span
-	tombstonesSeqNum uint64
+	tombstonesSeqNum base.SeqNum
 
 	// Fragmented range key spans. Cached the first time a range key iterator is
 	// requested. The cache is invalidated whenever a new range key
@@ -326,7 +326,7 @@ type batchInternal struct {
 	// tombstonesSeqNum. This is the case for all new iterators created over a
 	// batch but it's not the case for all cloned iterators.
 	rangeKeys       []keyspan.Span
-	rangeKeysSeqNum uint64
+	rangeKeysSeqNum base.SeqNum
 
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
@@ -487,8 +487,8 @@ func newIndexedBatchWithSize(db *DB, comparer *Comparer, size int) *Batch {
 // with the base.InternalKeySeqNumBatch bit. These sequence numbers are only
 // used during iteration, and the keys are assigned ordinary sequence numbers
 // when the batch is committed.
-func (b *Batch) nextSeqNum() uint64 {
-	return uint64(len(b.data)) | base.InternalKeySeqNumBatch
+func (b *Batch) nextSeqNum() base.SeqNum {
+	return base.SeqNum(len(b.data)) | base.InternalKeySeqNumBatch
 }
 
 func (b *Batch) release() {
@@ -1310,7 +1310,7 @@ func (b *Batch) initInternalIter(o *IterOptions, iter *batchIter) {
 	}
 }
 
-func (b *Batch) newRangeDelIter(o *IterOptions, batchSnapshot uint64) *keyspan.Iter {
+func (b *Batch) newRangeDelIter(o *IterOptions, batchSnapshot base.SeqNum) *keyspan.Iter {
 	// Construct an iterator even if rangeDelIndex is nil, because it is allowed
 	// to refresh later, so we need the container to exist.
 	iter := new(keyspan.Iter)
@@ -1318,7 +1318,7 @@ func (b *Batch) newRangeDelIter(o *IterOptions, batchSnapshot uint64) *keyspan.I
 	return iter
 }
 
-func (b *Batch) initRangeDelIter(_ *IterOptions, iter *keyspan.Iter, batchSnapshot uint64) {
+func (b *Batch) initRangeDelIter(_ *IterOptions, iter *keyspan.Iter, batchSnapshot base.SeqNum) {
 	if b.rangeDelIndex == nil {
 		iter.Init(b.cmp, nil)
 		return
@@ -1386,7 +1386,7 @@ func fragmentRangeDels(frag *keyspan.Fragmenter, it internalIterator, count int)
 	frag.Finish()
 }
 
-func (b *Batch) newRangeKeyIter(o *IterOptions, batchSnapshot uint64) *keyspan.Iter {
+func (b *Batch) newRangeKeyIter(o *IterOptions, batchSnapshot base.SeqNum) *keyspan.Iter {
 	// Construct an iterator even if rangeKeyIndex is nil, because it is allowed
 	// to refresh later, so we need the container to exist.
 	iter := new(keyspan.Iter)
@@ -1394,7 +1394,7 @@ func (b *Batch) newRangeKeyIter(o *IterOptions, batchSnapshot uint64) *keyspan.I
 	return iter
 }
 
-func (b *Batch) initRangeKeyIter(_ *IterOptions, iter *keyspan.Iter, batchSnapshot uint64) {
+func (b *Batch) initRangeKeyIter(_ *IterOptions, iter *keyspan.Iter, batchSnapshot base.SeqNum) {
 	if b.rangeKeyIndex == nil {
 		iter.Init(b.cmp, nil)
 		return
@@ -1596,14 +1596,14 @@ func (b *Batch) grow(n int) {
 	b.data = b.data[:newSize]
 }
 
-func (b *Batch) setSeqNum(seqNum uint64) {
+func (b *Batch) setSeqNum(seqNum base.SeqNum) {
 	batchrepr.SetSeqNum(b.data, seqNum)
 }
 
 // SeqNum returns the batch sequence number which is applied to the first
 // record in the batch. The sequence number is incremented for each subsequent
 // record. It returns zero if the batch is empty.
-func (b *Batch) SeqNum() uint64 {
+func (b *Batch) SeqNum() base.SeqNum {
 	if len(b.data) == 0 {
 		b.init(batchrepr.HeaderLen)
 	}
@@ -1666,7 +1666,7 @@ type batchIter struct {
 	// read. This sequence number has the InternalKeySeqNumBatch bit set, so it
 	// encodes an offset within the batch. Only batch entries earlier than the
 	// offset are visible during iteration.
-	snapshot uint64
+	snapshot base.SeqNum
 }
 
 // batchIter implements the base.InternalIterator interface.
@@ -1849,7 +1849,7 @@ type flushableBatch struct {
 
 	// The base sequence number for the entries in the batch. This is the same
 	// value as Batch.seqNum() and is cached here for performance.
-	seqNum uint64
+	seqNum base.SeqNum
 
 	// A slice of offsets and indices for the entries in the batch. Used to
 	// implement flushableBatchIter. Unlike the indexing on a normal batch, a
@@ -1997,7 +1997,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 	return b, nil
 }
 
-func (b *flushableBatch) setSeqNum(seqNum uint64) {
+func (b *flushableBatch) setSeqNum(seqNum base.SeqNum) {
 	if b.seqNum != 0 {
 		panic(fmt.Sprintf("pebble: flushableBatch.seqNum already set: %d", b.seqNum))
 	}
@@ -2266,7 +2266,7 @@ func (i *flushableBatchIter) getKey(index int) InternalKey {
 	e := &i.offsets[index]
 	kind := InternalKeyKind(i.data[e.offset])
 	key := i.data[e.keyStart:e.keyEnd]
-	return base.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
+	return base.MakeInternalKey(key, i.batch.seqNum+base.SeqNum(e.index), kind)
 }
 
 func (i *flushableBatchIter) getKV(index int) *base.InternalKV {

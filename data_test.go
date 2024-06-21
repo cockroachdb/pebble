@@ -41,7 +41,11 @@ func runGetCmd(t testing.TB, td *datadriven.TestData, d *DB) string {
 		db:     d,
 		seqNum: InternalKeySeqNumMax,
 	}
-	td.MaybeScanArgs(t, "seq", &snap.seqNum)
+	if td.HasArg("seq") {
+		var n uint64
+		td.ScanArgs(t, "seq", &n)
+		snap.seqNum = base.SeqNum(n)
+	}
 
 	var buf bytes.Buffer
 	for _, data := range strings.Split(td.Input, "\n") {
@@ -767,7 +771,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 
-	var snapshots []uint64
+	var snapshots []base.SeqNum
 	var levelMaxBytes map[int]int64
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
@@ -781,13 +785,9 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				opts.Levels[i].TargetFileSize = size
 			}
 		case "snapshots":
-			snapshots = make([]uint64, len(arg.Vals))
+			snapshots = make([]base.SeqNum, len(arg.Vals))
 			for i := range arg.Vals {
-				seqNum, err := strconv.ParseUint(arg.Vals[i], 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				snapshots[i] = seqNum
+				snapshots[i] = base.ParseSeqNum(arg.Vals[i])
 				if i > 0 && snapshots[i] < snapshots[i-1] {
 					return nil, errors.New("Snapshots must be in ascending order")
 				}

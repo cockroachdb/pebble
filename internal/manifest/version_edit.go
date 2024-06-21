@@ -116,7 +116,7 @@ type VersionEdit struct {
 	// LastSeqNum is an upper bound on the sequence numbers that have been
 	// assigned in flushed WALs. Unflushed WALs (that will be replayed during
 	// recovery) may contain sequence numbers greater than this value.
-	LastSeqNum uint64
+	LastSeqNum base.SeqNum
 
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
@@ -200,7 +200,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.LastSeqNum = n
+			v.LastSeqNum = base.SeqNum(n)
 
 		case tagCompactPointer:
 			if _, err := d.readLevel(); err != nil {
@@ -324,17 +324,19 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					return err
 				}
 			}
-			var smallestSeqNum uint64
-			var largestSeqNum uint64
+			var smallestSeqNum base.SeqNum
+			var largestSeqNum base.SeqNum
 			if tag != tagNewFile {
-				smallestSeqNum, err = d.readUvarint()
+				n, err := d.readUvarint()
 				if err != nil {
 					return err
 				}
-				largestSeqNum, err = d.readUvarint()
+				smallestSeqNum = base.SeqNum(n)
+				n, err = d.readUvarint()
 				if err != nil {
 					return err
 				}
+				largestSeqNum = base.SeqNum(n)
 			}
 			var markedForCompaction bool
 			var creationTime uint64
@@ -634,7 +636,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	// ComparerName is set.
 	if v.LastSeqNum != 0 || v.ComparerName != "" {
 		e.writeUvarint(tagLastSequence)
-		e.writeUvarint(v.LastSeqNum)
+		e.writeUvarint(uint64(v.LastSeqNum))
 	}
 	for x := range v.DeletedFiles {
 		e.writeUvarint(tagDeletedFile)
@@ -682,8 +684,8 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			e.writeKey(x.Meta.SmallestRangeKey)
 			e.writeKey(x.Meta.LargestRangeKey)
 		}
-		e.writeUvarint(x.Meta.SmallestSeqNum)
-		e.writeUvarint(x.Meta.LargestSeqNum)
+		e.writeUvarint(uint64(x.Meta.SmallestSeqNum))
+		e.writeUvarint(uint64(x.Meta.LargestSeqNum))
 		if customFields {
 			if x.Meta.CreationTime != 0 {
 				e.writeUvarint(customTagCreationTime)

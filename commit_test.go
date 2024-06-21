@@ -24,8 +24,8 @@ import (
 )
 
 type testCommitEnv struct {
-	logSeqNum     atomic.Uint64
-	visibleSeqNum atomic.Uint64
+	logSeqNum     base.AtomicSeqNum
+	visibleSeqNum base.AtomicSeqNum
 	writeCount    atomic.Uint64
 	applyBuf      struct {
 		sync.Mutex
@@ -45,7 +45,7 @@ func (e *testCommitEnv) env() commitEnv {
 
 func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	e.applyBuf.Lock()
-	e.applyBuf.buf = append(e.applyBuf.buf, b.SeqNum())
+	e.applyBuf.buf = append(e.applyBuf.buf, uint64(b.SeqNum()))
 	e.applyBuf.Unlock()
 	return nil
 }
@@ -115,10 +115,10 @@ func TestCommitPipeline(t *testing.T) {
 		t.Fatalf("expected %d written batches, but found %d",
 			n, len(e.applyBuf.buf))
 	}
-	if s := e.logSeqNum.Load(); uint64(n) != s {
+	if s := e.logSeqNum.Load(); base.SeqNum(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
 	}
-	if s := e.visibleSeqNum.Load(); uint64(n) != s {
+	if s := e.visibleSeqNum.Load(); base.SeqNum(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
 	}
 }
@@ -160,10 +160,10 @@ func TestCommitPipelineSync(t *testing.T) {
 				t.Fatalf("expected %d written batches, but found %d",
 					n, len(e.applyBuf.buf))
 			}
-			if s := e.logSeqNum.Load(); uint64(n) != s {
+			if s := e.logSeqNum.Load(); base.SeqNum(n) != s {
 				t.Fatalf("expected %d, but found %d", n, s)
 			}
-			if s := e.visibleSeqNum.Load(); uint64(n) != s {
+			if s := e.visibleSeqNum.Load(); base.SeqNum(n) != s {
 				t.Fatalf("expected %d, but found %d", n, s)
 			}
 		})
@@ -182,9 +182,9 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	for i := 1; i <= n; i++ {
 		go func(i int) {
 			defer wg.Done()
-			p.AllocateSeqNum(i, func(_ uint64) {
+			p.AllocateSeqNum(i, func(_ base.SeqNum) {
 				prepareCount.Add(1)
-			}, func(seqNum uint64) {
+			}, func(_ base.SeqNum) {
 				applyCount.Add(1)
 			})
 		}(i)
@@ -238,8 +238,8 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	var wal *record.LogWriter
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
-		logSeqNum:     new(atomic.Uint64),
-		visibleSeqNum: new(atomic.Uint64),
+		logSeqNum:     new(base.AtomicSeqNum),
+		visibleSeqNum: new(base.AtomicSeqNum),
 		apply: func(b *Batch, mem *memTable) error {
 			// At this point, we've called SyncRecord but the sync is blocked.
 			walDone.Done()
@@ -302,8 +302,8 @@ func TestCommitPipelineWALClose(t *testing.T) {
 func TestCommitPipelineLogDataSeqNum(t *testing.T) {
 	var testEnv commitEnv
 	testEnv = commitEnv{
-		logSeqNum:     new(atomic.Uint64),
-		visibleSeqNum: new(atomic.Uint64),
+		logSeqNum:     new(base.AtomicSeqNum),
+		visibleSeqNum: new(base.AtomicSeqNum),
 		apply: func(b *Batch, mem *memTable) error {
 			// Jitter a delay in memtable application to get test coverage of
 			// varying interleavings of which batch completes memtable
@@ -363,8 +363,8 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					mem := newMemTable(memTableOptions{})
 					var wal *record.LogWriter
 					nullCommitEnv := commitEnv{
-						logSeqNum:     new(atomic.Uint64),
-						visibleSeqNum: new(atomic.Uint64),
+						logSeqNum:     new(base.AtomicSeqNum),
+						visibleSeqNum: new(base.AtomicSeqNum),
 						apply: func(b *Batch, mem *memTable) error {
 							err := mem.apply(b, b.SeqNum())
 							if err != nil {

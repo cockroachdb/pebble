@@ -30,7 +30,7 @@ func TestInternalKey(t *testing.T) {
 	if got, want := k.Kind(), InternalKeyKind(1); got != want {
 		t.Errorf("kind = %d want %d", got, want)
 	}
-	if got, want := k.SeqNum(), uint64(0x08070605040302); got != want {
+	if got, want := k.SeqNum(), SeqNum(0x08070605040302); got != want {
 		t.Errorf("seqNum = %d want %d", got, want)
 	}
 }

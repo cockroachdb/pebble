@@ -153,7 +153,7 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					case base.InternalKeyKindRangeDelete:
 						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
 					case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
-						ik := base.MakeInternalKey(ukey, b.SeqNum()+uint64(idx), kind)
+						ik := base.MakeInternalKey(ukey, b.SeqNum()+base.SeqNum(idx), kind)
 						s, err := rangekey.Decode(ik, value, nil)
 						if err != nil {
 							fmt.Fprintf(stdout, "%s: error decoding %s", w.fmtKey.fn(ukey), err)
