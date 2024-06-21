@@ -459,7 +459,7 @@ func addTombstonesFromIter(
 		if t.Empty() {
 			continue
 		}
-		t = t.DeepClone()
+		t = t.Clone()
 		// This is mainly a test for rangeDelV2 formatted blocks which are expected to
 		// be ordered and fragmented on disk. But we anyways check for memtables,
 		// rangeDelV1 as well.

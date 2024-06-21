@@ -407,7 +407,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					// The range tombstone lies before the scan range.
 					continue
 				}
-				tombstones = append(tombstones, t.ShallowClone())
+				tombstones = append(tombstones, t.Clone())
 			}
 			if err != nil {
 				return nil, err
