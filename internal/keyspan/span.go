@@ -7,6 +7,7 @@ package keyspan // import "github.com/cockroachdb/pebble/internal/keyspan"
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,6 +98,28 @@ func (k Key) Equal(equal base.Equal, b Key) bool {
 	return k.Trailer == b.Trailer &&
 		equal(k.Suffix, b.Suffix) &&
 		bytes.Equal(k.Value, b.Value)
+}
+
+// CopyFrom copies the contents of another key, retaining the Suffix and Value slices.
+func (k *Key) CopyFrom(other Key) {
+	k.Trailer = other.Trailer
+	k.Suffix = append(k.Suffix[:0], other.Suffix...)
+	k.Value = append(k.Value[:0], other.Value...)
+}
+
+// Clone creates a deep clone of the key, copying the Suffix and Value
+// slices.
+func (k Key) Clone() Key {
+	res := Key{
+		Trailer: k.Trailer,
+	}
+	if len(k.Suffix) > 0 {
+		res.Suffix = slices.Clone(k.Suffix)
+	}
+	if len(k.Value) > 0 {
+		res.Value = slices.Clone(k.Value)
+	}
+	return res
 }
 
 func (k Key) String() string {
@@ -335,23 +358,13 @@ func (s *Span) ShallowClone() Span {
 // because it is allocation heavy.
 func (s *Span) DeepClone() Span {
 	c := Span{
-		Start:     make([]byte, len(s.Start)),
-		End:       make([]byte, len(s.End)),
-		Keys:      make([]Key, len(s.Keys)),
+		Start:     slices.Clone(s.Start),
+		End:       slices.Clone(s.End),
 		KeysOrder: s.KeysOrder,
 	}
-	copy(c.Start, s.Start)
-	copy(c.End, s.End)
-	for i := range s.Keys {
-		c.Keys[i].Trailer = s.Keys[i].Trailer
-		if len(s.Keys[i].Suffix) > 0 {
-			c.Keys[i].Suffix = make([]byte, len(s.Keys[i].Suffix))
-			copy(c.Keys[i].Suffix, s.Keys[i].Suffix)
-		}
-		if len(s.Keys[i].Value) > 0 {
-			c.Keys[i].Value = make([]byte, len(s.Keys[i].Value))
-			copy(c.Keys[i].Value, s.Keys[i].Value)
-		}
+	c.Keys = make([]Key, len(s.Keys))
+	for i := range c.Keys {
+		c.Keys[i] = s.Keys[i].Clone()
 	}
 	return c
 }
@@ -407,12 +420,22 @@ func (s *Span) Reset() {
 	s.Keys = s.Keys[:0]
 }
 
-// CopyFrom copies the contents of the other span, retaining the slices
-// allocated in this span. Key.Suffix and Key.Value slices are not cloned.
+// CopyFrom deep-copies the contents of the other span, retaining the slices
+// allocated in this span.
 func (s *Span) CopyFrom(other *Span) {
 	s.Start = append(s.Start[:0], other.Start...)
 	s.End = append(s.End[:0], other.End...)
-	s.Keys = append(s.Keys[:0], other.Keys...)
+
+	// We want to preserve any existing Suffix/Value buffers.
+	if cap(s.Keys) >= len(other.Keys) {
+		s.Keys = s.Keys[:len(other.Keys)]
+	} else {
+		s.Keys = append(s.Keys[:cap(s.Keys)], make([]Key, len(other.Keys)-cap(s.Keys))...)
+	}
+	for i := range other.Keys {
+		s.Keys[i].CopyFrom(other.Keys[i])
+	}
+
 	s.KeysOrder = other.KeysOrder
 }
 

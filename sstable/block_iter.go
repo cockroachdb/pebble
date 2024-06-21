@@ -8,13 +8,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"slices"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
-	"golang.org/x/exp/slices"
 )
 
 // blockIter is an iterator over a single block of data.
