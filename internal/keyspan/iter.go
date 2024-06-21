@@ -4,7 +4,10 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
+)
 
 // FragmentIterator defines an iterator interface over spans. The spans
 // surfaced by a FragmentIterator must be non-overlapping. This is achieved by
@@ -64,6 +67,8 @@ type FragmentIterator interface {
 	// function can call WrapChildren to recursively wrap an entire iterator
 	// stack. Used only for debug logging.
 	WrapChildren(wrap WrapFn)
+
+	base.IteratorDebug
 }
 
 // SpanIterOptions is a subset of IterOptions that are necessary to instantiate
@@ -209,8 +214,13 @@ func (i *Iter) Prev() (*Span, error) {
 func (i *Iter) Close() {}
 
 func (i *Iter) String() string {
-	return "fragmented-spans"
+	return "keyspan.Iter"
 }
 
 // WrapChildren implements FragmentIterator.
 func (i *Iter) WrapChildren(wrap WrapFn) {}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *Iter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"golang.org/x/exp/slices"
 )
 
@@ -1543,6 +1544,11 @@ func (i *blockIter) SetBounds(lower, upper []byte) {
 }
 
 func (i *blockIter) SetContext(_ context.Context) {}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *blockIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
+}
 
 func (i *blockIter) valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts

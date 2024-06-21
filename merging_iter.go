@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 type mergingIterLevel struct {
@@ -1312,6 +1313,16 @@ func (m *mergingIter) SetBounds(lower, upper []byte) {
 func (m *mergingIter) SetContext(ctx context.Context) {
 	for i := range m.levels {
 		m.levels[i].iter.SetContext(ctx)
+	}
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (m *mergingIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", m, m)
+	for i := range m.levels {
+		if iter := m.levels[i].iter; iter != nil {
+			iter.DebugTree(n)
+		}
 	}
 }
 

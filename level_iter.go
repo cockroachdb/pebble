@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -956,6 +957,14 @@ func (l *levelIter) SetContext(ctx context.Context) {
 		// TODO(sumeer): this is losing the ctx = objiotracing.WithLevel(ctx,
 		// manifest.LevelToInt(opts.level)) that happens in table_cache.go.
 		l.iter.SetContext(ctx)
+	}
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (l *levelIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", l, l)
+	if l.iter != nil {
+		l.iter.DebugTree(n)
 	}
 }
 

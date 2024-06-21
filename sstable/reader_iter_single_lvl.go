@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -406,6 +407,11 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 
 func (i *singleLevelIterator) SetContext(ctx context.Context) {
 	i.ctx = ctx
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *singleLevelIterator) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
 }
 
 // loadBlock loads the block at the current index position and leaves i.data

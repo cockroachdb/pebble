@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // fragmentBlockIter wraps a blockIter, implementing the
@@ -330,6 +331,11 @@ func (i *fragmentBlockIter) String() string {
 
 // WrapChildren implements FragmentIterator.
 func (i *fragmentBlockIter) WrapChildren(wrap keyspan.WrapFn) {}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *fragmentBlockIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
+}
 
 func checkFragmentBlockIterator(obj interface{}) {
 	i := obj.(*fragmentBlockIter)

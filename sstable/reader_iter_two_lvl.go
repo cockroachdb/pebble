@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -1094,4 +1095,9 @@ func (i *twoLevelCompactionIterator) skipForward(kv *base.InternalKV) *base.Inte
 	}
 
 	return kv
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *twoLevelCompactionIterator) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
 }
