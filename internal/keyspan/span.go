@@ -340,23 +340,9 @@ func (s *Span) VisibleAt(snapshot uint64) bool {
 	}
 }
 
-// ShallowClone returns the span with a Keys slice owned by the span itself.
-// None of the key byte slices are cloned (see Span.DeepClone).
-func (s *Span) ShallowClone() Span {
-	c := Span{
-		Start:     s.Start,
-		End:       s.End,
-		Keys:      make([]Key, len(s.Keys)),
-		KeysOrder: s.KeysOrder,
-	}
-	copy(c.Keys, s.Keys)
-	return c
-}
-
-// DeepClone clones the span, creating copies of all contained slices. DeepClone
-// is intended for non-production code paths like tests, the level checker, etc
-// because it is allocation heavy.
-func (s *Span) DeepClone() Span {
+// Clone clones the span, creating copies of all contained slices. Clone is
+// allocation heavy and should not be used in hot paths.
+func (s *Span) Clone() Span {
 	c := Span{
 		Start:     slices.Clone(s.Start),
 		End:       slices.Clone(s.End),

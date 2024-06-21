@@ -487,7 +487,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 					if !t.Contains(r.Compare, searchKey) {
 						continue
 					}
-					tombstones = append(tombstones, t.ShallowClone())
+					tombstones = append(tombstones, t.Clone())
 				}
 				if err != nil {
 					return nil, err

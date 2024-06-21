@@ -58,7 +58,7 @@ func TestTruncate(t *testing.T) {
 			var s *Span
 			var err error
 			for s, err = tIter.First(); s != nil; s, err = tIter.Next() {
-				truncated = append(truncated, s.ShallowClone())
+				truncated = append(truncated, s.Clone())
 			}
 			require.NoError(t, err)
 			return formatAlphabeticSpans(truncated)
