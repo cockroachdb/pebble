@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -442,11 +443,17 @@ func TestDBCompactionCrash(t *testing.T) {
 	// run opens the store and performs some random writes, simulating a crash
 	// at the k-th write operation.
 	run := func(t *testing.T, fs vfs.FS, k int32, seed int64) (i int64, err error) {
+		// On windows, time.Sleep usually takes at least 15ms, which makes this test
+		// really slow. See https://github.com/golang/go/issues/61042,
+		// https://github.com/golang/go/issues/44343.
+		if runtime.GOOS != "windows" {
+			fs = errorfs.Wrap(fs, errorfs.RandomLatency(nil, 20*time.Microsecond, seed))
+		}
 		rng := rand.New(rand.NewSource(seed))
 		maxConcurrentCompactions := rng.Intn(3) + 2
 		opts := &Options{
 			DisableTableStats:           true,
-			FS:                          errorfs.Wrap(fs, errorfs.RandomLatency(nil, 20*time.Microsecond, seed)),
+			FS:                          fs,
 			Logger:                      testLogger{t: t},
 			MemTableSize:                128 << 10,
 			MaxConcurrentCompactions:    func() int { return maxConcurrentCompactions },
