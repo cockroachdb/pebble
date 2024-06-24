@@ -44,7 +44,7 @@ iter
 set-bounds upper=d
 seek-ge d
 ----
-.
+. / d-e:{(#6,RANGEDEL)}
 
 iter
 set-bounds upper=d
@@ -143,7 +143,7 @@ iter
 set-bounds lower=d
 seek-lt d
 ----
-.
+. / d-e:{(#6,RANGEDEL)}
 
 iter
 set-bounds lower=d

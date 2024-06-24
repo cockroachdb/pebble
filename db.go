@@ -1479,7 +1479,7 @@ func (i *Iterator) constructPointIter(
 			li := &levels[levelsIndex]
 
 			li.init(ctx, i.opts, &i.comparer, i.newIters, files, level, internalOpts)
-			li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
+			li.initRangeDel(mlevels[mlevelsIndex].setRangeDelIter)
 			li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 			mlevels[mlevelsIndex].levelIter = li
 			mlevels[mlevelsIndex].iter = invalidating.MaybeWrapIfInvariants(li)
