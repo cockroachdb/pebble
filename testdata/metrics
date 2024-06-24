@@ -344,7 +344,7 @@ additional-metrics
 ----
 block bytes written:
  __level___data-block__value-block
-      0         198B          38B
+      0         202B          38B
       1           0B           0B
       2           0B           0B
       3           0B           0B
@@ -393,19 +393,19 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:305 BlockBytesInCache:44 BlockReadDuration:60ms}
 
 additional-metrics
 ----
 block bytes written:
  __level___data-block__value-block
-      0         198B          38B
+      0         202B          38B
       1           0B           0B
       2           0B           0B
       3           0B           0B
       4           0B           0B
       5           0B           0B
-      6         143B          41B
+      6         140B          41B
 
 # Flushable ingestion metrics. This requires there be data in a memtable that
 # would overlap with the ingested table(s). Delayed flushes are disabled here to
@@ -497,8 +497,8 @@ Ingestions: 2  as flushable: 2 (1.7KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:305 BlockBytesInCache:44 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:63 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 batch
 set g g
@@ -560,8 +560,8 @@ Ingestions: 2  as flushable: 2 (1.7KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:305 BlockBytesInCache:44 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:63 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 build ext1
 set z z
@@ -601,7 +601,7 @@ virtual-size
 1.2KB
 2
 2
-102B
+92B
 
 metrics zero-cache-hits-misses
 ----
@@ -624,7 +624,7 @@ Compactions: 2  estimated debt: 5.6KB  in progress: 0 (0B)
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 2 (1.2KB)
-Virtual tables: 2 (102B)
+Virtual tables: 2 (92B)
 Local tables size: 6.7KB
 Compression types: snappy: 9 unknown: 2
 Block cache: 0 entries (0B)  hit rate: 0.0%
@@ -637,8 +637,8 @@ Ingestions: 3  as flushable: 2 (1.7KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:200 BlockBytesInCache:0 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:305 BlockBytesInCache:44 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:189 BlockBytesInCache:0 BlockReadDuration:30ms}
 
 # Virtualize a virtual sstable.
 build ext1
@@ -679,7 +679,7 @@ virtual-size
 1.2KB
 2
 2
-102B
+92B
 
 compact a-z
 ----
@@ -739,8 +739,8 @@ Ingestions: 4  as flushable: 2 (1.7KB in 3 tables)
 Iter category stats:
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:677 BlockBytesInCache:376 BlockReadDuration:70ms}
-       pebble-ingest,     latency: {BlockBytes:272 BlockBytesInCache:72 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:670 BlockBytesInCache:365 BlockReadDuration:70ms}
+       pebble-ingest,     latency: {BlockBytes:252 BlockBytesInCache:63 BlockReadDuration:30ms}
 
 # Create a DB where lower levels are written as shared tables. All ingests also
 # become shared tables.
@@ -764,14 +764,14 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     1   604B     0B       0 |  0.25 |   38B |     0     0B |     0     0B |     1   604B |    0B |   1 15.9
+    0 |     1   602B     0B       0 |  0.25 |   38B |     0     0B |     0     0B |     1   602B |    0B |   1 15.8
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     6 |     0     0B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-total |     1   604B     0B       0 |     - |   38B |     0     0B |     0     0B |     1   642B |    0B |   1 16.9
+total |     1   602B     0B       0 |     - |   38B |     0     0B |     0     0B |     1   640B |    0B |   1 16.8
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
@@ -781,7 +781,7 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 604B
+Local tables size: 602B
 Compression types: snappy: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
@@ -802,14 +802,14 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B       0 |  0.00 |   38B |     0     0B |     0     0B |     1   604B |    0B |   0 15.9
+    0 |     0     0B     0B       0 |  0.00 |   38B |     0     0B |     0     0B |     1   602B |    0B |   0 15.8
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   604B     0B       0 |     - |  604B |     0     0B |     0     0B |     1   604B |    0B |   1  1.0
-total |     1   604B     0B       0 |     - |   38B |     0     0B |     0     0B |     2  1.2KB |    0B |   1 32.8
+    6 |     1   602B     0B       0 |     - |  602B |     0     0B |     0     0B |     1   602B |    0B |   1  1.0
+total |     1   602B     0B       0 |     - |   38B |     0     0B |     0     0B |     2  1.2KB |    0B |   1 32.7
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
@@ -849,13 +849,13 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     1   589B     0B       0 |  0.25 |   38B |     1   589B |     0     0B |     1   604B |    0B |   1 15.9
+    0 |     1   589B     0B       0 |  0.25 |   38B |     1   589B |     0     0B |     1   602B |    0B |   1 15.8
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   604B     0B       0 |     - |  604B |     0     0B |     0     0B |     1   604B |    0B |   1  1.0
+    6 |     1   602B     0B       0 |     - |  602B |     0     0B |     0     0B |     1   602B |    0B |   1  1.0
 total |     2  1.2KB     0B       0 |     - |  627B |     1   589B |     0     0B |     2  1.8KB |    0B |   2  2.9
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
@@ -876,7 +876,7 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 1  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-       pebble-ingest,     latency: {BlockBytes:59 BlockBytesInCache:0 BlockReadDuration:10ms}
+       pebble-ingest,     latency: {BlockBytes:57 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 batch
 set b 3
@@ -897,13 +897,13 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     2  1.2KB     0B       0 |  0.50 |   66B |     1   589B |     0     0B |     2  1.2KB |    0B |   2 18.1
+    0 |     2  1.2KB     0B       0 |  0.50 |   66B |     1   589B |     0     0B |     2  1.2KB |    0B |   2 18.0
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   604B     0B       0 |     - |  604B |     0     0B |     0     0B |     1   604B |    0B |   1  1.0
+    6 |     1   602B     0B       0 |     - |  602B |     0     0B |     0     0B |     1   602B |    0B |   1  1.0
 total |     3  1.7KB     0B       0 |     - |  655B |     1   589B |     0     0B |     3  2.4KB |    0B |   3  3.7
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 44B  written: 66B (50% overhead)
@@ -924,7 +924,7 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 1  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-       pebble-ingest,     latency: {BlockBytes:59 BlockBytesInCache:0 BlockReadDuration:10ms}
+       pebble-ingest,     latency: {BlockBytes:57 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 # Reopen DB, to ensure stats are consistent. Also, reopened DB is not
 # configured to write shared tables.
@@ -942,7 +942,7 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   604B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    6 |     1   602B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
 total |     3  1.7KB     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   3  0.0
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
@@ -1001,4 +1001,4 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:147 BlockBytesInCache:0 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:145 BlockBytesInCache:0 BlockReadDuration:30ms}

@@ -15,7 +15,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 57
+point-deletions-bytes-estimate: 56
 range-deletions-bytes-estimate: 0
 
 compact a-c
@@ -41,7 +41,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 51
+range-deletions-bytes-estimate: 43
 
 reopen
 ----
@@ -60,7 +60,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 51
+range-deletions-bytes-estimate: 43
 
 compact a-c
 ----
@@ -546,7 +546,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 2
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 112572
+point-deletions-bytes-estimate: 112552
 range-deletions-bytes-estimate: 0
 
 # Try a missized point tombstone. It should appear in the Metrics after the
@@ -588,7 +588,7 @@ L0.0:
 
 metadata-stats file=5
 ----
-size: 654
+size: 645
 
 # Just grab the physical sstable properties as these are used to construct the
 # virtual sstable properties.
@@ -605,7 +605,7 @@ rocksdb:
   rocksdb.compression: Snappy
   rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 53
+  rocksdb.data.size: 44
   rocksdb.filter.size: 0
   rocksdb.index.size: 27
   rocksdb.block.based.table.index.type: 0
@@ -635,11 +635,11 @@ L6:
 
 metadata-stats file=7
 ----
-size: 53
+size: 44
 
 metadata-stats file=8
 ----
-size: 53
+size: 44
 
 # Note that the backing file size is much larger than the virtual file sizes.
 # For tiny sstables, the metadata contained in the sstable is much larger than
@@ -651,7 +651,7 @@ size: 53
 properties file=7
 ----
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 3
+rocksdb.raw.key.size: 2
 rocksdb.raw.value.size: 1
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
@@ -659,7 +659,7 @@ rocksdb.deleted.keys: 1
 properties file=8
 ----
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 3
+rocksdb.raw.key.size: 2
 rocksdb.raw.value.size: 1
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
@@ -670,7 +670,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 39
+point-deletions-bytes-estimate: 44
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -679,7 +679,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 39
+point-deletions-bytes-estimate: 44
 range-deletions-bytes-estimate: 0
 
 # Create an sstable with a range key set.
@@ -713,7 +713,7 @@ rocksdb:
   rocksdb.compression: Snappy
   rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 47
+  rocksdb.data.size: 46
   rocksdb.filter.size: 0
   rocksdb.index.size: 27
   rocksdb.block.based.table.index.type: 0
@@ -732,7 +732,7 @@ pebble:
 
 metadata-stats file=10
 ----
-size: 756
+size: 755
 
 build ext2
 set z z
@@ -755,11 +755,11 @@ L6:
 
 metadata-stats file=12
 ----
-size: 47
+size: 46
 
 metadata-stats file=13
 ----
-size: 47
+size: 46
 
 # range key sets shows up for both files. This is expected.
 properties file=12

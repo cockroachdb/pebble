@@ -30,7 +30,7 @@ func TestPropertiesLoad(t *testing.T) {
 			CompressionOptions: "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
 		},
 		ComparerName:           "leveldb.BytewiseComparator",
-		DataSize:               13913,
+		DataSize:               13712,
 		IndexSize:              325,
 		MergerName:             "nullptr",
 		NumDataBlocks:          14,
