@@ -963,7 +963,7 @@ func newCombinedDeletionKeyspanIter(
 	}
 	if iter != nil {
 		// Assert expected bounds in tests.
-		if invariants.Enabled {
+		if invariants.Sometimes(50) {
 			iter = keyspan.AssertBounds(
 				iter, m.SmallestRangeKey, m.LargestRangeKey.UserKey, comparer.Compare,
 			)

@@ -8,11 +8,22 @@
 package invariants
 
 // Enabled is true if we were built with the "invariants" or "race" build tags.
+//
+// Enabled should be used to gate invariant checks that may be expensive. It
+// should not be used to unconditionally alter a code path significantly (e.g.
+// wrapping an iterator - see #3678); Sometimes() should be used instead so that
+// the production code path gets test coverage as well.
 const Enabled = false
 
-// DoubleCloseCheck is used to check that objects are not double-closed.
-type DoubleCloseCheck struct{}
+// CloseChecker is used to check that objects are closed exactly once.
+type CloseChecker struct{}
 
 // Close panics if called twice on the same object (if we were built with the
 // "invariants" or "race" build tags).
-func (d *DoubleCloseCheck) Close() {}
+func (d *CloseChecker) Close() {}
+
+// AssertClosed panics in invariant builds if Close was not called.
+func (d *CloseChecker) AssertClosed() {}
+
+// AssertNotClosed panics in invariant builds if Close was called.
+func (d *CloseChecker) AssertNotClosed() {}

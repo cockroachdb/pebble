@@ -623,7 +623,7 @@ func (c *tableCacheShard) newRangeDelIter(
 		return nil, err
 	}
 	// Assert expected bounds in tests.
-	if invariants.Enabled && rangeDelIter != nil {
+	if invariants.Sometimes(50) && rangeDelIter != nil {
 		cmp := base.DefaultComparer.Compare
 		if dbOpts.opts.Comparer != nil {
 			cmp = dbOpts.opts.Comparer.Compare
