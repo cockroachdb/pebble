@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
@@ -66,7 +67,7 @@ type singleLevelIterator struct {
 	// tableCacheContainer (which is more universally used).
 	stats      *base.InternalIteratorStats
 	iterStats  iterStatsAccumulator
-	bufferPool *BufferPool
+	bufferPool *block.BufferPool
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -190,7 +191,7 @@ func (i *singleLevelIterator) init(
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	bufferPool *BufferPool,
+	bufferPool *block.BufferPool,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -475,7 +476,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 // the valueBlockReader.
 func (i *singleLevelIterator) readBlockForVBR(
 	h BlockHandle, stats *base.InternalIteratorStats,
-) (bufferHandle, error) {
+) (block.BufferHandle, error) {
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.ValueBlock)
 	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats, &i.iterStats, i.bufferPool)
 }

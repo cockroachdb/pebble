@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // blockIter is an iterator over a single block of data.
@@ -179,7 +180,7 @@ type blockIter struct {
 	// restart points.
 	cached    []blockEntry
 	cachedBuf []byte
-	handle    bufferHandle
+	handle    block.BufferHandle
 	// for block iteration for already loaded blocks.
 	firstUserKey      []byte
 	lazyValueHandling struct {
@@ -202,7 +203,7 @@ type blockEntry struct {
 var _ base.InternalIterator = (*blockIter)(nil)
 
 func newBlockIter(
-	cmp Compare, split Split, block block, transforms IterTransforms,
+	cmp Compare, split Split, block []byte, transforms IterTransforms,
 ) (*blockIter, error) {
 	i := &blockIter{}
 	return i, i.init(cmp, split, block, transforms)
@@ -212,8 +213,8 @@ func (i *blockIter) String() string {
 	return "block"
 }
 
-func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterTransforms) error {
-	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
+func (i *blockIter) init(cmp Compare, split Split, blk []byte, transforms IterTransforms) error {
+	numRestarts := int32(binary.LittleEndian.Uint32(blk[len(blk)-4:]))
 	if numRestarts == 0 {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
@@ -221,10 +222,10 @@ func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterT
 	i.synthSuffixBuf = i.synthSuffixBuf[:0]
 	i.split = split
 	i.cmp = cmp
-	i.restarts = int32(len(block)) - 4*(1+numRestarts)
+	i.restarts = int32(len(blk)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
-	i.ptr = unsafe.Pointer(&block[0])
-	i.data = block
+	i.ptr = unsafe.Pointer(&blk[0])
+	i.data = blk
 	if i.transforms.SyntheticPrefix.IsSet() {
 		i.fullKey = append(i.fullKey[:0], i.transforms.SyntheticPrefix...)
 	} else {
@@ -248,7 +249,7 @@ func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterT
 //     ingested.
 //   - Foreign sstable iteration: syntheticSeqNum is always set.
 func (i *blockIter) initHandle(
-	cmp Compare, split Split, block bufferHandle, transforms IterTransforms,
+	cmp Compare, split Split, block block.BufferHandle, transforms IterTransforms,
 ) error {
 	i.handle.Release()
 	i.handle = block
@@ -1530,7 +1531,7 @@ func (i *blockIter) Error() error {
 // package.
 func (i *blockIter) Close() error {
 	i.handle.Release()
-	i.handle = bufferHandle{}
+	i.handle = block.BufferHandle{}
 	i.val = nil
 	i.ikv = base.InternalKV{}
 	i.lazyValueHandling.vbr = nil

@@ -153,11 +153,11 @@ func TestInvalidInternalKeyDecoding(t *testing.T) {
 
 func TestBlockIter(t *testing.T) {
 	// k is a block that maps three keys "apple", "apricot", "banana" to empty strings.
-	k := block([]byte(
+	k := []byte(
 		"\x00\x05\x00apple" +
 			"\x02\x05\x00ricot" +
 			"\x00\x06\x00banana" +
-			"\x00\x00\x00\x00\x01\x00\x00\x00"))
+			"\x00\x00\x00\x00\x01\x00\x00\x00")
 	var testcases = []struct {
 		index int
 		key   string

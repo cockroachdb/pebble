@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // CommonReader abstracts functionality over a Reader or a VirtualReader. This
@@ -36,7 +37,7 @@ type CommonReader interface {
 		categoryAndQoS CategoryAndQoS,
 		statsCollector *CategoryStatsCollector,
 		rp ReaderProvider,
-		bufferPool *BufferPool,
+		bufferPool *block.BufferPool,
 	) (Iterator, error)
 
 	EstimateDiskUsage(start, end []byte) (uint64, error)
@@ -44,26 +45,22 @@ type CommonReader interface {
 	CommonProperties() *CommonProperties
 }
 
-// IterTransforms allow on-the-fly transformation of data at iteration time.
-//
-// These transformations could in principle be implemented as block transforms
-// (at least for non-virtual sstables), but applying them during iteration is
-// preferable.
-type IterTransforms struct {
-	SyntheticSeqNum    SyntheticSeqNum
-	HideObsoletePoints bool
-	SyntheticPrefix    SyntheticPrefix
-	SyntheticSuffix    SyntheticSuffix
-}
+type (
+	// BufferPool re-exports block.BufferPool.
+	BufferPool = block.BufferPool
+	// IterTransforms re-exports block.IterTransforms.
+	IterTransforms = block.IterTransforms
+	// SyntheticSeqNum re-exports block.SyntheticSeqNum.
+	SyntheticSeqNum = block.SyntheticSeqNum
+	// SyntheticSuffix re-exports block.SyntheticSuffix.
+	SyntheticSuffix = block.SyntheticSuffix
+	// SyntheticPrefix re-exports block.SyntheticPrefix.
+	SyntheticPrefix = block.SyntheticPrefix
+)
 
 // NoTransforms is the default value for IterTransforms.
-var NoTransforms = IterTransforms{}
-
-// SyntheticSeqNum is used to override all sequence numbers in a table. It is
-// set to a non-zero value when the table was created externally and ingested
-// whole.
-type SyntheticSeqNum base.SeqNum
+var NoTransforms = block.NoTransforms
 
 // NoSyntheticSeqNum is the default zero value for SyntheticSeqNum, which
 // disables overriding the sequence number.
-const NoSyntheticSeqNum SyntheticSeqNum = 0
+const NoSyntheticSeqNum = block.NoSyntheticSeqNum
