@@ -392,7 +392,7 @@ type valueBlockWriter struct {
 	// Configured compression.
 	compression Compression
 	// checksummer with configured checksum type.
-	checksummer checksummer
+	checksummer block.Checksummer
 	// Block finished callback.
 	blockFinishedFunc func(compressedSize int)
 
@@ -461,7 +461,7 @@ func newValueBlockWriter(
 	blockSize int,
 	blockSizeThreshold int,
 	compression Compression,
-	checksumType ChecksumType,
+	checksumType block.ChecksumType,
 	// compressedSize should exclude the block trailer.
 	blockFinishedFunc func(compressedSize int),
 ) *valueBlockWriter {
@@ -470,8 +470,8 @@ func newValueBlockWriter(
 		blockSize:          blockSize,
 		blockSizeThreshold: blockSizeThreshold,
 		compression:        compression,
-		checksummer: checksummer{
-			checksumType: checksumType,
+		checksummer: block.Checksummer{
+			Type: checksumType,
 		},
 		blockFinishedFunc: blockFinishedFunc,
 		buf:               uncompressedValueBlockBufPool.Get().(*blockBuffer),
@@ -594,7 +594,7 @@ func (w *valueBlockWriter) compressAndFlush() {
 
 func (w *valueBlockWriter) computeChecksum(block []byte) {
 	n := len(block) - blockTrailerLen
-	checksum := w.checksummer.checksum(block[:n], block[n:n+1])
+	checksum := w.checksummer.Checksum(block[:n], block[n:n+1])
 	binary.LittleEndian.PutUint32(block[n+1:], checksum)
 }
 

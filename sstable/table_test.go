@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -551,9 +552,9 @@ func TestFooterRoundTrip(t *testing.T) {
 	buf := make([]byte, 100+maxFooterLen)
 	for format := TableFormatLevelDB; format < TableFormatMax; format++ {
 		t.Run(fmt.Sprintf("format=%s", format), func(t *testing.T) {
-			checksums := []ChecksumType{ChecksumTypeCRC32c}
+			checksums := []block.ChecksumType{block.ChecksumTypeCRC32c}
 			if format != TableFormatLevelDB {
-				checksums = []ChecksumType{ChecksumTypeCRC32c, ChecksumTypeXXHash64}
+				checksums = []block.ChecksumType{block.ChecksumTypeCRC32c, block.ChecksumTypeXXHash64}
 			}
 			for _, checksum := range checksums {
 				t.Run(fmt.Sprintf("checksum=%d", checksum), func(t *testing.T) {
@@ -603,7 +604,7 @@ func TestFooterRoundTrip(t *testing.T) {
 }
 
 func TestReadFooter(t *testing.T) {
-	encode := func(format TableFormat, checksum ChecksumType) string {
+	encode := func(format TableFormat, checksum block.ChecksumType) string {
 		f := footer{
 			format:   format,
 			checksum: checksum,
@@ -620,8 +621,8 @@ func TestReadFooter(t *testing.T) {
 		{strings.Repeat("a", rocksDBFooterLen), "bad magic number"},
 		{encode(TableFormatLevelDB, 0)[1:], "file size is too small"},
 		{encode(TableFormatRocksDBv2, 0)[1:], "footer too short"},
-		{encode(TableFormatRocksDBv2, ChecksumTypeNone), "unsupported checksum type"},
-		{encode(TableFormatRocksDBv2, ChecksumTypeXXHash), "unsupported checksum type"},
+		{encode(TableFormatRocksDBv2, block.ChecksumTypeNone), "unsupported checksum type"},
+		{encode(TableFormatRocksDBv2, block.ChecksumTypeXXHash), "unsupported checksum type"},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {

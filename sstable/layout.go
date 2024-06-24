@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // Layout describes the block organization of an sstable.
@@ -44,51 +45,51 @@ func (l *Layout) Describe(
 	w io.Writer, verbose bool, r *Reader, fmtRecord func(key *base.InternalKey, value []byte),
 ) {
 	ctx := context.TODO()
-	type block struct {
+	type namedBlockHandle struct {
 		BlockHandle
 		name string
 	}
-	var blocks []block
+	var blocks []namedBlockHandle
 
 	for i := range l.Data {
-		blocks = append(blocks, block{l.Data[i].BlockHandle, "data"})
+		blocks = append(blocks, namedBlockHandle{l.Data[i].BlockHandle, "data"})
 	}
 	for i := range l.Index {
-		blocks = append(blocks, block{l.Index[i], "index"})
+		blocks = append(blocks, namedBlockHandle{l.Index[i], "index"})
 	}
 	if l.TopIndex.Length != 0 {
-		blocks = append(blocks, block{l.TopIndex, "top-index"})
+		blocks = append(blocks, namedBlockHandle{l.TopIndex, "top-index"})
 	}
 	if l.Filter.Length != 0 {
-		blocks = append(blocks, block{l.Filter, "filter"})
+		blocks = append(blocks, namedBlockHandle{l.Filter, "filter"})
 	}
 	if l.RangeDel.Length != 0 {
-		blocks = append(blocks, block{l.RangeDel, "range-del"})
+		blocks = append(blocks, namedBlockHandle{l.RangeDel, "range-del"})
 	}
 	if l.RangeKey.Length != 0 {
-		blocks = append(blocks, block{l.RangeKey, "range-key"})
+		blocks = append(blocks, namedBlockHandle{l.RangeKey, "range-key"})
 	}
 	for i := range l.ValueBlock {
-		blocks = append(blocks, block{l.ValueBlock[i], "value-block"})
+		blocks = append(blocks, namedBlockHandle{l.ValueBlock[i], "value-block"})
 	}
 	if l.ValueIndex.Length != 0 {
-		blocks = append(blocks, block{l.ValueIndex, "value-index"})
+		blocks = append(blocks, namedBlockHandle{l.ValueIndex, "value-index"})
 	}
 	if l.Properties.Length != 0 {
-		blocks = append(blocks, block{l.Properties, "properties"})
+		blocks = append(blocks, namedBlockHandle{l.Properties, "properties"})
 	}
 	if l.MetaIndex.Length != 0 {
-		blocks = append(blocks, block{l.MetaIndex, "meta-index"})
+		blocks = append(blocks, namedBlockHandle{l.MetaIndex, "meta-index"})
 	}
 	if l.Footer.Length != 0 {
 		if l.Footer.Length == levelDBFooterLen {
-			blocks = append(blocks, block{l.Footer, "leveldb-footer"})
+			blocks = append(blocks, namedBlockHandle{l.Footer, "leveldb-footer"})
 		} else {
-			blocks = append(blocks, block{l.Footer, "footer"})
+			blocks = append(blocks, namedBlockHandle{l.Footer, "footer"})
 		}
 	}
 
-	slices.SortFunc(blocks, func(a, b block) int {
+	slices.SortFunc(blocks, func(a, b namedBlockHandle) int {
 		return cmp.Compare(a.Offset, b.Offset)
 	})
 	for i := range blocks {
@@ -107,7 +108,7 @@ func (l *Layout) Describe(
 			_ = r.readable.ReadAt(ctx, trailer, int64(offset))
 
 			if b.name == "footer" {
-				checksumType := ChecksumType(trailer[0])
+				checksumType := block.ChecksumType(trailer[0])
 				fmt.Fprintf(w, "%10d    checksum type: %s\n", offset, checksumType)
 				trailer, offset = trailer[1:], offset+1
 			}

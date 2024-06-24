@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -434,7 +435,7 @@ func TestBlockBufClear(t *testing.T) {
 }
 
 func TestClearDataBlockBuf(t *testing.T) {
-	d := newDataBlockBuf(1, ChecksumTypeCRC32c)
+	d := newDataBlockBuf(1, block.ChecksumTypeCRC32c)
 	d.blockBuf.compressedBuf = make([]byte, 1)
 	d.dataBlock.add(ikey("apple"), nil)
 	d.dataBlock.add(ikey("banana"), nil)

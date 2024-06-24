@@ -14,18 +14,17 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
@@ -148,7 +147,7 @@ type Writer struct {
 	writingToLowestLevel bool
 	cache                *cache.Cache
 	restartInterval      int
-	checksumType         ChecksumType
+	checksumType         block.ChecksumType
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -559,31 +558,6 @@ var writeTaskPool = sync.Pool{
 	},
 }
 
-type checksummer struct {
-	checksumType ChecksumType
-	xxHasher     *xxhash.Digest
-}
-
-func (c *checksummer) checksum(block []byte, blockType []byte) (checksum uint32) {
-	// Calculate the checksum.
-	switch c.checksumType {
-	case ChecksumTypeCRC32c:
-		checksum = crc.New(block).Update(blockType).Value()
-	case ChecksumTypeXXHash64:
-		if c.xxHasher == nil {
-			c.xxHasher = xxhash.New()
-		} else {
-			c.xxHasher.Reset()
-		}
-		c.xxHasher.Write(block)
-		c.xxHasher.Write(blockType)
-		checksum = uint32(c.xxHasher.Sum64())
-	default:
-		panic(errors.Newf("unsupported checksum type: %d", c.checksumType))
-	}
-	return checksum
-}
-
 type blockBuf struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
@@ -592,7 +566,7 @@ type blockBuf struct {
 	// compressedBuf is the destination buffer for compression. It is re-used over the
 	// lifetime of the blockBuf, avoiding the allocation of a temporary buffer for each block.
 	compressedBuf []byte
-	checksummer   checksummer
+	checksummer   block.Checksummer
 }
 
 func (b *blockBuf) clear() {
@@ -651,10 +625,10 @@ var dataBlockBufPool = sync.Pool{
 	},
 }
 
-func newDataBlockBuf(restartInterval int, checksumType ChecksumType) *dataBlockBuf {
+func newDataBlockBuf(restartInterval int, checksumType block.ChecksumType) *dataBlockBuf {
 	d := dataBlockBufPool.Get().(*dataBlockBuf)
 	d.dataBlock.restartInterval = restartInterval
-	d.checksummer.checksumType = checksumType
+	d.checksummer.Type = checksumType
 	return d
 }
 
@@ -1843,7 +1817,7 @@ func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) 
 	blockBuf.tmp[0] = byte(blockType)
 
 	// Calculate the checksum.
-	checksum := blockBuf.checksummer.checksum(b, blockBuf.tmp[:1])
+	checksum := blockBuf.checksummer.Checksum(b, blockBuf.tmp[:1])
 	binary.LittleEndian.PutUint32(blockBuf.tmp[1:5], checksum)
 	return b
 }
@@ -2209,7 +2183,7 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.blockBuf.checksummer.checksumType,
+		checksum:    w.blockBuf.checksummer.Type,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
@@ -2333,7 +2307,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
 
 	w.blockBuf = blockBuf{
-		checksummer: checksummer{checksumType: o.Checksum},
+		checksummer: block.Checksummer{Type: o.Checksum},
 	}
 
 	w.coordination.init(o.Parallelism, w)

@@ -6,13 +6,13 @@ import (
 	"math"
 	"sync"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
@@ -152,7 +152,7 @@ type blockWithSpan struct {
 func rewriteBlocks(
 	r *Reader,
 	restartInterval int,
-	checksumType ChecksumType,
+	checksumType block.ChecksumType,
 	compression Compression,
 	input []BlockHandleWithProperties,
 	output []blockWithSpan,
@@ -163,11 +163,7 @@ func rewriteBlocks(
 	bw := blockWriter{
 		restartInterval: restartInterval,
 	}
-	buf := blockBuf{checksummer: checksummer{checksumType: checksumType}}
-	if checksumType == ChecksumTypeXXHash {
-		buf.checksummer.xxHasher = xxhash.New()
-	}
-
+	buf := blockBuf{checksummer: block.Checksummer{Type: checksumType}}
 	var blockAlloc bytealloc.A
 	var keyAlloc bytealloc.A
 	var scratch InternalKey
@@ -297,7 +293,7 @@ func rewriteDataBlocksToWriter(
 			err := rewriteBlocks(
 				r,
 				w.dataBlockBuf.dataBlock.restartInterval,
-				w.blockBuf.checksummer.checksumType,
+				w.blockBuf.checksummer.Type,
 				w.compression,
 				data,
 				blocks,

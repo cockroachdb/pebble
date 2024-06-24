@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // Compression is the per-block compression algorithm to use.
@@ -234,7 +235,7 @@ type WriterOptions struct {
 	BlockPropertyCollectors []func() BlockPropertyCollector
 
 	// Checksum specifies which checksum to use.
-	Checksum ChecksumType
+	Checksum block.ChecksumType
 
 	// Parallelism is used to indicate that the sstable Writer is allowed to
 	// compress data blocks and write datablocks to disk in parallel with the
@@ -292,8 +293,8 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.MergerName == "" {
 		o.MergerName = base.DefaultMerger.Name
 	}
-	if o.Checksum == ChecksumTypeNone {
-		o.Checksum = ChecksumTypeCRC32c
+	if o.Checksum == block.ChecksumTypeNone {
+		o.Checksum = block.ChecksumTypeCRC32c
 	}
 	// By default, if the table format is not specified, fall back to using the
 	// most compatible format that is supported by Pebble.
