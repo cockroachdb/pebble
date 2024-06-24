@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"golang.org/x/exp/rand"
 )
 
@@ -727,7 +728,7 @@ func (ukb *UserKeyPrefixBound) IsEmpty() bool {
 type blockProviderWhenOpen interface {
 	readBlockForVBR(
 		h BlockHandle, stats *base.InternalIteratorStats,
-	) (bufferHandle, error)
+	) (block.BufferHandle, error)
 }
 
 type blockProviderWhenClosed struct {
@@ -748,7 +749,7 @@ func (bpwc *blockProviderWhenClosed) close() {
 
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
 	h BlockHandle, stats *base.InternalIteratorStats,
-) (bufferHandle, error) {
+) (block.BufferHandle, error) {
 	// This is rare, since most block reads happen when the corresponding
 	// sstable iterator is open. So we are willing to sacrifice a proper context
 	// for tracing.
@@ -799,7 +800,7 @@ type valueBlockReader struct {
 	// The value blocks index is lazily retrieved the first time the reader
 	// needs to read a value that resides in a value block.
 	vbiBlock []byte
-	vbiCache bufferHandle
+	vbiCache block.BufferHandle
 	// When sequentially iterating through all key-value pairs, the cost of
 	// repeatedly getting a block that is already in the cache and releasing the
 	// bufferHandle can be ~40% of the cpu overhead. So the reader remembers the
@@ -808,7 +809,7 @@ type valueBlockReader struct {
 	valueBlockNum uint32
 	valueBlock    []byte
 	valueBlockPtr unsafe.Pointer
-	valueCache    bufferHandle
+	valueCache    block.BufferHandle
 	lazyFetcher   base.LazyFetcher
 	closed        bool
 	bufToMangle   []byte
@@ -842,12 +843,12 @@ func (r *valueBlockReader) close() {
 	// we were to reopen this valueBlockReader and retrieve the same
 	// Handle.value from the cache, we don't want to accidentally unref it when
 	// attempting to unref the old handle.
-	r.vbiCache = bufferHandle{}
+	r.vbiCache = block.BufferHandle{}
 	r.valueBlock = nil
 	r.valueBlockPtr = nil
 	r.valueCache.Release()
 	// See comment above.
-	r.valueCache = bufferHandle{}
+	r.valueCache = block.BufferHandle{}
 	r.closed = true
 	// rp, vbih, stats remain valid, so that LazyFetcher.ValueFetcher can be
 	// implemented.

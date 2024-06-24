@@ -50,21 +50,21 @@ type rawBlockIter struct {
 	cachedBuf   []byte
 }
 
-func newRawBlockIter(cmp Compare, block block) (*rawBlockIter, error) {
+func newRawBlockIter(cmp Compare, block []byte) (*rawBlockIter, error) {
 	i := &rawBlockIter{}
 	return i, i.init(cmp, block)
 }
 
-func (i *rawBlockIter) init(cmp Compare, block block) error {
-	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
+func (i *rawBlockIter) init(cmp Compare, blk []byte) error {
+	numRestarts := int32(binary.LittleEndian.Uint32(blk[len(blk)-4:]))
 	if numRestarts == 0 {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
-	i.restarts = int32(len(block)) - 4*(1+numRestarts)
+	i.restarts = int32(len(blk)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
-	i.ptr = unsafe.Pointer(&block[0])
-	i.data = block
+	i.ptr = unsafe.Pointer(&blk[0])
+	i.data = blk
 	if i.key == nil {
 		i.key = make([]byte, 0, 256)
 	} else {

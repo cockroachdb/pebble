@@ -9,7 +9,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"os"
 	"slices"
@@ -27,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 var errReaderClosed = errors.New("pebble/table: reader is closed")
@@ -73,10 +73,6 @@ func encodeBlockHandleWithProperties(dst []byte, b BlockHandleWithProperties) []
 	dst = append(dst[:n], b.Props...)
 	return dst
 }
-
-// block is a []byte that holds a sequence of key/value pairs plus an index
-// over those pairs.
-type block []byte
 
 type loadBlockResult int8
 
@@ -158,55 +154,6 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	}
 }
 
-// SyntheticSuffix will replace every suffix of every key surfaced during block
-// iteration. A synthetic suffix can be used if:
-//  1. no two keys in the sst share the same prefix; and
-//  2. pebble.Compare(prefix + replacementSuffix, prefix + originalSuffix) < 0,
-//     for all keys in the backing sst which have a suffix (i.e. originalSuffix
-//     is not empty).
-type SyntheticSuffix []byte
-
-// IsSet returns true if the synthetic suffix is not enpty.
-func (ss SyntheticSuffix) IsSet() bool {
-	return len(ss) > 0
-}
-
-// SyntheticPrefix represents a byte slice that is implicitly prepended to every
-// key in a file being read or accessed by a reader.  Note that the table is
-// assumed to contain "prefix-less" keys that become full keys when prepended
-// with the synthetic prefix. The table's bloom filters are constructed only on
-// the "prefix-less" keys in the table, but interactions with the file including
-// seeks and reads, will all behave as if the file had been constructed from
-// keys that did include the prefix. Note that all Compare operations may act on
-// a prefix-less key as the synthetic prefix will never modify key metadata
-// stored in the key suffix.
-//
-// NB: Since this transformation currently only applies to point keys, a block
-// with range keys cannot be iterated over with a synthetic prefix.
-type SyntheticPrefix []byte
-
-// IsSet returns true if the synthetic prefix is not enpty.
-func (sp SyntheticPrefix) IsSet() bool {
-	return len(sp) > 0
-}
-
-// Apply prepends the synthetic prefix to a key.
-func (sp SyntheticPrefix) Apply(key []byte) []byte {
-	res := make([]byte, 0, len(sp)+len(key))
-	res = append(res, sp...)
-	res = append(res, key...)
-	return res
-}
-
-// Invert removes the synthetic prefix from a key.
-func (sp SyntheticPrefix) Invert(key []byte) []byte {
-	res, ok := bytes.CutPrefix(key, sp)
-	if !ok {
-		panic(fmt.Sprintf("unexpected prefix: %s", key))
-	}
-	return res
-}
-
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -260,8 +207,8 @@ type Reader struct {
 	// capacity 3 to accommodate the meta block (1), and both the compressed
 	// properties block (1) and decompressed properties block (1)
 	// simultaneously.
-	metaBufferPool      BufferPool
-	metaBufferPoolAlloc [3]allocedBuffer
+	metaBufferPool      block.BufferPool
+	metaBufferPoolAlloc [3]block.AllocedBuffer
 }
 
 var _ CommonReader = (*Reader)(nil)
@@ -392,7 +339,7 @@ func (r *Reader) NewCompactionIter(
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	bufferPool *BufferPool,
+	bufferPool *block.BufferPool,
 ) (Iterator, error) {
 	return r.newCompactionIter(transforms, categoryAndQoS, statsCollector, rp, nil, bufferPool)
 }
@@ -403,7 +350,7 @@ func (r *Reader) newCompactionIter(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	vState *virtualState,
-	bufferPool *BufferPool,
+	bufferPool *block.BufferPool,
 ) (Iterator, error) {
 	if vState != nil && vState.isSharedIngested {
 		transforms.HideObsoletePoints = true
@@ -496,7 +443,7 @@ func (r *Reader) readIndex(
 	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
 	iterStats *iterStatsAccumulator,
-) (bufferHandle, error) {
+) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.indexBH, nil, readHandle, stats, iterStats, nil /* buffer pool */)
 }
@@ -506,21 +453,21 @@ func (r *Reader) readFilter(
 	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
 	iterStats *iterStatsAccumulator,
-) (bufferHandle, error) {
+) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
 	return r.readBlock(ctx, r.filterBH, nil /* transform */, readHandle, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeDel(
 	stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
-) (bufferHandle, error) {
+) (block.BufferHandle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeKey(
 	stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
-) (bufferHandle, error) {
+) (block.BufferHandle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
@@ -547,36 +494,6 @@ func checkChecksum(
 	return nil
 }
 
-type cacheValueOrBuf struct {
-	// buf.Valid() returns true if backed by a BufferPool.
-	buf Buf
-	// v is non-nil if backed by the block cache.
-	v *cache.Value
-}
-
-func (b cacheValueOrBuf) get() []byte {
-	if b.buf.Valid() {
-		return b.buf.p.pool[b.buf.i].b
-	}
-	return b.v.Buf()
-}
-
-func (b cacheValueOrBuf) release() {
-	if b.buf.Valid() {
-		b.buf.Release()
-	} else {
-		cache.Free(b.v)
-	}
-}
-
-func (b cacheValueOrBuf) truncate(n int) {
-	if b.buf.Valid() {
-		b.buf.p.pool[b.buf.i].b = b.buf.p.pool[b.buf.i].b[:n]
-	} else {
-		b.v.Truncate(n)
-	}
-}
-
 // DeterministicReadBlockDurationForTesting is for tests that want a
 // deterministic value of the time to read a block (that is not in the cache).
 // The return value is a function that must be called before the test exits.
@@ -597,8 +514,8 @@ func (r *Reader) readBlock(
 	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
 	iterStats *iterStatsAccumulator,
-	bufferPool *BufferPool,
-) (handle bufferHandle, _ error) {
+	bufferPool *block.BufferPool,
+) (handle block.BufferHandle, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		// Cache hit.
 		if readHandle != nil {
@@ -613,7 +530,7 @@ func (r *Reader) readBlock(
 		}
 		// This block is already in the cache; return a handle to existing vlaue
 		// in the cache.
-		return bufferHandle{h: h}, nil
+		return block.CacheBufferHandle(h), nil
 	}
 
 	// Cache miss.
@@ -621,28 +538,24 @@ func (r *Reader) readBlock(
 	if sema := r.opts.LoadBlockSema; sema != nil {
 		if err := sema.Acquire(ctx, 1); err != nil {
 			// An error here can only come from the context.
-			return bufferHandle{}, err
+			return block.BufferHandle{}, err
 		}
 		defer sema.Release(1)
 	}
 
-	var compressed cacheValueOrBuf
+	var compressed block.CacheValueOrBuf
 	if bufferPool != nil {
-		compressed = cacheValueOrBuf{
-			buf: bufferPool.Alloc(int(bh.Length + blockTrailerLen)),
-		}
+		compressed = block.MakeBlockBuf(bufferPool.Alloc(int(bh.Length + blockTrailerLen)))
 	} else {
-		compressed = cacheValueOrBuf{
-			v: cache.Alloc(int(bh.Length + blockTrailerLen)),
-		}
+		compressed = block.MakeCacheValue(cache.Alloc(int(bh.Length + blockTrailerLen)))
 	}
 
 	readStartTime := time.Now()
 	var err error
 	if readHandle != nil {
-		err = readHandle.ReadAt(ctx, compressed.get(), int64(bh.Offset))
+		err = readHandle.ReadAt(ctx, compressed.Get(), int64(bh.Offset))
 	} else {
-		err = r.readable.ReadAt(ctx, compressed.get(), int64(bh.Offset))
+		err = r.readable.ReadAt(ctx, compressed.Get(), int64(bh.Offset))
 	}
 	readDuration := time.Since(readStartTime)
 	// TODO(sumeer): should the threshold be configurable.
@@ -662,68 +575,69 @@ func (r *Reader) readBlock(
 		stats.BlockReadDuration += readDuration
 	}
 	if err != nil {
-		compressed.release()
-		return bufferHandle{}, err
+		compressed.Release()
+		return block.BufferHandle{}, err
 	}
-	if err := checkChecksum(r.checksumType, compressed.get(), bh, r.fileNum); err != nil {
-		compressed.release()
-		return bufferHandle{}, err
+	if err := checkChecksum(r.checksumType, compressed.Get(), bh, r.fileNum); err != nil {
+		compressed.Release()
+		return block.BufferHandle{}, err
 	}
 
-	typ := blockType(compressed.get()[bh.Length])
-	compressed.truncate(int(bh.Length))
+	typ := blockType(compressed.Get()[bh.Length])
+	compressed.Truncate(int(bh.Length))
 
-	var decompressed cacheValueOrBuf
+	var decompressed block.CacheValueOrBuf
 	if typ == noCompressionBlockType {
 		decompressed = compressed
 	} else {
 		// Decode the length of the decompressed value.
-		decodedLen, prefixLen, err := decompressedLen(typ, compressed.get())
+		decodedLen, prefixLen, err := decompressedLen(typ, compressed.Get())
 		if err != nil {
-			compressed.release()
-			return bufferHandle{}, err
+			compressed.Release()
+			return block.BufferHandle{}, err
 		}
 
 		if bufferPool != nil {
-			decompressed = cacheValueOrBuf{buf: bufferPool.Alloc(decodedLen)}
+			decompressed = block.MakeBlockBuf(bufferPool.Alloc(decodedLen))
 		} else {
-			decompressed = cacheValueOrBuf{v: cache.Alloc(decodedLen)}
+			decompressed = block.MakeCacheValue(cache.Alloc(decodedLen))
 		}
-		if err := decompressInto(typ, compressed.get()[prefixLen:], decompressed.get()); err != nil {
-			compressed.release()
-			return bufferHandle{}, err
+		if err := decompressInto(typ, compressed.Get()[prefixLen:], decompressed.Get()); err != nil {
+			compressed.Release()
+			return block.BufferHandle{}, err
 		}
-		compressed.release()
+		compressed.Release()
 	}
 
 	if transform != nil {
 		// Transforming blocks is very rare, so the extra copy of the
 		// transformed data is not problematic.
-		tmpTransformed, err := transform(decompressed.get())
+		tmpTransformed, err := transform(decompressed.Get())
 		if err != nil {
-			decompressed.release()
-			return bufferHandle{}, err
+			decompressed.Release()
+			return block.BufferHandle{}, err
 		}
 
-		var transformed cacheValueOrBuf
+		var transformed block.CacheValueOrBuf
 		if bufferPool != nil {
-			transformed = cacheValueOrBuf{buf: bufferPool.Alloc(len(tmpTransformed))}
+			transformed = block.MakeBlockBuf(bufferPool.Alloc(len(tmpTransformed)))
 		} else {
-			transformed = cacheValueOrBuf{v: cache.Alloc(len(tmpTransformed))}
+			transformed = block.MakeCacheValue(cache.Alloc(len(tmpTransformed)))
 		}
-		copy(transformed.get(), tmpTransformed)
-		decompressed.release()
+		copy(transformed.Get(), tmpTransformed)
+		decompressed.Release()
 		decompressed = transformed
 	}
 
 	if iterStats != nil {
 		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
-	if decompressed.buf.Valid() {
-		return bufferHandle{b: decompressed.buf}, nil
+	pooledBuf, cacheV := decompressed.Unpack()
+	if pooledBuf.Valid() {
+		return block.PooledBufferHandle(pooledBuf), nil
 	}
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, decompressed.v)
-	return bufferHandle{h: h}, nil
+	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, cacheV)
+	return block.CacheBufferHandle(h), nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
@@ -778,7 +692,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle, readHandle objstorage.Re
 	// Additionally, these blocks are exceedingly unlikely to be read again
 	// while they're still in the block cache except in misconfigurations with
 	// excessive sstables counts or a table cache that's far too small.
-	r.metaBufferPool.initPreallocated(r.metaBufferPoolAlloc[:0])
+	r.metaBufferPool.InitPreallocated(r.metaBufferPoolAlloc[:0])
 	// When we're finished, release the buffers we've allocated back to memory
 	// allocator. We don't expect to use metaBufferPool again.
 	defer r.metaBufferPool.Release()

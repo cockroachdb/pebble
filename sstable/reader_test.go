@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -209,7 +210,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 	// Set during the latest build command.
 	var r *Reader
 	var wMeta *WriterMetadata
-	var bp BufferPool
+	var bp block.BufferPool
 
 	// Set during the latest virtualize command.
 	var v *VirtualReader
@@ -949,7 +950,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, DefaultCompression, nil)
-				var pool BufferPool
+				var pool block.BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
 					NoTransforms, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
@@ -1005,7 +1006,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 	{
-		var pool BufferPool
+		var pool block.BufferPool
 		pool.Init(5)
 		citer, err := r.NewCompactionIter(
 			NoTransforms, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
@@ -1300,7 +1301,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 		require.NoError(t, err)
 		iter, err := eReader.newIterWithBlockPropertyFiltersAndContext(
 			context.Background(),
-			IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
+			block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
 			nil, nil, nil,
 			true, nil, CategoryAndQoS{}, nil,
 			TrivialReaderProvider{Reader: eReader}, &virtualState{

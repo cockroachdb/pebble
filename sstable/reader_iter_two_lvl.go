@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 type twoLevelIterator struct {
@@ -148,7 +149,7 @@ func (i *twoLevelIterator) init(
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
-	bufferPool *BufferPool,
+	bufferPool *block.BufferPool,
 ) error {
 	if r.err != nil {
 		return r.err
