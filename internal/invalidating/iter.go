@@ -8,17 +8,14 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // MaybeWrapIfInvariants wraps some iterators with an invalidating iterator.
 // MaybeWrapIfInvariants does nothing in non-invariant builds.
 func MaybeWrapIfInvariants(iter base.InternalIterator) base.InternalIterator {
-	if invariants.Enabled {
-		if fastrand.Uint32n(10) == 1 {
-			return NewIter(iter)
-		}
+	if invariants.Sometimes(10) {
+		return NewIter(iter)
 	}
 	return iter
 }

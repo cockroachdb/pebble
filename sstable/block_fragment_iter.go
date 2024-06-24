@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -44,8 +43,8 @@ type fragmentBlockIter struct {
 
 	// elideSameSeqnum, if true, returns only the first-occurring (in forward
 	// order) Key for each sequence number.
-	elideSameSeqnum  bool
-	doubleCloseCheck invariants.DoubleCloseCheck
+	elideSameSeqnum bool
+	closeCheck      invariants.CloseChecker
 }
 
 var _ keyspan.FragmentIterator = (*fragmentBlockIter)(nil)
@@ -70,7 +69,7 @@ func (i *fragmentBlockIter) init(elideSameSeqnum bool) {
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.elideSameSeqnum = elideSameSeqnum
-	i.doubleCloseCheck = invariants.DoubleCloseCheck{}
+	i.closeCheck = invariants.CloseChecker{}
 }
 
 // initSpan initializes the span with a single fragment.
@@ -205,20 +204,21 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 // Close implements (keyspan.FragmentIterator).Close.
 func (i *fragmentBlockIter) Close() {
 	i.blockIter.Close()
-	i.doubleCloseCheck.Close()
+	i.closeCheck.Close()
 
-	if invariants.Enabled && fastrand.Uint32()%4 == 0 {
+	if invariants.Sometimes(25) {
 		// In invariants mode, sometimes don't add the object to the pool so that we
 		// can check for double closes that take longer than the object stays in the
 		// pool.
-	} else {
-		*i = fragmentBlockIter{
-			blockIter:        i.blockIter.resetForReuse(),
-			doubleCloseCheck: i.doubleCloseCheck,
-		}
-		// TODO(radu): reenable this, see #3678.
-		//fragmentBlockIterPool.Put(i)
+		return
 	}
+
+	*i = fragmentBlockIter{
+		blockIter:  i.blockIter.resetForReuse(),
+		closeCheck: i.closeCheck,
+	}
+	// TODO(radu): reenable this, see #3678.
+	//fragmentBlockIterPool.Put(i)
 }
 
 // First implements (keyspan.FragmentIterator).First

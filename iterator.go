@@ -1306,7 +1306,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 					(i.iterValidityState == IterValid && i.cmp(key, i.key) <= 0 &&
 						(limit == nil || i.cmp(i.key, limit) < 0))) {
 				// Noop
-				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) || i.forceEnableSeekOpt {
+				if i.forceEnableSeekOpt || !testingDisableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
 					i.lastPositioningOp = seekGELastPositioningOp
 					return i.iterValidityState
 				}
@@ -1327,7 +1327,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			if cmp < 0 && i.iterValidityState != IterAtLimit && limit == nil {
 				flags = flags.EnableTrySeekUsingNext()
 			}
-			if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+			if testingDisableSeekOpt(key, uintptr(unsafe.Pointer(i))) && !i.forceEnableSeekOpt {
 				flags = flags.DisableTrySeekUsingNext()
 			}
 			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKV.K.UserKey) <= 0 {
@@ -1466,7 +1466,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		if cmp < 0 {
 			flags = flags.EnableTrySeekUsingNext()
 		}
-		if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+		if testingDisableSeekOpt(key, uintptr(unsafe.Pointer(i))) && !i.forceEnableSeekOpt {
 			flags = flags.DisableTrySeekUsingNext()
 		}
 	}
@@ -1505,10 +1505,13 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	return i.iterValidityState == IterValid
 }
 
-// Deterministic disabling of the seek optimizations. It uses the iterator
-// pointer, since we want diversity in iterator behavior for the same key.  Used
-// for tests.
-func disableSeekOpt(key []byte, ptr uintptr) bool {
+// Deterministic disabling (in testing mode) of the seek optimizations. It uses
+// the iterator pointer, since we want diversity in iterator behavior for the
+// same key.  Used for tests.
+func testingDisableSeekOpt(key []byte, ptr uintptr) bool {
+	if !invariants.Enabled {
+		return false
+	}
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
 	simpleHash := (11400714819323198485 * uint64(ptr)) >> 63
 	return key != nil && key[0]&byte(1) == 0 && simpleHash == 0
@@ -1581,7 +1584,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 			if i.iterValidityState == IterExhausted ||
 				(i.iterValidityState == IterValid && i.cmp(i.key, key) < 0 &&
 					(limit == nil || i.cmp(limit, i.key) <= 0)) {
-				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+				if !testingDisableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
 					i.lastPositioningOp = seekLTLastPositioningOp
 					return i.iterValidityState
 				}

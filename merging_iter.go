@@ -937,8 +937,7 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 	// Because the L5 iterator has already advanced to the next sstable, the
 	// merging iterator cannot observe the [b-c) range tombstone and will
 	// mistakenly return L6's deleted point key 'b'.
-	if invariants.Enabled && flags.TrySeekUsingNext() && !m.forceEnableSeekOpt &&
-		disableSeekOpt(key, uintptr(unsafe.Pointer(m))) {
+	if testingDisableSeekOpt(key, uintptr(unsafe.Pointer(m))) && !m.forceEnableSeekOpt {
 		flags = flags.DisableTrySeekUsingNext()
 	}
 

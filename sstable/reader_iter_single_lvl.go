@@ -333,10 +333,13 @@ func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
 	}
 }
 
-// Deterministic disabling of the bounds-based optimization that avoids seeking.
-// Uses the iterator pointer, since we want diversity in iterator behavior for
-// the same SetBounds call. Used for tests.
-func disableBoundsOpt(bound []byte, ptr uintptr) bool {
+// Deterministic disabling (in testing mode) of the bounds-based optimization
+// that avoids seeking. Uses the iterator pointer, since we want diversity in
+// iterator behavior for the same SetBounds call. Used for tests.
+func testingDisableBoundsOpt(bound []byte, ptr uintptr) bool {
+	if !invariants.Enabled || ensureBoundsOptDeterminism {
+		return false
+	}
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
 	simpleHash := (11400714819323198485 * uint64(ptr)) >> 63
 	return bound[len(bound)-1]&byte(1) == 0 && simpleHash == 0
@@ -383,14 +386,12 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 		if i.positionedUsingLatestBounds {
 			if i.upper != nil && lower != nil && i.cmp(i.upper, lower) <= 0 {
 				i.boundsCmp = +1
-				if invariants.Enabled && !ensureBoundsOptDeterminism &&
-					disableBoundsOpt(lower, uintptr(unsafe.Pointer(i))) {
+				if testingDisableBoundsOpt(lower, uintptr(unsafe.Pointer(i))) {
 					i.boundsCmp = 0
 				}
 			} else if i.lower != nil && upper != nil && i.cmp(upper, i.lower) <= 0 {
 				i.boundsCmp = -1
-				if invariants.Enabled && !ensureBoundsOptDeterminism &&
-					disableBoundsOpt(upper, uintptr(unsafe.Pointer(i))) {
+				if testingDisableBoundsOpt(upper, uintptr(unsafe.Pointer(i))) {
 					i.boundsCmp = 0
 				}
 			}
