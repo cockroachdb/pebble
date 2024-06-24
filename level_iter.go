@@ -80,19 +80,22 @@ type levelIter struct {
 	// iterFile holds the current file. It is always equal to l.files.Current().
 	iterFile *fileMetadata
 	newIters tableNewIters
-	// When rangeDelIterPtr != nil, the caller requires that *rangeDelIterPtr must
-	// point to a range del iterator corresponding to the current file. When this
-	// iterator returns nil, *rangeDelIterPtr should also be set to nil. Whenever
-	// a non-nil internalIterator is placed in rangeDelIterPtr, a copy is placed
-	// in rangeDelIterCopy. This is done for the following special case:
-	// when this iterator returns nil because of exceeding the bounds, we don't
-	// close iter and *rangeDelIterPtr since we could reuse it in the next seek. But
-	// we need to set *rangeDelIterPtr to nil because of the aforementioned contract.
-	// This copy is used to revive the *rangeDelIterPtr in the case of reuse.
-	rangeDelIterPtr  *keyspan.FragmentIterator
-	rangeDelIterCopy keyspan.FragmentIterator
-	files            manifest.LevelIterator
-	err              error
+	files    manifest.LevelIterator
+	err      error
+
+	// When rangeDelIterFn != nil, the caller requires that this function gets
+	// called with a range deletion iterator whenever the current file changes.
+	// The iterator is relinquished to the caller which is responsible for closing
+	// it.
+	// When rangeDelIterFn != nil, the levelIter will also interleave the
+	// boundaries of range deletions among point keys.
+	rangeDelIterFn func(rangeDelIter keyspan.FragmentIterator)
+
+	// interleaving is used when rangeDelIterFn != nil to interleave the
+	// boundaries of range deletions among point keys. When the leve iterator is
+	// used by a merging iterator, this ensures that we don't advance to a new
+	// file until the range deletions are no longer needed by other levels.
+	interleaving keyspan.InterleavingIter
 
 	// internalOpts holds the internal iterator options to pass to the table
 	// cache when constructing new table iterators.
@@ -102,12 +105,6 @@ type levelIter struct {
 	// property filters specified. See the performance note where
 	// IterOptions.PointKeyFilters is declared.
 	filtersBuf [1]BlockPropertyFilter
-
-	// interleaving is used when rangeDelIterPtr != nil to interleave the
-	// boundaries of range deletions among point keys. This ensures that we
-	// don't advance to a new file until the range deletions are no longer
-	// needed by other levels.
-	interleaving keyspan.InterleavingIter
 
 	// exhaustedDir is set to +1 or -1 when the levelIter has been exhausted in
 	// the forward or backward direction respectively. It is set when the
@@ -178,8 +175,14 @@ func (l *levelIter) init(
 	l.internalOpts = internalOpts
 }
 
-func (l *levelIter) initRangeDel(rangeDelIter *keyspan.FragmentIterator) {
-	l.rangeDelIterPtr = rangeDelIter
+// initRangeDel puts the level iterator into a mode where it interleaves range
+// deletion boundaries with point keys and provides a range deletion iterator
+// (through rangeDelIterFn) whenever the current file changes.
+//
+// The range deletion iterator passed to rangeDelIterFn is relinquished to the
+// implementor who is responsible for closing it.
+func (l *levelIter) initRangeDel(rangeDelIterFn func(rangeDelIter keyspan.FragmentIterator)) {
+	l.rangeDelIterFn = rangeDelIterFn
 }
 
 func (l *levelIter) initCombinedIterState(state *combinedIterState) {
@@ -491,9 +494,6 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			// We don't bother comparing the file bounds with the iteration bounds when we have
 			// an already open iterator. It is possible that the iter may not be relevant given the
 			// current iteration bounds, but it knows those bounds, so it will enforce them.
-			if l.rangeDelIterPtr != nil {
-				*l.rangeDelIterPtr = l.rangeDelIterCopy
-			}
 
 			// There are a few reasons we might not have triggered combined
 			// iteration yet, even though we already had `file` open.
@@ -511,10 +511,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		// have changed. We handle that below.
 	}
 
-	// Close both iter and rangeDelIterPtr. While mergingIter knows about
-	// rangeDelIterPtr, it can't call Close() on it because it does not know
-	// when the levelIter will switch it. Note that levelIter.Close() can be
-	// called multiple times.
+	// Close iter and send a nil iterator through rangeDelIterFn.rangeDelIterFn.
 	if err := l.Close(); err != nil {
 		return noFileLoaded
 	}
@@ -568,20 +565,20 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		}
 
 		iterKinds := iterPointKeys
-		if l.rangeDelIterPtr != nil {
+		if l.rangeDelIterFn != nil {
 			iterKinds |= iterRangeDeletions
 		}
 
 		var iters iterSet
 		iters, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterKinds)
 		if l.err != nil {
+			if l.rangeDelIterFn != nil {
+				l.rangeDelIterFn(nil)
+			}
 			return noFileLoaded
 		}
 		l.iter = iters.Point()
-		if l.rangeDelIterPtr != nil && iters.rangeDeletion != nil {
-			*l.rangeDelIterPtr = iters.rangeDeletion
-			l.rangeDelIterCopy = iters.rangeDeletion
-
+		if l.rangeDelIterFn != nil && iters.rangeDeletion != nil {
 			// If this file has range deletions, interleave the bounds of the
 			// range deletions among the point keys. When used with a
 			// mergingIter, this ensures we don't move beyond a file with range
@@ -589,23 +586,22 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			//
 			// For now, we open a second range deletion iterator. Future work
 			// will avoid the need to open a second range deletion iterator, and
-			// avoid surfacing the file's range deletion iterator directly to
-			// the caller.
-			var itersForBounds iterSet
-			itersForBounds, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterRangeDeletions)
+			// avoid surfacing the file's range deletion iterator via rangeDelIterFn.
+			itersForBounds, err := l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterRangeDeletions)
+			if err != nil {
+				l.iter = nil
+				l.err = errors.CombineErrors(err, iters.CloseAll())
+				return noFileLoaded
+			}
 			l.interleaving.Init(l.comparer, l.iter, itersForBounds.RangeDeletion(), keyspan.InterleavingIterOpts{
 				LowerBound:        l.tableOpts.LowerBound,
 				UpperBound:        l.tableOpts.UpperBound,
 				InterleaveEndKeys: true,
 			})
-			if l.err != nil {
-				l.iter = nil
-				*l.rangeDelIterPtr = nil
-				l.rangeDelIterCopy = nil
-				l.err = errors.CombineErrors(l.err, iters.CloseAll())
-				return noFileLoaded
-			}
 			l.iter = &l.interleaving
+
+			// Relinquish iters.rangeDeletion to the caller.
+			l.rangeDelIterFn(iters.rangeDeletion)
 		}
 		return newFileLoaded
 	}
@@ -896,16 +892,16 @@ func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
 
 func (l *levelIter) exhaustedForward() {
 	l.exhaustedDir = +1
-	if l.rangeDelIterPtr != nil {
-		*l.rangeDelIterPtr = nil
-	}
+	//if l.rangeDelIterFn != nil {
+	//	l.rangeDelIterFn(nil)
+	//}
 }
 
 func (l *levelIter) exhaustedBackward() {
 	l.exhaustedDir = -1
-	if l.rangeDelIterPtr != nil {
-		*l.rangeDelIterPtr = nil
-	}
+	//if l.rangeDelIterFn != nil {
+	//	l.rangeDelIterFn(nil)
+	//}
 }
 
 func (l *levelIter) Error() error {
@@ -920,12 +916,8 @@ func (l *levelIter) Close() error {
 		l.err = l.iter.Close()
 		l.iter = nil
 	}
-	if l.rangeDelIterPtr != nil {
-		if t := l.rangeDelIterCopy; t != nil {
-			t.Close()
-		}
-		*l.rangeDelIterPtr = nil
-		l.rangeDelIterCopy = nil
+	if l.rangeDelIterFn != nil {
+		l.rangeDelIterFn(nil)
 	}
 	return l.err
 }

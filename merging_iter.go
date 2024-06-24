@@ -25,6 +25,8 @@ type mergingIterLevel struct {
 	// are crossed. See levelIter.initRangeDel and the Range Deletions comment
 	// below.
 	rangeDelIter keyspan.FragmentIterator
+	// rangeDelIterGeneration is incremented whenever rangeDelIter changes.
+	rangeDelIterGeneration int
 	// iterKV caches the current key-value pair iter points to.
 	iterKV *base.InternalKV
 	// levelIter is non-nil if this level's iter is ultimately backed by a
@@ -39,6 +41,15 @@ type mergingIterLevel struct {
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
 	tombstone *keyspan.Span
+}
+
+func (ml *mergingIterLevel) setRangeDelIter(iter keyspan.FragmentIterator) {
+	ml.tombstone = nil
+	if ml.rangeDelIter != nil {
+		ml.rangeDelIter.Close()
+	}
+	ml.rangeDelIter = iter
+	ml.rangeDelIterGeneration++
 }
 
 // mergingIter provides a merged view of multiple iterators from different
@@ -237,6 +248,7 @@ type mergingIter struct {
 	lower         []byte
 	upper         []byte
 	stats         *InternalIteratorStats
+	seekKeyBuf    []byte
 
 	// levelsPositioned, if non-nil, is a slice of the same length as levels.
 	// It's used by NextPrefix to record which levels have already been
@@ -519,7 +531,7 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 	}
 
 	oldTopLevel := l.index
-	oldRangeDelIter := l.rangeDelIter
+	oldRangeDelIterGeneration := l.rangeDelIterGeneration
 
 	if succKey == nil {
 		l.iterKV = l.iter.Next()
@@ -541,7 +553,7 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 		} else if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
-		if l.rangeDelIter != oldRangeDelIter {
+		if l.rangeDelIterGeneration != oldRangeDelIterGeneration {
 			// The rangeDelIter changed which indicates that the l.iter moved to the
 			// next sstable. We have to update the tombstone for oldTopLevel as well.
 			oldTopLevel--
@@ -613,7 +625,8 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 				// We also know that l.tombstone.End > item.iterKV.UserKey. So the min of these,
 				// seekKey, computed below, is > item.iterKV.UserKey, so the call to seekGE() will
 				// make forward progress.
-				seekKey := l.tombstone.End
+				m.seekKeyBuf = append(m.seekKeyBuf[:0], l.tombstone.End...)
+				seekKey := m.seekKeyBuf
 				// This seek is not directly due to a SeekGE call, so we don't know
 				// enough about the underlying iterator positions, and so we keep the
 				// try-seek-using-next optimization disabled. Additionally, if we're in
@@ -740,12 +753,12 @@ func (m *mergingIter) findNextEntry() *base.InternalKV {
 // Steps to the prev entry. item is the current top item in the heap.
 func (m *mergingIter) prevEntry(l *mergingIterLevel) error {
 	oldTopLevel := l.index
-	oldRangeDelIter := l.rangeDelIter
+	oldRangeDelIterGeneration := l.rangeDelIterGeneration
 	if l.iterKV = l.iter.Prev(); l.iterKV != nil {
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
-		if l.rangeDelIter != oldRangeDelIter && l.rangeDelIter != nil {
+		if l.rangeDelIterGeneration != oldRangeDelIterGeneration && l.rangeDelIter != nil {
 			// The rangeDelIter changed which indicates that the l.iter moved to the
 			// previous sstable. We have to update the tombstone for oldTopLevel as
 			// well.
@@ -815,7 +828,8 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 				// l.tombstone.Start.UserKey <= item.iterKV.UserKey. So the seekKey computed below
 				// is <= item.iterKV.UserKey, and since we do a seekLT() we will make backwards
 				// progress.
-				seekKey := l.tombstone.Start
+				m.seekKeyBuf = append(m.seekKeyBuf[:0], l.tombstone.Start...)
+				seekKey := m.seekKeyBuf
 				// We set the relative-seek flag. This is important when
 				// iterating with lazy combined iteration. If there's a range
 				// key between this level's current file and the file the seek
@@ -1290,9 +1304,7 @@ func (m *mergingIter) Close() error {
 		if err := iter.Close(); err != nil && m.err == nil {
 			m.err = err
 		}
-		if rangeDelIter := m.levels[i].rangeDelIter; rangeDelIter != nil {
-			rangeDelIter.Close()
-		}
+		m.levels[i].setRangeDelIter(nil)
 	}
 	m.levels = nil
 	m.heap.items = m.heap.items[:0]
