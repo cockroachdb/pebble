@@ -54,6 +54,14 @@ type simpleMergingIterLevel struct {
 	tombstone *keyspan.Span
 }
 
+func (ml *simpleMergingIterLevel) setRangeDelIter(iter keyspan.FragmentIterator) {
+	ml.tombstone = nil
+	if ml.rangeDelIter != nil {
+		ml.rangeDelIter.Close()
+	}
+	ml.rangeDelIter = iter
+}
+
 type simpleMergingIter struct {
 	levels   []simpleMergingIterLevel
 	snapshot base.SeqNum
@@ -634,7 +642,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
-		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
+		li.initRangeDel(mlevelAlloc[0].setRangeDelIter)
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
@@ -647,7 +655,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
-		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
+		li.initRangeDel(mlevelAlloc[0].setRangeDelIter)
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
