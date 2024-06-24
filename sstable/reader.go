@@ -200,7 +200,7 @@ type Reader struct {
 	tableFormat   TableFormat
 	rawTombstones bool
 	mergerOK      bool
-	checksumType  ChecksumType
+	checksumType  block.ChecksumType
 	// metaBufferPool is a buffer pool used exclusively when opening a table and
 	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
 	// the BufferPool.pool slice as a part of the Reader allocation. It's
@@ -473,14 +473,14 @@ func (r *Reader) readRangeKey(
 }
 
 func checkChecksum(
-	checksumType ChecksumType, b []byte, bh BlockHandle, fileNum base.DiskFileNum,
+	checksumType block.ChecksumType, b []byte, bh BlockHandle, fileNum base.DiskFileNum,
 ) error {
 	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
 	var computedChecksum uint32
 	switch checksumType {
-	case ChecksumTypeCRC32c:
+	case block.ChecksumTypeCRC32c:
 		computedChecksum = crc.New(b[:bh.Length+1]).Value()
-	case ChecksumTypeXXHash64:
+	case block.ChecksumTypeXXHash64:
 		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
 	default:
 		return errors.Errorf("unsupported checksum type: %d", checksumType)

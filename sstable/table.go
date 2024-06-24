@@ -74,6 +74,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 /*
@@ -231,33 +232,6 @@ const (
 	rocksDBCompressionOptions = "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 )
 
-// ChecksumType specifies the checksum used for blocks.
-type ChecksumType byte
-
-// The available checksum types.
-const (
-	ChecksumTypeNone     ChecksumType = 0
-	ChecksumTypeCRC32c   ChecksumType = 1
-	ChecksumTypeXXHash   ChecksumType = 2
-	ChecksumTypeXXHash64 ChecksumType = 3
-)
-
-// String implements fmt.Stringer.
-func (t ChecksumType) String() string {
-	switch t {
-	case ChecksumTypeCRC32c:
-		return "crc32c"
-	case ChecksumTypeNone:
-		return "none"
-	case ChecksumTypeXXHash:
-		return "xxhash"
-	case ChecksumTypeXXHash64:
-		return "xxhash64"
-	default:
-		panic(errors.Newf("sstable: unknown checksum type: %d", t))
-	}
-}
-
 type blockType byte
 
 const (
@@ -318,7 +292,7 @@ func (t blockType) String() string {
 //	table_magic_number (8 bytes)
 type footer struct {
 	format      TableFormat
-	checksum    ChecksumType
+	checksum    block.ChecksumType
 	metaindexBH BlockHandle
 	indexBH     BlockHandle
 	footerBH    BlockHandle
@@ -360,7 +334,7 @@ func readFooter(
 		buf = buf[len(buf)-levelDBFooterLen:]
 		footer.footerBH.Length = uint64(len(buf))
 		footer.format = TableFormatLevelDB
-		footer.checksum = ChecksumTypeCRC32c
+		footer.checksum = block.ChecksumTypeCRC32c
 
 	case rocksDBMagic, pebbleDBMagic:
 		// NOTE: The Pebble magic string implies the same footer format as that used
@@ -379,11 +353,11 @@ func readFooter(
 		}
 		footer.format = format
 
-		switch ChecksumType(buf[0]) {
-		case ChecksumTypeCRC32c:
-			footer.checksum = ChecksumTypeCRC32c
-		case ChecksumTypeXXHash64:
-			footer.checksum = ChecksumTypeXXHash64
+		switch block.ChecksumType(buf[0]) {
+		case block.ChecksumTypeCRC32c:
+			footer.checksum = block.ChecksumTypeCRC32c
+		case block.ChecksumTypeXXHash64:
+			footer.checksum = block.ChecksumTypeXXHash64
 		default:
 			return footer, base.CorruptionErrorf("pebble/table: unsupported checksum type %d", errors.Safe(footer.checksum))
 		}
@@ -424,14 +398,14 @@ func (f footer) encode(buf []byte) []byte {
 		buf = buf[:rocksDBFooterLen]
 		clear(buf)
 		switch f.checksum {
-		case ChecksumTypeNone:
-			buf[0] = byte(ChecksumTypeNone)
-		case ChecksumTypeCRC32c:
-			buf[0] = byte(ChecksumTypeCRC32c)
-		case ChecksumTypeXXHash:
-			buf[0] = byte(ChecksumTypeXXHash)
-		case ChecksumTypeXXHash64:
-			buf[0] = byte(ChecksumTypeXXHash64)
+		case block.ChecksumTypeNone:
+			buf[0] = byte(block.ChecksumTypeNone)
+		case block.ChecksumTypeCRC32c:
+			buf[0] = byte(block.ChecksumTypeCRC32c)
+		case block.ChecksumTypeXXHash:
+			buf[0] = byte(block.ChecksumTypeXXHash)
+		case block.ChecksumTypeXXHash64:
+			buf[0] = byte(block.ChecksumTypeXXHash64)
 		default:
 			panic("unknown checksum type")
 		}

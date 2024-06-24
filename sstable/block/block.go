@@ -8,8 +8,65 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/cespare/xxhash/v2"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/crc"
 )
+
+// ChecksumType specifies the checksum used for blocks.
+type ChecksumType byte
+
+// The available checksum types.
+const (
+	ChecksumTypeNone     ChecksumType = 0
+	ChecksumTypeCRC32c   ChecksumType = 1
+	ChecksumTypeXXHash   ChecksumType = 2
+	ChecksumTypeXXHash64 ChecksumType = 3
+)
+
+// String implements fmt.Stringer.
+func (t ChecksumType) String() string {
+	switch t {
+	case ChecksumTypeCRC32c:
+		return "crc32c"
+	case ChecksumTypeNone:
+		return "none"
+	case ChecksumTypeXXHash:
+		return "xxhash"
+	case ChecksumTypeXXHash64:
+		return "xxhash64"
+	default:
+		panic(errors.Newf("sstable: unknown checksum type: %d", t))
+	}
+}
+
+// A Checksummer calculates checksums for blocks.
+type Checksummer struct {
+	Type     ChecksumType
+	xxHasher *xxhash.Digest
+}
+
+// Checksum computes a checksum over the provided block and block type.
+func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32) {
+	// Calculate the checksum.
+	switch c.Type {
+	case ChecksumTypeCRC32c:
+		checksum = crc.New(block).Update(blockType).Value()
+	case ChecksumTypeXXHash64:
+		if c.xxHasher == nil {
+			c.xxHasher = xxhash.New()
+		} else {
+			c.xxHasher.Reset()
+		}
+		c.xxHasher.Write(block)
+		c.xxHasher.Write(blockType)
+		checksum = uint32(c.xxHasher.Sum64())
+	default:
+		panic(errors.Newf("unsupported checksum type: %d", c.Type))
+	}
+	return checksum
+}
 
 // IterTransforms allow on-the-fly transformation of data at iteration time.
 //

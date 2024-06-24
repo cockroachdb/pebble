@@ -1411,7 +1411,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 }
 
 func TestReaderChecksumErrors(t *testing.T) {
-	for _, checksumType := range []ChecksumType{ChecksumTypeCRC32c, ChecksumTypeXXHash64} {
+	for _, checksumType := range []block.ChecksumType{block.ChecksumTypeCRC32c, block.ChecksumTypeXXHash64} {
 		t.Run(fmt.Sprintf("checksum-type=%d", checksumType), func(t *testing.T) {
 			for _, twoLevelIndex := range []bool{false, true} {
 				t.Run(fmt.Sprintf("two-level-index=%t", twoLevelIndex), func(t *testing.T) {
