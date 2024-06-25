@@ -42,6 +42,23 @@ const (
 	SeqNumStart SeqNum = 10
 )
 
+func (s SeqNum) String() string {
+	if s == InternalKeySeqNumMax {
+		return "inf"
+	}
+	var batch string
+	if s&InternalKeySeqNumBatch != 0 {
+		batch = "b"
+		s &^= InternalKeySeqNumBatch
+	}
+	return fmt.Sprintf("%s%d", batch, s)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (s SeqNum) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(s.String()))
+}
+
 // InternalKeyKind enumerates the kind of key: a deletion tombstone, a set
 // value, a merged value, etc.
 type InternalKeyKind uint8
@@ -493,10 +510,7 @@ func (k *InternalKey) CopyFrom(k2 InternalKey) {
 
 // String returns a string representation of the key.
 func (k InternalKey) String() string {
-	if k.SeqNum() == InternalKeySeqNumMax {
-		return fmt.Sprintf("%s#inf,%s", FormatBytes(k.UserKey), k.Kind())
-	}
-	return fmt.Sprintf("%s#%d,%s", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
+	return fmt.Sprintf("%s#%s,%s", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
 }
 
 // Pretty returns a formatter for the key.
@@ -526,29 +540,20 @@ type prettyInternalKey struct {
 }
 
 func (k prettyInternalKey) Format(s fmt.State, c rune) {
-	if seqNum := k.SeqNum(); seqNum == InternalKeySeqNumMax {
-		fmt.Fprintf(s, "%s#inf,%s", k.formatKey(k.UserKey), k.Kind())
-	} else {
-		fmt.Fprintf(s, "%s#%d,%s", k.formatKey(k.UserKey), k.SeqNum(), k.Kind())
-	}
+	fmt.Fprintf(s, "%s#%s,%s", k.formatKey(k.UserKey), k.SeqNum(), k.Kind())
 }
 
 // ParsePrettyInternalKey parses the pretty string representation of an
 // internal key. The format is <user-key>#<seq-num>,<kind>.
 func ParsePrettyInternalKey(s string) InternalKey {
 	x := strings.FieldsFunc(s, func(c rune) bool { return c == '#' || c == ',' })
-	ukey := x[0]
+	userKey := []byte(x[0])
+	seqNum := ParseSeqNum(x[1])
 	kind, ok := kindsMap[x[2]]
 	if !ok {
 		panic(fmt.Sprintf("unknown kind: %q", x[2]))
 	}
-	var seqNum uint64
-	if x[1] == "max" || x[1] == "inf" {
-		seqNum = uint64(InternalKeySeqNumMax)
-	} else {
-		seqNum, _ = strconv.ParseUint(x[1], 10, 64)
-	}
-	return MakeInternalKey([]byte(ukey), SeqNum(seqNum), kind)
+	return MakeInternalKey(userKey, seqNum, kind)
 }
 
 // MakeInternalKV constructs an InternalKV with the provided internal key and
