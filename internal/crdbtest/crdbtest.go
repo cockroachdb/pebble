@@ -167,6 +167,10 @@ func Split(key []byte) int {
 // Compare compares cockroach keys, including the version (which could be MVCC
 // timestamps).
 func Compare(a, b []byte) int {
+	if len(a) == 0 || len(b) == 0 {
+		return bytes.Compare(a, b)
+	}
+
 	// NB: For performance, this routine manually splits the key into the
 	// user-key and version components rather than using DecodeEngineKey. In
 	// most situations, use DecodeEngineKey or GetKeyPartFromEngineKey or
