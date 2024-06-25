@@ -2,7 +2,8 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+// Package rowblk defines facilities for row-oriented sstable blocks.
+package rowblk
 
 import (
 	"encoding/binary"
@@ -12,8 +13,36 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
-type blockWriter struct {
-	restartInterval int
+const (
+	// MaximumSize is an extremely generous maximum block size of 256MiB. We
+	// explicitly place this limit to reserve a few bits in the restart for internal
+	// use.
+	MaximumSize = 1 << 28
+	// EmptySize holds the size of an empty block. Every block ends in a uint32
+	// trailer encoding the number of restart points within the block.
+	EmptySize = 4
+)
+
+const (
+	// TrailerObsoleteBit is a bit within the internal key trailer that's used
+	// by the row-oriented block format to signify when a key is obsolete. It's
+	// internal to the row-oriented block format, set when writing a block and
+	// unset by blockIter, so no code outside block writing/reading code ever
+	// sees it.
+	//
+	// TODO(jackson): Unexport once the blockIter is also in this package.
+	TrailerObsoleteBit = base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteBit)
+	// TrailerObsoleteMask defines a mask for the obsolete bit in the internal
+	// key trailer.
+	TrailerObsoleteMask = (base.InternalKeyTrailer(base.SeqNumMax) << 8) | base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteMask)
+)
+
+// Writer buffers and serializes key/value pairs into a row-oriented block.
+type Writer struct {
+	// RestartInterval configures the interval at which the writer will write a
+	// full key without prefix compression, and encode a corresponding restart
+	// point.
+	RestartInterval int
 	nEntries        int
 	nextRestart     int
 	buf             []byte
@@ -49,8 +78,9 @@ type blockWriter struct {
 	setHasSameKeyPrefixSinceLastRestart bool
 }
 
-func (w *blockWriter) clear() {
-	*w = blockWriter{
+// Reset resets the block writer to empty, preserving buffers for reuse.
+func (w *Writer) Reset() {
+	*w = Writer{
 		buf:      w.buf[:0],
 		restarts: w.restarts[:0],
 		curKey:   w.curKey[:0],
@@ -59,21 +89,27 @@ func (w *blockWriter) clear() {
 	}
 }
 
-// MaximumBlockSize is an extremely generous maximum block size of 256MiB. We
-// explicitly place this limit to reserve a few bits in the restart for
-// internal use.
-const MaximumBlockSize = 1 << 28
 const setHasSameKeyPrefixRestartMask uint32 = 1 << 31
-const restartMaskLittleEndianHighByteWithoutSetHasSamePrefix byte = 0b0111_1111
-const restartMaskLittleEndianHighByteOnlySetHasSamePrefix byte = 0b1000_0000
 
-func (w *blockWriter) getCurKey() InternalKey {
+// EntryCount returns the count of entries written to the writer.
+func (w *Writer) EntryCount() int {
+	return w.nEntries
+}
+
+// CurKey returns the most recently written key.
+func (w *Writer) CurKey() base.InternalKey {
 	k := base.DecodeInternalKey(w.curKey)
-	k.Trailer = k.Trailer & trailerObsoleteMask
+	k.Trailer = k.Trailer & TrailerObsoleteMask
 	return k
 }
 
-func (w *blockWriter) getCurUserKey() []byte {
+// CurValue returns the most recently written value.
+func (w *Writer) CurValue() []byte {
+	return w.curValue
+}
+
+// CurUserKey returns the most recently written user key.
+func (w *Writer) CurUserKey() []byte {
 	n := len(w.curKey) - base.InternalTrailerLen
 	if n < 0 {
 		panic(errors.AssertionFailedf("corrupt key in blockWriter buffer"))
@@ -82,7 +118,7 @@ func (w *blockWriter) getCurUserKey() []byte {
 }
 
 // If !addValuePrefix, the valuePrefix is ignored.
-func (w *blockWriter) storeWithOptionalValuePrefix(
+func (w *Writer) storeWithOptionalValuePrefix(
 	keySize int,
 	value []byte,
 	maxSharedKeyLen int,
@@ -95,7 +131,7 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 		w.setHasSameKeyPrefixSinceLastRestart = false
 	}
 	if w.nEntries == w.nextRestart {
-		w.nextRestart = w.nEntries + w.restartInterval
+		w.nextRestart = w.nEntries + w.RestartInterval
 		restart := uint32(len(w.buf))
 		if w.setHasSameKeyPrefixSinceLastRestart {
 			restart = restart | setHasSameKeyPrefixRestartMask
@@ -191,11 +227,15 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 	w.nEntries++
 }
 
-func (w *blockWriter) add(key InternalKey, value []byte) {
-	w.addWithOptionalValuePrefix(
+// Add adds a key value pair to the block without a value prefix.
+func (w *Writer) Add(key base.InternalKey, value []byte) {
+	w.AddWithOptionalValuePrefix(
 		key, false, value, len(key.UserKey), false, 0, false)
 }
 
+// AddWithOptionalValuePrefix adds a key value pair to the block, optionally
+// including a value prefix.
+//
 // Callers that always set addValuePrefix to false should use add() instead.
 //
 // isObsolete indicates whether this key-value pair is obsolete in this
@@ -205,8 +245,8 @@ func (w *blockWriter) add(key InternalKey, value []byte) {
 // blocks in TableFormatPebblev3 onwards for SETs (see the comment in
 // format.go, with more details in value_block.go). setHasSameKeyPrefix is
 // also used in TableFormatPebblev3 onwards for SETs.
-func (w *blockWriter) addWithOptionalValuePrefix(
-	key InternalKey,
+func (w *Writer) AddWithOptionalValuePrefix(
+	key base.InternalKey,
 	isObsolete bool,
 	value []byte,
 	maxSharedKeyLen int,
@@ -222,7 +262,7 @@ func (w *blockWriter) addWithOptionalValuePrefix(
 	}
 	w.curKey = w.curKey[:size]
 	if isObsolete {
-		key.Trailer = key.Trailer | trailerObsoleteBit
+		key.Trailer = key.Trailer | TrailerObsoleteBit
 	}
 	key.Encode(w.curKey)
 
@@ -230,7 +270,8 @@ func (w *blockWriter) addWithOptionalValuePrefix(
 		size, value, maxSharedKeyLen, addValuePrefix, valuePrefix, setHasSameKeyPrefix)
 }
 
-func (w *blockWriter) finish() []byte {
+// Finish finalizes the block, serializes it and returns the serialized data.
+func (w *Writer) Finish() []byte {
 	// Write the restart points to the buffer.
 	if w.nEntries == 0 {
 		// Every block must have at least one restart point.
@@ -258,11 +299,30 @@ func (w *blockWriter) finish() []byte {
 	return result
 }
 
-// emptyBlockSize holds the size of an empty block. Every block ends
-// in a uint32 trailer encoding the number of restart points within the
-// block.
-const emptyBlockSize = 4
+// EstimatedSize returns the estimated size of the block in bytes.
+func (w *Writer) EstimatedSize() int {
+	return len(w.buf) + 4*len(w.restarts) + EmptySize
+}
 
-func (w *blockWriter) estimatedSize() int {
-	return len(w.buf) + 4*len(w.restarts) + emptyBlockSize
+// RawWriter is a Writer that writes raw key/value pairs to a block.
+type RawWriter struct {
+	Writer
+}
+
+// TODO(jackson): Can we just add an AddRaw method to Writer instead of having a
+// separate type?
+
+// Add adds a key value pair to the block.
+func (w *RawWriter) Add(key base.InternalKey, value []byte) {
+	w.curKey, w.prevKey = w.prevKey, w.curKey
+
+	size := len(key.UserKey)
+	if cap(w.curKey) < size {
+		w.curKey = make([]byte, 0, size*2)
+	}
+	w.curKey = w.curKey[:size]
+	copy(w.curKey, key.UserKey)
+
+	w.storeWithOptionalValuePrefix(
+		size, value, len(key.UserKey), false, 0, false)
 }
