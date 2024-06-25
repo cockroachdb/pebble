@@ -437,14 +437,14 @@ func (i *blockIter) readFirstKey() error {
 
 // The sstable internal obsolete bit is set when writing a block and unset by
 // blockIter, so no code outside block writing/reading code ever sees it.
-const trailerObsoleteBit = base.Trailer(base.InternalKeyKindSSTableInternalObsoleteBit)
-const trailerObsoleteMask = (base.Trailer(InternalKeySeqNumMax) << 8) | base.Trailer(base.InternalKeyKindSSTableInternalObsoleteMask)
+const trailerObsoleteBit = base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteBit)
+const trailerObsoleteMask = (base.InternalKeyTrailer(InternalKeySeqNumMax) << 8) | base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteMask)
 
 func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 	// BlockIter benchmarks.
 	if n := len(key) - 8; n >= 0 {
-		trailer := base.Trailer(binary.LittleEndian.Uint64(key[n:]))
+		trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(key[n:]))
 		hiddenPoint = i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
 		i.ikv.K.Trailer = trailer & trailerObsoleteMask
@@ -453,7 +453,7 @@ func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
 		}
 	} else {
-		i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
+		i.ikv.K.Trailer = base.InternalKeyTrailer(InternalKeyKindInvalid)
 		i.ikv.K.UserKey = nil
 	}
 	return hiddenPoint
@@ -1044,7 +1044,7 @@ start:
 	i.readEntry()
 	// Manually inlined version of i.decodeInternalKey(i.key).
 	if n := len(i.key) - 8; n >= 0 {
-		trailer := base.Trailer(binary.LittleEndian.Uint64(i.key[n:]))
+		trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 		hiddenPoint := i.transforms.HideObsoletePoints &&
 			(trailer&trailerObsoleteBit != 0)
 		i.ikv.K.Trailer = trailer & trailerObsoleteMask
@@ -1063,7 +1063,7 @@ start:
 			i.ikv.K.UserKey = i.synthSuffixBuf
 		}
 	} else {
-		i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
+		i.ikv.K.Trailer = base.InternalKeyTrailer(InternalKeyKindInvalid)
 		i.ikv.K.UserKey = nil
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||
@@ -1324,7 +1324,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		// Manually inlined version of i.decodeInternalKey(i.key).
 		hiddenPoint := false
 		if n := len(i.key) - 8; n >= 0 {
-			trailer := base.Trailer(binary.LittleEndian.Uint64(i.key[n:]))
+			trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint = i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
 			i.ikv.K = base.InternalKey{
@@ -1342,7 +1342,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 				i.ikv.K.UserKey = i.synthSuffixBuf
 			}
 		} else {
-			i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
+			i.ikv.K.Trailer = base.InternalKeyTrailer(InternalKeyKindInvalid)
 			i.ikv.K.UserKey = nil
 		}
 		nextCmpCount++
@@ -1388,7 +1388,7 @@ start:
 		// Manually inlined version of i.decodeInternalKey(i.key).
 		i.key = i.cachedBuf[e.keyStart:e.keyEnd]
 		if n := len(i.key) - 8; n >= 0 {
-			trailer := base.Trailer(binary.LittleEndian.Uint64(i.key[n:]))
+			trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint := i.transforms.HideObsoletePoints &&
 				(trailer&trailerObsoleteBit != 0)
 			if hiddenPoint {
@@ -1411,7 +1411,7 @@ start:
 				i.ikv.K.UserKey = i.synthSuffixBuf
 			}
 		} else {
-			i.ikv.K.Trailer = base.Trailer(InternalKeyKindInvalid)
+			i.ikv.K.Trailer = base.InternalKeyTrailer(InternalKeyKindInvalid)
 			i.ikv.K.UserKey = nil
 		}
 		i.cached = i.cached[:n]

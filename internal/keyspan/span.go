@@ -47,7 +47,7 @@ type Span struct {
 type KeysOrder int8
 
 const (
-	// ByTrailerDesc indicates a Span's keys are sorted by Trailer descending.
+	// ByTrailerDesc indicates a Span's keys are sorted by InternalKeyTrailer descending.
 	// This is the default ordering, and the ordering used during physical
 	// storage.
 	ByTrailerDesc KeysOrder = iota
@@ -61,7 +61,7 @@ const (
 // is applied.
 type Key struct {
 	// Trailer contains the key kind and sequence number.
-	Trailer base.Trailer
+	Trailer base.InternalKeyTrailer
 	// Suffix holds an optional suffix associated with the key. This is only
 	// non-nil for RANGEKEYSET and RANGEKEYUNSET keys.
 	Suffix []byte

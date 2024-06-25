@@ -200,7 +200,7 @@ type MergingIter struct {
 // MergingBuffers holds buffers used while merging keyspans.
 type MergingBuffers struct {
 	// keys holds all of the keys across all levels that overlap the key span
-	// [start, end), sorted by Trailer descending. This slice is reconstituted
+	// [start, end), sorted by InternalKeyTrailer descending. This slice is reconstituted
 	// in synthesizeKeys from each mergingIterLevel's keys every time the
 	// [start, end) bounds change.
 	//

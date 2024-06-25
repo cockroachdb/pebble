@@ -47,7 +47,7 @@ type node struct {
 	// Immutable fields, so no need to lock to access key.
 	keyOffset  uint32
 	keySize    uint32
-	keyTrailer base.Trailer
+	keyTrailer base.InternalKeyTrailer
 	valueSize  uint32
 	allocSize  uint32
 

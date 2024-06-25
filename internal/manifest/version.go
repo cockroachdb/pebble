@@ -1685,7 +1685,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelI
 				// In all supported format major version, split user keys are
 				// prohibited, so both files cannot contain keys with the same user
 				// keys. If the bounds have the same user key, the previous file's
-				// boundary must have a Trailer indicating that it's exclusive.
+				// boundary must have a InternalKeyTrailer indicating that it's exclusive.
 				if v := cmp(prev.Largest.UserKey, f.Smallest.UserKey); v > 0 || (v == 0 && !prev.Largest.IsExclusiveSentinel()) {
 					return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),

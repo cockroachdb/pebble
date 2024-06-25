@@ -148,7 +148,7 @@ func TestInvalidInternalKeyDecoding(t *testing.T) {
 		i := blockIter{}
 		i.decodeInternalKey([]byte(tc))
 		require.Nil(t, i.ikv.K.UserKey)
-		require.Equal(t, base.Trailer(InternalKeyKindInvalid), i.ikv.K.Trailer)
+		require.Equal(t, base.InternalKeyTrailer(InternalKeyKindInvalid), i.ikv.K.Trailer)
 	}
 }
 

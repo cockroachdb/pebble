@@ -167,7 +167,7 @@ type Iter struct {
 	rangeKeyCompactor RangeKeySpanCompactor
 	err               error
 	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKV.UserKey`
-	// and `key.Trailer` is set to `i.iterKV.Trailer`. This is the
+	// and `key.InternalKeyTrailer` is set to `i.iterKV.InternalKeyTrailer`. This is the
 	// case on return from all public methods -- these methods return `key`.
 	// Additionally, it is the internal state when the code is moving to the
 	// next key so it can determine whether the user key has changed from
@@ -176,7 +176,7 @@ type Iter struct {
 	// keyTrailer is updated when `i.key` is updated and holds the key's
 	// original trailer (eg, before any sequence-number zeroing or changes to
 	// key kind).
-	keyTrailer  base.Trailer
+	keyTrailer  base.InternalKeyTrailer
 	value       []byte
 	valueCloser io.Closer
 	// Temporary buffer used for storing the previous user key in order to

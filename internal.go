@@ -6,6 +6,9 @@ package pebble
 
 import "github.com/cockroachdb/pebble/internal/base"
 
+// SeqNum exports the base.SeqNum type.
+type SeqNum = base.SeqNum
+
 // InternalKeyKind exports the base.InternalKeyKind type.
 type InternalKeyKind = base.InternalKeyKind
 
@@ -32,11 +35,17 @@ const (
 	InternalKeyRangeDeleteSentinel = base.InternalKeyRangeDeleteSentinel
 )
 
+// InternalKeyTrailer exports the base.InternalKeyTrailer type.
+type InternalKeyTrailer = base.InternalKeyTrailer
+
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
 
-// SeqNum exports the base.SeqNum type.
-type SeqNum = base.SeqNum
+// MakeInternalKey constructs an internal key from a specified user key,
+// sequence number and kind.
+func MakeInternalKey(userKey []byte, seqNum SeqNum, kind InternalKeyKind) InternalKey {
+	return base.MakeInternalKey(userKey, seqNum, kind)
+}
 
 type internalIterator = base.InternalIterator
 
