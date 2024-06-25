@@ -937,7 +937,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 	isObsolete = w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
 	w.lastPointKeyInfo.isObsolete = isObsolete
 	var valueStoredWithKey []byte
-	var prefix valuePrefix
+	var prefix block.ValuePrefix
 	var valueStoredWithKeyLen int
 	if writeToValueBlock {
 		vh, err := w.valueBlockWriter.addValue(value)
@@ -958,14 +958,14 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 				return err
 			}
 		}
-		prefix = makePrefixForValueHandle(setHasSameKeyPrefix, attribute)
+		prefix = block.ValueHandlePrefix(setHasSameKeyPrefix, attribute)
 	} else {
 		valueStoredWithKey = value
 		valueStoredWithKeyLen = len(value)
 		if addPrefixToValueStoredWithKey {
 			valueStoredWithKeyLen++
 		}
-		prefix = makePrefixForInPlaceValue(setHasSameKeyPrefix)
+		prefix = block.InPlaceValuePrefix(setHasSameKeyPrefix)
 	}
 
 	if err := w.maybeFlush(key, valueStoredWithKeyLen); err != nil {

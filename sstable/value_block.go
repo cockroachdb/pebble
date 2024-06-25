@@ -105,7 +105,7 @@ import (
 //
 // Data blocks contain two kinds of SET keys: those with in-place values and
 // those with a value handle. To distinguish these two cases we use a single
-// byte prefix (valuePrefix). This single byte prefix is split into multiple
+// byte prefix (ValuePrefix). This single byte prefix is split into multiple
 // parts, where nb represents information that is encoded in n bits.
 //
 // +---------------+--------------------+-----------+--------------------+
@@ -189,31 +189,6 @@ type valueHandle struct {
 	offsetInBlock uint32
 }
 
-// valuePrefix is the single byte prefix for either the in-place value or the
-// encoded valueHandle. It encoded multiple kinds of information.
-type valuePrefix byte
-
-const (
-	// 2 most-significant bits of valuePrefix encodes the value-kind.
-	valueKindMask           valuePrefix = '\xC0'
-	valueKindIsValueHandle  valuePrefix = '\x80'
-	valueKindIsInPlaceValue valuePrefix = '\x00'
-
-	// 1 bit indicates SET has same key prefix as immediately preceding key that
-	// is also a SET. If the immediately preceding key in the same block is a
-	// SET, AND this bit is 0, the prefix must have changed.
-	//
-	// Note that the current policy of only storing older MVCC versions in value
-	// blocks means that valueKindIsValueHandle => SET has same prefix. But no
-	// code should rely on this behavior. Also, SET has same prefix does *not*
-	// imply valueKindIsValueHandle.
-	setHasSameKeyPrefixMask valuePrefix = '\x20'
-
-	// 3 least-significant bits for the user-defined base.ShortAttribute.
-	// Undefined for valueKindIsInPlaceValue.
-	userDefinedShortAttributeMask valuePrefix = '\x07'
-)
-
 // valueHandle fields are varint encoded, so maximum 5 bytes each, plus 1 byte
 // for the valuePrefix. This could alternatively be group varint encoded, but
 // experiments were inconclusive
@@ -229,35 +204,6 @@ func encodeValueHandle(dst []byte, v valueHandle) int {
 	n += binary.PutUvarint(dst[n:], uint64(v.blockNum))
 	n += binary.PutUvarint(dst[n:], uint64(v.offsetInBlock))
 	return n
-}
-
-func makePrefixForValueHandle(setHasSameKeyPrefix bool, attribute base.ShortAttribute) valuePrefix {
-	prefix := valueKindIsValueHandle | valuePrefix(attribute)
-	if setHasSameKeyPrefix {
-		prefix = prefix | setHasSameKeyPrefixMask
-	}
-	return prefix
-}
-
-func makePrefixForInPlaceValue(setHasSameKeyPrefix bool) valuePrefix {
-	prefix := valueKindIsInPlaceValue
-	if setHasSameKeyPrefix {
-		prefix = prefix | setHasSameKeyPrefixMask
-	}
-	return prefix
-}
-
-func isValueHandle(b valuePrefix) bool {
-	return b&valueKindMask == valueKindIsValueHandle
-}
-
-// REQUIRES: isValueHandle(b)
-func getShortAttribute(b valuePrefix) base.ShortAttribute {
-	return base.ShortAttribute(b & userDefinedShortAttributeMask)
-}
-
-func setHasSamePrefix(b valuePrefix) bool {
-	return b&setHasSameKeyPrefixMask == setHasSameKeyPrefixMask
 }
 
 func decodeLenFromValueHandle(src []byte) (uint32, []byte) {
@@ -822,7 +768,7 @@ func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) ba
 		Fetcher: r,
 		Attribute: base.AttributeAndLen{
 			ValueLen:       int32(valLen),
-			ShortAttribute: getShortAttribute(valuePrefix(handle[0])),
+			ShortAttribute: block.ValuePrefix(handle[0]).ShortAttribute(),
 		},
 	}
 	if r.stats != nil {

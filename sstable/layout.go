@@ -221,7 +221,7 @@ func (l *Layout) Describe(
 						v := kv.InPlaceValue()
 						if kv.K.Kind() != InternalKeyKindSet {
 							fmtRecord(&kv.K, v)
-						} else if !isValueHandle(valuePrefix(v[0])) {
+						} else if !block.ValuePrefix(v[0]).IsValueHandle() {
 							fmtRecord(&kv.K, v[1:])
 						} else {
 							vh := decodeValueHandle(v[1:])

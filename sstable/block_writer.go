@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 type blockWriter struct {
@@ -86,7 +87,7 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 	value []byte,
 	maxSharedKeyLen int,
 	addValuePrefix bool,
-	valuePrefix valuePrefix,
+	valuePrefix block.ValuePrefix,
 	setHasSameKeyPrefix bool,
 ) {
 	shared := 0
@@ -210,7 +211,7 @@ func (w *blockWriter) addWithOptionalValuePrefix(
 	value []byte,
 	maxSharedKeyLen int,
 	addValuePrefix bool,
-	valuePrefix valuePrefix,
+	valuePrefix block.ValuePrefix,
 	setHasSameKeyPrefix bool,
 ) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey

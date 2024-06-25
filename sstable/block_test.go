@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -54,7 +55,7 @@ func TestBlockWriterWithPrefix(t *testing.T) {
 		key InternalKey,
 		value []byte,
 		addValuePrefix bool,
-		valuePrefix valuePrefix,
+		valuePrefix block.ValuePrefix,
 		setHasSameKeyPrefix bool) {
 		w.addWithOptionalValuePrefix(
 			key, false, value, len(key.UserKey), addValuePrefix, valuePrefix, setHasSameKeyPrefix)
