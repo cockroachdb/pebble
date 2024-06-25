@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sort"
-	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -159,29 +157,6 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		getRestart := func(data []byte, restarts, i int32) int32 {
-			return decodeRestart(data[restarts+4*i:])
-		}
-
-		formatIsRestart := func(data []byte, restarts, numRestarts, offset int32) {
-			i := sort.Search(int(numRestarts), func(i int) bool {
-				return getRestart(data, restarts, int32(i)) >= offset
-			})
-			if i < int(numRestarts) && getRestart(data, restarts, int32(i)) == offset {
-				fmt.Fprintf(w, " [restart]\n")
-			} else {
-				fmt.Fprintf(w, "\n")
-			}
-		}
-
-		formatRestarts := func(data []byte, restarts, numRestarts int32) {
-			for i := int32(0); i < numRestarts; i++ {
-				offset := getRestart(data, restarts, i)
-				fmt.Fprintf(w, "%10d    [restart %d]\n",
-					b.Offset+uint64(restarts+4*i), b.Offset+uint64(offset))
-			}
-		}
-
 		formatTrailer := func() {
 			trailer := make([]byte, block.TrailerLen)
 			offset := int64(b.Offset + b.Length)
@@ -194,14 +169,9 @@ func (l *Layout) Describe(
 		var lastKey InternalKey
 		switch b.name {
 		case "data", "range-del", "range-key":
-			iter, _ := newBlockIter(r.Compare, r.Split, h.Get(), NoTransforms)
-			for kv := iter.First(); kv != nil; kv = iter.Next() {
-				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
-				shared, ptr := decodeVarint(ptr)
-				unshared, ptr := decodeVarint(ptr)
-				value2, _ := decodeVarint(ptr)
+			iter, _ := rowblk.NewIter(r.Compare, r.Split, h.Get(), NoTransforms)
+			iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 
-				total := iter.nextOffset - iter.offset
 				// The format of the numbers in the record line is:
 				//
 				//   (<total> = <length> [<shared>] + <unshared> + <value>)
@@ -213,62 +183,65 @@ func (l *Layout) Describe(
 				// <unshared> is the number of unshared key bytes.
 				// <value>    is the number of value bytes.
 				fmt.Fprintf(w, "%10d    record (%d = %d [%d] + %d + %d)",
-					b.Offset+uint64(iter.offset), total,
-					total-int32(unshared+value2), shared, unshared, value2)
-				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
+					b.Offset+uint64(enc.Offset), enc.Length,
+					enc.Length-int32(enc.KeyUnshared+enc.ValueLen), enc.KeyShared, enc.KeyUnshared, enc.ValueLen)
+				if enc.IsRestart {
+					fmt.Fprintf(w, " [restart]\n")
+				} else {
+					fmt.Fprintf(w, "\n")
+				}
 				if fmtRecord != nil {
 					fmt.Fprintf(w, "              ")
 					if l.Format < TableFormatPebblev3 {
-						fmtRecord(&kv.K, kv.InPlaceValue())
+						fmtRecord(key, value)
 					} else {
-						// InPlaceValue() will succeed even for data blocks where the
-						// actual value is in a different location, since this value was
-						// fetched from a blockIter which does not know about value
-						// blocks.
-						v := kv.InPlaceValue()
-						if kv.K.Kind() != InternalKeyKindSet {
-							fmtRecord(&kv.K, v)
-						} else if !block.ValuePrefix(v[0]).IsValueHandle() {
-							fmtRecord(&kv.K, v[1:])
+						if key.Kind() != InternalKeyKindSet {
+							fmtRecord(key, value)
+						} else if !block.ValuePrefix(value[0]).IsValueHandle() {
+							fmtRecord(key, value[1:])
 						} else {
-							vh := decodeValueHandle(v[1:])
-							fmtRecord(&kv.K, []byte(fmt.Sprintf("value handle %+v", vh)))
+							vh := decodeValueHandle(value[1:])
+							fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh)))
 						}
 					}
 				}
 
-				if base.InternalCompare(r.Compare, lastKey, kv.K) >= 0 {
-					fmt.Fprintf(w, "              WARNING: OUT OF ORDER KEYS!\n")
+				if b.name == "data" {
+					if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+						fmt.Fprintf(w, "              WARNING: OUT OF ORDER KEYS!\n")
+					}
+					lastKey.Trailer = key.Trailer
+					lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 				}
-				lastKey.Trailer = kv.K.Trailer
-				lastKey.UserKey = append(lastKey.UserKey[:0], kv.K.UserKey...)
-			}
-			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			})
 			formatTrailer()
 		case "index", "top-index":
-			iter, _ := newBlockIter(r.Compare, r.Split, h.Get(), NoTransforms)
-			for kv := iter.First(); kv != nil; kv = iter.Next() {
-				bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+			iter, _ := rowblk.NewIter(r.Compare, r.Split, h.Get(), NoTransforms)
+			iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+				bh, err := decodeBlockHandleWithProperties(value)
 				if err != nil {
-					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
-					continue
+					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(enc.Offset), err)
+					return
 				}
 				fmt.Fprintf(w, "%10d    block:%d/%d",
-					b.Offset+uint64(iter.offset), bh.Offset, bh.Length)
-				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
-			}
-			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+					b.Offset+uint64(enc.Offset), bh.Offset, bh.Length)
+				if enc.IsRestart {
+					fmt.Fprintf(w, " [restart]\n")
+				} else {
+					fmt.Fprintf(w, "\n")
+				}
+			})
 			formatTrailer()
 		case "properties":
 			iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
-			rowblk.DescribeRaw(w, iter, b.Offset,
+			iter.Describe(w, b.Offset,
 				func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					fmt.Fprintf(w, "%10d    %s (%d)", b.Offset+uint64(enc.Offset), key.UserKey, enc.Length)
 				})
 			formatTrailer()
 		case "meta-index":
 			iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
-			rowblk.DescribeRaw(w, iter, b.Offset,
+			iter.Describe(w, b.Offset,
 				func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					var bh block.Handle
 					var n int

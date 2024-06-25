@@ -169,7 +169,7 @@ func rewriteBlocks(
 
 	var inputBlock, inputBlockBuf []byte
 
-	iter := &blockIter{}
+	iter := &rowblk.Iter{}
 
 	// We'll assume all blocks are _roughly_ equal so round-robin static partition
 	// of each worker doing every ith block is probably enough.
@@ -181,7 +181,7 @@ func rewriteBlocks(
 		if err != nil {
 			return err
 		}
-		if err := iter.init(r.Compare, r.Split, inputBlock, NoTransforms); err != nil {
+		if err := iter.Init(r.Compare, r.Split, inputBlock, NoTransforms); err != nil {
 			return err
 		}
 
@@ -242,7 +242,7 @@ func rewriteBlocks(
 				keyAlloc, output[i].start = cloneKeyWithBuf(scratch, keyAlloc)
 			}
 		}
-		*iter = iter.resetForReuse()
+		*iter = iter.ResetForReuse()
 
 		keyAlloc, output[i].end = cloneKeyWithBuf(scratch, keyAlloc)
 
