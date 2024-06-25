@@ -1020,7 +1020,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 	// NB: We iterate L0's files in reverse order. They're sorted by
 	// LargestSeqNum ascending, and we need to add them to the merging iterator
 	// in LargestSeqNum descending to preserve the merging iterator's invariants
-	// around Key Trailer order.
+	// around Key InternalKeyTrailer order.
 	iter := current.RangeKeyLevels[0].Iter()
 	for f := iter.Last(); f != nil; f = iter.Prev() {
 		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())

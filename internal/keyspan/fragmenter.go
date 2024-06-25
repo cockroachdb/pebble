@@ -184,7 +184,7 @@ func (f *Fragmenter) checkInvariants(buf []Span) {
 // stability, typically callers only need to perform a shallow clone of the Span
 // before Add-ing it to the fragmenter.
 //
-// Add requires the provided span's keys are sorted in Trailer descending order.
+// Add requires the provided span's keys are sorted in InternalKeyTrailer descending order.
 func (f *Fragmenter) Add(s Span) {
 	if f.finished {
 		panic("pebble: span fragmenter already finished")

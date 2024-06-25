@@ -133,7 +133,7 @@ const (
 
 	// InternalKeyZeroSeqnumMaxTrailer is the largest trailer with a
 	// zero sequence number.
-	InternalKeyZeroSeqnumMaxTrailer Trailer = 255
+	InternalKeyZeroSeqnumMaxTrailer InternalKeyTrailer = 255
 
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = InternalKeyKindSSTableInternalObsoleteMask
@@ -150,13 +150,13 @@ const (
 	// when a range deletion tombstone is the largest key in an sstable. This is
 	// necessary because sstable boundaries are inclusive, while the end key of a
 	// range deletion tombstone is exclusive.
-	InternalKeyRangeDeleteSentinel = (Trailer(InternalKeySeqNumMax) << 8) | Trailer(InternalKeyKindRangeDelete)
+	InternalKeyRangeDeleteSentinel = (InternalKeyTrailer(InternalKeySeqNumMax) << 8) | InternalKeyTrailer(InternalKeyKindRangeDelete)
 
 	// InternalKeyBoundaryRangeKey is the marker for a range key boundary. This
 	// sequence number and kind are used during interleaved range key and point
 	// iteration to allow an iterator to stop at range key start keys where
 	// there exists no point key.
-	InternalKeyBoundaryRangeKey = (Trailer(InternalKeySeqNumMax) << 8) | Trailer(InternalKeyKindRangeKeySet)
+	InternalKeyBoundaryRangeKey = (InternalKeyTrailer(InternalKeySeqNumMax) << 8) | InternalKeyTrailer(InternalKeyKindRangeKeySet)
 )
 
 // Assert InternalKeyKindSSTableInternalObsoleteBit > InternalKeyKindMax
@@ -191,22 +191,22 @@ func (k InternalKeyKind) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Print(redact.SafeString(k.String()))
 }
 
-// Trailer encodes a SeqNum and an InternalKeyKind.
-type Trailer uint64
+// InternalKeyTrailer encodes a SeqNum and an InternalKeyKind.
+type InternalKeyTrailer uint64
 
 // MakeTrailer constructs an internal key trailer from the specified sequence
 // number and kind.
-func MakeTrailer(seqNum SeqNum, kind InternalKeyKind) Trailer {
-	return (Trailer(seqNum) << 8) | Trailer(kind)
+func MakeTrailer(seqNum SeqNum, kind InternalKeyKind) InternalKeyTrailer {
+	return (InternalKeyTrailer(seqNum) << 8) | InternalKeyTrailer(kind)
 }
 
 // SeqNum returns the sequence number component of the trailer.
-func (t Trailer) SeqNum() SeqNum {
+func (t InternalKeyTrailer) SeqNum() SeqNum {
 	return SeqNum(t >> 8)
 }
 
 // Kind returns the key kind component of the trailer.
-func (t Trailer) Kind() InternalKeyKind {
+func (t InternalKeyTrailer) Kind() InternalKeyKind {
 	return InternalKeyKind(t & 0xff)
 }
 
@@ -219,7 +219,7 @@ func (t Trailer) Kind() InternalKeyKind {
 //   - 7 bytes for a uint56 sequence number, in little-endian format.
 type InternalKey struct {
 	UserKey []byte
-	Trailer Trailer
+	Trailer InternalKeyTrailer
 }
 
 // InvalidInternalKey is an invalid internal key for which Valid() will return
@@ -331,12 +331,12 @@ const InternalTrailerLen = 8
 // DecodeInternalKey decodes an encoded internal key. See InternalKey.Encode().
 func DecodeInternalKey(encodedKey []byte) InternalKey {
 	n := len(encodedKey) - InternalTrailerLen
-	var trailer Trailer
+	var trailer InternalKeyTrailer
 	if n >= 0 {
-		trailer = Trailer(binary.LittleEndian.Uint64(encodedKey[n:]))
+		trailer = InternalKeyTrailer(binary.LittleEndian.Uint64(encodedKey[n:]))
 		encodedKey = encodedKey[:n:n]
 	} else {
-		trailer = Trailer(InternalKeyKindInvalid)
+		trailer = InternalKeyTrailer(InternalKeyKindInvalid)
 		encodedKey = nil
 	}
 	return InternalKey{
@@ -416,7 +416,7 @@ func (k InternalKey) Size() int {
 
 // SetSeqNum sets the sequence number component of the key.
 func (k *InternalKey) SetSeqNum(seqNum SeqNum) {
-	k.Trailer = (Trailer(seqNum) << 8) | (k.Trailer & 0xff)
+	k.Trailer = (InternalKeyTrailer(seqNum) << 8) | (k.Trailer & 0xff)
 }
 
 // SeqNum returns the sequence number component of the key.
@@ -460,7 +460,7 @@ func Visible(seqNum SeqNum, snapshot, batchSnapshot SeqNum) bool {
 
 // SetKind sets the kind component of the key.
 func (k *InternalKey) SetKind(kind InternalKeyKind) {
-	k.Trailer = (k.Trailer &^ 0xff) | Trailer(kind)
+	k.Trailer = (k.Trailer &^ 0xff) | InternalKeyTrailer(kind)
 }
 
 // Kind returns the kind component of the key.

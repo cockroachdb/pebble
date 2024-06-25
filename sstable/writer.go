@@ -227,7 +227,7 @@ type Writer struct {
 }
 
 type pointKeyInfo struct {
-	trailer base.Trailer
+	trailer base.InternalKeyTrailer
 	// Only computed when w.valueBlockWriter is not nil.
 	userKeyLen int
 	// prefixLen uses w.split, if not nil. Only computed when w.valueBlockWriter

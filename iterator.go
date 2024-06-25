@@ -766,7 +766,7 @@ func (i *Iterator) nextUserKey() {
 		// NB: We're guaranteed to be on the next user key if the previous key
 		// had a zero sequence number (`done`), or the new key has a trailer
 		// greater or equal to the previous key's trailer. This is true because
-		// internal keys with the same user key are sorted by Trailer in
+		// internal keys with the same user key are sorted by InternalKeyTrailer in
 		// strictly monotonically descending order. We expect the trailer
 		// optimization to trigger around 50% of the time with randomly
 		// distributed writes. We expect it to trigger very frequently when
