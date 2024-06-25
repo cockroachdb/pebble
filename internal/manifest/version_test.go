@@ -630,6 +630,34 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 				base.UserKeyBoundsInclusive([]byte("d"), []byte("w")),
 			},
 		},
+		{
+			name: "Touching ranges",
+			v: newVersion([NumLevels][]*FileMetadata{
+				1: {
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("b.RANGEDEL.inf"),
+					),
+				},
+				2: {
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("b.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+				},
+			}),
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []base.UserKeyBounds{
+				base.UserKeyBoundsInclusive([]byte("a"), []byte("c")),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
