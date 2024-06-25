@@ -185,7 +185,6 @@ Data blocks have some additional features:
 */
 
 const (
-	blockTrailerLen                    = 5
 	blockHandleMaxLenWithoutProperties = 10 + 10
 	// blockHandleLikelyMaxLen can be used for pre-allocating buffers to
 	// reduce memory copies. It is not guaranteed that a block handle will not

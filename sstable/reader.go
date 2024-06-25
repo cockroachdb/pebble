@@ -519,7 +519,7 @@ func (r *Reader) readBlock(
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		// Cache hit.
 		if readHandle != nil {
-			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+blockTrailerLen))
+			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
 		}
 		if stats != nil {
 			stats.BlockBytes += bh.Length
@@ -545,9 +545,9 @@ func (r *Reader) readBlock(
 
 	var compressed block.CacheValueOrBuf
 	if bufferPool != nil {
-		compressed = block.MakeBlockBuf(bufferPool.Alloc(int(bh.Length + blockTrailerLen)))
+		compressed = block.MakeBlockBuf(bufferPool.Alloc(int(bh.Length + block.TrailerLen)))
 	} else {
-		compressed = block.MakeCacheValue(cache.Alloc(int(bh.Length + blockTrailerLen)))
+		compressed = block.MakeCacheValue(cache.Alloc(int(bh.Length + block.TrailerLen)))
 	}
 
 	readStartTime := time.Now()
@@ -568,7 +568,7 @@ func (r *Reader) readBlock(
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		r.opts.LoggerAndTracer.Eventf(ctx, "reading %d bytes took %s",
-			int(bh.Length+blockTrailerLen), readDuration.String())
+			int(bh.Length+block.TrailerLen), readDuration.String())
 	}
 	if stats != nil {
 		stats.BlockBytes += bh.Length
@@ -1087,7 +1087,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		return 0, errCorruptIndexEntry(err)
 	}
 	return includeInterpolatedValueBlocksSize(
-		endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset), nil
+		endBH.Offset + endBH.Length + block.TrailerLen - startBH.Offset), nil
 }
 
 // TableFormat returns the format version for the table.
