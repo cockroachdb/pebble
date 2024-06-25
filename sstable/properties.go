@@ -258,7 +258,7 @@ func (p *Properties) String() string {
 func (p *Properties) load(
 	b []byte, blockOffset uint64, deniedUserProperties map[string]struct{},
 ) error {
-	i, err := newRawBlockIter(bytes.Compare, b)
+	i, err := rowblk.NewRawIter(bytes.Compare, b)
 	if err != nil {
 		return err
 	}

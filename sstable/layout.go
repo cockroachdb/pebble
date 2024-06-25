@@ -17,6 +17,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // Layout describes the block organization of an sstable.
@@ -92,6 +93,12 @@ func (l *Layout) Describe(
 	slices.SortFunc(blocks, func(a, b namedBlockHandle) int {
 		return cmp.Compare(a.Offset, b.Offset)
 	})
+	// TODO(jackson): This function formats offsets within blocks by adding the
+	// block's offset. A block's offset is an offset in the physical, compressed
+	// file whereas KV pairs offsets are within the uncompressed block. This is
+	// confusing and can result in blocks' KVs offsets overlapping one another.
+	// We should just print offsets relative to the block start.
+
 	for i := range blocks {
 		b := &blocks[i]
 		fmt.Fprintf(w, "%10d  %s (%d)\n", b.Offset, b.name, b.Length)
@@ -253,44 +260,39 @@ func (l *Layout) Describe(
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 			formatTrailer()
 		case "properties":
-			iter, _ := newRawBlockIter(r.Compare, h.Get())
-			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(w, "%10d    %s (%d)",
-					b.Offset+uint64(iter.offset), iter.Key().UserKey, iter.nextOffset-iter.offset)
-				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
-			}
-			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
+			rowblk.DescribeRaw(w, iter, b.Offset,
+				func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+					fmt.Fprintf(w, "%10d    %s (%d)", b.Offset+uint64(enc.Offset), key.UserKey, enc.Length)
+				})
 			formatTrailer()
 		case "meta-index":
-			iter, _ := newRawBlockIter(r.Compare, h.Get())
-			for valid := iter.First(); valid; valid = iter.Next() {
-				value := iter.Value()
-				var bh block.Handle
-				var n int
-				var vbih valueBlocksIndexHandle
-				isValueBlocksIndexHandle := false
-				if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
-					vbih, n, err = decodeValueBlocksIndexHandle(value)
-					bh = vbih.h
-					isValueBlocksIndexHandle = true
-				} else {
-					bh, n = decodeBlockHandle(value)
-				}
-				if n == 0 || n != len(value) {
-					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
-					continue
-				}
-				var vbihStr string
-				if isValueBlocksIndexHandle {
-					vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
-						vbih.blockNumByteLength, vbih.blockOffsetByteLength, vbih.blockLengthByteLength)
-				}
-				fmt.Fprintf(w, "%10d    %s block:%d/%d%s",
-					b.Offset+uint64(iter.offset), iter.Key().UserKey,
-					bh.Offset, bh.Length, vbihStr)
-				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
-			}
-			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
+			rowblk.DescribeRaw(w, iter, b.Offset,
+				func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+					var bh block.Handle
+					var n int
+					var vbih valueBlocksIndexHandle
+					isValueBlocksIndexHandle := false
+					if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
+						vbih, n, err = decodeValueBlocksIndexHandle(value)
+						bh = vbih.h
+						isValueBlocksIndexHandle = true
+					} else {
+						bh, n = decodeBlockHandle(value)
+					}
+					if n == 0 || n != len(value) {
+						fmt.Fprintf(w, "%10d    [err: %s]\n", enc.Offset, err)
+						return
+					}
+					var vbihStr string
+					if isValueBlocksIndexHandle {
+						vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
+							vbih.blockNumByteLength, vbih.blockOffsetByteLength, vbih.blockLengthByteLength)
+					}
+					fmt.Fprintf(w, "%10d    %s block:%d/%d%s",
+						b.Offset+uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
+				})
 			formatTrailer()
 		case "value-block":
 			// We don't peer into the value-block since it can't be interpreted
