@@ -63,7 +63,7 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 	var bhp BlockHandleWithProperties
 
 	var err error
-	if bh, err = w.writer.writeCompressedBlock(task.buf.compressed, task.buf.tmp[:]); err != nil {
+	if bh, err = w.writer.writeCompressedBlock(task.buf.compressed, task.buf.trailer); err != nil {
 		return err
 	}
 
