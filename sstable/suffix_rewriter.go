@@ -178,7 +178,7 @@ func rewriteBlocks(
 		bh := input[i]
 
 		var err error
-		inputBlock, inputBlockBuf, err = readBlockBuf(r, bh.BlockHandle, inputBlockBuf)
+		inputBlock, inputBlockBuf, err = readBlockBuf(r, bh.Handle, inputBlockBuf)
 		if err != nil {
 			return err
 		}
@@ -342,7 +342,7 @@ func rewriteDataBlocksToWriter(
 		}
 
 		n := len(blocks[i].data)
-		bh := BlockHandle{Offset: w.meta.Size, Length: uint64(n) - block.TrailerLen}
+		bh := block.Handle{Offset: w.meta.Size, Length: uint64(n) - block.TrailerLen}
 		// Update the overall size.
 		w.meta.Size += uint64(n)
 
@@ -509,7 +509,7 @@ func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
 	return NewReader(newMemReader(sst), o)
 }
 
-func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
+func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error) {
 	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
 	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
 		return nil, buf, err

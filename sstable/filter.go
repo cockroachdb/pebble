@@ -4,7 +4,11 @@
 
 package sstable
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/cockroachdb/pebble/sstable/block"
+)
 
 // FilterMetrics holds metrics for the filter policy.
 type FilterMetrics struct {
@@ -44,15 +48,10 @@ func (m *FilterMetricsTracker) Load() FilterMetrics {
 	}
 }
 
-// BlockHandle is the file offset and length of a block.
-type BlockHandle struct {
-	Offset, Length uint64
-}
-
 // BlockHandleWithProperties is used for data blocks and first/lower level
 // index blocks, since they can be annotated using BlockPropertyCollectors.
 type BlockHandleWithProperties struct {
-	BlockHandle
+	block.Handle
 	Props []byte
 }
 

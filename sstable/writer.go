@@ -1477,13 +1477,13 @@ func (w *Writer) finishDataBlockProps(buf *dataBlockBuf) error {
 // maybeAddBlockPropertiesToBlockHandle should only be called if block is being written synchronously
 // with the Writer client.
 func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
-	bh BlockHandle,
+	bh block.Handle,
 ) (BlockHandleWithProperties, error) {
 	err := w.finishDataBlockProps(w.dataBlockBuf)
 	if err != nil {
 		return BlockHandleWithProperties{}, err
 	}
-	return BlockHandleWithProperties{BlockHandle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
+	return BlockHandleWithProperties{Handle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
 }
 
 func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlockBuf) InternalKey {
@@ -1765,14 +1765,14 @@ func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	return nil
 }
 
-func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
+func (w *Writer) writeTwoLevelIndex() (block.Handle, error) {
 	props, err := w.finishIndexBlockProps()
 	if err != nil {
-		return BlockHandle{}, err
+		return block.Handle{}, err
 	}
 	// Add the final unfinished index.
 	if err = w.finishIndexBlock(w.indexBlock, props); err != nil {
-		return BlockHandle{}, err
+		return block.Handle{}, err
 	}
 
 	for i := range w.indexPartitions {
@@ -1783,11 +1783,11 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 		w.props.IndexSize += uint64(len(data))
 		bh, err := w.writeBlock(data, w.compression, &w.blockBuf)
 		if err != nil {
-			return BlockHandle{}, err
+			return block.Handle{}, err
 		}
 		bhp := BlockHandleWithProperties{
-			BlockHandle: bh,
-			Props:       b.properties,
+			Handle: bh,
+			Props:  b.properties,
 		}
 		encoded := encodeBlockHandleWithProperties(w.blockBuf.tmp[:], bhp)
 		w.topLevelIndexBlock.add(b.sep, encoded)
@@ -1824,8 +1824,8 @@ func compressAndChecksum(
 	return b, block.MakeTrailer(byte(blockType), checksum)
 }
 
-func (w *Writer) writeCompressedBlock(blk []byte, trailer block.Trailer) (BlockHandle, error) {
-	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(blk))}
+func (w *Writer) writeCompressedBlock(blk []byte, trailer block.Trailer) (block.Handle, error) {
+	bh := block.Handle{Offset: w.meta.Size, Length: uint64(len(blk))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -1838,11 +1838,11 @@ func (w *Writer) writeCompressedBlock(blk []byte, trailer block.Trailer) (BlockH
 
 	// Write the bytes to the file.
 	if err := w.writable.Write(blk); err != nil {
-		return BlockHandle{}, err
+		return block.Handle{}, err
 	}
 	w.meta.Size += uint64(len(blk))
 	if err := w.writable.Write(trailer[:]); err != nil {
-		return BlockHandle{}, err
+		return block.Handle{}, err
 	}
 	w.meta.Size += block.TrailerLen
 
@@ -1871,7 +1871,7 @@ func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
 
 func (w *Writer) writeBlock(
 	b []byte, compression Compression, blockBuf *blockBuf,
-) (BlockHandle, error) {
+) (block.Handle, error) {
 	b, trailer := compressAndChecksum(b, compression, blockBuf)
 	return w.writeCompressedBlock(b, trailer)
 }
@@ -2021,7 +2021,7 @@ func (w *Writer) Close() (err error) {
 		w.props.FilterSize = bh.Length
 	}
 
-	var indexBH BlockHandle
+	var indexBH block.Handle
 	if w.twoLevelIndex {
 		w.props.IndexType = twoLevelIndex
 		// Write the two level index block.
@@ -2047,7 +2047,7 @@ func (w *Writer) Close() (err error) {
 	// Write the range-del block. The block handle must added to the meta index block
 	// after the properties block has been written. This is because the entries in the
 	// metaindex block must be sorted by key.
-	var rangeDelBH BlockHandle
+	var rangeDelBH block.Handle
 	if w.props.NumRangeDeletions > 0 {
 		if !w.rangeDelV1Format {
 			// Because the range tombstones are fragmented in the v2 format, the end
@@ -2073,7 +2073,7 @@ func (w *Writer) Close() (err error) {
 	// fragmenter first.
 	w.fragmenter.Finish()
 
-	var rangeKeyBH BlockHandle
+	var rangeKeyBH block.Handle
 	if w.props.NumRangeKeys() > 0 {
 		key := w.rangeKeyBlock.getCurKey()
 		kind := key.Kind()

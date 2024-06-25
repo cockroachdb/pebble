@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +32,7 @@ func TestValueHandleEncodeDecode(t *testing.T) {
 func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
 	testCases := []valueBlocksIndexHandle{
 		{
-			h: BlockHandle{
+			h: block.Handle{
 				Offset: math.MaxUint64 / 2,
 				Length: math.MaxUint64 / 4,
 			},

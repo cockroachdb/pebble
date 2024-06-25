@@ -292,9 +292,9 @@ func (t blockType) String() string {
 type footer struct {
 	format      TableFormat
 	checksum    block.ChecksumType
-	metaindexBH BlockHandle
-	indexBH     BlockHandle
-	footerBH    BlockHandle
+	metaindexBH block.Handle
+	indexBH     block.Handle
+	footerBH    block.Handle
 }
 
 // readHandle is optional.

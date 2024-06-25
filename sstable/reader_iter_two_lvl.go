@@ -61,7 +61,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	}
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.MetadataBlock)
 	indexBlock, err := i.reader.readBlock(
-		ctx, bhp.BlockHandle, nil /* transform */, i.indexFilterRH, i.stats, &i.iterStats, i.bufferPool)
+		ctx, bhp.Handle, nil /* transform */, i.indexFilterRH, i.stats, &i.iterStats, i.bufferPool)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed

@@ -1398,7 +1398,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		if twoLevelIndex {
 			subiter := &blockIter{}
 			subIndex, err := r.readBlock(
-				context.Background(), bhp.BlockHandle, nil, nil, nil, nil, nil)
+				context.Background(), bhp.Handle, nil, nil, nil, nil, nil)
 			if err != nil {
 				return err.Error()
 			}

@@ -59,15 +59,12 @@ func newWriteQueue(size int, writer *Writer) *writeQueue {
 }
 
 func (w *writeQueue) performWrite(task *writeTask) error {
-	var bh BlockHandle
 	var bhp BlockHandleWithProperties
-
 	var err error
-	if bh, err = w.writer.writeCompressedBlock(task.buf.compressed, task.buf.trailer); err != nil {
+	if bhp.Handle, err = w.writer.writeCompressedBlock(task.buf.compressed, task.buf.trailer); err != nil {
 		return err
 	}
-
-	bhp = BlockHandleWithProperties{BlockHandle: bh, Props: task.buf.dataBlockProps}
+	bhp = BlockHandleWithProperties{Handle: bhp.Handle, Props: task.buf.dataBlockProps}
 	if err = w.writer.addIndexEntry(
 		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock,
 		task.indexInflightSize, task.finishedIndexProps); err != nil {
