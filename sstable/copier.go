@@ -156,7 +156,7 @@ func CopySpan(
 	// The block lengths don't include their trailers, which just sit after the
 	// block length, before the next offset; We get the ones between the blocks
 	// we copy implicitly but need to explicitly add the last trailer to length.
-	length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + blockTrailerLen - offset
+	length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + block.TrailerLen - offset
 
 	if spanEnd := length + offset; spanEnd < offset {
 		return 0, base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", offset, spanEnd)

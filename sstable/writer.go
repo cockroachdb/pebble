@@ -519,7 +519,7 @@ func (d *dataBlockEstimates) dataBlockCompressed(compressedSize int, inflightSiz
 		d.mu.Lock()
 		defer d.mu.Unlock()
 	}
-	d.estimate.writtenWithDelta(compressedSize+blockTrailerLen, inflightSize)
+	d.estimate.writtenWithDelta(compressedSize+block.TrailerLen, inflightSize)
 }
 
 // size is an estimated size of datablock data which has been written to disk.
@@ -596,6 +596,8 @@ type dataBlockBuf struct {
 	// backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf, depending on whether
 	// we use the result of the compression.
 	compressed []byte
+	// trailer is the block trailer encoding the compression type and checksum.
+	trailer block.Trailer
 
 	// We're making calls to BlockPropertyCollectors from the Writer client goroutine. We need to
 	// pass the encoded block properties over to the write queue. To prevent copies, and allocations,
@@ -637,7 +639,7 @@ func (d *dataBlockBuf) finish() {
 }
 
 func (d *dataBlockBuf) compressAndChecksum(c Compression) {
-	d.compressed = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
+	d.compressed, d.trailer = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -1796,12 +1798,14 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// index size property.
 	w.props.IndexPartitions = uint64(len(w.indexPartitions))
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.estimatedSize())
-	w.props.IndexSize += w.props.TopLevelIndexSize + blockTrailerLen
+	w.props.IndexSize += w.props.TopLevelIndexSize + block.TrailerLen
 
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression, &w.blockBuf)
 }
 
-func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) []byte {
+func compressAndChecksum(
+	b []byte, compression Compression, blockBuf *blockBuf,
+) (compressed []byte, trailer block.Trailer) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	blockType, compressed := compressBlock(compression, b, blockBuf.compressedBuf)
@@ -1814,16 +1818,14 @@ func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) 
 		blockType = noCompressionBlockType
 	}
 
-	blockBuf.tmp[0] = byte(blockType)
-
 	// Calculate the checksum.
-	checksum := blockBuf.checksummer.Checksum(b, blockBuf.tmp[:1])
-	binary.LittleEndian.PutUint32(blockBuf.tmp[1:5], checksum)
-	return b
+	trailer[0] = byte(blockType)
+	checksum := blockBuf.checksummer.Checksum(b, trailer[:1])
+	return b, block.MakeTrailer(byte(blockType), checksum)
 }
 
-func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (BlockHandle, error) {
-	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(block))}
+func (w *Writer) writeCompressedBlock(blk []byte, trailer block.Trailer) (BlockHandle, error) {
+	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(blk))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -1835,14 +1837,14 @@ func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (Blo
 	}
 
 	// Write the bytes to the file.
-	if err := w.writable.Write(block); err != nil {
+	if err := w.writable.Write(blk); err != nil {
 		return BlockHandle{}, err
 	}
-	w.meta.Size += uint64(len(block))
-	if err := w.writable.Write(blockTrailerBuf[:blockTrailerLen]); err != nil {
+	w.meta.Size += uint64(len(blk))
+	if err := w.writable.Write(trailer[:]); err != nil {
 		return BlockHandle{}, err
 	}
-	w.meta.Size += blockTrailerLen
+	w.meta.Size += block.TrailerLen
 
 	return bh, nil
 }
@@ -1870,8 +1872,8 @@ func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
 func (w *Writer) writeBlock(
 	b []byte, compression Compression, blockBuf *blockBuf,
 ) (BlockHandle, error) {
-	b = compressAndChecksum(b, compression, blockBuf)
-	return w.writeCompressedBlock(b, blockBuf.tmp[:])
+	b, trailer := compressAndChecksum(b, compression, blockBuf)
+	return w.writeCompressedBlock(b, trailer)
 }
 
 // assertFormatCompatibility ensures that the features present on the table are
@@ -2032,7 +2034,7 @@ func (w *Writer) Close() (err error) {
 		// NB: RocksDB includes the block trailer length in the index size
 		// property, though it doesn't include the trailer in the filter size
 		// property.
-		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + blockTrailerLen
+		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + block.TrailerLen
 		w.props.NumDataBlocks = uint64(w.indexBlock.block.nEntries)
 
 		// Write the single level index block.

@@ -243,12 +243,12 @@ func rewriteBlocks(
 
 		keyAlloc, output[i].end = cloneKeyWithBuf(scratch, keyAlloc)
 
-		finished := compressAndChecksum(bw.finish(), compression, &buf)
+		finished, trailer := compressAndChecksum(bw.finish(), compression, &buf)
 
 		// copy our finished block into the output buffer.
-		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished) + blockTrailerLen)
+		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished) + block.TrailerLen)
 		copy(output[i].data, finished)
-		copy(output[i].data[len(finished):], buf.tmp[:blockTrailerLen])
+		copy(output[i].data[len(finished):], trailer[:])
 	}
 	return nil
 }
@@ -342,7 +342,7 @@ func rewriteDataBlocksToWriter(
 		}
 
 		n := len(blocks[i].data)
-		bh := BlockHandle{Offset: w.meta.Size, Length: uint64(n) - blockTrailerLen}
+		bh := BlockHandle{Offset: w.meta.Size, Length: uint64(n) - block.TrailerLen}
 		// Update the overall size.
 		w.meta.Size += uint64(n)
 
@@ -510,7 +510,7 @@ func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
 }
 
 func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
-	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
+	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
 	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
 		return nil, buf, err
 	}

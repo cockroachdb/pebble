@@ -176,7 +176,7 @@ func (l *Layout) Describe(
 		}
 
 		formatTrailer := func() {
-			trailer := make([]byte, blockTrailerLen)
+			trailer := make([]byte, block.TrailerLen)
 			offset := int64(b.Offset + b.Length)
 			_ = r.readable.ReadAt(ctx, trailer, offset)
 			bt := blockType(trailer[0])
