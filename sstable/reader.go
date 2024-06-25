@@ -693,7 +693,7 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 			errors.Safe(len(data)), errors.Safe(metaindexBH.Length))
 	}
 
-	i, err := newRawBlockIter(bytes.Compare, data)
+	i, err := rowblk.NewRawIter(bytes.Compare, data)
 	if err != nil {
 		return err
 	}

@@ -67,7 +67,7 @@ func TestBlockIter(t *testing.T) {
 		{3, "c"},
 	}
 	for _, tc := range testcases {
-		i, err := newRawBlockIter(bytes.Compare, k)
+		i, err := rowblk.NewRawIter(bytes.Compare, k)
 		require.NoError(t, err)
 		i.SeekGE([]byte(tc.key))
 		for j, keyWant := range []string{"apple", "apricot", "banana"}[tc.index:] {
@@ -88,7 +88,7 @@ func TestBlockIter(t *testing.T) {
 	}
 
 	{
-		i, err := newRawBlockIter(bytes.Compare, k)
+		i, err := rowblk.NewRawIter(bytes.Compare, k)
 		require.NoError(t, err)
 		i.Last()
 		for j, keyWant := range []string{"banana", "apricot", "apple"} {

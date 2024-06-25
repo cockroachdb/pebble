@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -533,7 +534,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	require.NoError(t, err)
 	defer b.Release()
 
-	i, err := newRawBlockIter(bytes.Compare, b.Get())
+	i, err := rowblk.NewRawIter(bytes.Compare, b.Get())
 	require.NoError(t, err)
 
 	var keys []string
