@@ -543,13 +543,7 @@ func (r *Reader) readBlock(
 		defer sema.Release(1)
 	}
 
-	var compressed block.CacheValueOrBuf
-	if bufferPool != nil {
-		compressed = block.MakeBlockBuf(bufferPool.Alloc(int(bh.Length + block.TrailerLen)))
-	} else {
-		compressed = block.MakeCacheValue(cache.Alloc(int(bh.Length + block.TrailerLen)))
-	}
-
+	compressed := block.Alloc(int(bh.Length+block.TrailerLen), bufferPool)
 	readStartTime := time.Now()
 	var err error
 	if readHandle != nil {
@@ -586,7 +580,7 @@ func (r *Reader) readBlock(
 	typ := blockType(compressed.Get()[bh.Length])
 	compressed.Truncate(int(bh.Length))
 
-	var decompressed block.CacheValueOrBuf
+	var decompressed block.Value
 	if typ == noCompressionBlockType {
 		decompressed = compressed
 	} else {
@@ -597,11 +591,7 @@ func (r *Reader) readBlock(
 			return block.BufferHandle{}, err
 		}
 
-		if bufferPool != nil {
-			decompressed = block.MakeBlockBuf(bufferPool.Alloc(decodedLen))
-		} else {
-			decompressed = block.MakeCacheValue(cache.Alloc(decodedLen))
-		}
+		decompressed = block.Alloc(decodedLen, bufferPool)
 		if err := decompressInto(typ, compressed.Get()[prefixLen:], decompressed.Get()); err != nil {
 			compressed.Release()
 			return block.BufferHandle{}, err
@@ -618,12 +608,7 @@ func (r *Reader) readBlock(
 			return block.BufferHandle{}, err
 		}
 
-		var transformed block.CacheValueOrBuf
-		if bufferPool != nil {
-			transformed = block.MakeBlockBuf(bufferPool.Alloc(len(tmpTransformed)))
-		} else {
-			transformed = block.MakeCacheValue(cache.Alloc(len(tmpTransformed)))
-		}
+		transformed := block.Alloc(len(tmpTransformed), bufferPool)
 		copy(transformed.Get(), tmpTransformed)
 		decompressed.Release()
 		decompressed = transformed
@@ -632,12 +617,8 @@ func (r *Reader) readBlock(
 	if iterStats != nil {
 		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
-	pooledBuf, cacheV := decompressed.Unpack()
-	if pooledBuf.Valid() {
-		return block.PooledBufferHandle(pooledBuf), nil
-	}
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, cacheV)
-	return block.CacheBufferHandle(h), nil
+	h := decompressed.MakeHandle(r.opts.Cache, r.cacheID, r.fileNum, bh.Offset)
+	return h, nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
