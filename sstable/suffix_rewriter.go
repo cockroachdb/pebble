@@ -226,11 +226,11 @@ func rewriteBlocks(
 				if len(v) < 1 {
 					return errors.Errorf("value has no prefix")
 				}
-				prefix := valuePrefix(v[0])
-				if isValueHandle(prefix) {
+				prefix := block.ValuePrefix(v[0])
+				if prefix.IsValueHandle() {
 					return errors.Errorf("value prefix is incorrect")
 				}
-				if setHasSamePrefix(prefix) {
+				if prefix.SetHasSamePrefix() {
 					return errors.Errorf("multiple keys with same key prefix")
 				}
 			}
