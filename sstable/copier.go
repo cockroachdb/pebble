@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // CopySpan produces a copy of a approximate subset of an input sstable.
@@ -215,7 +216,7 @@ func intersectingIndexEntries(
 	indexH block.BufferHandle,
 	start, end InternalKey,
 ) ([]indexEntry, error) {
-	top, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
+	top, err := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +241,7 @@ func intersectingIndexEntries(
 			}
 			defer subBlk.Release() // in-loop, but it is a short loop.
 
-			sub, err := newBlockIter(r.Compare, r.Split, subBlk.Get(), NoTransforms)
+			sub, err := rowblk.NewIter(r.Compare, r.Split, subBlk.Get(), NoTransforms)
 			if err != nil {
 				return nil, err
 			}

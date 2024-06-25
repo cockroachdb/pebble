@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -707,7 +708,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	var buf strings.Builder
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
-	iter, err := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
+	iter, err := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -720,7 +721,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 			b, err := r.readBlock(context.Background(), bh.Handle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
-			iter2, err := newBlockIter(r.Compare, r.Split, b.Get(), NoTransforms)
+			iter2, err := rowblk.NewIter(r.Compare, r.Split, b.Get(), NoTransforms)
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()
@@ -1406,6 +1407,38 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// checker is a test helper that verifies that two different iterators running
+// the same sequence of operations return the same result. To use correctly, pass
+// the iter call directly as an arg to check(), i.e.:
+//
+// c.check(expect.SeekGE([]byte("apricot@2"), base.SeekGEFlagsNone))(got.SeekGE([]byte("apricot@2"), base.SeekGEFlagsNone))
+// c.check(expect.Next())(got.Next())
+//
+// NB: the signature to check is not simply `check(eKey,eVal,gKey,gVal)` because
+// `check(expect.Next(),got.Next())` does not compile.
+type checker struct {
+	t         *testing.T
+	notValid  bool
+	alsoCheck func()
+}
+
+func (c *checker) check(eKV *base.InternalKV) func(*base.InternalKV) {
+	return func(gKV *base.InternalKV) {
+		c.t.Helper()
+		if eKV != nil {
+			require.NotNil(c.t, gKV, "expected %q", eKV.K.UserKey)
+			c.t.Logf("expected %q, got %q", eKV.K.UserKey, gKV.K.UserKey)
+			require.Equal(c.t, eKV, gKV)
+			c.notValid = false
+		} else {
+			c.t.Logf("expected nil, got %v", gKV)
+			require.Nil(c.t, gKV)
+			c.notValid = true
+		}
+		c.alsoCheck()
 	}
 }
 
