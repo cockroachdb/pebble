@@ -48,7 +48,7 @@ type singleLevelIterator struct {
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
-	dataBH   BlockHandle
+	dataBH   block.Handle
 	vbReader *valueBlockReader
 	// vbRH is the read handle for value blocks, which are in a different
 	// part of the sstable than data blocks.
@@ -423,7 +423,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 	// Load the next block.
 	v := i.index.value()
 	bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
-	if i.dataBH == bhp.BlockHandle && i.data.valid() {
+	if i.dataBH == bhp.Handle && i.data.valid() {
 		// We're already at the data block we want to load. Reset bounds in case
 		// they changed since the last seek, but don't reload the block from cache
 		// or disk.
@@ -437,7 +437,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 	// Ensure the data block iterator is invalidated even if loading of the block
 	// fails.
 	i.data.invalidate()
-	i.dataBH = bhp.BlockHandle
+	i.dataBH = bhp.Handle
 	if err != nil {
 		i.err = errCorruptIndexEntry(err)
 		return loadBlockFailed
@@ -476,7 +476,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 // readBlockForVBR implements the blockProviderWhenOpen interface for use by
 // the valueBlockReader.
 func (i *singleLevelIterator) readBlockForVBR(
-	h BlockHandle, stats *base.InternalIteratorStats,
+	h block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.ValueBlock)
 	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats, &i.iterStats, i.bufferPool)

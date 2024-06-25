@@ -234,7 +234,7 @@ func intersectingIndexEntries(
 			alloc, entry.sep.UserKey = alloc.Copy(entry.sep.UserKey)
 			res = append(res, entry)
 		} else {
-			subBlk, err := r.readBlock(ctx, bh.BlockHandle, nil, rh, nil, nil, nil)
+			subBlk, err := r.readBlock(ctx, bh.Handle, nil, rh, nil, nil, nil)
 			if err != nil {
 				return nil, err
 			}

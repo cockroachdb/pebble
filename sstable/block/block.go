@@ -15,6 +15,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 )
 
+// Handle is the file offset and length of a block.
+type Handle struct {
+	Offset, Length uint64
+}
+
 // TrailerLen is the length of the trailer at the end of a block.
 const TrailerLen = 5
 

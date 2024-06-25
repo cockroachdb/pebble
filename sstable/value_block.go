@@ -285,7 +285,7 @@ func decodeValueHandle(src []byte) valueHandle {
 // former is an emergent property of the data that was written and not known
 // until all the key-value pairs in the sstable are written.
 type valueBlocksIndexHandle struct {
-	h                     BlockHandle
+	h                     block.Handle
 	blockNumByteLength    uint8
 	blockOffsetByteLength uint8
 	blockLengthByteLength uint8
@@ -355,7 +355,7 @@ type valueBlockWriter struct {
 
 type blockAndHandle struct {
 	block      *blockBuffer
-	handle     BlockHandle
+	handle     block.Handle
 	compressed bool
 }
 
@@ -519,7 +519,7 @@ func (w *valueBlockWriter) compressAndFlush() {
 	}
 	b.b[n] = byte(blockType)
 	w.computeChecksum(b.b)
-	bh := BlockHandle{Offset: w.totalBlockBytes, Length: uint64(n)}
+	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(n)}
 	w.totalBlockBytes += uint64(len(b.b))
 	// blockFinishedFunc length excludes the block trailer.
 	w.blockFinishedFunc(n)
@@ -570,7 +570,7 @@ func (w *valueBlockWriter) finish(
 	vbihOffset := fileOffset + w.totalBlockBytes
 
 	vbih := valueBlocksIndexHandle{
-		h: BlockHandle{
+		h: block.Handle{
 			Offset: vbihOffset,
 		},
 		blockNumByteLength:    uint8(lenLittleEndian(uint64(n - 1))),
@@ -673,7 +673,7 @@ func (ukb *UserKeyPrefixBound) IsEmpty() bool {
 
 type blockProviderWhenOpen interface {
 	readBlockForVBR(
-		h BlockHandle, stats *base.InternalIteratorStats,
+		h block.Handle, stats *base.InternalIteratorStats,
 	) (block.BufferHandle, error)
 }
 
@@ -694,7 +694,7 @@ func (bpwc *blockProviderWhenClosed) close() {
 }
 
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
-	h BlockHandle, stats *base.InternalIteratorStats,
+	h block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
 	// This is rare, since most block reads happen when the corresponding
 	// sstable iterator is open. So we are willing to sacrifice a proper context
@@ -876,12 +876,12 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 	return r.valueBlock[vh.offsetInBlock : vh.offsetInBlock+vh.valueLen], nil
 }
 
-func (r *valueBlockReader) getBlockHandle(blockNum uint32) (BlockHandle, error) {
+func (r *valueBlockReader) getBlockHandle(blockNum uint32) (block.Handle, error) {
 	indexEntryLen :=
 		int(r.vbih.blockNumByteLength + r.vbih.blockOffsetByteLength + r.vbih.blockLengthByteLength)
 	offsetInIndex := indexEntryLen * int(blockNum)
 	if len(r.vbiBlock) < offsetInIndex+indexEntryLen {
-		return BlockHandle{}, base.AssertionFailedf(
+		return block.Handle{}, base.AssertionFailedf(
 			"index entry out of bounds: offset %d length %d block length %d",
 			offsetInIndex, indexEntryLen, len(r.vbiBlock))
 	}
@@ -889,7 +889,7 @@ func (r *valueBlockReader) getBlockHandle(blockNum uint32) (BlockHandle, error) 
 	n := int(r.vbih.blockNumByteLength)
 	bn := littleEndianGet(b, n)
 	if uint32(bn) != blockNum {
-		return BlockHandle{},
+		return block.Handle{},
 			errors.Errorf("expected block num %d but found %d", blockNum, bn)
 	}
 	b = b[n:]
@@ -898,5 +898,5 @@ func (r *valueBlockReader) getBlockHandle(blockNum uint32) (BlockHandle, error) 
 	b = b[n:]
 	n = int(r.vbih.blockLengthByteLength)
 	blockLen := littleEndianGet(b, n)
-	return BlockHandle{Offset: blockOffset, Length: blockLen}, nil
+	return block.Handle{Offset: blockOffset, Length: blockLen}, nil
 }

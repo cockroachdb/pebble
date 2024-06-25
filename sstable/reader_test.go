@@ -717,8 +717,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(kv.K.UserKey), bh.Length)
 		if twoLevelIndex {
-			b, err := r.readBlock(
-				context.Background(), bh.BlockHandle, nil, nil, nil, nil, nil)
+			b, err := r.readBlock(context.Background(), bh.Handle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2, err := newBlockIter(r.Compare, r.Split, b.Get(), NoTransforms)
@@ -1630,10 +1629,10 @@ func TestValidateBlockChecksums(t *testing.T) {
 		layout, err := r.Layout()
 		require.NoError(t, err)
 		for _, location := range corruptionLocations {
-			var bh BlockHandle
+			var bh block.Handle
 			switch location {
 			case corruptionLocationData:
-				bh = layout.Data[rng.Intn(len(layout.Data))].BlockHandle
+				bh = layout.Data[rng.Intn(len(layout.Data))].Handle
 			case corruptionLocationIndex:
 				bh = layout.Index[rng.Intn(len(layout.Index))]
 			case corruptionLocationTopIndex:

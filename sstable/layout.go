@@ -26,16 +26,16 @@ type Layout struct {
 	// referenced in this struct.
 
 	Data       []BlockHandleWithProperties
-	Index      []BlockHandle
-	TopIndex   BlockHandle
-	Filter     BlockHandle
-	RangeDel   BlockHandle
-	RangeKey   BlockHandle
-	ValueBlock []BlockHandle
-	ValueIndex BlockHandle
-	Properties BlockHandle
-	MetaIndex  BlockHandle
-	Footer     BlockHandle
+	Index      []block.Handle
+	TopIndex   block.Handle
+	Filter     block.Handle
+	RangeDel   block.Handle
+	RangeKey   block.Handle
+	ValueBlock []block.Handle
+	ValueIndex block.Handle
+	Properties block.Handle
+	MetaIndex  block.Handle
+	Footer     block.Handle
 	Format     TableFormat
 }
 
@@ -46,13 +46,13 @@ func (l *Layout) Describe(
 ) {
 	ctx := context.TODO()
 	type namedBlockHandle struct {
-		BlockHandle
+		block.Handle
 		name string
 	}
 	var blocks []namedBlockHandle
 
 	for i := range l.Data {
-		blocks = append(blocks, namedBlockHandle{l.Data[i].BlockHandle, "data"})
+		blocks = append(blocks, namedBlockHandle{l.Data[i].Handle, "data"})
 	}
 	for i := range l.Index {
 		blocks = append(blocks, namedBlockHandle{l.Index[i], "index"})
@@ -146,7 +146,7 @@ func (l *Layout) Describe(
 		}
 
 		h, err := r.readBlock(
-			context.Background(), b.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
+			context.Background(), b.Handle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
@@ -265,7 +265,7 @@ func (l *Layout) Describe(
 			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				value := iter.Value()
-				var bh BlockHandle
+				var bh block.Handle
 				var n int
 				var vbih valueBlocksIndexHandle
 				isValueBlocksIndexHandle := false

@@ -561,8 +561,8 @@ func TestFooterRoundTrip(t *testing.T) {
 					footer := footer{
 						format:      format,
 						checksum:    checksum,
-						metaindexBH: BlockHandle{Offset: 1, Length: 2},
-						indexBH:     BlockHandle{Offset: 3, Length: 4},
+						metaindexBH: block.Handle{Offset: 1, Length: 2},
+						indexBH:     block.Handle{Offset: 3, Length: 4},
 					}
 					for _, offset := range []int64{0, 1, 100} {
 						t.Run(fmt.Sprintf("offset=%d", offset), func(t *testing.T) {

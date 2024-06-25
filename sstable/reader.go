@@ -38,13 +38,13 @@ var errReaderClosed = errors.New("pebble/table: reader is closed")
 // that the number of bytes decoded is equal to the length of src, which will
 // be false if the properties are not decoded. In those cases the caller
 // should use decodeBlockHandleWithProperties.
-func decodeBlockHandle(src []byte) (BlockHandle, int) {
+func decodeBlockHandle(src []byte) (block.Handle, int) {
 	offset, n := binary.Uvarint(src)
 	length, m := binary.Uvarint(src[n:])
 	if n == 0 || m == 0 {
-		return BlockHandle{}, 0
+		return block.Handle{}, 0
 	}
-	return BlockHandle{offset, length}, n + m
+	return block.Handle{Offset: offset, Length: length}, n + m
 }
 
 // decodeBlockHandleWithProperties returns the block handle and properties
@@ -57,19 +57,19 @@ func decodeBlockHandleWithProperties(src []byte) (BlockHandleWithProperties, err
 		return BlockHandleWithProperties{}, errors.Errorf("invalid BlockHandle")
 	}
 	return BlockHandleWithProperties{
-		BlockHandle: bh,
-		Props:       src[n:],
+		Handle: bh,
+		Props:  src[n:],
 	}, nil
 }
 
-func encodeBlockHandle(dst []byte, b BlockHandle) int {
+func encodeBlockHandle(dst []byte, b block.Handle) int {
 	n := binary.PutUvarint(dst, b.Offset)
 	m := binary.PutUvarint(dst[n:], b.Length)
 	return n + m
 }
 
 func encodeBlockHandleWithProperties(dst []byte, b BlockHandleWithProperties) []byte {
-	n := encodeBlockHandle(dst, b.BlockHandle)
+	n := encodeBlockHandle(dst, b.Handle)
 	dst = append(dst[:n], b.Props...)
 	return dst
 }
@@ -179,15 +179,15 @@ type Reader struct {
 	cacheID           uint64
 	fileNum           base.DiskFileNum
 	err               error
-	indexBH           BlockHandle
-	filterBH          BlockHandle
-	rangeDelBH        BlockHandle
-	rangeKeyBH        BlockHandle
+	indexBH           block.Handle
+	filterBH          block.Handle
+	rangeDelBH        block.Handle
+	rangeKeyBH        block.Handle
 	rangeDelTransform blockTransform
 	valueBIH          valueBlocksIndexHandle
-	propertiesBH      BlockHandle
-	metaIndexBH       BlockHandle
-	footerBH          BlockHandle
+	propertiesBH      block.Handle
+	metaIndexBH       block.Handle
+	footerBH          block.Handle
 	opts              ReaderOptions
 	Compare           Compare
 	Equal             Equal
@@ -473,7 +473,7 @@ func (r *Reader) readRangeKey(
 }
 
 func checkChecksum(
-	checksumType block.ChecksumType, b []byte, bh BlockHandle, fileNum base.DiskFileNum,
+	checksumType block.ChecksumType, b []byte, bh block.Handle, fileNum base.DiskFileNum,
 ) error {
 	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
 	var computedChecksum uint32
@@ -509,7 +509,7 @@ var deterministicReadBlockDurationForTesting = false
 
 func (r *Reader) readBlock(
 	ctx context.Context,
-	bh BlockHandle,
+	bh block.Handle,
 	transform blockTransform,
 	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
@@ -664,7 +664,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	return rangeDelBlock.finish(), nil
 }
 
-func (r *Reader) readMetaindex(metaindexBH BlockHandle, readHandle objstorage.ReadHandle) error {
+func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.ReadHandle) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
 	// especially with high compaction concurrency, new tables may be created
@@ -697,7 +697,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle, readHandle objstorage.Re
 		return err
 	}
 
-	meta := map[string]BlockHandle{}
+	meta := map[string]block.Handle{}
 	for valid := i.First(); valid; valid = i.Next() {
 		value := i.Value()
 		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
@@ -827,9 +827,9 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
-			l.Index = append(l.Index, indexBH.BlockHandle)
+			l.Index = append(l.Index, indexBH.Handle)
 
-			subIndex, err := r.readBlock(context.Background(), indexBH.BlockHandle,
+			subIndex, err := r.readBlock(context.Background(), indexBH.Handle,
 				nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 			if err != nil {
 				return nil, err
@@ -882,7 +882,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			n = int(r.valueBIH.blockLengthByteLength)
 			blockLen := littleEndianGet(vbiBlock, n)
 			vbiBlock = vbiBlock[n:]
-			l.ValueBlock = append(l.ValueBlock, BlockHandle{Offset: blockOffset, Length: blockLen})
+			l.ValueBlock = append(l.ValueBlock, block.Handle{Offset: blockOffset, Length: blockLen})
 		}
 	}
 
@@ -899,16 +899,16 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Construct the set of blocks to check. Note that the footer is not checked
 	// as it is not a block with a checksum.
-	blocks := make([]BlockHandle, len(l.Data))
+	blocks := make([]block.Handle, len(l.Data))
 	for i := range l.Data {
-		blocks[i] = l.Data[i].BlockHandle
+		blocks[i] = l.Data[i].Handle
 	}
 	blocks = append(blocks, l.Index...)
 	blocks = append(blocks, l.TopIndex, l.Filter, l.RangeDel, l.RangeKey, l.Properties, l.MetaIndex)
 
 	// Sorting by offset ensures we are performing a sequential scan of the
 	// file.
-	slices.SortFunc(blocks, func(a, b BlockHandle) int {
+	slices.SortFunc(blocks, func(a, b block.Handle) int {
 		return cmp.Compare(a.Offset, b.Offset)
 	})
 
@@ -991,7 +991,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, errCorruptIndexEntry(err)
 		}
-		startIdxBlock, err := r.readBlock(context.Background(), startIdxBH.BlockHandle,
+		startIdxBlock, err := r.readBlock(context.Background(), startIdxBH.Handle,
 			nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			return 0, err
@@ -1013,7 +1013,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, errCorruptIndexEntry(err)
 			}
 			endIdxBlock, err := r.readBlock(context.Background(),
-				endIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
+				endIdxBH.Handle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 			if err != nil {
 				return 0, err
 			}

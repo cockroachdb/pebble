@@ -624,9 +624,9 @@ func TestWriterClearCache(t *testing.T) {
 	layout, err := r.Layout()
 	require.NoError(t, err)
 
-	foreachBH := func(layout *Layout, f func(bh BlockHandle)) {
+	foreachBH := func(layout *Layout, f func(bh block.Handle)) {
 		for _, bh := range layout.Data {
-			f(bh.BlockHandle)
+			f(bh.Handle)
 		}
 		for _, bh := range layout.Index {
 			f(bh)
@@ -645,7 +645,7 @@ func TestWriterClearCache(t *testing.T) {
 	}
 
 	// Poison the cache for each of the blocks.
-	poison := func(bh BlockHandle) {
+	poison := func(bh block.Handle) {
 		opts.Cache.Set(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, invalidData()).Release()
 	}
 	foreachBH(layout, poison)
@@ -655,7 +655,7 @@ func TestWriterClearCache(t *testing.T) {
 	build("test")
 
 	// Verify that the written blocks have been cleared from the cache.
-	check := func(bh BlockHandle) {
+	check := func(bh block.Handle) {
 		h := opts.Cache.Get(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset)
 		if h.Get() != nil {
 			t.Fatalf("%d: expected cache to be cleared, but found %q", bh.Offset, h.Get())
