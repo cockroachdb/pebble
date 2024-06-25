@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -437,11 +438,10 @@ func TestBlockBufClear(t *testing.T) {
 func TestClearDataBlockBuf(t *testing.T) {
 	d := newDataBlockBuf(1, block.ChecksumTypeCRC32c)
 	d.blockBuf.compressedBuf = make([]byte, 1)
-	d.dataBlock.add(ikey("apple"), nil)
-	d.dataBlock.add(ikey("banana"), nil)
+	d.dataBlock.Add(ikey("apple"), nil)
+	d.dataBlock.Add(ikey("banana"), nil)
 
 	d.clear()
-	testBlockCleared(t, &d.dataBlock, &blockWriter{})
 	testBlockBufClear(t, &d.blockBuf, &blockBuf{})
 
 	dataBlockBufPool.Put(d)
@@ -449,13 +449,12 @@ func TestClearDataBlockBuf(t *testing.T) {
 
 func TestClearIndexBlockBuf(t *testing.T) {
 	i := newIndexBlockBuf(false)
-	i.block.add(ikey("apple"), nil)
-	i.block.add(ikey("banana"), nil)
+	i.block.Add(ikey("apple"), nil)
+	i.block.Add(ikey("banana"), nil)
 	i.clear()
 
-	testBlockCleared(t, &i.block, &blockWriter{})
 	require.Equal(
-		t, i.size.estimate, sizeEstimate{emptySize: emptyBlockSize},
+		t, i.size.estimate, sizeEstimate{emptySize: rowblk.EmptySize},
 	)
 	indexBlockBufPool.Put(i)
 }
@@ -955,7 +954,7 @@ func TestWriterRace(t *testing.T) {
 					w.Add(base.MakeInternalKey(keys[ki], base.SeqNum(ki), InternalKeyKindSet), val),
 				)
 				require.Equal(
-					t, w.dataBlockBuf.dataBlock.getCurKey().UserKey, keys[ki],
+					t, w.dataBlockBuf.dataBlock.CurKey().UserKey, keys[ki],
 				)
 			}
 			require.NoError(t, w.Close())

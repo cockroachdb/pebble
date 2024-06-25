@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // blockIter is an iterator over a single block of data.
@@ -435,19 +436,14 @@ func (i *blockIter) readFirstKey() error {
 	return nil
 }
 
-// The sstable internal obsolete bit is set when writing a block and unset by
-// blockIter, so no code outside block writing/reading code ever sees it.
-const trailerObsoleteBit = base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteBit)
-const trailerObsoleteMask = (base.InternalKeyTrailer(InternalKeySeqNumMax) << 8) | base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteMask)
-
 func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 	// BlockIter benchmarks.
 	if n := len(key) - 8; n >= 0 {
 		trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(key[n:]))
 		hiddenPoint = i.transforms.HideObsoletePoints &&
-			(trailer&trailerObsoleteBit != 0)
-		i.ikv.K.Trailer = trailer & trailerObsoleteMask
+			(trailer&rowblk.TrailerObsoleteBit != 0)
+		i.ikv.K.Trailer = trailer & rowblk.TrailerObsoleteMask
 		i.ikv.K.UserKey = key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
@@ -975,6 +971,9 @@ func (i *blockIter) First() *base.InternalKV {
 	return &i.ikv
 }
 
+const restartMaskLittleEndianHighByteWithoutSetHasSamePrefix byte = 0b0111_1111
+const restartMaskLittleEndianHighByteOnlySetHasSamePrefix byte = 0b1000_0000
+
 func decodeRestart(b []byte) int32 {
 	_ = b[3] // bounds check hint to compiler; see golang.org/issue/14808
 	return int32(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 |
@@ -1046,8 +1045,8 @@ start:
 	if n := len(i.key) - 8; n >= 0 {
 		trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 		hiddenPoint := i.transforms.HideObsoletePoints &&
-			(trailer&trailerObsoleteBit != 0)
-		i.ikv.K.Trailer = trailer & trailerObsoleteMask
+			(trailer&rowblk.TrailerObsoleteBit != 0)
+		i.ikv.K.Trailer = trailer & rowblk.TrailerObsoleteMask
 		i.ikv.K.UserKey = i.key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
@@ -1326,9 +1325,9 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		if n := len(i.key) - 8; n >= 0 {
 			trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint = i.transforms.HideObsoletePoints &&
-				(trailer&trailerObsoleteBit != 0)
+				(trailer&rowblk.TrailerObsoleteBit != 0)
 			i.ikv.K = base.InternalKey{
-				Trailer: trailer & trailerObsoleteMask,
+				Trailer: trailer & rowblk.TrailerObsoleteMask,
 				UserKey: i.key[:n:n],
 			}
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
@@ -1390,12 +1389,12 @@ start:
 		if n := len(i.key) - 8; n >= 0 {
 			trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint := i.transforms.HideObsoletePoints &&
-				(trailer&trailerObsoleteBit != 0)
+				(trailer&rowblk.TrailerObsoleteBit != 0)
 			if hiddenPoint {
 				continue
 			}
 			i.ikv.K = base.InternalKey{
-				Trailer: trailer & trailerObsoleteMask,
+				Trailer: trailer & rowblk.TrailerObsoleteMask,
 				UserKey: i.key[:n:n],
 			}
 			if n := i.transforms.SyntheticSeqNum; n != 0 {

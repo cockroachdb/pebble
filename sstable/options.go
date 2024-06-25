@@ -9,7 +9,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
+
+// MaximumBlockSize is the maximum permissible size of a block.
+const MaximumBlockSize = rowblk.MaximumSize
 
 // Compression is the per-block compression algorithm to use.
 type Compression int

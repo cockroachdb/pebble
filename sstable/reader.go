@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 var errReaderClosed = errors.New("pebble/table: reader is closed")
@@ -642,8 +643,8 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	keyspan.Sort(r.Compare, tombstones)
 
 	// Fragment the tombstones, outputting them directly to a block writer.
-	rangeDelBlock := blockWriter{
-		restartInterval: 1,
+	rangeDelBlock := rowblk.Writer{
+		RestartInterval: 1,
 	}
 	frag := keyspan.Fragmenter{
 		Cmp:    r.Compare,
@@ -651,7 +652,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 		Emit: func(s keyspan.Span) {
 			for _, k := range s.Keys {
 				startIK := InternalKey{UserKey: s.Start, Trailer: k.Trailer}
-				rangeDelBlock.add(startIK, s.End)
+				rangeDelBlock.Add(startIK, s.End)
 			}
 		},
 	}
@@ -661,7 +662,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	frag.Finish()
 
 	// Return the contents of the constructed v2 format range-del block.
-	return rangeDelBlock.finish(), nil
+	return rangeDelBlock.Finish(), nil
 }
 
 func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.ReadHandle) error {

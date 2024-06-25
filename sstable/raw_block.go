@@ -12,24 +12,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-type rawBlockWriter struct {
-	blockWriter
-}
-
-func (w *rawBlockWriter) add(key InternalKey, value []byte) {
-	w.curKey, w.prevKey = w.prevKey, w.curKey
-
-	size := len(key.UserKey)
-	if cap(w.curKey) < size {
-		w.curKey = make([]byte, 0, size*2)
-	}
-	w.curKey = w.curKey[:size]
-	copy(w.curKey, key.UserKey)
-
-	w.storeWithOptionalValuePrefix(
-		size, value, len(key.UserKey), false, 0, false)
-}
-
 // rawBlockIter is an iterator over a single block of data. Unlike blockIter,
 // keys are stored in "raw" format (i.e. not as internal keys). Note that there
 // is significant similarity between this code and the code in blockIter. Yet
