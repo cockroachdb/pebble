@@ -655,7 +655,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+		} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
 			i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -938,7 +938,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -967,7 +967,7 @@ func (i *blockIter) First() *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -1010,7 +1010,7 @@ func (i *blockIter) Last() *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -1069,7 +1069,7 @@ start:
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -1212,8 +1212,8 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			if invariants.Enabled && value == 0 {
 				panic(errors.AssertionFailedf("value is of length 0, but we expect a valuePrefix"))
 			}
-			valPrefix := *((*valuePrefix)(valuePtr))
-			if setHasSamePrefix(valPrefix) {
+			valPrefix := *((*block.ValuePrefix)(valuePtr))
+			if valPrefix.SetHasSamePrefix() {
 				// Fast-path. No need to assemble i.fullKey, or update i.key. We know
 				// that subsequent keys will not have a shared length that is greater
 				// than the prefix of the current key, which is also the prefix of
@@ -1360,7 +1360,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			}
 			if i.ikv.K.Kind() != InternalKeyKindSet {
 				i.ikv.V = base.MakeInPlaceValue(i.val)
-			} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+			} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 				i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 			} else {
 				i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -1418,7 +1418,7 @@ start:
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+		} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
 			i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
@@ -1499,7 +1499,7 @@ start:
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if i.lazyValueHandling.vbr == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
