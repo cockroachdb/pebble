@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -991,7 +992,7 @@ func TestBlockProperties(t *testing.T) {
 
 					var blocks []int
 					var i int
-					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
+					iter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 					for kv := iter.First(); kv != nil; kv = iter.Next() {
 						bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
 						if err != nil {
@@ -1352,7 +1353,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		return err.Error()
 	}
 	twoLevelIndex := r.Properties.IndexPartitions > 0
-	i, err := newBlockIter(r.Compare, r.Split, bh.Get(), NoTransforms)
+	i, err := rowblk.NewIter(r.Compare, r.Split, bh.Get(), NoTransforms)
 	if err != nil {
 		return err.Error()
 	}
@@ -1396,13 +1397,13 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		// If the table has a two-level index, also decode the index
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
-			subiter := &blockIter{}
+			subiter := &rowblk.Iter{}
 			subIndex, err := r.readBlock(
 				context.Background(), bhp.Handle, nil, nil, nil, nil, nil)
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
+			if err := subiter.Init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return err.Error()
 			}
 			for kv := subiter.First(); kv != nil; kv = subiter.Next() {

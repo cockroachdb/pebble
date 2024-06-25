@@ -329,8 +329,8 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			forceIgnoreValueBlocks := func(i *singleLevelIterator) {
 				i.vbReader = nil
-				i.data.lazyValueHandling.vbr = nil
-				i.data.lazyValueHandling.hasValuePrefix = false
+				i.data.SetGetLazyValue(nil)
+				i.data.SetHasValuePrefix(false)
 			}
 			switch i := origIter.(type) {
 			case *twoLevelIterator:
@@ -457,6 +457,10 @@ func TestClearIndexBlockBuf(t *testing.T) {
 		t, i.size.estimate, sizeEstimate{emptySize: rowblk.EmptySize},
 	)
 	indexBlockBufPool.Put(i)
+}
+
+func ikey(s string) base.InternalKey {
+	return base.InternalKey{UserKey: []byte(s)}
 }
 
 func TestClearWriteTask(t *testing.T) {

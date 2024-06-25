@@ -434,9 +434,9 @@ func runIterCmd(
 			si, _ := origIter.(*singleLevelIterator)
 			if twoLevelIter, ok := origIter.(*twoLevelIterator); ok {
 				si = &twoLevelIter.singleLevelIterator
-				if twoLevelIter.topLevelIndex.valid() {
+				if twoLevelIter.topLevelIndex.Valid() {
 					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Key())
-					v := twoLevelIter.topLevelIndex.value()
+					v := twoLevelIter.topLevelIndex.Value()
 					bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
 					if err != nil {
 						fmt.Fprintf(&b, "|  topLevelIndex.InPlaceValue() failed to decode as BHP: %s\n", err)
@@ -447,11 +447,11 @@ func runIterCmd(
 				} else {
 					fmt.Fprintf(&b, "|  topLevelIndex iter invalid\n")
 				}
-				fmt.Fprintf(&b, "|  topLevelIndex.isDataInvalidated()=%t\n", twoLevelIter.topLevelIndex.isDataInvalidated())
+				fmt.Fprintf(&b, "|  topLevelIndex.isDataInvalidated()=%t\n", twoLevelIter.topLevelIndex.IsDataInvalidated())
 			}
-			if si.index.valid() {
+			if si.index.Valid() {
 				fmt.Fprintf(&b, "|  index.Key() = %q\n", si.index.Key())
-				v := si.index.value()
+				v := si.index.Value()
 				bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
 				if err != nil {
 					fmt.Fprintf(&b, "|  index.InPlaceValue() failed to decode as BHP: %s\n", err)
@@ -462,8 +462,8 @@ func runIterCmd(
 			} else {
 				fmt.Fprintf(&b, "|  index iter invalid\n")
 			}
-			fmt.Fprintf(&b, "|  index.isDataInvalidated()=%t\n", si.index.isDataInvalidated())
-			fmt.Fprintf(&b, "|  data.isDataInvalidated()=%t\n", si.data.isDataInvalidated())
+			fmt.Fprintf(&b, "|  index.isDataInvalidated()=%t\n", si.index.IsDataInvalidated())
+			fmt.Fprintf(&b, "|  data.isDataInvalidated()=%t\n", si.data.IsDataInvalidated())
 			fmt.Fprintf(&b, "|  hideObsoletePoints = %t\n", si.transforms.HideObsoletePoints)
 			fmt.Fprintf(&b, "|  dataBH = (Offset: %d, Length: %d)\n", si.dataBH.Offset, si.dataBH.Length)
 			fmt.Fprintf(&b, "|  (boundsCmp,positionedUsingLatestBounds) = (%d,%t)\n", si.boundsCmp, si.positionedUsingLatestBounds)

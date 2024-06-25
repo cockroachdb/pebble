@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
@@ -39,10 +40,10 @@ type singleLevelIterator struct {
 	// endKeyInclusive is set to force the iterator to treat the upper field as
 	// inclusive while iterating instead of exclusive.
 	endKeyInclusive       bool
-	index                 blockIter
+	index                 rowblk.Iter
 	indexFilterRH         objstorage.ReadHandle
 	indexFilterRHPrealloc objstorageprovider.PreallocatedReadHandle
-	data                  blockIter
+	data                  rowblk.Iter
 	dataRH                objstorage.ReadHandle
 	dataRHPrealloc        objstorageprovider.PreallocatedReadHandle
 	// dataBH refers to the last data block that the iterator considered
@@ -219,7 +220,7 @@ func (i *singleLevelIterator) init(
 	i.stats = stats
 	i.transforms = transforms
 	i.bufferPool = bufferPool
-	err = i.index.initHandle(i.cmp, r.Split, indexH, transforms)
+	err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -243,10 +244,10 @@ func (i *singleLevelIterator) init(
 				vbih:   r.valueBIH,
 				stats:  stats,
 			}
-			i.data.lazyValueHandling.vbr = i.vbReader
+			i.data.SetGetLazyValue(i.vbReader.getLazyValueForPrefixAndValueHandle)
 			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
-		i.data.lazyValueHandling.hasValuePrefix = true
+		i.data.SetHasValuePrefix(true)
 	}
 	return nil
 }
@@ -276,8 +277,8 @@ func (i *singleLevelIterator) setupForCompaction() {
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
 	return singleLevelIterator{
-		index:  i.index.resetForReuse(),
-		data:   i.data.resetForReuse(),
+		index:  i.index.ResetForReuse(),
+		data:   i.data.ResetForReuse(),
 		inPool: true,
 	}
 }
@@ -311,12 +312,12 @@ func (i *singleLevelIterator) initBounds() {
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
 	// TODO(radu): determine automatically if we need to call First or not and
 	// unify this function with initBounds().
-	if i.data.getFirstUserKey() == nil {
+	if i.data.FirstUserKey() == nil {
 		panic("initBoundsForAlreadyLoadedBlock must not be called on empty or corrupted block")
 	}
 	i.blockLower = i.lower
 	if i.blockLower != nil {
-		firstUserKey := i.data.getFirstUserKey()
+		firstUserKey := i.data.FirstUserKey()
 		// TODO(radu): this should be <= 0
 		if firstUserKey != nil && i.cmp(i.blockLower, firstUserKey) < 0 {
 			// The lower-bound is less than the first key in the block. No need
@@ -414,16 +415,16 @@ func (i *singleLevelIterator) SetContext(ctx context.Context) {
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
 func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
-	if !i.index.valid() {
+	if !i.index.Valid() {
 		// Ensure the data block iterator is invalidated even if loading of the block
 		// fails.
-		i.data.invalidate()
+		i.data.Invalidate()
 		return loadBlockFailed
 	}
 	// Load the next block.
-	v := i.index.value()
+	v := i.index.Value()
 	bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
-	if i.dataBH == bhp.Handle && i.data.valid() {
+	if i.dataBH == bhp.Handle && i.data.Valid() {
 		// We're already at the data block we want to load. Reset bounds in case
 		// they changed since the last seek, but don't reload the block from cache
 		// or disk.
@@ -436,7 +437,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 	}
 	// Ensure the data block iterator is invalidated even if loading of the block
 	// fails.
-	i.data.invalidate()
+	i.data.Invalidate()
 	i.dataBH = bhp.Handle
 	if err != nil {
 		i.err = errCorruptIndexEntry(err)
@@ -463,10 +464,10 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, i.reader.Split, block, i.transforms)
+	i.err = i.data.InitHandle(i.cmp, i.reader.Split, block, i.transforms)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
-		i.data.invalidate()
+		i.data.Invalidate()
 		return loadBlockFailed
 	}
 	i.initBounds()
@@ -619,7 +620,7 @@ func (i *singleLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.I
 		// The i.exhaustedBounds comparison indicates that the upper bound was
 		// reached. The i.data.isDataInvalidated() indicates that the sstable was
 		// exhausted.
-		if (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) && i.err == nil {
+		if (i.exhaustedBounds == +1 || i.data.IsDataInvalidated()) && i.err == nil {
 			// Already exhausted, so return nil.
 			return nil
 		}
@@ -653,7 +654,7 @@ func (i *singleLevelIterator) seekGEHelper(
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
 
 	var dontSeekWithinBlock bool
-	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
+	if !i.data.IsDataInvalidated() && !i.index.IsDataInvalidated() && i.data.Valid() && i.index.Valid() &&
 		boundsCmp > 0 && i.cmp(key, i.index.Key().UserKey) <= 0 {
 		// Fast-path: The bounds have moved forward and this SeekGE is
 		// respecting the lower bound (guaranteed by Iterator). We know that
@@ -713,7 +714,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			// The target key is greater than any key in the index block.
 			// Invalidate the block iterator so that a subsequent call to Prev()
 			// will return the last key in the table.
-			i.data.invalidate()
+			i.data.Invalidate()
 			return nil
 		}
 		result := i.loadBlock(+1)
@@ -796,7 +797,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 			// already loaded block. It was necessary in earlier versions of the code
 			// since the caller was allowed to call Next when SeekPrefixGE returned
 			// nil. This is no longer allowed.
-			i.data.invalidate()
+			i.data.Invalidate()
 			return nil
 		}
 		i.lastBloomFilterMatched = true
@@ -805,7 +806,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 		// The i.exhaustedBounds comparison indicates that the upper bound was
 		// reached. The i.data.isDataInvalidated() indicates that the sstable was
 		// exhausted.
-		if (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) && err == nil {
+		if (i.exhaustedBounds == +1 || i.data.IsDataInvalidated()) && err == nil {
 			// Already exhausted, so return nil.
 			return nil
 		}
@@ -979,8 +980,8 @@ func (i *singleLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.I
 	i.positionedUsingLatestBounds = true
 
 	var dontSeekWithinBlock bool
-	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
-		boundsCmp < 0 && i.cmp(i.data.getFirstUserKey(), key) < 0 {
+	if !i.data.IsDataInvalidated() && !i.index.IsDataInvalidated() && i.data.Valid() && i.index.Valid() &&
+		boundsCmp < 0 && i.cmp(i.data.FirstUserKey(), key) < 0 {
 		// Fast-path: The bounds have moved backward, and this SeekLT is
 		// respecting the upper bound (guaranteed by Iterator). We know that
 		// the iterator must already be positioned within or just outside the
@@ -1084,7 +1085,7 @@ func (i *singleLevelIterator) firstInternal() *base.InternalKV {
 
 	var kv *base.InternalKV
 	if kv = i.index.First(); kv == nil {
-		i.data.invalidate()
+		i.data.Invalidate()
 		return nil
 	}
 	result := i.loadBlock(+1)
@@ -1151,7 +1152,7 @@ func (i *singleLevelIterator) lastInternal() *base.InternalKV {
 
 	var ikv *base.InternalKV
 	if ikv = i.index.Last(); ikv == nil {
-		i.data.invalidate()
+		i.data.Invalidate()
 		return nil
 	}
 	result := i.loadBlock(-1)
@@ -1243,7 +1244,7 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) *base.InternalKV {
 		// The target key is greater than any key in the index block.
 		// Invalidate the block iterator so that a subsequent call to Prev()
 		// will return the last key in the table.
-		i.data.invalidate()
+		i.data.Invalidate()
 		return nil
 	}
 	if i.cmp(succKey, ikv.K.UserKey) > 0 {
@@ -1252,7 +1253,7 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) *base.InternalKV {
 			// The target key is greater than any key in the index block.
 			// Invalidate the block iterator so that a subsequent call to Prev()
 			// will return the last key in the table.
-			i.data.invalidate()
+			i.data.Invalidate()
 			return nil
 		}
 	}
@@ -1315,7 +1316,7 @@ func (i *singleLevelIterator) skipForward() *base.InternalKV {
 	for {
 		indexKey := i.index.Next()
 		if indexKey == nil {
-			i.data.invalidate()
+			i.data.Invalidate()
 			break
 		}
 		result := i.loadBlock(+1)
@@ -1396,7 +1397,7 @@ func (i *singleLevelIterator) skipBackward() *base.InternalKV {
 	for {
 		indexKey := i.index.Prev()
 		if indexKey == nil {
-			i.data.invalidate()
+			i.data.Invalidate()
 			break
 		}
 		result := i.loadBlock(-1)

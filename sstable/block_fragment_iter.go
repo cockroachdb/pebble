@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // fragmentBlockIter wraps a blockIter, implementing the
@@ -36,7 +37,7 @@ import (
 // byte slices (start, end, suffix, value) as stable for the lifetime of the
 // iterator.
 type fragmentBlockIter struct {
-	blockIter blockIter
+	blockIter rowblk.Iter
 	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
 	dir       int8
@@ -129,7 +130,7 @@ func (i *fragmentBlockIter) elideKeysOfSameSeqNum() {
 // reconstruct a keyspan.Span that holds all the keys defined over the span.
 func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error) {
 	i.span = keyspan.Span{}
-	if kv == nil || !i.blockIter.valid() {
+	if kv == nil || !i.blockIter.Valid() {
 		return nil, nil
 	}
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
@@ -147,8 +148,8 @@ func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, e
 
 	// Overlapping fragments are required to have exactly equal start and
 	// end bounds.
-	for kv = i.blockIter.Next(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
-		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
+	for kv = i.blockIter.Next(); kv != nil && i.blockIter.Cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
+		if err := i.addToSpan(i.blockIter.Cmp, kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
 	}
@@ -169,7 +170,7 @@ func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, e
 // to reconstruct a keyspan.Span that holds all the keys defined over the span.
 func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error) {
 	i.span = keyspan.Span{}
-	if kv == nil || !i.blockIter.valid() {
+	if kv == nil || !i.blockIter.Valid() {
 		return nil, nil
 	}
 
@@ -184,8 +185,8 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 	//
 	// Overlapping fragments are required to have exactly equal start and
 	// end bounds.
-	for kv = i.blockIter.Prev(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
-		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
+	for kv = i.blockIter.Prev(); kv != nil && i.blockIter.Cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
+		if err := i.addToSpan(i.blockIter.Cmp, kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
 	}
@@ -214,7 +215,7 @@ func (i *fragmentBlockIter) Close() {
 	}
 
 	*i = fragmentBlockIter{
-		blockIter:  i.blockIter.resetForReuse(),
+		blockIter:  i.blockIter.ResetForReuse(),
 		closeCheck: i.closeCheck,
 	}
 	// TODO(radu): reenable this, see #3678.
@@ -266,7 +267,7 @@ func (i *fragmentBlockIter) Next() (*keyspan.Span, error) {
 		i.dir = +1
 	}
 	// We know that this blockIter has in-place values.
-	return i.gatherForward(&i.blockIter.ikv)
+	return i.gatherForward(i.blockIter.KV())
 }
 
 // Prev implements (keyspan.FragmentIterator).Prev.
@@ -302,14 +303,14 @@ func (i *fragmentBlockIter) Prev() (*keyspan.Span, error) {
 		i.dir = -1
 	}
 	// We know that this blockIter has in-place values.
-	return i.gatherBackward(&i.blockIter.ikv)
+	return i.gatherBackward(i.blockIter.KV())
 }
 
 // SeekGE implements (keyspan.FragmentIterator).SeekGE.
 func (i *fragmentBlockIter) SeekGE(k []byte) (*keyspan.Span, error) {
 	if s, err := i.SeekLT(k); err != nil {
 		return nil, err
-	} else if s != nil && i.blockIter.cmp(k, s.End) < 0 {
+	} else if s != nil && i.blockIter.Cmp(k, s.End) < 0 {
 		return s, nil
 	}
 	// TODO(jackson): If the above i.SeekLT(k) discovers a span but the span
@@ -334,7 +335,7 @@ func (i *fragmentBlockIter) WrapChildren(wrap keyspan.WrapFn) {}
 
 func checkFragmentBlockIterator(obj interface{}) {
 	i := obj.(*fragmentBlockIter)
-	if p := i.blockIter.handle.Get(); p != nil {
+	if p := i.blockIter.Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}

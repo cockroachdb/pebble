@@ -128,11 +128,11 @@ var twoLevelIterPool = sync.Pool{
 
 func checkSingleLevelIterator(obj interface{}) {
 	i := obj.(*singleLevelIterator)
-	if p := i.data.handle.Get(); p != nil {
+	if p := i.data.Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
-	if p := i.index.handle.Get(); p != nil {
+	if p := i.index.Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
@@ -140,11 +140,11 @@ func checkSingleLevelIterator(obj interface{}) {
 
 func checkTwoLevelIterator(obj interface{}) {
 	i := obj.(*twoLevelIterator)
-	if p := i.data.handle.Get(); p != nil {
+	if p := i.data.Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
-	if p := i.index.handle.Get(); p != nil {
+	if p := i.index.Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
