@@ -790,7 +790,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					if transforms.HideObsoletePoints {
 						var retHideObsoletePoints bool
 						retHideObsoletePoints, bpfs = r.TryAddBlockPropertyFilterForHideObsoletePoints(
-							InternalKeySeqNumMax, InternalKeySeqNumMax-1, bpfs)
+							base.SeqNumMax, base.SeqNumMax-1, bpfs)
 						require.True(t, retHideObsoletePoints)
 					}
 				}
@@ -1305,7 +1305,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			nil, nil, nil,
 			true, nil, CategoryAndQoS{}, nil,
 			TrivialReaderProvider{Reader: eReader}, &virtualState{
-				lower: base.MakeInternalKey([]byte("_"), base.InternalKeySeqNumMax, base.InternalKeyKindSet),
+				lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
 				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
 			})
 		require.NoError(t, err)

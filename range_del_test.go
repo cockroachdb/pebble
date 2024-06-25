@@ -78,7 +78,7 @@ func TestRangeDel(t *testing.T) {
 		case "iter":
 			snap := Snapshot{
 				db:     d,
-				seqNum: InternalKeySeqNumMax,
+				seqNum: base.SeqNumMax,
 			}
 			if td.HasArg("seq") {
 				var n uint64

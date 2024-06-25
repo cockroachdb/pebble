@@ -110,7 +110,7 @@ func (g *getIter) Next() *base.InternalKV {
 					// If the KV pair is not visible at the get's snapshot,
 					// Next. The level may still contain older keys with the
 					// same user key that are visible.
-					if !g.iterKV.Visible(g.snapshot, base.InternalKeySeqNumMax) {
+					if !g.iterKV.Visible(g.snapshot, base.SeqNumMax) {
 						g.iterKV = g.iter.Next()
 						continue
 					}
@@ -173,7 +173,7 @@ func (g *getIter) initializeNextIterator() (ok bool) {
 		if !g.maybeSetTombstone(g.batch.newRangeDelIter(nil,
 			// Get always reads the entirety of the batch's history, so no
 			// batch keys should be filtered.
-			base.InternalKeySeqNumMax,
+			base.SeqNumMax,
 		)) {
 			return false
 		}

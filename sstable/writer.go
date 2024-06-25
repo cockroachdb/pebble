@@ -1079,7 +1079,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		}
 	}
 
-	if key.Trailer == InternalKeyRangeDeleteSentinel {
+	if key.Trailer == base.InternalKeyRangeDeleteSentinel {
 		w.err = errors.Errorf("pebble: cannot add range delete sentinel: %s", key.Pretty(w.formatKey))
 		return w.err
 	}

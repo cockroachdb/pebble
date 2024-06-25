@@ -2684,7 +2684,7 @@ func (d *DB) rotateWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 }
 
 func (d *DB) getEarliestUnflushedSeqNumLocked() base.SeqNum {
-	seqNum := InternalKeySeqNumMax
+	seqNum := base.SeqNumMax
 	for i := range d.mu.mem.queue {
 		logSeqNum := d.mu.mem.queue[i].logSeqNum
 		if seqNum > logSeqNum {

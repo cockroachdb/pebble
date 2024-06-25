@@ -40,16 +40,21 @@ const (
 	// SeqNumStart is the first sequence number assigned to a key. Sequence
 	// numbers 1-9 are reserved for potential future use.
 	SeqNumStart SeqNum = 10
+	// SeqNumMax is the largest valid sequence number.
+	SeqNumMax SeqNum = 1<<56 - 1
+	// SeqNumBatchBit is set on batch sequence numbers which prevents those
+	// entries from being excluded from iteration.
+	SeqNumBatchBit SeqNum = 1 << 55
 )
 
 func (s SeqNum) String() string {
-	if s == InternalKeySeqNumMax {
+	if s == SeqNumMax {
 		return "inf"
 	}
 	var batch string
-	if s&InternalKeySeqNumBatch != 0 {
+	if s&SeqNumBatchBit != 0 {
 		batch = "b"
-		s &^= InternalKeySeqNumBatch
+		s &^= SeqNumBatchBit
 	}
 	return fmt.Sprintf("%s%d", batch, s)
 }
@@ -155,25 +160,18 @@ const (
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = InternalKeyKindSSTableInternalObsoleteMask
 
-	// InternalKeySeqNumBatch is a bit that is set on batch sequence numbers
-	// which prevents those entries from being excluded from iteration.
-	InternalKeySeqNumBatch SeqNum = 1 << 55
-
-	// InternalKeySeqNumMax is the largest valid sequence number.
-	InternalKeySeqNumMax SeqNum = 1<<56 - 1
-
 	// InternalKeyRangeDeleteSentinel is the marker for a range delete sentinel
 	// key. This sequence number and kind are used for the upper stable boundary
 	// when a range deletion tombstone is the largest key in an sstable. This is
 	// necessary because sstable boundaries are inclusive, while the end key of a
 	// range deletion tombstone is exclusive.
-	InternalKeyRangeDeleteSentinel = (InternalKeyTrailer(InternalKeySeqNumMax) << 8) | InternalKeyTrailer(InternalKeyKindRangeDelete)
+	InternalKeyRangeDeleteSentinel = (InternalKeyTrailer(SeqNumMax) << 8) | InternalKeyTrailer(InternalKeyKindRangeDelete)
 
 	// InternalKeyBoundaryRangeKey is the marker for a range key boundary. This
 	// sequence number and kind are used during interleaved range key and point
 	// iteration to allow an iterator to stop at range key start keys where
 	// there exists no point key.
-	InternalKeyBoundaryRangeKey = (InternalKeyTrailer(InternalKeySeqNumMax) << 8) | InternalKeyTrailer(InternalKeyKindRangeKeySet)
+	InternalKeyBoundaryRangeKey = (InternalKeyTrailer(SeqNumMax) << 8) | InternalKeyTrailer(InternalKeyKindRangeKeySet)
 )
 
 // Assert InternalKeyKindSSTableInternalObsoleteBit > InternalKeyKindMax
@@ -257,7 +255,7 @@ func MakeInternalKey(userKey []byte, seqNum SeqNum, kind InternalKeyKind) Intern
 // number and kind ensuring that it sorts before any other internal keys for
 // the same user key.
 func MakeSearchKey(userKey []byte) InternalKey {
-	return MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindMax)
+	return MakeInternalKey(userKey, SeqNumMax, InternalKeyKindMax)
 }
 
 // MakeRangeDeleteSentinelKey constructs an internal key that is a range
@@ -274,7 +272,7 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 // exclusive sentinel key, used as the upper boundary for an sstable
 // when a ranged key is the largest key in an sstable.
 func MakeExclusiveSentinelKey(kind InternalKeyKind, userKey []byte) InternalKey {
-	return MakeInternalKey(userKey, InternalKeySeqNumMax, kind)
+	return MakeInternalKey(userKey, SeqNumMax, kind)
 }
 
 var kindsMap = map[string]InternalKeyKind{
@@ -296,7 +294,7 @@ var kindsMap = map[string]InternalKeyKind{
 
 // ParseInternalKey parses the string representation of an internal key. The
 // format is <user-key>.<kind>.<seq-num>. If the seq-num starts with a "b" it
-// is marked as a batch-seq-num (i.e. the InternalKeySeqNumBatch bit is set).
+// is marked as a batch-seq-num (i.e. the SeqNumBatchBit bit is set).
 func ParseInternalKey(s string) InternalKey {
 	x := strings.Split(s, ".")
 	if len(x) != 3 {
@@ -316,7 +314,7 @@ func ParseInternalKey(s string) InternalKey {
 // end keys).
 func ParseSeqNum(s string) SeqNum {
 	if s == "inf" {
-		return InternalKeySeqNumMax
+		return SeqNumMax
 	}
 	batch := s[0] == 'b'
 	if batch {
@@ -328,7 +326,7 @@ func ParseSeqNum(s string) SeqNum {
 	}
 	seqNum := SeqNum(n)
 	if batch {
-		seqNum |= InternalKeySeqNumBatch
+		seqNum |= SeqNumBatchBit
 	}
 	return seqNum
 }
@@ -404,7 +402,7 @@ func (k InternalKey) Separator(
 		// any sequence number and kind here to create a valid separator key. We
 		// use the max sequence number to match the behavior of LevelDB and
 		// RocksDB.
-		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindSeparator)
+		return MakeInternalKey(buf, SeqNumMax, InternalKeyKindSeparator)
 	}
 	return k
 }
@@ -421,7 +419,7 @@ func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) Internal
 		// any sequence number and kind here to create a valid separator key. We
 		// use the max sequence number to match the behavior of LevelDB and
 		// RocksDB.
-		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindSeparator)
+		return MakeInternalKey(buf, SeqNumMax, InternalKeyKindSeparator)
 	}
 	return k
 }
@@ -471,8 +469,8 @@ func Visible(seqNum SeqNum, snapshot, batchSnapshot SeqNum) bool {
 	// larger snapshot. We dictate that the maximal sequence number is always
 	// visible.
 	return seqNum < snapshot ||
-		((seqNum&InternalKeySeqNumBatch) != 0 && seqNum < batchSnapshot) ||
-		seqNum == InternalKeySeqNumMax
+		((seqNum&SeqNumBatchBit) != 0 && seqNum < batchSnapshot) ||
+		seqNum == SeqNumMax
 }
 
 // SetKind sets the kind component of the key.
@@ -522,7 +520,7 @@ func (k InternalKey) Pretty(f FormatKey) fmt.Formatter {
 // with the same user key if used as an end boundary. See the comment on
 // InternalKeyRangeDeletionSentinel.
 func (k InternalKey) IsExclusiveSentinel() bool {
-	if k.SeqNum() != InternalKeySeqNumMax {
+	if k.SeqNum() != SeqNumMax {
 		return false
 	}
 	switch kind := k.Kind(); kind {

@@ -303,8 +303,8 @@ func (m *mergingIter) init(
 		m.lower = opts.LowerBound
 		m.upper = opts.UpperBound
 	}
-	m.snapshot = InternalKeySeqNumMax
-	m.batchSnapshot = InternalKeySeqNumMax
+	m.snapshot = base.SeqNumMax
+	m.batchSnapshot = base.SeqNumMax
 	m.levels = levels
 	m.heap.cmp = cmp
 	m.split = split

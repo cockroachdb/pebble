@@ -82,7 +82,7 @@ func (k Key) SeqNum() base.SeqNum {
 // fragmented.
 func (k Key) VisibleAt(snapshot base.SeqNum) bool {
 	seq := k.SeqNum()
-	return seq < snapshot || seq&base.InternalKeySeqNumBatch != 0
+	return seq < snapshot || seq&base.SeqNumBatchBit != 0
 }
 
 // Kind returns the kind component of the key.
@@ -272,7 +272,7 @@ func (s Span) Visible(snapshot base.SeqNum) Span {
 	lastBatchIdx := -1
 	lastNonVisibleIdx := -1
 	for i := range s.Keys {
-		if seqNum := s.Keys[i].SeqNum(); seqNum&base.InternalKeySeqNumBatch != 0 {
+		if seqNum := s.Keys[i].SeqNum(); seqNum&base.SeqNumBatchBit != 0 {
 			// Batch key. Always visible.
 			lastBatchIdx = i
 		} else if seqNum >= snapshot {
@@ -325,7 +325,7 @@ func (s *Span) VisibleAt(snapshot base.SeqNum) bool {
 	}
 	if len(s.Keys) == 0 {
 		return false
-	} else if first := s.Keys[0].SeqNum(); first&base.InternalKeySeqNumBatch != 0 {
+	} else if first := s.Keys[0].SeqNum(); first&base.SeqNumBatchBit != 0 {
 		// Only visible batch keys are included when an Iterator's batch spans
 		// are fragmented. They must always be visible.
 		return true
@@ -386,7 +386,7 @@ func (s *Span) CoversAt(snapshot, seqNum base.SeqNum) bool {
 	// NB: A key is visible at `snapshot` if its sequence number is strictly
 	// less than `snapshot`. See base.Visible.
 	for i := range s.Keys {
-		if kseq := s.Keys[i].SeqNum(); kseq&base.InternalKeySeqNumBatch != 0 {
+		if kseq := s.Keys[i].SeqNum(); kseq&base.SeqNumBatchBit != 0 {
 			// Only visible batch keys are included when an Iterator's batch spans
 			// are fragmented. They must always be visible.
 			return kseq > seqNum

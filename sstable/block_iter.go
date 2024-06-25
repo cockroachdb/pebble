@@ -438,7 +438,7 @@ func (i *blockIter) readFirstKey() error {
 // The sstable internal obsolete bit is set when writing a block and unset by
 // blockIter, so no code outside block writing/reading code ever sees it.
 const trailerObsoleteBit = base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteBit)
-const trailerObsoleteMask = (base.InternalKeyTrailer(InternalKeySeqNumMax) << 8) | base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteMask)
+const trailerObsoleteMask = (base.InternalKeyTrailer(base.SeqNumMax) << 8) | base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteMask)
 
 func (i *blockIter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on

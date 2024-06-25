@@ -136,7 +136,7 @@ func (m *simpleMergingIter) step() bool {
 	item := &m.heap.items[0]
 	l := &m.levels[item.index]
 	// Sentinels are not relevant for this point checking.
-	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot, base.InternalKeySeqNumMax) {
+	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot, base.SeqNumMax) {
 		// This is a visible point key.
 		if !m.handleVisiblePoint(item, l) {
 			return false

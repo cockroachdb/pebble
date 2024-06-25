@@ -46,7 +46,7 @@ func TestMergingIter(t *testing.T) {
 			return fmt.Sprintf("%d levels", len(definedIters))
 		case "iter":
 			buf.Reset()
-			snapshot := base.InternalKeySeqNumMax
+			snapshot := base.SeqNumMax
 			iters := slices.Clone(definedIters)
 			for _, cmdArg := range td.CmdArgs {
 				switch cmdArg.Key {
@@ -179,7 +179,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	fragmenterIter := keyspan.NewIter(f.Cmp, allFragmented)
 	mergingIter := &MergingIter{}
-	mergingIter.Init(testkeys.Comparer, keyspan.VisibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), iters...)
+	mergingIter.Init(testkeys.Comparer, keyspan.VisibleTransform(base.SeqNumMax), new(MergingBuffers), iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.

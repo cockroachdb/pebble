@@ -59,7 +59,7 @@ func (s Snapshots) Index(seq base.SeqNum) int {
 func (s Snapshots) IndexAndSeqNum(seq base.SeqNum) (int, base.SeqNum) {
 	index := s.Index(seq)
 	if index == len(s) {
-		return index, base.InternalKeySeqNumMax
+		return index, base.SeqNumMax
 	}
 	return index, s[index]
 }

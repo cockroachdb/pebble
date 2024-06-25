@@ -132,7 +132,7 @@ func NewExternalIterWithContext(
 			// of readers indexed by *fileMetadata.
 			panic("unreachable")
 		},
-		seqNum: base.InternalKeySeqNumMax,
+		seqNum: base.SeqNumMax,
 	}
 	if iterOpts != nil {
 		dbi.opts = *iterOpts
@@ -220,7 +220,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 	}
 
 	it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)
-	it.alloc.merging.snapshot = base.InternalKeySeqNumMax
+	it.alloc.merging.snapshot = base.SeqNumMax
 	if len(mlevels) <= cap(it.alloc.levelsPositioned) {
 		it.alloc.merging.levelsPositioned = it.alloc.levelsPositioned[:len(mlevels)]
 	}
@@ -269,7 +269,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 				it.rangeKey.init(it.comparer.Compare, it.comparer.Split, &it.opts)
 				it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
 					&it.comparer,
-					base.InternalKeySeqNumMax,
+					base.SeqNumMax,
 					it.opts.LowerBound, it.opts.UpperBound,
 					&it.hasPrefix, &it.prefixOrFullSeekKey,
 					false /* internalKeys */, &it.rangeKey.internal,

@@ -1061,7 +1061,7 @@ func TestBatchRangeOps(t *testing.T) {
 				for ; s != nil; s, err = fragmentIter.Next() {
 					for i := range s.Keys {
 						s.Keys[i].Trailer = base.MakeTrailer(
-							s.Keys[i].SeqNum()&^base.InternalKeySeqNumBatch,
+							s.Keys[i].SeqNum()&^base.SeqNumBatchBit,
 							s.Keys[i].Kind(),
 						)
 					}
@@ -1072,7 +1072,7 @@ func TestBatchRangeOps(t *testing.T) {
 				}
 			} else {
 				for kv := internalIter.First(); kv != nil; kv = internalIter.Next() {
-					kv.K.SetSeqNum(kv.K.SeqNum() &^ InternalKeySeqNumBatch)
+					kv.K.SetSeqNum(kv.K.SeqNum() &^ base.SeqNumBatchBit)
 					fmt.Fprintf(&buf, "%s:%s\n", kv.K, kv.InPlaceValue())
 				}
 			}

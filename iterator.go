@@ -2611,7 +2611,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// iterator or range-key iterator but we require one, it'll be created in
 	// the slow path that reconstructs the iterator in finishInitializingIter.
 	if i.batch != nil {
-		nextBatchSeqNum := (base.SeqNum(len(i.batch.data)) | base.InternalKeySeqNumBatch)
+		nextBatchSeqNum := (base.SeqNum(len(i.batch.data)) | base.SeqNumBatchBit)
 		if nextBatchSeqNum != i.batchSeqNum {
 			i.batchSeqNum = nextBatchSeqNum
 			if i.merging != nil {
@@ -2870,7 +2870,7 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	// If the caller requested the clone have a current view of the indexed
 	// batch, set the clone's batch sequence number appropriately.
 	if i.batch != nil && opts.RefreshBatchView {
-		dbi.batchSeqNum = (base.SeqNum(len(i.batch.data)) | base.InternalKeySeqNumBatch)
+		dbi.batchSeqNum = (base.SeqNum(len(i.batch.data)) | base.SeqNumBatchBit)
 	}
 
 	return finishInitializingIter(ctx, buf), nil
