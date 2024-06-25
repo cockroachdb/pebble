@@ -4,7 +4,10 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
+)
 
 // TODO(jackson): Consider removing this type and adding bounds enforcement
 // directly to the MergingIter. This type is probably too lightweight to warrant
@@ -265,4 +268,12 @@ func (i *BoundedIter) checkBackwardBound(span *Span, err error) (*Span, error) {
 // WrapChildren implements FragmentIterator.
 func (i *BoundedIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *BoundedIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
 }

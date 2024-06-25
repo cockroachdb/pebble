@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // TODO(jackson): Consider implementing an optimization to seek lower levels
@@ -1104,6 +1105,16 @@ func (m *MergingIter) WrapChildren(wrap keyspan.WrapFn) {
 		m.levels[i].iter = wrap(m.levels[i].iter)
 	}
 	m.wrapFn = wrap
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (m *MergingIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", m, m)
+	for i := range m.levels {
+		if iter := m.levels[i].iter; iter != nil {
+			m.levels[i].iter.DebugTree(n)
+		}
+	}
 }
 
 type mergingIterItem struct {

@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/rawalloc"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 const (
@@ -1827,6 +1828,11 @@ func (i *batchIter) SetBounds(lower, upper []byte) {
 
 func (i *batchIter) SetContext(_ context.Context) {}
 
+// DebugTree is part of the InternalIterator interface.
+func (i *batchIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
+}
+
 type flushableBatchEntry struct {
 	// offset is the byte offset of the record within the batch repr.
 	offset uint32
@@ -2322,6 +2328,11 @@ func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
 }
 
 func (i *flushableBatchIter) SetContext(_ context.Context) {}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *flushableBatchIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
+}
 
 // flushFlushableBatchIter is similar to flushableBatchIter but it keeps track
 // of number of bytes iterated.

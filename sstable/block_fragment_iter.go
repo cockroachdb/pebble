@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // fragmentBlockIter wraps a blockIter, implementing the
@@ -41,6 +42,9 @@ type fragmentBlockIter struct {
 	span      keyspan.Span
 	dir       int8
 
+	// fileNum is used for logging/debugging.
+	fileNum base.DiskFileNum
+
 	// elideSameSeqnum, if true, returns only the first-occurring (in forward
 	// order) Key for each sequence number.
 	elideSameSeqnum bool
@@ -58,17 +62,18 @@ var fragmentBlockIterPool = sync.Pool{
 	},
 }
 
-func newFragmentBlockIter(elideSameSeqnum bool) *fragmentBlockIter {
+func newFragmentBlockIter(fileNum base.DiskFileNum, elideSameSeqnum bool) *fragmentBlockIter {
 	i := fragmentBlockIterPool.Get().(*fragmentBlockIter)
-	i.init(elideSameSeqnum)
+	i.init(fileNum, elideSameSeqnum)
 	return i
 }
 
-func (i *fragmentBlockIter) init(elideSameSeqnum bool) {
+func (i *fragmentBlockIter) init(fileNum base.DiskFileNum, elideSameSeqnum bool) {
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.elideSameSeqnum = elideSameSeqnum
+	i.fileNum = fileNum
 	i.closeCheck = invariants.CloseChecker{}
 }
 
@@ -331,6 +336,11 @@ func (i *fragmentBlockIter) String() string {
 
 // WrapChildren implements FragmentIterator.
 func (i *fragmentBlockIter) WrapChildren(wrap keyspan.WrapFn) {}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *fragmentBlockIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p) fileNum=%s", i, i, i.fileNum)
+}
 
 func checkFragmentBlockIterator(obj interface{}) {
 	i := obj.(*fragmentBlockIter)

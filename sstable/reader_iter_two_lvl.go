@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -208,6 +209,11 @@ func (i *twoLevelIterator) String() string {
 		return i.vState.fileNum.String()
 	}
 	return i.reader.fileNum.String()
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *twoLevelIterator) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p) fileNum=%s", i, i, i.String())
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
