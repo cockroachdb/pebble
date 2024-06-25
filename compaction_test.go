@@ -1100,7 +1100,7 @@ func TestManualCompaction(t *testing.T) {
 				// sequence number, otherwise the DB appears empty.
 				snap := Snapshot{
 					db:     d,
-					seqNum: InternalKeySeqNumMax,
+					seqNum: base.SeqNumMax,
 				}
 				iter, _ := snap.NewIter(nil)
 				return runIterCmd(td, iter, true)
@@ -1522,7 +1522,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			case "iter":
 				snap := Snapshot{
 					db:     d,
-					seqNum: InternalKeySeqNumMax,
+					seqNum: base.SeqNumMax,
 				}
 				iter, _ := snap.NewIter(nil)
 				return runIterCmd(td, iter, true)

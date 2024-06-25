@@ -172,7 +172,7 @@ func TestIsExclusiveSentinel(t *testing.T) {
 	}{
 		{
 			name: "rangedel; max seqnum",
-			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeyDelete),
+			key:  MakeInternalKey(userKey, SeqNumMax, InternalKeyKindRangeKeyDelete),
 			want: true,
 		},
 		{
@@ -182,7 +182,7 @@ func TestIsExclusiveSentinel(t *testing.T) {
 		},
 		{
 			name: "rangekeyset; max seqnum",
-			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeySet),
+			key:  MakeInternalKey(userKey, SeqNumMax, InternalKeyKindRangeKeySet),
 			want: true,
 		},
 		{
@@ -192,7 +192,7 @@ func TestIsExclusiveSentinel(t *testing.T) {
 		},
 		{
 			name: "rangekeyunset; max seqnum",
-			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeyUnset),
+			key:  MakeInternalKey(userKey, SeqNumMax, InternalKeyKindRangeKeyUnset),
 			want: true,
 		},
 		{
@@ -202,7 +202,7 @@ func TestIsExclusiveSentinel(t *testing.T) {
 		},
 		{
 			name: "rangekeydel; max seqnum",
-			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeyDelete),
+			key:  MakeInternalKey(userKey, SeqNumMax, InternalKeyKindRangeKeyDelete),
 			want: true,
 		},
 		{
@@ -212,7 +212,7 @@ func TestIsExclusiveSentinel(t *testing.T) {
 		},
 		{
 			name: "neither rangedel nor rangekey",
-			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindSet),
+			key:  MakeInternalKey(userKey, SeqNumMax, InternalKeyKindSet),
 			want: false,
 		},
 	}

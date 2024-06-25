@@ -39,7 +39,7 @@ import (
 func runGetCmd(t testing.TB, td *datadriven.TestData, d *DB) string {
 	snap := Snapshot{
 		db:     d,
-		seqNum: InternalKeySeqNumMax,
+		seqNum: base.SeqNumMax,
 	}
 	if td.HasArg("seq") {
 		var n uint64
@@ -714,7 +714,7 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 	parallelize := td.HasArg("parallel")
 	if len(td.CmdArgs) >= 2 && strings.HasPrefix(td.CmdArgs[1].Key, "L") {
 		levelString := td.CmdArgs[1].String()
-		iStart := base.MakeInternalKey([]byte(parts[0]), InternalKeySeqNumMax, InternalKeyKindMax)
+		iStart := base.MakeInternalKey([]byte(parts[0]), base.SeqNumMax, InternalKeyKindMax)
 		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
 		if levelString[0] != 'L' {
 			return errors.Errorf("expected L<n>: %s", levelString)

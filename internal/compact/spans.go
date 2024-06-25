@@ -125,7 +125,7 @@ func (c *RangeKeySpanCompactor) Compact(span, output *keyspan.Span) {
 	usedLen := 0
 	for x >= 0 {
 		start := y
-		for y < len(span.Keys) && !base.Visible(span.Keys[y].SeqNum(), c.snapshots[x], base.InternalKeySeqNumMax) {
+		for y < len(span.Keys) && !base.Visible(span.Keys[y].SeqNum(), c.snapshots[x], base.SeqNumMax) {
 			// Include y in current partition.
 			y++
 		}

@@ -2254,7 +2254,7 @@ func TestIngestTargetLevel(t *testing.T) {
 				// TODO: runDBDefineCmd doesn't properly update the visible
 				// sequence number. So we have to explicitly configure level checker with a very large
 				// sequence number, otherwise the DB appears empty.
-				seqNum: InternalKeySeqNumMax,
+				seqNum: base.SeqNumMax,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()

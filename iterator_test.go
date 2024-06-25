@@ -407,7 +407,7 @@ func TestReadSampling(t *testing.T) {
 				// sequence number, otherwise the DB appears empty.
 				snap := Snapshot{
 					db:     d,
-					seqNum: InternalKeySeqNumMax,
+					seqNum: base.SeqNumMax,
 				}
 				iter, _ = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
@@ -512,7 +512,7 @@ func TestIteratorTableFilter(t *testing.T) {
 			// sequence number, otherwise the DB appears empty.
 			snap := Snapshot{
 				db:     d,
-				seqNum: InternalKeySeqNumMax,
+				seqNum: base.SeqNumMax,
 			}
 			iter, _ := snap.NewIter(iterOpts)
 			return runIterCmd(td, iter, true)
@@ -568,7 +568,7 @@ func TestIteratorNextPrev(t *testing.T) {
 		case "iter":
 			snap := Snapshot{
 				db:     d,
-				seqNum: InternalKeySeqNumMax,
+				seqNum: base.SeqNumMax,
 			}
 			if td.HasArg("seq") {
 				var n uint64
@@ -628,7 +628,7 @@ func TestIteratorStats(t *testing.T) {
 		case "iter":
 			snap := Snapshot{
 				db:     d,
-				seqNum: InternalKeySeqNumMax,
+				seqNum: base.SeqNumMax,
 			}
 			td.MaybeScanArgs(t, "seq", &snap.seqNum)
 			iter, _ := snap.NewIter(nil)
@@ -728,7 +728,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 				// sequence number, otherwise the DB appears empty.
 				snap := Snapshot{
 					db:     d,
-					seqNum: InternalKeySeqNumMax,
+					seqNum: base.SeqNumMax,
 				}
 				iter, _ = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true

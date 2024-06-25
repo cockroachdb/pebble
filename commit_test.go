@@ -322,7 +322,7 @@ func TestCommitPipelineLogDataSeqNum(t *testing.T) {
 			require.False(t, base.Visible(
 				b.SeqNum(),                   // Seqnum of the first KV in the batch b
 				testEnv.visibleSeqNum.Load(), // Snapshot seqnum
-				InternalKeySeqNumMax,         // Indexed batch "seqnum" (unused here)
+				base.SeqNumMax,               // Indexed batch "seqnum" (unused here)
 			))
 			return nil
 		},

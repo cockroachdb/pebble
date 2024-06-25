@@ -484,11 +484,11 @@ func newIndexedBatchWithSize(db *DB, comparer *Comparer, size int) *Batch {
 // nextSeqNum returns the batch "sequence number" that will be given to the next
 // key written to the batch. During iteration keys within an indexed batch are
 // given a sequence number consisting of their offset within the batch combined
-// with the base.InternalKeySeqNumBatch bit. These sequence numbers are only
+// with the base.SeqNumBatchBit bit. These sequence numbers are only
 // used during iteration, and the keys are assigned ordinary sequence numbers
 // when the batch is committed.
 func (b *Batch) nextSeqNum() base.SeqNum {
-	return base.SeqNum(len(b.data)) | base.InternalKeySeqNumBatch
+	return base.SeqNum(len(b.data)) | base.SeqNumBatchBit
 }
 
 func (b *Batch) release() {
@@ -1306,7 +1306,7 @@ func (b *Batch) initInternalIter(o *IterOptions, iter *batchIter) {
 		// Filtering these batch points within the merging iterator ensures that
 		// the batch iterator never needs to iterate beyond 'baz', because it
 		// already found a smaller, visible key 'bax'.
-		snapshot: base.InternalKeySeqNumMax,
+		snapshot: base.SeqNumMax,
 	}
 }
 

@@ -1585,7 +1585,7 @@ func (d *DB) maybeTransitionSnapshotsToFileOnlyLocked() {
 			continue
 		}
 		overlapsFlushable := false
-		if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+		if base.Visible(earliestUnflushedSeqNum, s.efos.seqNum, base.SeqNumMax) {
 			// There are some unflushed keys that are still visible to the EFOS.
 			// Check if any memtables older than the EFOS contain keys within a
 			// protected range of the EFOS. If no, we can transition.
@@ -1594,7 +1594,7 @@ func (d *DB) maybeTransitionSnapshotsToFileOnlyLocked() {
 				protectedRanges[i] = s.efos.protectedRanges[i]
 			}
 			for i := range d.mu.mem.queue {
-				if !base.Visible(d.mu.mem.queue[i].logSeqNum, s.efos.seqNum, InternalKeySeqNumMax) {
+				if !base.Visible(d.mu.mem.queue[i].logSeqNum, s.efos.seqNum, base.SeqNumMax) {
 					// All keys in this memtable are newer than the EFOS. Skip this
 					// memtable.
 					continue

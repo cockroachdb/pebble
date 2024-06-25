@@ -724,7 +724,7 @@ func scanInternalImpl(
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "external file is present but no external file visitor is defined")
 				}
 
-				if !base.Visible(f.LargestSeqNum, seqNum, base.InternalKeySeqNumMax) {
+				if !base.Visible(f.LargestSeqNum, seqNum, base.SeqNumMax) {
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "file %s contains keys newer than snapshot", objMeta.DiskFileNum)
 				}
 

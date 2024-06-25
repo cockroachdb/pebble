@@ -34,7 +34,7 @@ func TestIter(t *testing.T) {
 		buf.Reset()
 		switch td.Cmd {
 		case "define":
-			visibleSeqNum := base.InternalKeySeqNumMax
+			visibleSeqNum := base.SeqNumMax
 			for _, arg := range td.CmdArgs {
 				if arg.Key == "visible-seq-num" {
 					visibleSeqNum = base.ParseSeqNum(arg.Vals[0])
@@ -122,7 +122,7 @@ func TestDefragmenting(t *testing.T) {
 			return ""
 		case "iter":
 			var userIterCfg UserIteratorConfig
-			iter := userIterCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
+			iter := userIterCfg.Init(testkeys.Comparer, base.SeqNumMax,
 				nil /* lower */, nil, /* upper */
 				&hasPrefix, &prefix, false /* internalKeys */, new(Buffers),
 				keyspan.NewIter(cmp, spans))
@@ -204,11 +204,11 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmented = fragment(cmp, formatKey, fragmented)
 
 	var referenceCfg, fragmentedCfg UserIteratorConfig
-	referenceIter := referenceCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
+	referenceIter := referenceCfg.Init(testkeys.Comparer, base.SeqNumMax,
 		nil /* lower */, nil, /* upper */
 		new(bool), new([]byte), false /* internalKeys */, new(Buffers),
 		keyspan.NewIter(cmp, original))
-	fragmentedIter := fragmentedCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
+	fragmentedIter := fragmentedCfg.Init(testkeys.Comparer, base.SeqNumMax,
 		nil /* lower */, nil, /* upper */
 		new(bool), new([]byte), false /* internalKeys */, new(Buffers),
 		keyspan.NewIter(cmp, fragmented))

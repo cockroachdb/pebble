@@ -272,7 +272,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				comparer:  testkeys.Comparer,
 				readState: readState,
 				newIters:  newIters,
-				seqNum:    InternalKeySeqNumMax,
+				seqNum:    base.SeqNumMax,
 				merge:     merge,
 				formatKey: formatKey,
 			}

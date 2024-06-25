@@ -1417,7 +1417,7 @@ func (d *DB) ingest(
 				if s.efos == nil {
 					continue
 				}
-				if base.Visible(seqNum, s.efos.seqNum, base.InternalKeySeqNumMax) {
+				if base.Visible(seqNum, s.efos.seqNum, base.SeqNumMax) {
 					// We only worry about snapshots older than the excise. Any snapshots
 					// created after the excise should see the excised view of the LSM
 					// anyway.
@@ -2360,7 +2360,7 @@ func (d *DB) ingestApply(
 		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
 			// Skip non-EFOS snapshots, and also skip any EFOS that were created
 			// *after* the excise.
-			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.InternalKeySeqNumMax) {
+			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.SeqNumMax) {
 				continue
 			}
 			efos := s.efos
