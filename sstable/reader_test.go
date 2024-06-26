@@ -770,13 +770,11 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 				return ""
 
 			case "iter":
-				seqNum, err := scanGlobalSeqNum(d)
-				if err != nil {
-					return err.Error()
-				}
+				var globalSeqNum uint64
+				d.MaybeScanArgs(t, "globalSeqNum", &globalSeqNum)
 				var stats base.InternalIteratorStats
 				transforms := IterTransforms{
-					SyntheticSeqNum: SyntheticSeqNum(seqNum),
+					SyntheticSeqNum: SyntheticSeqNum(globalSeqNum),
 				}
 				var bpfs []BlockPropertyFilter
 				if d.HasArg("block-property-filter") {

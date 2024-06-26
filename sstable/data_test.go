@@ -249,23 +249,6 @@ func runBuildRawCmd(
 	return meta, r, nil
 }
 
-func scanGlobalSeqNum(td *datadriven.TestData) (uint64, error) {
-	for _, arg := range td.CmdArgs {
-		switch arg.Key {
-		case "globalSeqNum":
-			if len(arg.Vals) != 1 {
-				return 0, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-			}
-			v, err := strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return 0, err
-			}
-			return uint64(v), nil
-		}
-	}
-	return 0, nil
-}
-
 type runIterCmdOption func(*runIterCmdOptions)
 
 type runIterCmdOptions struct {
