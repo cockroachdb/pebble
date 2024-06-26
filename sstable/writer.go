@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -2004,9 +2006,8 @@ func (w *Writer) Close() (err error) {
 	}
 	w.props.DataSize = w.meta.Size
 
+	var metaindex metaIndexWriter
 	// Write the filter block.
-	var metaindex rowblk.Writer
-	metaindex.RestartInterval = 1
 	if w.filter != nil {
 		b, err := w.filter.finish()
 		if err != nil {
@@ -2016,8 +2017,7 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			return err
 		}
-		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
-		metaindex.AddRawString(w.filter.metaName(), w.blockBuf.tmp[:n])
+		metaindex.add(w.filter.metaName(), bh)
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.Length
 	}
@@ -2068,6 +2068,15 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			return err
 		}
+		// The v2 range-del block encoding is backwards compatible with the v1
+		// encoding. We add meta-index entries for both the old name and the new
+		// name so that old code can continue to find the range-del block and new
+		// code knows that the range tombstones in the block are fragmented and
+		// sorted.
+		metaindex.add(metaRangeDelName, rangeDelBH)
+		if !w.rangeDelV1Format {
+			metaindex.add(metaRangeDelV2Name, rangeDelBH)
+		}
 	}
 
 	// Write the range-key block, flushing any remaining spans from the
@@ -2091,6 +2100,7 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			return err
 		}
+		metaindex.add(metaRangeKeyName, rangeKeyBH)
 	}
 
 	if w.valueBlockWriter != nil {
@@ -2102,18 +2112,9 @@ func (w *Writer) Close() (err error) {
 		w.props.NumValuesInValueBlocks = vbStats.numValuesInValueBlocks
 		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
 		if vbStats.numValueBlocks > 0 {
-			n := encodeValueBlocksIndexHandle(w.blockBuf.tmp[:], vbiHandle)
-			metaindex.AddRawString(metaValueIndexName, w.blockBuf.tmp[:n])
+			n := encodeValueBlocksIndexHandle(metaindex.tmp[:], vbiHandle)
+			metaindex.addRaw(metaValueIndexName, metaindex.tmp[:n])
 		}
-	}
-
-	// Add the range key block handle to the metaindex block. Note that we add the
-	// block handle to the metaindex block before the other meta blocks as the
-	// metaindex block entries must be sorted, and the range key block name sorts
-	// before the other block names.
-	if w.props.NumRangeKeys() > 0 {
-		n := encodeBlockHandle(w.blockBuf.tmp[:], rangeKeyBH)
-		metaindex.AddRawString(metaRangeKeyName, w.blockBuf.tmp[:n])
 	}
 
 	{
@@ -2156,29 +2157,14 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			return err
 		}
-		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
-		metaindex.AddRawString(metaPropertiesName, w.blockBuf.tmp[:n])
-	}
-
-	// Add the range deletion block handle to the metaindex block.
-	if w.props.NumRangeDeletions > 0 {
-		n := encodeBlockHandle(w.blockBuf.tmp[:], rangeDelBH)
-		// The v2 range-del block encoding is backwards compatible with the v1
-		// encoding. We add meta-index entries for both the old name and the new
-		// name so that old code can continue to find the range-del block and new
-		// code knows that the range tombstones in the block are fragmented and
-		// sorted.
-		metaindex.AddRawString(metaRangeDelName, w.blockBuf.tmp[:n])
-		if !w.rangeDelV1Format {
-			metaindex.AddRawString(metaRangeDelV2Name, w.blockBuf.tmp[:n])
-		}
+		metaindex.add(metaPropertiesName, bh)
 	}
 
 	// Write the metaindex block. It might be an empty block, if the filter
 	// policy is nil. NoCompression is specified because a) RocksDB never
 	// compresses the meta-index block and b) RocksDB has some code paths which
 	// expect the meta-index block to not be compressed.
-	metaindexBH, err := w.writeBlock(metaindex.Finish(), NoCompression, &w.blockBuf)
+	metaindexBH, err := w.writeBlock(metaindex.finish(), NoCompression, &w.blockBuf)
 	if err != nil {
 		return err
 	}
@@ -2380,6 +2366,39 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.fragmenter.Emit = w.encodeRangeKeySpan
 	w.rangeKeyEncoder.Emit = w.addRangeKey
 	return w
+}
+
+type metaIndexWriter struct {
+	handles []metaIndexHandle
+	buf     bytealloc.A
+	tmp     [blockHandleLikelyMaxLen]byte
+}
+type metaIndexHandle struct {
+	key   string
+	value []byte
+}
+
+func (w *metaIndexWriter) add(key string, h block.Handle) {
+	n := encodeBlockHandle(w.tmp[:], h)
+	w.addRaw(key, w.tmp[:n])
+}
+
+func (w *metaIndexWriter) addRaw(key string, h []byte) {
+	var encodedHandle []byte
+	w.buf, encodedHandle = w.buf.Alloc(len(h))
+	copy(encodedHandle, h)
+	w.handles = append(w.handles, metaIndexHandle{key: key, value: encodedHandle})
+}
+
+func (w *metaIndexWriter) finish() []byte {
+	slices.SortFunc(w.handles, func(a, b metaIndexHandle) int {
+		return cmp.Compare(a.key, b.key)
+	})
+	bw := rowblk.Writer{RestartInterval: 1}
+	for _, h := range w.handles {
+		bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.value)
+	}
+	return bw.Finish()
 }
 
 // internalGetProperties is a private, internal-use-only function that takes a
