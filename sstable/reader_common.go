@@ -16,9 +16,9 @@ import (
 // can be used by code which doesn't care to distinguish between a reader and a
 // virtual reader.
 type CommonReader interface {
-	NewRawRangeKeyIter(transforms IterTransforms) (keyspan.FragmentIterator, error)
+	NewRawRangeKeyIter(transforms FragmentIterTransforms) (keyspan.FragmentIterator, error)
 
-	NewRawRangeDelIter(transforms IterTransforms) (keyspan.FragmentIterator, error)
+	NewRawRangeDelIter(transforms FragmentIterTransforms) (keyspan.FragmentIterator, error)
 
 	NewIterWithBlockPropertyFiltersAndContextEtc(
 		ctx context.Context,
@@ -50,6 +50,8 @@ type (
 	BufferPool = block.BufferPool
 	// IterTransforms re-exports block.IterTransforms.
 	IterTransforms = block.IterTransforms
+	// FragmentIterTransforms re-exports block.FragmentIterTransforms.
+	FragmentIterTransforms = block.FragmentIterTransforms
 	// SyntheticSeqNum re-exports block.SyntheticSeqNum.
 	SyntheticSeqNum = block.SyntheticSeqNum
 	// SyntheticSuffix re-exports block.SyntheticSuffix.
@@ -60,6 +62,9 @@ type (
 
 // NoTransforms is the default value for IterTransforms.
 var NoTransforms = block.NoTransforms
+
+// NoFragmentTransforms is the default value for FragmentIterTransforms.
+var NoFragmentTransforms = block.NoFragmentTransforms
 
 // NoSyntheticSeqNum is the default zero value for SyntheticSeqNum, which
 // disables overriding the sequence number.

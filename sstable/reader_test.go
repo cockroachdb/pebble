@@ -215,7 +215,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 	// Set during the latest virtualize command.
 	var v *VirtualReader
-	var transforms IterTransforms
+	var syntheticSuffix SyntheticSuffix
 
 	defer func() {
 		if r != nil {
@@ -300,11 +300,11 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 			showProps := td.HasArg("show-props")
 
-			transforms = IterTransforms{}
+			syntheticSuffix = nil
 			if td.HasArg("suffix") {
 				var synthSuffixStr string
 				td.ScanArgs(t, "suffix", &synthSuffixStr)
-				transforms.SyntheticSuffix = []byte(synthSuffixStr)
+				syntheticSuffix = []byte(synthSuffixStr)
 			}
 
 			params.FileNum = nextFileNum()
@@ -327,6 +327,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 
 			var rp ReaderProvider
+			transforms := IterTransforms{SyntheticSuffix: syntheticSuffix}
 			iter, err := v.NewCompactionIter(transforms, CategoryAndQoS{}, nil, rp, &bp)
 			if err != nil {
 				return err.Error()
@@ -366,6 +367,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if v == nil {
 				return "virtualize must be called before scan-range-del"
 			}
+			transforms := FragmentIterTransforms{} // TODO(radu): SyntheticSuffix: syntheticSuffix
 			iter, err := v.NewRawRangeDelIter(transforms)
 			if err != nil {
 				return err.Error()
@@ -387,8 +389,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 		case "scan-range-key":
 			if v == nil {
-				return "virtualize must be called before scan-range-key"
+				return "virtualize mupst be called before scan-range-key"
 			}
+			transforms := FragmentIterTransforms{} // TODO(radu): SyntheticSuffix: syntheticSuffix
 			iter, err := v.NewRawRangeKeyIter(transforms)
 			if err != nil {
 				return err.Error()
@@ -433,7 +436,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				var err error
 				filterer, err = IntersectsTable(
 					[]BlockPropertyFilter{maskingFilter},
-					nil, wMeta.Properties.UserProperties, transforms.SyntheticSuffix,
+					nil, wMeta.Properties.UserProperties, syntheticSuffix,
 				)
 				if err != nil {
 					td.Fatalf(t, "error creating filterer: %v", err)
@@ -443,6 +446,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				}
 			}
 
+			transforms := IterTransforms{SyntheticSuffix: syntheticSuffix}
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
 				context.Background(), transforms, lower, upper, filterer, false,
 				&stats, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})

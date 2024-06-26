@@ -325,12 +325,24 @@ func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
 	return sstable.NoSyntheticSeqNum
 }
 
-// IterTransforms returns an sstable.IterTransforms that has SyntheticSeqNum set as needed.
+// IterTransforms returns an sstable.IterTransforms populated according to the
+// file.
 func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
 	return sstable.IterTransforms{
 		SyntheticSeqNum: m.SyntheticSeqNum(),
 		SyntheticSuffix: m.SyntheticSuffix,
 		SyntheticPrefix: m.SyntheticPrefix,
+	}
+}
+
+// FragmentIterTransforms returns an sstable.FragmentIterTransforms populated
+// according to the file.
+func (m *FileMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms {
+	return sstable.FragmentIterTransforms{
+		SyntheticSeqNum: m.SyntheticSeqNum(),
+		// TODO(radu): support these.
+		//SyntheticSuffix: m.SyntheticSuffix,
+		//SyntheticPrefix: m.SyntheticPrefix,
 	}
 }
 

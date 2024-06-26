@@ -1020,7 +1020,7 @@ func loadFlushedSSTableKeys(
 			}
 
 			// Load all the range tombstones.
-			if iter, err := r.NewRawRangeDelIter(sstable.NoTransforms); err != nil {
+			if iter, err := r.NewRawRangeDelIter(sstable.NoFragmentTransforms); err != nil {
 				return err
 			} else if iter != nil {
 				defer iter.Close()
@@ -1043,7 +1043,7 @@ func loadFlushedSSTableKeys(
 			}
 
 			// Load all the range keys.
-			if iter, err := r.NewRawRangeKeyIter(sstable.NoTransforms); err != nil {
+			if iter, err := r.NewRawRangeKeyIter(sstable.NoFragmentTransforms); err != nil {
 				return err
 			} else if iter != nil {
 				defer iter.Close()

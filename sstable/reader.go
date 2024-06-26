@@ -387,26 +387,19 @@ func (r *Reader) newCompactionIter(
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.FragmentIterator, error) {
+func (r *Reader) NewRawRangeDelIter(
+	transforms FragmentIterTransforms,
+) (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
-	}
-	if transforms.SyntheticSuffix.IsSet() {
-		return nil, base.AssertionFailedf("synthetic suffix not supported with range del iterator")
-	}
-	if transforms.SyntheticPrefix.IsSet() {
-		return nil, base.AssertionFailedf("synthetic prefix not supported with range del iterator")
 	}
 	h, err := r.readRangeDel(nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
 	}
-	i := rowblk.NewFragmentIter(true /* elideSameSeqnum */)
-	// It's okay for hideObsoletePoints to be false here, even for shared ingested
-	// sstables. This is because rangedels do not apply to points in the same
-	// sstable at the same sequence number anyway, so exposing obsolete rangedels
-	// is harmless.
-	if err := i.InitHandle(r.Compare, r.Split, h, transforms); err != nil {
+	transforms.ElideSameSeqNum = true
+	i, err := rowblk.NewFragmentIter(r.Compare, r.Split, h, transforms)
+	if err != nil {
 		return nil, err
 	}
 	return keyspan.MaybeAssert(i, r.Compare), nil
@@ -418,22 +411,18 @@ func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.Fragment
 //
 // TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
 // iterator. Add WithContext methods since the existing ones are public.
-func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.FragmentIterator, error) {
+func (r *Reader) NewRawRangeKeyIter(
+	transforms FragmentIterTransforms,
+) (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
-	}
-	if transforms.SyntheticSuffix.IsSet() {
-		return nil, base.AssertionFailedf("synthetic suffix not supported with range key iterator")
-	}
-	if transforms.SyntheticPrefix.IsSet() {
-		return nil, base.AssertionFailedf("synthetic prefix not supported with range key iterator")
 	}
 	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
 	}
-	i := rowblk.NewFragmentIter(false /* elideSameSeqnum */)
-	if err := i.InitHandle(r.Compare, r.Split, h, transforms); err != nil {
+	i, err := rowblk.NewFragmentIter(r.Compare, r.Split, h, transforms)
+	if err != nil {
 		return nil, err
 	}
 	return keyspan.MaybeAssert(i, r.Compare), nil
