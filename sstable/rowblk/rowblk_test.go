@@ -7,7 +7,6 @@ package rowblk
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -129,11 +127,9 @@ func TestBlockIter2(t *testing.T) {
 					return ""
 
 				case "iter":
-					globalSeqNum, err := scanGlobalSeqNum(d)
+					var globalSeqNum uint64
+					d.MaybeScanArgs(t, "globalSeqNum", &globalSeqNum)
 					transforms := block.IterTransforms{SyntheticSeqNum: block.SyntheticSeqNum(globalSeqNum)}
-					if err != nil {
-						return err.Error()
-					}
 					iter, err := NewIter(bytes.Compare, nil, blk, transforms)
 					if err != nil {
 						return err.Error()
@@ -569,23 +565,6 @@ func TestBlockWriterWithPrefix(t *testing.T) {
 	if !bytes.Equal(expected, blk) {
 		t.Fatalf("expected\n%x\nfound\n%x", expected, blk)
 	}
-}
-
-func scanGlobalSeqNum(td *datadriven.TestData) (uint64, error) {
-	for _, arg := range td.CmdArgs {
-		switch arg.Key {
-		case "globalSeqNum":
-			if len(arg.Vals) != 1 {
-				return 0, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-			}
-			v, err := strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return 0, err
-			}
-			return uint64(v), nil
-		}
-	}
-	return 0, nil
 }
 
 func ikey(s string) base.InternalKey {
