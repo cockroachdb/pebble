@@ -20,5 +20,11 @@ const (
 	InternalKeyKindInvalid       = base.InternalKeyKindInvalid
 )
 
+// SeekGEFlags exports base.SeekGEFlags.
+type SeekGEFlags = base.SeekGEFlags
+
+// SeekLTFlags exports base.SeekLTFlags.
+type SeekLTFlags = base.SeekLTFlags
+
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
