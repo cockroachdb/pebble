@@ -147,8 +147,7 @@ func buildHamletTestSST(
 	}
 
 	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
-	// Use rangeDelV1Format for testing byte equality with RocksDB.
-	w.rangeDelV1Format = true
+	// NB: We don't have byte equality with RocksDB any longer.
 	var rangeDelLength int
 	var rangeDelCounter int
 	var rangeDelStart InternalKey

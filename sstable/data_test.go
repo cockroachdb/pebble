@@ -197,14 +197,6 @@ func runBuildRawCmd(
 	}
 
 	w := NewWriter(f0, *opts)
-	for i := range td.CmdArgs {
-		arg := &td.CmdArgs[i]
-		if arg.Key == "range-del-v1" {
-			w.rangeDelV1Format = true
-			break
-		}
-	}
-
 	for _, data := range strings.Split(td.Input, "\n") {
 		if strings.HasPrefix(data, "rangekey:") {
 			data = strings.TrimPrefix(data, "rangekey:")

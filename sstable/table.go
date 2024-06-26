@@ -212,7 +212,7 @@ const (
 	metaRangeKeyName   = "pebble.range_key"
 	metaValueIndexName = "pebble.value_index"
 	metaPropertiesName = "rocksdb.properties"
-	metaRangeDelName   = "rocksdb.range_del"
+	metaRangeDelV1Name = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"
 
 	// Index Types.
