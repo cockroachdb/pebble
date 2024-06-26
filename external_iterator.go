@@ -208,7 +208,9 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 			if err != nil {
 				return nil, err
 			}
-			rangeDelIter, err = r.NewRawRangeDelIter(transforms)
+			rangeDelIter, err = r.NewRawRangeDelIter(sstable.FragmentIterTransforms{
+				SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -255,7 +257,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			}
 			for _, readers := range it.externalReaders {
 				for _, r := range readers {
-					transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
+					transforms := sstable.FragmentIterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
 					seqNum--
 					if rki, err := r.NewRawRangeKeyIter(transforms); err != nil {
 						return err

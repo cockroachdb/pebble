@@ -59,26 +59,33 @@ var fragmentBlockIterPool = sync.Pool{
 }
 
 // NewFragmentIter returns a new keyspan iterator that iterates over a block's
-// spans. Callers should call InitHandle to initialize the iterator with block
-// data before use.
-func NewFragmentIter(elideSameSeqnum bool) block.FragmentIterator {
+// spans.
+func NewFragmentIter(
+	cmp base.Compare,
+	split base.Split,
+	blockHandle block.BufferHandle,
+	transforms block.FragmentIterTransforms,
+) (keyspan.FragmentIterator, error) {
 	i := fragmentBlockIterPool.Get().(*fragmentIter)
-	i.init(elideSameSeqnum)
-	return i
-}
 
-func (i *fragmentIter) InitHandle(
-	cmp base.Compare, split base.Split, block block.BufferHandle, transforms block.IterTransforms,
-) error {
-	return i.blockIter.InitHandle(cmp, split, block, transforms)
-}
-
-func (i *fragmentIter) init(elideSameSeqnum bool) {
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
-	i.elideSameSeqnum = elideSameSeqnum
+	i.elideSameSeqnum = transforms.ElideSameSeqNum
 	i.closeCheck = invariants.CloseChecker{}
+
+	if err := i.blockIter.InitHandle(cmp, split, blockHandle, block.IterTransforms{
+		SyntheticSeqNum: transforms.SyntheticSeqNum,
+		// It's okay for HideObsoletePoints to be false here, even for shared
+		// ingested sstables. This is because rangedels do not apply to points in
+		// the same sstable at the same sequence number anyway, so exposing obsolete
+		// rangedels is harmless.
+		HideObsoletePoints: false,
+	}); err != nil {
+		i.Close()
+		return nil, err
+	}
+	return i, nil
 }
 
 // initSpan initializes the span with a single fragment.

@@ -181,7 +181,7 @@ func (lt *levelIterTest) newIters(
 		set.point = iter
 	}
 	if kinds.RangeDeletion() {
-		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(transforms)
+		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(file.FragmentIterTransforms())
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}

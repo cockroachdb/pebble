@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Handle is the file offset and length of a block.
@@ -90,14 +89,6 @@ func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32)
 	return checksum
 }
 
-// FragmentIterator is a keyspan iterator that iterates over a block's spans.
-type FragmentIterator interface {
-	keyspan.FragmentIterator
-
-	// InitHandle initializes a block from the provided buffer handle.
-	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
-}
-
 // IterTransforms allow on-the-fly transformation of data at iteration time.
 //
 // These transformations could in principle be implemented as block transforms
@@ -112,6 +103,18 @@ type IterTransforms struct {
 
 // NoTransforms is the default value for IterTransforms.
 var NoTransforms = IterTransforms{}
+
+// FragmentIterTransforms allow on-the-fly transformation of range deletion or
+// range key data at iteration time.
+type FragmentIterTransforms struct {
+	SyntheticSeqNum SyntheticSeqNum
+	// ElideSameSeqNum, if true, returns only the first-occurring (in forward
+	// order) keyspan.Key for each sequence number.
+	ElideSameSeqNum bool
+}
+
+// NoFragmentTransforms is the default value for IterTransforms.
+var NoFragmentTransforms = FragmentIterTransforms{}
 
 // SyntheticSeqNum is used to override all sequence numbers in a table. It is
 // set to a non-zero value when the table was created externally and ingested

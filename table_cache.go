@@ -618,7 +618,7 @@ func (c *tableCacheShard) newRangeDelIter(
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := cr.NewRawRangeDelIter(file.IterTransforms())
+	rangeDelIter, err := cr.NewRawRangeDelIter(file.FragmentIterTransforms())
 	if err != nil {
 		return nil, err
 	}
@@ -641,14 +641,14 @@ func (c *tableCacheShard) newRangeDelIter(
 func (c *tableCacheShard) newRangeKeyIter(
 	v *tableCacheValue, file *fileMetadata, cr sstable.CommonReader, opts keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	transforms := file.IterTransforms()
+	transforms := file.FragmentIterTransforms()
 	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
 	// The RANGEKEYDELs may delete range keys in other levels. Skipping the
 	// file's range key blocks may surface deleted range keys below. This is
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
 	if v.reader.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
-		ok, _, err := c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix)
+		ok, _, err := c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil, nil /* TODO(radu) transforms.SyntheticSuffix */)
 		if err != nil {
 			return nil, err
 		} else if !ok {
