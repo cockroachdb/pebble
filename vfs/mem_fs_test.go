@@ -46,6 +46,8 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 			g, err = fs.Open(s[1])
 		case "openDir":
 			g, err = fs.OpenDir(s[1])
+		case "openReadWrite":
+			g, err = fs.OpenReadWrite(s[1], WriteCategoryUnspecified)
 		case "mkdirall":
 			err = fs.MkdirAll(s[1], 0755)
 		case "remove":
@@ -189,6 +191,14 @@ func TestBasics(t *testing.T) {
 		// Opening the root directory works.
 		"11a: f = open /",
 		"11b: f.stat.name == /",
+		// Read bytes after writing some bytes.
+		"12a: f = create foo",
+		"12b: f.write foobar",
+		"12c: f.close",
+		"12d: f = openReadWrite foo",
+		"12e: f.write abc",
+		"12f: f.read 3 == bar",
+		"12g: f.close",
 	}
 	runTestCases(t, testCases, fs)
 }

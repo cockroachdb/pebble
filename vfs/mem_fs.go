@@ -632,8 +632,7 @@ type memFile struct {
 	name        string
 	n           *memNode
 	fs          *MemFS // nil for a standalone memFile
-	rpos        int
-	wpos        int
+	pos         int
 	read, write bool
 }
 
@@ -658,11 +657,11 @@ func (f *memFile) Read(p []byte) (int, error) {
 	}
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
-	if f.rpos >= len(f.n.mu.data) {
+	if f.pos >= len(f.n.mu.data) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[f.rpos:])
-	f.rpos += n
+	n := copy(p, f.n.mu.data[f.pos:])
+	f.pos += n
 	return n, nil
 }
 
@@ -695,15 +694,15 @@ func (f *memFile) Write(p []byte) (int, error) {
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	f.n.mu.modTime = time.Now()
-	if f.wpos+len(p) <= len(f.n.mu.data) {
-		n := copy(f.n.mu.data[f.wpos:f.wpos+len(p)], p)
+	if f.pos+len(p) <= len(f.n.mu.data) {
+		n := copy(f.n.mu.data[f.pos:f.pos+len(p)], p)
 		if n != len(p) {
 			panic("stuff")
 		}
 	} else {
-		f.n.mu.data = append(f.n.mu.data[:f.wpos], p...)
+		f.n.mu.data = append(f.n.mu.data[:f.pos], p...)
 	}
-	f.wpos += len(p)
+	f.pos += len(p)
 
 	if invariants.Enabled {
 		// Mutate the input buffer to flush out bugs in Pebble which expect the
