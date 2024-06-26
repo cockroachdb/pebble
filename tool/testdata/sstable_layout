@@ -23,9 +23,9 @@ h.sst
      13913  index (245)
      14163  range-del (421)
      14589  properties (409)
-     15003  meta-index (61)
-     15069  footer (53)
-     15122  EOF
+     15003  meta-index (62)
+     15070  footer (53)
+     15123  EOF
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
@@ -49,9 +49,9 @@ h.table-bloom.no-compression.sst
      29049  index (325)
      29379  range-del (421)
      29805  properties (453)
-     30263  meta-index (112)
-     30380  footer (53)
-     30433  EOF
+     30263  meta-index (113)
+     30381  footer (53)
+     30434  EOF
 
 sstable layout
 ../sstable/testdata/h.no-compression.two_level_index.sst
@@ -77,9 +77,9 @@ h.no-compression.two_level_index.sst
      27147  top-index (70)
      27222  range-del (421)
      27648  properties (455)
-     28108  meta-index (63)
-     28176  footer (53)
-     28229  EOF
+     28108  meta-index (64)
+     28177  footer (53)
+     28230  EOF
 
 sstable layout
 -v
@@ -3765,20 +3765,20 @@ h.no-compression.two_level_index.sst
      28071    rocksdb.top-level.index.size (24)
      28095    [restart 27648]
      28103    [trailer compression=none checksum=0x3c8612a0]
-     28108  meta-index (63)
+     28108  meta-index (64)
      28108    rocksdb.properties block:27648/455 [restart]
-     28134    rocksdb.range_del block:27222/421 [restart]
-     28159    [restart 28108]
-     28163    [restart 28134]
-     28171    [trailer compression=none checksum=0x7fb4f5d6]
-     28176  footer (53)
-     28176    checksum type: crc32c
-     28177    meta: offset=28108, length=63
-     28181    index: offset=27147, length=70
-     28185    [padding]
-     28217    version: 1
-     28221    magic number: 0xf09faab3f09faab3
-     28229  EOF
+     28134    rocksdb.range_del2 block:27222/421 [restart]
+     28160    [restart 28108]
+     28164    [restart 28134]
+     28172    [trailer compression=none checksum=0x8809b4f7]
+     28177  footer (53)
+     28177    checksum type: crc32c
+     28178    meta: offset=28108, length=64
+     28182    index: offset=27147, length=70
+     28186    [padding]
+     28218    version: 1
+     28222    magic number: 0xf09faab3f09faab3
+     28230  EOF
 
 sstable layout
 -v

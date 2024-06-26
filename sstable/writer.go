@@ -170,11 +170,7 @@ type Writer struct {
 	// re-read many times from the disk. The top level index, which has a much
 	// smaller memory footprint, can be used to prevent the entire index block from
 	// being loaded into the block cache.
-	twoLevelIndex bool
-	// Internal flag to allow creation of range-del-v1 format blocks. Only used
-	// for testing. Note that v2 format blocks are backwards compatible with v1
-	// format blocks.
-	rangeDelV1Format    bool
+	twoLevelIndex       bool
 	indexBlock          *indexBlockBuf
 	rangeDelBlock       rowblk.Writer
 	rangeKeyBlock       rowblk.Writer
@@ -1049,7 +1045,7 @@ func (w *Writer) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
 }
 
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.EntryCount() > 0 {
+	if !w.disableKeyOrderChecks && w.rangeDelBlock.EntryCount() > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
 		prevKey := w.rangeDelBlock.CurKey()
@@ -1089,34 +1085,12 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 
 	w.meta.updateSeqNum(key.SeqNum())
 
-	switch {
-	case w.rangeDelV1Format:
-		// Range tombstones are not fragmented in the v1 (i.e. RocksDB) range
-		// deletion block format, so we need to track the largest range tombstone
-		// end key as every range tombstone is added.
-		//
-		// Note that writing the v1 format is only supported for tests.
-		if w.props.NumRangeDeletions == 0 {
-			w.meta.SetSmallestRangeDelKey(key.Clone())
-			w.meta.SetLargestRangeDelKey(base.MakeRangeDeleteSentinelKey(value).Clone())
-		} else {
-			if base.InternalCompare(w.compare, w.meta.SmallestRangeDel, key) > 0 {
-				w.meta.SetSmallestRangeDelKey(key.Clone())
-			}
-			end := base.MakeRangeDeleteSentinelKey(value)
-			if base.InternalCompare(w.compare, w.meta.LargestRangeDel, end) < 0 {
-				w.meta.SetLargestRangeDelKey(end.Clone())
-			}
-		}
-
-	default:
-		// Range tombstones are fragmented in the v2 range deletion block format,
-		// so the start key of the first range tombstone added will be the smallest
-		// range tombstone key. The largest range tombstone key will be determined
-		// in Writer.Close() as the end key of the last range tombstone added.
-		if w.props.NumRangeDeletions == 0 {
-			w.meta.SetSmallestRangeDelKey(key.Clone())
-		}
+	// Range tombstones are fragmented in the v2 range deletion block format,
+	// so the start key of the first range tombstone added will be the smallest
+	// range tombstone key. The largest range tombstone key will be determined
+	// in Writer.Close() as the end key of the last range tombstone added.
+	if w.props.NumRangeDeletions == 0 {
+		w.meta.SetSmallestRangeDelKey(key.Clone())
 	}
 
 	w.props.NumEntries++
@@ -2050,33 +2024,23 @@ func (w *Writer) Close() (err error) {
 	// metaindex block must be sorted by key.
 	var rangeDelBH block.Handle
 	if w.props.NumRangeDeletions > 0 {
-		if !w.rangeDelV1Format {
-			// Because the range tombstones are fragmented in the v2 format, the end
-			// key of the last added range tombstone will be the largest range
-			// tombstone key. Note that we need to make this into a range deletion
-			// sentinel because sstable boundaries are inclusive while the end key of
-			// a range deletion tombstone is exclusive. A Clone() is necessary as
-			// rangeDelBlock.curValue is the same slice that will get passed
-			// into w.writer, and some implementations of vfs.File mutate the
-			// slice passed into Write(). Also, w.meta will often outlive the
-			// blockWriter, and so cloning curValue allows the rangeDelBlock's
-			// internal buffer to get gc'd.
-			k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.CurValue()).Clone()
-			w.meta.SetLargestRangeDelKey(k)
-		}
+		// Because the range tombstones are fragmented, the end key of the last
+		// added range tombstone will be the largest range tombstone key. Note
+		// that we need to make this into a range deletion sentinel because
+		// sstable boundaries are inclusive while the end key of a range
+		// deletion tombstone is exclusive. A Clone() is necessary as
+		// rangeDelBlock.curValue is the same slice that will get passed into
+		// w.writer, and some implementations of vfs.File mutate the slice
+		// passed into Write(). Also, w.meta will often outlive the blockWriter,
+		// and so cloning curValue allows the rangeDelBlock's internal buffer to
+		// get gc'd.
+		k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.CurValue()).Clone()
+		w.meta.SetLargestRangeDelKey(k)
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.Finish(), NoCompression, &w.blockBuf)
 		if err != nil {
 			return err
 		}
-		// The v2 range-del block encoding is backwards compatible with the v1
-		// encoding. We add meta-index entries for both the old name and the new
-		// name so that old code can continue to find the range-del block and new
-		// code knows that the range tombstones in the block are fragmented and
-		// sorted.
-		metaindex.add(metaRangeDelName, rangeDelBH)
-		if !w.rangeDelV1Format {
-			metaindex.add(metaRangeDelV2Name, rangeDelBH)
-		}
+		metaindex.add(metaRangeDelV2Name, rangeDelBH)
 	}
 
 	// Write the range-key block, flushing any remaining spans from the

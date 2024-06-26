@@ -176,25 +176,24 @@ func init() {
 
 // Reader is a table reader.
 type Reader struct {
-	readable          objstorage.Readable
-	cacheID           uint64
-	fileNum           base.DiskFileNum
-	err               error
-	indexBH           block.Handle
-	filterBH          block.Handle
-	rangeDelBH        block.Handle
-	rangeKeyBH        block.Handle
-	rangeDelTransform blockTransform
-	valueBIH          valueBlocksIndexHandle
-	propertiesBH      block.Handle
-	metaIndexBH       block.Handle
-	footerBH          block.Handle
-	opts              ReaderOptions
-	Compare           Compare
-	Equal             Equal
-	FormatKey         base.FormatKey
-	Split             Split
-	tableFilter       *tableFilterReader
+	readable     objstorage.Readable
+	cacheID      uint64
+	fileNum      base.DiskFileNum
+	err          error
+	indexBH      block.Handle
+	filterBH     block.Handle
+	rangeDelBH   block.Handle
+	rangeKeyBH   block.Handle
+	valueBIH     valueBlocksIndexHandle
+	propertiesBH block.Handle
+	metaIndexBH  block.Handle
+	footerBH     block.Handle
+	opts         ReaderOptions
+	Compare      Compare
+	Equal        Equal
+	FormatKey    base.FormatKey
+	Split        Split
+	tableFilter  *tableFilterReader
 	// Keep types that are not multiples of 8 bytes at the end and with
 	// decreasing size.
 	Properties    Properties
@@ -463,7 +462,7 @@ func (r *Reader) readRangeDel(
 	stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.rangeDelBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeKey(
@@ -622,49 +621,6 @@ func (r *Reader) readBlock(
 	return h, nil
 }
 
-func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
-	// Convert v1 (RocksDB format) range-del blocks to v2 blocks on the fly. The
-	// v1 format range-del blocks have unfragmented and unsorted range
-	// tombstones. We need properly fragmented and sorted range tombstones in
-	// order to serve from them directly.
-	iter := &rowblk.Iter{}
-	if err := iter.Init(r.Compare, r.Split, b, NoTransforms); err != nil {
-		return nil, err
-	}
-	var tombstones []keyspan.Span
-	for kv := iter.First(); kv != nil; kv = iter.Next() {
-		t := keyspan.Span{
-			Start: kv.K.UserKey,
-			End:   kv.InPlaceValue(),
-			Keys:  []keyspan.Key{{Trailer: kv.K.Trailer}},
-		}
-		tombstones = append(tombstones, t)
-	}
-	keyspan.Sort(r.Compare, tombstones)
-
-	// Fragment the tombstones, outputting them directly to a block writer.
-	rangeDelBlock := rowblk.Writer{
-		RestartInterval: 1,
-	}
-	frag := keyspan.Fragmenter{
-		Cmp:    r.Compare,
-		Format: r.FormatKey,
-		Emit: func(s keyspan.Span) {
-			for _, k := range s.Keys {
-				startIK := InternalKey{UserKey: s.Start, Trailer: k.Trailer}
-				rangeDelBlock.Add(startIK, s.End)
-			}
-		},
-	}
-	for i := range tombstones {
-		frag.Add(tombstones[i])
-	}
-	frag.Finish()
-
-	// Return the contents of the constructed v2 format range-del block.
-	return rangeDelBlock.Finish(), nil
-}
-
 func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.ReadHandle) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
@@ -739,11 +695,15 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
 		r.rangeDelBH = bh
-	} else if bh, ok := meta[metaRangeDelName]; ok {
-		r.rangeDelBH = bh
-		if !r.rawTombstones {
-			r.rangeDelTransform = r.transformRangeDelV1
-		}
+	} else if _, ok := meta[metaRangeDelV1Name]; ok {
+		// This version of Pebble requires a format major version at least as
+		// high as FormatFlushableIngest (see pebble.FormatMinSupported). In
+		// this format major verison, we have a guarantee that we've compacted
+		// away all RocksDB sstables. It should not be possible to encounter an
+		// sstable with a v1 range deletion block but not a v2 range deletion
+		// block.
+		err := errors.Newf("pebble/table: unexpected range-del block type: %s", metaRangeDelV1Name)
+		return errors.Mark(err, base.ErrCorruption)
 	}
 
 	if bh, ok := meta[metaRangeKeyName]; ok {
