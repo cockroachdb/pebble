@@ -2005,7 +2005,7 @@ func (w *Writer) Close() (err error) {
 	w.props.DataSize = w.meta.Size
 
 	// Write the filter block.
-	var metaindex rowblk.RawWriter
+	var metaindex rowblk.Writer
 	metaindex.RestartInterval = 1
 	if w.filter != nil {
 		b, err := w.filter.finish()
@@ -2017,7 +2017,7 @@ func (w *Writer) Close() (err error) {
 			return err
 		}
 		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
-		metaindex.Add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.blockBuf.tmp[:n])
+		metaindex.AddRawString(w.filter.metaName(), w.blockBuf.tmp[:n])
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.Length
 	}
@@ -2103,7 +2103,7 @@ func (w *Writer) Close() (err error) {
 		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
 		if vbStats.numValueBlocks > 0 {
 			n := encodeValueBlocksIndexHandle(w.blockBuf.tmp[:], vbiHandle)
-			metaindex.Add(InternalKey{UserKey: []byte(metaValueIndexName)}, w.blockBuf.tmp[:n])
+			metaindex.AddRawString(metaValueIndexName, w.blockBuf.tmp[:n])
 		}
 	}
 
@@ -2113,7 +2113,7 @@ func (w *Writer) Close() (err error) {
 	// before the other block names.
 	if w.props.NumRangeKeys() > 0 {
 		n := encodeBlockHandle(w.blockBuf.tmp[:], rangeKeyBH)
-		metaindex.Add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.blockBuf.tmp[:n])
+		metaindex.AddRawString(metaRangeKeyName, w.blockBuf.tmp[:n])
 	}
 
 	{
@@ -2145,7 +2145,7 @@ func (w *Writer) Close() (err error) {
 		}
 
 		// Write the properties block.
-		var raw rowblk.RawWriter
+		var raw rowblk.Writer
 		// The restart interval is set to infinity because the properties block
 		// is always read sequentially and cached in a heap located object. This
 		// reduces table size without a significant impact on performance.
@@ -2157,7 +2157,7 @@ func (w *Writer) Close() (err error) {
 			return err
 		}
 		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
-		metaindex.Add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.blockBuf.tmp[:n])
+		metaindex.AddRawString(metaPropertiesName, w.blockBuf.tmp[:n])
 	}
 
 	// Add the range deletion block handle to the metaindex block.
@@ -2168,9 +2168,9 @@ func (w *Writer) Close() (err error) {
 		// name so that old code can continue to find the range-del block and new
 		// code knows that the range tombstones in the block are fragmented and
 		// sorted.
-		metaindex.Add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.blockBuf.tmp[:n])
+		metaindex.AddRawString(metaRangeDelName, w.blockBuf.tmp[:n])
 		if !w.rangeDelV1Format {
-			metaindex.Add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.blockBuf.tmp[:n])
+			metaindex.AddRawString(metaRangeDelV2Name, w.blockBuf.tmp[:n])
 		}
 	}
 
