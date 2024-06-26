@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -713,6 +714,16 @@ func (i *lazyCombinedIter) SetContext(ctx context.Context) {
 		return
 	}
 	i.pointIter.SetContext(ctx)
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *lazyCombinedIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.combinedIterState.initialized {
+		i.parent.rangeKey.iiter.DebugTree(n)
+	} else {
+		i.pointIter.DebugTree(n)
+	}
 }
 
 func (i *lazyCombinedIter) String() string {

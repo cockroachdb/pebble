@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/dsl"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // OpKind indicates the type of iterator operation being performed.
@@ -245,6 +246,14 @@ func (p *probeIterator) SetBounds(lower, upper []byte) {
 func (p *probeIterator) SetContext(ctx context.Context) {
 	if p.iter != nil {
 		p.iter.SetContext(ctx)
+	}
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (p *probeIterator) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", p, p)
+	if p.iter != nil {
+		p.iter.DebugTree(n)
 	}
 }
 

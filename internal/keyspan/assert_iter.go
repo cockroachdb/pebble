@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // Assert wraps an iterator which asserts that operations return sane results.
@@ -172,4 +173,12 @@ func (i *assertIter) Close() {
 // WrapChildren implements FragmentIterator.
 func (i *assertIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *assertIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
 }

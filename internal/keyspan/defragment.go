@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // BufferReuseMaxCapacity is the maximum capacity of a DefragmentingIter buffer
@@ -557,4 +558,12 @@ func (i *DefragmentingIter) saveBytes(b []byte) []byte {
 // WrapChildren implements FragmentIterator.
 func (i *DefragmentingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *DefragmentingIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
 }

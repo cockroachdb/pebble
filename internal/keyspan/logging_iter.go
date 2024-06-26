@@ -143,3 +143,11 @@ func (i *loggingIter) Close() {
 func (i *loggingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *loggingIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
+}

@@ -7,6 +7,7 @@ package keyspan
 import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // Truncate creates a new iterator where every span in the supplied iterator is
@@ -170,4 +171,12 @@ func (i *truncatingIter) nextSpanWithinBounds(
 // WrapChildren implements FragmentIterator.
 func (i *truncatingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *truncatingIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
 }

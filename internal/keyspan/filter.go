@@ -4,7 +4,10 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
+)
 
 // FilterFunc is a callback that allows filtering keys from a Span. The result
 // is the set of keys that should be retained (using buf as a buffer). If the
@@ -129,4 +132,12 @@ func (i *filteringIter) filter(span *Span, dir int8) (*Span, error) {
 // WrapChildren implements FragmentIterator.
 func (i *filteringIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *filteringIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
 }

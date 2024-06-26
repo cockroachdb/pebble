@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // TableNewSpanIter creates a new iterator for range key spans for the given
@@ -512,4 +513,12 @@ func (l *LevelIter) String() string {
 func (l *LevelIter) WrapChildren(wrap keyspan.WrapFn) {
 	l.iter = wrap(l.iter)
 	l.wrapFn = wrap
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (l *LevelIter) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p) %s", l, l, l.level)
+	if l.iter != nil {
+		l.iter.DebugTree(n)
+	}
 }
