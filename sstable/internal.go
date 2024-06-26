@@ -6,15 +6,6 @@ package sstable
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// InternalKeyKind exports the base.InternalKeyKind type.
-type InternalKeyKind = base.InternalKeyKind
-
-// SeekGEFlags exports base.SeekGEFlags.
-type SeekGEFlags = base.SeekGEFlags
-
-// SeekLTFlags exports base.SeekLTFlags.
-type SeekLTFlags = base.SeekLTFlags
-
 // These constants are part of the file format, and should not be changed.
 const (
 	InternalKeyKindDelete        = base.InternalKeyKindDelete
