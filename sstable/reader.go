@@ -401,12 +401,12 @@ func (r *Reader) NewRawRangeDelIter(transforms IterTransforms) (keyspan.Fragment
 	if err != nil {
 		return nil, err
 	}
-	i := newFragmentBlockIter(true /* elideSameSeqnum */)
+	i := rowblk.NewFragmentIter(true /* elideSameSeqnum */)
 	// It's okay for hideObsoletePoints to be false here, even for shared ingested
 	// sstables. This is because rangedels do not apply to points in the same
 	// sstable at the same sequence number anyway, so exposing obsolete rangedels
 	// is harmless.
-	if err := i.blockIter.InitHandle(r.Compare, r.Split, h, transforms); err != nil {
+	if err := i.InitHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
 	return keyspan.MaybeAssert(i, r.Compare), nil
@@ -432,8 +432,8 @@ func (r *Reader) NewRawRangeKeyIter(transforms IterTransforms) (keyspan.Fragment
 	if err != nil {
 		return nil, err
 	}
-	i := newFragmentBlockIter(false /* elideSameSeqnum */)
-	if err := i.blockIter.InitHandle(r.Compare, r.Split, h, transforms); err != nil {
+	i := rowblk.NewFragmentIter(false /* elideSameSeqnum */)
+	if err := i.InitHandle(r.Compare, r.Split, h, transforms); err != nil {
 		return nil, err
 	}
 	return keyspan.MaybeAssert(i, r.Compare), nil

@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Handle is the file offset and length of a block.
@@ -87,6 +88,14 @@ func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32)
 		panic(errors.Newf("unsupported checksum type: %d", c.Type))
 	}
 	return checksum
+}
+
+// FragmentIterator is a keyspan iterator that iterates over a block's spans.
+type FragmentIterator interface {
+	keyspan.FragmentIterator
+
+	// InitHandle initializes a block from the provided buffer handle.
+	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
 }
 
 // IterTransforms allow on-the-fly transformation of data at iteration time.

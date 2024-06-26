@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+package rowblk
 
 import (
 	"fmt"
@@ -14,30 +14,29 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
-// fragmentBlockIter wraps a blockIter, implementing the
-// keyspan.FragmentIterator interface. It's used for reading range deletion and
-// range key blocks.
+// fragmentIter wraps an Iter, implementing the keyspan.FragmentIterator
+// interface. It's used for reading range deletion and range key blocks.
 //
 // Range deletions and range keys are fragmented before they're persisted to the
-// block. Overlapping fragments have identical bounds.  The fragmentBlockIter
-// gathers all the fragments with identical bounds within a block and returns a
-// single keyspan.Span describing all the keys defined over the span.
+// block. Overlapping fragments have identical bounds.  The fragmentIter gathers
+// all the fragments with identical bounds within a block and returns a single
+// keyspan.Span describing all the keys defined over the span.
 //
 // # Memory lifetime
 //
-// A Span returned by fragmentBlockIter is only guaranteed to be stable until
-// the next fragmentBlockIter iteration positioning method. A Span's Keys slice
-// may be reused, so the user must not assume it's stable.
+// A Span returned by fragmentIter is only guaranteed to be stable until the
+// next fragmentIter iteration positioning method. A Span's Keys slice may be
+// reused, so the user must not assume it's stable.
 //
 // Blocks holding range deletions and range keys are configured to use a restart
 // interval of 1. This provides key stability. The caller may treat the various
 // byte slices (start, end, suffix, value) as stable for the lifetime of the
 // iterator.
-type fragmentBlockIter struct {
-	blockIter rowblk.Iter
+type fragmentIter struct {
+	blockIter Iter
 	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
 	dir       int8
@@ -48,24 +47,33 @@ type fragmentBlockIter struct {
 	closeCheck      invariants.CloseChecker
 }
 
-var _ keyspan.FragmentIterator = (*fragmentBlockIter)(nil)
+var _ keyspan.FragmentIterator = (*fragmentIter)(nil)
 
 var fragmentBlockIterPool = sync.Pool{
 	New: func() interface{} {
-		i := &fragmentBlockIter{}
+		i := &fragmentIter{}
 		// Note: this is a no-op if invariants are disabled or race is enabled.
 		invariants.SetFinalizer(i, checkFragmentBlockIterator)
 		return i
 	},
 }
 
-func newFragmentBlockIter(elideSameSeqnum bool) *fragmentBlockIter {
-	i := fragmentBlockIterPool.Get().(*fragmentBlockIter)
+// NewFragmentIter returns a new keyspan iterator that iterates over a block's
+// spans. Callers should call InitHandle to initialize the iterator with block
+// data before use.
+func NewFragmentIter(elideSameSeqnum bool) block.FragmentIterator {
+	i := fragmentBlockIterPool.Get().(*fragmentIter)
 	i.init(elideSameSeqnum)
 	return i
 }
 
-func (i *fragmentBlockIter) init(elideSameSeqnum bool) {
+func (i *fragmentIter) InitHandle(
+	cmp base.Compare, split base.Split, block block.BufferHandle, transforms block.IterTransforms,
+) error {
+	return i.blockIter.InitHandle(cmp, split, block, transforms)
+}
+
+func (i *fragmentIter) init(elideSameSeqnum bool) {
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
@@ -78,7 +86,7 @@ func (i *fragmentBlockIter) init(elideSameSeqnum bool) {
 // the key or value. This is ok because the range del/key block doesn't use
 // prefix compression (and we don't perform any transforms), so the key/value
 // will be pointing directly into the buffer data.
-func (i *fragmentBlockIter) initSpan(ik base.InternalKey, internalValue []byte) error {
+func (i *fragmentIter) initSpan(ik base.InternalKey, internalValue []byte) error {
 	var err error
 	if ik.Kind() == base.InternalKeyKindRangeDelete {
 		i.span = rangedel.Decode(ik, internalValue, i.span.Keys[:0])
@@ -90,7 +98,7 @@ func (i *fragmentBlockIter) initSpan(ik base.InternalKey, internalValue []byte) 
 
 // addToSpan adds a fragment to the existing span. The fragment must be for the
 // same start/end keys.
-func (i *fragmentBlockIter) addToSpan(
+func (i *fragmentIter) addToSpan(
 	cmp base.Compare, ik base.InternalKey, internalValue []byte,
 ) error {
 	var err error
@@ -102,7 +110,7 @@ func (i *fragmentBlockIter) addToSpan(
 	return err
 }
 
-func (i *fragmentBlockIter) elideKeysOfSameSeqNum() {
+func (i *fragmentIter) elideKeysOfSameSeqNum() {
 	if invariants.Enabled {
 		if !i.elideSameSeqnum || len(i.span.Keys) == 0 {
 			panic("elideKeysOfSameSeqNum called when it should not be")
@@ -128,7 +136,7 @@ func (i *fragmentBlockIter) elideKeysOfSameSeqNum() {
 //
 // gatherForward iterates forward, re-combining the fragmented internal keys to
 // reconstruct a keyspan.Span that holds all the keys defined over the span.
-func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error) {
+func (i *fragmentIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error) {
 	i.span = keyspan.Span{}
 	if kv == nil || !i.blockIter.Valid() {
 		return nil, nil
@@ -148,8 +156,8 @@ func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, e
 
 	// Overlapping fragments are required to have exactly equal start and
 	// end bounds.
-	for kv = i.blockIter.Next(); kv != nil && i.blockIter.Cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
-		if err := i.addToSpan(i.blockIter.Cmp, kv.K, kv.InPlaceValue()); err != nil {
+	for kv = i.blockIter.Next(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
+		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
 	}
@@ -168,7 +176,7 @@ func (i *fragmentBlockIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, e
 //
 // gatherBackward iterates backwards, re-combining the fragmented internal keys
 // to reconstruct a keyspan.Span that holds all the keys defined over the span.
-func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error) {
+func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error) {
 	i.span = keyspan.Span{}
 	if kv == nil || !i.blockIter.Valid() {
 		return nil, nil
@@ -185,8 +193,8 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 	//
 	// Overlapping fragments are required to have exactly equal start and
 	// end bounds.
-	for kv = i.blockIter.Prev(); kv != nil && i.blockIter.Cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
-		if err := i.addToSpan(i.blockIter.Cmp, kv.K, kv.InPlaceValue()); err != nil {
+	for kv = i.blockIter.Prev(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
+		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
 	}
@@ -203,7 +211,7 @@ func (i *fragmentBlockIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, 
 }
 
 // Close implements (keyspan.FragmentIterator).Close.
-func (i *fragmentBlockIter) Close() {
+func (i *fragmentIter) Close() {
 	i.blockIter.Close()
 	i.closeCheck.Close()
 
@@ -214,7 +222,7 @@ func (i *fragmentBlockIter) Close() {
 		return
 	}
 
-	*i = fragmentBlockIter{
+	*i = fragmentIter{
 		blockIter:  i.blockIter.ResetForReuse(),
 		closeCheck: i.closeCheck,
 	}
@@ -223,19 +231,19 @@ func (i *fragmentBlockIter) Close() {
 }
 
 // First implements (keyspan.FragmentIterator).First
-func (i *fragmentBlockIter) First() (*keyspan.Span, error) {
+func (i *fragmentIter) First() (*keyspan.Span, error) {
 	i.dir = +1
 	return i.gatherForward(i.blockIter.First())
 }
 
 // Last implements (keyspan.FragmentIterator).Last.
-func (i *fragmentBlockIter) Last() (*keyspan.Span, error) {
+func (i *fragmentIter) Last() (*keyspan.Span, error) {
 	i.dir = -1
 	return i.gatherBackward(i.blockIter.Last())
 }
 
 // Next implements (keyspan.FragmentIterator).Next.
-func (i *fragmentBlockIter) Next() (*keyspan.Span, error) {
+func (i *fragmentIter) Next() (*keyspan.Span, error) {
 	switch {
 	case i.dir == -1 && !i.span.Valid():
 		// Switching directions.
@@ -271,7 +279,7 @@ func (i *fragmentBlockIter) Next() (*keyspan.Span, error) {
 }
 
 // Prev implements (keyspan.FragmentIterator).Prev.
-func (i *fragmentBlockIter) Prev() (*keyspan.Span, error) {
+func (i *fragmentIter) Prev() (*keyspan.Span, error) {
 	switch {
 	case i.dir == +1 && !i.span.Valid():
 		// Switching directions.
@@ -307,10 +315,10 @@ func (i *fragmentBlockIter) Prev() (*keyspan.Span, error) {
 }
 
 // SeekGE implements (keyspan.FragmentIterator).SeekGE.
-func (i *fragmentBlockIter) SeekGE(k []byte) (*keyspan.Span, error) {
+func (i *fragmentIter) SeekGE(k []byte) (*keyspan.Span, error) {
 	if s, err := i.SeekLT(k); err != nil {
 		return nil, err
-	} else if s != nil && i.blockIter.Cmp(k, s.End) < 0 {
+	} else if s != nil && i.blockIter.cmp(k, s.End) < 0 {
 		return s, nil
 	}
 	// TODO(jackson): If the above i.SeekLT(k) discovers a span but the span
@@ -320,21 +328,21 @@ func (i *fragmentBlockIter) SeekGE(k []byte) (*keyspan.Span, error) {
 }
 
 // SeekLT implements (keyspan.FragmentIterator).SeekLT.
-func (i *fragmentBlockIter) SeekLT(k []byte) (*keyspan.Span, error) {
+func (i *fragmentIter) SeekLT(k []byte) (*keyspan.Span, error) {
 	i.dir = -1
 	return i.gatherBackward(i.blockIter.SeekLT(k, base.SeekLTFlagsNone))
 }
 
 // String implements fmt.Stringer.
-func (i *fragmentBlockIter) String() string {
+func (i *fragmentIter) String() string {
 	return "fragment-block-iter"
 }
 
 // WrapChildren implements FragmentIterator.
-func (i *fragmentBlockIter) WrapChildren(wrap keyspan.WrapFn) {}
+func (i *fragmentIter) WrapChildren(wrap keyspan.WrapFn) {}
 
 func checkFragmentBlockIterator(obj interface{}) {
-	i := obj.(*fragmentBlockIter)
+	i := obj.(*fragmentIter)
 	if p := i.blockIter.Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %p\n", p)
 		os.Exit(1)

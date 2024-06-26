@@ -74,10 +74,7 @@ import (
 //
 // We have picked the first option here.
 type Iter struct {
-	// Cmp is the comparer to use.
-	// TODO(jackson): Unexport once the fragmentBlockIter has moved into this
-	// package.
-	Cmp   base.Compare
+	cmp   base.Compare
 	split base.Split
 
 	// Iterator transforms.
@@ -231,7 +228,7 @@ func (i *Iter) Init(
 	i.transforms = transforms
 	i.synthSuffixBuf = i.synthSuffixBuf[:0]
 	i.split = split
-	i.Cmp = cmp
+	i.cmp = cmp
 	i.restarts = int32(len(blk)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&blk[0])
@@ -539,7 +536,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		// SyntheticPrefix. To determine which, we need to compare against a valid
 		// key in the block. We use firstUserKey which has the synthetic prefix.
 		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
-			if i.Cmp(i.firstUserKey, key) >= 0 {
+			if i.cmp(i.firstUserKey, key) >= 0 {
 				return i.First()
 			}
 			// Set the offset to the end of the block to mimic the offset of an
@@ -615,7 +612,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 			}
 			// Else k is invalid, and left as nil
 
-			if i.Cmp(searchKey, k) > 0 {
+			if i.cmp(searchKey, k) > 0 {
 				// The search key is greater than the user key at this restart point.
 				// Search beyond this restart point, since we are trying to find the
 				// first restart point with a user key >= the search key.
@@ -679,7 +676,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 
 	i.maybeReplaceSuffix()
 
-	if !hiddenPoint && i.Cmp(i.ikv.K.UserKey, key) >= 0 {
+	if !hiddenPoint && i.cmp(i.ikv.K.UserKey, key) >= 0 {
 		// Initialize i.lazyValue
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != base.InternalKeyKindSet {
@@ -692,7 +689,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		return &i.ikv
 	}
 	for i.Next(); i.Valid(); i.Next() {
-		if i.Cmp(i.ikv.K.UserKey, key) >= 0 {
+		if i.cmp(i.ikv.K.UserKey, key) >= 0 {
 			// i.Next() has already initialized i.ikv.LazyValue.
 			return &i.ikv
 		}
@@ -719,7 +716,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 		// SyntheticPrefix. To determine which, we need to compare against a valid
 		// key in the block. We use firstUserKey which has the synthetic prefix.
 		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
-			if i.Cmp(i.firstUserKey, key) < 0 {
+			if i.cmp(i.firstUserKey, key) < 0 {
 				return i.Last()
 			}
 			// Set the offset to the beginning of the block to mimic an exhausted
@@ -795,7 +792,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			}
 			// Else k is invalid, and left as nil
 
-			if i.Cmp(searchKey, k) > 0 {
+			if i.cmp(searchKey, k) > 0 {
 				// The search key is greater than the user key at this restart point.
 				// Search beyond this restart point, since we are trying to find the
 				// first restart point with a user key >= the search key.
@@ -823,7 +820,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			// suffix replacement though, a@4 should be returned as a@4 sorts before
 			// a@3.
 			ikv := i.First()
-			if i.Cmp(ikv.K.UserKey, key) < 0 {
+			if i.cmp(ikv.K.UserKey, key) < 0 {
 				return ikv
 			}
 		}
@@ -899,7 +896,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 
 			// If the binary search point is actually less than the search key, post
 			// replacement, bump the target offset.
-			if i.Cmp(i.ikv.K.UserKey, key) < 0 {
+			if i.cmp(i.ikv.K.UserKey, key) < 0 {
 				i.offset = targetOffset
 				if index+1 < i.numRestarts {
 					// if index+1 is within the i.data bounds, use it to find the target
@@ -936,7 +933,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 		// NB: we don't use the hiddenPoint return value of decodeInternalKey
 		// since we want to stop as soon as we reach a key >= ikey.UserKey, so
 		// that we can reverse.
-		if i.Cmp(i.ikv.K.UserKey, key) >= 0 {
+		if i.cmp(i.ikv.K.UserKey, key) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key. Note that this for
 			// loop will execute at least once with this if-block not being true, so
@@ -1116,7 +1113,7 @@ func (i *Iter) NextPrefix(succKey []byte) *base.InternalKV {
 	}
 	const nextsBeforeSeek = 3
 	kv := i.Next()
-	for j := 1; kv != nil && i.Cmp(kv.K.UserKey, succKey) < 0; j++ {
+	for j := 1; kv != nil && i.cmp(kv.K.UserKey, succKey) < 0; j++ {
 		if j >= nextsBeforeSeek {
 			return i.SeekGE(succKey, base.SeekGEFlagsNone)
 		}
@@ -1378,11 +1375,11 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			i.ikv.K.UserKey = nil
 		}
 		nextCmpCount++
-		if invariants.Enabled && prefixChanged && i.Cmp(i.ikv.K.UserKey, succKey) < 0 {
+		if invariants.Enabled && prefixChanged && i.cmp(i.ikv.K.UserKey, succKey) < 0 {
 			panic(errors.AssertionFailedf("prefix should have changed but %x < %x",
 				i.ikv.K.UserKey, succKey))
 		}
-		if prefixChanged || i.Cmp(i.ikv.K.UserKey, succKey) >= 0 {
+		if prefixChanged || i.cmp(i.ikv.K.UserKey, succKey) >= 0 {
 			// Prefix has changed.
 			if hiddenPoint {
 				return i.Next()
