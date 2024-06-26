@@ -96,7 +96,7 @@ func TestPropertiesSave(t *testing.T) {
 
 	check1 := func(e *Properties) {
 		// Check that we can save properties and read them back.
-		var w rowblk.RawWriter
+		var w rowblk.Writer
 		w.RestartInterval = propertiesBlockRestartInterval
 		e.save(TableFormatPebblev2, &w)
 		var props Properties
@@ -123,7 +123,7 @@ func TestPropertiesSave(t *testing.T) {
 }
 
 func BenchmarkPropertiesLoad(b *testing.B) {
-	var w rowblk.RawWriter
+	var w rowblk.Writer
 	w.RestartInterval = propertiesBlockRestartInterval
 	testProps.save(TableFormatPebblev2, &w)
 	block := w.Finish()

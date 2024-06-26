@@ -493,10 +493,10 @@ func TestBlockClear(t *testing.T) {
 }
 
 func TestBlockWriter(t *testing.T) {
-	w := &RawWriter{Writer: Writer{RestartInterval: 16}}
-	w.Add(ikey("apple"), nil)
-	w.Add(ikey("apricot"), nil)
-	w.Add(ikey("banana"), nil)
+	w := &Writer{RestartInterval: 16}
+	w.AddRawString("apple", nil)
+	w.AddRawString("apricot", nil)
+	w.AddRawString("banana", nil)
 	block := w.Finish()
 
 	expected := []byte(
@@ -510,7 +510,7 @@ func TestBlockWriter(t *testing.T) {
 }
 
 func TestBlockWriterWithPrefix(t *testing.T) {
-	w := &RawWriter{Writer: Writer{RestartInterval: 2}}
+	w := &Writer{RestartInterval: 2}
 	curKey := func() string {
 		return string(base.DecodeInternalKey(w.curKey).UserKey)
 	}

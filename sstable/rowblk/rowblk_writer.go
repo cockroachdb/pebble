@@ -7,6 +7,7 @@ package rowblk
 
 import (
 	"encoding/binary"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -304,25 +305,21 @@ func (w *Writer) EstimatedSize() int {
 	return len(w.buf) + 4*len(w.restarts) + EmptySize
 }
 
-// RawWriter is a Writer that writes raw key/value pairs to a block.
-type RawWriter struct {
-	Writer
-}
-
-// TODO(jackson): Can we just add an AddRaw method to Writer instead of having a
-// separate type?
-
-// Add adds a key value pair to the block.
-func (w *RawWriter) Add(key base.InternalKey, value []byte) {
+// AddRaw adds a key value pair to the block.
+func (w *Writer) AddRaw(key, value []byte) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
-	size := len(key.UserKey)
+	size := len(key)
 	if cap(w.curKey) < size {
 		w.curKey = make([]byte, 0, size*2)
 	}
 	w.curKey = w.curKey[:size]
-	copy(w.curKey, key.UserKey)
-
+	copy(w.curKey, key)
 	w.storeWithOptionalValuePrefix(
-		size, value, len(key.UserKey), false, 0, false)
+		size, value, len(key), false, 0, false)
+}
+
+// AddRawString is AddRaw but with a string key.
+func (w *Writer) AddRawString(key string, value []byte) {
+	w.AddRaw(unsafe.Slice(unsafe.StringData(key), len(key)), value)
 }

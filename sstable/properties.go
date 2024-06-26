@@ -13,7 +13,6 @@ import (
 	"sort"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/intern"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
@@ -326,7 +325,7 @@ func (p *Properties) saveString(m map[string][]byte, offset uintptr, value strin
 	m[propOffsetTagMap[offset]] = []byte(value)
 }
 
-func (p *Properties) save(tblFormat TableFormat, w *rowblk.RawWriter) {
+func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	m := make(map[string][]byte)
 	for k, v := range p.UserProperties {
 		m[k] = []byte(v)
@@ -419,6 +418,6 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.RawWriter) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		w.Add(base.InternalKey{UserKey: []byte(key)}, m[key])
+		w.AddRawString(key, m[key])
 	}
 }
