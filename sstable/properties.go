@@ -255,9 +255,7 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-func (p *Properties) load(
-	b []byte, blockOffset uint64, deniedUserProperties map[string]struct{},
-) error {
+func (p *Properties) load(b []byte, deniedUserProperties map[string]struct{}) error {
 	i, err := rowblk.NewRawIter(bytes.Compare, b)
 	if err != nil {
 		return err

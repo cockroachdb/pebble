@@ -234,9 +234,6 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			if err != nil {
-				return err.Error()
-			}
 			return format(td, meta)
 
 		default:

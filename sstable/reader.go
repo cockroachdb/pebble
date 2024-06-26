@@ -730,7 +730,7 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.Get(), bh.Offset, r.opts.DeniedUserProperties)
+		err := r.Properties.load(b.Get(), r.opts.DeniedUserProperties)
 		b.Release()
 		if err != nil {
 			return err

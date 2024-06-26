@@ -101,7 +101,7 @@ func TestPropertiesSave(t *testing.T) {
 		e.save(TableFormatPebblev2, &w)
 		var props Properties
 
-		require.NoError(t, props.load(w.Finish(), 0, make(map[string]struct{})))
+		require.NoError(t, props.load(w.Finish(), make(map[string]struct{})))
 		props.Loaded = nil
 		if diff := pretty.Diff(*e, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
@@ -132,6 +132,6 @@ func BenchmarkPropertiesLoad(b *testing.B) {
 	p := &Properties{}
 	for i := 0; i < b.N; i++ {
 		*p = Properties{}
-		require.NoError(b, p.load(block, 0, nil))
+		require.NoError(b, p.load(block, nil))
 	}
 }

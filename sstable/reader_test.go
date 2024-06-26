@@ -2025,7 +2025,7 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 						require.NoError(b, err)
 						b.ResetTimer()
 						pos := 0
-						var seekGEFlags SeekGEFlags
+						var seekGEFlags base.SeekGEFlags
 						for i := 0; i < b.N; i++ {
 							seekKey := seekKeys[0]
 							var kv *base.InternalKV
