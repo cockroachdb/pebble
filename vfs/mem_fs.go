@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -67,7 +66,7 @@ func NewStrictMem() *MemFS {
 func NewMemFile(data []byte) File {
 	n := &memNode{}
 	n.refs.Store(1)
-	n.mu.data = data
+	n.mu.data.data = data
 	n.mu.modTime = time.Now()
 	return &memFile{
 		n:    n,
@@ -181,7 +180,7 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 		if final {
 			break
 		}
-		child := dir.children[frag]
+		child := dir.find(frag)
 		if child == nil {
 			return &os.PathError{
 				Op:   "open",
@@ -210,7 +209,7 @@ func (y *MemFS) Create(fullname string, category DiskWriteCategory) (File, error
 				return errors.New("pebble/vfs: empty file name")
 			}
 			n := &memNode{}
-			dir.children[frag] = n
+			dir.editedChildren[frag] = n
 			ret = &memFile{
 				name:  frag,
 				n:     n,
@@ -236,7 +235,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n = dir.children[frag]
+			n = dir.find(frag)
 		}
 		return nil
 	})
@@ -256,7 +255,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			if _, ok := dir.children[frag]; ok {
+			if dir.find(frag) != nil {
 				return &os.LinkError{
 					Op:  "link",
 					Old: oldname,
@@ -264,7 +263,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 					Err: oserror.ErrExist,
 				}
 			}
-			dir.children[frag] = n
+			dir.editedChildren[frag] = n
 		}
 		return nil
 	})
@@ -282,7 +281,7 @@ func (y *MemFS) open(fullname string, openForWrite bool) (File, error) {
 				}
 				return nil
 			}
-			if n := dir.children[frag]; n != nil {
+			if n := dir.find(frag); n != nil {
 				ret = &memFile{
 					name:  frag,
 					n:     n,
@@ -337,8 +336,8 @@ func (y *MemFS) Remove(fullname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			child, ok := dir.children[frag]
-			if !ok {
+			child := dir.find(frag)
+			if child == nil {
 				return oserror.ErrNotExist
 			}
 			if y.windowsSemantics {
@@ -350,10 +349,10 @@ func (y *MemFS) Remove(fullname string) error {
 					return oserror.ErrInvalid
 				}
 			}
-			if len(child.children) > 0 {
+			if !child.empty() {
 				return errNotEmpty
 			}
-			delete(dir.children, frag)
+			dir.remove(frag)
 		}
 		return nil
 	})
@@ -366,11 +365,10 @@ func (y *MemFS) RemoveAll(fullname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			_, ok := dir.children[frag]
-			if !ok {
+			if dir.find(frag) == nil {
 				return nil
 			}
-			delete(dir.children, frag)
+			dir.remove(frag)
 		}
 		return nil
 	})
@@ -390,8 +388,10 @@ func (y *MemFS) Rename(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			n = dir.children[frag]
-			delete(dir.children, frag)
+			if n = dir.find(frag); n == nil {
+				return nil
+			}
+			dir.remove(frag)
 		}
 		return nil
 	})
@@ -410,7 +410,7 @@ func (y *MemFS) Rename(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			dir.children[frag] = n
+			dir.editedChildren[frag] = n
 		}
 		return nil
 	})
@@ -443,11 +443,12 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 			}
 			return errors.New("pebble/vfs: empty file name")
 		}
-		child := dir.children[frag]
+		child := dir.find(frag)
 		if child == nil {
-			dir.children[frag] = &memNode{
-				children: make(map[string]*memNode),
-				isDir:    true,
+			dir.editedChildren[frag] = &memNode{
+				syncedChildren: make(map[string]*memNode),
+				editedChildren: make(map[string]*memNode),
+				isDir:          true,
 			}
 			return nil
 		}
@@ -503,10 +504,7 @@ func (y *MemFS) List(dirname string) ([]string, error) {
 			if frag != "" {
 				panic("unreachable")
 			}
-			ret = make([]string, 0, len(dir.children))
-			for s := range dir.children {
-				ret = append(ret, s)
-			}
+			ret = dir.children()
 		}
 		return nil
 	})
@@ -565,20 +563,64 @@ type memNode struct {
 	//   these are protected using MemFS.mu.
 	mu struct {
 		sync.Mutex
-		data       []byte
-		syncedData []byte
-		modTime    time.Time
+		data    sliceWithSync
+		modTime time.Time
 	}
 
-	children       map[string]*memNode
+	// INVARIANT: editedChildren[k] == (nil, ok) only if syncedChildren[k] != nil
 	syncedChildren map[string]*memNode
+	editedChildren map[string]*memNode
 }
 
 func newRootMemNode() *memNode {
 	return &memNode{
-		children: make(map[string]*memNode),
-		isDir:    true,
+		syncedChildren: make(map[string]*memNode),
+		editedChildren: make(map[string]*memNode),
+		isDir:          true,
 	}
+}
+
+func (f *memNode) find(name string) *memNode {
+	child, found := f.editedChildren[name]
+	if !found {
+		child = f.syncedChildren[name]
+	}
+	return child
+}
+
+func (f *memNode) remove(name string) {
+	if _, existed := f.syncedChildren[name]; existed {
+		f.editedChildren[name] = nil // tombstone
+	} else {
+		delete(f.editedChildren, name)
+	}
+}
+
+func (f *memNode) children() []string {
+	names := make([]string, 0, len(f.syncedChildren)+len(f.editedChildren))
+	for name := range f.syncedChildren {
+		if _, updated := f.editedChildren[name]; !updated {
+			names = append(names, name)
+		}
+	}
+	for name, n := range f.editedChildren {
+		if n != nil { // skip tombstones
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (f *memNode) empty() bool {
+	for _, n := range f.editedChildren {
+		if n != nil {
+			return false
+		}
+	}
+	// All editedChildren contain a tombstone. By the invariant, they all existed
+	// before in syncedChildren. If there were no more children other than those,
+	// then the current list is empty.
+	return len(f.editedChildren) == len(f.syncedChildren)
 }
 
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
@@ -586,7 +628,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 		w.WriteString("          ")
 	} else {
 		f.mu.Lock()
-		fmt.Fprintf(w, "%8d  ", len(f.mu.data))
+		fmt.Fprintf(w, "%8d  ", len(f.mu.data.data))
 		f.mu.Unlock()
 	}
 	for i := 0; i < level; i++ {
@@ -601,28 +643,22 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 		w.WriteByte(sep[0])
 	}
 	w.WriteByte('\n')
-	names := make([]string, 0, len(f.children))
-	for name := range f.children {
-		names = append(names, name)
-	}
+	names := f.children()
 	sort.Strings(names)
 	for _, name := range names {
-		f.children[name].dump(w, level+1, name)
+		f.find(name).dump(w, level+1, name)
 	}
 }
 
 func (f *memNode) resetToSyncedState() {
 	if f.isDir {
-		f.children = make(map[string]*memNode)
-		for k, v := range f.syncedChildren {
-			f.children[k] = v
-		}
-		for _, v := range f.children {
+		clear(f.editedChildren)
+		for _, v := range f.syncedChildren {
 			v.resetToSyncedState()
 		}
 	} else {
 		f.mu.Lock()
-		f.mu.data = slices.Clone(f.mu.syncedData)
+		f.mu.data.reset()
 		f.mu.Unlock()
 	}
 }
@@ -658,10 +694,10 @@ func (f *memFile) Read(p []byte) (int, error) {
 	}
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
-	if f.rpos >= len(f.n.mu.data) {
+	if f.rpos >= len(f.n.mu.data.data) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[f.rpos:])
+	n := copy(p, f.n.mu.data.data[f.rpos:])
 	f.rpos += n
 	return n, nil
 }
@@ -675,10 +711,10 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 	}
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
-	if off >= int64(len(f.n.mu.data)) {
+	if off >= int64(len(f.n.mu.data.data)) {
 		return 0, io.EOF
 	}
-	n := copy(p, f.n.mu.data[off:])
+	n := copy(p, f.n.mu.data.data[off:])
 	if n < len(p) {
 		return n, io.EOF
 	}
@@ -695,14 +731,7 @@ func (f *memFile) Write(p []byte) (int, error) {
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	f.n.mu.modTime = time.Now()
-	if f.wpos+len(p) <= len(f.n.mu.data) {
-		n := copy(f.n.mu.data[f.wpos:f.wpos+len(p)], p)
-		if n != len(p) {
-			panic("stuff")
-		}
-	} else {
-		f.n.mu.data = append(f.n.mu.data[:f.wpos], p...)
-	}
+	f.n.mu.data.writeAt(p, f.wpos)
 	f.wpos += len(p)
 
 	if invariants.Enabled {
@@ -725,16 +754,8 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	f.n.mu.modTime = time.Now()
-
-	for len(f.n.mu.data) < int(ofs)+len(p) {
-		f.n.mu.data = append(f.n.mu.data, 0)
-	}
-
-	n := copy(f.n.mu.data[int(ofs):int(ofs)+len(p)], p)
-	if n != len(p) {
-		panic("stuff")
-	}
-
+	f.n.mu.data.grow(int(ofs) + len(p))
+	f.n.mu.data.writeAt(p, int(ofs))
 	return len(p), nil
 }
 
@@ -746,7 +767,7 @@ func (f *memFile) Stat() (os.FileInfo, error) {
 	defer f.n.mu.Unlock()
 	return &memFileInfo{
 		name:    f.name,
-		size:    int64(len(f.n.mu.data)),
+		size:    int64(len(f.n.mu.data.data)),
 		modTime: f.n.mu.modTime,
 		isDir:   f.n.isDir,
 	}, nil
@@ -762,13 +783,17 @@ func (f *memFile) Sync() error {
 		return nil
 	}
 	if f.n.isDir {
-		f.n.syncedChildren = make(map[string]*memNode)
-		for k, v := range f.n.children {
-			f.n.syncedChildren[k] = v
+		for k, v := range f.n.editedChildren {
+			if v == nil {
+				delete(f.n.syncedChildren, k)
+			} else {
+				f.n.syncedChildren[k] = v
+			}
 		}
+		clear(f.n.editedChildren)
 	} else {
 		f.n.mu.Lock()
-		f.n.mu.syncedData = slices.Clone(f.n.mu.data)
+		f.n.mu.data.sync()
 		f.n.mu.Unlock()
 	}
 	return nil
@@ -846,4 +871,65 @@ func (l *memFileLock) Close() error {
 	l.y.lockedFiles.Delete(l.fullname)
 	l.y = nil
 	return l.f.Close()
+}
+
+// sliceWithSync is a []byte slice that can sync and rollback to the last synced
+// version. It is most efficient for append-only workloads (as efficient as a
+// regular slice).
+type sliceWithSync struct {
+	data   []byte
+	synced []byte
+
+	// INVARIANT: forked == false iff synced is a prefix of data, and is backed by
+	// the same slice.
+	//
+	// If forked == false, it is only safe to modify the data slice starting from
+	// index len(synced). The data slice is immutable up to len(synced).
+	//
+	// If forked == true, it is safe to modify the data slice freely at any index.
+	forked bool
+}
+
+func (s *sliceWithSync) writeAt(data []byte, at int) {
+	if at > len(s.data) {
+		panic(fmt.Sprintf("index %d out of bounds (len = %d)", at, len(data)))
+	} else if len(data) == 0 {
+		return // nothing to write
+	}
+	var suffix []byte
+	if end := at + len(data); end < len(s.data) {
+		suffix = s.data[end:]
+	}
+	if !s.forked && at < len(s.synced) {
+		s.data = append(append(s.data[:at:at], data...), suffix...)
+		s.forked = true
+		return
+	}
+	if len(suffix) == 0 {
+		s.data = append(s.data[:at], data...)
+	} else {
+		copy(s.data[at:], data)
+	}
+}
+
+func (s *sliceWithSync) grow(size int) {
+	if size <= len(s.data) {
+		return
+	}
+	for i := len(s.data); i < size; i++ {
+		s.data = append(s.data, 0)
+	}
+}
+
+// sync checkpoints the slice at the current state.
+func (s *sliceWithSync) sync() {
+	s.synced = s.data
+	s.forked = false
+}
+
+// reset rollbacks the slice to the last sync-ed state, or empty if there was no
+// sync before.
+func (s *sliceWithSync) reset() {
+	s.data = s.synced
+	s.forked = false
 }
