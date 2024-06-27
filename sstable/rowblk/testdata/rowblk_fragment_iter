@@ -1,0 +1,83 @@
+build
+a-d:{(#11,RANGEDEL)}
+b-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+----
+a-b:{(#11,RANGEDEL)}
+b-d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+
+iter
+first
+next
+next
+next
+prev
+prev
+prev
+last
+next
+prev
+prev
+prev
+prev
+----
+   first:  a-b:{(#11,RANGEDEL)}
+    next:  b-d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+    next:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+    next:  <nil>
+    prev:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+    prev:  b-d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+    prev:  a-b:{(#11,RANGEDEL)}
+    last:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+    next:  <nil>
+    prev:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+    prev:  b-d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+    prev:  a-b:{(#11,RANGEDEL)}
+    prev:  <nil>
+
+iter
+seek-ge c
+seek-lt g
+----
+ seek-ge:  b-d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+ seek-lt:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+
+# Check that seeking outside all ranges positions the iterator properly.
+iter
+seek-ge z
+prev
+seek-lt a
+next
+----
+ seek-ge:  <nil>
+    prev:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+ seek-lt:  <nil>
+    next:  a-b:{(#11,RANGEDEL)}
+
+
+iter elide-same-seq-num
+first
+next
+next
+----
+   first:  a-b:{(#11,RANGEDEL)}
+    next:  b-d:{(#12,RANGEDEL) (#11,RANGEDEL)}
+    next:  d-e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+
+iter synthetic-seq-num=10
+first
+next
+next
+----
+   first:  a-b:{(#10,RANGEDEL)}
+    next:  b-d:{(#10,RANGEDEL) (#10,RANGEDEL) (#10,RANGEDEL)}
+    next:  d-e:{(#10,RANGEDEL) (#10,RANGEDEL)}
+
+iter synthetic-seq-num=10 elide-same-seq-num
+first
+next
+next
+----
+   first:  a-b:{(#10,RANGEDEL)}
+    next:  b-d:{(#10,RANGEDEL)}
+    next:  d-e:{(#10,RANGEDEL)}

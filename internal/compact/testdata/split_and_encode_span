@@ -32,7 +32,7 @@ Encoded:   b-c:{(#9,RANGEKEYUNSET,@3) (#8,RANGEKEYSET,@3,foo5) (#4,RANGEKEYSET,@
 Remaining: .
 
 set
-a-c:{(#9,RANGEDEL) (#8,RANGEDEL) (#4,RANGEDEL))
+a-c:{(#9,RANGEDEL) (#8,RANGEDEL) (#4,RANGEDEL)}
 ----
 
 encode up-to=b
