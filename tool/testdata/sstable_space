@@ -7,35 +7,35 @@ requires at least 1 arg(s), only received 0
 sstable space --start=a --end=a
 ../sstable/testdata/h.sst
 ----
-h.sst: 1099
+h.sst: 1077
 
 # first data block through last key in first data block
 
 sstable space --start=a --end=beteem
 ../sstable/testdata/h.sst
 ----
-h.sst: 1099
+h.sst: 1077
 
 # last key in first data block through first key in second data block
 
 sstable space --start=beteem --end=bethought
 ../sstable/testdata/h.sst
 ----
-h.sst: 2161
+h.sst: 2120
 
 # last key in first data block through last key in last data block
 
 sstable space --start=beteem --end=youth
 ../sstable/testdata/h.sst
 ----
-h.sst: 13913
+h.sst: 13712
 
 # second last key in last data block through last key in last data block
 
 sstable space --start=yourself --end=youth
 ../sstable/testdata/h.sst
 ----
-h.sst: 161
+h.sst: 158
 
 # Two-level index: first key in first data block
 

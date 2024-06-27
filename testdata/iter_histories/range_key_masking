@@ -166,7 +166,7 @@ stats
 ----
 a: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 514B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 539B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
 
 # Perform a similar comparison in reverse.
 
@@ -186,7 +186,7 @@ stats
 ----
 a: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); blocks: 514B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
+stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); blocks: 539B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
 
 # Perform similar comparisons with seeks.
 
@@ -197,7 +197,7 @@ stats
 ----
 m: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 789B cached; points: 13 (39B keys, 39B values), range keys: 1, contained points: 13 (13 skipped)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 814B cached; points: 13 (39B keys, 39B values), range keys: 1, contained points: 13 (13 skipped)
 
 combined-iter mask-suffix=@9 mask-filter
 seek-ge m
@@ -206,7 +206,7 @@ stats
 ----
 m: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 514B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 539B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
 
 combined-iter mask-suffix=@9
 seek-lt m
@@ -215,7 +215,7 @@ stats
 ----
 a: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); blocks: 789B cached; points: 12 (36B keys, 36B values), range keys: 1, contained points: 12 (12 skipped)
+stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); blocks: 814B cached; points: 12 (36B keys, 36B values), range keys: 1, contained points: 12 (12 skipped)
 
 combined-iter mask-suffix=@9 mask-filter
 seek-lt m
@@ -224,4 +224,4 @@ stats
 ----
 a: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); blocks: 539B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)
+stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); blocks: 564B cached; points: 2 (6B keys, 6B values), range keys: 1, contained points: 2 (2 skipped)

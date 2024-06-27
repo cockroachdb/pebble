@@ -10,7 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 )
 
 func decompressedLen(blockType blockType, b []byte) (int, int, error) {

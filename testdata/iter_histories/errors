@@ -78,12 +78,12 @@ L0.0:
 layout filename=000004.sst
 ----
          0  data (38)
-        43  index (35)
-        83  range-key (29)
-       117  properties (573)
-       695  meta-index (57)
-       757  footer (53)
-       810  EOF
+        43  index (30)
+        78  range-key (29)
+       112  properties (573)
+       690  meta-index (57)
+       752  footer (53)
+       805  EOF
 
 # Inject an error on the first `ReadAt` call on 000004.sst's range key block
 # (which is at offset 83).
@@ -95,7 +95,7 @@ combined-iter
 first
 first
 ----
-err=injected error
+a: (a, .)
 a: (a, .)
 
 # Test a scenario where an error occurs while the top-level Iterator is
@@ -127,11 +127,11 @@ layout filename=000004.sst
        112  data (22)
        139  data (22)
        166  data (22)
-       193  index (113)
-       311  properties (571)
-       887  meta-index (33)
-       925  footer (53)
-       978  EOF
+       193  index (121)
+       319  properties (571)
+       895  meta-index (33)
+       933  footer (53)
+       986  EOF
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 0))))
 ----

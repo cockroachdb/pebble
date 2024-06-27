@@ -6,26 +6,26 @@ sstable layout
 ../sstable/testdata/h.sst
 ----
 h.sst
-         0  data (1094)
-      1099  data (1057)
-      2161  data (1074)
-      3240  data (1051)
-      4296  data (1046)
-      5347  data (1091)
-      6443  data (996)
-      7444  data (1060)
-      8509  data (1051)
-      9565  data (1016)
-     10586  data (1026)
-     11617  data (1100)
-     12722  data (1025)
-     13752  data (156)
-     13913  index (245)
-     14163  range-del (421)
-     14589  properties (409)
-     15003  meta-index (61)
-     15069  footer (53)
-     15122  EOF
+         0  data (1072)
+      1077  data (1038)
+      2120  data (1075)
+      3200  data (1033)
+      4238  data (1040)
+      5283  data (1072)
+      6360  data (981)
+      7346  data (1045)
+      8396  data (1026)
+      9427  data (1007)
+     10439  data (1001)
+     11445  data (1088)
+     12538  data (1011)
+     13554  data (153)
+     13712  index (243)
+     13960  range-del (421)
+     14386  properties (409)
+     14800  meta-index (61)
+     14866  footer (53)
+     14919  EOF
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
