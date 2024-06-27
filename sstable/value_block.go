@@ -7,7 +7,6 @@ package sstable
 import (
 	"context"
 	"encoding/binary"
-	"io"
 	"sync"
 	"unsafe"
 
@@ -545,7 +544,7 @@ func (w *valueBlockWriter) computeChecksum(blk []byte) {
 }
 
 func (w *valueBlockWriter) finish(
-	writer io.Writer, fileOffset uint64,
+	layout *layoutWriter, fileOffset uint64,
 ) (valueBlocksIndexHandle, valueBlocksAndIndexStats, error) {
 	if len(w.buf.b) > 0 {
 		w.compressAndFlush()
@@ -557,7 +556,7 @@ func (w *valueBlockWriter) finish(
 	largestOffset := uint64(0)
 	largestLength := uint64(0)
 	for i := range w.blocks {
-		_, err := writer.Write(w.blocks[i].block.b)
+		_, err := layout.WriteValueBlock(w.blocks[i].block.b)
 		if err != nil {
 			return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, err
 		}
@@ -578,8 +577,10 @@ func (w *valueBlockWriter) finish(
 		blockLengthByteLength: uint8(lenLittleEndian(largestLength)),
 	}
 	var err error
-	if vbih, err = w.writeValueBlocksIndex(writer, vbih); err != nil {
-		return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, err
+	if n > 0 {
+		if vbih, err = w.writeValueBlocksIndex(layout, vbih); err != nil {
+			return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, err
+		}
 	}
 	stats := valueBlocksAndIndexStats{
 		numValueBlocks:          uint64(n),
@@ -590,7 +591,7 @@ func (w *valueBlockWriter) finish(
 }
 
 func (w *valueBlockWriter) writeValueBlocksIndex(
-	writer io.Writer, h valueBlocksIndexHandle,
+	layout *layoutWriter, h valueBlocksIndexHandle,
 ) (valueBlocksIndexHandle, error) {
 	blockLen :=
 		int(h.blockNumByteLength+h.blockOffsetByteLength+h.blockLengthByteLength) * len(w.blocks)
@@ -617,7 +618,7 @@ func (w *valueBlockWriter) writeValueBlocksIndex(
 	}
 	b[0] = byte(noCompressionBlockType)
 	w.computeChecksum(buf)
-	if _, err := writer.Write(buf); err != nil {
+	if _, err := layout.WriteValueIndexBlock(buf, h); err != nil {
 		return valueBlocksIndexHandle{}, err
 	}
 	return h, nil

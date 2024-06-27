@@ -163,9 +163,11 @@ func CopySpan(
 		return 0, base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", offset, spanEnd)
 	}
 
-	if err := objstorage.Copy(ctx, r.readable, w.writable, offset, length); err != nil {
+	if err := objstorage.Copy(ctx, r.readable, w.layout.writable, offset, length); err != nil {
 		return 0, err
 	}
+	w.layout.offset += length
+
 	// Update w.meta.Size so subsequently flushed metadata has correct offsets.
 	w.meta.Size += length
 
