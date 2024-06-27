@@ -6,7 +6,6 @@ package sstable
 
 import (
 	"bytes"
-	"cmp"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -14,7 +13,6 @@ import (
 	"slices"
 	"sort"
 	"sync"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -126,14 +124,9 @@ type flushDecisionOptions struct {
 
 // Writer is a table writer.
 type Writer struct {
-	writable objstorage.Writable
-	meta     WriterMetadata
-	err      error
-	// cacheID and fileNum are used to remove blocks written to the sstable from
-	// the cache, providing a defense in depth against bugs which cause cache
-	// collisions.
-	cacheID uint64
-	fileNum base.DiskFileNum
+	layout layoutWriter
+	meta   WriterMetadata
+	err    error
 	// dataBlockOptions and indexBlockOptions are used to configure the sstable
 	// block flush heuristics.
 	dataBlockOptions  flushDecisionOptions
@@ -148,7 +141,6 @@ type Writer struct {
 	tableFormat          TableFormat
 	isStrictObsolete     bool
 	writingToLowestLevel bool
-	cache                *cache.Cache
 	restartInterval      int
 	checksumType         block.ChecksumType
 	// disableKeyOrderChecks disables the checks that keys are added to an
@@ -1758,7 +1750,7 @@ func (w *Writer) writeTwoLevelIndex() (block.Handle, error) {
 
 		data := b.block
 		w.props.IndexSize += uint64(len(data))
-		bh, err := w.writeBlock(data, w.compression, &w.blockBuf)
+		bh, err := w.layout.WriteIndexBlock(data)
 		if err != nil {
 			return block.Handle{}, err
 		}
@@ -1776,8 +1768,7 @@ func (w *Writer) writeTwoLevelIndex() (block.Handle, error) {
 	w.props.IndexPartitions = uint64(len(w.indexPartitions))
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.EstimatedSize())
 	w.props.IndexSize += w.props.TopLevelIndexSize + block.TrailerLen
-
-	return w.writeBlock(w.topLevelIndexBlock.Finish(), w.compression, &w.blockBuf)
+	return w.layout.WriteIndexBlock(w.topLevelIndexBlock.Finish())
 }
 
 func compressAndChecksum(
@@ -1799,58 +1790,6 @@ func compressAndChecksum(
 	trailer[0] = byte(blockType)
 	checksum := blockBuf.checksummer.Checksum(b, trailer[:1])
 	return b, block.MakeTrailer(byte(blockType), checksum)
-}
-
-func (w *Writer) writeCompressedBlock(blk []byte, trailer block.Trailer) (block.Handle, error) {
-	bh := block.Handle{Offset: w.meta.Size, Length: uint64(len(blk))}
-
-	if w.cacheID != 0 && w.fileNum != 0 {
-		// Remove the block being written from the cache. This provides defense in
-		// depth against bugs which cause cache collisions.
-		//
-		// TODO(peter): Alternatively, we could add the uncompressed value to the
-		// cache.
-		w.cache.Delete(w.cacheID, w.fileNum, bh.Offset)
-	}
-
-	// Write the bytes to the file.
-	if err := w.writable.Write(blk); err != nil {
-		return block.Handle{}, err
-	}
-	w.meta.Size += uint64(len(blk))
-	if err := w.writable.Write(trailer[:]); err != nil {
-		return block.Handle{}, err
-	}
-	w.meta.Size += block.TrailerLen
-
-	return bh, nil
-}
-
-// Write implements io.Writer. This is analogous to writeCompressedBlock for
-// blocks that already incorporate the trailer, and don't need the callee to
-// return a BlockHandle.
-func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
-	offset := w.meta.Size
-	if w.cacheID != 0 && w.fileNum != 0 {
-		// Remove the block being written from the cache. This provides defense in
-		// depth against bugs which cause cache collisions.
-		//
-		// TODO(peter): Alternatively, we could add the uncompressed value to the
-		// cache.
-		w.cache.Delete(w.cacheID, w.fileNum, offset)
-	}
-	w.meta.Size += uint64(len(blockWithTrailer))
-	if err := w.writable.Write(blockWithTrailer); err != nil {
-		return 0, err
-	}
-	return len(blockWithTrailer), nil
-}
-
-func (w *Writer) writeBlock(
-	b []byte, compression Compression, blockBuf *blockBuf,
-) (block.Handle, error) {
-	b, trailer := compressAndChecksum(b, compression, blockBuf)
-	return w.writeCompressedBlock(b, trailer)
 }
 
 // assertFormatCompatibility ensures that the features present on the table are
@@ -1926,10 +1865,7 @@ func (w *Writer) Close() (err error) {
 			// the same object to a sync.Pool.
 			w.valueBlockWriter = nil
 		}
-		if w.writable != nil {
-			w.writable.Abort()
-			w.writable = nil
-		}
+		w.layout.Abort()
 		// Record any error in the writer (so we can exit early if Close is called
 		// again).
 		if err != nil {
@@ -1965,7 +1901,7 @@ func (w *Writer) Close() (err error) {
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
 	if w.dataBlockBuf.dataBlock.EntryCount() > 0 || w.indexBlock.block.EntryCount() == 0 {
-		bh, err := w.writeBlock(w.dataBlockBuf.dataBlock.Finish(), w.compression, &w.dataBlockBuf.blockBuf)
+		bh, err := w.layout.WriteDataBlock(w.dataBlockBuf.dataBlock.Finish(), &w.dataBlockBuf.blockBuf)
 		if err != nil {
 			return err
 		}
@@ -1978,30 +1914,22 @@ func (w *Writer) Close() (err error) {
 			return err
 		}
 	}
-	w.props.DataSize = w.meta.Size
+	w.props.DataSize = w.layout.offset
 
-	var metaindex metaIndexWriter
 	// Write the filter block.
 	if w.filter != nil {
-		b, err := w.filter.finish()
+		bh, err := w.layout.WriteFilterBlock(w.filter)
 		if err != nil {
 			return err
 		}
-		bh, err := w.writeBlock(b, NoCompression, &w.blockBuf)
-		if err != nil {
-			return err
-		}
-		metaindex.add(w.filter.metaName(), bh)
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.Length
 	}
 
-	var indexBH block.Handle
 	if w.twoLevelIndex {
 		w.props.IndexType = twoLevelIndex
 		// Write the two level index block.
-		indexBH, err = w.writeTwoLevelIndex()
-		if err != nil {
+		if _, err = w.writeTwoLevelIndex(); err != nil {
 			return err
 		}
 	} else {
@@ -2011,18 +1939,13 @@ func (w *Writer) Close() (err error) {
 		// property.
 		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + block.TrailerLen
 		w.props.NumDataBlocks = uint64(w.indexBlock.block.EntryCount())
-
 		// Write the single level index block.
-		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression, &w.blockBuf)
-		if err != nil {
+		if _, err = w.layout.WriteIndexBlock(w.indexBlock.finish()); err != nil {
 			return err
 		}
 	}
 
-	// Write the range-del block. The block handle must added to the meta index block
-	// after the properties block has been written. This is because the entries in the
-	// metaindex block must be sorted by key.
-	var rangeDelBH block.Handle
+	// Write the range-del block.
 	if w.props.NumRangeDeletions > 0 {
 		// Because the range tombstones are fragmented, the end key of the last
 		// added range tombstone will be the largest range tombstone key. Note
@@ -2036,18 +1959,15 @@ func (w *Writer) Close() (err error) {
 		// get gc'd.
 		k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.CurValue()).Clone()
 		w.meta.SetLargestRangeDelKey(k)
-		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.Finish(), NoCompression, &w.blockBuf)
-		if err != nil {
+		if _, err := w.layout.WriteRangeDeletionBlock(w.rangeDelBlock.Finish()); err != nil {
 			return err
 		}
-		metaindex.add(metaRangeDelV2Name, rangeDelBH)
 	}
 
 	// Write the range-key block, flushing any remaining spans from the
 	// fragmenter first.
 	w.fragmenter.Finish()
 
-	var rangeKeyBH block.Handle
 	if w.props.NumRangeKeys() > 0 {
 		key := w.rangeKeyBlock.CurKey()
 		kind := key.Kind()
@@ -2057,28 +1977,19 @@ func (w *Writer) Close() (err error) {
 		}
 		k := base.MakeExclusiveSentinelKey(kind, endKey).Clone()
 		w.meta.SetLargestRangeKey(k)
-		// TODO(travers): The lack of compression on the range key block matches the
-		// lack of compression on the range-del block. Revisit whether we want to
-		// enable compression on this block.
-		rangeKeyBH, err = w.writeBlock(w.rangeKeyBlock.Finish(), NoCompression, &w.blockBuf)
-		if err != nil {
+		if _, err := w.layout.WriteRangeKeyBlock(w.rangeKeyBlock.Finish()); err != nil {
 			return err
 		}
-		metaindex.add(metaRangeKeyName, rangeKeyBH)
 	}
 
 	if w.valueBlockWriter != nil {
-		vbiHandle, vbStats, err := w.valueBlockWriter.finish(w, w.meta.Size)
+		_, vbStats, err := w.valueBlockWriter.finish(&w.layout, w.layout.offset)
 		if err != nil {
 			return err
 		}
 		w.props.NumValueBlocks = vbStats.numValueBlocks
 		w.props.NumValuesInValueBlocks = vbStats.numValuesInValueBlocks
 		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
-		if vbStats.numValueBlocks > 0 {
-			n := encodeValueBlocksIndexHandle(metaindex.tmp[:], vbiHandle)
-			metaindex.addRaw(metaValueIndexName, metaindex.tmp[:n])
-		}
 	}
 
 	{
@@ -2117,34 +2028,14 @@ func (w *Writer) Close() (err error) {
 		raw.RestartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		w.props.save(w.tableFormat, &raw)
-		bh, err := w.writeBlock(raw.Finish(), NoCompression, &w.blockBuf)
-		if err != nil {
-			return err
-		}
-		metaindex.add(metaPropertiesName, bh)
-	}
-
-	// Write the metaindex block. It might be an empty block, if the filter
-	// policy is nil. NoCompression is specified because a) RocksDB never
-	// compresses the meta-index block and b) RocksDB has some code paths which
-	// expect the meta-index block to not be compressed.
-	metaindexBH, err := w.writeBlock(metaindex.finish(), NoCompression, &w.blockBuf)
-	if err != nil {
-		return err
+		w.layout.WritePropertiesBlock(raw.Finish())
 	}
 
 	// Write the table footer.
-	footer := footer{
-		format:      w.tableFormat,
-		checksum:    w.blockBuf.checksummer.Type,
-		metaindexBH: metaindexBH,
-		indexBH:     indexBH,
-	}
-	encoded := footer.encode(w.blockBuf.tmp[:])
-	if err := w.writable.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
+	w.meta.Size, err = w.layout.Finish()
+	if err != nil {
 		return err
 	}
-	w.meta.Size += uint64(len(encoded))
 	w.meta.Properties = w.props
 
 	// Check that the features present in the table are compatible with the format
@@ -2152,12 +2043,6 @@ func (w *Writer) Close() (err error) {
 	if err = w.assertFormatCompatibility(); err != nil {
 		return err
 	}
-
-	if err := w.writable.Finish(); err != nil {
-		w.writable = nil
-		return err
-	}
-	w.writable = nil
 
 	w.dataBlockBuf.clear()
 	dataBlockBufPool.Put(w.dataBlockBuf)
@@ -2185,7 +2070,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
-	if w.writable != nil {
+	if !w.layout.IsFinished() {
 		return nil, errors.New("pebble: writer is not closed")
 	}
 	return &w.meta, nil
@@ -2204,7 +2089,7 @@ type WriterOption interface {
 func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
 	w := &Writer{
-		writable: writable,
+		layout: makeLayoutWriter(writable, o),
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
@@ -2227,7 +2112,6 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		tableFormat:          o.TableFormat,
 		isStrictObsolete:     o.IsStrictObsolete,
 		writingToLowestLevel: o.WritingToLowestLevel,
-		cache:                o.Cache,
 		restartInterval:      o.BlockRestartInterval,
 		checksumType:         o.Checksum,
 		indexBlock:           newIndexBlockBuf(o.Parallelism),
@@ -2330,39 +2214,6 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	w.fragmenter.Emit = w.encodeRangeKeySpan
 	w.rangeKeyEncoder.Emit = w.addRangeKey
 	return w
-}
-
-type metaIndexWriter struct {
-	handles []metaIndexHandle
-	buf     bytealloc.A
-	tmp     [blockHandleLikelyMaxLen]byte
-}
-type metaIndexHandle struct {
-	key   string
-	value []byte
-}
-
-func (w *metaIndexWriter) add(key string, h block.Handle) {
-	n := encodeBlockHandle(w.tmp[:], h)
-	w.addRaw(key, w.tmp[:n])
-}
-
-func (w *metaIndexWriter) addRaw(key string, h []byte) {
-	var encodedHandle []byte
-	w.buf, encodedHandle = w.buf.Alloc(len(h))
-	copy(encodedHandle, h)
-	w.handles = append(w.handles, metaIndexHandle{key: key, value: encodedHandle})
-}
-
-func (w *metaIndexWriter) finish() []byte {
-	slices.SortFunc(w.handles, func(a, b metaIndexHandle) int {
-		return cmp.Compare(a.key, b.key)
-	})
-	bw := rowblk.Writer{RestartInterval: 1}
-	for _, h := range w.handles {
-		bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.value)
-	}
-	return bw.Finish()
 }
 
 // internalGetProperties is a private, internal-use-only function that takes a
