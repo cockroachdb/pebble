@@ -148,6 +148,7 @@ var errBadKind = errors.New("key does not have expected kind (set)")
 type blockWithSpan struct {
 	start, end InternalKey
 	data       []byte
+	trailer    block.Trailer
 }
 
 func rewriteBlocks(
@@ -249,9 +250,9 @@ func rewriteBlocks(
 		finished, trailer := compressAndChecksum(bw.Finish(), compression, &buf)
 
 		// copy our finished block into the output buffer.
-		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished) + block.TrailerLen)
+		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished))
 		copy(output[i].data, finished)
-		copy(output[i].data[len(finished):], trailer[:])
+		output[i].trailer = trailer
 	}
 	return nil
 }
@@ -340,14 +341,10 @@ func rewriteDataBlocksToWriter(
 
 	for i := range blocks {
 		// Write the rewritten block to the file.
-		if err := w.writable.Write(blocks[i].data); err != nil {
+		bh, err := w.layout.writePrecompressedDataBlock(blocks[i].data, blocks[i].trailer)
+		if err != nil {
 			return err
 		}
-
-		n := len(blocks[i].data)
-		bh := block.Handle{Offset: w.meta.Size, Length: uint64(n) - block.TrailerLen}
-		// Update the overall size.
-		w.meta.Size += uint64(n)
 
 		// Load any previous values for our prop collectors into oldProps.
 		for i := range oldProps {
@@ -383,6 +380,7 @@ func rewriteDataBlocksToWriter(
 		}
 	}
 
+	w.meta.Size = w.layout.offset
 	w.meta.updateSeqNum(blocks[0].start.SeqNum())
 	w.props.NumEntries = r.Properties.NumEntries
 	w.props.RawKeySize = r.Properties.RawKeySize

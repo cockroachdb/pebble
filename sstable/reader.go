@@ -147,11 +147,11 @@ func (c *cacheOpts) readerApply(r *Reader) {
 }
 
 func (c *cacheOpts) writerApply(w *Writer) {
-	if w.cacheID == 0 {
-		w.cacheID = c.cacheID
+	if w.layout.cacheID == 0 {
+		w.layout.cacheID = c.cacheID
 	}
-	if w.fileNum == 0 {
-		w.fileNum = c.fileNum
+	if w.layout.fileNum == 0 {
+		w.layout.fileNum = c.fileNum
 	}
 }
 
