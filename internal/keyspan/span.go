@@ -491,9 +491,12 @@ func ParseSpan(input string) Span {
 	// Each of the remaining parts represents a single Key.
 	s.Keys = make([]Key, 0, len(parts)-2)
 	for _, p := range parts[2:] {
+		if len(p) >= 2 && p[0] == '(' && p[len(p)-1] == ')' {
+			p = p[1 : len(p)-1]
+		}
 		keyFields := strings.FieldsFunc(p, func(r rune) bool {
 			switch r {
-			case '#', ',', '(', ')':
+			case '#', ',':
 				return true
 			default:
 				return unicode.IsSpace(r)
