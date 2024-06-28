@@ -111,6 +111,7 @@ type FragmentIterTransforms struct {
 	// ElideSameSeqNum, if true, returns only the first-occurring (in forward
 	// order) keyspan.Key for each sequence number.
 	ElideSameSeqNum bool
+	SyntheticPrefix SyntheticPrefix
 }
 
 // NoFragmentTransforms is the default value for IterTransforms.
