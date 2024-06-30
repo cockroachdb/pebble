@@ -484,19 +484,6 @@ func (i *LevelIterator) Clone() LevelIterator {
 	}
 }
 
-// Current returns the item at the current iterator position.
-//
-// Current is deprecated. Callers should instead use the return value of a
-// positioning operation.
-func (i *LevelIterator) Current() *FileMetadata {
-	if !i.iter.valid() ||
-		(i.end != nil && cmpIter(i.iter, *i.end) > 0) ||
-		(i.start != nil && cmpIter(i.iter, *i.start) < 0) {
-		return nil
-	}
-	return i.iter.cur()
-}
-
 func (i *LevelIterator) empty() bool {
 	return emptyWithBounds(i.iter, i.start, i.end)
 }
@@ -740,10 +727,12 @@ func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
 // position. Take panics if the iterator is not currently positioned over a
 // file.
 func (i *LevelIterator) Take() LevelFile {
-	m := i.Current()
-	if m == nil {
+	if !i.iter.valid() ||
+		(i.end != nil && cmpIter(i.iter, *i.end) > 0) ||
+		(i.start != nil && cmpIter(i.iter, *i.start) < 0) {
 		panic("Take called on invalid LevelIterator")
 	}
+	m := i.iter.cur()
 	// LevelSlice's start and end fields are immutable and are positioned to
 	// the same position for a LevelFile because they're inclusive, so we can
 	// share one iterator stack between the two bounds.
