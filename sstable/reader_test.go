@@ -943,7 +943,7 @@ func checkValidPrefix(prefix, key []byte) bool {
 }
 
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
-	tmpDir := path.Join(t.TempDir())
+	tmpDir := filepath.Join(t.TempDir())
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
 	defer provider.Close()
@@ -980,7 +980,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 }
 
 func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
-	tmpDir := path.Join(t.TempDir())
+	tmpDir := filepath.Join(t.TempDir())
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
 	defer provider.Close()
@@ -1632,7 +1632,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 		f, err := os.Open(filepath.Join("testdata", file))
 		require.NoError(t, err)
 
-		pathCopy := path.Join(t.TempDir(), path.Base(file))
+		pathCopy := filepath.Join(t.TempDir(), path.Base(file))
 		fCopy, err := os.OpenFile(pathCopy, os.O_CREATE|os.O_RDWR, 0600)
 		require.NoError(t, err)
 		defer fCopy.Close()

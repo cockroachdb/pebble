@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1191,7 +1191,7 @@ func TestTableCacheNoSuchFileError(t *testing.T) {
 	if sst == "" {
 		t.Fatalf("no SST found after flush")
 	}
-	require.NoError(t, mem.Remove(path.Join(dirname, sst)))
+	require.NoError(t, mem.Remove(filepath.Join(dirname, sst)))
 
 	_, _, _ = d.Get([]byte("a"))
 	require.NotZero(t, len(logger.fatalMsgs), "no fatal message emitted")

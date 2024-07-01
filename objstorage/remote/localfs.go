@@ -8,7 +8,7 @@ import (
 	"context"
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -43,7 +43,7 @@ func (s *localFSStore) Close() error {
 func (s *localFSStore) ReadObject(
 	ctx context.Context, objName string,
 ) (_ ObjectReader, objSize int64, _ error) {
-	f, err := s.vfs.Open(path.Join(s.dirname, objName))
+	f, err := s.vfs.Open(filepath.Join(s.dirname, objName))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -80,7 +80,7 @@ func (r *localFSReader) Close() error {
 
 // CreateObject is part of the remote.Storage interface.
 func (s *localFSStore) CreateObject(objName string) (io.WriteCloser, error) {
-	file, err := s.vfs.Create(path.Join(s.dirname, objName), vfs.WriteCategoryUnspecified)
+	file, err := s.vfs.Create(filepath.Join(s.dirname, objName), vfs.WriteCategoryUnspecified)
 	return file, err
 }
 
@@ -95,12 +95,12 @@ func (s *localFSStore) List(prefix, delimiter string) ([]string, error) {
 
 // Delete is part of the remote.Storage interface.
 func (s *localFSStore) Delete(objName string) error {
-	return s.vfs.Remove(path.Join(s.dirname, objName))
+	return s.vfs.Remove(filepath.Join(s.dirname, objName))
 }
 
 // Size is part of the remote.Storage interface.
 func (s *localFSStore) Size(objName string) (int64, error) {
-	f, err := s.vfs.Open(path.Join(s.dirname, objName))
+	f, err := s.vfs.Open(filepath.Join(s.dirname, objName))
 	if err != nil {
 		return 0, err
 	}
