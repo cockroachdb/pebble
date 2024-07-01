@@ -1093,7 +1093,7 @@ func TestBatchTooLarge(t *testing.T) {
 				result = r
 			}
 		}()
-		b.grow(maxBatchSize)
+		b.grow(maxBatchSize + 1)
 	}()
 	require.EqualValues(t, ErrBatchTooLarge, result)
 }
