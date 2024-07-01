@@ -2519,14 +2519,23 @@ func (d *DB) compactAndWrite(
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
 	}
+	considerCreateShared := remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level)
+	if considerCreateShared {
+		runnerCfg.ConsiderCreateShared = true
+		runnerCfg.SharedLowerUserKeyPrefix = d.opts.Experimental.SharedLowerUserKeyPrefix
+	}
 	runner := compact.NewRunner(runnerCfg, iter)
-	for runner.MoreDataToWrite() {
+	for {
+		moreData, keyShouldBeWrittenToShared := runner.MoreDataToWrite()
+		if !moreData {
+			break
+		}
 		if c.cancel.Load() {
 			return runner.Finish().WithError(ErrCancelledCompaction)
 		}
 		// Create a new table.
 		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
-		objMeta, tw, cpuWorkHandle, err := d.newCompactionOutput(jobID, c, writerOpts)
+		objMeta, tw, cpuWorkHandle, err := d.newCompactionOutput(jobID, c, writerOpts, keyShouldBeWrittenToShared)
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
@@ -2653,7 +2662,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 // newCompactionOutput creates an object for a new table produced by a
 // compaction or flush.
 func (d *DB) newCompactionOutput(
-	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
+	jobID JobID, c *compaction, writerOpts sstable.WriterOptions, preferSharedStorage bool,
 ) (objstorage.ObjectMetadata, *sstable.Writer, CPUWorkHandle, error) {
 	d.mu.Lock()
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
@@ -2690,7 +2699,7 @@ func (d *DB) newCompactionOutput(
 
 	// Prefer shared storage if present.
 	createOpts := objstorage.CreateOptions{
-		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+		PreferSharedStorage: preferSharedStorage,
 		WriteCategory:       writeCategory,
 	}
 	writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
@@ -2722,6 +2731,9 @@ func (d *DB) newCompactionOutput(
 		d.opts.Experimental.MaxWriterConcurrency > 0 &&
 			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
+	if d.opts.Experimental.WriteSharedWithStrictObsolete && objMeta.IsShared() {
+		writerOpts.IsStrictObsolete = true
+	}
 	tw := sstable.NewWriter(writable, writerOpts, cacheOpts)
 	return objMeta, tw, cpuWorkHandle, nil
 }

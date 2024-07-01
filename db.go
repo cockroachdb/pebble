@@ -1250,6 +1250,17 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // creator ID was set (as creator IDs are necessary to enable shared storage)
 // resulting in some lower level SSTs being on non-shared storage. Skip-shared
 // iteration is invalid in those cases.
+//
+// The above error handling implies that ScanInternal with a non-nil
+// VisitSharedFile can only be called without error if both the following
+// conditions are true:
+//
+//   - All files in the LSM conform to remote.CreateOnSharedLower strategy (they
+//     can of course conform to the stronger remote.CreateOnSharedAll).
+//
+//   - If Options.Experimental.SharedLowerUserKeyPrefix is non-nil, the lower
+//     parameter must have a prefix that is greater than or equal to this lower
+//     bound.
 func (d *DB) ScanInternal(
 	ctx context.Context,
 	categoryAndQoS sstable.CategoryAndQoS,
