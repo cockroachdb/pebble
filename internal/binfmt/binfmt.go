@@ -59,18 +59,18 @@ func (f *Formatter) Offset() int {
 	return f.off
 }
 
-// PeekInt reads a little-endian integer of the specified width at the current
-// offset.
-func (f *Formatter) PeekInt(w int) int {
+// PeekUint reads a little-endian unsigned integer of the specified width at the
+// current offset.
+func (f *Formatter) PeekUint(w int) uint64 {
 	switch w {
 	case 1:
-		return int(f.data[f.off])
+		return uint64(f.data[f.off])
 	case 2:
-		return int(binary.LittleEndian.Uint16(f.data[f.off:]))
+		return uint64(binary.LittleEndian.Uint16(f.data[f.off:]))
 	case 4:
-		return int(binary.LittleEndian.Uint32(f.data[f.off:]))
+		return uint64(binary.LittleEndian.Uint32(f.data[f.off:]))
 	case 8:
-		return int(binary.LittleEndian.Uint64(f.data[f.off:]))
+		return binary.LittleEndian.Uint64(f.data[f.off:])
 	default:
 		panic("unsupported width")
 	}
