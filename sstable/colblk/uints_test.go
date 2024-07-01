@@ -108,7 +108,7 @@ func TestUints(t *testing.T) {
 					_, desc := writers[wIdx].Finish(0, rows, 0, buf)
 					fmt.Fprintf(&out, "b%d: %T:\n", width, writers[wIdx])
 					f := binfmt.New(buf).LineWidth(20)
-					uintsToBinFormatter(f, rows, desc)
+					uintsToBinFormatter(f, rows, desc, nil)
 					fmt.Fprintf(&out, "%s", f.String())
 				} else {
 					fmt.Fprintf(&out, "Keeping b%d open\n", width)
