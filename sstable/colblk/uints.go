@@ -133,6 +133,12 @@ func (b *UintBuilder[T]) Reset() {
 	b.delta.width = 0
 }
 
+// Get gets the value of the provided row index. The provided row must have been
+// Set.
+func (b *UintBuilder[T]) Get(row int) T {
+	return b.array.elems.At(row)
+}
+
 // Set sets the value of the provided row index to v.
 func (b *UintBuilder[T]) Set(row int, v T) {
 	if b.array.n <= row {
@@ -330,8 +336,18 @@ func deltaWidth(delta uint64) uint32 {
 	}
 }
 
-func uintsToBinFormatter(f *binfmt.Formatter, rows int, desc ColumnDesc) {
+func uintsToBinFormatter(
+	f *binfmt.Formatter, rows int, desc ColumnDesc, uintFormatter func(uint64) string,
+) {
+	if uintFormatter == nil {
+		uintFormatter = func(v uint64) string { return fmt.Sprint(v) }
+	}
+
 	logicalWidth := desc.DataType.uintWidth()
+	if off := align(f.Offset(), int(logicalWidth)); off != f.Offset() {
+		f.CommentLine("Padding")
+		f.HexBytesln(off-f.Offset(), "aligning to %d-bit boundary", logicalWidth*8)
+	}
 	elementWidth := int(logicalWidth)
 	if desc.Encoding.Delta() != DeltaEncodingNone {
 		f.HexBytesln(int(logicalWidth), "%d-bit constant: %d", logicalWidth*8, f.PeekUint(int(logicalWidth)))
@@ -351,6 +367,6 @@ func uintsToBinFormatter(f *binfmt.Formatter, rows int, desc ColumnDesc) {
 		}
 	}
 	for i := 0; i < rows; i++ {
-		f.HexBytesln(elementWidth, "data[%d] = %d", i, f.PeekUint(elementWidth))
+		f.HexBytesln(elementWidth, "data[%d] = %s", i, uintFormatter(f.PeekUint(elementWidth)))
 	}
 }
