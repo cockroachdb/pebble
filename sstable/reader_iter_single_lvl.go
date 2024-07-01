@@ -654,7 +654,7 @@ func (i *singleLevelIterator) seekGEHelper(
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
 
 	var dontSeekWithinBlock bool
-	if !i.data.IsDataInvalidated() && !i.index.IsDataInvalidated() && i.data.Valid() && i.index.Valid() &&
+	if !i.data.IsDataInvalidated() && i.data.Valid() && i.index.Valid() &&
 		boundsCmp > 0 && i.cmp(key, i.index.Key().UserKey) <= 0 {
 		// Fast-path: The bounds have moved forward and this SeekGE is
 		// respecting the lower bound (guaranteed by Iterator). We know that
@@ -980,7 +980,7 @@ func (i *singleLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.I
 	i.positionedUsingLatestBounds = true
 
 	var dontSeekWithinBlock bool
-	if !i.data.IsDataInvalidated() && !i.index.IsDataInvalidated() && i.data.Valid() && i.index.Valid() &&
+	if !i.data.IsDataInvalidated() && i.data.Valid() && i.index.Valid() &&
 		boundsCmp < 0 && i.cmp(i.data.FirstUserKey(), key) < 0 {
 		// Fast-path: The bounds have moved backward, and this SeekLT is
 		// respecting the upper bound (guaranteed by Iterator). We know that
