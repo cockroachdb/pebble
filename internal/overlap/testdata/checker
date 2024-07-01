@@ -20,7 +20,7 @@ overlap t1
 [a, b]: possible data overlap   iterators opened: none
 [b1, b2]: boundary overlap, no data overlap (split file: t1)   iterators opened: t1/points, t1/range-del
 [b, c]: possible data overlap   iterators opened: none
-[d, e]: possible data overlap   iterators opened: t1/points
+[d, e]: possible data overlap   iterators opened: t1/points, t1/range-del
 [e, u): boundary overlap, no data overlap (split file: t1)   iterators opened: t1/points, t1/range-del
 [e, u]: possible data overlap   iterators opened: none
 [u, w]: possible data overlap   iterators opened: none
@@ -76,6 +76,26 @@ overlap t3
 [j, l): possible data overlap   iterators opened: none
 [k, l]: no overlap   iterators opened: none
 
+overlap t3 with-cache
+[a, b)
+[a, b]
+[d, f]
+[d, f]
+[e, f]
+[e, f]
+[e, h)
+[e, h]
+[j, l)
+----
+[a, b): no overlap   iterators opened: none
+[a, b]: possible data overlap   iterators opened: none
+[d, f]: possible data overlap   iterators opened: t3/range-key
+[d, f]: possible data overlap   iterators opened: none
+[e, f]: boundary overlap, no data overlap (split file: t3)   iterators opened: t3/range-key
+[e, f]: boundary overlap, no data overlap (split file: t3)   iterators opened: none
+[e, h): boundary overlap, no data overlap (split file: t3)   iterators opened: none
+[e, h]: possible data overlap   iterators opened: none
+[j, l): possible data overlap   iterators opened: none
 
 define tBE
 points:
@@ -109,11 +129,46 @@ overlap tBE tFM tMP
 [n, o]
 [a, z]
 ----
-[b1, b2]: boundary overlap, no data overlap (split file: tBE)   iterators opened: tBE/points, tBE/range-del
+[b1, b2]: boundary overlap, no data overlap (split file: tBE)   iterators opened: tBE/points, tBE/range-del, tBE/range-key
 [c1, c2]: possible data overlap   iterators opened: tBE/points, tBE/range-del, tBE/range-key
 [e, f): no overlap   iterators opened: none
 [g1, g2]: boundary overlap, no data overlap (split file: tFM)   iterators opened: tFM/points, tFM/range-del
 [j1, m1]: possible data overlap   iterators opened: none
 [n1, n2]: boundary overlap, no data overlap (split file: tMP)   iterators opened: tMP/points, tMP/range-del
-[n, o]: possible data overlap   iterators opened: tMP/points
+[n, o]: possible data overlap   iterators opened: tMP/points, tMP/range-del
+[a, z]: possible data overlap   iterators opened: none
+
+overlap tBE tFM tMP with-cache
+[b1, b2]
+[c1, c2]
+[e, f)
+[g1, g2]
+[j1, m1]
+[n1, n2]
+[n, o]
+[a, z]
+[b1, b2]
+[c1, c2]
+[e, f)
+[g1, g2]
+[j1, m1]
+[n1, n2]
+[n, o]
+[a, z]
+----
+[b1, b2]: boundary overlap, no data overlap (split file: tBE)   iterators opened: tBE/points, tBE/range-del, tBE/range-key
+[c1, c2]: possible data overlap   iterators opened: none
+[e, f): no overlap   iterators opened: none
+[g1, g2]: boundary overlap, no data overlap (split file: tFM)   iterators opened: tFM/points, tFM/range-del
+[j1, m1]: possible data overlap   iterators opened: none
+[n1, n2]: boundary overlap, no data overlap (split file: tMP)   iterators opened: tMP/points, tMP/range-del
+[n, o]: possible data overlap   iterators opened: none
+[a, z]: possible data overlap   iterators opened: none
+[b1, b2]: boundary overlap, no data overlap (split file: tBE)   iterators opened: none
+[c1, c2]: possible data overlap   iterators opened: none
+[e, f): no overlap   iterators opened: none
+[g1, g2]: boundary overlap, no data overlap (split file: tFM)   iterators opened: none
+[j1, m1]: possible data overlap   iterators opened: none
+[n1, n2]: boundary overlap, no data overlap (split file: tMP)   iterators opened: none
+[n, o]: possible data overlap   iterators opened: none
 [a, z]: possible data overlap   iterators opened: none

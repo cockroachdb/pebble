@@ -8,6 +8,7 @@ package overlap
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -23,7 +24,8 @@ type WithLSM [manifest.NumLevels]WithLevel
 type WithLevel struct {
 	Result Kind
 	// SplitFile can be set only when result is OnlyBoundary. If it is set, this
-	// file can be split to free up the range of interest.
+	// file can be split to free up the range of interest. SplitFile is not set
+	// for L0 (overlapping tables are allowed in L0).
 	SplitFile *manifest.FileMetadata
 }
 
@@ -89,6 +91,7 @@ func (c *Checker) LSMOverlap(
 		}
 		if res.Result == OnlyBoundary {
 			result[0].Result = OnlyBoundary
+			// We don't set SplitFile for L0 (tables in L0 are allowed to overlap).
 		}
 	}
 	for level := 1; level < manifest.NumLevels; level++ {
@@ -135,11 +138,11 @@ func (c *Checker) LevelOverlap(
 		return WithLevel{Result: Data}, nil
 	}
 	// We have a single file to look at; its boundaries enclose our region.
-	empty, err := c.EmptyRegion(ctx, region, file)
+	overlap, err := c.DataOverlapWithFile(ctx, region, file)
 	if err != nil {
 		return WithLevel{}, err
 	}
-	if !empty {
+	if overlap {
 		return WithLevel{Result: Data}, nil
 	}
 	return WithLevel{
@@ -148,116 +151,183 @@ func (c *Checker) LevelOverlap(
 	}, nil
 }
 
-// EmptyRegion returns true if the given region doesn't overlap with any keys or
-// ranges in the given table.
-func (c *Checker) EmptyRegion(
+// DataOverlapWithFile returns true if the given region overlaps with any keys
+// or spans in the given table.
+func (c *Checker) DataOverlapWithFile(
 	ctx context.Context, region base.UserKeyBounds, m *manifest.FileMetadata,
 ) (bool, error) {
-	empty, err := c.emptyRegionPointsAndRangeDels(ctx, region, m)
-	if err != nil || !empty {
-		return empty, err
+	if overlap, ok := m.OverlapCache.CheckDataOverlap(c.cmp, region); ok {
+		return overlap, nil
 	}
-	return c.emptyRegionRangeKeys(ctx, region, m)
-}
+	// We want to check overlap with file, but we also want to update the cache
+	// with useful information. We try to find two data regions r1 and r2 with a
+	// space-in between; r1 ends before region.Start and r2 ends at or after
+	// region.Start. See overlapcache.C.ReportEmptyRegion().
+	var r1, r2 base.UserKeyBounds
 
-// emptyRegionPointsAndRangeDels returns true if the file doesn't contain any
-// point keys or range del spans that overlap with region.
-func (c *Checker) emptyRegionPointsAndRangeDels(
-	ctx context.Context, region base.UserKeyBounds, m *manifest.FileMetadata,
-) (bool, error) {
-	if !m.HasPointKeys {
+	if m.HasPointKeys {
+		lt, ge, err := c.pointKeysAroundKey(ctx, region.Start, m)
+		if err != nil {
+			return false, err
+		}
+		r1 = base.UserKeyBoundsInclusive(lt, lt)
+		r2 = base.UserKeyBoundsInclusive(ge, ge)
+
+		if err := c.extendRegionsWithSpans(ctx, &r1, &r2, region.Start, m, manifest.KeyTypePoint); err != nil {
+			return false, err
+		}
+	}
+	if m.HasRangeKeys {
+		if err := c.extendRegionsWithSpans(ctx, &r1, &r2, region.Start, m, manifest.KeyTypeRange); err != nil {
+			return false, err
+		}
+	}
+	// If the regions now overlap or touch, it's all one big data region.
+	if r1.Start != nil && r2.Start != nil && c.cmp(r1.End.Key, r2.Start) >= 0 {
+		m.OverlapCache.ReportDataRegion(c.cmp, base.UserKeyBounds{
+			Start: r1.Start,
+			End:   r2.End,
+		})
 		return true, nil
 	}
+	m.OverlapCache.ReportEmptyRegion(c.cmp, r1, r2)
+	// There is overlap iff we overlap with r2.
+	overlap := r2.Start != nil && region.End.IsUpperBoundFor(c.cmp, r2.Start)
+	return overlap, nil
+}
+
+// pointKeysAroundKey returns two consecutive point keys: the greatest key that
+// is < key and the smallest key that is >= key. If there is no such key, the
+// corresponding return value is nil. Both lt and ge are nil if the file
+// contains no point keys.
+func (c *Checker) pointKeysAroundKey(
+	ctx context.Context, key []byte, m *manifest.FileMetadata,
+) (lt, ge []byte, _ error) {
 	pointBounds := m.UserKeyBoundsByType(manifest.KeyTypePoint)
-	if !pointBounds.Overlaps(c.cmp, &region) {
-		return true, nil
-	}
+
 	points, err := c.iteratorFactory.Points(ctx, m)
-	if err != nil {
-		return false, err
+	if points == nil || err != nil {
+		return nil, nil, err
 	}
-	if points != nil {
-		defer points.Close()
-		var kv *base.InternalKV
-		if c.cmp(region.Start, pointBounds.Start) <= 0 {
-			kv = points.First()
-		} else {
-			kv = points.SeekGE(region.Start, base.SeekGEFlagsNone)
+	defer points.Close()
+	switch {
+	case c.cmp(key, pointBounds.Start) <= 0:
+		kv := points.First()
+		if kv != nil {
+			ge = slices.Clone(kv.K.UserKey)
 		}
-		if kv == nil && points.Error() != nil {
-			return false, points.Error()
+	case c.cmp(key, pointBounds.End.Key) > 0:
+		kv := points.Last()
+		if kv != nil {
+			lt = slices.Clone(kv.K.UserKey)
 		}
-		if kv != nil && region.End.IsUpperBoundForInternalKey(c.cmp, kv.K) {
-			// Found overlap.
-			return false, nil
+	default:
+		kv := points.SeekLT(key, base.SeekLTFlagsNone)
+		if kv != nil {
+			lt = slices.Clone(kv.K.UserKey)
 		}
-	}
-	rangeDels, err := c.iteratorFactory.RangeDels(ctx, m)
-	if err != nil {
-		return false, err
-	}
-	if rangeDels != nil {
-		defer rangeDels.Close()
-		empty, err := c.emptyFragmentRegion(region, pointBounds.Start, rangeDels)
-		if err != nil || !empty {
-			return empty, err
+		if kv = points.Next(); kv != nil {
+			ge = slices.Clone(kv.K.UserKey)
 		}
 	}
-	// Found no overlap.
-	return true, nil
+	return lt, ge, points.Error()
 }
 
-// emptyRegionRangeKeys returns true if the file doesn't contain any range key
-// spans that overlap with region.
-func (c *Checker) emptyRegionRangeKeys(
-	ctx context.Context, region base.UserKeyBounds, m *manifest.FileMetadata,
-) (bool, error) {
-	if !m.HasRangeKeys {
-		return true, nil
-	}
-	rangeKeyBounds := m.UserKeyBoundsByType(manifest.KeyTypeRange)
-	if !rangeKeyBounds.Overlaps(c.cmp, &region) {
-		return true, nil
-	}
-	rangeKeys, err := c.iteratorFactory.RangeKeys(ctx, m)
-	if err != nil {
-		return false, err
-	}
-	if rangeKeys != nil {
-		defer rangeKeys.Close()
-		empty, err := c.emptyFragmentRegion(region, rangeKeyBounds.Start, rangeKeys)
-		if err != nil || !empty {
-			return empty, err
-		}
-	}
-	// Found no overlap.
-	return true, nil
-}
-
-// emptyFragmentRegion returns true if the given iterator doesn't contain any
-// spans that overlap with region. The fragmentLowerBounds is a known lower
-// bound for all the spans.
-func (c *Checker) emptyFragmentRegion(
-	region base.UserKeyBounds, fragmentLowerBound []byte, fragments keyspan.FragmentIterator,
-) (bool, error) {
-	var span *keyspan.Span
+// extendRegionsWithSpans opens a fragment iterator for either range dels or
+// range keys (depending n keyType), finds the last span that ends before key
+// and the following span, and extends/replaces regions r1 and r2.
+func (c *Checker) extendRegionsWithSpans(
+	ctx context.Context,
+	r1, r2 *base.UserKeyBounds,
+	key []byte,
+	m *manifest.FileMetadata,
+	keyType manifest.KeyType,
+) error {
+	var iter keyspan.FragmentIterator
 	var err error
-	if c.cmp(region.Start, fragmentLowerBound) <= 0 {
-		// This is an optimization: we know there are no spans before region.Start,
-		// so we can use First.
-		span, err = fragments.First()
+	if keyType == manifest.KeyTypePoint {
+		iter, err = c.iteratorFactory.RangeDels(ctx, m)
 	} else {
-		span, err = fragments.SeekGE(region.Start)
+		iter, err = c.iteratorFactory.RangeKeys(ctx, m)
 	}
-	if err != nil {
-		return false, err
+	if iter == nil || err != nil {
+		return err
 	}
-	if span != nil && span.Empty() {
-		return false, base.AssertionFailedf("fragment iterator produced empty span")
+	defer iter.Close()
+
+	fragmentBounds := m.UserKeyBoundsByType(keyType)
+	switch {
+	case c.cmp(key, fragmentBounds.Start) <= 0:
+		span, err := iter.First()
+		if err != nil {
+			return err
+		}
+		c.updateR2(r2, span)
+
+	case !fragmentBounds.End.IsUpperBoundFor(c.cmp, key):
+		span, err := iter.Last()
+		if err != nil {
+			return err
+		}
+		c.updateR1(r1, span)
+
+	default:
+		span, err := iter.SeekGE(key)
+		if err != nil {
+			return err
+		}
+		c.updateR2(r2, span)
+		span, err = iter.Prev()
+		if err != nil {
+			return err
+		}
+		c.updateR1(r1, span)
 	}
-	if span != nil && region.End.IsUpperBoundFor(c.cmp, span.Start) {
-		// Found overlap.
-		return false, nil
+	return nil
+}
+
+// updateR1 updates r1, the region of data that ends before a key of interest.
+func (c *Checker) updateR1(r1 *base.UserKeyBounds, s *keyspan.Span) {
+	switch {
+	case s == nil:
+
+	case r1.Start == nil || c.cmp(r1.End.Key, s.Start) < 0:
+		// Region completely to the right of r1.
+		*r1 = base.UserKeyBoundsEndExclusive(slices.Clone(s.Start), slices.Clone(s.End))
+
+	case c.cmp(s.End, r1.Start) < 0:
+		// Region completely to the left of r1, nothing to do.
+
+	default:
+		// Regions are overlapping or touching.
+		if c.cmp(s.Start, r1.Start) < 0 {
+			r1.Start = slices.Clone(s.Start)
+		}
+		if c.cmp(r1.End.Key, s.End) < 0 {
+			r1.End = base.UserKeyExclusive(slices.Clone(s.End))
+		}
 	}
-	return true, nil
+}
+
+// updateR2 updates r2, the region of data that ends before a key of interest.
+func (c *Checker) updateR2(r2 *base.UserKeyBounds, s *keyspan.Span) {
+	switch {
+	case s == nil:
+
+	case r2.Start == nil || c.cmp(s.End, r2.Start) < 0:
+		// Region completely to the left of r2.
+		*r2 = base.UserKeyBoundsEndExclusive(slices.Clone(s.Start), slices.Clone(s.End))
+
+	case c.cmp(r2.End.Key, s.Start) < 0:
+		// Region completely to the right of r2, nothing to do.
+
+	default:
+		// Regions are overlapping or touching.
+		if c.cmp(s.Start, r2.Start) < 0 {
+			r2.Start = slices.Clone(s.Start)
+		}
+		if c.cmp(r2.End.Key, s.End) < 0 {
+			r2.End = base.UserKeyExclusive(slices.Clone(s.End))
+		}
+	}
 }

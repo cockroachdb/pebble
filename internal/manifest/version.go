@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/overlap/overlapcache"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -287,6 +288,9 @@ type FileMetadata struct {
 
 	// SyntheticSuffix overrides all suffixes in a table; used for some virtual tables.
 	SyntheticSuffix sstable.SyntheticSuffix
+
+	// OverlapCache is used to speed up overlap checks during ingestion.
+	OverlapCache overlapcache.C
 }
 
 // InternalKeyBounds returns the set of overall table bounds.
