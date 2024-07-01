@@ -2,7 +2,6 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// Package colblk implements a columnar block format.
 package colblk
 
 import "golang.org/x/exp/constraints"
