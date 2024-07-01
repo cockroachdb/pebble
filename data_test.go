@@ -1344,7 +1344,7 @@ func runIngestExternalCmd(
 		usageErr := func(info interface{}) {
 			t.Helper()
 			td.Fatalf(t, "error parsing %q: %v; "+
-				"usage: obj bounds=(smallest,largest) [size=x] [synthetic-prefix=prefix] [synthetic-suffix=suffix]",
+				"usage: obj bounds=(smallest,largest) [size=x] [synthetic-prefix=prefix] [synthetic-suffix=suffix] [no-point-keys] [has-range-keys]",
 				line, info,
 			)
 		}
@@ -1392,6 +1392,12 @@ func runIngestExternalCmd(
 			case "synthetic-suffix":
 				nArgs(1)
 				ef.SyntheticSuffix = []byte(arg.Vals[0])
+
+			case "no-point-keys":
+				ef.HasPointKey = false
+
+			case "has-range-keys":
+				ef.HasRangeKey = true
 
 			default:
 				usageErr(fmt.Sprintf("unknown argument %v", arg.Key))

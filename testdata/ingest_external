@@ -909,3 +909,90 @@ next
 a@10: (a, .)
 b@11: (b, .)
 .
+
+
+# Tests with range tombstones.
+
+reset
+----
+
+build-remote points.sst
+set a@1 va
+set b@1 vb
+set c@1 vc
+set d@1 vc
+----
+
+build-remote ranges.sst
+del-range b b1
+----
+
+ingest-external
+points.sst bounds=(a,d)
+----
+
+ingest-external
+ranges.sst bounds=(a,d)
+----
+
+iter
+first
+next
+next
+next
+----
+a@1: (va, .)
+c@1: (vc, .)
+.
+.
+
+ingest-external
+points.sst bounds=(p1_a,p1_d) synthetic-prefix=p1_
+points.sst bounds=(p2_b,p2_c) synthetic-prefix=p2_
+----
+
+ingest-external
+ranges.sst bounds=(p1_a,p1_d) synthetic-prefix=p1_
+ranges.sst bounds=(p3_a,p3_d) synthetic-prefix=p3_
+----
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@1: (va, .)
+c@1: (vc, .)
+p1_a@1: (va, .)
+p1_c@1: (vc, .)
+p2_b@1: (vb, .)
+.
+
+iter
+seek-ge p
+next
+next
+next
+----
+p1_a@1: (va, .)
+p1_c@1: (vc, .)
+p2_b@1: (vb, .)
+.
+
+iter
+seek-lt p3
+prev
+prev
+prev
+prev
+prev
+----
+p2_b@1: (vb, .)
+p1_c@1: (vc, .)
+p1_a@1: (va, .)
+c@1: (vc, .)
+a@1: (va, .)
+.

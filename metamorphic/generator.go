@@ -1358,9 +1358,7 @@ func (g *generator) writerIngestExternalFiles() {
 		}
 		// Randomly set up synthetic prefix.
 		var syntheticPrefix sstable.SyntheticPrefix
-		// We can only use a synthetic prefix if we don't have range dels.
-		// TODO(radu): we will want to support this at some point.
-		if !g.keyManager.objKeyMeta(id).hasRangeDels && g.rng.Intn(2) == 0 {
+		if g.rng.Intn(2) == 0 {
 			syntheticPrefix = randBytes(g.rng, 1, 5)
 			start = syntheticPrefix.Apply(start)
 			end = syntheticPrefix.Apply(end)

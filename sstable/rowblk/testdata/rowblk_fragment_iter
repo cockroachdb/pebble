@@ -81,3 +81,37 @@ next
    first:  a-b:{(#10,RANGEDEL)}
     next:  b-d:{(#10,RANGEDEL)}
     next:  d-e:{(#10,RANGEDEL)}
+
+# Tests with synthetic prefix.
+iter synthetic-prefix=foo_
+first
+next
+prev
+seek-ge foo_a
+seek-ge foo_b
+seek-lt foo_b
+seek-lt foo_z
+----
+   first:  foo_a-foo_b:{(#11,RANGEDEL)}
+    next:  foo_b-foo_d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+    prev:  foo_a-foo_b:{(#11,RANGEDEL)}
+ seek-ge:  foo_a-foo_b:{(#11,RANGEDEL)}
+ seek-ge:  foo_b-foo_d:{(#12,RANGEDEL) (#11,RANGEDEL) (#11,RANGEDEL)}
+ seek-lt:  foo_a-foo_b:{(#11,RANGEDEL)}
+ seek-lt:  foo_d-foo_e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+
+# Try seeks that don't have the synthetic prefix.
+iter synthetic-prefix=foo_
+seek-ge fon_a
+seek-ge fop_a
+prev
+seek-lt fon_a
+next
+seek-lt fop_a
+----
+ seek-ge:  foo_a-foo_b:{(#11,RANGEDEL)}
+ seek-ge:  <nil>
+    prev:  foo_d-foo_e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+ seek-lt:  <nil>
+    next:  foo_a-foo_b:{(#11,RANGEDEL)}
+ seek-lt:  foo_d-foo_e:{(#12,RANGEDEL) (#11,RANGEDEL)}
