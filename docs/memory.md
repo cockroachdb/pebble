@@ -52,7 +52,7 @@ In order to support manual memory management for the Block Cache and
 MemTables, Pebble needs to precisely track their lifetime. This was
 already being done for the MemTable in order to account for its memory
 usage in metrics. It was mostly being done for the Block Cache. Values
-stores in the Block Cache are reference counted and are returned to
+stored in the Block Cache are reference counted and are returned to
 the "alloc cache" when their reference count falls
 to 0. Unfortunately, this tracking wasn't precise and there were
 numerous cases where the cache values were being leaked. This was
