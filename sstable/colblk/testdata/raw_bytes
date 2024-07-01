@@ -1,0 +1,195 @@
+# Test a simple RawBytes: a single byte slice with a single 'a' byte. Since
+# it's being written at offset 0, 2 bytes of padding are inserted between the
+# count of 16-bit offsets and the first offset.
+
+build offset=0
+a
+----
+# RawBytes
+00-02: x 0200 # 16-bit offset count: 2
+02-04: x 0000 # off[0]: 0 [overall 6]
+04-06: x 0100 # off[1]: 1 [overall 7]
+06-07: x 61   # data[0]: a
+
+# Try the same thing, but with offsets 1, 2, 3, 4.
+
+build offset=1
+a
+----
+00-01: x 00   # start offset
+# RawBytes
+01-03: x 0200 # 16-bit offset count: 2
+03-04: x 00   # padding to align offsets table
+04-06: x 0000 # off[0]: 0 [overall 8]
+06-08: x 0100 # off[1]: 1 [overall 9]
+08-09: x 61   # data[0]: a
+
+build offset=2
+a
+----
+00-02: x 0000 # start offset
+# RawBytes
+02-04: x 0200 # 16-bit offset count: 2
+04-06: x 0000 # off[0]: 0 [overall 8]
+06-08: x 0100 # off[1]: 1 [overall 9]
+08-09: x 61   # data[0]: a
+
+build offset=3
+a
+----
+00-03: x 000000 # start offset
+# RawBytes
+03-05: x 0200   # 16-bit offset count: 2
+05-06: x 00     # padding to align offsets table
+06-08: x 0000   # off[0]: 0 [overall 10]
+08-10: x 0100   # off[1]: 1 [overall 11]
+10-11: x 61     # data[0]: a
+
+build offset=4
+a
+----
+00-04: x 00000000 # start offset
+# RawBytes
+04-06: x 0200     # 16-bit offset count: 2
+06-08: x 0000     # off[0]: 0 [overall 10]
+08-10: x 0100     # off[1]: 1 [overall 11]
+10-11: x 61       # data[0]: a
+
+# Create a RawBytes with two byte slices: 'a' and 'b'.
+
+build offset=0
+a
+b
+----
+# RawBytes
+00-02: x 0300 # 16-bit offset count: 3
+02-04: x 0000 # off[0]: 0 [overall 8]
+04-06: x 0100 # off[1]: 1 [overall 9]
+06-08: x 0200 # off[2]: 2 [overall 10]
+08-09: x 61   # data[0]: a
+09-10: x 62   # data[1]: b
+
+build offset=0
+a
+ab
+abc
+----
+# RawBytes
+00-02: x 0400   # 16-bit offset count: 4
+02-04: x 0000   # off[0]: 0 [overall 10]
+04-06: x 0100   # off[1]: 1 [overall 11]
+06-08: x 0300   # off[2]: 3 [overall 13]
+08-10: x 0600   # off[3]: 6 [overall 16]
+10-11: x 61     # data[0]: a
+11-13: x 6162   # data[1]: ab
+13-16: x 616263 # data[2]: abc
+
+build offset=0
+aaabbbc
+----
+# RawBytes
+00-02: x 0200           # 16-bit offset count: 2
+02-04: x 0000           # off[0]: 0 [overall 6]
+04-06: x 0700           # off[1]: 7 [overall 13]
+06-13: x 61616162626263 # data[0]: aaabbbc
+
+# Test setting an artificial max-offset-16 so that we force all offsets other
+# than the first one to be 32-bit. This helps us test 32-bit offsets.
+
+build offset=0 max-offset-16=0
+a
+ab
+abc
+----
+# RawBytes
+00-02: x 0100     # 16-bit offset count: 1
+02-04: x 0000     # off[0]: 0 [overall 16]
+04-08: x 01000000 # off[1]: 1 [overall 16]
+08-12: x 03000000 # off[2]: 3 [overall 17]
+12-16: x 06000000 # off[3]: 6 [overall 19]
+16-17: x 61       # data[0]: a
+17-19: x 6162     # data[1]: ab
+19-22: x 616263   # data[2]: abc
+
+at indices=(0, 1, 2)
+----
+a
+ab
+abc
+
+build offset=0 max-offset-16=16
+cat
+orange
+zucchini
+lemon
+apple
+banana
+cantelope
+lettuce
+kale
+----
+# RawBytes
+00-02: x 0300               # 16-bit offset count: 3
+02-04: x 0000               # off[0]: 0 [overall 36]
+04-06: x 0300               # off[1]: 3 [overall 39]
+06-08: x 0900               # off[2]: 9 [overall 45]
+08-12: x 11000000           # off[3]: 17 [overall 36]
+12-16: x 16000000           # off[4]: 22 [overall 39]
+16-20: x 1b000000           # off[5]: 27 [overall 45]
+20-24: x 21000000           # off[6]: 33 [overall 53]
+24-28: x 2a000000           # off[7]: 42 [overall 58]
+28-32: x 31000000           # off[8]: 49 [overall 63]
+32-36: x 35000000           # off[9]: 53 [overall 69]
+36-39: x 636174             # data[0]: cat
+39-45: x 6f72616e6765       # data[1]: orange
+45-53: x 7a75636368696e69   # data[2]: zucchini
+53-58: x 6c656d6f6e         # data[3]: lemon
+58-63: x 6170706c65         # data[4]: apple
+63-69: x 62616e616e61       # data[5]: banana
+69-78: x 63616e74656c6f7065 # data[6]: cantelope
+78-85: x 6c657474756365     # data[7]: lettuce
+85-89: x 6b616c65           # data[8]: kale
+
+at indices=(0, 1, 2, 3, 4, 5, 6, 7, 8)
+----
+cat
+orange
+zucchini
+lemon
+apple
+banana
+cantelope
+lettuce
+kale
+
+# Only serialize the first 4 byte slices.
+
+build offset=0 max-offset-16=16 count=4
+cat
+orange
+zucchini
+lemon
+apple
+banana
+cantelope
+lettuce
+kale
+----
+# RawBytes
+00-02: x 0300             # 16-bit offset count: 3
+02-04: x 0000             # off[0]: 0 [overall 16]
+04-06: x 0300             # off[1]: 3 [overall 19]
+06-08: x 0900             # off[2]: 9 [overall 25]
+08-12: x 11000000         # off[3]: 17 [overall 16]
+12-16: x 16000000         # off[4]: 22 [overall 19]
+16-19: x 636174           # data[0]: cat
+19-25: x 6f72616e6765     # data[1]: orange
+25-33: x 7a75636368696e69 # data[2]: zucchini
+33-38: x 6c656d6f6e       # data[3]: lemon
+
+at indices=(0, 1, 2, 3)
+----
+cat
+orange
+zucchini
+lemon
