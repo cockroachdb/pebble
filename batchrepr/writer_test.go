@@ -54,8 +54,8 @@ func prettyBinaryRepr(repr []byte) string {
 	}
 
 	f := binfmt.New(repr).LineWidth(40)
-	f.HexBytesln(8, " seqnum=%d", f.PeekInt(8))
-	f.HexBytesln(4, " count=%d", f.PeekInt(4))
+	f.HexBytesln(8, " seqnum=%d", f.PeekUint(8))
+	f.HexBytesln(4, " count=%d", f.PeekUint(4))
 	for r := Read(repr); len(r) > 0; {
 		prevLen := len(r)
 		kind, ukey, _, ok, err := r.Next()
