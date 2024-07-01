@@ -56,6 +56,18 @@ func (t DataType) String() string {
 	return dataTypeName[t]
 }
 
+func (t DataType) uintWidth() uint32 {
+	if t >= DataTypeUint8 && t <= DataTypeUint64 {
+		v := t - DataTypeUint8
+		// Make sure it's okay to shift by t-DataTypeUint8.
+		if v >= 8 {
+			panic("invalid data type")
+		}
+		return 1 << v
+	}
+	panic("not a unit")
+}
+
 // ColumnDesc describes the column's data type and its encoding.
 type ColumnDesc struct {
 	DataType DataType
@@ -93,30 +105,92 @@ func (c ColumnDescs) String() string {
 
 // ColumnEncoding describes the encoding of a column.
 //
-// Null bitmap (bit 0):
+// Column data can optionally contain a NULL bitmap, where each bit corresponds
+// to a row in the column and a set bit indicates that the corresponding row is
+// NULL. Column data can optionally use a delta encoding where each value is a
+// delta from a base, constant value.
 //
-// The bit at position 0 indicates whether the column is prefixed with a null
-// bitmap. A null bitmap is a bitmap where each bit corresponds to a row in the
-// column, and a set bit indicates that the corresponding row is NULL.
+// The layout of the encoded data is as follows:
+//   - [optional] NULL bitmap
+//   - [optional] a "base" constant value for delta encodings
+//   - n data values
 //
-// TODO(jackson): Add additional column encoding types.
+// The ColumnEncoding byte is a combination of the following values:
+//   - The bits 0,1,2 encode the DeltaEncoding enum variant.
+//   - The bit 3 is set if the column has a NULL bitmap.
+//
+// The delta encoding is currently only used for uint columns.
 type ColumnEncoding uint8
 
 const (
 	// EncodingDefault indicates that the default encoding is in-use for a
-	// column, encoding n values for n rows.
+	// column, encoding n values for n rows. In EncodingDefault, no null bitmap
+	// is set, no delta encoding is used, etc.
 	EncodingDefault ColumnEncoding = 0
+
+	encodingUintDeltaMask        = 0b00000111
+	encodingUintDeltaInverseMask = 0b11111000
+	encodingNullBitmapBit        = 0b00001000
+
 	// TODO(jackson): Add additional encoding types.
-	encodingTypeCount = 1
 )
+
+// Delta returns the delta encoding of the column.
+func (e ColumnEncoding) Delta() DeltaEncoding {
+	return DeltaEncoding(e & encodingUintDeltaMask)
+}
+
+// WithDelta returns the column encoding with the provided delta encoding.
+func (e ColumnEncoding) WithDelta(d DeltaEncoding) ColumnEncoding {
+	return (e & encodingUintDeltaInverseMask) | ColumnEncoding(d)
+}
 
 // String returns the string representation of the column encoding.
 func (e ColumnEncoding) String() string {
-	return encodingName[e]
+	var sb strings.Builder
+	fmt.Fprint(&sb, e.Delta().String())
+	return sb.String()
 }
 
-var encodingName [encodingTypeCount]string = [encodingTypeCount]string{
-	EncodingDefault: "default",
+// DeltaEncoding indicates what delta encoding, if any is in use by a column to
+// reduce the per-row storage size.
+//
+// A uint delta encoding represents every non-NULL element in an array of uints
+// as a delta relative to the column's constant. The logical value of each row
+// is computed as C + D[i] where C is the column constant and D[i] is the delta.
+type DeltaEncoding uint8
+
+const (
+	// DeltaEncodingNone indicates no delta encoding is in use. N rows are
+	// represented using N values of the column's logical data type.
+	DeltaEncodingNone DeltaEncoding = 0
+	// DeltaEncodingConstant indicates that all rows of the column share the
+	// same value. The column data encodes the constant value and no deltas.
+	DeltaEncodingConstant DeltaEncoding = 1
+	// DeltaEncodingUint8 indicates each delta is represented as a 1-byte uint8.
+	DeltaEncodingUint8 DeltaEncoding = 2
+	// DeltaEncodingUint16 indicates each delta is represented as a 2-byte uint16.
+	DeltaEncodingUint16 DeltaEncoding = 3
+	// DeltaEncodingUint32 indicates each delta is represented as a 4-byte uint32.
+	DeltaEncodingUint32 DeltaEncoding = 4
+)
+
+// String implements fmt.Stringer.
+func (d DeltaEncoding) String() string {
+	switch d {
+	case DeltaEncodingNone:
+		return "none"
+	case DeltaEncodingConstant:
+		return "const"
+	case DeltaEncodingUint8:
+		return "delta8"
+	case DeltaEncodingUint16:
+		return "delta16"
+	case DeltaEncodingUint32:
+		return "delta32"
+	default:
+		panic("unreachable")
+	}
 }
 
 // ColumnWriter is an interface implemented by column encoders that accumulate a
@@ -137,6 +211,10 @@ type ColumnWriter interface {
 	//
 	// The provided column index must be less than NumColumns(). Finish is
 	// called for each index < NumColumns() in order.
+	//
+	// The provided buf must be word-aligned (at offset 0). If a column writer
+	// requires a particularly alignment, it's responsible for padding offset
+	// appropriately first.
 	Finish(col int, rows int, offset uint32, buf []byte) (nextOffset uint32, desc ColumnDesc)
 }
 
