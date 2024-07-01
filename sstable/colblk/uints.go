@@ -133,6 +133,12 @@ func (b *UintBuilder[T]) Reset() {
 	b.delta.width = 0
 }
 
+// Get gets the value of the provided row index. The provided row must have been
+// Set.
+func (b *UintBuilder[T]) Get(row int) T {
+	return b.array.elems.At(row)
+}
+
 // Set sets the value of the provided row index to v.
 func (b *UintBuilder[T]) Set(row int, v T) {
 	if b.array.n <= row {

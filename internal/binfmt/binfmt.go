@@ -155,6 +155,12 @@ func (f *Formatter) Pointer(off int) unsafe.Pointer {
 	return unsafe.Pointer(&f.data[f.off+off])
 }
 
+// Data returns the original data slice. Offset may be used to retrieve the
+// current offset within the slice.
+func (f *Formatter) Data() []byte {
+	return f.data
+}
+
 func (f *Formatter) newline(binaryData, comment string) {
 	f.lines = append(f.lines, [2]string{binaryData, comment})
 	f.buf.Reset()
