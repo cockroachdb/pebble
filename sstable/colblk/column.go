@@ -56,6 +56,21 @@ func (t DataType) String() string {
 	return dataTypeName[t]
 }
 
+func (t DataType) uintWidth() uint32 {
+	switch t {
+	case DataTypeUint8:
+		return 1
+	case DataTypeUint16:
+		return 2
+	case DataTypeUint32:
+		return 4
+	case DataTypeUint64:
+		return 8
+	default:
+		panic("not a uint")
+	}
+}
+
 // ColumnDesc describes the column's data type and its encoding.
 type ColumnDesc struct {
 	DataType DataType
@@ -93,30 +108,108 @@ func (c ColumnDescs) String() string {
 
 // ColumnEncoding describes the encoding of a column.
 //
-// Null bitmap (bit 0):
+// Delta encoding (bits 0, 1):
+//
+// The bits at positions 0 and 1 together are used by uint columns that may be
+// represented more compactly as a deltas computed relative to a constant. When
+// either of these bits are set, the constant bit must be set. These two bits
+// indicate the width of the per-row integers representing the deltas. See
+// DeltaEncoding.
+//
+// Null bitmap (bit 2):
 //
 // The bit at position 0 indicates whether the column is prefixed with a null
 // bitmap. A null bitmap is a bitmap where each bit corresponds to a row in the
 // column, and a set bit indicates that the corresponding row is NULL.
 //
-// TODO(jackson): Add additional column encoding types.
+// Has constant (bit 3):
+//
+// The bit at position 1 indicates whether the column is prefixed with a
+// constant When present, the bit indicates the column is prefixed with a
+// constant value of the column's data type. After the NULL bitmap (if present),
+// the column data encodes a single value of the same type as the column's data
+// type.  Eg, a DataTypeUint32 column with this bit is prefixed with a single
+// 32-bit integer. The column may encode additional data after the constant, for
+// example, deltas in a lower width integer type. See the UintBuilder.
 type ColumnEncoding uint8
 
 const (
 	// EncodingDefault indicates that the default encoding is in-use for a
 	// column, encoding n values for n rows.
 	EncodingDefault ColumnEncoding = 0
+
+	encodingUintDeltaMask        = 0b00000011
+	encodingUintDeltaInverseMask = 0b11111100
+	encodingNullBitmapBit        = 0b00000100
+	encodingConstantBit          = 0b00001000
+
 	// TODO(jackson): Add additional encoding types.
-	encodingTypeCount = 1
 )
+
+// Delta returns the delta encoding of the column.
+func (e ColumnEncoding) Delta() DeltaEncoding {
+	return DeltaEncoding(e & encodingUintDeltaMask)
+}
+
+// WithDelta returns the column encoding with the provided delta encoding.
+func (e ColumnEncoding) WithDelta(d DeltaEncoding) ColumnEncoding {
+	return (e & encodingUintDeltaInverseMask) | ColumnEncoding(d)
+}
+
+// HasConstant returns true if the column encoding indicates that the column has
+// a constant prefix.
+func (e ColumnEncoding) HasConstant() bool {
+	return e&encodingConstantBit != 0
+}
+
+// WithConstant returns the column encoding with a flag set indicating that the
+// column has a prefix encoding a constant.
+func (e ColumnEncoding) WithConstant() ColumnEncoding {
+	return e | encodingConstantBit
+}
 
 // String returns the string representation of the column encoding.
 func (e ColumnEncoding) String() string {
-	return encodingName[e]
+	var sb strings.Builder
+	if e.HasConstant() {
+		fmt.Fprint(&sb, "const")
+	}
+	fmt.Fprint(&sb, e.Delta().String())
+	return sb.String()
 }
 
-var encodingName [encodingTypeCount]string = [encodingTypeCount]string{
-	EncodingDefault: "default",
+// DeltaEncoding indicates the width of deltas used by a uint column's delta
+// encoding. A uint delta encoding represents every non-NULL element in an array
+// of uints as a delta relative to the column's constant. The logical value of
+// each row is computed as C + D[i] where C is the column constant and D[i] is
+// the delta.
+type DeltaEncoding uint8
+
+const (
+	// NoDeltaEncoding indicates no delta encoding is in use.
+	DeltaEncodingNone DeltaEncoding = 0
+	// DeltaEncodingUint8 indicates each delta is represented as a 1-byte uint8.
+	DeltaEncodingUint8 DeltaEncoding = 1
+	// DeltaEncodingUint16 indicates each delta is represented as a 2-byte uint16.
+	DeltaEncodingUint16 DeltaEncoding = 2
+	// DeltaEncodingUint32 indicates each delta is represented as a 4-byte uint32.
+	DeltaEncodingUint32 DeltaEncoding = 3
+)
+
+// String implements fmt.Stringer.
+func (d DeltaEncoding) String() string {
+	switch d {
+	case DeltaEncodingNone:
+		return ""
+	case DeltaEncodingUint8:
+		return "+delta8"
+	case DeltaEncodingUint16:
+		return "+delta16"
+	case DeltaEncodingUint32:
+		return "+delta32"
+	default:
+		panic("unreachable")
+	}
 }
 
 // ColumnWriter is an interface implemented by column encoders that accumulate a

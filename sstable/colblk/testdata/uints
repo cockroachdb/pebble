@@ -1,0 +1,617 @@
+# This test works by initializing a set of UintBuilders at configured logical
+# widths and setting the same elements to the same indexes. The builders' Sizes
+# are queried for various row sizes. Individual builders of specific widths may
+# be finished separately so the test can continue with testing higher-width
+# integers.
+
+# Initialize all four writers.
+
+init widths=(8, 16, 32, 64)
+----
+b8
+b16
+b32
+b64
+
+# Write a few zero values at index [0,4].
+
+write
+0:0 1:0 2:0 3:0 4:0
+----
+
+# At all row counts, the column should be encoded as a constant using the column
+# type width.
+
+size rows=(5, 4, 3, 2, 1, 0)
+----
+b8:
+  8: *colblk.UintBuilder[uint8].Size(5, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(4, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(3, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(2, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(1, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(0, 0) = 0
+b16:
+  16: *colblk.UintBuilder[uint16].Size(5, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(4, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(3, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(2, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(1, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(0, 0) = 0
+b32:
+  32: *colblk.UintBuilder[uint32].Size(5, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(4, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(3, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(2, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(1, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(0, 0) = 0
+b64:
+  64: *colblk.UintBuilder[uint64].Size(5, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(4, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(3, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(2, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(1, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(0, 0) = 0
+
+# Add a nonzero value. Size calls that include the new row count should
+# increase, but the size calls that don't include the new row count should not.
+# The increased sizes should reflect use of a uint8 delta encoding.
+
+write
+5:10
+6:0
+7:10
+----
+
+size rows=(8, 7, 6, 5, 4, 3, 2, 1, 0)
+----
+b8:
+  8: *colblk.UintBuilder[uint8].Size(8, 0) = 8
+  8: *colblk.UintBuilder[uint8].Size(7, 0) = 7
+  8: *colblk.UintBuilder[uint8].Size(6, 0) = 6
+  8: *colblk.UintBuilder[uint8].Size(5, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(4, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(3, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(2, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(1, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(0, 0) = 0
+b16:
+  16: *colblk.UintBuilder[uint16].Size(8, 0) = 10
+  16: *colblk.UintBuilder[uint16].Size(7, 0) = 9
+  16: *colblk.UintBuilder[uint16].Size(6, 0) = 8
+  16: *colblk.UintBuilder[uint16].Size(5, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(4, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(3, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(2, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(1, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(0, 0) = 0
+b32:
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+  32: *colblk.UintBuilder[uint32].Size(7, 0) = 11
+  32: *colblk.UintBuilder[uint32].Size(6, 0) = 10
+  32: *colblk.UintBuilder[uint32].Size(5, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(4, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(3, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(2, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(1, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(0, 0) = 0
+b64:
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+  64: *colblk.UintBuilder[uint64].Size(7, 0) = 15
+  64: *colblk.UintBuilder[uint64].Size(6, 0) = 14
+  64: *colblk.UintBuilder[uint64].Size(5, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(4, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(3, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(2, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(1, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(0, 0) = 0
+
+# Finish the b8 so we can test 16-bit encoding.
+finish widths=(8) rows=8
+----
+b8: *colblk.UintBuilder[uint8]:
+0-1: x 00 # data[0] = 0
+1-2: x 00 # data[1] = 0
+2-3: x 00 # data[2] = 0
+3-4: x 00 # data[3] = 0
+4-5: x 00 # data[4] = 0
+5-6: x 0a # data[5] = 10
+6-7: x 00 # data[6] = 0
+7-8: x 0a # data[7] = 10
+Keeping b16 open
+Keeping b32 open
+Keeping b64 open
+
+# Add 1000 which should force a 16-bit delta encoding.
+
+write
+8:1000
+----
+
+size rows=(9, 8)
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(9, 0) = 18
+  16: *colblk.UintBuilder[uint16].Size(8, 0) = 10
+b32:
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# We should be able to write up to 2^16-1 without triggering a 32-bit encoding.
+
+write
+9:65535
+----
+
+size rows=(10, 9, 8)
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(10, 0) = 20
+  16: *colblk.UintBuilder[uint16].Size(9, 0) = 18
+  16: *colblk.UintBuilder[uint16].Size(8, 0) = 10
+b32:
+  32: *colblk.UintBuilder[uint32].Size(10, 0) = 24
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# But 2^16 should trigger a 32-bit encoding. (Finish b16 so we can test 32-bit
+# encoding.)
+
+finish widths=(16) rows=10
+----
+b16: *colblk.UintBuilder[uint16]:
+00-02: x 0000 # data[0] = 0
+02-04: x 0000 # data[1] = 0
+04-06: x 0000 # data[2] = 0
+06-08: x 0000 # data[3] = 0
+08-10: x 0000 # data[4] = 0
+10-12: x 0a00 # data[5] = 10
+12-14: x 0000 # data[6] = 0
+14-16: x 0a00 # data[7] = 10
+16-18: x e803 # data[8] = 1000
+18-20: x ffff # data[9] = 65535
+Keeping b32 open
+Keeping b64 open
+
+write
+10:65536
+----
+
+size rows=(11, 10, 9, 8)
+----
+b32:
+  32: *colblk.UintBuilder[uint32].Size(11, 0) = 44
+  32: *colblk.UintBuilder[uint32].Size(10, 0) = 24
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(11, 0) = 52
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# We should be able to write up to 2^32-1 without triggering a 64-bit encoding.
+
+write
+11:4294967295
+----
+
+size rows=(12, 11, 10, 9, 8)
+----
+b32:
+  32: *colblk.UintBuilder[uint32].Size(12, 0) = 48
+  32: *colblk.UintBuilder[uint32].Size(11, 0) = 44
+  32: *colblk.UintBuilder[uint32].Size(10, 0) = 24
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(12, 0) = 56
+  64: *colblk.UintBuilder[uint64].Size(11, 0) = 52
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# But 2^32 should trigger a 64-bit encoding.
+
+finish widths=(32) rows=12
+----
+b32: *colblk.UintBuilder[uint32]:
+00-04: x 00000000 # data[0] = 0
+04-08: x 00000000 # data[1] = 0
+08-12: x 00000000 # data[2] = 0
+12-16: x 00000000 # data[3] = 0
+16-20: x 00000000 # data[4] = 0
+20-24: x 0a000000 # data[5] = 10
+24-28: x 00000000 # data[6] = 0
+28-32: x 0a000000 # data[7] = 10
+32-36: x e8030000 # data[8] = 1000
+36-40: x ffff0000 # data[9] = 65535
+40-44: x 00000100 # data[10] = 65536
+44-48: x ffffffff # data[11] = 4294967295
+Keeping b64 open
+
+write
+12:4294967296
+----
+
+size rows=(13, 12, 11, 10, 9, 8)
+----
+b64:
+  64: *colblk.UintBuilder[uint64].Size(13, 0) = 104
+  64: *colblk.UintBuilder[uint64].Size(12, 0) = 56
+  64: *colblk.UintBuilder[uint64].Size(11, 0) = 52
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+finish widths=(64) rows=13
+----
+b64: *colblk.UintBuilder[uint64]:
+000-008: x 0000000000000000 # data[0] = 0
+008-016: x 0000000000000000 # data[1] = 0
+016-024: x 0000000000000000 # data[2] = 0
+024-032: x 0000000000000000 # data[3] = 0
+032-040: x 0000000000000000 # data[4] = 0
+040-048: x 0a00000000000000 # data[5] = 10
+048-056: x 0000000000000000 # data[6] = 0
+056-064: x 0a00000000000000 # data[7] = 10
+064-072: x e803000000000000 # data[8] = 1000
+072-080: x ffff000000000000 # data[9] = 65535
+080-088: x 0000010000000000 # data[10] = 65536
+088-096: x ffffffff00000000 # data[11] = 4294967295
+096-104: x 0000000001000000 # data[12] = 4294967296
+
+# Repeat the above tests but with a zero default value, and without explicitly
+# setting any of the zero values.
+
+init widths=(8, 16, 32, 64) default-zero
+----
+b8
+b16
+b32
+b64
+
+# At all row counts, the column should be encoded as a constant using the column
+# type width.
+
+size rows=(5, 4, 3, 2, 1, 0)
+----
+b8:
+  8: *colblk.UintBuilder[uint8].Size(5, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(4, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(3, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(2, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(1, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(0, 0) = 0
+b16:
+  16: *colblk.UintBuilder[uint16].Size(5, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(4, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(3, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(2, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(1, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(0, 0) = 0
+b32:
+  32: *colblk.UintBuilder[uint32].Size(5, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(4, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(3, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(2, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(1, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(0, 0) = 0
+b64:
+  64: *colblk.UintBuilder[uint64].Size(5, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(4, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(3, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(2, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(1, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(0, 0) = 0
+
+# Add a couple nonzero values. Size calls that include the new row count should
+# increase, but the size calls that don't include the new row count should not.
+
+write
+5:10
+7:10
+----
+
+size rows=(8, 7, 6, 5, 4, 3, 2, 1, 0)
+----
+b8:
+  8: *colblk.UintBuilder[uint8].Size(8, 0) = 8
+  8: *colblk.UintBuilder[uint8].Size(7, 0) = 7
+  8: *colblk.UintBuilder[uint8].Size(6, 0) = 6
+  8: *colblk.UintBuilder[uint8].Size(5, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(4, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(3, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(2, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(1, 0) = 1
+  8: *colblk.UintBuilder[uint8].Size(0, 0) = 0
+b16:
+  16: *colblk.UintBuilder[uint16].Size(8, 0) = 10
+  16: *colblk.UintBuilder[uint16].Size(7, 0) = 9
+  16: *colblk.UintBuilder[uint16].Size(6, 0) = 8
+  16: *colblk.UintBuilder[uint16].Size(5, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(4, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(3, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(2, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(1, 0) = 2
+  16: *colblk.UintBuilder[uint16].Size(0, 0) = 0
+b32:
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+  32: *colblk.UintBuilder[uint32].Size(7, 0) = 11
+  32: *colblk.UintBuilder[uint32].Size(6, 0) = 10
+  32: *colblk.UintBuilder[uint32].Size(5, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(4, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(3, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(2, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(1, 0) = 4
+  32: *colblk.UintBuilder[uint32].Size(0, 0) = 0
+b64:
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+  64: *colblk.UintBuilder[uint64].Size(7, 0) = 15
+  64: *colblk.UintBuilder[uint64].Size(6, 0) = 14
+  64: *colblk.UintBuilder[uint64].Size(5, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(4, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(3, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(2, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(1, 0) = 8
+  64: *colblk.UintBuilder[uint64].Size(0, 0) = 0
+
+# Finish the b8 so we can test 16-bit encoding.
+finish widths=(8) rows=8
+----
+b8: *colblk.UintBuilder[uint8]:
+0-1: x 00 # data[0] = 0
+1-2: x 00 # data[1] = 0
+2-3: x 00 # data[2] = 0
+3-4: x 00 # data[3] = 0
+4-5: x 00 # data[4] = 0
+5-6: x 0a # data[5] = 10
+6-7: x 00 # data[6] = 0
+7-8: x 0a # data[7] = 10
+Keeping b16 open
+Keeping b32 open
+Keeping b64 open
+
+# Add 1000 which should force a 16-bit delta encoding.
+
+write
+8:1000
+----
+
+size rows=(9, 8)
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(9, 0) = 18
+  16: *colblk.UintBuilder[uint16].Size(8, 0) = 10
+b32:
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# We should be able to write up to 2^16-1 without triggering a 32-bit encoding.
+
+write
+9:65535
+----
+
+size rows=(10, 9, 8)
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(10, 0) = 20
+  16: *colblk.UintBuilder[uint16].Size(9, 0) = 18
+  16: *colblk.UintBuilder[uint16].Size(8, 0) = 10
+b32:
+  32: *colblk.UintBuilder[uint32].Size(10, 0) = 24
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# But 2^16 should trigger a 32-bit encoding. (Finish b16 so we can test 32-bit
+# encoding.)
+
+finish widths=(16) rows=10
+----
+b16: *colblk.UintBuilder[uint16]:
+00-02: x 0000 # data[0] = 0
+02-04: x 0000 # data[1] = 0
+04-06: x 0000 # data[2] = 0
+06-08: x 0000 # data[3] = 0
+08-10: x 0000 # data[4] = 0
+10-12: x 0a00 # data[5] = 10
+12-14: x 0000 # data[6] = 0
+14-16: x 0a00 # data[7] = 10
+16-18: x e803 # data[8] = 1000
+18-20: x ffff # data[9] = 65535
+Keeping b32 open
+Keeping b64 open
+
+write
+10:65536
+----
+
+size rows=(11, 10, 9, 8)
+----
+b32:
+  32: *colblk.UintBuilder[uint32].Size(11, 0) = 44
+  32: *colblk.UintBuilder[uint32].Size(10, 0) = 24
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(11, 0) = 52
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# We should be able to write up to 2^32-1 without triggering a 64-bit encoding.
+
+write
+11:4294967295
+----
+
+size rows=(12, 11, 10, 9, 8)
+----
+b32:
+  32: *colblk.UintBuilder[uint32].Size(12, 0) = 48
+  32: *colblk.UintBuilder[uint32].Size(11, 0) = 44
+  32: *colblk.UintBuilder[uint32].Size(10, 0) = 24
+  32: *colblk.UintBuilder[uint32].Size(9, 0) = 22
+  32: *colblk.UintBuilder[uint32].Size(8, 0) = 12
+b64:
+  64: *colblk.UintBuilder[uint64].Size(12, 0) = 56
+  64: *colblk.UintBuilder[uint64].Size(11, 0) = 52
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+# But 2^32 should trigger a 64-bit encoding.
+
+finish widths=(32) rows=12
+----
+b32: *colblk.UintBuilder[uint32]:
+00-04: x 00000000 # data[0] = 0
+04-08: x 00000000 # data[1] = 0
+08-12: x 00000000 # data[2] = 0
+12-16: x 00000000 # data[3] = 0
+16-20: x 00000000 # data[4] = 0
+20-24: x 0a000000 # data[5] = 10
+24-28: x 00000000 # data[6] = 0
+28-32: x 0a000000 # data[7] = 10
+32-36: x e8030000 # data[8] = 1000
+36-40: x ffff0000 # data[9] = 65535
+40-44: x 00000100 # data[10] = 65536
+44-48: x ffffffff # data[11] = 4294967295
+Keeping b64 open
+
+write
+12:4294967296
+----
+
+size rows=(13, 12, 11, 10, 9, 8)
+----
+b64:
+  64: *colblk.UintBuilder[uint64].Size(13, 0) = 104
+  64: *colblk.UintBuilder[uint64].Size(12, 0) = 56
+  64: *colblk.UintBuilder[uint64].Size(11, 0) = 52
+  64: *colblk.UintBuilder[uint64].Size(10, 0) = 28
+  64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
+  64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
+
+finish widths=(64) rows=13
+----
+b64: *colblk.UintBuilder[uint64]:
+000-008: x 0000000000000000 # data[0] = 0
+008-016: x 0000000000000000 # data[1] = 0
+016-024: x 0000000000000000 # data[2] = 0
+024-032: x 0000000000000000 # data[3] = 0
+032-040: x 0000000000000000 # data[4] = 0
+040-048: x 0a00000000000000 # data[5] = 10
+048-056: x 0000000000000000 # data[6] = 0
+056-064: x 0a00000000000000 # data[7] = 10
+064-072: x e803000000000000 # data[8] = 1000
+072-080: x ffff000000000000 # data[9] = 65535
+080-088: x 0000010000000000 # data[10] = 65536
+088-096: x ffffffff00000000 # data[11] = 4294967295
+096-104: x 0000000001000000 # data[12] = 4294967296
+
+# Test serializing a few columns using delta encoding.
+
+init widths=(8, 16, 32, 64)
+----
+b8
+b16
+b32
+b64
+
+write
+0:1 2:92 3:1 7:86 20:221
+----
+
+size rows=5
+----
+b8:
+  8: *colblk.UintBuilder[uint8].Size(5, 0) = 5
+b16:
+  16: *colblk.UintBuilder[uint16].Size(5, 0) = 7
+b32:
+  32: *colblk.UintBuilder[uint32].Size(5, 0) = 9
+b64:
+  64: *colblk.UintBuilder[uint64].Size(5, 0) = 13
+
+finish widths=(8,16,32,64) rows=5
+----
+b8: *colblk.UintBuilder[uint8]:
+0-1: x 01 # data[0] = 1
+1-2: x 00 # data[1] = 0
+2-3: x 5c # data[2] = 92
+3-4: x 01 # data[3] = 1
+4-5: x 00 # data[4] = 0
+b16: *colblk.UintBuilder[uint16]:
+0-2: x 0100 # 16-bit constant: 1
+2-3: x 00   # data[0] = 0
+3-4: x ff   # data[1] = 255
+4-5: x 5b   # data[2] = 91
+5-6: x 00   # data[3] = 0
+6-7: x ff   # data[4] = 255
+b32: *colblk.UintBuilder[uint32]:
+0-4: x 01000000 # 32-bit constant: 1
+4-5: x 00       # data[0] = 0
+5-6: x ff       # data[1] = 255
+6-7: x 5b       # data[2] = 91
+7-8: x 00       # data[3] = 0
+8-9: x ff       # data[4] = 255
+b64: *colblk.UintBuilder[uint64]:
+00-08: x 0100000000000000 # 64-bit constant: 1
+08-09: x 00               # data[0] = 0
+09-10: x ff               # data[1] = 255
+10-11: x 5b               # data[2] = 91
+11-12: x 00               # data[3] = 0
+12-13: x ff               # data[4] = 255
+
+# Test a situation where the most recently written value requirs a wider delta
+# encoding, but we Finish with few enough rows that we should serialize using
+# the smaller encoding.
+
+init widths=(64)
+----
+b64
+
+write
+0:0 1:29 2:595 3:2 4:2 5:9
+----
+
+size rows=(6)
+----
+b64:
+  64: *colblk.UintBuilder[uint64].Size(6, 0) = 20
+
+write
+6:70395
+----
+
+size rows=(7)
+----
+b64:
+  64: *colblk.UintBuilder[uint64].Size(7, 0) = 36
+
+finish widths=(64) rows=6
+----
+b64: *colblk.UintBuilder[uint64]:
+00-08: x 0000000000000000 # 64-bit constant: 0
+08-10: x 0000             # data[0] = 0
+10-12: x 1d00             # data[1] = 29
+12-14: x 5302             # data[2] = 595
+14-16: x 0200             # data[3] = 2
+16-18: x 0200             # data[4] = 2
+18-20: x 0900             # data[5] = 9
