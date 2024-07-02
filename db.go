@@ -1944,7 +1944,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
 	metrics.Compact.Duration = d.mu.compact.duration
 	for c := range d.mu.compact.inProgress {
-		if c.kind != compactionKindFlush {
+		if c.kind != compactionKindFlush && c.kind != compactionKindIngestedFlushable {
 			metrics.Compact.Duration += d.timeNow().Sub(c.beganAt)
 		}
 	}
