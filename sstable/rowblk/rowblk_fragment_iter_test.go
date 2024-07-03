@@ -83,6 +83,9 @@ func TestBlockFragmentIterator(t *testing.T) {
 			var seqNum uint64
 			d.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 			transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)
+			var syntheticPrefix string
+			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
+			transforms.SyntheticPrefix = []byte(syntheticPrefix)
 
 			blockHandle := block.CacheBufferHandle(c.Get(1, 0, 0))
 			i, err := NewFragmentIter(comparer.Compare, comparer.Split, blockHandle, transforms)
