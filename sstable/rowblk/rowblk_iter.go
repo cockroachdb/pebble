@@ -532,10 +532,11 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	}
 	searchKey := key
 	if i.transforms.SyntheticPrefix != nil {
-		// The seek key is before or after the entire block of keys that start with
-		// SyntheticPrefix. To determine which, we need to compare against a valid
-		// key in the block. We use firstUserKey which has the synthetic prefix.
 		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
+			// The seek key is before or after the entire block of keys that start
+			// with SyntheticPrefix. To determine which, we need to compare against a
+			// valid key in the block. We use firstUserKey which has the synthetic
+			// prefix.
 			if i.cmp(i.firstUserKey, key) >= 0 {
 				return i.First()
 			}
@@ -712,10 +713,11 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	}
 	searchKey := key
 	if i.transforms.SyntheticPrefix != nil {
-		// The seek key is before or after the entire block of keys that start with
-		// SyntheticPrefix. To determine which, we need to compare against a valid
-		// key in the block. We use firstUserKey which has the synthetic prefix.
 		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
+			// The seek key is before or after the entire block of keys that start
+			// with SyntheticPrefix. To determine which, we need to compare against a
+			// valid key in the block. We use firstUserKey which has the synthetic
+			// prefix.
 			if i.cmp(i.firstUserKey, key) < 0 {
 				return i.Last()
 			}

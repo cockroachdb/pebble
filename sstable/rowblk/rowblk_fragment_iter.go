@@ -5,6 +5,7 @@
 package rowblk
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"sync"
@@ -44,7 +45,16 @@ type fragmentIter struct {
 	// elideSameSeqnum, if true, returns only the first-occurring (in forward
 	// order) Key for each sequence number.
 	elideSameSeqnum bool
-	closeCheck      invariants.CloseChecker
+
+	syntheticPrefix block.SyntheticPrefix
+	// startKeyBuf is a buffer that is reused to store the start key of the span
+	// when a synthetic prefix is used.
+	startKeyBuf []byte
+	// endKeyBuf is a buffer that is reused to generate the end key of the span
+	// when a synthetic prefix is set. It always starts with syntheticPrefix.
+	endKeyBuf []byte
+
+	closeCheck invariants.CloseChecker
 }
 
 var _ keyspan.FragmentIterator = (*fragmentIter)(nil)
@@ -72,10 +82,19 @@ func NewFragmentIter(
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.elideSameSeqnum = transforms.ElideSameSeqNum
+	i.syntheticPrefix = transforms.SyntheticPrefix
+	if transforms.SyntheticPrefix.IsSet() {
+		i.endKeyBuf = append(i.endKeyBuf[:0], transforms.SyntheticPrefix...)
+	}
 	i.closeCheck = invariants.CloseChecker{}
 
 	if err := i.blockIter.InitHandle(cmp, split, blockHandle, block.IterTransforms{
 		SyntheticSeqNum: transforms.SyntheticSeqNum,
+		// We let the blockIter prepend the prefix to span start keys; the fragment
+		// iterator will prepend it for end keys. We could do everything in the
+		// fragment iterator, but we'd have to duplicate the logic for adjusting the
+		// seek key for SeekGE/SeekLT.
+		SyntheticPrefix: transforms.SyntheticPrefix,
 		// It's okay for HideObsoletePoints to be false here, even for shared
 		// ingested sstables. This is because rangedels do not apply to points in
 		// the same sstable at the same sequence number anyway, so exposing obsolete
@@ -94,13 +113,22 @@ func NewFragmentIter(
 // prefix compression (and we don't perform any transforms), so the key/value
 // will be pointing directly into the buffer data.
 func (i *fragmentIter) initSpan(ik base.InternalKey, internalValue []byte) error {
-	var err error
 	if ik.Kind() == base.InternalKeyKindRangeDelete {
 		i.span = rangedel.Decode(ik, internalValue, i.span.Keys[:0])
 	} else {
+		var err error
 		i.span, err = rangekey.Decode(ik, internalValue, i.span.Keys[:0])
+		if err != nil {
+			return err
+		}
 	}
-	return err
+	// When synthetic prefix is used in the blockIter, the keys cannot be used
+	// across multiple blockIter operations; we have to make a copy in this case.
+	if i.syntheticPrefix.IsSet() || invariants.Sometimes(10) {
+		i.startKeyBuf = append(i.startKeyBuf[:0], i.span.Start...)
+		i.span.Start = i.startKeyBuf
+	}
+	return nil
 }
 
 // addToSpan adds a fragment to the existing span. The fragment must be for the
@@ -117,22 +145,33 @@ func (i *fragmentIter) addToSpan(
 	return err
 }
 
-func (i *fragmentIter) elideKeysOfSameSeqNum() {
-	if invariants.Enabled {
-		if !i.elideSameSeqnum || len(i.span.Keys) == 0 {
-			panic("elideKeysOfSameSeqNum called when it should not be")
+// applySpanTransforms applies changes to the span that we decoded, if
+// appropriate.
+func (i *fragmentIter) applySpanTransforms() {
+	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
+		lastSeqNum := i.span.Keys[0].SeqNum()
+		k := 1
+		for j := 1; j < len(i.span.Keys); j++ {
+			if lastSeqNum != i.span.Keys[j].SeqNum() {
+				lastSeqNum = i.span.Keys[j].SeqNum()
+				i.span.Keys[k] = i.span.Keys[j]
+				k++
+			}
 		}
+		i.span.Keys = i.span.Keys[:k]
 	}
-	lastSeqNum := i.span.Keys[0].SeqNum()
-	k := 1
-	for j := 1; j < len(i.span.Keys); j++ {
-		if lastSeqNum != i.span.Keys[j].SeqNum() {
-			lastSeqNum = i.span.Keys[j].SeqNum()
-			i.span.Keys[k] = i.span.Keys[j]
-			k++
+
+	if i.syntheticPrefix.IsSet() || invariants.Sometimes(10) {
+		// We have to make a copy of the start key because it will not stay valid
+		// across multiple blockIter operations.
+		i.startKeyBuf = append(i.startKeyBuf[:0], i.span.Start...)
+		i.span.Start = i.startKeyBuf
+		if invariants.Enabled && !bytes.Equal(i.syntheticPrefix, i.endKeyBuf[:len(i.syntheticPrefix)]) {
+			panic("pebble: invariant violation: synthetic prefix mismatch")
 		}
+		i.endKeyBuf = append(i.endKeyBuf[:len(i.syntheticPrefix)], i.span.End...)
+		i.span.End = i.endKeyBuf
 	}
-	i.span.Keys = i.span.Keys[:k]
 }
 
 // gatherForward gathers internal keys with identical bounds. Keys defined over
@@ -168,9 +207,7 @@ func (i *fragmentIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error)
 			return nil, err
 		}
 	}
-	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
-		i.elideKeysOfSameSeqNum()
-	}
+	i.applySpanTransforms()
 	// i.blockIter is positioned over the first internal key for the next span.
 	return &i.span, nil
 }
@@ -211,9 +248,7 @@ func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error
 	// Backwards iteration encounters internal keys in the wrong order.
 	keyspan.SortKeysByTrailer(&i.span.Keys)
 
-	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
-		i.elideKeysOfSameSeqNum()
-	}
+	i.applySpanTransforms()
 	return &i.span, nil
 }
 
@@ -230,8 +265,10 @@ func (i *fragmentIter) Close() {
 	}
 
 	*i = fragmentIter{
-		blockIter:  i.blockIter.ResetForReuse(),
-		closeCheck: i.closeCheck,
+		blockIter:   i.blockIter.ResetForReuse(),
+		closeCheck:  i.closeCheck,
+		startKeyBuf: i.startKeyBuf[:0],
+		endKeyBuf:   i.endKeyBuf[:0],
 	}
 	fragmentBlockIterPool.Put(i)
 }
