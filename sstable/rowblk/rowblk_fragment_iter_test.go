@@ -88,7 +88,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 			transforms.SyntheticPrefix = []byte(syntheticPrefix)
 
 			blockHandle := block.CacheBufferHandle(c.Get(1, 0, 0))
-			i, err := NewFragmentIter(comparer.Compare, comparer.Split, blockHandle, transforms)
+			i, err := NewFragmentIter(0, comparer.Compare, comparer.Split, blockHandle, transforms)
 			defer i.Close()
 			require.NoError(t, err)
 
