@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -222,11 +221,7 @@ func (r *Runner) writeKeysToTable(tw *sstable.Writer) (splitKey []byte, _ error)
 		return nil, err
 	}
 	// Set internal sstable properties.
-	p := getInternalWriterProperties(tw)
-	// Set the snapshot pinned totals.
-	p.SnapshotPinnedKeys = pinnedCount
-	p.SnapshotPinnedKeySize = pinnedKeySize
-	p.SnapshotPinnedValueSize = pinnedValueSize
+	tw.SetSnapshotPinnedProperties(pinnedCount, pinnedKeySize, pinnedValueSize)
 	r.stats.CumulativePinnedKeys += pinnedCount
 	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
 	return splitKey, nil
@@ -328,12 +323,6 @@ func (r *Runner) validateWriterMeta(meta *sstable.WriterMetadata, splitKey []byt
 	}
 	return err
 }
-
-// getInternalWriterProperties accesses a private variable (in the
-// internal/private package) initialized by the sstable Writer. This indirection
-// is necessary to ensure non-Pebble users constructing sstables for ingestion
-// are unable to set internal-only properties.
-var getInternalWriterProperties = private.SSTableInternalProperties.(func(*sstable.Writer) *sstable.Properties)
 
 func spanStartOrNil(s *keyspan.Span) []byte {
 	if s.Empty() {

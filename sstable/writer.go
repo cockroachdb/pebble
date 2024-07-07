@@ -2216,12 +2216,14 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	return w
 }
 
-// internalGetProperties is a private, internal-use-only function that takes a
-// Writer and returns a pointer to its Properties, allowing direct mutation.
-// It's used by internal Pebble flushes and compactions to set internal
-// properties. It gets installed in private.
-func internalGetProperties(w *Writer) *Properties {
-	return &w.props
+// SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
+// be used internally by Pebble.
+func (w *Writer) SetSnapshotPinnedProperties(
+	pinnedKeyCount, pinnedKeySize, pinnedValueSize uint64,
+) {
+	w.props.SnapshotPinnedKeys = pinnedKeyCount
+	w.props.SnapshotPinnedKeySize = pinnedKeySize
+	w.props.SnapshotPinnedValueSize = pinnedValueSize
 }
 
 func init() {
@@ -2229,5 +2231,4 @@ func init() {
 		w := i.(*Writer)
 		w.disableKeyOrderChecks = true
 	}
-	private.SSTableInternalProperties = internalGetProperties
 }
