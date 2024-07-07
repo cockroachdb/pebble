@@ -120,6 +120,9 @@ type ReaderOptions struct {
 
 	// Logger is an optional logger and tracer.
 	LoggerAndTracer base.LoggerAndTracer
+
+	// FilterMetricsTracker is optionally used to track filter metrics.
+	FilterMetricsTracker *FilterMetricsTracker
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
