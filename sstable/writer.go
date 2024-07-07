@@ -2079,8 +2079,7 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 // WriterOption provide an interface to do work on Writer while it is being
 // opened.
 type WriterOption interface {
-	// writerApply is called on the writer during opening in order to set
-	// internal parameters.
+	// writerApply is called on the writer before the default properties are set.
 	writerApply(*Writer)
 }
 
@@ -2148,14 +2147,8 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		return w
 	}
 
-	// Note that WriterOptions are applied in two places; the ones with a
-	// preApply() method are applied here. The rest are applied down below after
-	// default properties are set.
-	type preApply interface{ preApply() }
 	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); ok {
-			opt.writerApply(w)
-		}
+		opt.writerApply(w)
 	}
 
 	if o.FilterPolicy != nil {
@@ -2200,14 +2193,6 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()
-	}
-
-	// Apply the remaining WriterOptions that do not have a preApply() method.
-	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); ok {
-			continue
-		}
-		opt.writerApply(w)
 	}
 
 	// Initialize the range key fragmenter and encoder.

@@ -34,7 +34,11 @@ type FilterMetricsTracker struct {
 
 var _ ReaderOption = (*FilterMetricsTracker)(nil)
 
-func (m *FilterMetricsTracker) readerApply(r *Reader) {
+// readerApplyPre is part of ReaderOption.
+func (m *FilterMetricsTracker) readerApplyPre(r *Reader) {}
+
+// readerApplyPost is part of ReaderOption.
+func (m *FilterMetricsTracker) readerApplyPost(r *Reader) {
 	if r.tableFilter != nil {
 		r.tableFilter.metrics = m
 	}

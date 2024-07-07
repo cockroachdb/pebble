@@ -89,9 +89,13 @@ type blockTransform func([]byte) ([]byte, error)
 // ReaderOption provide an interface to do work on Reader while it is being
 // opened.
 type ReaderOption interface {
-	// readerApply is called on the reader during opening in order to set internal
-	// parameters.
-	readerApply(*Reader)
+	// readerApplyPre is called on the reader before reading the metaindex and
+	// properties.
+	readerApplyPre(*Reader)
+
+	// readerApplyPost is called on the reader after reading the metaindex and
+	// properties.
+	readerApplyPost(*Reader)
 }
 
 // Comparers is a map from comparer name to comparer. It is used for debugging
@@ -100,7 +104,13 @@ type ReaderOption interface {
 // as a parameter to NewReader.
 type Comparers map[string]*Comparer
 
-func (c Comparers) readerApply(r *Reader) {
+var _ ReaderOption = Comparers(nil)
+
+// readerApplyPre is part of ReaderOption.
+func (c Comparers) readerApplyPre(r *Reader) {}
+
+// readerApplyPost is part of ReaderOption.
+func (c Comparers) readerApplyPost(r *Reader) {
 	if r.Compare != nil || r.Properties.ComparerName == "" {
 		return
 	}
@@ -118,7 +128,13 @@ func (c Comparers) readerApply(r *Reader) {
 // a parameter to NewReader.
 type Mergers map[string]*Merger
 
-func (m Mergers) readerApply(r *Reader) {
+var _ ReaderOption = Mergers(nil)
+
+// readerApplyPre is part of ReaderOption.
+func (m Mergers) readerApplyPre(r *Reader) {}
+
+// readerApplyPost is part of ReaderOption.
+func (m Mergers) readerApplyPost(r *Reader) {
 	if r.mergerOK || r.Properties.MergerName == "" {
 		return
 	}
@@ -132,12 +148,11 @@ type cacheOpts struct {
 	fileNum base.DiskFileNum
 }
 
-// Marker function to indicate the option should be applied before reading the
-// sstable properties and, in the write path, before writing the default
-// sstable properties.
-func (c *cacheOpts) preApply() {}
+var _ ReaderOption = (*cacheOpts)(nil)
+var _ WriterOption = (*cacheOpts)(nil)
 
-func (c *cacheOpts) readerApply(r *Reader) {
+// readerApplyPre is part of ReaderOption.
+func (c *cacheOpts) readerApplyPre(r *Reader) {
 	if r.cacheID == 0 {
 		r.cacheID = c.cacheID
 	}
@@ -146,6 +161,10 @@ func (c *cacheOpts) readerApply(r *Reader) {
 	}
 }
 
+// readerApplyPost is part of ReaderOption.
+func (c *cacheOpts) readerApplyPost(r *Reader) {}
+
+// writerApply is part of WriterOption.
 func (c *cacheOpts) writerApply(w *Writer) {
 	if w.layout.cacheID == 0 {
 		w.layout.cacheID = c.cacheID
@@ -161,11 +180,13 @@ func (c *cacheOpts) writerApply(w *Writer) {
 // contained in an sstable.
 type rawTombstonesOpt struct{}
 
-func (rawTombstonesOpt) preApply() {}
-
-func (rawTombstonesOpt) readerApply(r *Reader) {
+func (rawTombstonesOpt) readerApplyPre(r *Reader) {
 	r.rawTombstones = true
 }
+
+func (rawTombstonesOpt) readerApplyPost(r *Reader) {}
+
+var _ ReaderOption = rawTombstonesOpt{}
 
 func init() {
 	private.SSTableCacheOpts = func(cacheID uint64, fileNum base.DiskFileNum) interface{} {
@@ -1051,11 +1072,8 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 	// Note that the extra options are applied twice. First here for pre-apply
 	// options, and then below for post-apply options. Pre and post refer to
 	// before and after reading the metaindex and properties.
-	type preApply interface{ preApply() }
 	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); ok {
-			opt.readerApply(r)
-		}
+		opt.readerApplyPre(r)
 	}
 	if r.cacheID == 0 {
 		r.cacheID = r.opts.Cache.NewID()
@@ -1097,9 +1115,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 	// Apply the extra options again now that the comparer and merger names are
 	// known.
 	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); !ok {
-			opt.readerApply(r)
-		}
+		opt.readerApplyPost(r)
 	}
 
 	if r.Compare == nil {
