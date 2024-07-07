@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -581,18 +582,28 @@ func TestSizeEstimate(t *testing.T) {
 func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
-	opts := ReaderOptions{
-		Cache:    cache.New(64 << 20),
-		Comparer: testkeys.Comparer,
+
+	cacheOpts := sstableinternal.CacheOptions{
+		Cache:   cache.New(64 << 20),
+		CacheID: 1,
+		FileNum: 1,
 	}
-	defer opts.Cache.Unref()
+	defer cacheOpts.Cache.Unref()
+
+	readerOpts := ReaderOptions{
+		Comparer: testkeys.Comparer,
+		internal: sstableinternal.ReaderOptions{
+			CacheOpts: cacheOpts,
+		},
+	}
 
 	writerOpts := WriterOptions{
-		Cache:       opts.Cache,
 		Comparer:    testkeys.Comparer,
 		TableFormat: TableFormatPebblev3,
+		internal: sstableinternal.WriterOptions{
+			CacheOpts: cacheOpts,
+		},
 	}
-	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
 	invalidData := func() *cache.Value {
 		invalid := []byte("invalid data")
 		v := cache.Alloc(len(invalid))
@@ -604,7 +615,7 @@ func TestWriterClearCache(t *testing.T) {
 		f, err := mem.Create(name, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
-		w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts, cacheOpts)
+		w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 		require.NoError(t, w.Set([]byte("hello"), []byte("world")))
 		require.NoError(t, w.Set([]byte("hello@42"), []byte("world@42")))
 		require.NoError(t, w.Set([]byte("hello@5"), []byte("world@5")))
@@ -618,7 +629,7 @@ func TestWriterClearCache(t *testing.T) {
 	f, err := mem.Open("test")
 	require.NoError(t, err)
 
-	r, err := newReader(f, opts)
+	r, err := newReader(f, readerOpts)
 	require.NoError(t, err)
 
 	layout, err := r.Layout()
@@ -646,7 +657,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Poison the cache for each of the blocks.
 	poison := func(bh block.Handle) {
-		opts.Cache.Set(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, invalidData()).Release()
+		cacheOpts.Cache.Set(cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset, invalidData()).Release()
 	}
 	foreachBH(layout, poison)
 
@@ -656,7 +667,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Verify that the written blocks have been cleared from the cache.
 	check := func(bh block.Handle) {
-		h := opts.Cache.Get(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset)
+		h := cacheOpts.Cache.Get(cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset)
 		if h.Get() != nil {
 			t.Fatalf("%d: expected cache to be cleared, but found %q", bh.Offset, h.Get())
 		}

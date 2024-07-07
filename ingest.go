@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/overlap"
-	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -253,8 +253,13 @@ func ingestLoad1(
 	cacheID uint64,
 	fileNum base.FileNum,
 ) (*fileMetadata, error) {
-	cacheOpts := private.SSTableCacheOpts(cacheID, base.PhysicalTableDiskFileNum(fileNum)).(sstable.ReaderOption)
-	r, err := sstable.NewReader(readable, opts.MakeReaderOptions(), cacheOpts)
+	o := opts.MakeReaderOptions()
+	o.SetInternalCacheOpts(sstableinternal.CacheOptions{
+		Cache:   opts.Cache,
+		CacheID: cacheID,
+		FileNum: base.PhysicalTableDiskFileNum(fileNum),
+	})
+	r, err := sstable.NewReader(readable, o)
 	if err != nil {
 		return nil, err
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/wal"
@@ -45,8 +46,8 @@ type findT struct {
 
 	// Configuration.
 	opts      *pebble.Options
-	comparers sstable.Comparers
-	mergers   sstable.Mergers
+	comparers sstableinternal.Comparers
+	mergers   sstableinternal.Mergers
 
 	// Flags.
 	comparerName string
@@ -83,9 +84,9 @@ func cmpFileLoc(a, b fileLoc) int {
 
 func newFind(
 	opts *pebble.Options,
-	comparers sstable.Comparers,
+	comparers sstableinternal.Comparers,
 	defaultComparer string,
-	mergers sstable.Mergers,
+	mergers sstableinternal.Mergers,
 ) *findT {
 	f := &findT{
 		opts:      opts,
@@ -437,15 +438,21 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}()
 
 			opts := sstable.ReaderOptions{
-				Cache:    cache,
 				Comparer: f.opts.Comparer,
 				Filters:  f.opts.Filters,
 			}
+			opts.SetInternal(sstableinternal.ReaderOptions{
+				Comparers: f.comparers,
+				Mergers:   f.mergers,
+				CacheOpts: sstableinternal.CacheOptions{
+					Cache: cache,
+				},
+			})
 			readable, err := sstable.NewSimpleReadable(tf)
 			if err != nil {
 				return err
 			}
-			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers)
+			r, err := sstable.NewReader(readable, opts)
 			if err != nil {
 				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", fl.path, err.Error()))
 				// Ensure the error only gets printed once.

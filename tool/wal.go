@@ -12,9 +12,9 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/spf13/cobra"
 )
@@ -30,11 +30,13 @@ type walT struct {
 	fmtValue valueFormatter
 
 	defaultComparer string
-	comparers       sstable.Comparers
+	comparers       sstableinternal.Comparers
 	verbose         bool
 }
 
-func newWAL(opts *pebble.Options, comparers sstable.Comparers, defaultComparer string) *walT {
+func newWAL(
+	opts *pebble.Options, comparers sstableinternal.Comparers, defaultComparer string,
+) *walT {
 	w := &walT{
 		opts: opts,
 	}

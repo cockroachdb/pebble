@@ -8,8 +8,8 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -34,8 +34,8 @@ type T struct {
 	sstable         *sstableT
 	wal             *walT
 	opts            pebble.Options
-	comparers       sstable.Comparers
-	mergers         sstable.Mergers
+	comparers       sstableinternal.Comparers
+	mergers         sstableinternal.Mergers
 	defaultComparer string
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
@@ -131,8 +131,8 @@ func New(opts ...Option) *T {
 			FS:       vfs.Default,
 			ReadOnly: true,
 		},
-		comparers:       make(sstable.Comparers),
-		mergers:         make(sstable.Mergers),
+		comparers:       make(sstableinternal.Comparers),
+		mergers:         make(sstableinternal.Mergers),
 		defaultComparer: base.DefaultComparer.Name,
 	}
 

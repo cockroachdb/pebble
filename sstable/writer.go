@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -2103,21 +2102,22 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			blockSizeThreshold:      (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
 			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
 		},
-		compare:              o.Comparer.Compare,
-		split:                o.Comparer.Split,
-		formatKey:            o.Comparer.FormatKey,
-		compression:          o.Compression,
-		separator:            o.Comparer.Separator,
-		successor:            o.Comparer.Successor,
-		tableFormat:          o.TableFormat,
-		isStrictObsolete:     o.IsStrictObsolete,
-		writingToLowestLevel: o.WritingToLowestLevel,
-		restartInterval:      o.BlockRestartInterval,
-		checksumType:         o.Checksum,
-		indexBlock:           newIndexBlockBuf(o.Parallelism),
-		rangeDelBlock:        rowblk.Writer{RestartInterval: 1},
-		rangeKeyBlock:        rowblk.Writer{RestartInterval: 1},
-		topLevelIndexBlock:   rowblk.Writer{RestartInterval: 1},
+		compare:               o.Comparer.Compare,
+		split:                 o.Comparer.Split,
+		formatKey:             o.Comparer.FormatKey,
+		compression:           o.Compression,
+		separator:             o.Comparer.Separator,
+		successor:             o.Comparer.Successor,
+		tableFormat:           o.TableFormat,
+		isStrictObsolete:      o.IsStrictObsolete,
+		writingToLowestLevel:  o.WritingToLowestLevel,
+		restartInterval:       o.BlockRestartInterval,
+		checksumType:          o.Checksum,
+		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
+		indexBlock:            newIndexBlockBuf(o.Parallelism),
+		rangeDelBlock:         rowblk.Writer{RestartInterval: 1},
+		rangeKeyBlock:         rowblk.Writer{RestartInterval: 1},
+		topLevelIndexBlock:    rowblk.Writer{RestartInterval: 1},
 		fragmenter: keyspan.Fragmenter{
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
@@ -2224,11 +2224,4 @@ func (w *Writer) SetSnapshotPinnedProperties(
 	w.props.SnapshotPinnedKeys = pinnedKeyCount
 	w.props.SnapshotPinnedKeySize = pinnedKeySize
 	w.props.SnapshotPinnedValueSize = pinnedValueSize
-}
-
-func init() {
-	private.SSTableWriterDisableKeyOrderChecks = func(i interface{}) {
-		w := i.(*Writer)
-		w.disableKeyOrderChecks = true
-	}
 }

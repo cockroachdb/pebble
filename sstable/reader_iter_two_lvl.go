@@ -203,10 +203,7 @@ func (i *twoLevelIterator) init(
 }
 
 func (i *twoLevelIterator) String() string {
-	if i.vState != nil {
-		return i.vState.fileNum.String()
-	}
-	return i.reader.fileNum.String()
+	return i.singleLevelIterator.String()
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
@@ -1046,13 +1043,6 @@ func (i *twoLevelCompactionIterator) NextPrefix(succKey []byte) *base.InternalKV
 
 func (i *twoLevelCompactionIterator) Prev() *base.InternalKV {
 	panic("pebble: Prev unimplemented")
-}
-
-func (i *twoLevelCompactionIterator) String() string {
-	if i.vState != nil {
-		return i.vState.fileNum.String()
-	}
-	return i.reader.fileNum.String()
 }
 
 func (i *twoLevelCompactionIterator) skipForward(kv *base.InternalKV) *base.InternalKV {

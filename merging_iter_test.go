@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -372,9 +373,13 @@ func buildMergingIterTables(
 			b.Fatal(err)
 		}
 	}
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
 
-	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
-	defer opts.Cache.Unref()
+	var opts sstable.ReaderOptions
+	opts.SetInternalCacheOpts(sstableinternal.CacheOptions{
+		Cache: c,
+	})
 
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
@@ -608,12 +613,18 @@ func buildLevelsForMergingIterSeqSeek(
 		}
 	}
 
-	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20), Comparer: DefaultComparer}
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
+
+	opts := sstable.ReaderOptions{Comparer: DefaultComparer}
+	opts.SetInternalCacheOpts(sstableinternal.CacheOptions{
+		Cache: c,
+	})
+
 	if writeBloomFilters {
 		opts.Filters = make(map[string]FilterPolicy)
 		opts.Filters[filterPolicy.Name()] = filterPolicy
 	}
-	defer opts.Cache.Unref()
 
 	readers = make([][]*sstable.Reader, levelCount)
 	for i := range files {

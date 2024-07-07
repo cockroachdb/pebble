@@ -16,8 +16,8 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
 )
 
@@ -62,7 +62,7 @@ type lsmT struct {
 
 	// Configuration.
 	opts      *pebble.Options
-	comparers sstable.Comparers
+	comparers sstableinternal.Comparers
 
 	fmtKey    keyFormatter
 	embed     bool
@@ -76,7 +76,7 @@ type lsmT struct {
 	keyMap map[lsmKey]int
 }
 
-func newLSM(opts *pebble.Options, comparers sstable.Comparers) *lsmT {
+func newLSM(opts *pebble.Options, comparers sstableinternal.Comparers) *lsmT {
 	l := &lsmT{
 		opts:      opts,
 		comparers: comparers,

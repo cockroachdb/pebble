@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -912,16 +913,21 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			f1, err := mem.Open(testTable)
 			require.NoError(t, err)
 
-			comparers := make(Comparers)
+			comparers := make(sstableinternal.Comparers)
 			for _, comparer := range c.comparers {
 				comparers[comparer.Name] = comparer
 			}
-			mergers := make(Mergers)
+			mergers := make(sstableinternal.Mergers)
 			for _, merger := range c.mergers {
 				mergers[merger.Name] = merger
 			}
 
-			r, err := newReader(f1, ReaderOptions{}, comparers, mergers)
+			r, err := newReader(f1, ReaderOptions{
+				internal: sstableinternal.ReaderOptions{
+					Comparers: comparers,
+					Mergers:   mergers,
+				},
+			})
 			if err != nil {
 				if r != nil {
 					t.Fatalf("found non-nil reader returned with non-nil error %q", err.Error())
@@ -1793,7 +1799,11 @@ func buildTestTableWithProvider(
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
-		Cache: c,
+		internal: sstableinternal.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				Cache: c,
+			},
+		},
 	})
 	require.NoError(t, err)
 	return r
@@ -1832,7 +1842,11 @@ func buildBenchmarkTable(
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := newReader(f1, ReaderOptions{
-		Cache: c,
+		internal: sstableinternal.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				Cache: c,
+			},
+		},
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -2112,8 +2126,12 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
 		r, err := newReader(f0, ReaderOptions{
-			Cache:    c,
 			Comparer: testkeys.Comparer,
+			internal: sstableinternal.ReaderOptions{
+				CacheOpts: sstableinternal.CacheOptions{
+					Cache: c,
+				},
+			},
 		})
 		require.NoError(b, err)
 		return r
@@ -2218,8 +2236,12 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
 		r, err = newReader(f0, ReaderOptions{
-			Cache:    c,
 			Comparer: testkeys.Comparer,
+			internal: sstableinternal.ReaderOptions{
+				CacheOpts: sstableinternal.CacheOptions{
+					Cache: c,
+				},
+			},
 		})
 		require.NoError(b, err)
 		return r, succKeys
@@ -2374,8 +2396,12 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
 		r, err := newReader(f0, ReaderOptions{
-			Cache:    c,
 			Comparer: testkeys.Comparer,
+			internal: sstableinternal.ReaderOptions{
+				CacheOpts: sstableinternal.CacheOptions{
+					Cache: c,
+				},
+			},
 		})
 		require.NoError(b, err)
 		return r
@@ -2437,10 +2463,10 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 	}
 }
 
-func newReader(r ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func newReader(r ReadableFile, o ReaderOptions) (*Reader, error) {
 	readable, err := NewSimpleReadable(r)
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(readable, o, extraOpts...)
+	return NewReader(readable, o)
 }

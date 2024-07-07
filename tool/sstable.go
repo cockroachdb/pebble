@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -35,8 +36,8 @@ type sstableT struct {
 
 	// Configuration and state.
 	opts      *pebble.Options
-	comparers sstable.Comparers
-	mergers   sstable.Mergers
+	comparers sstableinternal.Comparers
+	mergers   sstableinternal.Mergers
 
 	// Flags.
 	fmtKey   keyFormatter
@@ -49,7 +50,7 @@ type sstableT struct {
 }
 
 func newSSTable(
-	opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers,
+	opts *pebble.Options, comparers sstableinternal.Comparers, mergers sstableinternal.Mergers,
 ) *sstableT {
 	s := &sstableT{
 		opts:      opts,
@@ -145,12 +146,19 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		return nil, err
 	}
 	o := sstable.ReaderOptions{
-		Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
 		Comparer: s.opts.Comparer,
 		Filters:  s.opts.Filters,
 	}
-	defer o.Cache.Unref()
-	return sstable.NewReader(readable, o, s.comparers, s.mergers)
+	c := pebble.NewCache(128 << 20 /* 128 MB */)
+	defer c.Unref()
+	o.SetInternal(sstableinternal.ReaderOptions{
+		Mergers:   s.mergers,
+		Comparers: s.comparers,
+		CacheOpts: sstableinternal.CacheOptions{
+			Cache: c,
+		},
+	})
+	return sstable.NewReader(readable, o)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {

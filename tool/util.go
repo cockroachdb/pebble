@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -107,7 +107,7 @@ func (f *keyFormatter) mustSet(spec string) {
 }
 
 // Sets the appropriate formatter function for this comparer.
-func (f *keyFormatter) setForComparer(comparerName string, comparers sstable.Comparers) {
+func (f *keyFormatter) setForComparer(comparerName string, comparers sstableinternal.Comparers) {
 	if f.setByUser && len(f.comparer) == 0 {
 		// User specified a different formatter, no-op.
 		return
@@ -183,7 +183,7 @@ func (f *valueFormatter) mustSet(spec string) {
 }
 
 // Sets the appropriate formatter function for this comparer.
-func (f *valueFormatter) setForComparer(comparerName string, comparers sstable.Comparers) {
+func (f *valueFormatter) setForComparer(comparerName string, comparers sstableinternal.Comparers) {
 	if f.setByUser && len(f.comparer) == 0 {
 		// User specified a different formatter, no-op.
 		return

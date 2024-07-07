@@ -16,8 +16,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ type manifestT struct {
 	Check     *cobra.Command
 
 	opts      *pebble.Options
-	comparers sstable.Comparers
+	comparers sstableinternal.Comparers
 	fmtKey    keyFormatter
 	verbose   bool
 
@@ -40,7 +40,7 @@ type manifestT struct {
 	summarizeDur time.Duration
 }
 
-func newManifest(opts *pebble.Options, comparers sstable.Comparers) *manifestT {
+func newManifest(opts *pebble.Options, comparers sstableinternal.Comparers) *manifestT {
 	m := &manifestT{
 		opts:         opts,
 		comparers:    comparers,

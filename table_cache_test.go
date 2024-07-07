@@ -1089,7 +1089,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
 	dbOpts.objProvider = objProvider
-	dbOpts.opts = opts.MakeReaderOptions()
+	dbOpts.readerOpts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)
 	tables := make(map[int]bool)
@@ -1226,7 +1226,7 @@ func BenchmarkTableCacheHotPath(b *testing.B) {
 	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
 	dbOpts.objProvider = objProvider
-	dbOpts.opts = opts.MakeReaderOptions()
+	dbOpts.readerOpts = opts.MakeReaderOptions()
 
 	makeTable(1)
 

@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
@@ -46,8 +47,8 @@ type dbT struct {
 
 	// Configuration.
 	opts            *pebble.Options
-	comparers       sstable.Comparers
-	mergers         sstable.Mergers
+	comparers       sstableinternal.Comparers
+	mergers         sstableinternal.Mergers
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
 	exciseSpanFn    DBExciseSpanFn
@@ -71,8 +72,8 @@ type dbT struct {
 
 func newDB(
 	opts *pebble.Options,
-	comparers sstable.Comparers,
-	mergers sstable.Mergers,
+	comparers sstableinternal.Comparers,
+	mergers sstableinternal.Mergers,
 	openErrEnhancer func(error) error,
 	openOptions []OpenOption,
 	exciseSpanFn DBExciseSpanFn,
@@ -883,7 +884,12 @@ func (d *dbT) addProps(
 	if err != nil {
 		return err
 	}
-	r, err := sstable.NewReader(f, sstable.ReaderOptions{}, d.mergers, d.comparers)
+	var o sstable.ReaderOptions
+	o.SetInternal(sstableinternal.ReaderOptions{
+		Mergers:   d.mergers,
+		Comparers: d.comparers,
+	})
+	r, err := sstable.NewReader(f, o)
 	if err != nil {
 		_ = f.Close()
 		return err
