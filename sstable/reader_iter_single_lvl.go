@@ -1498,5 +1498,5 @@ func (i *singleLevelIterator) String() string {
 	if i.vState != nil {
 		return i.vState.fileNum.String()
 	}
-	return i.reader.opts.internal.CacheOpts.FileNum.String()
+	return i.reader.cacheOpts.FileNum.String()
 }

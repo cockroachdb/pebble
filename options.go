@@ -1954,11 +1954,8 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	if o != nil {
 		readerOpts.LoadBlockSema = o.LoadBlockSema
 		readerOpts.Comparer = o.Comparer
+		readerOpts.Merger = o.Merger
 		readerOpts.Filters = o.Filters
-		if o.Merger != nil {
-			readerOpts.Merge = o.Merger.Merge
-			readerOpts.MergerName = o.Merger.Name
-		}
 		readerOpts.LoggerAndTracer = o.LoggerAndTracer
 	}
 	return readerOpts
