@@ -102,6 +102,8 @@ type OutputSplitter struct {
 
 	shouldSplitCalled bool
 
+	pastStartKey bool
+
 	nextBoundary splitterBoundary
 	// reachedBoundary is set when the frontier reaches a boundary and is cleared
 	// in the first ShouldSplitBefore call after that.
@@ -212,8 +214,18 @@ func (s *OutputSplitter) ShouldSplitBefore(
 		panic("ShouldSplitBefore called after it returned SplitNow")
 	}
 	if !s.shouldSplitCalled {
-		// The boundary could have been advanced to nextUserKey before the splitter
-		// was created. So one single time, we advance the boundary manually.
+		// The boundary could have been advanced to nextUserKey before the
+		// splitter was created (the compact.Iter was at nextUserKey when a
+		// previous OutputSplitter decided to split-before). So one single time,
+		// we advance the boundary manually.
+		//
+		// Note that this first nextUserKey can be ahead of
+		// OutputSplitter.startKey, since the startKey is decided by the previous
+		// split key. For example, the preceding file was split at c, resulting in
+		// splitting of a rangedel [a,f) into [a,c) and [c,f) where [a,c) is
+		// included in the preceding file. The compact.Iter is at key e (which
+		// happens to be a point key). The startKey will be c, and nextUserKey
+		// will be e. We have the opportunity here to split at d.
 		s.shouldSplitCalled = true
 		for s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, nextUserKey) <= 0 {
 			s.boundaryReached(nextUserKey)
@@ -250,9 +262,10 @@ func (s *OutputSplitter) ShouldSplitBefore(
 
 		// When the target file size limit is very small (in tests), we could end up
 		// splitting at the first key, which is not allowed.
-		if s.cmp(nextUserKey, s.startKey) <= 0 {
+		if !s.pastStartKey && s.cmp(nextUserKey, s.startKey) <= 0 {
 			return NoSplit
 		}
+		s.pastStartKey = true
 
 		// TODO(radu): it would make for a cleaner interface if we didn't rely on a
 		// lastUserKeyFn. We could make a copy of the key here and split at the next
