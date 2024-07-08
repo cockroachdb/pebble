@@ -111,8 +111,8 @@ type ReaderOptions struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
-	// Merge defines the Merge function in use for this keyspace.
-	Merge base.Merge
+	// Merger defines the Merge function in use for this keyspace.
+	Merger *Merger
 
 	Comparers Comparers
 	Mergers   Mergers
@@ -120,11 +120,6 @@ type ReaderOptions struct {
 	// Filters is a map from filter policy name to filter policy. Filters with
 	// policies that are not in this map will be ignored.
 	Filters map[string]FilterPolicy
-
-	// Merger defines the associative merge operation to use for merging values
-	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
-	// with the value stored in the sstable when it was written.
-	MergerName string
 
 	// Logger is an optional logger and tracer.
 	LoggerAndTracer base.LoggerAndTracer
@@ -154,11 +149,8 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
-	if o.Merge == nil {
-		o.Merge = base.DefaultMerger.Merge
-	}
-	if o.MergerName == "" {
-		o.MergerName = base.DefaultMerger.Name
+	if o.Merger == nil {
+		o.Merger = base.DefaultMerger
 	}
 	if o.LoggerAndTracer == nil {
 		o.LoggerAndTracer = base.NoopLoggerAndTracer{}

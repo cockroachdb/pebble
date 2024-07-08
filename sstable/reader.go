@@ -16,12 +16,14 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -87,8 +89,24 @@ type blockTransform func([]byte) ([]byte, error)
 
 // Reader is a table reader.
 type Reader struct {
-	readable     objstorage.Readable
-	err          error
+	readable objstorage.Readable
+
+	// The following fields are copied from the ReadOptions.
+	cacheOpts            sstableinternal.CacheOptions
+	loadBlockSema        *fifo.Semaphore
+	deniedUserProperties map[string]struct{}
+	filterMetricsTracker *FilterMetricsTracker
+	logger               base.LoggerAndTracer
+
+	Compare   Compare
+	Equal     Equal
+	FormatKey base.FormatKey
+	Split     Split
+
+	tableFilter *tableFilterReader
+
+	err error
+
 	indexBH      block.Handle
 	filterBH     block.Handle
 	rangeDelBH   block.Handle
@@ -97,17 +115,11 @@ type Reader struct {
 	propertiesBH block.Handle
 	metaIndexBH  block.Handle
 	footerBH     block.Handle
-	opts         ReaderOptions
-	Compare      Compare
-	Equal        Equal
-	FormatKey    base.FormatKey
-	Split        Split
-	tableFilter  *tableFilterReader
-	// Keep types that are not multiples of 8 bytes at the end and with
-	// decreasing size.
+
 	Properties   Properties
 	tableFormat  TableFormat
 	checksumType block.ChecksumType
+
 	// metaBufferPool is a buffer pool used exclusively when opening a table and
 	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
 	// the BufferPool.pool slice as a part of the Reader allocation. It's
@@ -122,7 +134,7 @@ var _ CommonReader = (*Reader)(nil)
 
 // Close the reader and the underlying objstorage.Readable.
 func (r *Reader) Close() error {
-	r.opts.internal.CacheOpts.Cache.Unref()
+	r.cacheOpts.Cache.Unref()
 
 	if r.readable != nil {
 		r.err = firstError(r.err, r.readable.Close())
@@ -412,8 +424,7 @@ func (r *Reader) readBlock(
 	iterStats *iterStatsAccumulator,
 	bufferPool *block.BufferPool,
 ) (handle block.BufferHandle, _ error) {
-	cacheOpts := r.opts.internal.CacheOpts
-	if h := cacheOpts.Cache.Get(cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset); h.Get() != nil {
+	if h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset); h.Get() != nil {
 		// Cache hit.
 		if readHandle != nil {
 			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
@@ -432,7 +443,7 @@ func (r *Reader) readBlock(
 
 	// Cache miss.
 
-	if sema := r.opts.LoadBlockSema; sema != nil {
+	if sema := r.loadBlockSema; sema != nil {
 		if err := sema.Acquire(ctx, 1); err != nil {
 			// An error here can only come from the context.
 			return block.BufferHandle{}, err
@@ -457,8 +468,8 @@ func (r *Reader) readBlock(
 	}
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
-	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
-		r.opts.LoggerAndTracer.Eventf(ctx, "reading %d bytes took %s",
+	if readDuration >= slowReadTracingThreshold && r.logger.IsTracingEnabled(ctx) {
+		r.logger.Eventf(ctx, "reading %d bytes took %s",
 			int(bh.Length+block.TrailerLen), readDuration.String())
 	}
 	if stats != nil {
@@ -469,7 +480,7 @@ func (r *Reader) readBlock(
 		compressed.Release()
 		return block.BufferHandle{}, err
 	}
-	if err := checkChecksum(r.checksumType, compressed.Get(), bh, r.opts.internal.CacheOpts.FileNum); err != nil {
+	if err := checkChecksum(r.checksumType, compressed.Get(), bh, r.cacheOpts.FileNum); err != nil {
 		compressed.Release()
 		return block.BufferHandle{}, err
 	}
@@ -514,11 +525,13 @@ func (r *Reader) readBlock(
 	if iterStats != nil {
 		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
-	h := decompressed.MakeHandle(cacheOpts.Cache, cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset)
+	h := decompressed.MakeHandle(r.cacheOpts.Cache, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
 	return h, nil
 }
 
-func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.ReadHandle) error {
+func (r *Reader) readMetaindex(
+	metaindexBH block.Handle, readHandle objstorage.ReadHandle, filters map[string]FilterPolicy,
+) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
 	// especially with high compaction concurrency, new tables may be created
@@ -583,7 +596,7 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.Get(), r.opts.DeniedUserProperties)
+		err := r.Properties.load(b.Get(), r.deniedUserProperties)
 		b.Release()
 		if err != nil {
 			return err
@@ -607,7 +620,7 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 		r.rangeKeyBH = bh
 	}
 
-	for name, fp := range r.opts.Filters {
+	for name, fp := range filters {
 		types := []struct {
 			ftype  FilterType
 			prefix string
@@ -621,7 +634,7 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 
 				switch t.ftype {
 				case TableFilter:
-					r.tableFilter = newTableFilterReader(fp, r.opts.FilterMetricsTracker)
+					r.tableFilter = newTableFilterReader(fp, r.filterMetricsTracker)
 				default:
 					return base.CorruptionErrorf("unknown filter type: %v", errors.Safe(t.ftype))
 				}
@@ -945,17 +958,20 @@ func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	}
 	o = o.ensureDefaults()
 	r := &Reader{
-		readable: f,
-		opts:     o,
+		readable:             f,
+		cacheOpts:            o.internal.CacheOpts,
+		loadBlockSema:        o.LoadBlockSema,
+		deniedUserProperties: o.DeniedUserProperties,
+		filterMetricsTracker: o.FilterMetricsTracker,
+		logger:               o.LoggerAndTracer,
 	}
-	cacheOpts := &r.opts.internal.CacheOpts
-	if cacheOpts.Cache == nil {
-		cacheOpts.Cache = cache.New(0)
+	if r.cacheOpts.Cache == nil {
+		r.cacheOpts.Cache = cache.New(0)
 	} else {
-		r.opts.internal.CacheOpts.Cache.Ref()
+		r.cacheOpts.Cache.Ref()
 	}
-	if cacheOpts.CacheID == 0 {
-		cacheOpts.CacheID = cacheOpts.Cache.NewID()
+	if r.cacheOpts.CacheID == 0 {
+		r.cacheOpts.CacheID = r.cacheOpts.Cache.NewID()
 	}
 
 	var preallocRH objstorageprovider.PreallocatedReadHandle
@@ -972,7 +988,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	r.checksumType = footer.checksum
 	r.tableFormat = footer.format
 	// Read the metaindex and properties blocks.
-	if err := r.readMetaindex(footer.metaindexBH, rh); err != nil {
+	if err := r.readMetaindex(footer.metaindexBH, rh, o.Filters); err != nil {
 		r.err = err
 		return nil, r.Close()
 	}
@@ -992,17 +1008,17 @@ func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 		r.Split = comparer.Split
 	} else {
 		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
-			errors.Safe(r.opts.internal.CacheOpts.FileNum), errors.Safe(r.Properties.ComparerName))
+			errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.ComparerName))
 	}
 
 	if mergerName := r.Properties.MergerName; mergerName != "" && mergerName != "nullptr" {
-		if o.MergerName == mergerName {
-			// r.opts.Merge is ok.
-		} else if m, ok := o.Mergers[mergerName]; ok {
-			r.opts.Merge = m.Merge
+		if o.Merger != nil && o.Merger.Name == mergerName {
+			// opts.Merger matches.
+		} else if _, ok := o.Mergers[mergerName]; ok {
+			// Known merger.
 		} else {
 			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
-				errors.Safe(r.opts.internal.CacheOpts.FileNum), errors.Safe(r.Properties.MergerName))
+				errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.MergerName))
 		}
 	}
 
