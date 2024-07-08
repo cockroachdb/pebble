@@ -11,8 +11,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -41,7 +39,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	v := i.topLevelIndex.Value()
 	bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
 	if err != nil {
-		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
+		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry (%v)", err)
 		return loadBlockFailed
 	}
 	if i.bpfs != nil {
@@ -61,20 +59,20 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.MetadataBlock)
 	indexBlock, err := i.reader.readBlock(
 		ctx, bhp.Handle, nil /* transform */, i.indexFilterRH, i.stats, &i.iterStats, i.bufferPool)
+	if err == nil {
+		err = i.index.InitHandle(i.cmp, i.reader.Split, indexBlock, i.transforms)
+	}
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
 	}
-	if i.err = i.index.InitHandle(i.cmp, i.reader.Split, indexBlock, i.transforms); i.err == nil {
-		return loadBlockOK
-	}
-	return loadBlockFailed
+	return loadBlockOK
 }
 
 // resolveMaybeExcluded is invoked when the block-property filterer has found
 // that an index block is excluded according to its properties but only if its
 // bounds fall within the filter's current bounds. This function consults the
-// apprioriate bound, depending on the iteration direction, and returns either
+// appropriate bound, depending on the iteration direction, and returns either
 // `blockIntersects` or `blockExcluded`.
 func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	// This iterator is configured with a bound-limited block property filter.
@@ -157,52 +155,17 @@ func newTwoLevelIterator(
 		return nil, r.err
 	}
 	i := twoLevelIterPool.Get().(*twoLevelIterator)
-	i.inPool = false
-	i.iterStats.init(categoryAndQoS, statsCollector)
-	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
-	topLevelIndexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
-	if err != nil {
-		_ = i.Close()
-		return nil, err
-	}
-	if v != nil {
-		i.vState = v
-		// Note that upper is exclusive here.
-		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
-	}
+	i.singleLevelIterator.init(ctx, r, v, transforms, lower, upper, filterer, useFilter,
+		stats, categoryAndQoS, statsCollector, rp, bufferPool)
 
-	i.ctx = ctx
-	i.lower = lower
-	i.upper = upper
-	i.bpfs = filterer
-	i.useFilter = useFilter
-	i.reader = r
-	i.cmp = r.Compare
-	i.stats = stats
-	i.transforms = transforms
-	i.bufferPool = bufferPool
-	err = i.topLevelIndex.InitHandle(i.cmp, i.reader.Split, topLevelIndexH, transforms)
+	topLevelIndexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
+	if err == nil {
+		err = i.topLevelIndex.InitHandle(i.cmp, i.reader.Split, topLevelIndexH, transforms)
+	}
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.Close()
 		return nil, err
-	}
-	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
-	if r.tableFormat >= TableFormatPebblev3 {
-		if r.Properties.NumValueBlocks > 0 {
-			i.vbReader = &valueBlockReader{
-				bpOpen: i,
-				rp:     rp,
-				vbih:   r.valueBIH,
-				stats:  stats,
-			}
-			i.data.SetGetLazyValue(i.vbReader.getLazyValueForPrefixAndValueHandle)
-			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(
-				ctx, r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
-		}
-		i.data.SetHasValuePrefix(true)
 	}
 	return i, nil
 }
