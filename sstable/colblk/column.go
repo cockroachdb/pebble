@@ -220,8 +220,10 @@ type ColumnWriter interface {
 	//
 	// The supplied buf must have enough space at the provided offset to fit the
 	// column. The caller may use Size() to calculate the exact size required.
-	// If [rows] is ≤ the highest row index at which a value has been set,
-	// Finish will only serialize the first [rows] values.
+	// The caller passes the number of rows they want to serialize. All
+	// implementations of Finish must support cases where rows is the number of
+	// rows the caller has set, or one less. Some implementations may be more
+	// permissive.
 	//
 	// The provided column index must be less than NumColumns(). Finish is
 	// called for each index < NumColumns() in order.
