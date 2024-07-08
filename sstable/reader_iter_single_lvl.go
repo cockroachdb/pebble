@@ -173,13 +173,40 @@ type singleLevelIterator struct {
 // singleLevelIterator implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*singleLevelIterator)(nil)
 
-// init initializes a singleLevelIterator for reading from the table. It is
-// synonmous with Reader.NewIter, but allows for reusing of the iterator
-// between different Readers.
+// newSingleLevelIterator reads the index block and creates and initializes a
+// singleLevelIterator.
 //
-// Note that lower, upper passed into init has nothing to do with virtual sstable
-// bounds. If the virtualState passed in is not nil, then virtual sstable bounds
-// will be enforced.
+// Note that lower, upper are iterator bounds and are separate from virtual
+// sstable bounds. If the virtualState passed in is not nil, then virtual
+// sstable bounds will be enforced.
+func newSingleLevelIterator(
+	ctx context.Context,
+	r *Reader,
+	v *virtualState,
+	transforms IterTransforms,
+	lower, upper []byte,
+	filterer *BlockPropertiesFilterer,
+	useFilter bool,
+	stats *base.InternalIteratorStats,
+	categoryAndQoS CategoryAndQoS,
+	statsCollector *CategoryStatsCollector,
+	rp ReaderProvider,
+	bufferPool *block.BufferPool,
+) (*singleLevelIterator, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	i := singleLevelIterPool.Get().(*singleLevelIterator)
+	i.inPool = false
+	if err := i.init(
+		ctx, r, v, transforms, lower, upper, filterer, useFilter, stats, categoryAndQoS, statsCollector, rp, bufferPool,
+	); err != nil {
+		_ = i.Close()
+		return nil, err
+	}
+	return i, nil
+}
+
 func (i *singleLevelIterator) init(
 	ctx context.Context,
 	r *Reader,
@@ -194,9 +221,6 @@ func (i *singleLevelIterator) init(
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
 ) error {
-	if r.err != nil {
-		return r.err
-	}
 	i.iterStats.init(categoryAndQoS, statsCollector)
 	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
 		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
@@ -209,7 +233,6 @@ func (i *singleLevelIterator) init(
 		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
 
-	i.inPool = false
 	i.ctx = ctx
 	i.lower = lower
 	i.upper = upper

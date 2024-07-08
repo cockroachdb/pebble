@@ -302,23 +302,22 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
+	var res Iterator
+	var err error
 	if r.Properties.IndexType == twoLevelIndex {
-		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+		res, err = newTwoLevelIterator(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
 			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
-		if err != nil {
-			return nil, err
-		}
-		return i, nil
+	} else {
+		res, err = newSingleLevelIterator(
+			ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	}
-
-	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
-		stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	if err != nil {
+		// Note: we don't want to return res here - it will be a nil
+		// single/twoLevelIterator, not a nil Iterator.
 		return nil, err
 	}
-	return i, nil
+	return res, nil
 }
 
 // NewIter returns an iterator for the contents of the table. If an error
@@ -356,8 +355,7 @@ func (r *Reader) newCompactionIter(
 		transforms.HideObsoletePoints = true
 	}
 	if r.Properties.IndexType == twoLevelIndex {
-		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(
+		i, err := newTwoLevelIterator(
 			context.Background(),
 			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
 			false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
@@ -368,8 +366,7 @@ func (r *Reader) newCompactionIter(
 		i.setupForCompaction()
 		return &twoLevelCompactionIterator{twoLevelIterator: i}, nil
 	}
-	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(
+	i, err := newSingleLevelIterator(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
 		nil, false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
