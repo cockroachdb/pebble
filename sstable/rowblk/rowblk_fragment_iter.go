@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -41,6 +42,9 @@ type fragmentIter struct {
 	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
 	dir       int8
+
+	// fileNum is used for logging/debugging.
+	fileNum base.DiskFileNum
 
 	// elideSameSeqnum, if true, returns only the first-occurring (in forward
 	// order) Key for each sequence number.
@@ -71,6 +75,7 @@ var fragmentBlockIterPool = sync.Pool{
 // NewFragmentIter returns a new keyspan iterator that iterates over a block's
 // spans.
 func NewFragmentIter(
+	fileNum base.DiskFileNum,
 	cmp base.Compare,
 	split base.Split,
 	blockHandle block.BufferHandle,
@@ -81,6 +86,7 @@ func NewFragmentIter(
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
+	i.fileNum = fileNum
 	i.elideSameSeqnum = transforms.ElideSameSeqNum
 	i.syntheticPrefix = transforms.SyntheticPrefix
 	if transforms.SyntheticPrefix.IsSet() {
@@ -383,6 +389,11 @@ func (i *fragmentIter) String() string {
 
 // WrapChildren implements FragmentIterator.
 func (i *fragmentIter) WrapChildren(wrap keyspan.WrapFn) {}
+
+// DebugTree is part of the FragmentIterator interface.
+func (i *fragmentIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p) fileNum=%s", i, i, i.fileNum)
+}
 
 func checkFragmentBlockIterator(obj interface{}) {
 	i := obj.(*fragmentIter)

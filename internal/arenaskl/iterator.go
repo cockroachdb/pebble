@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 type splice struct {
@@ -247,6 +248,11 @@ func (it *Iterator) SetBounds(lower, upper []byte) {
 
 // SetContext implements base.InternalIterator.
 func (it *Iterator) SetContext(_ context.Context) {}
+
+// DebugTree is part of the InternalIterator interface.
+func (it *Iterator) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", it, it)
+}
 
 func (it *Iterator) decodeKey() {
 	it.kv.K.UserKey = it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
