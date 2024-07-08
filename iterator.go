@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekeystack"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
 )
@@ -3099,5 +3100,18 @@ func (i *Iterator) internalNext() (internalNextValidity, base.InternalKeyKind) {
 		return internalNextExhausted, base.InternalKeyKindInvalid
 	default:
 		panic("unreachable")
+	}
+}
+
+var _ base.IteratorDebug = (*Iterator)(nil)
+
+// DebugTree implements the base.IteratorDebug interface.
+func (i *Iterator) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", i, i)
+	if i.iter != nil {
+		i.iter.DebugTree(n)
+	}
+	if i.pointIter != nil {
+		i.pointIter.DebugTree(n)
 	}
 }

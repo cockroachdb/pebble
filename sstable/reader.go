@@ -397,7 +397,7 @@ func (r *Reader) NewRawRangeDelIter(
 		return nil, err
 	}
 	transforms.ElideSameSeqNum = true
-	i, err := rowblk.NewFragmentIter(r.Compare, r.Split, h, transforms)
+	i, err := rowblk.NewFragmentIter(r.fileNum, r.Compare, r.Split, h, transforms)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +420,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	if err != nil {
 		return nil, err
 	}
-	i, err := rowblk.NewFragmentIter(r.Compare, r.Split, h, transforms)
+	i, err := rowblk.NewFragmentIter(r.fileNum, r.Compare, r.Split, h, transforms)
 	if err != nil {
 		return nil, err
 	}

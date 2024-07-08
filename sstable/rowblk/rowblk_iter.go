@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -1585,6 +1586,11 @@ func (i *Iter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
+// DebugTree is part of the InternalIterator interface.
+func (i *Iter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
+}
+
 func (i *Iter) getRestart(idx int) int32 {
 	return int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*int32(idx):]))
 }
@@ -1877,6 +1883,11 @@ func (i *RawIter) Error() error {
 func (i *RawIter) Close() error {
 	i.val = nil
 	return nil
+}
+
+// DebugTree is part of the InternalIterator interface.
+func (i *RawIter) DebugTree(tp treeprinter.Node) {
+	tp.Childf("%T(%p)", i, i)
 }
 
 func (i *RawIter) getRestart(idx int) int32 {

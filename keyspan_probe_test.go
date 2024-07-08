@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // This file contains testing facilities for Spans and FragmentIterators. It's
@@ -366,6 +367,14 @@ func (p *probeKeyspanIterator) Prev() (*keyspan.Span, error) {
 
 func (p *probeKeyspanIterator) WrapChildren(wrap keyspan.WrapFn) {
 	p.iter = wrap(p.iter)
+}
+
+// DebugTree is part of the FragmentIterator interface.
+func (p *probeKeyspanIterator) DebugTree(tp treeprinter.Node) {
+	n := tp.Childf("%T(%p)", p, p)
+	if p.iter != nil {
+		p.iter.DebugTree(n)
+	}
 }
 
 func (p *probeKeyspanIterator) Close() {
