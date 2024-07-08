@@ -695,6 +695,6 @@ b64: *colblk.UintBuilder[uint64]:
 01-09: x 0100000000000000 # 64-bit constant: 1
 # Padding
 09-12: x 000000           # aligning to 32-bit boundary
-12-16: x 00000000         # data[0] = 0
-16-20: x bff90000         # data[1] = 63935
-20-24: x c31f2d00         # data[2] = 2957251
+12-16: x 00000000         # data[0] = 0 + 1 = 1
+16-20: x bff90000         # data[1] = 63935 + 1 = 63936
+20-24: x c31f2d00         # data[2] = 2957251 + 1 = 2957252
