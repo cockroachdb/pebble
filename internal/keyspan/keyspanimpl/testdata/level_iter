@@ -483,3 +483,97 @@ c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 d-e:{} (L6: fileNum=000002)
+
+# Test straddle span generation when range key bounds are loose.
+define
+file range-key-bounds=[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
+  a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file range-key-bounds=[d#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+file
+  g-h:{(#2,RANGEKEYSET,@3,baz) (#1,RANGEKEYSET,@1,qux)}
+----
+000001:[a#2,RANGEKEYSET-c#inf,RANGEKEYSET]
+000002:[d#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+000003:[g#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+
+iter
+first
+next
+next
+next
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+c-d:{} (L6: fileNum=000002)
+e-g:{} (L6: fileNum=000003)
+g-h:{(#2,RANGEKEYSET,@3,baz) (#1,RANGEKEYSET,@1,qux)} (L6: fileNum=000003)
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+----
+g-h:{(#2,RANGEKEYSET,@3,baz) (#1,RANGEKEYSET,@1,qux)} (L6: fileNum=000003)
+e-g:{} (L6: fileNum=000002)
+c-d:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+.
+
+iter
+seek-ge c1
+prev
+next
+next
+prev
+prev
+----
+c-d:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+c-d:{} (L6: fileNum=000002)
+e-g:{} (L6: fileNum=000003)
+c-d:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+
+define
+file range-key-bounds=[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+file range-key-bounds=[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+file range-key-bounds=[e#1,RANGEKEYSET-f#inf,RANGEKEYSET]
+----
+000001:[a#1,RANGEKEYSET-b#inf,RANGEKEYSET]
+000002:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+000003:[e#1,RANGEKEYSET-f#inf,RANGEKEYSET]
+
+iter
+seek-lt b1
+prev
+next
+next
+next
+----
+b-c:{} (L6: fileNum=000002)
+.
+b-c:{} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+.
+
+iter
+seek-lt z
+prev
+prev
+----
+d-e:{} (L6: fileNum=000002)
+b-c:{} (L6: fileNum=000001)
+.
+
+iter
+seek-ge a
+next
+next
+----
+b-c:{} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+.
+
