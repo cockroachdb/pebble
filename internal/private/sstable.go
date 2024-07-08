@@ -15,9 +15,3 @@ var SSTableCacheOpts func(cacheID uint64, fileNum base.DiskFileNum) interface{}
 // only in the construction of invalid sstables for testing. See
 // tool/make_test_sstables.go.
 var SSTableWriterDisableKeyOrderChecks func(interface{})
-
-// SSTableInternalProperties is a func(*sstable.Writer) *sstable.Properties
-// function that allows Pebble-internal code to mutate properties that external
-// sstable writers are not permitted to edit. It's an untyped interface{} to
-// avoid a cyclic dependency.
-var SSTableInternalProperties interface{}
