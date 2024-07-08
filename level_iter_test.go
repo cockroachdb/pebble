@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -525,9 +526,12 @@ func buildLevelIterTables(
 			b.Fatal(err)
 		}
 	}
-
-	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20), Comparer: DefaultComparer}
-	defer opts.Cache.Unref()
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
+	opts := sstable.ReaderOptions{Comparer: DefaultComparer}
+	opts.SetInternalCacheOpts(sstableinternal.CacheOptions{
+		Cache: c,
+	})
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))

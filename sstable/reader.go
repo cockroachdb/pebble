@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -86,86 +85,9 @@ const (
 
 type blockTransform func([]byte) ([]byte, error)
 
-// ReaderOption provide an interface to do work on Reader while it is being
-// opened.
-type ReaderOption interface {
-	// readerApply is called on the reader during opening in order to set internal
-	// parameters.
-	readerApply(*Reader)
-}
-
-// Comparers is a map from comparer name to comparer. It is used for debugging
-// tools which may be used on multiple databases configured with different
-// comparers. Comparers implements the OpenOption interface and can be passed
-// as a parameter to NewReader.
-type Comparers map[string]*Comparer
-
-func (c Comparers) readerApply(r *Reader) {
-	if r.Compare != nil || r.Properties.ComparerName == "" {
-		return
-	}
-	if comparer, ok := c[r.Properties.ComparerName]; ok {
-		r.Compare = comparer.Compare
-		r.Equal = comparer.Equal
-		r.FormatKey = comparer.FormatKey
-		r.Split = comparer.Split
-	}
-}
-
-// Mergers is a map from merger name to merger. It is used for debugging tools
-// which may be used on multiple databases configured with different
-// mergers. Mergers implements the OpenOption interface and can be passed as
-// a parameter to NewReader.
-type Mergers map[string]*Merger
-
-func (m Mergers) readerApply(r *Reader) {
-	if r.mergerOK || r.Properties.MergerName == "" {
-		return
-	}
-	_, r.mergerOK = m[r.Properties.MergerName]
-}
-
-// cacheOpts is a Reader open option for specifying the cache ID and sstable file
-// number. If not specified, a unique cache ID will be used.
-type cacheOpts struct {
-	cacheID uint64
-	fileNum base.DiskFileNum
-}
-
-// Marker function to indicate the option should be applied before reading the
-// sstable properties and, in the write path, before writing the default
-// sstable properties.
-func (c *cacheOpts) preApply() {}
-
-func (c *cacheOpts) readerApply(r *Reader) {
-	if r.cacheID == 0 {
-		r.cacheID = c.cacheID
-	}
-	if r.fileNum == 0 {
-		r.fileNum = c.fileNum
-	}
-}
-
-func (c *cacheOpts) writerApply(w *Writer) {
-	if w.layout.cacheID == 0 {
-		w.layout.cacheID = c.cacheID
-	}
-	if w.layout.fileNum == 0 {
-		w.layout.fileNum = c.fileNum
-	}
-}
-
-func init() {
-	private.SSTableCacheOpts = func(cacheID uint64, fileNum base.DiskFileNum) interface{} {
-		return &cacheOpts{cacheID, fileNum}
-	}
-}
-
 // Reader is a table reader.
 type Reader struct {
 	readable     objstorage.Readable
-	cacheID      uint64
-	fileNum      base.DiskFileNum
 	err          error
 	indexBH      block.Handle
 	filterBH     block.Handle
@@ -185,7 +107,6 @@ type Reader struct {
 	// decreasing size.
 	Properties   Properties
 	tableFormat  TableFormat
-	mergerOK     bool
 	checksumType block.ChecksumType
 	// metaBufferPool is a buffer pool used exclusively when opening a table and
 	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
@@ -201,7 +122,7 @@ var _ CommonReader = (*Reader)(nil)
 
 // Close the reader and the underlying objstorage.Readable.
 func (r *Reader) Close() error {
-	r.opts.Cache.Unref()
+	r.opts.internal.CacheOpts.Cache.Unref()
 
 	if r.readable != nil {
 		r.err = firstError(r.err, r.readable.Close())
@@ -491,7 +412,8 @@ func (r *Reader) readBlock(
 	iterStats *iterStatsAccumulator,
 	bufferPool *block.BufferPool,
 ) (handle block.BufferHandle, _ error) {
-	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
+	cacheOpts := r.opts.internal.CacheOpts
+	if h := cacheOpts.Cache.Get(cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset); h.Get() != nil {
 		// Cache hit.
 		if readHandle != nil {
 			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
@@ -547,7 +469,7 @@ func (r *Reader) readBlock(
 		compressed.Release()
 		return block.BufferHandle{}, err
 	}
-	if err := checkChecksum(r.checksumType, compressed.Get(), bh, r.fileNum); err != nil {
+	if err := checkChecksum(r.checksumType, compressed.Get(), bh, r.opts.internal.CacheOpts.FileNum); err != nil {
 		compressed.Release()
 		return block.BufferHandle{}, err
 	}
@@ -592,7 +514,7 @@ func (r *Reader) readBlock(
 	if iterStats != nil {
 		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
-	h := decompressed.MakeHandle(r.opts.Cache, r.cacheID, r.fileNum, bh.Offset)
+	h := decompressed.MakeHandle(cacheOpts.Cache, cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset)
 	return h, nil
 }
 
@@ -1017,34 +939,23 @@ func (r *Reader) TableFormat() (TableFormat, error) {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
+	if f == nil {
+		return nil, errors.New("pebble/table: nil file")
+	}
 	o = o.ensureDefaults()
 	r := &Reader{
 		readable: f,
 		opts:     o,
 	}
-	if r.opts.Cache == nil {
-		r.opts.Cache = cache.New(0)
+	cacheOpts := &r.opts.internal.CacheOpts
+	if cacheOpts.Cache == nil {
+		cacheOpts.Cache = cache.New(0)
 	} else {
-		r.opts.Cache.Ref()
+		r.opts.internal.CacheOpts.Cache.Ref()
 	}
-
-	if f == nil {
-		r.err = errors.New("pebble/table: nil file")
-		return nil, r.Close()
-	}
-
-	// Note that the extra options are applied twice. First here for pre-apply
-	// options, and then below for post-apply options. Pre and post refer to
-	// before and after reading the metaindex and properties.
-	type preApply interface{ preApply() }
-	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); ok {
-			opt.readerApply(r)
-		}
-	}
-	if r.cacheID == 0 {
-		r.cacheID = r.opts.Cache.NewID()
+	if cacheOpts.CacheID == 0 {
+		cacheOpts.CacheID = cacheOpts.Cache.NewID()
 	}
 
 	var preallocRH objstorageprovider.PreallocatedReadHandle
@@ -1074,30 +985,27 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 		r.Equal = o.Comparer.Equal
 		r.FormatKey = o.Comparer.FormatKey
 		r.Split = o.Comparer.Split
-	}
-
-	if o.MergerName == r.Properties.MergerName {
-		r.mergerOK = true
-	}
-
-	// Apply the extra options again now that the comparer and merger names are
-	// known.
-	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); !ok {
-			opt.readerApply(r)
-		}
-	}
-
-	if r.Compare == nil {
+	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
+		r.Compare = comparer.Compare
+		r.Equal = comparer.Equal
+		r.FormatKey = comparer.FormatKey
+		r.Split = comparer.Split
+	} else {
 		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
-			errors.Safe(r.fileNum), errors.Safe(r.Properties.ComparerName))
+			errors.Safe(r.opts.internal.CacheOpts.FileNum), errors.Safe(r.Properties.ComparerName))
 	}
-	if !r.mergerOK {
-		if name := r.Properties.MergerName; name != "" && name != "nullptr" {
+
+	if mergerName := r.Properties.MergerName; mergerName != "" && mergerName != "nullptr" {
+		if o.MergerName == mergerName {
+			// r.opts.Merge is ok.
+		} else if m, ok := o.Mergers[mergerName]; ok {
+			r.opts.Merge = m.Merge
+		} else {
 			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
-				errors.Safe(r.fileNum), errors.Safe(r.Properties.MergerName))
+				errors.Safe(r.opts.internal.CacheOpts.FileNum), errors.Safe(r.Properties.MergerName))
 		}
 	}
+
 	if r.err != nil {
 		return nil, r.Close()
 	}

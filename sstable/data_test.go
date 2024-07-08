@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -171,8 +172,13 @@ func runBuildCmd(
 		}
 	}
 	if cacheSize > 0 {
-		readerOpts.Cache = cache.New(int64(cacheSize))
-		defer readerOpts.Cache.Unref()
+		c := cache.New(int64(cacheSize))
+		defer c.Unref()
+		readerOpts.SetInternal(sstableinternal.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				Cache: c,
+			},
+		})
 	}
 	r, err := NewMemReader(f0.Data(), readerOpts)
 	if err != nil {

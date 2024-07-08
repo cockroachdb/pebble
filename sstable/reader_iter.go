@@ -163,7 +163,7 @@ func (i *compactionIterator) String() string {
 	if i.vState != nil {
 		return i.vState.fileNum.String()
 	}
-	return i.reader.fileNum.String()
+	return i.reader.opts.internal.CacheOpts.FileNum.String()
 }
 
 func (i *compactionIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {

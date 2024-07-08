@@ -20,8 +20,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -165,20 +165,25 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				writeUnfragmented := false
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-					TableFormat: FormatNewest.MaxTableFormat(),
-					Comparer:    testkeys.Comparer,
-				})
+				disableKeyOrderChecks := false
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "disable-key-order-checks":
-						private.SSTableWriterDisableKeyOrderChecks(w)
+						disableKeyOrderChecks = true
 					case "write-unfragmented":
 						writeUnfragmented = true
 					default:
 						return fmt.Sprintf("unknown arg: %s", arg.Key)
 					}
 				}
+				writerOpts := sstable.WriterOptions{
+					TableFormat: FormatNewest.MaxTableFormat(),
+					Comparer:    testkeys.Comparer,
+				}
+				writerOpts.SetInternal(sstableinternal.WriterOptions{
+					DisableKeyOrderChecks: disableKeyOrderChecks,
+				})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    testkeys.Comparer.Compare,
@@ -224,8 +229,10 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				cacheOpts := private.SSTableCacheOpts(0, base.DiskFileNum(fileNum-1)).(sstable.ReaderOption)
-				r, err := sstable.NewReader(readable, sstable.ReaderOptions{Comparer: testkeys.Comparer}, cacheOpts)
+				// Set FileNum for logging purposes.
+				readerOpts := sstable.ReaderOptions{Comparer: testkeys.Comparer}
+				readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)})
+				r, err := sstable.NewReader(readable, readerOpts)
 				if err != nil {
 					return err.Error()
 				}

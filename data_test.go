@@ -23,9 +23,9 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -1223,11 +1223,16 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	if err != nil {
 		return err.Error()
 	}
+	readerOpts := d.opts.MakeReaderOptions()
 	// TODO(bananabrick): cacheOpts is used to set the file number on a Reader,
 	// and virtual sstables expect this file number to be set. Split out the
 	// opts into fileNum opts, and cache opts.
-	cacheOpts := private.SSTableCacheOpts(0, backingFileNum).(sstable.ReaderOption)
-	r, err := sstable.NewReader(readable, d.opts.MakeReaderOptions(), cacheOpts)
+	readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{
+		Cache:   d.opts.Cache,
+		CacheID: 0,
+		FileNum: backingFileNum,
+	})
+	r, err := sstable.NewReader(readable, readerOpts)
 	if err != nil {
 		return err.Error()
 	}

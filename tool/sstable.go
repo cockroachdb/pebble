@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -145,12 +146,19 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		return nil, err
 	}
 	o := sstable.ReaderOptions{
-		Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
-		Comparer: s.opts.Comparer,
-		Filters:  s.opts.Filters,
+		Comparer:  s.opts.Comparer,
+		Filters:   s.opts.Filters,
+		Mergers:   s.mergers,
+		Comparers: s.comparers,
 	}
-	defer o.Cache.Unref()
-	return sstable.NewReader(readable, o, s.comparers, s.mergers)
+	c := pebble.NewCache(128 << 20 /* 128 MB */)
+	defer c.Unref()
+	o.SetInternal(sstableinternal.ReaderOptions{
+		CacheOpts: sstableinternal.CacheOptions{
+			Cache: c,
+		},
+	})
+	return sstable.NewReader(readable, o)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
