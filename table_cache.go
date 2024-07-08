@@ -106,7 +106,6 @@ type tableCacheOpts struct {
 	cacheID           uint64
 	objProvider       objstorage.Provider
 	opts              sstable.ReaderOptions
-	filterMetrics     *sstable.FilterMetricsTracker
 	sstStatsCollector *sstable.CategoryStatsCollector
 }
 
@@ -148,7 +147,7 @@ func newTableCacheContainer(
 	t.dbOpts.cacheID = cacheID
 	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
-	t.dbOpts.filterMetrics = &sstable.FilterMetricsTracker{}
+	t.dbOpts.opts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
 	t.dbOpts.iterCount = new(atomic.Int32)
 	t.dbOpts.sstStatsCollector = sstStatsCollector
 	return t
@@ -205,7 +204,7 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 		m.Misses += s.misses.Load()
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
-	f := c.dbOpts.filterMetrics.Load()
+	f := c.dbOpts.opts.FilterMetricsTracker.Load()
 	return m, f
 }
 
@@ -1120,7 +1119,7 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 	)
 	if err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, loadInfo.backingFileNum).(sstable.ReaderOption)
-		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
+		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts)
 	}
 	if err == nil {
 		var objMeta objstorage.ObjectMetadata
