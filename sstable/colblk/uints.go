@@ -442,10 +442,15 @@ func deltaWidth(delta uint64) uint32 {
 }
 
 func uintsToBinFormatter(
-	f *binfmt.Formatter, rows int, dataType DataType, uintFormatter func(uint64) string,
+	f *binfmt.Formatter, rows int, dataType DataType, uintFormatter func(el, base uint64) string,
 ) {
 	if uintFormatter == nil {
-		uintFormatter = func(v uint64) string { return fmt.Sprint(v) }
+		uintFormatter = func(v, base uint64) string {
+			if base == 0 {
+				return fmt.Sprint(v)
+			}
+			return fmt.Sprintf("%d + %d = %d", v, base, base+v)
+		}
 	}
 
 	deltaEncoding := UintDeltaEncoding(f.PeekUint(1)) // DeltaEncoding byte
@@ -453,9 +458,11 @@ func uintsToBinFormatter(
 
 	logicalWidth := dataType.uintWidth()
 
+	var base uint64
 	elementWidth := int(logicalWidth)
 	if deltaEncoding != UintDeltaEncodingNone {
-		f.HexBytesln(int(logicalWidth), "%d-bit constant: %d", logicalWidth*8, f.PeekUint(int(logicalWidth)))
+		base = f.PeekUint(int(logicalWidth))
+		f.HexBytesln(int(logicalWidth), "%d-bit constant: %d", logicalWidth*8, base)
 
 		switch deltaEncoding {
 		case UintDeltaEncodingConstant:
@@ -476,6 +483,6 @@ func uintsToBinFormatter(
 		f.HexBytesln(off-f.Offset(), "aligning to %d-bit boundary", elementWidth*8)
 	}
 	for i := 0; i < rows; i++ {
-		f.HexBytesln(elementWidth, "data[%d] = %s", i, uintFormatter(f.PeekUint(elementWidth)))
+		f.HexBytesln(elementWidth, "data[%d] = %s", i, uintFormatter(f.PeekUint(elementWidth), base))
 	}
 }
