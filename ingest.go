@@ -195,11 +195,6 @@ func ingestLoad1External(
 		return nil, errors.Newf("pebble: external file bounds end key %q has suffix", e.EndKey)
 	}
 
-	// #3287: range keys don't yet work correctly when the range key bounds are not tight.
-	if e.HasRangeKey {
-		return nil, errors.New("pebble: range keys not supported in external files")
-	}
-
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &fileMetadata{
