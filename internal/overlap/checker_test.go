@@ -16,14 +16,21 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/overlap/overlapcache"
 	"github.com/stretchr/testify/require"
 )
 
 func TestChecker(t *testing.T) {
 	tables := newTestTables()
 	byName := make(map[string]*manifest.FileMetadata)
+	clearCaches := func() {
+		for _, t := range tables.tables {
+			t.meta.OverlapCache = overlapcache.C{}
+		}
+	}
 
 	datadriven.RunTest(t, "testdata/checker", func(t *testing.T, d *datadriven.TestData) string {
+		clearCaches()
 		switch d.Cmd {
 		case "define":
 			tt := testTable{
@@ -99,10 +106,15 @@ func TestChecker(t *testing.T) {
 			tables.tables[tt.meta] = tt
 
 		case "overlap":
+			var withCache bool
 			var metas []*manifest.FileMetadata
 			lines := strings.Split(d.Input, "\n")
 			for _, arg := range d.CmdArgs {
 				name := arg.String()
+				if name == "with-cache" {
+					withCache = true
+					continue
+				}
 				m := byName[name]
 				if m == nil {
 					d.Fatalf(t, "unknown table %q", name)
@@ -113,6 +125,9 @@ func TestChecker(t *testing.T) {
 			c := MakeChecker(bytes.Compare, tables)
 			var buf strings.Builder
 			for _, l := range lines {
+				if !withCache {
+					clearCaches()
+				}
 				bounds := base.ParseUserKeyBounds(l)
 				withLevel, err := c.LevelOverlap(context.Background(), bounds, levelMeta.Slice())
 				require.NoError(t, err)
