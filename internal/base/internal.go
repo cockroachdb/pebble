@@ -543,6 +543,7 @@ func (k prettyInternalKey) Format(s fmt.State, c rune) {
 
 // ParsePrettyInternalKey parses the pretty string representation of an
 // internal key. The format is <user-key>#<seq-num>,<kind>.
+// TODO(radu): do we need both ParseInternalKey and ParsePrettyInternalKey?
 func ParsePrettyInternalKey(s string) InternalKey {
 	x := strings.FieldsFunc(s, func(c rune) bool { return c == '#' || c == ',' })
 	userKey := []byte(x[0])
@@ -552,6 +553,19 @@ func ParsePrettyInternalKey(s string) InternalKey {
 		panic(fmt.Sprintf("unknown kind: %q", x[2]))
 	}
 	return MakeInternalKey(userKey, seqNum, kind)
+}
+
+// ParseInternalKeyRange parses a string of the form:
+//
+//	[<user-key>#<seq-num>,<kind>-<user-key>#<seq-num>,<kind>]
+func ParseInternalKeyRange(s string) (start, end InternalKey) {
+	s, ok1 := strings.CutPrefix(s, "[")
+	s, ok2 := strings.CutSuffix(s, "]")
+	x := strings.Split(s, "-")
+	if !ok1 || !ok2 || len(x) != 2 {
+		panic(fmt.Sprintf("invalid key range %q", s))
+	}
+	return ParsePrettyInternalKey(x[0]), ParsePrettyInternalKey(x[1])
 }
 
 // MakeInternalKV constructs an InternalKV with the provided internal key and

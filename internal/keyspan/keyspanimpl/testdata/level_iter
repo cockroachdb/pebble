@@ -8,6 +8,8 @@ file
   b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
   c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
 ----
+000001:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+000002:[b#2,RANGEKEYSET-d#inf,RANGEKEYSET]
 
 iter
 seek-ge a
@@ -19,12 +21,12 @@ seek-ge cantalope
 seek-ge d
 seek-ge dragonfruit
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
 .
 .
 
@@ -40,14 +42,14 @@ seek-lt dragonfruit
 prev
 ----
 .
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
 
 iter
 seek-ge a
@@ -55,9 +57,9 @@ prev
 seek-lt d
 next
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
 .
 
 iter
@@ -66,9 +68,9 @@ next
 next
 next
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
 .
 
 iter
@@ -77,9 +79,9 @@ prev
 prev
 prev
 ----
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
 
 # Set some bounds
@@ -94,14 +96,14 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
 .
 .
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
 
 
 iter
@@ -110,9 +112,9 @@ prev
 prev
 prev
 ----
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
 
 # Test skipping over empty/point-key-only files in both directions.
@@ -120,16 +122,14 @@ a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 define
 file
   a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
-file
-  point:b.SET.1:foo
+file point-key-bounds=[b#1,SET-b#1,SET]
 file
   c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
   d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
 ----
-
-num-files
-----
-3
+000001:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+000002:[b#1,SET-b#1,SET]
+000003:[c#2,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 iter
 first
@@ -137,10 +137,10 @@ next
 next
 next
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{} (file = 000001.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{} (L6: fileNum=000003)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 
 iter
 last
@@ -148,10 +148,10 @@ prev
 prev
 prev
 ----
-d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-b-c:{} (file = 000003.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+b-c:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 
 # Test straddle keys between files.
 
@@ -165,6 +165,10 @@ file
 file
   g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
 ----
+000001:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+000002:[c#2,RANGEKEYSET-d#inf,RANGEKEYSET]
+000003:[e#2,RANGEKEYSET-f#inf,RANGEKEYSET]
+000004:[g#2,RANGEKEYSET-h#inf,RANGEKEYSET]
 
 iter
 first
@@ -176,13 +180,13 @@ next
 next
 next
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{} (file = 000001.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-d-e:{} (file = 000002.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-f-g:{} (file = 000003.sst)
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+f-g:{} (L6: fileNum=000004)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000004)
 .
 
 iter
@@ -195,13 +199,13 @@ prev
 prev
 prev
 ----
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
-f-g:{} (file = 000004.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-d-e:{} (file = 000003.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000004)
+f-g:{} (L6: fileNum=000003)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+d-e:{} (L6: fileNum=000002)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
 
 # The below case seeks into a file straddle, then iterates forward and back to
@@ -216,12 +220,12 @@ next
 prev
 prev
 ----
-b-c:{} (file = 000001.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{} (L6: fileNum=000001)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{} (L6: fileNum=000001)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 
 # The same case as above, but with inverted directions.
 
@@ -233,12 +237,12 @@ prev
 next
 next
 ----
-d-e:{} (file = 000001.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-d-e:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-d-e:{} (file = 000002.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+d-e:{} (L6: fileNum=000003)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 
 iter
 seek-lt dd
@@ -248,24 +252,24 @@ prev
 next
 next
 ----
-d-e:{} (file = 000003.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-d-e:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-d-e:{} (file = 000002.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+d-e:{} (L6: fileNum=000003)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+d-e:{} (L6: fileNum=000003)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 
 # Seeks right at the bound should return nothing.
 
 iter
 seek-lt bb
 ----
-b-c:{} (file = 000003.sst)
+b-c:{} (L6: fileNum=000002)
 
 iter
 seek-ge dd
 ----
-d-e:{} (file = 000003.sst)
+d-e:{} (L6: fileNum=000002)
 
 iter
 seek-lt d
@@ -277,31 +281,34 @@ prev
 next
 next
 ----
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{} (L6: fileNum=000001)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+b-c:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{} (file = 000001.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{} (L6: fileNum=000002)
 
 # A bunch of files with point keys only should not fragment straddles.
 
 define
 file
   a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
-file
-  point:c.SET.1:foo
-file
-  point:d.SET.1:foo
+file point-key-bounds=[c#1,SET-c#1,SET]
+file point-key-bounds=[d#1,SET-d#1,SET]
 file
   e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
-file
-  point:g.SET.1:foo
+file point-key-bounds=[g#1,SET-g#1,SET]
 file
   h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
 ----
+000001:[a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+000002:[c#1,SET-c#1,SET]
+000003:[d#1,SET-d#1,SET]
+000004:[e#2,RANGEKEYSET-f#inf,RANGEKEYSET]
+000005:[g#1,SET-g#1,SET]
+000006:[h#2,RANGEKEYSET-i#inf,RANGEKEYSET]
 
 iter
 first
@@ -311,11 +318,11 @@ next
 next
 next
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-e:{} (file = 000001.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
-f-h:{} (file = 000004.sst)
-h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000006.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-e:{} (L6: fileNum=000004)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000004)
+f-h:{} (L6: fileNum=000006)
+h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000006)
 .
 
 iter
@@ -326,29 +333,29 @@ prev
 prev
 prev
 ----
-h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000006.sst)
-f-h:{} (file = 000006.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
-b-e:{} (file = 000004.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000006)
+f-h:{} (L6: fileNum=000004)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000004)
+b-e:{} (L6: fileNum=000001)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
 
 # Test files with range keys and rangedels
 
 define
-file
+file point-key-bounds=[a#1,SET-b#1,SET]
   a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
-  point:a.SET.1:foo
-  point:b.SET.1:foo
-file
+file point-key-bounds=[d#1,SET-d#1,SET]
   c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)}
-  point:c.RANGEDEL.2:f
-  point:d.SET.1:foo
+  c-f:{(#2,RANGEDEL)}
 file
   g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
   i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
-  point:f.RANGEDEL.2:g
+  f-g:{(#2,RANGEDEL)}
 ----
+000001:[a#2,RANGEKEYSET-b#1,SET]
+000002:[c#3,RANGEKEYSET-f#inf,RANGEDEL]
+000003:[f#2,RANGEDEL-j#inf,RANGEKEYSET]
 
 iter rangedel
 first
@@ -356,8 +363,8 @@ next
 next
 next
 ----
-c-f:{(#2,RANGEDEL)} (file = 000002.sst)
-f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+c-f:{(#2,RANGEDEL)} (L6: fileNum=000002)
+f-g:{(#2,RANGEDEL)} (L6: fileNum=000003)
 .
 .
 
@@ -367,8 +374,8 @@ prev
 prev
 prev
 ----
-f-g:{(#2,RANGEDEL)} (file = 000003.sst)
-c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+f-g:{(#2,RANGEDEL)} (L6: fileNum=000003)
+c-f:{(#2,RANGEDEL)} (L6: fileNum=000002)
 .
 .
 
@@ -377,8 +384,8 @@ seek-ge c
 next
 next
 ----
-c-f:{(#2,RANGEDEL)} (file = 000002.sst)
-f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+c-f:{(#2,RANGEDEL)} (L6: fileNum=000002)
+f-g:{(#2,RANGEDEL)} (L6: fileNum=000003)
 .
 
 iter rangedel
@@ -388,15 +395,15 @@ next
 prev
 prev
 ----
-f-g:{(#2,RANGEDEL)} (file = 000003.sst)
-c-f:{(#2,RANGEDEL)} (file = 000002.sst)
-f-g:{(#2,RANGEDEL)} (file = 000003.sst)
-c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+f-g:{(#2,RANGEDEL)} (L6: fileNum=000003)
+c-f:{(#2,RANGEDEL)} (L6: fileNum=000002)
+f-g:{(#2,RANGEDEL)} (L6: fileNum=000003)
+c-f:{(#2,RANGEDEL)} (L6: fileNum=000002)
 .
 
 close-iter
 ----
-ok
+unknown command: close-iter
 
 # Test that a regular LevelIter ignores rangedels and emits straddle spans.
 
@@ -408,12 +415,12 @@ next
 next
 next
 ----
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{} (file = 000001.sst)
-c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-e-g:{} (file = 000002.sst)
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+b-c:{} (L6: fileNum=000002)
+c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+e-g:{} (L6: fileNum=000003)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 
 iter
 seek-ge c
@@ -422,10 +429,10 @@ next
 next
 next
 ----
-c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-e-g:{} (file = 000002.sst)
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+e-g:{} (L6: fileNum=000003)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 .
 
 # Test seeking outside of bounds with straddles.
@@ -438,6 +445,9 @@ file
 file
   g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
 ----
+000001:[c#2,RANGEKEYSET-d#inf,RANGEKEYSET]
+000002:[e#2,RANGEKEYSET-f#inf,RANGEKEYSET]
+000003:[g#2,RANGEKEYSET-h#inf,RANGEKEYSET]
 
 iter
 seek-lt j
@@ -445,10 +455,10 @@ next
 prev
 prev
 ----
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 .
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-f-g:{} (file = 000003.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+f-g:{} (L6: fileNum=000002)
 
 iter
 seek-lt j
@@ -457,11 +467,11 @@ prev
 next
 next
 ----
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-f-g:{} (file = 000003.sst)
-e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-f-g:{} (file = 000002.sst)
-g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
+f-g:{} (L6: fileNum=000002)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000002)
+f-g:{} (L6: fileNum=000003)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000003)
 
 iter
 seek-ge a
@@ -469,7 +479,7 @@ prev
 next
 next
 ----
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
 .
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-d-e:{} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (L6: fileNum=000001)
+d-e:{} (L6: fileNum=000002)
