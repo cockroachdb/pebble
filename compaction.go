@@ -20,7 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -2712,7 +2712,13 @@ func (d *DB) newCompactionOutput(
 		FileNum: diskFileNum,
 	})
 
-	cacheOpts := private.SSTableCacheOpts(d.cacheID, diskFileNum).(sstable.WriterOption)
+	writerOpts.SetInternal(sstableinternal.WriterOptions{
+		CacheOpts: sstableinternal.CacheOptions{
+			Cache:   d.opts.Cache,
+			CacheID: d.cacheID,
+			FileNum: diskFileNum,
+		},
+	})
 
 	const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
 	cpuWorkHandle := d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
@@ -2722,7 +2728,7 @@ func (d *DB) newCompactionOutput(
 		d.opts.Experimental.MaxWriterConcurrency > 0 &&
 			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
-	tw := sstable.NewWriter(writable, writerOpts, cacheOpts)
+	tw := sstable.NewWriter(writable, writerOpts)
 	return objMeta, tw, cpuWorkHandle, nil
 }
 

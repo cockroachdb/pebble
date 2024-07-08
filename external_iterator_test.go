@@ -41,7 +41,6 @@ func TestExternalIterator(t *testing.T) {
 			return ""
 		case "iter":
 			opts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
-			var externalIterOpts []ExternalIterOption
 			var files [][]sstable.ReadableFile
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
@@ -59,7 +58,7 @@ func TestExternalIterator(t *testing.T) {
 					}
 				}
 			}
-			it, err := NewExternalIter(o, &opts, files, externalIterOpts...)
+			it, err := NewExternalIter(o, &opts, files)
 			require.NoError(t, err)
 			return runIterCmd(td, it, true /* close iter */)
 		default:

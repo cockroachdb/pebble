@@ -883,7 +883,10 @@ func (d *dbT) addProps(
 	if err != nil {
 		return err
 	}
-	r, err := sstable.NewReader(f, sstable.ReaderOptions{}, d.mergers, d.comparers)
+	r, err := sstable.NewReader(f, sstable.ReaderOptions{
+		Mergers:   d.mergers,
+		Comparers: d.comparers,
+	})
 	if err != nil {
 		_ = f.Close()
 		return err

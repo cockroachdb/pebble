@@ -17,11 +17,12 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
@@ -103,9 +104,10 @@ type tableCacheOpts struct {
 	iterCount *atomic.Int32
 
 	loggerAndTracer   LoggerAndTracer
+	cache             *cache.Cache
 	cacheID           uint64
 	objProvider       objstorage.Provider
-	opts              sstable.ReaderOptions
+	readerOpts        sstable.ReaderOptions
 	sstStatsCollector *sstable.CategoryStatsCollector
 }
 
@@ -144,10 +146,11 @@ func newTableCacheContainer(
 	t := &tableCacheContainer{}
 	t.tableCache = tc
 	t.dbOpts.loggerAndTracer = opts.LoggerAndTracer
+	t.dbOpts.cache = opts.Cache
 	t.dbOpts.cacheID = cacheID
 	t.dbOpts.objProvider = objProvider
-	t.dbOpts.opts = opts.MakeReaderOptions()
-	t.dbOpts.opts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
+	t.dbOpts.readerOpts = opts.MakeReaderOptions()
+	t.dbOpts.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
 	t.dbOpts.iterCount = new(atomic.Int32)
 	t.dbOpts.sstStatsCollector = sstStatsCollector
 	return t
@@ -204,7 +207,7 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 		m.Misses += s.misses.Load()
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
-	f := c.dbOpts.opts.FilterMetricsTracker.Load()
+	f := c.dbOpts.readerOpts.FilterMetricsTracker.Load()
 	return m, f
 }
 
@@ -624,8 +627,8 @@ func (c *tableCacheShard) newRangeDelIter(
 	// Assert expected bounds in tests.
 	if invariants.Sometimes(50) && rangeDelIter != nil {
 		cmp := base.DefaultComparer.Compare
-		if dbOpts.opts.Comparer != nil {
-			cmp = dbOpts.opts.Comparer.Compare
+		if dbOpts.readerOpts.Comparer != nil {
+			cmp = dbOpts.readerOpts.Comparer.Compare
 		}
 		rangeDelIter = keyspan.AssertBounds(
 			rangeDelIter, file.SmallestPointKey, file.LargestPointKey.UserKey, cmp,
@@ -1010,7 +1013,7 @@ func (c *tableCacheShard) evict(fileNum base.DiskFileNum, dbOpts *tableCacheOpts
 		v.release(c)
 	}
 
-	dbOpts.opts.Cache.EvictFile(dbOpts.cacheID, fileNum)
+	dbOpts.cache.EvictFile(dbOpts.cacheID, fileNum)
 }
 
 // removeDB evicts any nodes which have a reference to the DB
@@ -1118,8 +1121,13 @@ func (v *tableCacheValue) load(loadInfo loadInfo, c *tableCacheShard, dbOpts *ta
 		context.TODO(), fileTypeTable, loadInfo.backingFileNum, objstorage.OpenOptions{MustExist: true},
 	)
 	if err == nil {
-		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, loadInfo.backingFileNum).(sstable.ReaderOption)
-		v.reader, err = sstable.NewReader(f, dbOpts.opts, cacheOpts)
+		o := dbOpts.readerOpts
+		o.SetInternalCacheOpts(sstableinternal.CacheOptions{
+			Cache:   dbOpts.cache,
+			CacheID: dbOpts.cacheID,
+			FileNum: loadInfo.backingFileNum,
+		})
+		v.reader, err = sstable.NewReader(f, o)
 	}
 	if err == nil {
 		var objMeta objstorage.ObjectMetadata

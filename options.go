@@ -1952,7 +1952,6 @@ func (o *Options) Validate() error {
 func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	var readerOpts sstable.ReaderOptions
 	if o != nil {
-		readerOpts.Cache = o.Cache
 		readerOpts.LoadBlockSema = o.LoadBlockSema
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
@@ -1971,7 +1970,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	var writerOpts sstable.WriterOptions
 	writerOpts.TableFormat = format
 	if o != nil {
-		writerOpts.Cache = o.Cache
 		writerOpts.Comparer = o.Comparer
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name

@@ -16,7 +16,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -291,18 +291,18 @@ func (l *Layout) Describe(
 // describing the offset and length of the block.
 type layoutWriter struct {
 	writable objstorage.Writable
-	// offset tracks the current write offset within the writable.
-	offset uint64
-	// cacheID and fileNum are used to remove blocks written to the sstable from
-	// the cache, providing a defense in depth against bugs which cause cache
-	// collisions.
-	cacheID uint64
-	fileNum base.DiskFileNum
+
+	// cacheOpts are used to remove blocks written to the sstable from the cache,
+	// providing a defense in depth against bugs which cause cache collisions.
+	cacheOpts sstableinternal.CacheOptions
+
 	// options copied from WriterOptions
-	cache        *cache.Cache
 	tableFormat  TableFormat
 	compression  Compression
 	checksumType block.ChecksumType
+
+	// offset tracks the current write offset within the writable.
+	offset uint64
 	// lastIndexBlockHandle holds the handle to the most recently-written index
 	// block.  It's updated by writeIndexBlock. When writing sstables with a
 	// single-level index, this field will be updated once. When writing
@@ -318,7 +318,7 @@ type layoutWriter struct {
 func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {
 	return layoutWriter{
 		writable:     w,
-		cache:        opts.Cache,
+		cacheOpts:    opts.internal.CacheOpts,
 		tableFormat:  opts.TableFormat,
 		compression:  opts.Compression,
 		checksumType: opts.Checksum,
@@ -493,10 +493,10 @@ func (w *layoutWriter) Write(blockWithTrailer []byte) (n int, err error) {
 // clearFromCache removes the block at the provided offset from the cache. This provides defense in
 // depth against bugs which cause cache collisions.
 func (w *layoutWriter) clearFromCache(offset uint64) {
-	if w.cacheID != 0 && w.fileNum != 0 {
+	if w.cacheOpts.Cache != nil {
 		// TODO(peter): Alternatively, we could add the uncompressed value to the
 		// cache.
-		w.cache.Delete(w.cacheID, w.fileNum, offset)
+		w.cacheOpts.Cache.Delete(w.cacheOpts.CacheID, w.cacheOpts.FileNum, offset)
 	}
 }
 
