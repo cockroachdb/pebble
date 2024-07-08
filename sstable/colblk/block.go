@@ -217,6 +217,15 @@ func (r *BlockReader) RawBytes(col int) RawBytes {
 	return MakeRawBytes(int(r.header.Rows), r.data, r.pageStart(col))
 }
 
+// PrefixBytes retrieves the col'th column as a prefix-compressed byte slice column. The column
+// must be of type DataTypePrefixBytes.
+func (r *BlockReader) PrefixBytes(col int) PrefixBytes {
+	if dt := r.DataType(col); dt != DataTypePrefixBytes {
+		panic(errors.AssertionFailedf("column %d is not a PrefixBytes column; holds data type %s", dt))
+	}
+	return MakePrefixBytes(int(r.header.Rows), r.data, r.pageStart(col))
+}
+
 // Uint8s retrieves the col'th column as a column of uint8s. The column must be
 // of type DataTypeUint8.
 func (r *BlockReader) Uint8s(col int) UnsafeUint8s {
