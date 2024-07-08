@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -446,8 +445,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			if err != nil {
 				return err
 			}
-			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
-				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
+			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers)
 			if err != nil {
 				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", fl.path, err.Error()))
 				// Ensure the error only gets printed once.

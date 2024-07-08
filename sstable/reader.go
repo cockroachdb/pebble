@@ -155,23 +155,10 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	}
 }
 
-// rawTombstonesOpt is a Reader open option for specifying that range
-// tombstones returned by Reader.NewRangeDelIter() should not be
-// fragmented. Used by debug tools to get a raw view of the tombstones
-// contained in an sstable.
-type rawTombstonesOpt struct{}
-
-func (rawTombstonesOpt) preApply() {}
-
-func (rawTombstonesOpt) readerApply(r *Reader) {
-	r.rawTombstones = true
-}
-
 func init() {
 	private.SSTableCacheOpts = func(cacheID uint64, fileNum base.DiskFileNum) interface{} {
 		return &cacheOpts{cacheID, fileNum}
 	}
-	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
 // Reader is a table reader.
@@ -196,11 +183,10 @@ type Reader struct {
 	tableFilter  *tableFilterReader
 	// Keep types that are not multiples of 8 bytes at the end and with
 	// decreasing size.
-	Properties    Properties
-	tableFormat   TableFormat
-	rawTombstones bool
-	mergerOK      bool
-	checksumType  block.ChecksumType
+	Properties   Properties
+	tableFormat  TableFormat
+	mergerOK     bool
+	checksumType block.ChecksumType
 	// metaBufferPool is a buffer pool used exclusively when opening a table and
 	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
 	// the BufferPool.pool slice as a part of the Reader allocation. It's

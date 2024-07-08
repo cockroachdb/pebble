@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -151,8 +150,7 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		Filters:  s.opts.Filters,
 	}
 	defer o.Cache.Unref()
-	return sstable.NewReader(readable, o, s.comparers, s.mergers,
-		private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
+	return sstable.NewReader(readable, o, s.comparers, s.mergers)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
