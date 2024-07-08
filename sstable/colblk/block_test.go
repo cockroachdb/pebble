@@ -195,7 +195,7 @@ func randBlock(rng *rand.Rand, rows int, schema []DataType) ([]byte, []interface
 		case DataTypePrefixBytes:
 			v := make([][]byte, rows)
 			for row := 0; row < rows; row++ {
-				v[row] = make([]byte, rng.Intn(20))
+				v[row] = make([]byte, rng.Intn(20)+1)
 				rng.Read(v[row])
 			}
 			// PrefixBytes are required to be lexicographically sorted.
@@ -255,7 +255,18 @@ func buildBlock(schema []DataType, rows int, data []interface{}) []byte {
 			}
 			cw[col] = &b
 		case DataTypePrefixBytes:
-			panic("unimplemented")
+			var pbb PrefixBytesBuilder
+			pbb.Init(8)
+			// TODO(jackson): Randomize bundle size.
+			colData := data[col].([][]byte)
+			for r, v := range colData {
+				sharedPrefix := 0
+				if r > 0 {
+					sharedPrefix = bytesSharedPrefix(colData[r-1], v)
+				}
+				pbb.Put(v, sharedPrefix)
+			}
+			cw[col] = &pbb
 		}
 	}
 	return FinishBlock(rows, cw)
@@ -311,7 +322,12 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []DataType) 
 				}
 				got = vals2
 			case DataTypePrefixBytes:
-				panic("unimplemented")
+				vals2 := make([][]byte, rows)
+				vals := r.PrefixBytes(col)
+				for i := range vals2 {
+					vals2[i] = slices.Concat(vals.SharedPrefix(), vals.RowBundlePrefix(i), vals.RowSuffix(i))
+				}
+				got = vals2
 			}
 			if !reflect.DeepEqual(data[col], got) {
 				t.Fatalf("%d: %s: expected\n%+v\ngot\n%+v\n% x",
@@ -334,15 +350,14 @@ func TestBlockWriterRandomized(t *testing.T) {
 	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeUint32})
 	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeUint64})
 	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeBytes})
-	// TODO(jackson): Add support for DataTypePrefixBytes.
-	// testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypePrefixBytes})
+	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypePrefixBytes})
 
 	for i := 0; i < 100; i++ {
 		schema := make([]DataType, 2+rng.Intn(8))
 		for j := range schema {
 			// TODO(jackson): Adjust this to generate DataTypePrefixBytes
 			// columns too once they're supported.
-			schema[j] = DataType(randInt(1, int(DataTypePrefixBytes)-1))
+			schema[j] = DataType(randInt(1, int(dataTypesCount)))
 		}
 		testRandomBlock(t, rng, randInt(1, 100), schema)
 	}

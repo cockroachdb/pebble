@@ -77,8 +77,9 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 	dataOffset := uint64(f.Offset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
 	f.CommentLine("rawbytes")
 	f.CommentLine("offsets table")
-	uintsToBinFormatter(f, count+1, DataTypeUint32, func(offset uint64) string {
-		return fmt.Sprintf("%d [%d overall]", offset, offset+dataOffset)
+	uintsToBinFormatter(f, count+1, DataTypeUint32, func(offset, base uint64) string {
+		// NB: base is always zero for RawBytes columns.
+		return fmt.Sprintf("%d [%d overall]", offset+base, offset+base+dataOffset)
 	})
 	f.CommentLine("data")
 	for i := 0; i < rb.slices; i++ {
@@ -87,17 +88,17 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 	}
 }
 
-func (b RawBytes) ptr(offset int) unsafe.Pointer {
+func (b RawBytes) ptr(offset uint32) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(b.data) + uintptr(offset))
 }
 
-func (b RawBytes) slice(start, end int) []byte {
+func (b RawBytes) slice(start, end uint32) []byte {
 	return unsafe.Slice((*byte)(b.ptr(start)), end-start)
 }
 
 // At returns the []byte at index i. The returned slice should not be mutated.
 func (b RawBytes) At(i int) []byte {
-	return b.slice(int(b.offsets.At(i)), int(b.offsets.At(i+1)))
+	return b.slice(b.offsets.At(i), b.offsets.At(i+1))
 }
 
 // Slices returns the number of []byte slices encoded within the RawBytes.
