@@ -699,7 +699,7 @@ func (r *Reader) readMetaindex(metaindexBH block.Handle, readHandle objstorage.R
 
 				switch t.ftype {
 				case TableFilter:
-					r.tableFilter = newTableFilterReader(fp)
+					r.tableFilter = newTableFilterReader(fp, r.opts.FilterMetricsTracker)
 				default:
 					return base.CorruptionErrorf("unknown filter type: %v", errors.Safe(t.ftype))
 				}

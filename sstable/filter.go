@@ -32,14 +32,6 @@ type FilterMetricsTracker struct {
 	misses atomic.Int64
 }
 
-var _ ReaderOption = (*FilterMetricsTracker)(nil)
-
-func (m *FilterMetricsTracker) readerApply(r *Reader) {
-	if r.tableFilter != nil {
-		r.tableFilter.metrics = m
-	}
-}
-
 // Load returns the current values as FilterMetrics.
 func (m *FilterMetricsTracker) Load() FilterMetrics {
 	return FilterMetrics{
@@ -67,10 +59,10 @@ type tableFilterReader struct {
 	metrics *FilterMetricsTracker
 }
 
-func newTableFilterReader(policy FilterPolicy) *tableFilterReader {
+func newTableFilterReader(policy FilterPolicy, metrics *FilterMetricsTracker) *tableFilterReader {
 	return &tableFilterReader{
 		policy:  policy,
-		metrics: nil,
+		metrics: metrics,
 	}
 }
 
