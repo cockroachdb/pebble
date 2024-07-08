@@ -1,0 +1,861 @@
+init bundle-size=4
+----
+Size: 0
+
+put
+abc
+----
+Size: 11
+nKeys=1; bundleSize=4
+blockPrefixLen=3; currentBundleLen=3; currentBundleKeys=1
+Offsets:
+  0000  0003  0003
+Data (len=3):
+abc
+
+finish rows=1
+----
+# PrefixBytes
+00-01: x 02       # bundleSize: 4
+# Offsets table
+01-05: x 00000000 # 32-bit constant: 0
+05-06: x 03       # data[0] = 3 [11 overall]
+06-07: x 03       # data[1] = 3 [11 overall]
+07-08: x 03       # data[2] = 3 [11 overall]
+# Data
+08-11: x 616263   # data[00]: abc (block prefix)
+11-11: x          # data[01]: ... (bundle prefix)
+11-11: x          # data[02]: ...
+
+init bundle-size=4
+----
+Size: 0
+
+put
+abc
+----
+Size: 11
+nKeys=1; bundleSize=4
+blockPrefixLen=3; currentBundleLen=3; currentBundleKeys=1
+Offsets:
+  0000  0003  0003
+Data (len=3):
+abc
+
+put
+abcd
+----
+Size: 13
+nKeys=2; bundleSize=4
+blockPrefixLen=3; currentBundleLen=7; currentBundleKeys=2
+Offsets:
+  0000  0003  0003  0007
+Data (len=7):
+abcabcd
+
+put
+abce
+----
+Size: 15
+nKeys=3; bundleSize=4
+blockPrefixLen=3; currentBundleLen=11; currentBundleKeys=3
+Offsets:
+  0000  0003  0003  0007  0011
+Data (len=11):
+abcabcdabce
+
+put
+abdd
+----
+Size: 20
+nKeys=4; bundleSize=4
+blockPrefixLen=2; currentBundleLen=15; currentBundleKeys=4
+Offsets:
+  0000  0002  0003  0007  0011  0015
+Data (len=15):
+abcabcdabceabdd
+
+put
+abde
+----
+Size: 24
+nKeys=5; bundleSize=4
+blockPrefixLen=2; currentBundleLen=4; currentBundleKeys=1
+Offsets:
+  0000  0002  0003  0007  0011  0015  0019  0019
+Data (len=19):
+abcabcdabceabddabde
+
+# Try finishing just the n-1 rows.
+
+finish rows=4
+----
+# PrefixBytes
+00-01: x 02       # bundleSize: 4
+# Offsets table
+01-05: x 00000000 # 32-bit constant: 0
+05-06: x 02       # data[0] = 2 [13 overall]
+06-07: x 02       # data[1] = 2 [13 overall]
+07-08: x 03       # data[2] = 3 [14 overall]
+08-09: x 05       # data[3] = 5 [16 overall]
+09-10: x 07       # data[4] = 7 [18 overall]
+10-11: x 09       # data[5] = 9 [20 overall]
+# Data
+11-13: x 6162     # data[00]: ab (block prefix)
+13-13: x          # data[01]: .. (bundle prefix)
+13-14: x 63       # data[02]: ..c
+14-16: x 6364     # data[03]: ..cd
+16-18: x 6365     # data[04]: ..ce
+18-20: x 6464     # data[05]: ..dd
+
+# Finish the entirety of all put rows.
+
+finish rows=5
+----
+# PrefixBytes
+00-01: x 02       # bundleSize: 4
+# Offsets table
+01-05: x 00000000 # 32-bit constant: 0
+05-06: x 02       # data[0] = 2 [15 overall]
+06-07: x 02       # data[1] = 2 [15 overall]
+07-08: x 03       # data[2] = 3 [16 overall]
+08-09: x 05       # data[3] = 5 [18 overall]
+09-10: x 07       # data[4] = 7 [20 overall]
+10-11: x 09       # data[5] = 9 [22 overall]
+11-12: x 0b       # data[6] = 11 [24 overall]
+12-13: x 0b       # data[7] = 11 [24 overall]
+# Data
+13-15: x 6162     # data[00]: ab (block prefix)
+15-15: x          # data[01]: .. (bundle prefix)
+15-16: x 63       # data[02]: ..c
+16-18: x 6364     # data[03]: ..cd
+18-20: x 6365     # data[04]: ..ce
+20-22: x 6464     # data[05]: ..dd
+22-24: x 6465     # data[06]: ..de (bundle prefix)
+24-24: x          # data[07]: ....
+
+get indices=(0, 1, 2, 3, 4)
+----
+abc
+abcd
+abce
+abdd
+abde
+
+search
+a
+ab
+abaaaa
+abc
+abcc
+abccaat
+abcd
+abcda
+----
+Search("a") = (0, false)
+Search("ab") = (0, false)
+Search("abaaaa") = (0, false)
+Search("abc") = (0, true)
+Search("abcc") = (1, false)
+Search("abccaat") = (1, false)
+Search("abcd") = (1, true)
+Search("abcda") = (2, false)
+
+search
+abce
+abdd
+abde
+abdeee
+abdf
+----
+Search("abce") = (2, true)
+Search("abdd") = (3, true)
+Search("abde") = (4, true)
+Search("abdeee") = (5, false)
+Search("abdf") = (5, false)
+
+init bundle-size=4
+----
+Size: 0
+
+put
+aaabbbc
+----
+Size: 15
+nKeys=1; bundleSize=4
+blockPrefixLen=7; currentBundleLen=7; currentBundleKeys=1
+Offsets:
+  0000  0007  0007
+Data (len=7):
+aaabbbc
+
+put
+aaabbbcc
+----
+Size: 17
+nKeys=2; bundleSize=4
+blockPrefixLen=7; currentBundleLen=15; currentBundleKeys=2
+Offsets:
+  0000  0007  0007  0015
+Data (len=15):
+aaabbbcaaabbbcc
+
+put
+aaabbbcde
+----
+Size: 20
+nKeys=3; bundleSize=4
+blockPrefixLen=7; currentBundleLen=24; currentBundleKeys=3
+Offsets:
+  0000  0007  0007  0015  0024
+Data (len=24):
+aaabbbcaaabbbccaaabbbcde
+
+put
+aaabbbce
+----
+Size: 22
+nKeys=4; bundleSize=4
+blockPrefixLen=7; currentBundleLen=32; currentBundleKeys=4
+Offsets:
+  0000  0007  0007  0015  0024  0032
+Data (len=32):
+aaabbbcaaabbbccaaabbbcdeaaabbbce
+
+put
+aaabbbdee*
+----
+Size: 28
+nKeys=5; bundleSize=4
+blockPrefixLen=6; currentBundleLen=10; currentBundleKeys=1
+Offsets:
+  0000  0007  0007  0015  0024  0032  0042  0042
+Data (len=42):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
+
+put
+aaabbbdee*
+----
+Size: 29
+nKeys=6; bundleSize=4
+blockPrefixLen=6; currentBundleLen=10; currentBundleKeys=1
+Offsets:
+  0000  0007  0007  0015  0024  0032  0042  0042  0042
+Data (len=42):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
+
+put
+aaabbbdee*
+----
+Size: 30
+nKeys=7; bundleSize=4
+blockPrefixLen=6; currentBundleLen=10; currentBundleKeys=1
+Offsets:
+  0000  0007  0007  0015  0024  0032  0042  0042  0042  0042
+Data (len=42):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
+
+put
+aaabbbeff
+----
+Size: 34
+nKeys=8; bundleSize=4
+blockPrefixLen=6; currentBundleLen=19; currentBundleKeys=2
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051
+Data (len=51):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeff
+
+put
+aaabbe
+----
+Size: 38
+nKeys=9; bundleSize=4
+blockPrefixLen=5; currentBundleLen=6; currentBundleKeys=1
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051  0057  0057
+Data (len=57):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbe
+
+put
+aaabbeef*
+----
+Size: 42
+nKeys=10; bundleSize=4
+blockPrefixLen=5; currentBundleLen=15; currentBundleKeys=2
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051  0057  0057  0066
+Data (len=66):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbeaaa
+bbeef*
+
+put
+aaabbeef*
+----
+Size: 43
+nKeys=11; bundleSize=4
+blockPrefixLen=5; currentBundleLen=15; currentBundleKeys=2
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051  0057  0057  0066  0066
+Data (len=66):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbeaaa
+bbeef*
+
+put
+aaabc
+----
+Size: 49
+nKeys=12; bundleSize=4
+blockPrefixLen=4; currentBundleLen=20; currentBundleKeys=3
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051  0055  0057  0066  0066  0071
+Data (len=71):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbeaaa
+bbeef*aaabc
+
+put
+aabcceef*
+aabcceef*
+----
+Size: 63
+nKeys=14; bundleSize=4
+blockPrefixLen=2; currentBundleLen=9; currentBundleKeys=1
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051  0055  0057  0066  0066  0071  0080  0080  0080
+Data (len=80):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbeaaa
+bbeef*aaabcaabcceef*
+
+# Add a 15th key that will force 16-bit offsets if we include it.
+
+put
+aabcceegggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+----
+Size: 339
+nKeys=15; bundleSize=4
+blockPrefixLen=2; currentBundleLen=270; currentBundleKeys=2
+Offsets:
+  0000  0007  0007  0015  0024  0032  0038  0042  0042  0042
+  0051  0055  0057  0066  0066  0071  0078  0080  0080  0341
+Data (len=341):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbeaaa
+bbeef*aaabcaabcceef*aabcceeggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggggggggggggggg
+
+# But if we don't include it, we should still get 8-bit offsets.
+
+finish rows=14
+----
+# PrefixBytes
+00-01: x 02             # bundleSize: 4
+# Offsets table
+01-05: x 00000000       # 32-bit constant: 0
+05-06: x 02             # data[0] = 2 [26 overall]
+06-07: x 07             # data[1] = 7 [31 overall]
+07-08: x 07             # data[2] = 7 [31 overall]
+08-09: x 08             # data[3] = 8 [32 overall]
+09-10: x 0a             # data[4] = 10 [34 overall]
+10-11: x 0b             # data[5] = 11 [35 overall]
+11-12: x 0f             # data[6] = 15 [39 overall]
+12-13: x 13             # data[7] = 19 [43 overall]
+13-14: x 13             # data[8] = 19 [43 overall]
+14-15: x 13             # data[9] = 19 [43 overall]
+15-16: x 16             # data[10] = 22 [46 overall]
+16-17: x 18             # data[11] = 24 [48 overall]
+17-18: x 1a             # data[12] = 26 [50 overall]
+18-19: x 1f             # data[13] = 31 [55 overall]
+19-20: x 1f             # data[14] = 31 [55 overall]
+20-21: x 20             # data[15] = 32 [56 overall]
+21-22: x 27             # data[16] = 39 [63 overall]
+22-23: x 27             # data[17] = 39 [63 overall]
+23-24: x 27             # data[18] = 39 [63 overall]
+# Data
+24-26: x 6161           # data[00]: aa (block prefix)
+26-31: x 6162626263     # data[01]: ..abbbc (bundle prefix)
+31-31: x                # data[02]: .......
+31-32: x 63             # data[03]: .......c
+32-34: x 6465           # data[04]: .......de
+34-35: x 65             # data[05]: .......e
+35-39: x 61626262       # data[06]: ..abbb (bundle prefix)
+39-43: x 6465652a       # data[07]: ......dee*
+43-43: x                # data[08]: ..........
+43-43: x                # data[09]: ..........
+43-46: x 656666         # data[10]: ......eff
+46-48: x 6162           # data[11]: ..ab (bundle prefix)
+48-50: x 6265           # data[12]: ....be
+50-55: x 626565662a     # data[13]: ....beef*
+55-55: x                # data[14]: .........
+55-56: x 63             # data[15]: ....c
+56-63: x 6263636565662a # data[16]: ..bcceef* (bundle prefix)
+63-63: x                # data[17]: .........
+63-63: x                # data[18]: .........
+
+
+get indices=(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+----
+aaabbbc
+aaabbbcc
+aaabbbcde
+aaabbbce
+aaabbbdee*
+aaabbbdee*
+aaabbbdee*
+aaabbbeff
+aaabbe
+aaabbeef*
+aaabbeef*
+aaabc
+aabcceef*
+aabcceef*
+
+search
+a
+aaabb
+aaabbbc
+aaabbbca
+aaabbbcc
+aaabbbcca
+aaabbbcde
+----
+Search("a") = (0, false)
+Search("aaabb") = (0, false)
+Search("aaabbbc") = (0, true)
+Search("aaabbbca") = (1, false)
+Search("aaabbbcc") = (1, true)
+Search("aaabbbcca") = (2, false)
+Search("aaabbbcde") = (2, true)
+
+search
+aaabbbcef
+aaabbbdee
+aaabbbdee*
+aaabbee
+aabcceef*
+aabcceef**
+abba
+----
+Search("aaabbbcef") = (4, false)
+Search("aaabbbdee") = (4, false)
+Search("aaabbbdee*") = (4, true)
+Search("aaabbee") = (9, false)
+Search("aabcceef*") = (12, true)
+Search("aabcceef**") = (14, false)
+Search("abba") = (14, false)
+
+bundle-prefixes
+----
+0: "abbbc"
+1: "abbb"
+2: "ab"
+3: "bcceef*"
+
+# But if we do include the 15-th key, we should get 16-bit offsets.
+
+finish rows=15
+----
+# PrefixBytes
+000-001: x 02                                       # bundleSize: 4
+# Offsets table
+001-005: x 00000000                                 # 32-bit constant: 0
+# Padding
+005-006: x 00                                       # aligning to 16-bit boundary
+006-008: x 0200                                     # data[0] = 2 [48 overall]
+008-010: x 0700                                     # data[1] = 7 [53 overall]
+010-012: x 0700                                     # data[2] = 7 [53 overall]
+012-014: x 0800                                     # data[3] = 8 [54 overall]
+014-016: x 0a00                                     # data[4] = 10 [56 overall]
+016-018: x 0b00                                     # data[5] = 11 [57 overall]
+018-020: x 0f00                                     # data[6] = 15 [61 overall]
+020-022: x 1300                                     # data[7] = 19 [65 overall]
+022-024: x 1300                                     # data[8] = 19 [65 overall]
+024-026: x 1300                                     # data[9] = 19 [65 overall]
+026-028: x 1600                                     # data[10] = 22 [68 overall]
+028-030: x 1800                                     # data[11] = 24 [70 overall]
+030-032: x 1a00                                     # data[12] = 26 [72 overall]
+032-034: x 1f00                                     # data[13] = 31 [77 overall]
+034-036: x 1f00                                     # data[14] = 31 [77 overall]
+036-038: x 2000                                     # data[15] = 32 [78 overall]
+038-040: x 2500                                     # data[16] = 37 [83 overall]
+040-042: x 2700                                     # data[17] = 39 [85 overall]
+042-044: x 2700                                     # data[18] = 39 [85 overall]
+044-046: x 2501                                     # data[19] = 293 [339 overall]
+# Data
+046-048: x 6161                                     # data[00]: aa (block prefix)
+048-053: x 6162626263                               # data[01]: ..abbbc (bundle prefix)
+053-053: x                                          # data[02]: .......
+053-054: x 63                                       # data[03]: .......c
+054-056: x 6465                                     # data[04]: .......de
+056-057: x 65                                       # data[05]: .......e
+057-061: x 61626262                                 # data[06]: ..abbb (bundle prefix)
+061-065: x 6465652a                                 # data[07]: ......dee*
+065-065: x                                          # data[08]: ..........
+065-065: x                                          # data[09]: ..........
+065-068: x 656666                                   # data[10]: ......eff
+068-070: x 6162                                     # data[11]: ..ab (bundle prefix)
+070-072: x 6265                                     # data[12]: ....be
+072-077: x 626565662a                               # data[13]: ....beef*
+077-077: x                                          # data[14]: .........
+077-078: x 63                                       # data[15]: ....c
+078-083: x 6263636565                               # data[16]: ..bccee (bundle prefix)
+083-085: x 662a                                     # data[17]: .......f*
+085-085: x                                          # data[18]: .........
+085-105: x 6767676767676767676767676767676767676767 # data[19]: .......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+105-125: x 6767676767676767676767676767676767676767 # (continued...)
+125-145: x 6767676767676767676767676767676767676767 # (continued...)
+145-165: x 6767676767676767676767676767676767676767 # (continued...)
+165-185: x 6767676767676767676767676767676767676767 # (continued...)
+185-205: x 6767676767676767676767676767676767676767 # (continued...)
+205-225: x 6767676767676767676767676767676767676767 # (continued...)
+225-245: x 6767676767676767676767676767676767676767 # (continued...)
+245-265: x 6767676767676767676767676767676767676767 # (continued...)
+265-285: x 6767676767676767676767676767676767676767 # (continued...)
+285-305: x 6767676767676767676767676767676767676767 # (continued...)
+305-325: x 6767676767676767676767676767676767676767 # (continued...)
+325-339: x 6767676767676767676767676767             # (continued...)
+
+init bundle-size=2
+----
+Size: 0
+
+put
+aaabbbc
+aaabbbcc
+aaabbbcde
+aaabbbce
+aaabbbdee*
+aaabbbdee*
+aaabbbdee*
+aaabbbeff
+aaabbe
+aaabbeef*
+aaabbeef*
+aaabc
+aabcceef*
+aabcceef*
+aabcceef*
+----
+Size: 93
+nKeys=15; bundleSize=2
+blockPrefixLen=2; currentBundleLen=9; currentBundleKeys=1
+Offsets:
+  0000  0007  0007  0015  0022  0024  0032  0042  0042  0042
+  0048  0052  0061  0067  0067  0076  0080  0085  0090  0099
+  0099  0099  0108  0108
+Data (len=108):
+aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbdee*aaabbbef
+faaabbeaaabbeef*aaabbeef*aaabcaabcceef*aabcceef*
+
+finish rows=14
+----
+# PrefixBytes
+00-01: x 01               # bundleSize: 2
+# Offsets table
+01-05: x 00000000         # 32-bit constant: 0
+05-06: x 02               # data[0] = 2 [29 overall]
+06-07: x 07               # data[1] = 7 [34 overall]
+07-08: x 07               # data[2] = 7 [34 overall]
+08-09: x 08               # data[3] = 8 [35 overall]
+09-10: x 0d               # data[4] = 13 [40 overall]
+10-11: x 0f               # data[5] = 15 [42 overall]
+11-12: x 10               # data[6] = 16 [43 overall]
+12-13: x 18               # data[7] = 24 [51 overall]
+13-14: x 18               # data[8] = 24 [51 overall]
+14-15: x 18               # data[9] = 24 [51 overall]
+15-16: x 1c               # data[10] = 28 [55 overall]
+16-17: x 20               # data[11] = 32 [59 overall]
+17-18: x 23               # data[12] = 35 [62 overall]
+18-19: x 27               # data[13] = 39 [66 overall]
+19-20: x 27               # data[14] = 39 [66 overall]
+20-21: x 2a               # data[15] = 42 [69 overall]
+21-22: x 2c               # data[16] = 44 [71 overall]
+22-23: x 31               # data[17] = 49 [76 overall]
+23-24: x 32               # data[18] = 50 [77 overall]
+24-25: x 39               # data[19] = 57 [84 overall]
+25-26: x 39               # data[20] = 57 [84 overall]
+26-27: x 39               # data[21] = 57 [84 overall]
+# Data
+27-29: x 6161             # data[00]: aa (block prefix)
+29-34: x 6162626263       # data[01]: ..abbbc (bundle prefix)
+34-34: x                  # data[02]: .......
+34-35: x 63               # data[03]: .......c
+35-40: x 6162626263       # data[04]: ..abbbc (bundle prefix)
+40-42: x 6465             # data[05]: .......de
+42-43: x 65               # data[06]: .......e
+43-51: x 616262626465652a # data[07]: ..abbbdee* (bundle prefix)
+51-51: x                  # data[08]: ..........
+51-51: x                  # data[09]: ..........
+51-55: x 61626262         # data[10]: ..abbb (bundle prefix)
+55-59: x 6465652a         # data[11]: ......dee*
+59-62: x 656666           # data[12]: ......eff
+62-66: x 61626265         # data[13]: ..abbe (bundle prefix)
+66-66: x                  # data[14]: ......
+66-69: x 65662a           # data[15]: ......ef*
+69-71: x 6162             # data[16]: ..ab (bundle prefix)
+71-76: x 626565662a       # data[17]: ....beef*
+76-77: x 63               # data[18]: ....c
+77-84: x 6263636565662a   # data[19]: ..bcceef* (bundle prefix)
+84-84: x                  # data[20]: .........
+84-84: x                  # data[21]: .........
+
+finish rows=15
+----
+# PrefixBytes
+00-01: x 01               # bundleSize: 2
+# Offsets table
+01-05: x 00000000         # 32-bit constant: 0
+05-06: x 02               # data[0] = 2 [31 overall]
+06-07: x 07               # data[1] = 7 [36 overall]
+07-08: x 07               # data[2] = 7 [36 overall]
+08-09: x 08               # data[3] = 8 [37 overall]
+09-10: x 0d               # data[4] = 13 [42 overall]
+10-11: x 0f               # data[5] = 15 [44 overall]
+11-12: x 10               # data[6] = 16 [45 overall]
+12-13: x 18               # data[7] = 24 [53 overall]
+13-14: x 18               # data[8] = 24 [53 overall]
+14-15: x 18               # data[9] = 24 [53 overall]
+15-16: x 1c               # data[10] = 28 [57 overall]
+16-17: x 20               # data[11] = 32 [61 overall]
+17-18: x 23               # data[12] = 35 [64 overall]
+18-19: x 27               # data[13] = 39 [68 overall]
+19-20: x 27               # data[14] = 39 [68 overall]
+20-21: x 2a               # data[15] = 42 [71 overall]
+21-22: x 2c               # data[16] = 44 [73 overall]
+22-23: x 31               # data[17] = 49 [78 overall]
+23-24: x 32               # data[18] = 50 [79 overall]
+24-25: x 39               # data[19] = 57 [86 overall]
+25-26: x 39               # data[20] = 57 [86 overall]
+26-27: x 39               # data[21] = 57 [86 overall]
+27-28: x 40               # data[22] = 64 [93 overall]
+28-29: x 40               # data[23] = 64 [93 overall]
+# Data
+29-31: x 6161             # data[00]: aa (block prefix)
+31-36: x 6162626263       # data[01]: ..abbbc (bundle prefix)
+36-36: x                  # data[02]: .......
+36-37: x 63               # data[03]: .......c
+37-42: x 6162626263       # data[04]: ..abbbc (bundle prefix)
+42-44: x 6465             # data[05]: .......de
+44-45: x 65               # data[06]: .......e
+45-53: x 616262626465652a # data[07]: ..abbbdee* (bundle prefix)
+53-53: x                  # data[08]: ..........
+53-53: x                  # data[09]: ..........
+53-57: x 61626262         # data[10]: ..abbb (bundle prefix)
+57-61: x 6465652a         # data[11]: ......dee*
+61-64: x 656666           # data[12]: ......eff
+64-68: x 61626265         # data[13]: ..abbe (bundle prefix)
+68-68: x                  # data[14]: ......
+68-71: x 65662a           # data[15]: ......ef*
+71-73: x 6162             # data[16]: ..ab (bundle prefix)
+73-78: x 626565662a       # data[17]: ....beef*
+78-79: x 63               # data[18]: ....c
+79-86: x 6263636565662a   # data[19]: ..bcceef* (bundle prefix)
+86-86: x                  # data[20]: .........
+86-86: x                  # data[21]: .........
+86-93: x 6263636565662a   # data[22]: ..bcceef* (bundle prefix)
+93-93: x                  # data[23]: .........
+
+get indices=(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+----
+aaabbbc
+aaabbbcc
+aaabbbcde
+aaabbbce
+aaabbbdee*
+aaabbbdee*
+aaabbbdee*
+aaabbbeff
+aaabbe
+aaabbeef*
+aaabbeef*
+aaabc
+aabcceef*
+aabcceef*
+aabcceef*
+
+# Try finishing without the last key which forces a shorter bundle+block prefix.
+
+init bundle-size=4
+----
+Size: 0
+
+put
+abcd
+abce
+abcf
+abg
+----
+Size: 20
+nKeys=4; bundleSize=4
+blockPrefixLen=2; currentBundleLen=15; currentBundleKeys=4
+Offsets:
+  0000  0002  0004  0008  0012  0015
+Data (len=15):
+abcdabceabcfabg
+
+finish rows=3
+----
+# PrefixBytes
+00-01: x 02       # bundleSize: 4
+# Offsets table
+01-05: x 00000000 # 32-bit constant: 0
+05-06: x 03       # data[0] = 3 [13 overall]
+06-07: x 03       # data[1] = 3 [13 overall]
+07-08: x 04       # data[2] = 4 [14 overall]
+08-09: x 05       # data[3] = 5 [15 overall]
+09-10: x 06       # data[4] = 6 [16 overall]
+# Data
+10-13: x 616263   # data[00]: abc (block prefix)
+13-13: x          # data[01]: ... (bundle prefix)
+13-14: x 64       # data[02]: ...d
+14-15: x 65       # data[03]: ...e
+15-16: x 66       # data[04]: ...f
+
+# Try finishing without the last key which forces a shorter bundle prefix only.
+
+init bundle-size=2
+----
+Size: 0
+
+put
+abad
+abae
+abbf
+abc
+----
+Size: 20
+nKeys=4; bundleSize=2
+blockPrefixLen=2; currentBundleLen=7; currentBundleKeys=2
+Offsets:
+  0000  0003  0004  0008  0010  0012  0015
+Data (len=15):
+abadabaeabbfabc
+
+finish rows=3
+----
+# PrefixBytes
+00-01: x 01       # bundleSize: 2
+# Offsets table
+01-05: x 00000000 # 32-bit constant: 0
+05-06: x 02       # data[0] = 2 [13 overall]
+06-07: x 03       # data[1] = 3 [14 overall]
+07-08: x 04       # data[2] = 4 [15 overall]
+08-09: x 05       # data[3] = 5 [16 overall]
+09-10: x 07       # data[4] = 7 [18 overall]
+10-11: x 07       # data[5] = 7 [18 overall]
+# Data
+11-13: x 6162     # data[00]: ab (block prefix)
+13-14: x 61       # data[01]: ..a (bundle prefix)
+14-15: x 64       # data[02]: ...d
+15-16: x 65       # data[03]: ...e
+16-18: x 6266     # data[04]: ..bf (bundle prefix)
+18-18: x          # data[05]: ....
+
+# Test strings long enough to force 16-bit offsets, and have zero-length block
+# and bundle prefixes.
+
+init bundle-size=2
+----
+Size: 0
+
+put
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+----
+Size: 686
+nKeys=6; bundleSize=2
+blockPrefixLen=0; currentBundleLen=220; currentBundleKeys=2
+Offsets:
+  0000  0000  0110  0220  0220  0330  0440  0440  0550  0660
+Data (len=660):
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccdddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+ddddddddddddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+eeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffff
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+finish rows=6
+----
+# PrefixBytes
+000-001: x 01                                       # bundleSize: 2
+# Offsets table
+001-005: x 00000000                                 # 32-bit constant: 0
+# Padding
+005-006: x 00                                       # aligning to 16-bit boundary
+006-008: x 0000                                     # data[0] = 0 [26 overall]
+008-010: x 0000                                     # data[1] = 0 [26 overall]
+010-012: x 6e00                                     # data[2] = 110 [136 overall]
+012-014: x dc00                                     # data[3] = 220 [246 overall]
+014-016: x dc00                                     # data[4] = 220 [246 overall]
+016-018: x 4a01                                     # data[5] = 330 [356 overall]
+018-020: x b801                                     # data[6] = 440 [466 overall]
+020-022: x b801                                     # data[7] = 440 [466 overall]
+022-024: x 2602                                     # data[8] = 550 [576 overall]
+024-026: x 9402                                     # data[9] = 660 [686 overall]
+# Data
+026-026: x                                          # data[00]:  (block prefix)
+026-026: x                                          # data[01]:  (bundle prefix)
+026-046: x 6161616161616161616161616161616161616161 # data[02]: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+046-066: x 6161616161616161616161616161616161616161 # (continued...)
+066-086: x 6161616161616161616161616161616161616161 # (continued...)
+086-106: x 6161616161616161616161616161616161616161 # (continued...)
+106-126: x 6161616161616161616161616161616161616161 # (continued...)
+126-136: x 61616161616161616161                     # (continued...)
+136-156: x 6262626262626262626262626262626262626262 # data[03]: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+156-176: x 6262626262626262626262626262626262626262 # (continued...)
+176-196: x 6262626262626262626262626262626262626262 # (continued...)
+196-216: x 6262626262626262626262626262626262626262 # (continued...)
+216-236: x 6262626262626262626262626262626262626262 # (continued...)
+236-246: x 62626262626262626262                     # (continued...)
+246-246: x                                          # data[04]:  (bundle prefix)
+246-266: x 6363636363636363636363636363636363636363 # data[05]: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+266-286: x 6363636363636363636363636363636363636363 # (continued...)
+286-306: x 6363636363636363636363636363636363636363 # (continued...)
+306-326: x 6363636363636363636363636363636363636363 # (continued...)
+326-346: x 6363636363636363636363636363636363636363 # (continued...)
+346-356: x 63636363636363636363                     # (continued...)
+356-376: x 6464646464646464646464646464646464646464 # data[06]: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+376-396: x 6464646464646464646464646464646464646464 # (continued...)
+396-416: x 6464646464646464646464646464646464646464 # (continued...)
+416-436: x 6464646464646464646464646464646464646464 # (continued...)
+436-456: x 6464646464646464646464646464646464646464 # (continued...)
+456-466: x 64646464646464646464                     # (continued...)
+466-466: x                                          # data[07]:  (bundle prefix)
+466-486: x 6565656565656565656565656565656565656565 # data[08]: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+486-506: x 6565656565656565656565656565656565656565 # (continued...)
+506-526: x 6565656565656565656565656565656565656565 # (continued...)
+526-546: x 6565656565656565656565656565656565656565 # (continued...)
+546-566: x 6565656565656565656565656565656565656565 # (continued...)
+566-576: x 65656565656565656565                     # (continued...)
+576-596: x 6666666666666666666666666666666666666666 # data[09]: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+596-616: x 6666666666666666666666666666666666666666 # (continued...)
+616-636: x 6666666666666666666666666666666666666666 # (continued...)
+636-656: x 6666666666666666666666666666666666666666 # (continued...)
+656-676: x 6666666666666666666666666666666666666666 # (continued...)
+676-686: x 66666666666666666666                     # (continued...)
+
+get indices=(0, 1, 2, 3, 4, 5)
+----
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
