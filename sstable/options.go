@@ -288,6 +288,13 @@ type WriterOptions struct {
 
 	// internal options can only be used from within the pebble package.
 	internal sstableinternal.WriterOptions
+
+	// NumDeletionsThreshold mirrors Options.Experimental.NumDeletionsThreshold.
+	NumDeletionsThreshold int
+
+	// DeletionSizeRatioThreshold mirrors
+	// Options.Experimental.DeletionSizeRatioThreshold.
+	DeletionSizeRatioThreshold float32
 }
 
 // SetInternal sets the internal writer options. Note that even though this
@@ -329,6 +336,12 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	// most compatible format that is supported by Pebble.
 	if o.TableFormat == TableFormatUnspecified {
 		o.TableFormat = TableFormatMinSupported
+	}
+	if o.NumDeletionsThreshold == 0 {
+		o.NumDeletionsThreshold = base.DefaultNumDeletionsThreshold
+	}
+	if o.DeletionSizeRatioThreshold == 0 {
+		o.DeletionSizeRatioThreshold = base.DefaultDeletionSizeRatioThreshold
 	}
 	return o
 }

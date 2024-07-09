@@ -153,16 +153,17 @@ type Metrics struct {
 
 	Compact struct {
 		// The total number of compactions, and per-compaction type counts.
-		Count             int64
-		DefaultCount      int64
-		DeleteOnlyCount   int64
-		ElisionOnlyCount  int64
-		CopyCount         int64
-		MoveCount         int64
-		ReadCount         int64
-		RewriteCount      int64
-		MultiLevelCount   int64
-		CounterLevelCount int64
+		Count                 int64
+		DefaultCount          int64
+		DeleteOnlyCount       int64
+		ElisionOnlyCount      int64
+		CopyCount             int64
+		MoveCount             int64
+		ReadCount             int64
+		TombstoneDensityCount int64
+		RewriteCount          int64
+		MultiLevelCount       int64
+		CounterLevelCount     int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
 		EstimatedDebt uint64
@@ -580,12 +581,13 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.Compact.NumInProgress),
 		humanize.Bytes.Int64(m.Compact.InProgressBytes))
 
-	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  rewrite: %d  copy: %d  multi-level: %d\n",
+	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  tombstone-density: %d  rewrite: %d  copy: %d  multi-level: %d\n",
 		redact.Safe(m.Compact.DefaultCount),
 		redact.Safe(m.Compact.DeleteOnlyCount),
 		redact.Safe(m.Compact.ElisionOnlyCount),
 		redact.Safe(m.Compact.MoveCount),
 		redact.Safe(m.Compact.ReadCount),
+		redact.Safe(m.Compact.TombstoneDensityCount),
 		redact.Safe(m.Compact.RewriteCount),
 		redact.Safe(m.Compact.CopyCount),
 		redact.Safe(m.Compact.MultiLevelCount))
