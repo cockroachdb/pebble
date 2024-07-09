@@ -39,6 +39,7 @@ func exampleMetrics() Metrics {
 	m.Compact.ElisionOnlyCount = 29
 	m.Compact.MoveCount = 30
 	m.Compact.ReadCount = 31
+	m.Compact.TombstoneDensityCount = 16
 	m.Compact.RewriteCount = 32
 	m.Compact.CopyCount = 33
 	m.Compact.MultiLevelCount = 34
