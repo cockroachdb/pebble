@@ -2772,7 +2772,7 @@ func BenchmarkPointDeletedSwath(b *testing.B) {
 	// Populate an initial database with point keys at every key in the `ks`
 	// keyspace.
 	populated := withStateSetup(b, vfs.NewMem(), opts(), populateKeyspaceSetup(ks))
-	for _, gapLength := range []int{100, 1_000, 10_000, 100_000, 200_000, 400_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000} {
+	for _, gapLength := range []int{2_000_000, 5_000_000, 10_000_000} {
 		b.Run(fmt.Sprintf("gap=%d", gapLength), func(b *testing.B) {
 			// Extend the `populated` initial database with DELs deleting all
 			// the middle keys in the keyspace in a contiguous swath of
@@ -2836,7 +2836,7 @@ func populateKeyspaceSetup(ks testkeys.Keyspace) func(testing.TB, *DB) {
 					if err := batch.Set(key[:n], val[:], nil); err != nil {
 						return err
 					}
-					if batch.Len() >= 10<<10 /* 10 kib */ {
+					if batch.Len() >= 10<<15 /* 10 kib */ {
 						count := batch.Count()
 						require.NoError(t, batch.Commit(NoSync))
 						if newTotal := progress.Add(uint64(count)); (newTotal / (uint64(ks.Count()) / 100)) != (newTotal-uint64(count))/uint64(ks.Count()/100) {
