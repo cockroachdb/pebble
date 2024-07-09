@@ -75,6 +75,16 @@ type TableStats struct {
 	ValueBlocksSize uint64
 	// CompressionType is the compression type of the table.
 	CompressionType block.Compression
+	// TombstoneDenseBlocksRatio is the ratio of data blocks in this table that
+	// fulfills at least one of the following:
+	// 1. The block contains at least options.Experimental.NumDeletionsThreshold
+	//    point tombstones.
+	// 2. The ratio of the uncompressed size of point tombstones to the
+	//    uncompressed size of the block is at least
+	//    options.Experimental.DeletionSizeRatioThreshold.
+	// This statistic is used to determine eligibility for a tombstone density
+	// compaction.
+	TombstoneDenseBlocksRatio float64
 }
 
 // boundType represents the type of key (point or range) present as the smallest
