@@ -45,6 +45,7 @@ func generateTagMaps(t reflect.Type, indexPrefix []int) {
 			case reflect.Uint32:
 			case reflect.Uint64:
 			case reflect.String:
+			case reflect.Float64:
 			default:
 				panic(fmt.Sprintf("unsupported property field type: %s %s", f.Name, f.Type))
 			}
@@ -100,6 +101,8 @@ type CommonProperties struct {
 	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
 	// Total size of value blocks and value index block. Only serialized if > 0.
 	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
+	// The ratio of data blocks in this table that are tombstone-dense.
+	TombstoneDenseBlocksRatio float64 `prop:"pebble.tombstone-dense-ratio"`
 	// The compression algorithm used to compress blocks.
 	CompressionName string `prop:"rocksdb.compression"`
 	// The compression options used to compress blocks.
@@ -274,6 +277,9 @@ func (p *Properties) load(b []byte, deniedUserProperties map[string]struct{}) er
 			case reflect.Uint64:
 				n, _ := binary.Uvarint(i.Value())
 				field.SetUint(n)
+			case reflect.Float64:
+				n, _ := binary.Uvarint(i.Value())
+				field.SetFloat(math.Float64frombits(n))
 			case reflect.String:
 				field.SetString(intern.Bytes(i.Value()))
 			default:
@@ -319,6 +325,10 @@ func (p *Properties) saveUvarint(m map[string][]byte, offset uintptr, value uint
 	var buf [10]byte
 	n := binary.PutUvarint(buf[:], value)
 	m[propOffsetTagMap[offset]] = buf[:n]
+}
+
+func (p *Properties) saveFloat64(m map[string][]byte, offset uintptr, value float64) {
+	p.saveUvarint(m, offset, math.Float64bits(value))
 }
 
 func (p *Properties) saveString(m map[string][]byte, offset uintptr, value string) {
@@ -400,6 +410,9 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
 	if p.ValueBlocksSize > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
+	}
+	if p.TombstoneDenseBlocksRatio != 0 {
+		p.saveFloat64(m, unsafe.Offsetof(p.TombstoneDenseBlocksRatio), p.TombstoneDenseBlocksRatio)
 	}
 
 	if tblFormat < TableFormatPebblev1 {

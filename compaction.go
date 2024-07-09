@@ -135,6 +135,7 @@ const (
 	compactionKindDeleteOnly
 	compactionKindElisionOnly
 	compactionKindRead
+	compactionKindTombstoneDensity
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 )
@@ -153,6 +154,8 @@ func (k compactionKind) String() string {
 		return "elision-only"
 	case compactionKindRead:
 		return "read"
+	case compactionKindTombstoneDensity:
+		return "tombstone-density"
 	case compactionKindRewrite:
 		return "rewrite"
 	case compactionKindIngestedFlushable:

@@ -592,6 +592,7 @@ func newCompactionPickerByScore(
 		virtualBackings: virtualBackings,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
+	p.initTombstoneDensityAnnotator(opts)
 	return p
 }
 
@@ -672,6 +673,11 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
+	// tombstoneDensityAnnotator holds the annotator for choosing tombstone
+	// density compactions.
+	// NB: This is declared here rather than globally because
+	// options.Experimental.MinTombstoneDenseRatio is not known until runtime.
+	tombstoneDensityAnnotator *manifest.Annotator[fileMetadata]
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -1287,6 +1293,13 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		}
 	}
 
+	// Check for files which contain excessive point tombstones that could slow
+	// down reads. Unlike elision-only compactions, these compactions may select
+	// a file at any level rather than only the lowest level.
+	if pc := p.pickTombstoneDensityCompaction(env); pc != nil {
+		return pc
+	}
+
 	// Check for L6 files with tombstones that may be elided. These files may
 	// exist if a snapshot prevented the elision of a tombstone or because of
 	// a move compaction. These are low-priority compactions because they
@@ -1415,6 +1428,38 @@ var markedForCompactionAnnotator = &manifest.Annotator[fileMetadata]{
 	},
 }
 
+// pickedCompactionFromCandidateFile creates a pickedCompaction from a *fileMetadata
+// with various checks to ensure that the file still exists in the expected level
+// and isn't already being compacted.
+func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
+	candidate *fileMetadata, env compactionEnv, startLevel int, outputLevel int, kind compactionKind,
+) *pickedCompaction {
+	if candidate == nil || candidate.IsCompacting() {
+		return nil
+	}
+
+	inputs := p.vers.Levels[startLevel].Find(p.opts.Comparer.Compare, candidate)
+	if inputs.Empty() {
+		panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, startLevel))
+	}
+
+	pc := newPickedCompaction(p.opts, p.vers, startLevel, outputLevel, p.baseLevel)
+	pc.kind = kind
+	pc.startLevel.files = inputs
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
+
+	// Fail-safe to protect against compacting the same sstable concurrently.
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
+		return nil
+	}
+
+	return pc
+}
+
 // pickElisionOnlyCompaction looks for compactions of sstables in the
 // bottommost level containing obsolete records that may now be dropped.
 func (p *compactionPickerByScore) pickElisionOnlyCompaction(
@@ -1427,28 +1472,10 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	if candidate == nil {
 		return nil
 	}
-	if candidate.IsCompacting() || candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
+	if candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
 		return nil
 	}
-	lf := p.vers.Levels[numLevels-1].Find(p.opts.Comparer.Compare, candidate)
-	if lf.Empty() {
-		panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, numLevels-1))
-	}
-
-	// Construct a picked compaction of the elision candidate's atomic
-	// compaction unit.
-	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1, p.baseLevel)
-	pc.kind = compactionKindElisionOnly
-	pc.startLevel.files = lf
-	if anyTablesCompacting(lf) {
-		return nil
-	}
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
-	// Fail-safe to protect against compacting the same sstable concurrently.
-	if !inputRangeAlreadyCompacting(env, pc) {
-		return pc
-	}
-	return nil
+	return p.pickedCompactionFromCandidateFile(candidate, env, numLevels-1, numLevels-1, compactionKindElisionOnly)
 }
 
 // pickRewriteCompaction attempts to construct a compaction that
@@ -1463,36 +1490,53 @@ func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *
 			// Try the next level.
 			continue
 		}
-		if candidate.IsCompacting() {
-			// Try the next level.
-			continue
-		}
-		lf := p.vers.Levels[l].Find(p.opts.Comparer.Compare, candidate)
-		if lf.Empty() {
-			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, numLevels-1))
-		}
-
-		inputs := lf
-		if anyTablesCompacting(inputs) {
-			// Try the next level.
-			continue
-		}
-
-		pc = newPickedCompaction(p.opts, p.vers, l, l, p.baseLevel)
-		pc.outputLevel.level = l
-		pc.kind = compactionKindRewrite
-		pc.startLevel.files = inputs
-		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
-
-		// Fail-safe to protect against compacting the same sstable concurrently.
-		if !inputRangeAlreadyCompacting(env, pc) {
-			if pc.startLevel.level == 0 {
-				pc.startLevel.l0SublevelInfo = generateSublevelInfo(pc.cmp, pc.startLevel.files)
-			}
+		pc := p.pickedCompactionFromCandidateFile(candidate, env, l, l, compactionKindRewrite)
+		if pc != nil {
 			return pc
 		}
 	}
 	return nil
+}
+
+func (p *compactionPickerByScore) initTombstoneDensityAnnotator(opts *Options) {
+	p.tombstoneDensityAnnotator = &manifest.Annotator[fileMetadata]{
+		Aggregator: manifest.PickFileAggregator{
+			Filter: func(f *fileMetadata) (eligible bool, cacheOK bool) {
+				if f.IsCompacting() {
+					return false, true
+				}
+				if !f.StatsValid() {
+					return false, false
+				}
+				return f.Stats.TombstoneDenseBlocksRatio > opts.Experimental.MinTombstoneDenseRatio, true
+			},
+			Compare: func(a, b *fileMetadata) bool {
+				return a.Stats.TombstoneDenseBlocksRatio > b.Stats.TombstoneDenseBlocksRatio
+			},
+		},
+	}
+}
+
+// pickTombstoneDensityCompaction looks for a compaction that eliminates
+// regions of extremely high point tombstone density. For each level, it picks
+// a file where the ratio of tombstone-dense blocks is at least
+// options.Experimental.MinTombstoneDenseRatio, prioritizing compaction of
+// files with higher ratios of tombstone-dense blocks.
+func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
+	var candidate *fileMetadata
+	var level int
+	for l := 0; l < numLevels; l++ {
+		f := p.tombstoneDensityAnnotator.LevelAnnotation(p.vers.Levels[l])
+		newCandidate := p.tombstoneDensityAnnotator.Aggregator.Merge(f, candidate)
+		if newCandidate != candidate {
+			candidate = newCandidate
+			level = l
+		}
+	}
+
+	return p.pickedCompactionFromCandidateFile(candidate, env, level, defaultOutputLevel(level, p.baseLevel), compactionKindTombstoneDensity)
 }
 
 // pickAutoLPositive picks an automatic compaction for the candidate
