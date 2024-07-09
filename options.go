@@ -599,6 +599,38 @@ type Options struct {
 		// gets multiplied with a constant of 1 << 16 to yield 1 << 20 (1MB).
 		ReadSamplingMultiplier int64
 
+		// NumDeletionsThreshold defines the minimum number of point tombstones
+		// that must be present in a single data block for that block to be
+		// considered tombstone-dense for the purposes of triggering a
+		// tombstone density compaction. Data blocks may also be considered
+		// tombstone-dense if they meet the criteria defined by
+		// DeletionSizeRatioThreshold below. Tombstone-dense blocks are identified
+		// when sstables are written, and so this is effectively an option for
+		// sstable writers. The default value is 100.
+		NumDeletionsThreshold int
+
+		// DeletionSizeRatioThreshold defines the minimum ratio of the size of
+		// point tombstones to the size of a data block that must be reached
+		// for that block to be considered tombstone-dense for the purposes of
+		// triggering a tombstone density compaction. Data blocks may also be
+		// considered tombstone-dense if they meet the criteria defined by
+		// NumDeletionsThreshold above. Tombstone-dense blocks are identified
+		// when sstables are written, and so this is effectively an option for
+		// sstable writers. The default value is 0.5.
+		DeletionSizeRatioThreshold float32
+
+		// TombstoneDenseCompactionThreshold is the minimum percent of data
+		// blocks in a table that must be tombstone-dense for that table to be
+		// eligible for a tombstone density compaction. It should be defined as a
+		// ratio out of 1. The default value is 0.05.
+		//
+		// If multiple tables are eligible for a tombstone density compaction, then
+		// tables with a higher percent of tombstone-dense blocks are still
+		// prioritized for compaction.
+		//
+		// A value of -1 disables tombstone density compactions.
+		TombstoneDenseCompactionThreshold float64
+
 		// TableCacheShards is the number of shards per table cache.
 		// Reducing the value can reduce the number of idle goroutines per DB
 		// instance which can be useful in scenarios with a lot of DB instances
@@ -1268,6 +1300,15 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.ReadSamplingMultiplier == 0 {
 		o.Experimental.ReadSamplingMultiplier = 1 << 4
 	}
+	if o.Experimental.NumDeletionsThreshold == 0 {
+		o.Experimental.NumDeletionsThreshold = sstable.DefaultNumDeletionsThreshold
+	}
+	if o.Experimental.DeletionSizeRatioThreshold == 0 {
+		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
+	}
+	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
+		o.Experimental.TombstoneDenseCompactionThreshold = 0.05
+	}
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
 	}
@@ -1395,6 +1436,9 @@ func (o *Options) String() string {
 	}
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
+	fmt.Fprintf(&buf, "  num_deletions_threshold=%d\n", o.Experimental.NumDeletionsThreshold)
+	fmt.Fprintf(&buf, "  deletion_size_ratio_threshold=%f\n", o.Experimental.DeletionSizeRatioThreshold)
+	fmt.Fprintf(&buf, "  tombstone_dense_compaction_threshold=%f\n", o.Experimental.TombstoneDenseCompactionThreshold)
 	// We no longer care about strict_wal_tail, but set it to true in case an
 	// older version reads the options.
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
@@ -1711,6 +1755,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.ReadCompactionRate, err = strconv.ParseInt(value, 10, 64)
 			case "read_sampling_multiplier":
 				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
+			case "num_deletions_threshold":
+				o.Experimental.NumDeletionsThreshold, err = strconv.Atoi(value)
+			case "deletion_size_ratio_threshold":
+				val, parseErr := strconv.ParseFloat(value, 32)
+				o.Experimental.DeletionSizeRatioThreshold = float32(val)
+				err = parseErr
+			case "tombstone_dense_compaction_threshold":
+				o.Experimental.TombstoneDenseCompactionThreshold, err = strconv.ParseFloat(value, 64)
 			case "table_cache_shards":
 				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
 			case "table_format":
@@ -1985,6 +2037,8 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	writerOpts.AllocatorSizeClasses = o.AllocatorSizeClasses
+	writerOpts.NumDeletionsThreshold = o.Experimental.NumDeletionsThreshold
+	writerOpts.DeletionSizeRatioThreshold = o.Experimental.DeletionSizeRatioThreshold
 	return writerOpts
 }
 

@@ -46,7 +46,7 @@ total |     1   569B     0B       0 |     - |  569B |     1   569B |     0     0
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -54,7 +54,7 @@ Virtual tables: 0 (0B)
 Local tables size: 569B
 Compression types: snappy: 1
 Block cache: 6 entries (945B)  hit rate: 30.8%
-Table cache: 1 entries (736B)  hit rate: 50.0%
+Table cache: 1 entries (744B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
