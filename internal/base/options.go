@@ -6,10 +6,12 @@ package base
 
 // SSTable block defaults.
 const (
-	DefaultBlockRestartInterval      = 16
-	DefaultBlockSize                 = 4096
-	DefaultBlockSizeThreshold        = 90
-	SizeClassAwareBlockSizeThreshold = 60
+	DefaultBlockRestartInterval       = 16
+	DefaultBlockSize                  = 4096
+	DefaultBlockSizeThreshold         = 90
+	SizeClassAwareBlockSizeThreshold  = 60
+	DefaultNumDeletionsThreshold      = 100
+	DefaultDeletionSizeRatioThreshold = 0.5
 )
 
 // FilterType is the level at which to apply a filter: block or table.
