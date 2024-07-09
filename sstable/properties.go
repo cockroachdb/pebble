@@ -100,6 +100,13 @@ type CommonProperties struct {
 	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
 	// Total size of value blocks and value index block. Only serialized if > 0.
 	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
+	// NumDataBlocks is the number of data blocks in this table.
+	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
+	// NumTombstoneDenseBlocks is the number of data blocks in this table that
+	// are considered tombstone-dense. See the TombstoneDenseBlocksRatio field
+	// in manifest.TableStats for the criteria used to determine if a data
+	// block is tombstone-dense.
+	NumTombstoneDenseBlocks uint64 `prop:"pebble.num.tombstone-dense-blocks"`
 	// The compression algorithm used to compress blocks.
 	CompressionName string `prop:"rocksdb.compression"`
 	// The compression options used to compress blocks.
@@ -150,8 +157,6 @@ type Properties struct {
 	IsStrictObsolete bool `prop:"pebble.obsolete.is_strict"`
 	// The name of the merger used in this table. Empty if no merger is used.
 	MergerName string `prop:"rocksdb.merge.operator"`
-	// The number of blocks in this table.
-	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
 	// The number of merge operands in the table.
 	NumMergeOperands uint64 `prop:"rocksdb.merge.operands"`
 	// The number of RANGEKEYUNSETs in this table.
@@ -400,6 +405,9 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
 	if p.ValueBlocksSize > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
+	}
+	if p.NumTombstoneDenseBlocks != 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumTombstoneDenseBlocks), p.NumTombstoneDenseBlocks)
 	}
 
 	if tblFormat < TableFormatPebblev1 {

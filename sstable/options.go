@@ -12,8 +12,18 @@ import (
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
-// MaximumBlockSize is the maximum permissible size of a block.
-const MaximumBlockSize = rowblk.MaximumSize
+const (
+	// MaximumBlockSize is the maximum permissible size of a block.
+	MaximumBlockSize = rowblk.MaximumSize
+	// DefaultNumDeletionsThreshold defines the minimum number of point
+	// tombstones that must be present in a data block for it to be
+	// considered tombstone-dense.
+	DefaultNumDeletionsThreshold = 100
+	// DefaultDeletionSizeRatioThreshold defines the minimum ratio of the size
+	// of point tombstones to the size of the data block in order to consider the
+	// block as tombstone-dense.
+	DefaultDeletionSizeRatioThreshold = 0.5
+)
 
 var ignoredInternalProperties = map[string]struct{}{
 	"rocksdb.column.family.id":             {},
@@ -244,6 +254,13 @@ type WriterOptions struct {
 
 	// internal options can only be used from within the pebble package.
 	internal sstableinternal.WriterOptions
+
+	// NumDeletionsThreshold mirrors Options.Experimental.NumDeletionsThreshold.
+	NumDeletionsThreshold int
+
+	// DeletionSizeRatioThreshold mirrors
+	// Options.Experimental.DeletionSizeRatioThreshold.
+	DeletionSizeRatioThreshold float32
 }
 
 // SetInternal sets the internal writer options. Note that even though this
@@ -285,6 +302,12 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	// most compatible format that is supported by Pebble.
 	if o.TableFormat == TableFormatUnspecified {
 		o.TableFormat = TableFormatMinSupported
+	}
+	if o.NumDeletionsThreshold == 0 {
+		o.NumDeletionsThreshold = DefaultNumDeletionsThreshold
+	}
+	if o.DeletionSizeRatioThreshold == 0 {
+		o.DeletionSizeRatioThreshold = DefaultDeletionSizeRatioThreshold
 	}
 	return o
 }
