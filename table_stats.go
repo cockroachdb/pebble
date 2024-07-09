@@ -132,6 +132,7 @@ func (d *DB) collectTableStats() bool {
 		maybeCompact = maybeCompact || fileCompensation(c.fileMetadata) > 0
 		c.fileMetadata.StatsMarkValid()
 	}
+
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStatsLocked()
 	if len(hints) > 0 && !d.opts.private.disableDeleteOnlyCompactions {
@@ -307,6 +308,11 @@ func (d *DB) loadTableStats(
 			props := r.CommonProperties()
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
+			stats.NumRangeKeySets = props.NumRangeKeySets
+			stats.ValueBlocksSize = props.ValueBlocksSize
+			stats.CompressionType = sstable.CompressionFromString(props.CompressionName)
+			stats.NumTombstoneDenseBlocks = props.NumTombstoneDenseBlocks
+
 			if props.NumPointDeletions() > 0 {
 				if err = d.loadTablePointKeyStats(props, v, level, meta, &stats); err != nil {
 					return
@@ -319,12 +325,6 @@ func (d *DB) loadTableStats(
 					return
 				}
 			}
-			// TODO(travers): Once we have real-world data, consider collecting
-			// additional stats that may provide improved heuristics for compaction
-			// picking.
-			stats.NumRangeKeySets = props.NumRangeKeySets
-			stats.ValueBlocksSize = props.ValueBlocksSize
-			stats.CompressionType = sstable.CompressionFromString(props.CompressionName)
 			return
 		})
 	if err != nil {
@@ -680,6 +680,7 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 	meta.Stats.RangeDeletionsBytesEstimate = 0
 	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
 	meta.Stats.CompressionType = sstable.CompressionFromString(props.CompressionName)
+	meta.Stats.NumTombstoneDenseBlocks = props.NumTombstoneDenseBlocks
 	meta.StatsMarkValid()
 	return true
 }

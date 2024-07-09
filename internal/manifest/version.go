@@ -74,6 +74,8 @@ type TableStats struct {
 	ValueBlocksSize uint64
 	// CompressionType is the compression type of the table.
 	CompressionType sstable.Compression
+	// NumTombstoneDenseBlocks is the number of tombstone-dense data blocks in this table.
+	NumTombstoneDenseBlocks uint64
 }
 
 // boundType represents the type of key (point or range) present as the smallest

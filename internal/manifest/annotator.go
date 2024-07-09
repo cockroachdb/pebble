@@ -86,25 +86,24 @@ func (a *Annotator[T]) findAnnotation(n *node) *annotation {
 // annotation is stable and thus cacheable.
 func (a *Annotator[T]) nodeAnnotation(n *node) (v *T, cacheOK bool) {
 	annot := a.findAnnotation(n)
-	vtyped := annot.v.(*T)
 	// If the annotation is already marked as valid, we can return it without
 	// recomputing anything.
 	if annot.valid {
-		return vtyped, true
+		return annot.v.(*T), true
 	}
 
-	annot.v = a.Aggregator.Zero(vtyped)
+	annot.v = a.Aggregator.Zero(annot.v.(*T))
 	annot.valid = true
 
 	for i := int16(0); i <= n.count; i++ {
 		if !n.leaf {
 			v, ok := a.nodeAnnotation(n.children[i])
-			annot.v = a.Aggregator.Merge(v, vtyped)
+			annot.v = a.Aggregator.Merge(v, annot.v.(*T))
 			annot.valid = annot.valid && ok
 		}
 
 		if i < n.count {
-			v, ok := a.Aggregator.Accumulate(n.items[i], vtyped)
+			v, ok := a.Aggregator.Accumulate(n.items[i], annot.v.(*T))
 			annot.v = v
 			annot.valid = annot.valid && ok
 		}
