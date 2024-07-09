@@ -37,6 +37,7 @@ type compactionEnv struct {
 	earliestSnapshotSeqNum  base.SeqNum
 	inProgressCompactions   []compactionInfo
 	readCompactionEnv       readCompactionEnv
+	tombstoneCompactions []tombstoneCompaction
 }
 
 type compactionPicker interface {
@@ -1324,6 +1325,10 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	if pc := p.pickElisionOnlyCompaction(env); pc != nil {
 		return pc
 	}
+	
+	if pc := p.pickTombstoneDensityCompaction(env); pc != nil {
+		return pc
+	}
 
 	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
 		return pc
@@ -1928,6 +1933,73 @@ func pickReadTriggeredCompactionHelper(
 	pc.kind = compactionKindRead
 
 	// Prevent read compactions which are too wide.
+	outputOverlaps := pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
+	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
+		return nil
+	}
+
+	// Prevent compactions which start with a small seed file X, but overlap
+	// with over allowedCompactionWidth * X file sizes in the output layer.
+	const allowedCompactionWidth = 35
+	if outputOverlaps.SizeSum() > overlapSlice.SizeSum()*allowedCompactionWidth {
+		return nil
+	}
+
+	return pc
+}
+
+func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
+	// TODO(anish): share logic with read compactions
+
+	for len(env.tombstoneCompactions) > 0 {
+		tc := env.tombstoneCompactions[0]
+		env.tombstoneCompactions = env.tombstoneCompactions[1:]
+		if pc = pickTombstoneDensityCompactionHelper(p, &tc, env); pc != nil {
+			break
+		}
+	}
+	return pc
+}
+
+func pickTombstoneDensityCompactionHelper(
+	p *compactionPickerByScore, tc *tombstoneCompaction, env compactionEnv,
+) (pc *pickedCompaction) {
+	// TODO(anish): share logic with read compactions
+
+	overlapSlice := p.vers.Overlaps(tc.level, base.UserKeyBoundsInclusive(tc.start, tc.end))
+	if overlapSlice.Empty() {
+		// If there is no overlap, then the file with the key range
+		// must have been compacted away. So, we don't proceed to
+		// compact the same key range again.
+		return nil
+	}
+
+	iter := overlapSlice.Iter()
+	var fileMatches bool
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.FileNum == tc.fileNum {
+			fileMatches = true
+			break
+		}
+	}
+	if !fileMatches {
+		return nil
+	}
+
+	pc = newPickedCompaction(p.opts, p.vers, tc.level, defaultOutputLevel(tc.level, p.baseLevel), p.baseLevel)
+
+	pc.startLevel.files = overlapSlice
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
+		return nil
+	}
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	pc.kind = compactionKindTombstoneDensity
+
+	// Prevent compactions which are too wide.
 	outputOverlaps := pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
 	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
 		return nil

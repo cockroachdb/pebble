@@ -135,6 +135,7 @@ const (
 	compactionKindDeleteOnly
 	compactionKindElisionOnly
 	compactionKindRead
+	compactionKindTombstoneDensity
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 )
@@ -957,6 +958,13 @@ type readCompaction struct {
 	// The file associated with the compaction.
 	// If the file no longer belongs in the same
 	// level, then we skip the compaction.
+	fileNum base.FileNum
+}
+
+type tombstoneCompaction struct {
+	level int
+	start []byte
+	end []byte
 	fileNum base.FileNum
 }
 
@@ -1806,6 +1814,7 @@ func (d *DB) tryScheduleAutoCompaction(
 		flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
 		rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
 	}
+	env.tombstoneCompactions = d.mu.compact.tombstoneCompactions
 	pc := pickFunc(d.mu.versions.picker, env)
 	if pc == nil {
 		return false

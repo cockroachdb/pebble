@@ -448,6 +448,8 @@ type DB struct {
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
 
+			tombstoneCompactions []tombstoneCompaction
+
 			// The cumulative duration of all completed compactions since Open.
 			// Does not include flushes.
 			duration time.Duration
@@ -2120,6 +2122,16 @@ type SSTableInfo struct {
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
 	Properties *sstable.Properties
+}
+
+func DebugTombstones(d *DB, prefix string) {
+	fmt.Println(prefix)
+	fmt.Println(d.Metrics().String())
+	stats, _ := d.ScanStatistics(context.Background(), []byte("a"), []byte("y"), ScanStatisticsOptions{})
+	for i := 0; i < numLevels; i++ {
+		fmt.Printf("level %d: %d tombstones\n", i, stats.Levels[i].KindsCount[base.InternalKeyKindDelete])
+		fmt.Printf("level %d: %d pinned\n", i, stats.Levels[i].SnapshotPinnedKeys)
+	}
 }
 
 // SSTables retrieves the current sstables. The returned slice is indexed by

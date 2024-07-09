@@ -17,6 +17,10 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
+// Threshold ratio which indicates that tables should be scheduled for
+// compaction if NumDeletions / NumEntries > tombstoneDensityThreshold.
+const tombstoneDensityThreshold = 0.5
+
 // In-memory statistics about tables help inform compaction picking, but may
 // be expensive to calculate or load from disk. Every time a database is
 // opened, these statistics must be reloaded or recalculated. To minimize
@@ -131,6 +135,8 @@ func (d *DB) collectTableStats() bool {
 		maybeCompact = maybeCompact || fileCompensation(c.fileMetadata) > 0
 		c.fileMetadata.StatsMarkValid()
 	}
+	maybeCompact = maybeCompact || len(d.mu.compact.tombstoneCompactions) > 0
+
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStatsLocked()
 	if len(hints) > 0 && !d.opts.private.disableDeleteOnlyCompactions {
@@ -306,6 +312,19 @@ func (d *DB) loadTableStats(
 			props := r.CommonProperties()
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
+
+			if stats.NumDeletions > uint64(tombstoneDensityThreshold * float64(stats.NumEntries)) {
+				tc := tombstoneCompaction{
+					start: meta.SmallestPointKey.UserKey,
+					end: meta.LargestPointKey.UserKey,
+					level: level,
+					fileNum: meta.FileNum,
+				}
+				d.mu.Lock()
+				d.mu.compact.tombstoneCompactions = append(d.mu.compact.tombstoneCompactions, tc)
+				d.mu.Unlock()
+			}
+
 			if props.NumPointDeletions() > 0 {
 				if err = d.loadTablePointKeyStats(props, v, level, meta, &stats); err != nil {
 					return
