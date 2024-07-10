@@ -442,7 +442,8 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 // Metrics.WAL.BytesWritten metric is always nondecreasing.
 // It's a regression test for issue #3505.
 func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
-	fs := errorfs.Wrap(vfs.NewMem(), errorfs.RandomLatency(nil, 100*time.Microsecond, time.Now().UnixNano()))
+	fs := errorfs.Wrap(vfs.NewMem(), errorfs.RandomLatency(
+		nil, 100*time.Microsecond, time.Now().UnixNano(), 0 /* no limit */))
 	d, err := Open("", &Options{
 		FS: fs,
 		// Use a tiny memtable size so that we get frequent flushes. While a
