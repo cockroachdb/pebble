@@ -2214,7 +2214,8 @@ func TestDeterminism(t *testing.T) {
 						if cmdArg.Key == "io-latency" {
 							prevMkfs := mkfs
 							mkfs = func() vfs.FS {
-								return errorfs.Wrap(prevMkfs(), errorfs.RandomLatency(errorfs.Randomly(p, 0), mean, 0))
+								return errorfs.Wrap(prevMkfs(), errorfs.RandomLatency(
+									errorfs.Randomly(p, 0), mean, 0 /* seed */, 0 /* no limit */))
 							}
 						} else if cmdArg.Key == "step-latency" {
 							beforeStep = func() {

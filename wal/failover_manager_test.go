@@ -573,7 +573,8 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 	memFS := vfs.NewMem()
 	require.NoError(t, memFS.MkdirAll("primary", os.ModePerm))
 	require.NoError(t, memFS.MkdirAll("secondary", os.ModePerm))
-	fs := errorfs.Wrap(memFS, errorfs.RandomLatency(errorfs.Randomly(0.50, seed), 10*time.Millisecond, seed))
+	fs := errorfs.Wrap(memFS, errorfs.RandomLatency(
+		errorfs.Randomly(0.50, seed), 10*time.Millisecond, seed, 0 /* no limit */))
 
 	var m failoverManager
 	require.NoError(t, m.init(Options{

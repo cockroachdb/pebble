@@ -492,13 +492,16 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	} else {
 		opts.Cleaner = base.ArchiveCleaner{}
 	}
-	// Wrap the filesystem with a VFS that will inject random latency if
-	// the test options require it.
+	// Wrap the filesystem with a VFS that will inject random latency if the
+	// test options require it. We cap the overlal injected latency to ten
+	// seconds to avoid excessive test run times when paired with small target
+	// file sizes, block sizes, etc.
 	if testOpts.ioLatencyProbability > 0 {
 		opts.FS = errorfs.Wrap(opts.FS, errorfs.RandomLatency(
 			errorfs.Randomly(testOpts.ioLatencyProbability, testOpts.ioLatencySeed),
 			testOpts.ioLatencyMean,
 			testOpts.ioLatencySeed,
+			10*time.Second,
 		))
 	}
 

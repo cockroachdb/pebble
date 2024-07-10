@@ -19,7 +19,10 @@ import (
 // amount of latency injected follows an exponential distribution with the
 // provided mean. Latency injected is derived from the provided seed and is
 // deterministic with respect to each file's path.
-func RandomLatency(pred Predicate, mean time.Duration, seed int64) Injector {
+//
+// If limit is nonzero, total latency injected over the lifetime of the Injector
+// is capped to limit.
+func RandomLatency(pred Predicate, mean time.Duration, seed int64, limit time.Duration) Injector {
 	rl := &randomLatency{
 		predicate: pred,
 		mean:      mean,
@@ -47,13 +50,15 @@ func parseRandomLatency(p *Parser, s *dsl.Scanner) Injector {
 	if tok.Kind != token.RPAREN {
 		panic(errors.Errorf("errorfs: unexpected token %s; expected %s", tok.String(), token.RPAREN))
 	}
-	return RandomLatency(pred, dur, seed)
+	return RandomLatency(pred, dur, seed, 0 /* no limit */)
 }
 
 type randomLatency struct {
 	predicate Predicate
 	// p defines the probability of an error being injected.
-	mean time.Duration
+	mean  time.Duration
+	limit time.Duration
+	agg   time.Duration
 	keyedPrng
 }
 
@@ -68,14 +73,19 @@ func (rl *randomLatency) MaybeError(op Op) error {
 	if rl.predicate != nil && !rl.predicate.Evaluate(op) {
 		return nil
 	}
+	if rl.limit != 0 && rl.agg >= rl.limit {
+		return nil
+	}
 	var dur time.Duration
 	rl.keyedPrng.withKey(op.Path, func(prng *rand.Rand) {
 		// We cap the max latency to 100x: Otherwise, it seems possible
 		// (although very unlikely) ExpFloat64 generates a multiplier high
 		// enough that causes a test timeout.
 		dur = time.Duration(min(prng.ExpFloat64(), 20.0) * float64(rl.mean))
+		dur = min(dur, rl.limit-rl.agg)
 	})
 	time.Sleep(dur)
+	rl.agg += dur
 	return nil
 }
 

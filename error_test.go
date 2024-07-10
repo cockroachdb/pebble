@@ -447,7 +447,7 @@ func TestDBCompactionCrash(t *testing.T) {
 		// really slow. See https://github.com/golang/go/issues/61042,
 		// https://github.com/golang/go/issues/44343.
 		if runtime.GOOS != "windows" {
-			fs = errorfs.Wrap(fs, errorfs.RandomLatency(nil, 20*time.Microsecond, seed))
+			fs = errorfs.Wrap(fs, errorfs.RandomLatency(nil, 20*time.Microsecond, seed, 0 /* no limit */))
 		}
 		rng := rand.New(rand.NewSource(seed))
 		maxConcurrentCompactions := rng.Intn(3) + 2
