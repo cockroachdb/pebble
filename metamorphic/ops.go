@@ -1935,7 +1935,7 @@ func (r *replicateOp) runSharedReplicate(
 				End:   end,
 				Keys:  keys,
 			}
-			return rangekey.Encode(&s, w.AddRangeKey)
+			return w.EncodeSpan(&s)
 		},
 		func(sst *pebble.SharedSSTMeta) error {
 			sharedSSTs = append(sharedSSTs, *sst)
@@ -1999,7 +1999,7 @@ func (r *replicateOp) runExternalReplicate(
 				End:   end,
 				Keys:  keys,
 			}
-			return rangekey.Encode(&s, w.AddRangeKey)
+			return w.EncodeSpan(&s)
 		},
 		nil,
 		func(sst *pebble.ExternalFile) error {
@@ -2112,7 +2112,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 				}
 			}
 			keyspan.SortKeysByTrailer(&span.Keys)
-			if err := rangekey.Encode(span, w.AddRangeKey); err != nil {
+			if err := w.EncodeSpan(span); err != nil {
 				panic(err)
 			}
 		}

@@ -758,7 +758,14 @@ var _ BlockPropertyCollector = (*testBlockPropCollector)(nil)
 
 func (c *testBlockPropCollector) Name() string { return "testBlockPropCollector" }
 
-func (c *testBlockPropCollector) Add(_ InternalKey, _ []byte) error {
+func (c *testBlockPropCollector) AddPointKey(_ InternalKey, _ []byte) error {
+	if c.errSite == errSiteAdd {
+		return c.err
+	}
+	return nil
+}
+
+func (c *testBlockPropCollector) AddRangeKeys(_ Span) error {
 	if c.errSite == errSiteAdd {
 		return c.err
 	}
@@ -887,7 +894,7 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 				opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
 						return NewBlockIntervalCollector(
-							"collector", &valueCharBlockIntervalCollector{charIdx: 0}, nil,
+							"collector", &valueCharIntervalMapper{charIdx: 0}, nil,
 						)
 					},
 				}

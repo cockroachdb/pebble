@@ -239,9 +239,18 @@ func (c *minSeqNumPropertyCollector) Name() string {
 	return "minSeqNumPropertyCollector"
 }
 
-func (c *minSeqNumPropertyCollector) Add(key InternalKey, value []byte) error {
+func (c *minSeqNumPropertyCollector) AddPointKey(key InternalKey, value []byte) error {
 	if c.minSeqNum == 0 || c.minSeqNum > key.SeqNum() {
 		c.minSeqNum = key.SeqNum()
+	}
+	return nil
+}
+
+func (c *minSeqNumPropertyCollector) AddRangeKeys(span sstable.Span) error {
+	for _, k := range span.Keys {
+		if c.minSeqNum == 0 || c.minSeqNum > k.SeqNum() {
+			c.minSeqNum = k.SeqNum()
+		}
 	}
 	return nil
 }
@@ -892,60 +901,35 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 	})
 }
 
-type testBlockIntervalCollector struct {
+type testBlockIntervalMapper struct {
 	numLength     int
 	offsetFromEnd int
-	initialized   bool
-	lower, upper  uint64
 }
 
-var _ sstable.DataBlockIntervalCollector = (*testBlockIntervalCollector)(nil)
+var _ sstable.IntervalMapper = (*testBlockIntervalMapper)(nil)
 
-func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+func (bi *testBlockIntervalMapper) MapPointKey(
+	key InternalKey, value []byte,
+) (sstable.BlockInterval, error) {
 	k := key.UserKey
 	if len(k) < bi.numLength+bi.offsetFromEnd {
-		return nil
+		return sstable.BlockInterval{}, nil
 	}
 	n := len(k) - bi.offsetFromEnd - bi.numLength
 	val, err := strconv.Atoi(string(k[n : n+bi.numLength]))
 	if err != nil {
-		return err
+		return sstable.BlockInterval{}, err
 	}
 	if val < 0 {
-		panic("testBlockIntervalCollector expects values >= 0")
+		panic("testBlockIntervalMapper expects values >= 0")
 	}
 	uval := uint64(val)
-	if !bi.initialized {
-		bi.lower, bi.upper = uval, uval+1
-		bi.initialized = true
-		return nil
-	}
-	if bi.lower > uval {
-		bi.lower = uval
-	}
-	if uval >= bi.upper {
-		bi.upper = uval + 1
-	}
-	return nil
+	return sstable.BlockInterval{Lower: uval, Upper: uval + 1}, nil
 }
 
-func (bi *testBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
-	bi.initialized = false
-	l, u := bi.lower, bi.upper
-	bi.lower, bi.upper = 0, 0
-	return l, u, nil
+func (bi *testBlockIntervalMapper) MapRangeKeys(span sstable.Span) (sstable.BlockInterval, error) {
+	return sstable.BlockInterval{}, nil
 }
-
-func (bi *testBlockIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
-) error {
-	return errors.Errorf("not implemented")
-}
-
-func (bi *testBlockIntervalCollector) SupportsSuffixReplacement() bool {
-	return false
-}
-
 func TestIteratorBlockIntervalFilter(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
@@ -971,7 +955,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			bpCollectors = append(bpCollectors, func() BlockPropertyCollector {
 				return sstable.NewBlockIntervalCollector(
 					fmt.Sprintf("%d", coll.id),
-					&testBlockIntervalCollector{numLength: 2, offsetFromEnd: coll.offset},
+					&testBlockIntervalMapper{numLength: 2, offsetFromEnd: coll.offset},
 					nil, /* range key collector */
 				)
 			})
@@ -1097,7 +1081,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			func() BlockPropertyCollector {
 				return sstable.NewBlockIntervalCollector(
-					"0", &testBlockIntervalCollector{numLength: 2}, nil, /* range key collector */
+					"0", &testBlockIntervalMapper{numLength: 2}, nil, /* suffixReplacer */
 				)
 			},
 		},
@@ -1983,7 +1967,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
 						return sstable.NewBlockIntervalCollector(
-							"0", &testBlockIntervalCollector{numLength: 3}, nil, /* range key collector */
+							"0", &testBlockIntervalMapper{numLength: 3}, nil, /* range key collector */
 						)
 					},
 				},

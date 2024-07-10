@@ -10,7 +10,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -416,13 +415,7 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
 			s.Keys[i].Suffix = to
 		}
 
-		err = rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
-			// Calling AddRangeKey instead of addRangeKeySpan bypasses the fragmenter.
-			// This is okay because the raw fragments off of `iter` are already
-			// fragmented, and suffix replacement should not affect fragmentation.
-			return w.AddRangeKey(k, v)
-		})
-		if err != nil {
+		if err := w.EncodeSpan(s); err != nil {
 			return err
 		}
 	}

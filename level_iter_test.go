@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -241,7 +242,11 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		case InternalKeyKindRangeDelete:
 			f.Add(rangedel.Decode(ikey, value, nil))
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-			if err := w.AddRangeKey(ikey, value); err != nil {
+			span, err := rangekey.Decode(ikey, value, nil)
+			if err != nil {
+				return err.Error()
+			}
+			if err := w.EncodeSpan(&span); err != nil {
 				return err.Error()
 			}
 		default:

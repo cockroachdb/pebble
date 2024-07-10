@@ -219,9 +219,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 						}
 					}
 				}
-				err = rangekey.Encode(rKeySpan, func(k base.InternalKey, v []byte) error {
-					return w.AddRangeKey(k, v)
-				})
+				err = w.EncodeSpan(rKeySpan)
 				if err != nil {
 					return err.Error()
 				}

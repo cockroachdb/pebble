@@ -28,8 +28,14 @@ func (o *obsoleteKeyBlockPropertyCollector) Name() string {
 	return "obsolete-key"
 }
 
-// Add is part of the BlockPropertyCollector interface.
-func (o *obsoleteKeyBlockPropertyCollector) Add(key InternalKey, value []byte) error {
+// AddPointKey is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) AddPointKey(key InternalKey, value []byte) error {
+	// Ignore.
+	return nil
+}
+
+// AddRangeKeys is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) AddRangeKeys(span Span) error {
 	// Ignore.
 	return nil
 }

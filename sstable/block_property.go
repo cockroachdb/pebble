@@ -13,7 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Block properties are an optional user-facing feature that can be used to
@@ -100,9 +100,15 @@ type BlockPropertyCollector interface {
 	// Name returns the name of the block property collector.
 	Name() string
 
-	// Add is called with each new entry added to a data block in the sstable.
-	// The callee can assume that these are in sorted order.
-	Add(key InternalKey, value []byte) error
+	// AddPointKey is called with each new key added to a data block in the
+	// sstable. The callee can assume that these are in sorted order.
+	AddPointKey(key InternalKey, value []byte) error
+
+	// AddRangeKeys is called for each range span added to the sstable. The range
+	// key properties are stored separately and don't contribute to data block
+	// properties. They are only used when FinishTable is called.
+	// TODO(radu): clean up this subtle semantic.
+	AddRangeKeys(span keyspan.Span) error
 
 	// AddCollectedWithSuffixReplacement adds previously collected property data
 	// and updates it to reflect a change of suffix on all keys: the old property
@@ -223,48 +229,28 @@ type BoundLimitedBlockPropertyFilter interface {
 // independent instances, rather than references to the same collector, as point
 // and range keys are tracked independently.
 type BlockIntervalCollector struct {
-	name   string
-	points DataBlockIntervalCollector
-	ranges DataBlockIntervalCollector
+	name           string
+	mapper         IntervalMapper
+	suffixReplacer BlockIntervalSuffixReplacer
 
-	blockInterval interval
-	indexInterval interval
-	tableInterval interval
+	blockInterval BlockInterval
+	indexInterval BlockInterval
+	tableInterval BlockInterval
 }
 
 var _ BlockPropertyCollector = &BlockIntervalCollector{}
 
-// DataBlockIntervalCollector is the interface used by BlockIntervalCollector
-// that contains the actual logic pertaining to the property. It only
-// maintains state for the current data block, and resets that state in
-// FinishDataBlock. This interface can be used to reduce parsing costs.
-type DataBlockIntervalCollector interface {
-	// Add is called with each new entry added to a data block in the sstable.
-	// The callee can assume that these are in sorted order.
-	Add(key InternalKey, value []byte) error
+// IntervalMapper is an interface through which a user can define the mapping
+// between keys and intervals. The interval for any collection of keys (e.g. a
+// data block, a table) is the union of intervals for all keys.
+type IntervalMapper interface {
+	// MapPointKey maps a point key to an interval. The interval can be empty, which
+	// means that this key will effectively be ignored.
+	MapPointKey(key InternalKey, value []byte) (BlockInterval, error)
 
-	// AddCollectedWithSuffixReplacement extends the interval with a given
-	// interval after updating it to reflect a change of suffix on all keys: the
-	// [oldLower, oldUpper) interval is assumed to be constructed from keys that
-	// all have the same oldSuffix and is recalculated to reflect the same keys but
-	// with newSuffix.
-	//
-	// This method is optional (if it is not implemented, it always returns an
-	// error). SupportsSuffixReplacement() can be used to check if this method is
-	// implemented.
-	//
-	// See BlockPropertyCollector.AddCollectedWithSuffixReplacement for more
-	// information.
-	AddCollectedWithSuffixReplacement(oldLower, oldUpper uint64, oldSuffix, newSuffix []byte) error
-
-	// SupportsSuffixReplacement returns whether the collector supports the
-	// AddCollectedWithSuffixReplacement method.
-	SupportsSuffixReplacement() bool
-
-	// FinishDataBlock is called when all the entries have been added to a
-	// data block. Subsequent Add calls will be for the next data block. It
-	// returns the [lower, upper) for the finished block.
-	FinishDataBlock() (lower uint64, upper uint64, err error)
+	// MapRangeKeys maps a range key span to an interval. The interval can be
+	// empty, which means that this span will effectively be ignored.
+	MapRangeKeys(span Span) (BlockInterval, error)
 }
 
 // NewBlockIntervalCollector constructs a BlockIntervalCollector with the given
@@ -280,16 +266,17 @@ type DataBlockIntervalCollector interface {
 // If both point and range keys are to be tracked, two independent collectors
 // should be provided, rather than the same collector passed in twice (see the
 // comment on BlockIntervalCollector for more detail)
+// XXX update
 func NewBlockIntervalCollector(
-	name string, pointCollector, rangeCollector DataBlockIntervalCollector,
+	name string, mapper IntervalMapper, suffixReplacer BlockIntervalSuffixReplacer,
 ) BlockPropertyCollector {
-	if pointCollector == nil && rangeCollector == nil {
-		panic("sstable: at least one interval collector must be provided")
+	if mapper == nil {
+		panic("mapper must be provided")
 	}
 	return &BlockIntervalCollector{
-		name:   name,
-		points: pointCollector,
-		ranges: rangeCollector,
+		name:           name,
+		mapper:         mapper,
+		suffixReplacer: suffixReplacer,
 	}
 }
 
@@ -298,15 +285,28 @@ func (b *BlockIntervalCollector) Name() string {
 	return b.name
 }
 
-// Add is part of the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
-	if rangekey.IsRangeKey(key.Kind()) {
-		if b.ranges != nil {
-			return b.ranges.Add(key, value)
-		}
-	} else if b.points != nil {
-		return b.points.Add(key, value)
+// AddPointKey is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) AddPointKey(key InternalKey, value []byte) error {
+	interval, err := b.mapper.MapPointKey(key, value)
+	if err != nil {
+		return err
 	}
+	b.blockInterval.UnionWith(interval)
+	return nil
+}
+
+// AddRangeKeys is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) AddRangeKeys(span Span) error {
+	if span.Empty() {
+		return nil
+	}
+	interval, err := b.mapper.MapRangeKeys(span)
+	if err != nil {
+		return err
+	}
+	// Range keys are not included in block or index intervals; they just apply
+	// directly to the table interval.
+	b.tableInterval.UnionWith(interval)
 	return nil
 }
 
@@ -314,147 +314,135 @@ func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
 func (b *BlockIntervalCollector) AddCollectedWithSuffixReplacement(
 	oldProp []byte, oldSuffix, newSuffix []byte,
 ) error {
-	var i interval
-	if err := i.decode(oldProp); err != nil {
+	i, err := decodeBlockInterval(oldProp)
+	if err != nil {
 		return err
 	}
-	return b.points.AddCollectedWithSuffixReplacement(i.lower, i.upper, oldSuffix, newSuffix)
+	i, err = b.suffixReplacer.ApplySuffixReplacement(i, newSuffix)
+	if err != nil {
+		return err
+	}
+	b.blockInterval.UnionWith(i)
+	return nil
 }
 
 // SupportsSuffixReplacement is part of the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) SupportsSuffixReplacement() bool {
-	return b.points.SupportsSuffixReplacement()
+	return b.suffixReplacer != nil
 }
 
 // FinishDataBlock is part of the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
-	if b.points == nil {
-		return buf, nil
-	}
-	var err error
-	b.blockInterval.lower, b.blockInterval.upper, err = b.points.FinishDataBlock()
-	if err != nil {
-		return buf, err
-	}
-	buf = b.blockInterval.encode(buf)
-	b.tableInterval.union(b.blockInterval)
+	buf = encodeBlockInterval(b.blockInterval, buf)
+	b.tableInterval.UnionWith(b.blockInterval)
 	return buf, nil
 }
 
 // AddPrevDataBlockToIndexBlock implements the BlockPropertyCollector
 // interface.
 func (b *BlockIntervalCollector) AddPrevDataBlockToIndexBlock() {
-	b.indexInterval.union(b.blockInterval)
-	b.blockInterval = interval{}
+	b.indexInterval.UnionWith(b.blockInterval)
+	b.blockInterval = BlockInterval{}
 }
 
 // FinishIndexBlock implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
-	buf = b.indexInterval.encode(buf)
-	b.indexInterval = interval{}
+	buf = encodeBlockInterval(b.indexInterval, buf)
+	b.indexInterval = BlockInterval{}
 	return buf, nil
 }
 
 // FinishTable implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
-	// If the collector is tracking range keys, the range key interval is union-ed
-	// with the point key interval for the table.
-	if b.ranges != nil {
-		var rangeInterval interval
-		var err error
-		rangeInterval.lower, rangeInterval.upper, err = b.ranges.FinishDataBlock()
-		if err != nil {
-			return buf, err
-		}
-		b.tableInterval.union(rangeInterval)
+	return encodeBlockInterval(b.tableInterval, buf), nil
+}
+
+// BlockInterval represents the [Lower, Upper) interval of 64-bit values
+// corresponding to a set of keys. The meaning of the values themselves is
+// opaque to the BlockIntervalCollector.
+//
+// If Lower >= Upper, the interval is the empty set.
+type BlockInterval struct {
+	Lower uint64
+	Upper uint64
+}
+
+// IsEmpty returns true if the interval is empty.
+func (i BlockInterval) IsEmpty() bool {
+	return i.Lower >= i.Upper
+}
+
+// Intersects returns true if the two intervals intersect.
+func (i BlockInterval) Intersects(other BlockInterval) bool {
+	return !i.IsEmpty() && !other.IsEmpty() && i.Upper > other.Lower && i.Lower < other.Upper
+}
+
+// UnionWith extends the receiver to include another interval.
+func (i *BlockInterval) UnionWith(other BlockInterval) {
+	switch {
+	case other.IsEmpty():
+	case i.IsEmpty():
+		*i = other
+	default:
+		i.Lower = min(i.Lower, other.Lower)
+		i.Upper = max(i.Upper, other.Upper)
 	}
-	return b.tableInterval.encode(buf), nil
 }
 
-type interval struct {
-	lower uint64
-	upper uint64
-}
-
-func (i interval) encode(buf []byte) []byte {
-	if i.lower < i.upper {
-		var encoded [binary.MaxVarintLen64 * 2]byte
-		n := binary.PutUvarint(encoded[:], i.lower)
-		n += binary.PutUvarint(encoded[n:], i.upper-i.lower)
-		buf = append(buf, encoded[:n]...)
+func encodeBlockInterval(i BlockInterval, buf []byte) []byte {
+	if i.IsEmpty() {
+		return buf
 	}
-	return buf
+
+	var encoded [binary.MaxVarintLen64 * 2]byte
+	n := binary.PutUvarint(encoded[:], i.Lower)
+	n += binary.PutUvarint(encoded[n:], i.Upper-i.Lower)
+	return append(buf, encoded[:n]...)
 }
 
-func (i *interval) decode(buf []byte) error {
+func decodeBlockInterval(buf []byte) (BlockInterval, error) {
 	if len(buf) == 0 {
-		*i = interval{}
-		return nil
+		return BlockInterval{}, nil
 	}
+	var i BlockInterval
 	var n int
-	i.lower, n = binary.Uvarint(buf)
+	i.Lower, n = binary.Uvarint(buf)
 	if n <= 0 || n >= len(buf) {
-		return base.CorruptionErrorf("cannot decode interval from buf %x", buf)
+		return BlockInterval{}, base.CorruptionErrorf("cannot decode interval from buf %x", buf)
 	}
 	pos := n
-	i.upper, n = binary.Uvarint(buf[pos:])
+	i.Upper, n = binary.Uvarint(buf[pos:])
 	pos += n
 	if pos != len(buf) || n <= 0 {
-		return base.CorruptionErrorf("cannot decode interval from buf %x", buf)
+		return BlockInterval{}, base.CorruptionErrorf("cannot decode interval from buf %x", buf)
 	}
 	// Delta decode.
-	i.upper += i.lower
-	if i.upper < i.lower {
-		return base.CorruptionErrorf("unexpected overflow, upper %d < lower %d", i.upper, i.lower)
+	i.Upper += i.Lower
+	if i.Upper < i.Lower {
+		return BlockInterval{}, base.CorruptionErrorf("unexpected overflow, upper %d < lower %d", i.Upper, i.Lower)
 	}
-	return nil
+	return i, nil
 }
 
-func (i *interval) union(x interval) {
-	if x.lower >= x.upper {
-		// x is the empty set.
-		return
-	}
-	if i.lower >= i.upper {
-		// i is the empty set.
-		*i = x
-		return
-	}
-	// Both sets are non-empty.
-	if x.lower < i.lower {
-		i.lower = x.lower
-	}
-	if x.upper > i.upper {
-		i.upper = x.upper
-	}
-}
-
-func (i interval) intersects(x interval) bool {
-	if i.lower >= i.upper || x.lower >= x.upper {
-		// At least one of the sets is empty.
-		return false
-	}
-	// Neither set is empty.
-	return i.upper > x.lower && i.lower < x.upper
-}
-
-// BlockIntervalSyntheticReplacer provides methods to conduct just in time
+// BlockIntervalSuffixReplacer provides methods to conduct just in time
 // adjustments of a passed in block prop interval before filtering.
-type BlockIntervalSyntheticReplacer interface {
-	// AdjustIntervalWithSyntheticSuffix adjusts the [lower, upper) range for a data
-	// block (specifically, the range returned by the corresponding
-	// DataBlockIntervalCollector.FinishDataBlock) to what it would have been if
-	// all the input keys had the given synthetic suffix.
-	AdjustIntervalWithSyntheticSuffix(lower uint64, upper uint64, suffix []byte) (adjustedLower uint64, adjustedUpper uint64, err error)
+type BlockIntervalSuffixReplacer interface {
+	// ApplySuffixReplacement recalculates a previously calculated interval (which
+	// corresponds to an arbitrary collection of keys) under the assumption
+	// that those keys are rewritten with a new prefix.
+	//
+	// Such a transformation is possible when the intervals depend only on the
+	// suffixes.
+	ApplySuffixReplacement(interval BlockInterval, newSuffix []byte) (BlockInterval, error)
 }
 
 // BlockIntervalFilter is an implementation of BlockPropertyFilter when the
 // corresponding collector is a BlockIntervalCollector. That is, the set is of
 // the form [lower, upper).
 type BlockIntervalFilter struct {
-	name              string
-	filterInterval    interval
-	syntheticReplacer BlockIntervalSyntheticReplacer
+	name           string
+	filterInterval BlockInterval
+	suffixReplacer BlockIntervalSuffixReplacer
 }
 
 var _ BlockPropertyFilter = (*BlockIntervalFilter)(nil)
@@ -464,10 +452,10 @@ var _ BlockPropertyFilter = (*BlockIntervalFilter)(nil)
 // given [lower, upper) bounds. The given name specifies the
 // BlockIntervalCollector's properties to read.
 func NewBlockIntervalFilter(
-	name string, lower uint64, upper uint64, syntheticReplacer BlockIntervalSyntheticReplacer,
+	name string, lower uint64, upper uint64, suffixReplacer BlockIntervalSuffixReplacer,
 ) *BlockIntervalFilter {
 	b := new(BlockIntervalFilter)
-	b.Init(name, lower, upper, syntheticReplacer)
+	b.Init(name, lower, upper, suffixReplacer)
 	return b
 }
 
@@ -476,12 +464,12 @@ func NewBlockIntervalFilter(
 // by BlockIntervalCollector and the given [lower, upper) bounds. The given name
 // specifies the BlockIntervalCollector's properties to read.
 func (b *BlockIntervalFilter) Init(
-	name string, lower, upper uint64, syntheticReplacer BlockIntervalSyntheticReplacer,
+	name string, lower, upper uint64, suffixReplacer BlockIntervalSuffixReplacer,
 ) {
 	*b = BlockIntervalFilter{
-		name:              name,
-		filterInterval:    interval{lower: lower, upper: upper},
-		syntheticReplacer: syntheticReplacer,
+		name:           name,
+		filterInterval: BlockInterval{Lower: lower, Upper: upper},
+		suffixReplacer: suffixReplacer,
 	}
 }
 
@@ -492,29 +480,28 @@ func (b *BlockIntervalFilter) Name() string {
 
 // Intersects implements the BlockPropertyFilter interface.
 func (b *BlockIntervalFilter) Intersects(prop []byte) (bool, error) {
-	var i interval
-	if err := i.decode(prop); err != nil {
+	i, err := decodeBlockInterval(prop)
+	if err != nil {
 		return false, err
 	}
-	return i.intersects(b.filterInterval), nil
+	return i.Intersects(b.filterInterval), nil
 }
 
 // SyntheticSuffixIntersects implements the BlockPropertyFilter interface.
 func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
-	if b.syntheticReplacer == nil {
-		return false, base.AssertionFailedf("missing SyntheticReplacer for SyntheticSuffixIntersects()")
+	if b.suffixReplacer == nil {
+		return false, base.AssertionFailedf("missing SuffixReplacer for SyntheticSuffixIntersects()")
 	}
-	var i interval
-	if err := i.decode(prop); err != nil {
-		return false, err
-	}
-
-	newLower, newUpper, err := b.syntheticReplacer.AdjustIntervalWithSyntheticSuffix(i.lower, i.upper, suffix)
+	i, err := decodeBlockInterval(prop)
 	if err != nil {
 		return false, err
 	}
-	newInterval := interval{lower: newLower, upper: newUpper}
-	return newInterval.intersects(b.filterInterval), nil
+
+	newInterval, err := b.suffixReplacer.ApplySuffixReplacement(i, suffix)
+	if err != nil {
+		return false, err
+	}
+	return newInterval.Intersects(b.filterInterval), nil
 }
 
 // SetInterval adjusts the [lower, upper) bounds used by the filter. It is not
@@ -522,7 +509,7 @@ func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []by
 // implementation of BlockPropertyFilterMask.SetSuffix used for range-key
 // masking.
 func (b *BlockIntervalFilter) SetInterval(lower, upper uint64) {
-	b.filterInterval = interval{lower: lower, upper: upper}
+	b.filterInterval = BlockInterval{Lower: lower, Upper: upper}
 }
 
 // When encoding block properties for each block, we cannot afford to encode the

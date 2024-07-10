@@ -224,7 +224,7 @@ target
 # Point key-range key overlap
 define
 L5
-  rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
+  rangekey:a-c:{(#1,RANGEKEYSET,@10,foo)}
 ----
 L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
@@ -237,7 +237,7 @@ target
 # Range key-range key overlap.
 define
 L5
-  rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
+  rangekey:a-c:{(#1,RANGEKEYSET,@10,foo)}
 ----
 L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]

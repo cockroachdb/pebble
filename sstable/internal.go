@@ -4,7 +4,10 @@
 
 package sstable
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
+)
 
 // These constants are part of the file format, and should not be changed.
 const (
@@ -22,3 +25,6 @@ const (
 
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
+
+// Span exports the keyspan.Span type.
+type Span = keyspan.Span
