@@ -134,10 +134,13 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	return blockIntersects
 }
 
-// Note that lower, upper passed into init has nothing to do with virtual sstable
-// bounds. If the virtualState passed in is not nil, then virtual sstable bounds
-// will be enforced.
-func (i *twoLevelIterator) init(
+// newTwoLevelIterator reads the top-level index block and creates and
+// initializes a two level iterator.
+//
+// Note that lower, upper are iterator bounds and are separate from virtual
+// sstable bounds. If the virtualState passed in is not nil, then virtual
+// sstable bounds will be enforced.
+func newTwoLevelIterator(
 	ctx context.Context,
 	r *Reader,
 	v *virtualState,
@@ -150,16 +153,19 @@ func (i *twoLevelIterator) init(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
-) error {
+) (*twoLevelIterator, error) {
 	if r.err != nil {
-		return r.err
+		return nil, r.err
 	}
+	i := twoLevelIterPool.Get().(*twoLevelIterator)
+	i.inPool = false
 	i.iterStats.init(categoryAndQoS, statsCollector)
 	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
 		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
 	topLevelIndexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
 	if err != nil {
-		return err
+		_ = i.Close()
+		return nil, err
 	}
 	if v != nil {
 		i.vState = v
@@ -167,7 +173,6 @@ func (i *twoLevelIterator) init(
 		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
 
-	i.inPool = false
 	i.ctx = ctx
 	i.lower = lower
 	i.upper = upper
@@ -181,8 +186,8 @@ func (i *twoLevelIterator) init(
 	err = i.topLevelIndex.InitHandle(i.cmp, i.reader.Split, topLevelIndexH, transforms)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
-		_ = i.topLevelIndex.Close()
-		return err
+		_ = i.Close()
+		return nil, err
 	}
 	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(
 		ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
@@ -200,7 +205,7 @@ func (i *twoLevelIterator) init(
 		}
 		i.data.SetHasValuePrefix(true)
 	}
-	return nil
+	return i, nil
 }
 
 func (i *twoLevelIterator) String() string {
