@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -19,7 +20,10 @@ import (
 // amount of latency injected follows an exponential distribution with the
 // provided mean. Latency injected is derived from the provided seed and is
 // deterministic with respect to each file's path.
-func RandomLatency(pred Predicate, mean time.Duration, seed int64) Injector {
+//
+// If limit is nonzero, total latency injected over the lifetime of the Injector
+// is capped to limit.
+func RandomLatency(pred Predicate, mean time.Duration, seed int64, limit time.Duration) Injector {
 	rl := &randomLatency{
 		predicate: pred,
 		mean:      mean,
@@ -47,13 +51,18 @@ func parseRandomLatency(p *Parser, s *dsl.Scanner) Injector {
 	if tok.Kind != token.RPAREN {
 		panic(errors.Errorf("errorfs: unexpected token %s; expected %s", tok.String(), token.RPAREN))
 	}
-	return RandomLatency(pred, dur, seed)
+	return RandomLatency(pred, dur, seed, 0 /* no limit */)
 }
 
 type randomLatency struct {
 	predicate Predicate
-	// p defines the probability of an error being injected.
+	// mean is the mean duration injected each operation.
 	mean time.Duration
+	// limit configures a limit on total latency injected over the lifetime of
+	// the Injector.
+	limit time.Duration
+	// agg is the aggregate latency injected over the lifetime of the Injector.
+	agg atomic.Int64
 	keyedPrng
 }
 
@@ -75,6 +84,16 @@ func (rl *randomLatency) MaybeError(op Op) error {
 		// enough that causes a test timeout.
 		dur = time.Duration(min(prng.ExpFloat64(), 20.0) * float64(rl.mean))
 	})
+
+	if v := time.Duration(rl.agg.Add(int64(dur))); v-dur > rl.limit {
+		// We'd already exceeded the limit before adding dur. Don't inject
+		// anything.
+		return nil
+	} else if v > rl.limit {
+		// We're about to exceed the limit. Cap the duration.
+		dur -= v - rl.limit
+	}
+
 	time.Sleep(dur)
 	return nil
 }
