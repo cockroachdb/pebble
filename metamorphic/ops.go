@@ -991,6 +991,11 @@ type externalObjWithBounds struct {
 func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.dbID)
 
+	// Verify the objects exist (useful for --try-to-reduce).
+	for i := range o.objs {
+		t.getExternalObj(o.objs[i].externalObjID)
+	}
+
 	var err error
 	if !t.testOpts.externalStorageEnabled {
 		// Emulate the operation by crating local, truncated SST files and ingesting
@@ -1823,10 +1828,9 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	if err != nil {
 		panic(err)
 	}
-	if sstMeta.HasRangeKeys {
-		// #3287: IngestExternalFiles currently doesn't support range keys; we check
-		// for range keys in newExternalObj.
-		panic("external object has range keys")
+	if !sstMeta.HasPointKeys && !sstMeta.HasRangeDelKeys && !sstMeta.HasRangeKeys {
+		// This can occur when using --try-to-reduce.
+		panic("metamorphic test internal error: external object empty")
 	}
 	t.setExternalObj(o.externalObjID, externalObjMeta{
 		sstMeta: sstMeta,

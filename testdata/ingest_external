@@ -996,3 +996,72 @@ p1_a@1: (va, .)
 c@1: (vc, .)
 a@1: (va, .)
 .
+
+# Tests with range keys.
+
+reset
+----
+
+build-remote points-and-ranges.sst
+set a@1 va
+set b@1 vb
+set c@1 vc
+set d@1 vc
+range-key-set b c1 @2 vrange
+----
+
+ingest-external
+points-and-ranges.sst bounds=(a,e) has-range-keys
+----
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@1: (va, .)
+b: (., [b-"c1") @2=vrange UPDATED)
+b@1: (vb, [b-"c1") @2=vrange)
+c@1: (vc, [b-"c1") @2=vrange)
+d@1: (vc, . UPDATED)
+.
+
+ingest-external
+points-and-ranges.sst synthetic-prefix=x_ bounds=(x_a,x_d) has-range-keys
+----
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+----
+x_c@1: (vc, [x_b-"x_c1") @2=vrange UPDATED)
+x_b@1: (vb, [x_b-"x_c1") @2=vrange)
+x_b: (., [x_b-"x_c1") @2=vrange)
+x_a@1: (va, . UPDATED)
+d@1: (vc, .)
+c@1: (vc, [b-"c1") @2=vrange UPDATED)
+
+# Test with loose end bound and no point keys at/after the last range end kye.
+ingest-external
+points-and-ranges.sst synthetic-prefix=z_ bounds=(z_a,z_c2) has-range-keys
+----
+
+iter
+seek-ge y
+next
+next
+next
+next
+----
+z_a@1: (va, .)
+z_b: (., [z_b-"z_c1") @2=vrange UPDATED)
+z_b@1: (vb, [z_b-"z_c1") @2=vrange)
+z_c@1: (vc, [z_b-"z_c1") @2=vrange)
+.
