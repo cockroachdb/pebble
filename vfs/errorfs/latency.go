@@ -85,13 +85,17 @@ func (rl *randomLatency) MaybeError(op Op) error {
 		dur = time.Duration(min(prng.ExpFloat64(), 20.0) * float64(rl.mean))
 	})
 
-	if v := time.Duration(rl.agg.Add(int64(dur))); v-dur > rl.limit {
-		// We'd already exceeded the limit before adding dur. Don't inject
-		// anything.
-		return nil
-	} else if v > rl.limit {
-		// We're about to exceed the limit. Cap the duration.
-		dur -= v - rl.limit
+	// Apply a limit on total latency injected over the lifetime of the
+	// Injector, if one is configured.
+	if rl.limit > 0 {
+		if v := time.Duration(rl.agg.Add(int64(dur))); v-dur > rl.limit {
+			// We'd already exceeded the limit before adding dur. Don't inject
+			// anything.
+			return nil
+		} else if v > rl.limit {
+			// We're about to exceed the limit. Cap the duration.
+			dur -= v - rl.limit
+		}
 	}
 
 	time.Sleep(dur)
