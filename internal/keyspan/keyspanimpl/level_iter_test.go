@@ -350,87 +350,63 @@ func TestLevelIterEquivalence(t *testing.T) {
 }
 
 func TestLevelIter(t *testing.T) {
-	var level [][]keyspan.Span
-	var rangedels [][]keyspan.Span
-	var metas []*manifest.FileMetadata
-	var iter keyspan.FragmentIterator
-	var extraInfo func() string
+	var cmp = base.DefaultComparer.Compare
+	type file struct {
+		meta      *manifest.FileMetadata
+		rangeDels []keyspan.Span
+		rangeKeys []keyspan.Span
+	}
+	var files []file
 
 	datadriven.RunTest(t, "testdata/level_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
-			level = level[:0]
-			metas = metas[:0]
-			rangedels = rangedels[:0]
-			if iter != nil {
-				iter.Close()
-				iter = nil
-			}
-			var pointKeys []base.InternalKey
-			var currentRangeDels []keyspan.Span
-			var currentFile []keyspan.Span
+			files = nil
 			for _, key := range strings.Split(d.Input, "\n") {
 				if strings.HasPrefix(key, "file") {
-					// Skip the very first file creation.
-					if len(level) != 0 || len(currentFile) != 0 {
-						meta := &manifest.FileMetadata{
-							FileNum: base.FileNum(len(level) + 1),
-						}
-						if len(currentFile) > 0 {
-							smallest := base.MakeInternalKey(currentFile[0].Start, currentFile[0].SmallestKey().SeqNum(), currentFile[0].SmallestKey().Kind())
-							largest := base.MakeExclusiveSentinelKey(currentFile[len(currentFile)-1].LargestKey().Kind(), currentFile[len(currentFile)-1].End)
-							meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, smallest, largest)
-						}
-						if len(pointKeys) != 0 {
-							meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
-						}
-						meta.InitPhysicalBacking()
-						level = append(level, currentFile)
-						metas = append(metas, meta)
-						rangedels = append(rangedels, currentRangeDels)
-						currentRangeDels = nil
-						currentFile = nil
-						pointKeys = nil
+					meta := &manifest.FileMetadata{
+						FileNum: base.FileNum(len(files) + 1),
 					}
-					continue
-				}
-				key = strings.TrimSpace(key)
-				if strings.HasPrefix(key, "point:") {
-					key = strings.TrimPrefix(key, "point:")
-					j := strings.Index(key, ":")
-					ikey := base.ParseInternalKey(key[:j])
-					pointKeys = append(pointKeys, ikey)
-					if ikey.Kind() == base.InternalKeyKindRangeDelete {
-						currentRangeDels = append(currentRangeDels, keyspan.Span{
-							Start: ikey.UserKey, End: []byte(key[j+1:]), Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
+					meta.InitPhysicalBacking()
+
+					fields := strings.Fields(key)
+					for _, f := range fields[1:] {
+						arg, val, ok := strings.Cut(f, "=")
+						if !ok {
+							d.Fatalf(t, "invalid line %q", key)
+						}
+						switch arg {
+						case "point-key-bounds":
+							start, end := base.ParseInternalKeyRange(val)
+							meta.ExtendPointKeyBounds(cmp, start, end)
+						case "range-key-bounds":
+							start, end := base.ParseInternalKeyRange(val)
+							meta.ExtendRangeKeyBounds(cmp, start, end)
+						default:
+							d.Fatalf(t, "unknown argument %q", arg)
+						}
 					}
+					files = append(files, file{meta: meta})
 					continue
 				}
 				span := keyspan.ParseSpan(key)
-				currentFile = append(currentFile, span)
+				f := &files[len(files)-1]
+				smallest := base.MakeInternalKey(span.Start, span.SmallestKey().SeqNum(), span.SmallestKey().Kind())
+				largest := base.MakeExclusiveSentinelKey(span.LargestKey().Kind(), span.End)
+				if smallest.Kind() == base.InternalKeyKindRangeDelete {
+					f.rangeDels = append(f.rangeDels, span)
+					f.meta.ExtendPointKeyBounds(cmp, smallest, largest)
+				} else {
+					f.rangeKeys = append(f.rangeKeys, span)
+					f.meta.ExtendRangeKeyBounds(cmp, smallest, largest)
+				}
 			}
-			meta := &manifest.FileMetadata{
-				FileNum: base.FileNum(len(level) + 1),
+			var strs []string
+			for i := range files {
+				strs = append(strs, files[i].meta.String())
 			}
-			meta.InitPhysicalBacking()
-			level = append(level, currentFile)
-			rangedels = append(rangedels, currentRangeDels)
-			if len(currentFile) > 0 {
-				smallest := base.MakeInternalKey(currentFile[0].Start, currentFile[0].SmallestKey().SeqNum(), currentFile[0].SmallestKey().Kind())
-				largest := base.MakeExclusiveSentinelKey(currentFile[len(currentFile)-1].LargestKey().Kind(), currentFile[len(currentFile)-1].End)
-				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, smallest, largest)
-			}
-			if len(pointKeys) != 0 {
-				meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
-			}
-			metas = append(metas, meta)
-			return ""
-		case "num-files":
-			return fmt.Sprintf("%d", len(level))
-		case "close-iter":
-			iter.Close()
-			iter = nil
-			return "ok"
+			return strings.Join(strs, "\n")
+
 		case "iter":
 			keyType := manifest.KeyTypeRange
 			for _, arg := range d.CmdArgs {
@@ -438,42 +414,28 @@ func TestLevelIter(t *testing.T) {
 					keyType = manifest.KeyTypePoint
 				}
 			}
-			if iter == nil {
-				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-					keyType := keyType
-					spans := level[file.FileNum-1]
-					if keyType == manifest.KeyTypePoint {
-						spans = rangedels[file.FileNum-1]
-					}
-					lastFileNum = file.FileNum
-					return keyspan.NewIter(base.DefaultComparer.Compare, spans), nil
+			tableNewIters := func(file *manifest.FileMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+				f := files[file.FileNum-1]
+				if keyType == manifest.KeyTypePoint {
+					return keyspan.NewIter(cmp, f.rangeDels), nil
 				}
-				b := &manifest.BulkVersionEdit{}
-				amap := make(map[base.FileNum]*manifest.FileMetadata)
-				for i := range metas {
-					amap[metas[i].FileNum] = metas[i]
-				}
-				b.Added[6] = amap
-				v, err := b.Apply(nil, base.DefaultComparer, 0, 0)
-				require.NoError(t, err)
-				iter = NewLevelIter(
-					keyspan.SpanIterOptions{}, base.DefaultComparer.Compare,
-					tableNewIters, v.Levels[6].Iter(), 6, keyType,
-				)
-				extraInfo = func() string {
-					return fmt.Sprintf("file = %s.sst", lastFileNum)
-				}
+				return keyspan.NewIter(cmp, f.rangeKeys), nil
+			}
+			metas := make([]*manifest.FileMetadata, len(files))
+			for i := range files {
+				metas[i] = files[i].meta
+			}
+			lm := manifest.MakeLevelMetadata(cmp, 6, metas)
+			iter := NewLevelIter(keyspan.SpanIterOptions{}, cmp, tableNewIters, lm.Iter(), 6, keyType)
+			extraInfo := func() string {
+				return iter.String()
 			}
 
+			defer iter.Close()
 			return keyspan.RunFragmentIteratorCmd(iter, d.Input, extraInfo)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
 	})
-
-	if iter != nil {
-		iter.Close()
-	}
 }
