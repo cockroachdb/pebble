@@ -287,7 +287,7 @@ ranges: false
 
 build collectors=(nil-points-and-ranges)
 ----
-sstable: at least one interval collector must be provided
+mapper must be provided
 
 # Test a small index-block-size and block-size, so every data block has one KV
 # and every index block points to one data block.

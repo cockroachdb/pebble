@@ -153,7 +153,7 @@ func runBuildCmd(
 	}
 	rangeKeyFrag.Finish()
 	for _, s := range rangeKeys {
-		if err := w.addRangeKeySpan(s); err != nil {
+		if err := w.addRangeKeySpanToFragmenter(s); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -206,7 +206,7 @@ func runBuildRawCmd(
 	for _, data := range strings.Split(td.Input, "\n") {
 		if strings.HasPrefix(data, "rangekey:") {
 			data = strings.TrimPrefix(data, "rangekey:")
-			if err := w.addRangeKeySpan(keyspan.ParseSpan(data)); err != nil {
+			if err := w.addRangeKeySpanToFragmenter(keyspan.ParseSpan(data)); err != nil {
 				return nil, nil, err
 			}
 			continue
@@ -219,7 +219,10 @@ func runBuildRawCmd(
 		case base.InternalKeyKindRangeKeyDelete,
 			base.InternalKeyKindRangeKeyUnset,
 			base.InternalKeyKindRangeKeySet:
-			if err := w.AddRangeKey(key, value); err != nil {
+			// Note: specifying range keys directly (instead of spans) should only be
+			// done to check for error handling; they will not contribute to block
+			// properties.
+			if err := w.addRangeKey(key, value); err != nil {
 				return nil, nil, err
 			}
 		default:

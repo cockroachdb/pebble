@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -428,7 +427,7 @@ func TestScanInternal(t *testing.T) {
 						}
 						keyspan.SortKeysByTrailer(&keys)
 						newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
-						require.NoError(t, rangekey.Encode(newSpan, w.AddRangeKey))
+						require.NoError(t, w.EncodeSpan(newSpan))
 					}
 					require.NoError(t, err)
 				}

@@ -99,9 +99,9 @@ a.SET.1:a
 d.SET.2:d
 f.SET.3:f
 d.RANGEDEL.4:e
-rangekey: a-d:{(#11,RANGEKEYSET,@t10,foo)}
+rangekey: a-d:{(#11,RANGEKEYSET,@10,foo)}
 g.RANGEDEL.5:l
-rangekey: y-z:{(#12,RANGEKEYSET,@t11,foo)}
+rangekey: y-z:{(#12,RANGEKEYSET,@11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]

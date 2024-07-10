@@ -103,7 +103,7 @@ func TestIngestLoad(t *testing.T) {
 				if strings.HasPrefix(data, "rangekey: ") {
 					data = strings.TrimPrefix(data, "rangekey: ")
 					s := keyspan.ParseSpan(data)
-					err := rangekey.Encode(&s, w.AddRangeKey)
+					err := w.EncodeSpan(&s)
 					if err != nil {
 						return err.Error()
 					}
@@ -1083,9 +1083,7 @@ func testIngestSharedImpl(
 						Keys:      keys,
 						KeysOrder: 0,
 					}
-					require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
-						return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
-					}))
+					require.NoError(t, w.EncodeSpan(&s))
 					return nil
 				},
 				func(sst *SharedSSTMeta) error {
@@ -1581,9 +1579,7 @@ func TestConcurrentExcise(t *testing.T) {
 						Keys:      keys,
 						KeysOrder: 0,
 					}
-					require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
-						return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
-					}))
+					require.NoError(t, w.EncodeSpan(&s))
 					return nil
 				},
 				func(sst *SharedSSTMeta) error {
@@ -2016,9 +2012,7 @@ func TestIngestExternal(t *testing.T) {
 						Keys:      keys,
 						KeysOrder: 0,
 					}
-					require.NoError(t, rangekey.Encode(&s, func(k base.InternalKey, v []byte) error {
-						return w.AddRangeKey(base.MakeInternalKey(k.UserKey, 0, k.Kind()), v)
-					}))
+					require.NoError(t, w.EncodeSpan(&s))
 					return nil
 				},
 				nil,
@@ -3200,7 +3194,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			if strings.HasPrefix(data, "rangekey: ") {
 				data = strings.TrimPrefix(data, "rangekey: ")
 				s := keyspan.ParseSpan(data)
-				err := rangekey.Encode(&s, w.AddRangeKey)
+				err := w.EncodeSpan(&s)
 				if err != nil {
 					return nil, err
 				}

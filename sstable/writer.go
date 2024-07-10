@@ -970,7 +970,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 			// property collectors in such Pebble DB's must not look at the value.
 			v = nil
 		}
-		if err := w.blockPropCollectors[i].Add(key, v); err != nil {
+		if err := w.blockPropCollectors[i].AddPointKey(key, v); err != nil {
 			w.err = err
 			return err
 		}
@@ -1104,7 +1104,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 // the Set and Unset would share the zero sequence number, and a key cannot be
 // both simultaneously set and unset.
 func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
-	return w.addRangeKeySpan(keyspan.Span{
+	return w.addRangeKeySpanToFragmenter(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
 		End:   w.tempRangeKeyCopy(end),
 		Keys: []keyspan.Key{
@@ -1128,7 +1128,7 @@ func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
 // the Set and Unset would share the zero sequence number, and a key cannot be
 // both simultaneously set and unset.
 func (w *Writer) RangeKeyUnset(start, end, suffix []byte) error {
-	return w.addRangeKeySpan(keyspan.Span{
+	return w.addRangeKeySpanToFragmenter(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
 		End:   w.tempRangeKeyCopy(end),
 		Keys: []keyspan.Key{
@@ -1145,7 +1145,7 @@ func (w *Writer) RangeKeyUnset(start, end, suffix []byte) error {
 // Keys must be added to the table in increasing order of start key. Spans are
 // not required to be fragmented.
 func (w *Writer) RangeKeyDelete(start, end []byte) error {
-	return w.addRangeKeySpan(keyspan.Span{
+	return w.addRangeKeySpanToFragmenter(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
 		End:   w.tempRangeKeyCopy(end),
 		Keys: []keyspan.Key{
@@ -1154,23 +1154,7 @@ func (w *Writer) RangeKeyDelete(start, end []byte) error {
 	})
 }
 
-// AddRangeKey adds a range key set, unset, or delete key/value pair to the
-// table being written.
-//
-// Range keys must be supplied in strictly ascending order of start key (i.e.
-// user key ascending, sequence number descending, and key type descending).
-// Ranges added must also be supplied in fragmented span order - i.e. other than
-// spans that are perfectly aligned (same start and end keys), spans may not
-// overlap. Range keys may be added out of order relative to point keys and
-// range deletions.
-func (w *Writer) AddRangeKey(key InternalKey, value []byte) error {
-	if w.err != nil {
-		return w.err
-	}
-	return w.addRangeKey(key, value)
-}
-
-func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
+func (w *Writer) addRangeKeySpanToFragmenter(span keyspan.Span) error {
 	if w.compare(span.Start, span.End) >= 0 {
 		return errors.Errorf(
 			"pebble: start key must be strictly less than end key",
@@ -1185,7 +1169,7 @@ func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
 	return w.err
 }
 
-func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
+func (w *Writer) encodeFragmentedRangeKeySpan(span keyspan.Span) {
 	// This method is the emit function of the Fragmenter.
 	//
 	// NB: The span should only contain range keys and be internally consistent
@@ -1201,9 +1185,20 @@ func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
 
 	w.rangeKeySpan = span
 	w.rangeKeySpan.Keys = w.rangeKeysBySuffix.Keys
-	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeySpan))
+	if w.err == nil {
+		w.err = w.EncodeSpan(&w.rangeKeySpan)
+	}
 }
 
+// addRangeKey adds a range key set, unset, or delete key/value pair to the
+// table being written.
+//
+// Range keys must be supplied in strictly ascending order of start key (i.e.
+// user key ascending, sequence number descending, and key type descending).
+// Ranges added must also be supplied in fragmented span order - i.e. other than
+// spans that are perfectly aligned (same start and end keys), spans may not
+// overlap. Range keys may be added out of order relative to point keys and
+// range deletions.
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && w.rangeKeyBlock.EntryCount() > 0 {
 		prevStartKey := w.rangeKeyBlock.CurKey()
@@ -1267,7 +1262,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 		w.meta.SetSmallestRangeKey(key.Clone())
 	}
 
-	// Update block properties.
+	// Update table properties.
 	w.props.RawRangeKeyKeySize += uint64(key.Size())
 	w.props.RawRangeKeyValueSize += uint64(len(value))
 	switch key.Kind() {
@@ -1279,12 +1274,6 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 		w.props.NumRangeKeyUnsets++
 	default:
 		panic(errors.Errorf("pebble: invalid range key type: %s", key.Kind()))
-	}
-
-	for i := range w.blockPropCollectors {
-		if err := w.blockPropCollectors[i].Add(key, value); err != nil {
-			return err
-		}
 	}
 
 	// Add the key to the block.
@@ -1844,6 +1833,9 @@ func (w *Writer) UnsafeLastPointUserKey() []byte {
 
 // EncodeSpan encodes the keys in the given span. The span can contain either
 // only RANGEDEL keys or only range keys.
+//
+// This is a low-level API that bypasses the fragmenter. The spans passed to
+// this function must be fragmented and ordered.
 func (w *Writer) EncodeSpan(span *keyspan.Span) error {
 	if span.Empty() {
 		return nil
@@ -1851,7 +1843,12 @@ func (w *Writer) EncodeSpan(span *keyspan.Span) error {
 	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
 		return rangedel.Encode(span, w.Add)
 	}
-	return rangekey.Encode(span, w.AddRangeKey)
+	for i := range w.blockPropCollectors {
+		if err := w.blockPropCollectors[i].AddRangeKeys(*span); err != nil {
+			return err
+		}
+	}
+	return w.rangeKeyEncoder.Encode(span)
 }
 
 // Close finishes writing the table and closes the underlying file that the
@@ -2211,7 +2208,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	}
 
 	// Initialize the range key fragmenter and encoder.
-	w.fragmenter.Emit = w.encodeRangeKeySpan
+	w.fragmenter.Emit = w.encodeFragmentedRangeKeySpan
 	w.rangeKeyEncoder.Emit = w.addRangeKey
 	return w
 }

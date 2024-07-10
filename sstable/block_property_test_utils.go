@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
@@ -24,7 +22,7 @@ const testKeysBlockPropertyName = `pebble.internal.testkeys.suffixes`
 func NewTestKeysBlockPropertyCollector() BlockPropertyCollector {
 	return NewBlockIntervalCollector(
 		testKeysBlockPropertyName,
-		&testKeysSuffixIntervalCollector{},
+		&testKeysSuffixIntervalMapper{},
 		nil)
 }
 
@@ -40,23 +38,24 @@ func NewTestKeysBlockPropertyFilter(filterMin, filterMax uint64) *BlockIntervalF
 	return NewBlockIntervalFilter(testKeysBlockPropertyName, filterMin, filterMax, testKeysBlockIntervalSyntheticReplacer{})
 }
 
-var _ BlockIntervalSyntheticReplacer = testKeysBlockIntervalSyntheticReplacer{}
+var _ BlockIntervalSuffixReplacer = testKeysBlockIntervalSyntheticReplacer{}
 
 type testKeysBlockIntervalSyntheticReplacer struct{}
 
-// AdjustIntervalWithSyntheticSuffix implements BlockIntervalSyntheticReplacer.
-func (sr testKeysBlockIntervalSyntheticReplacer) AdjustIntervalWithSyntheticSuffix(
-	lower uint64, upper uint64, suffix []byte,
-) (adjustedLower uint64, adjustedUpper uint64, err error) {
-	decoded, err := testkeys.ParseSuffix(suffix)
+// ApplySuffixReplacement implements BlockIntervalSyntheticReplacer.
+func (sr testKeysBlockIntervalSyntheticReplacer) ApplySuffixReplacement(
+	interval BlockInterval, newSuffix []byte,
+) (BlockInterval, error) {
+	decoded, err := testkeys.ParseSuffix(newSuffix)
 	if err != nil {
-		return 0, 0, err
+		return BlockInterval{}, err
 	}
-	// The testKeysSuffixIntervalCollector below maps keys with no suffix to MaxUint64; ignore it.
-	if upper != math.MaxUint64 && uint64(decoded) < upper {
-		panic(fmt.Sprintf("the synthetic suffix %d is less than the property upper bound %d", decoded, upper))
+	// The testKeysSuffixIntervalMapper below maps keys with no suffix to
+	// [0, MaxUint64); ignore that.
+	if interval.Upper != math.MaxUint64 && uint64(decoded) < interval.Upper {
+		panic(fmt.Sprintf("the synthetic suffix %d is less than the property upper bound %d", decoded, interval.Upper))
 	}
-	return uint64(decoded), uint64(decoded) + 1, nil
+	return BlockInterval{uint64(decoded), uint64(decoded) + 1}, nil
 }
 
 // NewTestKeysMaskingFilter constructs a TestKeysMaskingFilter that implements
@@ -94,62 +93,47 @@ func (f TestKeysMaskingFilter) SyntheticSuffixIntersects(prop []byte, suffix []b
 	return f.BlockIntervalFilter.SyntheticSuffixIntersects(prop, suffix)
 }
 
-var _ DataBlockIntervalCollector = (*testKeysSuffixIntervalCollector)(nil)
-
-// testKeysSuffixIntervalCollector maintains an interval over the timestamps in
-// MVCC-like suffixes for keys (e.g. foo@123).
-type testKeysSuffixIntervalCollector struct {
-	initialized  bool
-	lower, upper uint64
+// testKeysSuffixIntervalMapper maps keys to intervals according to the
+// timestamps in MVCC-like suffixes for keys (e.g. "foo@123" -> 123).
+type testKeysSuffixIntervalMapper struct {
+	ignorePoints    bool
+	ignoreRangeKeys bool
 }
 
-// Add implements DataBlockIntervalCollector by adding the timestamp(s) in the
-// suffix(es) of this record to the current interval.
-//
-// Note that range sets and unsets may have multiple suffixes. Range key deletes
-// do not have a suffix. All other point keys have a single suffix.
-func (c *testKeysSuffixIntervalCollector) Add(key base.InternalKey, value []byte) error {
-	i := testkeys.Comparer.Split(key.UserKey)
-	if i == len(key.UserKey) {
-		c.initialized = true
-		c.lower, c.upper = 0, math.MaxUint64
-		return nil
+var _ IntervalMapper = &testKeysSuffixIntervalMapper{}
+
+// MapPointKey is part of the IntervalMapper interface.
+func (c *testKeysSuffixIntervalMapper) MapPointKey(
+	key InternalKey, value []byte,
+) (BlockInterval, error) {
+	if c.ignorePoints {
+		return BlockInterval{}, nil
 	}
-	ts, err := testkeys.ParseSuffix(key.UserKey[i:])
+	n := testkeys.Comparer.Split(key.UserKey)
+	return testKeysSuffixToInterval(key.UserKey[n:]), nil
+}
+
+// MapRangeKeys is part of the IntervalMapper interface.
+func (c *testKeysSuffixIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error) {
+	if c.ignoreRangeKeys {
+		return BlockInterval{}, nil
+	}
+	var result BlockInterval
+	for _, k := range span.Keys {
+		if len(k.Suffix) > 0 {
+			result.UnionWith(testKeysSuffixToInterval(k.Suffix))
+		}
+	}
+	return result, nil
+}
+
+func testKeysSuffixToInterval(suffix []byte) BlockInterval {
+	if len(suffix) == 0 {
+		return BlockInterval{0, math.MaxUint64}
+	}
+	n, err := testkeys.ParseSuffix(suffix)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	uts := uint64(ts)
-	if !c.initialized {
-		c.lower, c.upper = uts, uts+1
-		c.initialized = true
-		return nil
-	}
-	if uts < c.lower {
-		c.lower = uts
-	}
-	if uts >= c.upper {
-		c.upper = uts + 1
-	}
-	return nil
-}
-
-// FinishDataBlock implements DataBlockIntervalCollector.
-func (c *testKeysSuffixIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
-	l, u := c.lower, c.upper
-	c.lower, c.upper = 0, 0
-	c.initialized = false
-	return l, u, nil
-}
-
-// AddCollectedWithSuffixReplacement is part of the DataBlockIntervalCollector interface.
-func (c *testKeysSuffixIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
-) error {
-	return errors.Errorf("not implemented")
-}
-
-// SupportsSuffixReplacement part of the DataBlockIntervalCollector interface.
-func (c *testKeysSuffixIntervalCollector) SupportsSuffixReplacement() bool {
-	return false
+	return BlockInterval{uint64(n), uint64(n) + 1}
 }

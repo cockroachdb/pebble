@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -67,140 +68,159 @@ func TestIntervalEncodeDecode(t *testing.T) {
 	for _, tc := range testCases {
 		buf := make([]byte, 100)
 		t.Run(tc.name, func(t *testing.T) {
-			i1 := interval{lower: tc.lower, upper: tc.upper}
-			b1 := i1.encode(nil)
-			b2 := i1.encode(buf[:0])
+			i1 := BlockInterval{Lower: tc.lower, Upper: tc.upper}
+			b1 := encodeBlockInterval(i1, nil)
+			b2 := encodeBlockInterval(i1, buf[:0])
 			require.True(t, bytes.Equal(b1, b2), "%x != %x", b1, b2)
 			expectedInterval := i1
-			if expectedInterval.lower >= expectedInterval.upper {
-				expectedInterval = interval{}
-			}
-			// Arbitrary initial value.
-			arbitraryInterval := interval{lower: 1000, upper: 1000}
-			i2 := arbitraryInterval
-			i2.decode(b1)
-			require.Equal(t, expectedInterval, i2)
-			i2 = arbitraryInterval
-			i2.decode(b2)
-			require.Equal(t, expectedInterval, i2)
 			require.Equal(t, tc.len, len(b1))
+			if expectedInterval.Lower >= expectedInterval.Upper {
+				expectedInterval = BlockInterval{}
+			}
+			decodeAndCheck(t, b1, expectedInterval)
+			decodeAndCheck(t, b2, expectedInterval)
 		})
 	}
+}
+
+func decodeAndCheck(t *testing.T, buf []byte, expected BlockInterval) {
+	i2, err := decodeBlockInterval(buf)
+	require.NoError(t, err)
+	require.Equal(t, expected, i2)
 }
 
 func TestIntervalUnionIntersects(t *testing.T) {
 	testCases := []struct {
 		name       string
-		i1         interval
-		i2         interval
-		union      interval
+		i1         BlockInterval
+		i2         BlockInterval
+		union      BlockInterval
 		intersects bool
 	}{
 		{
 			name:       "empty and empty",
-			i1:         interval{},
-			i2:         interval{},
-			union:      interval{},
+			i1:         BlockInterval{},
+			i2:         BlockInterval{},
+			union:      BlockInterval{},
 			intersects: false,
 		},
 		{
 			name:       "empty and empty non-zero",
-			i1:         interval{},
-			i2:         interval{100, 99},
-			union:      interval{},
+			i1:         BlockInterval{},
+			i2:         BlockInterval{100, 99},
+			union:      BlockInterval{},
 			intersects: false,
 		},
 		{
 			name:       "empty and non-empty",
-			i1:         interval{},
-			i2:         interval{80, 100},
-			union:      interval{80, 100},
+			i1:         BlockInterval{},
+			i2:         BlockInterval{80, 100},
+			union:      BlockInterval{80, 100},
 			intersects: false,
 		},
 		{
 			name:       "disjoint sets",
-			i1:         interval{50, 60},
-			i2:         interval{math.MaxUint64 - 5, math.MaxUint64},
-			union:      interval{50, math.MaxUint64},
+			i1:         BlockInterval{50, 60},
+			i2:         BlockInterval{math.MaxUint64 - 5, math.MaxUint64},
+			union:      BlockInterval{50, math.MaxUint64},
 			intersects: false,
 		},
 		{
 			name:       "adjacent sets",
-			i1:         interval{50, 60},
-			i2:         interval{60, 100},
-			union:      interval{50, 100},
+			i1:         BlockInterval{50, 60},
+			i2:         BlockInterval{60, 100},
+			union:      BlockInterval{50, 100},
 			intersects: false,
 		},
 		{
 			name:       "overlapping sets",
-			i1:         interval{50, 60},
-			i2:         interval{59, 120},
-			union:      interval{50, 120},
+			i1:         BlockInterval{50, 60},
+			i2:         BlockInterval{59, 120},
+			union:      BlockInterval{50, 120},
 			intersects: true,
 		},
-	}
-	isEmpty := func(i interval) bool {
-		return i.lower >= i.upper
 	}
 	// adjustUnionExpectation exists because union does not try to
 	// canonicalize empty sets by turning them into [0, 0), since it is
 	// unnecessary -- the higher level context of the BlockIntervalCollector
-	// will do so when calling interval.encode.
-	adjustUnionExpectation := func(expected interval, i1 interval, i2 interval) interval {
-		if isEmpty(i2) {
+	// will do so when calling BlockInterval.encode.
+	adjustUnionExpectation := func(expected BlockInterval, i1 BlockInterval, i2 BlockInterval) BlockInterval {
+		if i2.IsEmpty() {
 			return i1
 		}
-		if isEmpty(i1) {
+		if i1.IsEmpty() {
 			return i2
 		}
 		return expected
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.intersects, tc.i1.intersects(tc.i2))
-			require.Equal(t, tc.intersects, tc.i2.intersects(tc.i1))
-			require.Equal(t, !isEmpty(tc.i1), tc.i1.intersects(tc.i1))
-			require.Equal(t, !isEmpty(tc.i2), tc.i2.intersects(tc.i2))
+			require.Equal(t, tc.intersects, tc.i1.Intersects(tc.i2))
+			require.Equal(t, tc.intersects, tc.i2.Intersects(tc.i1))
+			require.Equal(t, !tc.i1.IsEmpty(), tc.i1.Intersects(tc.i1))
+			require.Equal(t, !tc.i2.IsEmpty(), tc.i2.Intersects(tc.i2))
 			union := tc.i1
-			union.union(tc.i2)
+			union.UnionWith(tc.i2)
 			require.Equal(t, adjustUnionExpectation(tc.union, tc.i1, tc.i2), union)
 			union = tc.i2
-			union.union(tc.i1)
+			union.UnionWith(tc.i1)
 			require.Equal(t, adjustUnionExpectation(tc.union, tc.i2, tc.i1), union)
 		})
 	}
 }
 
-type testDataBlockIntervalCollector struct {
-	i interval
+type testIntervalMapper struct{}
+
+// MapPointKey is part of the IntervalMapper interface.
+func (testIntervalMapper) MapPointKey(key InternalKey, value []byte) (BlockInterval, error) {
+	return stringToInterval(key.UserKey), nil
 }
 
-var _ DataBlockIntervalCollector = &testDataBlockIntervalCollector{}
-
-func (c *testDataBlockIntervalCollector) Add(key InternalKey, value []byte) error {
-	return nil
+// MapRangeKey is part of the IntervalMapper interface.
+func (testIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error) {
+	var r BlockInterval
+	for _, k := range span.Keys {
+		if len(k.Suffix) > 0 {
+			r.UnionWith(stringToInterval(k.Suffix))
+		}
+	}
+	return r, nil
 }
 
-func (c *testDataBlockIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
-) error {
-	return errors.Errorf("not supported")
+func stringToInterval(str []byte) BlockInterval {
+	ts, err := strconv.Atoi(string(str))
+	if err != nil {
+		panic(err)
+	}
+	uts := uint64(ts)
+	return BlockInterval{uts, uts + 1}
 }
 
-func (c *testDataBlockIntervalCollector) SupportsSuffixReplacement() bool {
-	return false
+func addTestPointKeys(t *testing.T, bic BlockPropertyCollector, suffixes ...int) {
+	for _, suffix := range suffixes {
+		k := base.MakeInternalKey([]byte(fmt.Sprint(suffix)), 0, InternalKeyKindSet)
+		require.NoError(t, bic.AddPointKey(k, nil))
+	}
 }
 
-func (c *testDataBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
-	return c.i.lower, c.i.upper, nil
+func addTestRangeKeys(t *testing.T, bic BlockPropertyCollector, suffixes ...int) {
+	var s keyspan.Span
+	s.Start = []byte("a")
+	s.End = []byte("b")
+	for _, suffix := range suffixes {
+		s.Keys = append(s.Keys, keyspan.Key{
+			Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeySet),
+			Suffix:  []byte(fmt.Sprint(suffix)),
+			Value:   []byte("foo"),
+		})
+	}
+	require.NoError(t, bic.AddRangeKeys(s))
 }
 
 func TestBlockIntervalCollector(t *testing.T) {
-	var points, ranges testDataBlockIntervalCollector
-	bic := NewBlockIntervalCollector("foo", &points, &ranges)
+	bic := NewBlockIntervalCollector("foo", testIntervalMapper{}, nil /* suffixReplacer */)
 	require.Equal(t, "foo", bic.Name())
-	// Set up the point key collector with an initial (empty) interval.
-	points.i = interval{1, 1}
+
 	// First data block has empty point key interval.
 	encoded, err := bic.FinishDataBlock(nil)
 	require.NoError(t, err)
@@ -208,13 +228,14 @@ func TestBlockIntervalCollector(t *testing.T) {
 	bic.AddPrevDataBlockToIndexBlock()
 	// Second data block contains a point and range key interval. The latter
 	// should not contribute to the block interval.
-	points.i = interval{20, 25}
-	ranges.i = interval{5, 150}
+	addTestPointKeys(t, bic, 20, 24)
+	addTestRangeKeys(t, bic, 5, 10, 15)
+	addTestRangeKeys(t, bic, 149)
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
-	var decoded interval
-	require.NoError(t, decoded.decode(encoded))
-	require.Equal(t, interval{20, 25}, decoded)
+	decoded, err := decodeBlockInterval(encoded)
+	require.NoError(t, err)
+	require.Equal(t, BlockInterval{20, 25}, decoded)
 	var encodedIndexBlock []byte
 	// Finish index block before including second data block.
 	encodedIndexBlock, err = bic.FinishIndexBlock(nil)
@@ -222,71 +243,66 @@ func TestBlockIntervalCollector(t *testing.T) {
 	require.True(t, bytes.Equal(nil, encodedIndexBlock))
 	bic.AddPrevDataBlockToIndexBlock()
 	// Third data block.
-	points.i = interval{10, 15}
+	addTestPointKeys(t, bic, 14, 10)
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
-	require.NoError(t, decoded.decode(encoded))
-	require.Equal(t, interval{10, 15}, decoded)
+	decodeAndCheck(t, encoded, BlockInterval{10, 15})
 	bic.AddPrevDataBlockToIndexBlock()
 	// Fourth data block.
-	points.i = interval{100, 105}
+	addTestPointKeys(t, bic, 100, 104)
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
-	require.NoError(t, decoded.decode(encoded))
-	require.Equal(t, interval{100, 105}, decoded)
+	decodeAndCheck(t, encoded, BlockInterval{100, 105})
 	// Finish index block before including fourth data block.
 	encodedIndexBlock, err = bic.FinishIndexBlock(nil)
 	require.NoError(t, err)
-	require.NoError(t, decoded.decode(encodedIndexBlock))
-	require.Equal(t, interval{10, 25}, decoded)
+	decodeAndCheck(t, encodedIndexBlock, BlockInterval{10, 25})
 	bic.AddPrevDataBlockToIndexBlock()
 	// Finish index block that contains only fourth data block.
 	encodedIndexBlock, err = bic.FinishIndexBlock(nil)
 	require.NoError(t, err)
-	require.NoError(t, decoded.decode(encodedIndexBlock))
-	require.Equal(t, interval{100, 105}, decoded)
+	decodeAndCheck(t, encodedIndexBlock, BlockInterval{100, 105})
 	var encodedTable []byte
 	// Finish table. The table interval is the union of the current point key
 	// table interval [10, 105) and the range key interval [5, 150).
 	encodedTable, err = bic.FinishTable(nil)
 	require.NoError(t, err)
-	require.NoError(t, decoded.decode(encodedTable))
-	require.Equal(t, interval{5, 150}, decoded)
+	decodeAndCheck(t, encodedTable, BlockInterval{5, 150})
 }
 
 func TestBlockIntervalFilter(t *testing.T) {
 	testCases := []struct {
 		name       string
-		filter     interval
-		prop       interval
+		filter     BlockInterval
+		prop       BlockInterval
 		intersects bool
 	}{
 		{
 			name:       "non-empty and empty",
-			filter:     interval{10, 15},
-			prop:       interval{},
+			filter:     BlockInterval{10, 15},
+			prop:       BlockInterval{},
 			intersects: false,
 		},
 		{
 			name:       "does not intersect",
-			filter:     interval{10, 15},
-			prop:       interval{15, 20},
+			filter:     BlockInterval{10, 15},
+			prop:       BlockInterval{15, 20},
 			intersects: false,
 		},
 		{
 			name:       "intersects",
-			filter:     interval{10, 15},
-			prop:       interval{14, 20},
+			filter:     BlockInterval{10, 15},
+			prop:       BlockInterval{14, 20},
 			intersects: true,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var points testDataBlockIntervalCollector
 			name := "foo"
-			bic := NewBlockIntervalCollector(name, &points, nil)
-			bif := NewBlockIntervalFilter(name, tc.filter.lower, tc.filter.upper, nil)
-			points.i = tc.prop
+			// The mapper here won't actually be used.
+			bic := NewBlockIntervalCollector(name, &testIntervalMapper{}, nil)
+			bif := NewBlockIntervalFilter(name, tc.filter.Lower, tc.filter.Upper, nil)
+			bic.(*BlockIntervalCollector).blockInterval = tc.prop
 			prop, _ := bic.FinishDataBlock(nil)
 			intersects, err := bif.Intersects(prop)
 			require.NoError(t, err)
@@ -370,28 +386,27 @@ func (b filterWithTrueForEmptyProp) SyntheticSuffixIntersects(
 
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
-	var dbic testDataBlockIntervalCollector
-	bic0 := NewBlockIntervalCollector("p0", &dbic, nil)
+	bic0 := NewBlockIntervalCollector("p0", testIntervalMapper{}, nil)
 	bic0Id := byte(0)
-	bic10 := NewBlockIntervalCollector("p10", &dbic, nil)
+	bic10 := NewBlockIntervalCollector("p10", testIntervalMapper{}, nil)
 	bic10Id := byte(10)
-	dbic.i = interval{10, 20}
-	prop0 := append([]byte(nil), bic0Id)
+
+	addTestPointKeys(t, bic0, 10, 19)
 	_, err := bic0.FinishDataBlock(nil)
 	require.NoError(t, err)
-	prop0, err = bic0.FinishTable(prop0)
+	prop0, err := bic0.FinishTable([]byte{bic0Id})
 	require.NoError(t, err)
-	dbic.i = interval{110, 120}
-	prop10 := append([]byte(nil), bic10Id)
+
+	addTestPointKeys(t, bic10, 110, 119)
 	_, err = bic10.FinishDataBlock(nil)
 	require.NoError(t, err)
-	prop10, err = bic10.FinishTable(prop10)
+	prop10, err := bic10.FinishTable([]byte{bic10Id})
 	require.NoError(t, err)
 	prop0Str := string(prop0)
 	prop10Str := string(prop10)
 	type filter struct {
 		name string
-		i    interval
+		i    BlockInterval
 	}
 	testCases := []struct {
 		name      string
@@ -412,8 +427,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "no props",
 			userProps: map[string]string{},
 			filters: []filter{
-				{name: "p0", i: interval{20, 30}},
-				{name: "p10", i: interval{20, 30}},
+				{name: "p0", i: BlockInterval{20, 30}},
+				{name: "p10", i: BlockInterval{20, 30}},
 			},
 			intersects: true,
 		},
@@ -421,8 +436,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop0, does not intersect",
 			userProps: map[string]string{"p0": prop0Str},
 			filters: []filter{
-				{name: "p0", i: interval{20, 30}},
-				{name: "p10", i: interval{20, 30}},
+				{name: "p0", i: BlockInterval{20, 30}},
+				{name: "p10", i: BlockInterval{20, 30}},
 			},
 			intersects: false,
 		},
@@ -430,8 +445,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop0, intersects",
 			userProps: map[string]string{"p0": prop0Str},
 			filters: []filter{
-				{name: "p0", i: interval{11, 21}},
-				{name: "p10", i: interval{20, 30}},
+				{name: "p0", i: BlockInterval{11, 21}},
+				{name: "p10", i: BlockInterval{20, 30}},
 			},
 			intersects:            true,
 			shortIDToFiltersIndex: []int{0},
@@ -440,8 +455,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop10, does not intersect",
 			userProps: map[string]string{"p10": prop10Str},
 			filters: []filter{
-				{name: "p0", i: interval{11, 21}},
-				{name: "p10", i: interval{20, 30}},
+				{name: "p0", i: BlockInterval{11, 21}},
+				{name: "p10", i: BlockInterval{20, 30}},
 			},
 			intersects: false,
 		},
@@ -449,8 +464,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop10, intersects",
 			userProps: map[string]string{"p10": prop10Str},
 			filters: []filter{
-				{name: "p0", i: interval{11, 21}},
-				{name: "p10", i: interval{115, 125}},
+				{name: "p0", i: BlockInterval{11, 21}},
+				{name: "p10", i: BlockInterval{115, 125}},
 			},
 			intersects:            true,
 			shortIDToFiltersIndex: []int{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1},
@@ -459,8 +474,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop10, intersects",
 			userProps: map[string]string{"p10": prop10Str},
 			filters: []filter{
-				{name: "p10", i: interval{115, 125}},
-				{name: "p0", i: interval{11, 21}},
+				{name: "p10", i: BlockInterval{115, 125}},
+				{name: "p0", i: BlockInterval{11, 21}},
 			},
 			intersects:            true,
 			shortIDToFiltersIndex: []int{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0},
@@ -469,8 +484,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop0 and prop10, does not intersect",
 			userProps: map[string]string{"p0": prop0Str, "p10": prop10Str},
 			filters: []filter{
-				{name: "p10", i: interval{115, 125}},
-				{name: "p0", i: interval{20, 30}},
+				{name: "p10", i: BlockInterval{115, 125}},
+				{name: "p0", i: BlockInterval{20, 30}},
 			},
 			intersects:            false,
 			shortIDToFiltersIndex: []int{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0},
@@ -479,8 +494,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop0 and prop10, does not intersect",
 			userProps: map[string]string{"p0": prop0Str, "p10": prop10Str},
 			filters: []filter{
-				{name: "p0", i: interval{10, 20}},
-				{name: "p10", i: interval{125, 135}},
+				{name: "p0", i: BlockInterval{10, 20}},
+				{name: "p10", i: BlockInterval{125, 135}},
 			},
 			intersects:            false,
 			shortIDToFiltersIndex: []int{0},
@@ -489,8 +504,8 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 			name:      "prop0 and prop10, intersects",
 			userProps: map[string]string{"p0": prop0Str, "p10": prop10Str},
 			filters: []filter{
-				{name: "p10", i: interval{115, 125}},
-				{name: "p0", i: interval{10, 20}},
+				{name: "p10", i: BlockInterval{115, 125}},
+				{name: "p0", i: BlockInterval{10, 20}},
 			},
 			intersects:            true,
 			shortIDToFiltersIndex: []int{1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0},
@@ -500,7 +515,7 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			var filters []BlockPropertyFilter
 			for _, f := range tc.filters {
-				filter := NewBlockIntervalFilter(f.name, f.i.lower, f.i.upper, nil)
+				filter := NewBlockIntervalFilter(f.name, f.i.Lower, f.i.Upper, nil)
 				filters = append(filters, filter)
 			}
 			filterer := newBlockPropertiesFilterer(filters, nil, nil)
@@ -517,23 +532,24 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 	var emptyProps []byte
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	var encoder blockPropertiesEncoder
-	var dbic testDataBlockIntervalCollector
-	bic0 := NewBlockIntervalCollector("", &dbic, nil)
+	bic0 := NewBlockIntervalCollector("", testIntervalMapper{}, nil)
 	bic0Id := shortID(0)
-	bic10 := NewBlockIntervalCollector("", &dbic, nil)
+	bic10 := NewBlockIntervalCollector("", testIntervalMapper{}, nil)
 	bic10Id := shortID(10)
-	dbic.i = interval{10, 20}
+
+	addTestPointKeys(t, bic0, 19, 10, 15)
 	prop, err := bic0.FinishDataBlock(encoder.getScratchForProp())
 	require.NoError(t, err)
 	encoder.addProp(bic0Id, prop)
-	dbic.i = interval{110, 120}
+
+	addTestPointKeys(t, bic10, 110, 119)
 	prop, err = bic10.FinishDataBlock(encoder.getScratchForProp())
 	require.NoError(t, err)
 	encoder.addProp(bic10Id, prop)
 	props0And10 := encoder.props()
 	type filter struct {
 		shortID                shortID
-		i                      interval
+		i                      BlockInterval
 		intersectsForEmptyProp bool
 	}
 	testCases := []struct {
@@ -559,7 +575,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{5, 15},
+					i:       BlockInterval{5, 15},
 				},
 			},
 			intersects: false,
@@ -570,7 +586,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{105, 111},
+					i:       BlockInterval{105, 111},
 				},
 			},
 			intersects: false,
@@ -581,7 +597,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{5, 15},
+					i:       BlockInterval{5, 15},
 				},
 			},
 			intersects: true,
@@ -592,7 +608,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{20, 25},
+					i:       BlockInterval{20, 25},
 				},
 			},
 			intersects: false,
@@ -603,7 +619,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 10,
-					i:       interval{105, 111},
+					i:       BlockInterval{105, 111},
 				},
 			},
 			intersects: true,
@@ -614,7 +630,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 10,
-					i:       interval{105, 110},
+					i:       BlockInterval{105, 110},
 				},
 			},
 			intersects: false,
@@ -625,7 +641,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 5,
-					i:       interval{105, 110},
+					i:       BlockInterval{105, 110},
 				},
 			},
 			intersects: false,
@@ -636,11 +652,11 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{5, 15},
+					i:       BlockInterval{5, 15},
 				},
 				{
 					shortID: 5,
-					i:       interval{105, 110},
+					i:       BlockInterval{105, 110},
 				},
 			},
 			intersects: false,
@@ -651,21 +667,21 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{5, 15},
+					i:       BlockInterval{5, 15},
 				},
 				{
 					shortID:                5,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID:                7,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID:                11,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 			},
@@ -677,25 +693,25 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{5, 15},
+					i:       BlockInterval{5, 15},
 				},
 				{
 					shortID:                5,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID:                7,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID: 10,
-					i:       interval{105, 111},
+					i:       BlockInterval{105, 111},
 				},
 				{
 					shortID:                11,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 			},
@@ -707,25 +723,25 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			filters: []filter{
 				{
 					shortID: 0,
-					i:       interval{5, 15},
+					i:       BlockInterval{5, 15},
 				},
 				{
 					shortID:                5,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID:                7,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID: 10,
-					i:       interval{105, 110},
+					i:       BlockInterval{105, 110},
 				},
 				{
 					shortID:                11,
-					i:                      interval{105, 110},
+					i:                      BlockInterval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 			},
@@ -744,7 +760,7 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 				}
 			}
 			for _, f := range tc.filters {
-				filter := NewBlockIntervalFilter("", f.i.lower, f.i.upper, nil)
+				filter := NewBlockIntervalFilter("", f.i.Lower, f.i.Upper, nil)
 				bpf := BlockPropertyFilter(filter)
 				if f.intersectsForEmptyProp {
 					bpf = filterWithTrueForEmptyProp{filter}
@@ -779,137 +795,30 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 	}
 }
 
-// valueCharBlockIntervalCollector implements DataBlockIntervalCollector by
-// maintaining the (inclusive) lower and (exclusive) upper bound of a fixed
-// character position in the value, when represented as an integer.
-type valueCharBlockIntervalCollector struct {
-	charIdx      int
-	initialized  bool
-	lower, upper uint64
+// valueCharIntervalMapper implements DataBlockIntervalCollector by maintaining
+// the range of values for a fixed character position in the value, when
+// represented as an integer.
+type valueCharIntervalMapper struct {
+	charIdx int
 }
 
-var _ DataBlockIntervalCollector = &valueCharBlockIntervalCollector{}
+var _ IntervalMapper = &valueCharIntervalMapper{}
 
-// Add implements DataBlockIntervalCollector by maintaining the lower and upper
-// bound of a fixed character position in the value.
-func (c *valueCharBlockIntervalCollector) Add(_ InternalKey, value []byte) error {
+func (c *valueCharIntervalMapper) MapPointKey(_ InternalKey, value []byte) (BlockInterval, error) {
 	charIdx := c.charIdx
 	if charIdx == -1 {
 		charIdx = len(value) - 1
 	}
 	val, err := strconv.Atoi(string(value[charIdx]))
 	if err != nil {
-		return err
+		return BlockInterval{}, err
 	}
 	uval := uint64(val)
-	if !c.initialized {
-		c.lower, c.upper = uval, uval+1
-		c.initialized = true
-		return nil
-	}
-	if uval < c.lower {
-		c.lower = uval
-	}
-	if uval >= c.upper {
-		c.upper = uval + 1
-	}
-
-	return nil
+	return BlockInterval{Lower: uval, Upper: uval + 1}, nil
 }
 
-// Finish implements DataBlockIntervalCollector, returning the lower and upper
-// bound for the block. The range is reset to zero in anticipation of the next
-// block.
-func (c *valueCharBlockIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
-	l, u := c.lower, c.upper
-	c.lower, c.upper = 0, 0
-	c.initialized = false
-	return l, u, nil
-}
-
-func (c *valueCharBlockIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
-) error {
-	return errors.Errorf("not supported")
-}
-
-func (c *valueCharBlockIntervalCollector) SupportsSuffixReplacement() bool {
-	return false
-}
-
-// testKeysSuffixIntervalCollector maintains an interval over the timestamps in
-// MVCC-like suffixes for keys (e.g. foo@123).
-type suffixIntervalCollector struct {
-	initialized  bool
-	lower, upper uint64
-}
-
-var _ DataBlockIntervalCollector = &suffixIntervalCollector{}
-
-// Add implements DataBlockIntervalCollector by adding the timestamp(s) in the
-// suffix(es) of this record to the current interval.
-//
-// Note that range sets and unsets may have multiple suffixes. Range key deletes
-// do not have a suffix. All other point keys have a single suffix.
-func (c *suffixIntervalCollector) Add(key InternalKey, value []byte) error {
-	var bs [][]byte
-	// Range keys have their suffixes encoded into the value.
-	if rangekey.IsRangeKey(key.Kind()) {
-		if key.Kind() == base.InternalKeyKindRangeKeyDelete {
-			return nil
-		}
-		s, err := rangekey.Decode(key, value, nil)
-		if err != nil {
-			return err
-		}
-		for _, k := range s.Keys {
-			if len(k.Suffix) > 0 {
-				bs = append(bs, k.Suffix)
-			}
-		}
-	} else {
-		// All other keys have a single suffix encoded into the value.
-		bs = append(bs, key.UserKey)
-	}
-
-	for _, b := range bs {
-		i := testkeys.Comparer.Split(b)
-		ts, err := strconv.Atoi(string(b[i+1:]))
-		if err != nil {
-			return err
-		}
-		uts := uint64(ts)
-		if !c.initialized {
-			c.lower, c.upper = uts, uts+1
-			c.initialized = true
-			continue
-		}
-		if uts < c.lower {
-			c.lower = uts
-		}
-		if uts >= c.upper {
-			c.upper = uts + 1
-		}
-	}
-	return nil
-}
-
-// FinishDataBlock implements DataBlockIntervalCollector.
-func (c *suffixIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
-	l, u := c.lower, c.upper
-	c.lower, c.upper = 0, 0
-	c.initialized = false
-	return l, u, nil
-}
-
-func (c *suffixIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
-) error {
-	return errors.Errorf("not implemented")
-}
-
-func (c *suffixIntervalCollector) SupportsSuffixReplacement() bool {
-	return false
+func (c *valueCharIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error) {
+	return BlockInterval{}, nil
 }
 
 func TestBlockProperties(t *testing.T) {
@@ -1175,10 +1084,10 @@ func (bl *boundLimitedWrapper) Name() string { return bl.inner.Name() }
 
 func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 	propString := fmt.Sprintf("%x", prop)
-	var i interval
-	if err := i.decode(prop); err == nil {
+	i, err := decodeBlockInterval(prop)
+	if err == nil {
 		// If it decodes as an interval, pretty print it as an interval.
-		propString = fmt.Sprintf("[%d, %d)", i.lower, i.upper)
+		propString = fmt.Sprintf("[%d, %d)", i.Lower, i.Upper)
 	}
 
 	v, err := bl.inner.Intersects(prop)
@@ -1190,10 +1099,10 @@ func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 
 func (bl *boundLimitedWrapper) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
 	propString := fmt.Sprintf("%x", prop)
-	var i interval
-	if err := i.decode(prop); err == nil {
+	i, err := decodeBlockInterval(prop)
+	if err == nil {
 		// If it decodes as an interval, pretty print it as an interval.
-		propString = fmt.Sprintf("[%d, %d)", i.lower, i.upper)
+		propString = fmt.Sprintf("[%d, %d)", i.Lower, i.Upper)
 	}
 
 	v, err := bl.inner.SyntheticSuffixIntersects(prop, suffix)
@@ -1227,15 +1136,15 @@ func (bl *boundLimitedWrapper) KeyIsWithinUpperBound(key []byte) (ret bool) {
 	return ret
 }
 
-var _ BlockIntervalSyntheticReplacer = testingBlockIntervalSyntheticReplacer{}
+var _ BlockIntervalSuffixReplacer = testingBlockIntervalSuffixReplacer{}
 
-type testingBlockIntervalSyntheticReplacer struct{}
+type testingBlockIntervalSuffixReplacer struct{}
 
-func (sr testingBlockIntervalSyntheticReplacer) AdjustIntervalWithSyntheticSuffix(
-	lower uint64, upper uint64, suffix []byte,
-) (adjustedLower uint64, adjustedUpper uint64, err error) {
-	synthDecoded, _ := binary.Uvarint(suffix)
-	return synthDecoded, synthDecoded + 1, nil
+func (sr testingBlockIntervalSuffixReplacer) ApplySuffixReplacement(
+	interval BlockInterval, newSuffix []byte,
+) (BlockInterval, error) {
+	synthDecoded, _ := binary.Uvarint(newSuffix)
+	return BlockInterval{Lower: synthDecoded, Upper: synthDecoded + 1}, nil
 }
 
 func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
@@ -1249,7 +1158,7 @@ func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewBlockIntervalFilter(name, min, max, testingBlockIntervalSyntheticReplacer{}), nil
+	return NewBlockIntervalFilter(name, min, max, testingBlockIntervalSuffixReplacer{}), nil
 }
 
 func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
@@ -1266,11 +1175,11 @@ func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
 	var lines []string
 	for _, val := range r.Properties.UserProperties {
 		id := shortID(val[0])
-		var i interval
-		if err := i.decode([]byte(val[1:])); err != nil {
+		i, err := decodeBlockInterval([]byte(val[1:]))
+		if err != nil {
 			return err.Error()
 		}
-		lines = append(lines, fmt.Sprintf("%d: [%d, %d)", id, i.lower, i.upper))
+		lines = append(lines, fmt.Sprintf("%d: [%d, %d)", id, i.Lower, i.Upper))
 	}
 	linesSorted := sort.StringSlice(lines)
 	linesSorted.Sort()
@@ -1295,20 +1204,20 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 			}
 		case "collectors":
 			for _, c := range cmd.Vals {
-				var points, ranges DataBlockIntervalCollector
+				var mapper IntervalMapper
 				switch c {
 				case "value-first":
-					points = &valueCharBlockIntervalCollector{charIdx: 0}
+					mapper = &valueCharIntervalMapper{charIdx: 0}
 				case "value-last":
-					points = &valueCharBlockIntervalCollector{charIdx: -1}
+					mapper = &valueCharIntervalMapper{charIdx: -1}
 				case "suffix":
-					points, ranges = &suffixIntervalCollector{}, &suffixIntervalCollector{}
+					mapper = &testKeysSuffixIntervalMapper{}
 				case "suffix-point-keys-only":
-					points = &suffixIntervalCollector{}
+					mapper = &testKeysSuffixIntervalMapper{ignoreRangeKeys: true}
 				case "suffix-range-keys-only":
-					ranges = &suffixIntervalCollector{}
+					mapper = &testKeysSuffixIntervalMapper{ignorePoints: true}
 				case "nil-points-and-ranges":
-					points, ranges = nil, nil
+					mapper = nil
 				default:
 					return r, fmt.Sprintf("unknown collector: %s", c)
 				}
@@ -1316,7 +1225,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 				opts.BlockPropertyCollectors = append(
 					opts.BlockPropertyCollectors,
 					func() BlockPropertyCollector {
-						return NewBlockIntervalCollector(name, points, ranges)
+						return NewBlockIntervalCollector(name, mapper, nil)
 					})
 			}
 		case "index-block-size":
@@ -1370,11 +1279,11 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			if prop == nil {
 				continue
 			}
-			var i interval
-			if err := i.decode(prop); err != nil {
+			i, err := decodeBlockInterval(prop)
+			if err != nil {
 				return err
 			}
-			lines = append(lines, fmt.Sprintf("%s%d: [%d, %d)\n", indent, id, i.lower, i.upper))
+			lines = append(lines, fmt.Sprintf("%s%d: [%d, %d)\n", indent, id, i.Lower, i.Upper))
 		}
 		linesSorted := sort.StringSlice(lines)
 		linesSorted.Sort()
@@ -1435,13 +1344,16 @@ func keyCountCollectorFn(name string) func() BlockPropertyCollector {
 
 func (p *keyCountCollector) Name() string { return p.name }
 
-func (p *keyCountCollector) Add(k InternalKey, _ []byte) error {
-	if rangekey.IsRangeKey(k.Kind()) {
-		p.table++
-	} else {
-		p.block++
-	}
+func (p *keyCountCollector) AddPointKey(k InternalKey, _ []byte) error {
+	p.block++
 	return nil
+}
+
+func (p *keyCountCollector) AddRangeKeys(span Span) error {
+	return rangekey.Encode(&span, func(k base.InternalKey, v []byte) error {
+		p.table++
+		return nil
+	})
 }
 
 func (p *keyCountCollector) FinishDataBlock(buf []byte) ([]byte, error) {
@@ -1482,73 +1394,42 @@ func (p *keyCountCollector) SupportsSuffixReplacement() bool {
 	return true
 }
 
-// intSuffixCollector is testing prop collector that collects the min and
-// max value of numeric suffix of keys (interpreting suffixLen bytes as ascii
-// for conversion with atoi).
-type intSuffixCollector struct {
+type intSuffixIntervalMapper struct {
 	suffixLen int
-	min, max  uint64 // inclusive
 }
 
-func makeIntSuffixCollector(len int) intSuffixCollector {
-	return intSuffixCollector{len, math.MaxUint64, 0}
+var _ IntervalMapper = (*intSuffixIntervalMapper)(nil)
+var _ BlockIntervalSuffixReplacer = (*intSuffixIntervalMapper)(nil)
+
+func newIntSuffixIntervalMapper(suffixLen int) *intSuffixIntervalMapper {
+	return &intSuffixIntervalMapper{suffixLen: suffixLen}
 }
 
-func (p *intSuffixCollector) setFromSuffix(to []byte) error {
-	if len(to) >= p.suffixLen {
-		parsed, err := strconv.Atoi(string(to[len(to)-p.suffixLen:]))
-		if err != nil {
-			return err
-		}
-		p.min = uint64(parsed)
-		p.max = uint64(parsed)
+// MapPointKey is part of the IntervalMapper interface.
+func (i *intSuffixIntervalMapper) MapPointKey(
+	key InternalKey, value []byte,
+) (BlockInterval, error) {
+	return stringToInterval(key.UserKey[len(key.UserKey)-i.suffixLen:]), nil
+}
+
+// MapRangeKeys is part of the IntervalMapper interface.
+func (i *intSuffixIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error) {
+	return BlockInterval{}, nil
+}
+
+// ApplySuffixReplacement is part of the BlockIntervalSuffixReplacer interface.
+func (i *intSuffixIntervalMapper) ApplySuffixReplacement(
+	interval BlockInterval, newSuffix []byte,
+) (BlockInterval, error) {
+	if len(newSuffix) > i.suffixLen {
+		newSuffix = newSuffix[len(newSuffix)-i.suffixLen:]
 	}
-	return nil
+	return stringToInterval(newSuffix), nil
 }
 
-func (p *intSuffixCollector) Add(key InternalKey, _ []byte) error {
-	if len(key.UserKey) > p.suffixLen {
-		parsed, err := strconv.Atoi(string(key.UserKey[len(key.UserKey)-p.suffixLen:]))
-		if err != nil {
-			return err
-		}
-		v := uint64(parsed)
-		if v > p.max {
-			p.max = v
-		}
-		if v < p.min {
-			p.min = v
-		}
-	}
-	return nil
-}
-
-// testIntSuffixIntervalCollector is a wrapper for testIntSuffixCollector that
-// uses it to implement a block interval collector.
-type intSuffixIntervalCollector struct {
-	intSuffixCollector
-}
-
-var _ DataBlockIntervalCollector = &intSuffixIntervalCollector{}
-
-func intSuffixIntervalCollectorFn(name string, length int) func() BlockPropertyCollector {
+func intSuffixIntervalCollectorFn(name string, suffixLen int) func() BlockPropertyCollector {
+	m := newIntSuffixIntervalMapper(suffixLen)
 	return func() BlockPropertyCollector {
-		return NewBlockIntervalCollector(name, &intSuffixIntervalCollector{makeIntSuffixCollector(length)}, nil)
+		return NewBlockIntervalCollector(name, m, m)
 	}
-}
-
-var _ DataBlockIntervalCollector = &intSuffixIntervalCollector{}
-
-func (p *intSuffixIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
-	return p.min, p.max + 1, nil
-}
-
-func (p *intSuffixIntervalCollector) AddCollectedWithSuffixReplacement(
-	oldLower, oldUpper uint64, oldSuffix, newSuffix []byte,
-) error {
-	return p.setFromSuffix(newSuffix)
-}
-
-func (p *intSuffixIntervalCollector) SupportsSuffixReplacement() bool {
-	return true
 }

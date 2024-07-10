@@ -42,8 +42,8 @@ func TestRewriteSuffixProps(t *testing.T) {
 			// at the correct (new) shortIDs. Seeing the rolled up value here is almost an
 			// end-to-end test since we only fed them each block during rewrite.
 			expectedProps["count"] = string(append([]byte{1}, strconv.Itoa(keyCount+rangeKeyCount)...))
-			expectedProps["bp2"] = string(interval{46, 47}.encode([]byte{2}))
-			expectedProps["bp3"] = string(interval{646, 647}.encode([]byte{0}))
+			expectedProps["bp2"] = string(encodeBlockInterval(BlockInterval{46, 47}, []byte{2}))
+			expectedProps["bp3"] = string(encodeBlockInterval(BlockInterval{646, 647}, []byte{0}))
 
 			// Swap the order of two of the props so they have new shortIDs, and remove
 			// one. rwOpts inherits the IsStrictObsolete value from wOpts.
@@ -110,7 +110,6 @@ func TestRewriteSuffixProps(t *testing.T) {
 					newLayout, err := rRewritten.Layout()
 					require.NoError(t, err)
 
-					ival := interval{}
 					for i := range layout.Data {
 						oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
 						oldDecoder := makeBlockPropertiesDecoder(len(oldProps), layout.Data[i].Props)
@@ -129,10 +128,8 @@ func TestRewriteSuffixProps(t *testing.T) {
 							}
 						}
 						require.Equal(t, oldProps[0], newProps[1])
-						require.NoError(t, ival.decode(newProps[0]))
-						require.Equal(t, interval{646, 647}, ival)
-						require.NoError(t, ival.decode(newProps[2]))
-						require.Equal(t, interval{46, 47}, ival)
+						decodeAndCheck(t, newProps[0], BlockInterval{646, 647})
+						decodeAndCheck(t, newProps[2], BlockInterval{46, 47})
 					}
 				})
 			}
