@@ -198,16 +198,22 @@ func newSingleLevelIterator(
 		return nil, r.err
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	i.inPool = false
-	if err := i.init(
-		ctx, r, v, transforms, lower, upper, filterer, useFilter, stats, categoryAndQoS, statsCollector, rp, bufferPool,
-	); err != nil {
+	i.init(
+		ctx, r, v, transforms, lower, upper, filterer, useFilter,
+		stats, categoryAndQoS, statsCollector, rp, bufferPool,
+	)
+	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
+	if err == nil {
+		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
+	}
+	if err != nil {
 		_ = i.Close()
 		return nil, err
 	}
 	return i, nil
 }
 
+// init initializes the singleLevelIterator struct. It does not read the index.
 func (i *singleLevelIterator) init(
 	ctx context.Context,
 	r *Reader,
@@ -221,19 +227,8 @@ func (i *singleLevelIterator) init(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
-) error {
-	i.iterStats.init(categoryAndQoS, statsCollector)
-	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
-	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
-	if err != nil {
-		return err
-	}
-	if v != nil {
-		i.vState = v
-		i.endKeyInclusive, lower, upper = v.constrainBounds(lower, upper, false /* endInclusive */)
-	}
-
+) {
+	i.inPool = false
 	i.ctx = ctx
 	i.lower = lower
 	i.upper = upper
@@ -244,13 +239,18 @@ func (i *singleLevelIterator) init(
 	i.stats = stats
 	i.transforms = transforms
 	i.bufferPool = bufferPool
-	err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
-	if err != nil {
-		// blockIter.Close releases indexH and always returns a nil error
-		_ = i.index.Close()
-		return err
+	if v != nil {
+		i.vState = v
+		i.endKeyInclusive, i.lower, i.upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
-	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
+
+	i.iterStats.init(categoryAndQoS, statsCollector)
+
+	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
+	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(
+		ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
+
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -273,7 +273,6 @@ func (i *singleLevelIterator) init(
 		}
 		i.data.SetHasValuePrefix(true)
 	}
-	return nil
 }
 
 // Helper function to check if keys returned from iterator are within virtual bounds.
