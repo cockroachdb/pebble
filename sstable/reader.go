@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -258,8 +259,9 @@ func (r *Reader) NewCompactionIter(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
+	smoother *rate.Smoother,
 ) (Iterator, error) {
-	return r.newCompactionIter(transforms, categoryAndQoS, statsCollector, rp, nil, bufferPool)
+	return r.newCompactionIter(transforms, categoryAndQoS, statsCollector, rp, nil, bufferPool, smoother)
 }
 
 func (r *Reader) newCompactionIter(
@@ -269,10 +271,13 @@ func (r *Reader) newCompactionIter(
 	rp ReaderProvider,
 	vState *virtualState,
 	bufferPool *block.BufferPool,
+	smoother *rate.Smoother,
 ) (Iterator, error) {
 	if vState != nil && vState.isSharedIngested {
 		transforms.HideObsoletePoints = true
 	}
+	pos := 0
+	tracked := smoother.Track(func() uint64 { pos++; return uint64(pos * 10000) })
 	if r.Properties.IndexType == twoLevelIndex {
 		i, err := newTwoLevelIterator(
 			context.Background(),
@@ -283,7 +288,7 @@ func (r *Reader) newCompactionIter(
 			return nil, err
 		}
 		i.setupForCompaction()
-		return &twoLevelCompactionIterator{twoLevelIterator: i}, nil
+		return &twoLevelCompactionIterator{twoLevelIterator: i, tracked: tracked}, nil
 	}
 	i, err := newSingleLevelIterator(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
@@ -293,7 +298,7 @@ func (r *Reader) newCompactionIter(
 		return nil, err
 	}
 	i.setupForCompaction()
-	return &compactionIterator{singleLevelIterator: i}, nil
+	return &compactionIterator{singleLevelIterator: i, tracked: tracked}, nil
 }
 
 // NewRawRangeDelIter returns an internal iterator for the contents of the

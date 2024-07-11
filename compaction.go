@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -251,6 +252,8 @@ type compaction struct {
 	metrics map[int]*LevelMetrics
 
 	pickerMetrics compactionPickerMetrics
+
+	smoother *rate.Smoother
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -315,7 +318,7 @@ func (c *compaction) userKeyBounds() base.UserKeyBounds {
 }
 
 func newCompaction(
-	pc *pickedCompaction, opts *Options, beganAt time.Time, provider objstorage.Provider,
+	pc *pickedCompaction, opts *Options, beganAt time.Time, provider objstorage.Provider, smoother *rate.Smoother,
 ) *compaction {
 	c := &compaction{
 		kind:              compactionKindDefault,
@@ -332,6 +335,7 @@ func newCompaction(
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
 		pickerMetrics:     pc.pickerMetrics,
+		smoother:          smoother,
 	}
 	c.startLevel = &c.inputs[0]
 	if pc.startLevel.l0SublevelInfo != nil {
@@ -438,8 +442,7 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 	// maxOverlapBytes will cause splits at f10, f20,..., f990, which
 	// means an upper bound file count of 100 files. Say the input bytes
 	// in the flush are such that acceptableFileCount=10. We will fatten
-	// up maxOverlapBytes by 10x to ensure that the upper bound file count
-	// drops to 10. However, it is possible that in practice, even without
+	// 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter) 10. However, it is possible that in practice, even without
 	// this change, we would have produced no more than 10 files, and that
 	// this change makes the files unnecessarily wide. Say the input bytes
 	// are distributed such that 10% are in f0...f9, 10% in f10...f19, ...
@@ -747,6 +750,7 @@ func (c *compaction) newInputIters(
 				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
 					compaction: true,
 					bufferPool: &c.bufferPool,
+					smoother:   c.smoother,
 				}))
 			// TODO(jackson): Use keyspanimpl.LevelIter to avoid loading all the range
 			// deletions into memory upfront. (See #2015, which reverted this.) There
@@ -904,6 +908,7 @@ func (c *compaction) newRangeDelIter(
 		internalIterOpts{
 			compaction: true,
 			bufferPool: &c.bufferPool,
+			smoother:   c.smoother,
 		}, iterRangeDeletions)
 	if err != nil {
 		return nil, err
@@ -1784,7 +1789,7 @@ func (d *DB) tryScheduleManualCompaction(env compactionEnv, manual *manualCompac
 		return false
 	}
 
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), d.smoother)
 	d.mu.compact.compactingCount++
 	d.addInProgressCompaction(c)
 	go d.compact(c, manual.done)
@@ -1810,7 +1815,7 @@ func (d *DB) tryScheduleAutoCompaction(
 	if pc == nil {
 		return false
 	}
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), d.smoother)
 	d.mu.compact.compactingCount++
 	d.addInProgressCompaction(c)
 	go d.compact(c, nil)
@@ -2510,7 +2515,7 @@ func (d *DB) compactAndWrite(
 		IneffectualSingleDeleteCallback:        d.opts.Experimental.IneffectualSingleDeleteCallback,
 		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 	}
-	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
+	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter, d.smoother)
 
 	runnerCfg := compact.RunnerConfig{
 		CompactionBounds:           base.UserKeyBoundsFromInternal(c.smallest, c.largest),
@@ -2519,7 +2524,7 @@ func (d *DB) compactAndWrite(
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
 	}
-	runner := compact.NewRunner(runnerCfg, iter)
+	runner := compact.NewRunner(runnerCfg, iter, d.smoother)
 	for runner.MoreDataToWrite() {
 		if c.cancel.Load() {
 			return runner.Finish().WithError(ErrCancelledCompaction)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -969,12 +970,14 @@ func (i *twoLevelIterator) Close() error {
 // were separated due to performance.
 type twoLevelCompactionIterator struct {
 	*twoLevelIterator
+	tracked rate.Tracked
 }
 
 // twoLevelCompactionIterator implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*twoLevelCompactionIterator)(nil)
 
 func (i *twoLevelCompactionIterator) Close() error {
+	i.tracked.Close()
 	return i.twoLevelIterator.Close()
 }
 
@@ -1025,6 +1028,7 @@ func (i *twoLevelCompactionIterator) skipForward(kv *base.InternalKV) *base.Inte
 				break
 			}
 			result := i.loadIndex(+1)
+			i.tracked.Tick()
 			if result != loadBlockOK {
 				if i.err != nil {
 					break

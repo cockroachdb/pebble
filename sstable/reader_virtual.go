@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -96,9 +97,10 @@ func (v *VirtualReader) NewCompactionIter(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
+	smoother *rate.Smoother,
 ) (Iterator, error) {
 	return v.reader.newCompactionIter(
-		transforms, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
+		transforms, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool, smoother)
 }
 
 // NewIterWithBlockPropertyFiltersAndContextEtc wraps

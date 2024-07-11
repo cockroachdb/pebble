@@ -516,7 +516,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.picker = &tc.picker
 		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
-			c := newCompaction(pc, opts, time.Now(), nil /* provider */)
+			c := newCompaction(pc, opts, time.Now(), nil /* provider */, nil /* smoother */)
 
 			gotStart := fileNums(c.startLevel.files)
 			gotML := ""
@@ -1297,7 +1297,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */)
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, nil /* smoother */)
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 

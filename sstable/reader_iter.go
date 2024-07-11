@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/rate"
 )
 
 // Iterator iterates over an entire table of data.
@@ -154,6 +155,7 @@ func checkTwoLevelIterator(obj interface{}) {
 // bytes that have been iterated through.
 type compactionIterator struct {
 	*singleLevelIterator
+	tracked rate.Tracked
 }
 
 // compactionIterator implements the base.InternalIterator interface.
@@ -185,6 +187,11 @@ func (i *compactionIterator) First() *base.InternalKV {
 	return i.skipForward(i.singleLevelIterator.First())
 }
 
+func (i *compactionIterator) Close() error {
+	i.tracked.Close()
+	return i.singleLevelIterator.Close()
+}
+
 func (i *compactionIterator) Last() *base.InternalKV {
 	panic("pebble: Last unimplemented")
 }
@@ -195,6 +202,8 @@ func (i *compactionIterator) Next() *base.InternalKV {
 	if i.err != nil {
 		return nil
 	}
+	//bytesRead := i.stats.BlockBytes
+
 	return i.skipForward(i.data.Next())
 }
 
@@ -213,6 +222,7 @@ func (i *compactionIterator) skipForward(kv *base.InternalKV) *base.InternalKV {
 				break
 			}
 			result := i.loadBlock(+1)
+			i.tracked.Tick()
 			if result != loadBlockOK {
 				if i.err != nil {
 					break

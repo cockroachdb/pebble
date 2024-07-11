@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
@@ -306,6 +307,8 @@ type DB struct {
 	tableNewRangeKeyIter keyspanimpl.TableNewSpanIter
 
 	commit *commitPipeline
+
+	smoother *rate.Smoother
 
 	// readState provides access to the state needed for reading without needing
 	// to acquire DB.mu.
@@ -1620,6 +1623,8 @@ func (d *DB) Close() error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+
+	d.smoother.Stop()
 
 	// Clear the finalizer that is used to check that an unreferenced DB has been
 	// closed. We're closing the DB here, so the check performed by that

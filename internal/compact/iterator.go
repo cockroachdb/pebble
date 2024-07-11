@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/redact"
 )
 
@@ -248,6 +249,8 @@ type Iter struct {
 	span keyspan.Span
 
 	stats IterStats
+
+	smoother *rate.Smoother
 }
 
 // IterConfig contains the parameters necessary to create a compaction iterator.
@@ -305,6 +308,7 @@ func NewIter(
 	cfg IterConfig,
 	pointIter base.InternalIterator,
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
+	s *rate.Smoother,
 ) *Iter {
 	cfg.ensureDefaults()
 	i := &Iter{
@@ -312,7 +316,8 @@ func NewIter(
 		cfg: cfg,
 		// We don't want a nil keyBuf because if the first key we encounter is
 		// empty, it would become nil.
-		keyBuf: make([]byte, 8),
+		keyBuf:   make([]byte, 8),
+		smoother: s,
 	}
 
 	iter := pointIter

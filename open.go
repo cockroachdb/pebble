@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -218,9 +219,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		dataDir:             dataDir,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
+		smoother:            rate.NewSmoother(),
 	}
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
+	d.smoother.Start()
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
