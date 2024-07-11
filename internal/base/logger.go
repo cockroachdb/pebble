@@ -94,11 +94,13 @@ func (b *InMemLogger) Fatalf(format string, args ...interface{}) {
 type LoggerAndTracer interface {
 	Logger
 	// Eventf formats and emits a tracing log, if tracing is enabled in the
-	// current context.
+	// current context. It can also emit to a regular log, if expensive
+	// logging is enabled.
 	Eventf(ctx context.Context, format string, args ...interface{})
-	// IsTracingEnabled returns true if tracing is enabled. It can be used as an
-	// optimization to avoid calling Eventf (which will be a noop when tracing
-	// is not enabled) to avoid the overhead of boxing the args.
+	// IsTracingEnabled returns true if tracing is enabled for this context,
+	// or expensive logging is enabled. It can be used as an optimization to
+	// avoid calling Eventf (which will be a noop when tracing or expensive
+	// logging is not enabled) to avoid the overhead of boxing the args.
 	IsTracingEnabled(ctx context.Context) bool
 }
 
