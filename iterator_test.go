@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
+	"golang.org/x/sync/errgroup"
 )
 
 var testKeyValuePairs = []string{
@@ -2735,5 +2737,202 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 	defer b.StopTimer()
 	for i := 0; i < b.N; i++ {
 		iter.SeekPrefixGE(seekKey)
+	}
+}
+
+// BenchmarkQueueWorkload benchmarks a workload consisting of multiple queues
+// that are all being processed at the same time. Processing a queue entails
+// either appending to the end of the queue (a Set operation) or deleting from
+// the start of the queue (a Delete operation). The goal is to detect cases
+// where we see a large buildup of point tombstones at the beginning of each
+// queue, which leads to the slowdown of SeekGE(<start of queue>). To that end,
+// the test runs subbenchmarks a series of configurations that each 1) process
+// the queues a certain number of times and then 2) benchmark both the queue
+// processing throughput and SeekGE performance. See
+// https://github.com/facebook/rocksdb/wiki/Implement-Queue-Service-Using-RocksDB
+// for more information.
+func BenchmarkQueueWorkload(b *testing.B) {
+	const queueCount = 8
+	// The portion of processing ops that will be deletes for each subbenchmark.
+	var deleteRatios = []float32{0.2, 0.4, 0.6, 0.8}
+	// The number of times queues will be processed before running each
+	// subbenchmark.
+	var initOps = []int{400_000, 800_000, 2_000_000, 5_000_000, 10_000_000, 50_000_000}
+	// We vary the value size to identify how compaction behaves when the
+	// relative sizes of tombstones and the keys they delete are different.
+	var valueSizes = []int{128, 2048}
+
+	// These should be large enough to assign a unique key to each item in the
+	// queue.
+	const maxQueueIDLen = 1
+	const maxItemLen = 7
+	const maxKeyLen = maxQueueIDLen + 1 + maxItemLen
+	queueIDKeyspace := testkeys.Alpha(maxQueueIDLen)
+	itemKeyspace := testkeys.Alpha(maxItemLen)
+	key := make([]byte, maxKeyLen+1+len(fmt.Sprint(b.N)))
+	val := make([]byte, valueSizes[len(valueSizes)-1])
+
+	getKey := func(q int, i int) []byte {
+		n := testkeys.WriteKey(key, queueIDKeyspace, int64(q))
+		key[n] = '/'
+		prefixLen := n + 1
+		n = testkeys.WriteKey(key[prefixLen:], itemKeyspace, int64(i))
+		return key[:prefixLen+n]
+	}
+
+	type Queue struct {
+		start int
+		end   int // exclusive
+	}
+	var queues = make([]*Queue, queueCount)
+	for i := 0; i < queueCount; i++ {
+		queues[i] = &Queue{}
+	}
+
+	processQueueOnce := func(d *DB, batch *Batch, rng *rand.Rand, deleteRatio float32, valueSize int, batchSize int) *Batch {
+		for {
+			// Randomly pick a queue to process.
+			q := rng.Intn(queueCount)
+			queue := queues[q]
+
+			isDelete := rng.Float32() < deleteRatio
+
+			if isDelete {
+				// Only process the queue if it's not empty. Otherwise, retry
+				// with a different queue.
+				if queue.start < queue.end {
+					require.NoError(b, batch.Delete(getKey(q, queue.start), nil))
+					queue.start++
+					break
+				}
+			} else {
+				// Append to the queue.
+				require.NoError(b, batch.Set(getKey(q, queue.end), val[:valueSize], nil))
+				queue.end++
+				break
+			}
+		}
+
+		if batch.Len() >= batchSize {
+			require.NoError(b, batch.Commit(NoSync))
+			d.AsyncFlush()
+			return d.NewBatch()
+		}
+		return batch
+	}
+
+	type RunOptions struct {
+		deleteRatio float32
+		initialOps  int
+		valueSize   int
+	}
+
+	// Initialize a new DB instance for each {deleteRatio, numInitOps,
+	// valueSize} configuration.
+	dbs := make([]*DB, 0)
+	runOpts := make([]RunOptions, 0)
+	var grp errgroup.Group
+	var numInitialized atomic.Uint32
+	for _, deleteRatio := range deleteRatios {
+		for _, valueSize := range valueSizes {
+			for _, numInitOps := range initOps {
+				o := (&Options{
+					DisableWAL:         true,
+					FS:                 vfs.NewMem(),
+					Comparer:           testkeys.Comparer,
+					FormatMajorVersion: FormatNewest,
+				}).EnsureDefaults()
+				opts := RunOptions{
+					deleteRatio: deleteRatio,
+					initialOps:  numInitOps,
+					valueSize:   valueSize,
+				}
+				runOpts = append(runOpts, opts)
+
+				d, err := Open("", o)
+				require.NoError(b, err)
+				dbs = append(dbs, d)
+
+				// First we process queues initialOps times (parallelized to
+				// speed things up).
+				grp.Go(func() error {
+					rng := rand.New(rand.NewSource(0))
+					batch := d.NewBatch()
+					for i := 0; i < opts.initialOps; i++ {
+						// Use a large batch size to speed up initialization.
+						batch = processQueueOnce(d, batch, rng, opts.deleteRatio, opts.valueSize, 10<<24 /* 167 MiB */)
+					}
+					if err := batch.Commit(NoSync); err != nil {
+						return err
+					}
+					numInitialized.Add(1)
+					b.Logf("%d/%d initialized\n", numInitialized.Load(), len(dbs))
+
+					return nil
+				})
+			}
+		}
+	}
+	require.NoError(b, grp.Wait())
+
+	for i, d := range dbs {
+		opts := runOpts[i]
+		b.Run(fmt.Sprintf("initial_ops=%d,deleteRatio=%.2f,valueSize=%d", opts.initialOps, opts.deleteRatio, opts.valueSize), func(b *testing.B) {
+			waitForCompactions := func() {
+				d.mu.Lock()
+				// NB: Wait for table stats because some compaction types rely
+				// on table stats to be collected.
+				d.waitTableStats()
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+					d.waitTableStats()
+				}
+				d.mu.Unlock()
+			}
+
+			waitForCompactions()
+
+			// Log the number of tombstones and live keys in each level after
+			// background compactions are complete.
+			b.Log("LSM after compactions:")
+			firstIter, _ := d.NewIter(nil)
+			firstIter.First()
+			lastIter, _ := d.NewIter(nil)
+			lastIter.Last()
+			stats, _ := d.ScanStatistics(context.Background(), firstIter.Key(), lastIter.Key(), ScanStatisticsOptions{})
+			metrics := d.Metrics()
+			for i := 0; i < numLevels; i++ {
+				numTombstones := stats.Levels[i].KindsCount[base.InternalKeyKindDelete]
+				numSets := stats.Levels[i].KindsCount[base.InternalKeyKindSet]
+				numTables := metrics.Levels[i].NumFiles
+				if numSets > 0 {
+					b.Logf("L%d: %d tombstones, %d sets, %d sstables\n", i, numTombstones, numSets, numTables)
+				}
+			}
+
+			b.Run("queue_throughput", func(b *testing.B) {
+				rng := rand.New(rand.NewSource(1))
+				batch := d.NewBatch()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					batch = processQueueOnce(d, batch, rng, opts.deleteRatio, opts.valueSize, 10<<10 /* 10 KiB */)
+				}
+				b.StopTimer()
+			})
+
+			waitForCompactions()
+
+			// Seek to the start of each queue.
+			b.Run("seek", func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for q := 0; q < queueCount; q++ {
+						iter, _ := d.NewIter(nil)
+						iter.SeekGE(getKey(q, 0))
+					}
+				}
+				b.StopTimer()
+			})
+		})
 	}
 }
