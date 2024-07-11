@@ -615,3 +615,46 @@ b64: *colblk.UintBuilder[uint64]:
 14-16: x 0200             # data[3] = 2
 16-18: x 0200             # data[4] = 2
 18-20: x 0900             # data[5] = 9
+
+# Test the constant encoded.
+
+init widths=(64)
+----
+b64
+
+write
+0:1 1:1 2:1 3:1 4:1 5:1
+----
+
+size rows=(6)
+----
+b64:
+  64: *colblk.UintBuilder[uint64].Size(6, 0) = 8
+
+finish widths=(64) rows=6
+----
+b64: *colblk.UintBuilder[uint64]:
+0-8: x 0100000000000000 # 64-bit constant: 1
+
+# Test 32-bit delta encoding.
+
+init widths=(64)
+----
+b64
+
+write
+0:1 1:63936 2:2957252
+----
+
+size rows=(3)
+----
+b64:
+  64: *colblk.UintBuilder[uint64].Size(3, 0) = 20
+
+finish widths=(64) rows=3
+----
+b64: *colblk.UintBuilder[uint64]:
+00-08: x 0100000000000000 # 64-bit constant: 1
+08-12: x 00000000         # data[0] = 0
+12-16: x bff90000         # data[1] = 63935
+16-20: x c31f2d00         # data[2] = 2957251

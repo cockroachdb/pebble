@@ -338,8 +338,8 @@ func uintsToBinFormatter(f *binfmt.Formatter, rows int, desc ColumnDesc) {
 
 		switch desc.Encoding.Delta() {
 		case DeltaEncodingConstant:
-			// This is just a constant.
-			rows = 1
+			// This is just a constant (that was already read/formatted).
+			rows = 0
 		case DeltaEncodingUint8:
 			elementWidth = 1
 		case DeltaEncodingUint16:
