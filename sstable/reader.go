@@ -457,8 +457,6 @@ func (r *Reader) readBlock(
 		err = r.readable.ReadAt(ctx, compressed.Get(), int64(bh.Offset))
 	}
 	readDuration := time.Since(readStartTime)
-	// TODO(sumeer): should the threshold be configurable.
-	const slowReadTracingThreshold = 5 * time.Millisecond
 	// For deterministic testing.
 	if deterministicReadBlockDurationForTesting {
 		readDuration = slowReadTracingThreshold
@@ -977,7 +975,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 		ctx, r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
 
-	footer, err := readFooter(ctx, f, rh)
+	footer, err := readFooter(ctx, f, rh, r.logger)
 	if err != nil {
 		r.err = err
 		return nil, r.Close()
