@@ -140,6 +140,43 @@ b64:
   64: *colblk.UintBuilder[uint64].Size(9, 0) = 26
   64: *colblk.UintBuilder[uint64].Size(8, 0) = 16
 
+size rows=(9, 8) offset=1
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(9, 1) = 20 [19 w/o offset]
+  16: *colblk.UintBuilder[uint16].Size(8, 1) = 11 [10 w/o offset]
+b32:
+  32: *colblk.UintBuilder[uint32].Size(9, 1) = 24 [23 w/o offset]
+  32: *colblk.UintBuilder[uint32].Size(8, 1) = 13 [12 w/o offset]
+b64:
+  64: *colblk.UintBuilder[uint64].Size(9, 1) = 28 [27 w/o offset]
+  64: *colblk.UintBuilder[uint64].Size(8, 1) = 17 [16 w/o offset]
+
+size rows=(9, 8) offset=2
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(9, 2) = 20 [18 w/o offset]
+  16: *colblk.UintBuilder[uint16].Size(8, 2) = 12 [10 w/o offset]
+b32:
+  32: *colblk.UintBuilder[uint32].Size(9, 2) = 24 [22 w/o offset]
+  32: *colblk.UintBuilder[uint32].Size(8, 2) = 14 [12 w/o offset]
+b64:
+  64: *colblk.UintBuilder[uint64].Size(9, 2) = 28 [26 w/o offset]
+  64: *colblk.UintBuilder[uint64].Size(8, 2) = 18 [16 w/o offset]
+
+
+size rows=(9, 8) offset=5
+----
+b16:
+  16: *colblk.UintBuilder[uint16].Size(9, 5) = 24 [19 w/o offset]
+  16: *colblk.UintBuilder[uint16].Size(8, 5) = 15 [10 w/o offset]
+b32:
+  32: *colblk.UintBuilder[uint32].Size(9, 5) = 28 [23 w/o offset]
+  32: *colblk.UintBuilder[uint32].Size(8, 5) = 17 [12 w/o offset]
+b64:
+  64: *colblk.UintBuilder[uint64].Size(9, 5) = 32 [27 w/o offset]
+  64: *colblk.UintBuilder[uint64].Size(8, 5) = 21 [16 w/o offset]
+
 # We should be able to write up to 2^16-1 without triggering a 32-bit encoding.
 
 write
@@ -646,15 +683,18 @@ write
 0:1 1:63936 2:2957252
 ----
 
-size rows=(3)
+size rows=(3) offset=1
 ----
 b64:
-  64: *colblk.UintBuilder[uint64].Size(3, 0) = 20
+  64: *colblk.UintBuilder[uint64].Size(3, 1) = 24 [23 w/o offset]
 
-finish widths=(64) rows=3
+finish widths=(64) rows=3 offset=1
 ----
 b64: *colblk.UintBuilder[uint64]:
-00-08: x 0100000000000000 # 64-bit constant: 1
-08-12: x 00000000         # data[0] = 0
-12-16: x bff90000         # data[1] = 63935
-16-20: x c31f2d00         # data[2] = 2957251
+00-01: x 00               # artificial start offset
+01-09: x 0100000000000000 # 64-bit constant: 1
+# Padding
+09-12: x 000000           # aligning to 32-bit boundary
+12-16: x 00000000         # data[0] = 0
+16-20: x bff90000         # data[1] = 63935
+20-24: x c31f2d00         # data[2] = 2957251

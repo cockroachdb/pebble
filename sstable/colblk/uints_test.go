@@ -81,20 +81,29 @@ func TestUints(t *testing.T) {
 			}
 			return out.String()
 		case "size":
+			var offset uint32
 			var rowCounts []int
 			td.ScanArgs(t, "rows", &rowCounts)
+			td.MaybeScanArgs(t, "offset", &offset)
 			for wIdx, w := range writers {
 				fmt.Fprintf(&out, "b%d:\n", widths[wIdx])
 				for _, rows := range rowCounts {
-					fmt.Fprintf(&out, "  %d: %T.Size(%d, 0) = %d\n", widths[wIdx], w, rows, w.Size(rows, 0))
+					sz := w.Size(rows, offset)
+					if offset > 0 {
+						fmt.Fprintf(&out, "  %d: %T.Size(%d, %d) = %d [%d w/o offset]\n", widths[wIdx], w, rows, offset, sz, sz-offset)
+					} else {
+						fmt.Fprintf(&out, "  %d: %T.Size(%d, %d) = %d\n", widths[wIdx], w, rows, offset, sz)
+					}
 				}
 			}
 			return out.String()
 		case "finish":
 			var rows int
+			var offset uint32
 			var finishWidths []int
 			td.ScanArgs(t, "rows", &rows)
 			td.ScanArgs(t, "widths", &finishWidths)
+			td.MaybeScanArgs(t, "offset", &offset)
 			var newWriters []ColumnWriter
 			var newWidths []int
 			for wIdx, width := range widths {
@@ -103,11 +112,14 @@ func TestUints(t *testing.T) {
 					shouldFinish = shouldFinish || width == fw
 				}
 				if shouldFinish {
-					sz := writers[wIdx].Size(rows, 0)
+					sz := writers[wIdx].Size(rows, offset)
 					buf := aligned.ByteSlice(int(sz))
-					_, desc := writers[wIdx].Finish(0, rows, 0, buf)
+					_, desc := writers[wIdx].Finish(0, rows, offset, buf)
 					fmt.Fprintf(&out, "b%d: %T:\n", width, writers[wIdx])
 					f := binfmt.New(buf).LineWidth(20)
+					if offset > 0 {
+						f.HexBytesln(int(offset), "artificial start offset")
+					}
 					uintsToBinFormatter(f, rows, desc, nil)
 					fmt.Fprintf(&out, "%s", f.String())
 				} else {
