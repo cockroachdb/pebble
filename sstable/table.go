@@ -68,8 +68,10 @@
 package sstable // import "github.com/cockroachdb/pebble/sstable"
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -305,7 +307,10 @@ type footer struct {
 	footerBH    BlockHandle
 }
 
-func readFooter(f objstorage.Readable) (footer, error) {
+// TODO(sumeer): should the threshold be configurable.
+const slowReadTracingThreshold = 5 * time.Millisecond
+
+func readFooter(f objstorage.Readable, logger base.LoggerAndTracer) (footer, error) {
 	var footer footer
 	size := f.Size()
 	if size < minFooterLen {
@@ -317,11 +322,19 @@ func readFooter(f objstorage.Readable) (footer, error) {
 	if off < 0 {
 		off = 0
 	}
+	readStopwatch := makeStopwatch()
 	n, err := f.ReadAt(buf, off)
 	if err != nil && err != io.EOF {
 		return footer, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
 	}
 	buf = buf[:n]
+	readDuration := readStopwatch.stop()
+	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
+	// interface{}, unless necessary.
+	if readDuration >= slowReadTracingThreshold && logger.IsTracingEnabled(context.TODO()) {
+		logger.Eventf(context.TODO(), "reading %d bytes took %s",
+			len(buf), readDuration.String())
+	}
 
 	switch magic := buf[len(buf)-len(rocksDBMagic):]; string(magic) {
 	case levelDBMagic:
