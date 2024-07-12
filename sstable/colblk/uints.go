@@ -5,6 +5,7 @@
 package colblk
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"unsafe"
@@ -198,14 +199,16 @@ func (b *UintBuilder[T]) Size(rows int, offset uint32) uint32 {
 // sizeof(T), then a delta encoding is assumed.
 func uintColumnSize[T Uint](rows, offset, width uint32) uint32 {
 	logicalWidth := uint32(unsafe.Sizeof(T(0)))
-	// Include alignment bytes necessary to align offset appropriately for
-	// elements of type T.
-	offset = align(offset, logicalWidth)
 	if width != logicalWidth {
 		// A delta encoding will be used. We need to first account for the constant
 		// that encodes the minimum. This constant is the full width of the column's
 		// logical data type.
 		offset += logicalWidth
+	}
+	// Include alignment bytes necessary to align offset appropriately for
+	// elements of the delta width.
+	if width > 0 {
+		offset = align(offset, width)
 	}
 	// Now account for the array of [rows] x w elements encoding the deltas.
 	return offset + rows*width
@@ -242,17 +245,13 @@ func uintColumnFinish[T Uint](
 	minimum T, values []T, width, offset uint32, buf []byte,
 ) (uint32, ColumnEncoding) {
 	enc := EncodingDefault
-	// Align the offset appropriately for elements of type T.
-	offset = alignWithZeroes(buf, offset, uint32(unsafe.Sizeof(T(0))))
 
 	// Compare the computed delta width to see if we're able to use an array of
 	// lower-width deltas to encode the column.
 	if uintptr(width) < unsafe.Sizeof(T(0)) {
 		// Regardless of the width, we encode a constant of size T encoding the
 		// minimum across all the values.
-		dest := makeUnsafeRawSlice[T](unsafe.Pointer(&buf[offset]))
-		dest.set(0, minimum)
-		offset += uint32(unsafe.Sizeof(T(0)))
+		offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
 
 		switch width {
 		case 0:
@@ -268,12 +267,16 @@ func uintColumnFinish[T Uint](
 			return offset, enc
 		case align16:
 			enc = enc.WithDelta(DeltaEncodingUint16)
+			// Align the offset appropriately for uint16s.
+			offset = alignWithZeroes(buf, offset, align16)
 			dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset]))
 			reduceUints[T, uint16](minimum, values, dest.Slice(len(values)))
 			offset += uint32(len(values)) * align16
 			return offset, enc
 		case align32:
 			enc = enc.WithDelta(DeltaEncodingUint32)
+			// Align the offset appropriately for uint32s.
+			offset = alignWithZeroes(buf, offset, align32)
 			dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset]))
 			reduceUints[T, uint32](minimum, values, dest.Slice(len(values)))
 			offset += uint32(len(values)) * align32
@@ -285,6 +288,44 @@ func uintColumnFinish[T Uint](
 	dest := makeUnsafeRawSlice[T](unsafe.Pointer(&buf[offset])).Slice(len(values))
 	offset += uint32(copy(dest, values)) * uint32(unsafe.Sizeof(T(0)))
 	return offset, enc
+}
+
+// writeLittleEndianNonaligned writes v to buf at the provided offset in
+// little-endian, without assuming that the offset is aligned to the size of T.
+func writeLittleEndianNonaligned[T Uint](buf []byte, offset uint32, v T) int {
+	sz := unsafe.Sizeof(v)
+	switch sz {
+	case 1:
+		buf[offset] = byte(v)
+	case 2:
+		binary.LittleEndian.PutUint16(buf[offset:], uint16(v))
+	case 4:
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(v))
+	case 8:
+		binary.LittleEndian.PutUint64(buf[offset:], uint64(v))
+	default:
+		panic("unreachable")
+	}
+	return int(sz)
+}
+
+// readLittleEndianNonaligned reads a value of type T from buf at the provided
+// offset in little-endian, without assuming that the offset is aligned to the
+// size of T.
+func readLittleEndianNonaligned[T constraints.Integer](buf []byte, offset uint32) T {
+	sz := unsafe.Sizeof(T(0))
+	switch sz {
+	case 1:
+		return T(buf[offset])
+	case 2:
+		return T(binary.LittleEndian.Uint16(buf[offset:]))
+	case 4:
+		return T(binary.LittleEndian.Uint32(buf[offset:]))
+	case 8:
+		return T(binary.LittleEndian.Uint64(buf[offset:]))
+	default:
+		panic("unreachable")
+	}
 }
 
 // WriteDebug implements Encoder.
@@ -344,10 +385,7 @@ func uintsToBinFormatter(
 	}
 
 	logicalWidth := desc.DataType.uintWidth()
-	if off := align(f.Offset(), int(logicalWidth)); off != f.Offset() {
-		f.CommentLine("Padding")
-		f.HexBytesln(off-f.Offset(), "aligning to %d-bit boundary", logicalWidth*8)
-	}
+
 	elementWidth := int(logicalWidth)
 	if desc.Encoding.Delta() != DeltaEncodingNone {
 		f.HexBytesln(int(logicalWidth), "%d-bit constant: %d", logicalWidth*8, f.PeekUint(int(logicalWidth)))
@@ -365,6 +403,10 @@ func uintsToBinFormatter(
 		default:
 			panic("unreachable")
 		}
+	}
+	if off := align(f.Offset(), int(elementWidth)); off != f.Offset() {
+		f.CommentLine("Padding")
+		f.HexBytesln(off-f.Offset(), "aligning to %d-bit boundary", elementWidth*8)
 	}
 	for i := 0; i < rows; i++ {
 		f.HexBytesln(elementWidth, "data[%d] = %s", i, uintFormatter(f.PeekUint(elementWidth)))

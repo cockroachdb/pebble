@@ -70,28 +70,22 @@ type UnsafeIntegerSlice[T constraints.Integer] struct {
 func readUnsafeIntegerSlice[T constraints.Integer](
 	rows int, b []byte, off uint32, delta DeltaEncoding,
 ) (endOffset uint32, slice UnsafeIntegerSlice[T]) {
-	off = align(off, uint32(unsafe.Sizeof(T(0))))
-
-	fullWidthSlice := makeUnsafeIntegerSlice[T](0, unsafe.Pointer(&b[off]), int(unsafe.Sizeof(T(0))))
 	switch delta {
 	case DeltaEncodingNone:
-		slice = fullWidthSlice
+		off = align(off, uint32(unsafe.Sizeof(T(0))))
+		slice = makeUnsafeIntegerSlice[T](0, unsafe.Pointer(&b[off]), int(unsafe.Sizeof(T(0))))
 		off += uint32(unsafe.Sizeof(T(0))) * uint32(rows)
 	case DeltaEncodingConstant:
+		base := readLittleEndianNonaligned[T](b, off)
 		off += uint32(unsafe.Sizeof(T(0)))
-		slice = makeUnsafeIntegerSlice[T](fullWidthSlice.At(0), unsafe.Pointer(&b[off]), 0)
-	case DeltaEncodingUint8:
+		slice = makeUnsafeIntegerSlice[T](base, unsafe.Pointer(&b[off]), 0)
+	case DeltaEncodingUint8, DeltaEncodingUint16, DeltaEncodingUint32:
+		w := delta.width()
+		base := readLittleEndianNonaligned[T](b, off)
 		off += uint32(unsafe.Sizeof(T(0)))
-		slice = makeUnsafeIntegerSlice[T](fullWidthSlice.At(0), unsafe.Pointer(&b[off]), 1)
-		off += uint32(rows)
-	case DeltaEncodingUint16:
-		off += uint32(unsafe.Sizeof(T(0)))
-		slice = makeUnsafeIntegerSlice[T](fullWidthSlice.At(0), unsafe.Pointer(&b[off]), align16)
-		off += uint32(rows) * align16
-	case DeltaEncodingUint32:
-		off += uint32(unsafe.Sizeof(T(0)))
-		slice = makeUnsafeIntegerSlice[T](fullWidthSlice.At(0), unsafe.Pointer(&b[off]), align32)
-		off += uint32(rows) * align32
+		off = align(off, uint32(w))
+		slice = makeUnsafeIntegerSlice[T](base, unsafe.Pointer(&b[off]), w)
+		off += uint32(rows) * uint32(w)
 	default:
 		panic("unreachable")
 	}
