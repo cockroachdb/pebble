@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -86,20 +87,51 @@ func (p *provider) vfsInit() error {
 
 func (p *provider) vfsSync() error {
 	p.mu.Lock()
-	shouldSync := p.mu.localObjectsChanged
-	p.mu.localObjectsChanged = false
-	p.mu.Unlock()
+	defer p.mu.Unlock()
 
-	if !shouldSync {
-		return nil
-	}
-	if err := p.fsDir.Sync(); err != nil {
+	// This call must return successfully only when
+	// p.mu.lastLocalSyncCounter >= changeCounter.
+	changeCounter := p.mu.localObjectsChangeCounter
+
+	for {
+		if p.mu.lastLocalSyncCounter >= changeCounter {
+			// Nothing to do.
+			return nil
+		}
+		ch := p.mu.inProgressLocalSyncCh
+		if ch == nil {
+			break
+		}
+		// Wait until the current sync completes.
+		p.mu.Unlock()
+		<-ch
 		p.mu.Lock()
-		defer p.mu.Unlock()
-		p.mu.localObjectsChanged = true
-		return err
 	}
-	return nil
+
+	// We have to sync.
+	ch := make(chan struct{})
+	p.mu.inProgressLocalSyncCh = ch
+
+	// We may have had to wait for an older sync, and in the meantime the counter
+	// advanced some more. Read it again so we can set lastLocalSyncCounter more
+	// accurately and potentially avoid an unnecessary future sync.
+	changeCounterBeforeSync := p.mu.localObjectsChangeCounter
+	err := func() error {
+		p.mu.Unlock()
+		defer p.mu.Lock()
+		return p.fsDir.Sync()
+	}()
+	if invariants.Enabled && p.mu.lastLocalSyncCounter >= changeCounter {
+		// We only allow one sync at a time and we are that one.
+		panic("lastLocalSync counter advanced unexpectedly")
+	}
+	p.mu.inProgressLocalSyncCh = nil
+	if err == nil {
+		p.mu.lastLocalSyncCounter = changeCounterBeforeSync
+	}
+	close(ch)
+
+	return err
 }
 
 func (p *provider) vfsSize(fileType base.FileType, fileNum base.DiskFileNum) (int64, error) {
