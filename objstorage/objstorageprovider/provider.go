@@ -40,9 +40,14 @@ type provider struct {
 
 		remote remoteLockedState
 
-		// localObjectsChanged is set if non-remote objects were created or deleted
-		// but Sync was not yet called.
-		localObjectsChanged bool
+		// TODO(radu): move these fields to a localLockedState struct.
+		// localObjectsChanged is incremented whenever non-remote objects are created.
+		// The purpose of this counter is to avoid syncing the local filesystem when
+		// only remote objects are changed.
+		localObjectsChangeCounter uint64
+		// localObjectsChangeCounterSynced is the value of localObjectsChangeCounter
+		// value at the time the last completed sync was launched.
+		localObjectsChangeCounterSynced uint64
 
 		// knownObjects maintains information about objects that are known to the provider.
 		// It is initialized with the list of files in the manifest when we open a DB.
@@ -583,7 +588,7 @@ func (p *provider) addMetadataLocked(meta objstorage.ObjectMetadata) {
 			p.mu.remote.addExternalObject(meta)
 		}
 	} else {
-		p.mu.localObjectsChanged = true
+		p.mu.localObjectsChangeCounter++
 	}
 }
 
@@ -602,7 +607,7 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.DeleteObject(fileNum)
 	} else {
-		p.mu.localObjectsChanged = true
+		p.mu.localObjectsChangeCounter++
 	}
 }
 
