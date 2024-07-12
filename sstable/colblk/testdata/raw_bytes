@@ -16,16 +16,14 @@ a
 build offset=1
 a
 ----
-00-01: x 00       # start offset
+0-1: x 00       # start offset
 # RawBytes
 # Offsets table
-# Padding
-01-04: x 000000   # aligning to 32-bit boundary
-04-08: x 00000000 # 32-bit constant: 0
-08-09: x 00       # data[0] = 0 [10 overall]
-09-10: x 01       # data[1] = 1 [11 overall]
+1-5: x 00000000 # 32-bit constant: 0
+5-6: x 00       # data[0] = 0 [7 overall]
+6-7: x 01       # data[1] = 1 [8 overall]
 # Data
-10-11: x 61       # data[0]: a
+7-8: x 61       # data[0]: a
 
 build offset=2
 a
@@ -33,13 +31,11 @@ a
 00-02: x 0000     # start offset
 # RawBytes
 # Offsets table
-# Padding
-02-04: x 0000     # aligning to 32-bit boundary
-04-08: x 00000000 # 32-bit constant: 0
-08-09: x 00       # data[0] = 0 [10 overall]
-09-10: x 01       # data[1] = 1 [11 overall]
+02-06: x 00000000 # 32-bit constant: 0
+06-07: x 00       # data[0] = 0 [8 overall]
+07-08: x 01       # data[1] = 1 [9 overall]
 # Data
-10-11: x 61       # data[0]: a
+08-09: x 61       # data[0]: a
 
 build offset=3
 a
@@ -47,13 +43,11 @@ a
 00-03: x 000000   # start offset
 # RawBytes
 # Offsets table
-# Padding
-03-04: x 00       # aligning to 32-bit boundary
-04-08: x 00000000 # 32-bit constant: 0
-08-09: x 00       # data[0] = 0 [10 overall]
-09-10: x 01       # data[1] = 1 [11 overall]
+03-07: x 00000000 # 32-bit constant: 0
+07-08: x 00       # data[0] = 0 [9 overall]
+08-09: x 01       # data[1] = 1 [10 overall]
 # Data
-10-11: x 61       # data[0]: a
+09-10: x 61       # data[0]: a
 
 build offset=4
 a

@@ -192,6 +192,21 @@ func (d DeltaEncoding) String() string {
 	}
 }
 
+func (d DeltaEncoding) width() int {
+	switch d {
+	case DeltaEncodingConstant:
+		return 0
+	case DeltaEncodingUint8:
+		return 1
+	case DeltaEncodingUint16:
+		return 2
+	case DeltaEncodingUint32:
+		return 4
+	default:
+		panic("unreachable")
+	}
+}
+
 // ColumnWriter is an interface implemented by column encoders that accumulate a
 // column's values and then serialize them.
 type ColumnWriter interface {
