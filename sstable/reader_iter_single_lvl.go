@@ -247,9 +247,9 @@ func (i *singleLevelIterator) init(
 	i.iterStats.init(categoryAndQoS, statsCollector)
 
 	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
+		r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
 	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
+		r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
 
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
@@ -269,7 +269,7 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.SetGetLazyValue(i.vbReader.getLazyValueForPrefixAndValueHandle)
-			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(ctx, r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
+			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
 		i.data.SetHasValuePrefix(true)
 	}

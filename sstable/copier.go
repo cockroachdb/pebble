@@ -95,7 +95,7 @@ func CopySpan(
 	// ReadBeforeForIndexAndFilter attempts to read the top-level index, filter
 	// and lower-level index blocks with one read.
 	rh := objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
+		r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
 	defer rh.Close()
 	indexH, err := r.readIndex(ctx, rh, nil, nil)
 	if err != nil {

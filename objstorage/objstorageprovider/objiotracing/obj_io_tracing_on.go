@@ -81,7 +81,7 @@ func (t *Tracer) WrapWritable(
 	return &writable{
 		w:       w,
 		fileNum: fileNum,
-		g:       makeEventGenerator(ctx, t),
+		g:       makeEventGenerator(infoFromCtx(ctx), t),
 	}
 }
 
@@ -128,17 +128,19 @@ func (t *Tracer) WrapReadable(
 	ctx context.Context, r objstorage.Readable, fileNum base.DiskFileNum,
 ) objstorage.Readable {
 	res := &readable{
-		r:       r,
-		fileNum: fileNum,
+		r:           r,
+		fileNum:     fileNum,
+		baseCtxInfo: infoFromCtx(ctx),
 	}
-	res.mu.g = makeEventGenerator(ctx, t)
+	res.mu.g = makeEventGenerator(res.baseCtxInfo, t)
 	return res
 }
 
 type readable struct {
-	r       objstorage.Readable
-	fileNum base.DiskFileNum
-	mu      struct {
+	r           objstorage.Readable
+	fileNum     base.DiskFileNum
+	baseCtxInfo ctxInfo
+	mu          struct {
 		sync.Mutex
 		g eventGenerator
 	}
@@ -171,16 +173,14 @@ func (r *readable) Size() int64 {
 }
 
 // NewReadHandle is part of the objstorage.Readable interface.
-func (r *readable) NewReadHandle(
-	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
-) objstorage.ReadHandle {
+func (r *readable) NewReadHandle(readBeforeSize objstorage.ReadBeforeSize) objstorage.ReadHandle {
 	// It's safe to get the tracer from the generator without the mutex since it never changes.
 	t := r.mu.g.t
 	return &readHandle{
-		rh:       r.r.NewReadHandle(ctx, readBeforeSize),
+		rh:       r.r.NewReadHandle(readBeforeSize),
 		fileNum:  r.fileNum,
 		handleID: t.handleID.Add(1),
-		g:        makeEventGenerator(ctx, t),
+		g:        makeEventGenerator(r.baseCtxInfo, t),
 	}
 }
 
@@ -310,10 +310,10 @@ type eventGenerator struct {
 	buf         eventBuf
 }
 
-func makeEventGenerator(ctx context.Context, t *Tracer) eventGenerator {
+func makeEventGenerator(baseCtxInfo ctxInfo, t *Tracer) eventGenerator {
 	return eventGenerator{
 		t:           t,
-		baseCtxInfo: infoFromCtx(ctx),
+		baseCtxInfo: baseCtxInfo,
 	}
 }
 
