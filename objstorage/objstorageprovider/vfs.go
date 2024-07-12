@@ -83,19 +83,23 @@ func (p *provider) vfsInit() error {
 
 func (p *provider) vfsSync() error {
 	p.mu.Lock()
-	shouldSync := p.mu.localObjectsChanged
-	p.mu.localObjectsChanged = false
+	counterVal := p.mu.localObjectsChangeCounter
+	lastSynced := p.mu.localObjectsChangeCounterSynced
 	p.mu.Unlock()
 
-	if !shouldSync {
+	if lastSynced >= counterVal {
 		return nil
 	}
 	if err := p.fsDir.Sync(); err != nil {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		p.mu.localObjectsChanged = true
 		return err
 	}
+
+	p.mu.Lock()
+	if p.mu.localObjectsChangeCounterSynced < counterVal {
+		p.mu.localObjectsChangeCounterSynced = counterVal
+	}
+	p.mu.Unlock()
+
 	return nil
 }
 
