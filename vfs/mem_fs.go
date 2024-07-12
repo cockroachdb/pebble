@@ -32,10 +32,12 @@ func NewMem() *MemFS {
 	}
 }
 
-// NewStrictMem returns a "strict" memory-backed FS implementation. The behaviour is strict wrt
-// needing a Sync() call on files or directories for the state changes to be finalized. Any
-// changes that are not finalized are visible to reads until MemFS.ResetToSyncedState() is called,
-// at which point they are discarded and no longer visible.
+// NewStrictMem returns a "strict" memory-backed FS implementation. The
+// behaviour is strict wrt needing a Sync() call on files or directories for the
+// state changes to be finalized. Any changes that are not finalized are visible
+// to reads until MemFS.ResetToSyncedState() is called, at which point they are
+// discarded and no longer visible. All open files must be closed before calling
+// ResetToSyncedState().
 //
 // Expected usage:
 //
@@ -125,13 +127,20 @@ func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
 	y.mu.Unlock()
 }
 
-// ResetToSyncedState discards state in the FS that is not synced. See the usage comment with
-// NewStrictMem() for details.
+// ResetToSyncedState discards state in the FS that is not synced. See the usage
+// comment with NewStrictMem() for details. All files must be closed before
+// calling this method.
 func (y *MemFS) ResetToSyncedState() {
 	if !y.strict {
 		panic("ResetToSyncedState can only be used on a strict MemFS")
 	}
 	y.mu.Lock()
+	y.root.descend("", func(path string, n *memNode) error {
+		if v := n.refs.Load(); v > 0 {
+			return errors.AssertionFailedf("file %s has %d open references; cannot reset to synced state", path, v)
+		}
+		return nil
+	})
 	y.root.resetToSyncedState()
 	y.mu.Unlock()
 }
@@ -608,6 +617,15 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	sort.Strings(names)
 	for _, name := range names {
 		f.children[name].dump(w, level+1, name)
+	}
+}
+
+func (f *memNode) descend(path string, fn func(string, *memNode) error) {
+	fn(path, f)
+	if f.isDir {
+		for name, v := range f.children {
+			fn(path+sep+name, v)
+		}
 	}
 }
 
