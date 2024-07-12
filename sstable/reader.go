@@ -650,20 +650,14 @@ func (r *Reader) readBlock(
 		}
 	}
 
-	readStartTime := time.Now()
+	readStopwatch := makeStopwatch()
 	var err error
 	if readHandle != nil {
 		err = readHandle.ReadAt(ctx, compressed.get(), int64(bh.Offset))
 	} else {
 		err = r.readable.ReadAt(ctx, compressed.get(), int64(bh.Offset))
 	}
-	readDuration := time.Since(readStartTime)
-	// TODO(sumeer): should the threshold be configurable.
-	const slowReadTracingThreshold = 5 * time.Millisecond
-	// For deterministic testing.
-	if deterministicReadBlockDurationForTesting {
-		readDuration = slowReadTracingThreshold
-	}
+	readDuration := readStopwatch.stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
@@ -1229,7 +1223,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 		r.cacheID = r.opts.Cache.NewID()
 	}
 
-	footer, err := readFooter(f)
+	footer, err := readFooter(f, r.opts.LoggerAndTracer)
 	if err != nil {
 		r.err = err
 		return nil, r.Close()
@@ -1343,4 +1337,20 @@ func errCorruptIndexEntry(err error) error {
 		panic(err)
 	}
 	return err
+}
+
+type deterministicStopwatchForTesting struct {
+	startTime time.Time
+}
+
+func makeStopwatch() deterministicStopwatchForTesting {
+	return deterministicStopwatchForTesting{startTime: time.Now()}
+}
+
+func (w deterministicStopwatchForTesting) stop() time.Duration {
+	dur := time.Since(w.startTime)
+	if deterministicReadBlockDurationForTesting {
+		dur = slowReadTracingThreshold
+	}
+	return dur
 }

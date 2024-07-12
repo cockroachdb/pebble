@@ -586,7 +586,7 @@ func TestFooterRoundTrip(t *testing.T) {
 							readable, err := NewSimpleReadable(f)
 							require.NoError(t, err)
 
-							result, err := readFooter(readable)
+							result, err := readFooter(readable, base.NoopLoggerAndTracer{})
 							require.NoError(t, err)
 							require.NoError(t, readable.Close())
 
@@ -639,7 +639,7 @@ func TestReadFooter(t *testing.T) {
 			readable, err := NewSimpleReadable(f)
 			require.NoError(t, err)
 
-			if _, err := readFooter(readable); err == nil {
+			if _, err := readFooter(readable, base.NoopLoggerAndTracer{}); err == nil {
 				t.Fatalf("expected %q, but found success", c.expected)
 			} else if !strings.Contains(err.Error(), c.expected) {
 				t.Fatalf("expected %q, but found %v", c.expected, err)
