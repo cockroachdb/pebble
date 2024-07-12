@@ -5,6 +5,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -231,7 +232,7 @@ func TestIterHistories(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err := sstable.NewReader(readable, opts.MakeReaderOptions())
+				r, err := sstable.NewReader(context.Background(), readable, opts.MakeReaderOptions())
 				if err != nil {
 					return err.Error()
 				}

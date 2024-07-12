@@ -696,7 +696,7 @@ func TestInvalidReader(t *testing.T) {
 		{invalid, "invalid table"},
 	}
 	for _, tc := range testCases {
-		r, err := NewReader(tc.readable, ReaderOptions{})
+		r, err := NewReader(context.Background(), tc.readable, ReaderOptions{})
 		if !strings.Contains(err.Error(), tc.expected) {
 			t.Fatalf("expected %q, but found %q", tc.expected, err.Error())
 		}
@@ -1008,7 +1008,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	require.NoError(t, w.Close())
 	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.OpenOptions{})
 	require.NoError(t, err)
-	r, err := NewReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
+	r, err := NewReader(context.Background(), f1, ReaderOptions{Comparer: testkeys.Comparer})
 	require.NoError(t, err)
 	defer r.Close()
 	{
@@ -1796,7 +1796,7 @@ func buildTestTableWithProvider(
 
 	c := cache.New(128 << 20)
 	defer c.Unref()
-	r, err := NewReader(f1, ReaderOptions{
+	r, err := NewReader(context.Background(), f1, ReaderOptions{
 		internal: sstableinternal.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
 				Cache: c,
@@ -2466,5 +2466,5 @@ func newReader(r ReadableFile, o ReaderOptions) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(readable, o)
+	return NewReader(context.Background(), readable, o)
 }

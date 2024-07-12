@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	crand "crypto/rand"
 	"fmt"
 	"io"
@@ -1232,7 +1233,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 		CacheID: 0,
 		FileNum: backingFileNum,
 	})
-	r, err := sstable.NewReader(readable, readerOpts)
+	r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 	if err != nil {
 		return err.Error()
 	}

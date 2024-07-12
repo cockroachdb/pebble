@@ -261,7 +261,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				r, err := sstable.NewReader(readable, sstable.ReaderOptions{})
+				r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -391,7 +391,7 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(readable, opts)
+		readers[i], err = sstable.NewReader(context.Background(), readable, opts)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -637,7 +637,7 @@ func buildLevelsForMergingIterSeqSeek(
 			if err != nil {
 				b.Fatal(err)
 			}
-			r, err := sstable.NewReader(readable, opts)
+			r, err := sstable.NewReader(context.Background(), readable, opts)
 			if err != nil {
 				b.Fatal(err)
 			}

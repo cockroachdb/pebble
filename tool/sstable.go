@@ -6,6 +6,7 @@ package tool
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -158,7 +159,7 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 			Cache: c,
 		},
 	})
-	return sstable.NewReader(readable, o)
+	return sstable.NewReader(context.Background(), readable, o)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {

@@ -49,7 +49,7 @@ func CopySpan(
 	o WriterOptions,
 	start, end InternalKey,
 ) (size uint64, _ error) {
-	r, err := NewReader(input, rOpts)
+	r, err := NewReader(ctx, input, rOpts)
 	if err != nil {
 		input.Close()
 		output.Abort()

@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"runtime/debug"
@@ -76,7 +77,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 	}))
 	readable, err := NewSimpleReadable(f)
 	require.NoError(t, err)
-	r, err := NewReader(readable, cfg.readerOpts())
+	r, err := NewReader(context.Background(), readable, cfg.readerOpts())
 	require.NoError(t, err)
 	defer r.Close()
 
