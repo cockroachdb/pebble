@@ -2504,7 +2504,7 @@ func TestMarkedForCompaction(t *testing.T) {
 					}
 					f.MarkedForCompaction = true
 					vers.Stats.MarkedForCompaction++
-					vers.Levels[l].InvalidateAnnotation(markedForCompactionAnnotator{})
+					markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
 					return fmt.Sprintf("marked L%d.%s", l, f.FileNum)
 				}
 			}

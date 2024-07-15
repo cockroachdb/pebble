@@ -1995,8 +1995,8 @@ func (d *DB) Metrics() *Metrics {
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	// TODO(jackson): Consider making these metrics optional.
-	metrics.Keys.RangeKeySetsCount = countRangeKeySetFragments(vers)
-	metrics.Keys.TombstoneCount = countTombstones(vers)
+	metrics.Keys.RangeKeySetsCount = *rangeKeySetsAnnotator.MultiLevelAnnotation(vers.RangeKeyLevels[:])
+	metrics.Keys.TombstoneCount = *tombstonesAnnotator.MultiLevelAnnotation(vers.Levels[:])
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
@@ -2014,12 +2014,12 @@ func (d *DB) Metrics() *Metrics {
 		metrics.Flush.NumInProgress = 1
 	}
 	for i := 0; i < numLevels; i++ {
-		metrics.Levels[i].Additional.ValueBlocksSize = valueBlocksSizeForLevel(vers, i)
-		unknown, snappy, none, zstd := compressionTypesForLevel(vers, i)
-		metrics.Table.CompressedCountUnknown += int64(unknown)
-		metrics.Table.CompressedCountSnappy += int64(snappy)
-		metrics.Table.CompressedCountZstd += int64(zstd)
-		metrics.Table.CompressedCountNone += int64(none)
+		metrics.Levels[i].Additional.ValueBlocksSize = *valueBlockSizeAnnotator.LevelAnnotation(vers.Levels[i])
+		compressionTypes := compressionTypeAnnotator.LevelAnnotation(vers.Levels[i])
+		metrics.Table.CompressedCountUnknown += int64(compressionTypes.unknown)
+		metrics.Table.CompressedCountSnappy += int64(compressionTypes.snappy)
+		metrics.Table.CompressedCountZstd += int64(compressionTypes.zstd)
+		metrics.Table.CompressedCountNone += int64(compressionTypes.none)
 	}
 
 	d.mu.Unlock()
