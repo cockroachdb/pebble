@@ -563,7 +563,7 @@ func TestCompactionPickerL0(t *testing.T) {
 					}
 					f.MarkedForCompaction = true
 					picker.vers.Stats.MarkedForCompaction++
-					picker.vers.Levels[l].InvalidateAnnotation(markedForCompactionAnnotator{})
+					markedForCompactionAnnotator.InvalidateLevelAnnotation(picker.vers.Levels[l])
 					return fmt.Sprintf("marked L%d.%s", l, f.FileNum)
 				}
 			}

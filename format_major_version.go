@@ -517,7 +517,7 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 		// annotations will be out of date. Clear the compaction-picking
 		// annotation, so that it's recomputed the next time the compaction
 		// picker looks for a file marked for compaction.
-		vers.Levels[l].InvalidateAnnotation(markedForCompactionAnnotator{})
+		markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
 	}
 
 	// The 'marked-for-compaction' bit is persisted in the MANIFEST file

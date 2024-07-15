@@ -16,45 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
-// The Annotator type defined below is used by other packages to lazily
-// compute a value over a B-Tree. Each node of the B-Tree stores one
-// `annotation` per annotator, containing the result of the computation over
-// the node's subtree.
-//
-// An annotation is marked as valid if it's current with the current subtree
-// state. Annotations are marked as invalid whenever a node will be mutated
-// (in mut).  Annotators may also return `false` from `Accumulate` to signal
-// that a computation for a file is not stable and may change in the future.
-// Annotations that include these unstable values are also marked as invalid
-// on the node, ensuring that future queries for the annotation will recompute
-// the value.
-
-// An Annotator defines a computation over a level's FileMetadata. If the
-// computation is stable and uses inputs that are fixed for the lifetime of
-// a FileMetadata, the LevelMetadata's internal data structures are annotated
-// with the intermediary computations. This allows the computation to be
-// computed incrementally as edits are applied to a level.
-type Annotator interface {
-	// Zero returns the zero value of an annotation. This value is returned
-	// when a LevelMetadata is empty. The dst argument, if non-nil, is an
-	// obsolete value previously returned by this Annotator and may be
-	// overwritten and reused to avoid a memory allocation.
-	Zero(dst interface{}) (v interface{})
-
-	// Accumulate computes the annotation for a single file in a level's
-	// metadata. It merges the file's value into dst and returns a bool flag
-	// indicating whether or not the value is stable and okay to cache as an
-	// annotation. If the file's value may change over the life of the file,
-	// the annotator must return false.
-	//
-	// Implementations may modify dst and return it to avoid an allocation.
-	Accumulate(m *FileMetadata, dst interface{}) (v interface{}, cacheOK bool)
-
-	// Merge combines two values src and dst, returning the result.
-	// Implementations may modify dst and return it to avoid an allocation.
-	Merge(src interface{}, dst interface{}) interface{}
-}
-
 type btreeCmp func(*FileMetadata, *FileMetadata) int
 
 func btreeCmpSeqNum(a, b *FileMetadata) int {
@@ -90,16 +51,6 @@ const (
 	maxItems = 2*degree - 1
 	minItems = degree - 1
 )
-
-type annotation struct {
-	annotator Annotator
-	// v is an annotation value, the output of either
-	// annotator.Value or annotator.Merge.
-	v interface{}
-	// valid indicates whether future reads of the annotation may use v as-is.
-	// If false, v will be zeroed and recalculated.
-	valid bool
-}
 
 type leafNode struct {
 	ref   atomic.Int32
@@ -657,78 +608,6 @@ func (n *node) rebalanceOrMerge(i int) {
 
 		mergeChild.decRef(false /* contentsToo */, nil)
 	}
-}
-
-// InvalidateAnnotation removes any existing cached annotations for the provided
-// annotator from this node's subtree.
-func (n *node) InvalidateAnnotation(a Annotator) {
-	// Find this annotator's annotation on this node.
-	var annot *annotation
-	for i := range n.annot {
-		if n.annot[i].annotator == a {
-			annot = &n.annot[i]
-		}
-	}
-
-	if annot != nil && annot.valid {
-		annot.valid = false
-		annot.v = a.Zero(annot.v)
-	}
-	if !n.leaf {
-		for i := int16(0); i <= n.count; i++ {
-			n.children[i].InvalidateAnnotation(a)
-		}
-	}
-}
-
-// Annotation retrieves, computing if not already computed, the provided
-// annotator's annotation of this node. The second return value indicates
-// whether the future reads of this annotation may use the first return value
-// as-is. If false, the annotation is not stable and may change on a subsequent
-// computation.
-func (n *node) Annotation(a Annotator) (interface{}, bool) {
-	// Find this annotator's annotation on this node.
-	var annot *annotation
-	for i := range n.annot {
-		if n.annot[i].annotator == a {
-			annot = &n.annot[i]
-		}
-	}
-
-	// If it exists and is marked as valid, we can return it without
-	// recomputing anything.
-	if annot != nil && annot.valid {
-		return annot.v, true
-	}
-
-	if annot == nil {
-		// This is n's first time being annotated by a.
-		// Create a new zeroed annotation.
-		n.annot = append(n.annot, annotation{
-			annotator: a,
-			v:         a.Zero(nil),
-		})
-		annot = &n.annot[len(n.annot)-1]
-	} else {
-		// There's an existing annotation that must be recomputed.
-		// Zero its value.
-		annot.v = a.Zero(annot.v)
-	}
-
-	annot.valid = true
-	for i := int16(0); i <= n.count; i++ {
-		if !n.leaf {
-			v, ok := n.children[i].Annotation(a)
-			annot.v = a.Merge(v, annot.v)
-			annot.valid = annot.valid && ok
-		}
-		if i < n.count {
-			v, ok := a.Accumulate(n.items[i], annot.v)
-			annot.v = v
-			annot.valid = annot.valid && ok
-		}
-	}
-	return annot.v, annot.valid
 }
 
 func (n *node) verifyInvariants() {
