@@ -989,206 +989,74 @@ func newCombinedDeletionKeyspanIter(
 	return mIter, nil
 }
 
-// rangeKeySetsAnnotator implements manifest.Annotator, annotating B-Tree nodes
-// with the sum of the files' counts of range key fragments. Its annotation type
-// is a *uint64. The count of range key sets may change once a table's stats are
+// rangeKeySetsAnnotator is a manifest.Annotator that annotates B-Tree nodes
+// with the sum of the files' counts of range key fragments. The count of range
+// key sets may change once a table's stats are loaded asynchronously, so its
+// values are marked as cacheable only if a file's stats have been loaded.
+var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.FileMetadata) (uint64, bool) {
+	return f.Stats.NumRangeKeySets, f.StatsValid()
+})
+
+// tombstonesAnnotator is a manifest.Annotator that annotates B-Tree nodes
+// with the sum of the files' counts of tombstones (DEL, SINGLEDEL and RANGEDEL
+// keys). The count of tombstones may change once a table's stats are loaded
+// asynchronously, so its values are marked as cacheable only if a file's stats
+// have been loaded.
+var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.FileMetadata) (uint64, bool) {
+	return f.Stats.NumDeletions, f.StatsValid()
+})
+
+// valueBlocksSizeAnnotator is a manifest.Annotator that annotates B-Tree
+// nodes with the sum of the files' Properties.ValueBlocksSize. The value block
+// size may change once a table's stats are loaded asynchronously, so its
+// values are marked as cacheable only if a file's stats have been loaded.
+var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *fileMetadata) (uint64, bool) {
+	return f.Stats.ValueBlocksSize, f.StatsValid()
+})
+
+// compressionTypeAnnotator is a manifest.Annotator that annotates B-tree
+// nodes with the compression type of the file. Its annotation type is
+// compressionTypes. The compression type may change once a table's stats are
 // loaded asynchronously, so its values are marked as cacheable only if a file's
 // stats have been loaded.
-type rangeKeySetsAnnotator struct{}
-
-var _ manifest.Annotator = rangeKeySetsAnnotator{}
-
-func (a rangeKeySetsAnnotator) Zero(dst interface{}) interface{} {
-	if dst == nil {
-		return new(uint64)
-	}
-	v := dst.(*uint64)
-	*v = 0
-	return v
+var compressionTypeAnnotator = manifest.Annotator[compressionTypes]{
+	Aggregator: compressionTypeAggregator{},
 }
 
-func (a rangeKeySetsAnnotator) Accumulate(
-	f *fileMetadata, dst interface{},
-) (v interface{}, cacheOK bool) {
-	vptr := dst.(*uint64)
-	*vptr = *vptr + f.Stats.NumRangeKeySets
-	return vptr, f.StatsValid()
-}
-
-func (a rangeKeySetsAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	srcV := src.(*uint64)
-	dstV := dst.(*uint64)
-	*dstV = *dstV + *srcV
-	return dstV
-}
-
-// countRangeKeySetFragments counts the number of RANGEKEYSET keys across all
-// files of the LSM. It only counts keys in files for which table stats have
-// been loaded. It uses a b-tree annotator to cache intermediate values between
-// calculations when possible.
-func countRangeKeySetFragments(v *version) (count uint64) {
-	for l := 0; l < numLevels; l++ {
-		if v.RangeKeyLevels[l].Empty() {
-			continue
-		}
-		count += *v.RangeKeyLevels[l].Annotation(rangeKeySetsAnnotator{}).(*uint64)
-	}
-	return count
-}
-
-// tombstonesAnnotator implements manifest.Annotator, annotating B-Tree nodes
-// with the sum of the files' counts of tombstones (DEL, SINGLEDEL and RANGEDELk
-// eys). Its annotation type is a *uint64. The count of tombstones may change
-// once a table's stats are loaded asynchronously, so its values are marked as
-// cacheable only if a file's stats have been loaded.
-type tombstonesAnnotator struct{}
-
-var _ manifest.Annotator = tombstonesAnnotator{}
-
-func (a tombstonesAnnotator) Zero(dst interface{}) interface{} {
-	if dst == nil {
-		return new(uint64)
-	}
-	v := dst.(*uint64)
-	*v = 0
-	return v
-}
-
-func (a tombstonesAnnotator) Accumulate(
-	f *fileMetadata, dst interface{},
-) (v interface{}, cacheOK bool) {
-	vptr := dst.(*uint64)
-	*vptr = *vptr + f.Stats.NumDeletions
-	return vptr, f.StatsValid()
-}
-
-func (a tombstonesAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	srcV := src.(*uint64)
-	dstV := dst.(*uint64)
-	*dstV = *dstV + *srcV
-	return dstV
-}
-
-// countTombstones counts the number of tombstone (DEL, SINGLEDEL and RANGEDEL)
-// internal keys across all files of the LSM. It only counts keys in files for
-// which table stats have been loaded. It uses a b-tree annotator to cache
-// intermediate values between calculations when possible.
-func countTombstones(v *version) (count uint64) {
-	for l := 0; l < numLevels; l++ {
-		if v.Levels[l].Empty() {
-			continue
-		}
-		count += *v.Levels[l].Annotation(tombstonesAnnotator{}).(*uint64)
-	}
-	return count
-}
-
-// valueBlocksSizeAnnotator implements manifest.Annotator, annotating B-Tree
-// nodes with the sum of the files' Properties.ValueBlocksSize. Its annotation
-// type is a *uint64. The value block size may change once a table's stats are
-// loaded asynchronously, so its values are marked as cacheable only if a
-// file's stats have been loaded.
-type valueBlocksSizeAnnotator struct{}
-
-var _ manifest.Annotator = valueBlocksSizeAnnotator{}
-
-func (a valueBlocksSizeAnnotator) Zero(dst interface{}) interface{} {
-	if dst == nil {
-		return new(uint64)
-	}
-	v := dst.(*uint64)
-	*v = 0
-	return v
-}
-
-func (a valueBlocksSizeAnnotator) Accumulate(
-	f *fileMetadata, dst interface{},
-) (v interface{}, cacheOK bool) {
-	vptr := dst.(*uint64)
-	*vptr = *vptr + f.Stats.ValueBlocksSize
-	return vptr, f.StatsValid()
-}
-
-func (a valueBlocksSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	srcV := src.(*uint64)
-	dstV := dst.(*uint64)
-	*dstV = *dstV + *srcV
-	return dstV
-}
-
-// valueBlocksSizeForLevel returns the Properties.ValueBlocksSize across all
-// files for a level of the LSM. It only includes the size for files for which
-// table stats have been loaded. It uses a b-tree annotator to cache
-// intermediate values between calculations when possible. It must not be
-// called concurrently.
-//
-// REQUIRES: 0 <= level <= numLevels.
-func valueBlocksSizeForLevel(v *version, level int) (count uint64) {
-	if v.Levels[level].Empty() {
-		return 0
-	}
-	return *v.Levels[level].Annotation(valueBlocksSizeAnnotator{}).(*uint64)
-}
-
-// compressionTypeAnnotator implements manifest.Annotator, annotating B-tree
-// nodes with the compression type of the file. Its annotation type is a
-// *compressionTypes. The compression type may change once a table's stats are
-// loaded asynchronously, so its values are marked as cacheable only if a file's
-// stats have been loaded.
-type compressionTypeAnnotator struct{}
+type compressionTypeAggregator struct{}
 
 type compressionTypes struct {
 	snappy, zstd, none, unknown uint64
 }
 
-var _ manifest.Annotator = compressionTypeAnnotator{}
-
-func (a compressionTypeAnnotator) Zero(dst interface{}) interface{} {
+func (a compressionTypeAggregator) Zero(dst *compressionTypes) *compressionTypes {
 	if dst == nil {
 		return new(compressionTypes)
 	}
-	v := dst.(*compressionTypes)
-	*v = compressionTypes{}
-	return v
+	*dst = compressionTypes{}
+	return dst
 }
 
-func (a compressionTypeAnnotator) Accumulate(
-	f *fileMetadata, dst interface{},
-) (v interface{}, cacheOK bool) {
-	vptr := dst.(*compressionTypes)
+func (a compressionTypeAggregator) Accumulate(f *fileMetadata, dst *compressionTypes) (v *compressionTypes, cacheOK bool) {
 	switch f.Stats.CompressionType {
 	case sstable.SnappyCompression:
-		vptr.snappy++
+		dst.snappy++
 	case sstable.ZstdCompression:
-		vptr.zstd++
+		dst.zstd++
 	case sstable.NoCompression:
-		vptr.none++
+		dst.none++
 	default:
-		vptr.unknown++
+		dst.unknown++
 	}
-	return vptr, f.StatsValid()
+	return dst, f.StatsValid()
 }
 
-func (a compressionTypeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	srcV := src.(*compressionTypes)
-	dstV := dst.(*compressionTypes)
-	dstV.snappy = dstV.snappy + srcV.snappy
-	dstV.zstd = dstV.zstd + srcV.zstd
-	dstV.none = dstV.none + srcV.none
-	dstV.unknown = dstV.unknown + srcV.unknown
-	return dstV
-}
-
-// compressionTypesForLevel returns the count of sstables by compression type
-// used for a level in the LSM. Sstables with compression type snappy or zstd
-// are returned, while others are ignored.
-func compressionTypesForLevel(v *version, level int) (unknown, snappy, none, zstd uint64) {
-	if v.Levels[level].Empty() {
-		return
-	}
-	compression := v.Levels[level].Annotation(compressionTypeAnnotator{}).(*compressionTypes)
-	if compression == nil {
-		return
-	}
-	return compression.unknown, compression.snappy, compression.none, compression.zstd
+func (a compressionTypeAggregator) Merge(
+	src *compressionTypes, dst *compressionTypes,
+) *compressionTypes {
+	dst.snappy += src.snappy
+	dst.zstd += src.zstd
+	dst.none += src.none
+	dst.unknown += src.unknown
+	return dst
 }
