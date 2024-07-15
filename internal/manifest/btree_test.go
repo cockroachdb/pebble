@@ -145,10 +145,10 @@ func (n *node) recurse(f func(child *node, pos int16)) {
 //////////////////////////////////////////
 
 func key(i int) InternalKey {
-	if i < 0 || i > 99999 {
+	if i < 0 || i > 9999999 {
 		panic("key out of bounds")
 	}
-	return base.MakeInternalKey([]byte(fmt.Sprintf("%05d", i)), 0, base.InternalKeyKindSet)
+	return base.MakeInternalKey([]byte(fmt.Sprintf("%07d", i)), 0, base.InternalKeyKindSet)
 }
 
 func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
@@ -532,56 +532,6 @@ func TestIterEndSentinel(t *testing.T) {
 	require.False(t, iter.iter.valid())
 	iter.Prev()
 	require.True(t, iter.iter.valid())
-}
-
-type orderStatistic struct{}
-
-func (o orderStatistic) Zero(dst interface{}) interface{} {
-	if dst == nil {
-		return new(int)
-	}
-	v := dst.(*int)
-	*v = 0
-	return v
-}
-
-func (o orderStatistic) Accumulate(meta *FileMetadata, dst interface{}) (interface{}, bool) {
-	v := dst.(*int)
-	*v++
-	return v, true
-}
-
-func (o orderStatistic) Merge(src interface{}, dst interface{}) interface{} {
-	srcv := src.(*int)
-	dstv := dst.(*int)
-	*dstv = *dstv + *srcv
-	return dstv
-}
-
-func TestAnnotationOrderStatistic(t *testing.T) {
-	const count = 1000
-	ann := orderStatistic{}
-
-	var tr btree
-	tr.cmp = cmp
-	for i := 1; i <= count; i++ {
-		require.NoError(t, tr.Insert(newItem(key(i))))
-
-		v, ok := tr.root.Annotation(ann)
-		require.True(t, ok)
-		vtyped := v.(*int)
-		require.Equal(t, i, *vtyped)
-	}
-
-	v, ok := tr.root.Annotation(ann)
-	require.True(t, ok)
-	vtyped := v.(*int)
-	require.Equal(t, count, *vtyped)
-
-	v, ok = tr.root.Annotation(ann)
-	vtyped = v.(*int)
-	require.True(t, ok)
-	require.Equal(t, count, *vtyped)
 }
 
 // TestRandomizedBTree tests a random set of Insert, Delete and iteration

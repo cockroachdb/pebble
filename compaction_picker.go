@@ -639,39 +639,13 @@ func compensatedSize(f *fileMetadata) uint64 {
 	return f.Size + fileCompensation(f)
 }
 
-// compensatedSizeAnnotator implements manifest.Annotator, annotating B-Tree
-// nodes with the sum of the files' compensated sizes. Its annotation type is
-// a *uint64. Compensated sizes may change once a table's stats are loaded
-// asynchronously, so its values are marked as cacheable only if a file's
-// stats have been loaded.
-type compensatedSizeAnnotator struct {
-}
-
-var _ manifest.Annotator = compensatedSizeAnnotator{}
-
-func (a compensatedSizeAnnotator) Zero(dst interface{}) interface{} {
-	if dst == nil {
-		return new(uint64)
-	}
-	v := dst.(*uint64)
-	*v = 0
-	return v
-}
-
-func (a compensatedSizeAnnotator) Accumulate(
-	f *fileMetadata, dst interface{},
-) (v interface{}, cacheOK bool) {
-	vptr := dst.(*uint64)
-	*vptr = *vptr + compensatedSize(f)
-	return vptr, f.StatsValid()
-}
-
-func (a compensatedSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
-	srcV := src.(*uint64)
-	dstV := dst.(*uint64)
-	*dstV = *dstV + *srcV
-	return dstV
-}
+// compensatedSizeAnnotator is a manifest.Annotator that annotates B-Tree
+// nodes with the sum of the files' compensated sizes. Compensated sizes may
+// change once a table's stats are loaded asynchronously, so its values are
+// marked as cacheable only if a file's stats have been loaded.
+var compensatedSizeAnnotator = manifest.SumAnnotator(func(f *fileMetadata) (uint64, bool) {
+	return compensatedSize(f), f.StatsValid()
+})
 
 // totalCompensatedSize computes the compensated size over a file metadata
 // iterator. Note that this function is linear in the files available to the
@@ -912,10 +886,6 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]leve
 	return sizeAdjust
 }
 
-func levelCompensatedSize(lm manifest.LevelMetadata) uint64 {
-	return *lm.Annotation(compensatedSizeAnnotator{}).(*uint64)
-}
-
 func (p *compactionPickerByScore) calculateLevelScores(
 	inProgressCompactions []compactionInfo,
 ) [numLevels]candidateLevelInfo {
@@ -932,7 +902,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	}
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
-		compensatedLevelSize := levelCompensatedSize(p.vers.Levels[level]) + sizeAdjust[level].compensated()
+		compensatedLevelSize := compensatedSizeAnnotator.LevelAnnotation(p.vers.Levels[level]) + sizeAdjust[level].compensated()
 		scores[level].compensatedScore = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
 		scores[level].uncompensatedScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
@@ -1393,109 +1363,56 @@ func (p *compactionPickerByScore) addScoresToPickedCompactionMetrics(
 	}
 }
 
-// elisionOnlyAnnotator implements the manifest.Annotator interface,
-// annotating B-Tree nodes with the *fileMetadata of a file meeting the
-// obsolete keys criteria for an elision-only compaction within the subtree.
-// If multiple files meet the criteria, it chooses whichever file has the
-// lowest LargestSeqNum. The lowest LargestSeqNum file will be the first
-// eligible for an elision-only compaction once snapshots less than or equal
-// to its LargestSeqNum are closed.
-type elisionOnlyAnnotator struct{}
-
-var _ manifest.Annotator = elisionOnlyAnnotator{}
-
-func (a elisionOnlyAnnotator) Zero(interface{}) interface{} {
-	return nil
+// elisionOnlyAnnotator is a manifest.Annotator that annotates B-Tree
+// nodes with the *fileMetadata of a file meeting the obsolete keys criteria
+// for an elision-only compaction within the subtree. If multiple files meet
+// the criteria, it chooses whichever file has the lowest LargestSeqNum. The
+// lowest LargestSeqNum file will be the first eligible for an elision-only
+// compaction once snapshots less than or equal to its LargestSeqNum are closed.
+var elisionOnlyAnnotator = &manifest.Annotator[*fileMetadata]{
+	Aggregator: manifest.PickFileAggregator{
+		Filter: func(f *fileMetadata) (eligible bool, cacheOK bool) {
+			if f.IsCompacting() {
+				return false, true
+			}
+			if !f.StatsValid() {
+				return false, false
+			}
+			// Bottommost files are large and not worthwhile to compact just
+			// to remove a few tombstones. Consider a file eligible only if
+			// either its own range deletions delete at least 10% of its data or
+			// its deletion tombstones make at least 10% of its entries.
+			//
+			// TODO(jackson): This does not account for duplicate user keys
+			// which may be collapsed. Ideally, we would have 'obsolete keys'
+			// statistics that would include tombstones, the keys that are
+			// dropped by tombstones and duplicated user keys. See #847.
+			//
+			// Note that tables that contain exclusively range keys (i.e. no point keys,
+			// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
+			// from elision-only compactions.
+			// TODO(travers): Consider an alternative heuristic for elision of range-keys.
+			return f.Stats.RangeDeletionsBytesEstimate*10 >= f.Size || f.Stats.NumDeletions*10 > f.Stats.NumEntries, true
+		},
+		Compare: func(f1 *fileMetadata, f2 *fileMetadata) bool {
+			return f1.LargestSeqNum < f2.LargestSeqNum
+		},
+	},
 }
 
-func (a elisionOnlyAnnotator) Accumulate(f *fileMetadata, dst interface{}) (interface{}, bool) {
-	if f.IsCompacting() {
-		return dst, true
-	}
-	if !f.StatsValid() {
-		return dst, false
-	}
-	// Bottommost files are large and not worthwhile to compact just
-	// to remove a few tombstones. Consider a file ineligible if its
-	// own range deletions delete less than 10% of its data and its
-	// deletion tombstones make up less than 10% of its entries.
-	//
-	// TODO(jackson): This does not account for duplicate user keys
-	// which may be collapsed. Ideally, we would have 'obsolete keys'
-	// statistics that would include tombstones, the keys that are
-	// dropped by tombstones and duplicated user keys. See #847.
-	//
-	// Note that tables that contain exclusively range keys (i.e. no point keys,
-	// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
-	// from elision-only compactions.
-	// TODO(travers): Consider an alternative heuristic for elision of range-keys.
-	if f.Stats.RangeDeletionsBytesEstimate*10 < f.Size &&
-		f.Stats.NumDeletions*10 <= f.Stats.NumEntries {
-		return dst, true
-	}
-	if dst == nil {
-		return f, true
-	} else if dstV := dst.(*fileMetadata); dstV.LargestSeqNum > f.LargestSeqNum {
-		return f, true
-	}
-	return dst, true
-}
-
-func (a elisionOnlyAnnotator) Merge(v interface{}, accum interface{}) interface{} {
-	if v == nil {
-		return accum
-	}
-	// If we haven't accumulated an eligible file yet, or f's LargestSeqNum is
-	// less than the accumulated file's, use f.
-	if accum == nil {
-		return v
-	}
-	f := v.(*fileMetadata)
-	accumV := accum.(*fileMetadata)
-	if accumV == nil || accumV.LargestSeqNum > f.LargestSeqNum {
-		return f
-	}
-	return accumV
-}
-
-// markedForCompactionAnnotator implements the manifest.Annotator interface,
-// annotating B-Tree nodes with the *fileMetadata of a file that is marked for
-// compaction within the subtree. If multiple files meet the criteria, it
-// chooses whichever file has the lowest LargestSeqNum.
-type markedForCompactionAnnotator struct{}
-
-var _ manifest.Annotator = markedForCompactionAnnotator{}
-
-func (a markedForCompactionAnnotator) Zero(interface{}) interface{} {
-	return nil
-}
-
-func (a markedForCompactionAnnotator) Accumulate(
-	f *fileMetadata, dst interface{},
-) (interface{}, bool) {
-	if !f.MarkedForCompaction {
-		// Not marked for compaction; return dst.
-		return dst, true
-	}
-	return markedMergeHelper(f, dst)
-}
-
-func (a markedForCompactionAnnotator) Merge(v interface{}, accum interface{}) interface{} {
-	if v == nil {
-		return accum
-	}
-	accum, _ = markedMergeHelper(v.(*fileMetadata), accum)
-	return accum
-}
-
-// REQUIRES: f is non-nil, and f.MarkedForCompaction=true.
-func markedMergeHelper(f *fileMetadata, dst interface{}) (interface{}, bool) {
-	if dst == nil {
-		return f, true
-	} else if dstV := dst.(*fileMetadata); dstV.LargestSeqNum > f.LargestSeqNum {
-		return f, true
-	}
-	return dst, true
+// markedForCompactionAnnotator is a manifest.Annotator that annotates B-Tree
+// nodes with the *fileMetadata of a file that is marked for compaction
+// within the subtree. If multiple files meet the criteria, it chooses
+// whichever file has the lowest LargestSeqNum.
+var markedForCompactionAnnotator = &manifest.Annotator[*fileMetadata]{
+	Aggregator: manifest.PickFileAggregator{
+		Filter: func(f *fileMetadata) (eligible bool, cacheOK bool) {
+			return f.MarkedForCompaction, true
+		},
+		Compare: func(f1 *fileMetadata, f2 *fileMetadata) bool {
+			return f1.LargestSeqNum < f2.LargestSeqNum
+		},
+	},
 }
 
 // pickElisionOnlyCompaction looks for compactions of sstables in the
@@ -1506,11 +1423,10 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	if p.opts.private.disableElisionOnlyCompactions {
 		return nil
 	}
-	v := p.vers.Levels[numLevels-1].Annotation(elisionOnlyAnnotator{})
-	if v == nil {
+	candidate := elisionOnlyAnnotator.LevelAnnotation(p.vers.Levels[numLevels-1])
+	if candidate == nil {
 		return nil
 	}
-	candidate := v.(*fileMetadata)
 	if candidate.IsCompacting() || candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
 		return nil
 	}
@@ -1542,12 +1458,11 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 // the input level.
 func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *pickedCompaction) {
 	for l := numLevels - 1; l >= 0; l-- {
-		v := p.vers.Levels[l].Annotation(markedForCompactionAnnotator{})
-		if v == nil {
+		candidate := markedForCompactionAnnotator.LevelAnnotation(p.vers.Levels[l])
+		if candidate == nil {
 			// Try the next level.
 			continue
 		}
-		candidate := v.(*fileMetadata)
 		if candidate.IsCompacting() {
 			// Try the next level.
 			continue
