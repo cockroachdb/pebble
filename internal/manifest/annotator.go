@@ -4,6 +4,12 @@
 
 package manifest
 
+import (
+	"sort"
+
+	"github.com/cockroachdb/pebble/internal/base"
+)
+
 // The Annotator type defined below is used by other packages to lazily
 // compute a value over a B-Tree. Each node of the B-Tree stores one
 // `annotation` per annotator, containing the result of the computation over
@@ -59,6 +65,11 @@ type annotation struct {
 	// AnnotationAggregator.Accumulate or AnnotationAggregator.Merge.
 	// NB: This is untyped for the same reason as annotator above.
 	v interface{}
+
+	// scratch is used to hold the aggregated annotation value when computing
+	// range annotations in order to avoid overwriting an already cached
+	// annotation, and to also avoid additional allocations.
+	scratch interface{}
 	// valid indicates whether future reads of the annotation may use the
 	// value as-is. If false, v will be zeroed and recalculated.
 	valid bool
@@ -81,36 +92,114 @@ func (a *Annotator[T]) findAnnotation(n *node) *annotation {
 	return &n.annot[len(n.annot)-1]
 }
 
-// nodeAnnotation computes this annotator's annotation of this node across all
-// files in the node's subtree. The second return value indicates whether the
-// annotation is stable and thus cacheable.
-func (a *Annotator[T]) nodeAnnotation(n *node) (v *T, cacheOK bool) {
+// nodeRangeAnnotation computes this annotator's annotation of a node across
+// all files in the range defined by lowerBound and upperBound. The second
+// return value indicates whether the annotation is stable and thus cacheable.
+func (a *Annotator[T]) nodeRangeAnnotation(
+	n *node,
+	cmp base.Compare,
+	// lowerBound and upperBound may be nil to indicate no lower or upper bound.
+	lowerBound []byte,
+	// upperBound is a UserKeyBoundary that may be inclusive or exclusive.
+	upperBound *base.UserKeyBoundary,
+) (v *T, cacheOK bool) {
 	annot := a.findAnnotation(n)
-	vtyped := annot.v.(*T)
-	// If the annotation is already marked as valid, we can return it without
+	// If the annotation is already marked as valid and this node's
+	// subtree is fully within the bounds, we can return it without
 	// recomputing anything.
-	if annot.valid {
-		return vtyped, true
+	if lowerBound == nil && upperBound == nil && annot.valid {
+		return annot.v.(*T), true
 	}
 
-	annot.v = a.Aggregator.Zero(vtyped)
-	annot.valid = true
+	// We will accumulate annotations from each item in the end-exclusive
+	// range [leftItem, rightItem).
+	leftItem, rightItem := 0, int(n.count)
+	if lowerBound != nil {
+		// leftItem is the index of the first item that overlaps the lower bound.
+		leftItem = sort.Search(int(n.count), func(i int) bool {
+			return cmp(lowerBound, n.items[i].Largest.UserKey) <= 0
+		})
+	}
+	if upperBound != nil {
+		// rightItem is the index of the first item that does not overlap the
+		// upper bound.
+		rightItem = sort.Search(int(n.count), func(i int) bool {
+			return !upperBound.IsUpperBoundFor(cmp, n.items[i].Smallest.UserKey)
+		})
+	}
 
-	for i := int16(0); i <= n.count; i++ {
-		if !n.leaf {
-			v, ok := a.nodeAnnotation(n.children[i])
-			annot.v = a.Aggregator.Merge(v, vtyped)
-			annot.valid = annot.valid && ok
+	var result *T
+	switch {
+	// If there is no cached annotation, we can directly write to the node's
+	// annotation value.
+	case !annot.valid:
+		result = a.Aggregator.Zero(annot.v.(*T))
+	// Otherwise, use annot.scratch as scratch space to avoid allocations.
+	// The allocation for annot.scratch is performed lazily here instead of
+	// within findAnnotation to avoid an allocation when range annotations
+	// are not used.
+	case annot.scratch == nil:
+		annot.scratch = a.Aggregator.Zero(nil)
+		result = annot.scratch.(*T)
+	default:
+		result = a.Aggregator.Zero(annot.scratch.(*T))
+	}
+
+	valid := true
+	// Accumulate annotations from every item that overlaps the bounds.
+	for i := leftItem; i < rightItem; i++ {
+		v, ok := a.Aggregator.Accumulate(n.items[i], result)
+		result = v
+		valid = valid && ok
+	}
+
+	if !n.leaf {
+		// We will accumulate annotations from each child in the end-inclusive
+		// range [leftChild, rightChild].
+		leftChild, rightChild := leftItem, rightItem
+		// If the lower bound overlaps with the child at leftItem, there is no
+		// need to accumulate annotations from the child to its left.
+		if leftItem < int(n.count) && cmp(lowerBound, n.items[leftItem].Smallest.UserKey) >= 0 {
+			leftChild++
+		}
+		// If the upper bound spans beyond the child at rightItem, we must also
+		// accumulate annotations from the child to its right.
+		if rightItem < int(n.count) && upperBound.IsUpperBoundFor(cmp, n.items[rightItem].Largest.UserKey) {
+			rightChild++
 		}
 
-		if i < n.count {
-			v, ok := a.Aggregator.Accumulate(n.items[i], vtyped)
-			annot.v = v
-			annot.valid = annot.valid && ok
+		for i := leftChild; i <= rightChild; i++ {
+			newLowerBound, newUpperBound := lowerBound, upperBound
+			// If this child is to the right of leftItem, then its entire
+			// subtree is within the lower bound.
+			if i > leftItem {
+				newLowerBound = nil
+			}
+			// If this child is to the left of rightItem, then its entire
+			// subtree is within the upper bound.
+			if i < rightItem {
+				newUpperBound = nil
+			}
+
+			v, ok := a.nodeRangeAnnotation(
+				n.children[i],
+				cmp,
+				newLowerBound,
+				newUpperBound,
+			)
+			result = a.Aggregator.Merge(v, result)
+			valid = valid && ok
 		}
 	}
 
-	return annot.v.(*T), annot.valid
+	// Update this node's cached annotation only if we accumulated from its
+	// entire subtree.
+	if lowerBound == nil && upperBound == nil {
+		annot.v = result
+		annot.valid = valid
+	}
+
+	return result, valid
 }
 
 // InvalidateAnnotation removes any existing cached annotations from this
@@ -135,7 +224,7 @@ func (a *Annotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 		return a.Aggregator.Zero(nil)
 	}
 
-	v, _ := a.nodeAnnotation(lm.tree.root)
+	v, _ := a.nodeRangeAnnotation(lm.tree.root, lm.tree.cmp, nil, nil)
 	return v
 }
 
@@ -153,6 +242,21 @@ func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 		}
 	}
 	return aggregated
+}
+
+// LevelRangeAnnotation calculates the annotation defined by this Annotator for
+// the files within LevelMetadata which are within the range
+// [lowerBound, upperBound). A pointer to the Annotator is used as the key for
+// pre-calculated values, so the same Annotator must be used to avoid duplicate
+// computation. Annotation must not be called concurrently, and in practice this
+// is achieved by requiring callers to hold DB.mu.
+func (a *Annotator[T]) LevelRangeAnnotation(lm LevelMetadata, bounds *base.UserKeyBounds) *T {
+	if lm.Empty() {
+		return a.Aggregator.Zero(nil)
+	}
+
+	v, _ := a.nodeRangeAnnotation(lm.tree.root, lm.tree.cmp, bounds.Start, &bounds.End)
+	return v
 }
 
 // InvalidateAnnotation clears any cached annotations defined by Annotator. A
@@ -202,6 +306,14 @@ func SumAnnotator(accumulate func(f *FileMetadata) (v uint64, cacheOK bool)) *An
 		},
 	}
 }
+
+// NumFilesAnnotator is an Annotator which computes an annotation value
+// equal to the number of files included in the annotation. Particularly, it
+// can be used to efficiently calculate the number of files in a given key
+// range using range annotations.
+var NumFilesAnnotator = SumAnnotator(func(f *FileMetadata) (uint64, bool) {
+	return 1, true
+})
 
 // PickFileAggregator implements the AnnotationAggregator interface. It defines
 // an aggregator that picks a single file from a set of eligible files.
