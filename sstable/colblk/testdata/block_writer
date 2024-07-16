@@ -1,0 +1,373 @@
+init schema=(uint64)
+----
+
+write
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+----
+
+finish
+----
+# columnar block header
+00-02: x 0100             # 1 columns
+02-06: x 0a000000         # 10 rows
+# column 0
+06-07: b 00000101         # uint64
+07-11: x 0b000000         # page start 11
+# data for column 0
+11-12: x 01               # delta encoding: const
+12-20: x 0000000000000000 # 64-bit constant: 0
+# block trailer
+20-21: x 01               # colblk.Version
+
+# Test a uint64 column with all values equal but non-zero.
+
+init schema=(uint64)
+----
+
+write
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+----
+
+finish
+----
+# columnar block header
+00-02: x 0100             # 1 columns
+02-06: x 0c000000         # 12 rows
+# column 0
+06-07: b 00000101         # uint64
+07-11: x 0b000000         # page start 11
+# data for column 0
+11-12: x 01               # delta encoding: const
+12-20: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
+# block trailer
+20-21: x 01               # colblk.Version
+
+# Test a uint64 column with a mix of values, but all values less than 256
+# greater than 4149660732785475243. It should use the delta8 encoding.
+
+init schema=(uint64)
+----
+
+write
+4149660732785475244
+4149660732785475243
+4149660732785475294
+4149660732785475324
+4149660732785475390
+----
+
+finish
+----
+# columnar block header
+00-02: x 0100             # 1 columns
+02-06: x 05000000         # 5 rows
+# column 0
+06-07: b 00000101         # uint64
+07-11: x 0b000000         # page start 11
+# data for column 0
+11-12: x 02               # delta encoding: delta8
+12-20: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+20-21: x 01               # data[0] = 1
+21-22: x 00               # data[1] = 0
+22-23: x 33               # data[2] = 51
+23-24: x 51               # data[3] = 81
+24-25: x 93               # data[4] = 147
+# block trailer
+25-26: x 01               # colblk.Version
+
+# Test the same case, but this time with a value that is exactly 256 greater
+# than the lowest value. The column should use the delta16 encoding.
+
+init schema=(uint64)
+----
+
+write
+4149660732785475244
+4149660732785475243
+4149660732785475294
+4149660732785475499
+4149660732785475324
+4149660732785475390
+----
+
+finish
+----
+# columnar block header
+00-02: x 0100             # 1 columns
+02-06: x 06000000         # 6 rows
+# column 0
+06-07: b 00000101         # uint64
+07-11: x 0b000000         # page start 11
+# data for column 0
+11-12: x 03               # delta encoding: delta16
+12-20: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+20-22: x 0100             # data[0] = 1
+22-24: x 0000             # data[1] = 0
+24-26: x 3300             # data[2] = 51
+26-28: x 0001             # data[3] = 256
+28-30: x 5100             # data[4] = 81
+30-32: x 9300             # data[5] = 147
+# block trailer
+32-33: x 01               # colblk.Version
+
+init schema=(uint64)
+----
+
+write
+0
+1
+2
+3
+4
+5
+6
+2147483647
+65536
+----
+
+finish
+----
+# columnar block header
+00-02: x 0100             # 1 columns
+02-06: x 09000000         # 9 rows
+# column 0
+06-07: b 00000101         # uint64
+07-11: x 0b000000         # page start 11
+# data for column 0
+11-12: x 04               # delta encoding: delta32
+12-20: x 0000000000000000 # 64-bit constant: 0
+20-24: x 00000000         # data[0] = 0
+24-28: x 01000000         # data[1] = 1
+28-32: x 02000000         # data[2] = 2
+32-36: x 03000000         # data[3] = 3
+36-40: x 04000000         # data[4] = 4
+40-44: x 05000000         # data[5] = 5
+44-48: x 06000000         # data[6] = 6
+48-52: x ffffff7f         # data[7] = 2147483647
+52-56: x 00000100         # data[8] = 65536
+# block trailer
+56-57: x 01               # colblk.Version
+
+# Test two columns: a uint32 and a uint64.
+
+init schema=(uint32,uint64)
+----
+
+write
+0 0
+1 1
+2 2
+3 3
+4 4
+5 5
+6 6
+7 7
+8 8
+9 9
+----
+
+finish
+----
+# columnar block header
+00-02: x 0200             # 2 columns
+02-06: x 0a000000         # 10 rows
+# column 0
+06-07: b 00000100         # uint32
+07-11: x 10000000         # page start 16
+# column 1
+11-12: b 00000101         # uint64
+12-16: x 1f000000         # page start 31
+# data for column 0
+16-17: x 02               # delta encoding: delta8
+17-21: x 00000000         # 32-bit constant: 0
+21-22: x 00               # data[0] = 0
+22-23: x 01               # data[1] = 1
+23-24: x 02               # data[2] = 2
+24-25: x 03               # data[3] = 3
+25-26: x 04               # data[4] = 4
+26-27: x 05               # data[5] = 5
+27-28: x 06               # data[6] = 6
+28-29: x 07               # data[7] = 7
+29-30: x 08               # data[8] = 8
+30-31: x 09               # data[9] = 9
+# data for column 1
+31-32: x 02               # delta encoding: delta8
+32-40: x 0000000000000000 # 64-bit constant: 0
+40-41: x 00               # data[0] = 0
+41-42: x 01               # data[1] = 1
+42-43: x 02               # data[2] = 2
+43-44: x 03               # data[3] = 3
+44-45: x 04               # data[4] = 4
+45-46: x 05               # data[5] = 5
+46-47: x 06               # data[6] = 6
+47-48: x 07               # data[7] = 7
+48-49: x 08               # data[8] = 8
+49-50: x 09               # data[9] = 9
+# block trailer
+50-51: x 01               # colblk.Version
+
+init schema=(uint32,uint64)
+----
+
+write
+12295 2592525825202
+1 1
+----
+
+finish
+----
+# columnar block header
+00-02: x 0200             # 2 columns
+02-06: x 02000000         # 2 rows
+# column 0
+06-07: b 00000100         # uint32
+07-11: x 10000000         # page start 16
+# column 1
+11-12: b 00000101         # uint64
+12-16: x 1a000000         # page start 26
+# data for column 0
+16-17: x 03               # delta encoding: delta16
+17-21: x 01000000         # 32-bit constant: 1
+# padding
+21-22: x 00               # aligning to 16-bit boundary
+22-24: x 0630             # data[0] = 12294
+24-26: x 0000             # data[1] = 0
+# data for column 1
+26-27: x 00               # delta encoding: none
+# padding
+27-32: x 0000000000       # aligning to 64-bit boundary
+32-40: x b2b4949e5b020000 # data[0] = 2592525825202
+40-48: x 0100000000000000 # data[1] = 1
+# block trailer
+48-49: x 01               # colblk.Version
+
+init schema=(bool)
+----
+
+write
+t
+t
+t
+f
+t
+t
+f
+t
+t
+f
+t
+t
+t
+t
+t
+f
+t
+t
+f
+t
+t
+f
+t
+t
+----
+
+finish
+----
+# columnar block header
+00-02: x 0100                                                             # 1 columns
+02-06: x 18000000                                                         # 24 rows
+# column 0
+06-07: b 00000001                                                         # bool
+07-11: x 0b000000                                                         # page start 11
+# data for column 0
+11-16: x 0000000000                                                       # padding to align to 64-bit boundary
+16-24: b 1011011101111101110110110000000000000000000000000000000000000000 # bitmap word 0
+24-32: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+# block trailer
+32-33: x 01                                                               # colblk.Version
+
+init schema=(bytes,uint64)
+----
+
+write
+apple 20
+banana 30
+coconut 10
+dragonfruit 70
+elderberry 50
+fraise 60
+goji 80
+jackfruit 90
+kiwi 100
+----
+
+finish
+----
+# columnar block header
+000-002: x 0200                   # 2 columns
+002-006: x 09000000               # 9 rows
+# column 0
+006-007: b 00000110               # bytes
+007-011: x 10000000               # page start 16
+# column 1
+011-012: b 00000101               # uint64
+012-016: x 5d000000               # page start 93
+# data for column 0
+# rawbytes
+# offsets table
+016-017: x 02                     # delta encoding: delta8
+017-021: x 00000000               # 32-bit constant: 0
+021-022: x 00                     # data[0] = 0 [31 overall]
+022-023: x 05                     # data[1] = 5 [36 overall]
+023-024: x 0b                     # data[2] = 11 [42 overall]
+024-025: x 12                     # data[3] = 18 [49 overall]
+025-026: x 1d                     # data[4] = 29 [60 overall]
+026-027: x 27                     # data[5] = 39 [70 overall]
+027-028: x 2d                     # data[6] = 45 [76 overall]
+028-029: x 31                     # data[7] = 49 [80 overall]
+029-030: x 3a                     # data[8] = 58 [89 overall]
+030-031: x 3e                     # data[9] = 62 [93 overall]
+# data
+031-036: x 6170706c65             # data[0]: apple
+036-042: x 62616e616e61           # data[1]: banana
+042-049: x 636f636f6e7574         # data[2]: coconut
+049-060: x 647261676f6e6672756974 # data[3]: dragonfruit
+060-070: x 656c6465726265727279   # data[4]: elderberry
+070-076: x 667261697365           # data[5]: fraise
+076-080: x 676f6a69               # data[6]: goji
+080-089: x 6a61636b6672756974     # data[7]: jackfruit
+089-093: x 6b697769               # data[8]: kiwi
+# data for column 1
+093-094: x 02                     # delta encoding: delta8
+094-102: x 0a00000000000000       # 64-bit constant: 10
+102-103: x 0a                     # data[0] = 10
+103-104: x 14                     # data[1] = 20
+104-105: x 00                     # data[2] = 0
+105-106: x 3c                     # data[3] = 60
+106-107: x 28                     # data[4] = 40
+107-108: x 32                     # data[5] = 50
+108-109: x 46                     # data[6] = 70
+109-110: x 50                     # data[7] = 80
+110-111: x 5a                     # data[8] = 90
+# block trailer
+111-112: x 01                     # colblk.Version

@@ -42,8 +42,8 @@ func TestBitmapFixed(t *testing.T) {
 				builder.Invert(n)
 			}
 
-			_, _ = builder.Finish(0, n, 0, data)
-			bitmap = MakeBitmap(data, n)
+			_ = builder.Finish(0, n, 0, data)
+			bitmap = MakeBitmap(data, 0, n)
 			dumpBitmap(&buf, bitmap)
 			fmt.Fprint(&buf, "\nBinary representation:\n")
 			f := binfmt.New(data)
@@ -99,8 +99,8 @@ func TestBitmapRandom(t *testing.T) {
 			}
 		}
 		data := make([]byte, builder.Size(size, 0))
-		_, _ = builder.Finish(0, size, 0, data)
-		bitmap := MakeBitmap(data, size)
+		_ = builder.Finish(0, size, 0, data)
+		bitmap := MakeBitmap(data, 0, size)
 		for i := 0; i < size; i++ {
 			if got := bitmap.Get(i); got != v[i] {
 				t.Fatalf("b.Get(%d) = %t; want %t", i, got, v[i])
@@ -164,6 +164,6 @@ func BenchmarkBitmapBuilder(b *testing.B) {
 				builder.Set(i, v[i])
 			}
 		}
-		_, _ = builder.Finish(0, size, 0, data)
+		_ = builder.Finish(0, size, 0, data)
 	}
 }

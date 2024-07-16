@@ -68,18 +68,20 @@ type UnsafeIntegerSlice[T constraints.Integer] struct {
 }
 
 func readUnsafeIntegerSlice[T constraints.Integer](
-	rows int, b []byte, off uint32, delta DeltaEncoding,
+	rows int, b []byte, off uint32,
 ) (endOffset uint32, slice UnsafeIntegerSlice[T]) {
+	delta := UintDeltaEncoding(b[off])
+	off++
 	switch delta {
-	case DeltaEncodingNone:
+	case UintDeltaEncodingNone:
 		off = align(off, uint32(unsafe.Sizeof(T(0))))
 		slice = makeUnsafeIntegerSlice[T](0, unsafe.Pointer(&b[off]), int(unsafe.Sizeof(T(0))))
 		off += uint32(unsafe.Sizeof(T(0))) * uint32(rows)
-	case DeltaEncodingConstant:
+	case UintDeltaEncodingConstant:
 		base := readLittleEndianNonaligned[T](b, off)
 		off += uint32(unsafe.Sizeof(T(0)))
 		slice = makeUnsafeIntegerSlice[T](base, unsafe.Pointer(&b[off]), 0)
-	case DeltaEncodingUint8, DeltaEncodingUint16, DeltaEncodingUint32:
+	case UintDeltaEncoding8, UintDeltaEncoding16, UintDeltaEncoding32:
 		w := delta.width()
 		base := readLittleEndianNonaligned[T](b, off)
 		off += uint32(unsafe.Sizeof(T(0)))
