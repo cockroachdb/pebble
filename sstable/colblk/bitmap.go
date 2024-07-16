@@ -34,13 +34,14 @@ type Bitmap struct {
 // bits. No bounds checking is performed, so the caller must guarantee the
 // bitmap is appropriately sized and the provided bitCount correctly identifies
 // the number of bits in the bitmap.
-func MakeBitmap(b []byte, bitCount int) Bitmap {
-	if len(b) != bitmapRequiredSize(bitCount) {
-		panic(errors.AssertionFailedf("bitmap of %d bits requires at %d bytes; provided with %d-byte slice",
-			bitCount, bitmapRequiredSize(bitCount), len(b)))
+func MakeBitmap(b []byte, off uint32, bitCount int) Bitmap {
+	if len(b) < int(off)+bitmapRequiredSize(bitCount) {
+		panic(errors.AssertionFailedf("bitmap of %d bits requires at least %d bytes; provided with %d-byte slice",
+			bitCount, bitmapRequiredSize(bitCount), len(b[off:])))
 	}
+	off = align(off, align64)
 	return Bitmap{
-		data:     makeUnsafeRawSlice[uint64](unsafe.Pointer(&b[0])),
+		data:     makeUnsafeRawSlice[uint64](unsafe.Pointer(&b[off])),
 		bitCount: bitCount,
 	}
 }
@@ -201,6 +202,9 @@ type BitmapBuilder struct {
 	words []uint64
 }
 
+// Assert that BitmapBuilder implements ColumnWriter.
+var _ ColumnWriter = (*BitmapBuilder)(nil)
+
 func bitmapRequiredSize(total int) int {
 	nWords := (total + 63) >> 6          // divide by 64
 	nSummaryWords := (nWords + 63) >> 6  // divide by 64
@@ -231,6 +235,9 @@ func (b *BitmapBuilder) Reset() {
 // NumColumns implements the ColumnWriter interface.
 func (b *BitmapBuilder) NumColumns() int { return 1 }
 
+// DataType implements the ColumnWriter interface.
+func (b *BitmapBuilder) DataType(int) DataType { return DataTypeBool }
+
 // Size implements the ColumnWriter interface.
 func (b *BitmapBuilder) Size(rows int, offset uint32) uint32 {
 	offset = align(offset, align64)
@@ -251,7 +258,7 @@ func (b *BitmapBuilder) Invert(nRows int) {
 
 // Finish finalizes the bitmap, computing the per-word summary bitmap and
 // writing the resulting data to buf at offset.
-func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) (uint32, ColumnDesc) {
+func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32 {
 	offset = alignWithZeroes(buf, offset, align64)
 	dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset]))
 
@@ -294,8 +301,7 @@ func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) (uint3
 		}
 		dest.set(nBitmapWords+i, summaryWord)
 	}
-	offset += uint32(nSummaryWords) << align64Shift
-	return offset, ColumnDesc{DataType: DataTypeBool, Encoding: EncodingDefault}
+	return offset + uint32(nSummaryWords)<<align64Shift
 }
 
 // WriteDebug implements the ColumnWriter interface.
@@ -304,7 +310,10 @@ func (b *BitmapBuilder) WriteDebug(w io.Writer, rows int) {
 	fmt.Fprint(w, "bitmap")
 }
 
-func bitmapToBinFormatter(f *binfmt.Formatter, rows int) int {
+func bitmapToBinFormatter(f *binfmt.Formatter, rows int) {
+	if aligned := align(f.Offset(), 8); aligned-f.Offset() != 0 {
+		f.HexBytesln(aligned-f.Offset(), "padding to align to 64-bit boundary")
+	}
 	bitmapWords := (rows + 63) / 64
 	for i := 0; i < bitmapWords; i++ {
 		f.Line(8).Append("b ").Binary(8).Done("bitmap word %d", i)
@@ -313,5 +322,4 @@ func bitmapToBinFormatter(f *binfmt.Formatter, rows int) int {
 	for i := 0; i < summaryWords; i++ {
 		f.Line(8).Append("b ").Binary(8).Done("bitmap summary word %d-%d", i*64, i*64+63)
 	}
-	return (bitmapWords + summaryWords) * align64
 }
