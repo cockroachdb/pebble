@@ -51,11 +51,11 @@ type RawBytes struct {
 
 // MakeRawBytes constructs an accessor for an array of byte slices constructed
 // by RawBytesBuilder. Count must be the number of byte slices within the array.
-func MakeRawBytes(count int, b []byte, offset uint32, enc ColumnEncoding) RawBytes {
+func MakeRawBytes(count int, b []byte, offset uint32) RawBytes {
 	if count == 0 {
 		return RawBytes{}
 	}
-	dataOff, offsets := readUnsafeIntegerSlice[uint32](count+1 /* +1 offset */, b, offset, enc.Delta())
+	dataOff, offsets := readUnsafeIntegerSlice[uint32](count+1 /* +1 offset */, b, offset)
 	return RawBytes{
 		slices:  count,
 		offsets: offsets,
@@ -68,18 +68,16 @@ func defaultSliceFormatter(x []byte) string {
 	return string(x)
 }
 
-func rawBytesToBinFormatter(
-	f *binfmt.Formatter, count int, enc ColumnEncoding, sliceFormatter func([]byte) string,
-) {
+func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func([]byte) string) {
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}
 
-	rb := MakeRawBytes(count, f.Data(), uint32(f.Offset()), enc)
+	rb := MakeRawBytes(count, f.Data(), uint32(f.Offset()))
 	dataOffset := uint64(f.Offset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
 	f.CommentLine("RawBytes")
 	f.CommentLine("Offsets table")
-	uintsToBinFormatter(f, count+1, ColumnDesc{DataType: DataTypeUint32, Encoding: enc}, func(offset uint64) string {
+	uintsToBinFormatter(f, count+1, DataTypeUint32, func(offset uint64) string {
 		return fmt.Sprintf("%d [%d overall]", offset, offset+dataOffset)
 	})
 	f.CommentLine("Data")
@@ -131,6 +129,9 @@ func (b *RawBytesBuilder) Reset() {
 // NumColumns implements ColumnWriter.
 func (b *RawBytesBuilder) NumColumns() int { return 1 }
 
+// DataType implements ColumnWriter.
+func (b *RawBytesBuilder) DataType(int) DataType { return DataTypeBytes }
+
 // Put appends the provided byte slice to the builder.
 func (b *RawBytesBuilder) Put(s []byte) {
 	b.data = append(b.data, s...)
@@ -149,19 +150,14 @@ func (b *RawBytesBuilder) PutConcat(s1, s2 []byte) {
 // Finish writes the serialized byte slices to buf starting at offset. The buf
 // slice must be sufficiently large to store the serialized output. The caller
 // should use [Size] to size buf appropriately before calling Finish.
-func (b *RawBytesBuilder) Finish(
-	col int, rows int, offset uint32, buf []byte,
-) (uint32, ColumnDesc) {
-	desc := ColumnDesc{DataType: DataTypeBytes, Encoding: EncodingDefault}
+func (b *RawBytesBuilder) Finish(col, rows int, offset uint32, buf []byte) uint32 {
 	if rows == 0 {
-		return 0, desc
+		return 0
 	}
 	dataLen := b.offsets.Get(rows)
-	dataOffset, offsetColumnDesc := b.offsets.Finish(0, rows+1, offset, buf)
-	desc.Encoding = offsetColumnDesc.Encoding
+	offset = b.offsets.Finish(0, rows+1, offset, buf)
 	// Copy the data section.
-	endOffset := dataOffset + uint32(copy(buf[dataOffset:], b.data[:dataLen]))
-	return endOffset, desc
+	return offset + uint32(copy(buf[offset:], b.data[:dataLen]))
 }
 
 // Size computes the size required to encode the byte slices beginning in a

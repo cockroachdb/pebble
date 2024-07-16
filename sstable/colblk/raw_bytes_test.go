@@ -42,7 +42,7 @@ func TestRawBytes(t *testing.T) {
 			fmt.Fprintf(&out, "Size: %d\n", size-uint32(startOffset))
 
 			buf := aligned.ByteSlice(startOffset + int(size))
-			endOffset, desc := builder.Finish(0, count, uint32(startOffset), buf)
+			endOffset := builder.Finish(0, count, uint32(startOffset), buf)
 
 			// Validate that builder.Size() was correct in its estimate.
 			require.Equal(t, size, endOffset)
@@ -50,8 +50,8 @@ func TestRawBytes(t *testing.T) {
 			if startOffset > 0 {
 				f.HexBytesln(startOffset, "start offset")
 			}
-			rawBytesToBinFormatter(f, count, desc.Encoding, nil)
-			rawBytes = MakeRawBytes(count, buf[:], 0, desc.Encoding)
+			rawBytesToBinFormatter(f, count, nil)
+			rawBytes = MakeRawBytes(count, buf[startOffset:], 0)
 			return f.String()
 		case "at":
 			var indices []int
@@ -91,7 +91,7 @@ func BenchmarkRawBytes(b *testing.B) {
 
 	var builder RawBytesBuilder
 	var buf []byte
-	buildRawBytes := func(slices [][]byte) ([]byte, ColumnEncoding) {
+	buildRawBytes := func(slices [][]byte) []byte {
 		builder.Reset()
 		for _, s := range slices {
 			builder.Put(s)
@@ -102,8 +102,8 @@ func BenchmarkRawBytes(b *testing.B) {
 		} else {
 			buf = make([]byte, sz)
 		}
-		_, desc := builder.Finish(0, len(slices), 0, buf)
-		return buf, desc.Encoding
+		_ = builder.Finish(0, len(slices), 0, buf)
+		return buf
 	}
 
 	sizes := []int{8, 128, 1024}
@@ -115,7 +115,7 @@ func BenchmarkRawBytes(b *testing.B) {
 				b.ResetTimer()
 				b.SetBytes(32 << 10)
 				for i := 0; i < b.N; i++ {
-					data, _ := buildRawBytes(slices)
+					data := buildRawBytes(slices)
 					fmt.Fprint(io.Discard, data)
 				}
 			})
@@ -125,8 +125,8 @@ func BenchmarkRawBytes(b *testing.B) {
 		for _, sz := range sizes {
 			b.Run(fmt.Sprintf("sliceLen=%d", sz), func(b *testing.B) {
 				slices := generateRandomSlices(sz, 32<<10 /* 32 KiB */)
-				data, enc := buildRawBytes(slices)
-				rb := MakeRawBytes(len(slices), data, 0, enc)
+				data := buildRawBytes(slices)
+				rb := MakeRawBytes(len(slices), data, 0)
 				b.ResetTimer()
 				b.SetBytes(32 << 10)
 				for i := 0; i < b.N; i++ {

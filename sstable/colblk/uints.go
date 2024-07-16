@@ -21,6 +21,65 @@ type Uint interface {
 	~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
+// UintDeltaEncoding indicates what delta encoding, if any is in use by a
+// uint{8,16,32,64} column to reduce the per-row storage size.
+//
+// A uint delta encoding represents every non-NULL element in an array of uints
+// as a delta relative to the column's constant. The logical value of each row
+// is computed as C + D[i] where C is the column constant and D[i] is the delta.
+//
+// The UintDeltaEncoding byte is serialized to the uint column before the column
+// data.
+type UintDeltaEncoding uint8
+
+const (
+	// UintDeltaEncodingNone indicates no delta encoding is in use. N rows are
+	// represented using N values of the column's logical data type.
+	UintDeltaEncodingNone UintDeltaEncoding = 0
+	// UintDeltaEncodingConstant indicates that all rows of the column share the
+	// same value. The column data encodes the constant value and no deltas.
+	UintDeltaEncodingConstant UintDeltaEncoding = 1
+	// UintDeltaEncoding8 indicates each delta is represented as a 1-byte uint8.
+	UintDeltaEncoding8 UintDeltaEncoding = 2
+	// UintDeltaEncoding16 indicates each delta is represented as a 2-byte uint16.
+	UintDeltaEncoding16 UintDeltaEncoding = 3
+	// UintDeltaEncoding32 indicates each delta is represented as a 4-byte uint32.
+	UintDeltaEncoding32 UintDeltaEncoding = 4
+)
+
+// String implements fmt.Stringer.
+func (d UintDeltaEncoding) String() string {
+	switch d {
+	case UintDeltaEncodingNone:
+		return "none"
+	case UintDeltaEncodingConstant:
+		return "const"
+	case UintDeltaEncoding8:
+		return "delta8"
+	case UintDeltaEncoding16:
+		return "delta16"
+	case UintDeltaEncoding32:
+		return "delta32"
+	default:
+		panic("unreachable")
+	}
+}
+
+func (d UintDeltaEncoding) width() int {
+	switch d {
+	case UintDeltaEncodingConstant:
+		return 0
+	case UintDeltaEncoding8:
+		return 1
+	case UintDeltaEncoding16:
+		return 2
+	case UintDeltaEncoding32:
+		return 4
+	default:
+		panic("unreachable")
+	}
+}
+
 // UintBuilder builds a column of unsigned integers of the same width.
 // UintBuilder uses a delta encoding when possible to store values using
 // lower-width integers. See DeltaEncoding.
@@ -106,6 +165,9 @@ func (b *UintBuilder[T]) init(useDefault bool) {
 
 // NumColumns implements ColumnWriter.
 func (b *UintBuilder[T]) NumColumns() int { return 1 }
+
+// DataType implements ColumnWriter.
+func (b *UintBuilder[T]) DataType(int) DataType { return b.dt }
 
 // Reset implements ColumnWriter and resets the builder, reusing existing
 // allocated memory.
@@ -198,6 +260,7 @@ func (b *UintBuilder[T]) Size(rows int, offset uint32) uint32 {
 // encoded at the provided offset using the provided width. If width <
 // sizeof(T), then a delta encoding is assumed.
 func uintColumnSize[T Uint](rows, offset, width uint32) uint32 {
+	offset++ // DeltaEncoding byte
 	logicalWidth := uint32(unsafe.Sizeof(T(0)))
 	if width != logicalWidth {
 		// A delta encoding will be used. We need to first account for the constant
@@ -216,10 +279,9 @@ func uintColumnSize[T Uint](rows, offset, width uint32) uint32 {
 
 // Finish implements ColumnWriter, serializing the column into offset [offset] of
 // [buf].
-func (b *UintBuilder[T]) Finish(col, rows int, offset uint32, buf []byte) (uint32, ColumnDesc) {
-	desc := ColumnDesc{DataType: b.dt}
+func (b *UintBuilder[T]) Finish(col, rows int, offset uint32, buf []byte) uint32 {
 	if rows == 0 {
-		return offset, desc
+		return offset
 	}
 
 	// Determine the width of each element with delta-encoding applied.
@@ -235,59 +297,61 @@ func (b *UintBuilder[T]) Finish(col, rows int, offset uint32, buf []byte) (uint3
 		minimum, maximum = computeMinMax(b.array.elems.Slice(rows))
 		w = deltaWidth(uint64(maximum - minimum))
 	}
-	offset, desc.Encoding = uintColumnFinish[T](minimum, b.array.elems.Slice(rows), w, offset, buf)
-	return offset, desc
+	return uintColumnFinish[T](minimum, b.array.elems.Slice(rows), w, offset, buf)
 }
 
 // uintColumnFinish finishes the column of unsigned integers of type T, encoding
 // per-row deltas of size width if width < sizeof(T).
-func uintColumnFinish[T Uint](
-	minimum T, values []T, width, offset uint32, buf []byte,
-) (uint32, ColumnEncoding) {
-	enc := EncodingDefault
-
+func uintColumnFinish[T Uint](minimum T, values []T, width, offset uint32, buf []byte) uint32 {
 	// Compare the computed delta width to see if we're able to use an array of
 	// lower-width deltas to encode the column.
 	if uintptr(width) < unsafe.Sizeof(T(0)) {
-		// Regardless of the width, we encode a constant of size T encoding the
-		// minimum across all the values.
-		offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
-
 		switch width {
 		case 0:
 			// All the column values are the same and we can elide any deltas at
 			// all.
-			enc = enc.WithDelta(DeltaEncodingConstant)
-			return offset, enc
+			buf[offset] = byte(UintDeltaEncodingConstant)
+			offset++
+			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
+			return offset
 		case 1:
-			enc = enc.WithDelta(DeltaEncodingUint8)
+			buf[offset] = byte(UintDeltaEncoding8)
+			offset++
+			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
 			dest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset]))
 			reduceUints[T, uint8](minimum, values, dest.Slice(len(values)))
 			offset += uint32(len(values))
-			return offset, enc
+			return offset
 		case align16:
-			enc = enc.WithDelta(DeltaEncodingUint16)
+			buf[offset] = byte(UintDeltaEncoding16)
+			offset++
+			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
 			// Align the offset appropriately for uint16s.
 			offset = alignWithZeroes(buf, offset, align16)
 			dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset]))
 			reduceUints[T, uint16](minimum, values, dest.Slice(len(values)))
 			offset += uint32(len(values)) * align16
-			return offset, enc
+			return offset
 		case align32:
-			enc = enc.WithDelta(DeltaEncodingUint32)
+			buf[offset] = byte(UintDeltaEncoding32)
+			offset++
+			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
 			// Align the offset appropriately for uint32s.
 			offset = alignWithZeroes(buf, offset, align32)
 			dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset]))
 			reduceUints[T, uint32](minimum, values, dest.Slice(len(values)))
 			offset += uint32(len(values)) * align32
-			return offset, enc
+			return offset
 		default:
 			panic("unreachable")
 		}
 	}
+	buf[offset] = byte(UintDeltaEncodingNone)
+	offset++
+	offset = align(offset, uint32(unsafe.Sizeof(T(0))))
 	dest := makeUnsafeRawSlice[T](unsafe.Pointer(&buf[offset])).Slice(len(values))
 	offset += uint32(copy(dest, values)) * uint32(unsafe.Sizeof(T(0)))
-	return offset, enc
+	return offset
 }
 
 // writeLittleEndianNonaligned writes v to buf at the provided offset in
@@ -378,27 +442,30 @@ func deltaWidth(delta uint64) uint32 {
 }
 
 func uintsToBinFormatter(
-	f *binfmt.Formatter, rows int, desc ColumnDesc, uintFormatter func(uint64) string,
+	f *binfmt.Formatter, rows int, dataType DataType, uintFormatter func(uint64) string,
 ) {
 	if uintFormatter == nil {
 		uintFormatter = func(v uint64) string { return fmt.Sprint(v) }
 	}
 
-	logicalWidth := desc.DataType.uintWidth()
+	deltaEncoding := UintDeltaEncoding(f.PeekUint(1)) // DeltaEncoding byte
+	f.HexBytesln(1, "delta encoding: %s", deltaEncoding)
+
+	logicalWidth := dataType.uintWidth()
 
 	elementWidth := int(logicalWidth)
-	if desc.Encoding.Delta() != DeltaEncodingNone {
+	if deltaEncoding != UintDeltaEncodingNone {
 		f.HexBytesln(int(logicalWidth), "%d-bit constant: %d", logicalWidth*8, f.PeekUint(int(logicalWidth)))
 
-		switch desc.Encoding.Delta() {
-		case DeltaEncodingConstant:
+		switch deltaEncoding {
+		case UintDeltaEncodingConstant:
 			// This is just a constant (that was already read/formatted).
-			rows = 0
-		case DeltaEncodingUint8:
+			return
+		case UintDeltaEncoding8:
 			elementWidth = 1
-		case DeltaEncodingUint16:
+		case UintDeltaEncoding16:
 			elementWidth = align16
-		case DeltaEncodingUint32:
+		case UintDeltaEncoding32:
 			elementWidth = align32
 		default:
 			panic("unreachable")
