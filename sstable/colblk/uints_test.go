@@ -114,13 +114,13 @@ func TestUints(t *testing.T) {
 				if shouldFinish {
 					sz := writers[wIdx].Size(rows, offset)
 					buf := aligned.ByteSlice(int(sz))
-					_, desc := writers[wIdx].Finish(0, rows, offset, buf)
+					_ = writers[wIdx].Finish(0, rows, offset, buf)
 					fmt.Fprintf(&out, "b%d: %T:\n", width, writers[wIdx])
 					f := binfmt.New(buf).LineWidth(20)
 					if offset > 0 {
 						f.HexBytesln(int(offset), "artificial start offset")
 					}
-					uintsToBinFormatter(f, rows, desc, nil)
+					uintsToBinFormatter(f, rows, writers[wIdx].DataType(0), nil)
 					fmt.Fprintf(&out, "%s", f.String())
 				} else {
 					fmt.Fprintf(&out, "Keeping b%d open\n", width)

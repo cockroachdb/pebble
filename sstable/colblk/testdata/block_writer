@@ -1,0 +1,375 @@
+init schema=(uint64)
+----
+
+write
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0100             # 1 columns
+03-07: x 0a000000         # 10 rows
+# column 0
+07-08: b 00000101         # uint64
+08-12: x 0c000000         # page start 12
+# data for column 0
+12-13: x 01               # delta encoding: const
+13-21: x 0000000000000000 # 64-bit constant: 0
+21-22: x 00               # block trailer padding
+
+# Test a uint64 column with all values equal but non-zero.
+
+init schema=(uint64)
+----
+
+write
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+9223372036854775807
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0100             # 1 columns
+03-07: x 0c000000         # 12 rows
+# column 0
+07-08: b 00000101         # uint64
+08-12: x 0c000000         # page start 12
+# data for column 0
+12-13: x 01               # delta encoding: const
+13-21: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
+21-22: x 00               # block trailer padding
+
+# Test a uint64 column with a mix of values, but all values less than 256
+# greater than 4149660732785475243. It should use the delta8 encoding.
+
+init schema=(uint64)
+----
+
+write
+4149660732785475244
+4149660732785475243
+4149660732785475294
+4149660732785475324
+4149660732785475390
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0100             # 1 columns
+03-07: x 05000000         # 5 rows
+# column 0
+07-08: b 00000101         # uint64
+08-12: x 0c000000         # page start 12
+# data for column 0
+12-13: x 02               # delta encoding: delta8
+13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+21-22: x 01               # data[0] = 1
+22-23: x 00               # data[1] = 0
+23-24: x 33               # data[2] = 51
+24-25: x 51               # data[3] = 81
+25-26: x 93               # data[4] = 147
+26-27: x 00               # block trailer padding
+
+# Test the same case, but this time with a value that is exactly 256 greater
+# than the lowest value. The column should use the delta16 encoding.
+
+init schema=(uint64)
+----
+
+write
+4149660732785475244
+4149660732785475243
+4149660732785475294
+4149660732785475499
+4149660732785475324
+4149660732785475390
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0100             # 1 columns
+03-07: x 06000000         # 6 rows
+# column 0
+07-08: b 00000101         # uint64
+08-12: x 0c000000         # page start 12
+# data for column 0
+12-13: x 03               # delta encoding: delta16
+13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+# padding
+21-22: x 00               # aligning to 16-bit boundary
+22-24: x 0100             # data[0] = 1
+24-26: x 0000             # data[1] = 0
+26-28: x 3300             # data[2] = 51
+28-30: x 0001             # data[3] = 256
+30-32: x 5100             # data[4] = 81
+32-34: x 9300             # data[5] = 147
+34-35: x 00               # block trailer padding
+
+init schema=(uint64)
+----
+
+write
+0
+1
+2
+3
+4
+5
+6
+2147483647
+65536
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0100             # 1 columns
+03-07: x 09000000         # 9 rows
+# column 0
+07-08: b 00000101         # uint64
+08-12: x 0c000000         # page start 12
+# data for column 0
+12-13: x 04               # delta encoding: delta32
+13-21: x 0000000000000000 # 64-bit constant: 0
+# padding
+21-24: x 000000           # aligning to 32-bit boundary
+24-28: x 00000000         # data[0] = 0
+28-32: x 01000000         # data[1] = 1
+32-36: x 02000000         # data[2] = 2
+36-40: x 03000000         # data[3] = 3
+40-44: x 04000000         # data[4] = 4
+44-48: x 05000000         # data[5] = 5
+48-52: x 06000000         # data[6] = 6
+52-56: x ffffff7f         # data[7] = 2147483647
+56-60: x 00000100         # data[8] = 65536
+60-61: x 00               # block trailer padding
+
+# Test two columns: a uint32 and a uint64.
+
+init schema=(uint32,uint64)
+----
+
+write
+0 0
+1 1
+2 2
+3 3
+4 4
+5 5
+6 6
+7 7
+8 8
+9 9
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0200             # 2 columns
+03-07: x 0a000000         # 10 rows
+# column 0
+07-08: b 00000100         # uint32
+08-12: x 11000000         # page start 17
+# column 1
+12-13: b 00000101         # uint64
+13-17: x 20000000         # page start 32
+# data for column 0
+17-18: x 02               # delta encoding: delta8
+18-22: x 00000000         # 32-bit constant: 0
+22-23: x 00               # data[0] = 0
+23-24: x 01               # data[1] = 1
+24-25: x 02               # data[2] = 2
+25-26: x 03               # data[3] = 3
+26-27: x 04               # data[4] = 4
+27-28: x 05               # data[5] = 5
+28-29: x 06               # data[6] = 6
+29-30: x 07               # data[7] = 7
+30-31: x 08               # data[8] = 8
+31-32: x 09               # data[9] = 9
+# data for column 1
+32-33: x 02               # delta encoding: delta8
+33-41: x 0000000000000000 # 64-bit constant: 0
+41-42: x 00               # data[0] = 0
+42-43: x 01               # data[1] = 1
+43-44: x 02               # data[2] = 2
+44-45: x 03               # data[3] = 3
+45-46: x 04               # data[4] = 4
+46-47: x 05               # data[5] = 5
+47-48: x 06               # data[6] = 6
+48-49: x 07               # data[7] = 7
+49-50: x 08               # data[8] = 8
+50-51: x 09               # data[9] = 9
+51-52: x 00               # block trailer padding
+
+init schema=(uint32,uint64)
+----
+
+write
+12295 2592525825202
+1 1
+----
+
+finish
+----
+# columnar block header
+00-01: x 01               # version 1
+01-03: x 0200             # 2 columns
+03-07: x 02000000         # 2 rows
+# column 0
+07-08: b 00000100         # uint32
+08-12: x 11000000         # page start 17
+# column 1
+12-13: b 00000101         # uint64
+13-17: x 1a000000         # page start 26
+# data for column 0
+17-18: x 03               # delta encoding: delta16
+18-22: x 01000000         # 32-bit constant: 1
+22-24: x 0630             # data[0] = 12294
+24-26: x 0000             # data[1] = 0
+# data for column 1
+26-27: x 00               # delta encoding: none
+# padding
+27-32: x 0000000000       # aligning to 64-bit boundary
+32-40: x b2b4949e5b020000 # data[0] = 2592525825202
+40-48: x 0100000000000000 # data[1] = 1
+48-49: x 00               # block trailer padding
+
+init schema=(bool)
+----
+
+write
+t
+t
+t
+f
+t
+t
+f
+t
+t
+f
+t
+t
+t
+t
+t
+f
+t
+t
+f
+t
+t
+f
+t
+t
+----
+
+finish
+----
+# columnar block header
+00-01: x 01                                                               # version 1
+01-03: x 0100                                                             # 1 columns
+03-07: x 18000000                                                         # 24 rows
+# column 0
+07-08: b 00000001                                                         # bool
+08-12: x 0c000000                                                         # page start 12
+# data for column 0
+12-16: x 00000000                                                         # padding to align to 64-bit boundary
+16-24: b 1011011101111101110110110000000000000000000000000000000000000000 # bitmap word 0
+24-32: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+32-33: x 00                                                               # block trailer padding
+
+init schema=(bytes,uint64)
+----
+
+write
+apple 20
+banana 30
+coconut 10
+dragonfruit 70
+elderberry 50
+fraise 60
+goji 80
+jackfruit 90
+kiwi 100
+----
+
+finish
+----
+# columnar block header
+000-001: x 01                     # version 1
+001-003: x 0200                   # 2 columns
+003-007: x 09000000               # 9 rows
+# column 0
+007-008: b 00000110               # bytes
+008-012: x 11000000               # page start 17
+# column 1
+012-013: b 00000101               # uint64
+013-017: x 5e000000               # page start 94
+# data for column 0
+# rawbytes
+# offsets table
+017-018: x 02                     # delta encoding: delta8
+018-022: x 00000000               # 32-bit constant: 0
+022-023: x 00                     # data[0] = 0 [32 overall]
+023-024: x 05                     # data[1] = 5 [37 overall]
+024-025: x 0b                     # data[2] = 11 [43 overall]
+025-026: x 12                     # data[3] = 18 [50 overall]
+026-027: x 1d                     # data[4] = 29 [61 overall]
+027-028: x 27                     # data[5] = 39 [71 overall]
+028-029: x 2d                     # data[6] = 45 [77 overall]
+029-030: x 31                     # data[7] = 49 [81 overall]
+030-031: x 3a                     # data[8] = 58 [90 overall]
+031-032: x 3e                     # data[9] = 62 [94 overall]
+# data
+032-037: x 6170706c65             # data[0]: apple
+037-043: x 62616e616e61           # data[1]: banana
+043-050: x 636f636f6e7574         # data[2]: coconut
+050-061: x 647261676f6e6672756974 # data[3]: dragonfruit
+061-071: x 656c6465726265727279   # data[4]: elderberry
+071-077: x 667261697365           # data[5]: fraise
+077-081: x 676f6a69               # data[6]: goji
+081-090: x 6a61636b6672756974     # data[7]: jackfruit
+090-094: x 6b697769               # data[8]: kiwi
+# data for column 1
+094-095: x 02                     # delta encoding: delta8
+095-103: x 0a00000000000000       # 64-bit constant: 10
+103-104: x 0a                     # data[0] = 10
+104-105: x 14                     # data[1] = 20
+105-106: x 00                     # data[2] = 0
+106-107: x 3c                     # data[3] = 60
+107-108: x 28                     # data[4] = 40
+108-109: x 32                     # data[5] = 50
+109-110: x 46                     # data[6] = 70
+110-111: x 50                     # data[7] = 80
+111-112: x 5a                     # data[8] = 90
+112-113: x 00                     # block trailer padding
