@@ -332,7 +332,7 @@ func readFooter(f objstorage.Readable, logger base.LoggerAndTracer) (footer, err
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && logger.IsTracingEnabled(context.TODO()) {
-		logger.Eventf(context.TODO(), "reading %d bytes took %s",
+		logger.Eventf(context.TODO(), "reading footer of %d bytes took %s",
 			len(buf), readDuration.String())
 	}
 

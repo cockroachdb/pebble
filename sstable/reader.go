@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -2861,8 +2863,13 @@ func (r *Reader) readBlock(
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
-		r.opts.LoggerAndTracer.Eventf(ctx, "reading %d bytes took %s",
-			bh.Length+blockTrailerLen, readDuration.String())
+		_, file1, line1, _ := runtime.Caller(1)
+		_, file2, line2, _ := runtime.Caller(2)
+		r.opts.LoggerAndTracer.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
+			bh.Length+blockTrailerLen, readDuration.String(),
+			r.fileNum,
+			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
+			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
 	}
 	if stats != nil {
 		stats.BlockReadDuration += readDuration
