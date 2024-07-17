@@ -11,6 +11,8 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -544,8 +546,13 @@ func (r *Reader) readBlock(
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
-		r.opts.LoggerAndTracer.Eventf(ctx, "reading %d bytes took %s",
-			int(bh.Length+block.TrailerLen), readDuration.String())
+		_, file1, line1, _ := runtime.Caller(1)
+		_, file2, line2, _ := runtime.Caller(2)
+		r.opts.LoggerAndTracer.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
+			int(bh.Length+block.TrailerLen), readDuration.String(),
+			r.fileNum,
+			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
+			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
 	}
 	if stats != nil {
 		stats.BlockBytes += bh.Length
@@ -1061,7 +1068,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 		ctx, r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
 
-	footer, err := readFooter(ctx, f, rh, r.logger)
+	footer, err := readFooter(ctx, f, rh, r.opts.LoggerAndTracer)
 	if err != nil {
 		r.err = err
 		return nil, r.Close()
