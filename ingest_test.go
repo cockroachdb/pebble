@@ -3556,7 +3556,7 @@ func TestIngestValidation(t *testing.T) {
 				require.NoError(t, err)
 				// Compute the layout of the sstable in order to find the
 				// appropriate block locations to corrupt.
-				r, err := sstable.NewReader(readable, sstable.ReaderOptions{})
+				r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
 				require.NoError(t, err)
 				l, err := r.Layout()
 				require.NoError(t, err)

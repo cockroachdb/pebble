@@ -7,6 +7,7 @@ package tool
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -452,7 +453,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			if err != nil {
 				return err
 			}
-			r, err := sstable.NewReader(readable, opts)
+			r, err := sstable.NewReader(context.Background(), readable, opts)
 			if err != nil {
 				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", fl.path, err.Error()))
 				// Ensure the error only gets printed once.

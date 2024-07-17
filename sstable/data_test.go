@@ -240,7 +240,7 @@ func runBuildRawCmd(
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := NewReader(f1, ReaderOptions{})
+	r, err := NewReader(context.Background(), f1, ReaderOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

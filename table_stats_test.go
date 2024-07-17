@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -253,7 +254,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err = sstable.NewReader(readable, sstable.ReaderOptions{})
+			r, err = sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
 			if err != nil {
 				return err.Error()
 			}

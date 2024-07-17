@@ -1112,7 +1112,7 @@ func TestTableCacheClockPro(t *testing.T) {
 		m := &fileMetadata{FileNum: FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		v := cache.findNode(m.FileBacking, dbOpts)
+		v := cache.findNode(context.Background(), m.FileBacking, dbOpts)
 		cache.unrefValue(v)
 
 		hit := cache.hits.Load() != oldHits
@@ -1236,7 +1236,7 @@ func BenchmarkTableCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v := cache.findNode(m.FileBacking, dbOpts)
+		v := cache.findNode(context.Background(), m.FileBacking, dbOpts)
 		cache.unrefValue(v)
 	}
 }

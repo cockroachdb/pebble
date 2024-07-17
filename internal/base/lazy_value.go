@@ -4,7 +4,11 @@
 
 package base
 
-import "github.com/cockroachdb/pebble/internal/invariants"
+import (
+	"context"
+
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 // A value can have user-defined attributes that are a function of the value
 // byte slice. For now, we only support "short attributes", which can be
@@ -184,7 +188,8 @@ type ValueFetcher interface {
 	// will allocate a new slice for the value. In either case it will set
 	// callerOwned to true.
 	Fetch(
-		handle []byte, valLen int32, buf []byte) (val []byte, callerOwned bool, err error)
+		ctx context.Context, handle []byte, valLen int32, buf []byte,
+	) (val []byte, callerOwned bool, err error)
 }
 
 // Value returns the underlying value.
@@ -201,15 +206,17 @@ func (lv *LazyValue) Value(buf []byte) (val []byte, callerOwned bool, err error)
 	// more performance. I suspect that inlining this only matters in
 	// micro-benchmarks, and in actual use cases in CockroachDB it will not
 	// matter because there is substantial work done with a fetched value.
-	return lv.fetchValue(buf)
+	return lv.fetchValue(context.TODO(), buf)
 }
 
 // INVARIANT: lv.Fetcher != nil
-func (lv *LazyValue) fetchValue(buf []byte) (val []byte, callerOwned bool, err error) {
+func (lv *LazyValue) fetchValue(
+	ctx context.Context, buf []byte,
+) (val []byte, callerOwned bool, err error) {
 	f := lv.Fetcher
 	if !f.fetched {
 		f.fetched = true
-		f.value, f.callerOwned, f.err = f.Fetcher.Fetch(
+		f.value, f.callerOwned, f.err = f.Fetcher.Fetch(ctx,
 			lv.ValueOrHandle, lv.Fetcher.Attribute.ValueLen, buf)
 	}
 	return f.value, f.callerOwned, f.err

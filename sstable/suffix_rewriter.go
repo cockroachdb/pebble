@@ -505,7 +505,8 @@ func RewriteKeySuffixesViaWriter(
 
 // NewMemReader opens a reader over the SST stored in the passed []byte.
 func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
-	return NewReader(newMemReader(sst), o)
+	// Since all operations are from memory, plumbing a context here is not useful.
+	return NewReader(context.Background(), newMemReader(sst), o)
 }
 
 func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error) {

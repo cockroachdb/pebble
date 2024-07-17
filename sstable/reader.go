@@ -943,7 +943,10 @@ func (r *Reader) TableFormat() (TableFormat, error) {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
+//
+// The context is used for tracing any operations performed by NewReader; it is
+// NOT stored for future use.
+func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	if f == nil {
 		return nil, errors.New("pebble/table: nil file")
 	}
@@ -966,7 +969,6 @@ func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	}
 
 	var preallocRH objstorageprovider.PreallocatedReadHandle
-	ctx := context.TODO()
 	rh := objstorageprovider.UsePreallocatedReadHandle(
 		r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
