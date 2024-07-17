@@ -331,7 +331,7 @@ func readFooter(
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && logger.IsTracingEnabled(ctx) {
-		logger.Eventf(ctx, "reading %d bytes took %s",
+		logger.Eventf(ctx, "reading footer of %d bytes took %s",
 			len(buf), readDuration.String())
 	}
 	if err != nil {

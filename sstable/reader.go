@@ -11,6 +11,8 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -460,8 +462,13 @@ func (r *Reader) readBlock(
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
 	if readDuration >= slowReadTracingThreshold && r.logger.IsTracingEnabled(ctx) {
-		r.logger.Eventf(ctx, "reading %d bytes took %s",
-			int(bh.Length+block.TrailerLen), readDuration.String())
+		_, file1, line1, _ := runtime.Caller(1)
+		_, file2, line2, _ := runtime.Caller(2)
+		r.logger.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
+			int(bh.Length+block.TrailerLen), readDuration.String(),
+			r.cacheOpts.FileNum,
+			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
+			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
 	}
 	if stats != nil {
 		stats.BlockBytes += bh.Length
