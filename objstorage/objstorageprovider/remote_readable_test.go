@@ -79,7 +79,7 @@ func TestRemoteReadHandle(t *testing.T) {
 			}
 			var readBeforeSize int
 			d.ScanArgs(t, "read-before-size", &readBeforeSize)
-			rh = rr.NewReadHandle(context.Background(), objstorage.ReadBeforeSize(readBeforeSize))
+			rh = rr.NewReadHandle(objstorage.ReadBeforeSize(readBeforeSize))
 			if d.HasArg("setup-for-compaction") {
 				rh.SetupForCompaction()
 			}

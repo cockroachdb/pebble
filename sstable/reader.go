@@ -776,7 +776,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Check all blocks sequentially. Make use of read-ahead, given we are
 	// scanning the entire file from start to end.
-	rh := r.readable.NewReadHandle(context.TODO(), objstorage.NoReadBefore)
+	rh := r.readable.NewReadHandle(objstorage.NoReadBefore)
 	defer rh.Close()
 
 	for _, bh := range blocks {
@@ -968,7 +968,7 @@ func NewReader(f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	var preallocRH objstorageprovider.PreallocatedReadHandle
 	ctx := context.TODO()
 	rh := objstorageprovider.UsePreallocatedReadHandle(
-		ctx, r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
+		r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
 
 	footer, err := readFooter(ctx, f, rh, r.logger)
@@ -1073,7 +1073,7 @@ func (s *simpleReadable) Size() int64 {
 
 // NewReaddHandle is part of the objstorage.Readable interface.
 func (s *simpleReadable) NewReadHandle(
-	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+	readBeforeSize objstorage.ReadBeforeSize,
 ) objstorage.ReadHandle {
 	return &s.rh
 }

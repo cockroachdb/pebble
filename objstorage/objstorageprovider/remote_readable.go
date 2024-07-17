@@ -90,7 +90,7 @@ func (r *remoteReadable) Size() int64 {
 // iterators after they are constructed. Consider fixing this oddity.
 
 func (r *remoteReadable) NewReadHandle(
-	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+	readBeforeSize objstorage.ReadBeforeSize,
 ) objstorage.ReadHandle {
 	rh := remoteReadHandlePool.Get().(*remoteReadHandle)
 	*rh = remoteReadHandle{readable: r, readBeforeSize: readBeforeSize, buffered: rh.buffered}

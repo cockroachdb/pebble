@@ -38,7 +38,7 @@ type Readable interface {
 	// The ReadHandle must be closed before the Readable is closed.
 	//
 	// Multiple separate ReadHandles can be used.
-	NewReadHandle(ctx context.Context, readBeforeSize ReadBeforeSize) ReadHandle
+	NewReadHandle(readBeforeSize ReadBeforeSize) ReadHandle
 }
 
 // ReadBeforeSize specifies whether the first read should read additional
@@ -376,7 +376,7 @@ type RemoteObjectToAttach struct {
 
 // Copy copies the specified range from the input to the output.
 func Copy(ctx context.Context, in Readable, out Writable, offset, length uint64) error {
-	r := in.NewReadHandle(ctx, NoReadBefore)
+	r := in.NewReadHandle(NoReadBefore)
 	r.SetupForCompaction()
 	buf := make([]byte, 256<<10)
 	end := offset + length

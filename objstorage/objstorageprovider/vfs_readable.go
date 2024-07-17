@@ -80,7 +80,7 @@ func (r *fileReadable) Size() int64 {
 
 // NewReadHandle is part of the objstorage.Readable interface.
 func (r *fileReadable) NewReadHandle(
-	ctx context.Context, readBeforeSize objstorage.ReadBeforeSize,
+	readBeforeSize objstorage.ReadBeforeSize,
 ) objstorage.ReadHandle {
 	rh := readHandlePool.Get().(*vfsReadHandle)
 	rh.init(r)
@@ -229,7 +229,6 @@ func (rh *PreallocatedReadHandle) Close() error {
 // (currently this happens if we are reading from a local file).
 // The returned handle still needs to be closed.
 func UsePreallocatedReadHandle(
-	ctx context.Context,
 	readable objstorage.Readable,
 	readBeforeSize objstorage.ReadBeforeSize,
 	rh *PreallocatedReadHandle,
@@ -238,5 +237,5 @@ func UsePreallocatedReadHandle(
 		rh.init(r)
 		return rh
 	}
-	return readable.NewReadHandle(ctx, readBeforeSize)
+	return readable.NewReadHandle(readBeforeSize)
 }
