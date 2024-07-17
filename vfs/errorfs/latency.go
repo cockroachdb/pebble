@@ -27,6 +27,7 @@ func RandomLatency(pred Predicate, mean time.Duration, seed int64, limit time.Du
 	rl := &randomLatency{
 		predicate: pred,
 		mean:      mean,
+		limit:     limit,
 	}
 	rl.keyedPrng.init(seed)
 	return rl
