@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -202,7 +203,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			r, err := sstable.NewReader(readable, opts.Opts.MakeReaderOptions())
+			r, err := sstable.NewReader(context.Background(), readable, opts.Opts.MakeReaderOptions())
 			if err != nil {
 				return err
 			}

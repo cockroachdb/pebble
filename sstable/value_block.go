@@ -683,9 +683,9 @@ type blockProviderWhenClosed struct {
 	r  *Reader
 }
 
-func (bpwc *blockProviderWhenClosed) open() error {
+func (bpwc *blockProviderWhenClosed) open(ctx context.Context) error {
 	var err error
-	bpwc.r, err = bpwc.rp.GetReader()
+	bpwc.r, err = bpwc.rp.GetReader(ctx)
 	return err
 }
 
@@ -715,7 +715,7 @@ func (bpwc blockProviderWhenClosed) readBlockForVBR(
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
 // GetReader and Close can be called multiple times in pairs.
 type ReaderProvider interface {
-	GetReader() (r *Reader, err error)
+	GetReader(ctx context.Context) (r *Reader, err error)
 	Close()
 }
 
@@ -728,7 +728,7 @@ type TrivialReaderProvider struct {
 var _ ReaderProvider = TrivialReaderProvider{}
 
 // GetReader implements ReaderProvider.
-func (trp TrivialReaderProvider) GetReader() (*Reader, error) {
+func (trp TrivialReaderProvider) GetReader(ctx context.Context) (*Reader, error) {
 	return trp.Reader, nil
 }
 
@@ -803,7 +803,7 @@ func (r *valueBlockReader) close() {
 
 // Fetch implements base.ValueFetcher.
 func (r *valueBlockReader) Fetch(
-	handle []byte, valLen int32, buf []byte,
+	ctx context.Context, handle []byte, valLen int32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if !r.closed {
 		val, err := r.getValueInternal(handle, valLen)
@@ -814,7 +814,7 @@ func (r *valueBlockReader) Fetch(
 	}
 
 	bp := blockProviderWhenClosed{rp: r.rp}
-	err = bp.open()
+	err = bp.open(ctx)
 	if err != nil {
 		return nil, false, err
 	}

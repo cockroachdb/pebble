@@ -5,6 +5,8 @@
 package sstable
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -16,7 +18,7 @@ import (
 func ReadAll(
 	r objstorage.Readable,
 ) (points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span) {
-	reader := testutils.CheckErr(NewReader(r, ReaderOptions{}))
+	reader := testutils.CheckErr(NewReader(context.Background(), r, ReaderOptions{}))
 	defer reader.Close()
 	pointIter := testutils.CheckErr(reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */))
 	defer pointIter.Close()

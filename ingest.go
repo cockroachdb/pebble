@@ -242,6 +242,7 @@ func ingestLoad1External(
 // ingestLoad1 creates the FileMetadata for one file. This file will be owned
 // by this store.
 func ingestLoad1(
+	ctx context.Context,
 	opts *Options,
 	fmv FormatMajorVersion,
 	readable objstorage.Readable,
@@ -254,7 +255,7 @@ func ingestLoad1(
 		CacheID: cacheID,
 		FileNum: base.PhysicalTableDiskFileNum(fileNum),
 	})
-	r, err := sstable.NewReader(readable, o)
+	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +431,8 @@ func ingestLoad(
 	cacheID uint64,
 	pending []base.FileNum,
 ) (ingestLoadResult, error) {
+	ctx := context.TODO()
+
 	localFileNums := pending[:len(paths)]
 	sharedFileNums := pending[len(paths) : len(paths)+len(shared)]
 	externalFileNums := pending[len(paths)+len(shared) : len(paths)+len(shared)+len(external)]
@@ -446,7 +449,7 @@ func ingestLoad(
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		m, err := ingestLoad1(opts, fmv, readable, cacheID, localFileNums[i])
+		m, err := ingestLoad1(ctx, opts, fmv, readable, cacheID, localFileNums[i])
 		if err != nil {
 			return ingestLoadResult{}, err
 		}

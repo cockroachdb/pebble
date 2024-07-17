@@ -242,7 +242,11 @@ func openExternalObj(
 	opts := sstable.ReaderOptions{
 		Comparer: t.opts.Comparer,
 	}
-	reader, err = sstable.NewReader(objstorageprovider.NewRemoteReadable(objReader, objSize), opts)
+	reader, err = sstable.NewReader(
+		context.Background(),
+		objstorageprovider.NewRemoteReadable(objReader, objSize),
+		opts,
+	)
 	panicIfErr(err)
 
 	start := bounds.Start

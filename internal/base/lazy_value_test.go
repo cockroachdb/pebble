@@ -6,6 +6,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"unsafe"
 
@@ -16,7 +17,7 @@ type valueFetcherFunc func(
 	handle []byte, valLen int32, buf []byte) (val []byte, callerOwned bool, err error)
 
 func (v valueFetcherFunc) Fetch(
-	handle []byte, valLen int32, buf []byte,
+	ctx context.Context, handle []byte, valLen int32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	return v(handle, valLen, buf)
 }

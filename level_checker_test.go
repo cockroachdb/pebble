@@ -232,7 +232,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				// Set FileNum for logging purposes.
 				readerOpts := sstable.ReaderOptions{Comparer: testkeys.Comparer}
 				readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)})
-				r, err := sstable.NewReader(readable, readerOpts)
+				r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 				if err != nil {
 					return err.Error()
 				}
