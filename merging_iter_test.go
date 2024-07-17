@@ -169,7 +169,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			var err error
 			r := readers[file.FileNum]
 			if kinds.RangeDeletion() {
-				set.rangeDeletion, err = r.NewRawRangeDelIter(sstable.NoFragmentTransforms)
+				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
@@ -678,7 +678,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			if err != nil {
 				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(sstable.NoFragmentTransforms)
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
 			if err != nil {
 				iter.Close()
 				return iterSet{}, err

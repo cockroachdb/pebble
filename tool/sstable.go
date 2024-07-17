@@ -394,7 +394,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		// bit more work here to put them in a form that can be iterated in
 		// parallel with the point records.
 		rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-			iter, err := r.NewRawRangeDelIter(sstable.NoFragmentTransforms)
+			iter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
 			if err != nil {
 				return nil, err
 			}
@@ -496,7 +496,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		// Handle range keys.
-		rkIter, err := r.NewRawRangeKeyIter(sstable.NoFragmentTransforms)
+		rkIter, err := r.NewRawRangeKeyIter(context.Background(), sstable.NoFragmentTransforms)
 		if err != nil {
 			fmt.Fprintf(stdout, "%s\n", err)
 			os.Exit(1)

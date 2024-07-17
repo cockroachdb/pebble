@@ -299,16 +299,13 @@ func (r *Reader) newCompactionIter(
 // NewRawRangeDelIter returns an internal iterator for the contents of the
 // range-del block for the table. Returns nil if the table does not contain
 // any range deletions.
-//
-// TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
-// iterator. Add WithContext methods since the existing ones are public.
 func (r *Reader) NewRawRangeDelIter(
-	transforms FragmentIterTransforms,
+	ctx context.Context, transforms FragmentIterTransforms,
 ) (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
-	h, err := r.readRangeDel(nil /* stats */, nil /* iterStats */)
+	h, err := r.readRangeDel(ctx, nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
 	}
@@ -323,16 +320,13 @@ func (r *Reader) NewRawRangeDelIter(
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
 // range-key block for the table. Returns nil if the table does not contain any
 // range keys.
-//
-// TODO(sumeer): plumb context.Context since this path is relevant in the user-facing
-// iterator. Add WithContext methods since the existing ones are public.
 func (r *Reader) NewRawRangeKeyIter(
-	transforms FragmentIterTransforms,
+	ctx context.Context, transforms FragmentIterTransforms,
 ) (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
-	h, err := r.readRangeKey(nil /* stats */, nil /* iterStats */)
+	h, err := r.readRangeKey(ctx, nil /* stats */, nil /* iterStats */)
 	if err != nil {
 		return nil, err
 	}
@@ -364,16 +358,16 @@ func (r *Reader) readFilter(
 }
 
 func (r *Reader) readRangeDel(
-	stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
+	ctx context.Context, stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
-	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
+	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.rangeDelBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeKey(
-	stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
+	ctx context.Context, stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
-	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
+	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
 
@@ -521,7 +515,10 @@ func (r *Reader) readBlock(
 }
 
 func (r *Reader) readMetaindex(
-	metaindexBH block.Handle, readHandle objstorage.ReadHandle, filters map[string]FilterPolicy,
+	ctx context.Context,
+	metaindexBH block.Handle,
+	readHandle objstorage.ReadHandle,
+	filters map[string]FilterPolicy,
 ) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
@@ -537,7 +534,7 @@ func (r *Reader) readMetaindex(
 	defer r.metaBufferPool.Release()
 
 	b, err := r.readBlock(
-		context.Background(), metaindexBH, nil /* transform */, readHandle, nil, /* stats */
+		ctx, metaindexBH, nil /* transform */, readHandle, nil, /* stats */
 		nil /* iterStats */, &r.metaBufferPool)
 	if err != nil {
 		return err
@@ -581,7 +578,7 @@ func (r *Reader) readMetaindex(
 
 	if bh, ok := meta[metaPropertiesName]; ok {
 		b, err = r.readBlock(
-			context.Background(), bh, nil /* transform */, readHandle, nil, /* stats */
+			ctx, bh, nil /* transform */, readHandle, nil, /* stats */
 			nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			return err
@@ -981,7 +978,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r.checksumType = footer.checksum
 	r.tableFormat = footer.format
 	// Read the metaindex and properties blocks.
-	if err := r.readMetaindex(footer.metaindexBH, rh, o.Filters); err != nil {
+	if err := r.readMetaindex(ctx, footer.metaindexBH, rh, o.Filters); err != nil {
 		r.err = err
 		return nil, r.Close()
 	}

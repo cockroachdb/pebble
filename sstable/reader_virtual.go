@@ -129,9 +129,9 @@ func (v *VirtualReader) ValidateBlockChecksumsOnBacking() error {
 
 // NewRawRangeDelIter wraps Reader.NewRawRangeDelIter.
 func (v *VirtualReader) NewRawRangeDelIter(
-	transforms FragmentIterTransforms,
+	ctx context.Context, transforms FragmentIterTransforms,
 ) (keyspan.FragmentIterator, error) {
-	iter, err := v.reader.NewRawRangeDelIter(transforms)
+	iter, err := v.reader.NewRawRangeDelIter(ctx, transforms)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (v *VirtualReader) NewRawRangeDelIter(
 
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
 func (v *VirtualReader) NewRawRangeKeyIter(
-	transforms FragmentIterTransforms,
+	ctx context.Context, transforms FragmentIterTransforms,
 ) (keyspan.FragmentIterator, error) {
 	syntheticSeqNum := transforms.SyntheticSeqNum
 	if v.vState.isSharedIngested {
@@ -164,7 +164,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		// appropriate sequence number substitution below.
 		transforms.SyntheticSeqNum = 0
 	}
-	iter, err := v.reader.NewRawRangeKeyIter(transforms)
+	iter, err := v.reader.NewRawRangeKeyIter(ctx, transforms)
 	if err != nil {
 		return nil, err
 	}

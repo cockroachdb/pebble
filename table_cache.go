@@ -480,7 +480,7 @@ func (c *tableCacheShard) newIters(
 	var iters iterSet
 	var err error
 	if kinds.RangeKey() && file.HasRangeKeys {
-		iters.rangeKey, err = c.newRangeKeyIter(v, file, cr, opts.SpanIterOptions())
+		iters.rangeKey, err = c.newRangeKeyIter(ctx, v, file, cr, opts.SpanIterOptions())
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
 		iters.rangeDeletion, err = c.newRangeDelIter(ctx, file, cr, dbOpts)
@@ -620,7 +620,7 @@ func (c *tableCacheShard) newRangeDelIter(
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := cr.NewRawRangeDelIter(file.FragmentIterTransforms())
+	rangeDelIter, err := cr.NewRawRangeDelIter(ctx, file.FragmentIterTransforms())
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +641,11 @@ func (c *tableCacheShard) newRangeDelIter(
 // sstable's range keys. This function is for table-cache internal use only, and
 // callers should use newIters instead.
 func (c *tableCacheShard) newRangeKeyIter(
-	v *tableCacheValue, file *fileMetadata, cr sstable.CommonReader, opts keyspan.SpanIterOptions,
+	ctx context.Context,
+	v *tableCacheValue,
+	file *fileMetadata,
+	cr sstable.CommonReader,
+	opts keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
 	transforms := file.FragmentIterTransforms()
 	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
@@ -658,7 +662,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 		}
 	}
 	// TODO(radu): wrap in an AssertBounds.
-	return cr.NewRawRangeKeyIter(transforms)
+	return cr.NewRawRangeKeyIter(ctx, transforms)
 }
 
 type tableCacheShardReaderProvider struct {

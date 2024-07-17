@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"fmt"
 	"strings"
@@ -105,7 +106,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 				return err.Error()
 			}
 
-			iter, err := r.NewRawRangeKeyIter(NoFragmentTransforms)
+			iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms)
 			if err != nil {
 				return err.Error()
 			}

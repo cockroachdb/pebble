@@ -31,14 +31,15 @@ func ReadAll(
 		})
 	}
 
-	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(NoFragmentTransforms)); rangeDelIter != nil {
+	ctx := context.Background()
+	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(ctx, NoFragmentTransforms)); rangeDelIter != nil {
 		defer rangeDelIter.Close()
 		for s := testutils.CheckErr(rangeDelIter.First()); s != nil; s = testutils.CheckErr(rangeDelIter.Next()) {
 			rangeDels = append(rangeDels, s.Clone())
 		}
 	}
 
-	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(NoFragmentTransforms)); rangeKeyIter != nil {
+	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms)); rangeKeyIter != nil {
 		defer rangeKeyIter.Close()
 		for s := testutils.CheckErr(rangeKeyIter.First()); s != nil; s = testutils.CheckErr(rangeKeyIter.Next()) {
 			rangeKeys = append(rangeKeys, s.Clone())
