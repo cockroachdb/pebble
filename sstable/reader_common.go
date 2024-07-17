@@ -16,9 +16,13 @@ import (
 // can be used by code which doesn't care to distinguish between a reader and a
 // virtual reader.
 type CommonReader interface {
-	NewRawRangeKeyIter(transforms FragmentIterTransforms) (keyspan.FragmentIterator, error)
+	NewRawRangeKeyIter(
+		ctx context.Context, transforms FragmentIterTransforms,
+	) (keyspan.FragmentIterator, error)
 
-	NewRawRangeDelIter(transforms FragmentIterTransforms) (keyspan.FragmentIterator, error)
+	NewRawRangeDelIter(
+		ctx context.Context, transforms FragmentIterTransforms,
+	) (keyspan.FragmentIterator, error)
 
 	NewIterWithBlockPropertyFiltersAndContextEtc(
 		ctx context.Context,

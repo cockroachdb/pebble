@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"math"
 
@@ -906,7 +907,7 @@ func newCombinedDeletionKeyspanIter(
 	})
 	mIter.Init(comparer, transform, new(keyspanimpl.MergingBuffers))
 
-	iter, err := cr.NewRawRangeDelIter(m.FragmentIterTransforms())
+	iter, err := cr.NewRawRangeDelIter(context.TODO(), m.FragmentIterTransforms())
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +958,7 @@ func newCombinedDeletionKeyspanIter(
 		mIter.AddLevel(iter)
 	}
 
-	iter, err = cr.NewRawRangeKeyIter(m.FragmentIterTransforms())
+	iter, err = cr.NewRawRangeKeyIter(context.TODO(), m.FragmentIterTransforms())
 	if err != nil {
 		return nil, err
 	}

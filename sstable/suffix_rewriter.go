@@ -390,7 +390,7 @@ func rewriteDataBlocksToWriter(
 }
 
 func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
-	iter, err := r.NewRawRangeKeyIter(NoFragmentTransforms)
+	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms)
 	if err != nil {
 		return err
 	}

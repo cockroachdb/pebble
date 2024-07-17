@@ -258,7 +258,7 @@ func openExternalObj(
 	pointIter, err = reader.NewIter(sstable.NoTransforms, start, end)
 	panicIfErr(err)
 
-	rangeDelIter, err = reader.NewRawRangeDelIter(sstable.NoFragmentTransforms)
+	rangeDelIter, err = reader.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
 	panicIfErr(err)
 	if rangeDelIter != nil {
 		rangeDelIter = keyspan.Truncate(
@@ -268,7 +268,7 @@ func openExternalObj(
 		)
 	}
 
-	rangeKeyIter, err = reader.NewRawRangeKeyIter(sstable.NoFragmentTransforms)
+	rangeKeyIter, err = reader.NewRawRangeKeyIter(context.Background(), sstable.NoFragmentTransforms)
 	panicIfErr(err)
 	if rangeKeyIter != nil {
 		rangeKeyIter = keyspan.Truncate(
