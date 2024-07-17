@@ -1440,9 +1440,16 @@ func TestTracing(t *testing.T) {
 	_, closer, err := d.Get([]byte("hello"))
 	require.NoError(t, err)
 	closer.Close()
-	readerInitTraceString := "reading 53 bytes took 5ms\nreading 37 bytes took 5ms\nreading 628 bytes took 5ms\n"
-	iterTraceString := "reading 27 bytes took 5ms\nreading 29 bytes took 5ms\n"
-	require.Equal(t, readerInitTraceString+iterTraceString, tracer.buf.String())
+	readerInitRegexp := `reading footer of 53 bytes took 5ms
+reading block of 37 bytes took 5ms \([^)]*\)
+reading block of 628 bytes took 5ms \([^)]*\)
+`
+	iterTraceRegexp :=
+		`reading block of 27 bytes took 5ms \([^)]*\)
+reading block of 29 bytes took 5ms \([^)]*\)
+`
+
+	require.Regexp(t, "^"+readerInitRegexp+iterTraceRegexp+"$", tracer.buf.String())
 
 	// Get again, but since it currently uses context.Background(), no trace
 	// output is produced.
@@ -1458,14 +1465,14 @@ func TestTracing(t *testing.T) {
 	iter, _ := d.NewIterWithContext(ctx, nil)
 	iter.SeekGE([]byte("hello"))
 	iter.Close()
-	require.Equal(t, iterTraceString, tracer.buf.String())
+	require.Regexp(t, iterTraceRegexp, tracer.buf.String())
 
 	tracer.buf.Reset()
 	snap := d.NewSnapshot()
 	iter, _ = snap.NewIterWithContext(ctx, nil)
 	iter.SeekGE([]byte("hello"))
 	iter.Close()
-	require.Equal(t, iterTraceString, tracer.buf.String())
+	require.Regexp(t, iterTraceRegexp, tracer.buf.String())
 	snap.Close()
 
 	tracer.buf.Reset()
@@ -1473,7 +1480,7 @@ func TestTracing(t *testing.T) {
 	iter = b.NewIterWithContext(ctx, nil)
 	iter.SeekGE([]byte("hello"))
 	iter.Close()
-	require.Equal(t, iterTraceString, tracer.buf.String())
+	require.Regexp(t, iterTraceRegexp, tracer.buf.String())
 	b.Close()
 }
 
