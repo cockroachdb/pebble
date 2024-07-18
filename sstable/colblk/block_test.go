@@ -303,7 +303,7 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []DataType) 
 				b := r.Bitmap(col)
 				vals := make([]bool, r.header.Rows)
 				for i := range vals {
-					vals[i] = b.Get(i)
+					vals[i] = b.At(i)
 				}
 				got = vals
 			case DataTypeUint8:

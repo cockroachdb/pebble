@@ -76,7 +76,7 @@ func dumpBitmap(w io.Writer, b Bitmap) {
 		if i > 0 && i%64 == 0 {
 			w.Write([]byte{'\n'})
 		}
-		if b.Get(i) {
+		if b.At(i) {
 			w.Write([]byte{'1'})
 		} else {
 			w.Write([]byte{'0'})
@@ -104,31 +104,31 @@ func TestBitmapRandom(t *testing.T) {
 		bitmap, endOffset := DecodeBitmap(data, 0, size)
 		require.Equal(t, uint32(len(data)), endOffset)
 		for i := 0; i < size; i++ {
-			if got := bitmap.Get(i); got != v[i] {
+			if got := bitmap.At(i); got != v[i] {
 				t.Fatalf("b.Get(%d) = %t; want %t", i, got, v[i])
 			}
 		}
 		for i := 0; i < size; i++ {
 			succ := bitmap.Successor(i)
 			// Ensure that Successor always returns the index of a set bit.
-			if succ != size && !bitmap.Get(succ) {
+			if succ != size && !bitmap.At(succ) {
 				t.Fatalf("b.Successor(%d) = %d; bit at index %d is not set", i, succ, succ)
 			}
 			pred := bitmap.Predecessor(i)
 			// Ensure that Predecessor always returns the index of a set bit.
-			if pred >= 0 && !bitmap.Get(pred) {
+			if pred >= 0 && !bitmap.At(pred) {
 				t.Fatalf("b.Predecessor(%d) = %d; bit at index %d is not set", i, pred, pred)
 			}
 
 			// Ensure there are no set bits between i and succ.
 			for j := i; j < succ; j++ {
-				if bitmap.Get(j) {
+				if bitmap.At(j) {
 					t.Fatalf("b.Successor(%d) = %d; bit at index %d is set", i, succ, j)
 				}
 			}
 			// Ensure there are no set bits between pred and i.
 			for j := pred + 1; j < i; j++ {
-				if bitmap.Get(j) {
+				if bitmap.At(j) {
 					t.Fatalf("b.Predecessor(%d) = %d; bit at index %d is set", i, pred, j)
 				}
 			}

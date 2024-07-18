@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math/bits"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -171,6 +172,9 @@ type PrefixBytes struct {
 	rawBytes        RawBytes
 }
 
+// Assert that PrefixBytes implements Array[[]byte].
+var _ Array[[]byte] = PrefixBytes{}
+
 // DecodePrefixBytes decodes the structure of a PrefixBytes constructs an
 // accessor for an array of lexicographically sorted byte slices constructed by
 // PrefixBytesBuilder. Count must be the number of logical slices within the
@@ -204,6 +208,13 @@ func DecodePrefixBytes(
 
 // Assert that DecodePrefixBytes implements DecodeFunc.
 var _ DecodeFunc[PrefixBytes] = DecodePrefixBytes
+
+// At returns the i'th []byte slice in the PrefixBytes. At must allocate, so
+// callers should prefer accessing a slice's constituent components through
+// SharedPrefix, BundlePrefix and RowSuffix.
+func (b PrefixBytes) At(i int) []byte {
+	return slices.Concat(b.SharedPrefix(), b.RowBundlePrefix(i), b.RowSuffix(i))
+}
 
 // SharedPrefix return a []byte of the shared prefix that was extracted from
 // all of the values in the Bytes vector. The returned slice should not be

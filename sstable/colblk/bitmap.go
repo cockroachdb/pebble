@@ -30,6 +30,9 @@ type Bitmap struct {
 	bitCount int
 }
 
+// Assert that Bitmap implements Array[bool].
+var _ Array[bool] = Bitmap{}
+
 // DecodeBitmap decodes the structure of a Bitmap and returns a Bitmap that
 // reads from b supporting bitCount logical bits. No bounds checking is
 // performed, so the caller must guarantee the bitmap is appropriately sized and
@@ -50,8 +53,8 @@ func DecodeBitmap(b []byte, off uint32, bitCount int) (bitmap Bitmap, endOffset 
 // Assert that Decodebitmap implements DecodeFunc.
 var _ DecodeFunc[Bitmap] = DecodeBitmap
 
-// Get returns true if the bit at position i is set and false otherwise.
-func (b Bitmap) Get(i int) bool {
+// At returns true if the bit at position i is set and false otherwise.
+func (b Bitmap) At(i int) bool {
 	return (b.data.At(i>>6 /* i/64 */) & (1 << uint(i%64))) != 0
 }
 

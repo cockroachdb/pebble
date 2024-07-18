@@ -67,6 +67,9 @@ type UnsafeIntegerSlice[T constraints.Integer] struct {
 	deltaWidth uintptr
 }
 
+// Assert that UnsafeIntegerSlice implements Array.
+var _ Array[uint8] = UnsafeIntegerSlice[uint8]{}
+
 // DecodeUnsafeIntegerSlice decodes the structure of a slice of uints from a
 // byte slice.
 func DecodeUnsafeIntegerSlice[T constraints.Integer](
@@ -108,9 +111,6 @@ func makeUnsafeIntegerSlice[T constraints.Integer](
 		deltaWidth: uintptr(deltaWidth),
 	}
 }
-
-// TODO(jackson): Remove when more of the read path is hooked up.
-var _ = makeUnsafeIntegerSlice[uint64]
 
 // At returns the `i`-th element of the slice.
 func (s UnsafeIntegerSlice[T]) At(i int) T {
