@@ -305,34 +305,19 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []ColumnSpec
 			var got interface{}
 			switch spec.DataType {
 			case DataTypeBool:
-				b := r.Bitmap(col)
-				vals := make([]bool, r.header.Rows)
-				for i := range vals {
-					vals[i] = b.At(i)
-				}
-				got = vals
+				got = Clone(r.Bitmap(col), rows)
 			case DataTypeUint8:
-				got = r.Uint8s(col).Clone(rows)
+				got = Clone(r.Uint8s(col), rows)
 			case DataTypeUint16:
-				got = r.Uint16s(col).Clone(rows)
+				got = Clone(r.Uint16s(col), rows)
 			case DataTypeUint32:
-				got = r.Uint32s(col).Clone(rows)
+				got = Clone(r.Uint32s(col), rows)
 			case DataTypeUint64:
-				got = r.Uint64s(col).Clone(rows)
+				got = Clone(r.Uint64s(col), rows)
 			case DataTypeBytes:
-				vals2 := make([][]byte, rows)
-				vals := r.RawBytes(col)
-				for i := range vals2 {
-					vals2[i] = vals.At(i)
-				}
-				got = vals2
+				got = Clone(r.RawBytes(col), rows)
 			case DataTypePrefixBytes:
-				vals2 := make([][]byte, rows)
-				vals := r.PrefixBytes(col)
-				for i := range vals2 {
-					vals2[i] = slices.Concat(vals.SharedPrefix(), vals.RowBundlePrefix(i), vals.RowSuffix(i))
-				}
-				got = vals2
+				got = Clone(r.PrefixBytes(col), rows)
 			}
 			if !reflect.DeepEqual(data[col], got) {
 				t.Fatalf("%d: %s: expected\n%+v\ngot\n%+v\n% x",
