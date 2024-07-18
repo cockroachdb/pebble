@@ -18,6 +18,11 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+type ColumnSpec struct {
+	DataType
+	BundleSize int // Only used for DataTypePrefixBytes
+}
+
 func TestBlockWriter(t *testing.T) {
 	panicIfErr := func(dataType DataType, stringValue string, err error) {
 		if err != nil {
@@ -151,10 +156,10 @@ func dataTypeFromName(name string) DataType {
 // returns the serialized raw block and a []interface{} slice containing the
 // generated data. The type of each element of the slice is dependent on the
 // corresponding column's type.
-func randBlock(rng *rand.Rand, rows int, schema []DataType) ([]byte, []interface{}) {
+func randBlock(rng *rand.Rand, rows int, schema []ColumnSpec) ([]byte, []interface{}) {
 	data := make([]interface{}, len(schema))
 	for col := range data {
-		switch schema[col] {
+		switch schema[col].DataType {
 		case DataTypeBool:
 			v := make([]bool, rows)
 			for row := 0; row < rows; row++ {
@@ -208,10 +213,10 @@ func randBlock(rng *rand.Rand, rows int, schema []DataType) ([]byte, []interface
 	return buf, data
 }
 
-func buildBlock(schema []DataType, rows int, data []interface{}) []byte {
+func buildBlock(schema []ColumnSpec, rows int, data []interface{}) []byte {
 	cw := make([]ColumnWriter, len(schema))
 	for col := range schema {
-		switch schema[col] {
+		switch schema[col].DataType {
 		case DataTypeBool:
 			var bb BitmapBuilder
 			bb.Reset()
@@ -256,8 +261,7 @@ func buildBlock(schema []DataType, rows int, data []interface{}) []byte {
 			cw[col] = &b
 		case DataTypePrefixBytes:
 			var pbb PrefixBytesBuilder
-			pbb.Init(8)
-			// TODO(jackson): Randomize bundle size.
+			pbb.Init(schema[col].BundleSize)
 			colData := data[col].([][]byte)
 			for r, v := range colData {
 				sharedPrefix := 0
@@ -272,7 +276,7 @@ func buildBlock(schema []DataType, rows int, data []interface{}) []byte {
 	return FinishBlock(rows, cw)
 }
 
-func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []DataType) {
+func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []ColumnSpec) {
 	var sb strings.Builder
 	for i := range schema {
 		if i > 0 {
@@ -291,14 +295,15 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []DataType) 
 			t.Fatalf("expected %d rows, but found %d\n", rows, r.header.Rows)
 		}
 		for col := range schema {
-			if schema[col] != r.DataType(col) {
+			if schema[col].DataType != r.DataType(col) {
 				t.Fatalf("schema mismatch: %s != %s\n", schema[col], r.DataType(col))
 			}
 		}
 
 		for col := range data {
+			spec := schema[col]
 			var got interface{}
-			switch schema[col] {
+			switch spec.DataType {
 			case DataTypeBool:
 				b := r.Bitmap(col)
 				vals := make([]bool, r.header.Rows)
@@ -344,20 +349,21 @@ func TestBlockWriterRandomized(t *testing.T) {
 	randInt := func(lo, hi int) int {
 		return lo + rng.Intn(hi-lo)
 	}
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeBool})
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeUint8})
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeUint16})
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeUint32})
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeUint64})
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypeBytes})
-	testRandomBlock(t, rng, randInt(1, 100), []DataType{DataTypePrefixBytes})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeBool}})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint8}})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint16}})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint32}})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint64}})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeBytes}})
+	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypePrefixBytes, BundleSize: 1 << randInt(0, 6)}})
 
 	for i := 0; i < 100; i++ {
-		schema := make([]DataType, 2+rng.Intn(8))
+		schema := make([]ColumnSpec, 2+rng.Intn(8))
 		for j := range schema {
-			// TODO(jackson): Adjust this to generate DataTypePrefixBytes
-			// columns too once they're supported.
-			schema[j] = DataType(randInt(1, int(dataTypesCount)))
+			schema[j].DataType = DataType(randInt(1, int(dataTypesCount)))
+			if schema[j].DataType == DataTypePrefixBytes {
+				schema[j].BundleSize = 1 << randInt(0, 6)
+			}
 		}
 		testRandomBlock(t, rng, randInt(1, 100), schema)
 	}
