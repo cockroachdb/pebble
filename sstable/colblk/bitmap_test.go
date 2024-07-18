@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -43,7 +44,7 @@ func TestBitmapFixed(t *testing.T) {
 			}
 
 			_ = builder.Finish(0, n, 0, data)
-			bitmap = MakeBitmap(data, 0, n)
+			bitmap, _ = DecodeBitmap(data, 0, n)
 			dumpBitmap(&buf, bitmap)
 			fmt.Fprint(&buf, "\nBinary representation:\n")
 			f := binfmt.New(data)
@@ -100,7 +101,8 @@ func TestBitmapRandom(t *testing.T) {
 		}
 		data := make([]byte, builder.Size(size, 0))
 		_ = builder.Finish(0, size, 0, data)
-		bitmap := MakeBitmap(data, 0, size)
+		bitmap, endOffset := DecodeBitmap(data, 0, size)
+		require.Equal(t, uint32(len(data)), endOffset)
 		for i := 0; i < size; i++ {
 			if got := bitmap.Get(i); got != v[i] {
 				t.Fatalf("b.Get(%d) = %t; want %t", i, got, v[i])

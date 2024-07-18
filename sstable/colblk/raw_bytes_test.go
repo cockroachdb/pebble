@@ -51,7 +51,9 @@ func TestRawBytes(t *testing.T) {
 				f.HexBytesln(startOffset, "start offset")
 			}
 			rawBytesToBinFormatter(f, count, nil)
-			rawBytes = MakeRawBytes(count, buf[startOffset:], 0)
+			var decodedEndOffset uint32
+			rawBytes, decodedEndOffset = DecodeRawBytes(buf[startOffset:], 0, count)
+			require.Equal(t, endOffset, decodedEndOffset+uint32(startOffset))
 			return f.String()
 		case "at":
 			var indices []int
@@ -126,7 +128,7 @@ func BenchmarkRawBytes(b *testing.B) {
 			b.Run(fmt.Sprintf("sliceLen=%d", sz), func(b *testing.B) {
 				slices := generateRandomSlices(sz, 32<<10 /* 32 KiB */)
 				data := buildRawBytes(slices)
-				rb := MakeRawBytes(len(slices), data, 0)
+				rb, _ := DecodeRawBytes(data, 0, len(slices))
 				b.ResetTimer()
 				b.SetBytes(32 << 10)
 				for i := 0; i < b.N; i++ {
