@@ -112,6 +112,7 @@ type FragmentIterTransforms struct {
 	// order) keyspan.Key for each sequence number.
 	ElideSameSeqNum bool
 	SyntheticPrefix SyntheticPrefix
+	SyntheticSuffix SyntheticSuffix
 }
 
 // NoFragmentTransforms is the default value for IterTransforms.
@@ -126,12 +127,18 @@ type SyntheticSeqNum base.SeqNum
 // disables overriding the sequence number.
 const NoSyntheticSeqNum SyntheticSeqNum = 0
 
-// SyntheticSuffix will replace every suffix of every key surfaced during block
-// iteration. A synthetic suffix can be used if:
+// SyntheticSuffix will replace every suffix of every point key surfaced during
+// block iteration. A synthetic suffix can be used if:
 //  1. no two keys in the sst share the same prefix; and
 //  2. pebble.Compare(prefix + replacementSuffix, prefix + originalSuffix) < 0,
 //     for all keys in the backing sst which have a suffix (i.e. originalSuffix
 //     is not empty).
+//
+// Range dels are not supported when synthetic suffix is used.
+//
+// For range keys, the synthetic suffix applies to the suffix that is part of
+// RangeKeySet - if it is non-empty, it is replaced with the SyntheticSuffix.
+// RangeKeyUnset keys are not supported when a synthetic suffix is used.
 type SyntheticSuffix []byte
 
 // IsSet returns true if the synthetic suffix is not enpty.

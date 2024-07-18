@@ -368,7 +368,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if v == nil {
 				return "virtualize must be called before scan-range-del"
 			}
-			transforms := FragmentIterTransforms{} // TODO(radu): SyntheticSuffix: syntheticSuffix
+			transforms := FragmentIterTransforms{SyntheticSuffix: syntheticSuffix}
 			iter, err := v.NewRawRangeDelIter(transforms)
 			if err != nil {
 				return err.Error()
@@ -392,7 +392,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if v == nil {
 				return "virtualize mupst be called before scan-range-key"
 			}
-			transforms := FragmentIterTransforms{} // TODO(radu): SyntheticSuffix: syntheticSuffix
+			transforms := FragmentIterTransforms{SyntheticSuffix: syntheticSuffix}
 			iter, err := v.NewRawRangeKeyIter(transforms)
 			if err != nil {
 				return err.Error()

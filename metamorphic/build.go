@@ -51,7 +51,7 @@ func writeSSTForIngestion(
 		}
 	}()
 
-	outputKey := func(key []byte) []byte {
+	outputKey := func(key []byte, syntheticSuffix sstable.SyntheticSuffix) []byte {
 		if !syntheticPrefix.IsSet() && !syntheticSuffix.IsSet() {
 			return slices.Clone(key)
 		}
@@ -83,7 +83,7 @@ func writeSSTForIngestion(
 
 		k := *kv
 		k.K.SetSeqNum(base.SeqNumZero)
-		k.K.UserKey = outputKey(k.K.UserKey)
+		k.K.UserKey = outputKey(k.K.UserKey, syntheticSuffix)
 		value := kv.V
 		// It's possible that we wrote the key on a batch from a db that supported
 		// DeleteSized, but will be ingesting into a db that does not. Detect this
@@ -107,7 +107,10 @@ func writeSSTForIngestion(
 	if rangeDelIter != nil {
 		span, err := rangeDelIter.First()
 		for ; span != nil; span, err = rangeDelIter.Next() {
-			if err := w.DeleteRange(outputKey(span.Start), outputKey(span.End)); err != nil {
+			if syntheticSuffix.IsSet() {
+				panic("synthetic suffix with RangeDel")
+			}
+			if err := w.DeleteRange(outputKey(span.Start, nil), outputKey(span.End, nil)); err != nil {
 				return nil, err
 			}
 		}
@@ -131,12 +134,24 @@ func writeSSTForIngestion(
 			// same sequence number is nonsensical, so we "coalesce" or collapse
 			// the keys.
 			collapsed := keyspan.Span{
-				Start: outputKey(span.Start),
-				End:   outputKey(span.End),
+				Start: outputKey(span.Start, nil),
+				End:   outputKey(span.End, nil),
 				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
 			}
+			keys := span.Keys
+			if syntheticSuffix.IsSet() {
+				keys = slices.Clone(span.Keys)
+				for i := range keys {
+					if keys[i].Kind() == base.InternalKeyKindRangeKeyUnset {
+						panic("RangeKeyUnset with synthetic suffix")
+					}
+					if len(keys[i].Suffix) > 0 {
+						keys[i].Suffix = syntheticSuffix
+					}
+				}
+			}
 			rangekey.Coalesce(
-				t.opts.Comparer.Compare, t.opts.Comparer.Equal, span.Keys, &collapsed.Keys,
+				t.opts.Comparer.Compare, t.opts.Comparer.Equal, keys, &collapsed.Keys,
 			)
 			for i := range collapsed.Keys {
 				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())

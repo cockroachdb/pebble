@@ -1393,10 +1393,8 @@ func (g *generator) writerIngestExternalFiles() {
 	// Randomly set synthetic suffixes.
 	for i := range objs {
 		if g.rng.Intn(2) == 0 {
-			// We can only use a synthetic suffix if we don't have range dels or range
-			// keys.
-			// TODO(radu): we will want to support this at some point.
-			if meta := g.keyManager.objKeyMeta(objs[i].externalObjID); meta.hasRangeDels || meta.hasRangeKeys {
+			// We can only use a synthetic suffix if we don't have range dels or RangeKeyUnsets.
+			if meta := g.keyManager.objKeyMeta(objs[i].externalObjID); meta.hasRangeDels || meta.hasRangeKeyUnset {
 				continue
 			}
 
