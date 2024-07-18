@@ -49,6 +49,9 @@ type RawBytes struct {
 	data    unsafe.Pointer
 }
 
+// Assert that RawBytes implements Array[[]byte].
+var _ Array[[]byte] = RawBytes{}
+
 // DecodeRawBytes decodes the structure of a RawBytes, constructing an accessor
 // for an array of byte slices constructed by RawBytesBuilder. Count must be the
 // number of byte slices within the array.
