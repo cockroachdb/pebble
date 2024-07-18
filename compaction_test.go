@@ -48,12 +48,11 @@ func newVersion(opts *Options, files [numLevels][]*fileMetadata) *version {
 }
 
 type compactionPickerForTesting struct {
-	score         float64
-	level         int
-	baseLevel     int
-	opts          *Options
-	vers          *manifest.Version
-	maxLevelBytes [7]int64
+	score     float64
+	level     int
+	baseLevel int
+	opts      *Options
+	vers      *manifest.Version
 }
 
 var _ compactionPicker = &compactionPickerForTesting{}
@@ -90,7 +89,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if cInfo.level == 0 {
 		return pickL0(env, p.opts, p.vers, p.baseLevel)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, p.maxLevelBytes)
+	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
