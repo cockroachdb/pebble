@@ -120,3 +120,12 @@ type Array[V any] interface {
 	// At returns the i'th value in the array.
 	At(i int) V
 }
+
+// Clone clones the first n elements of the array a.
+func Clone[V any](a Array[V], n int) []V {
+	c := make([]V, n)
+	for i := 0; i < n; i++ {
+		c[i] = a.At(i)
+	}
+	return c
+}
