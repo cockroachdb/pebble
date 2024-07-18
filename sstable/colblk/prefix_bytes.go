@@ -171,10 +171,13 @@ type PrefixBytes struct {
 	rawBytes        RawBytes
 }
 
-// MakePrefixBytes constructs an accessor for an array of lexicographically
-// sorted byte slices constructed by PrefixBytesBuilder. Count must be the
-// number of logical slices within the array.
-func MakePrefixBytes(count int, b []byte, offset uint32) PrefixBytes {
+// DecodePrefixBytes decodes the structure of a PrefixBytes, constructing an
+// accessor for an array of lexicographically sorted byte slices constructed by
+// PrefixBytesBuilder. Count must be the number of logical slices within the
+// array.
+func DecodePrefixBytes(
+	b []byte, offset uint32, count int,
+) (prefixBytes PrefixBytes, endOffset uint32) {
 	if count == 0 {
 		panic(errors.AssertionFailedf("empty PrefixBytes"))
 	}
@@ -185,18 +188,22 @@ func MakePrefixBytes(count int, b []byte, offset uint32) PrefixBytes {
 	calc := makeBundleCalc(bundleShift)
 	nBundles := calc.bundleCount(count)
 
+	rb, endOffset := DecodeRawBytes(b, offset+1, count+nBundles)
 	pb := PrefixBytes{
 		bundleCalc: calc,
 		rows:       count,
-		rawBytes:   MakeRawBytes(count+nBundles, b, offset+1),
+		rawBytes:   rb,
 	}
 	// We always set the base to zero.
 	if pb.rawBytes.offsets.base != 0 {
 		panic(errors.AssertionFailedf("unexpected non-zero base in offsets"))
 	}
 	pb.sharedPrefixLen = int(pb.rawBytes.offsets.At(0))
-	return pb
+	return pb, endOffset
 }
+
+// Assert that DecodePrefixBytes implements DecodeFunc.
+var _ DecodeFunc[PrefixBytes] = DecodePrefixBytes
 
 // SharedPrefix return a []byte of the shared prefix that was extracted from
 // all of the values in the Bytes vector. The returned slice should not be
@@ -419,7 +426,7 @@ func prefixBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter fu
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}
-	pb := MakePrefixBytes(count, f.Data(), uint32(f.Offset()))
+	pb, _ := DecodePrefixBytes(f.Data(), uint32(f.Offset()), count)
 	f.CommentLine("PrefixBytes")
 	f.HexBytesln(1, "bundleSize: %d", 1<<pb.bundleShift)
 	f.CommentLine("Offsets table")

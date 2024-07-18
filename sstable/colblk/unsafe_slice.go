@@ -67,9 +67,11 @@ type UnsafeIntegerSlice[T constraints.Integer] struct {
 	deltaWidth uintptr
 }
 
-func readUnsafeIntegerSlice[T constraints.Integer](
-	rows int, b []byte, off uint32,
-) (endOffset uint32, slice UnsafeIntegerSlice[T]) {
+// DecodeUnsafeIntegerSlice decodes the structure of a slice of uints from a
+// byte slice.
+func DecodeUnsafeIntegerSlice[T constraints.Integer](
+	b []byte, off uint32, rows int,
+) (slice UnsafeIntegerSlice[T], endOffset uint32) {
 	delta := UintDeltaEncoding(b[off])
 	off++
 	switch delta {
@@ -91,8 +93,11 @@ func readUnsafeIntegerSlice[T constraints.Integer](
 	default:
 		panic("unreachable")
 	}
-	return off, slice
+	return slice, off
 }
+
+// Assert that DecodeUnsafeIntegerSlice implements DecodeFunc.
+var _ DecodeFunc[UnsafeUint8s] = DecodeUnsafeIntegerSlice[uint8]
 
 func makeUnsafeIntegerSlice[T constraints.Integer](
 	base T, deltaPtr unsafe.Pointer, deltaWidth int,

@@ -108,3 +108,9 @@ type Encoder interface {
 	// state to the provided writer.
 	WriteDebug(w io.Writer, rows int)
 }
+
+// A DecodeFunc decodes a data structure from a byte slice, returning an
+// accessor for the data and the offset of the first byte after the structure.
+// The rows argument must be number of logical rows encoded within the data
+// structure.
+type DecodeFunc[T any] func(buf []byte, offset uint32, rows int) (decoded T, nextOffset uint32)
