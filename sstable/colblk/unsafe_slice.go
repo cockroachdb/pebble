@@ -134,12 +134,3 @@ func (s UnsafeIntegerSlice[T]) At(i int) T {
 		panic("unreachable")
 	}
 }
-
-// Clone allocates a new slice and copies the first `rows` elements.
-func (s UnsafeIntegerSlice[T]) Clone(rows int) []T {
-	result := make([]T, rows)
-	for i := 0; i < rows; i++ {
-		result[i] = s.At(i)
-	}
-	return result
-}
