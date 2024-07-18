@@ -1304,7 +1304,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			continue
 		}
 
-		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.levelMaxBytes)
+		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
@@ -1584,12 +1584,7 @@ func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *
 // file in a positive-numbered level. This function must not be used for
 // L0.
 func pickAutoLPositive(
-	env compactionEnv,
-	opts *Options,
-	vers *version,
-	cInfo candidateLevelInfo,
-	baseLevel int,
-	levelMaxBytes [numLevels]int64,
+	env compactionEnv, opts *Options, vers *version, cInfo candidateLevelInfo, baseLevel int,
 ) (pc *pickedCompaction) {
 	if cInfo.level == 0 {
 		panic("pebble: pickAutoLPositive called for L0")
