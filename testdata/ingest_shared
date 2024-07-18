@@ -1307,3 +1307,53 @@ next
 ----
 .
 .
+
+# Regression test for #3761. Replicate an sstable
+# which does not have point keys.
+
+reset
+----
+
+switch 2
+----
+ok
+
+batch
+range-key-set a c @4 value
+----
+
+flush
+----
+
+compact a-z
+----
+ok
+
+lsm
+----
+L6:
+  000005:[a#10,RANGEKEYSET-c#inf,RANGEKEYSET]
+
+switch 1
+----
+ok
+
+replicate 2 1 a z
+----
+replicated 1 shared SSTs
+
+lsm
+----
+L6:
+  000005(000005):[a#11,RANGEKEYSET-c#inf,RANGEKEYDEL]
+
+iter
+first
+next
+next
+next
+----
+a: (., [a-c) @4=value UPDATED)
+.
+.
+.

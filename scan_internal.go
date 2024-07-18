@@ -559,7 +559,10 @@ func (d *DB) truncateSharedFile(
 	if needsLowerTruncate {
 		sst.SmallestPointKey.UserKey = sst.SmallestPointKey.UserKey[:0]
 		sst.SmallestPointKey.Trailer = 0
-		kv := iter.SeekGE(lower, base.SeekGEFlagsNone)
+		var kv *base.InternalKV
+		if iter != nil {
+			kv = iter.SeekGE(lower, base.SeekGEFlagsNone)
+		}
 		foundPointKey := kv != nil
 		if kv != nil {
 			sst.SmallestPointKey.CopyFrom(kv.K)
@@ -598,7 +601,10 @@ func (d *DB) truncateSharedFile(
 	if needsUpperTruncate {
 		sst.LargestPointKey.UserKey = sst.LargestPointKey.UserKey[:0]
 		sst.LargestPointKey.Trailer = 0
-		kv := iter.SeekLT(upper, base.SeekLTFlagsNone)
+		var kv *base.InternalKV
+		if iter != nil {
+			kv = iter.SeekLT(upper, base.SeekLTFlagsNone)
+		}
 		foundPointKey := kv != nil
 		if kv != nil {
 			sst.LargestPointKey.CopyFrom(kv.K)

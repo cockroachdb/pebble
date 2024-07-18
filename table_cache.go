@@ -485,7 +485,7 @@ func (c *tableCacheShard) newIters(
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
 		iters.rangeDeletion, err = c.newRangeDelIter(ctx, file, cr, dbOpts)
 	}
-	if kinds.Point() && err == nil {
+	if kinds.Point() && file.HasPointKeys && err == nil {
 		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, dbOpts)
 	}
 	if err != nil {
