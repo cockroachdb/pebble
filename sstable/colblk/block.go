@@ -60,6 +60,16 @@
 // This ensures that if any individual column or piece of data requires
 // word-alignment, the writer can align the offset into the block buffer
 // appropriately to ensure that the data is word-aligned.
+//
+// # Presence
+//
+// All columns are prefixed with a "presence encoding" indicating which of the N
+// rows have encoded values. The presence encoding maps the N logical rows to M
+// physical values in the column data. When all values are present (M=N) or all
+// values are absent (M=0), the presence encoding consumes 1 byte. If a column
+// has a mix of present and absent values (0 < M < N), the presence map encodes
+// a bitmap (see PresenceBitmap). This bitmap interleaves a sum column used for
+// O(1) lookup of a present row's index within the underlying column data array.
 package colblk
 
 import (
@@ -167,14 +177,14 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 
 // DecodeColumn decodes the col'th column of the provided reader's block as a
 // column of dataType using decodeFunc.
-func DecodeColumn[V any](r *BlockReader, col int, dataType DataType, decodeFunc DecodeFunc[V]) V {
+func DecodeColumn[V any](r *BlockReader, col int, dataType DataType, decoder Decoder[V]) V {
 	if uint16(col) >= r.header.Columns {
 		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
 	}
 	if dt := r.dataType(col); dt != dataType {
 		panic(errors.AssertionFailedf("column %d is type %s; not %s", col, dt, dataType))
 	}
-	v, endOffset := decodeFunc(r.data, r.pageStart(col), int(r.header.Rows))
+	v, endOffset := decoder.Decode(r.data, r.pageStart(col), int(r.header.Rows))
 	if nextColumnOff := r.pageStart(col + 1); endOffset != nextColumnOff {
 		panic(errors.AssertionFailedf("column %d decoded to offset %d; expected %d", col, endOffset, nextColumnOff))
 	}
@@ -206,6 +216,12 @@ func (r *BlockReader) Init(data []byte, customHeaderSize uint32) {
 	}
 }
 
+// Rows returns the number of logical rows encoded within the block, as
+// described by the BlockHeader.
+func (r *BlockReader) Rows() int {
+	return int(r.header.Rows)
+}
+
 // DataType returns the data type of the col'th column. Every column's data type
 // is encoded within the block header.
 func (r *BlockReader) DataType(col int) DataType {
@@ -219,46 +235,74 @@ func (r *BlockReader) dataType(col int) DataType {
 	return DataType(*(*uint8)(r.pointer(r.customHeaderSize + blockHeaderBaseSize + columnHeaderSize*uint32(col))))
 }
 
+// decodeDefault decodes the col'th column of the provided reader's block. If
+// all values are present, it returns the underlying values array. Otherwise it
+// returns a PresenceWithDefault array that uses the provided default value.
+// Because decodeDefault returns an Array[V] interface value, the caller will
+// perform dynamic dispatch during At lookups. Callers should prefer using
+// DecodeColumn and a typed Array[V] to avoid dynamic dispatch.
+func decodeDefault[V any, A Array[V]](
+	r *BlockReader, col int, dataType DataType, defaultValue V, decoder Decoder[A],
+) Array[V] {
+	a := DecodeColumn(r, col, dataType,
+		PresenceWithDefaultDecoder[V, A]{
+			DefaultValue: defaultValue,
+			ArrayDecoder: decoder,
+		})
+	if a.AllPresent() {
+		return a.values
+	}
+	return a
+}
+
 // Bitmap retrieves the col'th column as a bitmap. The column must be of type
-// DataTypeBool.
-func (r *BlockReader) Bitmap(col int) Bitmap {
-	return DecodeColumn(r, col, DataTypeBool, DecodeBitmap)
+// DataTypeBool. Callers should prefer to use colblk.DecodeColumn to avoid
+// dynamic dispatch when accessing column elements.
+func (r *BlockReader) Bitmap(col int) Array[bool] {
+	return decodeDefault(r, col, DataTypeBool, false, DecodeFunc[Bitmap](DecodeBitmap))
 }
 
 // RawBytes retrieves the col'th column as a column of byte slices. The column
-// must be of type DataTypeBytes.
-func (r *BlockReader) RawBytes(col int) RawBytes {
-	return DecodeColumn(r, col, DataTypeBytes, DecodeRawBytes)
+// must be of type DataTypeBytes. Callers should prefer to use
+// colblk.DecodeColumn to avoid dynamic dispatch when accessing column elements.
+func (r *BlockReader) RawBytes(col int) Array[[]byte] {
+	return decodeDefault(r, col, DataTypeBytes, []byte{}, DecodeFunc[RawBytes](DecodeRawBytes))
 }
 
-// PrefixBytes retrieves the col'th column as a prefix-compressed byte slice column. The column
-// must be of type DataTypePrefixBytes.
-func (r *BlockReader) PrefixBytes(col int) PrefixBytes {
-	return DecodeColumn(r, col, DataTypePrefixBytes, DecodePrefixBytes)
+// PrefixBytes retrieves the col'th column as a prefix-compressed byte slice
+// column. Callers should prefer to use colblk.DecodeColumn and access
+// PrefixBytes directly to avoid dynamic dispatch and to avoid PrefixBytes's At
+// method's allocation on every call.
+func (r *BlockReader) PrefixBytes(col int) Array[[]byte] {
+	return decodeDefault(r, col, DataTypePrefixBytes, []byte{}, DecodeFunc[PrefixBytes](DecodePrefixBytes))
 }
 
 // Uint8s retrieves the col'th column as a column of uint8s. The column must be
-// of type DataTypeUint8.
-func (r *BlockReader) Uint8s(col int) UnsafeUint8s {
-	return DecodeColumn(r, col, DataTypeUint8, DecodeUnsafeIntegerSlice[uint8])
+// of type DataTypeUint8. Callers should prefer to use colblk.DecodeColumn
+// to avoid dynamic dispatch when accessing column elements.
+func (r *BlockReader) Uint8s(col int) Array[uint8] {
+	return decodeDefault(r, col, DataTypeUint8, 0, DecodeFunc[UnsafeUint8s](DecodeUnsafeIntegerSlice[uint8]))
 }
 
-// Uint16s retrieves the col'th column as a column of uint8s. The column must be
-// of type DataTypeUint16.
-func (r *BlockReader) Uint16s(col int) UnsafeUint16s {
-	return DecodeColumn(r, col, DataTypeUint16, DecodeUnsafeIntegerSlice[uint16])
+// Uint16s retrieves the col'th column as a column of uint16s. The column must
+// be of type DataTypeUint16. Callers should prefer to use colblk.DecodeColumn
+// to avoid dynamic dispatch when accessing column elements.
+func (r *BlockReader) Uint16s(col int) Array[uint16] {
+	return decodeDefault(r, col, DataTypeUint16, 0, DecodeFunc[UnsafeUint16s](DecodeUnsafeIntegerSlice[uint16]))
 }
 
-// Uint32s retrieves the col'th column as a column of uint32s. The column must be
-// of type DataTypeUint32.
-func (r *BlockReader) Uint32s(col int) UnsafeUint32s {
-	return DecodeColumn(r, col, DataTypeUint32, DecodeUnsafeIntegerSlice[uint32])
+// Uint32s retrieves the col'th column as a column of uint32s. The column must
+// be of type DataTypeUint32. Callers should prefer to use colblk.DecodeColumn
+// to avoid dynamic dispatch when accessing column elements.
+func (r *BlockReader) Uint32s(col int) Array[uint32] {
+	return decodeDefault(r, col, DataTypeUint32, 0, DecodeFunc[UnsafeUint32s](DecodeUnsafeIntegerSlice[uint32]))
 }
 
-// Uint64s retrieves the col'th column as a column of uint64s. The column must be
-// of type DataTypeUint64.
-func (r *BlockReader) Uint64s(col int) UnsafeUint64s {
-	return DecodeColumn(r, col, DataTypeUint64, DecodeUnsafeIntegerSlice[uint64])
+// Uint64s retrieves the col'th column as a column of uint64s. The column must
+// be of type DataTypeUint64. Callers should prefer to use colblk.DecodeColumn
+// to avoid dynamic dispatch when accessing column elements.
+func (r *BlockReader) Uint64s(col int) Array[uint64] {
+	return decodeDefault(r, col, DataTypeUint64, 0, DecodeFunc[UnsafeUint64s](DecodeUnsafeIntegerSlice[uint64]))
 }
 
 func (r *BlockReader) pageStart(col int) uint32 {
@@ -303,15 +347,20 @@ func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
 	dataType := r.DataType(col)
 	colSize := r.pageStart(col+1) - r.pageStart(col)
 	endOff := f.Offset() + int(colSize)
-	switch dataType {
-	case DataTypeBool:
-		bitmapToBinFormatter(f, rows)
-	case DataTypeUint8, DataTypeUint16, DataTypeUint32, DataTypeUint64:
-		uintsToBinFormatter(f, rows, dataType, nil)
-	case DataTypeBytes:
-		rawBytesToBinFormatter(f, rows, nil)
-	default:
-		panic("unimplemented")
+
+	if remainingRows := presenceToBinFormatter(f, rows); remainingRows > 0 {
+		switch dataType {
+		case DataTypeBool:
+			bitmapToBinFormatter(f, remainingRows)
+		case DataTypeUint8, DataTypeUint16, DataTypeUint32, DataTypeUint64:
+			uintsToBinFormatter(f, remainingRows, dataType, nil)
+		case DataTypeBytes:
+			rawBytesToBinFormatter(f, remainingRows, nil)
+		case DataTypePrefixBytes:
+			prefixBytesToBinFormatter(f, remainingRows, nil)
+		default:
+			panic("unimplemented")
+		}
 	}
 
 	// We expect formatting the column data to have consumed all the bytes

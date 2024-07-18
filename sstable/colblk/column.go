@@ -109,11 +109,28 @@ type Encoder interface {
 	WriteDebug(w io.Writer, rows int)
 }
 
+// A Decoder decodes a data structure from a byte slice.
+type Decoder[T any] interface {
+	// Decode decodes a data structure from a byte slice, returning an accessor
+	// for the data and the offset of the first byte after the structure.  The
+	// rows argument must be number of logical rows encoded within the data
+	// structure.
+	Decode(buf []byte, offset uint32, rows int) (decoded T, nextOffset uint32)
+}
+
 // A DecodeFunc decodes a data structure from a byte slice, returning an
 // accessor for the data and the offset of the first byte after the structure.
 // The rows argument must be number of logical rows encoded within the data
 // structure.
 type DecodeFunc[T any] func(buf []byte, offset uint32, rows int) (decoded T, nextOffset uint32)
+
+// Assert that DecodeFunc[T] implements Decoder[T].
+var _ Decoder[RawBytes] = DecodeFunc[RawBytes](DecodeRawBytes)
+
+// Decode implements Decoder.
+func (f DecodeFunc[T]) Decode(buf []byte, offset uint32, rows int) (decoded T, nextOffset uint32) {
+	return f(buf, offset, rows)
+}
 
 // An Array provides indexed access to an array of values.
 type Array[V any] interface {

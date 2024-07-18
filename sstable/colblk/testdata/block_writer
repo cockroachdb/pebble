@@ -24,9 +24,10 @@ finish
 07-08: b 00000101         # uint64
 08-12: x 0c000000         # page start 12
 # data for column 0
-12-13: x 01               # delta encoding: const
-13-21: x 0000000000000000 # 64-bit constant: 0
-21-22: x 00               # block trailer padding
+12-13: x 01               # presence encoding: AllPresent
+13-14: x 01               # delta encoding: const
+14-22: x 0000000000000000 # 64-bit constant: 0
+22-23: x 00               # block trailer padding
 
 # Test a uint64 column with all values equal but non-zero.
 
@@ -58,9 +59,10 @@ finish
 07-08: b 00000101         # uint64
 08-12: x 0c000000         # page start 12
 # data for column 0
-12-13: x 01               # delta encoding: const
-13-21: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
-21-22: x 00               # block trailer padding
+12-13: x 01               # presence encoding: AllPresent
+13-14: x 01               # delta encoding: const
+14-22: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
+22-23: x 00               # block trailer padding
 
 # Test a uint64 column with a mix of values, but all values less than 256
 # greater than 4149660732785475243. It should use the delta8 encoding.
@@ -86,14 +88,15 @@ finish
 07-08: b 00000101         # uint64
 08-12: x 0c000000         # page start 12
 # data for column 0
-12-13: x 02               # delta encoding: delta8
-13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
-21-22: x 01               # data[0] = 1 + 4149660732785475243 = 4149660732785475244
-22-23: x 00               # data[1] = 0 + 4149660732785475243 = 4149660732785475243
-23-24: x 33               # data[2] = 51 + 4149660732785475243 = 4149660732785475294
-24-25: x 51               # data[3] = 81 + 4149660732785475243 = 4149660732785475324
-25-26: x 93               # data[4] = 147 + 4149660732785475243 = 4149660732785475390
-26-27: x 00               # block trailer padding
+12-13: x 01               # presence encoding: AllPresent
+13-14: x 02               # delta encoding: delta8
+14-22: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+22-23: x 01               # data[0] = 1 + 4149660732785475243 = 4149660732785475244
+23-24: x 00               # data[1] = 0 + 4149660732785475243 = 4149660732785475243
+24-25: x 33               # data[2] = 51 + 4149660732785475243 = 4149660732785475294
+25-26: x 51               # data[3] = 81 + 4149660732785475243 = 4149660732785475324
+26-27: x 93               # data[4] = 147 + 4149660732785475243 = 4149660732785475390
+27-28: x 00               # block trailer padding
 
 # Test the same case, but this time with a value that is exactly 256 greater
 # than the lowest value. The column should use the delta16 encoding.
@@ -120,10 +123,9 @@ finish
 07-08: b 00000101         # uint64
 08-12: x 0c000000         # page start 12
 # data for column 0
-12-13: x 03               # delta encoding: delta16
-13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
-# padding
-21-22: x 00               # aligning to 16-bit boundary
+12-13: x 01               # presence encoding: AllPresent
+13-14: x 03               # delta encoding: delta16
+14-22: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
 22-24: x 0100             # data[0] = 1 + 4149660732785475243 = 4149660732785475244
 24-26: x 0000             # data[1] = 0 + 4149660732785475243 = 4149660732785475243
 26-28: x 3300             # data[2] = 51 + 4149660732785475243 = 4149660732785475294
@@ -157,10 +159,11 @@ finish
 07-08: b 00000101         # uint64
 08-12: x 0c000000         # page start 12
 # data for column 0
-12-13: x 04               # delta encoding: delta32
-13-21: x 0000000000000000 # 64-bit constant: 0
+12-13: x 01               # presence encoding: AllPresent
+13-14: x 04               # delta encoding: delta32
+14-22: x 0000000000000000 # 64-bit constant: 0
 # padding
-21-24: x 000000           # aligning to 32-bit boundary
+22-24: x 0000             # aligning to 32-bit boundary
 24-28: x 00000000         # data[0] = 0
 28-32: x 01000000         # data[1] = 1
 32-36: x 02000000         # data[2] = 2
@@ -201,34 +204,36 @@ finish
 08-12: x 11000000         # page start 17
 # column 1
 12-13: b 00000101         # uint64
-13-17: x 20000000         # page start 32
+13-17: x 21000000         # page start 33
 # data for column 0
-17-18: x 02               # delta encoding: delta8
-18-22: x 00000000         # 32-bit constant: 0
-22-23: x 00               # data[0] = 0
-23-24: x 01               # data[1] = 1
-24-25: x 02               # data[2] = 2
-25-26: x 03               # data[3] = 3
-26-27: x 04               # data[4] = 4
-27-28: x 05               # data[5] = 5
-28-29: x 06               # data[6] = 6
-29-30: x 07               # data[7] = 7
-30-31: x 08               # data[8] = 8
-31-32: x 09               # data[9] = 9
+17-18: x 01               # presence encoding: AllPresent
+18-19: x 02               # delta encoding: delta8
+19-23: x 00000000         # 32-bit constant: 0
+23-24: x 00               # data[0] = 0
+24-25: x 01               # data[1] = 1
+25-26: x 02               # data[2] = 2
+26-27: x 03               # data[3] = 3
+27-28: x 04               # data[4] = 4
+28-29: x 05               # data[5] = 5
+29-30: x 06               # data[6] = 6
+30-31: x 07               # data[7] = 7
+31-32: x 08               # data[8] = 8
+32-33: x 09               # data[9] = 9
 # data for column 1
-32-33: x 02               # delta encoding: delta8
-33-41: x 0000000000000000 # 64-bit constant: 0
-41-42: x 00               # data[0] = 0
-42-43: x 01               # data[1] = 1
-43-44: x 02               # data[2] = 2
-44-45: x 03               # data[3] = 3
-45-46: x 04               # data[4] = 4
-46-47: x 05               # data[5] = 5
-47-48: x 06               # data[6] = 6
-48-49: x 07               # data[7] = 7
-49-50: x 08               # data[8] = 8
-50-51: x 09               # data[9] = 9
-51-52: x 00               # block trailer padding
+33-34: x 01               # presence encoding: AllPresent
+34-35: x 02               # delta encoding: delta8
+35-43: x 0000000000000000 # 64-bit constant: 0
+43-44: x 00               # data[0] = 0
+44-45: x 01               # data[1] = 1
+45-46: x 02               # data[2] = 2
+46-47: x 03               # data[3] = 3
+47-48: x 04               # data[4] = 4
+48-49: x 05               # data[5] = 5
+49-50: x 06               # data[6] = 6
+50-51: x 07               # data[7] = 7
+51-52: x 08               # data[8] = 8
+52-53: x 09               # data[9] = 9
+53-54: x 00               # block trailer padding
 
 init schema=(uint32,uint64)
 ----
@@ -249,16 +254,20 @@ finish
 08-12: x 11000000         # page start 17
 # column 1
 12-13: b 00000101         # uint64
-13-17: x 1a000000         # page start 26
+13-17: x 1c000000         # page start 28
 # data for column 0
-17-18: x 03               # delta encoding: delta16
-18-22: x 01000000         # 32-bit constant: 1
-22-24: x 0630             # data[0] = 12294 + 1 = 12295
-24-26: x 0000             # data[1] = 0 + 1 = 1
-# data for column 1
-26-27: x 00               # delta encoding: none
+17-18: x 01               # presence encoding: AllPresent
+18-19: x 03               # delta encoding: delta16
+19-23: x 01000000         # 32-bit constant: 1
 # padding
-27-32: x 0000000000       # aligning to 64-bit boundary
+23-24: x 00               # aligning to 16-bit boundary
+24-26: x 0630             # data[0] = 12294 + 1 = 12295
+26-28: x 0000             # data[1] = 0 + 1 = 1
+# data for column 1
+28-29: x 01               # presence encoding: AllPresent
+29-30: x 00               # delta encoding: none
+# padding
+30-32: x 0000             # aligning to 64-bit boundary
 32-40: x b2b4949e5b020000 # data[0] = 2592525825202
 40-48: x 0100000000000000 # data[1] = 1
 48-49: x 00               # block trailer padding
@@ -303,7 +312,8 @@ finish
 07-08: b 00000001                                                         # bool
 08-12: x 0c000000                                                         # page start 12
 # data for column 0
-12-16: x 00000000                                                         # padding to align to 64-bit boundary
+12-13: x 01                                                               # presence encoding: AllPresent
+13-16: x 000000                                                           # padding to align to 64-bit boundary
 16-24: b 1011011101111101110110110000000000000000000000000000000000000000 # bitmap word 0
 24-32: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 32-33: x 00                                                               # block trailer padding
@@ -334,42 +344,164 @@ finish
 008-012: x 11000000               # page start 17
 # column 1
 012-013: b 00000101               # uint64
-013-017: x 5e000000               # page start 94
+013-017: x 5f000000               # page start 95
 # data for column 0
+017-018: x 01                     # presence encoding: AllPresent
 # rawbytes
 # offsets table
-017-018: x 02                     # delta encoding: delta8
-018-022: x 00000000               # 32-bit constant: 0
-022-023: x 00                     # data[0] = 0 [32 overall]
-023-024: x 05                     # data[1] = 5 [37 overall]
-024-025: x 0b                     # data[2] = 11 [43 overall]
-025-026: x 12                     # data[3] = 18 [50 overall]
-026-027: x 1d                     # data[4] = 29 [61 overall]
-027-028: x 27                     # data[5] = 39 [71 overall]
-028-029: x 2d                     # data[6] = 45 [77 overall]
-029-030: x 31                     # data[7] = 49 [81 overall]
-030-031: x 3a                     # data[8] = 58 [90 overall]
-031-032: x 3e                     # data[9] = 62 [94 overall]
+018-019: x 02                     # delta encoding: delta8
+019-023: x 00000000               # 32-bit constant: 0
+023-024: x 00                     # data[0] = 0 [33 overall]
+024-025: x 05                     # data[1] = 5 [38 overall]
+025-026: x 0b                     # data[2] = 11 [44 overall]
+026-027: x 12                     # data[3] = 18 [51 overall]
+027-028: x 1d                     # data[4] = 29 [62 overall]
+028-029: x 27                     # data[5] = 39 [72 overall]
+029-030: x 2d                     # data[6] = 45 [78 overall]
+030-031: x 31                     # data[7] = 49 [82 overall]
+031-032: x 3a                     # data[8] = 58 [91 overall]
+032-033: x 3e                     # data[9] = 62 [95 overall]
 # data
-032-037: x 6170706c65             # data[0]: apple
-037-043: x 62616e616e61           # data[1]: banana
-043-050: x 636f636f6e7574         # data[2]: coconut
-050-061: x 647261676f6e6672756974 # data[3]: dragonfruit
-061-071: x 656c6465726265727279   # data[4]: elderberry
-071-077: x 667261697365           # data[5]: fraise
-077-081: x 676f6a69               # data[6]: goji
-081-090: x 6a61636b6672756974     # data[7]: jackfruit
-090-094: x 6b697769               # data[8]: kiwi
+033-038: x 6170706c65             # data[0]: apple
+038-044: x 62616e616e61           # data[1]: banana
+044-051: x 636f636f6e7574         # data[2]: coconut
+051-062: x 647261676f6e6672756974 # data[3]: dragonfruit
+062-072: x 656c6465726265727279   # data[4]: elderberry
+072-078: x 667261697365           # data[5]: fraise
+078-082: x 676f6a69               # data[6]: goji
+082-091: x 6a61636b6672756974     # data[7]: jackfruit
+091-095: x 6b697769               # data[8]: kiwi
 # data for column 1
-094-095: x 02                     # delta encoding: delta8
-095-103: x 0a00000000000000       # 64-bit constant: 10
-103-104: x 0a                     # data[0] = 10 + 10 = 20
-104-105: x 14                     # data[1] = 20 + 10 = 30
-105-106: x 00                     # data[2] = 0 + 10 = 10
-106-107: x 3c                     # data[3] = 60 + 10 = 70
-107-108: x 28                     # data[4] = 40 + 10 = 50
-108-109: x 32                     # data[5] = 50 + 10 = 60
-109-110: x 46                     # data[6] = 70 + 10 = 80
-110-111: x 50                     # data[7] = 80 + 10 = 90
-111-112: x 5a                     # data[8] = 90 + 10 = 100
-112-113: x 00                     # block trailer padding
+095-096: x 01                     # presence encoding: AllPresent
+096-097: x 02                     # delta encoding: delta8
+097-105: x 0a00000000000000       # 64-bit constant: 10
+105-106: x 0a                     # data[0] = 10 + 10 = 20
+106-107: x 14                     # data[1] = 20 + 10 = 30
+107-108: x 00                     # data[2] = 0 + 10 = 10
+108-109: x 3c                     # data[3] = 60 + 10 = 70
+109-110: x 28                     # data[4] = 40 + 10 = 50
+110-111: x 32                     # data[5] = 50 + 10 = 60
+111-112: x 46                     # data[6] = 70 + 10 = 80
+112-113: x 50                     # data[7] = 80 + 10 = 90
+113-114: x 5a                     # data[8] = 90 + 10 = 100
+114-115: x 00                     # block trailer padding
+
+# Test a PrefixBytes column.
+
+init schema=(prefixbytes+bundleSize=4)
+----
+
+write
+apollo
+apple
+apply
+apricot
+aprons
+apropos
+----
+
+finish
+----
+# columnar block header
+00-01: x 01         # version 1
+01-03: x 0100       # 1 columns
+03-07: x 06000000   # 6 rows
+# column 0
+07-08: b 00000111   # prefixbytes
+08-12: x 0c000000   # page start 12
+# data for column 0
+12-13: x 01         # presence encoding: AllPresent
+# PrefixBytes
+13-14: x 02         # bundleSize: 4
+# Offsets table
+14-15: x 02         # delta encoding: delta8
+15-19: x 00000000   # 32-bit constant: 0
+19-20: x 02         # data[0] = 2 [30 overall]
+20-21: x 02         # data[1] = 2 [30 overall]
+21-22: x 06         # data[2] = 6 [34 overall]
+22-23: x 09         # data[3] = 9 [37 overall]
+23-24: x 0c         # data[4] = 12 [40 overall]
+24-25: x 11         # data[5] = 17 [45 overall]
+25-26: x 13         # data[6] = 19 [47 overall]
+26-27: x 15         # data[7] = 21 [49 overall]
+27-28: x 18         # data[8] = 24 [52 overall]
+# Data
+28-30: x 6170       # data[00]: ap (block prefix)
+30-30: x            # data[01]: .. (bundle prefix)
+30-34: x 6f6c6c6f   # data[02]: ..ollo
+34-37: x 706c65     # data[03]: ..ple
+37-40: x 706c79     # data[04]: ..ply
+40-45: x 7269636f74 # data[05]: ..ricot
+45-47: x 726f       # data[06]: ..ro (bundle prefix)
+47-49: x 6e73       # data[07]: ....ns
+49-52: x 706f73     # data[08]: ....pos
+52-53: x 00         # block trailer padding
+
+
+# Test a byte slice column where all the values are absent.
+
+init schema=(bytes+allowAbsence)
+----
+
+write
+.
+.
+.
+.
+.
+----
+
+finish
+----
+# columnar block header
+00-01: x 01       # version 1
+01-03: x 0100     # 1 columns
+03-07: x 05000000 # 5 rows
+# column 0
+07-08: b 00000110 # bytes
+08-12: x 0c000000 # page start 12
+# data for column 0
+12-13: x 00       # presence encoding: AllAbsent
+13-14: x 00       # block trailer padding
+
+# Test a byte slice column where some values are absent.
+
+init schema=(bytes+allowAbsence)
+----
+
+write
+.
+.
+hello
+.
+world
+.
+.
+.
+----
+
+finish
+----
+# columnar block header
+00-01: x 01                   # version 1
+01-03: x 0100                 # 1 columns
+03-07: x 08000000             # 8 rows
+# column 0
+07-08: b 00000110             # bytes
+08-12: x 0c000000             # page start 12
+# data for column 0
+12-13: x 02                   # presence encoding: SomeAbsent
+13-16: x 000000               # padding to align to 32-bit
+# presence bitmap (2 present out of 8)
+16-20: 00010100 00000000 0000 # word  0: 0000000000010100 (sum 0)
+# rawbytes
+# offsets table
+20-21: x 02                   # delta encoding: delta8
+21-25: x 00000000             # 32-bit constant: 0
+25-26: x 00                   # data[0] = 0 [28 overall]
+26-27: x 05                   # data[1] = 5 [33 overall]
+27-28: x 0a                   # data[2] = 10 [38 overall]
+# data
+28-33: x 68656c6c6f           # data[0]: hello
+33-38: x 776f726c64           # data[1]: world
+38-39: x 00                   # block trailer padding

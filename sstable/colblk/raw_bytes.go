@@ -57,7 +57,7 @@ var _ Array[[]byte] = RawBytes{}
 // number of byte slices within the array.
 func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endOffset uint32) {
 	if count == 0 {
-		return RawBytes{}, 0
+		return RawBytes{}, offset
 	}
 	offsets, dataOff := DecodeUnsafeIntegerSlice[uint32](b, offset, count+1 /* +1 offset */)
 	return RawBytes{
@@ -79,7 +79,9 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}
-
+	if count == 0 {
+		return
+	}
 	rb, _ := DecodeRawBytes(f.Data(), uint32(f.Offset()), count)
 	dataOffset := uint64(f.Offset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
 	f.CommentLine("rawbytes")
