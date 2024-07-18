@@ -69,7 +69,9 @@ func TestPrefixBytes(t *testing.T) {
 
 			f := binfmt.New(buf)
 			prefixBytesToBinFormatter(f, rows, nil)
-			pb = MakePrefixBytes(rows, buf, 0)
+			var endOffset uint32
+			pb, endOffset = DecodePrefixBytes(buf, 0, rows)
+			require.Equal(t, offset, endOffset)
 			require.Equal(t, rows, pb.Rows())
 			return f.String()
 		case "get":
@@ -169,7 +171,8 @@ func TestPrefixBytesRandomized(t *testing.T) {
 		t.Logf("Size: %d; NumUserKeys: %d (%d); Aggregate pre-compressed string data: %d",
 			size, n, len(userKeys), totalSize)
 
-		pb := MakePrefixBytes(n, buf, 0)
+		pb, endOffset := DecodePrefixBytes(buf, 0, n)
+		require.Equal(t, offset, endOffset)
 		f := binfmt.New(buf)
 		prefixBytesToBinFormatter(f, n, nil)
 		t.Logf("PrefixBytes:\n%s", f.String())
@@ -268,7 +271,7 @@ func BenchmarkPrefixBytes(b *testing.B) {
 		b.Run("iteration", func(b *testing.B) {
 			n := len(userKeys)
 			buf = build(n)
-			pb := MakePrefixBytes(n, buf, 0)
+			pb, _ := DecodePrefixBytes(buf, 0, n)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				k := append([]byte(nil), pb.SharedPrefix()...)

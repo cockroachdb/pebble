@@ -165,6 +165,22 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 	return buf
 }
 
+// DecodeColumn decodes the col'th column of the provided reader's block as a
+// column of dataType using decodeFunc.
+func DecodeColumn[V any](r *BlockReader, col int, dataType DataType, decodeFunc DecodeFunc[V]) V {
+	if uint16(col) >= r.header.Columns {
+		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
+	}
+	if dt := r.dataType(col); dt != dataType {
+		panic(errors.AssertionFailedf("column %d is type %s; not %s", col, dt, dataType))
+	}
+	v, endOffset := decodeFunc(r.data, r.pageStart(col), int(r.header.Rows))
+	if nextColumnOff := r.pageStart(col + 1); endOffset != nextColumnOff {
+		panic(errors.AssertionFailedf("column %d decoded to offset %d; expected %d", col, endOffset, nextColumnOff))
+	}
+	return v
+}
+
 // A BlockReader holds metadata for accessing the columns of a columnar block.
 type BlockReader struct {
 	data             []byte
@@ -196,74 +212,53 @@ func (r *BlockReader) DataType(col int) DataType {
 	if uint16(col) >= r.header.Columns {
 		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
 	}
-	return DataType(*(*uint8)(r.pointer(r.customHeaderSize + 7 + 5*uint32(col))))
+	return r.dataType(col)
+}
+
+func (r *BlockReader) dataType(col int) DataType {
+	return DataType(*(*uint8)(r.pointer(r.customHeaderSize + blockHeaderBaseSize + columnHeaderSize*uint32(col))))
 }
 
 // Bitmap retrieves the col'th column as a bitmap. The column must be of type
 // DataTypeBool.
 func (r *BlockReader) Bitmap(col int) Bitmap {
-	if dt := r.DataType(col); dt != DataTypeBool {
-		panic(errors.AssertionFailedf("column %d is not a Bitmap; holds data type %s", dt))
-	}
-	return MakeBitmap(r.data, r.pageStart(col), int(r.header.Rows))
+	return DecodeColumn(r, col, DataTypeBool, DecodeBitmap)
 }
 
 // RawBytes retrieves the col'th column as a column of byte slices. The column
 // must be of type DataTypeBytes.
 func (r *BlockReader) RawBytes(col int) RawBytes {
-	if dt := r.DataType(col); dt != DataTypeBytes {
-		panic(errors.AssertionFailedf("column %d is not a RawBytes column; holds data type %s", dt))
-	}
-	return MakeRawBytes(int(r.header.Rows), r.data, r.pageStart(col))
+	return DecodeColumn(r, col, DataTypeBytes, DecodeRawBytes)
 }
 
 // PrefixBytes retrieves the col'th column as a prefix-compressed byte slice column. The column
 // must be of type DataTypePrefixBytes.
 func (r *BlockReader) PrefixBytes(col int) PrefixBytes {
-	if dt := r.DataType(col); dt != DataTypePrefixBytes {
-		panic(errors.AssertionFailedf("column %d is not a PrefixBytes column; holds data type %s", dt))
-	}
-	return MakePrefixBytes(int(r.header.Rows), r.data, r.pageStart(col))
+	return DecodeColumn(r, col, DataTypePrefixBytes, DecodePrefixBytes)
 }
 
 // Uint8s retrieves the col'th column as a column of uint8s. The column must be
 // of type DataTypeUint8.
 func (r *BlockReader) Uint8s(col int) UnsafeUint8s {
-	if dt := r.DataType(col); dt != DataTypeUint8 {
-		panic(errors.AssertionFailedf("column %d is not a Uint8 column; holds data type %s", col, dt))
-	}
-	_, s := readUnsafeIntegerSlice[uint8](int(r.header.Rows), r.data, r.pageStart(col))
-	return s
+	return DecodeColumn(r, col, DataTypeUint8, DecodeUnsafeIntegerSlice[uint8])
 }
 
 // Uint16s retrieves the col'th column as a column of uint8s. The column must be
 // of type DataTypeUint16.
 func (r *BlockReader) Uint16s(col int) UnsafeUint16s {
-	if dt := r.DataType(col); dt != DataTypeUint16 {
-		panic(errors.AssertionFailedf("column %d is not a Uint16 column; holds data type %s", col, dt))
-	}
-	_, s := readUnsafeIntegerSlice[uint16](int(r.header.Rows), r.data, r.pageStart(col))
-	return s
+	return DecodeColumn(r, col, DataTypeUint16, DecodeUnsafeIntegerSlice[uint16])
 }
 
 // Uint32s retrieves the col'th column as a column of uint32s. The column must be
 // of type DataTypeUint32.
 func (r *BlockReader) Uint32s(col int) UnsafeUint32s {
-	if dt := r.DataType(col); dt != DataTypeUint32 {
-		panic(errors.AssertionFailedf("column %d is not a Uint32 column; holds data type %s", col, dt))
-	}
-	_, s := readUnsafeIntegerSlice[uint32](int(r.header.Rows), r.data, r.pageStart(col))
-	return s
+	return DecodeColumn(r, col, DataTypeUint32, DecodeUnsafeIntegerSlice[uint32])
 }
 
 // Uint64s retrieves the col'th column as a column of uint64s. The column must be
 // of type DataTypeUint64.
 func (r *BlockReader) Uint64s(col int) UnsafeUint64s {
-	if dt := r.DataType(col); dt != DataTypeUint64 {
-		panic(errors.AssertionFailedf("column %d is not a Uint64 column; holds data type %s", col, dt))
-	}
-	_, s := readUnsafeIntegerSlice[uint64](int(r.header.Rows), r.data, r.pageStart(col))
-	return s
+	return DecodeColumn(r, col, DataTypeUint64, DecodeUnsafeIntegerSlice[uint64])
 }
 
 func (r *BlockReader) pageStart(col int) uint32 {
