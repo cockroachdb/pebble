@@ -72,8 +72,7 @@ type ColumnWriter interface {
 	DataType(col int) DataType
 	// Finish serializes the column at the specified index, writing the column's
 	// data to buf at offset, and returning the offset at which the next column
-	// should be encoded. Finish also returns a column descriptor describing the
-	// encoding of the column, which will be serialized within the block header.
+	// should be encoded.
 	//
 	// The supplied buf must have enough space at the provided offset to fit the
 	// column. The caller may use Size() to calculate the exact size required.
