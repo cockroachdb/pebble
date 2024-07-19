@@ -26,9 +26,15 @@ import (
 // distinguished only by different timestamp suffixes. With columnar blocks
 // enabling the timestamp to be placed in a separate column, the multiple
 // version problem becomes one of efficiently handling exact duplicate keys.
-// PrefixBytes builds off of the RawBytes encoding, introducing n/bundleSize+1
-// additional slices for encoding n/bundleSize bundle prefixes and 1 block-level
-// shared prefix for the column.
+// PrefixBytes builds off of the RawBytes encoding, introducing additional
+// slices for encoding (n+bundleSize-1)/bundleSize bundle prefixes and 1
+// block-level shared prefix for the column.
+//
+// Unlike the original prefix compression performed by rowblk (inherited from
+// LevelDB and RocksDB), PrefixBytes does not perform all prefix compression
+// relative to the previous key. Rather it performs prefix compression relative
+// to the first key of a key's bundle. This can result in less compression, but
+// simplifies reverse iteration and allows iteration to be largely stateless.
 //
 // To understand the PrefixBytes layout, we'll work through an example using
 // these 15 keys:
@@ -87,17 +93,25 @@ import (
 //	    18 |    13 |         36 | ........
 //	    19 |    14 |         36 | ........
 //
-// The offset column in the table points to the start and end index within the
-// RawBytes data array for each of the 20 slices defined above (the 15 key
-// suffixes + 4 bundle key prefixes + block key prefix). Offset[0] is the length
-// of the first slice which is always anchored at data[0]. The data columns
-// display the portion of the data array the slice covers. For row slices, an
-// empty suffix column indicates that the slice is identical to the slice at the
-// previous index which is indicated by the slice's offset being equal to the
-// previous slice's offset. Due to the lexicographic sorting, the key at row i
-// can't be a prefix of the key at row i-1 or it would have sorted before the
-// key at row i-1. And if the key differs then only the differing bytes will be
-// part of the suffix and not contained in the bundle prefix.
+// The 'end offset' column in the table encodes the exclusive offset within the
+// string data section where each of the slices end. Each slice starts at the
+// previous slice's end offset. The first slice (the block prefix)'s start
+// offset is implicitly zero. Note that this differs from the plain RawBytes
+// encoding which always stores a zero offset at the beginning of the offsets
+// array to avoid special-casing the first slice. The block prefix already
+// requires special-casing, so materializing the zero start offset is not
+// needed.
+//
+// The table above defines 20 slices: the 1 block key prefix, the 4 bundle key
+// prefixes and the 15 key suffixes. Offset[0] is the length of the first slice
+// which is always anchored at data[0]. The data columns display the portion of
+// the data array the slice covers. For row slices, an empty suffix column
+// indicates that the slice is identical to the slice at the previous index
+// which is indicated by the slice's offset being equal to the previous slice's
+// offset. Due to the lexicographic sorting, the key at row i can't be a prefix
+// of the key at row i-1 or it would have sorted before the key at row i-1. And
+// if the key differs then only the differing bytes will be part of the suffix
+// and not contained in the bundle prefix.
 //
 // The end result of this encoding is that we can store the 119 bytes of the 15
 // keys plus their start and end offsets (which would naively consume 15*4=60
@@ -117,7 +131,14 @@ import (
 //	|                            RawBytes                              |
 //	|                                                                  |
 //	| A modified RawBytes encoding is used to store the data slices. A |
-//	| PrefixBytes column storing n keys will encode 2+n+n/bundleSize   |
+//	| PrefixBytes column storing n keys will encode                    |
+//	|                                                                  |
+//	|                        1 block prefix                            |
+//	|                               +                                  |
+//	|          (n + bundleSize-1)/bundleSize bundle prefixes           |
+//	|                               +                                  |
+//	|                         n row suffixes                           |
+//	|                                                                  |
 //	| slices. Unlike the RawBytes encoding, the first offset encoded   |
 //	| is not guaranteed to be zero. In the PrefixBytes encoding, the   |
 //	| first offset encodes the length of the column-wide prefix. The   |
@@ -148,17 +169,18 @@ import (
 // # Reads
 //
 // This encoding provides O(1) access to any row by calculating the bundle for
-// the row (5*(row/4)), then the row's index within the bundle (1+(row%4)). If
-// the slice's offset equals the previous slice's offset then we step backward
-// until we find a non-empty slice or the start of the bundle (a variable number
-// of steps, but bounded by the bundle size).
+// the row (see bundleOffsetIndexForRow), then the per-row's suffix (see
+// rowSuffixIndex). If the per-row suffix's end offset equals the previous
+// offset, then the row is a duplicate key and we need to step backward until we
+// find a non-empty slice or the start of the bundle (a variable number of
+// steps, but bounded by the bundle size).
 //
 // Forward iteration can easily reuse the previous row's key with a check on
-// whether the row's slice is empty. Reverse iteration can reuse the next row's
-// key by looking at the next row's offset to determine whether we are in the
-// middle of a run of equal keys or at an edge. When reverse iteration steps
-// over an edge it has to continue backward until a non-empty slice is found
-// (just as in absolute positioning).
+// whether the row's slice is empty. Reverse iteration within a run of equal
+// keys can reuse the next row's key. When reverse iteration steps backward from
+// a non-empty slice onto an empty slice, it must continue backward until a
+// non-empty slice is found (just as in absolute positioning) to discover the
+// row suffix that is duplicated.
 //
 // The Seek{GE,LT} routines first binary search on the first key of each bundle
 // which can be retrieved without data movement because the bundle prefix is
