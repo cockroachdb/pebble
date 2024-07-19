@@ -20,6 +20,15 @@ import (
 // the various DB methods, as well as those returned from Separator, Successor,
 // and Split. It is also used to compare key suffixes, i.e. the remainder of the
 // key after Split.
+//
+// The comparison of the prefix parts must be a simple byte-wise compare. In
+// other words, if a and be don't have suffixes, then
+// Compare(a, b) = bytes.Compare(a, b).
+//
+// In general, if prefix(a) = a[:Split(a)] and suffix(a) = a[Split(a):], then
+//
+//	  Compare(a, b) = bytes.Compare(prefix(a), prefix(b)) if not 0, or
+//		                bytes.Compare(suffix(a), suffix(b)) otherwise.
 type Compare func(a, b []byte) int
 
 // Equal returns true if a and b are equivalent.
@@ -320,4 +329,47 @@ func (p FormatBytes) Format(s fmt.State, c rune) {
 		buf = append(buf, lowerhex[b&0xF])
 	}
 	s.Write(buf)
+}
+
+// MakeAssertComparer creates a Comparer that is the same with the given
+// Comparer except that it asserts that the Compare and Equal functions adhere
+// to their specifications.
+func MakeAssertComparer(c Comparer) Comparer {
+	return Comparer{
+		Compare: func(a []byte, b []byte) int {
+			res := c.Compare(a, b)
+			an := c.Split(a)
+			aPrefix, aSuffix := a[:an], a[an:]
+			bn := c.Split(b)
+			bPrefix, bSuffix := b[:bn], b[bn:]
+			if prefixCmp := bytes.Compare(aPrefix, bPrefix); prefixCmp == 0 {
+				if suffixCmp := c.Compare(aSuffix, bSuffix); suffixCmp != res {
+					panic(AssertionFailedf("%s: Compare with equal prefixes not consistent with Compare of suffixes: Compare(%q, %q)=%d, Compare(%q, %q)=%d",
+						c.Name, a, b, res, aSuffix, bSuffix, suffixCmp,
+					))
+				}
+			} else if prefixCmp != res {
+				panic(AssertionFailedf("%s: Compare did not perform byte-wise comparison of prefixes", c.Name))
+			}
+			return res
+		},
+
+		Equal: func(a []byte, b []byte) bool {
+			eq := c.Equal(a, b)
+			if cmp := c.Compare(a, b); eq != (cmp == 0) {
+				panic("Compare and Equal are not consistent")
+			}
+			return eq
+		},
+
+		// TODO(radu): add more checks.
+		AbbreviatedKey:     c.AbbreviatedKey,
+		Separator:          c.Separator,
+		Successor:          c.Successor,
+		ImmediateSuccessor: c.ImmediateSuccessor,
+		FormatKey:          c.FormatKey,
+		Split:              c.Split,
+		FormatValue:        c.FormatValue,
+		Name:               c.Name,
+	}
 }

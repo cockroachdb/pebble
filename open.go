@@ -86,6 +86,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.Logger = opts.LoggerAndTracer
 	}
 
+	if invariants.Sometimes(5) {
+		assertComparer := base.MakeAssertComparer(*opts.Comparer)
+		opts.Comparer = &assertComparer
+	}
+
 	// In all error cases, we return db = nil; this is used by various
 	// deferred cleanups.
 
