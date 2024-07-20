@@ -60,6 +60,76 @@
 // This ensures that if any individual column or piece of data requires
 // word-alignment, the writer can align the offset into the block buffer
 // appropriately to ensure that the data is word-aligned.
+//
+// # Keyspan blocks
+//
+// Blocks encoding key spans (range deletions, range keys) decompose the fields
+// of keyspan.Key into columns. Key spans are always stored fragmented, such
+// that all overlapping keys have identical bounds. When encoding key spans to a
+// columnar block, we take advantage of this fragmentation to store the set of
+// unique user key span boundaries in a separate column. This column does not
+// have the same number of rows as the other columns. Each individual fragment
+// stores the index of its start boundary user key within the user key column.
+//
+// For example, consider the three unfragmented spans:
+//
+//	a-e:{(#0,RANGEDEL)}
+//	b-d:{(#100,RANGEDEL)}
+//	f-g:{(#20,RANGEDEL)}
+//
+// Once fragmented, these spans become five keyspan.Keys:
+//
+//	a-b:{(#0,RANGEDEL)}
+//	b-d:{(#100,RANGEDEL), (#0,RANGEDEL)}
+//	d-e:{(#0,RANGEDEL)}
+//	f-g:{(#20,RANGEDEL)}
+//
+// When encoded within a columnar keyspan block, the boundary columns (user key
+// and start indices) would hold six rows:
+//
+//	+-----------------+-----------------+
+//	| User key        | Start index     |
+//	+-----------------+-----------------+
+//	| a               | 0               |
+//	+-----------------+-----------------+
+//	| b               | 1               |
+//	+-----------------+-----------------+
+//	| d               | 3               |
+//	+-----------------+-----------------+
+//	| e               | 4               |
+//	+-----------------+-----------------+
+//	| f               | 4               |
+//	+-----------------+-----------------+
+//	| g               | 5               |
+//	+-----------------+-----------------+
+//
+// The remaining keyspan.Key columns would look like:
+//
+//	+-----------------+-----------------+-----------------+
+//	| Trailer         | Suffix          | Value           |
+//	+-----------------+-----------------+-----------------+
+//	| (#0,RANGEDEL)   | -               | -               | (0)
+//	+-----------------+-----------------+-----------------+
+//	| (#100,RANGEDEL) | -               | -               | (1)
+//	+-----------------+-----------------+-----------------+
+//	| (#0,RANGEDEL)   | -               | -               | (2)
+//	+-----------------+-----------------+-----------------+
+//	| (#0,RANGEDEL)   | -               | -               | (3)
+//	+-----------------+-----------------+-----------------+
+//	| (#20,RANGEDEL)  | -               | -               | (4)
+//	+-----------------+-----------------+-----------------+
+//
+// This encoding does not explicitly encode the mapping of keyspan.Key to
+// boundary keys.  Rather each boundary key encodes the index where keys
+// beginning at a boundary >= the key begin. Readers look up the key start index
+// for the start boundary (s) and the end boundary (e). Any keys within indexes
+// [s,e) have the corresponding bounds.
+//
+// Both range deletions and range keys are encoded with the same schema. Range
+// deletion keyspan.Keys never contain suffixes or values. When encoded, the
+// RawBytes encoding uses the UintDeltaEncodingConstant encoding to avoid
+// materializing encoding N offsets. Each of these empty columns is encoded in
+// just ~5 bytes of column data.
 package colblk
 
 import (
@@ -71,7 +141,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // Version indicates the version of the columnar block format encoded. The
@@ -86,6 +155,7 @@ const (
 
 const blockHeaderBaseSize = 7
 const columnHeaderSize = 5
+const maxBlockRetainedSize = 256 << 10
 
 // Header holds the metadata extracted from a columnar block's header.
 type Header struct {
@@ -128,53 +198,98 @@ func DecodeHeader(data []byte) Header {
 	}
 }
 
+// A blockEncoder encodes a columnar block and handles encoding the block's
+// header, including individual column headers.
+type blockEncoder struct {
+	buf          []byte
+	headerOffset uint32
+	pageOffset   uint32
+}
+
+func (e *blockEncoder) reset() {
+	if cap(e.buf) > maxBlockRetainedSize {
+		e.buf = nil
+	}
+	e.headerOffset = 0
+	e.pageOffset = 0
+}
+
+// init initializes the block encoder with a buffer of the specified size and
+// header.
+func (e *blockEncoder) init(size int, h Header, customHeaderSize int) {
+	if cap(e.buf) < size {
+		e.buf = aligned.ByteSlice(size)
+	} else {
+		e.buf = e.buf[:size]
+	}
+	e.headerOffset = uint32(customHeaderSize) + blockHeaderBaseSize
+	e.pageOffset = blockHeaderSize(int(h.Columns), customHeaderSize)
+	h.Encode(e.buf[customHeaderSize:])
+}
+
+// data returns the underlying buffer.
+func (e *blockEncoder) data() []byte {
+	return e.buf
+}
+
+// encode writes w's columns to the block.
+func (e *blockEncoder) encode(rows int, w ColumnWriter) {
+	for i := 0; i < w.NumColumns(); i++ {
+		e.buf[e.headerOffset] = byte(w.DataType(i))
+		binary.LittleEndian.PutUint32(e.buf[e.headerOffset+1:], e.pageOffset)
+		e.headerOffset += columnHeaderSize
+		e.pageOffset = w.Finish(i, rows, e.pageOffset, e.buf)
+	}
+}
+
+// finish finalizes the block encoding, returning the encoded block. The
+// returned byte slice points to the encoder's buffer, so if the encoder is
+// reused the returned slice will be invalidated.
+func (e *blockEncoder) finish() []byte {
+	e.buf[e.pageOffset] = 0x00 // Padding byte
+	e.pageOffset++
+	if e.pageOffset != uint32(len(e.buf)) {
+		panic(errors.AssertionFailedf("expected pageOffset=%d to equal size=%d", e.pageOffset, len(e.buf)))
+	}
+	return e.buf
+}
+
 // FinishBlock writes the columnar block to a heap-allocated byte slice.
 // FinishBlock assumes all columns have the same number of rows. If that's not
 // the case, the caller should manually construct their own block.
 func FinishBlock(rows int, writers []ColumnWriter) []byte {
 	size := blockHeaderSize(len(writers), 0)
-	nCols := 0
+	nCols := uint16(0)
 	for _, cw := range writers {
 		size = cw.Size(rows, size)
-		nCols += cw.NumColumns()
+		nCols += uint16(cw.NumColumns())
 	}
 	size++ // +1 for the trailing version byte.
 
-	buf := aligned.ByteSlice(int(size))
-	Header{
+	var enc blockEncoder
+	enc.init(int(size), Header{
 		Version: Version1,
-		Columns: uint16(nCols),
+		Columns: nCols,
 		Rows:    uint32(rows),
-	}.Encode(buf)
-	pageOffset := blockHeaderSize(len(writers), 0)
-	col := 0
+	}, 0)
 	for _, cw := range writers {
-		for i := 0; i < cw.NumColumns(); i++ {
-			hi := blockHeaderSize(col, 0)
-			buf[hi] = byte(cw.DataType(i))
-			binary.LittleEndian.PutUint32(buf[hi+1:], pageOffset)
-			pageOffset = cw.Finish(i, rows, pageOffset, buf)
-			col++
-		}
+		enc.encode(rows, cw)
 	}
-	buf[pageOffset] = 0x00 // Padding byte
-	pageOffset++
-	if invariants.Enabled && pageOffset != size {
-		panic(fmt.Sprintf("expected pageOffset=%d to be equal to size=%d", pageOffset, size))
-	}
-	return buf
+	return enc.finish()
 }
 
 // DecodeColumn decodes the col'th column of the provided reader's block as a
 // column of dataType using decodeFunc.
-func DecodeColumn[V any](r *BlockReader, col int, dataType DataType, decodeFunc DecodeFunc[V]) V {
+func DecodeColumn[V any](
+	r *BlockReader, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
+) V {
 	if uint16(col) >= r.header.Columns {
 		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
 	}
 	if dt := r.dataType(col); dt != dataType {
 		panic(errors.AssertionFailedf("column %d is type %s; not %s", col, dt, dataType))
 	}
-	v, endOffset := decodeFunc(r.data, r.pageStart(col), int(r.header.Rows))
+	v, endOffset := decodeFunc(r.data, r.pageStart(col), rows)
 	if nextColumnOff := r.pageStart(col + 1); endOffset != nextColumnOff {
 		panic(errors.AssertionFailedf("column %d decoded to offset %d; expected %d", col, endOffset, nextColumnOff))
 	}
@@ -222,43 +337,43 @@ func (r *BlockReader) dataType(col int) DataType {
 // Bitmap retrieves the col'th column as a bitmap. The column must be of type
 // DataTypeBool.
 func (r *BlockReader) Bitmap(col int) Bitmap {
-	return DecodeColumn(r, col, DataTypeBool, DecodeBitmap)
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeBool, DecodeBitmap)
 }
 
 // RawBytes retrieves the col'th column as a column of byte slices. The column
 // must be of type DataTypeBytes.
 func (r *BlockReader) RawBytes(col int) RawBytes {
-	return DecodeColumn(r, col, DataTypeBytes, DecodeRawBytes)
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeBytes, DecodeRawBytes)
 }
 
 // PrefixBytes retrieves the col'th column as a prefix-compressed byte slice column. The column
 // must be of type DataTypePrefixBytes.
 func (r *BlockReader) PrefixBytes(col int) PrefixBytes {
-	return DecodeColumn(r, col, DataTypePrefixBytes, DecodePrefixBytes)
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypePrefixBytes, DecodePrefixBytes)
 }
 
 // Uint8s retrieves the col'th column as a column of uint8s. The column must be
 // of type DataTypeUint8.
 func (r *BlockReader) Uint8s(col int) UnsafeUint8s {
-	return DecodeColumn(r, col, DataTypeUint8, DecodeUnsafeIntegerSlice[uint8])
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint8, DecodeUnsafeIntegerSlice[uint8])
 }
 
 // Uint16s retrieves the col'th column as a column of uint8s. The column must be
 // of type DataTypeUint16.
 func (r *BlockReader) Uint16s(col int) UnsafeUint16s {
-	return DecodeColumn(r, col, DataTypeUint16, DecodeUnsafeIntegerSlice[uint16])
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint16, DecodeUnsafeIntegerSlice[uint16])
 }
 
 // Uint32s retrieves the col'th column as a column of uint32s. The column must be
 // of type DataTypeUint32.
 func (r *BlockReader) Uint32s(col int) UnsafeUint32s {
-	return DecodeColumn(r, col, DataTypeUint32, DecodeUnsafeIntegerSlice[uint32])
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint32, DecodeUnsafeIntegerSlice[uint32])
 }
 
 // Uint64s retrieves the col'th column as a column of uint64s. The column must be
 // of type DataTypeUint64.
 func (r *BlockReader) Uint64s(col int) UnsafeUint64s {
-	return DecodeColumn(r, col, DataTypeUint64, DecodeUnsafeIntegerSlice[uint64])
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint64, DecodeUnsafeIntegerSlice[uint64])
 }
 
 func (r *BlockReader) pageStart(col int) uint32 {

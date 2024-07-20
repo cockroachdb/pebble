@@ -123,8 +123,13 @@ type RawBytesBuilder struct {
 // Assert that *RawBytesBuilder implements ColumnWriter.
 var _ ColumnWriter = (*RawBytesBuilder)(nil)
 
-// Reset resets the builder to an empty state, preserving the existing bundle
-// size.
+// Init initializes the builder for first-time use.
+func (b *RawBytesBuilder) Init() {
+	b.offsets.Init()
+	b.Reset()
+}
+
+// Reset resets the builder to an empty state.
 func (b *RawBytesBuilder) Reset() {
 	b.rows = 0
 	b.data = b.data[:0]
