@@ -1,0 +1,310 @@
+init
+----
+size=1:
+0: user keys:      bytes: 0 rows set; 0 bytes in data
+1: start indices:  uint32: 0 rows
+2: trailers:       uint64: 0 rows
+3: suffixes:       bytes: 0 rows set; 0 bytes in data
+4: values:         bytes: 0 rows set; 0 bytes in data
+
+add
+a-b:{(#0,RANGEDEL)}
+----
+size=71:
+0: user keys:      bytes: 2 rows set; 2 bytes in data
+1: start indices:  uint32: 1 rows
+2: trailers:       uint64: 1 rows
+3: suffixes:       bytes: 1 rows set; 0 bytes in data
+4: values:         bytes: 1 rows set; 0 bytes in data
+
+add
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+----
+size=85:
+0: user keys:      bytes: 3 rows set; 3 bytes in data
+1: start indices:  uint32: 4 rows
+2: trailers:       uint64: 4 rows
+3: suffixes:       bytes: 4 rows set; 0 bytes in data
+4: values:         bytes: 4 rows set; 0 bytes in data
+
+add
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+----
+size=93:
+0: user keys:      bytes: 4 rows set; 4 bytes in data
+1: start indices:  uint32: 6 rows
+2: trailers:       uint64: 6 rows
+3: suffixes:       bytes: 6 rows set; 0 bytes in data
+4: values:         bytes: 6 rows set; 0 bytes in data
+
+add
+d-e:{(#0,RANGEDEL)}
+----
+size=99:
+0: user keys:      bytes: 5 rows set; 5 bytes in data
+1: start indices:  uint32: 7 rows
+2: trailers:       uint64: 7 rows
+3: suffixes:       bytes: 7 rows set; 0 bytes in data
+4: values:         bytes: 7 rows set; 0 bytes in data
+
+finish
+----
+# keyspan block header
+00-04: x 05000000         # user key count: 5
+# columnar block header
+04-05: x 01               # version 1
+05-07: x 0500             # 5 columns
+07-11: x 07000000         # 7 rows
+# column 0
+11-12: b 00000110         # bytes
+12-16: x 24000000         # page start 36
+# column 1
+16-17: b 00000100         # uint32
+17-21: x 34000000         # page start 52
+# column 2
+21-22: b 00000101         # uint64
+22-26: x 40000000         # page start 64
+# column 3
+26-27: b 00000110         # bytes
+27-31: x 58000000         # page start 88
+# column 4
+31-32: b 00000110         # bytes
+32-36: x 5d000000         # page start 93
+# data for column 0
+# rawbytes
+# offsets table
+36-37: x 02               # delta encoding: delta8
+37-41: x 00000000         # 32-bit constant: 0
+41-42: x 00               # data[0] = 0 [47 overall]
+42-43: x 01               # data[1] = 1 [48 overall]
+43-44: x 02               # data[2] = 2 [49 overall]
+44-45: x 03               # data[3] = 3 [50 overall]
+45-46: x 04               # data[4] = 4 [51 overall]
+46-47: x 05               # data[5] = 5 [52 overall]
+# data
+47-48: x 61               # data[0]: a
+48-49: x 62               # data[1]: b
+49-50: x 63               # data[2]: c
+50-51: x 64               # data[3]: d
+51-52: x 65               # data[4]: e
+# data for column 1
+52-53: x 02               # delta encoding: delta8
+53-57: x 00000000         # 32-bit constant: 0
+57-58: x 00               # data[0] = 0
+58-59: x 01               # data[1] = 1
+59-60: x 01               # data[2] = 1
+60-61: x 01               # data[3] = 1
+61-62: x 02               # data[4] = 2
+62-63: x 02               # data[5] = 2
+63-64: x 03               # data[6] = 3
+# data for column 2
+64-65: x 03               # delta encoding: delta16
+65-73: x 0f00000000000000 # 64-bit constant: 15
+# padding
+73-74: x 00               # aligning to 16-bit boundary
+74-76: x 0000             # data[0] = 0 + 15 = 15
+76-78: x 0064             # data[1] = 25600 + 15 = 25615
+78-80: x 0014             # data[2] = 5120 + 15 = 5135
+80-82: x 0000             # data[3] = 0 + 15 = 15
+82-84: x 0064             # data[4] = 25600 + 15 = 25615
+84-86: x 0000             # data[5] = 0 + 15 = 15
+86-88: x 0000             # data[6] = 0 + 15 = 15
+# data for column 3
+# rawbytes
+# offsets table
+88-89: x 01               # delta encoding: const
+89-93: x 00000000         # 32-bit constant: 0
+# data
+93-93: x                  # data[0]:
+93-93: x                  # data[1]:
+93-93: x                  # data[2]:
+93-93: x                  # data[3]:
+93-93: x                  # data[4]:
+93-93: x                  # data[5]:
+93-93: x                  # data[6]:
+# data for column 4
+# rawbytes
+# offsets table
+93-94: x 01               # delta encoding: const
+94-98: x 00000000         # 32-bit constant: 0
+# data
+98-98: x                  # data[0]:
+98-98: x                  # data[1]:
+98-98: x                  # data[2]:
+98-98: x                  # data[3]:
+98-98: x                  # data[4]:
+98-98: x                  # data[5]:
+98-98: x                  # data[6]:
+
+# Test iterating over the block's spans.
+
+iter
+seek-ge a
+seek-ge apple
+seek-ge b
+seek-ge banana
+seek-ge c
+seek-ge coconut
+seek-ge d
+seek-ge dragonfruit
+seek-ge e
+seek-ge z
+----
+a-b:{(#0,RANGEDEL)}
+a-b:{(#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+d-e:{(#0,RANGEDEL)}
+d-e:{(#0,RANGEDEL)}
+.
+.
+
+iter
+seek-lt z
+seek-lt e
+seek-lt dragonfruit
+seek-lt d
+----
+d-e:{(#0,RANGEDEL)}
+d-e:{(#0,RANGEDEL)}
+d-e:{(#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+
+iter
+first
+next
+next
+next
+next
+prev
+prev
+prev
+prev
+prev
+----
+a-b:{(#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+d-e:{(#0,RANGEDEL)}
+.
+d-e:{(#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+a-b:{(#0,RANGEDEL)}
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+next
+next
+next
+next
+next
+----
+d-e:{(#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+a-b:{(#0,RANGEDEL)}
+.
+a-b:{(#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+d-e:{(#0,RANGEDEL)}
+.
+
+init
+----
+size=1:
+0: user keys:      bytes: 0 rows set; 0 bytes in data
+1: start indices:  uint32: 0 rows
+2: trailers:       uint64: 0 rows
+3: suffixes:       bytes: 0 rows set; 0 bytes in data
+4: values:         bytes: 0 rows set; 0 bytes in data
+
+add
+b-d:{(#4,RANGEKEYSET,@3,coconut)}
+----
+size=84:
+0: user keys:      bytes: 2 rows set; 2 bytes in data
+1: start indices:  uint32: 1 rows
+2: trailers:       uint64: 1 rows
+3: suffixes:       bytes: 1 rows set; 2 bytes in data
+4: values:         bytes: 1 rows set; 7 bytes in data
+
+finish
+----
+# keyspan block header
+00-04: x 02000000         # user key count: 2
+# columnar block header
+04-05: x 01               # version 1
+05-07: x 0500             # 5 columns
+07-11: x 01000000         # 1 rows
+# column 0
+11-12: b 00000110         # bytes
+12-16: x 24000000         # page start 36
+# column 1
+16-17: b 00000100         # uint32
+17-21: x 2e000000         # page start 46
+# column 2
+21-22: b 00000101         # uint64
+22-26: x 33000000         # page start 51
+# column 3
+26-27: b 00000110         # bytes
+27-31: x 3c000000         # page start 60
+# column 4
+31-32: b 00000110         # bytes
+32-36: x 45000000         # page start 69
+# data for column 0
+# rawbytes
+# offsets table
+36-37: x 02               # delta encoding: delta8
+37-41: x 00000000         # 32-bit constant: 0
+41-42: x 00               # data[0] = 0 [44 overall]
+42-43: x 01               # data[1] = 1 [45 overall]
+43-44: x 02               # data[2] = 2 [46 overall]
+# data
+44-45: x 62               # data[0]: b
+45-46: x 64               # data[1]: d
+# data for column 1
+46-47: x 01               # delta encoding: const
+47-51: x 00000000         # 32-bit constant: 0
+# data for column 2
+51-52: x 01               # delta encoding: const
+52-60: x 1504000000000000 # 64-bit constant: 1045
+# data for column 3
+# rawbytes
+# offsets table
+60-61: x 02               # delta encoding: delta8
+61-65: x 00000000         # 32-bit constant: 0
+65-66: x 00               # data[0] = 0 [67 overall]
+66-67: x 02               # data[1] = 2 [69 overall]
+# data
+67-69: x 4033             # data[0]: @3
+# data for column 4
+# rawbytes
+# offsets table
+69-70: x 02               # delta encoding: delta8
+70-74: x 00000000         # 32-bit constant: 0
+74-75: x 00               # data[0] = 0 [76 overall]
+75-76: x 07               # data[1] = 7 [83 overall]
+# data
+76-83: x 636f636f6e7574   # data[0]: coconut
+
+iter
+seek-ge a
+next
+prev
+prev
+next
+----
+b-d:{(#4,RANGEKEYSET,@3,coconut)}
+.
+b-d:{(#4,RANGEKEYSET,@3,coconut)}
+.
+b-d:{(#4,RANGEKEYSET,@3,coconut)}
