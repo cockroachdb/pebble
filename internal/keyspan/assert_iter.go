@@ -5,6 +5,7 @@
 package keyspan
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -163,6 +164,11 @@ func (i *assertIter) Prev() (*Span, error) {
 	}
 	i.check(span)
 	return span, err
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (i *assertIter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
 }
 
 // Close implements FragmentIterator.

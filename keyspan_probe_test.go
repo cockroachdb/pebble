@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"go/token"
 	"io"
@@ -375,6 +376,11 @@ func (p *probeKeyspanIterator) DebugTree(tp treeprinter.Node) {
 	if p.iter != nil {
 		p.iter.DebugTree(n)
 	}
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (p *probeKeyspanIterator) SetContext(ctx context.Context) {
+	p.iter.SetContext(ctx)
 }
 
 func (p *probeKeyspanIterator) Close() {

@@ -90,6 +90,7 @@ func (i *errorKeyspanIter) First() (*keyspan.Span, error)            { return ni
 func (i *errorKeyspanIter) Last() (*keyspan.Span, error)             { return nil, i.err }
 func (i *errorKeyspanIter) Next() (*keyspan.Span, error)             { return nil, i.err }
 func (i *errorKeyspanIter) Prev() (*keyspan.Span, error)             { return nil, i.err }
+func (i *errorKeyspanIter) SetContext(ctx context.Context)           {}
 func (i *errorKeyspanIter) Close()                                   {}
 func (*errorKeyspanIter) String() string                             { return "error" }
 func (*errorKeyspanIter) WrapChildren(wrap keyspan.WrapFn)           {}

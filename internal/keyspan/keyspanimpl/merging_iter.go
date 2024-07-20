@@ -7,6 +7,7 @@ package keyspanimpl
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 
@@ -674,6 +675,13 @@ func (m *MergingIter) Prev() (*keyspan.Span, error) {
 		}
 	}
 	return m.findPrevFragmentSet()
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (m *MergingIter) SetContext(ctx context.Context) {
+	for i := range m.levels {
+		m.levels[i].iter.SetContext(ctx)
+	}
 }
 
 // Close closes the iterator, releasing all acquired resources.
