@@ -5,6 +5,8 @@
 package keyspan
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
@@ -207,6 +209,11 @@ func (i *BoundedIter) Prev() (*Span, error) {
 // Close implements FragmentIterator.
 func (i *BoundedIter) Close() {
 	i.iter.Close()
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (i *BoundedIter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
 }
 
 // SetBounds modifies the FragmentIterator's bounds.

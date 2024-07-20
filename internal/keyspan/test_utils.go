@@ -6,6 +6,7 @@ package keyspan
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"go/token"
 	"io"
@@ -365,6 +366,11 @@ func (p *probeIterator) Prev() (*Span, error) {
 	return p.handleOp(op)
 }
 
+// SetContext is part of the FragmentIterator interface.
+func (p *probeIterator) SetContext(ctx context.Context) {
+	p.iter.SetContext(ctx)
+}
+
 func (p *probeIterator) Close() {
 	op := op{Kind: OpClose}
 	if p.iter != nil {
@@ -560,6 +566,11 @@ func (i *invalidatingIter) First() (*Span, error)            { return i.invalida
 func (i *invalidatingIter) Last() (*Span, error)             { return i.invalidate(i.iter.Last()) }
 func (i *invalidatingIter) Next() (*Span, error)             { return i.invalidate(i.iter.Next()) }
 func (i *invalidatingIter) Prev() (*Span, error)             { return i.invalidate(i.iter.Prev()) }
+
+// SetContext is part of the FragmentIterator interface.
+func (i *invalidatingIter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
+}
 
 func (i *invalidatingIter) Close() {
 	_, _ = i.invalidate(nil, nil)

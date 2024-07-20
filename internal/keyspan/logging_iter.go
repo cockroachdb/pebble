@@ -5,6 +5,7 @@
 package keyspan
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -130,6 +131,11 @@ func (i *loggingIter) Prev() (*Span, error) {
 	span, err := i.iter.Prev()
 	opEnd(span, err)
 	return span, err
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (i *loggingIter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
 }
 
 // Close implements FragmentIterator.

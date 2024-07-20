@@ -807,9 +807,8 @@ func (c *compaction) newInputIters(
 				}
 			}
 			if hasRangeKeys {
-				li := &keyspanimpl.LevelIter{}
-				newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-					rangeKeyIter, err := newRangeKeyIter(file, iterOptions)
+				newRangeKeyIterWrapper := func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+					rangeKeyIter, err := newRangeKeyIter(ctx, file, iterOptions)
 					if err != nil {
 						return nil, err
 					} else if rangeKeyIter == nil {
@@ -829,7 +828,10 @@ func (c *compaction) newInputIters(
 					// in this sstable must wholly lie within the file's bounds.
 					return noCloseIter, err
 				}
-				li.Init(keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange)
+				li := keyspanimpl.NewLevelIter(
+					context.Background(), keyspan.SpanIterOptions{}, c.cmp,
+					newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange,
+				)
 				rangeKeyIters = append(rangeKeyIters, li)
 			}
 			return nil

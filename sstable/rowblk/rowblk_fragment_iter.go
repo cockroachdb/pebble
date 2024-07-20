@@ -6,6 +6,7 @@ package rowblk
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -257,6 +258,9 @@ func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error
 	i.applySpanTransforms()
 	return &i.span, nil
 }
+
+// SetContext is part of the FragmentIterator interface.
+func (i *fragmentIter) SetContext(ctx context.Context) {}
 
 // Close implements (keyspan.FragmentIterator).Close.
 func (i *fragmentIter) Close() {
