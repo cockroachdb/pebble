@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -24,6 +25,7 @@ import (
 	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -1405,8 +1407,11 @@ func (t *testTracer) Eventf(ctx context.Context, format string, args ...interfac
 	if t.enabledOnlyForNonBackgroundContext && ctx == context.Background() {
 		return
 	}
-	fmt.Fprintf(&t.buf, format, args...)
-	fmt.Fprint(&t.buf, "\n")
+	str := fmt.Sprintf(format, args...)
+	// Redact known strings that depend on source code line numbers.
+	str = regexp.MustCompile(`\(fileNum=[^)]+\)$`).ReplaceAllString(str, "(<redacted>)")
+	t.buf.WriteString(str)
+	t.buf.WriteString("\n")
 }
 
 func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
@@ -1418,68 +1423,75 @@ func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
 
 func TestTracing(t *testing.T) {
 	defer sstable.DeterministicReadBlockDurationForTesting()()
+
 	var tracer testTracer
-	c := NewCache(0)
-	defer c.Unref()
-	d, err := Open("", &Options{
-		FS:              vfs.NewMem(),
-		Cache:           c,
-		LoggerAndTracer: &tracer,
-	})
-	require.NoError(t, err)
+	buf := &tracer.buf
+	var db *DB
 	defer func() {
-		require.NoError(t, d.Close())
+		if db != nil {
+			db.Close()
+		}
 	}()
-
-	// Create a sstable.
-	require.NoError(t, d.Set([]byte("hello"), nil, nil))
-	require.NoError(t, d.Flush())
-	_, closer, err := d.Get([]byte("hello"))
-	require.NoError(t, err)
-	closer.Close()
-	readerInitRegexp := `reading footer of 53 bytes took 5ms
-reading block of 37 bytes took 5ms \([^)]*\)
-reading block of 419 bytes took 5ms \([^)]*\)
-`
-	iterTraceRegexp :=
-		`reading block of 27 bytes took 5ms \([^)]*\)
-reading block of 29 bytes took 5ms \([^)]*\)
-`
-
-	require.Regexp(t, readerInitRegexp+iterTraceRegexp, tracer.buf.String())
-
-	// Get again, but since it currently uses context.Background(), no trace
-	// output is produced.
-	tracer.buf.Reset()
-	tracer.enabledOnlyForNonBackgroundContext = true
-	_, closer, err = d.Get([]byte("hello"))
-	require.NoError(t, err)
-	closer.Close()
-	require.Equal(t, "", tracer.buf.String())
-
+	cache := NewCache(0)
+	defer cache.Unref()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	iter, _ := d.NewIterWithContext(ctx, nil)
-	iter.SeekGE([]byte("hello"))
-	iter.Close()
-	require.Regexp(t, iterTraceRegexp, tracer.buf.String())
+	datadriven.RunTest(t, "testdata/tracing", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		tracer.enabledOnlyForNonBackgroundContext = td.HasArg("disable-background-tracing")
+		ctx := ctx
+		switch td.Cmd {
+		case "build":
+			if db != nil {
+				db.Close()
+			}
+			db = testutils.CheckErr(Open("", &Options{
+				FS:              vfs.NewMem(),
+				Cache:           cache,
+				LoggerAndTracer: &tracer,
+			}))
 
-	tracer.buf.Reset()
-	snap := d.NewSnapshot()
-	iter, _ = snap.NewIterWithContext(ctx, nil)
-	iter.SeekGE([]byte("hello"))
-	iter.Close()
-	require.Regexp(t, iterTraceRegexp, tracer.buf.String())
-	snap.Close()
+			b := db.NewBatch()
+			require.NoError(t, runBatchDefineCmd(td, b))
+			require.NoError(t, b.Commit(nil))
+			require.NoError(t, db.Flush())
+			return ""
 
-	tracer.buf.Reset()
-	b := d.NewIndexedBatch()
-	iter, err = b.NewIterWithContext(ctx, nil)
-	require.NoError(t, err)
-	iter.SeekGE([]byte("hello"))
-	iter.Close()
-	require.Regexp(t, iterTraceRegexp, tracer.buf.String())
-	b.Close()
+		case "get":
+			for _, key := range strings.Split(td.Input, "\n") {
+				v, closer, err := db.Get([]byte(key))
+				require.NoError(t, err)
+				fmt.Fprintf(buf, "%s:%s\n", key, v)
+				closer.Close()
+			}
+
+		case "iter":
+			iter, _ := db.NewIterWithContext(ctx, &IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			buf.WriteString(runIterCmd(td, iter, true))
+
+		case "snapshot-iter":
+			snap := db.NewSnapshot()
+			defer snap.Close()
+			iter, _ := snap.NewIterWithContext(ctx, &IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			buf.WriteString(runIterCmd(td, iter, true))
+
+		case "indexed-batch-iter":
+			b := db.NewIndexedBatch()
+			defer b.Close()
+			iter, _ := b.NewIterWithContext(ctx, &IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			buf.WriteString(runIterCmd(td, iter, true))
+
+		default:
+			td.Fatalf(t, "unknown command: %s", td.Cmd)
+		}
+		return buf.String()
+	})
 }
 
 func TestMemtableIngestInversion(t *testing.T) {
