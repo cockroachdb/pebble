@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
+	"golang.org/x/sync/errgroup"
 )
 
 var testKeyValuePairs = []string{
@@ -2719,5 +2721,166 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 	defer b.StopTimer()
 	for i := 0; i < b.N; i++ {
 		iter.SeekPrefixGE(seekKey)
+	}
+}
+
+// BenchmarkPointDeletedSwath benchmarks iterator operations on large-ish
+// (hundreds of MBs) databases containing broad swaths of keys removed by point
+// tombstones.
+func BenchmarkPointDeletedSwath(b *testing.B) {
+	const maxKeyLen = 5
+	ks := testkeys.Alpha(maxKeyLen)
+
+	opts := func() *Options {
+		return (&Options{
+			DisableWAL:         true,
+			FS:                 vfs.NewMem(),
+			Comparer:           testkeys.Comparer,
+			FormatMajorVersion: FormatNewest,
+		}).EnsureDefaults()
+	}
+	type iteratorOp struct {
+		name string
+		fn   func(*DB, testkeys.Keyspace, *rand.Rand) error
+	}
+	var iterKeyBuf [maxKeyLen]byte
+	iterOps := []iteratorOp{
+		{
+			name: "prefix point lookup", fn: func(d *DB, ks testkeys.Keyspace, rng *rand.Rand) error {
+				n := testkeys.WriteKey(iterKeyBuf[:], ks, rng.Intn(ks.Count()))
+				iter := d.NewIter(nil)
+				_ = iter.SeekPrefixGE(iterKeyBuf[:n])
+				return iter.Close()
+			},
+		},
+		{
+			name: "non-prefix point seek", fn: func(d *DB, ks testkeys.Keyspace, rng *rand.Rand) error {
+				n := testkeys.WriteKey(iterKeyBuf[:], ks, rng.Intn(ks.Count()))
+				iter := d.NewIter(nil)
+				_ = iter.SeekGE(iterKeyBuf[:n])
+				return iter.Close()
+			},
+		},
+		{
+			name: "full scan", fn: func(d *DB, ks testkeys.Keyspace, rng *rand.Rand) error {
+				iter := d.NewIter(nil)
+				for valid := iter.First(); valid; valid = iter.Next() {
+				}
+				return iter.Close()
+			},
+		},
+	}
+
+	// Populate an initial database with point keys at every key in the `ks`
+	// keyspace.
+	populated := withStateSetup(b, vfs.NewMem(), opts(), populateKeyspaceSetup(ks))
+	for _, gapLength := range []int{3, 5, 10, 20, 50, 100, 1_000, 10_000, 100_000, 250_000, 1_000_000, 10_000_000} {
+		b.Run(fmt.Sprintf("gap=%d", gapLength), func(b *testing.B) {
+			// Extend the `populated` initial database with DELs deleting all
+			// the middle keys in the keyspace in a contiguous swath of
+			// `gapLength` keys.
+			gapDeleted := withStateSetup(b, populated, opts(), deleteGapSetup(ks, gapLength))
+			for _, op := range iterOps {
+				b.Run(op.name, func(b *testing.B) {
+					// Run each instance of the test in a fresh DB constructed
+					// from `gapDeleted`. This ensures background compactions
+					// from one iterator operation don't affect another iterator
+					// option.
+					withStateSetup(b, gapDeleted, opts(), func(_ testing.TB, d *DB) {
+						rng := rand.New(rand.NewSource(1 /* fixed seed */))
+						b.ResetTimer()
+						for i := 0; i < b.N; i++ {
+							if err := op.fn(d, ks, rng); err != nil {
+								b.Fatal(err)
+							}
+						}
+						b.StopTimer()
+					})
+				})
+			}
+		})
+	}
+}
+
+func withStateSetup(
+	t testing.TB, initial vfs.FS, opts *Options, setup func(testing.TB, *DB),
+) vfs.FS {
+	ok, err := vfs.Clone(initial, opts.FS, "", "", vfs.CloneSync)
+	require.NoError(t, err)
+	require.True(t, ok)
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+	setup(t, d)
+	return opts.FS
+}
+
+func populateKeyspaceSetup(ks testkeys.Keyspace) func(testing.TB, *DB) {
+	const valSize = 256
+	return func(t testing.TB, d *DB) {
+		t.Logf("Populating keyspace with %d keys, each with %d-byte values", ks.Count(), valSize)
+		// Parallelize population by divvying up the keyspace.
+		var grp errgroup.Group
+		loadKeyspaces := testkeys.Divvy(ks, 10)
+		var progress atomic.Uint64
+		for l := 0; l < len(loadKeyspaces); l++ {
+			l := l
+			grp.Go(func() error {
+				rng := rand.New(rand.NewSource(1))
+				batch := d.NewBatch()
+				key := make([]byte, ks.MaxLen())
+				var val [valSize]byte
+				for i := 0; i < loadKeyspaces[l].Count(); i++ {
+					rng.Read(val[:])
+					n := testkeys.WriteKey(key[:], loadKeyspaces[l], i)
+					if err := batch.Set(key[:n], val[:], nil); err != nil {
+						return err
+					}
+					if batch.Len() >= 10<<10 /* 10 kib */ {
+						count := batch.Count()
+						require.NoError(t, batch.Commit(NoSync))
+						if newTotal := progress.Add(uint64(count)); (newTotal / (uint64(ks.Count()) / 100)) != (newTotal-uint64(count))/uint64(ks.Count()/100) {
+							t.Logf("%.1f%% populated", 100.0*(float64(newTotal)/float64(ks.Count())))
+						}
+						batch = d.NewBatch()
+						d.AsyncFlush()
+					}
+				}
+				if !batch.Empty() {
+					return batch.Commit(NoSync)
+				}
+				return nil
+			})
+		}
+		require.NoError(t, grp.Wait())
+	}
+}
+
+func deleteGapSetup(ks testkeys.Keyspace, gapLength int) func(testing.TB, *DB) {
+	return func(t testing.TB, d *DB) {
+		midpoint := ks.Count() / 2
+		gapStart := midpoint - gapLength/2
+		gapEnd := midpoint - gapLength/2 + (gapLength % 2)
+
+		batch := d.NewBatch()
+		key := make([]byte, ks.MaxLen())
+		for i := gapStart; i <= gapEnd; i++ {
+			n := testkeys.WriteKey(key[:], ks, i)
+			if err := batch.Delete(key[:n], nil); err != nil {
+				t.Fatal(err)
+			}
+			if batch.Len() >= 10<<10 /* 10 kib */ {
+				if err := batch.Commit(NoSync); err != nil {
+					t.Fatal(err)
+				}
+				batch = d.NewBatch()
+			}
+		}
+		if err := batch.Commit(NoSync); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Flush(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
