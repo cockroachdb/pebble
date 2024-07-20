@@ -908,8 +908,8 @@ func (i *scanInternalIterator) constructPointIter(
 			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
 			internalIterOpts{})
 		mlevels[mlevelsIndex].iter = li
-		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
-			i.comparer.Compare, tableNewRangeDelIter(i.ctx, i.newIters), files, level,
+		rli.Init(i.ctx, keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
+			i.comparer.Compare, tableNewRangeDelIter(i.newIters), files, level,
 			manifest.KeyTypePoint)
 		rangeDelIters = append(rangeDelIters, rli)
 
@@ -1030,7 +1030,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 	// around Key InternalKeyTrailer order.
 	iter := current.RangeKeyLevels[0].Iter()
 	for f := iter.Last(); f != nil; f = iter.Prev() {
-		spanIter, err := i.newIterRangeKey(f, i.opts.SpanIterOptions())
+		spanIter, err := i.newIterRangeKey(i.ctx, f, i.opts.SpanIterOptions())
 		if err != nil {
 			return err
 		}
@@ -1065,7 +1065,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 			levSlice := manifest.NewLevelSliceKeySorted(i.db.cmp, nonRemoteFiles)
 			levIter = levSlice.Iter()
 		}
-		li.Init(spanIterOpts, i.comparer.Compare, i.newIterRangeKey, levIter,
+		li.Init(i.ctx, spanIterOpts, i.comparer.Compare, i.newIterRangeKey, levIter,
 			manifest.Level(level), manifest.KeyTypeRange)
 		i.rangeKey.iterConfig.AddLevel(li)
 	}

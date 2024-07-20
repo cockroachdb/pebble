@@ -92,6 +92,7 @@ func (i *Iterator) constructRangeKeyIter() {
 
 				li := i.rangeKey.iterConfig.NewLevelIter()
 				li.Init(
+					i.ctx,
 					i.opts.SpanIterOptions(),
 					i.cmp,
 					i.newIterRangeKey,
@@ -110,7 +111,7 @@ func (i *Iterator) constructRangeKeyIter() {
 			}
 			li := i.rangeKey.iterConfig.NewLevelIter()
 			spanIterOpts := i.opts.SpanIterOptions()
-			li.Init(spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
+			li.Init(i.ctx, spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
 				manifest.Level(level), manifest.KeyTypeRange)
 			i.rangeKey.iterConfig.AddLevel(li)
 		}

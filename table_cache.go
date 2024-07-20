@@ -62,10 +62,8 @@ type tableNewIters func(
 
 // tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
 // for the rangedel iterator returned by tableNewIters.
-func tableNewRangeDelIter(
-	ctx context.Context, newIters tableNewIters,
-) keyspanimpl.TableNewSpanIter {
-	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+func tableNewRangeDelIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
+	return func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
 		if err != nil {
 			return nil, err
@@ -76,10 +74,8 @@ func tableNewRangeDelIter(
 
 // tableNewRangeKeyIter takes a tableNewIters and returns a TableNewSpanIter
 // for the range key iterator returned by tableNewIters.
-func tableNewRangeKeyIter(
-	ctx context.Context, newIters tableNewIters,
-) keyspanimpl.TableNewSpanIter {
-	return func(file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+func tableNewRangeKeyIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
+	return func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
 		if err != nil {
 			return nil, err

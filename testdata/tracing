@@ -7,28 +7,76 @@ hello
 ----
 [background] reading footer of 53 bytes took 5ms
 [background] reading block of 37 bytes took 5ms (<redacted>)
-[background] reading block of 419 bytes took 5ms (<redacted>)
-[background] reading block of 27 bytes took 5ms (<redacted>)
+[background] reading block of 417 bytes took 5ms (<redacted>)
+[background] reading block of 31 bytes took 5ms (<redacted>)
 [background] reading block of 32 bytes took 5ms (<redacted>)
 hello:foo
 
 iter
 seek-ge hello
 ----
-reading block of 27 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms (<redacted>)
 reading block of 32 bytes took 5ms (<redacted>)
 hello: (foo, .)
 
 snapshot-iter
 seek-ge hello
 ----
-reading block of 27 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms (<redacted>)
 reading block of 32 bytes took 5ms (<redacted>)
 hello: (foo, .)
 
 indexed-batch-iter
 seek-ge hello
 ----
-reading block of 27 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms (<redacted>)
 reading block of 32 bytes took 5ms (<redacted>)
 hello: (foo, .)
+
+build
+set hello@2 foo1
+range-key-set a z @4 foo2
+----
+
+# This operation should not read the range key block.
+get
+hello@2
+----
+[background] reading footer of 53 bytes took 5ms
+[background] reading block of 62 bytes took 5ms (<redacted>)
+[background] reading block of 504 bytes took 5ms (<redacted>)
+[background] reading block of 27 bytes took 5ms (<redacted>)
+[background] reading block of 35 bytes took 5ms (<redacted>)
+hello@2:foo1
+
+# These operations should read the range key block, which shows up as a third
+# log.
+iter
+seek-ge hello
+next
+----
+reading block of 27 bytes took 5ms (<redacted>)
+reading block of 35 bytes took 5ms (<redacted>)
+reading block of 35 bytes took 5ms (<redacted>)
+hello: (., [a-z) @4=foo2 UPDATED)
+hello@2: (foo1, [a-z) @4=foo2)
+
+snapshot-iter
+seek-ge hello
+next
+----
+reading block of 27 bytes took 5ms (<redacted>)
+reading block of 35 bytes took 5ms (<redacted>)
+reading block of 35 bytes took 5ms (<redacted>)
+hello: (., [a-z) @4=foo2 UPDATED)
+hello@2: (foo1, [a-z) @4=foo2)
+
+indexed-batch-iter
+seek-ge hello
+next
+----
+reading block of 27 bytes took 5ms (<redacted>)
+reading block of 35 bytes took 5ms (<redacted>)
+reading block of 35 bytes took 5ms (<redacted>)
+hello: (., [a-z) @4=foo2 UPDATED)
+hello@2: (foo1, [a-z) @4=foo2)

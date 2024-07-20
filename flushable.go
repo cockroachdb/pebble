@@ -233,9 +233,9 @@ func (s *ingestedFlushable) newFlushIter(*IterOptions) internalIterator {
 }
 
 func (s *ingestedFlushable) constructRangeDelIter(
-	file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
+	ctx context.Context, file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	iters, err := s.newIters(context.Background(), file, nil, internalIterOpts{}, iterRangeDeletions)
+	iters, err := s.newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
 	if err != nil {
 		return nil, err
 	}
@@ -250,6 +250,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 // the point iterator in constructRangeDeIter is not tracked.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 	return keyspanimpl.NewLevelIter(
+		context.TODO(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare,
 		s.constructRangeDelIter, s.slice.Iter(), manifest.Level(0),
 		manifest.KeyTypePoint,
@@ -263,6 +264,7 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	}
 
 	return keyspanimpl.NewLevelIter(
+		context.TODO(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
 		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
 	)

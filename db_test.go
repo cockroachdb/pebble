@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -1445,6 +1446,7 @@ func TestTracing(t *testing.T) {
 			}
 			db = testutils.CheckErr(Open("", &Options{
 				FS:              vfs.NewMem(),
+				Comparer:        testkeys.Comparer,
 				Cache:           cache,
 				LoggerAndTracer: &tracer,
 			}))

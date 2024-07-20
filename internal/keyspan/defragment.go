@@ -6,6 +6,7 @@ package keyspan
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
@@ -194,6 +195,11 @@ func (i *DefragmentingIter) Init(
 		method:               equal,
 		reduce:               reducer,
 	}
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (i *DefragmentingIter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
 }
 
 // Close closes the underlying iterators.

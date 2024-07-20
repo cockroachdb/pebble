@@ -5,6 +5,7 @@
 package keyspanimpl
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -17,7 +18,7 @@ import (
 // TableNewSpanIter creates a new iterator for range key spans for the given
 // file.
 type TableNewSpanIter func(
-	file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
+	ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error)
 
 // LevelIter provides a merged view of spans from sstables in an L1+ level or an
@@ -46,6 +47,8 @@ type LevelIter struct {
 	// newIter creates a range del iterator if keyType is KeyTypePoint or a range
 	// key iterator if keyType is KeyTypeRange.
 	newIter TableNewSpanIter
+	// ctx is passed to TableNewSpanIter.
+	ctx context.Context
 
 	// The options that were passed in.
 	tableOpts keyspan.SpanIterOptions
@@ -79,6 +82,7 @@ var _ keyspan.FragmentIterator = (*LevelIter)(nil)
 // newIter must create a range del iterator for the given file if keyType is
 // KeyTypePoint or a range key iterator if keyType is KeyTypeRange.
 func NewLevelIter(
+	ctx context.Context,
 	opts keyspan.SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
@@ -87,7 +91,7 @@ func NewLevelIter(
 	keyType manifest.KeyType,
 ) *LevelIter {
 	l := &LevelIter{}
-	l.Init(opts, cmp, newIter, files, level, keyType)
+	l.Init(ctx, opts, cmp, newIter, files, level, keyType)
 	return l
 }
 
@@ -96,6 +100,7 @@ func NewLevelIter(
 // newIter must create a range del iterator for the given file if keyType is
 // KeyTypePoint or a range key iterator if keyType is KeyTypeRange.
 func (l *LevelIter) Init(
+	ctx context.Context,
 	opts keyspan.SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
@@ -111,6 +116,7 @@ func (l *LevelIter) Init(
 		keyType:   keyType,
 		level:     level,
 		newIter:   newIter,
+		ctx:       ctx,
 		tableOpts: opts,
 		files:     files.Filter(keyType),
 	}
@@ -387,6 +393,14 @@ func (l *LevelIter) moveToPrevFile() (*keyspan.Span, error) {
 	}
 }
 
+// SetContext is part of the FragmentIterator interface.
+func (l *LevelIter) SetContext(ctx context.Context) {
+	l.ctx = ctx
+	if l.lastIter != nil {
+		l.lastIter.SetContext(ctx)
+	}
+}
+
 // Close implements keyspan.FragmentIterator.
 func (l *LevelIter) Close() {
 	l.file = nil
@@ -442,7 +456,7 @@ func (l *LevelIter) setPosAtFile(f *manifest.FileMetadata) error {
 			l.lastIter = nil
 			l.lastIterFile = nil
 		}
-		iter, err := l.newIter(l.file, l.tableOpts)
+		iter, err := l.newIter(l.ctx, l.file, l.tableOpts)
 		if err != nil {
 			return err
 		}

@@ -5,6 +5,8 @@
 package keyspan
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
@@ -91,6 +93,11 @@ func (i *filteringIter) Prev() (*Span, error) {
 		return nil, err
 	}
 	return i.filter(s, -1)
+}
+
+// SetContext is part of the FragmentIterator interface.
+func (i *filteringIter) SetContext(ctx context.Context) {
+	i.iter.SetContext(ctx)
 }
 
 // Close implements FragmentIterator.

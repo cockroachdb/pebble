@@ -1140,6 +1140,7 @@ func (i *InterleavingIter) SetBounds(lower, upper []byte) {
 // SetContext implements (base.InternalIterator).SetContext.
 func (i *InterleavingIter) SetContext(ctx context.Context) {
 	i.pointIter.SetContext(ctx)
+	i.keyspanIter.SetContext(ctx)
 }
 
 // DebugTree is part of the InternalIterator interface.

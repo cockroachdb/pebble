@@ -5,6 +5,8 @@
 package keyspan
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
@@ -68,6 +70,10 @@ type FragmentIterator interface {
 	// function can call WrapChildren to recursively wrap an entire iterator
 	// stack. Used only for debug logging.
 	WrapChildren(wrap WrapFn)
+
+	// SetContext replaces the context provided at iterator creation, or the last
+	// one provided by SetContext.
+	SetContext(ctx context.Context)
 
 	base.IteratorDebug
 }
@@ -210,6 +216,9 @@ func (i *Iter) Prev() (*Span, error) {
 	}
 	return &i.spans[i.index], nil
 }
+
+// SetContext is part of the FragmentIterator interface.
+func (i *Iter) SetContext(ctx context.Context) {}
 
 // Close implements FragmentIterator.Close.
 func (i *Iter) Close() {}
