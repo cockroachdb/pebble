@@ -545,6 +545,17 @@ func TestReaderHideObsolete(t *testing.T) {
 				t, opts, "testdata/reader_hide_obsolete",
 				nil /* Reader */, true)
 		})
+		opts = WriterOptions{
+			TableFormat:    TableFormatPebblev4,
+			BlockSize:      blockSize,
+			IndexBlockSize: 1 << 30, // Force a single-level index block.
+			Comparer:       testkeys.Comparer,
+		}
+		t.Run(fmt.Sprintf("singleLevel/blockSize=%s", dName), func(t *testing.T) {
+			runTestReader(
+				t, opts, "testdata/reader_hide_obsolete",
+				nil /* Reader */, true)
+		})
 	}
 }
 
@@ -795,6 +806,13 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 						retHideObsoletePoints, bpfs = r.TryAddBlockPropertyFilterForHideObsoletePoints(
 							base.SeqNumMax, base.SeqNumMax-1, bpfs)
 						require.True(t, retHideObsoletePoints)
+					}
+				}
+				if d.HasArg("hide-obsolete-points-without-filter") {
+					var hideObsoletePoints bool
+					d.ScanArgs(t, "hide-obsolete-points-without-filter", &hideObsoletePoints)
+					if hideObsoletePoints {
+						transforms.HideObsoletePoints = true
 					}
 				}
 				var filterer *BlockPropertiesFilterer
