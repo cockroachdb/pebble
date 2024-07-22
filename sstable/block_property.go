@@ -131,6 +131,10 @@ type BlockPropertyCollector interface {
 	// Finish appends the property value to buf and resets the collector to an
 	// empty state.
 	Finish(buf []byte) []byte
+
+	// Close can be used to allow the implementation to be reused in the future.
+	// Once Close is called, the object must no longer be used.
+	Close()
 }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
@@ -250,11 +254,19 @@ func NewBlockIntervalCollector(
 	if mapper == nil {
 		panic("mapper must be provided")
 	}
-	return &BlockIntervalCollector{
+	c := blockIntervalCollectorPool.Get().(*BlockIntervalCollector)
+	*c = BlockIntervalCollector{
 		name:           name,
 		mapper:         mapper,
 		suffixReplacer: suffixReplacer,
 	}
+	return c
+}
+
+var blockIntervalCollectorPool = sync.Pool{
+	New: func() interface{} {
+		return &BlockIntervalCollector{}
+	},
 }
 
 // Name is part of the BlockPropertyCollector interface.
@@ -326,6 +338,12 @@ func (b *BlockIntervalCollector) Finish(buf []byte) []byte {
 	result := encodeBlockInterval(b.interval, buf)
 	b.interval = BlockInterval{}
 	return result
+}
+
+// Close is part of the BlockPropertyCollector interface.
+func (b *BlockIntervalCollector) Close() {
+	*b = BlockIntervalCollector{}
+	blockIntervalCollectorPool.Put(b)
 }
 
 // BlockInterval represents the [Lower, Upper) interval of 64-bit values

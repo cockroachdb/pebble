@@ -1369,6 +1369,9 @@ func (p *keyCountCollector) SupportsSuffixReplacement() bool {
 	return true
 }
 
+// Close is part of the BlockPropertyCollector interface.
+func (p *keyCountCollector) Close() {}
+
 type intSuffixIntervalMapper struct {
 	suffixLen int
 }

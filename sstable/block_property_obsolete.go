@@ -50,6 +50,9 @@ func (o *obsoleteKeyBlockPropertyCollector) Finish(buf []byte) []byte {
 	return res
 }
 
+// Close is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) Close() {}
+
 // AddCollected is part of the BlockPropertyCollector interface.
 func (o *obsoleteKeyBlockPropertyCollector) AddCollected(oldProp []byte) error {
 	isObsolete, err := obsoleteKeyBlockPropertyDecode(oldProp)

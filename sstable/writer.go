@@ -2091,6 +2091,16 @@ func (w *Writer) Close() (err error) {
 	indexBlockBufPool.Put(w.indexBlock)
 	w.indexBlock = nil
 
+	// Close property collectors. Closing is optional, we don't need to do it in
+	// error paths.
+	for _, p := range w.blockPropCollectors {
+		p.dataBlock.Close()
+		p.indexBlock.Close()
+		p.rangeKeyBlock.Close()
+		p.table.Close()
+	}
+	w.blockPropCollectors = nil
+
 	// Make any future calls to Set or Close return an error.
 	w.err = errWriterClosed
 	return nil

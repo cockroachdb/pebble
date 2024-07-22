@@ -280,6 +280,9 @@ func (c *minSeqNumPropertyCollector) SupportsSuffixReplacement() bool {
 	return false
 }
 
+// Close is part of the BlockPropertyCollector interface.
+func (c *minSeqNumPropertyCollector) Close() {}
+
 // minSeqNumFilter is a BlockPropertyFilter that uses the
 // minSeqNumPropertyCollector data to filter out entire tables.
 type minSeqNumFilter struct {
