@@ -316,3 +316,29 @@ d.SINGLEDEL.40:
 d.MERGE.30:D30
 ----
 MERGE not supported in a strict-obsolete sstable
+
+# Regression test for #3761. If an entire block contains obsolete points,
+# skipBackward should still skip to blocks earlier in the sstable.
+
+build writing-to-lowest-level
+a.SET.10:A10
+force-obsolete: b.DEL.5:
+force-obsolete: b.SETWITHDEL.2:foo
+force-obsolete: c.DEL.0:
+force-obsolete: cc.DEL.5:
+----
+
+iter hide-obsolete-points-without-filter=true
+last
+----
+<a:10>:A10
+
+iter hide-obsolete-points-without-filter=true
+seek-lt d
+----
+<a:10>:A10
+
+iter hide-obsolete-points-without-filter=true
+seek-lt c
+----
+<a:10>:A10

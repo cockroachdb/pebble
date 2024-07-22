@@ -1447,6 +1447,12 @@ func (i *singleLevelIterator) skipBackward() *base.InternalKV {
 		}
 		kv := i.data.Last()
 		if kv == nil {
+			if i.transforms.HideObsoletePoints {
+				// The block iter could have hid some obsolete points, so it isn't
+				// safe to assume that there are no keys if we keep skipping backwards.
+				// Check the previous block.
+				continue
+			}
 			return nil
 		}
 		if i.blockLower != nil && i.cmp(kv.K.UserKey, i.blockLower) < 0 {
