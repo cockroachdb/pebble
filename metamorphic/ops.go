@@ -1928,7 +1928,7 @@ func (r *replicateOp) runSharedReplicate(
 			if err != nil {
 				panic(err)
 			}
-			return w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
+			return w.Raw().Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
 		},
 		func(start, end []byte, seqNum base.SeqNum) error {
 			return w.DeleteRange(start, end)
@@ -1939,7 +1939,7 @@ func (r *replicateOp) runSharedReplicate(
 				End:   end,
 				Keys:  keys,
 			}
-			return w.EncodeSpan(&s)
+			return w.Raw().EncodeSpan(&s)
 		},
 		func(sst *pebble.SharedSSTMeta) error {
 			sharedSSTs = append(sharedSSTs, *sst)
@@ -1957,7 +1957,7 @@ func (r *replicateOp) runSharedReplicate(
 		h.Recordf("%s // %v", r, err)
 		return
 	}
-	meta, err := w.Metadata()
+	meta, err := w.Raw().Metadata()
 	if err != nil {
 		h.Recordf("%s // %v", r, err)
 		return
@@ -1992,7 +1992,7 @@ func (r *replicateOp) runExternalReplicate(
 			if err != nil {
 				panic(err)
 			}
-			return w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
+			return w.Raw().Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val)
 		},
 		func(start, end []byte, seqNum base.SeqNum) error {
 			return w.DeleteRange(start, end)
@@ -2003,7 +2003,7 @@ func (r *replicateOp) runExternalReplicate(
 				End:   end,
 				Keys:  keys,
 			}
-			return w.EncodeSpan(&s)
+			return w.Raw().EncodeSpan(&s)
 		},
 		nil,
 		func(sst *pebble.ExternalFile) error {
@@ -2021,7 +2021,7 @@ func (r *replicateOp) runExternalReplicate(
 		h.Recordf("%s // %v", r, err)
 		return
 	}
-	meta, err := w.Metadata()
+	meta, err := w.Raw().Metadata()
 	if err != nil {
 		h.Recordf("%s // %v", r, err)
 		return
@@ -2116,7 +2116,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 				}
 			}
 			keyspan.SortKeysByTrailer(&span.Keys)
-			if err := w.EncodeSpan(span); err != nil {
+			if err := w.Raw().EncodeSpan(span); err != nil {
 				panic(err)
 			}
 		}

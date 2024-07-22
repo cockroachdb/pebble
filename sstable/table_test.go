@@ -447,7 +447,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
 					}
-					w := NewWriter(objstorageprovider.NewFileWritable(wf), WriterOptions{
+					w := NewRawWriter(objstorageprovider.NewFileWritable(wf), WriterOptions{
 						BlockSize:      blockSize,
 						IndexBlockSize: indexBlockSize,
 					})

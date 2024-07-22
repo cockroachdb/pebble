@@ -99,7 +99,7 @@ func TestIngestLoad(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "rangekey: ") {
 					data = strings.TrimPrefix(data, "rangekey: ")
@@ -193,7 +193,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 			expected[i].ExtendPointKeyBounds(cmp, keys[0], keys[len(keys)-1])
 
-			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: version.MaxTableFormat(),
 			})
 			var count uint64
@@ -1092,7 +1092,7 @@ func testIngestSharedImpl(
 			f, err := to.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			replicateCounter++
-			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
+			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
 			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
@@ -1103,7 +1103,11 @@ func testIngestSharedImpl(
 					return nil
 				},
 				func(start, end []byte, seqNum base.SeqNum) error {
-					require.NoError(t, w.DeleteRange(start, end))
+					require.NoError(t, w.EncodeSpan(&keyspan.Span{
+						Start: start,
+						End:   end,
+						Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeDelete)}},
+					}))
 					return nil
 				},
 				func(start, end []byte, keys []keyspan.Key) error {
@@ -1588,7 +1592,7 @@ func TestConcurrentExcise(t *testing.T) {
 			f, err := to.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			replicateCounter++
-			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
+			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
 			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
@@ -1599,7 +1603,11 @@ func TestConcurrentExcise(t *testing.T) {
 					return nil
 				},
 				func(start, end []byte, seqNum base.SeqNum) error {
-					require.NoError(t, w.DeleteRange(start, end))
+					require.NoError(t, w.EncodeSpan(&keyspan.Span{
+						Start: start,
+						End:   end,
+						Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeDelete)}},
+					}))
 					return nil
 				},
 				func(start, end []byte, keys []keyspan.Key) error {
@@ -2021,7 +2029,7 @@ func TestIngestExternal(t *testing.T) {
 			f, err := to.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			replicateCounter++
-			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writeOpts)
+			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var externalFiles []ExternalFile
 			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
@@ -2032,7 +2040,11 @@ func TestIngestExternal(t *testing.T) {
 					return nil
 				},
 				func(start, end []byte, seqNum base.SeqNum) error {
-					require.NoError(t, w.DeleteRange(start, end))
+					require.NoError(t, w.EncodeSpan(&keyspan.Span{
+						Start: start,
+						End:   end,
+						Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeDelete)}},
+					}))
 					return nil
 				},
 				func(start, end []byte, keys []keyspan.Key) error {
@@ -2574,7 +2586,7 @@ func TestIngestCompact(t *testing.T) {
 	f, err := mem.Create(src(0), vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 
-	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	key := []byte("a")
 	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil))
 	require.NoError(t, w.Close())
@@ -3212,12 +3224,12 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 func TestIngest_UpdateSequenceNumber(t *testing.T) {
 	mem := vfs.NewMem()
 	cmp := base.DefaultComparer.Compare
-	parse := func(input string) (*sstable.Writer, error) {
+	parse := func(input string) (*sstable.RawWriter, error) {
 		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return nil, err
 		}
-		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+		w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: sstable.TableFormatMax,
 		})
 		for _, data := range strings.Split(input, "\n") {

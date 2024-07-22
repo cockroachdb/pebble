@@ -137,7 +137,7 @@ func runBuildCmd(
 				return nil, nil, err
 			}
 		default:
-			if err := w.AddWithForceObsolete(key, value, forceObsolete); err != nil {
+			if err := w.Raw().AddWithForceObsolete(key, value, forceObsolete); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -146,7 +146,7 @@ func runBuildCmd(
 	for _, v := range rangeDels {
 		for _, k := range v.Keys {
 			ik := base.InternalKey{UserKey: v.Start, Trailer: k.Trailer}
-			if err := w.Add(ik, v.End); err != nil {
+			if err := w.Raw().Add(ik, v.End); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -160,7 +160,7 @@ func runBuildCmd(
 	if err := w.Close(); err != nil {
 		return nil, nil, err
 	}
-	meta, err := w.Metadata()
+	meta, err := w.Raw().Metadata()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -222,11 +222,11 @@ func runBuildRawCmd(
 			// Note: specifying range keys directly (instead of spans) should only be
 			// done to check for error handling; they will not contribute to block
 			// properties.
-			if err := w.addRangeKey(key, value); err != nil {
+			if err := w.Raw().addRangeKey(key, value); err != nil {
 				return nil, nil, err
 			}
 		default:
-			if err := w.Add(key, value); err != nil {
+			if err := w.Raw().Add(key, value); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -234,7 +234,7 @@ func runBuildRawCmd(
 	if err := w.Close(); err != nil {
 		return nil, nil, err
 	}
-	meta, err := w.Metadata()
+	meta, err := w.Raw().Metadata()
 	if err != nil {
 		return nil, nil, err
 	}

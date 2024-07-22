@@ -66,7 +66,7 @@ func CopySpan(
 		o.FilterPolicy = nil
 	}
 	o.TableFormat = r.tableFormat
-	w := NewWriter(output, o)
+	w := NewRawWriter(output, o)
 
 	// We don't want the writer to attempt to write out block property data in
 	// index blocks. This data won't be valid since we're not passing the actual

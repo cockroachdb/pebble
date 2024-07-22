@@ -150,24 +150,23 @@ func buildHamletTestSST(
 	// NB: We don't have byte equality with RocksDB any longer.
 	var rangeDelLength int
 	var rangeDelCounter int
-	var rangeDelStart InternalKey
+	var rangeDelStart []byte
 	for i, k := range keys {
 		v := wordCount[k]
-		ikey := base.MakeInternalKey([]byte(k), 0, InternalKeyKindSet)
-		if err := w.Add(ikey, []byte(v)); err != nil {
+		if err := w.Set([]byte(k), []byte(v)); err != nil {
 			return err
 		}
 		// This mirrors the logic in `make-table.cc`. It adds range deletions of
 		// increasing length for every 100 keys added.
 		if i%100 == 0 {
-			rangeDelStart = ikey.Clone()
+			rangeDelStart = []byte(k)
 			rangeDelCounter = 0
 			rangeDelLength++
 		}
 		rangeDelCounter++
 
 		if rangeDelCounter == rangeDelLength {
-			if err := w.DeleteRange(rangeDelStart.UserKey, ikey.UserKey); err != nil {
+			if err := w.DeleteRange(rangeDelStart, []byte(k)); err != nil {
 				return err
 			}
 		}

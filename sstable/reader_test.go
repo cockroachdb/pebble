@@ -1756,7 +1756,7 @@ func TestReader_TableFormat(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := WriterOptions{TableFormat: want}
-		w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
+		w := NewRawWriter(objstorageprovider.NewFileWritable(f), opts)
 		err = w.Close()
 		require.NoError(t, err)
 
@@ -1789,7 +1789,7 @@ func buildTestTableWithProvider(
 	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.CreateOptions{})
 	require.NoError(t, err)
 
-	w := NewWriter(f0, WriterOptions{
+	w := NewRawWriter(f0, WriterOptions{
 		BlockSize:      blockSize,
 		IndexBlockSize: indexBlockSize,
 		Compression:    compression,
@@ -1834,7 +1834,7 @@ func buildBenchmarkTable(
 		b.Fatal(err)
 	}
 
-	w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
+	w := NewRawWriter(objstorageprovider.NewFileWritable(f0), options)
 
 	var keys [][]byte
 	var ikey InternalKey
@@ -2391,7 +2391,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
 		options.TableFormat = tableFormat
-		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
+		w := NewRawWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewSource(100))
 		for i := int64(0); i < keys.Count(); i++ {

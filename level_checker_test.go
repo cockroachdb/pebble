@@ -183,7 +183,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				writerOpts.SetInternal(sstableinternal.WriterOptions{
 					DisableKeyOrderChecks: disableKeyOrderChecks,
 				})
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+				w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    testkeys.Comparer.Compare,
