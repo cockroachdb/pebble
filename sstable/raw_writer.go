@@ -1,0 +1,2041 @@
+// Copyright 2011 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
+package sstable
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math"
+	"runtime"
+	"slices"
+	"sort"
+	"sync"
+
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
+)
+
+// encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
+// It would also be nice to account for the length of the data block properties here,
+// but isn't necessary since this is an estimate.
+const encodedBHPEstimatedSize = binary.MaxVarintLen64 * 2
+
+var errWriterClosed = errors.New("pebble: writer is closed")
+
+// WriterMetadata holds info about a finished sstable.
+type WriterMetadata struct {
+	Size          uint64
+	SmallestPoint InternalKey
+	// LargestPoint, LargestRangeKey, LargestRangeDel should not be accessed
+	// before Writer.Close is called, because they may only be set on
+	// Writer.Close.
+	LargestPoint     InternalKey
+	SmallestRangeDel InternalKey
+	LargestRangeDel  InternalKey
+	SmallestRangeKey InternalKey
+	LargestRangeKey  InternalKey
+	HasPointKeys     bool
+	HasRangeDelKeys  bool
+	HasRangeKeys     bool
+	SmallestSeqNum   base.SeqNum
+	LargestSeqNum    base.SeqNum
+	Properties       Properties
+}
+
+// SetSmallestPointKey sets the smallest point key to the given key.
+// NB: this method set the "absolute" smallest point key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestPointKey(k InternalKey) {
+	m.SmallestPoint = k
+	m.HasPointKeys = true
+}
+
+// SetSmallestRangeDelKey sets the smallest rangedel key to the given key.
+// NB: this method set the "absolute" smallest rangedel key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestRangeDelKey(k InternalKey) {
+	m.SmallestRangeDel = k
+	m.HasRangeDelKeys = true
+}
+
+// SetSmallestRangeKey sets the smallest range key to the given key.
+// NB: this method set the "absolute" smallest range key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestRangeKey(k InternalKey) {
+	m.SmallestRangeKey = k
+	m.HasRangeKeys = true
+}
+
+// SetLargestPointKey sets the largest point key to the given key.
+// NB: this method set the "absolute" largest point key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestPointKey(k InternalKey) {
+	m.LargestPoint = k
+	m.HasPointKeys = true
+}
+
+// SetLargestRangeDelKey sets the largest rangedel key to the given key.
+// NB: this method set the "absolute" largest rangedel key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestRangeDelKey(k InternalKey) {
+	m.LargestRangeDel = k
+	m.HasRangeDelKeys = true
+}
+
+// SetLargestRangeKey sets the largest range key to the given key.
+// NB: this method set the "absolute" largest range key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
+	m.LargestRangeKey = k
+	m.HasRangeKeys = true
+}
+
+func (m *WriterMetadata) updateSeqNum(seqNum base.SeqNum) {
+	if m.SmallestSeqNum > seqNum {
+		m.SmallestSeqNum = seqNum
+	}
+	if m.LargestSeqNum < seqNum {
+		m.LargestSeqNum = seqNum
+	}
+}
+
+// flushDecisionOptions holds parameters to inform the sstable block flushing
+// heuristics.
+type flushDecisionOptions struct {
+	blockSize          int
+	blockSizeThreshold int
+	// sizeClassAwareThreshold takes precedence over blockSizeThreshold when the
+	// Writer is aware of the allocator's size classes.
+	sizeClassAwareThreshold int
+}
+
+// RawWriter is a table writer.
+type RawWriter struct {
+	layout layoutWriter
+	meta   WriterMetadata
+	err    error
+	// dataBlockOptions and indexBlockOptions are used to configure the sstable
+	// block flush heuristics.
+	dataBlockOptions  flushDecisionOptions
+	indexBlockOptions flushDecisionOptions
+	// The following fields are copied from Options.
+	compare              Compare
+	split                Split
+	formatKey            base.FormatKey
+	compression          Compression
+	separator            Separator
+	successor            Successor
+	tableFormat          TableFormat
+	isStrictObsolete     bool
+	writingToLowestLevel bool
+	restartInterval      int
+	checksumType         block.ChecksumType
+	// disableKeyOrderChecks disables the checks that keys are added to an
+	// sstable in order. It is intended for internal use only in the construction
+	// of invalid sstables for testing. See tool/make_test_sstables.go.
+	disableKeyOrderChecks bool
+	// With two level indexes, the index/filter of a SST file is partitioned into
+	// smaller blocks with an additional top-level index on them. When reading an
+	// index/filter, only the top-level index is loaded into memory. The two level
+	// index/filter then uses the top-level index to load on demand into the block
+	// cache the partitions that are required to perform the index/filter query.
+	//
+	// Two level indexes are enabled automatically when there is more than one
+	// index block.
+	//
+	// This is useful when there are very large index blocks, which generally occurs
+	// with the usage of large keys. With large index blocks, the index blocks fight
+	// the data blocks for block cache space and the index blocks are likely to be
+	// re-read many times from the disk. The top level index, which has a much
+	// smaller memory footprint, can be used to prevent the entire index block from
+	// being loaded into the block cache.
+	twoLevelIndex       bool
+	indexBlock          *indexBlockBuf
+	rangeDelBlock       rowblk.Writer
+	rangeKeyBlock       rowblk.Writer
+	topLevelIndexBlock  rowblk.Writer
+	props               Properties
+	blockPropCollectors []BlockPropertyCollector
+	obsoleteCollector   obsoleteKeyBlockPropertyCollector
+	blockPropsEncoder   blockPropertiesEncoder
+	// filter accumulates the filter block. If populated, the filter ingests
+	// either the output of w.split (i.e. a prefix extractor) if w.split is not
+	// nil, or the full keys otherwise.
+	filter          filterWriter
+	indexPartitions []indexBlockAndBlockProperties
+
+	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
+	// blocks in indexPartitions. These live until the index finishes.
+	indexBlockAlloc []byte
+	// indexSepAlloc is used to bulk-allocate index block separator slices stored
+	// in indexPartitions. These live until the index finishes.
+	indexSepAlloc bytealloc.A
+
+	rangeKeyEncoder   rangekey.Encoder
+	rangeKeysBySuffix keyspan.KeysBySuffix
+	rangeKeySpan      keyspan.Span
+	// dataBlockBuf consists of the state which is currently owned by and used by
+	// the Writer client goroutine. This state can be handed off to other goroutines.
+	dataBlockBuf *dataBlockBuf
+	// blockBuf consists of the state which is owned by and used by the Writer client
+	// goroutine.
+	blockBuf blockBuf
+
+	coordination coordinationState
+
+	// Information (other than the byte slice) about the last point key, to
+	// avoid extracting it again.
+	lastPointKeyInfo pointKeyInfo
+
+	// For value blocks.
+	shortAttributeExtractor   base.ShortAttributeExtractor
+	requiredInPlaceValueBound UserKeyPrefixBound
+	// When w.tableFormat >= TableFormatPebblev3, valueBlockWriter is nil iff
+	// WriterOptions.DisableValueBlocks was true.
+	valueBlockWriter *valueBlockWriter
+
+	allocatorSizeClasses []int
+}
+
+type pointKeyInfo struct {
+	trailer base.InternalKeyTrailer
+	// Only computed when w.valueBlockWriter is not nil.
+	userKeyLen int
+	// prefixLen uses w.split, if not nil. Only computed when w.valueBlockWriter
+	// is not nil.
+	prefixLen int
+	// True iff the point was marked obsolete.
+	isObsolete bool
+}
+
+type coordinationState struct {
+	parallelismEnabled bool
+
+	// writeQueue is used to write data blocks to disk. The writeQueue is primarily
+	// used to maintain the order in which data blocks must be written to disk. For
+	// this reason, every single data block write must be done through the writeQueue.
+	writeQueue *writeQueue
+
+	sizeEstimate dataBlockEstimates
+}
+
+func (c *coordinationState) init(parallelismEnabled bool, writer *RawWriter) {
+	c.parallelismEnabled = parallelismEnabled
+	// useMutex is false regardless of parallelismEnabled, because we do not do
+	// parallel compression yet.
+	c.sizeEstimate.useMutex = false
+
+	// writeQueueSize determines the size of the write queue, or the number
+	// of items which can be added to the queue without blocking. By default, we
+	// use a writeQueue size of 0, since we won't be doing any block writes in
+	// parallel.
+	writeQueueSize := 0
+	if parallelismEnabled {
+		writeQueueSize = runtime.GOMAXPROCS(0)
+	}
+	c.writeQueue = newWriteQueue(writeQueueSize, writer)
+}
+
+// sizeEstimate is a general purpose helper for estimating two kinds of sizes:
+// A. The compressed sstable size, which is useful for deciding when to start
+//
+//	a new sstable during flushes or compactions. In practice, we use this in
+//	estimating the data size (excluding the index).
+//
+// B. The size of index blocks to decide when to start a new index block.
+//
+// There are some terminology peculiarities which are due to the origin of
+// sizeEstimate for use case A with parallel compression enabled (for which
+// the code has not been merged). Specifically this relates to the terms
+// "written" and "compressed".
+//   - The notion of "written" for case A is sufficiently defined by saying that
+//     the data block is compressed. Waiting for the actual data block write to
+//     happen can result in unnecessary estimation, when we already know how big
+//     it will be in compressed form. Additionally, with the forthcoming value
+//     blocks containing older MVCC values, these compressed block will be held
+//     in-memory until late in the sstable writing, and we do want to accurately
+//     account for them without waiting for the actual write.
+//     For case B, "written" means that the index entry has been fully
+//     generated, and has been added to the uncompressed block buffer for that
+//     index block. It does not include actually writing a potentially
+//     compressed index block.
+//   - The notion of "compressed" is to differentiate between a "inflight" size
+//     and the actual size, and is handled via computing a compression ratio
+//     observed so far (defaults to 1).
+//     For case A, this is actual data block compression, so the "inflight" size
+//     is uncompressed blocks (that are no longer being written to) and the
+//     "compressed" size is after they have been compressed.
+//     For case B the inflight size is for a key-value pair in the index for
+//     which the value size (the encoded size of the BlockHandleWithProperties)
+//     is not accurately known, while the compressed size is the size of that
+//     entry when it has been added to the (in-progress) index ssblock.
+//
+// Usage: To update state, one can optionally provide an inflight write value
+// using addInflight (used for case B). When something is "written" the state
+// can be updated using either writtenWithDelta or writtenWithTotal, which
+// provide the actual delta size or the total size (latter must be
+// monotonically non-decreasing). If there were no calls to addInflight, there
+// isn't any real estimation happening here. So case A does not do any real
+// estimation. However, when we introduce parallel compression, there will be
+// estimation in that the client goroutine will call addInFlight and the
+// compression goroutines will call writtenWithDelta.
+type sizeEstimate struct {
+	// emptySize is the size when there is no inflight data, and numEntries is 0.
+	// emptySize is constant once set.
+	emptySize uint64
+
+	// inflightSize is the estimated size of some inflight data which hasn't
+	// been written yet.
+	inflightSize uint64
+
+	// totalSize is the total size of the data which has already been written.
+	totalSize uint64
+
+	// numWrittenEntries is the total number of entries which have already been
+	// written.
+	numWrittenEntries uint64
+	// numInflightEntries is the total number of entries which are inflight, and
+	// haven't been written.
+	numInflightEntries uint64
+
+	// maxEstimatedSize stores the maximum result returned from sizeEstimate.size.
+	// It ensures that values returned from subsequent calls to Writer.EstimatedSize
+	// never decrease.
+	maxEstimatedSize uint64
+
+	// We assume that the entries added to the sizeEstimate can be compressed.
+	// For this reason, we keep track of a compressedSize and an uncompressedSize
+	// to compute a compression ratio for the inflight entries. If the entries
+	// aren't being compressed, then compressedSize and uncompressedSize must be
+	// equal.
+	compressedSize   uint64
+	uncompressedSize uint64
+}
+
+func (s *sizeEstimate) init(emptySize uint64) {
+	s.emptySize = emptySize
+}
+
+func (s *sizeEstimate) size() uint64 {
+	ratio := float64(1)
+	if s.uncompressedSize > 0 {
+		ratio = float64(s.compressedSize) / float64(s.uncompressedSize)
+	}
+	estimatedInflightSize := uint64(float64(s.inflightSize) * ratio)
+	total := s.totalSize + estimatedInflightSize
+	if total > s.maxEstimatedSize {
+		s.maxEstimatedSize = total
+	} else {
+		total = s.maxEstimatedSize
+	}
+
+	if total == 0 {
+		return s.emptySize
+	}
+
+	return total
+}
+
+func (s *sizeEstimate) numTotalEntries() uint64 {
+	return s.numWrittenEntries + s.numInflightEntries
+}
+
+func (s *sizeEstimate) addInflight(size int) {
+	s.numInflightEntries++
+	s.inflightSize += uint64(size)
+}
+
+func (s *sizeEstimate) writtenWithTotal(newTotalSize uint64, inflightSize int) {
+	finalEntrySize := int(newTotalSize - s.totalSize)
+	s.writtenWithDelta(finalEntrySize, inflightSize)
+}
+
+func (s *sizeEstimate) writtenWithDelta(finalEntrySize int, inflightSize int) {
+	if inflightSize > 0 {
+		// This entry was previously inflight, so we should decrement inflight
+		// entries and update the "compression" stats for future estimation.
+		s.numInflightEntries--
+		s.inflightSize -= uint64(inflightSize)
+		s.uncompressedSize += uint64(inflightSize)
+		s.compressedSize += uint64(finalEntrySize)
+	}
+	s.numWrittenEntries++
+	s.totalSize += uint64(finalEntrySize)
+}
+
+func (s *sizeEstimate) clear() {
+	*s = sizeEstimate{emptySize: s.emptySize}
+}
+
+type indexBlockBuf struct {
+	// block will only be accessed from the writeQueue.
+	block rowblk.Writer
+
+	size struct {
+		useMutex bool
+		mu       sync.Mutex
+		estimate sizeEstimate
+	}
+
+	// restartInterval matches indexBlockBuf.block.restartInterval. We store it twice, because the `block`
+	// must only be accessed from the writeQueue goroutine.
+	restartInterval int
+}
+
+func (i *indexBlockBuf) clear() {
+	i.block.Reset()
+	if i.size.useMutex {
+		i.size.mu.Lock()
+		defer i.size.mu.Unlock()
+	}
+	i.size.estimate.clear()
+	i.restartInterval = 0
+}
+
+var indexBlockBufPool = sync.Pool{
+	New: func() interface{} {
+		return &indexBlockBuf{}
+	},
+}
+
+const indexBlockRestartInterval = 1
+
+func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
+	i := indexBlockBufPool.Get().(*indexBlockBuf)
+	i.size.useMutex = useMutex
+	i.restartInterval = indexBlockRestartInterval
+	i.block.RestartInterval = indexBlockRestartInterval
+	i.size.estimate.init(rowblk.EmptySize)
+	return i
+}
+
+func (i *indexBlockBuf) shouldFlush(
+	sep InternalKey, valueLen int, flushOptions flushDecisionOptions, sizeClassHints []int,
+) bool {
+	if i.size.useMutex {
+		i.size.mu.Lock()
+		defer i.size.mu.Unlock()
+	}
+
+	nEntries := i.size.estimate.numTotalEntries()
+	return shouldFlushWithHints(
+		sep.Size(), valueLen, i.restartInterval, int(i.size.estimate.size()),
+		int(nEntries), flushOptions, sizeClassHints)
+}
+
+func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
+	i.block.Add(key, value)
+	size := i.block.EstimatedSize()
+	if i.size.useMutex {
+		i.size.mu.Lock()
+		defer i.size.mu.Unlock()
+	}
+	i.size.estimate.writtenWithTotal(uint64(size), inflightSize)
+}
+
+func (i *indexBlockBuf) finish() []byte {
+	b := i.block.Finish()
+	return b
+}
+
+func (i *indexBlockBuf) addInflight(inflightSize int) {
+	if i.size.useMutex {
+		i.size.mu.Lock()
+		defer i.size.mu.Unlock()
+	}
+	i.size.estimate.addInflight(inflightSize)
+}
+
+func (i *indexBlockBuf) estimatedSize() uint64 {
+	if i.size.useMutex {
+		i.size.mu.Lock()
+		defer i.size.mu.Unlock()
+	}
+
+	// Make sure that the size estimation works as expected when parallelism
+	// is disabled.
+	if invariants.Enabled && !i.size.useMutex {
+		if i.size.estimate.inflightSize != 0 {
+			panic("unexpected inflight entry in index block size estimation")
+		}
+
+		// NB: The i.block should only be accessed from the writeQueue goroutine,
+		// when parallelism is enabled. We break that invariant here, but that's
+		// okay since parallelism is disabled.
+		if i.size.estimate.size() != uint64(i.block.EstimatedSize()) {
+			panic("index block size estimation sans parallelism is incorrect")
+		}
+	}
+	return i.size.estimate.size()
+}
+
+// sizeEstimate is used for sstable size estimation. sizeEstimate can be
+// accessed by the Writer client and compressionQueue goroutines. Fields
+// should only be read/updated through the functions defined on the
+// *sizeEstimate type.
+type dataBlockEstimates struct {
+	// If we don't do block compression in parallel, then we don't need to take
+	// the performance hit of synchronizing using this mutex.
+	useMutex bool
+	mu       sync.Mutex
+
+	estimate sizeEstimate
+}
+
+// inflightSize is the uncompressed block size estimate which has been
+// previously provided to addInflightDataBlock(). If addInflightDataBlock()
+// has not been called, this must be set to 0. compressedSize is the
+// compressed size of the block.
+func (d *dataBlockEstimates) dataBlockCompressed(compressedSize int, inflightSize int) {
+	if d.useMutex {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+	}
+	d.estimate.writtenWithDelta(compressedSize+block.TrailerLen, inflightSize)
+}
+
+// size is an estimated size of datablock data which has been written to disk.
+func (d *dataBlockEstimates) size() uint64 {
+	if d.useMutex {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+	}
+	// If there is no parallel compression, there should not be any inflight bytes.
+	if invariants.Enabled && !d.useMutex {
+		if d.estimate.inflightSize != 0 {
+			panic("unexpected inflight entry in data block size estimation")
+		}
+	}
+	return d.estimate.size()
+}
+
+// Avoid linter unused error.
+var _ = (&dataBlockEstimates{}).addInflightDataBlock
+
+// NB: unused since no parallel compression.
+func (d *dataBlockEstimates) addInflightDataBlock(size int) {
+	if d.useMutex {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+	}
+
+	d.estimate.addInflight(size)
+}
+
+var writeTaskPool = sync.Pool{
+	New: func() interface{} {
+		t := &writeTask{}
+		t.compressionDone = make(chan bool, 1)
+		return t
+	},
+}
+
+type blockBuf struct {
+	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
+	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
+	// likely large enough for a block handle with properties.
+	tmp [blockHandleLikelyMaxLen]byte
+	// compressedBuf is the destination buffer for compression. It is re-used over the
+	// lifetime of the blockBuf, avoiding the allocation of a temporary buffer for each block.
+	compressedBuf []byte
+	checksummer   block.Checksummer
+}
+
+func (b *blockBuf) clear() {
+	// We can't assign b.compressedBuf[:0] to compressedBuf because snappy relies
+	// on the length of the buffer, and not the capacity to determine if it needs
+	// to make an allocation.
+	*b = blockBuf{
+		compressedBuf: b.compressedBuf, checksummer: b.checksummer,
+	}
+}
+
+// A dataBlockBuf holds all the state required to compress and write a data block to disk.
+// A dataBlockBuf begins its lifecycle owned by the Writer client goroutine. The Writer
+// client goroutine adds keys to the sstable, writing directly into a dataBlockBuf's blockWriter
+// until the block is full. Once a dataBlockBuf's block is full, the dataBlockBuf may be passed
+// to other goroutines for compression and file I/O.
+type dataBlockBuf struct {
+	blockBuf
+	dataBlock rowblk.Writer
+
+	// uncompressed is a reference to a byte slice which is owned by the dataBlockBuf. It is the
+	// next byte slice to be compressed. The uncompressed byte slice will be backed by the
+	// dataBlock.buf.
+	uncompressed []byte
+	// compressed is a reference to a byte slice which is owned by the dataBlockBuf. It is the
+	// compressed byte slice which must be written to disk. The compressed byte slice may be
+	// backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf, depending on whether
+	// we use the result of the compression.
+	compressed []byte
+	// trailer is the block trailer encoding the compression type and checksum.
+	trailer block.Trailer
+
+	// We're making calls to BlockPropertyCollectors from the Writer client goroutine. We need to
+	// pass the encoded block properties over to the write queue. To prevent copies, and allocations,
+	// we give each dataBlockBuf, a blockPropertiesEncoder.
+	blockPropsEncoder blockPropertiesEncoder
+	// dataBlockProps is set when Writer.finishDataBlockProps is called. The dataBlockProps slice is
+	// a shallow copy of the internal buffer of the dataBlockBuf.blockPropsEncoder.
+	dataBlockProps []byte
+
+	// sepScratch is reusable scratch space for computing separator keys.
+	sepScratch []byte
+}
+
+func (d *dataBlockBuf) clear() {
+	d.blockBuf.clear()
+	d.dataBlock.Reset()
+
+	d.uncompressed = nil
+	d.compressed = nil
+	d.dataBlockProps = nil
+	d.sepScratch = d.sepScratch[:0]
+}
+
+var dataBlockBufPool = sync.Pool{
+	New: func() interface{} {
+		return &dataBlockBuf{}
+	},
+}
+
+func newDataBlockBuf(restartInterval int, checksumType block.ChecksumType) *dataBlockBuf {
+	d := dataBlockBufPool.Get().(*dataBlockBuf)
+	d.dataBlock.RestartInterval = restartInterval
+	d.checksummer.Type = checksumType
+	return d
+}
+
+func (d *dataBlockBuf) finish() {
+	d.uncompressed = d.dataBlock.Finish()
+}
+
+func (d *dataBlockBuf) compressAndChecksum(c Compression) {
+	d.compressed, d.trailer = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
+}
+
+func (d *dataBlockBuf) shouldFlush(
+	key InternalKey, valueLen int, flushOptions flushDecisionOptions, sizeClassHints []int,
+) bool {
+	return shouldFlushWithHints(
+		key.Size(), valueLen, d.dataBlock.RestartInterval, d.dataBlock.EstimatedSize(),
+		d.dataBlock.EntryCount(), flushOptions, sizeClassHints)
+}
+
+type indexBlockAndBlockProperties struct {
+	nEntries int
+	// sep is the last key added to this block, for computing a separator later.
+	sep        InternalKey
+	properties []byte
+	// block is the encoded block produced by blockWriter.finish.
+	block []byte
+}
+
+// Add adds a key/value pair to the table being written. For a given Writer,
+// the keys passed to Add must be in increasing order. The exception to this
+// rule is range deletion tombstones. Range deletion tombstones need to be
+// added ordered by their start key, but they can be added out of order from
+// point entries. Additionally, range deletion tombstones must be fragmented
+// (i.e. by keyspan.Fragmenter).
+func (w *RawWriter) Add(key InternalKey, value []byte) error {
+	if w.isStrictObsolete {
+		return errors.Errorf("use AddWithForceObsolete")
+	}
+	return w.AddWithForceObsolete(key, value, false)
+}
+
+// AddWithForceObsolete must be used when writing a strict-obsolete sstable.
+//
+// forceObsolete indicates whether the caller has determined that this key is
+// obsolete even though it may be the latest point key for this userkey. This
+// should be set to true for keys obsoleted by RANGEDELs, and is required for
+// strict-obsolete sstables.
+//
+// Note that there are two properties, S1 and S2 (see comment in format.go)
+// that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
+// responsibility of the caller. S1 is solely the responsibility of the
+// callee.
+func (w *RawWriter) AddWithForceObsolete(key InternalKey, value []byte, forceObsolete bool) error {
+	if w.err != nil {
+		return w.err
+	}
+
+	switch key.Kind() {
+	case InternalKeyKindRangeDelete:
+		return w.addTombstone(key, value)
+	case base.InternalKeyKindRangeKeyDelete,
+		base.InternalKeyKindRangeKeySet,
+		base.InternalKeyKindRangeKeyUnset:
+		w.err = errors.Errorf(
+			"pebble: range keys must be added via one of the RangeKey* functions")
+		return w.err
+	}
+	return w.addPoint(key, value, forceObsolete)
+}
+
+func (w *RawWriter) makeAddPointDecisionV2(key InternalKey) error {
+	prevTrailer := w.lastPointKeyInfo.trailer
+	w.lastPointKeyInfo.trailer = key.Trailer
+	if w.dataBlockBuf.dataBlock.EntryCount() == 0 {
+		return nil
+	}
+	if !w.disableKeyOrderChecks {
+		prevPointUserKey := w.dataBlockBuf.dataBlock.CurUserKey()
+		cmpUser := w.compare(prevPointUserKey, key.UserKey)
+		if cmpUser > 0 || (cmpUser == 0 && prevTrailer <= key.Trailer) {
+			return errors.Errorf(
+				"pebble: keys must be added in strictly increasing order: %s, %s",
+				InternalKey{UserKey: prevPointUserKey, Trailer: prevTrailer}.Pretty(w.formatKey),
+				key.Pretty(w.formatKey))
+		}
+	}
+	return nil
+}
+
+// REQUIRES: at least one point has been written to the Writer.
+func (w *RawWriter) getLastPointUserKey() []byte {
+	if w.dataBlockBuf.dataBlock.EntryCount() == 0 {
+		panic(errors.AssertionFailedf("no point keys added to writer"))
+	}
+	return w.dataBlockBuf.dataBlock.CurUserKey()
+}
+
+// REQUIRES: w.tableFormat >= TableFormatPebblev3
+func (w *RawWriter) makeAddPointDecisionV3(
+	key InternalKey, valueLen int,
+) (setHasSamePrefix bool, writeToValueBlock bool, isObsolete bool, err error) {
+	prevPointKeyInfo := w.lastPointKeyInfo
+	w.lastPointKeyInfo.userKeyLen = len(key.UserKey)
+	w.lastPointKeyInfo.prefixLen = w.split(key.UserKey)
+	w.lastPointKeyInfo.trailer = key.Trailer
+	w.lastPointKeyInfo.isObsolete = false
+	if !w.meta.HasPointKeys {
+		return false, false, false, nil
+	}
+	keyKind := key.Trailer.Kind()
+	prevPointUserKey := w.getLastPointUserKey()
+	prevPointKey := InternalKey{UserKey: prevPointUserKey, Trailer: prevPointKeyInfo.trailer}
+	prevKeyKind := prevPointKeyInfo.trailer.Kind()
+	considerWriteToValueBlock := prevKeyKind == InternalKeyKindSet &&
+		keyKind == InternalKeyKindSet
+	if considerWriteToValueBlock && !w.requiredInPlaceValueBound.IsEmpty() {
+		keyPrefix := key.UserKey[:w.lastPointKeyInfo.prefixLen]
+		cmpUpper := w.compare(
+			w.requiredInPlaceValueBound.Upper, keyPrefix)
+		if cmpUpper <= 0 {
+			// Common case for CockroachDB. Make it empty since all future keys in
+			// this sstable will also have cmpUpper <= 0.
+			w.requiredInPlaceValueBound = UserKeyPrefixBound{}
+		} else if w.compare(keyPrefix, w.requiredInPlaceValueBound.Lower) >= 0 {
+			considerWriteToValueBlock = false
+		}
+	}
+	// cmpPrefix is initialized iff considerWriteToValueBlock.
+	var cmpPrefix int
+	var cmpUser int
+	if considerWriteToValueBlock {
+		// Compare the prefixes.
+		cmpPrefix = w.compare(prevPointUserKey[:prevPointKeyInfo.prefixLen],
+			key.UserKey[:w.lastPointKeyInfo.prefixLen])
+		cmpUser = cmpPrefix
+		if cmpPrefix == 0 {
+			// Need to compare suffixes to compute cmpUser.
+			cmpUser = w.compare(prevPointUserKey[prevPointKeyInfo.prefixLen:],
+				key.UserKey[w.lastPointKeyInfo.prefixLen:])
+		}
+	} else {
+		cmpUser = w.compare(prevPointUserKey, key.UserKey)
+	}
+	// Ensure that no one adds a point key kind without considering the obsolete
+	// handling for that kind.
+	switch keyKind {
+	case InternalKeyKindSet, InternalKeyKindSetWithDelete, InternalKeyKindMerge,
+		InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
+	default:
+		panic(errors.AssertionFailedf("unexpected key kind %s", keyKind.String()))
+	}
+	// If same user key, then the current key is obsolete if any of the
+	// following is true:
+	// C1 The prev key was obsolete.
+	// C2 The prev key was not a MERGE. When the previous key is a MERGE we must
+	//    preserve SET* and MERGE since their values will be merged into the
+	//    previous key. We also must preserve DEL* since there may be an older
+	//    SET*/MERGE in a lower level that must not be merged with the MERGE --
+	//    if we omit the DEL* that lower SET*/MERGE will become visible.
+	//
+	// Regardless of whether it is the same user key or not
+	// C3 The current key is some kind of point delete, and we are writing to
+	//    the lowest level, then it is also obsolete. The correctness of this
+	//    relies on the same user key not spanning multiple sstables in a level.
+	//
+	// C1 ensures that for a user key there is at most one transition from
+	// !obsolete to obsolete. Consider a user key k, for which the first n keys
+	// are not obsolete. We consider the various value of n:
+	//
+	// n = 0: This happens due to forceObsolete being set by the caller, or due
+	// to C3. forceObsolete must only be set due a RANGEDEL, and that RANGEDEL
+	// must also delete all the lower seqnums for the same user key. C3 triggers
+	// due to a point delete and that deletes all the lower seqnums for the same
+	// user key.
+	//
+	// n = 1: This is the common case. It happens when the first key is not a
+	// MERGE, or the current key is some kind of point delete.
+	//
+	// n > 1: This is due to a sequence of MERGE keys, potentially followed by a
+	// single non-MERGE key.
+	isObsoleteC1AndC2 := cmpUser == 0 &&
+		(prevPointKeyInfo.isObsolete || prevKeyKind != InternalKeyKindMerge)
+	isObsoleteC3 := w.writingToLowestLevel &&
+		(keyKind == InternalKeyKindDelete || keyKind == InternalKeyKindSingleDelete ||
+			keyKind == InternalKeyKindDeleteSized)
+	isObsolete = isObsoleteC1AndC2 || isObsoleteC3
+	// TODO(sumeer): storing isObsolete SET and SETWITHDEL in value blocks is
+	// possible, but requires some care in documenting and checking invariants.
+	// There is code that assumes nothing in value blocks because of single MVCC
+	// version (those should be ok). We have to ensure setHasSamePrefix is
+	// correctly initialized here etc.
+
+	if !w.disableKeyOrderChecks &&
+		(cmpUser > 0 || (cmpUser == 0 && prevPointKeyInfo.trailer <= key.Trailer)) {
+		return false, false, false, errors.Errorf(
+			"pebble: keys must be added in strictly increasing order: %s, %s",
+			prevPointKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+	}
+	if !considerWriteToValueBlock {
+		return false, false, isObsolete, nil
+	}
+	// NB: it is possible that cmpUser == 0, i.e., these two SETs have identical
+	// user keys (because of an open snapshot). This should be the rare case.
+	setHasSamePrefix = cmpPrefix == 0
+	// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
+	// valueHandle, this should be > 3. But tiny values are common in test and
+	// unlikely in production, so we use 0 here for better test coverage.
+	const tinyValueThreshold = 0
+	// NB: setting WriterOptions.DisableValueBlocks does not disable the
+	// setHasSamePrefix optimization.
+	considerWriteToValueBlock = setHasSamePrefix && valueLen > tinyValueThreshold && w.valueBlockWriter != nil
+	return setHasSamePrefix, considerWriteToValueBlock, isObsolete, nil
+}
+
+func (w *RawWriter) addPoint(key InternalKey, value []byte, forceObsolete bool) error {
+	if w.isStrictObsolete && key.Kind() == InternalKeyKindMerge {
+		return errors.Errorf("MERGE not supported in a strict-obsolete sstable")
+	}
+	var err error
+	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
+	var isObsolete bool
+	maxSharedKeyLen := len(key.UserKey)
+	if w.tableFormat >= TableFormatPebblev3 {
+		// maxSharedKeyLen is limited to the prefix of the preceding key. If the
+		// preceding key was in a different block, then the blockWriter will
+		// ignore this maxSharedKeyLen.
+		maxSharedKeyLen = w.lastPointKeyInfo.prefixLen
+		setHasSameKeyPrefix, writeToValueBlock, isObsolete, err =
+			w.makeAddPointDecisionV3(key, len(value))
+		addPrefixToValueStoredWithKey = key.Kind() == InternalKeyKindSet
+	} else {
+		err = w.makeAddPointDecisionV2(key)
+	}
+	if err != nil {
+		return err
+	}
+	isObsolete = w.tableFormat >= TableFormatPebblev4 && (isObsolete || forceObsolete)
+	w.lastPointKeyInfo.isObsolete = isObsolete
+	var valueStoredWithKey []byte
+	var prefix block.ValuePrefix
+	var valueStoredWithKeyLen int
+	if writeToValueBlock {
+		vh, err := w.valueBlockWriter.addValue(value)
+		if err != nil {
+			return err
+		}
+		n := encodeValueHandle(w.blockBuf.tmp[:], vh)
+		valueStoredWithKey = w.blockBuf.tmp[:n]
+		valueStoredWithKeyLen = len(valueStoredWithKey) + 1
+		var attribute base.ShortAttribute
+		if w.shortAttributeExtractor != nil {
+			// TODO(sumeer): for compactions, it is possible that the input sstable
+			// already has this value in the value section and so we have already
+			// extracted the ShortAttribute. Avoid extracting it again. This will
+			// require changing the Writer.Add interface.
+			if attribute, err = w.shortAttributeExtractor(
+				key.UserKey, w.lastPointKeyInfo.prefixLen, value); err != nil {
+				return err
+			}
+		}
+		prefix = block.ValueHandlePrefix(setHasSameKeyPrefix, attribute)
+	} else {
+		valueStoredWithKey = value
+		valueStoredWithKeyLen = len(value)
+		if addPrefixToValueStoredWithKey {
+			valueStoredWithKeyLen++
+		}
+		prefix = block.InPlaceValuePrefix(setHasSameKeyPrefix)
+	}
+
+	if err := w.maybeFlush(key, valueStoredWithKeyLen); err != nil {
+		return err
+	}
+
+	for i := range w.blockPropCollectors {
+		v := value
+		if addPrefixToValueStoredWithKey {
+			// Values for SET are not required to be in-place, and in the future may
+			// not even be read by the compaction, so pass nil values. Block
+			// property collectors in such Pebble DB's must not look at the value.
+			v = nil
+		}
+		if err := w.blockPropCollectors[i].AddPointKey(key, v); err != nil {
+			w.err = err
+			return err
+		}
+	}
+	if w.tableFormat >= TableFormatPebblev4 {
+		w.obsoleteCollector.AddPoint(isObsolete)
+	}
+
+	w.maybeAddToFilter(key.UserKey)
+	w.dataBlockBuf.dataBlock.AddWithOptionalValuePrefix(
+		key, isObsolete, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
+		setHasSameKeyPrefix)
+
+	w.meta.updateSeqNum(key.SeqNum())
+
+	if !w.meta.HasPointKeys {
+		k := w.dataBlockBuf.dataBlock.CurKey()
+		// NB: We need to ensure that SmallestPoint.UserKey is set, so we create
+		// an InternalKey which is semantically identical to the key, but won't
+		// have a nil UserKey. We do this, because key.UserKey could be nil, and
+		// we don't want SmallestPoint.UserKey to be nil.
+		//
+		// todo(bananabrick): Determine if it's okay to have a nil SmallestPoint
+		// .UserKey now that we don't rely on a nil UserKey to determine if the
+		// key has been set or not.
+		w.meta.SetSmallestPointKey(k.Clone())
+	}
+
+	w.props.NumEntries++
+	switch key.Kind() {
+	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		w.props.NumDeletions++
+		w.props.RawPointTombstoneKeySize += uint64(len(key.UserKey))
+	case InternalKeyKindDeleteSized:
+		var size uint64
+		if len(value) > 0 {
+			var n int
+			size, n = binary.Uvarint(value)
+			if n <= 0 {
+				w.err = errors.Newf("%s key's value (%x) does not parse as uvarint",
+					errors.Safe(key.Kind().String()), value)
+				return w.err
+			}
+		}
+		w.props.NumDeletions++
+		w.props.NumSizedDeletions++
+		w.props.RawPointTombstoneKeySize += uint64(len(key.UserKey))
+		w.props.RawPointTombstoneValueSize += size
+	case InternalKeyKindMerge:
+		w.props.NumMergeOperands++
+	}
+	w.props.RawKeySize += uint64(key.Size())
+	w.props.RawValueSize += uint64(len(value))
+	return nil
+}
+
+func (w *RawWriter) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
+	return keyspan.Span{
+		Start: k.UserKey,
+		End:   value,
+		Keys:  []keyspan.Key{{Trailer: k.Trailer}},
+	}.Pretty(w.formatKey)
+}
+
+func (w *RawWriter) addTombstone(key InternalKey, value []byte) error {
+	if !w.disableKeyOrderChecks && w.rangeDelBlock.EntryCount() > 0 {
+		// Check that tombstones are being added in fragmented order. If the two
+		// tombstones overlap, their start and end keys must be identical.
+		prevKey := w.rangeDelBlock.CurKey()
+		switch c := w.compare(prevKey.UserKey, key.UserKey); {
+		case c > 0:
+			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
+				prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+			return w.err
+		case c == 0:
+			prevValue := w.rangeDelBlock.CurValue()
+			if w.compare(prevValue, value) != 0 {
+				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+					w.prettyTombstone(prevKey, prevValue),
+					w.prettyTombstone(key, value))
+				return w.err
+			}
+			if prevKey.SeqNum() <= key.SeqNum() {
+				w.err = errors.Errorf("pebble: keys must be added in strictly increasing order: %s, %s",
+					prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+				return w.err
+			}
+		default:
+			prevValue := w.rangeDelBlock.CurValue()
+			if w.compare(prevValue, key.UserKey) > 0 {
+				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
+					w.prettyTombstone(prevKey, prevValue),
+					w.prettyTombstone(key, value))
+				return w.err
+			}
+		}
+	}
+
+	if key.Trailer == base.InternalKeyRangeDeleteSentinel {
+		w.err = errors.Errorf("pebble: cannot add range delete sentinel: %s", key.Pretty(w.formatKey))
+		return w.err
+	}
+
+	w.meta.updateSeqNum(key.SeqNum())
+
+	// Range tombstones are fragmented in the v2 range deletion block format,
+	// so the start key of the first range tombstone added will be the smallest
+	// range tombstone key. The largest range tombstone key will be determined
+	// in Writer.Close() as the end key of the last range tombstone added.
+	if w.props.NumRangeDeletions == 0 {
+		w.meta.SetSmallestRangeDelKey(key.Clone())
+	}
+
+	w.props.NumEntries++
+	w.props.NumDeletions++
+	w.props.NumRangeDeletions++
+	w.props.RawKeySize += uint64(key.Size())
+	w.props.RawValueSize += uint64(len(value))
+	w.rangeDelBlock.Add(key, value)
+	return nil
+}
+
+func (w *RawWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
+	// This method is the emit function of the Fragmenter.
+	//
+	// NB: The span should only contain range keys and be internally consistent
+	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
+	//
+	// We use w.rangeKeysBySuffix and w.rangeKeySpan to avoid allocations.
+
+	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
+	// we may want to in the future.
+	w.rangeKeysBySuffix.Cmp = w.compare
+	w.rangeKeysBySuffix.Keys = span.Keys
+	sort.Sort(&w.rangeKeysBySuffix)
+
+	w.rangeKeySpan = span
+	w.rangeKeySpan.Keys = w.rangeKeysBySuffix.Keys
+	if w.err == nil {
+		w.err = w.EncodeSpan(&w.rangeKeySpan)
+	}
+}
+
+// addRangeKey adds a range key set, unset, or delete key/value pair to the
+// table being written.
+//
+// Range keys must be supplied in strictly ascending order of start key (i.e.
+// user key ascending, sequence number descending, and key type descending).
+// Ranges added must also be supplied in fragmented span order - i.e. other than
+// spans that are perfectly aligned (same start and end keys), spans may not
+// overlap. Range keys may be added out of order relative to point keys and
+// range deletions.
+func (w *RawWriter) addRangeKey(key InternalKey, value []byte) error {
+	if !w.disableKeyOrderChecks && w.rangeKeyBlock.EntryCount() > 0 {
+		prevStartKey := w.rangeKeyBlock.CurKey()
+		prevEndKey, _, err := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.CurValue())
+		if err != nil {
+			// We panic here as we should have previously decoded and validated this
+			// key and value when it was first added to the range key block.
+			panic(err)
+		}
+
+		curStartKey := key
+		curEndKey, _, err := rangekey.DecodeEndKey(curStartKey.Kind(), value)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+
+		// Start keys must be strictly increasing.
+		if base.InternalCompare(w.compare, prevStartKey, curStartKey) >= 0 {
+			w.err = errors.Errorf(
+				"pebble: range keys starts must be added in increasing order: %s, %s",
+				prevStartKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+			return w.err
+		}
+
+		// Start keys are increasing. If the start user keys are equal, the
+		// end keys must be equal (i.e. aligned spans).
+		if w.compare(prevStartKey.UserKey, curStartKey.UserKey) == 0 {
+			if w.compare(prevEndKey, curEndKey) != 0 {
+				w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
+					prevStartKey.Pretty(w.formatKey),
+					curStartKey.Pretty(w.formatKey))
+				return w.err
+			}
+		} else if w.compare(prevEndKey, curStartKey.UserKey) > 0 {
+			// If the start user keys are NOT equal, the spans must be disjoint (i.e.
+			// no overlap).
+			// NOTE: the inequality excludes zero, as we allow the end key of the
+			// lower span be the same as the start key of the upper span, because
+			// the range end key is considered an exclusive bound.
+			w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
+				prevStartKey.Pretty(w.formatKey),
+				curStartKey.Pretty(w.formatKey))
+			return w.err
+		}
+	}
+
+	// TODO(travers): Add an invariant-gated check to ensure that suffix-values
+	// are sorted within coalesced spans.
+
+	// Range-keys and point-keys are intended to live in "parallel" keyspaces.
+	// However, we track a single seqnum in the table metadata that spans both of
+	// these keyspaces.
+	// TODO(travers): Consider tracking range key seqnums separately.
+	w.meta.updateSeqNum(key.SeqNum())
+
+	// Range tombstones are fragmented, so the start key of the first range key
+	// added will be the smallest. The largest range key is determined in
+	// Writer.Close() as the end key of the last range key added to the block.
+	if w.props.NumRangeKeys() == 0 {
+		w.meta.SetSmallestRangeKey(key.Clone())
+	}
+
+	// Update table properties.
+	w.props.RawRangeKeyKeySize += uint64(key.Size())
+	w.props.RawRangeKeyValueSize += uint64(len(value))
+	switch key.Kind() {
+	case base.InternalKeyKindRangeKeyDelete:
+		w.props.NumRangeKeyDels++
+	case base.InternalKeyKindRangeKeySet:
+		w.props.NumRangeKeySets++
+	case base.InternalKeyKindRangeKeyUnset:
+		w.props.NumRangeKeyUnsets++
+	default:
+		panic(errors.Errorf("pebble: invalid range key type: %s", key.Kind()))
+	}
+
+	// Add the key to the block.
+	w.rangeKeyBlock.Add(key, value)
+	return nil
+}
+
+func (w *RawWriter) maybeAddToFilter(key []byte) {
+	if w.filter != nil {
+		prefix := key[:w.split(key)]
+		w.filter.addKey(prefix)
+	}
+}
+
+func (w *RawWriter) flush(key InternalKey) error {
+	// We're finishing a data block.
+	err := w.finishDataBlockProps(w.dataBlockBuf)
+	if err != nil {
+		return err
+	}
+	w.dataBlockBuf.finish()
+	w.dataBlockBuf.compressAndChecksum(w.compression)
+	// Since dataBlockEstimates.addInflightDataBlock was never called, the
+	// inflightSize is set to 0.
+	w.coordination.sizeEstimate.dataBlockCompressed(len(w.dataBlockBuf.compressed), 0)
+
+	// Determine if the index block should be flushed. Since we're accessing the
+	// dataBlockBuf.dataBlock.curKey here, we have to make sure that once we start
+	// to pool the dataBlockBufs, the curKey isn't used by the Writer once the
+	// dataBlockBuf is added back to a sync.Pool. In this particular case, the
+	// byte slice which supports "sep" will eventually be copied when "sep" is
+	// added to the index block.
+	prevKey := w.dataBlockBuf.dataBlock.CurKey()
+	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
+	// We determine that we should flush an index block from the Writer client
+	// goroutine, but we actually finish the index block from the writeQueue.
+	// When we determine that an index block should be flushed, we need to call
+	// BlockPropertyCollector.FinishIndexBlock. But block property collector
+	// calls must happen sequentially from the Writer client. Therefore, we need
+	// to determine that we are going to flush the index block from the Writer
+	// client.
+	shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) && w.indexBlock.shouldFlush(
+		sep, encodedBHPEstimatedSize, w.indexBlockOptions, w.allocatorSizeClasses,
+	)
+
+	var indexProps []byte
+	var flushableIndexBlock *indexBlockBuf
+	if shouldFlushIndexBlock {
+		flushableIndexBlock = w.indexBlock
+		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
+		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
+		// flush the index block.
+		indexProps, err = w.finishIndexBlockProps()
+		if err != nil {
+			return err
+		}
+	}
+
+	// We've called BlockPropertyCollector.FinishDataBlock, and, if necessary,
+	// BlockPropertyCollector.FinishIndexBlock. Since we've decided to finish
+	// the data block, we can call
+	// BlockPropertyCollector.AddPrevDataBlockToIndexBlock.
+	w.addPrevDataBlockToIndexBlockProps()
+
+	// Schedule a write.
+	writeTask := writeTaskPool.Get().(*writeTask)
+	// We're setting compressionDone to indicate that compression of this block
+	// has already been completed.
+	writeTask.compressionDone <- true
+	writeTask.buf = w.dataBlockBuf
+	writeTask.indexEntrySep = sep
+	writeTask.currIndexBlock = w.indexBlock
+	writeTask.indexInflightSize = sep.Size() + encodedBHPEstimatedSize
+	writeTask.finishedIndexProps = indexProps
+	writeTask.flushableIndexBlock = flushableIndexBlock
+
+	// The writeTask corresponds to an unwritten index entry.
+	w.indexBlock.addInflight(writeTask.indexInflightSize)
+
+	w.dataBlockBuf = nil
+	if w.coordination.parallelismEnabled {
+		w.coordination.writeQueue.add(writeTask)
+	} else {
+		err = w.coordination.writeQueue.addSync(writeTask)
+	}
+	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
+
+	return err
+}
+
+func (w *RawWriter) maybeFlush(key InternalKey, valueLen int) error {
+	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.dataBlockOptions, w.allocatorSizeClasses) {
+		return nil
+	}
+
+	err := w.flush(key)
+
+	if err != nil {
+		w.err = err
+		return err
+	}
+
+	return nil
+}
+
+// dataBlockBuf.dataBlockProps set by this method must be encoded before any future use of the
+// dataBlockBuf.blockPropsEncoder, since the properties slice will get reused by the
+// blockPropsEncoder.
+func (w *RawWriter) finishDataBlockProps(buf *dataBlockBuf) error {
+	if len(w.blockPropCollectors) == 0 {
+		return nil
+	}
+	var err error
+	buf.blockPropsEncoder.resetProps()
+	for i := range w.blockPropCollectors {
+		scratch := buf.blockPropsEncoder.getScratchForProp()
+		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
+			return err
+		}
+		buf.blockPropsEncoder.addProp(shortID(i), scratch)
+	}
+
+	buf.dataBlockProps = buf.blockPropsEncoder.unsafeProps()
+	return nil
+}
+
+// The BlockHandleWithProperties returned by this method must be encoded before any future use of
+// the Writer.blockPropsEncoder, since the properties slice will get reused by the blockPropsEncoder.
+// maybeAddBlockPropertiesToBlockHandle should only be called if block is being written synchronously
+// with the Writer client.
+func (w *RawWriter) maybeAddBlockPropertiesToBlockHandle(
+	bh block.Handle,
+) (BlockHandleWithProperties, error) {
+	err := w.finishDataBlockProps(w.dataBlockBuf)
+	if err != nil {
+		return BlockHandleWithProperties{}, err
+	}
+	return BlockHandleWithProperties{Handle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
+}
+
+func (w *RawWriter) indexEntrySep(
+	prevKey, key InternalKey, dataBlockBuf *dataBlockBuf,
+) InternalKey {
+	// Make a rough guess that we want key-sized scratch to compute the separator.
+	if cap(dataBlockBuf.sepScratch) < key.Size() {
+		dataBlockBuf.sepScratch = make([]byte, 0, key.Size()*2)
+	}
+
+	var sep InternalKey
+	if key.UserKey == nil && key.Trailer == 0 {
+		sep = prevKey.Successor(w.compare, w.successor, dataBlockBuf.sepScratch[:0])
+	} else {
+		sep = prevKey.Separator(w.compare, w.separator, dataBlockBuf.sepScratch[:0], key)
+	}
+	return sep
+}
+
+// addIndexEntry adds an index entry for the specified key and block handle.
+// addIndexEntry can be called from both the Writer client goroutine, and the
+// writeQueue goroutine. If the flushIndexBuf != nil, then the indexProps, as
+// they're used when the index block is finished.
+//
+// Invariant:
+//  1. addIndexEntry must not store references to the sep InternalKey, the tmp
+//     byte slice, bhp.Props. That is, these must be either deep copied or
+//     encoded.
+//  2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
+//     indexBlockBufs.
+func (w *RawWriter) addIndexEntry(
+	sep InternalKey,
+	bhp BlockHandleWithProperties,
+	tmp []byte,
+	flushIndexBuf *indexBlockBuf,
+	writeTo *indexBlockBuf,
+	inflightSize int,
+	indexProps []byte,
+) error {
+	if bhp.Length == 0 {
+		// A valid blockHandle must be non-zero.
+		// In particular, it must have a non-zero length.
+		return nil
+	}
+
+	encoded := encodeBlockHandleWithProperties(tmp, bhp)
+
+	if flushIndexBuf != nil {
+		if cap(w.indexPartitions) == 0 {
+			w.indexPartitions = make([]indexBlockAndBlockProperties, 0, 32)
+		}
+		// Enable two level indexes if there is more than one index block.
+		w.twoLevelIndex = true
+		if err := w.finishIndexBlock(flushIndexBuf, indexProps); err != nil {
+			return err
+		}
+	}
+
+	writeTo.add(sep, encoded, inflightSize)
+	return nil
+}
+
+func (w *RawWriter) addPrevDataBlockToIndexBlockProps() {
+	for i := range w.blockPropCollectors {
+		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
+	}
+}
+
+// addIndexEntrySync adds an index entry for the specified key and block handle.
+// Writer.addIndexEntry is only called synchronously once Writer.Close is called.
+// addIndexEntrySync should only be called if we're sure that index entries
+// aren't being written asynchronously.
+//
+// Invariant:
+//  1. addIndexEntrySync must not store references to the prevKey, key InternalKey's,
+//     the tmp byte slice. That is, these must be either deep copied or encoded.
+//
+// TODO: Improve coverage of this method. e.g. tests passed without the line
+// `w.twoLevelIndex = true` previously.
+func (w *RawWriter) addIndexEntrySync(
+	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+) error {
+	return w.addIndexEntrySep(w.indexEntrySep(prevKey, key, w.dataBlockBuf), bhp, tmp)
+}
+
+func (w *RawWriter) addIndexEntrySep(
+	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+) error {
+	shouldFlush := supportsTwoLevelIndex(
+		w.tableFormat) && w.indexBlock.shouldFlush(
+		sep, encodedBHPEstimatedSize, w.indexBlockOptions, w.allocatorSizeClasses,
+	)
+	var flushableIndexBlock *indexBlockBuf
+	var props []byte
+	var err error
+	if shouldFlush {
+		flushableIndexBlock = w.indexBlock
+		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
+		w.twoLevelIndex = true
+		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
+		// flush the index block.
+		props, err = w.finishIndexBlockProps()
+		if err != nil {
+			return err
+		}
+	}
+
+	err = w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock, 0, props)
+	if flushableIndexBlock != nil {
+		flushableIndexBlock.clear()
+		indexBlockBufPool.Put(flushableIndexBlock)
+	}
+	w.addPrevDataBlockToIndexBlockProps()
+	return err
+}
+
+func shouldFlushWithHints(
+	keyLen, valueLen int,
+	restartInterval, estimatedBlockSize, numEntries int,
+	flushOptions flushDecisionOptions,
+	sizeClassHints []int,
+) bool {
+	if numEntries == 0 {
+		return false
+	}
+
+	// If we are not informed about the memory allocator's size classes we fall
+	// back to a simple set of flush heuristics that are unaware of internal
+	// fragmentation in block cache allocations.
+	if len(sizeClassHints) == 0 {
+		return shouldFlushWithoutHints(
+			keyLen, valueLen, restartInterval, estimatedBlockSize, numEntries, flushOptions)
+	}
+
+	// For size-class aware flushing we need to account for the metadata that is
+	// allocated when this block is loaded into the block cache. For instance, if
+	// a block has size 1020B it may fit within a 1024B class. However, when
+	// loaded into the block cache we also allocate space for the cache entry
+	// metadata. The new allocation of size ~1052B may now only fit within a
+	// 2048B class, which increases internal fragmentation.
+	blockSizeWithMetadata := estimatedBlockSize + cache.ValueMetadataSize
+
+	// For the fast path we can avoid computing the exact varint encoded
+	// key-value pair size. Instead, we combine the key-value pair size with an
+	// upper-bound estimate of the associated metadata (4B restart point, 4B
+	// shared prefix length, 5B varint unshared key size, 5B varint value size).
+	newEstimatedSize := blockSizeWithMetadata + keyLen + valueLen + 18
+	// Our new block size estimate disregards key prefix compression. This puts
+	// us at risk of overestimating the size and flushing small blocks. We
+	// mitigate this by imposing a minimum size restriction.
+	if blockSizeWithMetadata <= flushOptions.sizeClassAwareThreshold || newEstimatedSize <= flushOptions.blockSize {
+		return false
+	}
+
+	sizeClass, ok := blockSizeClass(blockSizeWithMetadata, sizeClassHints)
+	// If the block size could not be mapped to a size class we fall back to
+	// using a simpler set of flush heuristics.
+	if !ok {
+		return shouldFlushWithoutHints(
+			keyLen, valueLen, restartInterval, estimatedBlockSize, numEntries, flushOptions)
+	}
+
+	// Tighter upper-bound estimate of the metadata stored with the next
+	// key-value pair.
+	newSize := blockSizeWithMetadata + keyLen + valueLen
+	if numEntries%restartInterval == 0 {
+		newSize += 4
+	}
+	newSize += 4                            // varint for shared prefix length
+	newSize += uvarintLen(uint32(keyLen))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueLen)) // varint for value size
+
+	if blockSizeWithMetadata < flushOptions.blockSize {
+		newSizeClass, ok := blockSizeClass(newSize, sizeClassHints)
+		if ok && newSizeClass-newSize >= sizeClass-blockSizeWithMetadata {
+			// Although the block hasn't reached the target size, waiting to insert the
+			// next entry would exceed the target and increase memory fragmentation.
+			return true
+		}
+		return false
+	}
+
+	// Flush if inserting the next entry bumps the block size to the memory
+	// allocator's next size class.
+	return newSize > sizeClass
+}
+
+func shouldFlushWithoutHints(
+	keyLen, valueLen int,
+	restartInterval, estimatedBlockSize, numEntries int,
+	flushOptions flushDecisionOptions,
+) bool {
+	if estimatedBlockSize >= flushOptions.blockSize {
+		return true
+	}
+
+	// The block is currently smaller than the target size.
+	if estimatedBlockSize <= flushOptions.blockSizeThreshold {
+		// The block is smaller than the threshold size at which we'll consider
+		// flushing it.
+		return false
+	}
+
+	newSize := estimatedBlockSize + keyLen + valueLen
+	if numEntries%restartInterval == 0 {
+		newSize += 4
+	}
+	newSize += 4                            // varint for shared prefix length
+	newSize += uvarintLen(uint32(keyLen))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueLen)) // varint for value size
+	// Flush if the block plus the new entry is larger than the target size.
+	return newSize > flushOptions.blockSize
+}
+
+// blockSizeClass returns the smallest memory allocator size class that could
+// hold a block of a given size and returns a boolean indicating whether an
+// appropriate size class was found. It is useful for computing the potential
+// space wasted by an allocation.
+func blockSizeClass(blockSize int, sizeClassHints []int) (int, bool) {
+	sizeClassIdx, _ := slices.BinarySearch(sizeClassHints, blockSize)
+	if sizeClassIdx == len(sizeClassHints) {
+		return -1, false
+	}
+	return sizeClassHints[sizeClassIdx], true
+}
+
+func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
+	if len(k.UserKey) == 0 {
+		return a, k
+	}
+	a, keyCopy := a.Copy(k.UserKey)
+	return a, InternalKey{UserKey: keyCopy, Trailer: k.Trailer}
+}
+
+// Invariants: The byte slice returned by finishIndexBlockProps is heap-allocated
+//
+//	and has its own lifetime, independent of the Writer and the blockPropsEncoder,
+//
+// and it is safe to:
+//  1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
+//  2. Store the byte slice in the Writer since it is a copy and not supported by
+//     an underlying buffer.
+func (w *RawWriter) finishIndexBlockProps() ([]byte, error) {
+	w.blockPropsEncoder.resetProps()
+	for i := range w.blockPropCollectors {
+		scratch := w.blockPropsEncoder.getScratchForProp()
+		var err error
+		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
+			return nil, err
+		}
+		w.blockPropsEncoder.addProp(shortID(i), scratch)
+	}
+	return w.blockPropsEncoder.props(), nil
+}
+
+// finishIndexBlock finishes the current index block and adds it to the top
+// level index block. This is only used when two level indexes are enabled.
+//
+// Invariants:
+//  1. The props slice passed into finishedIndexBlock must not be a
+//     owned by any other struct, since it will be stored in the Writer.indexPartitions
+//     slice.
+//  2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
+//     That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
+func (w *RawWriter) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
+	part := indexBlockAndBlockProperties{
+		nEntries: indexBuf.block.EntryCount(), properties: props,
+	}
+	w.indexSepAlloc, part.sep = cloneKeyWithBuf(
+		indexBuf.block.CurKey(), w.indexSepAlloc,
+	)
+	bk := indexBuf.finish()
+	if len(w.indexBlockAlloc) < len(bk) {
+		// Allocate enough bytes for approximately 16 index blocks.
+		w.indexBlockAlloc = make([]byte, len(bk)*16)
+	}
+	n := copy(w.indexBlockAlloc, bk)
+	part.block = w.indexBlockAlloc[:n:n]
+	w.indexBlockAlloc = w.indexBlockAlloc[n:]
+	w.indexPartitions = append(w.indexPartitions, part)
+	return nil
+}
+
+func (w *RawWriter) writeTwoLevelIndex() (block.Handle, error) {
+	props, err := w.finishIndexBlockProps()
+	if err != nil {
+		return block.Handle{}, err
+	}
+	// Add the final unfinished index.
+	if err = w.finishIndexBlock(w.indexBlock, props); err != nil {
+		return block.Handle{}, err
+	}
+
+	for i := range w.indexPartitions {
+		b := &w.indexPartitions[i]
+		w.props.NumDataBlocks += uint64(b.nEntries)
+
+		data := b.block
+		w.props.IndexSize += uint64(len(data))
+		bh, err := w.layout.WriteIndexBlock(data)
+		if err != nil {
+			return block.Handle{}, err
+		}
+		bhp := BlockHandleWithProperties{
+			Handle: bh,
+			Props:  b.properties,
+		}
+		encoded := encodeBlockHandleWithProperties(w.blockBuf.tmp[:], bhp)
+		w.topLevelIndexBlock.Add(b.sep, encoded)
+	}
+
+	// NB: RocksDB includes the block trailer length in the index size
+	// property, though it doesn't include the trailer in the top level
+	// index size property.
+	w.props.IndexPartitions = uint64(len(w.indexPartitions))
+	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.EstimatedSize())
+	w.props.IndexSize += w.props.TopLevelIndexSize + block.TrailerLen
+	return w.layout.WriteIndexBlock(w.topLevelIndexBlock.Finish())
+}
+
+func compressAndChecksum(
+	b []byte, compression Compression, blockBuf *blockBuf,
+) (compressed []byte, trailer block.Trailer) {
+	// Compress the buffer, discarding the result if the improvement isn't at
+	// least 12.5%.
+	blockType, compressed := compressBlock(compression, b, blockBuf.compressedBuf)
+	if blockType != noCompressionBlockType && cap(compressed) > cap(blockBuf.compressedBuf) {
+		blockBuf.compressedBuf = compressed[:cap(compressed)]
+	}
+	if len(compressed) < len(b)-len(b)/8 {
+		b = compressed
+	} else {
+		blockType = noCompressionBlockType
+	}
+
+	// Calculate the checksum.
+	trailer[0] = byte(blockType)
+	checksum := blockBuf.checksummer.Checksum(b, trailer[:1])
+	return b, block.MakeTrailer(byte(blockType), checksum)
+}
+
+// assertFormatCompatibility ensures that the features present on the table are
+// compatible with the table format version.
+func (w *RawWriter) assertFormatCompatibility() error {
+	// PebbleDBv1: block properties.
+	if len(w.blockPropCollectors) > 0 && w.tableFormat < TableFormatPebblev1 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for block properties",
+			w.tableFormat, TableFormatPebblev1,
+		)
+	}
+
+	// PebbleDBv2: range keys.
+	if w.props.NumRangeKeys() > 0 && w.tableFormat < TableFormatPebblev2 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for range keys",
+			w.tableFormat, TableFormatPebblev2,
+		)
+	}
+
+	// PebbleDBv3: value blocks.
+	if (w.props.NumValueBlocks > 0 || w.props.NumValuesInValueBlocks > 0 ||
+		w.props.ValueBlocksSize > 0) && w.tableFormat < TableFormatPebblev3 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for value blocks",
+			w.tableFormat, TableFormatPebblev3)
+	}
+
+	// PebbleDBv4: DELSIZED tombstones.
+	if w.props.NumSizedDeletions > 0 && w.tableFormat < TableFormatPebblev4 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for sized deletion tombstones",
+			w.tableFormat, TableFormatPebblev4)
+	}
+	return nil
+}
+
+// UnsafeLastPointUserKey returns the last point key written to the writer to
+// which this option was passed during creation. The returned key points
+// directly into a buffer belonging to the Writer. The value's lifetime ends the
+// next time a point key is added to the Writer.
+//
+// Must not be called after Writer is closed.
+func (w *RawWriter) UnsafeLastPointUserKey() []byte {
+	if w != nil && w.dataBlockBuf.dataBlock.EntryCount() >= 1 {
+		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
+		// which was added to the Writer.
+		return w.dataBlockBuf.dataBlock.CurUserKey()
+	}
+	return nil
+}
+
+// EncodeSpan encodes the keys in the given span. The span can contain either
+// only RANGEDEL keys or only range keys.
+//
+// This is a low-level API that bypasses the fragmenter. The spans passed to
+// this function must be fragmented and ordered.
+func (w *RawWriter) EncodeSpan(span *keyspan.Span) error {
+	if span.Empty() {
+		return nil
+	}
+	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
+		return rangedel.Encode(span, w.Add)
+	}
+	for i := range w.blockPropCollectors {
+		if err := w.blockPropCollectors[i].AddRangeKeys(*span); err != nil {
+			return err
+		}
+	}
+	return w.rangeKeyEncoder.Encode(span)
+}
+
+// Close finishes writing the table and closes the underlying file that the
+// table was written to.
+func (w *RawWriter) Close() (err error) {
+	defer func() {
+		if w.valueBlockWriter != nil {
+			releaseValueBlockWriter(w.valueBlockWriter)
+			// Defensive code in case Close gets called again. We don't want to put
+			// the same object to a sync.Pool.
+			w.valueBlockWriter = nil
+		}
+		w.layout.Abort()
+		// Record any error in the writer (so we can exit early if Close is called
+		// again).
+		if err != nil {
+			w.err = err
+		}
+	}()
+
+	// finish must be called before we check for an error, because finish will
+	// block until every single task added to the writeQueue has been processed,
+	// and an error could be encountered while any of those tasks are processed.
+	if err := w.coordination.writeQueue.finish(); err != nil {
+		return err
+	}
+
+	if w.err != nil {
+		return w.err
+	}
+
+	// The w.meta.LargestPointKey is only used once the Writer is closed, so it is safe to set it
+	// when the Writer is closed.
+	//
+	// The following invariants ensure that setting the largest key at this point of a Writer close
+	// is correct:
+	// 1. Keys must only be added to the Writer in an increasing order.
+	// 2. The current w.dataBlockBuf is guaranteed to have the latest key added to the Writer. This
+	//    must be true, because a w.dataBlockBuf is only switched out when a dataBlock is flushed,
+	//    however, if a dataBlock is flushed, then we add a key to the new w.dataBlockBuf in the
+	//    addPoint function after the flush occurs.
+	if w.dataBlockBuf.dataBlock.EntryCount() >= 1 {
+		w.meta.SetLargestPointKey(w.dataBlockBuf.dataBlock.CurKey().Clone())
+	}
+
+	// Finish the last data block, or force an empty data block if there
+	// aren't any data blocks at all.
+	if w.dataBlockBuf.dataBlock.EntryCount() > 0 || w.indexBlock.block.EntryCount() == 0 {
+		bh, err := w.layout.WriteDataBlock(w.dataBlockBuf.dataBlock.Finish(), &w.dataBlockBuf.blockBuf)
+		if err != nil {
+			return err
+		}
+		bhp, err := w.maybeAddBlockPropertiesToBlockHandle(bh)
+		if err != nil {
+			return err
+		}
+		prevKey := w.dataBlockBuf.dataBlock.CurKey()
+		if err := w.addIndexEntrySync(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
+			return err
+		}
+	}
+	w.props.DataSize = w.layout.offset
+
+	// Write the filter block.
+	if w.filter != nil {
+		bh, err := w.layout.WriteFilterBlock(w.filter)
+		if err != nil {
+			return err
+		}
+		w.props.FilterPolicyName = w.filter.policyName()
+		w.props.FilterSize = bh.Length
+	}
+
+	if w.twoLevelIndex {
+		w.props.IndexType = twoLevelIndex
+		// Write the two level index block.
+		if _, err = w.writeTwoLevelIndex(); err != nil {
+			return err
+		}
+	} else {
+		w.props.IndexType = binarySearchIndex
+		// NB: RocksDB includes the block trailer length in the index size
+		// property, though it doesn't include the trailer in the filter size
+		// property.
+		w.props.IndexSize = uint64(w.indexBlock.estimatedSize()) + block.TrailerLen
+		w.props.NumDataBlocks = uint64(w.indexBlock.block.EntryCount())
+		// Write the single level index block.
+		if _, err = w.layout.WriteIndexBlock(w.indexBlock.finish()); err != nil {
+			return err
+		}
+	}
+
+	// Write the range-del block.
+	if w.props.NumRangeDeletions > 0 {
+		// Because the range tombstones are fragmented, the end key of the last
+		// added range tombstone will be the largest range tombstone key. Note
+		// that we need to make this into a range deletion sentinel because
+		// sstable boundaries are inclusive while the end key of a range
+		// deletion tombstone is exclusive. A Clone() is necessary as
+		// rangeDelBlock.curValue is the same slice that will get passed into
+		// w.writer, and some implementations of vfs.File mutate the slice
+		// passed into Write(). Also, w.meta will often outlive the blockWriter,
+		// and so cloning curValue allows the rangeDelBlock's internal buffer to
+		// get gc'd.
+		k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.CurValue()).Clone()
+		w.meta.SetLargestRangeDelKey(k)
+		if _, err := w.layout.WriteRangeDeletionBlock(w.rangeDelBlock.Finish()); err != nil {
+			return err
+		}
+	}
+
+	if w.props.NumRangeKeys() > 0 {
+		key := w.rangeKeyBlock.CurKey()
+		kind := key.Kind()
+		endKey, _, err := rangekey.DecodeEndKey(kind, w.rangeKeyBlock.CurValue())
+		if err != nil {
+			return err
+		}
+		k := base.MakeExclusiveSentinelKey(kind, endKey).Clone()
+		w.meta.SetLargestRangeKey(k)
+		if _, err := w.layout.WriteRangeKeyBlock(w.rangeKeyBlock.Finish()); err != nil {
+			return err
+		}
+	}
+
+	if w.valueBlockWriter != nil {
+		_, vbStats, err := w.valueBlockWriter.finish(&w.layout, w.layout.offset)
+		if err != nil {
+			return err
+		}
+		w.props.NumValueBlocks = vbStats.numValueBlocks
+		w.props.NumValuesInValueBlocks = vbStats.numValuesInValueBlocks
+		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
+	}
+
+	{
+		// Finish and record the prop collectors if props are not yet recorded.
+		// Pre-computed props might have been copied by specialized sst creators
+		// like suffix replacer.
+		if len(w.props.UserProperties) == 0 {
+			userProps := make(map[string]string)
+			for i := range w.blockPropCollectors {
+				scratch := w.blockPropsEncoder.getScratchForProp()
+				// Place the shortID in the first byte.
+				scratch = append(scratch, byte(i))
+				buf, err := w.blockPropCollectors[i].FinishTable(scratch)
+				if err != nil {
+					return err
+				}
+				var prop string
+				if len(buf) > 0 {
+					prop = string(buf)
+				}
+				// NB: The property is populated in the map even if it is the
+				// empty string, since the presence in the map is what indicates
+				// that the block property collector was used when writing.
+				userProps[w.blockPropCollectors[i].Name()] = prop
+			}
+			if len(userProps) > 0 {
+				w.props.UserProperties = userProps
+			}
+		}
+
+		// Write the properties block.
+		var raw rowblk.Writer
+		// The restart interval is set to infinity because the properties block
+		// is always read sequentially and cached in a heap located object. This
+		// reduces table size without a significant impact on performance.
+		raw.RestartInterval = propertiesBlockRestartInterval
+		w.props.CompressionOptions = rocksDBCompressionOptions
+		w.props.save(w.tableFormat, &raw)
+		w.layout.WritePropertiesBlock(raw.Finish())
+	}
+
+	// Write the table footer.
+	w.meta.Size, err = w.layout.Finish()
+	if err != nil {
+		return err
+	}
+	w.meta.Properties = w.props
+
+	// Check that the features present in the table are compatible with the format
+	// configured for the table.
+	if err = w.assertFormatCompatibility(); err != nil {
+		return err
+	}
+
+	w.dataBlockBuf.clear()
+	dataBlockBufPool.Put(w.dataBlockBuf)
+	w.dataBlockBuf = nil
+	w.indexBlock.clear()
+	indexBlockBufPool.Put(w.indexBlock)
+	w.indexBlock = nil
+
+	// Make any future calls to Set or Close return an error.
+	w.err = errWriterClosed
+	return nil
+}
+
+// EstimatedSize returns the estimated size of the sstable being written if a
+// call to Finish() was made without adding additional keys.
+func (w *RawWriter) EstimatedSize() uint64 {
+	if w == nil {
+		return 0
+	}
+	return w.coordination.sizeEstimate.size() +
+		uint64(w.dataBlockBuf.dataBlock.EstimatedSize()) +
+		w.indexBlock.estimatedSize()
+}
+
+// Metadata returns the metadata for the finished sstable. Only valid to call
+// after the sstable has been finished.
+func (w *RawWriter) Metadata() (*WriterMetadata, error) {
+	if !w.layout.IsFinished() {
+		return nil, errors.New("pebble: writer is not closed")
+	}
+	return &w.meta, nil
+}
+
+// WriterOption provide an interface to do work on Writer while it is being
+// opened.
+type WriterOption interface {
+	// writerApply is called on the writer during opening in order to set
+	// internal parameters.
+	writerApply(*RawWriter)
+}
+
+// NewRawWriter returns a new table writer for the file. Closing the writer will
+// close the file.
+func NewRawWriter(
+	writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption,
+) *RawWriter {
+	o = o.ensureDefaults()
+	w := &RawWriter{
+		layout: makeLayoutWriter(writable, o),
+		meta: WriterMetadata{
+			SmallestSeqNum: math.MaxUint64,
+		},
+		dataBlockOptions: flushDecisionOptions{
+			blockSize:               o.BlockSize,
+			blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
+			sizeClassAwareThreshold: (o.BlockSize*o.SizeClassAwareThreshold + 99) / 100,
+		},
+		indexBlockOptions: flushDecisionOptions{
+			blockSize:               o.IndexBlockSize,
+			blockSizeThreshold:      (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
+			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
+		},
+		compare:               o.Comparer.Compare,
+		split:                 o.Comparer.Split,
+		formatKey:             o.Comparer.FormatKey,
+		compression:           o.Compression,
+		separator:             o.Comparer.Separator,
+		successor:             o.Comparer.Successor,
+		tableFormat:           o.TableFormat,
+		isStrictObsolete:      o.IsStrictObsolete,
+		writingToLowestLevel:  o.WritingToLowestLevel,
+		restartInterval:       o.BlockRestartInterval,
+		checksumType:          o.Checksum,
+		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
+		indexBlock:            newIndexBlockBuf(o.Parallelism),
+		rangeDelBlock:         rowblk.Writer{RestartInterval: 1},
+		rangeKeyBlock:         rowblk.Writer{RestartInterval: 1},
+		topLevelIndexBlock:    rowblk.Writer{RestartInterval: 1},
+		allocatorSizeClasses:  o.AllocatorSizeClasses,
+	}
+	if w.tableFormat >= TableFormatPebblev3 {
+		w.shortAttributeExtractor = o.ShortAttributeExtractor
+		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
+		if !o.DisableValueBlocks {
+			w.valueBlockWriter = newValueBlockWriter(
+				w.dataBlockOptions.blockSize, w.dataBlockOptions.blockSizeThreshold, w.compression, w.checksumType, func(compressedSize int) {
+					w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
+				})
+		}
+	}
+
+	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
+
+	w.blockBuf = blockBuf{
+		checksummer: block.Checksummer{Type: o.Checksum},
+	}
+
+	w.coordination.init(o.Parallelism, w)
+
+	if writable == nil {
+		w.err = errors.New("pebble: nil writable")
+		return w
+	}
+
+	// Note that WriterOptions are applied in two places; the ones with a
+	// preApply() method are applied here. The rest are applied down below after
+	// default properties are set.
+	type preApply interface{ preApply() }
+	for _, opt := range extraOpts {
+		if _, ok := opt.(preApply); ok {
+			opt.writerApply(w)
+		}
+	}
+
+	if o.FilterPolicy != nil {
+		switch o.FilterType {
+		case TableFilter:
+			w.filter = newTableFilterWriter(o.FilterPolicy)
+		default:
+			panic(fmt.Sprintf("unknown filter type: %v", o.FilterType))
+		}
+	}
+
+	w.props.ComparerName = o.Comparer.Name
+	w.props.CompressionName = o.Compression.String()
+	w.props.MergerName = o.MergerName
+	w.props.PropertyCollectorNames = "[]"
+
+	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
+	if w.tableFormat >= TableFormatPebblev4 {
+		numBlockPropertyCollectors++
+	}
+
+	if numBlockPropertyCollectors > 0 {
+		if numBlockPropertyCollectors > maxPropertyCollectors {
+			w.err = errors.New("pebble: too many block property collectors")
+			return w
+		}
+		w.blockPropCollectors = make([]BlockPropertyCollector, 0, numBlockPropertyCollectors)
+		for _, constructFn := range o.BlockPropertyCollectors {
+			w.blockPropCollectors = append(w.blockPropCollectors, constructFn())
+		}
+		if w.tableFormat >= TableFormatPebblev4 {
+			w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+		}
+
+		var buf bytes.Buffer
+		buf.WriteString("[")
+		for i := range w.blockPropCollectors {
+			if i > 0 {
+				buf.WriteString(",")
+			}
+			buf.WriteString(w.blockPropCollectors[i].Name())
+		}
+		buf.WriteString("]")
+		w.props.PropertyCollectorNames = buf.String()
+	}
+
+	// Apply the remaining WriterOptions that do not have a preApply() method.
+	for _, opt := range extraOpts {
+		if _, ok := opt.(preApply); ok {
+			continue
+		}
+		opt.writerApply(w)
+	}
+
+	// Initialize the range key fragmenter and encoder.
+	w.rangeKeyEncoder.Emit = w.addRangeKey
+	return w
+}
+
+// SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
+// be used internally by Pebble.
+func (w *RawWriter) SetSnapshotPinnedProperties(
+	pinnedKeyCount, pinnedKeySize, pinnedValueSize uint64,
+) {
+	w.props.SnapshotPinnedKeys = pinnedKeyCount
+	w.props.SnapshotPinnedKeySize = pinnedKeySize
+	w.props.SnapshotPinnedValueSize = pinnedValueSize
+}

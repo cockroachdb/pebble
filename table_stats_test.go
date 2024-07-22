@@ -202,7 +202,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: sstable.TableFormatMax,
 			})
 			m = &fileMetadata{}

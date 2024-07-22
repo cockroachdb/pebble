@@ -2654,7 +2654,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 // compaction or flush.
 func (d *DB) newCompactionOutput(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
-) (objstorage.ObjectMetadata, *sstable.Writer, CPUWorkHandle, error) {
+) (objstorage.ObjectMetadata, *sstable.RawWriter, CPUWorkHandle, error) {
 	d.mu.Lock()
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
 	d.mu.Unlock()
@@ -2728,7 +2728,7 @@ func (d *DB) newCompactionOutput(
 		d.opts.Experimental.MaxWriterConcurrency > 0 &&
 			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
-	tw := sstable.NewWriter(writable, writerOpts)
+	tw := sstable.NewRawWriter(writable, writerOpts)
 	return objMeta, tw, cpuWorkHandle, nil
 }
 

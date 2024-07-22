@@ -221,7 +221,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+				w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
@@ -339,9 +339,9 @@ func buildMergingIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*sstable.Writer, len(files))
+	writers := make([]*sstable.RawWriter, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
+		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -542,7 +542,7 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 
 	const targetL6FirstFileSize = 2 << 20
-	writers := make([][]*sstable.Writer, levelCount)
+	writers := make([][]*sstable.RawWriter, levelCount)
 	// A policy unlikely to have false positives.
 	filterPolicy := bloom.FilterPolicy(100)
 	for i := range files {
@@ -572,7 +572,7 @@ func buildLevelsForMergingIterSeqSeek(
 					writerOptions.IndexBlockSize = 1
 				}
 			}
-			writers[i] = append(writers[i], sstable.NewWriter(objstorageprovider.NewFileWritable(files[i][j]), writerOptions))
+			writers[i] = append(writers[i], sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i][j]), writerOptions))
 		}
 	}
 

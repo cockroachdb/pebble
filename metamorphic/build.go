@@ -96,7 +96,7 @@ func writeSSTForIngestion(
 		if err != nil {
 			return nil, err
 		}
-		if err := w.Add(k.K, valBytes); err != nil {
+		if err := w.Raw().Add(k.K, valBytes); err != nil {
 			return nil, err
 		}
 	}
@@ -142,7 +142,7 @@ func writeSSTForIngestion(
 				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
 			}
 			keyspan.SortKeysByTrailer(&collapsed.Keys)
-			if err := w.EncodeSpan(&collapsed); err != nil {
+			if err := w.Raw().EncodeSpan(&collapsed); err != nil {
 				return nil, err
 			}
 		}
@@ -156,7 +156,7 @@ func writeSSTForIngestion(
 	if err := w.Close(); err != nil {
 		return nil, err
 	}
-	sstMeta, err := w.Metadata()
+	sstMeta, err := w.Raw().Metadata()
 	if err != nil {
 		return nil, err
 	}

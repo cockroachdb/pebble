@@ -121,7 +121,7 @@ func TestSplitAndEncodeSpan(t *testing.T) {
 			}
 
 			obj := &objstorage.MemObj{}
-			tw := sstable.NewWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatMax})
+			tw := sstable.NewRawWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatMax})
 			require.NoError(t, SplitAndEncodeSpan(base.DefaultComparer.Compare, &span, upToKey, tw))
 			require.NoError(t, tw.Close())
 			_, rangeDels, rangeKeys := sstable.ReadAll(obj)

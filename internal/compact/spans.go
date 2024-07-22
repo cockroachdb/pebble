@@ -182,7 +182,7 @@ func (c *RangeKeySpanCompactor) elideInLastStripe(
 //
 // The span can contain either only RANGEDEL keys or only range keys.
 func SplitAndEncodeSpan(
-	cmp base.Compare, span *keyspan.Span, upToKey []byte, tw *sstable.Writer,
+	cmp base.Compare, span *keyspan.Span, upToKey []byte, tw *sstable.RawWriter,
 ) error {
 	if span.Empty() {
 		return nil

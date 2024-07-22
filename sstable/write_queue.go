@@ -39,7 +39,7 @@ func (task *writeTask) clear() {
 type writeQueue struct {
 	tasks  chan *writeTask
 	wg     sync.WaitGroup
-	writer *Writer
+	writer *RawWriter
 
 	// err represents an error which is encountered when the write queue attempts
 	// to write a block to disk. The error is stored here to skip unnecessary block
@@ -48,7 +48,7 @@ type writeQueue struct {
 	closed bool
 }
 
-func newWriteQueue(size int, writer *Writer) *writeQueue {
+func newWriteQueue(size int, writer *RawWriter) *writeQueue {
 	w := &writeQueue{}
 	w.tasks = make(chan *writeTask, size)
 	w.writer = writer

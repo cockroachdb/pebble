@@ -427,7 +427,7 @@ func TestScanInternal(t *testing.T) {
 						}
 						keyspan.SortKeysByTrailer(&keys)
 						newSpan := &keyspan.Span{Start: span.Start, End: span.End, Keys: keys}
-						require.NoError(t, w.EncodeSpan(newSpan))
+						require.NoError(t, w.Raw().EncodeSpan(newSpan))
 					}
 					require.NoError(t, err)
 				}
@@ -438,7 +438,7 @@ func TestScanInternal(t *testing.T) {
 					var err error
 					value, _, err = kv.Value(value)
 					require.NoError(t, err)
-					require.NoError(t, w.Add(kv.K, value))
+					require.NoError(t, w.Raw().Add(kv.K, value))
 				}
 				points.Close()
 				require.NoError(t, w.Close())

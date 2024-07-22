@@ -517,7 +517,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 	w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 	// Directly testing this, because it's difficult to get the Writer to
 	// encounter an error, precisely when the writeQueue is doing block writes.
-	w.coordination.writeQueue.err = errors.New("write queue write error")
+	w.rw.coordination.writeQueue.err = errors.New("write queue write error")
 	w.Set(ikey("a").UserKey, nil)
 	w.Set(ikey("b").UserKey, nil)
 	err = w.Close()
@@ -831,7 +831,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
-			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
+			w := NewRawWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
 				BlockSize: 1,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
@@ -967,7 +967,7 @@ func TestWriterRace(t *testing.T) {
 			}
 			defer wg.Done()
 			f := &objstorage.MemObj{}
-			w := NewWriter(f, opts)
+			w := NewRawWriter(f, opts)
 			for ki := 0; ki < len(keys); ki++ {
 				require.NoError(
 					t,

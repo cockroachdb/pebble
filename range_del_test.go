@@ -597,7 +597,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 	if err != nil {
 		b.Fatal(err)
 	}
-	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 		BlockSize: 32 << 10, // 32 KB
 	})
 	for i := 0; i < entries; i++ {
