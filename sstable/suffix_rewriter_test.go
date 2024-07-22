@@ -154,7 +154,7 @@ func make4bSuffixTestSST(
 		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
 		binary.BigEndian.PutUint64(key[8:16], 456)
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
-		err := w.AddWithForceObsolete(
+		err := w.Raw().AddWithForceObsolete(
 			base.MakeInternalKey(key, 0, InternalKeyKindSet), key, false)
 		if err != nil {
 			t.Fatal(err)

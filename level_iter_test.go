@@ -221,7 +221,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		}
 	}
 	fp := bloom.FilterPolicy(10)
-	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{
+	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
 		TableFormat:  tableFormat,
@@ -508,9 +508,9 @@ func buildLevelIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*sstable.Writer, len(files))
+	writers := make([]*sstable.RawWriter, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
+		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,

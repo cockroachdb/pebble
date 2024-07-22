@@ -380,7 +380,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 	alloc = nil
 
 	valueBuf := make([]byte, cfg.maxValLen)
-	w := NewWriter(objstorageprovider.NewFileWritable(f), *cfg.wopts)
+	w := NewRawWriter(objstorageprovider.NewFileWritable(f), *cfg.wopts)
 	for i := 0; i < len(keys); i++ {
 		var value []byte
 		switch keys[i].Kind() {

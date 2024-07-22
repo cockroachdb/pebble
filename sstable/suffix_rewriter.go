@@ -93,7 +93,7 @@ func rewriteKeySuffixesInBlocks(
 
 	tableFormat := r.tableFormat
 	o.TableFormat = tableFormat
-	w := NewWriter(out, o)
+	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
 			w.Close()
@@ -256,7 +256,7 @@ func rewriteBlocks(
 	return nil
 }
 
-func checkWriterFilterMatchesReader(r *Reader, w *Writer) error {
+func checkWriterFilterMatchesReader(r *Reader, w *RawWriter) error {
 	if r.Properties.FilterPolicyName != w.filter.policyName() {
 		return errors.New("mismatched filters")
 	}
@@ -268,7 +268,7 @@ func checkWriterFilterMatchesReader(r *Reader, w *Writer) error {
 
 func rewriteDataBlocksToWriter(
 	r *Reader,
-	w *Writer,
+	w *RawWriter,
 	data []BlockHandleWithProperties,
 	from, to []byte,
 	split Split,
@@ -389,7 +389,7 @@ func rewriteDataBlocksToWriter(
 	return nil
 }
 
-func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
+func rewriteRangeKeyBlockToWriter(r *Reader, w *RawWriter, from, to []byte) error {
 	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms)
 	if err != nil {
 		return err
@@ -451,7 +451,7 @@ func RewriteKeySuffixesViaWriter(
 	}
 
 	o.IsStrictObsolete = false
-	w := NewWriter(out, o)
+	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
 			w.Close()
