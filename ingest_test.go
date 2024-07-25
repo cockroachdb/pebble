@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -427,12 +428,14 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		closed     = false
 		blockFlush = false
 	)
+	cache := NewCache(0)
 	defer func() {
 		if !closed {
 			require.NoError(t, d.Close())
 		}
+		cache.Unref()
 	}()
-
+	var fsLog bytes.Buffer
 	reset := func(strictMem bool) {
 		if d != nil && !closed {
 			require.NoError(t, d.Close())
@@ -447,7 +450,10 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts = (&Options{
-			FS:                          mem,
+			FS: vfs.WithLogging(mem, func(format string, args ...interface{}) {
+				fmt.Fprintf(&fsLog, format+"\n", args...)
+			}),
+			Cache:                       cache,
 			MemTableStopWritesThreshold: 4,
 			L0CompactionThreshold:       100,
 			L0StopWritesThreshold:       100,
@@ -455,6 +461,14 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			FormatMajorVersion:          internalFormatNewest,
 			Logger:                      testLogger{t},
 		}).WithFSDefaults()
+		if testing.Verbose() {
+			lel := MakeLoggingEventListener(DefaultLogger)
+			opts.EventListener = &lel
+		}
+		opts.EnsureDefaults()
+		// Some of the tests require bloom filters.
+		opts.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
+
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
@@ -476,7 +490,14 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 	}
 	reset(false)
 
-	datadriven.RunTest(t, "testdata/flushable_ingest", func(t *testing.T, td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/flushable_ingest", func(t *testing.T, td *datadriven.TestData) (result string) {
+		if td.HasArg("with-fs-logging") {
+			fsLog.Reset()
+			defer func() {
+				result = fsLog.String() + result
+			}()
+		}
+
 		switch td.Cmd {
 		case "reset":
 			reset(td.HasArg("strictMem"))

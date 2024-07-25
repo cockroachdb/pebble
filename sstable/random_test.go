@@ -96,11 +96,15 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 	// point keys only. Should we add variants of this test that run random
 	// operations on the range deletion and range key iterators?
 	var stats base.InternalIteratorStats
+	filterBlockSizeLimit := AlwaysUseFilterBlock
+	if rng.Intn(2) == 1 {
+		filterBlockSizeLimit = NeverUseFilterBlock
+	}
 	it, err := r.NewIterWithBlockPropertyFilters(
 		NoTransforms,
 		nil /* lower TODO */, nil, /* upper TODO */
 		filterer,
-		rng.Intn(2) == 1, /* use filter block */
+		filterBlockSizeLimit,
 		&stats,
 		CategoryAndQoS{},
 		nil, /* CategoryStatsCollector */
