@@ -592,7 +592,7 @@ func (c *tableCacheShard) newPointIter(
 			transforms, categoryAndQoS, dbOpts.sstStatsCollector, rp,
 			internalOpts.bufferPool)
 	} else {
-		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
+		iter, err = cr.NewPointIter(
 			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter,
 			internalOpts.stats, categoryAndQoS, dbOpts.sstStatsCollector, rp)
 	}

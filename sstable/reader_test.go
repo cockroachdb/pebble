@@ -448,7 +448,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 
 			transforms := IterTransforms{SyntheticSuffix: syntheticSuffix}
-			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
+			iter, err := v.NewPointIter(
 				context.Background(), transforms, lower, upper, filterer, false,
 				&stats, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r))
 			if err != nil {
@@ -809,7 +809,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 						return "table does not intersect BlockPropertyFilter"
 					}
 				}
-				iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
+				iter, err := r.NewPointIter(
 					context.Background(),
 					transforms,
 					nil, /* lower */
@@ -1305,7 +1305,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 		}
 		eReader, err := newReader(f, opts)
 		require.NoError(t, err)
-		iter, err := eReader.newIterWithBlockPropertyFiltersAndContext(
+		iter, err := eReader.newPointIter(
 			context.Background(),
 			block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
 			nil, nil, nil,
@@ -2430,7 +2430,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 									}
 								}
 								transforms := IterTransforms{HideObsoletePoints: hideObsoletePoints}
-								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
+								iter, err := r.NewPointIter(
 									context.Background(), transforms, nil, nil, filterer,
 									true, nil, CategoryAndQoS{}, nil,
 									MakeTrivialReaderProvider(r))

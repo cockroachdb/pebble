@@ -24,7 +24,7 @@ type CommonReader interface {
 		ctx context.Context, transforms FragmentIterTransforms,
 	) (keyspan.FragmentIterator, error)
 
-	NewIterWithBlockPropertyFiltersAndContextEtc(
+	NewPointIter(
 		ctx context.Context,
 		transforms IterTransforms,
 		lower, upper []byte,

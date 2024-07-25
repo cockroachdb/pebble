@@ -101,11 +101,16 @@ func (v *VirtualReader) NewCompactionIter(
 		transforms, categoryAndQoS, statsCollector, rp, &v.vState, bufferPool)
 }
 
-// NewIterWithBlockPropertyFiltersAndContextEtc wraps
-// Reader.NewIterWithBlockPropertyFiltersAndContext. We assume that the passed
-// in [lower, upper) bounds will have at least some overlap with the virtual
-// sstable bounds. No overlap is not currently supported in the iterator.
-func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
+// NewPointIter returns an iterator for the point keys in the table.
+//
+// If transform.HideObsoletePoints is set, the callee assumes that filterer
+// already includes obsoleteKeyBlockPropertyFilter. The caller can satisfy this
+// contract by first calling TryAddBlockPropertyFilterForHideObsoletePoints.
+//
+// We assume that the [lower, upper) bounds (if specified) will have at least
+// some overlap with the virtual sstable bounds. No overlap is not currently
+// supported in the iterator.
+func (v *VirtualReader) NewPointIter(
 	ctx context.Context,
 	transforms IterTransforms,
 	lower, upper []byte,
@@ -116,7 +121,7 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
-	return v.reader.newIterWithBlockPropertyFiltersAndContext(
+	return v.reader.newPointIter(
 		ctx, transforms, lower, upper, filterer, useFilterBlock,
 		stats, categoryAndQoS, statsCollector, rp, &v.vState)
 }

@@ -92,11 +92,11 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		}, nil, nil)
 	}
 
-	// TOOD(jackson): NewIterWithBlockPropertyFiltersAndContextEtc returns an
+	// TOOD(jackson): NewPointIter returns an
 	// iterator over point keys only. Should we add variants of this test that run
 	// random operations on the range deletion and range key iterators?
 	var stats base.InternalIteratorStats
-	it, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
+	it, err := r.NewPointIter(
 		context.Background(),
 		NoTransforms,
 		nil /* lower TODO */, nil, /* upper TODO */
