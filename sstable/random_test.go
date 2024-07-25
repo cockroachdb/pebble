@@ -104,7 +104,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		&stats,
 		CategoryAndQoS{},
 		nil, /* CategoryStatsCollector */
-		TrivialReaderProvider{r},
+		MakeTrivialReaderProvider(r),
 	)
 	require.NoError(t, err)
 	defer it.Close()

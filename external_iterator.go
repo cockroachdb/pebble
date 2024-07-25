@@ -162,7 +162,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
 				false, /* useFilterBlock */
 				&it.stats.InternalStats, it.opts.CategoryAndQoS, nil,
-				sstable.TrivialReaderProvider{Reader: r})
+				sstable.MakeTrivialReaderProvider(r))
 			if err != nil {
 				return nil, err
 			}

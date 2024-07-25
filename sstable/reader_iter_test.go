@@ -63,7 +63,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				&stats,
 				CategoryAndQoS{},
 				nil, /* statsCollector */
-				TrivialReaderProvider{Reader: r},
+				MakeTrivialReaderProvider(r),
 				&pool,
 			)
 			require.Error(t, err)
@@ -78,7 +78,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				&stats,
 				CategoryAndQoS{},
 				nil, /* statsCollector */
-				TrivialReaderProvider{Reader: r},
+				MakeTrivialReaderProvider(r),
 				&pool,
 			)
 			require.Error(t, err)
