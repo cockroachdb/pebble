@@ -214,12 +214,8 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	if o != nil {
 		opts = *o
 	}
-	// TODO(bananabrick): The manifest.Level in newLevelIter is only used for
-	// logging. Update the manifest.Level encoding to account for levels which
-	// aren't truly levels in the lsm. Right now, the encoding only supports
-	// L0 sublevels, and the rest of the levels in the lsm.
 	return newLevelIter(
-		context.Background(), opts, s.comparer, s.newIters, s.slice.Iter(), manifest.Level(0),
+		context.Background(), opts, s.comparer, s.newIters, s.slice.Iter(), manifest.FlushableIngestLevel(),
 		internalIterOpts{},
 	)
 }
@@ -251,7 +247,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 	return keyspanimpl.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare,
-		s.constructRangeDelIter, s.slice.Iter(), manifest.Level(0),
+		s.constructRangeDelIter, s.slice.Iter(), manifest.FlushableIngestLevel(),
 		manifest.KeyTypePoint,
 	)
 }
@@ -264,7 +260,7 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 
 	return keyspanimpl.NewLevelIter(
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
-		s.slice.Iter(), manifest.Level(0), manifest.KeyTypeRange,
+		s.slice.Iter(), manifest.FlushableIngestLevel(), manifest.KeyTypeRange,
 	)
 }
 
