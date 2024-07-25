@@ -55,9 +55,8 @@ scan-range-key
 ----
 a-d:{(#11,RANGEKEYSET,@10,foo)}
 
-# Test iterators with various bounds, and various operations. This calls
-# VirtualReader.NewIterWithBlockPropertyFilters and performs various operations
-# on those.
+# Test iterators with various bounds, and various operations. This creates a new
+# iterator using the virtual reader and performs various operations on those.
 build
 a.SET.1:a
 b.SET.2:b
