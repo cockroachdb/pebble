@@ -439,7 +439,7 @@ func TestVirtualReader(t *testing.T) {
 
 			var stats base.InternalIteratorStats
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
-				context.Background(), lower, upper, nil, false, false,
+				context.Background(), lower, upper, nil, false, NeverUseFilterBlock,
 				&stats, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -826,7 +826,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					nil, /* upper */
 					filterer,
 					hideObsoletePoints,
-					true, /* use filter block */
+					AlwaysUseFilterBlock,
 					&stats,
 					TrivialReaderProvider{Reader: r},
 				)
@@ -2070,7 +2070,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								}
 								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
 									context.Background(), nil, nil, filterer, hideObsoletePoints,
-									true, nil, TrivialReaderProvider{Reader: r})
+									AlwaysUseFilterBlock, nil, TrivialReaderProvider{Reader: r})
 								require.NoError(b, err)
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {

@@ -216,7 +216,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 			// BlockPropertiesFilterer that includes obsoleteKeyBlockPropertyFilter.
 			pointIter, err = r.NewIterWithBlockPropertyFiltersAndContextEtc(
 				ctx, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
-				false /* hideObsoletePoints */, false, /* useFilterBlock */
+				false /* hideObsoletePoints */, sstable.NeverUseFilterBlock,
 				&it.stats.InternalStats, sstable.TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return nil, err

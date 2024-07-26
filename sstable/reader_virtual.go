@@ -92,12 +92,13 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints, useFilterBlock bool,
+	hideObsoletePoints bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newIterWithBlockPropertyFiltersAndContext(
-		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, rp, &v.vState,
+		ctx, lower, upper, filterer, hideObsoletePoints, filterBlockSizeLimit, stats, rp, &v.vState,
 	)
 }
 

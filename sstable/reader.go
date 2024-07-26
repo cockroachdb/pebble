@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -185,7 +186,8 @@ type CommonReader interface {
 	NewIterWithBlockPropertyFiltersAndContextEtc(
 		ctx context.Context, lower, upper []byte,
 		filterer *BlockPropertiesFilterer,
-		hideObsoletePoints, useFilterBlock bool,
+		hideObsoletePoints bool,
+		filterBlockSizeLimit FilterBlockSizeLimit,
 		stats *base.InternalIteratorStats,
 		rp ReaderProvider,
 	) (Iterator, error)
@@ -197,6 +199,18 @@ type CommonReader interface {
 	EstimateDiskUsage(start, end []byte) (uint64, error)
 	CommonProperties() *CommonProperties
 }
+
+// FilterBlockSizeLimit is a size limit for bloom filter blocks - if a bloom
+// filter is present, it is used only when it is at most this size.
+type FilterBlockSizeLimit uint32
+
+const (
+	// NeverUseFilterBlock indicates that bloom filter blocks should never be used.
+	NeverUseFilterBlock FilterBlockSizeLimit = 0
+	// AlwaysUseFilterBlock indicates that bloom filter blocks should always be
+	// used, regardless of size.
+	AlwaysUseFilterBlock FilterBlockSizeLimit = math.MaxUint32
+)
 
 // Reader is a table reader.
 type Reader struct {
@@ -258,13 +272,13 @@ func (r *Reader) Close() error {
 func (r *Reader) NewIterWithBlockPropertyFilters(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
 		context.Background(),
-		lower, upper, filterer, false, useFilterBlock, stats, rp, nil,
+		lower, upper, filterer, false, filterBlockSizeLimit, stats, rp, nil,
 	)
 }
 
@@ -279,12 +293,13 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	hideObsoletePoints, useFilterBlock bool,
+	hideObsoletePoints bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		ctx, lower, upper, filterer, hideObsoletePoints, useFilterBlock, stats, rp, nil,
+		ctx, lower, upper, filterer, hideObsoletePoints, filterBlockSizeLimit, stats, rp, nil,
 	)
 }
 
@@ -309,7 +324,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	hideObsoletePoints bool,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 	v *virtualState,
@@ -319,7 +334,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp, nil /* bufferPool */)
+		err := i.init(ctx, r, v, lower, upper, filterer, filterBlockSizeLimit, hideObsoletePoints, stats, rp, nil /* bufferPool */)
 		if err != nil {
 			return nil, err
 		}
@@ -327,7 +342,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, v, lower, upper, filterer, useFilterBlock, hideObsoletePoints, stats, rp, nil /* bufferPool */)
+	err := i.init(ctx, r, v, lower, upper, filterer, filterBlockSizeLimit, hideObsoletePoints, stats, rp, nil /* bufferPool */)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +355,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 // returned from the iter.
 func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFilters(
-		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
+		lower, upper, nil, AlwaysUseFilterBlock, nil, /* stats */
 		TrivialReaderProvider{Reader: r})
 }
 
@@ -361,7 +376,7 @@ func (r *Reader) newCompactionIter(
 		err := i.init(
 			context.Background(),
 			r, v, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
+			NeverUseFilterBlock, v != nil && v.isForeign, /* hideObsoletePoints */
 			nil /* stats */, rp, bufferPool,
 		)
 		if err != nil {
@@ -376,7 +391,7 @@ func (r *Reader) newCompactionIter(
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
 		context.Background(), r, v, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, v != nil && v.isForeign, /* hideObsoletePoints */
+		nil, NeverUseFilterBlock, v != nil && v.isForeign, /* hideObsoletePoints */
 		nil /* stats */, rp, bufferPool,
 	)
 	if err != nil {
