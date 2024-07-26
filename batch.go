@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -1686,7 +1687,16 @@ func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 }
 
 func (i *batchIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	return i.SeekGE(key, flags)
+	kv := i.SeekGE(key, flags)
+	if kv == nil {
+		return nil
+	}
+	// If the key doesn't have the sought prefix, return nil.
+	if !bytes.Equal(i.batch.comparer.Split.Prefix(kv.K.UserKey), prefix) {
+		i.kv = base.InternalKV{}
+		return nil
+	}
+	return kv
 }
 
 func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
@@ -2160,7 +2170,15 @@ func (i *flushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.In
 func (i *flushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	return i.SeekGE(key, flags)
+	kv := i.SeekGE(key, flags)
+	if kv == nil {
+		return nil
+	}
+	// If the key doesn't have the sought prefix, return nil.
+	if !bytes.Equal(i.batch.comparer.Split.Prefix(kv.K.UserKey), prefix) {
+		return nil
+	}
+	return kv
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble

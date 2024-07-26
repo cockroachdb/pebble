@@ -192,6 +192,16 @@ func TestIterHistories(t *testing.T) {
 					return err.Error()
 				}
 				return ""
+			case "disable-flushes":
+				d.mu.Lock()
+				d.mu.compact.flushing = true
+				d.mu.Unlock()
+				return ""
+			case "enable-flushes":
+				d.mu.Lock()
+				d.mu.compact.flushing = false
+				d.mu.Unlock()
+				return ""
 			case "get":
 				var reader Reader = d
 				if arg, ok := td.Arg("reader"); ok {

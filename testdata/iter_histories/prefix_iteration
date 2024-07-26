@@ -382,3 +382,76 @@ stats
 ----
 .
 stats: seeked 1 times (1 internal); stepped 0 times (0 internal)
+
+# Test that a prefix seek through a batch iterator that enforces the prefix
+# strictly.
+
+reset
+----
+
+batch name=foo
+set b@1 b@1
+set d@9 d@9
+set g@4 g@4
+set e@2 e@2
+----
+wrote 4 keys to batch "foo"
+
+# The stats should indicate only 3 KVs were ever surfaced to the merging iterator.
+
+combined-iter reader=foo name=fooiter
+seek-prefix-ge b@10
+seek-prefix-ge c@10
+seek-prefix-ge d@10
+seek-prefix-ge g@2
+seek-prefix-ge e@2
+stats
+----
+b@1: (b@1, .)
+.
+d@9: (d@9, .)
+.
+e@2: (e@2, .)
+stats: seeked 5 times (5 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 3 (9B keys, 9B values)
+
+# Test the above case but with a large committed batch (which should be a
+# flushableBatchIter).
+
+define memtable-size=65536
+----
+
+# We diable flushes to avoid scheduling a flush that might race with our
+# iterator. If the iterator observed the state after the large batch has been
+# flushed to sstables, we would see nonzero block bytes appear in the iterator
+# stats.
+disable-flushes
+----
+
+batch commit
+set b@1 <rand-bytes=10000>
+set d@9 <rand-bytes=10000>
+set g@4 <rand-bytes=10000>
+set e@2 <rand-bytes=10000>
+----
+committed 4 keys
+
+lsm
+----
+
+combined-iter
+seek-prefix-ge b@10
+seek-prefix-ge c@10
+seek-prefix-ge d@10
+seek-prefix-ge g@2
+seek-prefix-ge e@2
+stats
+----
+b@1: ([LARGE VALUE len=10000], .)
+.
+d@9: ([LARGE VALUE len=10000], .)
+.
+e@2: ([LARGE VALUE len=10000], .)
+stats: seeked 5 times (5 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 3 (9B keys, 29KB values)
+
+enable-flushes
+----
