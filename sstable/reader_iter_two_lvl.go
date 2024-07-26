@@ -144,7 +144,7 @@ func (i *twoLevelIterator) init(
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -172,7 +172,7 @@ func (i *twoLevelIterator) init(
 	i.lower = lower
 	i.upper = upper
 	i.bpfs = filterer
-	i.useFilter = useFilter
+	i.filterBlockSizeLimit = filterBlockSizeLimit
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
@@ -377,11 +377,11 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	err := i.err
 	i.err = nil // clear cached iteration error
 
+	useFilter := shouldUseFilterBlock(i.reader, i.filterBlockSizeLimit)
 	// The twoLevelIterator could be already exhausted. Utilize that when
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
 	// bounds-exhausted near the top of the file.
-	filterUsedAndDidNotMatch :=
-		i.reader.tableFilter != nil && i.useFilter && !i.lastBloomFilterMatched
+	filterUsedAndDidNotMatch := useFilter && !i.lastBloomFilterMatched
 	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
 		(i.exhaustedBounds == +1 || (i.data.IsDataInvalidated() && i.index.IsDataInvalidated())) &&
 		err == nil {
@@ -390,7 +390,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	}
 
 	// Check prefix bloom filter.
-	if i.reader.tableFilter != nil && i.useFilter {
+	if useFilter {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
 			flags = flags.DisableTrySeekUsingNext()
@@ -515,7 +515,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 	if !dontSeekWithinSingleLevelIter {
 		if ikv := i.singleLevelIterator.seekPrefixGE(
-			prefix, key, flags, false /* checkFilter */); ikv != nil {
+			prefix, key, flags, NeverUseFilterBlock); ikv != nil {
 			return ikv
 		}
 	}
