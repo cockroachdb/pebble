@@ -12,7 +12,7 @@ require (
 	github.com/cockroachdb/swiss v0.0.0-20240612210725-f4de07ae6964
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
-	github.com/golang/snappy v0.0.4
+	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e
 	github.com/guptarohit/asciigraph v0.5.5
 	github.com/klauspost/compress v1.16.7
 	github.com/kr/pretty v0.3.1
