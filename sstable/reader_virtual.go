@@ -110,14 +110,14 @@ func (v *VirtualReader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newIterWithBlockPropertyFiltersAndContext(
-		ctx, transforms, lower, upper, filterer, useFilterBlock,
+		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,
 		stats, categoryAndQoS, statsCollector, rp, &v.vState)
 }
 
