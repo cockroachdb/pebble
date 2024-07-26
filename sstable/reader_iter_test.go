@@ -59,7 +59,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				nil, /* v */
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
-				nil /* filterer */, false, /* useFilter */
+				nil /* filterer */, NeverUseFilterBlock,
 				&stats,
 				CategoryAndQoS{},
 				nil, /* statsCollector */
@@ -74,7 +74,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				nil, /* v */
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
-				nil /* filterer */, false, /* useFilter */
+				nil /* filterer */, NeverUseFilterBlock,
 				&stats,
 				CategoryAndQoS{},
 				nil, /* statsCollector */

@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"context"
+	"math"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -29,7 +30,7 @@ type CommonReader interface {
 		transforms IterTransforms,
 		lower, upper []byte,
 		filterer *BlockPropertiesFilterer,
-		useFilterBlock bool,
+		filterBlockSizeLimit FilterBlockSizeLimit,
 		stats *base.InternalIteratorStats,
 		categoryAndQoS CategoryAndQoS,
 		statsCollector *CategoryStatsCollector,
@@ -48,6 +49,18 @@ type CommonReader interface {
 
 	CommonProperties() *CommonProperties
 }
+
+// FilterBlockSizeLimit is a size limit for bloom filter blocks - if a bloom
+// filter is present, it is used only when it is at most this size.
+type FilterBlockSizeLimit uint32
+
+const (
+	// NeverUseFilterBlock indicates that bloom filter blocks should never be used.
+	NeverUseFilterBlock FilterBlockSizeLimit = 0
+	// AlwaysUseFilterBlock indicates that bloom filter blocks should always be
+	// used, regardless of size.
+	AlwaysUseFilterBlock FilterBlockSizeLimit = math.MaxUint32
+)
 
 type (
 	// BufferPool re-exports block.BufferPool.
