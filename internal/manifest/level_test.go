@@ -5,7 +5,6 @@
 package manifest
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,51 +12,27 @@ import (
 
 func TestLevel(t *testing.T) {
 	testCases := []struct {
-		level    int
+		level    Level
 		expected string
 	}{
-		{0, "L0"},
-		{1, "L1"},
-		{2, "L2"},
-		{3, "L3"},
-		{4, "L4"},
-		{5, "L5"},
-		{6, "L6"},
-		{7, "L7"},
+		{Level(0), "L0"},
+		{Level(1), "L1"},
+		{Level(2), "L2"},
+		{Level(3), "L3"},
+		{Level(4), "L4"},
+		{Level(5), "L5"},
+		{Level(6), "L6"},
+
+		{L0Sublevel(0), "L0.0"},
+		{L0Sublevel(1), "L0.1"},
+		{L0Sublevel(2), "L0.2"},
+
+		{FlushableIngestLevel(), "flushable-ingest"},
 	}
 
 	for _, c := range testCases {
-		t.Run("", func(t *testing.T) {
-			s := Level(c.level).String()
-			require.EqualValues(t, c.expected, s)
-		})
-	}
-}
-
-func TestL0Sublevel(t *testing.T) {
-	testCases := []struct {
-		level    int
-		sublevel int
-		expected string
-	}{
-		{0, 0, "L0.0"},
-		{0, 1, "L0.1"},
-		{0, 2, "L0.2"},
-		{0, 1000, "L0.1000"},
-		{0, -1, "invalid L0 sublevel: -1"},
-		{0, -2, "invalid L0 sublevel: -2"},
-	}
-
-	for _, c := range testCases {
-		t.Run("", func(t *testing.T) {
-			s := func() (result string) {
-				defer func() {
-					if r := recover(); r != nil {
-						result = fmt.Sprint(r)
-					}
-				}()
-				return L0Sublevel(c.sublevel).String()
-			}()
+		t.Run(c.expected, func(t *testing.T) {
+			s := c.level.String()
 			require.EqualValues(t, c.expected, s)
 		})
 	}

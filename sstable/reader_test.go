@@ -439,7 +439,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
-				context.Background(), transforms, lower, upper, filterer, false,
+				context.Background(), transforms, lower, upper, filterer, NeverUseFilterBlock,
 				&stats, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -808,7 +808,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					nil, /* lower */
 					nil, /* upper */
 					filterer,
-					true, /* use filter block */
+					AlwaysUseFilterBlock,
 					&stats,
 					CategoryAndQoS{},
 					nil,
@@ -1361,7 +1361,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			context.Background(),
 			IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
 			nil, nil, nil,
-			true, nil, CategoryAndQoS{}, nil,
+			AlwaysUseFilterBlock, nil, CategoryAndQoS{}, nil,
 			TrivialReaderProvider{Reader: eReader}, &virtualState{
 				lower: base.MakeInternalKey([]byte("_"), base.InternalKeySeqNumMax, base.InternalKeyKindSet),
 				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
@@ -2447,7 +2447,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								transforms := IterTransforms{HideObsoletePoints: hideObsoletePoints}
 								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
 									context.Background(), transforms, nil, nil, filterer,
-									true, nil, CategoryAndQoS{}, nil,
+									AlwaysUseFilterBlock, nil, CategoryAndQoS{}, nil,
 									TrivialReaderProvider{Reader: r})
 								require.NoError(b, err)
 								b.ResetTimer()

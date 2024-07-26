@@ -1023,7 +1023,7 @@ func TestBlockProperties(t *testing.T) {
 				return "filter excludes entire table"
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
-				NoTransforms, lower, upper, filterer, false /* useFilterBlock */, &stats,
+				NoTransforms, lower, upper, filterer, NeverUseFilterBlock, &stats,
 				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
@@ -1108,7 +1108,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				return "filter excludes entire table"
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
-				NoTransforms, lower, upper, filterer, false /* useFilterBlock */, &stats,
+				NoTransforms, lower, upper, filterer, NeverUseFilterBlock, &stats,
 				CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
