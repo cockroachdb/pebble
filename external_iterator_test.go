@@ -245,7 +245,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 
 			var iter sstable.Iterator
 			iter, err = r.NewIterWithBlockPropertyFilters(
-				nil, nil, filterer, false /* useFilterBlock */, nil, /* stats */
+				nil, nil, filterer, sstable.NeverUseFilterBlock, nil, /* stats */
 				sstable.TrivialReaderProvider{Reader: r})
 			require.NoError(t, err)
 			defer iter.Close()

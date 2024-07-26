@@ -537,6 +537,23 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
 			err = b.Set([]byte(parts[1]), []byte(parts[2]), nil)
+
+		case "set-multiple":
+			if len(parts) != 3 {
+				return errors.Errorf("%s expects 2 arguments (n and prefix)", parts[0])
+			}
+			n, err := strconv.ParseUint(parts[1], 10, 32)
+			if err != nil {
+				return err
+			}
+			for i := uint64(0); i < n; i++ {
+				key := fmt.Sprintf("%s-%05d", parts[2], i)
+				val := fmt.Sprintf("val-%05d", i)
+				if err := b.Set([]byte(key), []byte(val), nil); err != nil {
+					return err
+				}
+			}
+
 		case "del":
 			if len(parts) != 2 {
 				return errors.Errorf("%s expects 1 argument", parts[0])
