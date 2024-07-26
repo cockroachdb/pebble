@@ -528,9 +528,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.Equal(t, 1, indexCount(b.index))
 
 	b.Reset()
-	require.NotNil(t, b.cmp)
-	require.NotNil(t, b.formatKey)
-	require.NotNil(t, b.abbreviatedKey)
+	require.NotNil(t, b.comparer)
 	require.NotNil(t, b.index)
 	require.Nil(t, b.rangeDelIndex)
 	require.Nil(t, b.rangeKeyIndex)
