@@ -775,7 +775,10 @@ func (i *Iterator) sampleRead() {
 	topLevel, numOverlappingLevels := numLevels, 0
 	if mi, ok := i.iter.(*mergingIter); ok {
 		if len(mi.levels) > 1 {
-			mi.ForEachLevelIter(func(li *levelIter) bool {
+			mi.ForEachLevelIter(func(li *levelIter) (done bool) {
+				if li.level.FlushableIngestLevel() {
+					return false
+				}
 				l := manifest.LevelToInt(li.level)
 				if f := li.iterFile; f != nil {
 					var containsKey bool

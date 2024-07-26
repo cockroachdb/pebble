@@ -625,3 +625,84 @@ lsm
   000004:[a#3,SET-b#3,SET]
 0.0:
   000007:[a#1,SET-b#2,SET]
+
+close
+----
+
+reset
+----
+
+build small
+set-multiple 10 small
+----
+
+build large
+set-multiple 100000 large
+----
+
+batch
+set small-00001 before-ingest
+set large-00001 before-ingest
+----
+
+blockFlush
+----
+
+ingest small large
+----
+
+allowFlush
+----
+
+# When looking inside the small table, we will read the index block, then we
+# should read the bloom filter, followed by a data block read.
+#
+# The extra index block reads are due to inefficiencies of the iterator
+# implementations (fixed in later versions).
+iter with-fs-logging
+seek-prefix-ge small-00001
+----
+read-at(194, 37): 000004.sst
+read-at(120, 74): 000004.sst
+read-at(0, 120): 000004.sst
+read-at(194, 37): 000004.sst
+read-at(194, 37): 000004.sst
+small-00001: (val-00001, .)
+
+# When the key doesn't pass the bloom filter, we should not see the data block
+# read at offset 0.
+iter with-fs-logging
+seek-prefix-ge small-00001-does-not-exist
+----
+read-at(194, 37): 000004.sst
+read-at(120, 74): 000004.sst
+read-at(194, 37): 000004.sst
+.
+
+# When looking inside the large table, we will not read the bloom filter which
+# is large. We read the top-level index block, a second-level index block, and a
+# data block.
+iter with-fs-logging
+seek-prefix-ge large-00001
+----
+read-at(775296, 112): 000005.sst
+read-at(765608, 2235): 000005.sst
+read-at(0, 1114): 000005.sst
+read-at(775296, 112): 000005.sst
+read-at(194, 37): 000004.sst
+read-at(775296, 112): 000005.sst
+read-at(194, 37): 000004.sst
+large-00001: (val-00001, .)
+
+# We still read the data block (at offset 0) for a key that doesn't exist.
+iter with-fs-logging
+seek-prefix-ge large-00001-does-not-exist
+----
+read-at(775296, 112): 000005.sst
+read-at(765608, 2235): 000005.sst
+read-at(0, 1114): 000005.sst
+read-at(775296, 112): 000005.sst
+read-at(194, 37): 000004.sst
+read-at(775296, 112): 000005.sst
+read-at(194, 37): 000004.sst
+.

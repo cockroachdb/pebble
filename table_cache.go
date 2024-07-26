@@ -356,6 +356,10 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 	return true, filterer, nil
 }
 
+// For flushable ingests, we decide whether to use the bloom filter base on
+// size.
+const filterBlockSizeLimitForFlushableIngests = 64 * 1024
+
 func (c *tableCacheShard) newIters(
 	ctx context.Context,
 	file *manifest.FileMetadata,
@@ -414,9 +418,17 @@ func (c *tableCacheShard) newIters(
 	}
 
 	var iter sstable.Iterator
-	useFilter := true
+	filterBlockSizeLimit := sstable.AlwaysUseFilterBlock
 	if opts != nil {
-		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
+		// By default, we don't use block filters for L6 and restrict the size for
+		// flushable ingests, as these blocks can be very big.
+		if !opts.UseL6Filters {
+			if opts.level == manifest.Level(6) {
+				filterBlockSizeLimit = sstable.NeverUseFilterBlock
+			} else if opts.level.FlushableIngestLevel() {
+				filterBlockSizeLimit = filterBlockSizeLimitForFlushableIngests
+			}
+		}
 	}
 	tableFormat, err := v.reader.TableFormat()
 	if err != nil {
@@ -430,7 +442,7 @@ func (c *tableCacheShard) newIters(
 		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFiltersAndContext(
-			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
+			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, filterBlockSizeLimit, internalOpts.stats, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {

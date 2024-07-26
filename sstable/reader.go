@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -309,11 +310,11 @@ type singleLevelIterator struct {
 	// block-property filters when positioning the index.
 	maybeFilteredKeysSingleLevel bool
 
-	// useFilter specifies whether the filter block in this sstable, if present,
-	// should be used for prefix seeks or not. In some cases it is beneficial
-	// to skip a filter block even if it exists (eg. if probability of a match
-	// is high).
-	useFilter              bool
+	// filterBlockSizeLimit controls whether the bloom filter block in this
+	// sstable, if present, should be used for prefix seeks or not (depending on
+	// its size). In some cases it is beneficial to skip a filter block even if it
+	// exists (eg. if probability of a match is high).
+	filterBlockSizeLimit   FilterBlockSizeLimit
 	lastBloomFilterMatched bool
 }
 
@@ -391,7 +392,7 @@ func (i *singleLevelIterator) init(
 	r *Reader,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) error {
@@ -407,7 +408,7 @@ func (i *singleLevelIterator) init(
 	i.lower = lower
 	i.upper = upper
 	i.bpfs = filterer
-	i.useFilter = useFilter
+	i.filterBlockSizeLimit = filterBlockSizeLimit
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
@@ -876,8 +877,14 @@ func (i *singleLevelIterator) seekGEHelper(
 func (i *singleLevelIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, base.LazyValue) {
-	k, v := i.seekPrefixGE(prefix, key, flags, i.useFilter)
+	k, v := i.seekPrefixGE(prefix, key, flags, shouldUseFilterBlock(i.reader, i.filterBlockSizeLimit))
 	return k, v
+}
+
+// shouldUseFilterBlock returns whether we should use the filter block, based on
+// its length and the size limit.
+func shouldUseFilterBlock(reader *Reader, filterBlockSizeLimit FilterBlockSizeLimit) bool {
+	return reader.tableFilter != nil && reader.filterBH.Length <= uint64(filterBlockSizeLimit)
 }
 
 func (i *singleLevelIterator) seekPrefixGE(
@@ -1689,7 +1696,7 @@ func (i *twoLevelIterator) init(
 	r *Reader,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilter bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) error {
@@ -1705,7 +1712,7 @@ func (i *twoLevelIterator) init(
 	i.lower = lower
 	i.upper = upper
 	i.bpfs = filterer
-	i.useFilter = useFilter
+	i.filterBlockSizeLimit = filterBlockSizeLimit
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
@@ -1911,11 +1918,12 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	err := i.err
 	i.err = nil // clear cached iteration error
 
+	useFilter := shouldUseFilterBlock(i.reader, i.filterBlockSizeLimit)
 	// The twoLevelIterator could be already exhausted. Utilize that when
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
 	// bounds-exhausted near the top of the file.
 	filterUsedAndDidNotMatch :=
-		i.reader.tableFilter != nil && i.useFilter && !i.lastBloomFilterMatched
+		i.reader.tableFilter != nil && useFilter && !i.lastBloomFilterMatched
 	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
 		(i.exhaustedBounds == +1 || (i.data.isDataInvalidated() && i.index.isDataInvalidated())) &&
 		err == nil {
@@ -1924,7 +1932,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	}
 
 	// Check prefix bloom filter.
-	if i.reader.tableFilter != nil && i.useFilter {
+	if i.reader.tableFilter != nil && useFilter {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
 			flags = flags.DisableTrySeekUsingNext()
@@ -2648,18 +2656,30 @@ func (r *Reader) Close() error {
 	return nil
 }
 
+// FilterBlockSizeLimit is a size limit for bloom filter blocks - if a bloom
+// filter is present, it is used only when it is at most this size.
+type FilterBlockSizeLimit uint32
+
+const (
+	// NeverUseFilterBlock indicates that bloom filter blocks should never be used.
+	NeverUseFilterBlock FilterBlockSizeLimit = 0
+	// AlwaysUseFilterBlock indicates that bloom filter blocks should always be
+	// used, regardless of size.
+	AlwaysUseFilterBlock FilterBlockSizeLimit = math.MaxUint32
+)
+
 // NewIterWithBlockPropertyFilters returns an iterator for the contents of the
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
 func (r *Reader) NewIterWithBlockPropertyFilters(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFiltersAndContext(context.Background(), lower, upper, filterer,
-		useFilterBlock, stats, rp)
+		filterBlockSizeLimit, stats, rp)
 }
 
 // NewIterWithBlockPropertyFiltersAndContext is similar to
@@ -2669,7 +2689,7 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
 	ctx context.Context,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
 ) (Iterator, error) {
@@ -2679,7 +2699,7 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, lower, upper, filterer, useFilterBlock, stats, rp)
+		err := i.init(ctx, r, lower, upper, filterer, filterBlockSizeLimit, stats, rp)
 		if err != nil {
 			return nil, err
 		}
@@ -2687,7 +2707,7 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, lower, upper, filterer, useFilterBlock, stats, rp)
+	err := i.init(ctx, r, lower, upper, filterer, filterBlockSizeLimit, stats, rp)
 	if err != nil {
 		return nil, err
 	}
@@ -2700,7 +2720,7 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContext(
 // returned from the iter.
 func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFilters(
-		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
+		lower, upper, nil, AlwaysUseFilterBlock, nil, /* stats */
 		TrivialReaderProvider{Reader: r})
 }
 
@@ -2711,7 +2731,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (It
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
 		err := i.init(context.Background(), r, nil /* lower */, nil, /* upper */
-			nil, false /* useFilter */, nil /* stats */, rp)
+			nil, NeverUseFilterBlock, nil /* stats */, rp)
 		if err != nil {
 			return nil, err
 		}
@@ -2723,7 +2743,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (It
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(context.Background(), r, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, nil /* stats */, rp)
+		nil, NeverUseFilterBlock, nil /* stats */, rp)
 	if err != nil {
 		return nil, err
 	}

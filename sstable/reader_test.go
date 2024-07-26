@@ -504,7 +504,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					nil, /* lower */
 					nil, /* upper */
 					filterer,
-					true, /* use filter block */
+					AlwaysUseFilterBlock,
 					&stats,
 					TrivialReaderProvider{Reader: r},
 				)
