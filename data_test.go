@@ -339,7 +339,7 @@ func printIterState(
 			hasPoint, hasRange := iter.HasPointAndRange()
 			fmt.Fprintf(b, "%s:%s (", iter.Key(), validityStateStr)
 			if hasPoint {
-				fmt.Fprintf(b, "%s, ", iter.Value())
+				fmt.Fprintf(b, "%s, ", formatASCIIValue(iter.Value()))
 			} else {
 				fmt.Fprint(b, "., ")
 			}
@@ -388,13 +388,24 @@ func formatASCIIKey(b []byte) string {
 	return string(b)
 }
 
+func formatASCIIValue(b []byte) string {
+	if len(b) > 1<<10 {
+		return fmt.Sprintf("[LARGE VALUE len=%d]", len(b))
+	}
+	if bytes.IndexFunc(b, func(r rune) bool { return r < '!' || r > 'z' }) != -1 {
+		// This key is not just legible ASCII characters. Quote it.
+		return fmt.Sprintf("%q", b)
+	}
+	return string(b)
+}
+
 func writeRangeKeys(b io.Writer, iter *Iterator) {
 	rangeKeys := iter.RangeKeys()
 	for j := 0; j < len(rangeKeys); j++ {
 		if j > 0 {
 			fmt.Fprint(b, ",")
 		}
-		fmt.Fprintf(b, " %s=%s", rangeKeys[j].Suffix, rangeKeys[j].Value)
+		fmt.Fprintf(b, " %s=%s", rangeKeys[j].Suffix, formatASCIIValue(rangeKeys[j].Value))
 	}
 }
 
