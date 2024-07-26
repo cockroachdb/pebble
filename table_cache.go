@@ -546,6 +546,10 @@ func (c *tableCacheShard) newIters(
 	return iters, nil
 }
 
+// For flushable ingests, we decide whether to use the bloom filter base on
+// size.
+const filterBlockSizeLimitForFlushableIngests = 64 * 1024
+
 // newPointIter is an internal helper that constructs a point iterator over a
 // sstable. This function is for internal use only, and callers should use
 // newIters instead.
@@ -607,9 +611,17 @@ func (c *tableCacheShard) newPointIter(
 	}
 
 	var iter sstable.Iterator
-	useFilter := true
+	filterBlockSizeLimit := sstable.AlwaysUseFilterBlock
 	if opts != nil {
-		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
+		// By default, we don't use block filters for L6 and restrict the size for
+		// flushable ingests, as these blocks can be very big.
+		if !opts.UseL6Filters {
+			if opts.level == manifest.Level(6) {
+				filterBlockSizeLimit = sstable.NeverUseFilterBlock
+			} else if opts.level.FlushableIngestLevel() {
+				filterBlockSizeLimit = filterBlockSizeLimitForFlushableIngests
+			}
+		}
 		ctx = objiotracing.WithLevel(ctx, manifest.LevelToInt(opts.level))
 	}
 	tableFormat, err := v.reader.TableFormat()
@@ -640,7 +652,7 @@ func (c *tableCacheShard) newPointIter(
 			internalOpts.bufferPool)
 	} else {
 		iter, err = cr.NewIterWithBlockPropertyFiltersAndContextEtc(
-			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter,
+			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, filterBlockSizeLimit,
 			internalOpts.stats, categoryAndQoS, dbOpts.sstStatsCollector, rp)
 	}
 	if err != nil {
