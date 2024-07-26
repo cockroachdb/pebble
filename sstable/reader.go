@@ -291,14 +291,14 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		context.Background(), transforms, lower, upper, filterer, useFilterBlock,
+		context.Background(), transforms, lower, upper, filterer, filterBlockSizeLimit,
 		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
@@ -314,14 +314,14 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newIterWithBlockPropertyFiltersAndContext(
-		ctx, transforms, lower, upper, filterer, useFilterBlock,
+		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,
 		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
@@ -346,7 +346,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	useFilterBlock bool,
+	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -358,7 +358,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+		err := i.init(ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
 			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 		if err != nil {
 			return nil, err
@@ -367,7 +367,7 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(ctx, r, vState, transforms, lower, upper, filterer, useFilterBlock,
+	err := i.init(ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
 		stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	if err != nil {
 		return nil, err
@@ -380,8 +380,10 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 // must only be used when the Reader is guaranteed to outlive any LazyValues
 // returned from the iter.
 func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
+	// TODO(radu): we should probably not use bloom filters in this case, as there
+	// likely isn't a cache set up.
 	return r.NewIterWithBlockPropertyFilters(
-		transforms, lower, upper, nil, true, /* useFilterBlock */
+		transforms, lower, upper, nil, AlwaysUseFilterBlock,
 		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, TrivialReaderProvider{Reader: r})
 }
 
@@ -416,7 +418,7 @@ func (r *Reader) newCompactionIter(
 		err := i.init(
 			context.Background(),
 			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
-			false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
+			NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 		)
 		if err != nil {
 			return nil, err
@@ -430,7 +432,7 @@ func (r *Reader) newCompactionIter(
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
-		nil, false /* useFilter */, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
+		nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	if err != nil {
 		return nil, err
