@@ -14,6 +14,8 @@ foo
 
 read 1
 ----
+<local fs> open: p0/000001.sst (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 3): p0/000001.sst
 data: foo
 
 # A provider without shared storage creates object with shared preference
@@ -27,6 +29,8 @@ bar
 
 read 2
 ----
+<local fs> open: p0/000002.sst (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 3): p0/000002.sst
 data: bar
 
 close

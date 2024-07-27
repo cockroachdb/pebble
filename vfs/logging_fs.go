@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"io"
 	"os"
 )
@@ -31,6 +32,23 @@ var _ FS = (*loggingFS)(nil)
 func (fs *loggingFS) Create(name string) (File, error) {
 	fs.logFn("create: %s", name)
 	f, err := fs.FS.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return newLoggingFile(f, name, fs.logFn), nil
+}
+
+func (fs *loggingFS) Open(name string, opts ...OpenOption) (File, error) {
+	var optsStr string
+	if len(opts) > 0 {
+		optsStr = " (options:"
+		for i := range opts {
+			optsStr += fmt.Sprintf(" %T", opts[i])
+		}
+		optsStr += ")"
+	}
+	fs.logFn("open: %s%s", name, optsStr)
+	f, err := fs.FS.Open(name, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -121,4 +139,9 @@ func (f *loggingFile) SyncData() error {
 func (f *loggingFile) SyncTo(length int64) (fullSync bool, err error) {
 	f.logFn("sync-to(%d): %s", length, f.name)
 	return f.File.SyncTo(length)
+}
+
+func (f *loggingFile) ReadAt(p []byte, offset int64) (int, error) {
+	f.logFn("read-at(%d, %d): %s", offset, len(p), f.name)
+	return f.File.ReadAt(p, offset)
 }

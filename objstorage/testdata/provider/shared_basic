@@ -22,6 +22,8 @@ obj-one
 
 read 1
 ----
+<local fs> open: p1/000001.sst (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 7): p1/000001.sst
 data: obj-one
 
 create 2 shared
@@ -53,6 +55,8 @@ open p1 1
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
 <local fs> open-dir: p1
+<local fs> open: p1/SHARED-CATALOG-000001
+<local fs> close: p1/SHARED-CATALOG-000001
 
 list
 ----
