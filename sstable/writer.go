@@ -167,9 +167,15 @@ type Writer struct {
 	rangeKeyBlock       rowblk.Writer
 	topLevelIndexBlock  rowblk.Writer
 	props               Properties
-	blockPropCollectors []BlockPropertyCollector
-	obsoleteCollector   obsoleteKeyBlockPropertyCollector
-	blockPropsEncoder   blockPropertiesEncoder
+	blockPropCollectors []blockPropertyCollectorSet
+	// obsoleteCollectors is used to avoid allocating these instances.
+	obsoleteCollectors struct {
+		dataBlock     obsoleteKeyBlockPropertyCollector
+		indexBlock    obsoleteKeyBlockPropertyCollector
+		rangeKeyBlock obsoleteKeyBlockPropertyCollector
+		table         obsoleteKeyBlockPropertyCollector
+	}
+	blockPropsEncoder blockPropertiesEncoder
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
@@ -224,6 +230,39 @@ type pointKeyInfo struct {
 	prefixLen int
 	// True iff the point was marked obsolete.
 	isObsolete bool
+}
+
+// blockPropertyCollectorSet contains a set of block property collector
+// instances of the same type which are used to calculate the properties for
+// various types of blocks.
+type blockPropertyCollectorSet struct {
+	// dataBlock is used to calculate properties for the current data block.
+	dataBlock BlockPropertyCollector
+	// indexBlock is used to calculate properties for the current index block.
+	// This accumulates properties calculated by dataBlock.
+	indexBlock BlockPropertyCollector
+	// rangeKeyBlock is used to calculate properties for the range key block.
+	rangeKeyBlock BlockPropertyCollector
+	// table is used to calculate properties for the table. This accumulates
+	// properties calculated by indexBlocks nd rangeKeyBlock.
+	table BlockPropertyCollector
+
+	// lastDataBlockProps contains the encoded properties of the last data block;
+	// used to add them to indexBlock when appropriate.
+	// TODO(radu): finish the index block before finishing the data block that
+	// didn't fit so we can update indexBlock whenever we finish dataBlock.
+	lastDataBlockProps []byte
+}
+
+func makeBlockPropertyCollectorSet(
+	constructFn func() BlockPropertyCollector,
+) blockPropertyCollectorSet {
+	return blockPropertyCollectorSet{
+		dataBlock:     constructFn(),
+		indexBlock:    constructFn(),
+		rangeKeyBlock: constructFn(),
+		table:         constructFn(),
+	}
 }
 
 type coordinationState struct {
@@ -970,13 +1009,14 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 			// property collectors in such Pebble DB's must not look at the value.
 			v = nil
 		}
-		if err := w.blockPropCollectors[i].AddPointKey(key, v); err != nil {
+		if err := w.blockPropCollectors[i].dataBlock.AddPointKey(key, v); err != nil {
 			w.err = err
 			return err
 		}
 	}
 	if w.tableFormat >= TableFormatPebblev4 {
-		w.obsoleteCollector.AddPoint(isObsolete)
+		// The obsolete collector uses a special, out-of-band method.
+		w.obsoleteCollectors.dataBlock.AddPoint(isObsolete)
 	}
 
 	w.maybeAddToFilter(key.UserKey)
@@ -1353,8 +1393,6 @@ func (w *Writer) flush(key InternalKey) error {
 	if shouldFlushIndexBlock {
 		flushableIndexBlock = w.indexBlock
 		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
-		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
-		// flush the index block.
 		indexProps, err = w.finishIndexBlockProps()
 		if err != nil {
 			return err
@@ -1365,7 +1403,9 @@ func (w *Writer) flush(key InternalKey) error {
 	// BlockPropertyCollector.FinishIndexBlock. Since we've decided to finish
 	// the data block, we can call
 	// BlockPropertyCollector.AddPrevDataBlockToIndexBlock.
-	w.addPrevDataBlockToIndexBlockProps()
+	if err := w.addPrevDataBlockToIndexBlockProps(); err != nil {
+		return err
+	}
 
 	// Schedule a write.
 	writeTask := writeTaskPool.Get().(*writeTask)
@@ -1415,14 +1455,11 @@ func (w *Writer) finishDataBlockProps(buf *dataBlockBuf) error {
 	if len(w.blockPropCollectors) == 0 {
 		return nil
 	}
-	var err error
 	buf.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
-		scratch := buf.blockPropsEncoder.getScratchForProp()
-		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
-			return err
-		}
-		buf.blockPropsEncoder.addProp(shortID(i), scratch)
+		c := &w.blockPropCollectors[i]
+		c.lastDataBlockProps = c.dataBlock.Finish(c.lastDataBlockProps[:0])
+		buf.blockPropsEncoder.addProp(shortID(i), c.lastDataBlockProps)
 	}
 
 	buf.dataBlockProps = buf.blockPropsEncoder.unsafeProps()
@@ -1501,10 +1538,14 @@ func (w *Writer) addIndexEntry(
 	return nil
 }
 
-func (w *Writer) addPrevDataBlockToIndexBlockProps() {
+func (w *Writer) addPrevDataBlockToIndexBlockProps() error {
 	for i := range w.blockPropCollectors {
-		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
+		c := &w.blockPropCollectors[i]
+		if err := c.indexBlock.AddCollected(c.lastDataBlockProps); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // addIndexEntrySync adds an index entry for the specified key and block handle.
@@ -1533,26 +1574,27 @@ func (w *Writer) addIndexEntrySep(
 	)
 	var flushableIndexBlock *indexBlockBuf
 	var props []byte
-	var err error
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
 		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
 		w.twoLevelIndex = true
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
+		var err error
 		props, err = w.finishIndexBlockProps()
 		if err != nil {
 			return err
 		}
 	}
 
-	err = w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock, 0, props)
+	if err := w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock, 0, props); err != nil {
+		return err
+	}
 	if flushableIndexBlock != nil {
 		flushableIndexBlock.clear()
 		indexBlockBufPool.Put(flushableIndexBlock)
 	}
-	w.addPrevDataBlockToIndexBlockProps()
-	return err
+	return w.addPrevDataBlockToIndexBlockProps()
 }
 
 func shouldFlushWithHints(
@@ -1673,23 +1715,20 @@ func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
 	return a, InternalKey{UserKey: keyCopy, Trailer: k.Trailer}
 }
 
-// Invariants: The byte slice returned by finishIndexBlockProps is heap-allocated
-//
-//	and has its own lifetime, independent of the Writer and the blockPropsEncoder,
-//
-// and it is safe to:
-//  1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
-//  2. Store the byte slice in the Writer since it is a copy and not supported by
-//     an underlying buffer.
+// finishIndexBlockProps is used when we are finishing an index block; only used
+// when two-level indexes are enabled.
+
+// The byte slice returned by finishIndexBlockProps is heap-allocated and has
+// its own lifetime, independent of the Writer and the blockPropsEncoder.
 func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
-	for i := range w.blockPropCollectors {
+	for i, c := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
-		var err error
-		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
+		indexBlockProps := c.indexBlock.Finish(scratch)
+		if err := c.table.AddCollected(indexBlockProps); err != nil {
 			return nil, err
 		}
-		w.blockPropsEncoder.addProp(shortID(i), scratch)
+		w.blockPropsEncoder.addProp(shortID(i), indexBlockProps)
 	}
 	return w.blockPropsEncoder.props(), nil
 }
@@ -1722,6 +1761,8 @@ func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	return nil
 }
 
+// writeTwoLevelIndex writes out all the second-level index blocks and
+// constructs and writes the top-level index block.
 func (w *Writer) writeTwoLevelIndex() (block.Handle, error) {
 	props, err := w.finishIndexBlockProps()
 	if err != nil {
@@ -1844,7 +1885,7 @@ func (w *Writer) EncodeSpan(span *keyspan.Span) error {
 		return rangedel.Encode(span, w.Add)
 	}
 	for i := range w.blockPropCollectors {
-		if err := w.blockPropCollectors[i].AddRangeKeys(*span); err != nil {
+		if err := w.blockPropCollectors[i].rangeKeyBlock.AddRangeKeys(*span); err != nil {
 			return err
 		}
 	}
@@ -1924,7 +1965,6 @@ func (w *Writer) Close() (err error) {
 
 	if w.twoLevelIndex {
 		w.props.IndexType = twoLevelIndex
-		// Write the two level index block.
 		if _, err = w.writeTwoLevelIndex(); err != nil {
 			return err
 		}
@@ -1992,27 +2032,29 @@ func (w *Writer) Close() (err error) {
 		// Finish and record the prop collectors if props are not yet recorded.
 		// Pre-computed props might have been copied by specialized sst creators
 		// like suffix replacer.
-		if len(w.props.UserProperties) == 0 {
-			userProps := make(map[string]string)
+		if len(w.props.UserProperties) == 0 && len(w.blockPropCollectors) > 0 {
+			w.props.UserProperties = make(map[string]string, len(w.blockPropCollectors))
 			for i := range w.blockPropCollectors {
+				tableCollector := w.blockPropCollectors[i].table
+				if !w.twoLevelIndex {
+					// If we don't have a two-level index, the index block collector has
+					// our overall table properties.
+					tableCollector = w.blockPropCollectors[i].indexBlock
+				}
 				scratch := w.blockPropsEncoder.getScratchForProp()
-				// Place the shortID in the first byte.
-				scratch = append(scratch, byte(i))
-				buf, err := w.blockPropCollectors[i].FinishTable(scratch)
-				if err != nil {
+				// Add range key properties.
+				rangeKeyProp := w.blockPropCollectors[i].rangeKeyBlock.Finish(scratch)
+				if err := tableCollector.AddCollected(rangeKeyProp); err != nil {
 					return err
 				}
-				var prop string
-				if len(buf) > 0 {
-					prop = string(buf)
-				}
+
+				// Place the shortID in the first byte.
+				scratch = append(scratch, byte(i))
+				prop := tableCollector.Finish(scratch)
 				// NB: The property is populated in the map even if it is the
 				// empty string, since the presence in the map is what indicates
 				// that the block property collector was used when writing.
-				userProps[w.blockPropCollectors[i].Name()] = prop
-			}
-			if len(userProps) > 0 {
-				w.props.UserProperties = userProps
+				w.props.UserProperties[tableCollector.Name()] = string(prop)
 			}
 		}
 
@@ -2024,7 +2066,9 @@ func (w *Writer) Close() (err error) {
 		raw.RestartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		w.props.save(w.tableFormat, &raw)
-		w.layout.WritePropertiesBlock(raw.Finish())
+		if _, err := w.layout.WritePropertiesBlock(raw.Finish()); err != nil {
+			return err
+		}
 	}
 
 	// Write the table footer.
@@ -2046,6 +2090,16 @@ func (w *Writer) Close() (err error) {
 	w.indexBlock.clear()
 	indexBlockBufPool.Put(w.indexBlock)
 	w.indexBlock = nil
+
+	// Close property collectors. Closing is optional, we don't need to do it in
+	// error paths.
+	for _, p := range w.blockPropCollectors {
+		p.dataBlock.Close()
+		p.indexBlock.Close()
+		p.rangeKeyBlock.Close()
+		p.table.Close()
+	}
+	w.blockPropCollectors = nil
 
 	// Make any future calls to Set or Close return an error.
 	w.err = errWriterClosed
@@ -2179,12 +2233,17 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			w.err = errors.New("pebble: too many block property collectors")
 			return w
 		}
-		w.blockPropCollectors = make([]BlockPropertyCollector, 0, numBlockPropertyCollectors)
+		w.blockPropCollectors = make([]blockPropertyCollectorSet, 0, numBlockPropertyCollectors)
 		for _, constructFn := range o.BlockPropertyCollectors {
-			w.blockPropCollectors = append(w.blockPropCollectors, constructFn())
+			w.blockPropCollectors = append(w.blockPropCollectors, makeBlockPropertyCollectorSet(constructFn))
 		}
 		if w.tableFormat >= TableFormatPebblev4 {
-			w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+			w.blockPropCollectors = append(w.blockPropCollectors, blockPropertyCollectorSet{
+				dataBlock:     &w.obsoleteCollectors.dataBlock,
+				indexBlock:    &w.obsoleteCollectors.indexBlock,
+				rangeKeyBlock: &w.obsoleteCollectors.rangeKeyBlock,
+				table:         &w.obsoleteCollectors.table,
+			})
 		}
 
 		var buf bytes.Buffer
@@ -2193,7 +2252,7 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 			if i > 0 {
 				buf.WriteString(",")
 			}
-			buf.WriteString(w.blockPropCollectors[i].Name())
+			buf.WriteString(w.blockPropCollectors[i].dataBlock.Name())
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()

@@ -255,22 +255,23 @@ func (c *minSeqNumPropertyCollector) AddRangeKeys(span sstable.Span) error {
 	return nil
 }
 
-func (c *minSeqNumPropertyCollector) FinishDataBlock(buf []byte) ([]byte, error) {
-	return nil, nil
+func (c *minSeqNumPropertyCollector) Finish(buf []byte) []byte {
+	return binary.AppendUvarint(buf, uint64(c.minSeqNum))
 }
 
-func (c *minSeqNumPropertyCollector) AddPrevDataBlockToIndexBlock() {}
-
-func (c *minSeqNumPropertyCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
-	return nil, nil
-}
-
-func (c *minSeqNumPropertyCollector) FinishTable(buf []byte) ([]byte, error) {
-	return binary.AppendUvarint(buf, uint64(c.minSeqNum)), nil
+func (c *minSeqNumPropertyCollector) AddCollected(prop []byte) error {
+	res, n := binary.Uvarint(prop)
+	if n <= 0 {
+		panic("could not decode")
+	}
+	if c.minSeqNum == 0 || c.minSeqNum > base.SeqNum(res) {
+		c.minSeqNum = base.SeqNum(res)
+	}
+	return nil
 }
 
 func (c *minSeqNumPropertyCollector) AddCollectedWithSuffixReplacement(
-	oldProp []byte, oldSuffix, newSuffix []byte,
+	oldProp []byte, newSuffix []byte,
 ) error {
 	return errors.Errorf("not implemented")
 }
@@ -278,6 +279,9 @@ func (c *minSeqNumPropertyCollector) AddCollectedWithSuffixReplacement(
 func (c *minSeqNumPropertyCollector) SupportsSuffixReplacement() bool {
 	return false
 }
+
+// Close is part of the BlockPropertyCollector interface.
+func (c *minSeqNumPropertyCollector) Close() {}
 
 // minSeqNumFilter is a BlockPropertyFilter that uses the
 // minSeqNumPropertyCollector data to filter out entire tables.

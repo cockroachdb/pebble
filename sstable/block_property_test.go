@@ -221,53 +221,52 @@ func TestBlockIntervalCollector(t *testing.T) {
 	bic := NewBlockIntervalCollector("foo", testIntervalMapper{}, nil /* suffixReplacer */)
 	require.Equal(t, "foo", bic.Name())
 
-	// First data block has empty point key interval.
-	encoded, err := bic.FinishDataBlock(nil)
-	require.NoError(t, err)
-	require.True(t, bytes.Equal(nil, encoded))
-	bic.AddPrevDataBlockToIndexBlock()
-	// Second data block contains a point and range key interval. The latter
-	// should not contribute to the block interval.
+	// Empty block.
+	data1 := bic.Finish(nil)
+	require.True(t, bytes.Equal(nil, data1))
+	decodeAndCheck(t, data1, BlockInterval{})
+
+	// Second data block with one point key.
 	addTestPointKeys(t, bic, 20, 24)
+	data2 := bic.Finish(nil)
+	decodeAndCheck(t, data2, BlockInterval{20, 25})
+
 	addTestRangeKeys(t, bic, 5, 10, 15)
 	addTestRangeKeys(t, bic, 149)
-	encoded, err = bic.FinishDataBlock(nil)
-	require.NoError(t, err)
-	decoded, err := decodeBlockInterval(encoded)
-	require.NoError(t, err)
-	require.Equal(t, BlockInterval{20, 25}, decoded)
-	var encodedIndexBlock []byte
-	// Finish index block before including second data block.
-	encodedIndexBlock, err = bic.FinishIndexBlock(nil)
-	require.NoError(t, err)
-	require.True(t, bytes.Equal(nil, encodedIndexBlock))
-	bic.AddPrevDataBlockToIndexBlock()
+	rangeBlock := bic.Finish(nil)
+	decodeAndCheck(t, rangeBlock, BlockInterval{5, 150})
+
+	require.NoError(t, bic.AddCollected(data1))
+	index1 := bic.Finish(nil)
+	require.True(t, bytes.Equal(nil, data1))
+	decodeAndCheck(t, index1, BlockInterval{})
+
 	// Third data block.
 	addTestPointKeys(t, bic, 14, 10)
-	encoded, err = bic.FinishDataBlock(nil)
-	require.NoError(t, err)
-	decodeAndCheck(t, encoded, BlockInterval{10, 15})
-	bic.AddPrevDataBlockToIndexBlock()
+	data3 := bic.Finish(nil)
+	decodeAndCheck(t, data3, BlockInterval{10, 15})
+
 	// Fourth data block.
 	addTestPointKeys(t, bic, 100, 104)
-	encoded, err = bic.FinishDataBlock(nil)
-	require.NoError(t, err)
-	decodeAndCheck(t, encoded, BlockInterval{100, 105})
-	// Finish index block before including fourth data block.
-	encodedIndexBlock, err = bic.FinishIndexBlock(nil)
-	require.NoError(t, err)
-	decodeAndCheck(t, encodedIndexBlock, BlockInterval{10, 25})
-	bic.AddPrevDataBlockToIndexBlock()
-	// Finish index block that contains only fourth data block.
-	encodedIndexBlock, err = bic.FinishIndexBlock(nil)
-	require.NoError(t, err)
-	decodeAndCheck(t, encodedIndexBlock, BlockInterval{100, 105})
-	var encodedTable []byte
-	// Finish table. The table interval is the union of the current point key
-	// table interval [10, 105) and the range key interval [5, 150).
-	encodedTable, err = bic.FinishTable(nil)
-	require.NoError(t, err)
-	decodeAndCheck(t, encodedTable, BlockInterval{5, 150})
+	data4 := bic.Finish(nil)
+	decodeAndCheck(t, data4, BlockInterval{100, 105})
+
+	require.NoError(t, bic.AddCollected(data2))
+	require.NoError(t, bic.AddCollected(data3))
+	index2 := bic.Finish(nil)
+	decodeAndCheck(t, index2, BlockInterval{10, 25})
+
+	require.NoError(t, bic.AddCollected(data4))
+	index3 := bic.Finish(nil)
+	decodeAndCheck(t, index3, BlockInterval{100, 105})
+
+	// Table properties.
+	require.NoError(t, bic.AddCollected(index1))
+	require.NoError(t, bic.AddCollected(index2))
+	require.NoError(t, bic.AddCollected(index3))
+	require.NoError(t, bic.AddCollected(rangeBlock))
+	table := bic.Finish(nil)
+	decodeAndCheck(t, table, BlockInterval{5, 150})
 }
 
 func TestBlockIntervalFilter(t *testing.T) {
@@ -298,12 +297,8 @@ func TestBlockIntervalFilter(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			name := "foo"
-			// The mapper here won't actually be used.
-			bic := NewBlockIntervalCollector(name, &testIntervalMapper{}, nil)
-			bif := NewBlockIntervalFilter(name, tc.filter.Lower, tc.filter.Upper, nil)
-			bic.(*BlockIntervalCollector).blockInterval = tc.prop
-			prop, _ := bic.FinishDataBlock(nil)
+			prop := encodeBlockInterval(tc.prop, nil)
+			bif := NewBlockIntervalFilter("foo", tc.filter.Lower, tc.filter.Upper, nil)
 			intersects, err := bif.Intersects(prop)
 			require.NoError(t, err)
 			require.Equal(t, tc.intersects, intersects)
@@ -392,16 +387,11 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 	bic10Id := byte(10)
 
 	addTestPointKeys(t, bic0, 10, 19)
-	_, err := bic0.FinishDataBlock(nil)
-	require.NoError(t, err)
-	prop0, err := bic0.FinishTable([]byte{bic0Id})
-	require.NoError(t, err)
+	prop0 := bic0.Finish([]byte{bic0Id})
 
 	addTestPointKeys(t, bic10, 110, 119)
-	_, err = bic10.FinishDataBlock(nil)
-	require.NoError(t, err)
-	prop10, err := bic10.FinishTable([]byte{bic10Id})
-	require.NoError(t, err)
+	prop10 := bic10.Finish([]byte{bic10Id})
+
 	prop0Str := string(prop0)
 	prop10Str := string(prop10)
 	type filter struct {
@@ -538,13 +528,11 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 	bic10Id := shortID(10)
 
 	addTestPointKeys(t, bic0, 19, 10, 15)
-	prop, err := bic0.FinishDataBlock(encoder.getScratchForProp())
-	require.NoError(t, err)
+	prop := bic0.Finish(encoder.getScratchForProp())
 	encoder.addProp(bic0Id, prop)
 
 	addTestPointKeys(t, bic10, 110, 119)
-	prop, err = bic10.FinishDataBlock(encoder.getScratchForProp())
-	require.NoError(t, err)
+	prop = bic10.Finish(encoder.getScratchForProp())
 	encoder.addProp(bic10Id, prop)
 	props0And10 := encoder.props()
 	type filter struct {
@@ -1332,8 +1320,8 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 }
 
 type keyCountCollector struct {
-	name                string
-	block, index, table int
+	name  string
+	count int
 }
 
 var _ BlockPropertyCollector = &keyCountCollector{}
@@ -1345,54 +1333,44 @@ func keyCountCollectorFn(name string) func() BlockPropertyCollector {
 func (p *keyCountCollector) Name() string { return p.name }
 
 func (p *keyCountCollector) AddPointKey(k InternalKey, _ []byte) error {
-	p.block++
+	p.count++
 	return nil
 }
 
 func (p *keyCountCollector) AddRangeKeys(span Span) error {
 	return rangekey.Encode(&span, func(k base.InternalKey, v []byte) error {
-		p.table++
+		p.count++
 		return nil
 	})
 }
 
-func (p *keyCountCollector) FinishDataBlock(buf []byte) ([]byte, error) {
-	buf = append(buf, []byte(strconv.Itoa(int(p.block)))...)
-	p.table += p.block
-	return buf, nil
+func (p *keyCountCollector) Finish(buf []byte) []byte {
+	result := append(buf, []byte(strconv.Itoa(int(p.count)))...)
+	p.count = 0
+	return result
 }
 
-func (p *keyCountCollector) AddPrevDataBlockToIndexBlock() {
-	p.index += p.block
-	p.block = 0
-}
-
-func (p *keyCountCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
-	buf = append(buf, []byte(strconv.Itoa(int(p.index)))...)
-	p.index = 0
-	return buf, nil
-}
-
-func (p *keyCountCollector) FinishTable(buf []byte) ([]byte, error) {
-	buf = append(buf, []byte(strconv.Itoa(int(p.table)))...)
-	p.table = 0
-	return buf, nil
-}
-
-func (p *keyCountCollector) AddCollectedWithSuffixReplacement(
-	oldProp []byte, oldSuffix, newSuffix []byte,
-) error {
-	n, err := strconv.Atoi(string(oldProp))
+func (p *keyCountCollector) AddCollected(prop []byte) error {
+	n, err := strconv.Atoi(string(prop))
 	if err != nil {
 		return err
 	}
-	p.block = n
+	p.count += n
 	return nil
+}
+
+func (p *keyCountCollector) AddCollectedWithSuffixReplacement(
+	oldProp []byte, newSuffix []byte,
+) error {
+	return p.AddCollected(oldProp)
 }
 
 func (p *keyCountCollector) SupportsSuffixReplacement() bool {
 	return true
 }
+
+// Close is part of the BlockPropertyCollector interface.
+func (p *keyCountCollector) Close() {}
 
 type intSuffixIntervalMapper struct {
 	suffixLen int

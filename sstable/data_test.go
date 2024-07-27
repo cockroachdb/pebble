@@ -67,7 +67,10 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 func runBuildCmd(
 	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
 ) (*WriterMetadata, *Reader, error) {
-
+	comparer := writerOpts.Comparer
+	if comparer == nil {
+		comparer = DefaultComparer
+	}
 	f0 := &objstorage.MemObj{}
 	if err := optsFromArgs(td, writerOpts); err != nil {
 		return nil, nil, err
@@ -76,16 +79,16 @@ func runBuildCmd(
 	w := NewWriter(f0, *writerOpts)
 	var rangeDels []keyspan.Span
 	rangeDelFrag := keyspan.Fragmenter{
-		Cmp:    DefaultComparer.Compare,
-		Format: DefaultComparer.FormatKey,
+		Cmp:    comparer.Compare,
+		Format: comparer.FormatKey,
 		Emit: func(s keyspan.Span) {
 			rangeDels = append(rangeDels, s)
 		},
 	}
 	var rangeKeys []keyspan.Span
 	rangeKeyFrag := keyspan.Fragmenter{
-		Cmp:    DefaultComparer.Compare,
-		Format: DefaultComparer.FormatKey,
+		Cmp:    comparer.Compare,
+		Format: comparer.FormatKey,
 		Emit: func(s keyspan.Span) {
 			rangeKeys = append(rangeKeys, s)
 		},

@@ -16,9 +16,7 @@ import (
 // For an explanation of obsolete keys, see the comment for TableFormatPebblev4
 // which explains obsolete keys.
 type obsoleteKeyBlockPropertyCollector struct {
-	blockIsNonObsolete bool
-	indexIsNonObsolete bool
-	tableIsNonObsolete bool
+	hasNonObsoletePoint bool
 }
 
 var _ BlockPropertyCollector = (*obsoleteKeyBlockPropertyCollector)(nil)
@@ -42,36 +40,32 @@ func (o *obsoleteKeyBlockPropertyCollector) AddRangeKeys(span Span) error {
 
 // AddPoint is an out-of-band method that is specific to this collector.
 func (o *obsoleteKeyBlockPropertyCollector) AddPoint(isObsolete bool) {
-	o.blockIsNonObsolete = o.blockIsNonObsolete || !isObsolete
+	o.hasNonObsoletePoint = o.hasNonObsoletePoint || !isObsolete
 }
 
-// FinishDataBlock is part of the BlockPropertyCollector interface.
-func (o *obsoleteKeyBlockPropertyCollector) FinishDataBlock(buf []byte) ([]byte, error) {
-	o.tableIsNonObsolete = o.tableIsNonObsolete || o.blockIsNonObsolete
-	return obsoleteKeyBlockPropertyEncode(!o.blockIsNonObsolete, buf), nil
+// Finish is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) Finish(buf []byte) []byte {
+	res := obsoleteKeyBlockPropertyEncode(!o.hasNonObsoletePoint, buf)
+	o.hasNonObsoletePoint = false
+	return res
 }
 
-// AddPrevDataBlockToIndexBlock is part of the BlockPropertyCollector interface.
-func (o *obsoleteKeyBlockPropertyCollector) AddPrevDataBlockToIndexBlock() {
-	o.indexIsNonObsolete = o.indexIsNonObsolete || o.blockIsNonObsolete
-	o.blockIsNonObsolete = false
-}
+// Close is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) Close() {}
 
-// FinishIndexBlock is part of the BlockPropertyCollector interface.
-func (o *obsoleteKeyBlockPropertyCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
-	buf = obsoleteKeyBlockPropertyEncode(!o.indexIsNonObsolete, buf)
-	o.indexIsNonObsolete = false
-	return buf, nil
-}
-
-// FinishTable is part of the BlockPropertyCollector interface.
-func (o *obsoleteKeyBlockPropertyCollector) FinishTable(buf []byte) ([]byte, error) {
-	return obsoleteKeyBlockPropertyEncode(!o.tableIsNonObsolete, buf), nil
+// AddCollected is part of the BlockPropertyCollector interface.
+func (o *obsoleteKeyBlockPropertyCollector) AddCollected(oldProp []byte) error {
+	isObsolete, err := obsoleteKeyBlockPropertyDecode(oldProp)
+	if err != nil {
+		return err
+	}
+	o.hasNonObsoletePoint = o.hasNonObsoletePoint || !isObsolete
+	return nil
 }
 
 // AddCollectedWithSuffixReplacement is part of the BlockPropertyCollector interface.
 func (o *obsoleteKeyBlockPropertyCollector) AddCollectedWithSuffixReplacement(
-	oldProp []byte, oldSuffix, newSuffix []byte,
+	oldProp []byte, newSuffix []byte,
 ) error {
 	// Verify the property is valid.
 	_, err := obsoleteKeyBlockPropertyDecode(oldProp)
@@ -79,7 +73,7 @@ func (o *obsoleteKeyBlockPropertyCollector) AddCollectedWithSuffixReplacement(
 		return err
 	}
 	// Suffix rewriting currently loses the obsolete bit.
-	o.blockIsNonObsolete = true
+	o.hasNonObsoletePoint = true
 	return nil
 }
 
