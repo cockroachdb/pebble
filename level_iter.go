@@ -61,7 +61,7 @@ type levelIter struct {
 	// does not lie within the table bounds.
 	tableOpts IterOptions
 	// The LSM level this levelIter is initialized for.
-	level manifest.Level
+	level manifest.Layer
 	// combinedIterState may be set when a levelIter is used during user
 	// iteration. Although levelIter only iterates over point keys, it's also
 	// responsible for lazily constructing the combined range & point iterator
@@ -133,7 +133,7 @@ func newLevelIter(
 	comparer *Comparer,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
-	level manifest.Level,
+	level manifest.Layer,
 	internalOpts internalIterOpts,
 ) *levelIter {
 	l := &levelIter{}
@@ -147,7 +147,7 @@ func (l *levelIter) init(
 	comparer *Comparer,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
-	level manifest.Level,
+	level manifest.Layer,
 	internalOpts internalIterOpts,
 ) {
 	l.ctx = ctx

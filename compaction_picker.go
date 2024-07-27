@@ -130,7 +130,7 @@ func (s sortCompactionLevelsByPriority) Swap(i, j int) {
 // sublevel.
 type sublevelInfo struct {
 	manifest.LevelSlice
-	sublevel manifest.Level
+	sublevel manifest.Layer
 }
 
 func (cl sublevelInfo) Clone() sublevelInfo {

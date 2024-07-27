@@ -42,8 +42,8 @@ type TableNewSpanIter func(
 type LevelIter struct {
 	cmp     base.Compare
 	keyType manifest.KeyType
-	// The LSM level this LevelIter is initialized for. Used in logging.
-	level manifest.Level
+	// The LSM level this LevelIter is initialized for.
+	level manifest.Layer
 	// newIter creates a range del iterator if keyType is KeyTypePoint or a range
 	// key iterator if keyType is KeyTypeRange.
 	newIter TableNewSpanIter
@@ -87,7 +87,7 @@ func NewLevelIter(
 	cmp base.Compare,
 	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
-	level manifest.Level,
+	level manifest.Layer,
 	keyType manifest.KeyType,
 ) *LevelIter {
 	l := &LevelIter{}
@@ -105,7 +105,7 @@ func (l *LevelIter) Init(
 	cmp base.Compare,
 	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
-	level manifest.Level,
+	level manifest.Layer,
 	keyType manifest.KeyType,
 ) {
 	if keyType != manifest.KeyTypePoint && keyType != manifest.KeyTypeRange {

@@ -900,7 +900,7 @@ func (i *scanInternalIterator) constructPointIter(
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
 	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
 	i.opts.IterOptions.CategoryAndQoS = categoryAndQoS
-	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]
 

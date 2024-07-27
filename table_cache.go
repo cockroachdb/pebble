@@ -567,11 +567,13 @@ func (c *tableCacheShard) newPointIter(
 		if !opts.UseL6Filters {
 			if opts.level == manifest.Level(6) {
 				filterBlockSizeLimit = sstable.NeverUseFilterBlock
-			} else if opts.level.FlushableIngestLevel() {
+			} else if opts.level.IsFlushableIngests() {
 				filterBlockSizeLimit = filterBlockSizeLimitForFlushableIngests
 			}
 		}
-		ctx = objiotracing.WithLevel(ctx, manifest.LevelToInt(opts.level))
+		if opts.level.IsSet() && !opts.level.IsFlushableIngests() {
+			ctx = objiotracing.WithLevel(ctx, opts.level.Level())
+		}
 	}
 	tableFormat, err := v.reader.TableFormat()
 	if err != nil {

@@ -248,7 +248,7 @@ func (d *DB) newDownloadSpanTask(vers *version, sp DownloadSpan) (_ *downloadSpa
 	// [sp.StartKey, sp.EndKey). Expand the bounds to the left so that we
 	// include the start keys of any external sstables that overlap with
 	// sp.StartKey.
-	vers.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, level, sublevel int) {
+	vers.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, level manifest.Layer) {
 		if f := iter.SeekGE(d.cmp, sp.StartKey); f != nil &&
 			objstorage.IsExternalTable(d.objProvider, f.FileBacking.DiskFileNum) &&
 			d.cmp(f.Smallest.UserKey, bounds.Start) < 0 {
