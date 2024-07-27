@@ -7,6 +7,7 @@ open-dir: wal
 lock: db/LOCK
 open-dir: db
 open-dir: db
+open: db/CURRENT
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
 remove: db/temporary.000001.dbtmp
@@ -149,6 +150,18 @@ sync: db
 remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
 [JOB 8] compacting(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B)
+open: db/000005.sst (options: *vfs.randomReadsOption)
+read-at(717, 53): db/000005.sst
+read-at(680, 37): db/000005.sst
+read-at(52, 628): db/000005.sst
+read-at(25, 27): db/000005.sst
+open: db/000008.sst (options: *vfs.randomReadsOption)
+read-at(717, 53): db/000008.sst
+read-at(680, 37): db/000008.sst
+read-at(52, 628): db/000008.sst
+read-at(25, 27): db/000008.sst
+read-at(0, 25): db/000005.sst
+read-at(0, 25): db/000008.sst
 create: db/000010.sst
 [JOB 8] compacting: sstable created 000010
 sync-data: db/000010.sst
@@ -163,6 +176,8 @@ remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 8] MANIFEST created 000011
 [JOB 8] compacted(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B) -> L6 [000010] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+close: db/000005.sst
+close: db/000008.sst
 remove: db/000005.sst
 [JOB 8] sstable deleted 000005
 remove: db/000008.sst
@@ -204,9 +219,22 @@ remove: db/MANIFEST-000009
 
 ingest
 ----
+open: ext/0
+read-at(773, 53): ext/0
+read-at(736, 37): ext/0
+read-at(53, 683): ext/0
+read-at(26, 27): ext/0
+read-at(0, 26): ext/0
+close: ext/0
 link: ext/0 -> db/000015.sst
 [JOB 12] ingesting: sstable created 000015
 sync: db
+open: db/000013.sst (options: *vfs.randomReadsOption)
+read-at(717, 53): db/000013.sst
+read-at(680, 37): db/000013.sst
+read-at(52, 628): db/000013.sst
+read-at(25, 27): db/000013.sst
+read-at(0, 25): db/000013.sst
 create: db/MANIFEST-000016
 close: db/MANIFEST-000014
 sync: db/MANIFEST-000016
@@ -251,6 +279,20 @@ zmemtbl         0     0 B
 ingest-flushable
 ----
 sync-data: wal/000012.log
+open: ext/a
+read-at(773, 53): ext/a
+read-at(736, 37): ext/a
+read-at(53, 683): ext/a
+read-at(26, 27): ext/a
+read-at(0, 26): ext/a
+close: ext/a
+open: ext/b
+read-at(773, 53): ext/b
+read-at(736, 37): ext/b
+read-at(53, 683): ext/b
+read-at(26, 27): ext/b
+read-at(0, 26): ext/b
+close: ext/b
 link: ext/a -> db/000017.sst
 [JOB 13] ingesting: sstable created 000017
 link: ext/b -> db/000018.sst
@@ -354,18 +396,22 @@ link: db/000022.sst -> checkpoint/000022.sst
 link: db/000017.sst -> checkpoint/000017.sst
 link: db/000010.sst -> checkpoint/000010.sst
 link: db/000018.sst -> checkpoint/000018.sst
+open: db/MANIFEST-000023 (options: *vfs.sequentialReadsOption)
 create: checkpoint/MANIFEST-000023
 sync-data: checkpoint/MANIFEST-000023
 close: checkpoint/MANIFEST-000023
+close: db/MANIFEST-000023
 open-dir: checkpoint
 create: checkpoint/marker.manifest.000001.MANIFEST-000023
 sync-data: checkpoint/marker.manifest.000001.MANIFEST-000023
 close: checkpoint/marker.manifest.000001.MANIFEST-000023
 sync: checkpoint
 close: checkpoint
+open: wal/000021.log (options: *vfs.sequentialReadsOption)
 create: checkpoint/000021.log
 sync-data: checkpoint/000021.log
 close: checkpoint/000021.log
+close: wal/000021.log
 sync: checkpoint
 close: checkpoint
 
@@ -376,6 +422,7 @@ pebble: file deletion disablement invariant violated
 close
 ----
 close: db
+close: db/000013.sst
 sync-data: wal/000021.log
 close: wal/000021.log
 close: db/MANIFEST-000023
