@@ -481,6 +481,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		var err error
 		d, err = Open(dir, opts)
 		require.NoError(t, err)
+		closed = false
 		d.TestOnlyWaitForCleaning()
 	}
 	waitForFlush := func() {
