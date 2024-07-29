@@ -60,25 +60,25 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 			name:    "Invalid RocksDB version",
 			magic:   rocksDBMagic,
 			version: 1,
-			wantErr: "pebble/table: unsupported rocksdb format version 1",
+			wantErr: "pebble/table: invalid table 000001 (unsupported rocksdb format version 1)",
 		},
 		{
 			name:    "Invalid PebbleDB version",
 			magic:   pebbleDBMagic,
 			version: 5,
-			wantErr: "pebble/table: unsupported pebble format version 5",
+			wantErr: "pebble/table: invalid table 000001 (unsupported pebble format version 5)",
 		},
 		{
 			name:    "Unknown magic string",
 			magic:   "foo",
-			wantErr: "pebble/table: invalid table (bad magic number: 0x666f6f)",
+			wantErr: "pebble/table: invalid table 000001 (bad magic number: 0x666f6f)",
 		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			// Tuple -> TableFormat.
-			f, err := ParseTableFormat([]byte(tc.magic), tc.version)
+			f, err := ParseTableFormat([]byte(tc.magic), tc.version, 1)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				require.Equal(t, tc.wantErr, err.Error())

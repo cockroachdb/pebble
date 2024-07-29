@@ -307,11 +307,12 @@ func readFooter(
 	f objstorage.Readable,
 	readHandle objstorage.ReadHandle,
 	logger base.LoggerAndTracer,
+	fileNum base.DiskFileNum,
 ) (footer, error) {
 	var footer footer
 	size := f.Size()
 	if size < minFooterLen {
-		return footer, base.CorruptionErrorf("pebble/table: invalid table (file size is too small)")
+		return footer, base.CorruptionErrorf("pebble/table: invalid table %s (file size is too small)", errors.Safe(fileNum))
 	}
 
 	buf := make([]byte, maxFooterLen)
@@ -342,7 +343,7 @@ func readFooter(
 	case levelDBMagic:
 		if len(buf) < levelDBFooterLen {
 			return footer, base.CorruptionErrorf(
-				"pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
+				"pebble/table: invalid table %s (footer too short): %d", errors.Safe(fileNum), errors.Safe(len(buf)))
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - levelDBFooterLen
 		buf = buf[len(buf)-levelDBFooterLen:]
@@ -354,14 +355,14 @@ func readFooter(
 		// NOTE: The Pebble magic string implies the same footer format as that used
 		// by the RocksDBv2 table format.
 		if len(buf) < rocksDBFooterLen {
-			return footer, base.CorruptionErrorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
+			return footer, base.CorruptionErrorf("pebble/table: invalid table %s (footer too short): %d", errors.Safe(fileNum), errors.Safe(len(buf)))
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - rocksDBFooterLen
 		buf = buf[len(buf)-rocksDBFooterLen:]
 		footer.footerBH.Length = uint64(len(buf))
 		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
 
-		format, err := ParseTableFormat(magic, version)
+		format, err := ParseTableFormat(magic, version, fileNum)
 		if err != nil {
 			return footer, err
 		}
@@ -373,12 +374,12 @@ func readFooter(
 		case block.ChecksumTypeXXHash64:
 			footer.checksum = block.ChecksumTypeXXHash64
 		default:
-			return footer, base.CorruptionErrorf("pebble/table: unsupported checksum type %d", errors.Safe(footer.checksum))
+			return footer, base.CorruptionErrorf("pebble/table: invalid table %s (unsupported checksum type %d)", errors.Safe(fileNum), errors.Safe(footer.checksum))
 		}
 		buf = buf[1:]
 
 	default:
-		return footer, base.CorruptionErrorf("pebble/table: invalid table (bad magic number: 0x%x)", magic)
+		return footer, base.CorruptionErrorf("pebble/table: invalid table %s (bad magic number: 0x%x)", errors.Safe(fileNum), magic)
 	}
 
 	{
@@ -386,13 +387,13 @@ func readFooter(
 		var n int
 		footer.metaindexBH, n = decodeBlockHandle(buf)
 		if n == 0 || footer.metaindexBH.Offset+footer.metaindexBH.Length > end {
-			return footer, base.CorruptionErrorf("pebble/table: invalid table (bad metaindex block handle)")
+			return footer, base.CorruptionErrorf("pebble/table: invalid table %s (bad metaindex block handle)", errors.Safe(fileNum))
 		}
 		buf = buf[n:]
 
 		footer.indexBH, n = decodeBlockHandle(buf)
 		if n == 0 || footer.indexBH.Offset+footer.indexBH.Length > end {
-			return footer, base.CorruptionErrorf("pebble/table: invalid table (bad index block handle)")
+			return footer, base.CorruptionErrorf("pebble/table: invalid table %s (bad index block handle)", errors.Safe(fileNum))
 		}
 	}
 

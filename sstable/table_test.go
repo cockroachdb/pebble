@@ -588,7 +588,7 @@ func TestFooterRoundTrip(t *testing.T) {
 							readable, err := NewSimpleReadable(f)
 							require.NoError(t, err)
 
-							result, err := readFooter(context.Background(), readable, nil, base.NoopLoggerAndTracer{})
+							result, err := readFooter(context.Background(), readable, nil, base.NoopLoggerAndTracer{}, 1)
 							require.NoError(t, err)
 							require.NoError(t, readable.Close())
 
@@ -641,10 +641,12 @@ func TestReadFooter(t *testing.T) {
 			readable, err := NewSimpleReadable(f)
 			require.NoError(t, err)
 
-			if _, err := readFooter(context.Background(), readable, nil, base.NoopLoggerAndTracer{}); err == nil {
+			if _, err := readFooter(context.Background(), readable, nil, base.NoopLoggerAndTracer{}, 1); err == nil {
 				t.Fatalf("expected %q, but found success", c.expected)
 			} else if !strings.Contains(err.Error(), c.expected) {
 				t.Fatalf("expected %q, but found %v", c.expected, err)
+			} else if !strings.Contains(err.Error(), "table 000001") {
+				t.Fatalf("expected error to contain table number: %q", err)
 			}
 		})
 	}
