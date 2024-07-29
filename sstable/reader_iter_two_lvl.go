@@ -17,8 +17,10 @@ import (
 )
 
 type twoLevelIterator struct {
-	secondLevel   singleLevelIterator
-	topLevelIndex rowblk.Iter
+	secondLevel            singleLevelIterator
+	topLevelIndex          rowblk.Iter
+	useFilterBlock         bool
+	lastBloomFilterMatched bool
 }
 
 var _ Iterator = (*twoLevelIterator)(nil)
@@ -154,8 +156,10 @@ func newTwoLevelIterator(
 		return nil, r.err
 	}
 	i := twoLevelIterPool.Get().(*twoLevelIterator)
-	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer, filterBlockSizeLimit,
+	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
+		false, // Disable the use of the filter block in the second level.
 		stats, categoryAndQoS, statsCollector, rp, bufferPool)
+	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
 
 	topLevelIndexH, err := r.readIndex(ctx, i.secondLevel.indexFilterRH, stats, &i.secondLevel.iterStats)
 	if err == nil {
@@ -339,11 +343,10 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	err := i.secondLevel.err
 	i.secondLevel.err = nil // clear cached iteration error
 
-	useFilter := shouldUseFilterBlock(i.secondLevel.reader, i.secondLevel.filterBlockSizeLimit)
 	// The twoLevelIterator could be already exhausted. Utilize that when
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
 	// bounds-exhausted near the top of the file.
-	filterUsedAndDidNotMatch := useFilter && !i.secondLevel.lastBloomFilterMatched
+	filterUsedAndDidNotMatch := i.useFilterBlock && !i.lastBloomFilterMatched
 	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
 		(i.secondLevel.exhaustedBounds == +1 || (i.secondLevel.data.IsDataInvalidated() && i.secondLevel.index.IsDataInvalidated())) &&
 		err == nil {
@@ -352,12 +355,12 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	}
 
 	// Check prefix bloom filter.
-	if useFilter {
-		if !i.secondLevel.lastBloomFilterMatched {
+	if i.useFilterBlock {
+		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
 			flags = flags.DisableTrySeekUsingNext()
 		}
-		i.secondLevel.lastBloomFilterMatched = false
+		i.lastBloomFilterMatched = false
 		var mayContain bool
 		mayContain, i.secondLevel.err = i.secondLevel.bloomFilterMayContain(prefix)
 		if i.secondLevel.err != nil || !mayContain {
@@ -369,7 +372,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			i.secondLevel.data.Invalidate()
 			return nil
 		}
-		i.secondLevel.lastBloomFilterMatched = true
+		i.lastBloomFilterMatched = true
 	}
 
 	// Bloom filter matches.
@@ -476,8 +479,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	}
 
 	if !dontSeekWithinSingleLevelIter {
-		if ikv := i.secondLevel.seekPrefixGE(
-			prefix, key, flags, NeverUseFilterBlock); ikv != nil {
+		if ikv := i.secondLevel.seekPrefixGE(prefix, key, flags); ikv != nil {
 			return ikv
 		}
 	}
