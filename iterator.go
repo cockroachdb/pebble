@@ -2579,14 +2579,8 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// If OnlyReadGuaranteedDurable changed, the iterator stacks are incorrect,
 	// improperly including or excluding memtables. Invalidate them so that
 	// finishInitializingIter will reconstruct them.
-	//
-	// If either the original options or the new options specify a table filter,
-	// we need to reconstruct the iterator stacks. If they both supply a table
-	// filter, we can't be certain that it's the same filter since we have no
-	// mechanism to compare the filter closures.
 	closeBoth := i.err != nil ||
-		o.OnlyReadGuaranteedDurable != i.opts.OnlyReadGuaranteedDurable ||
-		o.TableFilter != nil || i.opts.TableFilter != nil
+		o.OnlyReadGuaranteedDurable != i.opts.OnlyReadGuaranteedDurable
 
 	// If either options specify block property filters for an iterator stack,
 	// reconstruct it.

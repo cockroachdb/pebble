@@ -115,11 +115,6 @@ type IterOptions struct {
 	// boundary the iterator will return Valid()==false. Setting UpperBound
 	// effectively truncates the key space visible to the iterator.
 	UpperBound []byte
-	// TableFilter can be used to filter the tables that are scanned during
-	// iteration based on the user properties. Return true to scan the table and
-	// false to skip scanning. This function must be thread-safe since the same
-	// function can be used by multiple iterators, if the iterator is cloned.
-	TableFilter func(userProps map[string]string) bool
 	// SkipPoint may be used to skip over point keys that don't match an
 	// arbitrary predicate during iteration. If set, the Iterator invokes
 	// SkipPoint for keys encountered. If SkipPoint returns true, the iterator
