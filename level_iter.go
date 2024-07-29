@@ -158,7 +158,6 @@ func (l *levelIter) init(
 	l.prefix = nil
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
-	l.tableOpts.TableFilter = opts.TableFilter
 	l.tableOpts.PointKeyFilters = opts.PointKeyFilters
 	if len(opts.PointKeyFilters) == 0 {
 		l.tableOpts.PointKeyFilters = l.filtersBuf[:0:1]

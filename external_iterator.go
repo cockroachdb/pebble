@@ -108,8 +108,6 @@ func NewExternalIterWithContext(
 
 func validateExternalIterOpts(iterOpts *IterOptions) error {
 	switch {
-	case iterOpts.TableFilter != nil:
-		return errors.Errorf("pebble: external iterator: TableFilter unsupported")
 	case iterOpts.PointKeyFilters != nil:
 		return errors.Errorf("pebble: external iterator: PointKeyFilters unsupported")
 	case iterOpts.RangeKeyFilters != nil:

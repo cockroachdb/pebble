@@ -1292,13 +1292,9 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 			return buf.String()
 		case "set-options":
 			var label string
-			var tableFilter bool
 			td.ScanArgs(t, "label", &label)
 			opts := iterators[label].opts
 			for _, arg := range td.CmdArgs {
-				if arg.Key == "table-filter" {
-					tableFilter = true
-				}
 				if arg.Key == "key-types" {
 					switch arg.Vals[0] {
 					case "points-only":
@@ -1313,9 +1309,6 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 				}
 			}
 			opts.LowerBound, opts.UpperBound = parseBounds(td)
-			if tableFilter {
-				opts.TableFilter = func(userProps map[string]string) bool { return false }
-			}
 			iterators[label].SetOptions(&opts)
 			trashBounds(opts.LowerBound, opts.UpperBound)
 			buf.Reset()
@@ -1542,9 +1535,6 @@ func iterOptionsString(o *IterOptions) string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "key-types=%s, lower=%q, upper=%q",
 		o.KeyTypes, o.LowerBound, o.UpperBound)
-	if o.TableFilter != nil {
-		fmt.Fprintf(&buf, ", table-filter")
-	}
 	if o.OnlyReadGuaranteedDurable {
 		fmt.Fprintf(&buf, ", only-durable")
 	}
