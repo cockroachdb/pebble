@@ -986,10 +986,10 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 					// sstable version.
 					require.Nil(t, i.vbRH)
 				case *twoLevelCompactionIterator:
-					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.secondLevel.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
-					require.Nil(t, i.vbRH)
+					require.Nil(t, i.secondLevel.vbRH)
 				default:
 					require.Failf(t, fmt.Sprintf("unknown compaction iterator type: %T", citer), "")
 				}

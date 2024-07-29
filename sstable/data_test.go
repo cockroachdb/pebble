@@ -417,7 +417,7 @@ func runIterCmd(
 			fmt.Fprintf(&b, "| %T:\n", origIter)
 			si, _ := origIter.(*singleLevelIterator)
 			if twoLevelIter, ok := origIter.(*twoLevelIterator); ok {
-				si = &twoLevelIter.singleLevelIterator
+				si = &twoLevelIter.secondLevel
 				if twoLevelIter.topLevelIndex.Valid() {
 					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Key())
 					v := twoLevelIter.topLevelIndex.Value()
