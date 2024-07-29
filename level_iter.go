@@ -60,8 +60,9 @@ type levelIter struct {
 	// tableOpts.{Lower,Upper}Bound are nil, the corresponding iteration boundary
 	// does not lie within the table bounds.
 	tableOpts IterOptions
-	// The LSM level this levelIter is initialized for.
-	level manifest.Level
+	// The layer this levelIter is initialized for. This can be either
+	// a level L1+, an L0 sublevel, or a flushable ingests layer.
+	layer manifest.Layer
 	// combinedIterState may be set when a levelIter is used during user
 	// iteration. Although levelIter only iterates over point keys, it's also
 	// responsible for lazily constructing the combined range & point iterator
@@ -133,11 +134,11 @@ func newLevelIter(
 	comparer *Comparer,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
-	level manifest.Level,
+	layer manifest.Layer,
 	internalOpts internalIterOpts,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(ctx, opts, comparer, newIters, files, level, internalOpts)
+	l.init(ctx, opts, comparer, newIters, files, layer, internalOpts)
 	return l
 }
 
@@ -147,12 +148,12 @@ func (l *levelIter) init(
 	comparer *Comparer,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
-	level manifest.Level,
+	layer manifest.Layer,
 	internalOpts internalIterOpts,
 ) {
 	l.ctx = ctx
 	l.err = nil
-	l.level = level
+	l.layer = layer
 	l.logger = opts.getLogger()
 	l.prefix = nil
 	l.lower = opts.LowerBound
@@ -164,7 +165,7 @@ func (l *levelIter) init(
 	}
 	l.tableOpts.UseL6Filters = opts.UseL6Filters
 	l.tableOpts.CategoryAndQoS = opts.CategoryAndQoS
-	l.tableOpts.level = l.level
+	l.tableOpts.layer = l.layer
 	l.tableOpts.snapshotForHideObsoletePoints = opts.snapshotForHideObsoletePoints
 	l.comparer = comparer
 	l.cmp = comparer.Compare
@@ -619,10 +620,10 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 		// bounds as such keys are always range tombstones which will be skipped
 		// by the Iterator.
 		if l.lower != nil && kv != nil && !kv.K.IsExclusiveSentinel() && l.cmp(kv.K.UserKey, l.lower) < 0 {
-			l.logger.Fatalf("levelIter %s: lower bound violation: %s < %s\n%s", l.level, kv, l.lower, debug.Stack())
+			l.logger.Fatalf("levelIter %s: lower bound violation: %s < %s\n%s", l.layer, kv, l.lower, debug.Stack())
 		}
 		if l.upper != nil && kv != nil && !kv.K.IsExclusiveSentinel() && l.cmp(kv.K.UserKey, l.upper) > 0 {
-			l.logger.Fatalf("levelIter %s: upper bound violation: %s > %s\n%s", l.level, kv, l.upper, debug.Stack())
+			l.logger.Fatalf("levelIter %s: upper bound violation: %s > %s\n%s", l.layer, kv, l.upper, debug.Stack())
 		}
 	}
 	return kv
@@ -956,9 +957,9 @@ func (l *levelIter) DebugTree(tp treeprinter.Node) {
 
 func (l *levelIter) String() string {
 	if l.iterFile != nil {
-		return fmt.Sprintf("%s: fileNum=%s", l.level, l.iterFile.FileNum.String())
+		return fmt.Sprintf("%s: fileNum=%s", l.layer, l.iterFile.FileNum.String())
 	}
-	return fmt.Sprintf("%s: fileNum=<nil>", l.level)
+	return fmt.Sprintf("%s: fileNum=<nil>", l.layer)
 }
 
 var _ internalIterator = &levelIter{}

@@ -196,9 +196,9 @@ type IterOptions struct {
 	// Internal options.
 
 	logger Logger
-	// Level corresponding to this file. Only passed in if constructed by a
+	// Layer corresponding to this file. Only passed in if constructed by a
 	// levelIter.
-	level manifest.Level
+	layer manifest.Layer
 	// disableLazyCombinedIteration is an internal testing option.
 	disableLazyCombinedIteration bool
 	// snapshotForHideObsoletePoints is specified for/by levelIter when opening

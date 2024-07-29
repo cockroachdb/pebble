@@ -215,7 +215,7 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 		opts = *o
 	}
 	return newLevelIter(
-		context.Background(), opts, s.comparer, s.newIters, s.slice.Iter(), manifest.FlushableIngestLevel(),
+		context.Background(), opts, s.comparer, s.newIters, s.slice.Iter(), manifest.FlushableIngestsLayer(),
 		internalIterOpts{},
 	)
 }
@@ -248,7 +248,7 @@ func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIter
 	return keyspanimpl.NewLevelIter(
 		context.TODO(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare,
-		s.constructRangeDelIter, s.slice.Iter(), manifest.FlushableIngestLevel(),
+		s.constructRangeDelIter, s.slice.Iter(), manifest.FlushableIngestsLayer(),
 		manifest.KeyTypePoint,
 	)
 }
@@ -262,7 +262,7 @@ func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIter
 	return keyspanimpl.NewLevelIter(
 		context.TODO(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
-		s.slice.Iter(), manifest.FlushableIngestLevel(), manifest.KeyTypeRange,
+		s.slice.Iter(), manifest.FlushableIngestsLayer(), manifest.KeyTypeRange,
 	)
 }
 

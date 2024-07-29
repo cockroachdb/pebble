@@ -539,7 +539,7 @@ func (d *DB) truncateSharedFile(
 	iters, err := d.newIters(ctx, file, &IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
-		level:      manifest.Level(level),
+		layer:      manifest.Level(level),
 	}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
 	if err != nil {
 		return nil, false, err
@@ -900,7 +900,7 @@ func (i *scanInternalIterator) constructPointIter(
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
 	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
 	i.opts.IterOptions.CategoryAndQoS = categoryAndQoS
-	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]
 
