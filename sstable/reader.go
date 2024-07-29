@@ -979,7 +979,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
 
-	footer, err := readFooter(ctx, f, rh, r.logger)
+	footer, err := readFooter(ctx, f, rh, r.logger, r.cacheOpts.FileNum)
 	if err != nil {
 		r.err = err
 		return nil, r.Close()

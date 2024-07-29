@@ -1025,7 +1025,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 		t.Fatalf("expected failure, but found success")
 	}
 	require.Equal(t,
-		"pebble: backing file 000003 error: pebble/table: invalid table (bad magic number: 0xf09faab3f09faa00)",
+		"pebble: backing file 000003 error: pebble/table: invalid table 000003 (bad magic number: 0xf09faab3f09faa00)",
 		err.Error())
 }
 

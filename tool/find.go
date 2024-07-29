@@ -446,7 +446,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}
 			opts.SetInternal(sstableinternal.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
-					Cache: cache,
+					Cache:   cache,
+					FileNum: fl.DiskFileNum,
 				},
 			})
 			readable, err := sstable.NewSimpleReadable(tf)
