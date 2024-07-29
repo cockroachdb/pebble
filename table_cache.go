@@ -565,13 +565,15 @@ func (c *tableCacheShard) newPointIter(
 		// By default, we don't use block filters for L6 and restrict the size for
 		// flushable ingests, as these blocks can be very big.
 		if !opts.UseL6Filters {
-			if opts.level == manifest.Level(6) {
+			if opts.layer == manifest.Level(6) {
 				filterBlockSizeLimit = sstable.NeverUseFilterBlock
-			} else if opts.level.FlushableIngestLevel() {
+			} else if opts.layer.IsFlushableIngests() {
 				filterBlockSizeLimit = filterBlockSizeLimitForFlushableIngests
 			}
 		}
-		ctx = objiotracing.WithLevel(ctx, manifest.LevelToInt(opts.level))
+		if opts.layer.IsSet() && !opts.layer.IsFlushableIngests() {
+			ctx = objiotracing.WithLevel(ctx, opts.layer.Level())
+		}
 	}
 	tableFormat, err := v.reader.TableFormat()
 	if err != nil {

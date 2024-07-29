@@ -1527,12 +1527,12 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 
 // IterAllLevelsAndSublevels calls fn with an iterator for each L0 sublevel
 // (from top to bottom), then once for each level below L0.
-func (v *Version) IterAllLevelsAndSublevels(fn func(it LevelIterator, level int, sublevel int)) {
+func (v *Version) IterAllLevelsAndSublevels(fn func(it LevelIterator, level Layer)) {
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
-		fn(v.L0SublevelFiles[sublevel].Iter(), 0, sublevel)
+		fn(v.L0SublevelFiles[sublevel].Iter(), L0Sublevel(sublevel))
 	}
 	for level := 1; level < NumLevels; level++ {
-		fn(v.Levels[level].Iter(), level, invalidSublevel)
+		fn(v.Levels[level].Iter(), Level(level))
 	}
 }
 
@@ -1620,7 +1620,7 @@ func (l *VersionList) Remove(v *Version) {
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-func CheckOrdering(cmp Compare, format base.FormatKey, level Level, files LevelIterator) error {
+func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelIterator) error {
 	// The invariants to check for L0 sublevels are the same as the ones to
 	// check for all other levels. However, if L0 is not organized into
 	// sublevels, or if all L0 files are being passed in, we do the legacy L0

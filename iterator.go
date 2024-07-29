@@ -835,10 +835,10 @@ func (i *Iterator) sampleRead() {
 	}
 	if len(mi.levels) > 1 {
 		mi.ForEachLevelIter(func(li *levelIter) (done bool) {
-			if li.level.FlushableIngestLevel() {
+			if li.layer.IsFlushableIngests() {
 				return false
 			}
-			l := manifest.LevelToInt(li.level)
+			l := li.layer.Level()
 			if f := li.iterFile; f != nil {
 				var containsKey bool
 				if i.pos == iterPosNext || i.pos == iterPosCurForward ||

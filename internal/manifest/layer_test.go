@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLevel(t *testing.T) {
+func TestLayer(t *testing.T) {
 	testCases := []struct {
-		level    Level
+		layer    Layer
 		expected string
 	}{
 		{Level(0), "L0"},
@@ -27,12 +27,12 @@ func TestLevel(t *testing.T) {
 		{L0Sublevel(1), "L0.1"},
 		{L0Sublevel(2), "L0.2"},
 
-		{FlushableIngestLevel(), "flushable-ingest"},
+		{FlushableIngestsLayer(), "flushable-ingests"},
 	}
 
 	for _, c := range testCases {
 		t.Run(c.expected, func(t *testing.T) {
-			s := c.level.String()
+			s := c.layer.String()
 			require.EqualValues(t, c.expected, s)
 		})
 	}

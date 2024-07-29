@@ -738,7 +738,7 @@ func (c *compaction) newInputIters(
 			}
 		}
 	} else {
-		addItersForLevel := func(level *compactionLevel, l manifest.Level) error {
+		addItersForLevel := func(level *compactionLevel, l manifest.Layer) error {
 			// Add a *levelIter for point iterators. Because we don't call
 			// initRangeDel, the levelIter will close and forget the range
 			// deletion iterator when it steps on to a new file. Surfacing range
@@ -899,9 +899,9 @@ func (c *compaction) newInputIters(
 }
 
 func (c *compaction) newRangeDelIter(
-	newIters tableNewIters, f manifest.LevelFile, opts IterOptions, l manifest.Level,
+	newIters tableNewIters, f manifest.LevelFile, opts IterOptions, l manifest.Layer,
 ) (*noCloseIter, error) {
-	opts.level = l
+	opts.layer = l
 	iterSet, err := newIters(context.Background(), f.FileMetadata, &opts,
 		internalIterOpts{
 			compaction: true,

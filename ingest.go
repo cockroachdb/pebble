@@ -1727,7 +1727,7 @@ func (d *DB) excise(
 				Category: "pebble-ingest",
 				QoSLevel: sstable.LatencySensitiveQoSLevel,
 			},
-			level: manifest.Level(level),
+			layer: manifest.Level(level),
 		}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
 		itersLoaded = true
 		return err

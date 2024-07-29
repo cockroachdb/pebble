@@ -1475,7 +1475,7 @@ func (i *Iterator) constructPointIter(
 		mlevels = mlevels[:numMergingLevels]
 		levels = levels[:numLevelIters]
 		i.opts.snapshotForHideObsoletePoints = buf.dbi.seqNum
-		addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+		addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 			li := &levels[levelsIndex]
 
 			li.init(ctx, i.opts, &i.comparer, i.newIters, files, level, internalOpts)

@@ -257,7 +257,7 @@ func (g *getIter) initializeNextIterator() (ok bool) {
 // split user keys across adjacent sstables within a level, ensuring that at
 // most one sstable overlaps g.key.
 func (g *getIter) getSSTableIterators(
-	files manifest.LevelIterator, level manifest.Level,
+	files manifest.LevelIterator, level manifest.Layer,
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	files = files.Filter(manifest.KeyTypePoint)
 	m := files.SeekGE(g.comparer.Compare, g.key)
@@ -270,7 +270,7 @@ func (g *getIter) getSSTableIterators(
 		return emptyIter, nil, nil
 	}
 	// m may possibly contain point (or range deletion) keys relevant to g.key.
-	g.iterOpts.level = level
+	g.iterOpts.layer = level
 	iters, err := g.newIters(context.Background(), m, &g.iterOpts, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
 	if err != nil {
 		return emptyIter, nil, err

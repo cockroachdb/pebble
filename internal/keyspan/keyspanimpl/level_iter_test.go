@@ -317,7 +317,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			levelIter.Init(
 				context.Background(),
 				keyspan.SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
-				v.Levels[6].Iter(), 0, manifest.KeyTypeRange,
+				v.Levels[6].Iter(), manifest.Level(0), manifest.KeyTypeRange,
 			)
 			levelIters = append(levelIters, &levelIter)
 		}
@@ -428,7 +428,7 @@ func TestLevelIter(t *testing.T) {
 				metas[i] = files[i].meta
 			}
 			lm := manifest.MakeLevelMetadata(cmp, 6, metas)
-			iter := NewLevelIter(context.Background(), keyspan.SpanIterOptions{}, cmp, tableNewIters, lm.Iter(), 6, keyType)
+			iter := NewLevelIter(context.Background(), keyspan.SpanIterOptions{}, cmp, tableNewIters, lm.Iter(), manifest.Level(6), keyType)
 			extraInfo := func() string {
 				return iter.String()
 			}
