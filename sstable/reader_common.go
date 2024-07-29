@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -43,6 +44,7 @@ type CommonReader interface {
 		statsCollector *CategoryStatsCollector,
 		rp ReaderProvider,
 		bufferPool *block.BufferPool,
+		smoother *rate.Smoother,
 	) (Iterator, error)
 
 	EstimateDiskUsage(start, end []byte) (uint64, error)

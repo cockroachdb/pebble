@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -107,14 +108,16 @@ type Runner struct {
 	// Last range key span (or portion of it) that was not yet written to a table.
 	lastRangeKeySpan keyspan.Span
 	stats            Stats
+	smoother         *rate.Smoother
 }
 
 // NewRunner creates a new Runner.
-func NewRunner(cfg RunnerConfig, iter *Iter) *Runner {
+func NewRunner(cfg RunnerConfig, iter *Iter, s *rate.Smoother) *Runner {
 	r := &Runner{
-		cmp:  iter.cmp,
-		cfg:  cfg,
-		iter: iter,
+		cmp:      iter.cmp,
+		cfg:      cfg,
+		iter:     iter,
+		smoother: s,
 	}
 	r.key, r.value = r.iter.First()
 	return r
@@ -176,10 +179,13 @@ func (r *Runner) writeKeysToTable(tw *sstable.RawWriter) (splitKey []byte, _ err
 	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	key, value := r.key, r.value
+	si := r.smoother.Track(tw.EstimatedSize)
+	defer si.Close()
 	for ; key != nil; key, value = r.iter.Next() {
 		if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), lastUserKeyFn) {
 			break
 		}
+		si.Tick()
 
 		switch key.Kind() {
 		case base.InternalKeyKindRangeDelete:
