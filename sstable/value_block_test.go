@@ -10,11 +10,13 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
 func TestValueHandleEncodeDecode(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []valueHandle{
 		{valueLen: 23, blockNum: 100003, offsetInBlock: 2300},
 		{valueLen: math.MaxUint32 - 1, blockNum: math.MaxUint32 / 2, offsetInBlock: math.MaxUint32 - 2},
@@ -30,6 +32,7 @@ func TestValueHandleEncodeDecode(t *testing.T) {
 }
 
 func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []valueBlocksIndexHandle{
 		{
 			h: block.Handle{
@@ -54,6 +57,7 @@ func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
 }
 
 func TestLittleEndianGetPut(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []uint64{
 		0, (1 << 10) - 1, (1 << 25) + 1, math.MaxUint32, math.MaxUint64, uint64(rand.Int63())}
 	var buf [8]byte

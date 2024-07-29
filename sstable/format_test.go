@@ -7,10 +7,12 @@ package sstable
 import (
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTableFormat_RoundTrip(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	tcs := []struct {
 		name    string
 		magic   string

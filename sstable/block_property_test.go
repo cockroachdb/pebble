@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -28,6 +29,7 @@ import (
 )
 
 func TestIntervalEncodeDecode(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		name  string
 		lower uint64
@@ -90,6 +92,7 @@ func decodeAndCheck(t *testing.T, buf []byte, expected BlockInterval) {
 }
 
 func TestIntervalUnionIntersects(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		name       string
 		i1         BlockInterval
@@ -218,6 +221,7 @@ func addTestRangeKeys(t *testing.T, bic BlockPropertyCollector, suffixes ...int)
 }
 
 func TestBlockIntervalCollector(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	bic := NewBlockIntervalCollector("foo", testIntervalMapper{}, nil /* suffixReplacer */)
 	require.Equal(t, "foo", bic.Name())
 
@@ -271,6 +275,7 @@ func TestBlockIntervalCollector(t *testing.T) {
 }
 
 func TestBlockIntervalFilter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		name       string
 		filter     BlockInterval
@@ -312,6 +317,7 @@ func TestBlockIntervalFilter(t *testing.T) {
 }
 
 func TestBlockPropertiesEncoderDecoder(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var encoder blockPropertiesEncoder
 	scratch := encoder.getScratchForProp()
 	scratch = append(scratch, []byte("foo")...)
@@ -385,6 +391,7 @@ func (b filterWithTrueForEmptyProp) SyntheticSuffixIntersects(
 }
 
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	bic0 := NewBlockIntervalCollector("p0", testIntervalMapper{}, nil)
 	bic0Id := byte(0)
@@ -528,6 +535,7 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 }
 
 func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Setup two different properties values to filter against.
 	var emptyProps []byte
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
@@ -822,6 +830,8 @@ func (c *valueCharIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error)
 }
 
 func TestBlockProperties(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var r *Reader
 	defer func() {
 		if r != nil {
@@ -986,6 +996,7 @@ func TestBlockProperties(t *testing.T) {
 }
 
 func TestBlockProperties_BoundLimited(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var r *Reader
 	defer func() {
 		if r != nil {

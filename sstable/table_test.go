@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -258,13 +259,23 @@ func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPoli
 	}
 }
 
-func TestReaderDefaultCompression(t *testing.T) { testReader(t, "h.sst", nil, nil) }
-func TestReaderNoCompression(t *testing.T)      { testReader(t, "h.no-compression.sst", nil, nil) }
+func TestReaderDefaultCompression(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	testReader(t, "h.sst", nil, nil)
+}
+
+func TestReaderNoCompression(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	testReader(t, "h.no-compression.sst", nil, nil)
+}
+
 func TestReaderTableBloom(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testReader(t, "h.table-bloom.no-compression.sst", nil, nil)
 }
 
 func TestReaderBloomUsed(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	wordCount := hamletWordCount()
 	words := wordCount.SortedKeys()
 
@@ -324,6 +335,7 @@ func TestReaderBloomUsed(t *testing.T) {
 }
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	f, err := os.Open(filepath.FromSlash("testdata/h.table-bloom.no-compression.sst"))
 	require.NoError(t, err)
 
@@ -409,6 +421,7 @@ func (c *countingFilterPolicy) MayContain(ftype FilterType, filter, key []byte) 
 }
 
 func TestWriterRoundTrip(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	blockSizes := []int{100, 1000, 2048, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
@@ -432,6 +445,7 @@ func TestWriterRoundTrip(t *testing.T) {
 }
 
 func TestFinalBlockIsWritten(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	keys := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
 	valueLengths := []int{0, 1, 22, 28, 33, 40, 50, 61, 87, 100, 143, 200}
 	xxx := bytes.Repeat([]byte("x"), valueLengths[len(valueLengths)-1])
@@ -497,6 +511,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 }
 
 func TestReaderSymtheticSeqNum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
 	require.NoError(t, err)
 
@@ -519,6 +534,7 @@ func TestReaderSymtheticSeqNum(t *testing.T) {
 }
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	err := buildHamletTestSST(fs, "test.sst", DefaultCompression, nil, /* filter policy */
 		TableFilter, nil, 4096, 4096)
@@ -550,6 +566,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 }
 
 func TestFooterRoundTrip(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	buf := make([]byte, 100+maxFooterLen)
 	for format := TableFormatLevelDB; format < TableFormatMax; format++ {
 		t.Run(fmt.Sprintf("format=%s", format), func(t *testing.T) {
@@ -605,6 +622,7 @@ func TestFooterRoundTrip(t *testing.T) {
 }
 
 func TestReadFooter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	encode := func(format TableFormat, checksum block.ChecksumType) string {
 		f := footer{
 			format:   format,

@@ -10,11 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCompressionRoundtrip(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewSource(seed))
@@ -43,6 +46,7 @@ func TestCompressionRoundtrip(t *testing.T) {
 // TestDecompressionError tests that a decompressing a value that does not
 // decompress returns an error.
 func TestDecompressionError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	rng := rand.New(rand.NewSource(1 /* fixed seed */))
 
 	// Create a buffer to represent a faux zstd compressed block. It's prefixed

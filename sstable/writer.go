@@ -218,11 +218,10 @@ func (w *Writer) tempRangeKeyCopy(k []byte) []byte {
 // Close finishes writing the table and closes the underlying file that the
 // table was written to.
 func (w *Writer) Close() (err error) {
-	if w.rw.err != nil {
-		return w.rw.err
+	if w.rw.err == nil {
+		// Write the range-key block, flushing any remaining spans from the
+		// fragmenter first.
+		w.fragmenter.Finish()
 	}
-	// Write the range-key block, flushing any remaining spans from the
-	// fragmenter first.
-	w.fragmenter.Finish()
 	return w.rw.Close()
 }

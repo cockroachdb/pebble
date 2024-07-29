@@ -12,11 +12,13 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
 func TestGetBytes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const size = (1 << 31) - 1
 	// No need to actually allocate a huge slice, which can cause OOM on small
 	// machines (like the GitHub CI runners).
@@ -26,6 +28,7 @@ func TestGetBytes(t *testing.T) {
 }
 
 func TestDecodeVarint(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	vals := []uint32{
 		0,
 		1,

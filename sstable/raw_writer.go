@@ -1957,6 +1957,13 @@ func NewRawWriter(
 	}
 
 	w.coordination.init(o.Parallelism, w)
+	defer func() {
+		if r := recover(); r != nil {
+			// Don't leak a goroutine if we hit a panic.
+			_ = w.coordination.writeQueue.finish()
+			panic(r)
+		}
+	}()
 
 	if writable == nil {
 		w.err = errors.New("pebble: nil writable")

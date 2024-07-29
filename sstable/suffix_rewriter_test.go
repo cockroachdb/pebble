@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -14,6 +15,7 @@ import (
 )
 
 func TestRewriteSuffixProps(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	from, to := []byte("_212"), []byte("_646")
 	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
 		t.Run(format.String(), func(t *testing.T) {

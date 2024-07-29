@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -17,6 +18,7 @@ import (
 )
 
 func TestWriter_RangeKeys(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var r *Reader
 	defer func() {
 		if r != nil {
@@ -38,6 +40,11 @@ func TestWriter_RangeKeys(t *testing.T) {
 			Comparer:    cmp,
 			TableFormat: TableFormatPebblev2,
 		})
+		defer func() {
+			if w != nil {
+				_ = w.Close()
+			}
+		}()
 		for _, data := range strings.Split(td.Input, "\n") {
 			// Format. One of:
 			// - SET $START-$END $SUFFIX=$VALUE
@@ -78,6 +85,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 		if err = w.Close(); err != nil {
 			return nil, err
 		}
+		w = nil
 
 		f, err = mem.Open("test")
 		if err != nil {
