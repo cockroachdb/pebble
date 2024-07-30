@@ -189,7 +189,7 @@ func SplitAndEncodeSpan(
 	}
 
 	if upToKey == nil || cmp(span.End, upToKey) <= 0 {
-		if err := tw.EncodeSpan(span); err != nil {
+		if err := tw.EncodeSpan(*span); err != nil {
 			return err
 		}
 		span.Reset()
@@ -202,12 +202,11 @@ func SplitAndEncodeSpan(
 	}
 
 	// Split the span at upToKey and encode the first part.
-	splitSpan := keyspan.Span{
+	if err := tw.EncodeSpan(keyspan.Span{
 		Start: span.Start,
 		End:   upToKey,
 		Keys:  span.Keys,
-	}
-	if err := tw.EncodeSpan(&splitSpan); err != nil {
+	}); err != nil {
 		return err
 	}
 	span.Start = append(span.Start[:0], upToKey...)

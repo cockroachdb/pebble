@@ -1352,7 +1352,7 @@ func (p *keyCountCollector) AddPointKey(k InternalKey, _ []byte) error {
 }
 
 func (p *keyCountCollector) AddRangeKeys(span Span) error {
-	return rangekey.Encode(&span, func(k base.InternalKey, v []byte) error {
+	return rangekey.Encode(span, func(k base.InternalKey, v []byte) error {
 		p.table++
 		return nil
 	})

@@ -415,7 +415,7 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *RawWriter, from, to []byte) erro
 			s.Keys[i].Suffix = to
 		}
 
-		if err := w.EncodeSpan(s); err != nil {
+		if err := w.EncodeSpan(*s); err != nil {
 			return err
 		}
 	}

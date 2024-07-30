@@ -185,7 +185,7 @@ func (r *Runner) writeKeysToTable(tw *sstable.RawWriter) (splitKey []byte, _ err
 		case base.InternalKeyKindRangeDelete:
 			// The previous span (if any) must end at or before this key, since the
 			// spans we receive are non-overlapping.
-			if err := tw.EncodeSpan(&r.lastRangeDelSpan); r.err != nil {
+			if err := tw.EncodeSpan(r.lastRangeDelSpan); r.err != nil {
 				return nil, err
 			}
 			r.lastRangeDelSpan.CopyFrom(r.iter.Span())
@@ -194,7 +194,7 @@ func (r *Runner) writeKeysToTable(tw *sstable.RawWriter) (splitKey []byte, _ err
 		case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
 			// The previous span (if any) must end at or before this key, since the
 			// spans we receive are non-overlapping.
-			if err := tw.EncodeSpan(&r.lastRangeKeySpan); err != nil {
+			if err := tw.EncodeSpan(r.lastRangeKeySpan); err != nil {
 				return nil, err
 			}
 			r.lastRangeKeySpan.CopyFrom(r.iter.Span())

@@ -539,7 +539,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				} else {
 					// Use rangedel.Encode to add a reference for each key
 					// within the span.
-					err := rangedel.Encode(rangeDel, func(k base.InternalKey, v []byte) error {
+					err := rangedel.Encode(*rangeDel, func(k base.InternalKey, v []byte) error {
 						refs = append(refs, findRef{
 							key:      k.Clone(),
 							value:    slices.Clone(v),

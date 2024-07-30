@@ -472,7 +472,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 						bytes.HasPrefix(rangeDel.Start, s.filter)) &&
 						r.Compare(s.filter, rangeDel.End) < 0) {
 					fmt.Fprint(stdout, prefix)
-					if err := rangedel.Encode(rangeDel, func(k base.InternalKey, v []byte) error {
+					if err := rangedel.Encode(*rangeDel, func(k base.InternalKey, v []byte) error {
 						formatKeyValue(stdout, s.fmtKey, s.fmtValue, &k, v)
 						return nil
 					}); err != nil {

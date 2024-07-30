@@ -14,7 +14,7 @@ import (
 // closure with the encoded internal keys that represent the Span's state. The
 // keys and values passed to emit are only valid until the closure returns.  If
 // emit returns an error, Encode stops and returns the error.
-func Encode(s *keyspan.Span, emit func(k base.InternalKey, v []byte) error) error {
+func Encode(s keyspan.Span, emit func(k base.InternalKey, v []byte) error) error {
 	for _, k := range s.Keys {
 		if k.Kind() != base.InternalKeyKindRangeDelete {
 			return base.CorruptionErrorf("pebble: rangedel.Encode cannot encode %s key", k.Kind())

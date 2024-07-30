@@ -1934,12 +1934,11 @@ func (r *replicateOp) runSharedReplicate(
 			return w.DeleteRange(start, end)
 		},
 		func(start, end []byte, keys []keyspan.Key) error {
-			s := keyspan.Span{
+			return w.Raw().EncodeSpan(keyspan.Span{
 				Start: start,
 				End:   end,
 				Keys:  keys,
-			}
-			return w.Raw().EncodeSpan(&s)
+			})
 		},
 		func(sst *pebble.SharedSSTMeta) error {
 			sharedSSTs = append(sharedSSTs, *sst)
@@ -1998,12 +1997,11 @@ func (r *replicateOp) runExternalReplicate(
 			return w.DeleteRange(start, end)
 		},
 		func(start, end []byte, keys []keyspan.Key) error {
-			s := keyspan.Span{
+			return w.Raw().EncodeSpan(keyspan.Span{
 				Start: start,
 				End:   end,
 				Keys:  keys,
-			}
-			return w.Raw().EncodeSpan(&s)
+			})
 		},
 		nil,
 		func(sst *pebble.ExternalFile) error {
@@ -2107,7 +2105,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 			rangeKeys := iter.RangeKeys()
 			rkStart, rkEnd := iter.RangeBounds()
 
-			span := &keyspan.Span{Start: rkStart, End: rkEnd, Keys: make([]keyspan.Key, len(rangeKeys))}
+			span := keyspan.Span{Start: rkStart, End: rkEnd, Keys: make([]keyspan.Key, len(rangeKeys))}
 			for i := range rangeKeys {
 				span.Keys[i] = keyspan.Key{
 					Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeySet),
