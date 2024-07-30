@@ -61,7 +61,7 @@ import (
 // closure with the encoded internal keys that represent the Span's state. The
 // keys and values passed to emit are only valid until the closure returns.
 // If emit returns an error, Encode stops and returns the error.
-func Encode(s *keyspan.Span, emit func(k base.InternalKey, v []byte) error) error {
+func Encode(s keyspan.Span, emit func(k base.InternalKey, v []byte) error) error {
 	enc := Encoder{Emit: emit}
 	return enc.Encode(s)
 }
@@ -82,7 +82,7 @@ type Encoder struct {
 //
 // The encoded key-value pair passed to Emit is only valid until the closure
 // completes.
-func (e *Encoder) Encode(s *keyspan.Span) error {
+func (e *Encoder) Encode(s keyspan.Span) error {
 	if s.Empty() {
 		return nil
 	}
@@ -127,7 +127,7 @@ func (e *Encoder) Encode(s *keyspan.Span) error {
 
 // flush constructs internal keys for accumulated key state, and emits the
 // internal keys.
-func (e *Encoder) flush(s *keyspan.Span, seqNum base.SeqNum, del bool) error {
+func (e *Encoder) flush(s keyspan.Span, seqNum base.SeqNum, del bool) error {
 	if len(e.sets) > 0 {
 		ik := base.MakeInternalKey(s.Start, seqNum, base.InternalKeyKindRangeKeySet)
 		l := EncodedSetValueLen(s.End, e.sets)

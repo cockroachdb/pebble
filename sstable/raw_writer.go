@@ -1037,7 +1037,7 @@ func (w *RawWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
 	w.rangeKeySpan = span
 	w.rangeKeySpan.Keys = w.rangeKeysBySuffix.Keys
 	if w.err == nil {
-		w.err = w.EncodeSpan(&w.rangeKeySpan)
+		w.err = w.EncodeSpan(w.rangeKeySpan)
 	}
 }
 
@@ -1660,7 +1660,7 @@ func (w *RawWriter) UnsafeLastPointUserKey() []byte {
 //
 // This is a low-level API that bypasses the fragmenter. The spans passed to
 // this function must be fragmented and ordered.
-func (w *RawWriter) EncodeSpan(span *keyspan.Span) error {
+func (w *RawWriter) EncodeSpan(span keyspan.Span) error {
 	if span.Empty() {
 		return nil
 	}
@@ -1668,7 +1668,7 @@ func (w *RawWriter) EncodeSpan(span *keyspan.Span) error {
 		return rangedel.Encode(span, w.Add)
 	}
 	for i := range w.blockPropCollectors {
-		if err := w.blockPropCollectors[i].AddRangeKeys(*span); err != nil {
+		if err := w.blockPropCollectors[i].AddRangeKeys(span); err != nil {
 			return err
 		}
 	}

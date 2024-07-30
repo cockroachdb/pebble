@@ -246,7 +246,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 			if err != nil {
 				return err.Error()
 			}
-			if err := w.EncodeSpan(&span); err != nil {
+			if err := w.EncodeSpan(span); err != nil {
 				return err.Error()
 			}
 		default:
@@ -257,7 +257,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	}
 	f.Finish()
 	for _, v := range tombstones {
-		if err := rangedel.Encode(&v, w.Add); err != nil {
+		if err := rangedel.Encode(v, w.Add); err != nil {
 			return err.Error()
 		}
 	}

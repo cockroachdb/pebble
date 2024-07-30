@@ -209,7 +209,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			for _, line := range strings.Split(td.Input, "\n") {
 				s := keyspan.ParseSpan(line)
 				// Range dels can be written sequentially. Range keys must be collected.
-				rKeySpan := &keyspan.Span{Start: s.Start, End: s.End}
+				rKeySpan := keyspan.Span{Start: s.Start, End: s.End}
 				for _, k := range s.Keys {
 					if rangekey.IsRangeKey(k.Kind()) {
 						rKeySpan.Keys = append(rKeySpan.Keys, k)

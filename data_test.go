@@ -597,7 +597,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
 		s, err := rdi.First()
 		for ; s != nil && err == nil; s, err = rdi.Next() {
-			err = rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+			err = rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Raw().Add(k, v)
 			})
@@ -691,7 +691,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
 		s, err := rdi.First()
 		for ; s != nil && err == nil; s, err = rdi.Next() {
-			err = rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+			err = rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Raw().Add(k, v)
 			})
@@ -1086,7 +1086,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			}
 			if data[:i] == "rangekey" {
 				span := keyspan.ParseSpan(data[i:])
-				err := rangekey.Encode(&span, func(k base.InternalKey, v []byte) error {
+				err := rangekey.Encode(span, func(k base.InternalKey, v []byte) error {
 					return mem.set(k, v)
 				})
 				if err != nil {

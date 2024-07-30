@@ -142,7 +142,7 @@ func writeSSTForIngestion(
 				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
 			}
 			keyspan.SortKeysByTrailer(&collapsed.Keys)
-			if err := w.Raw().EncodeSpan(&collapsed); err != nil {
+			if err := w.Raw().EncodeSpan(collapsed); err != nil {
 				return nil, err
 			}
 		}

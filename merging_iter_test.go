@@ -247,7 +247,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				}
 				frag.Finish()
 				for _, v := range tombstones {
-					if err := rangedel.Encode(&v, w.Add); err != nil {
+					if err := rangedel.Encode(v, w.Add); err != nil {
 						return err.Error()
 					}
 				}

@@ -1026,7 +1026,7 @@ func loadFlushedSSTableKeys(
 				defer iter.Close()
 				s, err := iter.First()
 				for ; s != nil; s, err = iter.Next() {
-					if err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+					if err := rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
 						var key flushedKey
 						key.Trailer = k.Trailer
 						bufs.alloc, key.UserKey = bufs.alloc.Copy(k.UserKey)
@@ -1049,7 +1049,7 @@ func loadFlushedSSTableKeys(
 				defer iter.Close()
 				s, err := iter.First()
 				for ; s != nil; s, err = iter.Next() {
-					if err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
+					if err := rangekey.Encode(*s, func(k base.InternalKey, v []byte) error {
 						var key flushedKey
 						key.Trailer = k.Trailer
 						bufs.alloc, key.UserKey = bufs.alloc.Copy(k.UserKey)

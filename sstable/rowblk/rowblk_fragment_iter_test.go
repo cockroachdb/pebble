@@ -58,9 +58,9 @@ func TestBlockFragmentIterator(t *testing.T) {
 			}
 			for _, s := range spans {
 				if s.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
-					rangedel.Encode(&s, emitFn)
+					rangedel.Encode(s, emitFn)
 				} else {
-					rangekey.Encode(&s, emitFn)
+					rangekey.Encode(s, emitFn)
 				}
 			}
 			blockData := w.Finish()
