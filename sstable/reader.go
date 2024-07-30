@@ -151,27 +151,8 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// NewIterWithBlockPropertyFilters returns an iterator for the contents of the
-// table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
-// itself and returns a nil iterator.
-func (r *Reader) NewIterWithBlockPropertyFilters(
-	transforms IterTransforms,
-	lower, upper []byte,
-	filterer *BlockPropertiesFilterer,
-	filterBlockSizeLimit FilterBlockSizeLimit,
-	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
-	rp ReaderProvider,
-) (Iterator, error) {
-	return r.newIterWithBlockPropertyFiltersAndContext(
-		context.Background(), transforms, lower, upper, filterer, filterBlockSizeLimit,
-		stats, categoryAndQoS, statsCollector, rp, nil)
-}
-
-// NewIterWithBlockPropertyFiltersAndContextEtc is similar to
-// NewIterWithBlockPropertyFilters and additionally accepts a context for
-// tracing.
+// NewIterWithBlockPropertyFiltersAndContextEtc returns an iterator for the
+// point keys in the table.
 //
 // If transform.HideObsoletePoints is set, the callee assumes that filterer
 // already includes obsoleteKeyBlockPropertyFilter. The caller can satisfy this
@@ -248,8 +229,8 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
 	// TODO(radu): we should probably not use bloom filters in this case, as there
 	// likely isn't a cache set up.
-	return r.NewIterWithBlockPropertyFilters(
-		transforms, lower, upper, nil, AlwaysUseFilterBlock,
+	return r.NewIterWithBlockPropertyFiltersAndContextEtc(
+		context.TODO(), transforms, lower, upper, nil, AlwaysUseFilterBlock,
 		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, MakeTrivialReaderProvider(r))
 }
 
