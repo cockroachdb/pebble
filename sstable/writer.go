@@ -18,8 +18,9 @@ type Writer struct {
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
 	// keys must be added in order of their start user-key.
-	fragmenter keyspan.Fragmenter
-	rkBuf      []byte
+	fragmenter  keyspan.Fragmenter
+	rkBuf       []byte
+	keyspanKeys []keyspan.Key
 }
 
 // NewWriter returns a new table writer intended for building external sstables
@@ -83,12 +84,21 @@ func (w *Writer) Delete(key []byte) error {
 // 0. Intended for use to externally construct an sstable before ingestion into
 // a DB.
 //
+// Calls to DeleteRange must be made using already-fragmented (non-overlapping)
+// spans and in sorted order.
+//
 // TODO(peter): untested
 func (w *Writer) DeleteRange(start, end []byte) error {
 	if w.rw.err != nil {
 		return w.rw.err
 	}
-	return w.rw.addTombstone(base.MakeInternalKey(start, 0, InternalKeyKindRangeDelete), end)
+	return w.rw.EncodeSpan(keyspan.Span{
+		Start: start,
+		End:   end,
+		Keys: append(w.keyspanKeys[:0], keyspan.Key{
+			Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeDelete),
+		}),
+	})
 }
 
 // Merge adds an action to the DB that merges the value at key with the new
