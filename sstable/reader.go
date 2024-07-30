@@ -461,11 +461,11 @@ func (r *Reader) readBlock(
 		return block.BufferHandle{}, err
 	}
 
-	typ := blockType(compressed.Get()[bh.Length])
+	typ := block.CompressionIndicator(compressed.Get()[bh.Length])
 	compressed.Truncate(int(bh.Length))
 
 	var decompressed block.Value
-	if typ == noCompressionBlockType {
+	if typ == block.NoCompressionIndicator {
 		decompressed = compressed
 	} else {
 		// Decode the length of the decompressed value.

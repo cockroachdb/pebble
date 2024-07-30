@@ -1588,20 +1588,20 @@ func compressAndChecksum(
 ) (compressed []byte, trailer block.Trailer) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	blockType, compressed := compressBlock(compression, b, blockBuf.compressedBuf)
-	if blockType != noCompressionBlockType && cap(compressed) > cap(blockBuf.compressedBuf) {
+	algo, compressed := compressBlock(compression, b, blockBuf.compressedBuf)
+	if algo != block.NoCompressionIndicator && cap(compressed) > cap(blockBuf.compressedBuf) {
 		blockBuf.compressedBuf = compressed[:cap(compressed)]
 	}
 	if len(compressed) < len(b)-len(b)/8 {
 		b = compressed
 	} else {
-		blockType = noCompressionBlockType
+		algo = block.NoCompressionIndicator
 	}
 
 	// Calculate the checksum.
-	trailer[0] = byte(blockType)
+	trailer[0] = byte(algo)
 	checksum := blockBuf.checksummer.Checksum(b, trailer[:1])
-	return b, block.MakeTrailer(byte(blockType), checksum)
+	return b, block.MakeTrailer(byte(algo), checksum)
 }
 
 // assertFormatCompatibility ensures that the features present on the table are

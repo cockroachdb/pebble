@@ -4,6 +4,8 @@
 
 package block
 
+import "github.com/cockroachdb/errors"
+
 // Compression is the per-block compression algorithm to use.
 type Compression int
 
@@ -47,5 +49,53 @@ func CompressionFromString(s string) Compression {
 		return ZstdCompression
 	default:
 		return DefaultCompression
+	}
+}
+
+// CompressionIndicator is the byte stored physically within the block.Trailer
+// to indicate the compression type.
+//
+// TODO(jackson): Avoid exporting once all compression and decompression is
+// delegated to the block package.
+type CompressionIndicator byte
+
+// The block type gives the per-block compression format.
+// These constants are part of the file format and should not be changed.
+// They are different from the Compression constants because the latter
+// are designed so that the zero value of the Compression type means to
+// use the default compression (which is snappy).
+// Not all compression types listed here are supported.
+const (
+	NoCompressionIndicator     CompressionIndicator = 0
+	SnappyCompressionIndicator CompressionIndicator = 1
+	ZlibCompressionIndicator   CompressionIndicator = 2
+	Bzip2CompressionIndicator  CompressionIndicator = 3
+	Lz4CompressionIndicator    CompressionIndicator = 4
+	Lz4hcCompressionIndicator  CompressionIndicator = 5
+	XpressCompressionIndicator CompressionIndicator = 6
+	ZstdCompressionIndicator   CompressionIndicator = 7
+)
+
+// String implements fmt.Stringer.
+func (i CompressionIndicator) String() string {
+	switch i {
+	case 0:
+		return "none"
+	case 1:
+		return "snappy"
+	case 2:
+		return "zlib"
+	case 3:
+		return "bzip2"
+	case 4:
+		return "lz4"
+	case 5:
+		return "lz4hc"
+	case 6:
+		return "xpress"
+	case 7:
+		return "zstd"
+	default:
+		panic(errors.Newf("sstable: unknown block type: %d", i))
 	}
 }
