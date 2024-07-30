@@ -173,7 +173,7 @@ func (lt *levelIterTest) newIters(
 	transforms := file.IterTransforms()
 	var set iterSet
 	if kinds.Point() {
-		iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContextEtc(
+		iter, err := lt.readers[file.FileNum].NewPointIter(
 			ctx, transforms,
 			opts.LowerBound, opts.UpperBound, nil, sstable.AlwaysUseFilterBlock, iio.stats, sstable.CategoryAndQoS{},
 			nil, sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]))
