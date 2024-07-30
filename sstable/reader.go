@@ -469,14 +469,14 @@ func (r *Reader) readBlock(
 		decompressed = compressed
 	} else {
 		// Decode the length of the decompressed value.
-		decodedLen, prefixLen, err := decompressedLen(typ, compressed.Get())
+		decodedLen, prefixLen, err := block.DecompressedLen(typ, compressed.Get())
 		if err != nil {
 			compressed.Release()
 			return block.BufferHandle{}, err
 		}
 
 		decompressed = block.Alloc(decodedLen, bufferPool)
-		if err := decompressInto(typ, compressed.Get()[prefixLen:], decompressed.Get()); err != nil {
+		if err := block.DecompressInto(typ, compressed.Get()[prefixLen:], decompressed.Get()); err != nil {
 			compressed.Release()
 			return block.BufferHandle{}, err
 		}

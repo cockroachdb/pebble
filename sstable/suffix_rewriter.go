@@ -512,7 +512,7 @@ func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error
 	if algo == block.NoCompressionIndicator {
 		return raw, buf, nil
 	}
-	decompressedLen, prefix, err := decompressedLen(algo, raw)
+	decompressedLen, prefix, err := block.DecompressedLen(algo, raw)
 	if err != nil {
 		return nil, buf, err
 	}
@@ -520,7 +520,7 @@ func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error
 		buf = make([]byte, decompressedLen)
 	}
 	dst := buf[:decompressedLen]
-	err = decompressInto(algo, raw[prefix:], dst)
+	err = block.DecompressInto(algo, raw[prefix:], dst)
 	return dst, buf, err
 }
 
