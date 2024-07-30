@@ -55,6 +55,12 @@ func TestDefAppendSeparator(t *testing.T) {
 	}
 }
 
+func TestDefaultComparer(t *testing.T) {
+	if err := CheckComparer(DefaultComparer, [][]byte{{}, []byte("abc"), []byte("d"), []byte("ef")}, [][]byte{{}}); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestAbbreviatedKey(t *testing.T) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	randBytes := func(size int) []byte {

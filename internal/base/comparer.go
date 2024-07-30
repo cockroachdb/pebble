@@ -6,10 +6,14 @@ package base
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"strconv"
 	"unicode/utf8"
+
+	"github.com/cockroachdb/errors"
 )
 
 // Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
@@ -28,7 +32,7 @@ import (
 // In general, if prefix(a) = a[:Split(a)] and suffix(a) = a[Split(a):], then
 //
 //	  Compare(a, b) = bytes.Compare(prefix(a), prefix(b)) if not 0, or
-//		                bytes.Compare(suffix(a), suffix(b)) otherwise.
+//		                Compare(suffix(a), suffix(b)) otherwise.
 type Compare func(a, b []byte) int
 
 // Equal returns true if a and b are equivalent.
@@ -344,12 +348,15 @@ func MakeAssertComparer(c Comparer) Comparer {
 			bPrefix, bSuffix := b[:bn], b[bn:]
 			if prefixCmp := bytes.Compare(aPrefix, bPrefix); prefixCmp == 0 {
 				if suffixCmp := c.Compare(aSuffix, bSuffix); suffixCmp != res {
-					panic(AssertionFailedf("%s: Compare with equal prefixes not consistent with Compare of suffixes: Compare(%q, %q)=%d, Compare(%q, %q)=%d",
+					panic(AssertionFailedf("%s: Compare with equal prefixes not consistent with Compare of suffixes: Compare(%x, %x)=%d, Compare(%x, %x)=%d",
 						c.Name, a, b, res, aSuffix, bSuffix, suffixCmp,
 					))
 				}
 			} else if prefixCmp != res {
-				panic(AssertionFailedf("%s: Compare did not perform byte-wise comparison of prefixes", c.Name))
+				panic(AssertionFailedf(
+					"%s: Compare did not perform byte-wise comparison of prefixes. Compare(%x, %x)=%d bytes.Compare(%x, %x)=%d", c.Name,
+					a, b, res, aPrefix, bPrefix, prefixCmp,
+				))
 			}
 			return res
 		},
@@ -372,4 +379,65 @@ func MakeAssertComparer(c Comparer) Comparer {
 		FormatValue:        c.FormatValue,
 		Name:               c.Name,
 	}
+}
+
+// CheckComparer is a mini test suite that verifies a comparer implementation.
+//
+// It takes strictly ordered (according to the comparator) lists of prefixes and
+// suffixes. Both lists must contain the empty slice. It is recommended that
+// both lists have at least three elements.
+func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
+	checkList := func(list [][]byte, name string) {
+		if slices.IndexFunc(list, func(b []byte) bool { return len(b) == 0 }) == -1 {
+			panic(fmt.Sprintf("%s must contain the empty slice", name))
+		}
+		for i := 1; i < len(list); i++ {
+			if c.Compare(list[i-1], list[i]) != -1 {
+				panic(fmt.Sprintf("%s list not ordered: expected '%x' < '%x'", name, list[i-1], list[i]))
+			}
+		}
+	}
+	checkList(prefixes, "prefixes")
+	checkList(suffixes, "suffixes")
+
+	// Check the split function. Note that this implicitly tests only prefix and
+	// only suffix arguments because both lists have an empty slice.
+	for _, p := range prefixes {
+		for _, s := range suffixes {
+			key := slices.Concat(p, s)
+			if n := c.Split(key); n != len(p) {
+				return errors.Errorf("incorrect Split result %d on '%x' (prefix '%x' suffix '%x')", n, key, p, s)
+			}
+		}
+	}
+
+	// Check the Compare/Equals functions on all possible combinations.
+	for api, ap := range prefixes {
+		for asi, as := range suffixes {
+			a := slices.Concat(ap, as)
+			for bpi, bp := range prefixes {
+				for bsi, bs := range suffixes {
+					b := slices.Concat(bp, bs)
+					result := c.Compare(a, b)
+
+					if (result == 0) != c.Equal(a, b) {
+						return errors.Errorf("Equal('%x', '%x') doesn't agree with Compare", a, b)
+					}
+
+					if api != bpi {
+						if result != cmp.Compare(api, bpi) {
+							return errors.Errorf("Compare('%x', '%x')=%d with prefixes '%x' '%x'", a, b, result, ap, bp)
+						}
+					} else {
+						if result != cmp.Compare(asi, bsi) {
+							return errors.Errorf("Compare('%x', '%x')=%d with equal prefixes and suffixes '%x' '%x'", a, b, result, as, bs)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// TODO(radu): check more methods.
+	return nil
 }

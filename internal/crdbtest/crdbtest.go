@@ -91,9 +91,7 @@ var Comparer = base.Comparer{
 // EncodeMVCCKey encodes a MVCC key into dst, growing dst as necessary.
 func EncodeMVCCKey(dst []byte, key []byte, walltime uint64, logical uint32) []byte {
 	if cap(dst) < len(key)+withSynthetic {
-		newKey := make([]byte, len(key), len(key)+withSynthetic)
-		copy(newKey, key)
-		key = newKey
+		dst = make([]byte, 0, len(key)+withSynthetic)
 	}
 	dst = append(dst[:0], key...)
 	return EncodeTimestamp(dst, walltime, logical)

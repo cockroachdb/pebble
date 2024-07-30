@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -289,4 +290,12 @@ func TestOverflowPanic(t *testing.T) {
 		}
 	}()
 	keyCount(6, len(alpha))
+}
+
+func TestComparer(t *testing.T) {
+	if err := base.CheckComparer(Comparer,
+		[][]byte{{}, []byte("abc"), []byte("d"), []byte("ef")},
+		[][]byte{{}, []byte("@3"), []byte("@2"), []byte("@1")}); err != nil {
+		t.Error(err)
+	}
 }
