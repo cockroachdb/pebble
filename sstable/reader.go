@@ -250,7 +250,7 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 	// likely isn't a cache set up.
 	return r.NewIterWithBlockPropertyFilters(
 		transforms, lower, upper, nil, AlwaysUseFilterBlock,
-		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, TrivialReaderProvider{Reader: r})
+		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, MakeTrivialReaderProvider(r))
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments

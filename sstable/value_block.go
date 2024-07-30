@@ -719,21 +719,28 @@ type ReaderProvider interface {
 	Close()
 }
 
-// TrivialReaderProvider implements ReaderProvider for a Reader that will
-// outlive the top-level iterator in the iterator tree.
-type TrivialReaderProvider struct {
-	*Reader
+// MakeTrivialReaderProvider creates a ReaderProvider which always returns the
+// given reader. It should be used when the Reader will outlive the iterator
+// tree.
+func MakeTrivialReaderProvider(r *Reader) ReaderProvider {
+	return (*trivialReaderProvider)(r)
 }
 
-var _ ReaderProvider = TrivialReaderProvider{}
+// trivialReaderProvider implements ReaderProvider for a Reader that will
+// outlive the top-level iterator in the iterator tree.
+//
+// Defining the type in this manner (as opposed to a struct) avoids allocation.
+type trivialReaderProvider Reader
+
+var _ ReaderProvider = (*trivialReaderProvider)(nil)
 
 // GetReader implements ReaderProvider.
-func (trp TrivialReaderProvider) GetReader(ctx context.Context) (*Reader, error) {
-	return trp.Reader, nil
+func (trp *trivialReaderProvider) GetReader(ctx context.Context) (*Reader, error) {
+	return (*Reader)(trp), nil
 }
 
 // Close implements ReaderProvider.
-func (trp TrivialReaderProvider) Close() {}
+func (trp *trivialReaderProvider) Close() {}
 
 // valueBlockReader is used to retrieve values in value
 // blocks. It is used when the sstable was written with
