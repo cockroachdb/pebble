@@ -268,7 +268,7 @@ func (r *Reader) newCompactionIter(
 		if err != nil {
 			return nil, err
 		}
-		i.setupForCompaction()
+		i.SetupForCompaction()
 		return i, nil
 	}
 	i, err := newSingleLevelIterator(
@@ -278,7 +278,7 @@ func (r *Reader) newCompactionIter(
 	if err != nil {
 		return nil, err
 	}
-	i.setupForCompaction()
+	i.SetupForCompaction()
 	return i, nil
 }
 
