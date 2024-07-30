@@ -1588,7 +1588,7 @@ func compressAndChecksum(
 ) (compressed []byte, trailer block.Trailer) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	algo, compressed := compressBlock(compression, b, blockBuf.compressedBuf)
+	algo, compressed := block.Compress(compression, b, blockBuf.compressedBuf)
 	if algo != block.NoCompressionIndicator && cap(compressed) > cap(blockBuf.compressedBuf) {
 		blockBuf.compressedBuf = compressed[:cap(compressed)]
 	}

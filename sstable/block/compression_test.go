@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+package block
 
 import (
 	"encoding/binary"
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,16 +19,16 @@ func TestCompressionRoundtrip(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewSource(seed))
 
-	for compression := block.DefaultCompression + 1; compression < block.NCompression; compression++ {
+	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
 		t.Run(compression.String(), func(t *testing.T) {
 			payload := make([]byte, rng.Intn(10<<10 /* 10 KiB */))
 			rng.Read(payload)
 			// Create a randomly-sized buffer to house the compressed output. If it's
-			// not sufficient, compressBlock should allocate one that is.
+			// not sufficient, Compress should allocate one that is.
 			compressedBuf := make([]byte, rng.Intn(1<<10 /* 1 KiB */))
 
-			btyp, compressed := compressBlock(compression, payload, compressedBuf)
-			v, err := decompressBlock(btyp, compressed)
+			btyp, compressed := Compress(compression, payload, compressedBuf)
+			v, err := Decompress(btyp, compressed)
 			require.NoError(t, err)
 			got := payload
 			if v != nil {
@@ -54,7 +53,7 @@ func TestDecompressionError(t *testing.T) {
 	fauxCompressed = fauxCompressed[:n+compressedPayloadLen]
 	rng.Read(fauxCompressed[n:])
 
-	v, err := decompressBlock(block.ZstdCompressionIndicator, fauxCompressed)
+	v, err := Decompress(ZstdCompressionIndicator, fauxCompressed)
 	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, v)
