@@ -289,9 +289,9 @@ func (i *singleLevelIterator) maybeVerifyKey(kv *base.InternalKV) *base.Internal
 	return kv
 }
 
-// setupForCompaction sets up the singleLevelIterator for use with compactionIter.
+// SetupForCompaction sets up the singleLevelIterator for use with compactionIter.
 // Currently, it skips readahead ramp-up. It should be called after init is called.
-func (i *singleLevelIterator) setupForCompaction() {
+func (i *singleLevelIterator) SetupForCompaction() {
 	i.dataRH.SetupForCompaction()
 	if i.vbRH != nil {
 		i.vbRH.SetupForCompaction()
@@ -1497,6 +1497,13 @@ func firstError(err0, err1 error) error {
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Close() error {
+	err := i.closeInternal()
+	*i = i.resetForReuse()
+	singleLevelIterPool.Put(i)
+	return err
+}
+
+func (i *singleLevelIterator) closeInternal() error {
 	if invariants.Enabled && i.inPool {
 		panic("Close called on interator in pool")
 	}
@@ -1526,8 +1533,6 @@ func (i *singleLevelIterator) Close() error {
 		err = firstError(err, i.vbRH.Close())
 		i.vbRH = nil
 	}
-	*i = i.resetForReuse()
-	singleLevelIterPool.Put(i)
 	return err
 }
 

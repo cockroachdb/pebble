@@ -333,7 +333,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			switch i := origIter.(type) {
 			case *twoLevelIterator:
-				forceIgnoreValueBlocks(&i.singleLevelIterator)
+				forceIgnoreValueBlocks(&i.secondLevel)
 			case *singleLevelIterator:
 				forceIgnoreValueBlocks(i)
 			}
