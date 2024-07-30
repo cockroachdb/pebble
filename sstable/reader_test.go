@@ -980,12 +980,12 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 					NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
-				case *compactionIterator:
+				case *singleLevelIterator:
 					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
 					require.Nil(t, i.vbRH)
-				case *twoLevelCompactionIterator:
+				case *twoLevelIterator:
 					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
@@ -1036,7 +1036,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 			NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 		require.NoError(t, err)
 		defer citer.Close()
-		i := citer.(*compactionIterator)
+		i := citer.(*singleLevelIterator)
 		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}

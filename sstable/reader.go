@@ -222,10 +222,12 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 	return res, nil
 }
 
-// NewIter returns an iterator for the contents of the table. If an error
-// occurs, NewIter cleans up after itself and returns a nil iterator. NewIter
-// must only be used when the Reader is guaranteed to outlive any LazyValues
-// returned from the iter.
+// NewIter returns an iterator for the point keys in the table. It is a
+// simplified version of NewIterWithBlockPropertyFiltersAndContextEtc and
+// should only be used for tests and tooling.
+//
+// NewIter must only be used when the Reader is guaranteed to outlive any
+// LazyValues returned from the iter.
 func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
 	// TODO(radu): we should probably not use bloom filters in this case, as there
 	// likely isn't a cache set up.
@@ -268,7 +270,7 @@ func (r *Reader) newCompactionIter(
 			return nil, err
 		}
 		i.setupForCompaction()
-		return &twoLevelCompactionIterator{twoLevelIterator: i}, nil
+		return i, nil
 	}
 	i, err := newSingleLevelIterator(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
@@ -278,7 +280,7 @@ func (r *Reader) newCompactionIter(
 		return nil, err
 	}
 	i.setupForCompaction()
-	return &compactionIterator{singleLevelIterator: i}, nil
+	return i, nil
 }
 
 // NewRawRangeDelIter returns an internal iterator for the contents of the
