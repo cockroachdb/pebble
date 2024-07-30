@@ -157,11 +157,11 @@ type singleLevelIterator struct {
 	// singleLevelIterator, given that these two iterators share this field.
 	exhaustedBounds int8
 
-	// filterBlockSizeLimit controls whether the bloom filter block in this
-	// sstable, if present, should be used for prefix seeks or not (depending on
-	// its size). In some cases it is beneficial to skip a filter block even if it
-	// exists (eg. if probability of a match is high).
-	filterBlockSizeLimit   FilterBlockSizeLimit
+	// useFilterBlock controls whether the bloom filter block in this sstable, if
+	// present, should be used for prefix seeks or not. In some cases it is
+	// beneficial to skip a filter block even if it exists (eg. if probability of
+	// a match is high).
+	useFilterBlock         bool
 	lastBloomFilterMatched bool
 
 	transforms IterTransforms
@@ -198,8 +198,9 @@ func newSingleLevelIterator(
 		return nil, r.err
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
+	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
-		ctx, r, v, transforms, lower, upper, filterer, filterBlockSizeLimit,
+		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
 		stats, categoryAndQoS, statsCollector, rp, bufferPool,
 	)
 	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
@@ -221,7 +222,7 @@ func (i *singleLevelIterator) init(
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
-	filterBlockSizeLimit FilterBlockSizeLimit,
+	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	categoryAndQoS CategoryAndQoS,
 	statsCollector *CategoryStatsCollector,
@@ -233,7 +234,7 @@ func (i *singleLevelIterator) init(
 	i.lower = lower
 	i.upper = upper
 	i.bpfs = filterer
-	i.filterBlockSizeLimit = filterBlockSizeLimit
+	i.useFilterBlock = useFilterBlock
 	i.reader = r
 	i.cmp = r.Compare
 	i.stats = stats
@@ -793,11 +794,11 @@ func (i *singleLevelIterator) SeekPrefixGE(
 			key = i.lower
 		}
 	}
-	return i.seekPrefixGE(prefix, key, flags, i.filterBlockSizeLimit)
+	return i.seekPrefixGE(prefix, key, flags)
 }
 
 func (i *singleLevelIterator) seekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags, filterBlockSizeLimit FilterBlockSizeLimit,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
 	// NOTE: prefix is only used for bloom filter checking and not later work in
 	// this method. Hence, we can use the existing iterator position if the last
@@ -805,7 +806,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 
 	err := i.err
 	i.err = nil // clear cached iteration error
-	if shouldUseFilterBlock(i.reader, filterBlockSizeLimit) {
+	if i.useFilterBlock {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
 			flags = flags.DisableTrySeekUsingNext()
