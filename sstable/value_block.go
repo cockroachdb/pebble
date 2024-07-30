@@ -501,7 +501,7 @@ func (w *valueBlockWriter) compressAndFlush() {
 	b := w.buf
 	if w.compression != block.NoCompression {
 		algo, w.compressedBuf.b =
-			compressBlock(w.compression, w.buf.b, w.compressedBuf.b[:cap(w.compressedBuf.b)])
+			block.Compress(w.compression, w.buf.b, w.compressedBuf.b[:cap(w.compressedBuf.b)])
 		if len(w.compressedBuf.b) < len(w.buf.b)-len(w.buf.b)/8 {
 			b = w.compressedBuf
 		} else {
