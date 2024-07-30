@@ -151,13 +151,12 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// NewIterWithBlockPropertyFiltersAndContextEtc returns an iterator for the
-// point keys in the table.
+// NewPointIter returns an iterator for the point keys in the table.
 //
 // If transform.HideObsoletePoints is set, the callee assumes that filterer
 // already includes obsoleteKeyBlockPropertyFilter. The caller can satisfy this
 // contract by first calling TryAddBlockPropertyFilterForHideObsoletePoints.
-func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
+func (r *Reader) NewPointIter(
 	ctx context.Context,
 	transforms IterTransforms,
 	lower, upper []byte,
@@ -168,14 +167,14 @@ func (r *Reader) NewIterWithBlockPropertyFiltersAndContextEtc(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 ) (Iterator, error) {
-	return r.newIterWithBlockPropertyFiltersAndContext(
+	return r.newPointIter(
 		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,
 		stats, categoryAndQoS, statsCollector, rp, nil)
 }
 
 // TryAddBlockPropertyFilterForHideObsoletePoints is expected to be called
-// before the call to NewIterWithBlockPropertyFiltersAndContextEtc, to get the
-// value of hideObsoletePoints and potentially add a block property filter.
+// before the call to NewPointIter, to get the value of hideObsoletePoints and
+// potentially add a block property filter.
 func (r *Reader) TryAddBlockPropertyFilterForHideObsoletePoints(
 	snapshotForHideObsoletePoints base.SeqNum,
 	fileLargestSeqNum base.SeqNum,
@@ -189,7 +188,7 @@ func (r *Reader) TryAddBlockPropertyFilterForHideObsoletePoints(
 	return hideObsoletePoints, pointKeyFilters
 }
 
-func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
+func (r *Reader) newPointIter(
 	ctx context.Context,
 	transforms IterTransforms,
 	lower, upper []byte,
@@ -223,15 +222,15 @@ func (r *Reader) newIterWithBlockPropertyFiltersAndContext(
 }
 
 // NewIter returns an iterator for the point keys in the table. It is a
-// simplified version of NewIterWithBlockPropertyFiltersAndContextEtc and
-// should only be used for tests and tooling.
+// simplified version of NewPointIter and should only be used for tests and
+// tooling.
 //
 // NewIter must only be used when the Reader is guaranteed to outlive any
 // LazyValues returned from the iter.
 func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
 	// TODO(radu): we should probably not use bloom filters in this case, as there
 	// likely isn't a cache set up.
-	return r.NewIterWithBlockPropertyFiltersAndContextEtc(
+	return r.NewPointIter(
 		context.TODO(), transforms, lower, upper, nil, AlwaysUseFilterBlock,
 		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, MakeTrivialReaderProvider(r))
 }
