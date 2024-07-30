@@ -27,9 +27,9 @@ type Writer struct {
 // writer will close the file.
 //
 // Internal clients should generally prefer NewRawWriter.
-func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption) *Writer {
+func NewWriter(writable objstorage.Writable, o WriterOptions) *Writer {
 	o = o.ensureDefaults()
-	rw := NewRawWriter(writable, o, extraOpts...)
+	rw := NewRawWriter(writable, o)
 	return &Writer{
 		rw: rw,
 		fragmenter: keyspan.Fragmenter{
