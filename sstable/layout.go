@@ -298,7 +298,7 @@ type layoutWriter struct {
 
 	// options copied from WriterOptions
 	tableFormat  TableFormat
-	compression  Compression
+	compression  block.Compression
 	checksumType block.ChecksumType
 
 	// offset tracks the current write offset within the writable.
@@ -412,7 +412,7 @@ func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
 }
 
 func (w *layoutWriter) writeNamedBlock(b []byte, name string) (bh block.Handle, err error) {
-	bh, err = w.writeBlock(b, NoCompression, &w.buf)
+	bh, err = w.writeBlock(b, block.NoCompression, &w.buf)
 	if err == nil {
 		w.recordToMetaindex(name, bh)
 	}
@@ -459,7 +459,7 @@ func (w *layoutWriter) WriteValueIndexBlock(
 }
 
 func (w *layoutWriter) writeBlock(
-	b []byte, compression Compression, buf *blockBuf,
+	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
 	blk, trailer := compressAndChecksum(b, compression, buf)
 	bh := block.Handle{Offset: w.offset, Length: uint64(len(blk))}
@@ -526,7 +526,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 	for _, h := range w.handles {
 		bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
 	}
-	metaIndexHandle, err := w.writeBlock(bw.Finish(), NoCompression, &w.buf)
+	metaIndexHandle, err := w.writeBlock(bw.Finish(), block.NoCompression, &w.buf)
 	if err != nil {
 		return 0, err
 	}

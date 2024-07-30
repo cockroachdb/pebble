@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +20,7 @@ func TestCompressionRoundtrip(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewSource(seed))
 
-	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
+	for compression := block.DefaultCompression + 1; compression < block.NCompression; compression++ {
 		t.Run(compression.String(), func(t *testing.T) {
 			payload := make([]byte, rng.Intn(10<<10 /* 10 KiB */))
 			rng.Read(payload)

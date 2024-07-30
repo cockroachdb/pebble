@@ -419,7 +419,7 @@ func TestWriterRoundTrip(t *testing.T) {
 				t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
 					fs := vfs.NewMem()
 					err := buildHamletTestSST(
-						fs, "test.sst", DefaultCompression, fp, TableFilter,
+						fs, "test.sst", block.DefaultCompression, fp, TableFilter,
 						nil /* comparer */, blockSize, indexBlockSize,
 					)
 					require.NoError(t, err)
@@ -520,7 +520,7 @@ func TestReaderSymtheticSeqNum(t *testing.T) {
 
 func TestMetaIndexEntriesSorted(t *testing.T) {
 	fs := vfs.NewMem()
-	err := buildHamletTestSST(fs, "test.sst", DefaultCompression, nil, /* filter policy */
+	err := buildHamletTestSST(fs, "test.sst", block.DefaultCompression, nil, /* filter policy */
 		TableFilter, nil, 4096, 4096)
 	require.NoError(t, err)
 	f, err := fs.Open("test.sst")

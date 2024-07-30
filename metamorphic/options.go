@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 	"golang.org/x/exp/rand"
@@ -730,11 +731,11 @@ func RandomOptions(
 	// We use either no compression, snappy compression or zstd compression.
 	switch rng.Intn(3) {
 	case 0:
-		lopts.Compression = func() sstable.Compression { return pebble.NoCompression }
+		lopts.Compression = func() block.Compression { return pebble.NoCompression }
 	case 1:
-		lopts.Compression = func() sstable.Compression { return pebble.ZstdCompression }
+		lopts.Compression = func() block.Compression { return pebble.ZstdCompression }
 	default:
-		lopts.Compression = func() sstable.Compression { return pebble.SnappyCompression }
+		lopts.Compression = func() block.Compression { return pebble.SnappyCompression }
 	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 

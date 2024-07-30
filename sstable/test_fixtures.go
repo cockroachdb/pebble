@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -119,7 +120,7 @@ var hamletNonsenseWords = []string{
 func buildHamletTestSST(
 	fs vfs.FS,
 	filename string,
-	compression Compression,
+	compression block.Compression,
 	fp FilterPolicy,
 	ftype FilterType,
 	comparer *Comparer,
@@ -177,7 +178,7 @@ func buildHamletTestSST(
 // TestFixtureInfo contains all metadata necessary to generate a test sstable.
 type TestFixtureInfo struct {
 	Filename           string
-	Compression        Compression
+	Compression        block.Compression
 	FullKeyFilter      bool
 	PrefixFilter       bool
 	IndexBlockSize     int
@@ -188,7 +189,7 @@ type TestFixtureInfo struct {
 var TestFixtures = []TestFixtureInfo{
 	{
 		Filename:           "h.sst",
-		Compression:        SnappyCompression,
+		Compression:        block.SnappyCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,
@@ -196,7 +197,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.no-compression.sst",
-		Compression:        NoCompression,
+		Compression:        block.NoCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,
@@ -204,7 +205,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.table-bloom.sst",
-		Compression:        SnappyCompression,
+		Compression:        block.SnappyCompression,
 		FullKeyFilter:      true,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,
@@ -212,7 +213,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.table-bloom.no-compression.sst",
-		Compression:        NoCompression,
+		Compression:        block.NoCompression,
 		FullKeyFilter:      true,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,
@@ -220,7 +221,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-		Compression:        NoCompression,
+		Compression:        block.NoCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       true,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,
@@ -228,7 +229,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.no-compression.two_level_index.sst",
-		Compression:        NoCompression,
+		Compression:        block.NoCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureSmallIndexBlockSize,
@@ -236,7 +237,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.zstd-compression.sst",
-		Compression:        ZstdCompression,
+		Compression:        block.ZstdCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,

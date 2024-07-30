@@ -335,7 +335,7 @@ type valueBlockWriter struct {
 	// The configured uncompressed block size and size threshold
 	blockSize, blockSizeThreshold int
 	// Configured compression.
-	compression Compression
+	compression block.Compression
 	// checksummer with configured checksum type.
 	checksummer block.Checksummer
 	// Block finished callback.
@@ -405,7 +405,7 @@ var valueBlockWriterPool = sync.Pool{
 func newValueBlockWriter(
 	blockSize int,
 	blockSizeThreshold int,
-	compression Compression,
+	compression block.Compression,
 	checksumType block.ChecksumType,
 	// compressedSize should exclude the block trailer.
 	blockFinishedFunc func(compressedSize int),
@@ -499,7 +499,7 @@ func (w *valueBlockWriter) compressAndFlush() {
 	// least 12.5%.
 	blockType := noCompressionBlockType
 	b := w.buf
-	if w.compression != NoCompression {
+	if w.compression != block.NoCompression {
 		blockType, w.compressedBuf.b =
 			compressBlock(w.compression, w.buf.b, w.compressedBuf.b[:cap(w.compressedBuf.b)])
 		if len(w.compressedBuf.b) < len(w.buf.b)-len(w.buf.b)/8 {

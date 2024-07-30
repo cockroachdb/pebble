@@ -134,7 +134,7 @@ type RawWriter struct {
 	compare              Compare
 	split                Split
 	formatKey            base.FormatKey
-	compression          Compression
+	compression          block.Compression
 	separator            Separator
 	successor            Successor
 	tableFormat          TableFormat
@@ -622,7 +622,7 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.Finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(c Compression) {
+func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
 	d.compressed, d.trailer = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
 }
 
@@ -1584,7 +1584,7 @@ func (w *RawWriter) writeTwoLevelIndex() (block.Handle, error) {
 }
 
 func compressAndChecksum(
-	b []byte, compression Compression, blockBuf *blockBuf,
+	b []byte, compression block.Compression, blockBuf *blockBuf,
 ) (compressed []byte, trailer block.Trailer) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.

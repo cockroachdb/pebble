@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 )
@@ -35,14 +36,14 @@ const (
 )
 
 // Compression exports the base.Compression type.
-type Compression = sstable.Compression
+type Compression = block.Compression
 
 // Exported Compression constants.
 const (
-	DefaultCompression = sstable.DefaultCompression
-	NoCompression      = sstable.NoCompression
-	SnappyCompression  = sstable.SnappyCompression
-	ZstdCompression    = sstable.ZstdCompression
+	DefaultCompression = block.DefaultCompression
+	NoCompression      = block.NoCompression
+	SnappyCompression  = block.SnappyCompression
+	ZstdCompression    = block.ZstdCompression
 )
 
 // FilterType exports the base.FilterType type.
@@ -1808,13 +1809,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "compression":
 				switch value {
 				case "Default":
-					l.Compression = func() sstable.Compression { return DefaultCompression }
+					l.Compression = func() Compression { return DefaultCompression }
 				case "NoCompression":
-					l.Compression = func() sstable.Compression { return NoCompression }
+					l.Compression = func() Compression { return NoCompression }
 				case "Snappy":
-					l.Compression = func() sstable.Compression { return SnappyCompression }
+					l.Compression = func() Compression { return SnappyCompression }
 				case "ZSTD":
-					l.Compression = func() sstable.Compression { return ZstdCompression }
+					l.Compression = func() Compression { return ZstdCompression }
 				default:
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
@@ -1988,7 +1989,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 }
 
 func resolveDefaultCompression(c Compression) Compression {
-	if c <= DefaultCompression || c >= sstable.NCompression {
+	if c <= DefaultCompression || c >= block.NCompression {
 		c = SnappyCompression
 	}
 	return c
