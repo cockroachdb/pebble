@@ -175,7 +175,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 				}
 			}
 			if kinds.Point() {
-				set.point, err = r.NewIterWithBlockPropertyFilters(
+				set.point, err = r.NewIterWithBlockPropertyFiltersAndContextEtc(
+					context.Background(),
 					sstable.NoTransforms,
 					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, iio.stats,
 					sstable.CategoryAndQoS{}, nil, sstable.MakeTrivialReaderProvider(r))
