@@ -15,18 +15,6 @@ import (
 // MaximumBlockSize is the maximum permissible size of a block.
 const MaximumBlockSize = rowblk.MaximumSize
 
-// Compression is the per-block compression algorithm to use.
-type Compression int
-
-// The available compression types.
-const (
-	DefaultCompression Compression = iota
-	NoCompression
-	SnappyCompression
-	ZstdCompression
-	NCompression
-)
-
 var ignoredInternalProperties = map[string]struct{}{
 	"rocksdb.column.family.id":             {},
 	"rocksdb.fixed.key.length":             {},
@@ -36,38 +24,6 @@ var ignoredInternalProperties = map[string]struct{}{
 	"rocksdb.creation.time":                {},
 	"rocksdb.file.creation.time":           {},
 	"rocksdb.format.version":               {},
-}
-
-func (c Compression) String() string {
-	switch c {
-	case DefaultCompression:
-		return "Default"
-	case NoCompression:
-		return "NoCompression"
-	case SnappyCompression:
-		return "Snappy"
-	case ZstdCompression:
-		return "ZSTD"
-	default:
-		return "Unknown"
-	}
-}
-
-// CompressionFromString returns an sstable.Compression from its
-// string representation. Inverse of c.String() above.
-func CompressionFromString(s string) Compression {
-	switch s {
-	case "Default":
-		return DefaultCompression
-	case "NoCompression":
-		return NoCompression
-	case "Snappy":
-		return SnappyCompression
-	case "ZSTD":
-		return ZstdCompression
-	default:
-		return DefaultCompression
-	}
 }
 
 // FilterType exports the base.FilterType type.
@@ -199,7 +155,7 @@ type WriterOptions struct {
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.
-	Compression Compression
+	Compression block.Compression
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -313,8 +269,8 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
-	if o.Compression <= DefaultCompression || o.Compression >= NCompression {
-		o.Compression = SnappyCompression
+	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression {
+		o.Compression = block.SnappyCompression
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize

@@ -154,7 +154,7 @@ func rewriteBlocks(
 	r *Reader,
 	restartInterval int,
 	checksumType block.ChecksumType,
-	compression Compression,
+	compression block.Compression,
 	input []BlockHandleWithProperties,
 	output []blockWithSpan,
 	totalWorkers, worker int,

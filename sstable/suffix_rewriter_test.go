@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -187,7 +188,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 	}
 
 	sizes := []int{100, 10000, 1e6}
-	compressions := []Compression{NoCompression, SnappyCompression}
+	compressions := []block.Compression{block.NoCompression, block.SnappyCompression}
 
 	files := make([][]*Reader, len(compressions))
 

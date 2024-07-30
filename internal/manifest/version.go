@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // Compare exports the base.Compare type.
@@ -73,7 +74,7 @@ type TableStats struct {
 	// Total size of value blocks and value index block.
 	ValueBlocksSize uint64
 	// CompressionType is the compression type of the table.
-	CompressionType sstable.Compression
+	CompressionType block.Compression
 }
 
 // boundType represents the type of key (point or range) present as the smallest

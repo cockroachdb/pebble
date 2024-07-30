@@ -36,6 +36,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
@@ -173,7 +174,7 @@ func TestIngestLoadRand(t *testing.T) {
 			},
 			path: paths[i],
 		}
-		expected[i].fileMetadata.Stats.CompressionType = sstable.SnappyCompression
+		expected[i].fileMetadata.Stats.CompressionType = block.SnappyCompression
 		expected[i].StatsMarkValid()
 
 		func() {

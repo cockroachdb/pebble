@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/golang/snappy"
 )
 
@@ -81,12 +82,12 @@ func decompressBlock(blockType blockType, b []byte) (*cache.Value, error) {
 
 // compressBlock compresses an SST block, using compressBuf as the desired destination.
 func compressBlock(
-	compression Compression, b []byte, compressedBuf []byte,
+	compression block.Compression, b []byte, compressedBuf []byte,
 ) (blockType blockType, compressed []byte) {
 	switch compression {
-	case SnappyCompression:
+	case block.SnappyCompression:
 		return snappyCompressionBlockType, snappy.Encode(compressedBuf, b)
-	case NoCompression:
+	case block.NoCompression:
 		return noCompressionBlockType, b
 	}
 
@@ -95,7 +96,7 @@ func compressBlock(
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
 	switch compression {
-	case ZstdCompression:
+	case block.ZstdCompression:
 		return zstdCompressionBlockType, encodeZstd(compressedBuf, varIntLen, b)
 	default:
 		return noCompressionBlockType, b
