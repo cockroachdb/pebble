@@ -56,3 +56,26 @@ func BenchmarkNumFilesAnnotator(b *testing.B) {
 		require.EqualValues(b, uint64(i), numFiles)
 	}
 }
+
+func TestPickFileAggregator(t *testing.T) {
+	const count = 1000
+	a := Annotator[FileMetadata]{
+		Aggregator: PickFileAggregator{
+			Filter: func(f *FileMetadata) (eligible bool, cacheOK bool) {
+				return true, true
+			},
+			Compare: func(f1 *FileMetadata, f2 *FileMetadata) bool {
+				return base.DefaultComparer.Compare(f1.Smallest.UserKey, f2.Smallest.UserKey) < 0
+			},
+		},
+	}
+
+	lm, files := makeTestLevelMetadata(1)
+
+	for i := 1; i <= count; i++ {
+		lm.tree.Insert(newItem(key(i)))
+		pickedFile := a.LevelAnnotation(lm)
+		// The picked file should always be the one with the smallest key.
+		require.Same(t, files[0], pickedFile)
+	}
+}
