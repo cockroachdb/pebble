@@ -450,7 +450,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := IterTransforms{SyntheticSuffix: syntheticSuffix}
 			iter, err := v.NewIterWithBlockPropertyFiltersAndContextEtc(
 				context.Background(), transforms, lower, upper, filterer, NeverUseFilterBlock,
-				&stats, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r})
+				&stats, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r))
 			if err != nil {
 				return err.Error()
 			}
@@ -837,7 +837,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					&stats,
 					CategoryAndQoS{},
 					nil,
-					TrivialReaderProvider{Reader: r},
+					MakeTrivialReaderProvider(r),
 				)
 				if err != nil {
 					return err.Error()
@@ -977,7 +977,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				var pool block.BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					NoTransforms, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+					NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -1033,7 +1033,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		var pool block.BufferPool
 		pool.Init(5)
 		citer, err := r.NewCompactionIter(
-			NoTransforms, CategoryAndQoS{}, nil, TrivialReaderProvider{Reader: r}, &pool)
+			NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
@@ -1328,7 +1328,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
 			nil, nil, nil,
 			AlwaysUseFilterBlock, nil, CategoryAndQoS{}, nil,
-			TrivialReaderProvider{Reader: eReader}, &virtualState{
+			MakeTrivialReaderProvider(eReader), &virtualState{
 				lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
 				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
 			})
@@ -2451,7 +2451,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								iter, err := r.NewIterWithBlockPropertyFiltersAndContextEtc(
 									context.Background(), transforms, nil, nil, filterer,
 									AlwaysUseFilterBlock, nil, CategoryAndQoS{}, nil,
-									TrivialReaderProvider{Reader: r})
+									MakeTrivialReaderProvider(r))
 								require.NoError(b, err)
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {
