@@ -54,7 +54,7 @@ func TestDecompressionError(t *testing.T) {
 	fauxCompressed = fauxCompressed[:n+compressedPayloadLen]
 	rng.Read(fauxCompressed[n:])
 
-	v, err := decompressBlock(zstdCompressionBlockType, fauxCompressed)
+	v, err := decompressBlock(block.ZstdCompressionIndicator, fauxCompressed)
 	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, v)

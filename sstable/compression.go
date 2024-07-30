@@ -14,14 +14,14 @@ import (
 	"github.com/golang/snappy"
 )
 
-func decompressedLen(blockType blockType, b []byte) (int, int, error) {
-	switch blockType {
-	case noCompressionBlockType:
+func decompressedLen(algo block.CompressionIndicator, b []byte) (int, int, error) {
+	switch algo {
+	case block.NoCompressionIndicator:
 		return 0, 0, nil
-	case snappyCompressionBlockType:
+	case block.SnappyCompressionIndicator:
 		l, err := snappy.DecodedLen(b)
 		return l, 0, err
-	case zstdCompressionBlockType:
+	case block.ZstdCompressionIndicator:
 		// This will also be used by zlib, bzip2 and lz4 to retrieve the decodedLen
 		// if we implement these algorithms in the future.
 		decodedLenU64, varIntLen := binary.Uvarint(b)
@@ -30,22 +30,22 @@ func decompressedLen(blockType blockType, b []byte) (int, int, error) {
 		}
 		return int(decodedLenU64), varIntLen, nil
 	default:
-		return 0, 0, base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(blockType))
+		return 0, 0, base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(algo))
 	}
 }
 
 // decompressInto decompresses compressed into buf. The buf slice must have the
 // exact size as the decompressed value.
-func decompressInto(blockType blockType, compressed []byte, buf []byte) error {
+func decompressInto(algo block.CompressionIndicator, compressed []byte, buf []byte) error {
 	var result []byte
 	var err error
-	switch blockType {
-	case snappyCompressionBlockType:
+	switch algo {
+	case block.SnappyCompressionIndicator:
 		result, err = snappy.Decode(buf, compressed)
-	case zstdCompressionBlockType:
+	case block.ZstdCompressionIndicator:
 		result, err = decodeZstd(buf, compressed)
 	default:
-		return base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(blockType))
+		return base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(algo))
 	}
 	if err != nil {
 		return base.MarkCorruptionError(err)
@@ -60,12 +60,12 @@ func decompressInto(blockType blockType, compressed []byte, buf []byte) error {
 // decompressBlock decompresses an SST block, with manually-allocated space.
 // NB: If decompressBlock returns (nil, nil), no decompression was necessary and
 // the caller may use `b` directly.
-func decompressBlock(blockType blockType, b []byte) (*cache.Value, error) {
-	if blockType == noCompressionBlockType {
+func decompressBlock(algo block.CompressionIndicator, b []byte) (*cache.Value, error) {
+	if algo == block.NoCompressionIndicator {
 		return nil, nil
 	}
 	// first obtain the decoded length.
-	decodedLen, prefixLen, err := decompressedLen(blockType, b)
+	decodedLen, prefixLen, err := decompressedLen(algo, b)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func decompressBlock(blockType blockType, b []byte) (*cache.Value, error) {
 	// Allocate sufficient space from the cache.
 	decoded := cache.Alloc(decodedLen)
 	decodedBuf := decoded.Buf()
-	if err := decompressInto(blockType, b, decodedBuf); err != nil {
+	if err := decompressInto(algo, b, decodedBuf); err != nil {
 		cache.Free(decoded)
 		return nil, err
 	}
@@ -83,12 +83,12 @@ func decompressBlock(blockType blockType, b []byte) (*cache.Value, error) {
 // compressBlock compresses an SST block, using compressBuf as the desired destination.
 func compressBlock(
 	compression block.Compression, b []byte, compressedBuf []byte,
-) (blockType blockType, compressed []byte) {
+) (blockType block.CompressionIndicator, compressed []byte) {
 	switch compression {
 	case block.SnappyCompression:
-		return snappyCompressionBlockType, snappy.Encode(compressedBuf, b)
+		return block.SnappyCompressionIndicator, snappy.Encode(compressedBuf, b)
 	case block.NoCompression:
-		return noCompressionBlockType, b
+		return block.NoCompressionIndicator, b
 	}
 
 	if len(compressedBuf) < binary.MaxVarintLen64 {
@@ -97,8 +97,8 @@ func compressBlock(
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
 	switch compression {
 	case block.ZstdCompression:
-		return zstdCompressionBlockType, encodeZstd(compressedBuf, varIntLen, b)
+		return block.ZstdCompressionIndicator, encodeZstd(compressedBuf, varIntLen, b)
 	default:
-		return noCompressionBlockType, b
+		return block.NoCompressionIndicator, b
 	}
 }

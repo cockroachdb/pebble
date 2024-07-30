@@ -497,15 +497,15 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 func (w *valueBlockWriter) compressAndFlush() {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	blockType := noCompressionBlockType
+	algo := block.NoCompressionIndicator
 	b := w.buf
 	if w.compression != block.NoCompression {
-		blockType, w.compressedBuf.b =
+		algo, w.compressedBuf.b =
 			compressBlock(w.compression, w.buf.b, w.compressedBuf.b[:cap(w.compressedBuf.b)])
 		if len(w.compressedBuf.b) < len(w.buf.b)-len(w.buf.b)/8 {
 			b = w.compressedBuf
 		} else {
-			blockType = noCompressionBlockType
+			algo = block.NoCompressionIndicator
 		}
 	}
 	n := len(b.b)
@@ -516,13 +516,13 @@ func (w *valueBlockWriter) compressAndFlush() {
 	} else {
 		b.b = b.b[:n+block.TrailerLen]
 	}
-	b.b[n] = byte(blockType)
+	b.b[n] = byte(algo)
 	w.computeChecksum(b.b)
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(n)}
 	w.totalBlockBytes += uint64(len(b.b))
 	// blockFinishedFunc length excludes the block trailer.
 	w.blockFinishedFunc(n)
-	compressed := blockType != noCompressionBlockType
+	compressed := algo != block.NoCompressionIndicator
 	w.blocks = append(w.blocks, blockAndHandle{
 		block:      b,
 		handle:     bh,
@@ -616,7 +616,7 @@ func (w *valueBlockWriter) writeValueBlocksIndex(
 	if len(b) != block.TrailerLen {
 		panic("incorrect length calculation")
 	}
-	b[0] = byte(noCompressionBlockType)
+	b[0] = byte(block.NoCompressionIndicator)
 	w.computeChecksum(buf)
 	if _, err := layout.WriteValueIndexBlock(buf, h); err != nil {
 		return valueBlocksIndexHandle{}, err

@@ -165,9 +165,9 @@ func (l *Layout) Describe(
 			trailer := make([]byte, block.TrailerLen)
 			offset := int64(b.Offset + b.Length)
 			_ = r.readable.ReadAt(ctx, trailer, offset)
-			bt := blockType(trailer[0])
+			algo := block.CompressionIndicator(trailer[0])
 			checksum := binary.LittleEndian.Uint32(trailer[1:])
-			fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, bt, checksum)
+			fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, algo, checksum)
 		}
 
 		var lastKey InternalKey

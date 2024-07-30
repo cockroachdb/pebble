@@ -232,49 +232,6 @@ const (
 	rocksDBCompressionOptions = "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 )
 
-type blockType byte
-
-const (
-	// The block type gives the per-block compression format.
-	// These constants are part of the file format and should not be changed.
-	// They are different from the Compression constants because the latter
-	// are designed so that the zero value of the Compression type means to
-	// use the default compression (which is snappy).
-	// Not all compression types listed here are supported.
-	noCompressionBlockType     blockType = 0
-	snappyCompressionBlockType blockType = 1
-	zlibCompressionBlockType   blockType = 2
-	bzip2CompressionBlockType  blockType = 3
-	lz4CompressionBlockType    blockType = 4
-	lz4hcCompressionBlockType  blockType = 5
-	xpressCompressionBlockType blockType = 6
-	zstdCompressionBlockType   blockType = 7
-)
-
-// String implements fmt.Stringer.
-func (t blockType) String() string {
-	switch t {
-	case 0:
-		return "none"
-	case 1:
-		return "snappy"
-	case 2:
-		return "zlib"
-	case 3:
-		return "bzip2"
-	case 4:
-		return "lz4"
-	case 5:
-		return "lz4hc"
-	case 6:
-		return "xpress"
-	case 7:
-		return "zstd"
-	default:
-		panic(errors.Newf("sstable: unknown block type: %d", t))
-	}
-}
-
 // legacy (LevelDB) footer format:
 //
 //	metaindex handle (varint64 offset, varint64 size)
