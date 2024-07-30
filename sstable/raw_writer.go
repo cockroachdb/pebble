@@ -1892,19 +1892,9 @@ func (w *RawWriter) Metadata() (*WriterMetadata, error) {
 	return &w.meta, nil
 }
 
-// WriterOption provide an interface to do work on Writer while it is being
-// opened.
-type WriterOption interface {
-	// writerApply is called on the writer during opening in order to set
-	// internal parameters.
-	writerApply(*RawWriter)
-}
-
 // NewRawWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewRawWriter(
-	writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption,
-) *RawWriter {
+func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawWriter {
 	o = o.ensureDefaults()
 	w := &RawWriter{
 		layout: makeLayoutWriter(writable, o),
@@ -1963,16 +1953,6 @@ func NewRawWriter(
 		return w
 	}
 
-	// Note that WriterOptions are applied in two places; the ones with a
-	// preApply() method are applied here. The rest are applied down below after
-	// default properties are set.
-	type preApply interface{ preApply() }
-	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); ok {
-			opt.writerApply(w)
-		}
-	}
-
 	if o.FilterPolicy != nil {
 		switch o.FilterType {
 		case TableFilter:
@@ -2015,14 +1995,6 @@ func NewRawWriter(
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()
-	}
-
-	// Apply the remaining WriterOptions that do not have a preApply() method.
-	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); ok {
-			continue
-		}
-		opt.writerApply(w)
 	}
 
 	// Initialize the range key fragmenter and encoder.
