@@ -194,7 +194,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
-		it.rangeKeyMasking.init(it, it.comparer.Compare, it.comparer.Split)
+		it.rangeKeyMasking.init(it, &it.comparer)
 		var rangeKeyIters []keyspan.FragmentIterator
 		if it.rangeKey == nil {
 			// We could take advantage of the lack of overlaps in range keys within

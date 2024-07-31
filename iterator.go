@@ -2199,7 +2199,7 @@ func (i *Iterator) saveRangeKey() {
 		if invariants.Enabled {
 			if s.Keys[j].Kind() != base.InternalKeyKindRangeKeySet {
 				panic("pebble: user iteration encountered non-RangeKeySet key kind")
-			} else if j > 0 && i.cmp(s.Keys[j].Suffix, s.Keys[j-1].Suffix) < 0 {
+			} else if j > 0 && i.comparer.CompareSuffixes(s.Keys[j].Suffix, s.Keys[j-1].Suffix) < 0 {
 				panic("pebble: user iteration encountered range keys not in suffix order")
 			}
 		}
@@ -2685,7 +2685,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	if boundsEqual && o.KeyTypes == i.opts.KeyTypes &&
 		(i.pointIter != nil || !i.opts.pointKeys()) &&
 		(i.rangeKey != nil || !i.opts.rangeKeys() || i.opts.KeyTypes == IterKeyTypePointsAndRanges) &&
-		i.equal(o.RangeKeyMasking.Suffix, i.opts.RangeKeyMasking.Suffix) &&
+		i.comparer.CompareSuffixes(o.RangeKeyMasking.Suffix, i.opts.RangeKeyMasking.Suffix) == 0 &&
 		o.UseL6Filters == i.opts.UseL6Filters {
 		// The options are identical, so we can likely use the fast path. In
 		// addition to all the above constraints, we cannot use the fast path if

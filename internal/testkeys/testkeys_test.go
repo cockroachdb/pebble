@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -157,12 +158,15 @@ func TestSuffix(t *testing.T) {
 		}
 	}
 
-	// Suffixes should be comparable on their own too.
+	// Test CompareSuffixes.
 	a, b := make([]byte, MaxSuffixLen), make([]byte, MaxSuffixLen)
 	for ts := int64(2); ts < 150; ts++ {
 		an := WriteSuffix(a, ts-1)
 		bn := WriteSuffix(b, ts)
-		assertCmp(+1, a[:an], b[:bn])
+		got := Comparer.CompareSuffixes(a[:an], b[:bn])
+		if want := +1; got != want {
+			t.Errorf("CompareSuffixes(%q, %q) = %d, want %d", a, b, got, want)
+		}
 	}
 }
 
@@ -293,4 +297,12 @@ func TestOverflowPanic(t *testing.T) {
 		}
 	}()
 	keyCount(6, len(alpha))
+}
+
+func TestComparer(t *testing.T) {
+	if err := base.CheckComparer(Comparer,
+		[][]byte{[]byte("abc"), []byte("d"), []byte("ef")},
+		[][]byte{{}, []byte("@3"), []byte("@2"), []byte("@1")}); err != nil {
+		t.Error(err)
+	}
 }

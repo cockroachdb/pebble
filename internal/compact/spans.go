@@ -83,18 +83,18 @@ func (c *RangeDelSpanCompactor) Compact(span, output *keyspan.Span) {
 // for at most one "compacted" span.
 type RangeKeySpanCompactor struct {
 	cmp       base.Compare
-	equal     base.Equal
+	suffixCmp base.CompareSuffixes
 	snapshots Snapshots
 	elider    rangeTombstoneElider
 }
 
 // MakeRangeKeySpanCompactor creates a new compactor for range key spans.
 func MakeRangeKeySpanCompactor(
-	cmp base.Compare, equal base.Equal, snapshots Snapshots, elision TombstoneElision,
+	cmp base.Compare, suffixCmp base.CompareSuffixes, snapshots Snapshots, elision TombstoneElision,
 ) RangeKeySpanCompactor {
 	c := RangeKeySpanCompactor{
 		cmp:       cmp,
-		equal:     equal,
+		suffixCmp: suffixCmp,
 		snapshots: snapshots,
 	}
 	c.elider.Init(cmp, elision)
@@ -131,7 +131,7 @@ func (c *RangeKeySpanCompactor) Compact(span, output *keyspan.Span) {
 		}
 		if y > start {
 			keysDst := output.Keys[usedLen:cap(output.Keys)]
-			rangekey.Coalesce(c.cmp, c.equal, span.Keys[start:y], &keysDst)
+			rangekey.Coalesce(c.suffixCmp, span.Keys[start:y], &keysDst)
 			if y == len(span.Keys) {
 				// This is the last snapshot stripe. Unsets and deletes can be elided.
 				keysDst = c.elideInLastStripe(span.Start, span.End, keysDst)
@@ -143,7 +143,7 @@ func (c *RangeKeySpanCompactor) Compact(span, output *keyspan.Span) {
 	}
 	if y < len(span.Keys) {
 		keysDst := output.Keys[usedLen:cap(output.Keys)]
-		rangekey.Coalesce(c.cmp, c.equal, span.Keys[y:], &keysDst)
+		rangekey.Coalesce(c.suffixCmp, span.Keys[y:], &keysDst)
 		keysDst = c.elideInLastStripe(span.Start, span.End, keysDst)
 		usedLen += len(keysDst)
 		output.Keys = append(output.Keys, keysDst...)

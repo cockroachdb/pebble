@@ -143,11 +143,13 @@ func (ui *UserIteratorConfig) SetBounds(lower, upper []byte) {
 // only contain RangeKeySets describing the state visible at the provided
 // sequence number, and hold their Keys sorted by Suffix (except if internalKeys
 // is true, then keys remain sorted by trailer.
-func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+func (ui *UserIteratorConfig) Transform(
+	suffixCmp base.CompareSuffixes, s keyspan.Span, dst *keyspan.Span,
+) error {
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	ui.bufs.sortBuf = rangekey.CoalesceInto(cmp, ui.comparer.Equal, ui.bufs.sortBuf[:0], ui.snapshot, s.Keys)
+	ui.bufs.sortBuf = rangekey.CoalesceInto(suffixCmp, ui.bufs.sortBuf[:0], ui.snapshot, s.Keys)
 	if ui.internalKeys {
 		if s.KeysOrder != keyspan.ByTrailerDesc {
 			panic("unexpected key ordering in UserIteratorTransform with internalKeys = true")
@@ -163,12 +165,12 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	for i := range keys {
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
-			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
 			dst.Keys = append(dst.Keys, keys[i])
 		case base.InternalKeyKindRangeKeyUnset:
-			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
 			// Skip.
@@ -193,7 +195,9 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 // defragmenter checks for equality between set suffixes and values (ignoring
 // sequence numbers). It's intended for use during user iteration, when the
 // wrapped keyspan iterator is merging spans across all levels of the LSM.
-func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.Span) bool {
+func (ui *UserIteratorConfig) ShouldDefragment(
+	suffixCmp base.CompareSuffixes, a, b *keyspan.Span,
+) bool {
 	// This method is not called with internalKeys = true.
 	if ui.internalKeys {
 		panic("unexpected call to ShouldDefragment with internalKeys = true")
@@ -217,12 +221,12 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
 				panic("pebble: unexpected non-RangeKeySet during defragmentation")
 			}
-			if i > 0 && (ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
-				ui.comparer.Compare(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
+			if i > 0 && (suffixCmp(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
+				suffixCmp(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
 				panic("pebble: range keys not ordered by suffix during defragmentation")
 			}
 		}
-		if !equal(a.Keys[i].Suffix, b.Keys[i].Suffix) {
+		if suffixCmp(a.Keys[i].Suffix, b.Keys[i].Suffix) != 0 {
 			ret = false
 			break
 		}
