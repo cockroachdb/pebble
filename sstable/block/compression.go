@@ -9,7 +9,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/golang/snappy"
 )
 
@@ -181,8 +183,90 @@ func Decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
 	return decoded, nil
 }
 
-// Compress compresses a sstable block, using dstBuf as the desired destination.
-func Compress(
+// PhysicalBlock represents a block (possibly compressed) as it is stored
+// physically on disk, including its trailer.
+type PhysicalBlock struct {
+	// data contains the possibly compressed block data.
+	data    []byte
+	trailer Trailer
+}
+
+// LengthWithTrailer returns the length of the data block, including the trailer.
+func (b *PhysicalBlock) LengthWithTrailer() int {
+	return len(b.data) + TrailerLen
+}
+
+// LengthWithoutTrailer returns the length of the data block, excluding the trailer.
+func (b *PhysicalBlock) LengthWithoutTrailer() int {
+	return len(b.data)
+}
+
+// CloneWithByteAlloc returns a deep copy of the block, using the provided
+// bytealloc.A to allocate memory for the new copy.
+func (b *PhysicalBlock) CloneWithByteAlloc(a *bytealloc.A) PhysicalBlock {
+	var data []byte
+	*a, data = (*a).Alloc(len(b.data))
+	copy(data, b.data)
+	return PhysicalBlock{
+		data:    data,
+		trailer: b.trailer,
+	}
+}
+
+// IsCompressed returns true if the block is compressed.
+func (b *PhysicalBlock) IsCompressed() bool {
+	return CompressionIndicator(b.trailer[0]) != NoCompressionIndicator
+}
+
+// WriteTo writes the block (including its trailer) to the provided Writable. If
+// err == nil, n is the number of bytes successfully written to the Writable.
+func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
+	if err := w.Write(b.data); err != nil {
+		return 0, err
+	}
+	if err := w.Write(b.trailer[:]); err != nil {
+		return 0, err
+	}
+	return len(b.data) + len(b.trailer), nil
+}
+
+// CompressAndChecksum compresses and checksums the provided block, returning
+// the compressed block and its trailer. The dst argument is used for the
+// compressed payload if it's sufficiently large. If it's not, a new buffer is
+// allocated and *dst is updated to point to it.
+//
+// If the compressed block is not sufficiently smaller than the original block,
+// the compressed payload is discarded and the original, uncompressed block is
+// used to avoid unnecessary decompression overhead at read time.
+func CompressAndChecksum(
+	dst *[]byte, block []byte, compression Compression, checksummer *Checksummer,
+) PhysicalBlock {
+	// Compress the buffer, discarding the result if the improvement isn't at
+	// least 12.5%.
+	algo := NoCompressionIndicator
+	if compression != NoCompression {
+		var compressed []byte
+		algo, compressed = compress(compression, block, *dst)
+		if algo != NoCompressionIndicator && cap(compressed) > cap(*dst) {
+			*dst = compressed[:cap(compressed)]
+		}
+		if len(compressed) < len(block)-len(block)/8 {
+			block = compressed
+		} else {
+			algo = NoCompressionIndicator
+		}
+	}
+
+	// Calculate the checksum.
+	pb := PhysicalBlock{data: block}
+	pb.trailer[0] = byte(algo)
+	checksum := checksummer.Checksum(block, pb.trailer[:1])
+	pb.trailer = MakeTrailer(byte(algo), checksum)
+	return pb
+}
+
+// compress compresses a sstable block, using dstBuf as the desired destination.
+func compress(
 	compression Compression, b []byte, dstBuf []byte,
 ) (indicator CompressionIndicator, compressed []byte) {
 	switch compression {
@@ -190,16 +274,13 @@ func Compress(
 		return SnappyCompressionIndicator, snappy.Encode(dstBuf, b)
 	case NoCompression:
 		return NoCompressionIndicator, b
-	}
-
-	if len(dstBuf) < binary.MaxVarintLen64 {
-		dstBuf = append(dstBuf, make([]byte, binary.MaxVarintLen64-len(dstBuf))...)
-	}
-	varIntLen := binary.PutUvarint(dstBuf, uint64(len(b)))
-	switch compression {
 	case ZstdCompression:
+		if len(dstBuf) < binary.MaxVarintLen64 {
+			dstBuf = append(dstBuf, make([]byte, binary.MaxVarintLen64-len(dstBuf))...)
+		}
+		varIntLen := binary.PutUvarint(dstBuf, uint64(len(b)))
 		return ZstdCompressionIndicator, encodeZstd(dstBuf, varIntLen, b)
 	default:
-		return NoCompressionIndicator, b
+		panic("unreachable")
 	}
 }

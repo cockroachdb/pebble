@@ -346,16 +346,16 @@ type valueBlockWriter struct {
 	// compressedBuf is used for compressing the block.
 	compressedBuf *blockBuffer
 	// Sequence of blocks that are finished.
-	blocks []blockAndHandle
+	blocks []bufferedValueBlock
 	// Cumulative value block bytes written so far.
 	totalBlockBytes uint64
 	numValues       uint64
 }
 
-type blockAndHandle struct {
-	block      *blockBuffer
-	handle     block.Handle
-	compressed bool
+type bufferedValueBlock struct {
+	block  block.PhysicalBlock
+	buffer *blockBuffer
+	handle block.Handle
 }
 
 type blockBuffer struct {
@@ -430,12 +430,12 @@ func newValueBlockWriter(
 
 func releaseValueBlockWriter(w *valueBlockWriter) {
 	for i := range w.blocks {
-		if w.blocks[i].compressed {
-			releaseToValueBlockBufPool(&compressedValueBlockBufPool, w.blocks[i].block)
+		if w.blocks[i].block.IsCompressed() {
+			releaseToValueBlockBufPool(&compressedValueBlockBufPool, w.blocks[i].buffer)
 		} else {
-			releaseToValueBlockBufPool(&uncompressedValueBlockBufPool, w.blocks[i].block)
+			releaseToValueBlockBufPool(&uncompressedValueBlockBufPool, w.blocks[i].buffer)
 		}
-		w.blocks[i].block = nil
+		w.blocks[i].buffer = nil
 	}
 	if w.buf != nil {
 		releaseToValueBlockBufPool(&uncompressedValueBlockBufPool, w.buf)
@@ -495,45 +495,27 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 }
 
 func (w *valueBlockWriter) compressAndFlush() {
-	// Compress the buffer, discarding the result if the improvement isn't at
-	// least 12.5%.
-	algo := block.NoCompressionIndicator
-	b := w.buf
-	if w.compression != block.NoCompression {
-		algo, w.compressedBuf.b =
-			block.Compress(w.compression, w.buf.b, w.compressedBuf.b[:cap(w.compressedBuf.b)])
-		if len(w.compressedBuf.b) < len(w.buf.b)-len(w.buf.b)/8 {
-			b = w.compressedBuf
-		} else {
-			algo = block.NoCompressionIndicator
-		}
-	}
-	n := len(b.b)
-	if n+block.TrailerLen > cap(b.b) {
-		block := make([]byte, n+block.TrailerLen)
-		copy(block, b.b)
-		b.b = block
-	} else {
-		b.b = b.b[:n+block.TrailerLen]
-	}
-	b.b[n] = byte(algo)
-	w.computeChecksum(b.b)
-	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(n)}
-	w.totalBlockBytes += uint64(len(b.b))
+	w.compressedBuf.b = w.compressedBuf.b[:cap(w.compressedBuf.b)]
+	physicalBlock := block.CompressAndChecksum(&w.compressedBuf.b, w.buf.b, w.compression, &w.checksummer)
+	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
+	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
 	// blockFinishedFunc length excludes the block trailer.
-	w.blockFinishedFunc(n)
-	compressed := algo != block.NoCompressionIndicator
-	w.blocks = append(w.blocks, blockAndHandle{
-		block:      b,
-		handle:     bh,
-		compressed: compressed,
-	})
-	// Handed off a buffer to w.blocks, so need get a new one.
-	if compressed {
+	w.blockFinishedFunc(physicalBlock.LengthWithoutTrailer())
+	b := bufferedValueBlock{
+		block:  physicalBlock,
+		handle: bh,
+	}
+
+	// We'll hand off a buffer to w.blocks and get a new one. Which buffer we're
+	// handing off depends on the outcome of compression.
+	if physicalBlock.IsCompressed() {
+		b.buffer = w.compressedBuf
 		w.compressedBuf = compressedValueBlockBufPool.Get().(*blockBuffer)
 	} else {
+		b.buffer = w.buf
 		w.buf = uncompressedValueBlockBufPool.Get().(*blockBuffer)
 	}
+	w.blocks = append(w.blocks, b)
 	w.buf.b = w.buf.b[:0]
 }
 
@@ -556,7 +538,7 @@ func (w *valueBlockWriter) finish(
 	largestOffset := uint64(0)
 	largestLength := uint64(0)
 	for i := range w.blocks {
-		_, err := layout.WriteValueBlock(w.blocks[i].block.b)
+		_, err := layout.WriteValueBlock(w.blocks[i].block)
 		if err != nil {
 			return valueBlocksIndexHandle{}, valueBlocksAndIndexStats{}, err
 		}
