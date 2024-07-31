@@ -49,10 +49,10 @@ import (
 // set or unset but not both.
 //
 // The resulting dst Keys slice is sorted by InternalKeyTrailer.
-func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspan.Key) {
+func Coalesce(suffixCmp base.CompareSuffixes, keys []keyspan.Key, dst *[]keyspan.Key) {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
-	*dst = CoalesceInto(cmp, eq, (*dst)[:0], math.MaxUint64, keys)
+	*dst = CoalesceInto(suffixCmp, (*dst)[:0], math.MaxUint64, keys)
 	// Update the span with the (potentially reduced) keys slice. coalesce left
 	// the keys in *dst sorted by suffix. Re-sort them by trailer.
 	keyspan.SortKeysByTrailer(*dst)
@@ -61,7 +61,7 @@ func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspa
 // CoalesceInto is a variant of Coalesce which outputs the results into dst
 // without sorting them.
 func CoalesceInto(
-	cmp base.Compare, equal base.Equal, dst []keyspan.Key, snapshot base.SeqNum, keys []keyspan.Key,
+	suffixCmp base.CompareSuffixes, dst []keyspan.Key, snapshot base.SeqNum, keys []keyspan.Key,
 ) []keyspan.Key {
 	dst = dst[:0]
 	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
@@ -100,7 +100,7 @@ func CoalesceInto(
 	// that with the highest InternalKeyTrailer (because the input `keys` was sorted by
 	// trailer descending).
 	slices.SortStableFunc(dst, func(a, b keyspan.Key) int {
-		return cmp(a.Suffix, b.Suffix)
+		return suffixCmp(a.Suffix, b.Suffix)
 	})
 
 	// Grab a handle of the full sorted slice, before reslicing
@@ -121,7 +121,7 @@ func CoalesceInto(
 		shadowing bool
 	)
 	for i := range sorted {
-		if i > 0 && equal(prevSuffix, sorted[i].Suffix) {
+		if i > 0 && suffixCmp(prevSuffix, sorted[i].Suffix) == 0 {
 			// Skip; this key is shadowed by the predecessor that had a larger
 			// InternalKeyTrailer. If this is the first shadowed key, set shadowing=true
 			// and reslice keysBySuffix.keys to hold the entire unshadowed
@@ -165,23 +165,23 @@ type ForeignSSTTransformer struct {
 
 // Transform implements the Transformer interface.
 func (f *ForeignSSTTransformer) Transform(
-	cmp base.Compare, s keyspan.Span, dst *keyspan.Span,
+	suffixCmp base.CompareSuffixes, s keyspan.Span, dst *keyspan.Span,
 ) error {
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
 	f.sortBuf = f.sortBuf[:0]
-	f.sortBuf = CoalesceInto(cmp, f.Equal, f.sortBuf, math.MaxUint64, s.Keys)
+	f.sortBuf = CoalesceInto(suffixCmp, f.sortBuf, math.MaxUint64, s.Keys)
 	keys := f.sortBuf
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
-			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
 		case base.InternalKeyKindRangeKeyUnset:
-			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
 				panic("pebble: keys unexpectedly not in ascending suffix order")
 			}
 		case base.InternalKeyKindRangeKeyDelete:

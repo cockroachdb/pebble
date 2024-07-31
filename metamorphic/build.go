@@ -135,9 +135,7 @@ func writeSSTForIngestion(
 				End:   outputKey(span.End),
 				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
 			}
-			rangekey.Coalesce(
-				t.opts.Comparer.Compare, t.opts.Comparer.Equal, span.Keys, &collapsed.Keys,
-			)
+			rangekey.Coalesce(t.opts.Comparer.CompareSuffixes, span.Keys, &collapsed.Keys)
 			for i := range collapsed.Keys {
 				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
 			}

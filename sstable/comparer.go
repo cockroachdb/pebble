@@ -9,6 +9,9 @@ import "github.com/cockroachdb/pebble/internal/base"
 // Compare exports the base.Compare type.
 type Compare = base.Compare
 
+// CompareSuffixes exports the base.CompareSuffixes type.
+type CompareSuffixes = base.CompareSuffixes
+
 // Equal exports the base.Equal type.
 type Equal = base.Equal
 

@@ -30,7 +30,7 @@ func TestInterleavingIter_Masking(t *testing.T) {
 
 type maskingHooks struct {
 	log        io.Writer
-	cmp        base.Compare
+	suffixCmp  base.CompareSuffixes
 	split      base.Split
 	threshold  []byte
 	maskSuffix []byte
@@ -55,10 +55,10 @@ func (m *maskingHooks) SpanChanged(s *Span) {
 		if s.Keys[i].Suffix == nil {
 			continue
 		}
-		if m.cmp(s.Keys[i].Suffix, m.threshold) < 0 {
+		if m.suffixCmp(s.Keys[i].Suffix, m.threshold) < 0 {
 			continue
 		}
-		if m.maskSuffix == nil || m.cmp(m.maskSuffix, s.Keys[i].Suffix) > 0 {
+		if m.maskSuffix == nil || m.suffixCmp(m.maskSuffix, s.Keys[i].Suffix) > 0 {
 			m.maskSuffix = s.Keys[i].Suffix
 		}
 	}
@@ -66,7 +66,7 @@ func (m *maskingHooks) SpanChanged(s *Span) {
 
 func (m *maskingHooks) SkipPoint(userKey []byte) bool {
 	pointSuffix := userKey[m.split(userKey):]
-	return m.maskSuffix != nil && len(pointSuffix) > 0 && m.cmp(m.maskSuffix, pointSuffix) < 0
+	return m.maskSuffix != nil && len(pointSuffix) > 0 && m.suffixCmp(m.maskSuffix, pointSuffix) < 0
 }
 
 func runInterleavingIterTest(t *testing.T, filename string) {
@@ -76,9 +76,9 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 	var iter InterleavingIter
 	var buf bytes.Buffer
 	hooks := maskingHooks{
-		log:   &buf,
-		cmp:   testkeys.Comparer.Compare,
-		split: testkeys.Comparer.Split,
+		log:       &buf,
+		suffixCmp: testkeys.Comparer.CompareSuffixes,
+		split:     testkeys.Comparer.Split,
 	}
 
 	var prevKV *base.InternalKV
