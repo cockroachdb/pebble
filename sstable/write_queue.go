@@ -61,7 +61,7 @@ func newWriteQueue(size int, writer *RawWriter) *writeQueue {
 func (w *writeQueue) performWrite(task *writeTask) error {
 	var bhp BlockHandleWithProperties
 	var err error
-	if bhp.Handle, err = w.writer.layout.WritePrecompressedDataBlock(task.buf.compressed, task.buf.trailer); err != nil {
+	if bhp.Handle, err = w.writer.layout.WritePrecompressedDataBlock(task.buf.physical); err != nil {
 		return err
 	}
 	bhp = BlockHandleWithProperties{Handle: bhp.Handle, Props: task.buf.dataBlockProps}

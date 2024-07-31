@@ -574,13 +574,12 @@ type dataBlockBuf struct {
 	// next byte slice to be compressed. The uncompressed byte slice will be backed by the
 	// dataBlock.buf.
 	uncompressed []byte
-	// compressed is a reference to a byte slice which is owned by the dataBlockBuf. It is the
-	// compressed byte slice which must be written to disk. The compressed byte slice may be
-	// backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf, depending on whether
-	// we use the result of the compression.
-	compressed []byte
-	// trailer is the block trailer encoding the compression type and checksum.
-	trailer block.Trailer
+
+	// physical holds the (possibly) compressed block and its trailer. The
+	// underlying block data's byte slice is owned by the dataBlockBuf. It  may
+	// be backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf,
+	// depending on whether we use the result of the compression.
+	physical block.PhysicalBlock
 
 	// We're making calls to BlockPropertyCollectors from the Writer client goroutine. We need to
 	// pass the encoded block properties over to the write queue. To prevent copies, and allocations,
@@ -599,7 +598,7 @@ func (d *dataBlockBuf) clear() {
 	d.dataBlock.Reset()
 
 	d.uncompressed = nil
-	d.compressed = nil
+	d.physical = block.PhysicalBlock{}
 	d.dataBlockProps = nil
 	d.sepScratch = d.sepScratch[:0]
 }
@@ -622,7 +621,7 @@ func (d *dataBlockBuf) finish() {
 }
 
 func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
-	d.compressed, d.trailer = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
+	d.physical = block.CompressAndChecksum(&d.compressedBuf, d.uncompressed, c, &d.checksummer)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -1145,7 +1144,7 @@ func (w *RawWriter) flush(key InternalKey) error {
 	w.dataBlockBuf.compressAndChecksum(w.compression)
 	// Since dataBlockEstimates.addInflightDataBlock was never called, the
 	// inflightSize is set to 0.
-	w.coordination.sizeEstimate.dataBlockCompressed(len(w.dataBlockBuf.compressed), 0)
+	w.coordination.sizeEstimate.dataBlockCompressed(w.dataBlockBuf.physical.LengthWithoutTrailer(), 0)
 
 	// Determine if the index block should be flushed. Since we're accessing the
 	// dataBlockBuf.dataBlock.curKey here, we have to make sure that once we start
@@ -1577,27 +1576,6 @@ func (w *RawWriter) writeTwoLevelIndex() (block.Handle, error) {
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.EstimatedSize())
 	w.props.IndexSize += w.props.TopLevelIndexSize + block.TrailerLen
 	return w.layout.WriteIndexBlock(w.topLevelIndexBlock.Finish())
-}
-
-func compressAndChecksum(
-	b []byte, compression block.Compression, blockBuf *blockBuf,
-) (compressed []byte, trailer block.Trailer) {
-	// Compress the buffer, discarding the result if the improvement isn't at
-	// least 12.5%.
-	algo, compressed := block.Compress(compression, b, blockBuf.compressedBuf)
-	if algo != block.NoCompressionIndicator && cap(compressed) > cap(blockBuf.compressedBuf) {
-		blockBuf.compressedBuf = compressed[:cap(compressed)]
-	}
-	if len(compressed) < len(b)-len(b)/8 {
-		b = compressed
-	} else {
-		algo = block.NoCompressionIndicator
-	}
-
-	// Calculate the checksum.
-	trailer[0] = byte(algo)
-	checksum := blockBuf.checksummer.Checksum(b, trailer[:1])
-	return b, block.MakeTrailer(byte(algo), checksum)
 }
 
 // assertFormatCompatibility ensures that the features present on the table are

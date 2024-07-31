@@ -146,8 +146,7 @@ var errBadKind = errors.New("key does not have expected kind (set)")
 
 type blockWithSpan struct {
 	start, end InternalKey
-	data       []byte
-	trailer    block.Trailer
+	physical   block.PhysicalBlock
 }
 
 func rewriteBlocks(
@@ -246,12 +245,10 @@ func rewriteBlocks(
 
 		keyAlloc, output[i].end = cloneKeyWithBuf(scratch, keyAlloc)
 
-		finished, trailer := compressAndChecksum(bw.Finish(), compression, &buf)
+		finished := block.CompressAndChecksum(&buf.compressedBuf, bw.Finish(), compression, &buf.checksummer)
 
 		// copy our finished block into the output buffer.
-		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished))
-		copy(output[i].data, finished)
-		output[i].trailer = trailer
+		output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
 	}
 	return nil
 }
@@ -340,7 +337,7 @@ func rewriteDataBlocksToWriter(
 
 	for i := range blocks {
 		// Write the rewritten block to the file.
-		bh, err := w.layout.WritePrecompressedDataBlock(blocks[i].data, blocks[i].trailer)
+		bh, err := w.layout.WritePrecompressedDataBlock(blocks[i].physical)
 		if err != nil {
 			return err
 		}
