@@ -321,6 +321,11 @@ func (r *BlockReader) Init(data []byte, customHeaderSize uint32) {
 	}
 }
 
+// Rows returns the number of rows in the block, as indicated by the block header.
+func (r *BlockReader) Rows() int {
+	return int(r.header.Rows)
+}
+
 // DataType returns the data type of the col'th column. Every column's data type
 // is encoded within the block header.
 func (r *BlockReader) DataType(col int) DataType {
@@ -423,6 +428,8 @@ func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
 		bitmapToBinFormatter(f, rows)
 	case DataTypeUint8, DataTypeUint16, DataTypeUint32, DataTypeUint64:
 		uintsToBinFormatter(f, rows, dataType, nil)
+	case DataTypePrefixBytes:
+		prefixBytesToBinFormatter(f, rows, nil)
 	case DataTypeBytes:
 		rawBytesToBinFormatter(f, rows, nil)
 	default:
