@@ -160,6 +160,15 @@ func (b *RawBytesBuilder) PutConcat(s1, s2 []byte) {
 	b.offsets.Set(b.rows, uint32(len(b.data)))
 }
 
+// LastSlice returns the last slice added to the builder. The returned slice is
+// owned by the builder and must not be mutated.
+func (b *RawBytesBuilder) LastSlice() []byte {
+	if b.rows == 0 {
+		return nil
+	}
+	return b.data[b.offsets.array.elems.At(b.rows-1):b.offsets.array.elems.At(b.rows)]
+}
+
 // Finish writes the serialized byte slices to buf starting at offset. The buf
 // slice must be sufficiently large to store the serialized output. The caller
 // should use [Size] to size buf appropriately before calling Finish.
