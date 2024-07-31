@@ -68,7 +68,7 @@ type UserIteratorConfig struct {
 type Buffers struct {
 	merging       keyspanimpl.MergingBuffers
 	defragmenting keyspan.DefragmentingBuffers
-	sortBuf       keyspan.KeysBySuffix
+	sortBuf       []keyspan.Key
 }
 
 // PrepareForReuse discards any excessively large buffers.
@@ -147,22 +147,18 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	ui.bufs.sortBuf = keyspan.KeysBySuffix{
-		Cmp:  cmp,
-		Keys: ui.bufs.sortBuf.Keys[:0],
-	}
-	rangekey.CoalesceIntoKeysBySuffix(ui.comparer.Equal, &ui.bufs.sortBuf, ui.snapshot, s.Keys)
+	ui.bufs.sortBuf = rangekey.CoalesceInto(cmp, ui.comparer.Equal, ui.bufs.sortBuf[:0], ui.snapshot, s.Keys)
 	if ui.internalKeys {
 		if s.KeysOrder != keyspan.ByTrailerDesc {
 			panic("unexpected key ordering in UserIteratorTransform with internalKeys = true")
 		}
-		dst.Keys = ui.bufs.sortBuf.Keys
-		keyspan.SortKeysByTrailer(&dst.Keys)
+		dst.Keys = ui.bufs.sortBuf
+		keyspan.SortKeysByTrailer(dst.Keys)
 		return nil
 	}
 	// During user iteration over range keys, unsets and deletes don't matter. This
 	// step helps logical defragmentation during iteration.
-	keys := ui.bufs.sortBuf.Keys
+	keys := ui.bufs.sortBuf
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
 		switch keys[i].Kind() {

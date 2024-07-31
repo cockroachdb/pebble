@@ -2113,7 +2113,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 					Value:   rangeKeys[i].Value,
 				}
 			}
-			keyspan.SortKeysByTrailer(&span.Keys)
+			keyspan.SortKeysByTrailer(span.Keys)
 			if err := w.Raw().EncodeSpan(span); err != nil {
 				panic(err)
 			}

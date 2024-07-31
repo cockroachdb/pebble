@@ -6,7 +6,7 @@ package rangekey
 
 import (
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -52,22 +52,18 @@ import (
 func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspan.Key) {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
-	keysBySuffix := keyspan.KeysBySuffix{
-		Cmp:  cmp,
-		Keys: (*dst)[:0],
-	}
-	CoalesceIntoKeysBySuffix(eq, &keysBySuffix, math.MaxUint64, keys)
+	*dst = CoalesceInto(cmp, eq, (*dst)[:0], math.MaxUint64, keys)
 	// Update the span with the (potentially reduced) keys slice. coalesce left
 	// the keys in *dst sorted by suffix. Re-sort them by trailer.
-	*dst = keysBySuffix.Keys
-	keyspan.SortKeysByTrailer(dst)
+	keyspan.SortKeysByTrailer(*dst)
 }
 
-// CoalesceIntoKeysBySuffix is a variant of Coalesce which outputs the results into
-// keyspan.KeysBySuffix without sorting them.
-func CoalesceIntoKeysBySuffix(
-	equal base.Equal, keysBySuffix *keyspan.KeysBySuffix, snapshot base.SeqNum, keys []keyspan.Key,
-) {
+// CoalesceInto is a variant of Coalesce which outputs the results into dst
+// without sorting them.
+func CoalesceInto(
+	cmp base.Compare, equal base.Equal, dst []keyspan.Key, snapshot base.SeqNum, keys []keyspan.Key,
+) []keyspan.Key {
+	dst = dst[:0]
 	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
 	// consider the prefix of keys before and including the first
 	// RangeKeyDelete. We also must skip any keys that aren't visible at the
@@ -94,7 +90,7 @@ func CoalesceIntoKeysBySuffix(
 			deleteIdx = i
 			break
 		}
-		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[i])
+		dst = append(dst, keys[i])
 	}
 
 	// Sort the accumulated keys by suffix. There may be duplicates within a
@@ -103,12 +99,14 @@ func CoalesceIntoKeysBySuffix(
 	// We use a stable sort so that the first key with a given suffix is the one
 	// that with the highest InternalKeyTrailer (because the input `keys` was sorted by
 	// trailer descending).
-	sort.Stable(keysBySuffix)
+	slices.SortStableFunc(dst, func(a, b keyspan.Key) int {
+		return cmp(a.Suffix, b.Suffix)
+	})
 
 	// Grab a handle of the full sorted slice, before reslicing
-	// keysBySuffix.keys to accumulate the final coalesced keys.
-	sorted := keysBySuffix.Keys
-	keysBySuffix.Keys = keysBySuffix.Keys[:0]
+	// dst to accumulate the final coalesced keys.
+	sorted := dst
+	dst = dst[:0]
 
 	var (
 		// prevSuffix is updated on each iteration of the below loop, and
@@ -129,25 +127,26 @@ func CoalesceIntoKeysBySuffix(
 			// and reslice keysBySuffix.keys to hold the entire unshadowed
 			// prefix.
 			if !shadowing {
-				keysBySuffix.Keys = keysBySuffix.Keys[:i]
+				dst = dst[:i]
 				shadowing = true
 			}
 			continue
 		}
 		prevSuffix = sorted[i].Suffix
 		if shadowing {
-			keysBySuffix.Keys = append(keysBySuffix.Keys, sorted[i])
+			dst = append(dst, sorted[i])
 		}
 	}
-	// If there was no shadowing, keysBySuffix.keys is untouched. We can simply
-	// set it to the existing `sorted` slice (also backed by keysBySuffix.keys).
+	// If there was no shadowing, dst.keys is untouched. We can simply set it to
+	// the existing `sorted` slice (also backed by dst).
 	if !shadowing {
-		keysBySuffix.Keys = sorted
+		dst = sorted
 	}
 	// If the original input `keys` slice contained a RangeKeyDelete, add it.
 	if deleteIdx >= 0 {
-		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[deleteIdx])
+		dst = append(dst, keys[deleteIdx])
 	}
+	return dst
 }
 
 // ForeignSSTTransformer implements a keyspan.Transformer for range keys in
@@ -161,7 +160,7 @@ func CoalesceIntoKeysBySuffix(
 type ForeignSSTTransformer struct {
 	Equal   base.Equal
 	SeqNum  base.SeqNum
-	sortBuf keyspan.KeysBySuffix
+	sortBuf []keyspan.Key
 }
 
 // Transform implements the Transformer interface.
@@ -171,12 +170,9 @@ func (f *ForeignSSTTransformer) Transform(
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	f.sortBuf = keyspan.KeysBySuffix{
-		Cmp:  cmp,
-		Keys: f.sortBuf.Keys[:0],
-	}
-	CoalesceIntoKeysBySuffix(f.Equal, &f.sortBuf, math.MaxUint64, s.Keys)
-	keys := f.sortBuf.Keys
+	f.sortBuf = f.sortBuf[:0]
+	f.sortBuf = CoalesceInto(cmp, f.Equal, f.sortBuf, math.MaxUint64, s.Keys)
+	keys := f.sortBuf
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
 		switch keys[i].Kind() {
@@ -201,7 +197,7 @@ func (f *ForeignSSTTransformer) Transform(
 	}
 	// coalesce results in dst.Keys being sorted by Suffix. Change it back to
 	// ByTrailerDesc, as that's what the iterator stack will expect.
-	keyspan.SortKeysByTrailer(&dst.Keys)
+	keyspan.SortKeysByTrailer(dst.Keys)
 	dst.KeysOrder = keyspan.ByTrailerDesc
 	return nil
 }
