@@ -100,10 +100,10 @@ type Reader struct {
 	filterMetricsTracker *FilterMetricsTracker
 	logger               base.LoggerAndTracer
 
+	Comparer  *base.Comparer
 	Compare   Compare
 	SuffixCmp CompareSuffixes
 	Equal     Equal
-	FormatKey base.FormatKey
 	Split     Split
 
 	tableFilter *tableFilterReader
@@ -979,16 +979,16 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r.footerBH = footer.footerBH
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
+		r.Comparer = o.Comparer
 		r.Compare = o.Comparer.Compare
 		r.SuffixCmp = o.Comparer.CompareSuffixes
 		r.Equal = o.Comparer.Equal
-		r.FormatKey = o.Comparer.FormatKey
 		r.Split = o.Comparer.Split
 	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
+		r.Comparer = o.Comparer
 		r.Compare = comparer.Compare
 		r.SuffixCmp = comparer.CompareSuffixes
 		r.Equal = comparer.Equal
-		r.FormatKey = comparer.FormatKey
 		r.Split = comparer.Split
 	} else {
 		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
