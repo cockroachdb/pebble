@@ -28,7 +28,7 @@ func TestCompressionRoundtrip(t *testing.T) {
 			compressedBuf := make([]byte, rng.Intn(1<<10 /* 1 KiB */))
 
 			btyp, compressed := compress(compression, payload, compressedBuf)
-			v, err := Decompress(btyp, compressed)
+			v, err := decompress(btyp, compressed)
 			require.NoError(t, err)
 			got := payload
 			if v != nil {
@@ -53,8 +53,31 @@ func TestDecompressionError(t *testing.T) {
 	fauxCompressed = fauxCompressed[:n+compressedPayloadLen]
 	rng.Read(fauxCompressed[n:])
 
-	v, err := Decompress(ZstdCompressionIndicator, fauxCompressed)
+	v, err := decompress(ZstdCompressionIndicator, fauxCompressed)
 	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, v)
+}
+
+// decompress decompresses an sstable block into memory manually allocated with
+// `cache.Alloc`.  NB: If Decompress returns (nil, nil), no decompression was
+// necessary and the caller may use `b` directly.
+func decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
+	if algo == NoCompressionIndicator {
+		return nil, nil
+	}
+	// first obtain the decoded length.
+	decodedLen, prefixLen, err := DecompressedLen(algo, b)
+	if err != nil {
+		return nil, err
+	}
+	b = b[prefixLen:]
+	// Allocate sufficient space from the cache.
+	decoded := cache.Alloc(decodedLen)
+	decodedBuf := decoded.Buf()
+	if err := DecompressInto(algo, b, decodedBuf); err != nil {
+		cache.Free(decoded)
+		return nil, err
+	}
+	return decoded, nil
 }

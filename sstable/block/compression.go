@@ -10,7 +10,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/golang/snappy"
 )
@@ -158,29 +157,6 @@ func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) er
 			errors.Safe(result), errors.Safe(buf))
 	}
 	return nil
-}
-
-// Decompress decompresses an sstable block into memory manually allocated with
-// `cache.Alloc`.  NB: If Decompress returns (nil, nil), no decompression was
-// necessary and the caller may use `b` directly.
-func Decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
-	if algo == NoCompressionIndicator {
-		return nil, nil
-	}
-	// first obtain the decoded length.
-	decodedLen, prefixLen, err := DecompressedLen(algo, b)
-	if err != nil {
-		return nil, err
-	}
-	b = b[prefixLen:]
-	// Allocate sufficient space from the cache.
-	decoded := cache.Alloc(decodedLen)
-	decodedBuf := decoded.Buf()
-	if err := DecompressInto(algo, b, decodedBuf); err != nil {
-		cache.Free(decoded)
-		return nil, err
-	}
-	return decoded, nil
 }
 
 // PhysicalBlock represents a block (possibly compressed) as it is stored
