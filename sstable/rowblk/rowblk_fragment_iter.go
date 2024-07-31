@@ -253,7 +253,7 @@ func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error
 	// span.
 
 	// Backwards iteration encounters internal keys in the wrong order.
-	keyspan.SortKeysByTrailer(&i.span.Keys)
+	keyspan.SortKeysByTrailer(i.span.Keys)
 
 	i.applySpanTransforms()
 	return &i.span, nil

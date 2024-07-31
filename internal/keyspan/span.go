@@ -6,9 +6,9 @@ package keyspan // import "github.com/cockroachdb/pebble/internal/keyspan"
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -455,24 +455,38 @@ func (s prettySpan) Format(fs fmt.State, c rune) {
 	fmt.Fprintf(fs, "}")
 }
 
-// SortKeysByTrailer sorts a keys slice by trailer.
-func SortKeysByTrailer(keys *[]Key) {
-	// NB: keys is a pointer to a slice instead of a slice to avoid `sorted`
-	// escaping to the heap.
-	sorted := (*keysBySeqNumKind)(keys)
-	sort.Sort(sorted)
+// SortKeysByTrailer sorts a Keys slice by trailer.
+func SortKeysByTrailer(keys []Key) {
+	slices.SortFunc(keys, func(a, b Key) int {
+		// Trailer are ordered in decreasing number order.
+		return -cmp.Compare(a.Trailer, b.Trailer)
+	})
 }
 
-// KeysBySuffix implements sort.Interface, sorting its member Keys slice to by
-// Suffix in the order dictated by Cmp.
-type KeysBySuffix struct {
-	Cmp  base.Compare
-	Keys []Key
+// SortKeysBySuffix sorts a Keys slice by suffix.
+func SortKeysBySuffix(cmp base.Compare, keys []Key) {
+	slices.SortFunc(keys, func(a, b Key) int {
+		return cmp(a.Suffix, b.Suffix)
+	})
 }
 
-func (s *KeysBySuffix) Len() int           { return len(s.Keys) }
-func (s *KeysBySuffix) Less(i, j int) bool { return s.Cmp(s.Keys[i].Suffix, s.Keys[j].Suffix) < 0 }
-func (s *KeysBySuffix) Swap(i, j int)      { s.Keys[i], s.Keys[j] = s.Keys[j], s.Keys[i] }
+// SortSpansByStartKey sorts the spans by start key.
+//
+// This is the ordering required by the Fragmenter. Usually spans are naturally
+// sorted by their start key, but that isn't true for range deletion tombstones
+// in the legacy range-del-v1 block format.
+func SortSpansByStartKey(cmp base.Compare, spans []Span) {
+	slices.SortFunc(spans, func(a, b Span) int {
+		return cmp(a.Start, b.Start)
+	})
+}
+
+// SortSpansByEndKey sorts the spans by the end key.
+func SortSpansByEndKey(cmp base.Compare, spans []Span) {
+	slices.SortFunc(spans, func(a, b Span) int {
+		return cmp(a.End, b.End)
+	})
+}
 
 // ParseSpan parses the string representation of a Span. It's intended for
 // tests. ParseSpan panics if passed a malformed span representation.

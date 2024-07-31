@@ -6,59 +6,10 @@ package keyspan
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
-
-type spansByStartKey struct {
-	cmp base.Compare
-	buf []Span
-}
-
-func (v *spansByStartKey) Len() int { return len(v.buf) }
-func (v *spansByStartKey) Less(i, j int) bool {
-	return v.cmp(v.buf[i].Start, v.buf[j].Start) < 0
-}
-func (v *spansByStartKey) Swap(i, j int) {
-	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
-}
-
-type spansByEndKey struct {
-	cmp base.Compare
-	buf []Span
-}
-
-func (v *spansByEndKey) Len() int { return len(v.buf) }
-func (v *spansByEndKey) Less(i, j int) bool {
-	return v.cmp(v.buf[i].End, v.buf[j].End) < 0
-}
-func (v *spansByEndKey) Swap(i, j int) {
-	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
-}
-
-// keysBySeqNumKind sorts spans by the start key's sequence number in
-// descending order. If two spans have equal sequence number, they're compared
-// by key kind in descending order. This ordering matches the ordering of
-// base.InternalCompare among keys with matching user keys.
-type keysBySeqNumKind []Key
-
-func (v *keysBySeqNumKind) Len() int           { return len(*v) }
-func (v *keysBySeqNumKind) Less(i, j int) bool { return (*v)[i].Trailer > (*v)[j].Trailer }
-func (v *keysBySeqNumKind) Swap(i, j int)      { (*v)[i], (*v)[j] = (*v)[j], (*v)[i] }
-
-// Sort the spans by start key. This is the ordering required by the
-// Fragmenter. Usually spans are naturally sorted by their start key,
-// but that isn't true for range deletion tombstones in the legacy
-// range-del-v1 block format.
-func Sort(cmp base.Compare, spans []Span) {
-	sorter := spansByStartKey{
-		cmp: cmp,
-		buf: spans,
-	}
-	sort.Sort(&sorter)
-}
 
 // Fragmenter fragments a set of spans such that overlapping spans are
 // split at their overlap points. The fragmented spans are output to the
@@ -80,10 +31,8 @@ type Fragmenter struct {
 	// specific key (e.g. TruncateAndFlushTo). It is cached in the Fragmenter to
 	// allow reuse.
 	doneBuf []Span
-	// sortBuf is used to sort fragments by end key when flushing.
-	sortBuf spansByEndKey
 	// flushBuf is used to sort keys by (seqnum,kind) before emitting.
-	flushBuf keysBySeqNumKind
+	flushBuf []Key
 	// flushedKey is the key that fragments have been flushed up to. Any
 	// additional spans added to the fragmenter must have a start key >=
 	// flushedKey. A nil value indicates flushedKey has not been set.
@@ -305,9 +254,7 @@ func (f *Fragmenter) flush(buf []Span, lastKey []byte) {
 
 	// Sort the spans by end key. This will allow us to walk over the spans and
 	// easily determine the next split point (the smallest end-key).
-	f.sortBuf.cmp = f.Cmp
-	f.sortBuf.buf = buf
-	sort.Sort(&f.sortBuf)
+	SortSpansByEndKey(f.Cmp, buf)
 
 	// Loop over the spans, splitting by end key.
 	for len(buf) > 0 {
@@ -324,7 +271,7 @@ func (f *Fragmenter) flush(buf []Span, lastKey []byte) {
 			f.flushBuf = append(f.flushBuf, buf[i].Keys...)
 		}
 
-		sort.Sort(&f.flushBuf)
+		SortKeysByTrailer(f.flushBuf)
 
 		f.Emit(Span{
 			Start: buf[0].Start,

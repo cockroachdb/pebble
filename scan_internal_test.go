@@ -425,7 +425,7 @@ func TestScanInternal(t *testing.T) {
 							keys = append(keys, span.Keys[i])
 							keys[i].Trailer = base.MakeTrailer(0, keys[i].Kind())
 						}
-						keyspan.SortKeysByTrailer(&keys)
+						keyspan.SortKeysByTrailer(keys)
 						require.NoError(t, w.Raw().EncodeSpan(keyspan.Span{
 							Start: span.Start,
 							End:   span.End,
