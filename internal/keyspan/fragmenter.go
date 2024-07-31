@@ -244,6 +244,14 @@ func (f *Fragmenter) Start() []byte {
 	return nil
 }
 
+// Truncate truncates all pending spans up to key (exclusive), flushes them, and
+// retains any spans that continue onward for future flushes.
+func (f *Fragmenter) Truncate(key []byte) {
+	if len(f.pending) > 0 {
+		f.truncateAndFlush(key)
+	}
+}
+
 // Flushes all pending spans up to key (exclusive).
 //
 // WARNING: The specified key is stored without making a copy, so all callers
