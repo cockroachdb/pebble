@@ -788,7 +788,7 @@ func scanInternalImpl(
 					keysCopy[i].CopyFrom(span.Keys[i])
 					keysCopy[i].Trailer = base.MakeTrailer(0, span.Keys[i].Kind())
 				}
-				keyspan.SortKeysByTrailer(&keysCopy)
+				keyspan.SortKeysByTrailer(keysCopy)
 				if err := opts.visitRangeKey(span.Start, span.End, keysCopy); err != nil {
 					return err
 				}

@@ -160,7 +160,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			allFragmented = append(allFragmented, span)
 		},
 	}
-	keyspan.Sort(f.Cmp, allSpans)
+	keyspan.SortSpansByStartKey(f.Cmp, allSpans)
 	for _, s := range allSpans {
 		f.Add(s)
 	}

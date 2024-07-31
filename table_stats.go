@@ -902,7 +902,7 @@ func newCombinedDeletionKeyspanIter(
 		// sstable into the same keyspanimpl.MergingIter. The MergingIter will
 		// return the keys in the order that the child iterators were provided.
 		// Sort the keys to ensure they're sorted by trailer descending.
-		keyspan.SortKeysByTrailer(&out.Keys)
+		keyspan.SortKeysByTrailer(out.Keys)
 		return nil
 	})
 	mIter.Init(comparer, transform, new(keyspanimpl.MergingBuffers))

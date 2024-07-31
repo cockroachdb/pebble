@@ -11,7 +11,6 @@ import (
 	"math"
 	"runtime"
 	"slices"
-	"sort"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -183,9 +182,8 @@ type RawWriter struct {
 	// in indexPartitions. These live until the index finishes.
 	indexSepAlloc bytealloc.A
 
-	rangeKeyEncoder   rangekey.Encoder
-	rangeKeysBySuffix keyspan.KeysBySuffix
-	rangeKeySpan      keyspan.Span
+	rangeKeyEncoder rangekey.Encoder
+	rangeKeySpan    keyspan.Span
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
 	dataBlockBuf *dataBlockBuf
@@ -1026,16 +1024,13 @@ func (w *RawWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
 	// NB: The span should only contain range keys and be internally consistent
 	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
 	//
-	// We use w.rangeKeysBySuffix and w.rangeKeySpan to avoid allocations.
+	// We use w.rangeKeySpan to avoid allocations.
 
 	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
 	// we may want to in the future.
-	w.rangeKeysBySuffix.Cmp = w.compare
-	w.rangeKeysBySuffix.Keys = span.Keys
-	sort.Sort(&w.rangeKeysBySuffix)
-
 	w.rangeKeySpan = span
-	w.rangeKeySpan.Keys = w.rangeKeysBySuffix.Keys
+	keyspan.SortKeysBySuffix(w.compare, w.rangeKeySpan.Keys)
+
 	if w.err == nil {
 		w.err = w.EncodeSpan(w.rangeKeySpan)
 	}
