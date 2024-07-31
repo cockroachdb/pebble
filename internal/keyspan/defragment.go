@@ -29,27 +29,29 @@ const keysReuseMaxCapacity = 100
 type DefragmentMethod interface {
 	// ShouldDefragment takes two abutting spans and returns whether the two
 	// spans should be combined into a single, defragmented Span.
-	ShouldDefragment(equal base.Equal, left, right *Span) bool
+	ShouldDefragment(suffixCmp base.CompareSuffixes, left, right *Span) bool
 }
 
 // The DefragmentMethodFunc type is an adapter to allow the use of ordinary
 // functions as DefragmentMethods. If f is a function with the appropriate
 // signature, DefragmentMethodFunc(f) is a DefragmentMethod that calls f.
-type DefragmentMethodFunc func(equal base.Equal, left, right *Span) bool
+type DefragmentMethodFunc func(suffixCmp base.CompareSuffixes, left, right *Span) bool
 
 // ShouldDefragment calls f(equal, left, right).
-func (f DefragmentMethodFunc) ShouldDefragment(equal base.Equal, left, right *Span) bool {
-	return f(equal, left, right)
+func (f DefragmentMethodFunc) ShouldDefragment(
+	suffixCmp base.CompareSuffixes, left, right *Span,
+) bool {
+	return f(suffixCmp, left, right)
 }
 
-// DefragmentInternal configures a DefragmentingIter to defragment spans
-// only if they have identical keys. It requires spans' keys to be sorted in
-// trailer descending order.
+// DefragmentInternal configures a DefragmentingIter to defragment spans only if
+// they have identical keys. It requires spans' keys to be sorted in trailer
+// descending order.
 //
 // This defragmenting method is intended for use in compactions that may see
 // internal range keys fragments that may now be joined, because the state that
 // required their fragmentation has been dropped.
-var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(equal base.Equal, a, b *Span) bool {
+var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(suffixCmp base.CompareSuffixes, a, b *Span) bool {
 	if a.KeysOrder != ByTrailerDesc || b.KeysOrder != ByTrailerDesc {
 		panic("pebble: span keys unexpectedly not in trailer descending order")
 	}
@@ -60,7 +62,7 @@ var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(equal base.E
 		if a.Keys[i].Trailer != b.Keys[i].Trailer {
 			return false
 		}
-		if !equal(a.Keys[i].Suffix, b.Keys[i].Suffix) {
+		if suffixCmp(a.Keys[i].Suffix, b.Keys[i].Suffix) != 0 {
 			return false
 		}
 		if !bytes.Equal(a.Keys[i].Value, b.Keys[i].Value) {
@@ -452,7 +454,7 @@ func (i *DefragmentingIter) Prev() (*Span, error) {
 // DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
 // spans is an optimization that lets us load fewer sstable blocks.
 func (i *DefragmentingIter) checkEqual(left, right *Span) bool {
-	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.equal, i.iterSpan, &i.curr)
+	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.comparer.CompareSuffixes, i.iterSpan, &i.curr)
 }
 
 // defragmentForward defragments spans in the forward direction, starting from

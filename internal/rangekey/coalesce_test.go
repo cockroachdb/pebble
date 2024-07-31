@@ -5,7 +5,6 @@
 package rangekey
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 
@@ -15,22 +14,17 @@ import (
 )
 
 func TestCoalesce(t *testing.T) {
-	var buf bytes.Buffer
-	eq := testkeys.Comparer.Equal
-	cmp := testkeys.Comparer.Compare
-
 	datadriven.RunTest(t, "testdata/coalesce", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "coalesce":
-			buf.Reset()
 			span := keyspan.ParseSpan(td.Input)
 			coalesced := keyspan.Span{
 				Start: span.Start,
 				End:   span.End,
 			}
-			Coalesce(cmp, eq, span.Keys, &coalesced.Keys)
-			fmt.Fprintln(&buf, coalesced)
-			return buf.String()
+			Coalesce(testkeys.Comparer.CompareSuffixes, span.Keys, &coalesced.Keys)
+			return coalesced.String()
+
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}

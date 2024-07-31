@@ -131,6 +131,7 @@ type RawWriter struct {
 	indexBlockOptions flushDecisionOptions
 	// The following fields are copied from Options.
 	compare              Compare
+	suffixCmp            CompareSuffixes
 	split                Split
 	formatKey            base.FormatKey
 	compression          Compression
@@ -750,7 +751,7 @@ func (w *RawWriter) makeAddPointDecisionV3(
 		cmpUser = cmpPrefix
 		if cmpPrefix == 0 {
 			// Need to compare suffixes to compute cmpUser.
-			cmpUser = w.compare(prevPointUserKey[prevPointKeyInfo.prefixLen:],
+			cmpUser = w.suffixCmp(prevPointUserKey[prevPointKeyInfo.prefixLen:],
 				key.UserKey[w.lastPointKeyInfo.prefixLen:])
 		}
 	} else {
@@ -1029,7 +1030,7 @@ func (w *RawWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
 	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
 	// we may want to in the future.
 	w.rangeKeySpan = span
-	keyspan.SortKeysBySuffix(w.compare, w.rangeKeySpan.Keys)
+	keyspan.SortKeysBySuffix(w.suffixCmp, w.rangeKeySpan.Keys)
 
 	if w.err == nil {
 		w.err = w.EncodeSpan(w.rangeKeySpan)
@@ -1907,6 +1908,7 @@ func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawWriter {
 			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
 		},
 		compare:               o.Comparer.Compare,
+		suffixCmp:             o.Comparer.CompareSuffixes,
 		split:                 o.Comparer.Split,
 		formatKey:             o.Comparer.FormatKey,
 		compression:           o.Compression,

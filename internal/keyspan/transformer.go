@@ -11,21 +11,21 @@ type Transformer interface {
 	// Transform takes a Span as input and writes the transformed Span to the
 	// provided output *Span pointer. The output Span's Keys slice may be reused
 	// by Transform to reduce allocations.
-	Transform(cmp base.Compare, in Span, out *Span) error
+	Transform(suffixCmp base.CompareSuffixes, in Span, out *Span) error
 }
 
 // The TransformerFunc type is an adapter to allow the use of ordinary functions
 // as Transformers. If f is a function with the appropriate signature,
 // TransformerFunc(f) is a Transformer that calls f.
-type TransformerFunc func(base.Compare, Span, *Span) error
+type TransformerFunc func(base.CompareSuffixes, Span, *Span) error
 
 // Transform calls f(cmp, in, out).
-func (tf TransformerFunc) Transform(cmp base.Compare, in Span, out *Span) error {
-	return tf(cmp, in, out)
+func (tf TransformerFunc) Transform(suffixCmp base.CompareSuffixes, in Span, out *Span) error {
+	return tf(suffixCmp, in, out)
 }
 
 // NoopTransform is a Transformer that performs no mutations.
-var NoopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
+var NoopTransform Transformer = TransformerFunc(func(_ base.CompareSuffixes, s Span, dst *Span) error {
 	dst.Start, dst.End = s.Start, s.End
 	dst.Keys = append(dst.Keys[:0], s.Keys...)
 	return nil
@@ -34,7 +34,7 @@ var NoopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst
 // VisibleTransform filters keys that are invisible at the provided snapshot
 // sequence number.
 func VisibleTransform(snapshot base.SeqNum) Transformer {
-	return TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
+	return TransformerFunc(func(_ base.CompareSuffixes, s Span, dst *Span) error {
 		dst.Start, dst.End = s.Start, s.End
 		dst.Keys = dst.Keys[:0]
 		for _, k := range s.Keys {
@@ -58,8 +58,8 @@ type TransformerIter struct {
 
 	// Transformer is applied on every Span returned by this iterator.
 	Transformer Transformer
-	// Comparer in use for this keyspace.
-	Compare base.Compare
+	// Suffix comparer in use for this keyspace.
+	SuffixCmp base.CompareSuffixes
 
 	span Span
 }
@@ -73,7 +73,7 @@ func (t *TransformerIter) applyTransform(span *Span) (*Span, error) {
 		End:   t.span.End[:0],
 		Keys:  t.span.Keys[:0],
 	}
-	if err := t.Transformer.Transform(t.Compare, *span, &t.span); err != nil {
+	if err := t.Transformer.Transform(t.SuffixCmp, *span, &t.span); err != nil {
 		return nil, err
 	}
 	return &t.span, nil

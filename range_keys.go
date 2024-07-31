@@ -225,9 +225,10 @@ func containsAnyRangeKeys(iter manifest.LevelIterator) bool {
 // result is ignored, and the block is read.
 
 type rangeKeyMasking struct {
-	cmp    base.Compare
-	split  base.Split
-	filter BlockPropertyFilterMask
+	cmp       base.Compare
+	suffixCmp base.CompareSuffixes
+	split     base.Split
+	filter    BlockPropertyFilterMask
 	// maskActiveSuffix holds the suffix of a range key currently acting as a
 	// mask, hiding point keys with suffixes greater than it. maskActiveSuffix
 	// is only ever non-nil if IterOptions.RangeKeyMasking.Suffix is non-nil.
@@ -243,9 +244,10 @@ type rangeKeyMasking struct {
 	parent   *Iterator
 }
 
-func (m *rangeKeyMasking) init(parent *Iterator, cmp base.Compare, split base.Split) {
-	m.cmp = cmp
-	m.split = split
+func (m *rangeKeyMasking) init(parent *Iterator, c *base.Comparer) {
+	m.cmp = c.Compare
+	m.suffixCmp = c.CompareSuffixes
+	m.split = c.Split
 	if parent.opts.RangeKeyMasking.Filter != nil {
 		m.filter = parent.opts.RangeKeyMasking.Filter()
 	}
@@ -270,10 +272,10 @@ func (m *rangeKeyMasking) SpanChanged(s *keyspan.Span) {
 				if s.Keys[j].Suffix == nil {
 					continue
 				}
-				if m.cmp(s.Keys[j].Suffix, m.parent.opts.RangeKeyMasking.Suffix) < 0 {
+				if m.suffixCmp(s.Keys[j].Suffix, m.parent.opts.RangeKeyMasking.Suffix) < 0 {
 					continue
 				}
-				if len(m.maskActiveSuffix) == 0 || m.cmp(m.maskActiveSuffix, s.Keys[j].Suffix) > 0 {
+				if len(m.maskActiveSuffix) == 0 || m.suffixCmp(m.maskActiveSuffix, s.Keys[j].Suffix) > 0 {
 					m.maskSpan = s
 					m.maskActiveSuffix = append(m.maskActiveSuffix[:0], s.Keys[j].Suffix...)
 				}
@@ -352,7 +354,7 @@ func (m *rangeKeyMasking) SkipPoint(userKey []byte) bool {
 	// the InterleavingIter). Skip the point key if the range key's suffix is
 	// greater than the point key's suffix.
 	pointSuffix := userKey[m.split(userKey):]
-	if len(pointSuffix) > 0 && m.cmp(m.maskActiveSuffix, pointSuffix) < 0 {
+	if len(pointSuffix) > 0 && m.suffixCmp(m.maskActiveSuffix, pointSuffix) < 0 {
 		m.parent.stats.RangeKeyStats.SkippedPoints++
 		return true
 	}
