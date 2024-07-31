@@ -71,7 +71,7 @@ func TestRangeKeySpanCompactor(t *testing.T) {
 
 			c = MakeRangeKeySpanCompactor(
 				base.DefaultComparer.Compare,
-				base.DefaultComparer.Equal,
+				base.DefaultComparer.CompareSuffixes,
 				s,
 				ElideTombstonesOutsideOf(keyRanges),
 			)

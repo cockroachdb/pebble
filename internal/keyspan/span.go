@@ -93,9 +93,9 @@ func (k Key) Kind() base.InternalKeyKind {
 // Equal returns true if this Key is equal to the given key. Two keys are said
 // to be equal if the two Keys have equal trailers, suffix and value. Suffix
 // comparison uses the provided base.Compare func. Value comparison is bytewise.
-func (k Key) Equal(equal base.Equal, b Key) bool {
+func (k Key) Equal(suffixCmp base.CompareSuffixes, b Key) bool {
 	return k.Trailer == b.Trailer &&
-		equal(k.Suffix, b.Suffix) &&
+		suffixCmp(k.Suffix, b.Suffix) == 0 &&
 		bytes.Equal(k.Value, b.Value)
 }
 
@@ -464,9 +464,9 @@ func SortKeysByTrailer(keys []Key) {
 }
 
 // SortKeysBySuffix sorts a Keys slice by suffix.
-func SortKeysBySuffix(cmp base.Compare, keys []Key) {
+func SortKeysBySuffix(suffixCmp base.CompareSuffixes, keys []Key) {
 	slices.SortFunc(keys, func(a, b Key) int {
-		return cmp(a.Suffix, b.Suffix)
+		return suffixCmp(a.Suffix, b.Suffix)
 	})
 }
 

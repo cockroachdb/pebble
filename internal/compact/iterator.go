@@ -148,7 +148,8 @@ import (
 // exported function, and before a subsequent call to Next advances the iterator
 // and mutates the contents of the returned key and value.
 type Iter struct {
-	cmp base.Compare
+	cmp       base.Compare
+	suffixCmp base.CompareSuffixes
 
 	cfg IterConfig
 
@@ -308,8 +309,9 @@ func NewIter(
 ) *Iter {
 	cfg.ensureDefaults()
 	i := &Iter{
-		cmp: cfg.Comparer.Compare,
-		cfg: cfg,
+		cmp:       cfg.Comparer.Compare,
+		suffixCmp: cfg.Comparer.CompareSuffixes,
+		cfg:       cfg,
 		// We don't want a nil keyBuf because if the first key we encounter is
 		// empty, it would become nil.
 		keyBuf: make([]byte, 8),
@@ -329,7 +331,7 @@ func NewIter(
 	i.frontiers.Init(i.cmp)
 	i.delElider.Init(i.cmp, cfg.TombstoneElision)
 	i.rangeDelCompactor = MakeRangeDelSpanCompactor(i.cmp, i.cfg.Comparer.Equal, cfg.Snapshots, cfg.TombstoneElision)
-	i.rangeKeyCompactor = MakeRangeKeySpanCompactor(i.cmp, i.cfg.Comparer.Equal, cfg.Snapshots, cfg.RangeKeyElision)
+	i.rangeKeyCompactor = MakeRangeKeySpanCompactor(i.cmp, i.suffixCmp, cfg.Snapshots, cfg.RangeKeyElision)
 	i.lastRangeDelSpanFrontier.Init(&i.frontiers, nil, i.lastRangeDelSpanFrontierReached)
 	return i
 }

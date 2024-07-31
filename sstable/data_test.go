@@ -293,7 +293,7 @@ func runIterCmd(
 		for iter.Valid() {
 			k := iter.Key().UserKey
 			suffix := k[testkeys.Comparer.Split(k):]
-			if len(suffix) == 0 || testkeys.Comparer.Compare(suffix, maskingSuffix) <= 0 {
+			if len(suffix) == 0 || testkeys.Comparer.CompareSuffixes(suffix, maskingSuffix) <= 0 {
 				return
 			}
 			if direction > 0 {

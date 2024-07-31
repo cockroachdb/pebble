@@ -1152,7 +1152,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 	}
 
 	if dbi.opts.rangeKeys() {
-		dbi.rangeKeyMasking.init(dbi, dbi.comparer.Compare, dbi.comparer.Split)
+		dbi.rangeKeyMasking.init(dbi, &dbi.comparer)
 
 		// When iterating over both point and range keys, don't create the
 		// range-key iterator stack immediately if we can avoid it. This
