@@ -54,7 +54,6 @@ point:    [a#1,SET-h#8,SINGLEDEL]
 rangekey: [j#9,RANGEKEYDEL-m#inf,RANGEKEYSET]
 seqnums:  [1-11]
 props "deletions":
-  rocksdb.num.range-deletions: 0
 props "deleted":
   rocksdb.deleted.keys: 5
 

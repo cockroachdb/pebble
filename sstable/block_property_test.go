@@ -1251,11 +1251,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 	if err != nil {
 		return r, err.Error()
 	}
-	return r, fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
-		meta.SmallestPoint, meta.LargestPoint,
-		meta.SmallestRangeDel, meta.LargestRangeDel,
-		meta.SmallestRangeKey, meta.LargestRangeKey,
-		meta.SmallestSeqNum, meta.LargestSeqNum)
+	return r, formatWriterMetadata(td, meta)
 }
 
 func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
