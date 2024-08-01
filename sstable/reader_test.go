@@ -227,21 +227,6 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 		}
 	}()
 
-	formatWMeta := func(m *WriterMetadata) string {
-		var b bytes.Buffer
-		if m.HasPointKeys {
-			fmt.Fprintf(&b, "point:    [%s-%s]\n", m.SmallestPoint, m.LargestPoint)
-		}
-		if m.HasRangeDelKeys {
-			fmt.Fprintf(&b, "rangedel: [%s-%s]\n", m.SmallestRangeDel, m.LargestRangeDel)
-		}
-		if m.HasRangeKeys {
-			fmt.Fprintf(&b, "rangekey: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
-		}
-		fmt.Fprintf(&b, "seqnums:  [%d-%d]\n", m.SmallestSeqNum, m.LargestSeqNum)
-		return b.String()
-	}
-
 	formatVirtualReader := func(v *VirtualReader, showProps bool) string {
 		var b bytes.Buffer
 		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", v.vState.lower, v.vState.upper)
@@ -279,7 +264,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				return err.Error()
 			}
 			bp.Init(5)
-			return formatWMeta(wMeta)
+			return formatWriterMetadata(td, wMeta)
 
 		case "virtualize":
 			// virtualize will split the previously built physical sstable into

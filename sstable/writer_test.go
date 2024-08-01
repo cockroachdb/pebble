@@ -72,6 +72,41 @@ func TestRewriterParallel(t *testing.T) {
 	testRewriterParallelism(t, true)
 }
 
+func formatWriterMetadata(td *datadriven.TestData, m *WriterMetadata) string {
+	var requestedProps []string
+	for _, cmdArg := range td.CmdArgs {
+		switch cmdArg.Key {
+		case "props":
+			requestedProps = cmdArg.Vals
+		}
+	}
+
+	var b bytes.Buffer
+	if m.HasPointKeys {
+		fmt.Fprintf(&b, "point:    [%s-%s]\n", m.SmallestPoint, m.LargestPoint)
+	}
+	if m.HasRangeDelKeys {
+		fmt.Fprintf(&b, "rangedel: [%s-%s]\n", m.SmallestRangeDel, m.LargestRangeDel)
+	}
+	if m.HasRangeKeys {
+		fmt.Fprintf(&b, "rangekey: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
+	}
+	fmt.Fprintf(&b, "seqnums:  [%d-%d]\n", m.SmallestSeqNum, m.LargestSeqNum)
+
+	if len(requestedProps) > 0 {
+		props := strings.Split(m.Properties.String(), "\n")
+		for _, requestedProp := range requestedProps {
+			fmt.Fprintf(&b, "props %q:\n", requestedProp)
+			for _, prop := range props {
+				if strings.Contains(prop, requestedProp) {
+					fmt.Fprintf(&b, "  %s\n", prop)
+				}
+			}
+		}
+	}
+	return b.String()
+}
+
 func runDataDriven(t *testing.T, file string, tableFormat TableFormat, parallelism bool) {
 	var r *Reader
 	defer func() {
@@ -79,42 +114,6 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			require.NoError(t, r.Close())
 		}
 	}()
-
-	format := func(td *datadriven.TestData, m *WriterMetadata) string {
-		var requestedProps []string
-		for _, cmdArg := range td.CmdArgs {
-			switch cmdArg.Key {
-			case "props":
-				requestedProps = cmdArg.Vals
-			}
-		}
-
-		var b bytes.Buffer
-		if m.HasPointKeys {
-			fmt.Fprintf(&b, "point:    [%s-%s]\n", m.SmallestPoint, m.LargestPoint)
-		}
-		if m.HasRangeDelKeys {
-			fmt.Fprintf(&b, "rangedel: [%s-%s]\n", m.SmallestRangeDel, m.LargestRangeDel)
-		}
-		if m.HasRangeKeys {
-			fmt.Fprintf(&b, "rangekey: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
-		}
-		fmt.Fprintf(&b, "seqnums:  [%d-%d]\n", m.SmallestSeqNum, m.LargestSeqNum)
-
-		if len(requestedProps) > 0 {
-			props := strings.Split(r.Properties.String(), "\n")
-			for _, requestedProp := range requestedProps {
-				fmt.Fprintf(&b, "props %q:\n", requestedProp)
-				for _, prop := range props {
-					if strings.Contains(prop, requestedProp) {
-						fmt.Fprintf(&b, "  %s\n", prop)
-					}
-				}
-			}
-		}
-
-		return b.String()
-	}
 
 	datadriven.RunTest(t, file, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -132,7 +131,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			return format(td, meta)
+			return formatWriterMetadata(td, meta)
 
 		case "build-raw":
 			if r != nil {
@@ -147,7 +146,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			return format(td, meta)
+			return formatWriterMetadata(td, meta)
 
 		case "scan":
 			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
@@ -241,7 +240,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			return format(td, meta)
+			return formatWriterMetadata(td, meta)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

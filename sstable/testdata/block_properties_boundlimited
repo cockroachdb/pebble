@@ -8,10 +8,8 @@ f@0.SET.6:54
 g@8.SET.7:63
 h@3.SET.8:38
 ----
-point:    [a@5#1,SET,h@3#8,SET]
-rangedel: [#0,DEL,#0,DEL]
-rangekey: [#0,DEL,#0,DEL]
-seqnums:  [1,8]
+point:    [a@5#1,SET-h@3#8,SET]
+seqnums:  [1-8]
 
 collectors
 ----
