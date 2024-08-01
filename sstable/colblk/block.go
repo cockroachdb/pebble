@@ -418,23 +418,14 @@ func (r *BlockReader) headerToBinFormatter(f *binfmt.Formatter) {
 	}
 }
 
-func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
+func (r *BlockReader) formatColumn(
+	f *binfmt.Formatter, col int, fn func(*binfmt.Formatter, DataType),
+) {
 	f.CommentLine("data for column %d", col)
 	dataType := r.DataType(col)
 	colSize := r.pageStart(col+1) - r.pageStart(col)
 	endOff := f.Offset() + int(colSize)
-	switch dataType {
-	case DataTypeBool:
-		bitmapToBinFormatter(f, rows)
-	case DataTypeUint8, DataTypeUint16, DataTypeUint32, DataTypeUint64:
-		uintsToBinFormatter(f, rows, dataType, nil)
-	case DataTypePrefixBytes:
-		prefixBytesToBinFormatter(f, rows, nil)
-	case DataTypeBytes:
-		rawBytesToBinFormatter(f, rows, nil)
-	default:
-		panic("unimplemented")
-	}
+	fn(f, dataType)
 
 	// We expect formatting the column data to have consumed all the bytes
 	// between the column's pageOffset and the next column's pageOffset.
@@ -445,4 +436,22 @@ func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
 	case -1:
 		panic(fmt.Sprintf("expected f.Offset() = %d, but found %d; did column %s format too many bytes?", endOff, f.Offset(), dataType))
 	}
+}
+
+func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
+	r.formatColumn(f, col, func(f *binfmt.Formatter, dataType DataType) {
+		switch dataType {
+		case DataTypeBool:
+			bitmapToBinFormatter(f, rows)
+		case DataTypeUint8, DataTypeUint16, DataTypeUint32, DataTypeUint64:
+			uintsToBinFormatter(f, rows, dataType, nil)
+		case DataTypePrefixBytes:
+			prefixBytesToBinFormatter(f, rows, nil)
+		case DataTypeBytes:
+			rawBytesToBinFormatter(f, rows, nil)
+		default:
+			panic("unimplemented")
+		}
+	})
+
 }

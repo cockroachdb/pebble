@@ -5,6 +5,7 @@
 package colblk
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"unsafe"
@@ -72,6 +73,9 @@ func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endO
 var _ DecodeFunc[RawBytes] = DecodeRawBytes
 
 func defaultSliceFormatter(x []byte) string {
+	if bytes.ContainsFunc(x, func(r rune) bool { return r < 32 || r > 126 }) {
+		return fmt.Sprintf("%q", x)
+	}
 	return string(x)
 }
 

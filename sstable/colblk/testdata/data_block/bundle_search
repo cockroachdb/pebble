@@ -16,6 +16,7 @@ size=1:
 2: trailers:       uint64: 0 rows
 3: prefix changed: bitmap
 4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bytes: 0 rows set; 0 bytes in data
 
 write
 baba#1,SET:v
@@ -85,429 +86,440 @@ backwash#1,SET:v
 backwoods#1,SET:v
 bacteria#1,SET:v
 ----
-size=723:
+size=761:
 0: prefixes:       prefixbytes(4): 66 keys
 1: suffixes:       bytes: 66 rows set; 0 bytes in data
 2: trailers:       uint64: 66 rows
 3: prefix changed: bitmap
 4: values:         bytes: 66 rows set; 66 bytes in data
+5: is-value-ext:   bytes: 66 rows set; 66 bytes in data
 
 finish
 ----
 # columnar block header
 000-001: x 01                                                               # version 1
-001-003: x 0500                                                             # 5 columns
+001-003: x 0600                                                             # 6 columns
 003-007: x 42000000                                                         # 66 rows
 # column 0
 007-008: b 00000111                                                         # prefixbytes
-008-012: x 20000000                                                         # page start 32
+008-012: x 25000000                                                         # page start 37
 # column 1
 012-013: b 00000110                                                         # bytes
-013-017: x 1f020000                                                         # page start 543
+013-017: x 25020000                                                         # page start 549
 # column 2
 017-018: b 00000101                                                         # uint64
-018-022: x 24020000                                                         # page start 548
+018-022: x 2a020000                                                         # page start 554
 # column 3
 022-023: b 00000001                                                         # bool
-023-027: x 2d020000                                                         # page start 557
+023-027: x 33020000                                                         # page start 563
 # column 4
 027-028: b 00000110                                                         # bytes
-028-032: x 48020000                                                         # page start 584
+028-032: x 50020000                                                         # page start 592
+# column 5
+032-033: b 00000001                                                         # bool
+033-037: x da020000                                                         # page start 730
 # data for column 0
 # PrefixBytes
-032-033: x 02                                                               # bundleSize: 4
+037-038: x 02                                                               # bundleSize: 4
 # Offsets table
-033-034: x 03                                                               # delta encoding: delta16
-034-038: x 00000000                                                         # 32-bit constant: 0
-038-040: x 0200                                                             # data[0] = 2 [208 overall]
-040-042: x 0300                                                             # data[1] = 3 [209 overall]
-042-044: x 0400                                                             # data[2] = 4 [210 overall]
-044-046: x 0700                                                             # data[3] = 7 [213 overall]
-046-048: x 0e00                                                             # data[4] = 14 [220 overall]
-048-050: x 1200                                                             # data[5] = 18 [224 overall]
-050-052: x 1500                                                             # data[6] = 21 [227 overall]
-052-054: x 1a00                                                             # data[7] = 26 [232 overall]
-054-056: x 1d00                                                             # data[8] = 29 [235 overall]
-056-058: x 2200                                                             # data[9] = 34 [240 overall]
-058-060: x 2500                                                             # data[10] = 37 [243 overall]
-060-062: x 2600                                                             # data[11] = 38 [244 overall]
-062-064: x 2d00                                                             # data[12] = 45 [251 overall]
-064-066: x 3000                                                             # data[13] = 48 [254 overall]
-066-068: x 3100                                                             # data[14] = 49 [255 overall]
-068-070: x 3400                                                             # data[15] = 52 [258 overall]
-070-072: x 3500                                                             # data[16] = 53 [259 overall]
-072-074: x 3b00                                                             # data[17] = 59 [265 overall]
-074-076: x 4100                                                             # data[18] = 65 [271 overall]
-076-078: x 4600                                                             # data[19] = 70 [276 overall]
-078-080: x 4700                                                             # data[20] = 71 [277 overall]
-080-082: x 4900                                                             # data[21] = 73 [279 overall]
-082-084: x 4c00                                                             # data[22] = 76 [282 overall]
-084-086: x 5000                                                             # data[23] = 80 [286 overall]
-086-088: x 5500                                                             # data[24] = 85 [291 overall]
-088-090: x 5800                                                             # data[25] = 88 [294 overall]
-090-092: x 5a00                                                             # data[26] = 90 [296 overall]
-092-094: x 5f00                                                             # data[27] = 95 [301 overall]
-094-096: x 6600                                                             # data[28] = 102 [308 overall]
-096-098: x 6900                                                             # data[29] = 105 [311 overall]
-098-100: x 6d00                                                             # data[30] = 109 [315 overall]
-100-102: x 7400                                                             # data[31] = 116 [322 overall]
-102-104: x 7400                                                             # data[32] = 116 [322 overall]
-104-106: x 7700                                                             # data[33] = 119 [325 overall]
-106-108: x 7d00                                                             # data[34] = 125 [331 overall]
-108-110: x 8200                                                             # data[35] = 130 [336 overall]
-110-112: x 8300                                                             # data[36] = 131 [337 overall]
-112-114: x 8c00                                                             # data[37] = 140 [346 overall]
-114-116: x 9900                                                             # data[38] = 153 [359 overall]
-116-118: x a200                                                             # data[39] = 162 [368 overall]
-118-120: x a300                                                             # data[40] = 163 [369 overall]
-120-122: x a500                                                             # data[41] = 165 [371 overall]
-122-124: x a900                                                             # data[42] = 169 [375 overall]
-124-126: x ad00                                                             # data[43] = 173 [379 overall]
-126-128: x b200                                                             # data[44] = 178 [384 overall]
-128-130: x ba00                                                             # data[45] = 186 [392 overall]
-130-132: x bc00                                                             # data[46] = 188 [394 overall]
-132-134: x c100                                                             # data[47] = 193 [399 overall]
-134-136: x c600                                                             # data[48] = 198 [404 overall]
-136-138: x ca00                                                             # data[49] = 202 [408 overall]
-138-140: x ce00                                                             # data[50] = 206 [412 overall]
-140-142: x d000                                                             # data[51] = 208 [414 overall]
-142-144: x d400                                                             # data[52] = 212 [418 overall]
-144-146: x d600                                                             # data[53] = 214 [420 overall]
-146-148: x db00                                                             # data[54] = 219 [425 overall]
-148-150: x df00                                                             # data[55] = 223 [429 overall]
-150-152: x e100                                                             # data[56] = 225 [431 overall]
-152-154: x e500                                                             # data[57] = 229 [435 overall]
-154-156: x eb00                                                             # data[58] = 235 [441 overall]
-156-158: x f100                                                             # data[59] = 241 [447 overall]
-158-160: x f700                                                             # data[60] = 247 [453 overall]
-160-162: x fd00                                                             # data[61] = 253 [459 overall]
-162-164: x fd00                                                             # data[62] = 253 [459 overall]
-164-166: x ff00                                                             # data[63] = 255 [461 overall]
-166-168: x 0301                                                             # data[64] = 259 [465 overall]
-168-170: x 0901                                                             # data[65] = 265 [471 overall]
-170-172: x 0b01                                                             # data[66] = 267 [473 overall]
-172-174: x 1001                                                             # data[67] = 272 [478 overall]
-174-176: x 1401                                                             # data[68] = 276 [482 overall]
-176-178: x 1901                                                             # data[69] = 281 [487 overall]
-178-180: x 1e01                                                             # data[70] = 286 [492 overall]
-180-182: x 2001                                                             # data[71] = 288 [494 overall]
-182-184: x 2501                                                             # data[72] = 293 [499 overall]
-184-186: x 2901                                                             # data[73] = 297 [503 overall]
-186-188: x 2f01                                                             # data[74] = 303 [509 overall]
-188-190: x 3401                                                             # data[75] = 308 [514 overall]
-190-192: x 3601                                                             # data[76] = 310 [516 overall]
-192-194: x 3801                                                             # data[77] = 312 [518 overall]
-194-196: x 3c01                                                             # data[78] = 316 [522 overall]
-196-198: x 4101                                                             # data[79] = 321 [527 overall]
-198-200: x 4501                                                             # data[80] = 325 [531 overall]
-200-202: x 4601                                                             # data[81] = 326 [532 overall]
-202-204: x 4c01                                                             # data[82] = 332 [538 overall]
-204-206: x 5101                                                             # data[83] = 337 [543 overall]
+038-039: x 03                                                               # delta encoding: delta16
+039-043: x 00000000                                                         # 32-bit constant: 0
+# padding
+043-044: x 00                                                               # aligning to 16-bit boundary
+044-046: x 0200                                                             # data[0] = 2 [214 overall]
+046-048: x 0300                                                             # data[1] = 3 [215 overall]
+048-050: x 0400                                                             # data[2] = 4 [216 overall]
+050-052: x 0700                                                             # data[3] = 7 [219 overall]
+052-054: x 0e00                                                             # data[4] = 14 [226 overall]
+054-056: x 1200                                                             # data[5] = 18 [230 overall]
+056-058: x 1500                                                             # data[6] = 21 [233 overall]
+058-060: x 1a00                                                             # data[7] = 26 [238 overall]
+060-062: x 1d00                                                             # data[8] = 29 [241 overall]
+062-064: x 2200                                                             # data[9] = 34 [246 overall]
+064-066: x 2500                                                             # data[10] = 37 [249 overall]
+066-068: x 2600                                                             # data[11] = 38 [250 overall]
+068-070: x 2d00                                                             # data[12] = 45 [257 overall]
+070-072: x 3000                                                             # data[13] = 48 [260 overall]
+072-074: x 3100                                                             # data[14] = 49 [261 overall]
+074-076: x 3400                                                             # data[15] = 52 [264 overall]
+076-078: x 3500                                                             # data[16] = 53 [265 overall]
+078-080: x 3b00                                                             # data[17] = 59 [271 overall]
+080-082: x 4100                                                             # data[18] = 65 [277 overall]
+082-084: x 4600                                                             # data[19] = 70 [282 overall]
+084-086: x 4700                                                             # data[20] = 71 [283 overall]
+086-088: x 4900                                                             # data[21] = 73 [285 overall]
+088-090: x 4c00                                                             # data[22] = 76 [288 overall]
+090-092: x 5000                                                             # data[23] = 80 [292 overall]
+092-094: x 5500                                                             # data[24] = 85 [297 overall]
+094-096: x 5800                                                             # data[25] = 88 [300 overall]
+096-098: x 5a00                                                             # data[26] = 90 [302 overall]
+098-100: x 5f00                                                             # data[27] = 95 [307 overall]
+100-102: x 6600                                                             # data[28] = 102 [314 overall]
+102-104: x 6900                                                             # data[29] = 105 [317 overall]
+104-106: x 6d00                                                             # data[30] = 109 [321 overall]
+106-108: x 7400                                                             # data[31] = 116 [328 overall]
+108-110: x 7400                                                             # data[32] = 116 [328 overall]
+110-112: x 7700                                                             # data[33] = 119 [331 overall]
+112-114: x 7d00                                                             # data[34] = 125 [337 overall]
+114-116: x 8200                                                             # data[35] = 130 [342 overall]
+116-118: x 8300                                                             # data[36] = 131 [343 overall]
+118-120: x 8c00                                                             # data[37] = 140 [352 overall]
+120-122: x 9900                                                             # data[38] = 153 [365 overall]
+122-124: x a200                                                             # data[39] = 162 [374 overall]
+124-126: x a300                                                             # data[40] = 163 [375 overall]
+126-128: x a500                                                             # data[41] = 165 [377 overall]
+128-130: x a900                                                             # data[42] = 169 [381 overall]
+130-132: x ad00                                                             # data[43] = 173 [385 overall]
+132-134: x b200                                                             # data[44] = 178 [390 overall]
+134-136: x ba00                                                             # data[45] = 186 [398 overall]
+136-138: x bc00                                                             # data[46] = 188 [400 overall]
+138-140: x c100                                                             # data[47] = 193 [405 overall]
+140-142: x c600                                                             # data[48] = 198 [410 overall]
+142-144: x ca00                                                             # data[49] = 202 [414 overall]
+144-146: x ce00                                                             # data[50] = 206 [418 overall]
+146-148: x d000                                                             # data[51] = 208 [420 overall]
+148-150: x d400                                                             # data[52] = 212 [424 overall]
+150-152: x d600                                                             # data[53] = 214 [426 overall]
+152-154: x db00                                                             # data[54] = 219 [431 overall]
+154-156: x df00                                                             # data[55] = 223 [435 overall]
+156-158: x e100                                                             # data[56] = 225 [437 overall]
+158-160: x e500                                                             # data[57] = 229 [441 overall]
+160-162: x eb00                                                             # data[58] = 235 [447 overall]
+162-164: x f100                                                             # data[59] = 241 [453 overall]
+164-166: x f700                                                             # data[60] = 247 [459 overall]
+166-168: x fd00                                                             # data[61] = 253 [465 overall]
+168-170: x fd00                                                             # data[62] = 253 [465 overall]
+170-172: x ff00                                                             # data[63] = 255 [467 overall]
+172-174: x 0301                                                             # data[64] = 259 [471 overall]
+174-176: x 0901                                                             # data[65] = 265 [477 overall]
+176-178: x 0b01                                                             # data[66] = 267 [479 overall]
+178-180: x 1001                                                             # data[67] = 272 [484 overall]
+180-182: x 1401                                                             # data[68] = 276 [488 overall]
+182-184: x 1901                                                             # data[69] = 281 [493 overall]
+184-186: x 1e01                                                             # data[70] = 286 [498 overall]
+186-188: x 2001                                                             # data[71] = 288 [500 overall]
+188-190: x 2501                                                             # data[72] = 293 [505 overall]
+190-192: x 2901                                                             # data[73] = 297 [509 overall]
+192-194: x 2f01                                                             # data[74] = 303 [515 overall]
+194-196: x 3401                                                             # data[75] = 308 [520 overall]
+196-198: x 3601                                                             # data[76] = 310 [522 overall]
+198-200: x 3801                                                             # data[77] = 312 [524 overall]
+200-202: x 3c01                                                             # data[78] = 316 [528 overall]
+202-204: x 4101                                                             # data[79] = 321 [533 overall]
+204-206: x 4501                                                             # data[80] = 325 [537 overall]
+206-208: x 4601                                                             # data[81] = 326 [538 overall]
+208-210: x 4c01                                                             # data[82] = 332 [544 overall]
+210-212: x 5101                                                             # data[83] = 337 [549 overall]
 # Data
-206-208: x 6261                                                             # data[00]: ba (block prefix)
-208-209: x 62                                                               # data[01]: ..b (bundle prefix)
-209-210: x 61                                                               # data[02]: ...a
-210-213: x 626c65                                                           # data[03]: ...ble
-213-220: x 626c656d656e74                                                   # data[04]: ...blement
-220-224: x 626c6572                                                         # data[05]: ...bler
-224-227: x 62626c                                                           # data[06]: ..bbl (bundle prefix)
-227-232: x 65736f6d65                                                       # data[07]: .....esome
-232-235: x 696e67                                                           # data[08]: .....ing
-235-240: x 696e676c79                                                       # data[09]: .....ingly
-240-243: x 697368                                                           # data[10]: .....ish
-243-244: x 62                                                               # data[11]: ..b (bundle prefix)
-244-251: x 626c6973686c79                                                   # data[12]: ...blishly
-251-254: x 626c79                                                           # data[13]: ...bly
-254-255: x 65                                                               # data[14]: ...e
-255-258: x 6f6f6e                                                           # data[15]: ...oon
-258-259: x 62                                                               # data[16]: ..b (bundle prefix)
-259-265: x 6f6f6e657279                                                     # data[17]: ...oonery
-265-271: x 6f6f6e697368                                                     # data[18]: ...oonish
-271-276: x 7573686b61                                                       # data[19]: ...ushka
-276-277: x 79                                                               # data[20]: ...y
-277-279: x 6279                                                             # data[21]: ..by (bundle prefix)
-279-282: x 646f6d                                                           # data[22]: ....dom
-282-286: x 686f6f64                                                         # data[23]: ....hood
-286-291: x 686f757365                                                       # data[24]: ....house
-291-294: x 697368                                                           # data[25]: ....ish
-294-296: x 6279                                                             # data[26]: ..by (bundle prefix)
-296-301: x 6973686c79                                                       # data[27]: ....ishly
-301-308: x 6973686e657373                                                   # data[28]: ....ishness
-308-311: x 69736d                                                           # data[29]: ....ism
-311-315: x 6c696b65                                                         # data[30]: ....like
-315-322: x 636368616e616c                                                   # data[31]: ..cchanal (bundle prefix)
-322-322: x                                                                  # data[32]: .........
-322-325: x 69616e                                                           # data[33]: .........ian
-325-331: x 69616e69736d                                                     # data[34]: .........ianism
-331-336: x 69616e6c79                                                       # data[35]: .........ianly
-336-337: x 63                                                               # data[36]: ..c (bundle prefix)
-337-346: x 6368616e616c69736d                                               # data[37]: ...chanalism
-346-356: x 6368616e616c697a6174                                             # data[38]: ...chanalization
-356-359: x 696f6e                                                           # (continued...)
-359-368: x 6368616e616c697a65                                               # data[39]: ...chanalize
-368-369: x 6b                                                               # data[40]: ...k
-369-371: x 636b                                                             # data[41]: ..ck (bundle prefix)
-371-375: x 61636865                                                         # data[42]: ....ache
-375-379: x 626f6e65                                                         # data[43]: ....bone
-379-384: x 626f6e6564                                                       # data[44]: ....boned
-384-392: x 627265616b696e67                                                 # data[45]: ....breaking
-392-394: x 636b                                                             # data[46]: ..ck (bundle prefix)
-394-399: x 636f757274                                                       # data[47]: ....court
-399-404: x 63726f7373                                                       # data[48]: ....cross
-404-408: x 646f6f72                                                         # data[49]: ....door
-408-412: x 646f776e                                                         # data[50]: ....down
-412-414: x 636b                                                             # data[51]: ..ck (bundle prefix)
-414-418: x 64726f70                                                         # data[52]: ....drop
-418-420: x 6564                                                             # data[53]: ....ed
-420-425: x 6669656c64                                                       # data[54]: ....field
-425-429: x 66696c6c                                                         # data[55]: ....fill
-429-431: x 636b                                                             # data[56]: ..ck (bundle prefix)
-431-435: x 66697265                                                         # data[57]: ....fire
-435-441: x 666972696e67                                                     # data[58]: ....firing
-441-447: x 67616d6d6f6e                                                     # data[59]: ....gammon
-447-453: x 67726f756e64                                                     # data[60]: ....ground
-453-459: x 636b68616e64                                                     # data[61]: ..ckhand (bundle prefix)
-459-459: x                                                                  # data[62]: ........
-459-461: x 6564                                                             # data[63]: ........ed
-461-465: x 65646c79                                                         # data[64]: ........edly
-465-471: x 65646e657373                                                     # data[65]: ........edness
-471-473: x 636b                                                             # data[66]: ..ck (bundle prefix)
-473-478: x 706564616c                                                       # data[67]: ....pedal
-478-482: x 736c6170                                                         # data[68]: ....slap
-482-487: x 736c696465                                                       # data[69]: ....slide
-487-492: x 7370616365                                                       # data[70]: ....space
-492-494: x 636b                                                             # data[71]: ..ck (bundle prefix)
-494-499: x 7374616765                                                       # data[72]: ....stage
-499-503: x 73746f70                                                         # data[73]: ....stop
-503-509: x 7374726f6b65                                                     # data[74]: ....stroke
-509-514: x 747261636b                                                       # data[75]: ....track
-514-516: x 636b                                                             # data[76]: ..ck (bundle prefix)
-516-518: x 7570                                                             # data[77]: ....up
-518-522: x 77617264                                                         # data[78]: ....ward
-522-527: x 7761726473                                                       # data[79]: ....wards
-527-531: x 77617368                                                         # data[80]: ....wash
-531-532: x 63                                                               # data[81]: ..c (bundle prefix)
-532-538: x 6b776f6f6473                                                     # data[82]: ...kwoods
-538-543: x 7465726961                                                       # data[83]: ...teria
+212-214: x 6261                                                             # data[00]: ba (block prefix)
+214-215: x 62                                                               # data[01]: ..b (bundle prefix)
+215-216: x 61                                                               # data[02]: ...a
+216-219: x 626c65                                                           # data[03]: ...ble
+219-226: x 626c656d656e74                                                   # data[04]: ...blement
+226-230: x 626c6572                                                         # data[05]: ...bler
+230-233: x 62626c                                                           # data[06]: ..bbl (bundle prefix)
+233-238: x 65736f6d65                                                       # data[07]: .....esome
+238-241: x 696e67                                                           # data[08]: .....ing
+241-246: x 696e676c79                                                       # data[09]: .....ingly
+246-249: x 697368                                                           # data[10]: .....ish
+249-250: x 62                                                               # data[11]: ..b (bundle prefix)
+250-257: x 626c6973686c79                                                   # data[12]: ...blishly
+257-260: x 626c79                                                           # data[13]: ...bly
+260-261: x 65                                                               # data[14]: ...e
+261-264: x 6f6f6e                                                           # data[15]: ...oon
+264-265: x 62                                                               # data[16]: ..b (bundle prefix)
+265-271: x 6f6f6e657279                                                     # data[17]: ...oonery
+271-277: x 6f6f6e697368                                                     # data[18]: ...oonish
+277-282: x 7573686b61                                                       # data[19]: ...ushka
+282-283: x 79                                                               # data[20]: ...y
+283-285: x 6279                                                             # data[21]: ..by (bundle prefix)
+285-288: x 646f6d                                                           # data[22]: ....dom
+288-292: x 686f6f64                                                         # data[23]: ....hood
+292-297: x 686f757365                                                       # data[24]: ....house
+297-300: x 697368                                                           # data[25]: ....ish
+300-302: x 6279                                                             # data[26]: ..by (bundle prefix)
+302-307: x 6973686c79                                                       # data[27]: ....ishly
+307-314: x 6973686e657373                                                   # data[28]: ....ishness
+314-317: x 69736d                                                           # data[29]: ....ism
+317-321: x 6c696b65                                                         # data[30]: ....like
+321-328: x 636368616e616c                                                   # data[31]: ..cchanal (bundle prefix)
+328-328: x                                                                  # data[32]: .........
+328-331: x 69616e                                                           # data[33]: .........ian
+331-337: x 69616e69736d                                                     # data[34]: .........ianism
+337-342: x 69616e6c79                                                       # data[35]: .........ianly
+342-343: x 63                                                               # data[36]: ..c (bundle prefix)
+343-352: x 6368616e616c69736d                                               # data[37]: ...chanalism
+352-362: x 6368616e616c697a6174                                             # data[38]: ...chanalization
+362-365: x 696f6e                                                           # (continued...)
+365-374: x 6368616e616c697a65                                               # data[39]: ...chanalize
+374-375: x 6b                                                               # data[40]: ...k
+375-377: x 636b                                                             # data[41]: ..ck (bundle prefix)
+377-381: x 61636865                                                         # data[42]: ....ache
+381-385: x 626f6e65                                                         # data[43]: ....bone
+385-390: x 626f6e6564                                                       # data[44]: ....boned
+390-398: x 627265616b696e67                                                 # data[45]: ....breaking
+398-400: x 636b                                                             # data[46]: ..ck (bundle prefix)
+400-405: x 636f757274                                                       # data[47]: ....court
+405-410: x 63726f7373                                                       # data[48]: ....cross
+410-414: x 646f6f72                                                         # data[49]: ....door
+414-418: x 646f776e                                                         # data[50]: ....down
+418-420: x 636b                                                             # data[51]: ..ck (bundle prefix)
+420-424: x 64726f70                                                         # data[52]: ....drop
+424-426: x 6564                                                             # data[53]: ....ed
+426-431: x 6669656c64                                                       # data[54]: ....field
+431-435: x 66696c6c                                                         # data[55]: ....fill
+435-437: x 636b                                                             # data[56]: ..ck (bundle prefix)
+437-441: x 66697265                                                         # data[57]: ....fire
+441-447: x 666972696e67                                                     # data[58]: ....firing
+447-453: x 67616d6d6f6e                                                     # data[59]: ....gammon
+453-459: x 67726f756e64                                                     # data[60]: ....ground
+459-465: x 636b68616e64                                                     # data[61]: ..ckhand (bundle prefix)
+465-465: x                                                                  # data[62]: ........
+465-467: x 6564                                                             # data[63]: ........ed
+467-471: x 65646c79                                                         # data[64]: ........edly
+471-477: x 65646e657373                                                     # data[65]: ........edness
+477-479: x 636b                                                             # data[66]: ..ck (bundle prefix)
+479-484: x 706564616c                                                       # data[67]: ....pedal
+484-488: x 736c6170                                                         # data[68]: ....slap
+488-493: x 736c696465                                                       # data[69]: ....slide
+493-498: x 7370616365                                                       # data[70]: ....space
+498-500: x 636b                                                             # data[71]: ..ck (bundle prefix)
+500-505: x 7374616765                                                       # data[72]: ....stage
+505-509: x 73746f70                                                         # data[73]: ....stop
+509-515: x 7374726f6b65                                                     # data[74]: ....stroke
+515-520: x 747261636b                                                       # data[75]: ....track
+520-522: x 636b                                                             # data[76]: ..ck (bundle prefix)
+522-524: x 7570                                                             # data[77]: ....up
+524-528: x 77617264                                                         # data[78]: ....ward
+528-533: x 7761726473                                                       # data[79]: ....wards
+533-537: x 77617368                                                         # data[80]: ....wash
+537-538: x 63                                                               # data[81]: ..c (bundle prefix)
+538-544: x 6b776f6f6473                                                     # data[82]: ...kwoods
+544-549: x 7465726961                                                       # data[83]: ...teria
 # data for column 1
 # rawbytes
 # offsets table
-543-544: x 01                                                               # delta encoding: const
-544-548: x 00000000                                                         # 32-bit constant: 0
+549-550: x 01                                                               # delta encoding: const
+550-554: x 00000000                                                         # 32-bit constant: 0
 # data
-548-548: x                                                                  # data[0]:
-548-548: x                                                                  # data[1]:
-548-548: x                                                                  # data[2]:
-548-548: x                                                                  # data[3]:
-548-548: x                                                                  # data[4]:
-548-548: x                                                                  # data[5]:
-548-548: x                                                                  # data[6]:
-548-548: x                                                                  # data[7]:
-548-548: x                                                                  # data[8]:
-548-548: x                                                                  # data[9]:
-548-548: x                                                                  # data[10]:
-548-548: x                                                                  # data[11]:
-548-548: x                                                                  # data[12]:
-548-548: x                                                                  # data[13]:
-548-548: x                                                                  # data[14]:
-548-548: x                                                                  # data[15]:
-548-548: x                                                                  # data[16]:
-548-548: x                                                                  # data[17]:
-548-548: x                                                                  # data[18]:
-548-548: x                                                                  # data[19]:
-548-548: x                                                                  # data[20]:
-548-548: x                                                                  # data[21]:
-548-548: x                                                                  # data[22]:
-548-548: x                                                                  # data[23]:
-548-548: x                                                                  # data[24]:
-548-548: x                                                                  # data[25]:
-548-548: x                                                                  # data[26]:
-548-548: x                                                                  # data[27]:
-548-548: x                                                                  # data[28]:
-548-548: x                                                                  # data[29]:
-548-548: x                                                                  # data[30]:
-548-548: x                                                                  # data[31]:
-548-548: x                                                                  # data[32]:
-548-548: x                                                                  # data[33]:
-548-548: x                                                                  # data[34]:
-548-548: x                                                                  # data[35]:
-548-548: x                                                                  # data[36]:
-548-548: x                                                                  # data[37]:
-548-548: x                                                                  # data[38]:
-548-548: x                                                                  # data[39]:
-548-548: x                                                                  # data[40]:
-548-548: x                                                                  # data[41]:
-548-548: x                                                                  # data[42]:
-548-548: x                                                                  # data[43]:
-548-548: x                                                                  # data[44]:
-548-548: x                                                                  # data[45]:
-548-548: x                                                                  # data[46]:
-548-548: x                                                                  # data[47]:
-548-548: x                                                                  # data[48]:
-548-548: x                                                                  # data[49]:
-548-548: x                                                                  # data[50]:
-548-548: x                                                                  # data[51]:
-548-548: x                                                                  # data[52]:
-548-548: x                                                                  # data[53]:
-548-548: x                                                                  # data[54]:
-548-548: x                                                                  # data[55]:
-548-548: x                                                                  # data[56]:
-548-548: x                                                                  # data[57]:
-548-548: x                                                                  # data[58]:
-548-548: x                                                                  # data[59]:
-548-548: x                                                                  # data[60]:
-548-548: x                                                                  # data[61]:
-548-548: x                                                                  # data[62]:
-548-548: x                                                                  # data[63]:
-548-548: x                                                                  # data[64]:
-548-548: x                                                                  # data[65]:
+554-554: x                                                                  # data[0]:
+554-554: x                                                                  # data[1]:
+554-554: x                                                                  # data[2]:
+554-554: x                                                                  # data[3]:
+554-554: x                                                                  # data[4]:
+554-554: x                                                                  # data[5]:
+554-554: x                                                                  # data[6]:
+554-554: x                                                                  # data[7]:
+554-554: x                                                                  # data[8]:
+554-554: x                                                                  # data[9]:
+554-554: x                                                                  # data[10]:
+554-554: x                                                                  # data[11]:
+554-554: x                                                                  # data[12]:
+554-554: x                                                                  # data[13]:
+554-554: x                                                                  # data[14]:
+554-554: x                                                                  # data[15]:
+554-554: x                                                                  # data[16]:
+554-554: x                                                                  # data[17]:
+554-554: x                                                                  # data[18]:
+554-554: x                                                                  # data[19]:
+554-554: x                                                                  # data[20]:
+554-554: x                                                                  # data[21]:
+554-554: x                                                                  # data[22]:
+554-554: x                                                                  # data[23]:
+554-554: x                                                                  # data[24]:
+554-554: x                                                                  # data[25]:
+554-554: x                                                                  # data[26]:
+554-554: x                                                                  # data[27]:
+554-554: x                                                                  # data[28]:
+554-554: x                                                                  # data[29]:
+554-554: x                                                                  # data[30]:
+554-554: x                                                                  # data[31]:
+554-554: x                                                                  # data[32]:
+554-554: x                                                                  # data[33]:
+554-554: x                                                                  # data[34]:
+554-554: x                                                                  # data[35]:
+554-554: x                                                                  # data[36]:
+554-554: x                                                                  # data[37]:
+554-554: x                                                                  # data[38]:
+554-554: x                                                                  # data[39]:
+554-554: x                                                                  # data[40]:
+554-554: x                                                                  # data[41]:
+554-554: x                                                                  # data[42]:
+554-554: x                                                                  # data[43]:
+554-554: x                                                                  # data[44]:
+554-554: x                                                                  # data[45]:
+554-554: x                                                                  # data[46]:
+554-554: x                                                                  # data[47]:
+554-554: x                                                                  # data[48]:
+554-554: x                                                                  # data[49]:
+554-554: x                                                                  # data[50]:
+554-554: x                                                                  # data[51]:
+554-554: x                                                                  # data[52]:
+554-554: x                                                                  # data[53]:
+554-554: x                                                                  # data[54]:
+554-554: x                                                                  # data[55]:
+554-554: x                                                                  # data[56]:
+554-554: x                                                                  # data[57]:
+554-554: x                                                                  # data[58]:
+554-554: x                                                                  # data[59]:
+554-554: x                                                                  # data[60]:
+554-554: x                                                                  # data[61]:
+554-554: x                                                                  # data[62]:
+554-554: x                                                                  # data[63]:
+554-554: x                                                                  # data[64]:
+554-554: x                                                                  # data[65]:
 # data for column 2
-548-549: x 01                                                               # delta encoding: const
-549-557: x 0101000000000000                                                 # 64-bit constant: 257
+554-555: x 01                                                               # delta encoding: const
+555-563: x 0101000000000000                                                 # 64-bit constant: 257
 # data for column 3
-557-560: x 000000                                                           # padding to align to 64-bit boundary
-560-568: b 1111111111111111111111111111111111111111111111111111111111111111 # bitmap word 0
-568-576: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 1
-576-584: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+563-568: x 0000000000                                                       # padding to align to 64-bit boundary
+568-576: b 1111111111111111111111111111111111111111111111111111111111111111 # bitmap word 0
+576-584: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 1
+584-592: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
 # rawbytes
 # offsets table
-584-585: x 02                                                               # delta encoding: delta8
-585-589: x 00000000                                                         # 32-bit constant: 0
-589-590: x 00                                                               # data[0] = 0 [656 overall]
-590-591: x 01                                                               # data[1] = 1 [657 overall]
-591-592: x 02                                                               # data[2] = 2 [658 overall]
-592-593: x 03                                                               # data[3] = 3 [659 overall]
-593-594: x 04                                                               # data[4] = 4 [660 overall]
-594-595: x 05                                                               # data[5] = 5 [661 overall]
-595-596: x 06                                                               # data[6] = 6 [662 overall]
-596-597: x 07                                                               # data[7] = 7 [663 overall]
-597-598: x 08                                                               # data[8] = 8 [664 overall]
-598-599: x 09                                                               # data[9] = 9 [665 overall]
-599-600: x 0a                                                               # data[10] = 10 [666 overall]
-600-601: x 0b                                                               # data[11] = 11 [667 overall]
-601-602: x 0c                                                               # data[12] = 12 [668 overall]
-602-603: x 0d                                                               # data[13] = 13 [669 overall]
-603-604: x 0e                                                               # data[14] = 14 [670 overall]
-604-605: x 0f                                                               # data[15] = 15 [671 overall]
-605-606: x 10                                                               # data[16] = 16 [672 overall]
-606-607: x 11                                                               # data[17] = 17 [673 overall]
-607-608: x 12                                                               # data[18] = 18 [674 overall]
-608-609: x 13                                                               # data[19] = 19 [675 overall]
-609-610: x 14                                                               # data[20] = 20 [676 overall]
-610-611: x 15                                                               # data[21] = 21 [677 overall]
-611-612: x 16                                                               # data[22] = 22 [678 overall]
-612-613: x 17                                                               # data[23] = 23 [679 overall]
-613-614: x 18                                                               # data[24] = 24 [680 overall]
-614-615: x 19                                                               # data[25] = 25 [681 overall]
-615-616: x 1a                                                               # data[26] = 26 [682 overall]
-616-617: x 1b                                                               # data[27] = 27 [683 overall]
-617-618: x 1c                                                               # data[28] = 28 [684 overall]
-618-619: x 1d                                                               # data[29] = 29 [685 overall]
-619-620: x 1e                                                               # data[30] = 30 [686 overall]
-620-621: x 1f                                                               # data[31] = 31 [687 overall]
-621-622: x 20                                                               # data[32] = 32 [688 overall]
-622-623: x 21                                                               # data[33] = 33 [689 overall]
-623-624: x 22                                                               # data[34] = 34 [690 overall]
-624-625: x 23                                                               # data[35] = 35 [691 overall]
-625-626: x 24                                                               # data[36] = 36 [692 overall]
-626-627: x 25                                                               # data[37] = 37 [693 overall]
-627-628: x 26                                                               # data[38] = 38 [694 overall]
-628-629: x 27                                                               # data[39] = 39 [695 overall]
-629-630: x 28                                                               # data[40] = 40 [696 overall]
-630-631: x 29                                                               # data[41] = 41 [697 overall]
-631-632: x 2a                                                               # data[42] = 42 [698 overall]
-632-633: x 2b                                                               # data[43] = 43 [699 overall]
-633-634: x 2c                                                               # data[44] = 44 [700 overall]
-634-635: x 2d                                                               # data[45] = 45 [701 overall]
-635-636: x 2e                                                               # data[46] = 46 [702 overall]
-636-637: x 2f                                                               # data[47] = 47 [703 overall]
-637-638: x 30                                                               # data[48] = 48 [704 overall]
-638-639: x 31                                                               # data[49] = 49 [705 overall]
-639-640: x 32                                                               # data[50] = 50 [706 overall]
-640-641: x 33                                                               # data[51] = 51 [707 overall]
-641-642: x 34                                                               # data[52] = 52 [708 overall]
-642-643: x 35                                                               # data[53] = 53 [709 overall]
-643-644: x 36                                                               # data[54] = 54 [710 overall]
-644-645: x 37                                                               # data[55] = 55 [711 overall]
-645-646: x 38                                                               # data[56] = 56 [712 overall]
-646-647: x 39                                                               # data[57] = 57 [713 overall]
-647-648: x 3a                                                               # data[58] = 58 [714 overall]
-648-649: x 3b                                                               # data[59] = 59 [715 overall]
-649-650: x 3c                                                               # data[60] = 60 [716 overall]
-650-651: x 3d                                                               # data[61] = 61 [717 overall]
-651-652: x 3e                                                               # data[62] = 62 [718 overall]
-652-653: x 3f                                                               # data[63] = 63 [719 overall]
-653-654: x 40                                                               # data[64] = 64 [720 overall]
-654-655: x 41                                                               # data[65] = 65 [721 overall]
-655-656: x 42                                                               # data[66] = 66 [722 overall]
+592-593: x 02                                                               # delta encoding: delta8
+593-597: x 00000000                                                         # 32-bit constant: 0
+597-598: x 00                                                               # data[0] = 0 [664 overall]
+598-599: x 01                                                               # data[1] = 1 [665 overall]
+599-600: x 02                                                               # data[2] = 2 [666 overall]
+600-601: x 03                                                               # data[3] = 3 [667 overall]
+601-602: x 04                                                               # data[4] = 4 [668 overall]
+602-603: x 05                                                               # data[5] = 5 [669 overall]
+603-604: x 06                                                               # data[6] = 6 [670 overall]
+604-605: x 07                                                               # data[7] = 7 [671 overall]
+605-606: x 08                                                               # data[8] = 8 [672 overall]
+606-607: x 09                                                               # data[9] = 9 [673 overall]
+607-608: x 0a                                                               # data[10] = 10 [674 overall]
+608-609: x 0b                                                               # data[11] = 11 [675 overall]
+609-610: x 0c                                                               # data[12] = 12 [676 overall]
+610-611: x 0d                                                               # data[13] = 13 [677 overall]
+611-612: x 0e                                                               # data[14] = 14 [678 overall]
+612-613: x 0f                                                               # data[15] = 15 [679 overall]
+613-614: x 10                                                               # data[16] = 16 [680 overall]
+614-615: x 11                                                               # data[17] = 17 [681 overall]
+615-616: x 12                                                               # data[18] = 18 [682 overall]
+616-617: x 13                                                               # data[19] = 19 [683 overall]
+617-618: x 14                                                               # data[20] = 20 [684 overall]
+618-619: x 15                                                               # data[21] = 21 [685 overall]
+619-620: x 16                                                               # data[22] = 22 [686 overall]
+620-621: x 17                                                               # data[23] = 23 [687 overall]
+621-622: x 18                                                               # data[24] = 24 [688 overall]
+622-623: x 19                                                               # data[25] = 25 [689 overall]
+623-624: x 1a                                                               # data[26] = 26 [690 overall]
+624-625: x 1b                                                               # data[27] = 27 [691 overall]
+625-626: x 1c                                                               # data[28] = 28 [692 overall]
+626-627: x 1d                                                               # data[29] = 29 [693 overall]
+627-628: x 1e                                                               # data[30] = 30 [694 overall]
+628-629: x 1f                                                               # data[31] = 31 [695 overall]
+629-630: x 20                                                               # data[32] = 32 [696 overall]
+630-631: x 21                                                               # data[33] = 33 [697 overall]
+631-632: x 22                                                               # data[34] = 34 [698 overall]
+632-633: x 23                                                               # data[35] = 35 [699 overall]
+633-634: x 24                                                               # data[36] = 36 [700 overall]
+634-635: x 25                                                               # data[37] = 37 [701 overall]
+635-636: x 26                                                               # data[38] = 38 [702 overall]
+636-637: x 27                                                               # data[39] = 39 [703 overall]
+637-638: x 28                                                               # data[40] = 40 [704 overall]
+638-639: x 29                                                               # data[41] = 41 [705 overall]
+639-640: x 2a                                                               # data[42] = 42 [706 overall]
+640-641: x 2b                                                               # data[43] = 43 [707 overall]
+641-642: x 2c                                                               # data[44] = 44 [708 overall]
+642-643: x 2d                                                               # data[45] = 45 [709 overall]
+643-644: x 2e                                                               # data[46] = 46 [710 overall]
+644-645: x 2f                                                               # data[47] = 47 [711 overall]
+645-646: x 30                                                               # data[48] = 48 [712 overall]
+646-647: x 31                                                               # data[49] = 49 [713 overall]
+647-648: x 32                                                               # data[50] = 50 [714 overall]
+648-649: x 33                                                               # data[51] = 51 [715 overall]
+649-650: x 34                                                               # data[52] = 52 [716 overall]
+650-651: x 35                                                               # data[53] = 53 [717 overall]
+651-652: x 36                                                               # data[54] = 54 [718 overall]
+652-653: x 37                                                               # data[55] = 55 [719 overall]
+653-654: x 38                                                               # data[56] = 56 [720 overall]
+654-655: x 39                                                               # data[57] = 57 [721 overall]
+655-656: x 3a                                                               # data[58] = 58 [722 overall]
+656-657: x 3b                                                               # data[59] = 59 [723 overall]
+657-658: x 3c                                                               # data[60] = 60 [724 overall]
+658-659: x 3d                                                               # data[61] = 61 [725 overall]
+659-660: x 3e                                                               # data[62] = 62 [726 overall]
+660-661: x 3f                                                               # data[63] = 63 [727 overall]
+661-662: x 40                                                               # data[64] = 64 [728 overall]
+662-663: x 41                                                               # data[65] = 65 [729 overall]
+663-664: x 42                                                               # data[66] = 66 [730 overall]
 # data
-656-657: x 76                                                               # data[0]: v
-657-658: x 76                                                               # data[1]: v
-658-659: x 76                                                               # data[2]: v
-659-660: x 76                                                               # data[3]: v
-660-661: x 76                                                               # data[4]: v
-661-662: x 76                                                               # data[5]: v
-662-663: x 76                                                               # data[6]: v
-663-664: x 76                                                               # data[7]: v
-664-665: x 76                                                               # data[8]: v
-665-666: x 76                                                               # data[9]: v
-666-667: x 76                                                               # data[10]: v
-667-668: x 76                                                               # data[11]: v
-668-669: x 76                                                               # data[12]: v
-669-670: x 76                                                               # data[13]: v
-670-671: x 76                                                               # data[14]: v
-671-672: x 76                                                               # data[15]: v
-672-673: x 76                                                               # data[16]: v
-673-674: x 76                                                               # data[17]: v
-674-675: x 76                                                               # data[18]: v
-675-676: x 76                                                               # data[19]: v
-676-677: x 76                                                               # data[20]: v
-677-678: x 76                                                               # data[21]: v
-678-679: x 76                                                               # data[22]: v
-679-680: x 76                                                               # data[23]: v
-680-681: x 76                                                               # data[24]: v
-681-682: x 76                                                               # data[25]: v
-682-683: x 76                                                               # data[26]: v
-683-684: x 76                                                               # data[27]: v
-684-685: x 76                                                               # data[28]: v
-685-686: x 76                                                               # data[29]: v
-686-687: x 76                                                               # data[30]: v
-687-688: x 76                                                               # data[31]: v
-688-689: x 76                                                               # data[32]: v
-689-690: x 76                                                               # data[33]: v
-690-691: x 76                                                               # data[34]: v
-691-692: x 76                                                               # data[35]: v
-692-693: x 76                                                               # data[36]: v
-693-694: x 76                                                               # data[37]: v
-694-695: x 76                                                               # data[38]: v
-695-696: x 76                                                               # data[39]: v
-696-697: x 76                                                               # data[40]: v
-697-698: x 76                                                               # data[41]: v
-698-699: x 76                                                               # data[42]: v
-699-700: x 76                                                               # data[43]: v
-700-701: x 76                                                               # data[44]: v
-701-702: x 76                                                               # data[45]: v
-702-703: x 76                                                               # data[46]: v
-703-704: x 76                                                               # data[47]: v
-704-705: x 76                                                               # data[48]: v
-705-706: x 76                                                               # data[49]: v
-706-707: x 76                                                               # data[50]: v
-707-708: x 76                                                               # data[51]: v
-708-709: x 76                                                               # data[52]: v
-709-710: x 76                                                               # data[53]: v
-710-711: x 76                                                               # data[54]: v
-711-712: x 76                                                               # data[55]: v
-712-713: x 76                                                               # data[56]: v
-713-714: x 76                                                               # data[57]: v
-714-715: x 76                                                               # data[58]: v
-715-716: x 76                                                               # data[59]: v
-716-717: x 76                                                               # data[60]: v
-717-718: x 76                                                               # data[61]: v
-718-719: x 76                                                               # data[62]: v
-719-720: x 76                                                               # data[63]: v
-720-721: x 76                                                               # data[64]: v
-721-722: x 76                                                               # data[65]: v
+664-665: x 76                                                               # data[0]: v
+665-666: x 76                                                               # data[1]: v
+666-667: x 76                                                               # data[2]: v
+667-668: x 76                                                               # data[3]: v
+668-669: x 76                                                               # data[4]: v
+669-670: x 76                                                               # data[5]: v
+670-671: x 76                                                               # data[6]: v
+671-672: x 76                                                               # data[7]: v
+672-673: x 76                                                               # data[8]: v
+673-674: x 76                                                               # data[9]: v
+674-675: x 76                                                               # data[10]: v
+675-676: x 76                                                               # data[11]: v
+676-677: x 76                                                               # data[12]: v
+677-678: x 76                                                               # data[13]: v
+678-679: x 76                                                               # data[14]: v
+679-680: x 76                                                               # data[15]: v
+680-681: x 76                                                               # data[16]: v
+681-682: x 76                                                               # data[17]: v
+682-683: x 76                                                               # data[18]: v
+683-684: x 76                                                               # data[19]: v
+684-685: x 76                                                               # data[20]: v
+685-686: x 76                                                               # data[21]: v
+686-687: x 76                                                               # data[22]: v
+687-688: x 76                                                               # data[23]: v
+688-689: x 76                                                               # data[24]: v
+689-690: x 76                                                               # data[25]: v
+690-691: x 76                                                               # data[26]: v
+691-692: x 76                                                               # data[27]: v
+692-693: x 76                                                               # data[28]: v
+693-694: x 76                                                               # data[29]: v
+694-695: x 76                                                               # data[30]: v
+695-696: x 76                                                               # data[31]: v
+696-697: x 76                                                               # data[32]: v
+697-698: x 76                                                               # data[33]: v
+698-699: x 76                                                               # data[34]: v
+699-700: x 76                                                               # data[35]: v
+700-701: x 76                                                               # data[36]: v
+701-702: x 76                                                               # data[37]: v
+702-703: x 76                                                               # data[38]: v
+703-704: x 76                                                               # data[39]: v
+704-705: x 76                                                               # data[40]: v
+705-706: x 76                                                               # data[41]: v
+706-707: x 76                                                               # data[42]: v
+707-708: x 76                                                               # data[43]: v
+708-709: x 76                                                               # data[44]: v
+709-710: x 76                                                               # data[45]: v
+710-711: x 76                                                               # data[46]: v
+711-712: x 76                                                               # data[47]: v
+712-713: x 76                                                               # data[48]: v
+713-714: x 76                                                               # data[49]: v
+714-715: x 76                                                               # data[50]: v
+715-716: x 76                                                               # data[51]: v
+716-717: x 76                                                               # data[52]: v
+717-718: x 76                                                               # data[53]: v
+718-719: x 76                                                               # data[54]: v
+719-720: x 76                                                               # data[55]: v
+720-721: x 76                                                               # data[56]: v
+721-722: x 76                                                               # data[57]: v
+722-723: x 76                                                               # data[58]: v
+723-724: x 76                                                               # data[59]: v
+724-725: x 76                                                               # data[60]: v
+725-726: x 76                                                               # data[61]: v
+726-727: x 76                                                               # data[62]: v
+727-728: x 76                                                               # data[63]: v
+728-729: x 76                                                               # data[64]: v
+729-730: x 76                                                               # data[65]: v
+# data for column 5
+730-736: x 000000000000                                                     # padding to align to 64-bit boundary
+736-744: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
+744-752: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 1
+752-760: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 
 iter
 seek-ge backache
