@@ -12,6 +12,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -40,12 +41,12 @@ func TestDecodeVarint(t *testing.T) {
 		1 << 31,
 	}
 	buf := make([]byte, 5)
-	for _, v := range vals {
-		binary.PutUvarint(buf, uint64(v))
-		u, _ := decodeVarint(unsafe.Pointer(&buf[0]))
-		if v != u {
-			fmt.Printf("%d %d\n", v, u)
-		}
+	bufPtr := unsafe.Pointer(&buf[0])
+	for i, v := range vals {
+		size := binary.PutUvarint(buf, uint64(v))
+		u, ptr := decodeVarint(unsafe.Pointer(bufPtr))
+		assert.Equal(t, uintptr(size), uintptr(ptr)-uintptr(bufPtr), "i=%d", i)
+		assert.Equal(t, v, u, "i=%d", i)
 	}
 }
 
