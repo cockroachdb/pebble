@@ -132,14 +132,14 @@ func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
 // DecodeTimestamp decodes a MVCC timestamp from a serialized MVCC key.
 func DecodeTimestamp(mvccKey []byte) ([]byte, []byte, uint64, uint32) {
 	tsLen := int(mvccKey[len(mvccKey)-1])
-	keyPartEnd := len(mvccKey) - 1 - tsLen
+	keyPartEnd := len(mvccKey) - tsLen
 	if keyPartEnd < 0 {
 		return nil, nil, 0, 0
 	}
 
 	key := mvccKey[:keyPartEnd]
 	if tsLen > 0 {
-		ts := mvccKey[keyPartEnd+1 : len(mvccKey)-1]
+		ts := mvccKey[keyPartEnd : len(mvccKey)-1]
 		switch len(ts) {
 		case 8:
 			return key, nil, binary.BigEndian.Uint64(ts[:8]), 0
