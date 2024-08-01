@@ -26,6 +26,13 @@ import (
 // Currently the only supported key kinds are:
 //
 //	RANGEDEL, RANGEKEYSET, RANGEKEYUNSET, RANGEKEYDEL.
+//
+// Spans either have only RANGEDEL keys (range del spans), or a mix of
+// RANGEKESET/RANGEKEYUNSET/RANGEKEYDEL keys (range key spans).
+//
+// Note that at the user level, range key span start and end keys never have
+// suffixes. Internally, range key spans get fragmented along sstable
+// boundaries; however, this is transparent to the user.
 type Span struct {
 	// Start and End encode the user key range of all the contained items, with
 	// an inclusive start key and exclusive end key. Both Start and End must be

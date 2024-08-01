@@ -215,8 +215,9 @@ type objKeyMeta struct {
 	// object. It's updated within `update` when a new op is generated.
 	bounds bounds
 	// These flags are true if the object has had range del or range key operations.
-	hasRangeDels bool
-	hasRangeKeys bool
+	hasRangeDels     bool
+	hasRangeKeys     bool
+	hasRangeKeyUnset bool
 }
 
 // MergeKey adds the given key at the given meta timestamp, merging the histories as needed.
@@ -250,6 +251,7 @@ func (okm *objKeyMeta) MergeFrom(from *objKeyMeta, metaTimestamp int, cmp base.C
 	okm.bounds.Expand(cmp, from.bounds)
 	okm.hasRangeDels = okm.hasRangeDels || from.hasRangeDels
 	okm.hasRangeKeys = okm.hasRangeKeys || from.hasRangeKeys
+	okm.hasRangeKeyUnset = okm.hasRangeKeyUnset || from.hasRangeKeyUnset
 }
 
 // objKeyMeta looks up the objKeyMeta for a given object, creating it if necessary.
@@ -616,6 +618,7 @@ func (k *keyManager) update(o op) {
 	case *rangeKeyUnsetOp:
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
 		k.objKeyMeta(s.writerID).hasRangeKeys = true
+		k.objKeyMeta(s.writerID).hasRangeKeyUnset = true
 	case *ingestOp:
 		// Some ingestion operations may attempt to ingest overlapping sstables
 		// which is prohibited. We know at generation time whether these
