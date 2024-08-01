@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -186,7 +185,7 @@ func (t *Test) init(
 		var db *pebble.DB
 		var err error
 		if len(t.dbs) > 1 {
-			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
+			dir = filepath.Join(t.dir, fmt.Sprintf("db%d", i+1))
 		}
 		err = t.withRetries(func() error {
 			db, err = pebble.Open(dir, t.opts)
@@ -305,7 +304,7 @@ func (t *Test) restartDB(dbID objID) error {
 		}
 		dir := t.dir
 		if len(t.dbs) > 1 {
-			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
+			dir = filepath.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
 		}
 		t.dbs[dbID.slot()-1], err = pebble.Open(dir, t.opts)
 		if err != nil {

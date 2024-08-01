@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -546,7 +547,7 @@ func (*MemFS) PathBase(p string) string {
 func (*MemFS) PathJoin(elem ...string) string {
 	// Note that MemFS uses forward slashes for its separator, hence the use of
 	// path.Join, not filepath.Join.
-	return path.Join(elem...)
+	return filepath.Join(elem...)
 }
 
 // PathDir implements FS.PathDir.
