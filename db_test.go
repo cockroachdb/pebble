@@ -1110,7 +1110,7 @@ func TestDBClosed(t *testing.T) {
 	require.True(t, errors.Is(catch(func() { _, _, _ = d.Get(nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Delete(nil, nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.DeleteRange(nil, nil, nil) }), ErrClosed))
-	require.True(t, errors.Is(catch(func() { _ = d.Ingest(nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Ingest(context.Background(), nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.LogData(nil, nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Merge(nil, nil, nil) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.RatchetFormatMajorVersion(internalFormatNewest) }), ErrClosed))
@@ -1182,7 +1182,7 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 			})
 			require.NoError(t, w.Set([]byte(fmt.Sprint(j)), nil))
 			require.NoError(t, w.Close())
-			require.NoError(t, d.Ingest([]string{path}))
+			require.NoError(t, d.Ingest(context.Background(), []string{path}))
 		}
 
 		require.NoError(t, d.Close())
@@ -1648,7 +1648,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		})
 		require.NoError(t, w.Set([]byte("cc"), []byte("foo")))
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{path}))
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
 	}
 	{
 		path := "ingest2.sst"
@@ -1660,7 +1660,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		require.NoError(t, w.Set([]byte("bb"), []byte("foo2")))
 		require.NoError(t, w.Set([]byte("cc"), []byte("foo2")))
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{path}))
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
 	}
 	{
 		path := "ingest3.sst"
@@ -1671,7 +1671,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		})
 		require.NoError(t, w.Set([]byte("bb"), []byte("foo3")))
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{path}))
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
 	}
 	{
 		path := "ingest4.sst"
@@ -1682,7 +1682,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		})
 		require.NoError(t, w.Set([]byte("bb"), []byte("foo4")))
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{path}))
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
 	}
 
 	// We now have a base compaction blocked. Block a memtable flush to cause
@@ -1761,7 +1761,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		})
 		require.NoError(t, w.DeleteRange([]byte("cc"), []byte("e")))
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{path}))
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
 	}
 	t.Log("main ingest complete")
 	printLSM()
@@ -1795,7 +1795,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		})
 		require.NoError(t, w.Set([]byte("cc"), []byte("doesntmatter")))
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{path}))
+		require.NoError(t, d.Ingest(context.Background(), []string{path}))
 	}
 
 	// Unblock earlier flushes. We will first finish flushing the blocked

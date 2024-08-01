@@ -423,6 +423,7 @@ func (r *ingestLoadResult) fileCount() int {
 }
 
 func ingestLoad(
+	ctx context.Context,
 	opts *Options,
 	fmv FormatMajorVersion,
 	paths []string,
@@ -431,8 +432,6 @@ func ingestLoad(
 	cacheID uint64,
 	pending []base.FileNum,
 ) (ingestLoadResult, error) {
-	ctx := context.TODO()
-
 	localFileNums := pending[:len(paths)]
 	sharedFileNums := pending[len(paths) : len(paths)+len(shared)]
 	externalFileNums := pending[len(paths)+len(shared) : len(paths)+len(shared)+len(external)]
@@ -590,11 +589,15 @@ func ingestCleanup(objProvider objstorage.Provider, meta []ingestLocalMeta) erro
 // ingestLinkLocal creates new objects which are backed by either hardlinks to or
 // copies of the ingested files.
 func ingestLinkLocal(
-	jobID JobID, opts *Options, objProvider objstorage.Provider, localMetas []ingestLocalMeta,
+	ctx context.Context,
+	jobID JobID,
+	opts *Options,
+	objProvider objstorage.Provider,
+	localMetas []ingestLocalMeta,
 ) error {
 	for i := range localMetas {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
-			context.TODO(), opts.FS, localMetas[i].path, fileTypeTable, localMetas[i].FileBacking.DiskFileNum,
+			ctx, opts.FS, localMetas[i].path, fileTypeTable, localMetas[i].FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true},
 		)
 		if err != nil {
@@ -1027,14 +1030,14 @@ func ingestTargetLevel(
 // can produce a noticeable hiccup in performance. See
 // https://github.com/cockroachdb/pebble/issues/25 for an idea for how to fix
 // this hiccup.
-func (d *DB) Ingest(paths []string) error {
+func (d *DB) Ingest(ctx context.Context, paths []string) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, nil /* shared */, KeyRange{}, false, nil /* external */)
+	_, err := d.ingest(ctx, paths, nil /* shared */, KeyRange{}, false, nil /* external */)
 	return err
 }
 
@@ -1115,21 +1118,23 @@ type ExternalFile struct {
 
 // IngestWithStats does the same as Ingest, and additionally returns
 // IngestOperationStats.
-func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
+func (d *DB) IngestWithStats(ctx context.Context, paths []string) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, nil, KeyRange{}, false, nil)
+	return d.ingest(ctx, paths, nil, KeyRange{}, false, nil)
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
 // accepts external files (with locator info that can be resolved using
 // d.opts.SharedStorage). These files must also be non-overlapping with
 // each other, and must be resolvable through d.objProvider.
-func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats, error) {
+func (d *DB) IngestExternalFiles(
+	ctx context.Context, external []ExternalFile,
+) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1140,7 +1145,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(nil, nil, KeyRange{}, false, external)
+	return d.ingest(ctx, nil, nil, KeyRange{}, false, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1154,6 +1159,7 @@ func (d *DB) IngestExternalFiles(external []ExternalFile) (IngestOperationStats,
 // Panics if this DB instance was not instantiated with a remote.Storage and
 // shared sstables are present.
 func (d *DB) IngestAndExcise(
+	ctx context.Context,
 	paths []string,
 	shared []SharedSSTMeta,
 	external []ExternalFile,
@@ -1181,7 +1187,7 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(paths, shared, exciseSpan, sstsContainExciseTombstone, external)
+	return d.ingest(ctx, paths, shared, exciseSpan, sstsContainExciseTombstone, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
@@ -1303,6 +1309,7 @@ func (d *DB) handleIngestAsFlushable(
 
 // See comment at Ingest() for details on how this works.
 func (d *DB) ingest(
+	ctx context.Context,
 	paths []string,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
@@ -1325,7 +1332,6 @@ func (d *DB) ingest(
 			}
 		}
 	}
-	ctx := context.Background()
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
@@ -1342,7 +1348,7 @@ func (d *DB) ingest(
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
-	loadResult, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs)
+	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheID, pendingOutputs)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
@@ -1362,7 +1368,7 @@ func (d *DB) ingest(
 	// (e.g. because the files reside on a different filesystem), ingestLinkLocal
 	// will fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLinkLocal(jobID, d.opts, d.objProvider, loadResult.local); err != nil {
+	if err := ingestLinkLocal(ctx, jobID, d.opts, d.objProvider, loadResult.local); err != nil {
 		return IngestOperationStats{}, err
 	}
 
@@ -1697,7 +1703,7 @@ func (d *DB) ingest(
 //
 // The manifest lock must be held when calling this method.
 func (d *DB) excise(
-	exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
+	ctx context.Context, exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
 ) ([]manifest.NewFileEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
@@ -1722,7 +1728,7 @@ func (d *DB) excise(
 			return nil
 		}
 		var err error
-		iters, err = d.newIters(context.TODO(), m, &IterOptions{
+		iters, err = d.newIters(ctx, m, &IterOptions{
 			CategoryAndQoS: sstable.CategoryAndQoS{
 				Category: "pebble-ingest",
 				QoSLevel: sstable.LatencySensitiveQoSLevel,
@@ -1982,6 +1988,7 @@ type ingestSplitFile struct {
 //
 // d.mu as well as the manifest lock must be held when calling this method.
 func (d *DB) ingestSplit(
+	ctx context.Context,
 	ve *versionEdit,
 	updateMetrics func(*fileMetadata, int, []newFileEntry),
 	files []ingestSplitFile,
@@ -2047,7 +2054,7 @@ func (d *DB) ingestSplit(
 		// as we're guaranteed to not have any data overlap between splitFile and
 		// s.ingestFile. d.excise will return an error if we pass an inclusive user
 		// key bound _and_ we end up seeing data overlap at the end key.
-		added, err := d.excise(base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
+		added, err := d.excise(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
 		if err != nil {
 			return err
 		}
@@ -2288,7 +2295,7 @@ func (d *DB) ingestApply(
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
-				newFiles, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
+				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, level)
 				if err != nil {
 					return nil, err
 				}
@@ -2308,7 +2315,7 @@ func (d *DB) ingestApply(
 	if len(filesToSplit) > 0 {
 		// For the same reasons as the above call to excise, we hold the db mutex
 		// while calling this method.
-		if err := d.ingestSplit(ve, updateLevelMetricsOnExcise, filesToSplit, replacedFiles); err != nil {
+		if err := d.ingestSplit(ctx, ve, updateLevelMetricsOnExcise, filesToSplit, replacedFiles); err != nil {
 			return nil, err
 		}
 	}

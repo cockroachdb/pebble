@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
@@ -609,7 +610,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 	if err := w.Close(); err != nil {
 		b.Fatal(err)
 	}
-	if err := d.Ingest([]string{"ext"}); err != nil {
+	if err := d.Ingest(context.Background(), []string{"ext"}); err != nil {
 		b.Fatal(err)
 	}
 

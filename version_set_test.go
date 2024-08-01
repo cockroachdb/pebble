@@ -34,7 +34,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Add(k, v))
 	require.NoError(t, w.Close())
-	require.NoError(t, d.Ingest([]string{path}))
+	require.NoError(t, d.Ingest(context.Background(), []string{path}))
 }
 
 func TestVersionSet(t *testing.T) {

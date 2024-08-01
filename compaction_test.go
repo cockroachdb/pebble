@@ -2106,7 +2106,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{"ext"}))
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
 	}
 	ingest("a", "c")
 	ingest("b")
@@ -2591,7 +2591,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		require.NoError(t, w.Set(key, nil))
 		require.NoError(t, w.Close())
 		// Ingest the SST.
-		return db.Ingest([]string{fName})
+		return db.Ingest(context.Background(), []string{fName})
 	}
 
 	testCases := []struct {
@@ -2800,7 +2800,7 @@ func TestCompactionErrorStats(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{"ext"}))
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
 	}
 	ingest("a", "c")
 	// Snapshot will preserve the older "a" key during compaction.

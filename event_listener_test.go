@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -147,7 +148,7 @@ func TestEventListener(t *testing.T) {
 			if err := w.Close(); err != nil {
 				return err.Error()
 			}
-			if err := d.Ingest([]string{"ext/0"}); err != nil {
+			if err := d.Ingest(context.Background(), []string{"ext/0"}); err != nil {
 				return err.Error()
 			}
 			return memLog.String()
@@ -190,7 +191,7 @@ func TestEventListener(t *testing.T) {
 			if err := writeTable(tableB, 'b'); err != nil {
 				return err.Error()
 			}
-			if err := d.Ingest([]string{tableA, tableB}); err != nil {
+			if err := d.Ingest(context.Background(), []string{tableA, tableB}); err != nil {
 				return err.Error()
 			}
 
