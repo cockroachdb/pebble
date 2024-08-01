@@ -4,6 +4,23 @@
 # be finished separately so the test can continue with testing higher-width
 # integers.
 
+# Test a default-zero builder that only contains zeros.
+
+init widths=(32) default-zero
+----
+b32
+
+size rows=(100)
+----
+b32:
+  32: *colblk.UintBuilder[uint32].Size(100, 0) = 5
+
+finish widths=(32) rows=100
+----
+b32: *colblk.UintBuilder[uint32]:
+0-1: x 01       # delta encoding: const
+1-5: x 00000000 # 32-bit constant: 0
+
 # Initialize all four writers.
 
 init widths=(8, 16, 32, 64)

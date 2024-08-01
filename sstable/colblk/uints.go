@@ -297,7 +297,18 @@ func (b *UintBuilder[T]) Finish(col, rows int, offset uint32, buf []byte) uint32
 		minimum, maximum = computeMinMax(b.array.elems.Slice(rows))
 		w = deltaWidth(uint64(maximum - minimum))
 	}
-	return uintColumnFinish[T](minimum, b.array.elems.Slice(rows), w, offset, buf)
+
+	// NB: In some circumstances, it's possible for b.array.elems.ptr to be nil.
+	// Specifically, if the builder is initialized using InitWithDefault and no
+	// non-default values exist, no array will have been allocated (we lazily
+	// allocate b.array.elems.ptr). It's illegal to try to construct an unsafe
+	// slice from a nil ptr with non-zero rows. Only attempt to construct the
+	// values slice if there's actually a non-nil ptr.
+	var valuesSlice []T
+	if b.array.elems.ptr != nil {
+		valuesSlice = b.array.elems.Slice(rows)
+	}
+	return uintColumnFinish[T](minimum, valuesSlice, w, offset, buf)
 }
 
 // uintColumnFinish finishes the column of unsigned integers of type T, encoding
