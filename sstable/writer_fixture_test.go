@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
@@ -73,6 +74,7 @@ func runTestFixtureOutput(fixture TestFixtureInfo) error {
 }
 
 func TestFixtureOutput(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, fixture := range TestFixtures {
 		// Note: we disabled the zstd fixture test when CGO_ENABLED=0, because the
 		// implementation between DataDog/zstd and klauspost/compress are

@@ -14,12 +14,14 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPropertiesLoad(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	expected := Properties{
 		CommonProperties: CommonProperties{
 			NumEntries:         1727,
@@ -91,6 +93,7 @@ var testProps = Properties{
 }
 
 func TestPropertiesSave(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	expected := &Properties{}
 	*expected = testProps
 

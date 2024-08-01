@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -20,6 +21,7 @@ import (
 // TestIteratorErrorOnInit tests the path where creation of an iterator fails
 // when reading the index block.
 func TestIteratorErrorOnInit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 
 	f0, err := mem.Create("test.sst", vfs.WriteCategoryUnspecified)
