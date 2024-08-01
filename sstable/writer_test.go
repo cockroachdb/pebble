@@ -16,6 +16,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -42,6 +43,7 @@ func testWriterParallelism(t *testing.T, parallelism bool) {
 	}
 }
 func TestWriter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testWriterParallelism(t, false)
 }
 
@@ -56,14 +58,17 @@ func testRewriterParallelism(t *testing.T, parallelism bool) {
 }
 
 func TestRewriter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testRewriterParallelism(t, false)
 }
 
 func TestWriterParallel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testWriterParallelism(t, true)
 }
 
 func TestRewriterParallel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testRewriterParallelism(t, true)
 }
 
@@ -245,6 +250,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 }
 
 func TestWriterWithValueBlocks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var r *Reader
 	defer func() {
 		if r != nil {
@@ -427,6 +433,7 @@ func testBlockBufClear(t *testing.T, b1, b2 *blockBuf) {
 }
 
 func TestBlockBufClear(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	b1 := &blockBuf{}
 	b1.tmp[0] = 1
 	b1.compressedBuf = make([]byte, 1)
@@ -435,6 +442,7 @@ func TestBlockBufClear(t *testing.T) {
 }
 
 func TestClearDataBlockBuf(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d := newDataBlockBuf(1, block.ChecksumTypeCRC32c)
 	d.blockBuf.compressedBuf = make([]byte, 1)
 	d.dataBlock.Add(ikey("apple"), nil)
@@ -447,6 +455,7 @@ func TestClearDataBlockBuf(t *testing.T) {
 }
 
 func TestClearIndexBlockBuf(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	i := newIndexBlockBuf(false)
 	i.block.Add(ikey("apple"), nil)
 	i.block.Add(ikey("banana"), nil)
@@ -463,6 +472,7 @@ func ikey(s string) base.InternalKey {
 }
 
 func TestClearWriteTask(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	w := writeTaskPool.Get().(*writeTask)
 	ch := make(chan bool, 1)
 	w.compressionDone = ch
@@ -490,6 +500,7 @@ func TestClearWriteTask(t *testing.T) {
 }
 
 func TestDoubleClose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// There is code in Cockroach land which relies on Writer.Close being
 	// idempotent. We should test this in Pebble, so that we don't cause
 	// Cockroach test failures.
@@ -507,6 +518,7 @@ func TestDoubleClose(t *testing.T) {
 }
 
 func TestParallelWriterErrorProp(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
@@ -525,6 +537,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 }
 
 func TestSizeEstimate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var sizeEstimate sizeEstimate
 	datadriven.RunTest(t, "testdata/size_estimate",
 		func(t *testing.T, td *datadriven.TestData) string {
@@ -581,6 +594,7 @@ func TestSizeEstimate(t *testing.T) {
 }
 
 func TestWriterClearCache(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
 
@@ -679,6 +693,7 @@ func TestWriterClearCache(t *testing.T) {
 }
 
 func TestWriterFlushHeuristics(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	datadriven.RunTest(t, "testdata/flush_heuristics", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
@@ -807,6 +822,7 @@ func (c *testBlockPropCollector) SupportsSuffixReplacement() bool {
 }
 
 func TestWriterBlockPropertiesErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	blockPropErr := errors.Newf("block property collector failed")
 	testCases := []blockPropErrSite{
 		errSiteAdd,
@@ -843,6 +859,11 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 				},
 				TableFormat: TableFormatPebblev1,
 			})
+			defer func() {
+				if w != nil {
+					_ = w.Close()
+				}
+			}()
 
 			err = w.Add(k1, v1)
 			switch tc {
@@ -871,6 +892,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			}
 
 			err = w.Close()
+			w = nil
 			if tc == errSiteFinishTable {
 				require.Error(t, err)
 				require.Equal(t, blockPropErr, err)
@@ -882,6 +904,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 }
 
 func TestWriter_TableFormatCompatibility(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		name        string
 		minFormat   TableFormat
@@ -944,6 +967,7 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 // Tests for races, such as https://github.com/cockroachdb/cockroach/issues/77194,
 // in the Writer.
 func TestWriterRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	ks := testkeys.Alpha(5)
 	ks = ks.EveryN(ks.Count() / 1_000)
 	keys := make([][]byte, ks.Count())
@@ -999,6 +1023,7 @@ func TestWriterRace(t *testing.T) {
 }
 
 func TestObsoleteBlockPropertyCollectorFilter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var c obsoleteKeyBlockPropertyCollector
 	var f obsoleteKeyBlockPropertyFilter
 	require.Equal(t, c.Name(), f.Name())

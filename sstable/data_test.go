@@ -74,6 +74,11 @@ func runBuildCmd(
 	}
 
 	w := NewWriter(f0, *writerOpts)
+	defer func() {
+		if w != nil {
+			_ = w.Close()
+		}
+	}()
 	var rangeDels []keyspan.Span
 	rangeDelFrag := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
@@ -161,6 +166,7 @@ func runBuildCmd(
 		return nil, nil, err
 	}
 	meta, err := w.Raw().Metadata()
+	w = nil
 	if err != nil {
 		return nil, nil, err
 	}
@@ -203,6 +209,11 @@ func runBuildRawCmd(
 	}
 
 	w := NewWriter(f0, *opts)
+	defer func() {
+		if w != nil {
+			_ = w.Close()
+		}
+	}()
 	for _, data := range strings.Split(td.Input, "\n") {
 		if strings.HasPrefix(data, "rangekey:") {
 			data = strings.TrimPrefix(data, "rangekey:")
@@ -235,6 +246,7 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 	meta, err := w.Raw().Metadata()
+	w = nil
 	if err != nil {
 		return nil, nil, err
 	}

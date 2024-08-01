@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/metamorphic"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -30,6 +31,7 @@ import (
 // an error is injected during an operation, operation surfaces the error to the
 // caller.
 func TestIterator_RandomErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	root := time.Now().UnixNano()
 	// Run the test a few times with various seeds for more consistent code
 	// coverage.
