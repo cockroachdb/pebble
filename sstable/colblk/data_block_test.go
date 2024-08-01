@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"golang.org/x/exp/rand"
 )
 
@@ -46,8 +47,13 @@ func TestDataBlock(t *testing.T) {
 					ik := base.ParsePrettyInternalKey(line[:j])
 
 					kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+					valueString := line[j+1:]
+					vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+					if strings.HasPrefix(valueString, "valueHandle") {
+						vp = block.ValueHandlePrefix(kcmp.PrefixEqual(), 0)
+					}
 					v := []byte(line[j+1:])
-					w.Add(ik, v, kcmp)
+					w.Add(ik, v, vp, kcmp)
 				}
 				fmt.Fprint(&buf, &w)
 				return buf.String()
@@ -55,13 +61,13 @@ func TestDataBlock(t *testing.T) {
 				block := w.Finish()
 				r.Init(testKeysSchema, block)
 				f := binfmt.New(r.r.data).LineWidth(20)
-				r.r.headerToBinFormatter(f)
-				for i := 0; i < int(r.r.header.Columns); i++ {
-					r.r.columnToBinFormatter(f, i, int(r.r.header.Rows))
-				}
+				r.toFormatter(f)
+
 				return f.String()
 			case "iter":
-				it.Init(&r, testKeysSchema.NewKeySeeker())
+				it.Init(&r, testKeysSchema.NewKeySeeker(), func([]byte) base.LazyValue {
+					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+				})
 				return itertest.RunInternalIterCmd(t, td, &it)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -96,7 +102,8 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 		for w.Size() < targetBlockSize {
 			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-			w.Add(ik, values[j], kcmp)
+			vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+			w.Add(ik, values[j], vp, kcmp)
 			j++
 		}
 		w.Finish()
