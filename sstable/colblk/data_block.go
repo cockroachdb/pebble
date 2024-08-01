@@ -16,8 +16,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // KeySchema defines the schema of a user key, as defined by the user's
@@ -350,9 +352,13 @@ type DataBlockWriter struct {
 	// values is the column writer for values. Every value is prefixed with a
 	// single-byte value prefix.
 	values RawBytesBuilder
+	// isValueExternal is the column writer for the is-value-external bitmap
+	// that indicates when a value is stored out-of-band in a value block.
+	isValueExternal BitmapBuilder
 
-	enc  blockEncoder
-	rows int
+	enc            blockEncoder
+	rows           int
+	valuePrefixTmp [1]byte
 }
 
 // TODO(jackson): Add an isObsolete bitmap column.
@@ -361,6 +367,7 @@ const (
 	dataBlockColumnTrailer = iota
 	dataBlockColumnPrefixChanged
 	dataBlockColumnValue
+	dataBlockColumnIsValueExternal
 	dataBlockColumnMax
 )
 
@@ -371,6 +378,7 @@ func (w *DataBlockWriter) Init(schema KeySchema) {
 	w.trailers.Init()
 	w.prefixSame.Reset()
 	w.values.Init()
+	w.isValueExternal.Reset()
 	w.rows = 0
 }
 
@@ -380,6 +388,7 @@ func (w *DataBlockWriter) Reset() {
 	w.trailers.Reset()
 	w.prefixSame.Reset()
 	w.values.Reset()
+	w.isValueExternal.Reset()
 	w.rows = 0
 	w.enc.reset()
 }
@@ -403,6 +412,10 @@ func (w *DataBlockWriter) String() string {
 	w.values.WriteDebug(&buf, w.rows)
 	fmt.Fprintln(&buf)
 
+	fmt.Fprintf(&buf, "%d: is-value-ext:   ", len(w.Schema.ColumnTypes)+dataBlockColumnIsValueExternal)
+	w.values.WriteDebug(&buf, w.rows)
+	fmt.Fprintln(&buf)
+
 	return buf.String()
 }
 
@@ -414,13 +427,24 @@ func (w *DataBlockWriter) String() string {
 //
 // The caller is required to pass this in because in expected use cases, the
 // caller will also require the same information.
-func (w *DataBlockWriter) Add(ikey base.InternalKey, value []byte, kcmp KeyComparison) {
+func (w *DataBlockWriter) Add(
+	ikey base.InternalKey, value []byte, valuePrefix block.ValuePrefix, kcmp KeyComparison,
+) {
 	w.KeyWriter.WriteKey(w.rows, ikey.UserKey, kcmp.PrefixLen, kcmp.CommonPrefixLen)
 	if kcmp.PrefixEqual() {
 		w.prefixSame.Set(w.rows, true)
 	}
 	w.trailers.Set(w.rows, uint64(ikey.Trailer))
-	w.values.Put(value)
+	if valuePrefix.IsValueHandle() {
+		w.isValueExternal.Set(w.rows, true)
+		// Write the value with the value prefix byte preceding the value.
+		w.valuePrefixTmp[0] = byte(valuePrefix)
+		w.values.PutConcat(w.valuePrefixTmp[:], value)
+	} else {
+		// Elide the value prefix. Readers will examine the isValueExternal
+		// bitmap and know there is no value prefix byte if !isValueExternal.
+		w.values.Put(value)
+	}
 	w.rows++
 }
 
@@ -436,6 +460,7 @@ func (w *DataBlockWriter) Size() int {
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.Size(w.rows, off)
 	off = w.values.Size(w.rows, off)
+	off = w.isValueExternal.Size(w.rows, off)
 	off++ // trailer padding byte
 	return int(off)
 }
@@ -461,8 +486,9 @@ func (w *DataBlockWriter) Finish() []byte {
 	w.prefixSame.Invert(w.rows)
 	w.enc.encode(w.rows, &w.prefixSame)
 
-	// Write the value column.
+	// Write the value columns.
 	w.enc.encode(w.rows, &w.values)
+	w.enc.encode(w.rows, &w.isValueExternal)
 	return w.enc.finish()
 }
 
@@ -474,10 +500,11 @@ const DataBlockReaderSize = unsafe.Sizeof(DataBlockReader{})
 // A DataBlockReader holds state for reading a columnar data block. It may be
 // shared among multiple DataBlockIters.
 type DataBlockReader struct {
-	r             BlockReader
-	trailers      UnsafeUint64s
-	prefixChanged Bitmap
-	values        RawBytes
+	r               BlockReader
+	trailers        UnsafeUint64s
+	prefixChanged   Bitmap
+	values          RawBytes
+	isValueExternal Bitmap
 }
 
 // BlockReader returns a pointer to the underlying BlockReader.
@@ -489,15 +516,24 @@ func (r *DataBlockReader) BlockReader() *BlockReader {
 func (r *DataBlockReader) Init(schema KeySchema, data []byte) {
 	r.r.Init(data, 0)
 	r.trailers = r.r.Uint64s(len(schema.ColumnTypes) + dataBlockColumnTrailer)
-	r.values = r.r.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
 	r.prefixChanged = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
+	r.values = r.r.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
+	r.isValueExternal = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
+}
+
+func (r *DataBlockReader) toFormatter(f *binfmt.Formatter) {
+	r.r.headerToBinFormatter(f)
+	for i := 0; i < int(r.r.header.Columns); i++ {
+		r.r.columnToBinFormatter(f, i, int(r.r.header.Rows))
+	}
 }
 
 // DataBlockIter iterates over a columnar data block.
 type DataBlockIter struct {
 	// configuration
-	r         *DataBlockReader
-	keySeeker KeySeeker
+	r            *DataBlockReader
+	keySeeker    KeySeeker
+	getLazyValue func([]byte) base.LazyValue
 
 	// state
 	row int
@@ -508,12 +544,15 @@ var _ base.InternalIterator = (*DataBlockIter)(nil)
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.
-func (i *DataBlockIter) Init(r *DataBlockReader, keyIterator KeySeeker) error {
+func (i *DataBlockIter) Init(
+	r *DataBlockReader, keyIterator KeySeeker, getLazyValue func([]byte) base.LazyValue,
+) error {
 	*i = DataBlockIter{
-		r:         r,
-		keySeeker: keyIterator,
-		row:       -1,
-		kv:        base.InternalKV{},
+		r:            r,
+		keySeeker:    keyIterator,
+		getLazyValue: getLazyValue,
+		row:          -1,
+		kv:           base.InternalKV{},
 	}
 	return i.keySeeker.Init(r)
 }
@@ -642,14 +681,18 @@ func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
 		return &i.kv
 	default:
 		i.row = row
-		i.kv = base.MakeInternalKV(
-			base.InternalKey{
+		i.kv = base.InternalKV{
+			K: base.InternalKey{
 				UserKey: i.keySeeker.MaterializeUserKey(i.kv.K.UserKey[:cap(i.kv.K.UserKey)], row),
 				Trailer: base.InternalKeyTrailer(i.r.trailers.At(row)),
 			},
+		}
+		if i.r.isValueExternal.At(row) {
+			i.kv.V = i.getLazyValue(i.r.values.At(row))
+		} else {
 			// TODO(peter): Does manually inlining Bytes.At help?
-			i.r.values.At(i.row),
-		)
+			i.kv.V = base.MakeInPlaceValue(i.r.values.At(i.row))
+		}
 		return &i.kv
 	}
 }

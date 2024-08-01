@@ -6,6 +6,7 @@ size=1:
 2: trailers:       uint64: 0 rows
 3: prefix changed: bitmap
 4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bytes: 0 rows set; 0 bytes in data
 
 write
 a@10#0,SET:apple
@@ -15,124 +16,134 @@ c@9#0,SETWITHDEL:coconut
 c@6#0,SET:cantelope
 c@1#0,SET:clementine
 ----
-size=171:
+size=193:
 0: prefixes:       prefixbytes(16): 6 keys
 1: suffixes:       bytes: 6 rows set; 13 bytes in data
 2: trailers:       uint64: 6 rows
 3: prefix changed: bitmap
 4: values:         bytes: 6 rows set; 46 bytes in data
+5: is-value-ext:   bytes: 6 rows set; 46 bytes in data
 
 write
 d@11#0,DEL:
 ----
-size=172:
+size=201:
 0: prefixes:       prefixbytes(16): 7 keys
 1: suffixes:       bytes: 7 rows set; 16 bytes in data
 2: trailers:       uint64: 7 rows
 3: prefix changed: bitmap
 4: values:         bytes: 7 rows set; 46 bytes in data
+5: is-value-ext:   bytes: 7 rows set; 46 bytes in data
 
 finish
 ----
 # columnar block header
 000-001: x 01                                                               # version 1
-001-003: x 0500                                                             # 5 columns
+001-003: x 0600                                                             # 6 columns
 003-007: x 07000000                                                         # 7 rows
 # column 0
 007-008: b 00000111                                                         # prefixbytes
-008-012: x 20000000                                                         # page start 32
+008-012: x 25000000                                                         # page start 37
 # column 1
 012-013: b 00000110                                                         # bytes
-013-017: x 33000000                                                         # page start 51
+013-017: x 38000000                                                         # page start 56
 # column 2
 017-018: b 00000101                                                         # uint64
-018-022: x 50000000                                                         # page start 80
+018-022: x 55000000                                                         # page start 85
 # column 3
 022-023: b 00000001                                                         # bool
-023-027: x 60000000                                                         # page start 96
+023-027: x 65000000                                                         # page start 101
 # column 4
 027-028: b 00000110                                                         # bytes
-028-032: x 70000000                                                         # page start 112
+028-032: x 78000000                                                         # page start 120
+# column 5
+032-033: b 00000001                                                         # bool
+033-037: x b3000000                                                         # page start 179
 # data for column 0
 # PrefixBytes
-032-033: x 04                                                               # bundleSize: 16
+037-038: x 04                                                               # bundleSize: 16
 # Offsets table
-033-034: x 02                                                               # delta encoding: delta8
-034-038: x 00000000                                                         # 32-bit constant: 0
-038-039: x 00                                                               # data[0] = 0 [47 overall]
-039-040: x 00                                                               # data[1] = 0 [47 overall]
-040-041: x 01                                                               # data[2] = 1 [48 overall]
-041-042: x 02                                                               # data[3] = 2 [49 overall]
-042-043: x 02                                                               # data[4] = 2 [49 overall]
-043-044: x 03                                                               # data[5] = 3 [50 overall]
-044-045: x 03                                                               # data[6] = 3 [50 overall]
-045-046: x 03                                                               # data[7] = 3 [50 overall]
-046-047: x 04                                                               # data[8] = 4 [51 overall]
+038-039: x 02                                                               # delta encoding: delta8
+039-043: x 00000000                                                         # 32-bit constant: 0
+043-044: x 00                                                               # data[0] = 0 [52 overall]
+044-045: x 00                                                               # data[1] = 0 [52 overall]
+045-046: x 01                                                               # data[2] = 1 [53 overall]
+046-047: x 02                                                               # data[3] = 2 [54 overall]
+047-048: x 02                                                               # data[4] = 2 [54 overall]
+048-049: x 03                                                               # data[5] = 3 [55 overall]
+049-050: x 03                                                               # data[6] = 3 [55 overall]
+050-051: x 03                                                               # data[7] = 3 [55 overall]
+051-052: x 04                                                               # data[8] = 4 [56 overall]
 # Data
-047-047: x                                                                  # data[00]:  (block prefix)
-047-047: x                                                                  # data[01]:  (bundle prefix)
-047-048: x 61                                                               # data[02]: a
-048-049: x 62                                                               # data[03]: b
-049-049: x                                                                  # data[04]: .
-049-050: x 63                                                               # data[05]: c
-050-050: x                                                                  # data[06]: .
-050-050: x                                                                  # data[07]: .
-050-051: x 64                                                               # data[08]: d
+052-052: x                                                                  # data[00]:  (block prefix)
+052-052: x                                                                  # data[01]:  (bundle prefix)
+052-053: x 61                                                               # data[02]: a
+053-054: x 62                                                               # data[03]: b
+054-054: x                                                                  # data[04]: .
+054-055: x 63                                                               # data[05]: c
+055-055: x                                                                  # data[06]: .
+055-055: x                                                                  # data[07]: .
+055-056: x 64                                                               # data[08]: d
 # data for column 1
 # rawbytes
 # offsets table
-051-052: x 02                                                               # delta encoding: delta8
-052-056: x 00000000                                                         # 32-bit constant: 0
-056-057: x 00                                                               # data[0] = 0 [64 overall]
-057-058: x 03                                                               # data[1] = 3 [67 overall]
-058-059: x 05                                                               # data[2] = 5 [69 overall]
-059-060: x 07                                                               # data[3] = 7 [71 overall]
-060-061: x 09                                                               # data[4] = 9 [73 overall]
-061-062: x 0b                                                               # data[5] = 11 [75 overall]
-062-063: x 0d                                                               # data[6] = 13 [77 overall]
-063-064: x 10                                                               # data[7] = 16 [80 overall]
+056-057: x 02                                                               # delta encoding: delta8
+057-061: x 00000000                                                         # 32-bit constant: 0
+061-062: x 00                                                               # data[0] = 0 [69 overall]
+062-063: x 03                                                               # data[1] = 3 [72 overall]
+063-064: x 05                                                               # data[2] = 5 [74 overall]
+064-065: x 07                                                               # data[3] = 7 [76 overall]
+065-066: x 09                                                               # data[4] = 9 [78 overall]
+066-067: x 0b                                                               # data[5] = 11 [80 overall]
+067-068: x 0d                                                               # data[6] = 13 [82 overall]
+068-069: x 10                                                               # data[7] = 16 [85 overall]
 # data
-064-067: x 403130                                                           # data[0]: @10
-067-069: x 4035                                                             # data[1]: @5
-069-071: x 4032                                                             # data[2]: @2
-071-073: x 4039                                                             # data[3]: @9
-073-075: x 4036                                                             # data[4]: @6
-075-077: x 4031                                                             # data[5]: @1
-077-080: x 403131                                                           # data[6]: @11
+069-072: x 403130                                                           # data[0]: @10
+072-074: x 4035                                                             # data[1]: @5
+074-076: x 4032                                                             # data[2]: @2
+076-078: x 4039                                                             # data[3]: @9
+078-080: x 4036                                                             # data[4]: @6
+080-082: x 4031                                                             # data[5]: @1
+082-085: x 403131                                                           # data[6]: @11
 # data for column 2
-080-081: x 02                                                               # delta encoding: delta8
-081-089: x 0000000000000000                                                 # 64-bit constant: 0
-089-090: x 01                                                               # data[0] = 1
-090-091: x 01                                                               # data[1] = 1
-091-092: x 12                                                               # data[2] = 18
-092-093: x 12                                                               # data[3] = 18
-093-094: x 01                                                               # data[4] = 1
-094-095: x 01                                                               # data[5] = 1
-095-096: x 00                                                               # data[6] = 0
+085-086: x 02                                                               # delta encoding: delta8
+086-094: x 0000000000000000                                                 # 64-bit constant: 0
+094-095: x 01                                                               # data[0] = 1
+095-096: x 01                                                               # data[1] = 1
+096-097: x 12                                                               # data[2] = 18
+097-098: x 12                                                               # data[3] = 18
+098-099: x 01                                                               # data[4] = 1
+099-100: x 01                                                               # data[5] = 1
+100-101: x 00                                                               # data[6] = 0
 # data for column 3
-096-104: b 0100101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
-104-112: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+101-104: x 000000                                                           # padding to align to 64-bit boundary
+104-112: b 0100101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+112-120: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
 # rawbytes
 # offsets table
-112-113: x 02                                                               # delta encoding: delta8
-113-117: x 00000000                                                         # 32-bit constant: 0
-117-118: x 00                                                               # data[0] = 0 [125 overall]
-118-119: x 05                                                               # data[1] = 5 [130 overall]
-119-120: x 0b                                                               # data[2] = 11 [136 overall]
-120-121: x 14                                                               # data[3] = 20 [145 overall]
-121-122: x 1b                                                               # data[4] = 27 [152 overall]
-122-123: x 24                                                               # data[5] = 36 [161 overall]
-123-124: x 2e                                                               # data[6] = 46 [171 overall]
-124-125: x 2e                                                               # data[7] = 46 [171 overall]
+120-121: x 02                                                               # delta encoding: delta8
+121-125: x 00000000                                                         # 32-bit constant: 0
+125-126: x 00                                                               # data[0] = 0 [133 overall]
+126-127: x 05                                                               # data[1] = 5 [138 overall]
+127-128: x 0b                                                               # data[2] = 11 [144 overall]
+128-129: x 14                                                               # data[3] = 20 [153 overall]
+129-130: x 1b                                                               # data[4] = 27 [160 overall]
+130-131: x 24                                                               # data[5] = 36 [169 overall]
+131-132: x 2e                                                               # data[6] = 46 [179 overall]
+132-133: x 2e                                                               # data[7] = 46 [179 overall]
 # data
-125-130: x 6170706c65                                                       # data[0]: apple
-130-136: x 62616e616e61                                                     # data[1]: banana
-136-145: x 626c75656265727279                                               # data[2]: blueberry
-145-152: x 636f636f6e7574                                                   # data[3]: coconut
-152-161: x 63616e74656c6f7065                                               # data[4]: cantelope
-161-171: x 636c656d656e74696e65                                             # data[5]: clementine
-171-171: x                                                                  # data[6]:
+133-138: x 6170706c65                                                       # data[0]: apple
+138-144: x 62616e616e61                                                     # data[1]: banana
+144-153: x 626c75656265727279                                               # data[2]: blueberry
+153-160: x 636f636f6e7574                                                   # data[3]: coconut
+160-169: x 63616e74656c6f7065                                               # data[4]: cantelope
+169-179: x 636c656d656e74696e65                                             # data[5]: clementine
+179-179: x                                                                  # data[6]:
+# data for column 5
+179-184: x 0000000000                                                       # padding to align to 64-bit boundary
+184-192: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
+192-200: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 
 iter
 first
@@ -296,6 +307,7 @@ size=1:
 2: trailers:       uint64: 0 rows
 3: prefix changed: bitmap
 4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bytes: 0 rows set; 0 bytes in data
 
 write
 aaaaaaaaaaaaaaappalling@10#0,SET:a
@@ -316,128 +328,132 @@ aaaaaaaaaaaaaaapproves@10#0,SET:a
 aaaaaaaaaaaaaaarresting@10#0,SET:a
 aaaaaaaaaaaaaaarrived@10#0,SET:a
 ----
-size=337:
+size=353:
 0: prefixes:       prefixbytes(16): 17 keys
 1: suffixes:       bytes: 17 rows set; 51 bytes in data
 2: trailers:       uint64: 17 rows
 3: prefix changed: bitmap
 4: values:         bytes: 17 rows set; 17 bytes in data
+5: is-value-ext:   bytes: 17 rows set; 17 bytes in data
 
 finish
 ----
 # columnar block header
 000-001: x 01                                                               # version 1
-001-003: x 0500                                                             # 5 columns
+001-003: x 0600                                                             # 6 columns
 003-007: x 11000000                                                         # 17 rows
 # column 0
 007-008: b 00000111                                                         # prefixbytes
-008-012: x 20000000                                                         # page start 32
+008-012: x 25000000                                                         # page start 37
 # column 1
 012-013: b 00000110                                                         # bytes
-013-017: x be000000                                                         # page start 190
+013-017: x c3000000                                                         # page start 195
 # column 2
 017-018: b 00000101                                                         # uint64
-018-022: x 08010000                                                         # page start 264
+018-022: x 0d010000                                                         # page start 269
 # column 3
 022-023: b 00000001                                                         # bool
-023-027: x 11010000                                                         # page start 273
+023-027: x 16010000                                                         # page start 278
 # column 4
 027-028: b 00000110                                                         # bytes
 028-032: x 28010000                                                         # page start 296
+# column 5
+032-033: b 00000001                                                         # bool
+033-037: x 50010000                                                         # page start 336
 # data for column 0
 # PrefixBytes
-032-033: x 04                                                               # bundleSize: 16
+037-038: x 04                                                               # bundleSize: 16
 # Offsets table
-033-034: x 02                                                               # delta encoding: delta8
-034-038: x 00000000                                                         # 32-bit constant: 0
-038-039: x 0f                                                               # data[0] = 15 [73 overall]
-039-040: x 0f                                                               # data[1] = 15 [73 overall]
-040-041: x 17                                                               # data[2] = 23 [81 overall]
-041-042: x 1d                                                               # data[3] = 29 [87 overall]
-042-043: x 26                                                               # data[4] = 38 [96 overall]
-043-044: x 2e                                                               # data[5] = 46 [104 overall]
-044-045: x 33                                                               # data[6] = 51 [109 overall]
-045-046: x 3b                                                               # data[7] = 59 [117 overall]
-046-047: x 42                                                               # data[8] = 66 [124 overall]
-047-048: x 48                                                               # data[9] = 72 [130 overall]
-048-049: x 4c                                                               # data[10] = 76 [134 overall]
-049-050: x 56                                                               # data[11] = 86 [144 overall]
-050-051: x 5c                                                               # data[12] = 92 [150 overall]
-051-052: x 63                                                               # data[13] = 99 [157 overall]
-052-053: x 69                                                               # data[14] = 105 [163 overall]
-053-054: x 6f                                                               # data[15] = 111 [169 overall]
-054-055: x 76                                                               # data[16] = 118 [176 overall]
-055-056: x 7e                                                               # data[17] = 126 [184 overall]
-056-057: x 84                                                               # data[18] = 132 [190 overall]
-057-058: x 84                                                               # data[19] = 132 [190 overall]
+038-039: x 02                                                               # delta encoding: delta8
+039-043: x 00000000                                                         # 32-bit constant: 0
+043-044: x 0f                                                               # data[0] = 15 [78 overall]
+044-045: x 0f                                                               # data[1] = 15 [78 overall]
+045-046: x 17                                                               # data[2] = 23 [86 overall]
+046-047: x 1d                                                               # data[3] = 29 [92 overall]
+047-048: x 26                                                               # data[4] = 38 [101 overall]
+048-049: x 2e                                                               # data[5] = 46 [109 overall]
+049-050: x 33                                                               # data[6] = 51 [114 overall]
+050-051: x 3b                                                               # data[7] = 59 [122 overall]
+051-052: x 42                                                               # data[8] = 66 [129 overall]
+052-053: x 48                                                               # data[9] = 72 [135 overall]
+053-054: x 4c                                                               # data[10] = 76 [139 overall]
+054-055: x 56                                                               # data[11] = 86 [149 overall]
+055-056: x 5c                                                               # data[12] = 92 [155 overall]
+056-057: x 63                                                               # data[13] = 99 [162 overall]
+057-058: x 69                                                               # data[14] = 105 [168 overall]
+058-059: x 6f                                                               # data[15] = 111 [174 overall]
+059-060: x 76                                                               # data[16] = 118 [181 overall]
+060-061: x 7e                                                               # data[17] = 126 [189 overall]
+061-062: x 84                                                               # data[18] = 132 [195 overall]
+062-063: x 84                                                               # data[19] = 132 [195 overall]
 # Data
-058-068: x 61616161616161616161                                             # data[00]: aaaaaaaaaaaaaaa (block prefix)
-068-073: x 6161616161                                                       # (continued...)
-073-073: x                                                                  # data[01]: ............... (bundle prefix)
-073-081: x 7070616c6c696e67                                                 # data[02]: ...............ppalling
-081-087: x 70706172656c                                                     # data[03]: ...............pparel
-087-096: x 707061726974696f6e                                               # data[04]: ...............pparition
-096-104: x 7070656172696e67                                                 # data[05]: ...............ppearing
-104-109: x 7070656e64                                                       # data[06]: ...............ppend
-109-117: x 7070656e64616765                                                 # data[07]: ...............ppendage
-117-124: x 7070656e646978                                                   # data[08]: ...............ppendix
-124-130: x 70706c617564                                                     # data[09]: ...............pplaud
-130-134: x 70706c65                                                         # data[10]: ...............pple
-134-144: x 70706c69636174696f6e                                             # data[11]: ...............pplication
-144-150: x 70706c696564                                                     # data[12]: ...............pplied
-150-157: x 70706c79696e67                                                   # data[13]: ...............pplying
-157-163: x 70706f696e74                                                     # data[14]: ...............ppoint
-163-169: x 70706f736573                                                     # data[15]: ...............pposes
-169-176: x 7070726f766573                                                   # data[16]: ...............pproves
-176-184: x 7272657374696e67                                                 # data[17]: ...............rresting
-184-190: x 727269766564                                                     # data[18]: ...............rrived (bundle prefix)
-190-190: x                                                                  # data[19]: .....................
+063-073: x 61616161616161616161                                             # data[00]: aaaaaaaaaaaaaaa (block prefix)
+073-078: x 6161616161                                                       # (continued...)
+078-078: x                                                                  # data[01]: ............... (bundle prefix)
+078-086: x 7070616c6c696e67                                                 # data[02]: ...............ppalling
+086-092: x 70706172656c                                                     # data[03]: ...............pparel
+092-101: x 707061726974696f6e                                               # data[04]: ...............pparition
+101-109: x 7070656172696e67                                                 # data[05]: ...............ppearing
+109-114: x 7070656e64                                                       # data[06]: ...............ppend
+114-122: x 7070656e64616765                                                 # data[07]: ...............ppendage
+122-129: x 7070656e646978                                                   # data[08]: ...............ppendix
+129-135: x 70706c617564                                                     # data[09]: ...............pplaud
+135-139: x 70706c65                                                         # data[10]: ...............pple
+139-149: x 70706c69636174696f6e                                             # data[11]: ...............pplication
+149-155: x 70706c696564                                                     # data[12]: ...............pplied
+155-162: x 70706c79696e67                                                   # data[13]: ...............pplying
+162-168: x 70706f696e74                                                     # data[14]: ...............ppoint
+168-174: x 70706f736573                                                     # data[15]: ...............pposes
+174-181: x 7070726f766573                                                   # data[16]: ...............pproves
+181-189: x 7272657374696e67                                                 # data[17]: ...............rresting
+189-195: x 727269766564                                                     # data[18]: ...............rrived (bundle prefix)
+195-195: x                                                                  # data[19]: .....................
 # data for column 1
 # rawbytes
 # offsets table
-190-191: x 02                                                               # delta encoding: delta8
-191-195: x 00000000                                                         # 32-bit constant: 0
-195-196: x 00                                                               # data[0] = 0 [213 overall]
-196-197: x 03                                                               # data[1] = 3 [216 overall]
-197-198: x 06                                                               # data[2] = 6 [219 overall]
-198-199: x 09                                                               # data[3] = 9 [222 overall]
-199-200: x 0c                                                               # data[4] = 12 [225 overall]
-200-201: x 0f                                                               # data[5] = 15 [228 overall]
-201-202: x 12                                                               # data[6] = 18 [231 overall]
-202-203: x 15                                                               # data[7] = 21 [234 overall]
-203-204: x 18                                                               # data[8] = 24 [237 overall]
-204-205: x 1b                                                               # data[9] = 27 [240 overall]
-205-206: x 1e                                                               # data[10] = 30 [243 overall]
-206-207: x 21                                                               # data[11] = 33 [246 overall]
-207-208: x 24                                                               # data[12] = 36 [249 overall]
-208-209: x 27                                                               # data[13] = 39 [252 overall]
-209-210: x 2a                                                               # data[14] = 42 [255 overall]
-210-211: x 2d                                                               # data[15] = 45 [258 overall]
-211-212: x 30                                                               # data[16] = 48 [261 overall]
-212-213: x 33                                                               # data[17] = 51 [264 overall]
+195-196: x 02                                                               # delta encoding: delta8
+196-200: x 00000000                                                         # 32-bit constant: 0
+200-201: x 00                                                               # data[0] = 0 [218 overall]
+201-202: x 03                                                               # data[1] = 3 [221 overall]
+202-203: x 06                                                               # data[2] = 6 [224 overall]
+203-204: x 09                                                               # data[3] = 9 [227 overall]
+204-205: x 0c                                                               # data[4] = 12 [230 overall]
+205-206: x 0f                                                               # data[5] = 15 [233 overall]
+206-207: x 12                                                               # data[6] = 18 [236 overall]
+207-208: x 15                                                               # data[7] = 21 [239 overall]
+208-209: x 18                                                               # data[8] = 24 [242 overall]
+209-210: x 1b                                                               # data[9] = 27 [245 overall]
+210-211: x 1e                                                               # data[10] = 30 [248 overall]
+211-212: x 21                                                               # data[11] = 33 [251 overall]
+212-213: x 24                                                               # data[12] = 36 [254 overall]
+213-214: x 27                                                               # data[13] = 39 [257 overall]
+214-215: x 2a                                                               # data[14] = 42 [260 overall]
+215-216: x 2d                                                               # data[15] = 45 [263 overall]
+216-217: x 30                                                               # data[16] = 48 [266 overall]
+217-218: x 33                                                               # data[17] = 51 [269 overall]
 # data
-213-216: x 403130                                                           # data[0]: @10
-216-219: x 403130                                                           # data[1]: @10
-219-222: x 403130                                                           # data[2]: @10
-222-225: x 403130                                                           # data[3]: @10
-225-228: x 403130                                                           # data[4]: @10
-228-231: x 403130                                                           # data[5]: @10
-231-234: x 403130                                                           # data[6]: @10
-234-237: x 403130                                                           # data[7]: @10
-237-240: x 403130                                                           # data[8]: @10
-240-243: x 403130                                                           # data[9]: @10
-243-246: x 403130                                                           # data[10]: @10
-246-249: x 403130                                                           # data[11]: @10
-249-252: x 403130                                                           # data[12]: @10
-252-255: x 403130                                                           # data[13]: @10
-255-258: x 403130                                                           # data[14]: @10
-258-261: x 403130                                                           # data[15]: @10
-261-264: x 403130                                                           # data[16]: @10
+218-221: x 403130                                                           # data[0]: @10
+221-224: x 403130                                                           # data[1]: @10
+224-227: x 403130                                                           # data[2]: @10
+227-230: x 403130                                                           # data[3]: @10
+230-233: x 403130                                                           # data[4]: @10
+233-236: x 403130                                                           # data[5]: @10
+236-239: x 403130                                                           # data[6]: @10
+239-242: x 403130                                                           # data[7]: @10
+242-245: x 403130                                                           # data[8]: @10
+245-248: x 403130                                                           # data[9]: @10
+248-251: x 403130                                                           # data[10]: @10
+251-254: x 403130                                                           # data[11]: @10
+254-257: x 403130                                                           # data[12]: @10
+257-260: x 403130                                                           # data[13]: @10
+260-263: x 403130                                                           # data[14]: @10
+263-266: x 403130                                                           # data[15]: @10
+266-269: x 403130                                                           # data[16]: @10
 # data for column 2
-264-265: x 01                                                               # delta encoding: const
-265-273: x 0100000000000000                                                 # 64-bit constant: 1
+269-270: x 01                                                               # delta encoding: const
+270-278: x 0100000000000000                                                 # 64-bit constant: 1
 # data for column 3
-273-280: x 00000000000000                                                   # padding to align to 64-bit boundary
+278-280: x 0000                                                             # padding to align to 64-bit boundary
 280-288: b 1111111111111111000000010000000000000000000000000000000000000000 # bitmap word 0
 288-296: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
@@ -481,6 +497,9 @@ finish
 333-334: x 61                                                               # data[14]: a
 334-335: x 61                                                               # data[15]: a
 335-336: x 61                                                               # data[16]: a
+# data for column 5
+336-344: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
+344-352: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 
 iter
 seek-ge aaa
