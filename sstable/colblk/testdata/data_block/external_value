@@ -10,32 +10,32 @@ size=1:
 
 write
 blockprefix_apple@98#0,SET:apple98
-blockprefix_apple@52#0,SET:apple52
-blockprefix_apple@23#0,SET:apple23
-blockprefix_apple@11#0,SETWITHDEL:apple11
+blockprefix_apple@52#0,SET:valueHandle-apple52
+blockprefix_apple@23#0,SET:valueHandle-apple23
+blockprefix_apple@11#0,SETWITHDEL:valueHandle-apple11
 blockprefix_banana@94#245,SETWITHDEL:banana94
 blockprefix_banana@93#244,DEL:
-blockprefix_banana@93#221,SETWITHDEL:banana93
-blockprefix_banana@72#0,SETWITHDEL:banana72
-blockprefix_banana@9#0,SET:banana9
-blockprefix_banana@1#0,SET:banana1
+blockprefix_banana@93#221,SETWITHDEL:valueHandle-banana93
+blockprefix_banana@72#0,SETWITHDEL:valueHandle-banana72
+blockprefix_banana@9#0,SET:valueHandle-banana9
+blockprefix_banana@1#0,SET:valueHandle-banana1
 blockprefix_coconut#0,SET:coconut
-blockprefix_coconut@92#0,SET:coconut92
-blockprefix_coconut@35#0,SET:coconut35
-blockprefix_coconut@22#0,SET:coconut22
-blockprefix_coconut@21#0,SET:coconut21
-blockprefix_coconut@1#0,SET:coconut1
-blockprefix_guava@99#0,SET:guava99
-blockprefix_kiwi@99#0,SET:kiwi99
-blockprefix_kiwi@98#0,SET:kiwi98
+blockprefix_coconut@92#0,SET:valueHandle-coconut92
+blockprefix_coconut@35#0,SET:valueHandle-coconut35
+blockprefix_coconut@22#0,SET:valueHandle-coconut22
+blockprefix_coconut@21#0,SET:valueHandle-coconut21
+blockprefix_coconut@1#0,SET:valueHandle-coconut1
+blockprefix_guava@99#0,SET:valueHandle-guava99
+blockprefix_kiwi@99#0,SET:valueHandle-kiwi99
+blockprefix_kiwi@98#0,SET:valueHandle-kiwi98
 blockprefix_lemon@92#0,DEL:
 ----
-size=441:
+size=657:
 0: prefixes:       prefixbytes(16): 20 keys
 1: suffixes:       bytes: 20 rows set; 54 bytes in data
 2: trailers:       uint64: 20 rows
 3: prefix changed: bitmap
-4: values:         bytes: 20 rows set; 136 bytes in data
+4: values:         bytes: 20 rows set; 331 bytes in data
 5: is-value-ext:   bitmap
 
 finish
@@ -61,7 +61,7 @@ finish
 028-032: x 00010000                                                         # page start 256
 # column 5
 032-033: b 00000001                                                         # bool
-033-037: x a2010000                                                         # page start 418
+033-037: x 7b020000                                                         # page start 635
 # data for column 0
 # PrefixBytes
 037-038: x 04                                                               # bundleSize: 16
@@ -194,54 +194,124 @@ finish
 # data for column 4
 # rawbytes
 # offsets table
-256-257: x 02                                                               # delta encoding: delta8
+256-257: x 03                                                               # delta encoding: delta16
 257-261: x 00000000                                                         # 32-bit constant: 0
-261-262: x 00                                                               # data[0] = 0 [282 overall]
-262-263: x 07                                                               # data[1] = 7 [289 overall]
-263-264: x 0e                                                               # data[2] = 14 [296 overall]
-264-265: x 15                                                               # data[3] = 21 [303 overall]
-265-266: x 1c                                                               # data[4] = 28 [310 overall]
-266-267: x 24                                                               # data[5] = 36 [318 overall]
-267-268: x 24                                                               # data[6] = 36 [318 overall]
-268-269: x 2c                                                               # data[7] = 44 [326 overall]
-269-270: x 34                                                               # data[8] = 52 [334 overall]
-270-271: x 3b                                                               # data[9] = 59 [341 overall]
-271-272: x 42                                                               # data[10] = 66 [348 overall]
-272-273: x 49                                                               # data[11] = 73 [355 overall]
-273-274: x 52                                                               # data[12] = 82 [364 overall]
-274-275: x 5b                                                               # data[13] = 91 [373 overall]
-275-276: x 64                                                               # data[14] = 100 [382 overall]
-276-277: x 6d                                                               # data[15] = 109 [391 overall]
-277-278: x 75                                                               # data[16] = 117 [399 overall]
-278-279: x 7c                                                               # data[17] = 124 [406 overall]
-279-280: x 82                                                               # data[18] = 130 [412 overall]
-280-281: x 88                                                               # data[19] = 136 [418 overall]
-281-282: x 88                                                               # data[20] = 136 [418 overall]
+# padding
+261-262: x 00                                                               # aligning to 16-bit boundary
+262-264: x 0000                                                             # data[0] = 0 [304 overall]
+264-266: x 0700                                                             # data[1] = 7 [311 overall]
+266-268: x 1b00                                                             # data[2] = 27 [331 overall]
+268-270: x 2f00                                                             # data[3] = 47 [351 overall]
+270-272: x 4300                                                             # data[4] = 67 [371 overall]
+272-274: x 4b00                                                             # data[5] = 75 [379 overall]
+274-276: x 4b00                                                             # data[6] = 75 [379 overall]
+276-278: x 6000                                                             # data[7] = 96 [400 overall]
+278-280: x 7500                                                             # data[8] = 117 [421 overall]
+280-282: x 8900                                                             # data[9] = 137 [441 overall]
+282-284: x 9d00                                                             # data[10] = 157 [461 overall]
+284-286: x a400                                                             # data[11] = 164 [468 overall]
+286-288: x ba00                                                             # data[12] = 186 [490 overall]
+288-290: x d000                                                             # data[13] = 208 [512 overall]
+290-292: x e600                                                             # data[14] = 230 [534 overall]
+292-294: x fc00                                                             # data[15] = 252 [556 overall]
+294-296: x 1101                                                             # data[16] = 273 [577 overall]
+296-298: x 2501                                                             # data[17] = 293 [597 overall]
+298-300: x 3801                                                             # data[18] = 312 [616 overall]
+300-302: x 4b01                                                             # data[19] = 331 [635 overall]
+302-304: x 4b01                                                             # data[20] = 331 [635 overall]
 # data
-282-289: x 6170706c653938                                                   # data[0]: apple98
-289-296: x 6170706c653532                                                   # data[1]: apple52
-296-303: x 6170706c653233                                                   # data[2]: apple23
-303-310: x 6170706c653131                                                   # data[3]: apple11
-310-318: x 62616e616e613934                                                 # data[4]: banana94
-318-318: x                                                                  # data[5]:
-318-326: x 62616e616e613933                                                 # data[6]: banana93
-326-334: x 62616e616e613732                                                 # data[7]: banana72
-334-341: x 62616e616e6139                                                   # data[8]: banana9
-341-348: x 62616e616e6131                                                   # data[9]: banana1
-348-355: x 636f636f6e7574                                                   # data[10]: coconut
-355-364: x 636f636f6e75743932                                               # data[11]: coconut92
-364-373: x 636f636f6e75743335                                               # data[12]: coconut35
-373-382: x 636f636f6e75743232                                               # data[13]: coconut22
-382-391: x 636f636f6e75743231                                               # data[14]: coconut21
-391-399: x 636f636f6e757431                                                 # data[15]: coconut1
-399-406: x 67756176613939                                                   # data[16]: guava99
-406-412: x 6b6977693939                                                     # data[17]: kiwi99
-412-418: x 6b6977693938                                                     # data[18]: kiwi98
-418-418: x                                                                  # data[19]:
+304-311: x 6170706c653938                                                   # data[0]: apple98
+311-321: x a076616c756548616e64                                             # data[1]: "\xa0valueHandle-apple52"
+321-331: x 6c652d6170706c653532                                             # (continued...)
+331-341: x a076616c756548616e64                                             # data[2]: "\xa0valueHandle-apple23"
+341-351: x 6c652d6170706c653233                                             # (continued...)
+351-361: x a076616c756548616e64                                             # data[3]: "\xa0valueHandle-apple11"
+361-371: x 6c652d6170706c653131                                             # (continued...)
+371-379: x 62616e616e613934                                                 # data[4]: banana94
+379-379: x                                                                  # data[5]:
+379-389: x a076616c756548616e64                                             # data[6]: "\xa0valueHandle-banana93"
+389-399: x 6c652d62616e616e6139                                             # (continued...)
+399-400: x 33                                                               # (continued...)
+400-410: x a076616c756548616e64                                             # data[7]: "\xa0valueHandle-banana72"
+410-420: x 6c652d62616e616e6137                                             # (continued...)
+420-421: x 32                                                               # (continued...)
+421-431: x a076616c756548616e64                                             # data[8]: "\xa0valueHandle-banana9"
+431-441: x 6c652d62616e616e6139                                             # (continued...)
+441-451: x a076616c756548616e64                                             # data[9]: "\xa0valueHandle-banana1"
+451-461: x 6c652d62616e616e6131                                             # (continued...)
+461-468: x 636f636f6e7574                                                   # data[10]: coconut
+468-478: x a076616c756548616e64                                             # data[11]: "\xa0valueHandle-coconut92"
+478-488: x 6c652d636f636f6e7574                                             # (continued...)
+488-490: x 3932                                                             # (continued...)
+490-500: x a076616c756548616e64                                             # data[12]: "\xa0valueHandle-coconut35"
+500-510: x 6c652d636f636f6e7574                                             # (continued...)
+510-512: x 3335                                                             # (continued...)
+512-522: x a076616c756548616e64                                             # data[13]: "\xa0valueHandle-coconut22"
+522-532: x 6c652d636f636f6e7574                                             # (continued...)
+532-534: x 3232                                                             # (continued...)
+534-544: x a076616c756548616e64                                             # data[14]: "\xa0valueHandle-coconut21"
+544-554: x 6c652d636f636f6e7574                                             # (continued...)
+554-556: x 3231                                                             # (continued...)
+556-566: x a076616c756548616e64                                             # data[15]: "\xa0valueHandle-coconut1"
+566-576: x 6c652d636f636f6e7574                                             # (continued...)
+576-577: x 31                                                               # (continued...)
+577-587: x 8076616c756548616e64                                             # data[16]: "\x80valueHandle-guava99"
+587-597: x 6c652d67756176613939                                             # (continued...)
+597-607: x 8076616c756548616e64                                             # data[17]: "\x80valueHandle-kiwi99"
+607-616: x 6c652d6b6977693939                                               # (continued...)
+616-626: x a076616c756548616e64                                             # data[18]: "\xa0valueHandle-kiwi98"
+626-635: x 6c652d6b6977693938                                               # (continued...)
+635-635: x                                                                  # data[19]:
 # data for column 5
-418-424: x 000000000000                                                     # padding to align to 64-bit boundary
-424-432: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
-432-440: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+635-640: x 0000000000                                                       # padding to align to 64-bit boundary
+640-648: b 1100111011111011000001110000000000000000000000000000000000000000 # bitmap word 0
+648-656: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+
+# Scan across the block using next.
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+blockprefix_apple@98:apple98
+blockprefix_apple@52:mock external value
+blockprefix_apple@23:mock external value
+blockprefix_apple@11:mock external value
+blockprefix_banana@94:banana94
+blockprefix_banana@93:
+blockprefix_banana@93:mock external value
+blockprefix_banana@72:mock external value
+blockprefix_banana@9:mock external value
+blockprefix_banana@1:mock external value
+blockprefix_coconut:coconut
+blockprefix_coconut@92:mock external value
+blockprefix_coconut@35:mock external value
+blockprefix_coconut@22:mock external value
+blockprefix_coconut@21:mock external value
+blockprefix_coconut@1:mock external value
+blockprefix_guava@99:mock external value
+blockprefix_kiwi@99:mock external value
+blockprefix_kiwi@98:mock external value
+blockprefix_lemon@92:
+.
 
 # Scan across the block using next prefix.
 
@@ -257,8 +327,8 @@ next-prefix
 blockprefix_apple@98:apple98
 blockprefix_banana@94:banana94
 blockprefix_coconut:coconut
-blockprefix_guava@99:guava99
-blockprefix_kiwi@99:kiwi99
+blockprefix_guava@99:mock external value
+blockprefix_kiwi@99:mock external value
 blockprefix_lemon@92:
 .
 
@@ -266,5 +336,5 @@ iter
 seek-ge blockprefix_banana@73
 next-prefix
 ----
-blockprefix_banana@72:banana72
+blockprefix_banana@72:mock external value
 blockprefix_coconut:coconut
