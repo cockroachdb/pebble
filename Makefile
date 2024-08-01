@@ -130,11 +130,9 @@ endif
 	@${GO} mod tidy
 	$(MAKE) git-clean-check
 
-# TODO(radu): switch back to @latest once bogus doc changes are
-# addressed; see https://github.com/cockroachdb/crlfmt/pull/44
 .PHONY: format
 format:
-	go install github.com/cockroachdb/crlfmt@44a36ec7 && crlfmt -w -tab 2 .
+	go install -C internal/devtools github.com/cockroachdb/crlfmt && crlfmt -w -tab 2 ../..
 
 .PHONY: format-check
 format-check:

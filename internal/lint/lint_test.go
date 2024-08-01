@@ -22,9 +22,9 @@ import (
 
 const (
 	cmdGo       = "go"
-	golint      = "golang.org/x/lint/golint@6edffad5e6160f5949cdefc81710b2706fbcd4f6"
-	staticcheck = "honnef.co/go/tools/cmd/staticcheck@2023.1.7"
-	crlfmt      = "github.com/cockroachdb/crlfmt@461e8663"
+	golint      = "golang.org/x/lint/golint"
+	staticcheck = "honnef.co/go/tools/cmd/staticcheck"
+	crlfmt      = "github.com/cockroachdb/crlfmt"
 )
 
 func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
@@ -45,9 +45,21 @@ func ignoreGoMod() stream.Filter {
 	return stream.GrepNot(`^go: (finding|extracting|downloading)`)
 }
 
+func installTool(t *testing.T, path string) {
+	cmd := exec.Command("go", "install", "-C", "../devtools", path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("cannot install %q: %v\n%s\n", path, err, out)
+	}
+}
+
 func TestLint(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("lint checks skipped on Windows")
+	}
+	if runtime.GOARCH == "386" {
+		// GOARCH=386 messes with the installation of devtools.
+		t.Skip("lint checks skipped on GOARCH=386")
 	}
 	if invariants.RaceEnabled {
 		// We are not interested in race-testing the linters themselves.
@@ -70,17 +82,30 @@ func TestLint(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	t.Run("TestGolint", func(t *testing.T) {
-		t.Parallel()
+	// TestGoVet is the fastest check that verifies that all files build, so we
+	// want to run it first (and not in parallel).
+	t.Run("TestGoVet", func(t *testing.T) {
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "go", "vet", "-all", "./..."),
+				stream.GrepNot(`^#`), // ignore comment lines
+				ignoreGoMod(),
+			), func(s string) {
+				t.Errorf("\n%s", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
 
-		args := []string{"run", golint}
-		args = append(args, pkgs...)
+	t.Run("TestGolint", func(t *testing.T) {
+		installTool(t, golint)
+		t.Parallel()
 
 		// This is overkill right now, but provides a structure for filtering out
 		// lint errors we don't care about.
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, cmdGo, args...),
+				dirCmd(t, pkg.Dir, "golint", pkgs...),
 				stream.GrepNot("go: downloading"),
 			), func(s string) {
 				t.Errorf("\n%s", s)
@@ -90,30 +115,13 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestStaticcheck", func(t *testing.T) {
+		installTool(t, staticcheck)
 		t.Parallel()
-
-		args := []string{"run", staticcheck}
-		args = append(args, pkgs...)
 
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, cmdGo, args...),
+				dirCmd(t, pkg.Dir, "staticcheck", pkgs...),
 				stream.GrepNot("go: downloading"),
-			), func(s string) {
-				t.Errorf("\n%s", s)
-			}); err != nil {
-			t.Error(err)
-		}
-	})
-
-	t.Run("TestGoVet", func(t *testing.T) {
-		t.Parallel()
-
-		if err := stream.ForEach(
-			stream.Sequence(
-				dirCmd(t, pkg.Dir, "go", "vet", "-all", "./..."),
-				stream.GrepNot(`^#`), // ignore comment lines
-				ignoreGoMod(),
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
@@ -241,13 +249,14 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestCrlfmt", func(t *testing.T) {
+		installTool(t, crlfmt)
 		t.Parallel()
 
-		args := []string{"run", crlfmt, "-fast", "-tab", "2", "."}
+		args := []string{"-fast", "-tab", "2", "."}
 		var buf bytes.Buffer
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, cmdGo, args...),
+				dirCmd(t, pkg.Dir, "crlfmt", args...),
 				stream.GrepNot("go: downloading"),
 			),
 			func(s string) {
@@ -261,7 +270,7 @@ func TestLint(t *testing.T) {
 		}
 
 		if t.Failed() {
-			reWriteCmd := []string{crlfmt, "-w"}
+			reWriteCmd := []string{"crlfmt", "-w"}
 			reWriteCmd = append(reWriteCmd, args...)
 			t.Logf("run the following to fix your formatting:\n"+
 				"\n%s\n\n"+
