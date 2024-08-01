@@ -12,15 +12,17 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBlockFragmentIterator(t *testing.T) {
-	comparer := base.DefaultComparer
+	comparer := testkeys.Comparer
 	var cacheVal *cache.Value
 	c := cache.New(1024)
 	defer func() {
@@ -83,12 +85,18 @@ func TestBlockFragmentIterator(t *testing.T) {
 			var seqNum uint64
 			d.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 			transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)
-			var syntheticPrefix string
+			var syntheticPrefix, syntheticSuffix string
 			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
+			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
 			transforms.SyntheticPrefix = []byte(syntheticPrefix)
+			transforms.SyntheticSuffix = []byte(syntheticSuffix)
+			if d.HasArg("invariants-only") && !invariants.Enabled {
+				// Skip testcase.
+				return d.Expected
+			}
 
 			blockHandle := block.CacheBufferHandle(c.Get(1, 0, 0))
-			i, err := NewFragmentIter(0, comparer.Compare, comparer.Split, blockHandle, transforms)
+			i, err := NewFragmentIter(0, comparer.Compare, comparer.CompareSuffixes, comparer.Split, blockHandle, transforms)
 			defer i.Close()
 			require.NoError(t, err)
 
@@ -96,25 +104,34 @@ func TestBlockFragmentIterator(t *testing.T) {
 				if l == "" {
 					continue
 				}
-				var span *keyspan.Span
-				var err error
-				fields := strings.Fields(l)
-				switch fields[0] {
-				case "first":
-					span, err = i.First()
-				case "last":
-					span, err = i.Last()
-				case "next":
-					span, err = i.Next()
-				case "prev":
-					span, err = i.Prev()
-				case "seek-ge":
-					span, err = i.SeekGE([]byte(fields[1]))
-				case "seek-lt":
-					span, err = i.SeekLT([]byte(fields[1]))
-				}
-				require.NoError(t, err)
-				fmt.Fprintf(&buf, "%8s:  %v\n", fields[0], span)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Fprintf(&buf, "panic: %v\n", r)
+						}
+					}()
+					var span *keyspan.Span
+					var err error
+					fields := strings.Fields(l)
+					switch fields[0] {
+					case "first":
+						span, err = i.First()
+					case "last":
+						span, err = i.Last()
+					case "next":
+						span, err = i.Next()
+					case "prev":
+						span, err = i.Prev()
+					case "seek-ge":
+						span, err = i.SeekGE([]byte(fields[1]))
+					case "seek-lt":
+						span, err = i.SeekLT([]byte(fields[1]))
+					default:
+						d.Fatalf(t, "unknown iter command %q", fields[0])
+					}
+					require.NoError(t, err)
+					fmt.Fprintf(&buf, "%8s:  %v\n", fields[0], span)
+				}()
 			}
 
 		default:

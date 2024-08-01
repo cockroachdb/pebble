@@ -169,7 +169,7 @@ set bg foo
 set bh foo
 ----
 
-# Test that ingestion with a syntehtic prefix or suffix fails on older
+# Test that ingestion with a synthetic prefix or suffix fails on older
 # major versions.
 
 reset format-major-version=16
@@ -1065,3 +1065,22 @@ z_b: (., [z_b-"z_c1") @2=vrange UPDATED)
 z_b@1: (vb, [z_b-"z_c1") @2=vrange)
 z_c@1: (vc, [z_b-"z_c1") @2=vrange)
 .
+
+ingest-external
+points-and-ranges.sst synthetic-prefix=y_ synthetic-suffix=@4 bounds=(y_a,y_d) has-range-keys
+----
+
+iter
+seek-lt y
+next
+next
+next
+next
+next
+----
+x_c@1: (vc, [x_b-"x_c1") @2=vrange UPDATED)
+y_a@4: (va, . UPDATED)
+y_b: (., [y_b-"y_c1") @4=vrange UPDATED)
+y_b@4: (vb, [y_b-"y_c1") @4=vrange)
+y_c@4: (vc, [y_b-"y_c1") @4=vrange)
+z_a@1: (va, . UPDATED)

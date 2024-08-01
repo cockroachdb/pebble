@@ -115,3 +115,59 @@ seek-lt fop_a
  seek-lt:  <nil>
     next:  foo_a-foo_b:{(#11,RANGEDEL)}
  seek-lt:  foo_d-foo_e:{(#12,RANGEDEL) (#11,RANGEDEL)}
+
+# Tests with synthetic suffix.
+iter synthetic-suffix=@20 invariants-only
+first
+----
+panic: synthetic suffix not supported with key kind RANGEDEL
+
+build
+a-d:{(#11,RANGEKEYSET,@9,foo)}
+c-g:{(#11,RANGEKEYDEL)}
+f-h:{(#11,RANGEKEYSET,@11,foo)}
+----
+a-c:{(#11,RANGEKEYSET,@9,foo)}
+c-d:{(#11,RANGEKEYSET,@9,foo) (#11,RANGEKEYDEL)}
+d-f:{(#11,RANGEKEYDEL)}
+f-g:{(#11,RANGEKEYSET,@11,foo) (#11,RANGEKEYDEL)}
+g-h:{(#11,RANGEKEYSET,@11,foo)}
+
+iter synthetic-suffix=@20
+first
+next
+next
+next
+----
+   first:  a-c:{(#11,RANGEKEYSET,@20,foo)}
+    next:  c-d:{(#11,RANGEKEYSET,@20,foo) (#11,RANGEKEYDEL)}
+    next:  d-f:{(#11,RANGEKEYDEL)}
+    next:  f-g:{(#11,RANGEKEYSET,@20,foo) (#11,RANGEKEYDEL)}
+
+iter synthetic-prefix=foo_ synthetic-suffix=@20
+seek-ge foo_c1
+prev
+next
+next
+next
+----
+ seek-ge:  foo_c-foo_d:{(#11,RANGEKEYSET,@20,foo) (#11,RANGEKEYDEL)}
+    prev:  foo_a-foo_c:{(#11,RANGEKEYSET,@20,foo)}
+    next:  foo_c-foo_d:{(#11,RANGEKEYSET,@20,foo) (#11,RANGEKEYDEL)}
+    next:  foo_d-foo_f:{(#11,RANGEKEYDEL)}
+    next:  foo_f-foo_g:{(#11,RANGEKEYSET,@20,foo) (#11,RANGEKEYDEL)}
+
+iter synthetic-suffix=@4 invariants-only
+first
+----
+panic: synthetic suffix "@4" >= RangeKeySet suffix "@9"
+
+build
+a-d:{(#11,RANGEKEYUNSET,@9,foo)}
+----
+a-d:{(#11,RANGEKEYUNSET,@9,foo)}
+
+iter synthetic-suffix=@4 invariants-only
+last
+----
+panic: synthetic suffix not supported with key kind RANGEKEYUNSET

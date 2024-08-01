@@ -39,6 +39,7 @@ import (
 // byte slices (start, end, suffix, value) as stable for the lifetime of the
 // iterator.
 type fragmentIter struct {
+	suffixCmp base.CompareSuffixes
 	blockIter Iter
 	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
@@ -51,6 +52,7 @@ type fragmentIter struct {
 	// order) Key for each sequence number.
 	elideSameSeqnum bool
 
+	syntheticSuffix block.SyntheticSuffix
 	syntheticPrefix block.SyntheticPrefix
 	// startKeyBuf is a buffer that is reused to store the start key of the span
 	// when a synthetic prefix is used.
@@ -78,17 +80,20 @@ var fragmentBlockIterPool = sync.Pool{
 func NewFragmentIter(
 	fileNum base.DiskFileNum,
 	cmp base.Compare,
+	suffixCmp base.CompareSuffixes,
 	split base.Split,
 	blockHandle block.BufferHandle,
 	transforms block.FragmentIterTransforms,
 ) (keyspan.FragmentIterator, error) {
 	i := fragmentBlockIterPool.Get().(*fragmentIter)
 
+	i.suffixCmp = suffixCmp
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.fileNum = fileNum
 	i.elideSameSeqnum = transforms.ElideSameSeqNum
+	i.syntheticSuffix = transforms.SyntheticSuffix
 	i.syntheticPrefix = transforms.SyntheticPrefix
 	if transforms.SyntheticPrefix.IsSet() {
 		i.endKeyBuf = append(i.endKeyBuf[:0], transforms.SyntheticPrefix...)
@@ -115,10 +120,11 @@ func NewFragmentIter(
 }
 
 // initSpan initializes the span with a single fragment.
+//
 // Note that the span start and end keys and range key contents are aliased to
-// the key or value. This is ok because the range del/key block doesn't use
-// prefix compression (and we don't perform any transforms), so the key/value
-// will be pointing directly into the buffer data.
+// the key or value when we don't have a synthetic prefix. This is ok because
+// the range del/key block doesn't use prefix compression, so the key/value will
+// be pointing directly into the buffer data.
 func (i *fragmentIter) initSpan(ik base.InternalKey, internalValue []byte) error {
 	if ik.Kind() == base.InternalKeyKindRangeDelete {
 		i.span = rangedel.Decode(ik, internalValue, i.span.Keys[:0])
@@ -154,7 +160,7 @@ func (i *fragmentIter) addToSpan(
 
 // applySpanTransforms applies changes to the span that we decoded, if
 // appropriate.
-func (i *fragmentIter) applySpanTransforms() {
+func (i *fragmentIter) applySpanTransforms() error {
 	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
 		lastSeqNum := i.span.Keys[0].SeqNum()
 		k := 1
@@ -179,6 +185,28 @@ func (i *fragmentIter) applySpanTransforms() {
 		i.endKeyBuf = append(i.endKeyBuf[:len(i.syntheticPrefix)], i.span.End...)
 		i.span.End = i.endKeyBuf
 	}
+
+	if i.syntheticSuffix.IsSet() {
+		for keyIdx := range i.span.Keys {
+			k := &i.span.Keys[keyIdx]
+
+			switch k.Kind() {
+			case base.InternalKeyKindRangeKeySet:
+				if len(k.Suffix) > 0 {
+					if invariants.Enabled && i.suffixCmp(i.syntheticSuffix, k.Suffix) >= 0 {
+						return base.AssertionFailedf("synthetic suffix %q >= RangeKeySet suffix %q",
+							i.syntheticSuffix, k.Suffix)
+					}
+					k.Suffix = i.syntheticSuffix
+				}
+			case base.InternalKeyKindRangeKeyDelete:
+				// Nothing to do.
+			default:
+				return base.AssertionFailedf("synthetic suffix not supported with key kind %s", k.Kind())
+			}
+		}
+	}
+	return nil
 }
 
 // gatherForward gathers internal keys with identical bounds. Keys defined over
@@ -214,7 +242,9 @@ func (i *fragmentIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error)
 			return nil, err
 		}
 	}
-	i.applySpanTransforms()
+	if err := i.applySpanTransforms(); err != nil {
+		return nil, err
+	}
 	// i.blockIter is positioned over the first internal key for the next span.
 	return &i.span, nil
 }

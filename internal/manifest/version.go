@@ -341,8 +341,7 @@ func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
 func (m *FileMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms {
 	return sstable.FragmentIterTransforms{
 		SyntheticSeqNum: m.SyntheticSeqNum(),
-		// TODO(radu): support this
-		//SyntheticSuffix: m.SyntheticSuffix,
+		SyntheticSuffix: m.SyntheticSuffix,
 		SyntheticPrefix: m.SyntheticPrefix,
 	}
 }
