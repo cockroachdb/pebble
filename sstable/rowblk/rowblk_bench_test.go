@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"golang.org/x/exp/rand"
@@ -212,4 +213,132 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 			}
 		}
 	}
+}
+
+func BenchmarkCockroachDataBlockWriter(b *testing.B) {
+	for _, alphaLen := range []int{4, 8, 26} {
+		for _, lenSharedPct := range []float64{0.25, 0.5} {
+			for _, prefixLen := range []int{8, 32, 128} {
+				lenShared := int(float64(prefixLen) * lenSharedPct)
+				for _, valueLen := range []int{8, 128, 1024} {
+					keyConfig := crdbtest.KeyConfig{
+						PrefixAlphabetLen: alphaLen,
+						PrefixLen:         prefixLen,
+						PrefixLenShared:   lenShared,
+						Logical:           0,
+						BaseWallTime:      uint64(time.Now().UnixNano()),
+					}
+					b.Run(fmt.Sprintf("%s,valueLen=%d", keyConfig, valueLen), func(b *testing.B) {
+						benchmarkCockroachDataBlockWriter(b, keyConfig, valueLen)
+					})
+				}
+			}
+		}
+	}
+}
+
+func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfig, valueLen int) {
+	const targetBlockSize = 32 << 10
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(seed))
+	keys, values := crdbtest.RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+
+	var w Writer
+	w.RestartInterval = 16
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w.Reset()
+		var j int
+		var prevKeyLen int
+		for w.EstimatedSize() < targetBlockSize {
+			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+			var samePrefix bool
+			if j > 0 {
+				samePrefix = bytes.Equal(keys[j], keys[j-1])
+			}
+			w.AddWithOptionalValuePrefix(
+				ik, false, values[j], prevKeyLen, true, block.InPlaceValuePrefix(samePrefix), samePrefix)
+			j++
+			prevKeyLen = len(ik.UserKey)
+		}
+		w.Finish()
+	}
+}
+
+func BenchmarkCockroachDataBlockIter(b *testing.B) {
+	for _, alphaLen := range []int{4, 8, 26} {
+		for _, lenSharedPct := range []float64{0.25, 0.5} {
+			for _, prefixLen := range []int{8, 32, 128} {
+				lenShared := int(float64(prefixLen) * lenSharedPct)
+				for _, logical := range []uint32{0, 1} {
+					for _, valueLen := range []int{8, 128, 1024} {
+						keyConfig := crdbtest.KeyConfig{
+							PrefixAlphabetLen: alphaLen,
+							PrefixLen:         prefixLen,
+							PrefixLenShared:   lenShared,
+							Logical:           logical,
+							BaseWallTime:      uint64(time.Now().UnixNano()),
+						}
+						b.Run(fmt.Sprintf("%s,value=%d", keyConfig, valueLen),
+							func(b *testing.B) {
+								benchmarkCockroachDataBlockIter(b, keyConfig, valueLen)
+							})
+					}
+				}
+			}
+		}
+	}
+}
+
+func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig, valueLen int) {
+	const targetBlockSize = 32 << 10
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(seed))
+	keys, values := crdbtest.RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+
+	var w Writer
+	w.RestartInterval = 16
+	var count int
+	var prevKeyLen int
+	for w.EstimatedSize() < targetBlockSize {
+		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		var samePrefix bool
+		if count > 0 {
+			samePrefix = bytes.Equal(keys[count], keys[count-1])
+		}
+		w.AddWithOptionalValuePrefix(
+			ik, false, values[count], prevKeyLen, true, block.InPlaceValuePrefix(samePrefix), samePrefix)
+		count++
+		prevKeyLen = len(ik.UserKey)
+	}
+	serializedBlock := w.Finish()
+	var it Iter
+	it.Init(crdbtest.Compare, crdbtest.Split, serializedBlock, block.NoTransforms)
+	avgRowSize := float64(len(serializedBlock)) / float64(count)
+
+	b.Run("Next", func(b *testing.B) {
+		kv := it.First()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if kv == nil {
+				kv = it.First()
+			} else {
+				kv = it.Next()
+			}
+		}
+		b.StopTimer()
+		b.ReportMetric(avgRowSize, "bytes/row")
+	})
+	b.Run("SeekGE", func(b *testing.B) {
+		rng := rand.New(rand.NewSource(seed))
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			k := keys[rng.Intn(count)]
+			if kv := it.SeekGE(k, base.SeekGEFlagsNone); kv == nil {
+				b.Fatalf("%q not found", k)
+			}
+		}
+		b.StopTimer()
+		b.ReportMetric(avgRowSize, "bytes/row")
+	})
 }
