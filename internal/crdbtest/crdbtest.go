@@ -10,9 +10,13 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"fmt"
+	"slices"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"golang.org/x/exp/rand"
 )
 
 const withWall = 9
@@ -302,4 +306,46 @@ func getKeyPartFromEngineKey(engineKey []byte) (key []byte, ok bool) {
 	}
 	// Key excludes the sentinel byte.
 	return engineKey[:keyPartEnd], true
+}
+
+// KeyConfig configures the shape of the random keys generated.
+type KeyConfig struct {
+	PrefixAlphabetLen int    // Number of bytes in the alphabet used for the prefix.
+	PrefixLenShared   int    // Number of bytes shared by all key prefixes.
+	PrefixLen         int    // Number of bytes in the prefix.
+	BaseWallTime      uint64 // Smallest MVCC WallTime.
+	Logical           uint32 // MVCC logical time for all keys.
+}
+
+func (cfg KeyConfig) String() string {
+	return fmt.Sprintf("AlphaLen=%d,Shared=%d,PrefixLen=%d,Logical=%d",
+		cfg.PrefixAlphabetLen, cfg.PrefixLenShared, cfg.PrefixLen, cfg.Logical)
+}
+
+// RandomKVs constructs count random KVs with the provided parameters.
+func RandomKVs(rng *rand.Rand, count int, cfg KeyConfig, valueLen int) (keys, vals [][]byte) {
+	sharedPrefix := make([]byte, cfg.PrefixLenShared)
+	for i := 0; i < len(sharedPrefix); i++ {
+		sharedPrefix[i] = byte(rng.Intn(cfg.PrefixAlphabetLen) + 'a')
+	}
+
+	keys = make([][]byte, count)
+	vals = make([][]byte, count)
+	for i := range keys {
+		keys[i] = randCockroachKey(rng, cfg, sharedPrefix)
+		vals[i] = make([]byte, valueLen)
+		rng.Read(vals[i])
+	}
+	slices.SortFunc(keys, Compare)
+	return keys, vals
+}
+
+func randCockroachKey(rng *rand.Rand, cfg KeyConfig, blockPrefix []byte) []byte {
+	key := make([]byte, 0, cfg.PrefixLen+MaxSuffixLen)
+	key = append(key, blockPrefix...)
+	wallTime := cfg.BaseWallTime + rng.Uint64n(uint64(time.Hour))
+	for len(key) < cfg.PrefixLen {
+		key = append(key, byte(rng.Intn(cfg.PrefixAlphabetLen)+'a'))
+	}
+	return EncodeTimestamp(key, wallTime, cfg.Logical)
 }
