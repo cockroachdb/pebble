@@ -240,7 +240,7 @@ func (b PrefixBytes) At(i int) []byte {
 
 // AppendAt appends the i'th []byte slice in the PrefixBytes onto the provided
 // bytes slice.
-func (b PrefixBytes) AppendAt(dst []byte, i int) []byte {
+func (b *PrefixBytes) AppendAt(dst []byte, i int) []byte {
 	dst = append(dst, b.SharedPrefix()...)
 	dst = append(dst, b.RowBundlePrefix(i)...)
 	return append(dst, b.RowSuffix(i)...)
@@ -249,7 +249,7 @@ func (b PrefixBytes) AppendAt(dst []byte, i int) []byte {
 // SharedPrefix return a []byte of the shared prefix that was extracted from
 // all of the values in the Bytes vector. The returned slice should not be
 // mutated.
-func (b PrefixBytes) SharedPrefix() []byte {
+func (b *PrefixBytes) SharedPrefix() []byte {
 	// The very first slice is the prefix for the entire column.
 	return b.rawBytes.slice(0, b.rawBytes.offsets.At(0))
 }
@@ -257,7 +257,7 @@ func (b PrefixBytes) SharedPrefix() []byte {
 // RowBundlePrefix takes a row index and returns a []byte of the prefix shared
 // among all the keys in the row's bundle, but without the block-level shared
 // prefix for the column. The returned slice should not be mutated.
-func (b PrefixBytes) RowBundlePrefix(row int) []byte {
+func (b *PrefixBytes) RowBundlePrefix(row int) []byte {
 	i := b.bundleOffsetIndexForRow(row)
 	return b.rawBytes.slice(b.rawBytes.offsets.At(i), b.rawBytes.offsets.At(i+1))
 }
@@ -265,7 +265,7 @@ func (b PrefixBytes) RowBundlePrefix(row int) []byte {
 // BundlePrefix returns the prefix of the i-th bundle in the column. The
 // provided i must be in the range [0, BundleCount()). The returned slice should
 // not be mutated.
-func (b PrefixBytes) BundlePrefix(i int) []byte {
+func (b *PrefixBytes) BundlePrefix(i int) []byte {
 	j := b.offsetIndexByBundleIndex(i)
 	return b.rawBytes.slice(b.rawBytes.offsets.At(j), b.rawBytes.offsets.At(j+1))
 }
@@ -275,7 +275,7 @@ func (b PrefixBytes) BundlePrefix(i int) []byte {
 // RowSuffix().
 //
 // The returned slice should not be mutated.
-func (b PrefixBytes) RowSuffix(row int) []byte {
+func (b *PrefixBytes) RowSuffix(row int) []byte {
 	i := b.rowSuffixIndex(row)
 	// Retrieve the low and high offsets indicating the start and end of the
 	// row's suffix slice.
@@ -306,12 +306,12 @@ func (b PrefixBytes) RowSuffix(row int) []byte {
 }
 
 // Rows returns the count of rows whose keys are encoded within the PrefixBytes.
-func (b PrefixBytes) Rows() int {
+func (b *PrefixBytes) Rows() int {
 	return b.rows
 }
 
 // BundleCount returns the count of bundles within the PrefixBytes.
-func (b PrefixBytes) BundleCount() int {
+func (b *PrefixBytes) BundleCount() int {
 	return b.bundleCount(b.rows)
 }
 
@@ -319,7 +319,7 @@ func (b PrefixBytes) BundleCount() int {
 // equal to k, returning the index of the key and whether an equal key was
 // found. If multiple keys are equal, the index of the first such key is
 // returned. If all keys are < k, Search returns Rows() for the row index.
-func (b PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
+func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 	// First compare to the block-level shared prefix.
 	n := min(len(k), b.sharedPrefixLen)
 	c := bytes.Compare(k[:n], unsafe.Slice((*byte)(b.rawBytes.data), b.sharedPrefixLen))
