@@ -238,6 +238,14 @@ func (b PrefixBytes) At(i int) []byte {
 	return slices.Concat(b.SharedPrefix(), b.RowBundlePrefix(i), b.RowSuffix(i))
 }
 
+// AppendAt appends the i'th []byte slice in the PrefixBytes onto the provided
+// bytes slice.
+func (b PrefixBytes) AppendAt(dst []byte, i int) []byte {
+	dst = append(dst, b.SharedPrefix()...)
+	dst = append(dst, b.RowBundlePrefix(i)...)
+	return append(dst, b.RowSuffix(i)...)
+}
+
 // SharedPrefix return a []byte of the shared prefix that was extracted from
 // all of the values in the Bytes vector. The returned slice should not be
 // mutated.
