@@ -95,11 +95,11 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 	}
 }
 
-func (b RawBytes) ptr(offset uint32) unsafe.Pointer {
+func (b *RawBytes) ptr(offset uint32) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(b.data) + uintptr(offset))
 }
 
-func (b RawBytes) slice(start, end uint32) []byte {
+func (b *RawBytes) slice(start, end uint32) []byte {
 	return unsafe.Slice((*byte)(b.ptr(start)), end-start)
 }
 
@@ -109,7 +109,7 @@ func (b RawBytes) At(i int) []byte {
 }
 
 // Slices returns the number of []byte slices encoded within the RawBytes.
-func (b RawBytes) Slices() int {
+func (b *RawBytes) Slices() int {
 	return b.slices
 }
 
