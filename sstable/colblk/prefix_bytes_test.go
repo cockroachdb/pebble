@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -273,16 +274,13 @@ func BenchmarkPrefixBytes(b *testing.B) {
 			buf = build(n)
 			pb, _ := DecodePrefixBytes(buf, 0, n)
 			b.ResetTimer()
+			var k []byte
 			for i := 0; i < b.N; i++ {
-				k := append([]byte(nil), pb.SharedPrefix()...)
-				l := len(k)
-				for i := 0; i < n; i++ {
-					j := rand.Intn(n)
-					k = append(append(k[:l], pb.RowBundlePrefix(j)...), pb.RowSuffix(j)...)
-					if !bytes.Equal(k, userKeys[j]) {
-						b.Fatalf("Constructed key %q (%q, %q, %q) for index %d; expected %q",
-							k, pb.SharedPrefix(), pb.RowBundlePrefix(j), pb.RowSuffix(j), j, userKeys[j])
-					}
+				j := i % n
+				k = pb.AppendAt(k[:0], j)
+				if invariants.Enabled && !bytes.Equal(k, userKeys[j]) {
+					b.Fatalf("Constructed key %q (%q, %q, %q) for index %d; expected %q",
+						k, pb.SharedPrefix(), pb.RowBundlePrefix(j), pb.RowSuffix(j), j, userKeys[j])
 				}
 			}
 		})
