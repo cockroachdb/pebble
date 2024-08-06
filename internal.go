@@ -44,6 +44,12 @@ func MakeInternalKey(userKey []byte, seqNum SeqNum, kind InternalKeyKind) Intern
 	return base.MakeInternalKey(userKey, seqNum, kind)
 }
 
+// MakeTrailer constructs a trailer from a specified sequence number and
+// kind.
+func MakeTrailer(seqNum SeqNum, kind InternalKeyKind) InternalKeyTrailer {
+	return base.MakeTrailer(seqNum, kind)
+}
+
 type internalIterator = base.InternalIterator
 
 type topLevelIterator = base.TopLevelIterator
