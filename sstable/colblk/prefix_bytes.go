@@ -247,6 +247,42 @@ func (b *PrefixBytes) AppendAt(dst []byte, i int) []byte {
 	return append(dst, b.RowSuffix(i)...)
 }
 
+// SetNextAt updates the provided buf byte slice to hold the i'th []byte slice
+// in the PrefixBytes. SetNextAt requires the provided buf to currently hold the
+// i-1'th []byte slice in the PrefixBytes. If the i'th slice does not fit in
+// buf, SetNextAt allocates a new slice.
+func (b *PrefixBytes) SetNextAt(buf []byte, i int) []byte {
+	if invariants.Enabled {
+		if x := b.At(i - 1); !bytes.Equal(buf, x) {
+			panic(errors.AssertionFailedf("buf (%q) does not hold the previous slice (%q)", buf, x))
+		}
+	}
+
+	bundleOffsetIndex := b.bundleOffsetIndexForRow(i)
+	rowSuffixIndex := b.rowSuffixIndex(i)
+	if rowSuffixIndex == bundleOffsetIndex+1 {
+		// The key i is the first key in a new bundle. We need to replace the
+		// bundle prefix in buf. We can copy the entirety of the bundle prefix
+		// and the row suffix because they're stored contiguously.
+		s := b.rawBytes.offsets.At(bundleOffsetIndex)
+		e := b.rawBytes.offsets.At(rowSuffixIndex + 1)
+		return append(buf[:b.sharedPrefixLen], b.rawBytes.slice(s, e)...)
+	}
+
+	// The key i is a new key in the same bundle.
+	rowSuffixStart := b.rawBytes.offsets.At(rowSuffixIndex)
+	rowSuffixEnd := b.rawBytes.offsets.At(rowSuffixIndex + 1)
+	if rowSuffixStart == rowSuffixEnd {
+		// The start and end offsets are equal, indicating that the key is a
+		// duplicate. Since it's identical to the previous key, there's nothing
+		// left to do, we can return buf as-is.
+		return buf
+	}
+	bundlePrefixLen := b.rawBytes.offsets.At(bundleOffsetIndex+1) - b.rawBytes.offsets.At(bundleOffsetIndex)
+	return append(buf[:b.sharedPrefixLen+int(bundlePrefixLen)], b.rawBytes.slice(rowSuffixStart, rowSuffixEnd)...)
+
+}
+
 // SharedPrefix return a []byte of the shared prefix that was extracted from
 // all of the values in the Bytes vector. The returned slice should not be
 // mutated.
