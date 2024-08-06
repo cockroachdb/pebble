@@ -282,6 +282,11 @@ func BenchmarkPrefixBytes(b *testing.B) {
 					b.Fatalf("Constructed key %q (%q, %q, %q) for index %d; expected %q",
 						k, pb.SharedPrefix(), pb.RowBundlePrefix(j), pb.RowSuffix(j), j, userKeys[j])
 				}
+				if j == 0 {
+					k = pb.AppendAt(k[:0], j)
+				} else {
+					k = pb.SetNextAt(k, j)
+				}
 			}
 		})
 	}
