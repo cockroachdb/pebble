@@ -241,7 +241,8 @@ func (b PrefixBytes) At(i int) []byte {
 // AppendAt appends the i'th []byte slice in the PrefixBytes onto the provided
 // bytes slice.
 func (b *PrefixBytes) AppendAt(dst []byte, i int) []byte {
-	dst = append(dst, b.SharedPrefix()...)
+	// Inline dst = append(dst, b.SharedPrefix()...)
+	dst = append(dst, unsafe.Slice((*byte)(b.rawBytes.data), b.rawBytes.offsets.At(0))...)
 	dst = append(dst, b.RowBundlePrefix(i)...)
 	return append(dst, b.RowSuffix(i)...)
 }
