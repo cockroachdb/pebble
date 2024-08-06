@@ -35,6 +35,12 @@ const (
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
 
+// MakeInternalKeyTrailer constructs a trailer from a specified sequence number
+// and kind.
+func MakeInternalKeyTrailer(seqNum uint64, kind InternalKeyKind) uint64 {
+	return base.MakeTrailer(seqNum, kind)
+}
+
 type internalIterator = base.InternalIterator
 
 type topLevelIterator = base.TopLevelIterator
