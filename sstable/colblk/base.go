@@ -4,7 +4,11 @@
 
 package colblk
 
-import "golang.org/x/exp/constraints"
+import (
+	"unsafe"
+
+	"golang.org/x/exp/constraints"
+)
 
 // align returns the next value greater than or equal to offset that's divisible
 // by val.
@@ -42,3 +46,15 @@ const (
 	align32Shift = 2
 	align64Shift = 3
 )
+
+// TODO(jackson): A subsequent Go release will remove the ability to call these
+// runtime functions. We should consider asm implementations that we maintain
+// within the crlib repo.
+//
+// See https://github.com/golang/go/issues/67401
+
+//go:linkname memmove runtime.memmove
+func memmove(to, from unsafe.Pointer, n uintptr)
+
+//go:linkname mallocgc runtime.mallocgc
+func mallocgc(size uintptr, typ unsafe.Pointer, needzero bool) unsafe.Pointer
