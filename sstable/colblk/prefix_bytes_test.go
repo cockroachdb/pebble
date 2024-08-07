@@ -274,17 +274,17 @@ func BenchmarkPrefixBytes(b *testing.B) {
 			buf = build(n)
 			pb, _ := DecodePrefixBytes(buf, 0, n)
 			b.ResetTimer()
-			var k []byte
+			var pbi PrefixBytesIter
 			for i := 0; i < b.N; i++ {
 				j := i % n
 				if j == 0 {
-					k = pb.AppendAt(k[:0], j)
+					pb.SetAt(&pbi, j)
 				} else {
-					k = pb.SetNextAt(k, j)
+					pb.SetNext(&pbi)
 				}
-				if invariants.Enabled && !bytes.Equal(k, userKeys[j]) {
+				if invariants.Enabled && !bytes.Equal(pbi.UnsafeSlice(), userKeys[j]) {
 					b.Fatalf("Constructed key %q (%q, %q, %q) for index %d; expected %q",
-						k, pb.SharedPrefix(), pb.RowBundlePrefix(j), pb.RowSuffix(j), j, userKeys[j])
+						pbi.UnsafeSlice(), pb.SharedPrefix(), pb.RowBundlePrefix(j), pb.RowSuffix(j), j, userKeys[j])
 				}
 			}
 		})
