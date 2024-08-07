@@ -134,3 +134,16 @@ func (s UnsafeIntegerSlice[T]) At(i int) T {
 		panic("unreachable")
 	}
 }
+
+// UnsafeBuf provides a buffer without bounds checking. Every buf has a len and
+// capacity.
+type UnsafeBuf struct {
+	ptr unsafe.Pointer
+	len int
+	cap int
+}
+
+// UnsafeSlice returns the current contents of the buf.
+func (b *UnsafeBuf) UnsafeSlice() []byte {
+	return unsafe.Slice((*byte)(b.ptr), b.len)
+}
