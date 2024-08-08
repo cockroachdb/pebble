@@ -462,7 +462,7 @@ func TestScanInternal(t *testing.T) {
 				file, err := d.opts.FS.Create("temp0.sst", vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewFileWritable(file))
-				require.NoError(t, d.Ingest([]string{"temp0.sst"}))
+				require.NoError(t, d.Ingest(context.Background(), []string{"temp0.sst"}))
 			} else if ingestExternal {
 				points, rangeDels, rangeKeys := batchSort(b)
 				largestUnsafe := points.Last()
@@ -485,7 +485,7 @@ func TestScanInternal(t *testing.T) {
 					EndKeyIsInclusive: true,
 					HasPointKey:       true,
 				}
-				_, err = d.IngestExternalFiles([]ExternalFile{ef})
+				_, err = d.IngestExternalFiles(context.Background(), []ExternalFile{ef})
 				require.NoError(t, err)
 			} else if name != "" {
 				batches[name] = b

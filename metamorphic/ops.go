@@ -704,7 +704,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 	}
 
 	err = firstError(err, t.withRetries(func() error {
-		return t.getDB(o.dbID).Ingest(paths)
+		return t.getDB(o.dbID).Ingest(context.Background(), paths)
 	}))
 
 	h.Recordf("%s // %v", o, err)
@@ -920,7 +920,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 
 	if t.testOpts.useExcise {
 		err = firstError(err, t.withRetries(func() error {
-			_, err := db.IngestAndExcise([]string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
+			_, err := db.IngestAndExcise(context.Background(), []string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
 				Start: o.exciseStart,
 				End:   o.exciseEnd,
 			}, o.sstContainsExciseTombstone)
@@ -929,7 +929,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	} else {
 		err = firstError(err, o.simulateExcise(db, t))
 		err = firstError(err, t.withRetries(func() error {
-			return db.Ingest([]string{path})
+			return db.Ingest(context.Background(), []string{path})
 		}))
 	}
 
@@ -1011,7 +1011,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 			}
 		}
 		if len(paths) > 0 {
-			err = db.Ingest(paths)
+			err = db.Ingest(context.Background(), paths)
 		}
 	} else {
 		external := make([]pebble.ExternalFile, len(o.objs))
@@ -1034,7 +1034,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 				external[i].SyntheticPrefix = obj.syntheticPrefix
 			}
 		}
-		_, err = db.IngestExternalFiles(external)
+		_, err = db.IngestExternalFiles(context.Background(), external)
 	}
 
 	h.Recordf("%s // %v", o, err)
@@ -1976,7 +1976,7 @@ func (r *replicateOp) runSharedReplicate(
 		return
 	}
 
-	_, err = dest.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false)
+	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false)
 	h.Recordf("%s // %v", r, err)
 }
 
@@ -2039,7 +2039,7 @@ func (r *replicateOp) runExternalReplicate(
 		return
 	}
 
-	_, err = dest.IngestAndExcise([]string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false /* sstContainsExciseTombstone */)
+	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false /* sstContainsExciseTombstone */)
 	h.Recordf("%s // %v", r, err)
 }
 
@@ -2127,7 +2127,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 		panic(err)
 	}
 
-	err = dest.Ingest([]string{sstPath})
+	err = dest.Ingest(context.Background(), []string{sstPath})
 	h.Recordf("%s // %v", r, err)
 }
 

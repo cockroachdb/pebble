@@ -1352,7 +1352,7 @@ func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		}
 	}
 
-	if _, err := d.IngestAndExcise(paths, nil /* shared */, nil /* external */, exciseSpan, sstContainsExciseTombstone); err != nil {
+	if _, err := d.IngestAndExcise(context.Background(), paths, nil /* shared */, nil /* external */, exciseSpan, sstContainsExciseTombstone); err != nil {
 		return err
 	}
 	return nil
@@ -1364,7 +1364,7 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		paths = append(paths, arg.String())
 	}
 
-	if err := d.Ingest(paths); err != nil {
+	if err := d.Ingest(context.Background(), paths); err != nil {
 		return err
 	}
 	return nil
@@ -1444,7 +1444,7 @@ func runIngestExternalCmd(
 		external = append(external, ef)
 	}
 
-	if _, err := d.IngestExternalFiles(external); err != nil {
+	if _, err := d.IngestExternalFiles(context.Background(), external); err != nil {
 		return err
 	}
 	return nil

@@ -625,7 +625,7 @@ func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	_, err = db.IngestAndExcise([]string{path}, nil, nil, span, true /* sstsContainExciseTombstone */)
+	_, err = db.IngestAndExcise(context.Background(), []string{path}, nil, nil, span, true /* sstsContainExciseTombstone */)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error excising: %s\n", err)
 		return

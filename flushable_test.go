@@ -2,6 +2,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 
@@ -57,7 +58,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		lr, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs)
+		lr, err := ingestLoad(context.Background(), d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs)
 		if err != nil {
 			panic(err)
 		}
@@ -85,7 +86,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// (e.g. because the files reside on a different filesystem), ingestLink will
 		// fall back to copying, and if that fails we undo our work and return an
 		// error.
-		if err := ingestLinkLocal(jobID, d.opts, d.objProvider, lr.local); err != nil {
+		if err := ingestLinkLocal(context.Background(), jobID, d.opts, d.objProvider, lr.local); err != nil {
 			panic("couldn't hard link sstables")
 		}
 

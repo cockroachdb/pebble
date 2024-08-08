@@ -129,7 +129,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}).WithFSDefaults()
-			lr, err := ingestLoad(opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.FileNum{1})
+			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, 0, []base.FileNum{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -220,7 +220,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	lr, err := ingestLoad(opts, version, paths, nil, nil, 0, pending)
+	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
 
 	for _, m := range lr.local {
@@ -240,7 +240,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}).WithFSDefaults()
-	if _, err := ingestLoad(opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.FileNum{1}); err == nil {
+	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, 0, []base.FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -336,7 +336,7 @@ func TestIngestLink(t *testing.T) {
 				opts.FS.Remove(meta[i].path)
 			}
 
-			err = ingestLinkLocal(0 /* jobID */, opts, objProvider, meta)
+			err = ingestLinkLocal(context.Background(), 0 /* jobID */, opts, objProvider, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -403,7 +403,7 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	meta := &fileMetadata{FileNum: 1}
 	meta.InitPhysicalBacking()
-	err = ingestLinkLocal(0, opts, objProvider, []ingestLocalMeta{{fileMetadata: meta, path: "source"}})
+	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{fileMetadata: meta, path: "source"}})
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -839,7 +839,7 @@ func TestExcise(t *testing.T) {
 
 			current.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, l manifest.Layer) {
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, l.Level())
+					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, l.Level())
 					if err != nil {
 						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
@@ -1129,7 +1129,7 @@ func testIngestSharedImpl(
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey}, false)
+			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1191,7 +1191,7 @@ func testIngestSharedImpl(
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
+					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1358,7 +1358,9 @@ func TestSimpleIngestShared(t *testing.T) {
 		Level:            6,
 		Size:             uint64(size + 5),
 	}
-	_, err = d.IngestAndExcise([]string{}, []SharedSSTMeta{sharedSSTMeta}, nil /* external */, KeyRange{Start: []byte("d"), End: []byte("ee")}, false)
+	_, err = d.IngestAndExcise(
+		context.Background(), []string{}, []SharedSSTMeta{sharedSSTMeta}, nil, /* external */
+		KeyRange{Start: []byte("d"), End: []byte("ee")}, false)
 	require.NoError(t, err)
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
@@ -1628,7 +1630,7 @@ func TestConcurrentExcise(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise([]string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
+			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1690,7 +1692,7 @@ func TestConcurrentExcise(t *testing.T) {
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
+					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -2063,7 +2065,7 @@ func TestIngestExternal(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
-			_, err = to.IngestAndExcise([]string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey}, false)
+			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey}, false)
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d external SSTs", len(externalFiles))
 
@@ -2245,7 +2247,7 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 				assertNoError(w.Close())
 
 				b.StartTimer()
-				assertNoError(d.Ingest([]string{"ext"}))
+				assertNoError(d.Ingest(context.Background(), []string{"ext"}))
 			}
 		})
 	}
@@ -2520,8 +2522,8 @@ func TestIngestError(t *testing.T) {
 			}()
 
 			ii.Store(i)
-			err1 := d.Ingest([]string{"ext0"})
-			err2 := d.Ingest([]string{"ext1"})
+			err1 := d.Ingest(context.Background(), []string{"ext0"})
+			err2 := d.Ingest(context.Background(), []string{"ext1"})
 			err := firstError(err1, err2)
 			if err != nil && !errors.Is(err, errorfs.ErrInjected) {
 				t.Fatal(err)
@@ -2562,7 +2564,7 @@ func TestIngestIdempotence(t *testing.T) {
 	for i := 0; i < count; i++ {
 		ingestPath := fs.PathJoin(dir, fmt.Sprintf("ext%d", i))
 		require.NoError(t, fs.Link(path, ingestPath))
-		require.NoError(t, d.Ingest([]string{ingestPath}))
+		require.NoError(t, d.Ingest(context.Background(), []string{ingestPath}))
 	}
 	require.NoError(t, d.Close())
 }
@@ -2604,7 +2606,7 @@ func TestIngestCompact(t *testing.T) {
 			// flushed.
 			require.NoError(t, d.Set(key, nil, nil))
 		}
-		require.NoError(t, d.Ingest([]string{src(i)}))
+		require.NoError(t, d.Ingest(context.Background(), []string{src(i)}))
 	}
 
 	require.NoError(t, d.Close())
@@ -2641,7 +2643,7 @@ func TestConcurrentIngest(t *testing.T) {
 	// Perform N ingestions concurrently.
 	for i := 0; i < cap(errCh); i++ {
 		go func(i int) {
-			err := d.Ingest([]string{src(i)})
+			err := d.Ingest(context.Background(), []string{src(i)})
 			if err == nil {
 				if _, err = d.opts.FS.Stat(src(i)); oserror.IsNotExist(err) {
 					err = nil
@@ -2686,7 +2688,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 					require.NoError(t, w.Set([]byte(k), nil))
 				}
 				require.NoError(t, w.Close())
-				require.NoError(t, d.Ingest([]string{"ext"}))
+				require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
 			}
 
 			compact := func(start, end string) {
@@ -2807,7 +2809,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		stats, err := d.IngestWithStats([]string{"ext"})
+		stats, err := d.IngestWithStats(context.Background(), []string{"ext"})
 		require.NoError(t, err)
 		require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
 		require.Equal(t, 1, stats.MemtableOverlappingFiles)
@@ -2836,7 +2838,7 @@ func TestIngestStats(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		stats, err := d.IngestWithStats([]string{"ext"})
+		stats, err := d.IngestWithStats(context.Background(), []string{"ext"})
 		require.NoError(t, err)
 		if expectedLevel == 0 {
 			require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
@@ -2884,7 +2886,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{"ext"}))
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
 	}
 
 	ingest("a")
@@ -2922,7 +2924,7 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{"ext"}))
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
 	}
 
 	var wg sync.WaitGroup
@@ -3047,7 +3049,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	go untilDone(func() {
 		filename := fmt.Sprintf("ext%d", totalIngests)
 		require.NoError(t, mem.Link("ext", filename))
-		require.NoError(t, d.Ingest([]string{filename}))
+		require.NoError(t, d.Ingest(context.Background(), []string{filename}))
 		totalIngests++
 	})
 
@@ -3187,7 +3189,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	for _, f := range files {
 		func() {
 			defer func() { err = recover().(error) }()
-			err = d.Ingest([]string{fs.PathJoin(dir, f)})
+			err = d.Ingest(context.Background(), []string{fs.PathJoin(dir, f)})
 		}()
 		if err == nil || !errors.Is(err, errorfs.ErrInjected) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -3644,7 +3646,7 @@ func TestIngestValidation(t *testing.T) {
 				}
 
 				// Ingest the external table.
-				err = d.Ingest([]string{ingestTableName})
+				err = d.Ingest(context.Background(), []string{ingestTableName})
 				if err != nil {
 					et.errLoc = errReportLocationIngest
 					et.err = err
@@ -3734,7 +3736,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						require.NoError(b, w.Close())
 						paths = append(paths, n)
 					}
-					require.NoError(b, d.Ingest(paths))
+					require.NoError(b, d.Ingest(context.Background(), paths))
 
 					{
 						const broadIngest = "broad.sst"
@@ -3744,7 +3746,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						require.NoError(b, w.Set([]byte("0"), nil))
 						require.NoError(b, w.Set([]byte("Z"), nil))
 						require.NoError(b, w.Close())
-						require.NoError(b, d.Ingest([]string{broadIngest}))
+						require.NoError(b, d.Ingest(context.Background(), []string{broadIngest}))
 					}
 
 					switch op {
@@ -3769,7 +3771,7 @@ func runBenchmarkManySSTablesIngest(b *testing.B, d *DB, fs vfs.FS, count int) {
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte(n), nil))
 		require.NoError(b, w.Close())
-		require.NoError(b, d.Ingest([]string{n}))
+		require.NoError(b, d.Ingest(context.Background(), []string{n}))
 	}
 }
 

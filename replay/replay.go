@@ -683,7 +683,7 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			r.metrics.writeBytes.Store(step.cumulativeWriteBytes)
 			r.stepsApplied <- step
 		case ingestStepKind:
-			if err := r.d.Ingest(step.tablesToIngest); err != nil {
+			if err := r.d.Ingest(context.Background(), step.tablesToIngest); err != nil {
 				return err
 			}
 			r.metrics.writeBytes.Store(step.cumulativeWriteBytes)
