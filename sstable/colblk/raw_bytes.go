@@ -5,6 +5,7 @@
 package colblk
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"unsafe"
@@ -72,6 +73,9 @@ func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endO
 var _ DecodeFunc[RawBytes] = DecodeRawBytes
 
 func defaultSliceFormatter(x []byte) string {
+	if bytes.ContainsFunc(x, func(r rune) bool { return r < 32 || r > 126 }) {
+		return fmt.Sprintf("%q", x)
+	}
 	return string(x)
 }
 
@@ -158,6 +162,15 @@ func (b *RawBytesBuilder) PutConcat(s1, s2 []byte) {
 	b.data = append(append(b.data, s1...), s2...)
 	b.rows++
 	b.offsets.Set(b.rows, uint32(len(b.data)))
+}
+
+// LastSlice returns the last slice added to the builder. The returned slice is
+// owned by the builder and must not be mutated.
+func (b *RawBytesBuilder) LastSlice() []byte {
+	if b.rows == 0 {
+		return nil
+	}
+	return b.data[b.offsets.array.elems.At(b.rows-1):b.offsets.array.elems.At(b.rows)]
 }
 
 // Finish writes the serialized byte slices to buf starting at offset. The buf

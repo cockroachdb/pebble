@@ -275,6 +275,7 @@ func BenchmarkPrefixBytes(b *testing.B) {
 			pb, _ := DecodePrefixBytes(buf, 0, n)
 			b.ResetTimer()
 			var pbi PrefixBytesIter
+			pbi.Alloc(maxLen)
 			for i := 0; i < b.N; i++ {
 				j := i % n
 				if j == 0 {
