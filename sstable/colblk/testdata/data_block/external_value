@@ -30,7 +30,7 @@ blockprefix_kiwi@99#0,SET:valueHandle-kiwi99
 blockprefix_kiwi@98#0,SET:valueHandle-kiwi98
 blockprefix_lemon@92#0,DEL:
 ----
-size=657:
+size=665:
 0: prefixes:       prefixbytes(16): 20 keys
 1: suffixes:       bytes: 20 rows set; 54 bytes in data
 2: trailers:       uint64: 20 rows
@@ -40,232 +40,235 @@ size=657:
 
 finish
 ----
+# data block header
+000-004: x 16000000                                                         # maximum key length: 22
 # columnar block header
-000-001: x 01                                                               # version 1
-001-003: x 0600                                                             # 6 columns
-003-007: x 14000000                                                         # 20 rows
+004-005: x 01                                                               # version 1
+005-007: x 0600                                                             # 6 columns
+007-011: x 14000000                                                         # 20 rows
 # column 0
-007-008: b 00000111                                                         # prefixbytes
-008-012: x 25000000                                                         # page start 37
+011-012: b 00000111                                                         # prefixbytes
+012-016: x 29000000                                                         # page start 41
 # column 1
-012-013: b 00000110                                                         # bytes
-013-017: x 6e000000                                                         # page start 110
+016-017: b 00000110                                                         # bytes
+017-021: x 72000000                                                         # page start 114
 # column 2
-017-018: b 00000101                                                         # uint64
-018-022: x be000000                                                         # page start 190
+021-022: b 00000101                                                         # uint64
+022-026: x c2000000                                                         # page start 194
 # column 3
-022-023: b 00000001                                                         # bool
-023-027: x f0000000                                                         # page start 240
+026-027: b 00000001                                                         # bool
+027-031: x f4000000                                                         # page start 244
 # column 4
-027-028: b 00000110                                                         # bytes
-028-032: x 00010000                                                         # page start 256
+031-032: b 00000110                                                         # bytes
+032-036: x 08010000                                                         # page start 264
 # column 5
-032-033: b 00000001                                                         # bool
-033-037: x 7b020000                                                         # page start 635
+036-037: b 00000001                                                         # bool
+037-041: x 83020000                                                         # page start 643
 # data for column 0
 # PrefixBytes
-037-038: x 04                                                               # bundleSize: 16
+041-042: x 04                                                               # bundleSize: 16
 # Offsets table
-038-039: x 02                                                               # delta encoding: delta8
-039-043: x 00000000                                                         # 32-bit constant: 0
-043-044: x 0c                                                               # data[0] = 12 [78 overall]
-044-045: x 0c                                                               # data[1] = 12 [78 overall]
-045-046: x 11                                                               # data[2] = 17 [83 overall]
-046-047: x 11                                                               # data[3] = 17 [83 overall]
-047-048: x 11                                                               # data[4] = 17 [83 overall]
-048-049: x 11                                                               # data[5] = 17 [83 overall]
-049-050: x 17                                                               # data[6] = 23 [89 overall]
-050-051: x 17                                                               # data[7] = 23 [89 overall]
-051-052: x 17                                                               # data[8] = 23 [89 overall]
-052-053: x 17                                                               # data[9] = 23 [89 overall]
-053-054: x 17                                                               # data[10] = 23 [89 overall]
-054-055: x 17                                                               # data[11] = 23 [89 overall]
-055-056: x 1e                                                               # data[12] = 30 [96 overall]
-056-057: x 1e                                                               # data[13] = 30 [96 overall]
-057-058: x 1e                                                               # data[14] = 30 [96 overall]
-058-059: x 1e                                                               # data[15] = 30 [96 overall]
-059-060: x 1e                                                               # data[16] = 30 [96 overall]
-060-061: x 1e                                                               # data[17] = 30 [96 overall]
-061-062: x 1e                                                               # data[18] = 30 [96 overall]
-062-063: x 23                                                               # data[19] = 35 [101 overall]
-063-064: x 27                                                               # data[20] = 39 [105 overall]
-064-065: x 27                                                               # data[21] = 39 [105 overall]
-065-066: x 2c                                                               # data[22] = 44 [110 overall]
+042-043: x 02                                                               # delta encoding: delta8
+043-047: x 00000000                                                         # 32-bit constant: 0
+047-048: x 0c                                                               # data[0] = 12 [82 overall]
+048-049: x 0c                                                               # data[1] = 12 [82 overall]
+049-050: x 11                                                               # data[2] = 17 [87 overall]
+050-051: x 11                                                               # data[3] = 17 [87 overall]
+051-052: x 11                                                               # data[4] = 17 [87 overall]
+052-053: x 11                                                               # data[5] = 17 [87 overall]
+053-054: x 17                                                               # data[6] = 23 [93 overall]
+054-055: x 17                                                               # data[7] = 23 [93 overall]
+055-056: x 17                                                               # data[8] = 23 [93 overall]
+056-057: x 17                                                               # data[9] = 23 [93 overall]
+057-058: x 17                                                               # data[10] = 23 [93 overall]
+058-059: x 17                                                               # data[11] = 23 [93 overall]
+059-060: x 1e                                                               # data[12] = 30 [100 overall]
+060-061: x 1e                                                               # data[13] = 30 [100 overall]
+061-062: x 1e                                                               # data[14] = 30 [100 overall]
+062-063: x 1e                                                               # data[15] = 30 [100 overall]
+063-064: x 1e                                                               # data[16] = 30 [100 overall]
+064-065: x 1e                                                               # data[17] = 30 [100 overall]
+065-066: x 1e                                                               # data[18] = 30 [100 overall]
+066-067: x 23                                                               # data[19] = 35 [105 overall]
+067-068: x 27                                                               # data[20] = 39 [109 overall]
+068-069: x 27                                                               # data[21] = 39 [109 overall]
+069-070: x 2c                                                               # data[22] = 44 [114 overall]
 # Data
-066-076: x 626c6f636b7072656669                                             # data[00]: blockprefix_ (block prefix)
-076-078: x 785f                                                             # (continued...)
-078-078: x                                                                  # data[01]: ............ (bundle prefix)
-078-083: x 6170706c65                                                       # data[02]: ............apple
-083-083: x                                                                  # data[03]: .................
-083-083: x                                                                  # data[04]: .................
-083-083: x                                                                  # data[05]: .................
-083-089: x 62616e616e61                                                     # data[06]: ............banana
-089-089: x                                                                  # data[07]: ..................
-089-089: x                                                                  # data[08]: ..................
-089-089: x                                                                  # data[09]: ..................
-089-089: x                                                                  # data[10]: ..................
-089-089: x                                                                  # data[11]: ..................
-089-096: x 636f636f6e7574                                                   # data[12]: ............coconut
-096-096: x                                                                  # data[13]: ...................
-096-096: x                                                                  # data[14]: ...................
-096-096: x                                                                  # data[15]: ...................
-096-096: x                                                                  # data[16]: ...................
-096-096: x                                                                  # data[17]: ...................
-096-096: x                                                                  # data[18]: ............ (bundle prefix)
-096-101: x 6775617661                                                       # data[19]: ............guava
-101-105: x 6b697769                                                         # data[20]: ............kiwi
-105-105: x                                                                  # data[21]: ................
-105-110: x 6c656d6f6e                                                       # data[22]: ............lemon
+070-080: x 626c6f636b7072656669                                             # data[00]: blockprefix_ (block prefix)
+080-082: x 785f                                                             # (continued...)
+082-082: x                                                                  # data[01]: ............ (bundle prefix)
+082-087: x 6170706c65                                                       # data[02]: ............apple
+087-087: x                                                                  # data[03]: .................
+087-087: x                                                                  # data[04]: .................
+087-087: x                                                                  # data[05]: .................
+087-093: x 62616e616e61                                                     # data[06]: ............banana
+093-093: x                                                                  # data[07]: ..................
+093-093: x                                                                  # data[08]: ..................
+093-093: x                                                                  # data[09]: ..................
+093-093: x                                                                  # data[10]: ..................
+093-093: x                                                                  # data[11]: ..................
+093-100: x 636f636f6e7574                                                   # data[12]: ............coconut
+100-100: x                                                                  # data[13]: ...................
+100-100: x                                                                  # data[14]: ...................
+100-100: x                                                                  # data[15]: ...................
+100-100: x                                                                  # data[16]: ...................
+100-100: x                                                                  # data[17]: ...................
+100-100: x                                                                  # data[18]: ............ (bundle prefix)
+100-105: x 6775617661                                                       # data[19]: ............guava
+105-109: x 6b697769                                                         # data[20]: ............kiwi
+109-109: x                                                                  # data[21]: ................
+109-114: x 6c656d6f6e                                                       # data[22]: ............lemon
 # data for column 1
 # rawbytes
 # offsets table
-110-111: x 02                                                               # delta encoding: delta8
-111-115: x 00000000                                                         # 32-bit constant: 0
-115-116: x 00                                                               # data[0] = 0 [136 overall]
-116-117: x 03                                                               # data[1] = 3 [139 overall]
-117-118: x 06                                                               # data[2] = 6 [142 overall]
-118-119: x 09                                                               # data[3] = 9 [145 overall]
-119-120: x 0c                                                               # data[4] = 12 [148 overall]
-120-121: x 0f                                                               # data[5] = 15 [151 overall]
-121-122: x 12                                                               # data[6] = 18 [154 overall]
-122-123: x 15                                                               # data[7] = 21 [157 overall]
-123-124: x 18                                                               # data[8] = 24 [160 overall]
-124-125: x 1a                                                               # data[9] = 26 [162 overall]
-125-126: x 1c                                                               # data[10] = 28 [164 overall]
-126-127: x 1c                                                               # data[11] = 28 [164 overall]
-127-128: x 1f                                                               # data[12] = 31 [167 overall]
-128-129: x 22                                                               # data[13] = 34 [170 overall]
-129-130: x 25                                                               # data[14] = 37 [173 overall]
-130-131: x 28                                                               # data[15] = 40 [176 overall]
-131-132: x 2a                                                               # data[16] = 42 [178 overall]
-132-133: x 2d                                                               # data[17] = 45 [181 overall]
-133-134: x 30                                                               # data[18] = 48 [184 overall]
-134-135: x 33                                                               # data[19] = 51 [187 overall]
-135-136: x 36                                                               # data[20] = 54 [190 overall]
+114-115: x 02                                                               # delta encoding: delta8
+115-119: x 00000000                                                         # 32-bit constant: 0
+119-120: x 00                                                               # data[0] = 0 [140 overall]
+120-121: x 03                                                               # data[1] = 3 [143 overall]
+121-122: x 06                                                               # data[2] = 6 [146 overall]
+122-123: x 09                                                               # data[3] = 9 [149 overall]
+123-124: x 0c                                                               # data[4] = 12 [152 overall]
+124-125: x 0f                                                               # data[5] = 15 [155 overall]
+125-126: x 12                                                               # data[6] = 18 [158 overall]
+126-127: x 15                                                               # data[7] = 21 [161 overall]
+127-128: x 18                                                               # data[8] = 24 [164 overall]
+128-129: x 1a                                                               # data[9] = 26 [166 overall]
+129-130: x 1c                                                               # data[10] = 28 [168 overall]
+130-131: x 1c                                                               # data[11] = 28 [168 overall]
+131-132: x 1f                                                               # data[12] = 31 [171 overall]
+132-133: x 22                                                               # data[13] = 34 [174 overall]
+133-134: x 25                                                               # data[14] = 37 [177 overall]
+134-135: x 28                                                               # data[15] = 40 [180 overall]
+135-136: x 2a                                                               # data[16] = 42 [182 overall]
+136-137: x 2d                                                               # data[17] = 45 [185 overall]
+137-138: x 30                                                               # data[18] = 48 [188 overall]
+138-139: x 33                                                               # data[19] = 51 [191 overall]
+139-140: x 36                                                               # data[20] = 54 [194 overall]
 # data
-136-139: x 403938                                                           # data[0]: @98
-139-142: x 403532                                                           # data[1]: @52
-142-145: x 403233                                                           # data[2]: @23
-145-148: x 403131                                                           # data[3]: @11
-148-151: x 403934                                                           # data[4]: @94
-151-154: x 403933                                                           # data[5]: @93
-154-157: x 403933                                                           # data[6]: @93
-157-160: x 403732                                                           # data[7]: @72
-160-162: x 4039                                                             # data[8]: @9
-162-164: x 4031                                                             # data[9]: @1
-164-164: x                                                                  # data[10]:
-164-167: x 403932                                                           # data[11]: @92
-167-170: x 403335                                                           # data[12]: @35
-170-173: x 403232                                                           # data[13]: @22
-173-176: x 403231                                                           # data[14]: @21
-176-178: x 4031                                                             # data[15]: @1
-178-181: x 403939                                                           # data[16]: @99
-181-184: x 403939                                                           # data[17]: @99
-184-187: x 403938                                                           # data[18]: @98
-187-190: x 403932                                                           # data[19]: @92
+140-143: x 403938                                                           # data[0]: @98
+143-146: x 403532                                                           # data[1]: @52
+146-149: x 403233                                                           # data[2]: @23
+149-152: x 403131                                                           # data[3]: @11
+152-155: x 403934                                                           # data[4]: @94
+155-158: x 403933                                                           # data[5]: @93
+158-161: x 403933                                                           # data[6]: @93
+161-164: x 403732                                                           # data[7]: @72
+164-166: x 4039                                                             # data[8]: @9
+166-168: x 4031                                                             # data[9]: @1
+168-168: x                                                                  # data[10]:
+168-171: x 403932                                                           # data[11]: @92
+171-174: x 403335                                                           # data[12]: @35
+174-177: x 403232                                                           # data[13]: @22
+177-180: x 403231                                                           # data[14]: @21
+180-182: x 4031                                                             # data[15]: @1
+182-185: x 403939                                                           # data[16]: @99
+185-188: x 403939                                                           # data[17]: @99
+188-191: x 403938                                                           # data[18]: @98
+191-194: x 403932                                                           # data[19]: @92
 # data for column 2
-190-191: x 03                                                               # delta encoding: delta16
-191-199: x 0000000000000000                                                 # 64-bit constant: 0
+194-195: x 03                                                               # delta encoding: delta16
+195-203: x 0000000000000000                                                 # 64-bit constant: 0
 # padding
-199-200: x 00                                                               # aligning to 16-bit boundary
-200-202: x 0100                                                             # data[0] = 1
-202-204: x 0100                                                             # data[1] = 1
-204-206: x 0100                                                             # data[2] = 1
-206-208: x 1200                                                             # data[3] = 18
-208-210: x 12f5                                                             # data[4] = 62738
-210-212: x 00f4                                                             # data[5] = 62464
-212-214: x 12dd                                                             # data[6] = 56594
-214-216: x 1200                                                             # data[7] = 18
-216-218: x 0100                                                             # data[8] = 1
-218-220: x 0100                                                             # data[9] = 1
-220-222: x 0100                                                             # data[10] = 1
-222-224: x 0100                                                             # data[11] = 1
-224-226: x 0100                                                             # data[12] = 1
-226-228: x 0100                                                             # data[13] = 1
-228-230: x 0100                                                             # data[14] = 1
-230-232: x 0100                                                             # data[15] = 1
-232-234: x 0100                                                             # data[16] = 1
-234-236: x 0100                                                             # data[17] = 1
-236-238: x 0100                                                             # data[18] = 1
-238-240: x 0000                                                             # data[19] = 0
+203-204: x 00                                                               # aligning to 16-bit boundary
+204-206: x 0100                                                             # data[0] = 1
+206-208: x 0100                                                             # data[1] = 1
+208-210: x 0100                                                             # data[2] = 1
+210-212: x 1200                                                             # data[3] = 18
+212-214: x 12f5                                                             # data[4] = 62738
+214-216: x 00f4                                                             # data[5] = 62464
+216-218: x 12dd                                                             # data[6] = 56594
+218-220: x 1200                                                             # data[7] = 18
+220-222: x 0100                                                             # data[8] = 1
+222-224: x 0100                                                             # data[9] = 1
+224-226: x 0100                                                             # data[10] = 1
+226-228: x 0100                                                             # data[11] = 1
+228-230: x 0100                                                             # data[12] = 1
+230-232: x 0100                                                             # data[13] = 1
+232-234: x 0100                                                             # data[14] = 1
+234-236: x 0100                                                             # data[15] = 1
+236-238: x 0100                                                             # data[16] = 1
+238-240: x 0100                                                             # data[17] = 1
+240-242: x 0100                                                             # data[18] = 1
+242-244: x 0000                                                             # data[19] = 0
 # data for column 3
-240-248: b 0001000100000100000010110000000000000000000000000000000000000000 # bitmap word 0
-248-256: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+244-248: x 00000000                                                         # padding to align to 64-bit boundary
+248-256: b 0001000100000100000010110000000000000000000000000000000000000000 # bitmap word 0
+256-264: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
 # rawbytes
 # offsets table
-256-257: x 03                                                               # delta encoding: delta16
-257-261: x 00000000                                                         # 32-bit constant: 0
+264-265: x 03                                                               # delta encoding: delta16
+265-269: x 00000000                                                         # 32-bit constant: 0
 # padding
-261-262: x 00                                                               # aligning to 16-bit boundary
-262-264: x 0000                                                             # data[0] = 0 [304 overall]
-264-266: x 0700                                                             # data[1] = 7 [311 overall]
-266-268: x 1b00                                                             # data[2] = 27 [331 overall]
-268-270: x 2f00                                                             # data[3] = 47 [351 overall]
-270-272: x 4300                                                             # data[4] = 67 [371 overall]
-272-274: x 4b00                                                             # data[5] = 75 [379 overall]
-274-276: x 4b00                                                             # data[6] = 75 [379 overall]
-276-278: x 6000                                                             # data[7] = 96 [400 overall]
-278-280: x 7500                                                             # data[8] = 117 [421 overall]
-280-282: x 8900                                                             # data[9] = 137 [441 overall]
-282-284: x 9d00                                                             # data[10] = 157 [461 overall]
-284-286: x a400                                                             # data[11] = 164 [468 overall]
-286-288: x ba00                                                             # data[12] = 186 [490 overall]
-288-290: x d000                                                             # data[13] = 208 [512 overall]
-290-292: x e600                                                             # data[14] = 230 [534 overall]
-292-294: x fc00                                                             # data[15] = 252 [556 overall]
-294-296: x 1101                                                             # data[16] = 273 [577 overall]
-296-298: x 2501                                                             # data[17] = 293 [597 overall]
-298-300: x 3801                                                             # data[18] = 312 [616 overall]
-300-302: x 4b01                                                             # data[19] = 331 [635 overall]
-302-304: x 4b01                                                             # data[20] = 331 [635 overall]
+269-270: x 00                                                               # aligning to 16-bit boundary
+270-272: x 0000                                                             # data[0] = 0 [312 overall]
+272-274: x 0700                                                             # data[1] = 7 [319 overall]
+274-276: x 1b00                                                             # data[2] = 27 [339 overall]
+276-278: x 2f00                                                             # data[3] = 47 [359 overall]
+278-280: x 4300                                                             # data[4] = 67 [379 overall]
+280-282: x 4b00                                                             # data[5] = 75 [387 overall]
+282-284: x 4b00                                                             # data[6] = 75 [387 overall]
+284-286: x 6000                                                             # data[7] = 96 [408 overall]
+286-288: x 7500                                                             # data[8] = 117 [429 overall]
+288-290: x 8900                                                             # data[9] = 137 [449 overall]
+290-292: x 9d00                                                             # data[10] = 157 [469 overall]
+292-294: x a400                                                             # data[11] = 164 [476 overall]
+294-296: x ba00                                                             # data[12] = 186 [498 overall]
+296-298: x d000                                                             # data[13] = 208 [520 overall]
+298-300: x e600                                                             # data[14] = 230 [542 overall]
+300-302: x fc00                                                             # data[15] = 252 [564 overall]
+302-304: x 1101                                                             # data[16] = 273 [585 overall]
+304-306: x 2501                                                             # data[17] = 293 [605 overall]
+306-308: x 3801                                                             # data[18] = 312 [624 overall]
+308-310: x 4b01                                                             # data[19] = 331 [643 overall]
+310-312: x 4b01                                                             # data[20] = 331 [643 overall]
 # data
-304-311: x 6170706c653938                                                   # data[0]: apple98
-311-321: x a076616c756548616e64                                             # data[1]: "\xa0valueHandle-apple52"
-321-331: x 6c652d6170706c653532                                             # (continued...)
-331-341: x a076616c756548616e64                                             # data[2]: "\xa0valueHandle-apple23"
-341-351: x 6c652d6170706c653233                                             # (continued...)
-351-361: x a076616c756548616e64                                             # data[3]: "\xa0valueHandle-apple11"
-361-371: x 6c652d6170706c653131                                             # (continued...)
-371-379: x 62616e616e613934                                                 # data[4]: banana94
-379-379: x                                                                  # data[5]:
-379-389: x a076616c756548616e64                                             # data[6]: "\xa0valueHandle-banana93"
-389-399: x 6c652d62616e616e6139                                             # (continued...)
-399-400: x 33                                                               # (continued...)
-400-410: x a076616c756548616e64                                             # data[7]: "\xa0valueHandle-banana72"
-410-420: x 6c652d62616e616e6137                                             # (continued...)
-420-421: x 32                                                               # (continued...)
-421-431: x a076616c756548616e64                                             # data[8]: "\xa0valueHandle-banana9"
-431-441: x 6c652d62616e616e6139                                             # (continued...)
-441-451: x a076616c756548616e64                                             # data[9]: "\xa0valueHandle-banana1"
-451-461: x 6c652d62616e616e6131                                             # (continued...)
-461-468: x 636f636f6e7574                                                   # data[10]: coconut
-468-478: x a076616c756548616e64                                             # data[11]: "\xa0valueHandle-coconut92"
-478-488: x 6c652d636f636f6e7574                                             # (continued...)
-488-490: x 3932                                                             # (continued...)
-490-500: x a076616c756548616e64                                             # data[12]: "\xa0valueHandle-coconut35"
-500-510: x 6c652d636f636f6e7574                                             # (continued...)
-510-512: x 3335                                                             # (continued...)
-512-522: x a076616c756548616e64                                             # data[13]: "\xa0valueHandle-coconut22"
-522-532: x 6c652d636f636f6e7574                                             # (continued...)
-532-534: x 3232                                                             # (continued...)
-534-544: x a076616c756548616e64                                             # data[14]: "\xa0valueHandle-coconut21"
-544-554: x 6c652d636f636f6e7574                                             # (continued...)
-554-556: x 3231                                                             # (continued...)
-556-566: x a076616c756548616e64                                             # data[15]: "\xa0valueHandle-coconut1"
-566-576: x 6c652d636f636f6e7574                                             # (continued...)
-576-577: x 31                                                               # (continued...)
-577-587: x 8076616c756548616e64                                             # data[16]: "\x80valueHandle-guava99"
-587-597: x 6c652d67756176613939                                             # (continued...)
-597-607: x 8076616c756548616e64                                             # data[17]: "\x80valueHandle-kiwi99"
-607-616: x 6c652d6b6977693939                                               # (continued...)
-616-626: x a076616c756548616e64                                             # data[18]: "\xa0valueHandle-kiwi98"
-626-635: x 6c652d6b6977693938                                               # (continued...)
-635-635: x                                                                  # data[19]:
+312-319: x 6170706c653938                                                   # data[0]: apple98
+319-329: x a076616c756548616e64                                             # data[1]: "\xa0valueHandle-apple52"
+329-339: x 6c652d6170706c653532                                             # (continued...)
+339-349: x a076616c756548616e64                                             # data[2]: "\xa0valueHandle-apple23"
+349-359: x 6c652d6170706c653233                                             # (continued...)
+359-369: x a076616c756548616e64                                             # data[3]: "\xa0valueHandle-apple11"
+369-379: x 6c652d6170706c653131                                             # (continued...)
+379-387: x 62616e616e613934                                                 # data[4]: banana94
+387-387: x                                                                  # data[5]:
+387-397: x a076616c756548616e64                                             # data[6]: "\xa0valueHandle-banana93"
+397-407: x 6c652d62616e616e6139                                             # (continued...)
+407-408: x 33                                                               # (continued...)
+408-418: x a076616c756548616e64                                             # data[7]: "\xa0valueHandle-banana72"
+418-428: x 6c652d62616e616e6137                                             # (continued...)
+428-429: x 32                                                               # (continued...)
+429-439: x a076616c756548616e64                                             # data[8]: "\xa0valueHandle-banana9"
+439-449: x 6c652d62616e616e6139                                             # (continued...)
+449-459: x a076616c756548616e64                                             # data[9]: "\xa0valueHandle-banana1"
+459-469: x 6c652d62616e616e6131                                             # (continued...)
+469-476: x 636f636f6e7574                                                   # data[10]: coconut
+476-486: x a076616c756548616e64                                             # data[11]: "\xa0valueHandle-coconut92"
+486-496: x 6c652d636f636f6e7574                                             # (continued...)
+496-498: x 3932                                                             # (continued...)
+498-508: x a076616c756548616e64                                             # data[12]: "\xa0valueHandle-coconut35"
+508-518: x 6c652d636f636f6e7574                                             # (continued...)
+518-520: x 3335                                                             # (continued...)
+520-530: x a076616c756548616e64                                             # data[13]: "\xa0valueHandle-coconut22"
+530-540: x 6c652d636f636f6e7574                                             # (continued...)
+540-542: x 3232                                                             # (continued...)
+542-552: x a076616c756548616e64                                             # data[14]: "\xa0valueHandle-coconut21"
+552-562: x 6c652d636f636f6e7574                                             # (continued...)
+562-564: x 3231                                                             # (continued...)
+564-574: x a076616c756548616e64                                             # data[15]: "\xa0valueHandle-coconut1"
+574-584: x 6c652d636f636f6e7574                                             # (continued...)
+584-585: x 31                                                               # (continued...)
+585-595: x 8076616c756548616e64                                             # data[16]: "\x80valueHandle-guava99"
+595-605: x 6c652d67756176613939                                             # (continued...)
+605-615: x 8076616c756548616e64                                             # data[17]: "\x80valueHandle-kiwi99"
+615-624: x 6c652d6b6977693939                                               # (continued...)
+624-634: x a076616c756548616e64                                             # data[18]: "\xa0valueHandle-kiwi98"
+634-643: x 6c652d6b6977693938                                               # (continued...)
+643-643: x                                                                  # data[19]:
 # data for column 5
-635-640: x 0000000000                                                       # padding to align to 64-bit boundary
-640-648: b 1100111011111011000001110000000000000000000000000000000000000000 # bitmap word 0
-648-656: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+643-648: x 0000000000                                                       # padding to align to 64-bit boundary
+648-656: b 1100111011111011000001110000000000000000000000000000000000000000 # bitmap word 0
+656-664: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 
 # Scan across the block using next.
 iter
