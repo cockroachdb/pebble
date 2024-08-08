@@ -583,7 +583,7 @@ L3:
 # Test a scenario where we the last point key in an sstable has a
 # seqnum of 0, but there is another range tombstone later in the
 # compaction. This scenario was previously triggering an assertion due
-# to the rangedel.Fragmenter being finished prematurely.
+# to the keyspan.Fragmenter being finished prematurely.
 
 define target-file-sizes=(1, 1, 1)
 L1
