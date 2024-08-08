@@ -143,6 +143,13 @@ type UnsafeBuf struct {
 	cap int
 }
 
+// Alloc allocates a buffer of size n, without zeroing its contents or copying
+// previous buffer contents.
+func (b *UnsafeBuf) Alloc(n int) {
+	b.ptr = mallocgc(uintptr(n), nil, false)
+	b.cap = n
+}
+
 // UnsafeSlice returns the current contents of the buf.
 func (b *UnsafeBuf) UnsafeSlice() []byte {
 	return unsafe.Slice((*byte)(b.ptr), b.len)
