@@ -76,6 +76,7 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 	v.Properties.NumDeletions = scale(reader.Properties.NumDeletions)
 	v.Properties.NumRangeDeletions = scale(reader.Properties.NumRangeDeletions)
 	v.Properties.NumRangeKeyDels = scale(reader.Properties.NumRangeKeyDels)
+	v.Properties.TombstoneDenseBlocksRatio = reader.Properties.TombstoneDenseBlocksRatio
 
 	// Note that we rely on NumRangeKeySets for correctness. If the sstable may
 	// contain range keys, then NumRangeKeySets must be > 0. ceilDiv works because

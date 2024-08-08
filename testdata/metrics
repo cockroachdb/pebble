@@ -15,7 +15,7 @@ total |  2.8K  2.7KB     0B    2.8K |     - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8K
 WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
 Flushes: 8
 Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
-             default: 27  delete: 28  elision: 29  move: 30  read: 31  rewrite: 32  copy: 33  multi-level: 34
+             default: 27  delete: 28  elision: 29  move: 30  read: 31  tombstone-density: 16  rewrite: 32  copy: 33  multi-level: 34
 MemTables: 12 (11B)  zombie: 14 (13B)
 Zombie tables: 16 (15B, local: 30B)
 Backing tables: 1 (2.0MB)
@@ -67,7 +67,7 @@ total |     1   589B     0B       0 |     - |   28B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 17B  written: 28B (65% overhead)
 Flushes: 1
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -75,7 +75,7 @@ Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 1
 Block cache: 3 entries (484B)  hit rate: 0.0%
-Table cache: 1 entries (736B)  hit rate: 0.0%
+Table cache: 1 entries (744B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -84,7 +84,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 
 disk-usage
 ----
-1.9KB
+2.0KB
 
 batch
 set b 2
@@ -123,7 +123,7 @@ total |     1   595B     0B       0 |     - |   56B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.2KB, local: 1.2KB)
 Backing tables: 0 (0B)
@@ -131,7 +131,7 @@ Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 5 entries (946B)  hit rate: 33.3%
-Table cache: 2 entries (1.4KB)  hit rate: 66.7%
+Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -142,7 +142,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.2KB
+3.3KB
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -166,7 +166,7 @@ total |     1   595B     0B       0 |     - |   56B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.2KB, local: 1.2KB)
 Backing tables: 0 (0B)
@@ -174,7 +174,7 @@ Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 5 entries (946B)  hit rate: 33.3%
-Table cache: 2 entries (1.4KB)  hit rate: 66.7%
+Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -206,7 +206,7 @@ total |     1   595B     0B       0 |     - |   56B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (589B, local: 589B)
 Backing tables: 0 (0B)
@@ -214,7 +214,7 @@ Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 3 entries (484B)  hit rate: 33.3%
-Table cache: 1 entries (736B)  hit rate: 66.7%
+Table cache: 1 entries (744B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -226,7 +226,7 @@ Iter category stats:
 
 disk-usage
 ----
-2.6KB
+2.7KB
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -250,7 +250,7 @@ total |     1   595B     0B       0 |     - |   56B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -271,7 +271,7 @@ Iter category stats:
 
 disk-usage
 ----
-2.0KB
+2.1KB
 
 additional-metrics
 ----
@@ -321,7 +321,7 @@ total |     4  2.6KB    38B       0 |     - |  149B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 116B  written: 149B (28% overhead)
 Flushes: 3
 Compactions: 1  estimated debt: 2.6KB  in progress: 0 (0B)
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -376,7 +376,7 @@ total |     3  2.0KB    41B       0 |     - |  149B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 116B  written: 149B (28% overhead)
 Flushes: 3
 Compactions: 2  estimated debt: 0B  in progress: 0 (0B)
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -480,7 +480,7 @@ total |     7  4.3KB    41B       0 |     - | 1.9KB |     3  1.7KB |     0     0
 WAL: 1 files (0B)  in: 176B  written: 187B (6% overhead)
 Flushes: 8
 Compactions: 2  estimated debt: 4.3KB  in progress: 0 (0B)
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -488,7 +488,7 @@ Virtual tables: 0 (0B)
 Local tables size: 4.3KB
 Compression types: snappy: 7
 Block cache: 12 entries (1.9KB)  hit rate: 9.1%
-Table cache: 1 entries (736B)  hit rate: 53.8%
+Table cache: 1 entries (744B)  hit rate: 53.8%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -543,7 +543,7 @@ total |    10  6.1KB    41B       0 |     - | 2.0KB |     3  1.7KB |     0     0
 WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
 Compactions: 2  estimated debt: 6.1KB  in progress: 0 (0B)
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -551,7 +551,7 @@ Virtual tables: 0 (0B)
 Local tables size: 6.1KB
 Compression types: snappy: 10
 Block cache: 12 entries (1.9KB)  hit rate: 9.1%
-Table cache: 1 entries (736B)  hit rate: 53.8%
+Table cache: 1 entries (744B)  hit rate: 53.8%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -620,7 +620,7 @@ total |    11  5.6KB    41B       2 |     - | 2.5KB |     4  2.3KB |     0     0
 WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
 Compactions: 2  estimated debt: 5.6KB  in progress: 0 (0B)
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 2 (1.2KB)
@@ -722,7 +722,7 @@ total |     6  3.8KB    41B       0 |     - | 3.1KB |     5  2.9KB |     0     0
 WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
 Compactions: 3  estimated debt: 0B  in progress: 0 (0B)
-             default: 3  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 3  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -776,7 +776,7 @@ total |     1   604B     0B       0 |     - |   38B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -814,7 +814,7 @@ total |     1   604B     0B       0 |     - |   38B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 1  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 1  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -822,7 +822,7 @@ Virtual tables: 0 (0B)
 Local tables size: 0B
 Compression types: snappy: 1
 Block cache: 1 entries (440B)  hit rate: 0.0%
-Table cache: 1 entries (736B)  hit rate: 0.0%
+Table cache: 1 entries (744B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -861,7 +861,7 @@ total |     2  1.2KB     0B       0 |     - |  627B |     1   589B |     0     0
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
 Compactions: 1  estimated debt: 1.2KB  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 1  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 1  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -869,7 +869,7 @@ Virtual tables: 0 (0B)
 Local tables size: 0B
 Compression types: snappy: 2
 Block cache: 6 entries (996B)  hit rate: 0.0%
-Table cache: 1 entries (736B)  hit rate: 50.0%
+Table cache: 1 entries (744B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -909,7 +909,7 @@ total |     3  1.7KB     0B       0 |     - |  655B |     1   589B |     0     0
 WAL: 1 files (0B)  in: 44B  written: 66B (50% overhead)
 Flushes: 2
 Compactions: 1  estimated debt: 1.7KB  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 1  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 1  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -917,7 +917,7 @@ Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 3
 Block cache: 6 entries (996B)  hit rate: 0.0%
-Table cache: 1 entries (736B)  hit rate: 50.0%
+Table cache: 1 entries (744B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -948,7 +948,7 @@ total |     3  1.7KB     0B       0 |     - |    0B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 0  estimated debt: 1.7KB  in progress: 0 (0B)
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -986,7 +986,7 @@ total |     1   603B     0B       0 |     - |    0B |     0     0B |     0     0
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 1  estimated debt: 0B  in progress: 0 (0B)
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)

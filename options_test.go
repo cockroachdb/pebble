@@ -101,6 +101,9 @@ func TestOptionsString(t *testing.T) {
   multilevel_compaction_heuristic=wamp(0.00, false)
   read_compaction_rate=16000
   read_sampling_multiplier=16
+  num_deletions_threshold=100
+  deletion_size_ratio_threshold=0.500000
+  min_tombstone_dense_ratio=0.050000
   strict_wal_tail=true
   table_cache_shards=8
   validate_on_ingest=false
@@ -285,6 +288,9 @@ func TestOptionsParse(t *testing.T) {
 			}
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400
+			opts.Experimental.NumDeletionsThreshold = 500
+			opts.Experimental.DeletionSizeRatioThreshold = 0.7
+			opts.Experimental.MinTombstoneDenseRatio = 0.2
 			opts.Experimental.TableCacheShards = 500
 			opts.Experimental.MaxWriterConcurrency = 1
 			opts.Experimental.ForceWriterParallelism = true

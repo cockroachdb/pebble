@@ -97,15 +97,16 @@ func (pra PaceByFixedReadAmp) pace(r *Runner, _ workloadStep) time.Duration {
 // Metrics holds the various statistics on a replay run and its performance.
 type Metrics struct {
 	CompactionCounts struct {
-		Total       int64
-		Default     int64
-		DeleteOnly  int64
-		ElisionOnly int64
-		Move        int64
-		Read        int64
-		Rewrite     int64
-		Copy        int64
-		MultiLevel  int64
+		Total            int64
+		Default          int64
+		DeleteOnly       int64
+		ElisionOnly      int64
+		Move             int64
+		Read             int64
+		TombstoneDensity int64
+		Rewrite          int64
+		Copy             int64
+		MultiLevel       int64
 	}
 	EstimatedDebt SampledMetric
 	Final         *pebble.Metrics
@@ -556,6 +557,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	m.CompactionCounts.ElisionOnly = pm.Compact.ElisionOnlyCount
 	m.CompactionCounts.Move = pm.Compact.MoveCount
 	m.CompactionCounts.Read = pm.Compact.ReadCount
+	m.CompactionCounts.TombstoneDensity = pm.Compact.TombstoneDensityCount
 	m.CompactionCounts.Rewrite = pm.Compact.RewriteCount
 	m.CompactionCounts.Copy = pm.Compact.CopyCount
 	m.CompactionCounts.MultiLevel = pm.Compact.MultiLevelCount

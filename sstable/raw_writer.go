@@ -206,6 +206,11 @@ type RawWriter struct {
 	valueBlockWriter *valueBlockWriter
 
 	allocatorSizeClasses []int
+
+	numDeletionsThreshold      int
+	deletionSizeRatioThreshold float32
+	numTombstoneDenseBlocks    int
+	numDataBlocks              int
 }
 
 type pointKeyInfo struct {
@@ -591,6 +596,15 @@ type dataBlockBuf struct {
 
 	// sepScratch is reusable scratch space for computing separator keys.
 	sepScratch []byte
+
+	// numDeletions stores the count of point tombstones in this data block.
+	// It's used to determine if this data block is considered tombstone-dense
+	// for the purposes of compaction.
+	numDeletions int
+	// deletionSize stores the raw size of point tombstones in this data block.
+	// It's used to determine if this data block is considered tombstone-dense
+	// for the purposes of compaction.
+	deletionSize int
 }
 
 func (d *dataBlockBuf) clear() {
@@ -928,7 +942,9 @@ func (w *RawWriter) addPoint(key InternalKey, value []byte, forceObsolete bool) 
 	switch key.Kind() {
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 		w.props.NumDeletions++
+		w.dataBlockBuf.numDeletions++
 		w.props.RawPointTombstoneKeySize += uint64(len(key.UserKey))
+		w.dataBlockBuf.deletionSize += len(key.UserKey)
 	case InternalKeyKindDeleteSized:
 		var size uint64
 		if len(value) > 0 {
@@ -942,7 +958,9 @@ func (w *RawWriter) addPoint(key InternalKey, value []byte, forceObsolete bool) 
 		}
 		w.props.NumDeletions++
 		w.props.NumSizedDeletions++
+		w.dataBlockBuf.numDeletions++
 		w.props.RawPointTombstoneKeySize += uint64(len(key.UserKey))
+		w.dataBlockBuf.deletionSize += len(key.UserKey)
 		w.props.RawPointTombstoneValueSize += size
 	case InternalKeyKindMerge:
 		w.props.NumMergeOperands++
@@ -1134,6 +1152,21 @@ func (w *RawWriter) maybeAddToFilter(key []byte) {
 	}
 }
 
+// incrementTombstoneDenseBlocks increments the number of tombstone dense
+// blocks if the number of deletions in the data block exceeds a threshold or
+// the deletion size exceeds a threshold. It should be called after the
+// data block has been finished.
+// Invariant: w.dataBlockBuf.uncompressed must already be populated.
+func (w *RawWriter) incrementTombstoneDenseBlocks() {
+	w.numDataBlocks++
+	minSize := w.deletionSizeRatioThreshold * float32(len(w.dataBlockBuf.uncompressed))
+	if w.dataBlockBuf.numDeletions > w.numDeletionsThreshold || float32(w.dataBlockBuf.deletionSize) > minSize {
+		w.numTombstoneDenseBlocks++
+	}
+	w.dataBlockBuf.numDeletions = 0
+	w.dataBlockBuf.deletionSize = 0
+}
+
 func (w *RawWriter) flush(key InternalKey) error {
 	// We're finishing a data block.
 	err := w.finishDataBlockProps(w.dataBlockBuf)
@@ -1141,6 +1174,7 @@ func (w *RawWriter) flush(key InternalKey) error {
 		return err
 	}
 	w.dataBlockBuf.finish()
+	w.incrementTombstoneDenseBlocks()
 	w.dataBlockBuf.compressAndChecksum(w.compression)
 	// Since dataBlockEstimates.addInflightDataBlock was never called, the
 	// inflightSize is set to 0.
@@ -1695,7 +1729,9 @@ func (w *RawWriter) Close() (err error) {
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
 	if w.dataBlockBuf.dataBlock.EntryCount() > 0 || w.indexBlock.block.EntryCount() == 0 {
-		bh, err := w.layout.WriteDataBlock(w.dataBlockBuf.dataBlock.Finish(), &w.dataBlockBuf.blockBuf)
+		w.dataBlockBuf.finish()
+		w.incrementTombstoneDenseBlocks()
+		bh, err := w.layout.WriteDataBlock(w.dataBlockBuf.uncompressed, &w.dataBlockBuf.blockBuf)
 		if err != nil {
 			return err
 		}
@@ -1709,6 +1745,12 @@ func (w *RawWriter) Close() (err error) {
 		}
 	}
 	w.props.DataSize = w.layout.offset
+
+	// Calculate the ratio of tombstone-dense blocks which will be used to
+	// determine eligibility for a tombstone density compaction.
+	if w.numTombstoneDenseBlocks > 0 {
+		w.props.TombstoneDenseBlocksRatio = float64(w.numTombstoneDenseBlocks) / float64(w.numDataBlocks)
+	}
 
 	// Write the filter block.
 	if w.filter != nil {
@@ -1885,24 +1927,26 @@ func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawWriter {
 			blockSizeThreshold:      (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
 			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
 		},
-		compare:               o.Comparer.Compare,
-		suffixCmp:             o.Comparer.CompareSuffixes,
-		split:                 o.Comparer.Split,
-		formatKey:             o.Comparer.FormatKey,
-		compression:           o.Compression,
-		separator:             o.Comparer.Separator,
-		successor:             o.Comparer.Successor,
-		tableFormat:           o.TableFormat,
-		isStrictObsolete:      o.IsStrictObsolete,
-		writingToLowestLevel:  o.WritingToLowestLevel,
-		restartInterval:       o.BlockRestartInterval,
-		checksumType:          o.Checksum,
-		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
-		indexBlock:            newIndexBlockBuf(o.Parallelism),
-		rangeDelBlock:         rowblk.Writer{RestartInterval: 1},
-		rangeKeyBlock:         rowblk.Writer{RestartInterval: 1},
-		topLevelIndexBlock:    rowblk.Writer{RestartInterval: 1},
-		allocatorSizeClasses:  o.AllocatorSizeClasses,
+		compare:                    o.Comparer.Compare,
+		suffixCmp:                  o.Comparer.CompareSuffixes,
+		split:                      o.Comparer.Split,
+		formatKey:                  o.Comparer.FormatKey,
+		compression:                o.Compression,
+		separator:                  o.Comparer.Separator,
+		successor:                  o.Comparer.Successor,
+		tableFormat:                o.TableFormat,
+		isStrictObsolete:           o.IsStrictObsolete,
+		writingToLowestLevel:       o.WritingToLowestLevel,
+		restartInterval:            o.BlockRestartInterval,
+		checksumType:               o.Checksum,
+		disableKeyOrderChecks:      o.internal.DisableKeyOrderChecks,
+		indexBlock:                 newIndexBlockBuf(o.Parallelism),
+		rangeDelBlock:              rowblk.Writer{RestartInterval: 1},
+		rangeKeyBlock:              rowblk.Writer{RestartInterval: 1},
+		topLevelIndexBlock:         rowblk.Writer{RestartInterval: 1},
+		allocatorSizeClasses:       o.AllocatorSizeClasses,
+		numDeletionsThreshold:      o.NumDeletionsThreshold,
+		deletionSizeRatioThreshold: o.DeletionSizeRatioThreshold,
 	}
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor

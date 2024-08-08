@@ -842,6 +842,10 @@ func (vs *versionSet) incrementCompactions(
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.ReadCount++
 
+	case compactionKindTombstoneDensity:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.TombstoneDensityCount++
+
 	case compactionKindRewrite:
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.RewriteCount++
