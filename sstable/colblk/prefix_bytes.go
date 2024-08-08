@@ -250,7 +250,9 @@ type PrefixBytesIter struct {
 }
 
 // SetAt updates the provided PrefixBytesIter to hold the i'th []byte slice in
-// the PrefixBytes.
+// the PrefixBytes. The PrefixBytesIter's buffer must be sufficiently large to
+// hold the i'th []byte slice, and the caller is required to statically ensure
+// this.
 func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	// Determine the offset and length of the bundle prefix.
 	bundleOffsetIndex := b.bundleOffsetIndexForRow(i)
@@ -267,9 +269,8 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 
 	// Grow the size of the iterator's buffer if necessary.
 	it.len = b.sharedPrefixLen + int(it.bundlePrefixLen) + int(rowSuffixEnd-rowSuffixStart)
-	if it.len > it.cap {
-		it.cap = it.len << 1
-		it.ptr = mallocgc(uintptr(it.cap), nil, false)
+	if invariants.Enabled && it.len > it.cap {
+		panic(errors.AssertionFailedf("buffer too small: %d > %d", it.len, it.cap))
 	}
 
 	// Copy the shared key prefix.
@@ -291,7 +292,9 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 
 // SetNext updates the provided PrefixBytesIter to hold the next []byte slice in
 // the PrefixBytes. SetNext requires the provided iter to currently hold a slice
-// and for a subsequent slice to exist within the PrefixBytes.
+// and for a subsequent slice to exist within the PrefixBytes.  The
+// PrefixBytesIter's buffer must be sufficiently large to hold the next []byte
+// slice, and the caller is required to statically ensure this.
 func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 	it.offsetIndex++
 	// If the next row is in the same bundle, we can take a fast path of only
@@ -307,11 +310,8 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 		}
 		// Grow the buffer if necessary.
 		it.len = b.sharedPrefixLen + int(it.bundlePrefixLen) + int(rowSuffixEnd-rowSuffixStart)
-		if it.len > it.cap {
-			it.cap = it.len << 1
-			prevPtr := it.ptr
-			it.ptr = mallocgc(uintptr(it.cap), nil, false)
-			memmove(it.ptr, prevPtr, uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen))
+		if invariants.Enabled && it.len > it.cap {
+			panic(errors.AssertionFailedf("buffer too small: %d > %d", it.len, it.cap))
 		}
 		// Copy in the per-row suffix.
 		memmove(
@@ -336,10 +336,8 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 
 	// Grow the buffer if necessary.
 	it.len = b.sharedPrefixLen + int(it.bundlePrefixLen) + int(rowSuffixEnd-rowSuffixStart)
-	if it.len > it.cap {
-		it.cap = it.len << 1
-		it.ptr = mallocgc(uintptr(it.cap), nil, false)
-		memmove(it.ptr, b.rawBytes.data, uintptr(b.sharedPrefixLen))
+	if invariants.Enabled && it.len > it.cap {
+		panic(errors.AssertionFailedf("buffer too small: %d > %d", it.len, it.cap))
 	}
 	// Copy in the new bundle suffix.
 	memmove(

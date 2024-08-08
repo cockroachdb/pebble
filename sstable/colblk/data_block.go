@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"sync"
@@ -321,12 +322,6 @@ func (ks *defaultKeySeeker) MaterializeUserKey(keyIter *PrefixBytesIter, row int
 	suffix := ks.suffixes.At(row)
 	prefixLen := keyIter.len
 	keyIter.len += len(suffix)
-	if keyIter.cap < keyIter.len {
-		keyIter.cap = keyIter.len << 1
-		prevPtr := keyIter.ptr
-		keyIter.ptr = mallocgc(uintptr(keyIter.cap), nil, false)
-		memmove(keyIter.ptr, prevPtr, uintptr(prefixLen))
-	}
 	memmove(unsafe.Pointer(uintptr(keyIter.ptr)+uintptr(prefixLen)), unsafe.Pointer(unsafe.SliceData(suffix)), uintptr(len(suffix)))
 }
 
@@ -355,9 +350,10 @@ type DataBlockWriter struct {
 	// that indicates when a value is stored out-of-band in a value block.
 	isValueExternal BitmapBuilder
 
-	enc            blockEncoder
-	rows           int
-	valuePrefixTmp [1]byte
+	enc              blockEncoder
+	rows             int
+	maximumKeyLength int
+	valuePrefixTmp   [1]byte
 }
 
 // TODO(jackson): Add an isObsolete bitmap column.
@@ -370,6 +366,12 @@ const (
 	dataBlockColumnMax
 )
 
+// The data block header is a 4-byte uint32 encoding the maximum length of a key
+// contained within the block. This is used by iterators to avoid the need to
+// grow key buffers while iterating over the block, ensuring that the key buffer
+// is always sufficiently large.
+const dataBlockCustomHeaderSize = 4
+
 // Init initializes the data block writer.
 func (w *DataBlockWriter) Init(schema KeySchema) {
 	w.Schema = schema
@@ -379,6 +381,7 @@ func (w *DataBlockWriter) Init(schema KeySchema) {
 	w.values.Init()
 	w.isValueExternal.Reset()
 	w.rows = 0
+	w.maximumKeyLength = 0
 }
 
 // Reset resets the data block writer to its initial state, retaining buffers.
@@ -389,6 +392,7 @@ func (w *DataBlockWriter) Reset() {
 	w.values.Reset()
 	w.isValueExternal.Reset()
 	w.rows = 0
+	w.maximumKeyLength = 0
 	w.enc.reset()
 }
 
@@ -444,6 +448,9 @@ func (w *DataBlockWriter) Add(
 		// bitmap and know there is no value prefix byte if !isValueExternal.
 		w.values.Put(value)
 	}
+	if len(ikey.UserKey) > int(w.maximumKeyLength) {
+		w.maximumKeyLength = len(ikey.UserKey)
+	}
 	w.rows++
 }
 
@@ -454,7 +461,7 @@ func (w *DataBlockWriter) Rows() int {
 
 // Size returns the size of the current pending data block.
 func (w *DataBlockWriter) Size() int {
-	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, 0)
+	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.Size(w.rows, off)
@@ -472,7 +479,10 @@ func (w *DataBlockWriter) Finish() []byte {
 		Columns: uint16(cols),
 		Rows:    uint32(w.rows),
 	}
-	w.enc.init(w.Size(), h, 0)
+	w.enc.init(w.Size(), h, dataBlockCustomHeaderSize)
+
+	// Write the max key length in the custom header.
+	binary.LittleEndian.PutUint32(w.enc.data()[:dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
 
 	// Write the user-defined key columns.
 	w.enc.encode(w.rows, w.KeyWriter)
@@ -516,6 +526,10 @@ type DataBlockReader struct {
 	// true, the value contains a ValuePrefix byte followed by an encoded value
 	// handle indicating the value's location within the value block(s).
 	isValueExternal Bitmap
+	// maximumKeyLength is the maximum length of a user key in the block.
+	// Iterators may use it to allocate a sufficiently large buffer up front,
+	// and elide size checks during iteration.
+	maximumKeyLength uint32
 }
 
 // BlockReader returns a pointer to the underlying BlockReader.
@@ -525,14 +539,17 @@ func (r *DataBlockReader) BlockReader() *BlockReader {
 
 // Init initializes the data block reader with the given serialized data block.
 func (r *DataBlockReader) Init(schema KeySchema, data []byte) {
-	r.r.Init(data, 0)
+	r.r.Init(data, dataBlockCustomHeaderSize)
 	r.trailers = r.r.Uint64s(len(schema.ColumnTypes) + dataBlockColumnTrailer)
 	r.prefixChanged = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
 	r.values = r.r.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
 	r.isValueExternal = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
+	r.maximumKeyLength = binary.LittleEndian.Uint32(data[:dataBlockCustomHeaderSize])
 }
 
 func (r *DataBlockReader) toFormatter(f *binfmt.Formatter) {
+	f.CommentLine("data block header")
+	f.HexBytesln(4, "maximum key length: %d", r.maximumKeyLength)
 	r.r.headerToBinFormatter(f)
 	for i := 0; i < int(r.r.header.Columns); i++ {
 		r.r.columnToBinFormatter(f, i, int(r.r.header.Rows))
@@ -567,6 +584,9 @@ func (i *DataBlockIter) Init(
 		kv:           base.InternalKV{},
 		keyIter:      PrefixBytesIter{},
 	}
+	// Allocate a keyIter buffer that's large enough to hold the largest user
+	// key in the block.
+	i.keyIter.Alloc(int(r.maximumKeyLength))
 	return i.keySeeker.Init(r)
 }
 
