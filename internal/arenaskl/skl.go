@@ -264,7 +264,7 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 			// be helpful to try to use a different level as we redo the search,
 			// because it is unlikely that lots of nodes are inserted between prev
 			// and next.
-			prev, next, found = s.findSpliceForLevel(key, i, prev)
+			prev, next, found = s.findSpliceForLevel(key, i, prev, nil)
 			if found {
 				if i != 0 {
 					panic("how can another thread have inserted a node at a non-base level?")
@@ -383,11 +383,15 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 		}
 	}
 
+	var end *node
 	for level = level - 1; level >= 0; level-- {
 		var next *node
-		prev, next, found = s.findSpliceForLevel(key, level, prev)
+		prev, next, found = s.findSpliceForLevel(key, level, prev, end)
 		if next == nil {
 			next = s.tail
+		}
+		if !found {
+			end = next
 		}
 		ins.spl[level].init(prev, next)
 	}
@@ -396,15 +400,20 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 }
 
 func (s *Skiplist) findSpliceForLevel(
-	key base.InternalKey, level int, start *node,
+	key base.InternalKey, level int, start *node, end *node,
 ) (prev, next *node, found bool) {
 	prev = start
-
+	if end == nil {
+		// The 'end' defaults to being the tail node. The caller can pass a hit
+		// from an earlier iteration: A high tower, past the key, which we already
+		// have encountered.
+		end = s.tail
+	}
 	for {
 		// Assume prev.key < key.
 		next = s.getNext(prev, level)
-		if next == s.tail {
-			// Tail node, so done.
+		if next == end {
+			// Tail (or known element past the key).
 			break
 		}
 

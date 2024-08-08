@@ -264,8 +264,9 @@ func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool)
 	level := int(it.list.Height() - 1)
 
 	prev = it.list.head
+	var end *node
 	for {
-		prev, next, found = it.list.findSpliceForLevel(ikey, level, prev)
+		prev, next, found = it.list.findSpliceForLevel(ikey, level, prev, end)
 
 		if found {
 			if level != 0 {
@@ -279,7 +280,7 @@ func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool)
 		if level == 0 {
 			break
 		}
-
+		end = next
 		level--
 	}
 
