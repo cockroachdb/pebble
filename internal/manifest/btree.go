@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -300,14 +301,14 @@ func (n *node) popFront() (*FileMetadata, *node) {
 //
 // This function is for use only as a helper function for internal B-Tree code.
 // Clients should not invoke it directly.
-func (n *node) find(cmp btreeCmp, item *FileMetadata) (index int, found bool) {
+func (n *node) find(bcmp btreeCmp, item *FileMetadata) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
 	i, j := 0, int(n.count)
 	for i < j {
 		h := int(uint(i+j) >> 1) // avoid overflow when computing h
 		// i ≤ h < j
-		v := cmp(item, n.items[h])
+		v := bcmp(item, n.items[h])
 		if v == 0 {
 			return h, true
 		} else if v > 0 {
@@ -386,8 +387,8 @@ func (n *node) split(i int) (*FileMetadata, *node) {
 
 // Insert inserts a item into the subtree rooted at this node, making sure no
 // nodes in the subtree exceed maxItems items.
-func (n *node) Insert(cmp btreeCmp, item *FileMetadata) error {
-	i, found := n.find(cmp, item)
+func (n *node) Insert(bcmp btreeCmp, item *FileMetadata) error {
+	i, found := n.find(bcmp, item)
 	if found {
 		// cmp provides a total ordering of the files within a level.
 		// If we're inserting a metadata that's equal to an existing item
@@ -404,7 +405,7 @@ func (n *node) Insert(cmp btreeCmp, item *FileMetadata) error {
 		splitLa, splitNode := mut(&n.children[i]).split(maxItems / 2)
 		n.insertAt(i, splitLa, splitNode)
 
-		switch cmp := cmp(item, n.items[i]); {
+		switch cmp := bcmp(item, n.items[i]); {
 		case cmp < 0:
 			// no change, we want first split node
 		case cmp > 0:
@@ -418,7 +419,7 @@ func (n *node) Insert(cmp btreeCmp, item *FileMetadata) error {
 		}
 	}
 
-	err := mut(&n.children[i]).Insert(cmp, item)
+	err := mut(&n.children[i]).Insert(bcmp, item)
 	if err == nil {
 		n.subtreeCount++
 	}
@@ -447,8 +448,8 @@ func (n *node) removeMax() *FileMetadata {
 
 // Remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
-func (n *node) Remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
-	i, found := n.find(cmp, item)
+func (n *node) Remove(bcmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
+	i, found := n.find(bcmp, item)
 	if n.leaf {
 		if found {
 			out, _ = n.removeAt(i)
@@ -460,7 +461,7 @@ func (n *node) Remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
 	if n.children[i].count <= minItems {
 		// Child not large enough to remove from.
 		n.rebalanceOrMerge(i)
-		return n.Remove(cmp, item)
+		return n.Remove(bcmp, item)
 	}
 	child := mut(&n.children[i])
 	if found {
@@ -471,7 +472,7 @@ func (n *node) Remove(cmp btreeCmp, item *FileMetadata) (out *FileMetadata) {
 		return out
 	}
 	// File is not in this node and child is large enough to remove from.
-	out = child.Remove(cmp, item)
+	out = child.Remove(bcmp, item)
 	if out != nil {
 		n.subtreeCount--
 	}
@@ -635,7 +636,8 @@ func (n *node) verifyInvariants() {
 // goroutines, but Read operations are.
 type btree struct {
 	root *node
-	cmp  btreeCmp
+	cmp  base.Compare
+	bcmp btreeCmp
 }
 
 // Release dereferences and clears the root node of the btree, removing all
@@ -678,7 +680,7 @@ func (t *btree) Delete(item *FileMetadata) (obsolete bool) {
 	if t.root == nil || t.root.count == 0 {
 		return false
 	}
-	if out := mut(&t.root).Remove(t.cmp, item); out != nil {
+	if out := mut(&t.root).Remove(t.bcmp, item); out != nil {
 		obsolete = out.FileBacking.Unref() == 0
 	}
 	if invariants.Enabled {
@@ -712,7 +714,7 @@ func (t *btree) Insert(item *FileMetadata) error {
 		t.root = newRoot
 	}
 	item.FileBacking.Ref()
-	err := mut(&t.root).Insert(t.cmp, item)
+	err := mut(&t.root).Insert(t.bcmp, item)
 	if invariants.Enabled {
 		t.root.verifyInvariants()
 	}
@@ -723,7 +725,7 @@ func (t *btree) Insert(item *FileMetadata) error {
 // iterator after modifications are made to the tree. If modifications are made,
 // create a new iterator.
 func (t *btree) Iter() iterator {
-	return iterator{r: t.root, pos: -1, cmp: t.cmp}
+	return iterator{r: t.root, pos: -1, cmp: t.bcmp}
 }
 
 // Count returns the number of files contained within the B-Tree.

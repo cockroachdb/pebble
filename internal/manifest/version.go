@@ -1068,12 +1068,12 @@ func NewVersion(
 		// order to test consistency checking, etc. Once we've constructed the
 		// initial B-Tree, we swap out the btreeCmp for the correct one.
 		// TODO(jackson): Adjust or remove the tests and remove this.
-		v.Levels[l].tree, _ = makeBTree(btreeCmpSpecificOrder(files[l]), files[l])
+		v.Levels[l].tree, _ = makeBTree(comparer.Compare, btreeCmpSpecificOrder(files[l]), files[l])
 		v.Levels[l].level = l
 		if l == 0 {
-			v.Levels[l].tree.cmp = btreeCmpSeqNum
+			v.Levels[l].tree.bcmp = btreeCmpSeqNum
 		} else {
-			v.Levels[l].tree.cmp = btreeCmpSmallestKey(comparer.Compare)
+			v.Levels[l].tree.bcmp = btreeCmpSmallestKey(comparer.Compare)
 		}
 		for _, f := range files[l] {
 			v.Levels[l].totalSize += f.Size
@@ -1501,7 +1501,7 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 			if !restart {
 				// Construct a B-Tree containing only the matching items.
 				var tr btree
-				tr.cmp = v.Levels[level].tree.cmp
+				tr.bcmp = v.Levels[level].tree.bcmp
 				for i, meta := 0, l0Iter.First(); meta != nil; i, meta = i+1, l0Iter.Next() {
 					if selectedIndices[i] {
 						err := tr.Insert(meta)

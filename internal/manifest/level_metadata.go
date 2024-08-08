@@ -49,7 +49,7 @@ func MakeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetad
 	}
 	var lm LevelMetadata
 	lm.level = level
-	lm.tree, _ = makeBTree(bcmp, files)
+	lm.tree, _ = makeBTree(cmp, bcmp, files)
 	for _, f := range files {
 		lm.totalSize += f.Size
 		if f.Virtual {
@@ -60,9 +60,10 @@ func MakeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetad
 	return lm
 }
 
-func makeBTree(cmp btreeCmp, files []*FileMetadata) (btree, LevelSlice) {
+func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*FileMetadata) (btree, LevelSlice) {
 	var t btree
 	t.cmp = cmp
+	t.bcmp = bcmp
 	for _, f := range files {
 		t.Insert(f)
 	}
@@ -157,7 +158,7 @@ func (lf LevelFile) Slice() LevelSlice {
 // TODO(jackson): Can we improve this interface or avoid needing to export
 // a slice constructor like this?
 func NewLevelSliceSeqSorted(files []*FileMetadata) LevelSlice {
-	tr, slice := makeBTree(btreeCmpSeqNum, files)
+	tr, slice := makeBTree(nil, btreeCmpSeqNum, files)
 	tr.Release()
 	slice.verifyInvariants()
 	return slice
@@ -168,7 +169,7 @@ func NewLevelSliceSeqSorted(files []*FileMetadata) LevelSlice {
 // TODO(jackson): Can we improve this interface or avoid needing to export
 // a slice constructor like this?
 func NewLevelSliceKeySorted(cmp base.Compare, files []*FileMetadata) LevelSlice {
-	tr, slice := makeBTree(btreeCmpSmallestKey(cmp), files)
+	tr, slice := makeBTree(cmp, btreeCmpSmallestKey(cmp), files)
 	tr.Release()
 	slice.verifyInvariants()
 	return slice
@@ -179,7 +180,7 @@ func NewLevelSliceKeySorted(cmp base.Compare, files []*FileMetadata) LevelSlice 
 // tests.
 // TODO(jackson): Update tests to avoid requiring this and remove it.
 func NewLevelSliceSpecificOrder(files []*FileMetadata) LevelSlice {
-	tr, slice := makeBTree(btreeCmpSpecificOrder(files), files)
+	tr, slice := makeBTree(nil, btreeCmpSpecificOrder(files), files)
 	tr.Release()
 	slice.verifyInvariants()
 	return slice

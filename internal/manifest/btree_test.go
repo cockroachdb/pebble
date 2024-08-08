@@ -111,7 +111,7 @@ func (n *node) verifyCountAllowed(t *testing.T, root bool) {
 }
 
 func (t *btree) isSorted(tt *testing.T) {
-	t.root.isSorted(tt, t.cmp)
+	t.root.isSorted(tt, t.bcmp)
 }
 
 func (n *node) isSorted(t *testing.T, cmp func(*FileMetadata, *FileMetadata) int) {
@@ -209,7 +209,7 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 // TestBTree tests basic btree operations.
 func TestBTree(t *testing.T) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	keyMemo := make(map[int]InternalKey)
 
 	// With degree == 16 (max-items/node == 31) we need 513 items in order for
@@ -269,7 +269,7 @@ func TestIterClone(t *testing.T) {
 	const count = 65536
 
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	keyMemo := make(map[int]InternalKey)
 
 	for i := 0; i < count; i++ {
@@ -295,7 +295,7 @@ func TestIterClone(t *testing.T) {
 
 func TestIterCmpEdgeCases(t *testing.T) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	t.Run("empty", func(t *testing.T) {
 		a := tr.Iter()
 		b := tr.Iter()
@@ -330,7 +330,7 @@ func TestIterCmpRand(t *testing.T) {
 	const iterCount = 1000
 
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	for i := 0; i < itemCount; i++ {
 		require.NoError(t, tr.Insert(newItem(key(i))))
 	}
@@ -365,7 +365,7 @@ func TestBTreeSeek(t *testing.T) {
 	const count = 513
 
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	for i := 0; i < count; i++ {
 		require.NoError(t, tr.Insert(newItem(key(i*2))))
 	}
@@ -404,7 +404,7 @@ func TestBTreeSeek(t *testing.T) {
 
 func TestBTreeInsertDuplicateError(t *testing.T) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	require.NoError(t, tr.Insert(newItem(key(1))))
 	require.NoError(t, tr.Insert(newItem(key(2))))
 	require.NoError(t, tr.Insert(newItem(key(3))))
@@ -447,7 +447,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 	wg.Add(1)
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	go populate(&tr, 0)
 	wg.Wait()
 	close(treeC)
@@ -516,7 +516,7 @@ func TestIterStack(t *testing.T) {
 
 func TestIterEndSentinel(t *testing.T) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	require.NoError(t, tr.Insert(newItem(key(1))))
 	require.NoError(t, tr.Insert(newItem(key(2))))
 	require.NoError(t, tr.Insert(newItem(key(3))))
@@ -560,7 +560,7 @@ func TestRandomizedBTree(t *testing.T) {
 	// Use a btree comparator that sorts by file number to make it easier to
 	// prevent duplicates or overlaps.
 	tree := btree{
-		cmp: func(a *FileMetadata, b *FileMetadata) int {
+		bcmp: func(a *FileMetadata, b *FileMetadata) int {
 			return stdcmp.Compare(a.FileNum, b.FileNum)
 		},
 	}
@@ -684,7 +684,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; {
 			var tr btree
-			tr.cmp = cmp
+			tr.bcmp = cmp
 			for _, item := range insertP {
 				if err := tr.Insert(item); err != nil {
 					b.Fatal(err)
@@ -706,7 +706,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 		for i := 0; i < b.N; {
 			b.StopTimer()
 			var tr btree
-			tr.cmp = cmp
+			tr.bcmp = cmp
 			for _, item := range insertP {
 				if err := tr.Insert(item); err != nil {
 					b.Fatal(err)
@@ -732,7 +732,7 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		insertP := perm(count)
 		var tr btree
-		tr.cmp = cmp
+		tr.bcmp = cmp
 		for _, item := range insertP {
 			if err := tr.Insert(item); err != nil {
 				b.Fatal(err)
@@ -755,7 +755,7 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		insertP := perm(count)
 		var tr btree
-		tr.cmp = cmp
+		tr.bcmp = cmp
 		for _, item := range insertP {
 			if err := tr.Insert(item); err != nil {
 				b.Fatal(err)
@@ -781,8 +781,8 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 			forBenchmarkSizes(b, func(b *testing.B, count int) {
 				insertP := perm(count)
 				var tr, trRelease btree
-				tr.cmp = cmp
-				trRelease.cmp = cmp
+				tr.bcmp = cmp
+				trRelease.bcmp = cmp
 				for _, item := range insertP {
 					if err := tr.Insert(item); err != nil {
 						b.Fatal(err)
@@ -809,7 +809,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 // BenchmarkBTreeIter measures the cost of creating a btree iterator.
 func BenchmarkBTreeIter(b *testing.B) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 	for i := 0; i < b.N; i++ {
 		it := tr.Iter()
 		it.first()
@@ -823,7 +823,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []InternalKey
 		var tr btree
-		tr.cmp = cmp
+		tr.bcmp = cmp
 
 		for i := 0; i < count; i++ {
 			s := key(i)
@@ -857,7 +857,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []InternalKey
 		var tr btree
-		tr.cmp = cmp
+		tr.bcmp = cmp
 
 		for i := 0; i < count; i++ {
 			k := key(i)
@@ -896,7 +896,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 // next item in the tree.
 func BenchmarkBTreeIterNext(b *testing.B) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 
 	const count = 8 << 10
 	for i := 0; i < count; i++ {
@@ -920,7 +920,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 // previous item in the tree.
 func BenchmarkBTreeIterPrev(b *testing.B) {
 	var tr btree
-	tr.cmp = cmp
+	tr.bcmp = cmp
 
 	const count = 8 << 10
 	for i := 0; i < count; i++ {
