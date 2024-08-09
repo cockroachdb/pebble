@@ -331,15 +331,15 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			forceIgnoreValueBlocks := func(i *singleLevelIterator) {
+			forceIgnoreValueBlocks := func(i *singleLevelIterator[rowblk.Iter, *rowblk.Iter]) {
 				i.vbReader = nil
 				i.data.SetGetLazyValue(nil)
 				i.data.SetHasValuePrefix(false)
 			}
 			switch i := origIter.(type) {
-			case *twoLevelIterator:
+			case *twoLevelIterator[rowblk.Iter, *rowblk.Iter]:
 				forceIgnoreValueBlocks(&i.secondLevel)
-			case *singleLevelIterator:
+			case *singleLevelIterator[rowblk.Iter, *rowblk.Iter]:
 				forceIgnoreValueBlocks(i)
 			}
 			iter := newIterAdapter(origIter)

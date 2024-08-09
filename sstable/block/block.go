@@ -89,6 +89,45 @@ func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32)
 	return checksum
 }
 
+// DataBlockIterator is a type constraint for implementations of block iterators
+// over data blocks. It's currently satisifed by the *rowblk.Iter type.
+//
+// DataBlockIterator requires that the type be a pointer to its type parameter,
+// D, to allow sstable iterators embed the block iterator within its struct. See
+// this example from the Go generics proposal:
+// https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
+type DataBlockIterator[D any] interface {
+	base.InternalIterator
+
+	// Handle returns the handle to the block.
+	Handle() BufferHandle
+	// InitHandle initializes the block from the provided buffer handle.
+	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
+	// Valid returns true if the iterator is currently positioned at a valid KV.
+	Valid() bool
+	// KV returns the key-value pair at the current iterator position. The
+	// iterator must be Valid().
+	KV() *base.InternalKV
+	// ResetForReuse resets the iterator so that it may be used for iteration
+	// over a new block. It returns the non-pointer D type to allow resetting
+	// while initializing the containing struct, eg::
+	//   iter = sstableIter{dataBlockIter: iter.dataBlockIter.ResetForReuse()}
+	ResetForReuse() D
+	// FirstUserKey returns the first user key contained within the data block.
+	FirstUserKey() []byte
+	// Invalidate invalidates the block iterator, removing references to the block
+	// it was initialized with.
+	Invalidate()
+	// IsDataInvalidated returns true when the iterator has been invalidated
+	// using an Invalidate call.
+	//
+	// NB: this is different from Valid which indicates whether the current *KV*
+	// is valid.
+	IsDataInvalidated() bool
+
+	*D // non-interface type constraint element
+}
+
 // IterTransforms allow on-the-fly transformation of data at iteration time.
 //
 // These transformations could in principle be implemented as block transforms
