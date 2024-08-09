@@ -207,10 +207,11 @@ func (r *Reader) newPointIter(
 	var res Iterator
 	var err error
 	if r.Properties.IndexType == twoLevelIndex {
-		res, err = newTwoLevelIterator(ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
+		res, err = newRowBlockTwoLevelIterator(
+			ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
 			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	} else {
-		res, err = newSingleLevelIterator(
+		res, err = newRowBlockSingleLevelIterator(
 			ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
 			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
 	}
@@ -261,7 +262,7 @@ func (r *Reader) newCompactionIter(
 		transforms.HideObsoletePoints = true
 	}
 	if r.Properties.IndexType == twoLevelIndex {
-		i, err := newTwoLevelIterator(
+		i, err := newRowBlockTwoLevelIterator(
 			context.Background(),
 			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
 			NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
@@ -272,7 +273,7 @@ func (r *Reader) newCompactionIter(
 		i.SetupForCompaction()
 		return i, nil
 	}
-	i, err := newSingleLevelIterator(
+	i, err := newRowBlockSingleLevelIterator(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
 		nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
 	)

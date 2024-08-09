@@ -55,7 +55,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 	var stats base.InternalIteratorStats
 	for k := 0; k < 20; k++ {
 		if rand.Intn(2) == 0 {
-			_, err := newSingleLevelIterator(
+			_, err := newRowBlockSingleLevelIterator(
 				context.Background(),
 				r,
 				nil, /* v */
@@ -70,7 +70,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			)
 			require.Error(t, err)
 		} else {
-			_, err := newTwoLevelIterator(
+			_, err := newRowBlockTwoLevelIterator(
 				context.Background(),
 				r,
 				nil, /* v */
