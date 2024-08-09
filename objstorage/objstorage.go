@@ -375,9 +375,7 @@ type RemoteObjectToAttach struct {
 }
 
 // Copy copies the specified range from the input to the output.
-func Copy(ctx context.Context, in Readable, out Writable, offset, length uint64) error {
-	r := in.NewReadHandle(NoReadBefore)
-	r.SetupForCompaction()
+func Copy(ctx context.Context, r ReadHandle, out Writable, offset, length uint64) error {
 	buf := make([]byte, 256<<10)
 	end := offset + length
 	for offset < end {

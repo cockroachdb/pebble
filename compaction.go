@@ -2287,11 +2287,18 @@ func (d *DB) runCopyCompaction(
 			}
 		}
 
-		wrote, err := sstable.CopySpan(ctx,
-			src, d.opts.MakeReaderOptions(),
-			w, d.opts.MakeWriterOptions(c.outputLevel.level, d.FormatMajorVersion().MaxTableFormat()),
-			start, end,
-		)
+		// NB: external files are always virtual.
+		var wrote uint64
+		err = d.tableCache.withVirtualReader(inputMeta.VirtualMeta(), func(r sstable.VirtualReader) error {
+			var err error
+			wrote, err = sstable.CopySpan(ctx,
+				src, r.UnsafeReader(), d.opts.MakeReaderOptions(),
+				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.FormatMajorVersion().MaxTableFormat()),
+				start, end,
+			)
+			return err
+		})
+
 		src = nil // We passed src to CopySpan; it's responsible for closing it.
 		if err != nil {
 			if errors.Is(err, sstable.ErrEmptySpan) {

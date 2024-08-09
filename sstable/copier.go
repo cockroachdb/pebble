@@ -44,18 +44,13 @@ import (
 func CopySpan(
 	ctx context.Context,
 	input objstorage.Readable,
+	r *Reader,
 	rOpts ReaderOptions,
 	output objstorage.Writable,
 	o WriterOptions,
 	start, end InternalKey,
 ) (size uint64, _ error) {
-	r, err := NewReader(ctx, input, rOpts)
-	if err != nil {
-		input.Close()
-		output.Abort()
-		return 0, err
-	}
-	defer r.Close() // r.Close now owns calling input.Close().
+	defer input.Close()
 
 	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
 		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, output) // Finishes/Aborts output.
@@ -97,6 +92,7 @@ func CopySpan(
 	rh := objstorageprovider.UsePreallocatedReadHandle(
 		r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
 	defer rh.Close()
+	rh.SetupForCompaction()
 	indexH, err := r.readIndex(ctx, rh, nil, nil)
 	if err != nil {
 		return 0, err
@@ -150,34 +146,73 @@ func CopySpan(
 		return 0, ErrEmptySpan
 	}
 
-	// Find the span of the input file that contains all our blocks, and then copy
-	// it byte-for-byte without doing any per-key processing.
-	offset := blocks[0].bh.Offset
+	// Copy all blocks byte-for-byte without doing any per-key processing.
+	var blocksNotInCache []indexEntry
 
-	// The block lengths don't include their trailers, which just sit after the
-	// block length, before the next offset; We get the ones between the blocks
-	// we copy implicitly but need to explicitly add the last trailer to length.
-	length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + block.TrailerLen - offset
-
-	if spanEnd := length + offset; spanEnd < offset {
-		return 0, base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", offset, spanEnd)
+	copyBlocksToFile := func(blocks []indexEntry) error {
+		blockOffset := blocks[0].bh.Offset
+		// The block lengths don't include their trailers, which just sit after the
+		// block length, before the next offset; We get the ones between the blocks
+		// we copy implicitly but need to explicitly add the last trailer to length.
+		length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + block.TrailerLen - blockOffset
+		if spanEnd := length + blockOffset; spanEnd < blockOffset {
+			return base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", blockOffset, spanEnd)
+		}
+		if err := objstorage.Copy(ctx, rh, w.layout.writable, blockOffset, length); err != nil {
+			return err
+		}
+		// Update w.meta.Size so subsequently flushed metadata has correct offsets.
+		w.meta.Size += length
+		for i := range blocks {
+			blocks[i].bh.Offset = w.layout.offset
+			// blocks[i].bh.Length remains unmodified.
+			if err := w.addIndexEntrySep(blocks[i].sep, blocks[i].bh, w.dataBlockBuf.tmp[:]); err != nil {
+				return err
+			}
+			w.layout.offset += uint64(blocks[i].bh.Length) + block.TrailerLen
+		}
+		return nil
 	}
-
-	if err := objstorage.Copy(ctx, r.readable, w.layout.writable, offset, length); err != nil {
-		return 0, err
-	}
-	w.layout.offset += length
-
-	// Update w.meta.Size so subsequently flushed metadata has correct offsets.
-	w.meta.Size += length
-
-	// Now we can setup index entries for all the blocks we just copied, pointing
-	// into the copied span.
 	for i := range blocks {
-		blocks[i].bh.Offset -= offset
+		h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, blocks[i].bh.Offset)
+		if h.Get() == nil {
+			// Cache miss. Add this block to the list of blocks that are not in cache.
+			blocksNotInCache = blocks[i-len(blocksNotInCache) : i+1]
+			continue
+		}
+
+		// Cache hit.
+		rh.RecordCacheHit(ctx, int64(blocks[i].bh.Offset), int64(blocks[i].bh.Length+block.TrailerLen))
+		if len(blocksNotInCache) > 0 {
+			// We have some blocks that were not in cache preceding this block.
+			// Copy them using objstorage.Copy.
+			if err := copyBlocksToFile(blocksNotInCache); err != nil {
+				h.Release()
+				return 0, err
+			}
+			blocksNotInCache = nil
+		}
+
+		// layout.WriteDataBlock keeps layout.offset up-to-date for us.
+		bh, err := w.layout.WriteDataBlock(h.Get(), &w.dataBlockBuf.blockBuf)
+		h.Release()
+		if err != nil {
+			return 0, err
+		}
+		blocks[i].bh.Handle = bh
 		if err := w.addIndexEntrySep(blocks[i].sep, blocks[i].bh, w.dataBlockBuf.tmp[:]); err != nil {
 			return 0, err
 		}
+		w.meta.Size += uint64(bh.Length) + block.TrailerLen
+	}
+
+	if len(blocksNotInCache) > 0 {
+		// We have some remaining blocks that were not in cache. Copy them
+		// using objstorage.Copy.
+		if err := copyBlocksToFile(blocksNotInCache); err != nil {
+			return 0, err
+		}
+		blocksNotInCache = nil
 	}
 
 	// TODO(dt): Copy range keys (the fact there are none is checked above).
@@ -282,7 +317,9 @@ func copyWholeFileBecauseOfUnsupportedFeature(
 	ctx context.Context, input objstorage.Readable, output objstorage.Writable,
 ) (size uint64, _ error) {
 	length := uint64(input.Size())
-	if err := objstorage.Copy(ctx, input, output, 0, length); err != nil {
+	rh := input.NewReadHandle(objstorage.NoReadBefore)
+	rh.SetupForCompaction()
+	if err := objstorage.Copy(ctx, rh, output, 0, length); err != nil {
 		output.Abort()
 		return 0, err
 	}

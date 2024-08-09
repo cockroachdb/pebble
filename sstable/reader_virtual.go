@@ -209,6 +209,11 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 	), nil
 }
 
+// UnsafeReader returns the underlying *sstable.Reader behind a VirtualReader.
+func (v *VirtualReader) UnsafeReader() *Reader {
+	return v.reader
+}
+
 // Constrain bounds will narrow the start, end bounds if they do not fit within
 // the virtual sstable. The function will return if the new end key is
 // inclusive.
