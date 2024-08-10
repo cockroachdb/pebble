@@ -1294,10 +1294,6 @@ func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
 	require.NoError(t, d.Set([]byte("g"), nil, nil))
 	require.NoError(t, d.Flush())
 
-	// cannot use WithApproximateSpanBytes without WithProperties.
-	_, err = d.SSTables(WithKeyRangeFilter([]byte("a"), []byte("e")), WithApproximateSpanBytes())
-	require.Error(t, err)
-
 	// cannot use WithApproximateSpanBytes without WithKeyRangeFilter.
 	_, err = d.SSTables(WithProperties(), WithApproximateSpanBytes())
 	require.Error(t, err)
@@ -1307,13 +1303,11 @@ func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
 
 	for _, levelTables := range tableInfos {
 		for _, table := range levelTables {
-			approximateSpanBytes, err := strconv.ParseInt(table.Properties.UserProperties["approximate-span-bytes"], 10, 64)
-			require.NoError(t, err)
 			if table.FileNum == 5 {
-				require.Equal(t, uint64(approximateSpanBytes), table.Size)
+				require.Equal(t, table.ApproximateSpanBytes, table.Size)
 			}
 			if table.FileNum == 7 {
-				require.Less(t, uint64(approximateSpanBytes), table.Size)
+				require.Less(t, table.ApproximateSpanBytes, table.Size)
 			}
 		}
 	}
