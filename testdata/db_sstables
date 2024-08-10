@@ -546,6 +546,7 @@ sstables with-properties with-approximate-span-bytes with-key-range-filter=(e,f)
       "BackingSSTNum": 4,
       "BackingType": 0,
       "Locator": "",
+      "ApproximateSpanBytes": 126,
       "Properties": {
         "NumEntries": 3,
         "RawKeySize": 27,
@@ -582,7 +583,6 @@ sstables with-properties with-approximate-span-bytes with-key-range-filter=(e,f)
         "SnapshotPinnedValueSize": 0,
         "TopLevelIndexSize": 0,
         "UserProperties": {
-          "approximate-span-bytes": "126",
           "obsolete-key": "\u0000"
         },
         "Loaded": {
@@ -624,6 +624,7 @@ sstables with-properties with-approximate-span-bytes with-key-range-filter=(e,f)
       "BackingSSTNum": 7,
       "BackingType": 0,
       "Locator": "",
+      "ApproximateSpanBytes": 66134,
       "Properties": {
         "NumEntries": 1,
         "RawKeySize": 9,
@@ -660,7 +661,6 @@ sstables with-properties with-approximate-span-bytes with-key-range-filter=(e,f)
         "SnapshotPinnedValueSize": 0,
         "TopLevelIndexSize": 0,
         "UserProperties": {
-          "approximate-span-bytes": "66134",
           "obsolete-key": "\u0000"
         },
         "Loaded": {
