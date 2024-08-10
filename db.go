@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -2072,8 +2071,7 @@ func WithKeyRangeFilter(start, end []byte) SSTablesOption {
 
 // WithApproximateSpanBytes enables capturing the approximate number of bytes that
 // overlap the provided key span for each sstable.
-// NOTE: this option can only be used with WithKeyRangeFilter and WithProperties
-// provided.
+// NOTE: This option requires WithKeyRangeFilter.
 func WithApproximateSpanBytes() SSTablesOption {
 	return func(opt *sstablesOptions) {
 		opt.withApproximateSpanBytes = true
@@ -2116,6 +2114,10 @@ type SSTableInfo struct {
 	// Locator is the remote.Locator backing this sstable, if the backing type is
 	// not BackingTypeLocal.
 	Locator remote.Locator
+	// ApproximateSpanBytes describes the approximate number of bytes within the
+	// sstable that fall within a particular span. It's populated only when the
+	// ApproximateSpanBytes option is passed into DB.SSTables.
+	ApproximateSpanBytes uint64 `json:"ApproximateSpanBytes,omitempty"`
 
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
@@ -2132,11 +2134,8 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		fn(opt)
 	}
 
-	if opt.withApproximateSpanBytes && !opt.withProperties {
-		return nil, errors.Errorf("Cannot use WithApproximateSpanBytes without WithProperties option.")
-	}
 	if opt.withApproximateSpanBytes && (opt.start == nil || opt.end == nil) {
-		return nil, errors.Errorf("Cannot use WithApproximateSpanBytes without WithKeyRangeFilter option.")
+		return nil, errors.Errorf("cannot use WithApproximateSpanBytes without WithKeyRangeFilter option")
 	}
 
 	// Grab and reference the current readState.
@@ -2197,25 +2196,15 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 
 			if opt.withApproximateSpanBytes {
-				var spanBytes uint64
 				if m.ContainedWithinSpan(d.opts.Comparer.Compare, opt.start, opt.end) {
-					spanBytes = m.Size
+					destTables[j].ApproximateSpanBytes = m.Size
 				} else {
 					size, err := d.tableCache.estimateSize(m, opt.start, opt.end)
 					if err != nil {
 						return nil, err
 					}
-					spanBytes = size
+					destTables[j].ApproximateSpanBytes = size
 				}
-				propertiesCopy := *destTables[j].Properties
-
-				// Deep copy user properties so approximate span bytes can be added.
-				propertiesCopy.UserProperties = make(map[string]string, len(destTables[j].Properties.UserProperties)+1)
-				for k, v := range destTables[j].Properties.UserProperties {
-					propertiesCopy.UserProperties[k] = v
-				}
-				propertiesCopy.UserProperties["approximate-span-bytes"] = strconv.FormatUint(spanBytes, 10)
-				destTables[j].Properties = &propertiesCopy
 			}
 			j++
 		}
