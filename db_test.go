@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -1359,39 +1360,65 @@ func TestFilterSSTablesWithOption(t *testing.T) {
 	require.EqualValues(t, 2, totalTables)
 }
 
-func TestSSTables(t *testing.T) {
-	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+func TestDBSSTables(t *testing.T) {
+	var buf bytes.Buffer
+	var d *DB
+	datadriven.RunTest(t, "testdata/db_sstables", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "define":
+			if d != nil {
+				require.NoError(t, d.Close())
+				d = nil
+			}
+			var err error
+			opts := (&Options{
+				FS:                 vfs.NewMem(),
+				Comparer:           testkeys.Comparer,
+				DebugCheck:         DebugCheckLevels,
+				FormatMajorVersion: internalFormatNewest,
+			}).WithFSDefaults()
+			d, err = runDBDefineCmd(td, opts)
+			if err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+		case "sstables":
+			var opts []SSTablesOption
+			for _, arg := range td.CmdArgs {
+				switch arg.Key {
+				case "with-properties":
+					opts = append(opts, WithProperties())
+				case "with-key-range-filter":
+					if len(arg.Vals) != 2 {
+						return fmt.Sprintf("invalid number of arguments for with-key-range-filter: %v", arg.Vals)
+					}
+					opts = append(opts, WithKeyRangeFilter([]byte(arg.Vals[0]), []byte(arg.Vals[1])))
+				case "with-approximate-span-bytes":
+					opts = append(opts, WithApproximateSpanBytes())
+				default:
+					return fmt.Sprintf("unknown argument: %s", arg.Key)
+				}
+			}
+			sstables, err := d.SSTables(opts...)
+			require.NoError(t, err)
+			// NB: We output the sstables as JSON, because the CockroachDB
+			// crdb_internal.sstable_metrics builtin uses this JSON
+			// serialization.
+			enc := json.NewEncoder(&buf)
+			enc.SetIndent("", "  ")
+			enc.Encode(sstables)
+			return buf.String()
+		default:
+			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
+		}
 	})
-	require.NoError(t, err)
-	defer func() {
-		if d != nil {
-			require.NoError(t, d.Close())
-		}
-	}()
-
-	// Create two sstables.
-	require.NoError(t, d.Set([]byte("hello"), nil, nil))
-	require.NoError(t, d.Flush())
-	require.NoError(t, d.Set([]byte("world"), nil, nil))
-	require.NoError(t, d.Flush())
-
-	// by default returned table infos should not contain Properties
-	tableInfos, err := d.SSTables()
-	require.NoError(t, err)
-	for _, levelTables := range tableInfos {
-		for _, info := range levelTables {
-			require.Nil(t, info.Properties)
-		}
-	}
-
-	// with opt `WithProperties()` the `Properties` in table info should not be nil
-	tableInfos, err = d.SSTables(WithProperties())
-	require.NoError(t, err)
-	for _, levelTables := range tableInfos {
-		for _, info := range levelTables {
-			require.NotNil(t, info.Properties)
-		}
+	if d != nil {
+		require.NoError(t, d.Close())
+		d = nil
 	}
 }
 

@@ -1,0 +1,687 @@
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.3:v
+L2
+  a.RANGEDEL.2:e
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+----
+L1:
+  000004:[a#3,SET-a#3,SET]
+L2:
+  000005:[a#2,RANGEDEL-e#inf,RANGEDEL]
+L3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+
+sstables
+----
+[
+  [],
+  [
+    {
+      "FileNum": 4,
+      "Size": 589,
+      "Smallest": {
+        "UserKey": "YQ==",
+        "Trailer": 769
+      },
+      "Largest": {
+        "UserKey": "YQ==",
+        "Trailer": 769
+      },
+      "SmallestSeqNum": 3,
+      "LargestSeqNum": 3,
+      "Virtual": false,
+      "BackingSSTNum": 4,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": null
+    }
+  ],
+  [
+    {
+      "FileNum": 5,
+      "Size": 631,
+      "Smallest": {
+        "UserKey": "YQ==",
+        "Trailer": 527
+      },
+      "Largest": {
+        "UserKey": "ZQ==",
+        "Trailer": 18446744073709551375
+      },
+      "SmallestSeqNum": 2,
+      "LargestSeqNum": 2,
+      "Virtual": false,
+      "BackingSSTNum": 5,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": null
+    }
+  ],
+  [
+    {
+      "FileNum": 6,
+      "Size": 593,
+      "Smallest": {
+        "UserKey": "YQ==",
+        "Trailer": 1
+      },
+      "Largest": {
+        "UserKey": "Yg==",
+        "Trailer": 1
+      },
+      "SmallestSeqNum": 0,
+      "LargestSeqNum": 0,
+      "Virtual": false,
+      "BackingSSTNum": 6,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": null
+    },
+    {
+      "FileNum": 7,
+      "Size": 593,
+      "Smallest": {
+        "UserKey": "Yw==",
+        "Trailer": 1
+      },
+      "Largest": {
+        "UserKey": "ZA==",
+        "Trailer": 1
+      },
+      "SmallestSeqNum": 0,
+      "LargestSeqNum": 0,
+      "Virtual": false,
+      "BackingSSTNum": 7,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": null
+    }
+  ],
+  [],
+  [],
+  []
+]
+
+define
+L5
+  c.SET.11:<rand-bytes=32768>
+  d.SET.11:<rand-bytes=65536>
+  e.SET.11:<rand-bytes=100>
+L5
+  f.SET.11:<rand-bytes=57344>
+L6
+  c.SET.0:<rand-bytes=65536>
+L6
+  e.SET.0:<rand-bytes=65536>
+L6
+  f.SET.0:<rand-bytes=65536>
+----
+L5:
+  000004:[c#11,SET-e#11,SET]
+  000005:[f#11,SET-f#11,SET]
+L6:
+  000006:[c#0,SET-c#0,SET]
+  000007:[e#0,SET-e#0,SET]
+  000008:[f#0,SET-f#0,SET]
+
+sstables with-properties
+----
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "FileNum": 4,
+      "Size": 99086,
+      "Smallest": {
+        "UserKey": "Yw==",
+        "Trailer": 2817
+      },
+      "Largest": {
+        "UserKey": "ZQ==",
+        "Trailer": 2817
+      },
+      "SmallestSeqNum": 11,
+      "LargestSeqNum": 11,
+      "Virtual": false,
+      "BackingSSTNum": 4,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 3,
+        "RawKeySize": 27,
+        "RawValueSize": 98404,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 98486,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 71,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 3,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    },
+    {
+      "FileNum": 5,
+      "Size": 57942,
+      "Smallest": {
+        "UserKey": "Zg==",
+        "Trailer": 2817
+      },
+      "Largest": {
+        "UserKey": "Zg==",
+        "Trailer": 2817
+      },
+      "SmallestSeqNum": 11,
+      "LargestSeqNum": 11,
+      "Virtual": false,
+      "BackingSSTNum": 5,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 1,
+        "RawKeySize": 9,
+        "RawValueSize": 57344,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 57372,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 29,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 1,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    }
+  ],
+  [
+    {
+      "FileNum": 6,
+      "Size": 66134,
+      "Smallest": {
+        "UserKey": "Yw==",
+        "Trailer": 1
+      },
+      "Largest": {
+        "UserKey": "Yw==",
+        "Trailer": 1
+      },
+      "SmallestSeqNum": 0,
+      "LargestSeqNum": 0,
+      "Virtual": false,
+      "BackingSSTNum": 6,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 1,
+        "RawKeySize": 9,
+        "RawValueSize": 65536,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 65564,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 29,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 1,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    },
+    {
+      "FileNum": 7,
+      "Size": 66134,
+      "Smallest": {
+        "UserKey": "ZQ==",
+        "Trailer": 1
+      },
+      "Largest": {
+        "UserKey": "ZQ==",
+        "Trailer": 1
+      },
+      "SmallestSeqNum": 0,
+      "LargestSeqNum": 0,
+      "Virtual": false,
+      "BackingSSTNum": 7,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 1,
+        "RawKeySize": 9,
+        "RawValueSize": 65536,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 65564,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 29,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 1,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    },
+    {
+      "FileNum": 8,
+      "Size": 66134,
+      "Smallest": {
+        "UserKey": "Zg==",
+        "Trailer": 1
+      },
+      "Largest": {
+        "UserKey": "Zg==",
+        "Trailer": 1
+      },
+      "SmallestSeqNum": 0,
+      "LargestSeqNum": 0,
+      "Virtual": false,
+      "BackingSSTNum": 8,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 1,
+        "RawKeySize": 9,
+        "RawValueSize": 65536,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 65564,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 29,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 1,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    }
+  ]
+]
+
+sstables with-properties with-approximate-span-bytes with-key-range-filter=(e,f)
+----
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "FileNum": 4,
+      "Size": 99086,
+      "Smallest": {
+        "UserKey": "Yw==",
+        "Trailer": 2817
+      },
+      "Largest": {
+        "UserKey": "ZQ==",
+        "Trailer": 2817
+      },
+      "SmallestSeqNum": 11,
+      "LargestSeqNum": 11,
+      "Virtual": false,
+      "BackingSSTNum": 4,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 3,
+        "RawKeySize": 27,
+        "RawValueSize": 98404,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 98486,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 71,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 3,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "approximate-span-bytes": "126",
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    }
+  ],
+  [
+    {
+      "FileNum": 7,
+      "Size": 66134,
+      "Smallest": {
+        "UserKey": "ZQ==",
+        "Trailer": 1
+      },
+      "Largest": {
+        "UserKey": "ZQ==",
+        "Trailer": 1
+      },
+      "SmallestSeqNum": 0,
+      "LargestSeqNum": 0,
+      "Virtual": false,
+      "BackingSSTNum": 7,
+      "BackingType": 0,
+      "Locator": "",
+      "Properties": {
+        "NumEntries": 1,
+        "RawKeySize": 9,
+        "RawValueSize": 65536,
+        "RawPointTombstoneKeySize": 0,
+        "RawPointTombstoneValueSize": 0,
+        "NumSizedDeletions": 0,
+        "NumDeletions": 0,
+        "NumRangeDeletions": 0,
+        "NumRangeKeyDels": 0,
+        "NumRangeKeySets": 0,
+        "ValueBlocksSize": 0,
+        "CompressionName": "Snappy",
+        "CompressionOptions": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ",
+        "ComparerName": "pebble.internal.testkeys",
+        "DataSize": 65564,
+        "FilterPolicyName": "",
+        "FilterSize": 0,
+        "IndexPartitions": 0,
+        "IndexSize": 29,
+        "IndexType": 0,
+        "IsStrictObsolete": false,
+        "MergerName": "pebble.concatenate",
+        "NumDataBlocks": 1,
+        "NumMergeOperands": 0,
+        "NumRangeKeyUnsets": 0,
+        "NumValueBlocks": 0,
+        "NumValuesInValueBlocks": 0,
+        "PropertyCollectorNames": "[obsolete-key]",
+        "RawRangeKeyKeySize": 0,
+        "RawRangeKeyValueSize": 0,
+        "SnapshotPinnedKeys": 0,
+        "SnapshotPinnedKeySize": 0,
+        "SnapshotPinnedValueSize": 0,
+        "TopLevelIndexSize": 0,
+        "UserProperties": {
+          "approximate-span-bytes": "66134",
+          "obsolete-key": "\u0000"
+        },
+        "Loaded": {
+          "0": {},
+          "104": {},
+          "120": {},
+          "136": {},
+          "16": {},
+          "160": {},
+          "176": {},
+          "184": {},
+          "192": {},
+          "208": {},
+          "216": {},
+          "248": {},
+          "48": {},
+          "56": {},
+          "8": {},
+          "88": {}
+        }
+      }
+    }
+  ]
+]
