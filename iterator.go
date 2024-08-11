@@ -1476,23 +1476,18 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	}
 	// Make a copy of the prefix so that modifications to the key after
 	// SeekPrefixGE returns does not affect the stored prefix.
-	if cap(i.prefixOrFullSeekKey) < prefixLen {
-		i.prefixOrFullSeekKey = make([]byte, prefixLen)
-	} else {
-		i.prefixOrFullSeekKey = i.prefixOrFullSeekKey[:prefixLen]
-	}
 	i.hasPrefix = true
-	copy(i.prefixOrFullSeekKey, keyPrefix)
+	i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], keyPrefix...)
 
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
-		if p := i.comparer.Split.Prefix(lowerBound); !bytes.Equal(i.prefixOrFullSeekKey, p) {
+		if !i.comparer.Split.HasPrefix(i.prefixOrFullSeekKey, lowerBound) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of lower bound")
 			i.iterValidityState = IterExhausted
 			return false
 		}
 		key = lowerBound
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
-		if p := i.comparer.Split.Prefix(upperBound); !bytes.Equal(i.prefixOrFullSeekKey, p) {
+		if !i.comparer.Split.HasPrefix(i.prefixOrFullSeekKey, upperBound) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of upper bound")
 			i.iterValidityState = IterExhausted
 			return false

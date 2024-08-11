@@ -524,11 +524,9 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 	// P2. Care is taken to avoid ever advancing the iterator beyond the current
 	// prefix. If nextEntry is ever invoked while we're already beyond the
 	// current prefix, we're violating the invariant.
-	if invariants.Enabled && m.prefix != nil {
-		if p := m.split.Prefix(l.iterKV.K.UserKey); !bytes.Equal(m.prefix, p) {
-			m.logger.Fatalf("mergingIter: prefix violation: nexting beyond prefix %q; existing heap root %q\n%s",
-				m.prefix, l.iterKV, debug.Stack())
-		}
+	if invariants.Enabled && m.prefix != nil && !m.split.HasPrefix(m.prefix, l.iterKV.K.UserKey) {
+		m.logger.Fatalf("mergingIter: prefix violation: nexting beyond prefix %q; existing heap root %q\n%s",
+			m.prefix, l.iterKV, debug.Stack())
 	}
 
 	oldTopLevel := l.index
@@ -905,6 +903,10 @@ func (m *mergingIter) findPrevEntry() *base.InternalKV {
 //
 // If an error occurs, seekGE returns the error without setting m.err.
 func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) error {
+	if invariants.Enabled && m.lower != nil && m.heap.cmp(key, m.lower) < 0 {
+		m.logger.Fatalf("mergingIter: lower bound violation: %s < %s\n%s", key, m.lower, debug.Stack())
+	}
+
 	// When seeking, we can use tombstones to adjust the key we seek to on each
 	// level. Consider the series of range tombstones:
 	//
@@ -957,15 +959,11 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 	}
 
 	for ; level < len(m.levels); level++ {
-		if invariants.Enabled && m.lower != nil && m.heap.cmp(key, m.lower) < 0 {
-			m.logger.Fatalf("mergingIter: lower bound violation: %s < %s\n%s", key, m.lower, debug.Stack())
-		}
-
 		l := &m.levels[level]
 		if m.prefix != nil {
 			l.iterKV = l.iter.SeekPrefixGE(m.prefix, key, flags)
 			if l.iterKV != nil {
-				if !bytes.Equal(m.prefix, m.split.Prefix(l.iterKV.K.UserKey)) {
+				if !m.split.HasPrefix(m.prefix, l.iterKV.K.UserKey) {
 					// Prevent keys without a matching prefix from being added to the heap by setting
 					// iterKey and iterValue to their zero values before calling initMinHeap.
 					l.iterKV = nil
@@ -999,7 +997,21 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 				// Based on the containment condition tombstone.End > key, so
 				// the assignment to key results in a monotonically
 				// non-decreasing key across iterations of this loop.
-				//
+				if m.prefix != nil && !m.split.HasPrefix(m.prefix, l.tombstone.End) {
+					// Any keys with m.prefix on subsequent levels are under the tombstone.
+					// We still need to perform the seeks, in case the next seek uses
+					// the TrySeekUsingNext flag.
+					for level++; level < len(m.levels); level++ {
+						l := &m.levels[level]
+						if kv := l.iter.SeekPrefixGE(m.prefix, key, flags); kv == nil {
+							if err := l.iter.Error(); err != nil {
+								return err
+							}
+						}
+						l.iterKV = nil
+					}
+					break
+				}
 				// The adjustment of key here can only move it to a larger key.
 				// Since the caller of seekGE guaranteed that the original key
 				// was greater than or equal to m.lower, the new key will
@@ -1037,6 +1049,9 @@ func (m *mergingIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *
 func (m *mergingIter) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
+	if invariants.Enabled && !m.split.HasPrefix(prefix, key) {
+		panic(fmt.Sprintf("invalid prefix %q for key %q", prefix, key))
+	}
 	m.prefix = prefix
 	m.err = m.seekGE(key, 0 /* start level */, flags)
 	if m.err != nil {
@@ -1044,10 +1059,8 @@ func (m *mergingIter) SeekPrefixGEStrict(
 	}
 
 	iterKV := m.findNextEntry()
-	if invariants.Enabled && iterKV != nil {
-		if !bytes.Equal(m.prefix, m.split.Prefix(iterKV.K.UserKey)) {
-			m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKV, m.prefix)
-		}
+	if invariants.Enabled && iterKV != nil && !m.split.HasPrefix(m.prefix, iterKV.K.UserKey) {
+		m.logger.Fatalf("mergingIter: prefix violation: returning key %q without prefix %q\n", iterKV, m.prefix)
 	}
 	return iterKV
 }
