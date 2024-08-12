@@ -374,23 +374,16 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 	return newPC
 }
 
-// maybeExpandedBounds is a helper function for setupInputs which ensures the
+// maybeExpandBounds is a helper function for setupInputs which ensures the
 // pickedCompaction's smallest and largest internal keys are updated iff
 // the candidate keys expand the key span. This avoids a bug for multi-level
 // compactions: during the second call to setupInputs, the picked compaction's
 // smallest and largest keys should not decrease the key span.
 func (pc *pickedCompaction) maybeExpandBounds(smallest InternalKey, largest InternalKey) {
-	emptyKey := InternalKey{}
-	if base.InternalCompare(pc.cmp, smallest, emptyKey) == 0 {
-		if base.InternalCompare(pc.cmp, largest, emptyKey) != 0 {
-			panic("either both candidate keys are empty or neither are empty")
-		}
+	if len(smallest.UserKey) == 0 && len(largest.UserKey) == 0 {
 		return
 	}
-	if base.InternalCompare(pc.cmp, pc.smallest, emptyKey) == 0 {
-		if base.InternalCompare(pc.cmp, pc.largest, emptyKey) != 0 {
-			panic("either both pc keys are empty or neither are empty")
-		}
+	if len(pc.smallest.UserKey) == 0 && len(pc.largest.UserKey) == 0 {
 		pc.smallest = smallest
 		pc.largest = largest
 		return
