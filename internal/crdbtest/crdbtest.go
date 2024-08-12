@@ -154,9 +154,12 @@ func DecodeTimestamp(mvccKey []byte) ([]byte, []byte, uint64, uint32) {
 
 // Split implements base.Split for CockroachDB keys.
 func Split(key []byte) int {
+	// TODO(radu): Pebble sometimes passes empty "keys" and we have to tolerate
+	// them until we fix that.
 	if len(key) == 0 {
-		panic(errors.AssertionFailedf("empty key"))
+		return 0
 	}
+
 	// Last byte is the version length + 1 when there is a version, else it is
 	// 0.
 	versionLen := int(key[len(key)-1])
@@ -169,8 +172,10 @@ func Split(key []byte) int {
 // Compare compares cockroach keys, including the version (which could be MVCC
 // timestamps).
 func Compare(a, b []byte) int {
+	// TODO(radu): Pebble sometimes passes empty "keys" and we have to tolerate
+	// them until we fix that.
 	if len(a) == 0 || len(b) == 0 {
-		panic(errors.AssertionFailedf("malformed key: %x, %x", a, b))
+		return cmp.Compare(len(a), len(b))
 	}
 
 	// NB: For performance, this routine manually splits the key into the
@@ -219,11 +224,13 @@ func CompareSuffixes(a, b []byte) int {
 
 // Equal implements base.Equal for Cockroach keys.
 func Equal(a, b []byte) bool {
+	// TODO(radu): Pebble sometimes passes empty "keys" and we have to tolerate
+	// them until we fix that.
+	if len(a) == 0 || len(b) == 0 {
+		return len(a) == len(b)
+	}
 	aEnd := len(a) - 1
 	bEnd := len(b) - 1
-	if aEnd < 0 || bEnd < 0 {
-		panic("empty keys")
-	}
 
 	// Last byte is the version length + 1 when there is a version,
 	// else it is 0.
