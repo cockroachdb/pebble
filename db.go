@@ -2098,7 +2098,20 @@ const (
 	// or lifecycle management. An example of an external file is a file restored
 	// from a backup.
 	BackingTypeExternal
+	backingTypeCount
 )
+
+var backingTypeToString = [backingTypeCount]string{
+	BackingTypeLocal:         "local",
+	BackingTypeShared:        "shared",
+	BackingTypeSharedForeign: "shared-foreign",
+	BackingTypeExternal:      "external",
+}
+
+// String implements fmt.Stringer.
+func (b BackingType) String() string {
+	return backingTypeToString[b]
+}
 
 // SSTableInfo export manifest.TableInfo with sstable.Properties alongside
 // other file backing info.
