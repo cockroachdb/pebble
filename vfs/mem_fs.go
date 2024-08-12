@@ -164,6 +164,9 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 	for len(fullname) > 0 && fullname[0] == sep[0] {
 		fullname = fullname[1:]
 	}
+	if fullname == "." {
+		fullname = ""
+	}
 	dir := y.root
 
 	for {

@@ -88,22 +88,19 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 	// Collect paths for all directories between destDir (excluded) and its
 	// closest existing ancestor (included).
 	var parentPaths []string
-	foundExistingAncestor := false
-	for parentPath := fs.PathDir(destDir); parentPath != "."; parentPath = fs.PathDir(parentPath) {
+	for parentPath := fs.PathDir(destDir); ; parentPath = fs.PathDir(parentPath) {
 		parentPaths = append(parentPaths, parentPath)
+		if fs.PathDir(parentPath) == parentPath {
+			break
+		}
 		_, err := fs.Stat(parentPath)
 		if err == nil {
 			// Exit loop at the closest existing ancestor.
-			foundExistingAncestor = true
 			break
 		}
 		if !oserror.IsNotExist(err) {
 			return nil, err
 		}
-	}
-	// Handle empty filesystem edge case.
-	if !foundExistingAncestor {
-		parentPaths = append(parentPaths, "")
 	}
 	// Create destDir and any of its missing parents.
 	if err := fs.MkdirAll(destDir, 0755); err != nil {

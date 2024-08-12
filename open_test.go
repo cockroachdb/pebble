@@ -1388,3 +1388,49 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
 
 }
+
+func TestMkdirAllAndSyncParents(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("skipping due to path separator")
+	}
+	pwd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { os.Chdir(pwd) }()
+
+	filesystems := map[string]vfs.FS{}
+	rootPaths := map[string]string{}
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/mkdir_all_and_sync_parents", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "mkfs":
+			var fsName string
+			td.ScanArgs(t, "fs", &fsName)
+			if td.HasArg("memfs") {
+				filesystems[fsName] = vfs.NewMem()
+				return "new memfs"
+			}
+			filesystems[fsName] = vfs.Default
+			rootPaths[fsName] = t.TempDir()
+			return "new default fs"
+		case "mkdir-all-and-sync-parents":
+			var fsName, path string
+			td.ScanArgs(t, "fs", &fsName)
+			td.ScanArgs(t, "path", &path)
+			if p, ok := rootPaths[fsName]; ok {
+				require.NoError(t, os.Chdir(p))
+			}
+			fs := vfs.WithLogging(filesystems[fsName], func(format string, args ...interface{}) {
+				fmt.Fprintf(&buf, format+"\n", args...)
+			})
+			f, err := mkdirAllAndSyncParents(fs, path)
+			if err != nil {
+				return err.Error()
+			}
+			require.NoError(t, f.Close())
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
