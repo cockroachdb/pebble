@@ -1,0 +1,67 @@
+mkfs memfs fs=mem1
+----
+new memfs
+
+mkdir-all-and-sync-parents fs=mem1 path=foo/bar/baz/bax
+----
+mkdir-all: foo/bar/baz/bax 0755
+open-dir: foo/bar/baz
+sync: foo/bar/baz
+close: foo/bar/baz
+open-dir: foo/bar
+sync: foo/bar
+close: foo/bar
+open-dir: foo
+sync: foo
+close: foo
+open-dir: .
+sync: .
+close: .
+open-dir: foo/bar/baz/bax
+close: foo/bar/baz/bax
+
+# Repeating the same command should only sync the parent, and then the new data
+# directory itself.
+
+mkdir-all-and-sync-parents fs=mem1 path=foo/bar/baz/bax
+----
+mkdir-all: foo/bar/baz/bax 0755
+open-dir: foo/bar/baz
+sync: foo/bar/baz
+close: foo/bar/baz
+open-dir: foo/bar/baz/bax
+close: foo/bar/baz/bax
+
+mkfs fs=default1
+----
+new default fs
+
+mkdir-all-and-sync-parents fs=default1 path=foo/bar/baz/bax
+----
+mkdir-all: foo/bar/baz/bax 0755
+open-dir: foo/bar/baz
+sync: foo/bar/baz
+close: foo/bar/baz
+open-dir: foo/bar
+sync: foo/bar
+close: foo/bar
+open-dir: foo
+sync: foo
+close: foo
+open-dir: .
+sync: .
+close: .
+open-dir: foo/bar/baz/bax
+close: foo/bar/baz/bax
+
+# Repeating the same command should only sync the parent, and then the new data
+# directory itself.
+
+mkdir-all-and-sync-parents fs=default1 path=foo/bar/baz/bax
+----
+mkdir-all: foo/bar/baz/bax 0755
+open-dir: foo/bar/baz
+sync: foo/bar/baz
+close: foo/bar/baz
+open-dir: foo/bar/baz/bax
+close: foo/bar/baz/bax
