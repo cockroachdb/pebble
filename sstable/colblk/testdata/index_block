@@ -1,0 +1,236 @@
+build-single-level
+apple       24   24    bp1
+applied    141  112    bp2
+atone      195   49    bp3
+bacitracin 412  212
+banana     632  215    bp5
+bonifide   963  326    bp6
+----
+# index block header
+000-008: x 0000000000000000     # firstStartOffset = 0
+# columnar block header
+008-009: x 01                   # version 1
+009-011: x 0400                 # 4 columns
+011-015: x 06000000             # 6 rows
+# column 0
+015-016: b 00000110             # bytes
+016-020: x 23000000             # page start 35
+# column 1
+020-021: b 00000101             # uint64
+021-025: x 58000000             # page start 88
+# column 2
+025-026: b 00000101             # uint64
+026-030: x 6e000000             # page start 110
+# column 3
+030-031: b 00000110             # bytes
+031-035: x 77000000             # page start 119
+# data for column 0
+# rawbytes
+# offsets table
+035-036: x 02                   # delta encoding: delta8
+036-040: x 00000000             # 32-bit constant: 0
+040-041: x 00                   # data[0] = 0 [47 overall]
+041-042: x 05                   # data[1] = 5 [52 overall]
+042-043: x 0c                   # data[2] = 12 [59 overall]
+043-044: x 11                   # data[3] = 17 [64 overall]
+044-045: x 1b                   # data[4] = 27 [74 overall]
+045-046: x 21                   # data[5] = 33 [80 overall]
+046-047: x 29                   # data[6] = 41 [88 overall]
+# data
+047-052: x 6170706c65           # data[0]: apple
+052-059: x 6170706c696564       # data[1]: applied
+059-064: x 61746f6e65           # data[2]: atone
+064-074: x 6261636974726163696e # data[3]: bacitracin
+074-080: x 62616e616e61         # data[4]: banana
+080-088: x 626f6e6966696465     # data[5]: bonifide
+# data for column 1
+088-089: x 03                   # delta encoding: delta16
+089-097: x 1800000000000000     # 64-bit constant: 24
+# padding
+097-098: x 00                   # aligning to 16-bit boundary
+098-100: x 0000                 # data[0] = 0 + 24 = 24
+100-102: x 7500                 # data[1] = 117 + 24 = 141
+102-104: x ab00                 # data[2] = 171 + 24 = 195
+104-106: x 8401                 # data[3] = 388 + 24 = 412
+106-108: x 6002                 # data[4] = 608 + 24 = 632
+108-110: x ab03                 # data[5] = 939 + 24 = 963
+# data for column 2
+110-111: x 01                   # delta encoding: const
+111-119: x 0000000000000000     # 64-bit constant: 0
+# data for column 3
+# rawbytes
+# offsets table
+119-120: x 02                   # delta encoding: delta8
+120-124: x 00000000             # 32-bit constant: 0
+124-125: x 00                   # data[0] = 0 [131 overall]
+125-126: x 03                   # data[1] = 3 [134 overall]
+126-127: x 06                   # data[2] = 6 [137 overall]
+127-128: x 09                   # data[3] = 9 [140 overall]
+128-129: x 09                   # data[4] = 9 [140 overall]
+129-130: x 0c                   # data[5] = 12 [143 overall]
+130-131: x 0f                   # data[6] = 15 [146 overall]
+# data
+131-134: x 627031               # data[0]: bp1
+134-137: x 627032               # data[1]: bp2
+137-140: x 627033               # data[2]: bp3
+140-140: x                      # data[3]:
+140-143: x 627035               # data[4]: bp5
+143-146: x 627036               # data[5]: bp6
+
+iter-single-level
+seek-ge zoo
+seek-ge bitter
+seek-ge abbey
+seek-ge banana
+seek-ge babble
+seek-ge assumption
+----
+.
+data block 5: 637-963 props="bp6"
+data block 0: 0-24 props="bp1"
+data block 4: 417-632 props="bp5"
+data block 3: 200-412
+data block 2: 146-195 props="bp3"
+
+iter-single-level
+first
+next
+next
+next
+next
+next
+next
+----
+data block 0: 0-24 props="bp1"
+data block 1: 29-141 props="bp2"
+data block 2: 146-195 props="bp3"
+data block 3: 200-412
+data block 4: 417-632 props="bp5"
+data block 5: 637-963 props="bp6"
+.
+
+iter-single-level
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+data block 5: 637-963 props="bp6"
+data block 4: 417-632 props="bp5"
+data block 3: 200-412
+data block 2: 146-195 props="bp3"
+data block 1: 29-141 props="bp2"
+data block 0: 0-24 props="bp1"
+.
+
+build-second-level
+cat           3021   2052   bp1
+catastrophe  91251   1899
+catatonic   102422  20442
+cephalopod  122864   9104   bp4
+coat        293128  32104
+----
+# index block header
+000-008: x 0000000000000000     # firstStartOffset = 0
+# columnar block header
+008-009: x 01                   # version 1
+009-011: x 0400                 # 4 columns
+011-015: x 05000000             # 5 rows
+# column 0
+015-016: b 00000110             # bytes
+016-020: x 23000000             # page start 35
+# column 1
+020-021: b 00000101             # uint64
+021-025: x 53000000             # page start 83
+# column 2
+025-026: b 00000101             # uint64
+026-030: x 70000000             # page start 112
+# column 3
+030-031: b 00000110             # bytes
+031-035: x 84000000             # page start 132
+# data for column 0
+# rawbytes
+# offsets table
+035-036: x 02                   # delta encoding: delta8
+036-040: x 00000000             # 32-bit constant: 0
+040-041: x 00                   # data[0] = 0 [46 overall]
+041-042: x 03                   # data[1] = 3 [49 overall]
+042-043: x 0e                   # data[2] = 14 [60 overall]
+043-044: x 17                   # data[3] = 23 [69 overall]
+044-045: x 21                   # data[4] = 33 [79 overall]
+045-046: x 25                   # data[5] = 37 [83 overall]
+# data
+046-049: x 636174               # data[0]: cat
+049-059: x 636174617374726f7068 # data[1]: catastrophe
+059-060: x 65                   # (continued...)
+060-069: x 63617461746f6e6963   # data[2]: catatonic
+069-079: x 63657068616c6f706f64 # data[3]: cephalopod
+079-083: x 636f6174             # data[4]: coat
+# data for column 1
+083-084: x 04                   # delta encoding: delta32
+084-092: x cd0b000000000000     # 64-bit constant: 3021
+092-096: x 00000000             # data[0] = 0 + 3021 = 3021
+096-100: x a6580100             # data[1] = 88230 + 3021 = 91251
+100-104: x 49840100             # data[2] = 99401 + 3021 = 102422
+104-108: x 23d40100             # data[3] = 119843 + 3021 = 122864
+108-112: x 3b6d0400             # data[4] = 290107 + 3021 = 293128
+# data for column 2
+112-113: x 03                   # delta encoding: delta16
+113-121: x 0000000000000000     # 64-bit constant: 0
+# padding
+121-122: x 00                   # aligning to 16-bit boundary
+122-124: x 0408                 # data[0] = 2052
+124-126: x 6b07                 # data[1] = 1899
+126-128: x da4f                 # data[2] = 20442
+128-130: x 9023                 # data[3] = 9104
+130-132: x 687d                 # data[4] = 32104
+# data for column 3
+# rawbytes
+# offsets table
+132-133: x 02                   # delta encoding: delta8
+133-137: x 00000000             # 32-bit constant: 0
+137-138: x 00                   # data[0] = 0 [143 overall]
+138-139: x 03                   # data[1] = 3 [146 overall]
+139-140: x 03                   # data[2] = 3 [146 overall]
+140-141: x 03                   # data[3] = 3 [146 overall]
+141-142: x 06                   # data[4] = 6 [149 overall]
+142-143: x 06                   # data[5] = 6 [149 overall]
+# data
+143-146: x 627031               # data[0]: bp1
+146-146: x                      # data[1]:
+146-146: x                      # data[2]:
+146-149: x 627034               # data[3]: bp4
+149-149: x                      # data[4]:
+
+iter-two-level
+first
+next
+next
+next
+next
+next
+----
+index block 0: 974-3026 props="bp1"
+index block 1: 89357-91256
+index block 2: 81985-102427
+index block 3: 113765-122869 props="bp4"
+index block 4: 261029-293133
+.
+
+iter-two-level
+last
+prev
+prev
+prev
+prev
+prev
+----
+index block 4: 261029-293133
+index block 3: 113765-122869 props="bp4"
+index block 2: 81985-102427
+index block 1: 89357-91256
+index block 0: 974-3026 props="bp1"
+.
