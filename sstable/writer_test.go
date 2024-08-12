@@ -333,7 +333,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			forceIgnoreValueBlocks := func(i *singleLevelIterator) {
 				i.vbReader = nil
-				i.data.SetGetLazyValue(nil)
+				i.data.SetGetLazyValuer(nil)
 				i.data.SetHasValuePrefix(false)
 			}
 			switch i := origIter.(type) {

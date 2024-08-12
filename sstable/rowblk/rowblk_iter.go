@@ -187,7 +187,7 @@ type Iter struct {
 	// for block iteration for already loaded blocks.
 	firstUserKey      []byte
 	lazyValueHandling struct {
-		getLazyValue   func([]byte) base.LazyValue
+		getValue       block.GetLazyValueForPrefixAndValueHandler
 		hasValuePrefix bool
 	}
 	synthSuffixBuf            []byte
@@ -271,10 +271,11 @@ func (i *Iter) SetHasValuePrefix(hasValuePrefix bool) {
 	i.lazyValueHandling.hasValuePrefix = hasValuePrefix
 }
 
-// SetGetLazyValue sets the function the iterator should use to get lazy values
-// when the value encodes a value prefix.
-func (i *Iter) SetGetLazyValue(fn func([]byte) base.LazyValue) {
-	i.lazyValueHandling.getLazyValue = fn
+// SetGetLazyValuer sets the value block reader the iterator should use to get
+// lazy values when the value encodes a value prefix.
+func (i *Iter) SetGetLazyValuer(g block.GetLazyValueForPrefixAndValueHandler) {
+	i.lazyValueHandling.getValue = g
+
 }
 
 // Handle returns the underlying block buffer handle, if the iterator was
@@ -683,10 +684,10 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != base.InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+		} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
-			i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+			i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 		}
 		return &i.ikv
 	}
@@ -967,10 +968,10 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -996,10 +997,10 @@ func (i *Iter) First() *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1042,10 +1043,10 @@ func (i *Iter) Last() *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1101,10 +1102,10 @@ start:
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1392,10 +1393,10 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			}
 			if i.ikv.K.Kind() != base.InternalKeyKindSet {
 				i.ikv.V = base.MakeInPlaceValue(i.val)
-			} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+			} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 				i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 			} else {
-				i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+				i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 			}
 			return &i.ikv
 		}
@@ -1450,10 +1451,10 @@ start:
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != base.InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+		} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
-			i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+			i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 		}
 		return &i.ikv
 	}
@@ -1531,10 +1532,10 @@ start:
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getLazyValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getLazyValue(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1567,7 +1568,7 @@ func (i *Iter) Close() error {
 	i.handle = block.BufferHandle{}
 	i.val = nil
 	i.ikv = base.InternalKV{}
-	i.lazyValueHandling.getLazyValue = nil
+	i.lazyValueHandling.getValue = nil
 	return nil
 }
 
