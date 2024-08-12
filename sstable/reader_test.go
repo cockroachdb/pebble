@@ -2153,7 +2153,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		require.NoError(b, err)
 		return r
 	}
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4} {
 		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
 			// 150MiB results in a high cache hit rate for both formats. 20MiB
 			// results in a high cache hit rate for the data blocks in
@@ -2165,6 +2165,13 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 						defer func() {
 							require.NoError(b, r.Close())
 						}()
+						b.Run("NewIter", func(b *testing.B) {
+							for i := 0; i < b.N; i++ {
+								iter, err := r.NewIter(NoTransforms, nil, nil)
+								require.NoError(b, err)
+								require.NoError(b, iter.Close())
+							}
+						})
 						for _, readValue := range []bool{false, true} {
 							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
 								iter, err := r.NewIter(NoTransforms, nil, nil)
