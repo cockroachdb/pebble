@@ -104,9 +104,11 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 			return nil, err
 		}
 	}
-	// Handle empty filesystem edge case.
+	// Handle empty filesystem edge case. On a memFS, we want to sync "", on a
+	// real filesystem, we want to sync ".".
+	// TODO(jackson): Fix vfs.MemFS to mirror the behavior of real filesystems.
 	if !foundExistingAncestor {
-		parentPaths = append(parentPaths, "")
+		parentPaths = append(parentPaths, "", ".")
 	}
 	// Create destDir and any of its missing parents.
 	if err := fs.MkdirAll(destDir, 0755); err != nil {
@@ -117,6 +119,11 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 	for _, parentPath := range parentPaths {
 		parentDir, err := fs.OpenDir(parentPath)
 		if err != nil {
+			// Allow "." and "" to not exist. MemFS and real on-disk filesystems
+			// vary their behaivor.
+			if oserror.IsNotExist(err) && (parentPath == "" || parentPath == ".") {
+				continue
+			}
 			return nil, err
 		}
 		err = parentDir.Sync()
