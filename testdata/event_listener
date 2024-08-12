@@ -1,15 +1,15 @@
 open
 ----
 mkdir-all: db 0755
-open-dir: 
-sync: 
-close: 
+open-dir: .
+sync: .
+close: .
 open-dir: db
 close: db
 mkdir-all: wal 0755
-open-dir: 
-sync: 
-close: 
+open-dir: .
+sync: .
+close: .
 open-dir: wal
 close: wal
 open-dir: db
@@ -346,9 +346,9 @@ sstables
 checkpoint
 ----
 mkdir-all: checkpoint 0755
-open-dir: 
-sync: 
-close: 
+open-dir: .
+sync: .
+close: .
 open-dir: checkpoint
 link: db/OPTIONS-000003 -> checkpoint/OPTIONS-000003
 open-dir: checkpoint

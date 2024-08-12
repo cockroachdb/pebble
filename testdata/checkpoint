@@ -1,9 +1,9 @@
 open db
 ----
 mkdir-all: db 0755
-open-dir: 
-sync: 
-close: 
+open-dir: .
+sync: .
+close: .
 open-dir: db
 close: db
 open-dir: db
@@ -92,9 +92,9 @@ mkdir-all: checkpoints/checkpoint1 0755
 open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
-open-dir: 
-sync: 
-close: 
+open-dir: .
+sync: .
+close: .
 open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
