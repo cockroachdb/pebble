@@ -751,7 +751,7 @@ type valueBlockReader struct {
 	bufToMangle   []byte
 }
 
-func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+func (r *valueBlockReader) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
 	fetcher := &r.lazyFetcher
 	valLen, h := decodeLenFromValueHandle(handle[1:])
 	*fetcher = base.LazyFetcher{

@@ -269,7 +269,7 @@ func (i *singleLevelIterator) init(
 				vbih:   r.valueBIH,
 				stats:  stats,
 			}
-			i.data.SetGetLazyValue(i.vbReader.getLazyValueForPrefixAndValueHandle)
+			i.data.SetGetLazyValuer(i.vbReader)
 			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
 		i.data.SetHasValuePrefix(true)
