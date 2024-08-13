@@ -655,6 +655,9 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	if invariants.Enabled && !l.split.HasPrefix(prefix, key) {
+		panic(fmt.Sprintf("invalid prefix %q for key %q", prefix, key))
+	}
 	if invariants.Enabled && l.lower != nil && l.cmp(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
 	}

@@ -77,6 +77,11 @@ bounds:  [dd#5,SET-ddd#6,SET]
 # Check lower bound enforcement during SeekPrefixGE.
 iter
 seek-prefix-ge d
+----
+.
+
+iter
+seek-prefix-ge dd
 next
 next
 ----
@@ -292,6 +297,11 @@ bounds:  [dd#5,SET-ddd#6,SET]
 # Check lower bound enforcement during SeekPrefixGE.
 iter
 seek-prefix-ge d
+----
+.
+
+iter
+seek-prefix-ge dd
 next
 next
 ----
