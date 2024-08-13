@@ -4,6 +4,12 @@
 
 package manifest
 
+import (
+	"sort"
+
+	"github.com/cockroachdb/pebble/internal/base"
+)
+
 // The Annotator type defined below is used by other packages to lazily
 // compute a value over a B-Tree. Each node of the B-Tree stores one
 // `annotation` per annotator, containing the result of the computation over
@@ -24,6 +30,10 @@ package manifest
 // computed incrementally as edits are applied to a level.
 type Annotator[T any] struct {
 	Aggregator AnnotationAggregator[T]
+
+	// scratch is used to hold the aggregated annotation value when computing
+	// range annotations in order to avoid additional allocations.
+	scratch *T
 }
 
 // An AnnotationAggregator defines how an annotation should be accumulated
@@ -116,6 +126,86 @@ func (a *Annotator[T]) nodeAnnotation(n *node) (_ *T, cacheOK bool) {
 	return t, annot.valid
 }
 
+// nodeRangeAnnotation computes this annotator's annotation of a node across
+// all files in the range defined by lowerBound and upperBound. The second
+// return value indicates whether the annotation is stable and thus cacheable.
+func (a *Annotator[T]) nodeRangeAnnotation(
+	n *node,
+	cmp base.Compare,
+	bounds base.UserKeyBounds,
+	// fullyWithinLowerBound and fullyWithinUpperBound indicate whether this
+	// node's subtree is already known to be within each bound.
+	fullyWithinLowerBound bool,
+	fullyWithinUpperBound bool,
+) (v *T, cacheOK bool) {
+	// If this node's subtree is fully within the bounds, compute a regular
+	// annotation.
+	if fullyWithinLowerBound && fullyWithinUpperBound {
+		v, ok := a.nodeAnnotation(n)
+		a.scratch = a.Aggregator.Merge(v, a.scratch)
+		return a.scratch, ok
+	}
+
+	// We will accumulate annotations from each item in the end-exclusive
+	// range [leftItem, rightItem).
+	leftItem, rightItem := 0, int(n.count)
+	if !fullyWithinLowerBound {
+		// leftItem is the index of the first item that overlaps the lower bound.
+		leftItem = sort.Search(int(n.count), func(i int) bool {
+			return cmp(bounds.Start, n.items[i].Largest.UserKey) <= 0
+		})
+	}
+	if !fullyWithinUpperBound {
+		// rightItem is the index of the first item that does not overlap the
+		// upper bound.
+		rightItem = sort.Search(int(n.count), func(i int) bool {
+			return !bounds.End.IsUpperBoundFor(cmp, n.items[i].Smallest.UserKey)
+		})
+	}
+
+	valid := true
+	// Accumulate annotations from every item that overlaps the bounds.
+	for i := leftItem; i < rightItem; i++ {
+		v, ok := a.Aggregator.Accumulate(n.items[i], a.scratch)
+		a.scratch = v
+		valid = valid && ok
+	}
+
+	if !n.leaf {
+		// We will accumulate annotations from each child in the end-inclusive
+		// range [leftChild, rightChild].
+		leftChild, rightChild := leftItem, rightItem
+		// If the lower bound overlaps with the child at leftItem, there is no
+		// need to accumulate annotations from the child to its left.
+		if leftItem < int(n.count) && cmp(bounds.Start, n.items[leftItem].Smallest.UserKey) >= 0 {
+			leftChild++
+		}
+		// If the upper bound spans beyond the child at rightItem, we must also
+		// accumulate annotations from the child to its right.
+		if rightItem < int(n.count) && bounds.End.IsUpperBoundFor(cmp, n.items[rightItem].Largest.UserKey) {
+			rightChild++
+		}
+
+		for i := leftChild; i <= rightChild; i++ {
+			_, ok := a.nodeRangeAnnotation(
+				n.children[i],
+				cmp,
+				bounds,
+				// If this child is to the right of leftItem, then its entire
+				// subtree is within the lower bound.
+				fullyWithinLowerBound || i > leftItem,
+				// If this child is to the left of rightItem, then its entire
+				// subtree is within the upper bound.
+				fullyWithinUpperBound || i < rightItem,
+			)
+			// a.scratch = v
+			valid = valid && ok
+		}
+	}
+
+	return a.scratch, valid
+}
+
 // InvalidateAnnotation removes any existing cached annotations from this
 // annotator from a node's subtree.
 func (a *Annotator[T]) invalidateNodeAnnotation(n *node) {
@@ -142,8 +232,8 @@ func (a *Annotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 	return v
 }
 
-// LevelAnnotation calculates the annotation defined by this Annotator for all
-// files across the given levels. A pointer to the Annotator is used as the
+// MultiLevelAnnotation calculates the annotation defined by this Annotator for
+// all files across the given levels. A pointer to the Annotator is used as the
 // key for pre-calculated values, so the same Annotator must be used to avoid
 // duplicate computation. Annotation must not be called concurrently, and in
 // practice this is achieved by requiring callers to hold DB.mu.
@@ -156,6 +246,22 @@ func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 		}
 	}
 	return aggregated
+}
+
+// LevelRangeAnnotation calculates the annotation defined by this Annotator for
+// the files within LevelMetadata which are within the range
+// [lowerBound, upperBound). A pointer to the Annotator is used as the key for
+// pre-calculated values, so the same Annotator must be used to avoid duplicate
+// computation. Annotation must not be called concurrently, and in practice this
+// is achieved by requiring callers to hold DB.mu.
+func (a *Annotator[T]) LevelRangeAnnotation(lm LevelMetadata, bounds base.UserKeyBounds) *T {
+	if lm.Empty() {
+		return a.Aggregator.Zero(nil)
+	}
+
+	a.scratch = a.Aggregator.Zero(a.scratch)
+	v, _ := a.nodeRangeAnnotation(lm.tree.root, lm.tree.cmp, bounds, false, false)
+	return v
 }
 
 // InvalidateAnnotation clears any cached annotations defined by Annotator. A
@@ -205,6 +311,14 @@ func SumAnnotator(accumulate func(f *FileMetadata) (v uint64, cacheOK bool)) *An
 		},
 	}
 }
+
+// NumFilesAnnotator is an Annotator which computes an annotation value
+// equal to the number of files included in the annotation. Particularly, it
+// can be used to efficiently calculate the number of files in a given key
+// range using range annotations.
+var NumFilesAnnotator = SumAnnotator(func(f *FileMetadata) (uint64, bool) {
+	return 1, true
+})
 
 // PickFileAggregator implements the AnnotationAggregator interface. It defines
 // an aggregator that picks a single file from a set of eligible files.
