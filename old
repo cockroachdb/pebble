@@ -1,0 +1,28 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/cockroachdb/pebble/internal/manifest
+BenchmarkNumFilesRangeAnnotation
+BenchmarkNumFilesRangeAnnotation/annotator
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  247982	      4093 ns/op	      48 B/op	       6 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  275768	      4155 ns/op	      48 B/op	       6 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  265971	      4159 ns/op	      48 B/op	       6 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  267340	      4884 ns/op	      48 B/op	       6 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  247044	      4515 ns/op	      48 B/op	       5 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  270325	      4570 ns/op	      48 B/op	       6 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  248317	      4809 ns/op	      48 B/op	       5 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  273370	      4610 ns/op	      48 B/op	       5 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  243026	      4625 ns/op	      48 B/op	       6 allocs/op
+BenchmarkNumFilesRangeAnnotation/annotator-10         	  244537	      4958 ns/op	      48 B/op	       5 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2217	    517265 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2203	    531462 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2007	    538617 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2229	    522292 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2680	    534325 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2283	    536482 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2413	    531203 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    1960	    524593 ns/op	     337 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2503	    533925 ns/op	     336 B/op	       8 allocs/op
+BenchmarkNumFilesRangeAnnotation/overlaps-10          	    2245	    523023 ns/op	     336 B/op	       8 allocs/op
+PASS
+ok  	github.com/cockroachdb/pebble/internal/manifest	26.530s
