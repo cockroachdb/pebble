@@ -59,6 +59,14 @@ type AnnotationAggregator[T any] interface {
 	Merge(src *T, dst *T) *T
 }
 
+// A PartialOverlapAnnotationAggregator is an extension of AnnotationAggregator
+// that allows for custom accumulation of range annotations for files that only
+// partially overlap with the range.
+type PartialOverlapAnnotationAggregator[T any] interface {
+	AnnotationAggregator[T]
+	AccumulatePartialOverlap(f *FileMetadata, dst *T, bounds base.UserKeyBounds) (v *T, cacheOK bool)
+}
+
 type annotation struct {
 	// annotator is a pointer to the Annotator that computed this annotation.
 	// NB: This is untyped to allow AnnotationAggregator to use Go generics,
@@ -165,6 +173,16 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 
 	// Accumulate annotations from every item that overlaps the bounds.
 	for i := leftItem; i < rightItem; i++ {
+		if i == leftItem || i == rightItem - 1 {
+			if agg, ok := a.Aggregator.(PartialOverlapAnnotationAggregator[T]); ok {
+				fb := n.items[i].UserKeyBounds()
+				if cmp(bounds.Start, fb.Start) > 0 || bounds.End.CompareUpperBounds(cmp, fb.End) < 0 {
+					v, _ := agg.AccumulatePartialOverlap(n.items[i], a.scratch, bounds)
+					a.scratch = v
+					continue
+				}
+			}
+		}
 		v, _ := a.Aggregator.Accumulate(n.items[i], a.scratch)
 		a.scratch = v
 	}
@@ -258,6 +276,23 @@ func (a *Annotator[T]) LevelRangeAnnotation(lm LevelMetadata, bounds base.UserKe
 	return a.scratch
 }
 
+// VersionRangeAnnotation calculates the annotation defined by this Annotator
+// for all files within the given Version which are within the range
+// defined by bounds.
+func (a *Annotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBounds) *T {
+	accumulateSlice := func(ls LevelSlice) {
+		a.accumulateRangeAnnotation(ls.iter.r, v.cmp.Compare, bounds, false, false)
+	}
+	a.scratch = a.Aggregator.Zero(a.scratch)
+	for _, ls := range v.L0SublevelFiles {
+		accumulateSlice(ls)
+	}
+	for _, lm := range v.Levels {
+		accumulateSlice(lm.Slice())
+	}
+	return a.scratch
+}
+
 // InvalidateAnnotation clears any cached annotations defined by Annotator. A
 // pointer to the Annotator is used as the key for pre-calculated values, so
 // the same Annotator must be used to clear the appropriate cached annotation.
@@ -270,13 +305,14 @@ func (a *Annotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
 	a.invalidateNodeAnnotation(lm.tree.root)
 }
 
-// sumAggregator defines an Aggregator which sums together a uint64 value
+// SumAggregator defines an Aggregator which sums together a uint64 value
 // across files.
-type sumAggregator struct {
-	accumulateFunc func(f *FileMetadata) (v uint64, cacheOK bool)
+type SumAggregator struct {
+	AccumulateFunc func(f *FileMetadata) (v uint64, cacheOK bool)
+	AccumulatePartialOverlapFunc func(f *FileMetadata, bounds base.UserKeyBounds) (v uint64, cacheOK bool)
 }
 
-func (sa sumAggregator) Zero(dst *uint64) *uint64 {
+func (sa SumAggregator) Zero(dst *uint64) *uint64 {
 	if dst == nil {
 		return new(uint64)
 	}
@@ -284,13 +320,22 @@ func (sa sumAggregator) Zero(dst *uint64) *uint64 {
 	return dst
 }
 
-func (sa sumAggregator) Accumulate(f *FileMetadata, dst *uint64) (v *uint64, cacheOK bool) {
-	accumulated, ok := sa.accumulateFunc(f)
+func (sa SumAggregator) Accumulate(f *FileMetadata, dst *uint64) (v *uint64, cacheOK bool) {
+	accumulated, ok := sa.AccumulateFunc(f)
 	*dst += accumulated
 	return dst, ok
 }
 
-func (sa sumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
+func (sa *SumAggregator) AccumulatePartialOverlap(f *FileMetadata, dst *uint64, bounds base.UserKeyBounds) (v *uint64, cacheOK bool) {
+	if sa.AccumulatePartialOverlapFunc == nil {
+		return dst, true
+	}
+	accumulated, ok := sa.AccumulatePartialOverlapFunc(f, bounds)
+	*dst += accumulated
+	return dst, ok
+}
+
+func (sa SumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
 	*dst += *src
 	return dst
 }
@@ -300,8 +345,8 @@ func (sa sumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
 // files.
 func SumAnnotator(accumulate func(f *FileMetadata) (v uint64, cacheOK bool)) *Annotator[uint64] {
 	return &Annotator[uint64]{
-		Aggregator: sumAggregator{
-			accumulateFunc: accumulate,
+		Aggregator: SumAggregator{
+			AccumulateFunc: accumulate,
 		},
 	}
 }
