@@ -501,6 +501,14 @@ type DB struct {
 			// validating is set to true when validation is running.
 			validating bool
 		}
+
+		// annotators contains various instances of manifest.Annotator which
+		// should be protected from concurrent access.
+		annotators struct {
+			totalSizeAnnotator    *manifest.Annotator[uint64]
+			remoteSizeAnnotator   *manifest.Annotator[uint64]
+			externalSizeAnnotator *manifest.Annotator[uint64]
+		}
 	}
 
 	// Normally equal to time.Now() but may be overridden in tests.
@@ -2228,6 +2236,31 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	return destLevels, nil
 }
 
+// makeFileSizeAnnotator returns an annotator that computes the total size of
+// files that meet some criteria defined by filter.
+func (d *DB) makeFileSizeAnnotator(filter func(f *fileMetadata) bool) *manifest.Annotator[uint64] {
+	return &manifest.Annotator[uint64]{
+		Aggregator: manifest.SumAggregator{
+			AccumulateFunc: func(f *fileMetadata) (uint64, bool) {
+				if filter(f) {
+					return f.Size, true
+				}
+				return 0, true
+			},
+			AccumulatePartialOverlapFunc: func(f *fileMetadata, bounds base.UserKeyBounds) uint64 {
+				if filter(f) {
+					size, err := d.tableCache.estimateSize(f, bounds.Start, bounds.End.Key)
+					if err != nil {
+						return 0
+					}
+					return size
+				}
+				return 0
+			},
+		},
+	}
+}
+
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
 // storing the range `[start, end]`. The estimation is computed as follows:
 //
@@ -2254,7 +2287,9 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-	if d.opts.Comparer.Compare(start, end) > 0 {
+
+	bounds := base.UserKeyBoundsInclusive(start, end)
+	if !bounds.Valid(d.cmp) {
 		return 0, 0, 0, errors.New("invalid key-range specified (start > end)")
 	}
 
@@ -2264,70 +2299,13 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	readState := d.loadReadState()
 	defer readState.unref()
 
-	for level, files := range readState.current.Levels {
-		iter := files.Iter()
-		if level > 0 {
-			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
-			// expands the range iteratively until it has found a set of files that
-			// do not overlap any other L0 files outside that set.
-			overlaps := readState.current.Overlaps(level, base.UserKeyBoundsInclusive(start, end))
-			iter = overlaps.Iter()
-		}
-		for file := iter.First(); file != nil; file = iter.Next() {
-			if d.opts.Comparer.Compare(start, file.Smallest.UserKey) <= 0 &&
-				d.opts.Comparer.Compare(file.Largest.UserKey, end) <= 0 {
-				// The range fully contains the file, so skip looking it up in
-				// table cache/looking at its indexes, and add the full file size.
-				meta, err := d.objProvider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
-				if err != nil {
-					return 0, 0, 0, err
-				}
-				if meta.IsRemote() {
-					remoteSize += file.Size
-					if meta.Remote.CleanupMethod == objstorage.SharedNoCleanup {
-						externalSize += file.Size
-					}
-				}
-				totalSize += file.Size
-			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
-				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
-				var size uint64
-				var err error
-				if file.Virtual {
-					err = d.tableCache.withVirtualReader(
-						file.VirtualMeta(),
-						func(r sstable.VirtualReader) (err error) {
-							size, err = r.EstimateDiskUsage(start, end)
-							return err
-						},
-					)
-				} else {
-					err = d.tableCache.withReader(
-						file.PhysicalMeta(),
-						func(r *sstable.Reader) (err error) {
-							size, err = r.EstimateDiskUsage(start, end)
-							return err
-						},
-					)
-				}
-				if err != nil {
-					return 0, 0, 0, err
-				}
-				meta, err := d.objProvider.Lookup(fileTypeTable, file.FileBacking.DiskFileNum)
-				if err != nil {
-					return 0, 0, 0, err
-				}
-				if meta.IsRemote() {
-					remoteSize += size
-					if meta.Remote.CleanupMethod == objstorage.SharedNoCleanup {
-						externalSize += size
-					}
-				}
-				totalSize += size
-			}
-		}
-	}
-	return totalSize, remoteSize, externalSize, nil
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	totalSize = *d.mu.annotators.totalSizeAnnotator.VersionRangeAnnotation(readState.current, bounds)
+	remoteSize = *d.mu.annotators.remoteSizeAnnotator.VersionRangeAnnotation(readState.current, bounds)
+	externalSize = *d.mu.annotators.externalSizeAnnotator.VersionRangeAnnotation(readState.current, bounds)
+	return
 }
 
 func (d *DB) walPreallocateSize() int {
