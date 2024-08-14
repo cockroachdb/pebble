@@ -830,6 +830,10 @@ func (f *memFileInfo) Name() string {
 	return f.name
 }
 
+func (f *memFileInfo) DeviceID() DeviceID {
+	return DeviceID{}
+}
+
 func (f *memFileInfo) Size() int64 {
 	return f.size
 }
