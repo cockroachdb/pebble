@@ -6,6 +6,7 @@ package colblk
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"testing"
 	"time"
@@ -46,9 +47,16 @@ func benchmarkUnsafeIntegerSlice[U Uint](
 		buf := aligned.ByteSlice(int(sz) + 1 /* trailing padding byte */)
 		_ = ub.Finish(0, rows, 0, buf)
 		s, _ := DecodeUnsafeIntegerSlice[U](buf, 0, rows)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = s.At(rng.Intn(rows))
+		var reads [256]int
+		for i := range reads {
+			reads[i] = rng.Intn(rows)
 		}
+		b.ResetTimer()
+		var result uint8
+		for i := 0; i < b.N; i++ {
+			result ^= uint8(s.At(reads[i&255]))
+		}
+		b.StopTimer()
+		fmt.Fprint(io.Discard, result)
 	})
 }
