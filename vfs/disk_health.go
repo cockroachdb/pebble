@@ -330,7 +330,7 @@ func (d *diskHealthCheckingFile) Preallocate(off, n int64) (err error) {
 }
 
 // Stat implements (vfs.File).Stat.
-func (d *diskHealthCheckingFile) Stat() (os.FileInfo, error) {
+func (d *diskHealthCheckingFile) Stat() (FileInfo, error) {
 	return d.file.Stat()
 }
 
@@ -896,7 +896,7 @@ func (d *diskHealthCheckingFS) ReuseForWrite(
 }
 
 // Stat implements the FS interface.
-func (d *diskHealthCheckingFS) Stat(name string) (os.FileInfo, error) {
+func (d *diskHealthCheckingFS) Stat(name string) (FileInfo, error) {
 	return d.fs.Stat(name)
 }
 

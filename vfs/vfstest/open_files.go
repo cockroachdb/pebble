@@ -99,7 +99,7 @@ func (fs *openFilesFS) List(dir string) ([]string, error) {
 	return fs.inner.List(dir)
 }
 
-func (fs *openFilesFS) Stat(name string) (os.FileInfo, error) {
+func (fs *openFilesFS) Stat(name string) (vfs.FileInfo, error) {
 	return fs.inner.Stat(name)
 }
 

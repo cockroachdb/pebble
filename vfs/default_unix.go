@@ -34,6 +34,7 @@ type unixFile struct {
 	fd uintptr
 }
 
+func (f *unixFile) Stat() (FileInfo, error)                 { return f.File.Stat() }
 func (*unixFile) Prefetch(offset int64, length int64) error { return nil }
 func (*unixFile) Preallocate(offset, length int64) error    { return nil }
 

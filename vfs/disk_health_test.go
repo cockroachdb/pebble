@@ -53,7 +53,7 @@ func (m mockFile) Preallocate(int64, int64) error {
 	return nil
 }
 
-func (m mockFile) Stat() (os.FileInfo, error) {
+func (m mockFile) Stat() (FileInfo, error) {
 	panic("unimplemented")
 }
 
@@ -180,7 +180,7 @@ func (m mockFS) List(dir string) ([]string, error) {
 	return m.list(dir)
 }
 
-func (m mockFS) Stat(name string) (os.FileInfo, error) {
+func (m mockFS) Stat(name string) (FileInfo, error) {
 	if m.stat == nil {
 		panic("unimplemented")
 	}

@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -336,7 +335,7 @@ func TestReaderBloomUsed(t *testing.T) {
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	f, err := os.Open(filepath.FromSlash("testdata/h.table-bloom.no-compression.sst"))
+	f, err := vfs.Default.Open(filepath.FromSlash("testdata/h.table-bloom.no-compression.sst"))
 	require.NoError(t, err)
 
 	c := &countingFilterPolicy{
@@ -512,7 +511,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 
 func TestReaderSymtheticSeqNum(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
+	f, err := vfs.Default.Open(filepath.FromSlash("testdata/h.sst"))
 	require.NoError(t, err)
 
 	r, err := newReader(f, ReaderOptions{})

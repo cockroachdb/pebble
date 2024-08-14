@@ -450,7 +450,7 @@ func (fs *FS) List(dir string) ([]string, error) {
 }
 
 // Stat implements FS.Stat.
-func (fs *FS) Stat(name string) (os.FileInfo, error) {
+func (fs *FS) Stat(name string) (vfs.FileInfo, error) {
 	if err := fs.inj.MaybeError(Op{Kind: OpStat, Path: name}); err != nil {
 		return nil, err
 	}
@@ -507,7 +507,7 @@ func (f *errorFile) WriteAt(p []byte, off int64) (int, error) {
 	return f.file.WriteAt(p, off)
 }
 
-func (f *errorFile) Stat() (os.FileInfo, error) {
+func (f *errorFile) Stat() (vfs.FileInfo, error) {
 	if err := f.inj.MaybeError(Op{Kind: OpFileStat, Path: f.path}); err != nil {
 		return nil, err
 	}

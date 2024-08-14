@@ -35,7 +35,7 @@ type File interface {
 	// Preallocate optionally preallocates storage for `length` at `offset`
 	// within the file. Implementations may choose to do nothing.
 	Preallocate(offset, length int64) error
-	Stat() (os.FileInfo, error)
+	Stat() (FileInfo, error)
 	Sync() error
 
 	// SyncTo requests that a prefix of the file's data be synced to stable
@@ -156,8 +156,8 @@ type FS interface {
 	// relative to dir.
 	List(dir string) ([]string, error)
 
-	// Stat returns an os.FileInfo describing the named file.
-	Stat(name string) (os.FileInfo, error)
+	// Stat returns an FileInfo describing the named file.
+	Stat(name string) (FileInfo, error)
 
 	// PathBase returns the last element of path. Trailing path separators are
 	// removed before extracting the last element. If the path is empty, PathBase
@@ -175,6 +175,11 @@ type FS interface {
 	// GetDiskUsage returns disk space statistics for the filesystem where
 	// path is any file or directory within that filesystem.
 	GetDiskUsage(path string) (DiskUsage, error)
+}
+
+// FileInfo describes a file.
+type FileInfo interface {
+	os.FileInfo
 }
 
 // DiskUsage summarizes disk space usage on a filesystem.
@@ -288,9 +293,12 @@ func (defaultFS) List(dir string) ([]string, error) {
 	return dirnames, errors.WithStack(err)
 }
 
-func (defaultFS) Stat(name string) (os.FileInfo, error) {
+func (defaultFS) Stat(name string) (FileInfo, error) {
 	finfo, err := os.Stat(name)
-	return finfo, errors.WithStack(err)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return finfo, nil
 }
 
 func (defaultFS) PathBase(path string) string {

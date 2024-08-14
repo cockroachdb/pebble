@@ -526,7 +526,7 @@ func (y *MemFS) List(dirname string) ([]string, error) {
 }
 
 // Stat implements FS.Stat.
-func (y *MemFS) Stat(name string) (os.FileInfo, error) {
+func (y *MemFS) Stat(name string) (FileInfo, error) {
 	f, err := y.Open(name)
 	if err != nil {
 		if pe, ok := err.(*os.PathError); ok {
@@ -761,7 +761,7 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
 func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
-func (f *memFile) Stat() (os.FileInfo, error) {
+func (f *memFile) Stat() (FileInfo, error) {
 	f.n.mu.Lock()
 	defer f.n.mu.Unlock()
 	return &memFileInfo{
