@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -31,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 var errReaderClosed = errors.New("pebble/table: reader is closed")
@@ -1019,7 +1019,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 type ReadableFile interface {
 	io.ReaderAt
 	io.Closer
-	Stat() (os.FileInfo, error)
+	Stat() (vfs.FileInfo, error)
 }
 
 // NewSimpleReadable wraps a ReadableFile in a objstorage.Readable

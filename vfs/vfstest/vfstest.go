@@ -6,11 +6,7 @@
 // filesystems during tests and benchmarks.
 package vfstest
 
-import (
-	"os"
-
-	"github.com/cockroachdb/pebble/vfs"
-)
+import "github.com/cockroachdb/pebble/vfs"
 
 // DiscardFile implements vfs.File but discards all written data and reads
 // without mutating input buffers.
@@ -24,7 +20,7 @@ func (*discardFile) ReadAt(p []byte, off int64) (int, error)        { return len
 func (*discardFile) Write(p []byte) (int, error)                    { return len(p), nil }
 func (*discardFile) WriteAt(p []byte, ofs int64) (int, error)       { return len(p), nil }
 func (*discardFile) Preallocate(offset, length int64) error         { return nil }
-func (*discardFile) Stat() (os.FileInfo, error)                     { return nil, nil }
+func (*discardFile) Stat() (vfs.FileInfo, error)                    { return nil, nil }
 func (*discardFile) Sync() error                                    { return nil }
 func (*discardFile) SyncTo(length int64) (fullSync bool, err error) { return false, nil }
 func (*discardFile) SyncData() error                                { return nil }

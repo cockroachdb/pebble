@@ -337,7 +337,7 @@ func (fs *enospcFS) List(dir string) ([]string, error) {
 	return fs.inner.List(dir)
 }
 
-func (fs *enospcFS) Stat(name string) (os.FileInfo, error) {
+func (fs *enospcFS) Stat(name string) (FileInfo, error) {
 	return fs.inner.Stat(name)
 }
 
@@ -412,7 +412,7 @@ func (f *enospcFile) Preallocate(offset, length int64) error {
 	return f.inner.Preallocate(offset, length)
 }
 
-func (f *enospcFile) Stat() (os.FileInfo, error) {
+func (f *enospcFile) Stat() (FileInfo, error) {
 	return f.inner.Stat()
 }
 

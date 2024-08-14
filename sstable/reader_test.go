@@ -551,7 +551,7 @@ func TestReaderHideObsolete(t *testing.T) {
 func TestHamletReader(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	for _, fixture := range TestFixtures {
-		f, err := os.Open(filepath.Join("testdata", fixture.Filename))
+		f, err := vfs.Default.Open(filepath.Join("testdata", fixture.Filename))
 		require.NoError(t, err)
 
 		r, err := newReader(f, ReaderOptions{})
@@ -1655,7 +1655,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 		require.NoError(t, err)
 
 		pathCopy := path.Join(t.TempDir(), path.Base(file))
-		fCopy, err := os.OpenFile(pathCopy, os.O_CREATE|os.O_RDWR, 0600)
+		fCopy, err := vfs.Default.OpenReadWrite(pathCopy, vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 		defer fCopy.Close()
 

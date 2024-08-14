@@ -6,7 +6,6 @@ package sstable
 
 import (
 	"math/rand"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +42,7 @@ func TestPropertiesLoad(t *testing.T) {
 
 	{
 		// Check that we can read properties from a table.
-		f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
+		f, err := vfs.Default.Open(filepath.FromSlash("testdata/h.sst"))
 		require.NoError(t, err)
 
 		r, err := newReader(f, ReaderOptions{})

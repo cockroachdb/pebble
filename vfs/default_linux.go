@@ -43,6 +43,7 @@ type linuxDir struct {
 
 func (d *linuxDir) Prefetch(offset int64, length int64) error      { return nil }
 func (d *linuxDir) Preallocate(offset, length int64) error         { return nil }
+func (d *linuxDir) Stat() (FileInfo, error)                        { return d.File.Stat() }
 func (d *linuxDir) SyncData() error                                { return d.Sync() }
 func (d *linuxDir) SyncTo(offset int64) (fullSync bool, err error) { return false, nil }
 
@@ -59,6 +60,10 @@ func (f *linuxFile) Prefetch(offset int64, length int64) error {
 
 func (f *linuxFile) Preallocate(offset, length int64) error {
 	return unix.Fallocate(int(f.fd), unix.FALLOC_FL_KEEP_SIZE, offset, length)
+}
+
+func (f *linuxFile) Stat() (FileInfo, error) {
+	return f.File.Stat()
 }
 
 func (f *linuxFile) SyncData() error {
