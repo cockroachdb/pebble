@@ -408,6 +408,24 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.newIters = d.tableCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
+	d.mu.annotators.totalSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
+		return true
+	})
+	d.mu.annotators.remoteSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
+		meta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+		if err != nil {
+			return false
+		}
+		return meta.IsRemote()
+	})
+	d.mu.annotators.externalSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
+		meta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+		if err != nil {
+			return false
+		}
+		return meta.IsRemote() && meta.Remote.CleanupMethod == objstorage.SharedNoCleanup
+	})
+
 	var previousOptionsFileNum base.DiskFileNum
 	var previousOptionsFilename string
 	for _, filename := range ls {
