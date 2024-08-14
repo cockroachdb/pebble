@@ -8,10 +8,12 @@
 package vfs
 
 import (
+	"io/fs"
 	"os"
 	"syscall"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/sys/unix"
 )
 
 func wrapOSFileImpl(osFile *os.File) File {
@@ -34,7 +36,7 @@ type unixFile struct {
 	fd uintptr
 }
 
-func (f *unixFile) Stat() (FileInfo, error)                 { return f.File.Stat() }
+func (f *unixFile) Stat() (FileInfo, error)                 { return maybeWrapFileInfo(f.File.Stat()) }
 func (*unixFile) Prefetch(offset int64, length int64) error { return nil }
 func (*unixFile) Preallocate(offset, length int64) error    { return nil }
 
@@ -47,4 +49,13 @@ func (f *unixFile) SyncTo(int64) (fullSync bool, err error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func deviceIDFromFileInfo(finfo fs.FileInfo) DeviceID {
+	statInfo := finfo.Sys().(*syscall.Stat_t)
+	id := DeviceID{
+		major: unix.Major(uint64(statInfo.Dev)),
+		minor: unix.Minor(uint64(statInfo.Dev)),
+	}
+	return id
 }

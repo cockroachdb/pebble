@@ -8,6 +8,7 @@
 package vfs
 
 import (
+	"io/fs"
 	"os"
 	"syscall"
 
@@ -43,7 +44,7 @@ type linuxDir struct {
 
 func (d *linuxDir) Prefetch(offset int64, length int64) error      { return nil }
 func (d *linuxDir) Preallocate(offset, length int64) error         { return nil }
-func (d *linuxDir) Stat() (FileInfo, error)                        { return d.File.Stat() }
+func (d *linuxDir) Stat() (FileInfo, error)                        { return maybeWrapFileInfo(d.File.Stat()) }
 func (d *linuxDir) SyncData() error                                { return d.Sync() }
 func (d *linuxDir) SyncTo(offset int64) (fullSync bool, err error) { return false, nil }
 
@@ -63,7 +64,11 @@ func (f *linuxFile) Preallocate(offset, length int64) error {
 }
 
 func (f *linuxFile) Stat() (FileInfo, error) {
-	return f.File.Stat()
+	fi, err := f.File.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return defaultFileInfo{fi}, nil
 }
 
 func (f *linuxFile) SyncData() error {
@@ -134,4 +139,12 @@ func isSyncRangeSupported(fd uintptr) bool {
 		return syncRangeSmokeTest(fd, unix.SyncFileRange)
 	}
 	return false
+}
+
+func deviceIDFromFileInfo(finfo fs.FileInfo) DeviceID {
+	statInfo := finfo.Sys().(*syscall.Stat_t)
+	return DeviceID{
+		major: unix.Major(statInfo.Dev),
+		minor: unix.Minor(statInfo.Dev),
+	}
 }

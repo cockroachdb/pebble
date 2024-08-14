@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -177,9 +178,39 @@ type FS interface {
 	GetDiskUsage(path string) (DiskUsage, error)
 }
 
+// A DeviceID uniquely identifies a block device on which filesystem data is
+// persisted.
+type DeviceID struct {
+	major uint32
+	minor uint32
+}
+
+// String returns the string representation of the device ID.
+func (d DeviceID) String() string {
+	return fmt.Sprintf("%d:%d", d.major, d.minor)
+}
+
 // FileInfo describes a file.
 type FileInfo interface {
 	os.FileInfo
+	// DeviceID returns the ID of the device on which the file resides.
+	DeviceID() DeviceID
+}
+
+func maybeWrapFileInfo(fi os.FileInfo, err error) (FileInfo, error) {
+	if err != nil {
+		return nil, err
+	}
+	return defaultFileInfo{FileInfo: fi}, nil
+}
+
+type defaultFileInfo struct {
+	os.FileInfo
+}
+
+// DeviceID returns the ID of the device on which the file resides.
+func (fi defaultFileInfo) DeviceID() DeviceID {
+	return deviceIDFromFileInfo(fi.FileInfo)
 }
 
 // DiskUsage summarizes disk space usage on a filesystem.
@@ -298,7 +329,7 @@ func (defaultFS) Stat(name string) (FileInfo, error) {
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return finfo, nil
+	return defaultFileInfo{finfo}, nil
 }
 
 func (defaultFS) PathBase(path string) string {

@@ -93,7 +93,7 @@ type mockFS struct {
 	removeAll     func(string) error
 	rename        func(string, string) error
 	reuseForWrite func(string, string, DiskWriteCategory) (File, error)
-	stat          func(string) (os.FileInfo, error)
+	stat          func(string) (FileInfo, error)
 	getDiskUsage  func(string) (DiskUsage, error)
 }
 
