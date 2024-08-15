@@ -10,7 +10,7 @@
 
 init bundle-size=4
 ----
-size=1:
+size=49:
 0: prefixes:       prefixbytes(4): 0 keys
 1: suffixes:       bytes: 0 rows set; 0 bytes in data
 2: trailers:       uint: 0 rows
