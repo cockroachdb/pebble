@@ -18,7 +18,7 @@ import (
 
 // New constructs a new binary formatter.
 func New(data []byte) *Formatter {
-	offsetWidth := strconv.Itoa(int(math.Log10(float64(len(data)-1))) + 1)
+	offsetWidth := strconv.Itoa(max(int(math.Log10(float64(len(data)-1)))+1, 1))
 	return &Formatter{
 		data:            data,
 		lineWidth:       40,

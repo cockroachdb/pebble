@@ -22,30 +22,31 @@ import (
 //
 // An array of N byte slices encodes N+1 offsets. The beginning of the data
 // representation holds an offsets table, in the same encoding as a
-// DataTypeUint32 column. The Uint32 offsets may be delta-encoded to save space
-// if all offsets fit within an 8-bit or 16-bit uint. Each offset is relative to
-// the beginning of the string data section (after the offset table).
+// DataTypeUint32 column. The integer offsets may be encoded using smaller width
+// integers to save space if all offsets fit within an 8-bit or 16-bit uint.
+// Each offset is relative to the beginning of the string data section (after
+// the offset table).
 //
-// The use of delta encoding conserves space in the common case. In the context
-// of CockroachDB, the vast majority of offsets will fit in 16-bits when using
-// 32 KiB blocks (the size in use by CockroachDB). However a single value larger
+// The use of UintEncoding conserves space in the common case. In the context of
+// CockroachDB, the vast majority of offsets will fit in 16-bits when using 32
+// KiB blocks (the size in use by CockroachDB). However, a single value larger
 // than 65535 bytes requires an offset too large to fit within 16 bits, in which
 // case offsets will be encoded as 32-bit integers.
 //
 //	+-------------------------------------------------------------------+
-//	|        a uint32 offsets table, possibly delta encoded,            |
-//	|                possibly padded for 32-bit alignment               |
-//	|                      (see DeltaEncoding)                          |
+//	|        a uint offsets table, usually encoded with 16-bits,        |
+//	|                possibly padded for alignment                      |
+//	|                      (see UintEncoding)                           |
 //	+-------------------------------------------------------------------+
 //	|                           String Data                             |
 //	|  abcabcada....                                                    |
 //	+-------------------------------------------------------------------+
 //
-// The DeltaEncoding bits of the ColumnEncoding for a RawBytes column describes
-// the delta encoding of the offset table.
+// The UintEncoding bits of the ColumnEncoding for a RawBytes column describes
+// the encoding of the offset table.
 type RawBytes struct {
 	slices  int
-	offsets UnsafeUint32s
+	offsets UnsafeOffsets
 	start   unsafe.Pointer
 	data    unsafe.Pointer
 }
@@ -60,7 +61,7 @@ func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endO
 	if count == 0 {
 		return RawBytes{}, 0
 	}
-	offsets, dataOff := DecodeUnsafeIntegerSlice[uint32](b, offset, count+1 /* +1 offset */)
+	offsets, dataOff := DecodeUnsafeOffsets(b, offset, count+1 /* +1 offset */)
 	return RawBytes{
 		slices:  count,
 		offsets: offsets,
@@ -88,7 +89,7 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 	dataOffset := uint64(f.Offset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
 	f.CommentLine("rawbytes")
 	f.CommentLine("offsets table")
-	uintsToBinFormatter(f, count+1, DataTypeUint32, func(offset, base uint64) string {
+	uintsToBinFormatter(f, count+1, func(offset, base uint64) string {
 		// NB: base is always zero for RawBytes columns.
 		return fmt.Sprintf("%d [%d overall]", offset+base, offset+base+dataOffset)
 	})
@@ -121,7 +122,7 @@ func (b *RawBytes) Slices() int {
 type RawBytesBuilder struct {
 	rows    int
 	data    []byte
-	offsets UintBuilder[uint32]
+	offsets UintBuilder
 }
 
 // Assert that *RawBytesBuilder implements ColumnWriter.
@@ -153,7 +154,7 @@ func (b *RawBytesBuilder) DataType(int) DataType { return DataTypeBytes }
 func (b *RawBytesBuilder) Put(s []byte) {
 	b.data = append(b.data, s...)
 	b.rows++
-	b.offsets.Set(b.rows, uint32(len(b.data)))
+	b.offsets.Set(b.rows, uint64(len(b.data)))
 }
 
 // PutConcat appends a single byte slice formed by the concatenation of the two
@@ -161,7 +162,7 @@ func (b *RawBytesBuilder) Put(s []byte) {
 func (b *RawBytesBuilder) PutConcat(s1, s2 []byte) {
 	b.data = append(append(b.data, s1...), s2...)
 	b.rows++
-	b.offsets.Set(b.rows, uint32(len(b.data)))
+	b.offsets.Set(b.rows, uint64(len(b.data)))
 }
 
 // LastSlice returns the last slice added to the builder. The returned slice is
@@ -199,7 +200,7 @@ func (b *RawBytesBuilder) Size(rows int, offset uint32) uint32 {
 	offset = b.offsets.Size(rows+1, offset)
 	// Add the value of offset[rows] since that is the accumulated size of the
 	// first [rows] slices.
-	return offset + b.offsets.Get(rows)
+	return offset + uint32(b.offsets.Get(rows))
 }
 
 // WriteDebug implements Encoder.

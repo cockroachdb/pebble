@@ -16,43 +16,24 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 )
 
-func TestUints(t *testing.T) {
-	var b8 UintBuilder[uint8]
-	var b16 UintBuilder[uint16]
-	var b32 UintBuilder[uint32]
-	var b64 UintBuilder[uint64]
+func TestUintEncoding(t *testing.T) {
+	for _, r := range interestingIntRanges {
+		actual := DetermineUintEncoding(r.Min, r.Max)
+		if actual != r.ExpectedEncoding {
+			t.Errorf("%d/%d expected %s, but got %s", r.Min, r.Max, r.ExpectedEncoding, actual)
+		}
+	}
+}
 
-	var out bytes.Buffer
-	var widths []int
-	var writers []ColumnWriter
+func TestUints(t *testing.T) {
+	var b UintBuilder
+
 	datadriven.RunTest(t, "testdata/uints", func(t *testing.T, td *datadriven.TestData) string {
-		out.Reset()
 		switch td.Cmd {
 		case "init":
-			widths = widths[:0]
-			writers = writers[:0]
-			td.ScanArgs(t, "widths", &widths)
 			defaultZero := td.HasArg("default-zero")
-			for _, w := range widths {
-				switch w {
-				case 8:
-					b8.init(defaultZero)
-					writers = append(writers, &b8)
-				case 16:
-					b16.init(defaultZero)
-					writers = append(writers, &b16)
-				case 32:
-					b32.init(defaultZero)
-					writers = append(writers, &b32)
-				case 64:
-					b64.init(defaultZero)
-					writers = append(writers, &b64)
-				default:
-					panic(fmt.Sprintf("unknown width: %d", w))
-				}
-				fmt.Fprintf(&out, "b%d\n", w)
-			}
-			return out.String()
+			b.init(defaultZero)
+			return ""
 		case "write":
 			for _, f := range strings.Fields(td.Input) {
 				delim := strings.IndexByte(f, ':')
@@ -60,77 +41,43 @@ func TestUints(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				for _, width := range widths {
-					v, err := strconv.ParseUint(f[delim+1:], 10, width)
-					if err != nil {
-						return err.Error()
-					}
-					switch width {
-					case 8:
-						b8.Set(i, uint8(v))
-					case 16:
-						b16.Set(i, uint16(v))
-					case 32:
-						b32.Set(i, uint32(v))
-					case 64:
-						b64.Set(i, v)
-					default:
-						panic(fmt.Sprintf("unknown width: %d", width))
-					}
+				v, err := strconv.ParseUint(f[delim+1:], 10, 64)
+				if err != nil {
+					return err.Error()
 				}
+				b.Set(i, v)
 			}
-			return out.String()
+			return ""
 		case "size":
 			var offset uint32
 			var rowCounts []int
 			td.ScanArgs(t, "rows", &rowCounts)
 			td.MaybeScanArgs(t, "offset", &offset)
-			for wIdx, w := range writers {
-				fmt.Fprintf(&out, "b%d:\n", widths[wIdx])
-				for _, rows := range rowCounts {
-					sz := w.Size(rows, offset)
-					if offset > 0 {
-						fmt.Fprintf(&out, "  %d: %T.Size(%d, %d) = %d [%d w/o offset]\n", widths[wIdx], w, rows, offset, sz, sz-offset)
-					} else {
-						fmt.Fprintf(&out, "  %d: %T.Size(%d, %d) = %d\n", widths[wIdx], w, rows, offset, sz)
-					}
+			var out bytes.Buffer
+			for _, rows := range rowCounts {
+				sz := b.Size(rows, offset)
+				if offset > 0 {
+					fmt.Fprintf(&out, "Size(%d, %d) = %d [%d w/o offset]\n", rows, offset, sz, sz-offset)
+				} else {
+					fmt.Fprintf(&out, "Size(%d, %d) = %d\n", rows, offset, sz)
 				}
 			}
 			return out.String()
 		case "finish":
 			var rows int
 			var offset uint32
-			var finishWidths []int
 			td.ScanArgs(t, "rows", &rows)
-			td.ScanArgs(t, "widths", &finishWidths)
 			td.MaybeScanArgs(t, "offset", &offset)
-			var newWriters []ColumnWriter
-			var newWidths []int
-			for wIdx, width := range widths {
-				var shouldFinish bool
-				for _, fw := range finishWidths {
-					shouldFinish = shouldFinish || width == fw
-				}
-				if shouldFinish {
-					sz := writers[wIdx].Size(rows, offset)
-					buf := aligned.ByteSlice(int(sz))
-					_ = writers[wIdx].Finish(0, rows, offset, buf)
-					fmt.Fprintf(&out, "b%d: %T:\n", width, writers[wIdx])
-					f := binfmt.New(buf).LineWidth(20)
-					if offset > 0 {
-						f.HexBytesln(int(offset), "artificial start offset")
-					}
-					uintsToBinFormatter(f, rows, writers[wIdx].DataType(0), nil)
-					fmt.Fprintf(&out, "%s", f.String())
-				} else {
-					fmt.Fprintf(&out, "Keeping b%d open\n", width)
-					newWidths = append(newWidths, width)
-					newWriters = append(newWriters, writers[wIdx])
-				}
+
+			sz := b.Size(rows, offset)
+			buf := aligned.ByteSlice(int(sz))
+			_ = b.Finish(0, rows, offset, buf)
+			f := binfmt.New(buf).LineWidth(20)
+			if offset > 0 {
+				f.HexBytesln(int(offset), "artificial start offset")
 			}
-			writers = newWriters
-			widths = newWidths
-			return out.String()
+			uintsToBinFormatter(f, rows, nil)
+			return f.String()
 		default:
 			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
 		}

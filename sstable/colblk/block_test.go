@@ -7,6 +7,7 @@ package colblk
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -18,9 +19,58 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-type ColumnSpec struct {
+type testColumnSpec struct {
 	DataType
-	BundleSize int // Only used for DataTypePrefixBytes
+	IntRange   intRange // Only used for DataTypeUint
+	BundleSize int      // Only used for DataTypePrefixBytes
+}
+
+type intRange struct {
+	Min, Max         uint64
+	ExpectedEncoding UintEncoding
+}
+
+func (ir intRange) Rand(rng *rand.Rand) uint64 {
+	v := rng.Uint64()
+	if ir.Min == 0 && ir.Max == math.MaxUint64 {
+		return v
+	}
+	return ir.Min + v%(ir.Max-ir.Min+1)
+}
+
+var interestingIntRanges = []intRange{
+	// zero
+	{Min: 0, Max: 0, ExpectedEncoding: makeUintEncoding(0, false)},
+	// const
+	{Min: 1, Max: 1, ExpectedEncoding: makeUintEncoding(0, true)},
+	{Min: math.MaxUint32, Max: math.MaxUint32, ExpectedEncoding: makeUintEncoding(0, true)},
+	{Min: math.MaxUint64, Max: math.MaxUint64, ExpectedEncoding: makeUintEncoding(0, true)},
+	// 1b
+	{Min: 10, Max: 200, ExpectedEncoding: makeUintEncoding(1, false)},
+	{Min: 0, Max: math.MaxUint8, ExpectedEncoding: makeUintEncoding(1, false)},
+	// 1b,delta
+	{Min: 100, Max: 300, ExpectedEncoding: makeUintEncoding(1, true)},
+	{Min: math.MaxUint32 + 100, Max: math.MaxUint32 + 300, ExpectedEncoding: makeUintEncoding(1, true)},
+	{Min: math.MaxUint64 - 1, Max: math.MaxUint64, ExpectedEncoding: makeUintEncoding(1, true)},
+	// 2b
+	{Min: 10, Max: 20_000, ExpectedEncoding: makeUintEncoding(2, false)},
+	{Min: 0, Max: math.MaxUint8 + 1, ExpectedEncoding: makeUintEncoding(2, false)},
+	{Min: 0, Max: math.MaxUint16, ExpectedEncoding: makeUintEncoding(2, false)},
+	// 2b,delta
+	{Min: 20_000, Max: 80_000, ExpectedEncoding: makeUintEncoding(2, true)},
+	{Min: math.MaxUint32, Max: math.MaxUint32 + 50_000, ExpectedEncoding: makeUintEncoding(2, true)},
+	// 4b
+	{Min: 10, Max: 20_000_000, ExpectedEncoding: makeUintEncoding(4, false)},
+	{Min: 0, Max: math.MaxUint16 + 1, ExpectedEncoding: makeUintEncoding(4, false)},
+	{Min: 0, Max: math.MaxUint32, ExpectedEncoding: makeUintEncoding(4, false)},
+	// 4b,delta
+	{Min: 100_000, Max: math.MaxUint32 + 10, ExpectedEncoding: makeUintEncoding(4, true)},
+	{Min: math.MaxUint32, Max: math.MaxUint32 + 20_000_000, ExpectedEncoding: makeUintEncoding(4, true)},
+	// 8b
+	{Min: 10, Max: math.MaxUint32 + 100, ExpectedEncoding: makeUintEncoding(8, false)},
+	{Min: 0, Max: math.MaxUint32 + 1, ExpectedEncoding: makeUintEncoding(8, false)},
+	{Min: 0, Max: math.MaxUint64, ExpectedEncoding: makeUintEncoding(8, false)},
+	{Min: math.MaxUint64 - math.MaxUint32 - 1, Max: math.MaxUint64, ExpectedEncoding: makeUintEncoding(8, false)},
 }
 
 func TestBlockWriter(t *testing.T) {
@@ -48,20 +98,8 @@ func TestBlockWriter(t *testing.T) {
 				switch colDataTypes[i] {
 				case DataTypeBool:
 					colWriters[i] = &BitmapBuilder{}
-				case DataTypeUint8:
-					b := &UintBuilder[uint8]{}
-					b.Init()
-					colWriters[i] = b
-				case DataTypeUint16:
-					b := &UintBuilder[uint16]{}
-					b.Init()
-					colWriters[i] = b
-				case DataTypeUint32:
-					b := &UintBuilder[uint32]{}
-					b.Init()
-					colWriters[i] = b
-				case DataTypeUint64:
-					b := &UintBuilder[uint64]{}
+				case DataTypeUint:
+					b := &UintBuilder{}
 					b.Init()
 					colWriters[i] = b
 				case DataTypeBytes:
@@ -93,29 +131,8 @@ func TestBlockWriter(t *testing.T) {
 						panicIfErr(dataType, lineFields[r][c], err)
 						bb.Set(r, v)
 					}
-				case DataTypeUint8:
-					b := colWriters[c].(*UintBuilder[uint8])
-					for r := range lineFields {
-						v, err := strconv.ParseUint(lineFields[r][c], 10, 8)
-						panicIfErr(dataType, lineFields[r][c], err)
-						b.Set(r, uint8(v))
-					}
-				case DataTypeUint16:
-					b := colWriters[c].(*UintBuilder[uint16])
-					for r := range lineFields {
-						v, err := strconv.ParseUint(lineFields[r][c], 10, 16)
-						panicIfErr(dataType, lineFields[r][c], err)
-						b.Set(r, uint16(v))
-					}
-				case DataTypeUint32:
-					b := colWriters[c].(*UintBuilder[uint32])
-					for r := range lineFields {
-						v, err := strconv.ParseUint(lineFields[r][c], 10, 32)
-						panicIfErr(dataType, lineFields[r][c], err)
-						b.Set(r, uint32(v))
-					}
-				case DataTypeUint64:
-					b := colWriters[c].(*UintBuilder[uint64])
+				case DataTypeUint:
+					b := colWriters[c].(*UintBuilder)
 					for r := range lineFields {
 						v, err := strconv.ParseUint(lineFields[r][c], 10, 64)
 						panicIfErr(dataType, lineFields[r][c], err)
@@ -156,7 +173,7 @@ func dataTypeFromName(name string) DataType {
 // returns the serialized raw block and a []interface{} slice containing the
 // generated data. The type of each element of the slice is dependent on the
 // corresponding column's type.
-func randBlock(rng *rand.Rand, rows int, schema []ColumnSpec) ([]byte, []interface{}) {
+func randBlock(rng *rand.Rand, rows int, schema []testColumnSpec) ([]byte, []interface{}) {
 	data := make([]interface{}, len(schema))
 	for col := range data {
 		switch schema[col].DataType {
@@ -166,28 +183,10 @@ func randBlock(rng *rand.Rand, rows int, schema []ColumnSpec) ([]byte, []interfa
 				v[row] = (rng.Int31() % 2) == 0
 			}
 			data[col] = v
-		case DataTypeUint8:
-			v := make([]uint8, rows)
-			for row := 0; row < rows; row++ {
-				v[row] = uint8(rng.Uint32())
-			}
-			data[col] = v
-		case DataTypeUint16:
-			v := make([]uint16, rows)
-			for row := 0; row < rows; row++ {
-				v[row] = uint16(rng.Uint32())
-			}
-			data[col] = v
-		case DataTypeUint32:
-			v := make([]uint32, rows)
-			for row := 0; row < rows; row++ {
-				v[row] = rng.Uint32()
-			}
-			data[col] = v
-		case DataTypeUint64:
+		case DataTypeUint:
 			v := make([]uint64, rows)
 			for row := 0; row < rows; row++ {
-				v[row] = rng.Uint64()
+				v[row] = schema[col].IntRange.Rand(rng)
 			}
 			data[col] = v
 		case DataTypeBytes:
@@ -213,7 +212,7 @@ func randBlock(rng *rand.Rand, rows int, schema []ColumnSpec) ([]byte, []interfa
 	return buf, data
 }
 
-func buildBlock(schema []ColumnSpec, rows int, data []interface{}) []byte {
+func buildBlock(schema []testColumnSpec, rows int, data []interface{}) []byte {
 	cw := make([]ColumnWriter, len(schema))
 	for col := range schema {
 		switch schema[col].DataType {
@@ -224,29 +223,8 @@ func buildBlock(schema []ColumnSpec, rows int, data []interface{}) []byte {
 				bb.Set(row, v)
 			}
 			cw[col] = &bb
-		case DataTypeUint8:
-			var b UintBuilder[uint8]
-			b.Init()
-			for row, v := range data[col].([]uint8) {
-				b.Set(row, v)
-			}
-			cw[col] = &b
-		case DataTypeUint16:
-			var b UintBuilder[uint16]
-			b.Init()
-			for row, v := range data[col].([]uint16) {
-				b.Set(row, v)
-			}
-			cw[col] = &b
-		case DataTypeUint32:
-			var b UintBuilder[uint32]
-			b.Init()
-			for row, v := range data[col].([]uint32) {
-				b.Set(row, v)
-			}
-			cw[col] = &b
-		case DataTypeUint64:
-			var b UintBuilder[uint64]
+		case DataTypeUint:
+			var b UintBuilder
 			b.Init()
 			for row, v := range data[col].([]uint64) {
 				b.Set(row, v)
@@ -276,7 +254,7 @@ func buildBlock(schema []ColumnSpec, rows int, data []interface{}) []byte {
 	return FinishBlock(rows, cw)
 }
 
-func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []ColumnSpec) {
+func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []testColumnSpec) {
 	var sb strings.Builder
 	for i := range schema {
 		if i > 0 {
@@ -306,14 +284,8 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []ColumnSpec
 			switch spec.DataType {
 			case DataTypeBool:
 				got = Clone(r.Bitmap(col), rows)
-			case DataTypeUint8:
-				got = Clone(r.Uint8s(col), rows)
-			case DataTypeUint16:
-				got = Clone(r.Uint16s(col), rows)
-			case DataTypeUint32:
-				got = Clone(r.Uint32s(col), rows)
-			case DataTypeUint64:
-				got = Clone(r.Uint64s(col), rows)
+			case DataTypeUint:
+				got = Clone(r.Uints(col), rows)
 			case DataTypeBytes:
 				got = Clone(r.RawBytes(col), rows)
 			case DataTypePrefixBytes:
@@ -334,16 +306,15 @@ func TestBlockWriterRandomized(t *testing.T) {
 	randInt := func(lo, hi int) int {
 		return lo + rng.Intn(hi-lo)
 	}
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeBool}})
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint8}})
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint16}})
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint32}})
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeUint64}})
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypeBytes}})
-	testRandomBlock(t, rng, randInt(1, 100), []ColumnSpec{{DataType: DataTypePrefixBytes, BundleSize: 1 << randInt(0, 6)}})
+	testRandomBlock(t, rng, randInt(1, 100), []testColumnSpec{{DataType: DataTypeBool}})
+	for _, r := range interestingIntRanges {
+		testRandomBlock(t, rng, randInt(1, 100), []testColumnSpec{{DataType: DataTypeUint, IntRange: r}})
+	}
+	testRandomBlock(t, rng, randInt(1, 100), []testColumnSpec{{DataType: DataTypeBytes}})
+	testRandomBlock(t, rng, randInt(1, 100), []testColumnSpec{{DataType: DataTypePrefixBytes, BundleSize: 1 << randInt(0, 6)}})
 
 	for i := 0; i < 100; i++ {
-		schema := make([]ColumnSpec, 2+rng.Intn(8))
+		schema := make([]testColumnSpec, 2+rng.Intn(8))
 		for j := range schema {
 			schema[j].DataType = DataType(randInt(1, int(dataTypesCount)))
 			if schema[j].DataType == DataTypePrefixBytes {
