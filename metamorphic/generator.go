@@ -1415,6 +1415,13 @@ func (g *generator) writerIngestExternalFiles() {
 				continue
 			}
 
+			// We can only use a synthetic suffix if we don't have overlapping range
+			// key sets (because they will become logically conflicting when we
+			// replace their suffixes with the synthetic one).
+			if g.keyManager.ExternalObjectHasOverlappingRangeKeySets(objs[i].externalObjID) {
+				continue
+			}
+
 			// Generate a suffix that sorts before any previously generated suffix.
 			objs[i].syntheticSuffix = g.keyGenerator.IncMaxSuffix()
 		}
