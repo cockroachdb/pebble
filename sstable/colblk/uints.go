@@ -248,7 +248,7 @@ func (b *UintBuilder) Set(row int, v uint64) {
 // [rows] rows were serialized, serializing the column into offset [offset].
 func (b *UintBuilder) Size(rows int, offset uint32) uint32 {
 	if rows == 0 {
-		return 0
+		return offset
 	}
 	e, _ := b.determineEncoding(rows)
 	return uintColumnSize(uint32(rows), offset, e)

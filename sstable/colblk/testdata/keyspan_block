@@ -1,6 +1,6 @@
 init
 ----
-size=1:
+size=37:
 0: user keys:      bytes: 0 rows set; 0 bytes in data
 1: start indices:  uint: 0 rows
 2: trailers:       uint: 0 rows
@@ -212,7 +212,7 @@ d-e:{(#0,RANGEDEL)}
 
 init
 ----
-size=1:
+size=37:
 0: user keys:      bytes: 0 rows set; 0 bytes in data
 1: start indices:  uint: 0 rows
 2: trailers:       uint: 0 rows
@@ -301,7 +301,7 @@ b-d:{(#4,RANGEKEYSET,@3,coconut)}
 
 reset
 ----
-size=1:
+size=37:
 0: user keys:      bytes: 0 rows set; 0 bytes in data
 1: start indices:  uint: 0 rows
 2: trailers:       uint: 0 rows

@@ -59,7 +59,7 @@ var _ Array[[]byte] = RawBytes{}
 // number of byte slices within the array.
 func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endOffset uint32) {
 	if count == 0 {
-		return RawBytes{}, 0
+		return RawBytes{}, offset
 	}
 	offsets, dataOff := DecodeUnsafeOffsets(b, offset, count+1 /* +1 offset */)
 	return RawBytes{
@@ -179,7 +179,7 @@ func (b *RawBytesBuilder) LastSlice() []byte {
 // should use [Size] to size buf appropriately before calling Finish.
 func (b *RawBytesBuilder) Finish(col, rows int, offset uint32, buf []byte) uint32 {
 	if rows == 0 {
-		return 0
+		return offset
 	}
 	dataLen := b.offsets.Get(rows)
 	offset = b.offsets.Finish(0, rows+1, offset, buf)
@@ -194,7 +194,7 @@ func (b *RawBytesBuilder) Finish(col, rows int, offset uint32, buf []byte) uint3
 // passed into Size from the returned offset.
 func (b *RawBytesBuilder) Size(rows int, offset uint32) uint32 {
 	if rows == 0 {
-		return 0
+		return offset
 	}
 	// Get the size needed to encode the rows+1 offsets.
 	offset = b.offsets.Size(rows+1, offset)

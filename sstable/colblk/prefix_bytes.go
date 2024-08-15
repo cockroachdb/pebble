@@ -1029,7 +1029,7 @@ func (b *PrefixBytesBuilder) Finish(
 // from the returned offset.
 func (b *PrefixBytesBuilder) Size(rows int, offset uint32) uint32 {
 	if rows == 0 {
-		return 0
+		return offset
 	} else if rows != b.nKeys && rows != b.nKeys-1 {
 		panic(errors.AssertionFailedf("PrefixBytes has accumulated %d keys, asked to Size %d", b.nKeys, rows))
 	}
