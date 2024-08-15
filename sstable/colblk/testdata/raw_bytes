@@ -5,53 +5,49 @@ a
 ----
 # rawbytes
 # offsets table
-0-1: x 02       # delta encoding: delta8
-1-5: x 00000000 # 32-bit constant: 0
-5-6: x 00       # data[0] = 0 [7 overall]
-6-7: x 01       # data[1] = 1 [8 overall]
+0-1: x 01 # encoding: 1b
+1-2: x 00 # data[0] = 0 [3 overall]
+2-3: x 01 # data[1] = 1 [4 overall]
 # data
-7-8: x 61       # data[0]: a
+3-4: x 61 # data[0]: a
 
 # Try the same thing, but with offsets 1, 2, 3, 4.
 
 build offset=1
 a
 ----
-0-1: x 00       # start offset
+0-1: x 00 # start offset
 # rawbytes
 # offsets table
-1-2: x 02       # delta encoding: delta8
-2-6: x 00000000 # 32-bit constant: 0
-6-7: x 00       # data[0] = 0 [8 overall]
-7-8: x 01       # data[1] = 1 [9 overall]
+1-2: x 01 # encoding: 1b
+2-3: x 00 # data[0] = 0 [4 overall]
+3-4: x 01 # data[1] = 1 [5 overall]
 # data
-8-9: x 61       # data[0]: a
+4-5: x 61 # data[0]: a
 
 build offset=2
 a
 ----
-00-02: x 0000     # start offset
+0-2: x 0000 # start offset
 # rawbytes
 # offsets table
-02-03: x 02       # delta encoding: delta8
-03-07: x 00000000 # 32-bit constant: 0
-07-08: x 00       # data[0] = 0 [9 overall]
-08-09: x 01       # data[1] = 1 [10 overall]
+2-3: x 01   # encoding: 1b
+3-4: x 00   # data[0] = 0 [5 overall]
+4-5: x 01   # data[1] = 1 [6 overall]
 # data
-09-10: x 61       # data[0]: a
+5-6: x 61   # data[0]: a
 
 build offset=3
 a
 ----
-00-03: x 000000   # start offset
+0-3: x 000000 # start offset
 # rawbytes
 # offsets table
-03-04: x 02       # delta encoding: delta8
-04-08: x 00000000 # 32-bit constant: 0
-08-09: x 00       # data[0] = 0 [10 overall]
-09-10: x 01       # data[1] = 1 [11 overall]
+3-4: x 01     # encoding: 1b
+4-5: x 00     # data[0] = 0 [6 overall]
+5-6: x 01     # data[1] = 1 [7 overall]
 # data
-10-11: x 61       # data[0]: a
+6-7: x 61     # data[0]: a
 
 build offset=4
 a
@@ -59,12 +55,11 @@ a
 00-04: x 00000000 # start offset
 # rawbytes
 # offsets table
-04-05: x 02       # delta encoding: delta8
-05-09: x 00000000 # 32-bit constant: 0
-09-10: x 00       # data[0] = 0 [11 overall]
-10-11: x 01       # data[1] = 1 [12 overall]
+04-05: x 01       # encoding: 1b
+05-06: x 00       # data[0] = 0 [7 overall]
+06-07: x 01       # data[1] = 1 [8 overall]
 # data
-11-12: x 61       # data[0]: a
+07-08: x 61       # data[0]: a
 
 # Create a RawBytes with two byte slices: 'a' and 'b'.
 
@@ -74,14 +69,13 @@ b
 ----
 # rawbytes
 # offsets table
-0-1: x 02       # delta encoding: delta8
-1-5: x 00000000 # 32-bit constant: 0
-5-6: x 00       # data[0] = 0 [8 overall]
-6-7: x 01       # data[1] = 1 [9 overall]
-7-8: x 02       # data[2] = 2 [10 overall]
+0-1: x 01 # encoding: 1b
+1-2: x 00 # data[0] = 0 [4 overall]
+2-3: x 01 # data[1] = 1 [5 overall]
+3-4: x 02 # data[2] = 2 [6 overall]
 # data
-8-9: x 61       # data[0]: a
-9-10: x 62      # data[1]: b
+4-5: x 61 # data[0]: a
+5-6: x 62 # data[1]: b
 
 build offset=0
 a
@@ -90,28 +84,26 @@ abc
 ----
 # rawbytes
 # offsets table
-00-01: x 02       # delta encoding: delta8
-01-05: x 00000000 # 32-bit constant: 0
-05-06: x 00       # data[0] = 0 [9 overall]
-06-07: x 01       # data[1] = 1 [10 overall]
-07-08: x 03       # data[2] = 3 [12 overall]
-08-09: x 06       # data[3] = 6 [15 overall]
+00-01: x 01     # encoding: 1b
+01-02: x 00     # data[0] = 0 [5 overall]
+02-03: x 01     # data[1] = 1 [6 overall]
+03-04: x 03     # data[2] = 3 [8 overall]
+04-05: x 06     # data[3] = 6 [11 overall]
 # data
-09-10: x 61       # data[0]: a
-10-12: x 6162     # data[1]: ab
-12-15: x 616263   # data[2]: abc
+05-06: x 61     # data[0]: a
+06-08: x 6162   # data[1]: ab
+08-11: x 616263 # data[2]: abc
 
 build offset=0
 aaabbbc
 ----
 # rawbytes
 # offsets table
-00-01: x 02             # delta encoding: delta8
-01-05: x 00000000       # 32-bit constant: 0
-05-06: x 00             # data[0] = 0 [7 overall]
-06-07: x 07             # data[1] = 7 [14 overall]
+0-1: x 01              # encoding: 1b
+1-2: x 00              # data[0] = 0 [3 overall]
+2-3: x 07              # data[1] = 7 [10 overall]
 # data
-07-14: x 61616162626263 # data[0]: aaabbbc
+3-10: x 61616162626263 # data[0]: aaabbbc
 
 build offset=0
 a
@@ -120,16 +112,15 @@ abc
 ----
 # rawbytes
 # offsets table
-00-01: x 02       # delta encoding: delta8
-01-05: x 00000000 # 32-bit constant: 0
-05-06: x 00       # data[0] = 0 [9 overall]
-06-07: x 01       # data[1] = 1 [10 overall]
-07-08: x 03       # data[2] = 3 [12 overall]
-08-09: x 06       # data[3] = 6 [15 overall]
+00-01: x 01     # encoding: 1b
+01-02: x 00     # data[0] = 0 [5 overall]
+02-03: x 01     # data[1] = 1 [6 overall]
+03-04: x 03     # data[2] = 3 [8 overall]
+04-05: x 06     # data[3] = 6 [11 overall]
 # data
-09-10: x 61       # data[0]: a
-10-12: x 6162     # data[1]: ab
-12-15: x 616263   # data[2]: abc
+05-06: x 61     # data[0]: a
+06-08: x 6162   # data[1]: ab
+08-11: x 616263 # data[2]: abc
 
 at indices=(0, 1, 2)
 ----
@@ -150,28 +141,27 @@ kale
 ----
 # rawbytes
 # offsets table
-00-01: x 02                 # delta encoding: delta8
-01-05: x 00000000           # 32-bit constant: 0
-05-06: x 00                 # data[0] = 0 [15 overall]
-06-07: x 03                 # data[1] = 3 [18 overall]
-07-08: x 09                 # data[2] = 9 [24 overall]
-08-09: x 11                 # data[3] = 17 [32 overall]
-09-10: x 16                 # data[4] = 22 [37 overall]
-10-11: x 1b                 # data[5] = 27 [42 overall]
-11-12: x 21                 # data[6] = 33 [48 overall]
-12-13: x 2a                 # data[7] = 42 [57 overall]
-13-14: x 31                 # data[8] = 49 [64 overall]
-14-15: x 35                 # data[9] = 53 [68 overall]
+00-01: x 01                 # encoding: 1b
+01-02: x 00                 # data[0] = 0 [11 overall]
+02-03: x 03                 # data[1] = 3 [14 overall]
+03-04: x 09                 # data[2] = 9 [20 overall]
+04-05: x 11                 # data[3] = 17 [28 overall]
+05-06: x 16                 # data[4] = 22 [33 overall]
+06-07: x 1b                 # data[5] = 27 [38 overall]
+07-08: x 21                 # data[6] = 33 [44 overall]
+08-09: x 2a                 # data[7] = 42 [53 overall]
+09-10: x 31                 # data[8] = 49 [60 overall]
+10-11: x 35                 # data[9] = 53 [64 overall]
 # data
-15-18: x 636174             # data[0]: cat
-18-24: x 6f72616e6765       # data[1]: orange
-24-32: x 7a75636368696e69   # data[2]: zucchini
-32-37: x 6c656d6f6e         # data[3]: lemon
-37-42: x 6170706c65         # data[4]: apple
-42-48: x 62616e616e61       # data[5]: banana
-48-57: x 63616e74656c6f7065 # data[6]: cantelope
-57-64: x 6c657474756365     # data[7]: lettuce
-64-68: x 6b616c65           # data[8]: kale
+11-14: x 636174             # data[0]: cat
+14-20: x 6f72616e6765       # data[1]: orange
+20-28: x 7a75636368696e69   # data[2]: zucchini
+28-33: x 6c656d6f6e         # data[3]: lemon
+33-38: x 6170706c65         # data[4]: apple
+38-44: x 62616e616e61       # data[5]: banana
+44-53: x 63616e74656c6f7065 # data[6]: cantelope
+53-60: x 6c657474756365     # data[7]: lettuce
+60-64: x 6b616c65           # data[8]: kale
 
 at indices=(0, 1, 2, 3, 4, 5, 6, 7, 8)
 ----
@@ -200,18 +190,17 @@ kale
 ----
 # rawbytes
 # offsets table
-00-01: x 02               # delta encoding: delta8
-01-05: x 00000000         # 32-bit constant: 0
-05-06: x 00               # data[0] = 0 [10 overall]
-06-07: x 03               # data[1] = 3 [13 overall]
-07-08: x 09               # data[2] = 9 [19 overall]
-08-09: x 11               # data[3] = 17 [27 overall]
-09-10: x 16               # data[4] = 22 [32 overall]
+00-01: x 01               # encoding: 1b
+01-02: x 00               # data[0] = 0 [6 overall]
+02-03: x 03               # data[1] = 3 [9 overall]
+03-04: x 09               # data[2] = 9 [15 overall]
+04-05: x 11               # data[3] = 17 [23 overall]
+05-06: x 16               # data[4] = 22 [28 overall]
 # data
-10-13: x 636174           # data[0]: cat
-13-19: x 6f72616e6765     # data[1]: orange
-19-27: x 7a75636368696e69 # data[2]: zucchini
-27-32: x 6c656d6f6e       # data[3]: lemon
+06-09: x 636174           # data[0]: cat
+09-15: x 6f72616e6765     # data[1]: orange
+15-23: x 7a75636368696e69 # data[2]: zucchini
+23-28: x 6c656d6f6e       # data[3]: lemon
 
 at indices=(0, 1, 2, 3)
 ----

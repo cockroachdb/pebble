@@ -220,10 +220,6 @@ func DecodePrefixBytes(
 		rows:       count,
 		rawBytes:   rb,
 	}
-	// We always set the base to zero.
-	if pb.rawBytes.offsets.base != 0 {
-		panic(errors.AssertionFailedf("unexpected non-zero base in offsets"))
-	}
 	pb.sharedPrefixLen = int(pb.rawBytes.offsets.At(0))
 	return pb, endOffset
 }
@@ -585,7 +581,7 @@ func prefixBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter fu
 	f.HexBytesln(1, "bundleSize: %d", 1<<pb.bundleShift)
 	f.CommentLine("Offsets table")
 	dataOffset := uint64(f.Offset()) + uint64(uintptr(pb.rawBytes.data)-uintptr(pb.rawBytes.start))
-	uintsToBinFormatter(f, pb.rawBytes.slices+1, DataTypeUint32,
+	uintsToBinFormatter(f, pb.rawBytes.slices+1, DataTypeUint,
 		func(offsetDelta, offsetBase uint64) string {
 			// NB: offsetBase will always be zero for PrefixBytes columns.
 			return fmt.Sprintf("%d [%d overall]", offsetDelta+offsetBase, offsetDelta+offsetBase+dataOffset)
@@ -721,21 +717,21 @@ type prefixBytesSizing struct {
 	// Note that currentBundlePrefixLen is inclusive of the blockPrefixLen.
 	//
 	// INVARIANT: currentBundlePrefixLen >= blockPrefixLen
-	currentBundlePrefixLen    int    // the length of the "current" bundle's prefix
-	currentBundlePrefixOffset int    // the index of the offset of the "current" bundle's prefix
-	completedBundleLen        int    // the encoded size of completed bundles
-	compressedDataLen         int    // the compressed, encoded size of data
-	offsetDeltaWidth          uint32 // the offset width necessary to encode the max offset
+	currentBundlePrefixLen    int          // the length of the "current" bundle's prefix
+	currentBundlePrefixOffset int          // the index of the offset of the "current" bundle's prefix
+	completedBundleLen        int          // the encoded size of completed bundles
+	compressedDataLen         int          // the compressed, encoded size of data
+	offsetEncoding            UintEncoding // the encoding necessary to encode the offsets
 }
 
 func (sz *prefixBytesSizing) String() string {
 	return fmt.Sprintf("lastKeyLen:%d offsetCount:%d blockPrefixLen:%d\n"+
 		"currentBundleDistinct{Len,Keys}: (%d,%d)\n"+
 		"currentBundlePrefix{Len,Offset}: (%d,%d)\n"+
-		"completedBundleLen:%d compressedDataLen:%d offsetDeltaWidth:%d",
+		"completedBundleLen:%d compressedDataLen:%d offsetEncoding:%s",
 		sz.lastKeyLen, sz.offsetCount, sz.blockPrefixLen, sz.currentBundleDistinctLen,
 		sz.currentBundleDistinctKeys, sz.currentBundlePrefixLen, sz.currentBundlePrefixOffset,
-		sz.completedBundleLen, sz.compressedDataLen, sz.offsetDeltaWidth)
+		sz.completedBundleLen, sz.compressedDataLen, sz.offsetEncoding)
 }
 
 // Put adds the provided key to the column. The provided key must be
@@ -790,7 +786,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 			currentBundlePrefixOffset: 1,
 			completedBundleLen:        0,
 			compressedDataLen:         len(key),
-			offsetDeltaWidth:          max(1, deltaWidth(uint64(len(key)))),
+			offsetEncoding:            DetermineUintEncoding(0, uint64(len(key))),
 		}
 	case b.nKeys&(b.bundleSize-1) == 0:
 		// We're starting a new bundle.
@@ -823,7 +819,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 			currentBundleDistinctKeys: 1,
 			compressedDataLen:         completedBundleSize + len(key) - (b.bundleCount(b.nKeys)-1)*blockPrefixLen,
 		}
-		curr.offsetDeltaWidth = max(1, deltaWidth(uint64(curr.compressedDataLen)))
+		curr.offsetEncoding = DetermineUintEncoding(0, uint64(curr.compressedDataLen))
 		b.data = append(b.data, key...)
 		b.addOffset(0) // Placeholder for bundle prefix.
 		b.addOffset(uint32(len(b.data)))
@@ -864,8 +860,8 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		// the block prefix being stripped from every bundle except the first one.
 		curr.compressedDataLen -= (b.bundleCount(b.nKeys) - 1) * curr.blockPrefixLen
 		// The compressedDataLen is the largest offset we'll need to encode in the
-		// offset table, so we can use it to compute the width of the offset deltas.
-		curr.offsetDeltaWidth = max(1, deltaWidth(uint64(curr.compressedDataLen)))
+		// offset table.
+		curr.offsetEncoding = DetermineUintEncoding(0, uint64(curr.compressedDataLen))
 		b.data = append(b.data, key...)
 		b.addOffset(uint32(len(b.data)))
 	}
@@ -1003,35 +999,23 @@ func (b *PrefixBytesBuilder) Finish(
 	offset++
 
 	sz := &b.sizings[(rows+1)%2]
-	stringDataOffset := uintColumnSize[uint32](uint32(sz.offsetCount), offset, sz.offsetDeltaWidth)
-	switch sz.offsetDeltaWidth {
-	case 1:
-		buf[offset] = byte(UintDeltaEncoding8)
-		offset++
-		// The uint32 delta-encoding requires a uint32 constant representing the
-		// base value. This is always zero for PrefixBytes, but we include it
-		// anyways for format consistency.
-		buf[offset], buf[offset+1], buf[offset+2], buf[offset+3] = 0, 0, 0, 0
-		offset += align32
+	stringDataOffset := uintColumnSize(uint32(sz.offsetCount), offset, sz.offsetEncoding)
+	if sz.offsetEncoding.IsDelta() {
+		panic(errors.AssertionFailedf("offsets never need delta encoding"))
+	}
 
+	width := uint32(sz.offsetEncoding.Width())
+	buf[offset] = byte(sz.offsetEncoding)
+	offset++
+	offset = alignWithZeroes(buf, offset, width)
+	switch width {
+	case 1:
 		offsetDest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset]))
 		writePrefixCompressed[uint8](b, rows, sz, offsetDest, buf[stringDataOffset:])
 	case align16:
-		buf[offset] = byte(UintDeltaEncoding16)
-		offset++
-		// The uint32 delta-encoding requires a uint32 constant representing the
-		// base value. This is always zero for PrefixBytes, but we include it
-		// anyways for format consistency.
-		buf[offset], buf[offset+1], buf[offset+2], buf[offset+3] = 0, 0, 0, 0
-		offset += align32
-
-		offset = alignWithZeroes(buf, offset, align16)
 		offsetDest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset]))
 		writePrefixCompressed[uint16](b, rows, sz, offsetDest, buf[stringDataOffset:])
 	case align32:
-		buf[offset] = byte(UintDeltaEncodingNone)
-		offset++
-		offset = alignWithZeroes(buf, offset, align32)
 		offsetDest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset]))
 		writePrefixCompressed[uint32](b, rows, sz, offsetDest, buf[stringDataOffset:])
 	default:
@@ -1055,7 +1039,7 @@ func (b *PrefixBytesBuilder) Size(rows int, offset uint32) uint32 {
 	// The 1-byte bundleSize.
 	offset++
 	// Compute the size of the offsets table.
-	offset = uintColumnSize[uint32](uint32(sz.offsetCount), offset, sz.offsetDeltaWidth)
+	offset = uintColumnSize(uint32(sz.offsetCount), offset, sz.offsetEncoding)
 	return offset + uint32(sz.compressedDataLen)
 }
 

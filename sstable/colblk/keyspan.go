@@ -43,10 +43,10 @@ type KeyspanBlockWriter struct {
 
 	// boundary columns
 	boundaryUserKeys   RawBytesBuilder
-	boundaryKeyIndexes UintBuilder[uint32]
+	boundaryKeyIndexes UintBuilder
 
 	// keyspan.Key columns
-	trailers UintBuilder[uint64]
+	trailers UintBuilder
 	suffixes RawBytesBuilder
 	values   RawBytesBuilder
 
@@ -87,13 +87,13 @@ func (w *KeyspanBlockWriter) AddSpan(s *keyspan.Span) {
 	// end key is the next span's start key.  Check if the previous user key
 	// equals this span's start key, and avoid encoding it again if so.
 	if w.unsafeLastUserKey == nil || !w.equal(w.unsafeLastUserKey, s.Start) {
-		w.boundaryKeyIndexes.Set(w.boundaryUserKeys.rows, uint32(w.keyCount))
+		w.boundaryKeyIndexes.Set(w.boundaryUserKeys.rows, uint64(w.keyCount))
 		w.boundaryUserKeys.Put(s.Start)
 	}
 	// The end key must be strictly greater than the start key and spans are
 	// already sorted, so the end key is guaranteed to not be present in the
 	// column yet. We need to encode it.
-	w.boundaryKeyIndexes.Set(w.boundaryUserKeys.rows, uint32(w.keyCount+len(s.Keys)))
+	w.boundaryKeyIndexes.Set(w.boundaryUserKeys.rows, uint64(w.keyCount+len(s.Keys)))
 	w.boundaryUserKeys.Put(s.End)
 
 	// Hold on to a slice of the copy of s.End we just added to the bytes
@@ -182,10 +182,10 @@ type KeyspanReader struct {
 	// Span boundary columns with boundaryKeysCount elements.
 	boundaryKeysCount  uint32
 	boundaryKeys       RawBytes
-	boundaryKeyIndices UnsafeUint32s
+	boundaryKeyIndices UnsafeUints
 
 	// keyspan.Key columns with blockReader.header.Rows elements.
-	trailers UnsafeUint64s
+	trailers UnsafeUints
 	suffixes RawBytes
 	values   RawBytes
 }
@@ -200,9 +200,9 @@ func (r *KeyspanReader) Init(data []byte) {
 	r.boundaryKeys = DecodeColumn(&r.blockReader, keyspanColBoundaryUserKeys,
 		int(r.boundaryKeysCount), DataTypeBytes, DecodeRawBytes)
 	r.boundaryKeyIndices = DecodeColumn(&r.blockReader, keyspanColBoundaryKeyIndices,
-		int(r.boundaryKeysCount), DataTypeUint32, DecodeUnsafeIntegerSlice[uint32])
+		int(r.boundaryKeysCount), DataTypeUint, DecodeUnsafeUints)
 
-	r.trailers = r.blockReader.Uint64s(keyspanColTrailers)
+	r.trailers = r.blockReader.Uints(keyspanColTrailers)
 	r.suffixes = r.blockReader.RawBytes(keyspanColSuffixes)
 	r.values = r.blockReader.RawBytes(keyspanColValues)
 }

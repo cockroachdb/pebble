@@ -8,6 +8,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
+	"math/bits"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -21,71 +23,94 @@ type Uint interface {
 	~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
-// UintDeltaEncoding indicates what delta encoding, if any is in use by a
-// uint{8,16,32,64} column to reduce the per-row storage size.
+// UintEncoding indicates how unsigned integers (of at most 64 bits) are
+// encoded. It has two components:
+//   - the low bits indicate how many bytes per integer are used, with
+//     allowed values 0, 1, 2, 4, or 8.
+//   - whether we are using a delta encoding, meaning that a base (64-bit) value
+//     is encoded separately and each encoded value is a delta from that base.
+//     Delta encoding is never necessary when we use 8 bytes per integer.
 //
-// A uint delta encoding represents every non-NULL element in an array of uints
-// as a delta relative to the column's constant. The logical value of each row
-// is computed as C + D[i] where C is the column constant and D[i] is the delta.
+// Note that 0-byte encodings imply that all values are equal (either to the
+// base value if we are using a delta encoding, otherwise to 0).
 //
-// The UintDeltaEncoding byte is serialized to the uint column before the column
+// The UintEncoding byte is serialized to the uint column before the column
 // data.
-type UintDeltaEncoding uint8
+type UintEncoding uint8
 
-const (
-	// UintDeltaEncodingNone indicates no delta encoding is in use. N rows are
-	// represented using N values of the column's logical data type.
-	UintDeltaEncodingNone UintDeltaEncoding = 0
-	// UintDeltaEncodingConstant indicates that all rows of the column share the
-	// same value. The column data encodes the constant value and no deltas.
-	UintDeltaEncodingConstant UintDeltaEncoding = 1
-	// UintDeltaEncoding8 indicates each delta is represented as a 1-byte uint8.
-	UintDeltaEncoding8 UintDeltaEncoding = 2
-	// UintDeltaEncoding16 indicates each delta is represented as a 2-byte uint16.
-	UintDeltaEncoding16 UintDeltaEncoding = 3
-	// UintDeltaEncoding32 indicates each delta is represented as a 4-byte uint32.
-	UintDeltaEncoding32 UintDeltaEncoding = 4
-)
+const uintEncodingDeltaBit UintEncoding = 1 << 7
+const uintEncodingAllZero UintEncoding = 0
+
+// IsDelta returns true if it is a delta encoding.
+func (e UintEncoding) IsDelta() bool {
+	return e&uintEncodingDeltaBit != 0
+}
+
+// Width returns the number of bytes used per integer. It can be 0, 1, 2, 4, or 8.
+func (e UintEncoding) Width() int {
+	return int(e &^ uintEncodingDeltaBit)
+}
+
+// IsValid returns true if the encoding is valid.
+func (e UintEncoding) IsValid() bool {
+	switch e.Width() {
+	case 0, 1, 2, 4:
+		return true
+	case 8:
+		// We should never need to do delta encoding if we store all 64 bits.
+		return !e.IsDelta()
+	default:
+		return false
+	}
+}
 
 // String implements fmt.Stringer.
-func (d UintDeltaEncoding) String() string {
-	switch d {
-	case UintDeltaEncodingNone:
-		return "none"
-	case UintDeltaEncodingConstant:
-		return "const"
-	case UintDeltaEncoding8:
-		return "delta8"
-	case UintDeltaEncoding16:
-		return "delta16"
-	case UintDeltaEncoding32:
-		return "delta32"
-	default:
-		panic("unreachable")
+func (e UintEncoding) String() string {
+	if e.Width() == 0 {
+		if e.IsDelta() {
+			return "const"
+		}
+		return "zero"
 	}
+	deltaString := ""
+	if e.IsDelta() {
+		deltaString = ",delta"
+	}
+	return fmt.Sprintf("%db%s", e.Width(), deltaString)
 }
 
-func (d UintDeltaEncoding) width() int {
-	switch d {
-	case UintDeltaEncodingConstant:
-		return 0
-	case UintDeltaEncoding8:
-		return 1
-	case UintDeltaEncoding16:
-		return 2
-	case UintDeltaEncoding32:
-		return 4
-	default:
-		panic("unreachable")
+// DetermineUintEncoding returns the best valid encoding that can be used to
+// represent integers in the range [minValue, maxValue].
+func DetermineUintEncoding(minValue, maxValue uint64) UintEncoding {
+	// Find the number of bytes-per-value necessary for a delta encoding.
+	b := (bits.Len64(maxValue-minValue) + 7) >> 3
+	// Round up to the nearest allowed value (0, 1, 2, 4, or 8).
+	if b > 4 {
+		return UintEncoding(8)
 	}
+	if b == 3 {
+		b = 4
+	}
+	// Check if we can use the same number of bytes without a delta encoding.
+	isDelta := maxValue >= (1 << (b << 3))
+	return makeUintEncoding(b, isDelta)
 }
 
-// UintBuilder builds a column of unsigned integers of the same width.
-// UintBuilder uses a delta encoding when possible to store values using
-// lower-width integers. See DeltaEncoding.
-type UintBuilder[T Uint] struct {
+func makeUintEncoding(width int, isDelta bool) UintEncoding {
+	e := UintEncoding(width)
+	if isDelta {
+		e |= uintEncodingDeltaBit
+	}
+	if invariants.Enabled && !e.IsValid() {
+		panic(e)
+	}
+	return e
+}
+
+// UintBuilder builds a column of unsigned integers. It uses the smallest
+// possible UintEncoding, depending on the values.
+type UintBuilder struct {
 	// configuration fixed on Init; preserved across Reset
-	dt         DataType
 	useDefault bool
 
 	// array holds the underlying heap-allocated array in which values are
@@ -96,7 +121,7 @@ type UintBuilder[T Uint] struct {
 		n int
 		// elems provides access to elements without bounds checking. elems is
 		// grown automatically in Set.
-		elems UnsafeRawSlice[T]
+		elems UnsafeRawSlice[uint64]
 	}
 	// delta holds state for the purpose of tracking which DeltaEncoding would
 	// be used if the caller Finished the column including all elements Set so
@@ -104,9 +129,8 @@ type UintBuilder[T Uint] struct {
 	// which encoding may most concisely encode the array.
 	//
 	// Every Set(i, v) call updates minimum and maximum if necessary. If a call
-	// updates minimum, maximum or both, it sets the width to the number of
-	// bytes necessary to represent the new difference between maximum and
-	// minimum. It also sets widthRow=i, indicating which row last updated the
+	// updates minimum, maximum or both, it recalculates the encoding and if it
+	// changed sets sets encodingRow=i, indicating which row last updated the
 	// width.
 	//
 	// Any call to Size or Finish that supplies [rows] that's inclusive of the
@@ -123,15 +147,15 @@ type UintBuilder[T Uint] struct {
 	// less than the last set row, we could maintain the width of only the last
 	// two rows.
 	delta struct {
-		minimum  T
-		maximum  T
-		width    uint32 // 0, 1, 2, 4, or 8
-		widthRow int    // index of last update to width
+		minimum     uint64
+		maximum     uint64
+		encoding    UintEncoding
+		encodingRow int // index of last update to encoding
 	}
 }
 
 // Init initializes the UintBuilder.
-func (b *UintBuilder[T]) Init() {
+func (b *UintBuilder) Init() {
 	b.init(false)
 }
 
@@ -142,36 +166,24 @@ func (b *UintBuilder[T]) Init() {
 //
 // InitWithDefault may be preferrable when a nonzero value is uncommon, and the
 // caller can avoid explicitly Set-ing every zero value.
-func (b *UintBuilder[T]) InitWithDefault() {
+func (b *UintBuilder) InitWithDefault() {
 	b.init(true)
 }
 
-func (b *UintBuilder[T]) init(useDefault bool) {
+func (b *UintBuilder) init(useDefault bool) {
 	b.useDefault = useDefault
-	switch unsafe.Sizeof(T(0)) {
-	case 1:
-		b.dt = DataTypeUint8
-	case 2:
-		b.dt = DataTypeUint16
-	case 4:
-		b.dt = DataTypeUint32
-	case 8:
-		b.dt = DataTypeUint64
-	default:
-		panic("unreachable")
-	}
 	b.Reset()
 }
 
 // NumColumns implements ColumnWriter.
-func (b *UintBuilder[T]) NumColumns() int { return 1 }
+func (b *UintBuilder) NumColumns() int { return 1 }
 
 // DataType implements ColumnWriter.
-func (b *UintBuilder[T]) DataType(int) DataType { return b.dt }
+func (b *UintBuilder) DataType(int) DataType { return DataTypeUint }
 
 // Reset implements ColumnWriter and resets the builder, reusing existing
 // allocated memory.
-func (b *UintBuilder[T]) Reset() {
+func (b *UintBuilder) Reset() {
 	if b.useDefault {
 		// If the caller configured a default zero, we assume that the array
 		// will include at least one default value.
@@ -179,43 +191,40 @@ func (b *UintBuilder[T]) Reset() {
 		b.delta.maximum = 0
 		clear(b.array.elems.Slice(b.array.n))
 	} else {
-		// Initialize the minimum to the max value that a T can represent. We
-		// subtract from zero, relying on the fact that T is unsigned and will
-		// wrap around to the maximal value.
-		b.delta.minimum = T(0) - 1
+		b.delta.minimum = math.MaxUint64
 		b.delta.maximum = 0
 		// We could reset all values as a precaution, but it has a visible cost
 		// in benchmarks.
 		if invariants.Sometimes(50) {
 			for i := 0; i < b.array.n; i++ {
-				b.array.elems.set(i, T(0)-1)
+				b.array.elems.set(i, math.MaxUint64)
 			}
 		}
 	}
-	b.delta.widthRow = 0
-	b.delta.width = 0
+	b.delta.encoding = uintEncodingAllZero
+	b.delta.encodingRow = 0
 }
 
 // Get gets the value of the provided row index. The provided row must have been
 // Set.
-func (b *UintBuilder[T]) Get(row int) T {
+func (b *UintBuilder) Get(row int) uint64 {
 	return b.array.elems.At(row)
 }
 
 // Set sets the value of the provided row index to v.
-func (b *UintBuilder[T]) Set(row int, v T) {
+func (b *UintBuilder) Set(row int, v uint64) {
 	if b.array.n <= row {
-		// Double the size of the allocated array, or initialize it to at least
-		// 256 bytes if this is the first allocation. Then double until there's
-		// sufficient space for n bytes.
-		n2 := max(b.array.n<<1, 256/int(unsafe.Sizeof(T(0))))
+		// Double the size of the allocated array, or initialize it to at least 32
+		// values (256 bytes) if this is the first allocation. Then double until
+		// there's sufficient space.
+		n2 := max(b.array.n<<1, 32)
 		for n2 <= row {
 			n2 <<= 1 /* double the size */
 		}
-		// NB: Go guarantees the allocated array will be T-aligned.
-		newDataTyped := make([]T, n2)
+		// NB: Go guarantees the allocated array will be 64-bit aligned.
+		newDataTyped := make([]uint64, n2)
 		copy(newDataTyped, b.array.elems.Slice(b.array.n))
-		newElems := makeUnsafeRawSlice[T](unsafe.Pointer(&newDataTyped[0]))
+		newElems := makeUnsafeRawSlice[uint64](unsafe.Pointer(&newDataTyped[0]))
 		b.array.n = n2
 		b.array.elems = newElems
 
@@ -225,12 +234,11 @@ func (b *UintBuilder[T]) Set(row int, v T) {
 	if b.delta.minimum > v || b.delta.maximum < v {
 		b.delta.minimum = min(v, b.delta.minimum)
 		b.delta.maximum = max(v, b.delta.maximum)
-		// If updating the minimum and maximum means that we now much use a
-		// wider width integer, update the width and the index of the update to
-		// it.
-		if w := deltaWidth(uint64(b.delta.maximum - b.delta.minimum)); w != b.delta.width {
-			b.delta.width = w
-			b.delta.widthRow = row
+		// If updating the minimum and maximum means that we now much use a wider
+		// width integer, update the encoding and the index of the update to it.
+		if e := DetermineUintEncoding(b.delta.minimum, b.delta.maximum); e != b.delta.encoding {
+			b.delta.encoding = e
+			b.delta.encodingRow = row
 		}
 	}
 	b.array.elems.set(row, v)
@@ -238,36 +246,40 @@ func (b *UintBuilder[T]) Set(row int, v T) {
 
 // Size implements ColumnWriter and returns the size of the column if its first
 // [rows] rows were serialized, serializing the column into offset [offset].
-func (b *UintBuilder[T]) Size(rows int, offset uint32) uint32 {
+func (b *UintBuilder) Size(rows int, offset uint32) uint32 {
 	if rows == 0 {
 		return 0
 	}
-	// Determine the width of each element with delta-encoding applied.
-	// b.delta.width is the precomputed width for all rows. It's the best
-	// encoding we can use as long as b.delta.widthRow is included. If
-	// b.delta.widthRow is not included (b.delta.widthRow > rows-1), we need to
-	// scan the [rows] elements of the array to recalculate the appropriate
-	// delta.
-	w := b.delta.width
-	if b.delta.widthRow > rows-1 {
-		minimum, maximum := computeMinMax(b.array.elems.Slice(rows))
-		w = deltaWidth(uint64(maximum - minimum))
-	}
-	return uintColumnSize[T](uint32(rows), offset, w)
+	e, _ := b.determineEncoding(rows)
+	return uintColumnSize(uint32(rows), offset, e)
 }
 
-// uintColumnSize returns the size of a column of unsigned integers of type T,
-// encoded at the provided offset using the provided width. If width <
-// sizeof(T), then a delta encoding is assumed.
-func uintColumnSize[T Uint](rows, offset, width uint32) uint32 {
-	offset++ // DeltaEncoding byte
-	logicalWidth := uint32(unsafe.Sizeof(T(0)))
-	if width != logicalWidth {
-		// A delta encoding will be used. We need to first account for the constant
-		// that encodes the minimum. This constant is the full width of the column's
-		// logical data type.
-		offset += logicalWidth
+// determineEncoding determines the best encoding for a column containing the
+// first [rows], along with the minimum value (used as the "base" value when we
+// use a delta encoding).
+func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, minimum uint64) {
+	if b.delta.encodingRow < rows {
+		// b.delta.encoding became the current value within the first [rows], so we
+		// can use it.
+		return b.delta.encoding, b.delta.minimum
 	}
+
+	// We have to recalculate the minimum and maximum.
+	minimum, maximum := computeMinMax(b.array.elems.Slice(rows))
+	return DetermineUintEncoding(minimum, maximum), minimum
+}
+
+// uintColumnSize returns the size of a column of unsigned integers, encoded at
+// the provided offset using the provided width. If width < sizeof(T), then a
+// delta encoding is assumed.
+func uintColumnSize(rows, offset uint32, e UintEncoding) uint32 {
+	offset++ // DeltaEncoding byte
+	if e.IsDelta() {
+		// A delta encoding will be used. We need to first account for the constant
+		// that encodes the base value.
+		offset += 8
+	}
+	width := uint32(e.Width())
 	// Include alignment bytes necessary to align offset appropriately for
 	// elements of the delta width.
 	if width > 0 {
@@ -279,24 +291,12 @@ func uintColumnSize[T Uint](rows, offset, width uint32) uint32 {
 
 // Finish implements ColumnWriter, serializing the column into offset [offset] of
 // [buf].
-func (b *UintBuilder[T]) Finish(col, rows int, offset uint32, buf []byte) uint32 {
+func (b *UintBuilder) Finish(col, rows int, offset uint32, buf []byte) uint32 {
 	if rows == 0 {
 		return offset
 	}
 
-	// Determine the width of each element with delta-encoding applied.
-	// b.delta.width is the precomputed width for all rows. It's the best
-	// encoding we can use as long as b.delta.widthRow is included. If
-	// b.delta.widthRow is not included (b.delta.widthRow > rows-1), we need to
-	// scan the [rows] elements of the array to recalculate the appropriate
-	// delta.
-	minimum := b.delta.minimum
-	w := b.delta.width
-	if b.delta.widthRow > rows-1 {
-		var maximum T
-		minimum, maximum = computeMinMax(b.array.elems.Slice(rows))
-		w = deltaWidth(uint64(maximum - minimum))
-	}
+	e, minimum := b.determineEncoding(rows)
 
 	// NB: In some circumstances, it's possible for b.array.elems.ptr to be nil.
 	// Specifically, if the builder is initialized using InitWithDefault and no
@@ -304,108 +304,64 @@ func (b *UintBuilder[T]) Finish(col, rows int, offset uint32, buf []byte) uint32
 	// allocate b.array.elems.ptr). It's illegal to try to construct an unsafe
 	// slice from a nil ptr with non-zero rows. Only attempt to construct the
 	// values slice if there's actually a non-nil ptr.
-	var valuesSlice []T
+	var valuesSlice []uint64
 	if b.array.elems.ptr != nil {
 		valuesSlice = b.array.elems.Slice(rows)
 	}
-	return uintColumnFinish[T](minimum, valuesSlice, w, offset, buf)
+	return uintColumnFinish(minimum, valuesSlice, e, offset, buf)
 }
 
-// uintColumnFinish finishes the column of unsigned integers of type T, encoding
-// per-row deltas of size width if width < sizeof(T).
-func uintColumnFinish[T Uint](minimum T, values []T, width, offset uint32, buf []byte) uint32 {
-	// Compare the computed delta width to see if we're able to use an array of
-	// lower-width deltas to encode the column.
-	if uintptr(width) < unsafe.Sizeof(T(0)) {
-		switch width {
-		case 0:
-			// All the column values are the same and we can elide any deltas at
-			// all.
-			buf[offset] = byte(UintDeltaEncodingConstant)
-			offset++
-			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
-			return offset
-		case 1:
-			buf[offset] = byte(UintDeltaEncoding8)
-			offset++
-			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
-			dest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset]))
-			reduceUints[T, uint8](minimum, values, dest.Slice(len(values)))
-			offset += uint32(len(values))
-			return offset
-		case align16:
-			buf[offset] = byte(UintDeltaEncoding16)
-			offset++
-			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
-			// Align the offset appropriately for uint16s.
-			offset = alignWithZeroes(buf, offset, align16)
-			dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset]))
-			reduceUints[T, uint16](minimum, values, dest.Slice(len(values)))
-			offset += uint32(len(values)) * align16
-			return offset
-		case align32:
-			buf[offset] = byte(UintDeltaEncoding32)
-			offset++
-			offset += uint32(writeLittleEndianNonaligned(buf, offset, minimum))
-			// Align the offset appropriately for uint32s.
-			offset = alignWithZeroes(buf, offset, align32)
-			dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset]))
-			reduceUints[T, uint32](minimum, values, dest.Slice(len(values)))
-			offset += uint32(len(values)) * align32
-			return offset
-		default:
+// uintColumnFinish finishes the column of unsigned integers of type T, applying
+// the given encoding.
+func uintColumnFinish(
+	minimum uint64, values []uint64, e UintEncoding, offset uint32, buf []byte,
+) uint32 {
+	buf[offset] = byte(e)
+	offset++
+
+	deltaBase := uint64(0)
+	if e.IsDelta() {
+		deltaBase = minimum
+		binary.LittleEndian.PutUint64(buf[offset:], minimum)
+		offset += 8
+	}
+	width := uint32(e.Width())
+	if width == 0 {
+		// All the column values are the same.
+		return offset
+	}
+	// Align the offset appropriately.
+	offset = alignWithZeroes(buf, offset, width)
+
+	switch e.Width() {
+	case 1:
+		dest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		reduceUints(deltaBase, values, dest)
+
+	case 2:
+		dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		reduceUints(deltaBase, values, dest)
+
+	case 4:
+		dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		reduceUints(deltaBase, values, dest)
+
+	case 8:
+		if deltaBase != 0 {
 			panic("unreachable")
 		}
-	}
-	buf[offset] = byte(UintDeltaEncodingNone)
-	offset++
-	offset = align(offset, uint32(unsafe.Sizeof(T(0))))
-	dest := makeUnsafeRawSlice[T](unsafe.Pointer(&buf[offset])).Slice(len(values))
-	offset += uint32(copy(dest, values)) * uint32(unsafe.Sizeof(T(0)))
-	return offset
-}
+		dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		copy(dest, values)
 
-// writeLittleEndianNonaligned writes v to buf at the provided offset in
-// little-endian, without assuming that the offset is aligned to the size of T.
-func writeLittleEndianNonaligned[T Uint](buf []byte, offset uint32, v T) int {
-	sz := unsafe.Sizeof(v)
-	switch sz {
-	case 1:
-		buf[offset] = byte(v)
-	case 2:
-		binary.LittleEndian.PutUint16(buf[offset:], uint16(v))
-	case 4:
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(v))
-	case 8:
-		binary.LittleEndian.PutUint64(buf[offset:], uint64(v))
 	default:
 		panic("unreachable")
 	}
-	return int(sz)
-}
-
-// readLittleEndianNonaligned reads a value of type T from buf at the provided
-// offset in little-endian, without assuming that the offset is aligned to the
-// size of T.
-func readLittleEndianNonaligned[T constraints.Integer](buf []byte, offset uint32) T {
-	sz := unsafe.Sizeof(T(0))
-	switch sz {
-	case 1:
-		return T(buf[offset])
-	case 2:
-		return T(binary.LittleEndian.Uint16(buf[offset:]))
-	case 4:
-		return T(binary.LittleEndian.Uint32(buf[offset:]))
-	case 8:
-		return T(binary.LittleEndian.Uint64(buf[offset:]))
-	default:
-		panic("unreachable")
-	}
+	return offset + uint32(len(values))*width
 }
 
 // WriteDebug implements Encoder.
-func (b *UintBuilder[T]) WriteDebug(w io.Writer, rows int) {
-	fmt.Fprintf(w, "%s: %d rows", b.dt, rows)
+func (b *UintBuilder) WriteDebug(w io.Writer, rows int) {
+	fmt.Fprintf(w, "%s: %d rows", DataTypeUint, rows)
 }
 
 // reduceUints reduces the bit-width of a slice of unsigned by subtracting a
@@ -432,26 +388,6 @@ func computeMinMax[I constraints.Unsigned](values []I) (I, I) {
 	return minimum, maximum
 }
 
-// deltaWidth returns the width in bytes of the integer type that can represent
-// the provided value.
-func deltaWidth(delta uint64) uint32 {
-	// TODO(jackson): Consider making this generic; We could compare against
-	// unsafe.Sizeof(T(0)) to ensure that we don't overflow T and that the
-	// higher width cases get elided at compile time for the smaller width Ts.
-	switch {
-	case delta == 0:
-		return 0
-	case delta < (1 << 8):
-		return 1
-	case delta < (1 << 16):
-		return align16
-	case delta < (1 << 32):
-		return align32
-	default:
-		return align64
-	}
-}
-
 func uintsToBinFormatter(
 	f *binfmt.Formatter, rows int, dataType DataType, uintFormatter func(el, base uint64) string,
 ) {
@@ -464,36 +400,27 @@ func uintsToBinFormatter(
 		}
 	}
 
-	deltaEncoding := UintDeltaEncoding(f.PeekUint(1)) // DeltaEncoding byte
-	f.HexBytesln(1, "delta encoding: %s", deltaEncoding)
-
-	logicalWidth := dataType.uintWidth()
+	e := UintEncoding(f.PeekUint(1)) // UintEncoding byte
+	if !e.IsValid() {
+		panic(fmt.Sprintf("%d", e))
+	}
+	f.HexBytesln(1, "encoding: %s", e)
 
 	var base uint64
-	elementWidth := int(logicalWidth)
-	if deltaEncoding != UintDeltaEncodingNone {
-		base = f.PeekUint(int(logicalWidth))
-		f.HexBytesln(int(logicalWidth), "%d-bit constant: %d", logicalWidth*8, base)
-
-		switch deltaEncoding {
-		case UintDeltaEncodingConstant:
-			// This is just a constant (that was already read/formatted).
-			return
-		case UintDeltaEncoding8:
-			elementWidth = 1
-		case UintDeltaEncoding16:
-			elementWidth = align16
-		case UintDeltaEncoding32:
-			elementWidth = align32
-		default:
-			panic("unreachable")
-		}
+	if e.IsDelta() {
+		base = f.PeekUint(8)
+		f.HexBytesln(8, "64-bit constant: %d", base)
 	}
-	if off := align(f.Offset(), int(elementWidth)); off != f.Offset() {
-		f.CommentLine("padding")
-		f.HexBytesln(off-f.Offset(), "aligning to %d-bit boundary", elementWidth*8)
+	width := e.Width()
+	if width == 0 {
+		// The column is zero or constant.
+		return
+	}
+
+	if off := align(f.Offset(), width); off != f.Offset() {
+		f.HexBytesln(off-f.Offset(), "padding (aligning to %d-bit boundary)", width*8)
 	}
 	for i := 0; i < rows; i++ {
-		f.HexBytesln(elementWidth, "data[%d] = %s", i, uintFormatter(f.PeekUint(elementWidth), base))
+		f.HexBytesln(width, "data[%d] = %s", i, uintFormatter(f.PeekUint(width), base))
 	}
 }

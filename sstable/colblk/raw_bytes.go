@@ -44,7 +44,7 @@ import (
 // the delta encoding of the offset table.
 type RawBytes struct {
 	slices  int
-	offsets UnsafeUint32s
+	offsets UnsafeOffsets
 	start   unsafe.Pointer
 	data    unsafe.Pointer
 }
@@ -59,7 +59,7 @@ func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endO
 	if count == 0 {
 		return RawBytes{}, 0
 	}
-	offsets, dataOff := DecodeUnsafeIntegerSlice[uint32](b, offset, count+1 /* +1 offset */)
+	offsets, dataOff := DecodeUnsafeOffsets(b, offset, count+1 /* +1 offset */)
 	return RawBytes{
 		slices:  count,
 		offsets: offsets,
@@ -84,7 +84,7 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 	dataOffset := uint64(f.Offset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
 	f.CommentLine("rawbytes")
 	f.CommentLine("offsets table")
-	uintsToBinFormatter(f, count+1, DataTypeUint32, func(offset, base uint64) string {
+	uintsToBinFormatter(f, count+1, DataTypeUint, func(offset, base uint64) string {
 		// NB: base is always zero for RawBytes columns.
 		return fmt.Sprintf("%d [%d overall]", offset+base, offset+base+dataOffset)
 	})
@@ -117,7 +117,7 @@ func (b *RawBytes) Slices() int {
 type RawBytesBuilder struct {
 	rows    int
 	data    []byte
-	offsets UintBuilder[uint32]
+	offsets UintBuilder
 }
 
 // Assert that *RawBytesBuilder implements ColumnWriter.
@@ -149,7 +149,7 @@ func (b *RawBytesBuilder) DataType(int) DataType { return DataTypeBytes }
 func (b *RawBytesBuilder) Put(s []byte) {
 	b.data = append(b.data, s...)
 	b.rows++
-	b.offsets.Set(b.rows, uint32(len(b.data)))
+	b.offsets.Set(b.rows, uint64(len(b.data)))
 }
 
 // PutConcat appends a single byte slice formed by the concatenation of the two
@@ -157,7 +157,7 @@ func (b *RawBytesBuilder) Put(s []byte) {
 func (b *RawBytesBuilder) PutConcat(s1, s2 []byte) {
 	b.data = append(append(b.data, s1...), s2...)
 	b.rows++
-	b.offsets.Set(b.rows, uint32(len(b.data)))
+	b.offsets.Set(b.rows, uint64(len(b.data)))
 }
 
 // Finish writes the serialized byte slices to buf starting at offset. The buf
@@ -186,7 +186,7 @@ func (b *RawBytesBuilder) Size(rows int, offset uint32) uint32 {
 	offset = b.offsets.Size(rows+1, offset)
 	// Add the value of offset[rows] since that is the accumulated size of the
 	// first [rows] slices.
-	return offset + b.offsets.Get(rows)
+	return offset + uint32(b.offsets.Get(rows))
 }
 
 // WriteDebug implements Encoder.

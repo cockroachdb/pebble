@@ -352,28 +352,10 @@ func (r *BlockReader) PrefixBytes(col int) PrefixBytes {
 	return DecodeColumn(r, col, int(r.header.Rows), DataTypePrefixBytes, DecodePrefixBytes)
 }
 
-// Uint8s retrieves the col'th column as a column of uint8s. The column must be
-// of type DataTypeUint8.
-func (r *BlockReader) Uint8s(col int) UnsafeUint8s {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint8, DecodeUnsafeIntegerSlice[uint8])
-}
-
-// Uint16s retrieves the col'th column as a column of uint8s. The column must be
-// of type DataTypeUint16.
-func (r *BlockReader) Uint16s(col int) UnsafeUint16s {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint16, DecodeUnsafeIntegerSlice[uint16])
-}
-
-// Uint32s retrieves the col'th column as a column of uint32s. The column must be
-// of type DataTypeUint32.
-func (r *BlockReader) Uint32s(col int) UnsafeUint32s {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint32, DecodeUnsafeIntegerSlice[uint32])
-}
-
-// Uint64s retrieves the col'th column as a column of uint64s. The column must be
-// of type DataTypeUint64.
-func (r *BlockReader) Uint64s(col int) UnsafeUint64s {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint64, DecodeUnsafeIntegerSlice[uint64])
+// Uints retrieves the col'th column as a column of uints. The column must be
+// of type DataTypeUint.
+func (r *BlockReader) Uints(col int) UnsafeUints {
+	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint, DecodeUnsafeUints)
 }
 
 func (r *BlockReader) pageStart(col int) uint32 {
@@ -382,7 +364,7 @@ func (r *BlockReader) pageStart(col int) uint32 {
 		return uint32(len(r.data) - 1)
 	}
 	return binary.LittleEndian.Uint32(
-		unsafe.Slice((*byte)(unsafe.Pointer(r.pointer(r.customHeaderSize+uint32(blockHeaderBaseSize+columnHeaderSize*col+1)))), 4))
+		unsafe.Slice((*byte)(r.pointer(r.customHeaderSize+uint32(blockHeaderBaseSize+columnHeaderSize*col+1))), 4))
 }
 
 func (r *BlockReader) pointer(offset uint32) unsafe.Pointer {
@@ -421,7 +403,7 @@ func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
 	switch dataType {
 	case DataTypeBool:
 		bitmapToBinFormatter(f, rows)
-	case DataTypeUint8, DataTypeUint16, DataTypeUint32, DataTypeUint64:
+	case DataTypeUint:
 		uintsToBinFormatter(f, rows, dataType, nil)
 	case DataTypeBytes:
 		rawBytesToBinFormatter(f, rows, nil)

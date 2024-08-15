@@ -17,31 +17,22 @@ const (
 	DataTypeInvalid DataType = 0
 	// DataTypeBool is a data type encoding a bool per row.
 	DataTypeBool DataType = 1
-	// DataTypeUint8 is a data type encoding a fixed 8 bits per row.
-	DataTypeUint8 DataType = 2
-	// DataTypeUint16 is a data type encoding a fixed 16 bits per row.
-	DataTypeUint16 DataType = 3
-	// DataTypeUint32 is a data type encoding a fixed 32 bits per row.
-	DataTypeUint32 DataType = 4
-	// DataTypeUint64 is a data type encoding a fixed 64 bits per row.
-	DataTypeUint64 DataType = 5
+	// DataTypeUint is a data type encoding a fixed 8 bits per row.
+	DataTypeUint DataType = 2
 	// DataTypeBytes is a data type encoding a variable-length byte string per
 	// row.
-	DataTypeBytes DataType = 6
+	DataTypeBytes DataType = 3
 	// DataTypePrefixBytes is a data type encoding variable-length,
 	// lexicographically-sorted byte strings, with prefix compression.
-	DataTypePrefixBytes DataType = 7
+	DataTypePrefixBytes DataType = 4
 
-	dataTypesCount DataType = 8
+	dataTypesCount DataType = 5
 )
 
 var dataTypeName [dataTypesCount]string = [dataTypesCount]string{
 	DataTypeInvalid:     "invalid",
 	DataTypeBool:        "bool",
-	DataTypeUint8:       "uint8",
-	DataTypeUint16:      "uint16",
-	DataTypeUint32:      "uint32",
-	DataTypeUint64:      "uint64",
+	DataTypeUint:        "uint",
 	DataTypeBytes:       "bytes",
 	DataTypePrefixBytes: "prefixbytes",
 }
@@ -49,17 +40,6 @@ var dataTypeName [dataTypesCount]string = [dataTypesCount]string{
 // String returns a human-readable string representation of the data type.
 func (t DataType) String() string {
 	return dataTypeName[t]
-}
-
-func (t DataType) uintWidth() uint32 {
-	if t >= DataTypeUint8 && t <= DataTypeUint64 {
-		rv := 1 << (t - DataTypeUint8)
-		if rv > 8 {
-			panic("width greater than 8 bytes")
-		}
-		return uint32(rv)
-	}
-	panic("not a unit")
 }
 
 // ColumnWriter is an interface implemented by column encoders that accumulate a
