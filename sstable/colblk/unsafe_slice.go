@@ -5,6 +5,7 @@
 package colblk
 
 import (
+	"encoding/binary"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -40,99 +41,111 @@ func (s UnsafeRawSlice[T]) set(i int, v T) {
 	*(*T)(unsafe.Pointer(uintptr(s.ptr) + unsafe.Sizeof(T(0))*uintptr(i))) = v
 }
 
-// UnsafeUint8s is an UnsafeIntegerSlice of uint8s, possibly using delta
-// encoding internally.
-type UnsafeUint8s = UnsafeIntegerSlice[uint8]
-
-// UnsafeUint16s is an UnsafeIntegerSlice of uint16s, possibly using delta
-// encoding internally.
-type UnsafeUint16s = UnsafeIntegerSlice[uint16]
-
-// UnsafeUint32s is an UnsafeIntegerSlice of uint32s, possibly using delta
-// encoding internally.
-type UnsafeUint32s = UnsafeIntegerSlice[uint32]
-
-// UnsafeUint64s is an UnsafeIntegerSlice of uint64s, possibly using delta
-// encoding internally.
-type UnsafeUint64s = UnsafeIntegerSlice[uint64]
-
-// UnsafeIntegerSlice exposes a read-only slice of integers from a column. If
-// the column's values are delta-encoded, UnsafeIntegerSlice transparently
-// applies deltas.
+// UnsafeUints exposes a read-only view of integers from a column, transparently
+// decoding data based on the UintEncoding.
 //
-// See DeltaEncoding and UintBuilder.
-type UnsafeIntegerSlice[T constraints.Integer] struct {
-	base       T
-	deltaPtr   unsafe.Pointer
-	deltaWidth uintptr
+// See UintEncoding and UintBuilder.
+type UnsafeUints struct {
+	base  uint64
+	ptr   unsafe.Pointer
+	width uint8
 }
 
 // Assert that UnsafeIntegerSlice implements Array.
-var _ Array[uint8] = UnsafeIntegerSlice[uint8]{}
+var _ Array[uint64] = UnsafeUints{}
 
-// DecodeUnsafeIntegerSlice decodes the structure of a slice of uints from a
+// DecodeUnsafeUints decodes the structure of a slice of uints from a
 // byte slice.
-func DecodeUnsafeIntegerSlice[T constraints.Integer](
-	b []byte, off uint32, rows int,
-) (slice UnsafeIntegerSlice[T], endOffset uint32) {
-	delta := UintDeltaEncoding(b[off])
-	off++
-	switch delta {
-	case UintDeltaEncodingNone:
-		off = align(off, uint32(unsafe.Sizeof(T(0))))
-		slice = makeUnsafeIntegerSlice[T](0, unsafe.Pointer(&b[off]), int(unsafe.Sizeof(T(0))))
-		off += uint32(unsafe.Sizeof(T(0))) * uint32(rows)
-	case UintDeltaEncodingConstant:
-		base := readLittleEndianNonaligned[T](b, off)
-		off += uint32(unsafe.Sizeof(T(0)))
-		slice = makeUnsafeIntegerSlice[T](base, unsafe.Pointer(&b[off]), 0)
-	case UintDeltaEncoding8, UintDeltaEncoding16, UintDeltaEncoding32:
-		w := delta.width()
-		base := readLittleEndianNonaligned[T](b, off)
-		off += uint32(unsafe.Sizeof(T(0)))
-		off = align(off, uint32(w))
-		slice = makeUnsafeIntegerSlice[T](base, unsafe.Pointer(&b[off]), w)
-		off += uint32(rows) * uint32(w)
-	default:
-		panic("unreachable")
+func DecodeUnsafeUints(b []byte, off uint32, rows int) (_ UnsafeUints, endOffset uint32) {
+	encoding := UintEncoding(b[off])
+	if !encoding.IsValid() {
+		panic(errors.AssertionFailedf("invalid encoding 0x%x", b))
 	}
-	return slice, off
+	off++
+	var base uint64
+	if encoding.IsDelta() {
+		base = binary.LittleEndian.Uint64(b[off:])
+		off += 8
+	}
+	w := encoding.Width()
+	if w > 0 {
+		off = align(off, uint32(w))
+	}
+	return makeUnsafeUints(base, unsafe.Pointer(&b[off]), w), off + uint32(rows*w)
 }
 
 // Assert that DecodeUnsafeIntegerSlice implements DecodeFunc.
-var _ DecodeFunc[UnsafeUint8s] = DecodeUnsafeIntegerSlice[uint8]
+var _ DecodeFunc[UnsafeUints] = DecodeUnsafeUints
 
-func makeUnsafeIntegerSlice[T constraints.Integer](
-	base T, deltaPtr unsafe.Pointer, deltaWidth int,
-) UnsafeIntegerSlice[T] {
-	return UnsafeIntegerSlice[T]{
-		base:       base,
-		deltaPtr:   deltaPtr,
-		deltaWidth: uintptr(deltaWidth),
+func makeUnsafeUints(base uint64, ptr unsafe.Pointer, width int) UnsafeUints {
+	switch width {
+	case 0, 1, 2, 4, 8:
+	default:
+		panic("invalid width")
+	}
+	return UnsafeUints{
+		base:  base,
+		ptr:   ptr,
+		width: uint8(width),
 	}
 }
 
-// At returns the `i`-th element of the slice.
-func (s UnsafeIntegerSlice[T]) At(i int) T {
+// At returns the `i`-th element.
+func (s UnsafeUints) At(i int) uint64 {
 	// TODO(jackson): Experiment with other alternatives that might be faster
 	// and avoid switching on the width.
-	switch s.deltaWidth {
+	switch s.width {
 	case 0:
 		return s.base
 	case 1:
-		return s.base + T(*(*uint8)(unsafe.Pointer(uintptr(s.deltaPtr) + uintptr(i))))
+		return s.base + uint64(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
 	case 2:
-		return s.base + T(*(*uint16)(unsafe.Pointer(uintptr(s.deltaPtr) + uintptr(i)<<align16Shift)))
+		return s.base + uint64(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
 	case 4:
-		return s.base + T(*(*uint32)(unsafe.Pointer(uintptr(s.deltaPtr) + uintptr(i)<<align32Shift)))
-	case 8:
-		// NB: The slice encodes 64-bit integers, there is no base (it doesn't
-		// save any bits to compute a delta) and T must be a 64-bit integer. We
-		// cast directly into a *T pointer and don't add the base.
-		return (*(*T)(unsafe.Pointer(uintptr(s.deltaPtr) + uintptr(i)<<align64Shift)))
+		return s.base + uint64(*(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift)))
 	default:
-		panic("unreachable")
+		// NB: The slice encodes 64-bit integers, there is no base (it doesn't save
+		// any bits to compute a delta). We cast directly into a *uint64 pointer and
+		// don't add the base.
+		return *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align64Shift))
 	}
+}
+
+// UnsafeOffsets is a specialization of UnsafeInts (providing the same
+// functionality) which is optimized when the integers are offsets inside a
+// column block. It can only be used with 0, 1, 2, or 4 byte encoding without
+// delta.
+type UnsafeOffsets struct {
+	ptr   unsafe.Pointer
+	width uint8
+}
+
+// DecodeUnsafeOffsets decodes the structure of a slice of offsets from a byte
+// slice.
+func DecodeUnsafeOffsets(b []byte, off uint32, rows int) (_ UnsafeOffsets, endOffset uint32) {
+	ints, endOffset := DecodeUnsafeUints(b, off, rows)
+	if ints.base != 0 || ints.width == 8 {
+		panic(errors.AssertionFailedf("unexpected offsets encoding (base=%d, width=%d)", ints.base, ints.width))
+	}
+	return UnsafeOffsets{
+		ptr:   ints.ptr,
+		width: ints.width,
+	}, endOffset
+}
+
+// At returns the `i`-th offset.
+func (s UnsafeOffsets) At(i int) uint32 {
+	// We expect offsets to be encoded as 16-bit integers in most cases.
+	if s.width == 2 {
+		return uint32(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
+	}
+	if s.width <= 1 {
+		if s.width == 0 {
+			return 0
+		}
+		return uint32(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
+	}
+	return *(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
 }
 
 // UnsafeBuf provides a buffer without bounds checking. Every buf has a len and

@@ -338,7 +338,7 @@ type DataBlockWriter struct {
 	Schema    KeySchema
 	KeyWriter KeyWriter
 	// trailers is the column writer for InternalKey uint64 trailers.
-	trailers UintBuilder[uint64]
+	trailers UintBuilder
 	// prefixSame is the column writer for the prefix-changed bitmap that
 	// indicates when a new key prefix begins. During block building, the bitmap
 	// represents when the prefix stays the same, which is expected to be a
@@ -514,7 +514,7 @@ type DataBlockReader struct {
 	r BlockReader
 	// trailers holds an array of the InternalKey trailers, encoding the key
 	// kind and sequence number of each key.
-	trailers UnsafeUint64s
+	trailers UnsafeUints
 	// prefixChanged is a bitmap indicating when the prefix (as defined by
 	// Split) of a key changes, relative to the preceding key. This is used to
 	// bound seeks within a prefix, and to optimize NextPrefix.
@@ -542,7 +542,7 @@ func (r *DataBlockReader) BlockReader() *BlockReader {
 // Init initializes the data block reader with the given serialized data block.
 func (r *DataBlockReader) Init(schema KeySchema, data []byte) {
 	r.r.Init(data, dataBlockCustomHeaderSize)
-	r.trailers = r.r.Uint64s(len(schema.ColumnTypes) + dataBlockColumnTrailer)
+	r.trailers = r.r.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
 	r.prefixChanged = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
 	r.values = r.r.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
 	r.isValueExternal = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)

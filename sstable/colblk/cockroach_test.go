@@ -33,8 +33,8 @@ const (
 var cockroachKeySchema = KeySchema{
 	ColumnTypes: []DataType{
 		cockroachColPrefix:        DataTypePrefixBytes,
-		cockroachColMVCCWallTime:  DataTypeUint64,
-		cockroachColMVCCLogical:   DataTypeUint32,
+		cockroachColMVCCWallTime:  DataTypeUint,
+		cockroachColMVCCLogical:   DataTypeUint,
 		cockroachColUntypedSuffix: DataTypeBytes,
 	},
 	NewKeyWriter: func() KeyWriter {
@@ -52,8 +52,8 @@ var cockroachKeySchema = KeySchema{
 
 type cockroachKeyWriter struct {
 	prefixes        PrefixBytesBuilder
-	wallTimes       UintBuilder[uint64]
-	logicalTimes    UintBuilder[uint32]
+	wallTimes       UintBuilder
+	logicalTimes    UintBuilder
 	untypedSuffixes RawBytesBuilder
 	prevSuffix      []byte
 }
@@ -94,7 +94,7 @@ func (kw *cockroachKeyWriter) WriteKey(
 	// don't set a value, the column value is implicitly zero. We only need to
 	// Set anything for non-zero values.
 	if logicalTime > 0 {
-		kw.logicalTimes.Set(row, logicalTime)
+		kw.logicalTimes.Set(row, uint64(logicalTime))
 	}
 	kw.untypedSuffixes.Put(untypedSuffix)
 }
@@ -161,8 +161,8 @@ var cockroachKeySeekerPool = sync.Pool{
 type cockroachKeySeeker struct {
 	reader          *DataBlockReader
 	prefixes        PrefixBytes
-	mvccWallTimes   UnsafeUint64s
-	mvccLogical     UnsafeUint32s
+	mvccWallTimes   UnsafeUints
+	mvccLogical     UnsafeUints
 	untypedSuffixes RawBytes
 	sharedPrefix    []byte
 }
@@ -170,8 +170,8 @@ type cockroachKeySeeker struct {
 func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
 	ks.reader = r
 	ks.prefixes = r.r.PrefixBytes(cockroachColPrefix)
-	ks.mvccWallTimes = r.r.Uint64s(cockroachColMVCCWallTime)
-	ks.mvccLogical = r.r.Uint32s(cockroachColMVCCLogical)
+	ks.mvccWallTimes = r.r.Uints(cockroachColMVCCWallTime)
+	ks.mvccLogical = r.r.Uints(cockroachColMVCCLogical)
 	ks.untypedSuffixes = r.r.RawBytes(cockroachColUntypedSuffix)
 	ks.sharedPrefix = ks.prefixes.SharedPrefix()
 	return nil
@@ -248,7 +248,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		case +1:
 			u = h // preserves f(u) == true
 		}
-		if cmp.Compare(ks.mvccLogical.At(h), seekLogicalTime) >= 0 {
+		if cmp.Compare(uint32(ks.mvccLogical.At(h)), seekLogicalTime) >= 0 {
 			u = h // preserves f(u) == true
 		} else {
 			l = h + 1 // preserves f(l-1) == false
@@ -265,7 +265,7 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(ki *PrefixBytesIter, prevRow, r
 	}
 
 	mvccWall := ks.mvccWallTimes.At(row)
-	mvccLogical := ks.mvccLogical.At(row)
+	mvccLogical := uint32(ks.mvccLogical.At(row))
 	if mvccWall == 0 && mvccLogical == 0 {
 		// This is not an MVCC key. Use the untyped suffix.
 		untypedSuffixed := ks.untypedSuffixes.At(row)

@@ -5,7 +5,7 @@ Size: 0
 put
 abc
 ----
-Size: 12
+Size: 8
 nKeys=1; bundleSize=4
 blockPrefixLen=3; currentBundleLen=3; currentBundleKeys=1
 Offsets:
@@ -16,17 +16,16 @@ abc
 finish rows=1
 ----
 # PrefixBytes
-00-01: x 02       # bundleSize: 4
+0-1: x 02     # bundleSize: 4
 # Offsets table
-01-02: x 02       # delta encoding: delta8
-02-06: x 00000000 # 32-bit constant: 0
-06-07: x 03       # data[0] = 3 [12 overall]
-07-08: x 03       # data[1] = 3 [12 overall]
-08-09: x 03       # data[2] = 3 [12 overall]
+1-2: x 01     # encoding: 1b
+2-3: x 03     # data[0] = 3 [8 overall]
+3-4: x 03     # data[1] = 3 [8 overall]
+4-5: x 03     # data[2] = 3 [8 overall]
 # Data
-09-12: x 616263   # data[00]: abc (block prefix)
-12-12: x          # data[01]: ... (bundle prefix)
-12-12: x          # data[02]: ...
+5-8: x 616263 # data[00]: abc (block prefix)
+8-8: x        # data[01]: ... (bundle prefix)
+8-8: x        # data[02]: ...
 
 init bundle-size=4
 ----
@@ -35,7 +34,7 @@ Size: 0
 put
 abc
 ----
-Size: 12
+Size: 8
 nKeys=1; bundleSize=4
 blockPrefixLen=3; currentBundleLen=3; currentBundleKeys=1
 Offsets:
@@ -46,7 +45,7 @@ abc
 put
 abcd
 ----
-Size: 14
+Size: 10
 nKeys=2; bundleSize=4
 blockPrefixLen=3; currentBundleLen=7; currentBundleKeys=2
 Offsets:
@@ -57,7 +56,7 @@ abcabcd
 put
 abce
 ----
-Size: 16
+Size: 12
 nKeys=3; bundleSize=4
 blockPrefixLen=3; currentBundleLen=11; currentBundleKeys=3
 Offsets:
@@ -68,7 +67,7 @@ abcabcdabce
 put
 abdd
 ----
-Size: 21
+Size: 17
 nKeys=4; bundleSize=4
 blockPrefixLen=2; currentBundleLen=15; currentBundleKeys=4
 Offsets:
@@ -79,7 +78,7 @@ abcabcdabceabdd
 put
 abde
 ----
-Size: 25
+Size: 21
 nKeys=5; bundleSize=4
 blockPrefixLen=2; currentBundleLen=4; currentBundleKeys=1
 Offsets:
@@ -92,50 +91,48 @@ abcabcdabceabddabde
 finish rows=4
 ----
 # PrefixBytes
-00-01: x 02       # bundleSize: 4
+00-01: x 02   # bundleSize: 4
 # Offsets table
-01-02: x 02       # delta encoding: delta8
-02-06: x 00000000 # 32-bit constant: 0
-06-07: x 02       # data[0] = 2 [14 overall]
-07-08: x 02       # data[1] = 2 [14 overall]
-08-09: x 03       # data[2] = 3 [15 overall]
-09-10: x 05       # data[3] = 5 [17 overall]
-10-11: x 07       # data[4] = 7 [19 overall]
-11-12: x 09       # data[5] = 9 [21 overall]
+01-02: x 01   # encoding: 1b
+02-03: x 02   # data[0] = 2 [10 overall]
+03-04: x 02   # data[1] = 2 [10 overall]
+04-05: x 03   # data[2] = 3 [11 overall]
+05-06: x 05   # data[3] = 5 [13 overall]
+06-07: x 07   # data[4] = 7 [15 overall]
+07-08: x 09   # data[5] = 9 [17 overall]
 # Data
-12-14: x 6162     # data[00]: ab (block prefix)
-14-14: x          # data[01]: .. (bundle prefix)
-14-15: x 63       # data[02]: ..c
-15-17: x 6364     # data[03]: ..cd
-17-19: x 6365     # data[04]: ..ce
-19-21: x 6464     # data[05]: ..dd
+08-10: x 6162 # data[00]: ab (block prefix)
+10-10: x      # data[01]: .. (bundle prefix)
+10-11: x 63   # data[02]: ..c
+11-13: x 6364 # data[03]: ..cd
+13-15: x 6365 # data[04]: ..ce
+15-17: x 6464 # data[05]: ..dd
 
 # Finish the entirety of all put rows.
 
 finish rows=5
 ----
 # PrefixBytes
-00-01: x 02       # bundleSize: 4
+00-01: x 02   # bundleSize: 4
 # Offsets table
-01-02: x 02       # delta encoding: delta8
-02-06: x 00000000 # 32-bit constant: 0
-06-07: x 02       # data[0] = 2 [16 overall]
-07-08: x 02       # data[1] = 2 [16 overall]
-08-09: x 03       # data[2] = 3 [17 overall]
-09-10: x 05       # data[3] = 5 [19 overall]
-10-11: x 07       # data[4] = 7 [21 overall]
-11-12: x 09       # data[5] = 9 [23 overall]
-12-13: x 0b       # data[6] = 11 [25 overall]
-13-14: x 0b       # data[7] = 11 [25 overall]
+01-02: x 01   # encoding: 1b
+02-03: x 02   # data[0] = 2 [12 overall]
+03-04: x 02   # data[1] = 2 [12 overall]
+04-05: x 03   # data[2] = 3 [13 overall]
+05-06: x 05   # data[3] = 5 [15 overall]
+06-07: x 07   # data[4] = 7 [17 overall]
+07-08: x 09   # data[5] = 9 [19 overall]
+08-09: x 0b   # data[6] = 11 [21 overall]
+09-10: x 0b   # data[7] = 11 [21 overall]
 # Data
-14-16: x 6162     # data[00]: ab (block prefix)
-16-16: x          # data[01]: .. (bundle prefix)
-16-17: x 63       # data[02]: ..c
-17-19: x 6364     # data[03]: ..cd
-19-21: x 6365     # data[04]: ..ce
-21-23: x 6464     # data[05]: ..dd
-23-25: x 6465     # data[06]: ..de (bundle prefix)
-25-25: x          # data[07]: ....
+10-12: x 6162 # data[00]: ab (block prefix)
+12-12: x      # data[01]: .. (bundle prefix)
+12-13: x 63   # data[02]: ..c
+13-15: x 6364 # data[03]: ..cd
+15-17: x 6365 # data[04]: ..ce
+17-19: x 6464 # data[05]: ..dd
+19-21: x 6465 # data[06]: ..de (bundle prefix)
+21-21: x      # data[07]: ....
 
 get indices=(0, 1, 2, 3, 4)
 ----
@@ -184,7 +181,7 @@ Size: 0
 put
 aaabbbc
 ----
-Size: 16
+Size: 12
 nKeys=1; bundleSize=4
 blockPrefixLen=7; currentBundleLen=7; currentBundleKeys=1
 Offsets:
@@ -195,7 +192,7 @@ aaabbbc
 put
 aaabbbcc
 ----
-Size: 18
+Size: 14
 nKeys=2; bundleSize=4
 blockPrefixLen=7; currentBundleLen=15; currentBundleKeys=2
 Offsets:
@@ -206,7 +203,7 @@ aaabbbcaaabbbcc
 put
 aaabbbcde
 ----
-Size: 21
+Size: 17
 nKeys=3; bundleSize=4
 blockPrefixLen=7; currentBundleLen=24; currentBundleKeys=3
 Offsets:
@@ -217,7 +214,7 @@ aaabbbcaaabbbccaaabbbcde
 put
 aaabbbce
 ----
-Size: 23
+Size: 19
 nKeys=4; bundleSize=4
 blockPrefixLen=7; currentBundleLen=32; currentBundleKeys=4
 Offsets:
@@ -228,7 +225,7 @@ aaabbbcaaabbbccaaabbbcdeaaabbbce
 put
 aaabbbdee*
 ----
-Size: 29
+Size: 25
 nKeys=5; bundleSize=4
 blockPrefixLen=6; currentBundleLen=10; currentBundleKeys=1
 Offsets:
@@ -239,7 +236,7 @@ aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
 put
 aaabbbdee*
 ----
-Size: 30
+Size: 26
 nKeys=6; bundleSize=4
 blockPrefixLen=6; currentBundleLen=10; currentBundleKeys=1
 Offsets:
@@ -250,7 +247,7 @@ aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
 put
 aaabbbdee*
 ----
-Size: 31
+Size: 27
 nKeys=7; bundleSize=4
 blockPrefixLen=6; currentBundleLen=10; currentBundleKeys=1
 Offsets:
@@ -261,7 +258,7 @@ aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
 put
 aaabbbeff
 ----
-Size: 35
+Size: 31
 nKeys=8; bundleSize=4
 blockPrefixLen=6; currentBundleLen=19; currentBundleKeys=2
 Offsets:
@@ -273,7 +270,7 @@ aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeff
 put
 aaabbe
 ----
-Size: 39
+Size: 35
 nKeys=9; bundleSize=4
 blockPrefixLen=5; currentBundleLen=6; currentBundleKeys=1
 Offsets:
@@ -285,7 +282,7 @@ aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeffaaabbe
 put
 aaabbeef*
 ----
-Size: 43
+Size: 39
 nKeys=10; bundleSize=4
 blockPrefixLen=5; currentBundleLen=15; currentBundleKeys=2
 Offsets:
@@ -298,7 +295,7 @@ bbeef*
 put
 aaabbeef*
 ----
-Size: 44
+Size: 40
 nKeys=11; bundleSize=4
 blockPrefixLen=5; currentBundleLen=15; currentBundleKeys=2
 Offsets:
@@ -311,7 +308,7 @@ bbeef*
 put
 aaabc
 ----
-Size: 50
+Size: 46
 nKeys=12; bundleSize=4
 blockPrefixLen=4; currentBundleLen=20; currentBundleKeys=3
 Offsets:
@@ -325,7 +322,7 @@ put
 aabcceef*
 aabcceef*
 ----
-Size: 64
+Size: 60
 nKeys=14; bundleSize=4
 blockPrefixLen=2; currentBundleLen=9; currentBundleKeys=1
 Offsets:
@@ -340,7 +337,7 @@ bbeef*aaabcaabcceef*
 put
 aabcceegggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 ----
-Size: 339
+Size: 335
 nKeys=15; bundleSize=4
 blockPrefixLen=2; currentBundleLen=270; currentBundleKeys=2
 Offsets:
@@ -361,47 +358,46 @@ finish rows=14
 # PrefixBytes
 00-01: x 02             # bundleSize: 4
 # Offsets table
-01-02: x 02             # delta encoding: delta8
-02-06: x 00000000       # 32-bit constant: 0
-06-07: x 02             # data[0] = 2 [27 overall]
-07-08: x 07             # data[1] = 7 [32 overall]
-08-09: x 07             # data[2] = 7 [32 overall]
-09-10: x 08             # data[3] = 8 [33 overall]
-10-11: x 0a             # data[4] = 10 [35 overall]
-11-12: x 0b             # data[5] = 11 [36 overall]
-12-13: x 0f             # data[6] = 15 [40 overall]
-13-14: x 13             # data[7] = 19 [44 overall]
-14-15: x 13             # data[8] = 19 [44 overall]
-15-16: x 13             # data[9] = 19 [44 overall]
-16-17: x 16             # data[10] = 22 [47 overall]
-17-18: x 18             # data[11] = 24 [49 overall]
-18-19: x 1a             # data[12] = 26 [51 overall]
-19-20: x 1f             # data[13] = 31 [56 overall]
-20-21: x 1f             # data[14] = 31 [56 overall]
-21-22: x 20             # data[15] = 32 [57 overall]
-22-23: x 27             # data[16] = 39 [64 overall]
-23-24: x 27             # data[17] = 39 [64 overall]
-24-25: x 27             # data[18] = 39 [64 overall]
+01-02: x 01             # encoding: 1b
+02-03: x 02             # data[0] = 2 [23 overall]
+03-04: x 07             # data[1] = 7 [28 overall]
+04-05: x 07             # data[2] = 7 [28 overall]
+05-06: x 08             # data[3] = 8 [29 overall]
+06-07: x 0a             # data[4] = 10 [31 overall]
+07-08: x 0b             # data[5] = 11 [32 overall]
+08-09: x 0f             # data[6] = 15 [36 overall]
+09-10: x 13             # data[7] = 19 [40 overall]
+10-11: x 13             # data[8] = 19 [40 overall]
+11-12: x 13             # data[9] = 19 [40 overall]
+12-13: x 16             # data[10] = 22 [43 overall]
+13-14: x 18             # data[11] = 24 [45 overall]
+14-15: x 1a             # data[12] = 26 [47 overall]
+15-16: x 1f             # data[13] = 31 [52 overall]
+16-17: x 1f             # data[14] = 31 [52 overall]
+17-18: x 20             # data[15] = 32 [53 overall]
+18-19: x 27             # data[16] = 39 [60 overall]
+19-20: x 27             # data[17] = 39 [60 overall]
+20-21: x 27             # data[18] = 39 [60 overall]
 # Data
-25-27: x 6161           # data[00]: aa (block prefix)
-27-32: x 6162626263     # data[01]: ..abbbc (bundle prefix)
-32-32: x                # data[02]: .......
-32-33: x 63             # data[03]: .......c
-33-35: x 6465           # data[04]: .......de
-35-36: x 65             # data[05]: .......e
-36-40: x 61626262       # data[06]: ..abbb (bundle prefix)
-40-44: x 6465652a       # data[07]: ......dee*
-44-44: x                # data[08]: ..........
-44-44: x                # data[09]: ..........
-44-47: x 656666         # data[10]: ......eff
-47-49: x 6162           # data[11]: ..ab (bundle prefix)
-49-51: x 6265           # data[12]: ....be
-51-56: x 626565662a     # data[13]: ....beef*
-56-56: x                # data[14]: .........
-56-57: x 63             # data[15]: ....c
-57-64: x 6263636565662a # data[16]: ..bcceef* (bundle prefix)
-64-64: x                # data[17]: .........
-64-64: x                # data[18]: .........
+21-23: x 6161           # data[00]: aa (block prefix)
+23-28: x 6162626263     # data[01]: ..abbbc (bundle prefix)
+28-28: x                # data[02]: .......
+28-29: x 63             # data[03]: .......c
+29-31: x 6465           # data[04]: .......de
+31-32: x 65             # data[05]: .......e
+32-36: x 61626262       # data[06]: ..abbb (bundle prefix)
+36-40: x 6465652a       # data[07]: ......dee*
+40-40: x                # data[08]: ..........
+40-40: x                # data[09]: ..........
+40-43: x 656666         # data[10]: ......eff
+43-45: x 6162           # data[11]: ..ab (bundle prefix)
+45-47: x 6265           # data[12]: ....be
+47-52: x 626565662a     # data[13]: ....beef*
+52-52: x                # data[14]: .........
+52-53: x 63             # data[15]: ....c
+53-60: x 6263636565662a # data[16]: ..bcceef* (bundle prefix)
+60-60: x                # data[17]: .........
+60-60: x                # data[18]: .........
 
 
 get indices=(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
@@ -469,61 +465,60 @@ finish rows=15
 # PrefixBytes
 000-001: x 02                                       # bundleSize: 4
 # Offsets table
-001-002: x 03                                       # delta encoding: delta16
-002-006: x 00000000                                 # 32-bit constant: 0
-006-008: x 0200                                     # data[0] = 2 [48 overall]
-008-010: x 0700                                     # data[1] = 7 [53 overall]
-010-012: x 0700                                     # data[2] = 7 [53 overall]
-012-014: x 0800                                     # data[3] = 8 [54 overall]
-014-016: x 0a00                                     # data[4] = 10 [56 overall]
-016-018: x 0b00                                     # data[5] = 11 [57 overall]
-018-020: x 0f00                                     # data[6] = 15 [61 overall]
-020-022: x 1300                                     # data[7] = 19 [65 overall]
-022-024: x 1300                                     # data[8] = 19 [65 overall]
-024-026: x 1300                                     # data[9] = 19 [65 overall]
-026-028: x 1600                                     # data[10] = 22 [68 overall]
-028-030: x 1800                                     # data[11] = 24 [70 overall]
-030-032: x 1a00                                     # data[12] = 26 [72 overall]
-032-034: x 1f00                                     # data[13] = 31 [77 overall]
-034-036: x 1f00                                     # data[14] = 31 [77 overall]
-036-038: x 2000                                     # data[15] = 32 [78 overall]
-038-040: x 2500                                     # data[16] = 37 [83 overall]
-040-042: x 2700                                     # data[17] = 39 [85 overall]
-042-044: x 2700                                     # data[18] = 39 [85 overall]
-044-046: x 2501                                     # data[19] = 293 [339 overall]
+001-002: x 02                                       # encoding: 2b
+002-004: x 0200                                     # data[0] = 2 [44 overall]
+004-006: x 0700                                     # data[1] = 7 [49 overall]
+006-008: x 0700                                     # data[2] = 7 [49 overall]
+008-010: x 0800                                     # data[3] = 8 [50 overall]
+010-012: x 0a00                                     # data[4] = 10 [52 overall]
+012-014: x 0b00                                     # data[5] = 11 [53 overall]
+014-016: x 0f00                                     # data[6] = 15 [57 overall]
+016-018: x 1300                                     # data[7] = 19 [61 overall]
+018-020: x 1300                                     # data[8] = 19 [61 overall]
+020-022: x 1300                                     # data[9] = 19 [61 overall]
+022-024: x 1600                                     # data[10] = 22 [64 overall]
+024-026: x 1800                                     # data[11] = 24 [66 overall]
+026-028: x 1a00                                     # data[12] = 26 [68 overall]
+028-030: x 1f00                                     # data[13] = 31 [73 overall]
+030-032: x 1f00                                     # data[14] = 31 [73 overall]
+032-034: x 2000                                     # data[15] = 32 [74 overall]
+034-036: x 2500                                     # data[16] = 37 [79 overall]
+036-038: x 2700                                     # data[17] = 39 [81 overall]
+038-040: x 2700                                     # data[18] = 39 [81 overall]
+040-042: x 2501                                     # data[19] = 293 [335 overall]
 # Data
-046-048: x 6161                                     # data[00]: aa (block prefix)
-048-053: x 6162626263                               # data[01]: ..abbbc (bundle prefix)
-053-053: x                                          # data[02]: .......
-053-054: x 63                                       # data[03]: .......c
-054-056: x 6465                                     # data[04]: .......de
-056-057: x 65                                       # data[05]: .......e
-057-061: x 61626262                                 # data[06]: ..abbb (bundle prefix)
-061-065: x 6465652a                                 # data[07]: ......dee*
-065-065: x                                          # data[08]: ..........
-065-065: x                                          # data[09]: ..........
-065-068: x 656666                                   # data[10]: ......eff
-068-070: x 6162                                     # data[11]: ..ab (bundle prefix)
-070-072: x 6265                                     # data[12]: ....be
-072-077: x 626565662a                               # data[13]: ....beef*
-077-077: x                                          # data[14]: .........
-077-078: x 63                                       # data[15]: ....c
-078-083: x 6263636565                               # data[16]: ..bccee (bundle prefix)
-083-085: x 662a                                     # data[17]: .......f*
-085-085: x                                          # data[18]: .........
-085-105: x 6767676767676767676767676767676767676767 # data[19]: .......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-105-125: x 6767676767676767676767676767676767676767 # (continued...)
-125-145: x 6767676767676767676767676767676767676767 # (continued...)
-145-165: x 6767676767676767676767676767676767676767 # (continued...)
-165-185: x 6767676767676767676767676767676767676767 # (continued...)
-185-205: x 6767676767676767676767676767676767676767 # (continued...)
-205-225: x 6767676767676767676767676767676767676767 # (continued...)
-225-245: x 6767676767676767676767676767676767676767 # (continued...)
-245-265: x 6767676767676767676767676767676767676767 # (continued...)
-265-285: x 6767676767676767676767676767676767676767 # (continued...)
-285-305: x 6767676767676767676767676767676767676767 # (continued...)
-305-325: x 6767676767676767676767676767676767676767 # (continued...)
-325-339: x 6767676767676767676767676767             # (continued...)
+042-044: x 6161                                     # data[00]: aa (block prefix)
+044-049: x 6162626263                               # data[01]: ..abbbc (bundle prefix)
+049-049: x                                          # data[02]: .......
+049-050: x 63                                       # data[03]: .......c
+050-052: x 6465                                     # data[04]: .......de
+052-053: x 65                                       # data[05]: .......e
+053-057: x 61626262                                 # data[06]: ..abbb (bundle prefix)
+057-061: x 6465652a                                 # data[07]: ......dee*
+061-061: x                                          # data[08]: ..........
+061-061: x                                          # data[09]: ..........
+061-064: x 656666                                   # data[10]: ......eff
+064-066: x 6162                                     # data[11]: ..ab (bundle prefix)
+066-068: x 6265                                     # data[12]: ....be
+068-073: x 626565662a                               # data[13]: ....beef*
+073-073: x                                          # data[14]: .........
+073-074: x 63                                       # data[15]: ....c
+074-079: x 6263636565                               # data[16]: ..bccee (bundle prefix)
+079-081: x 662a                                     # data[17]: .......f*
+081-081: x                                          # data[18]: .........
+081-101: x 6767676767676767676767676767676767676767 # data[19]: .......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+101-121: x 6767676767676767676767676767676767676767 # (continued...)
+121-141: x 6767676767676767676767676767676767676767 # (continued...)
+141-161: x 6767676767676767676767676767676767676767 # (continued...)
+161-181: x 6767676767676767676767676767676767676767 # (continued...)
+181-201: x 6767676767676767676767676767676767676767 # (continued...)
+201-221: x 6767676767676767676767676767676767676767 # (continued...)
+221-241: x 6767676767676767676767676767676767676767 # (continued...)
+241-261: x 6767676767676767676767676767676767676767 # (continued...)
+261-281: x 6767676767676767676767676767676767676767 # (continued...)
+281-301: x 6767676767676767676767676767676767676767 # (continued...)
+301-321: x 6767676767676767676767676767676767676767 # (continued...)
+321-335: x 6767676767676767676767676767             # (continued...)
 
 init bundle-size=2
 ----
@@ -546,7 +541,7 @@ aabcceef*
 aabcceef*
 aabcceef*
 ----
-Size: 94
+Size: 90
 nKeys=15; bundleSize=2
 blockPrefixLen=2; currentBundleLen=9; currentBundleKeys=1
 Offsets:
@@ -562,110 +557,108 @@ finish rows=14
 # PrefixBytes
 00-01: x 01               # bundleSize: 2
 # Offsets table
-01-02: x 02               # delta encoding: delta8
-02-06: x 00000000         # 32-bit constant: 0
-06-07: x 02               # data[0] = 2 [30 overall]
-07-08: x 07               # data[1] = 7 [35 overall]
-08-09: x 07               # data[2] = 7 [35 overall]
-09-10: x 08               # data[3] = 8 [36 overall]
-10-11: x 0d               # data[4] = 13 [41 overall]
-11-12: x 0f               # data[5] = 15 [43 overall]
-12-13: x 10               # data[6] = 16 [44 overall]
-13-14: x 18               # data[7] = 24 [52 overall]
-14-15: x 18               # data[8] = 24 [52 overall]
-15-16: x 18               # data[9] = 24 [52 overall]
-16-17: x 1c               # data[10] = 28 [56 overall]
-17-18: x 20               # data[11] = 32 [60 overall]
-18-19: x 23               # data[12] = 35 [63 overall]
-19-20: x 27               # data[13] = 39 [67 overall]
-20-21: x 27               # data[14] = 39 [67 overall]
-21-22: x 2a               # data[15] = 42 [70 overall]
-22-23: x 2c               # data[16] = 44 [72 overall]
-23-24: x 31               # data[17] = 49 [77 overall]
-24-25: x 32               # data[18] = 50 [78 overall]
-25-26: x 39               # data[19] = 57 [85 overall]
-26-27: x 39               # data[20] = 57 [85 overall]
-27-28: x 39               # data[21] = 57 [85 overall]
+01-02: x 01               # encoding: 1b
+02-03: x 02               # data[0] = 2 [26 overall]
+03-04: x 07               # data[1] = 7 [31 overall]
+04-05: x 07               # data[2] = 7 [31 overall]
+05-06: x 08               # data[3] = 8 [32 overall]
+06-07: x 0d               # data[4] = 13 [37 overall]
+07-08: x 0f               # data[5] = 15 [39 overall]
+08-09: x 10               # data[6] = 16 [40 overall]
+09-10: x 18               # data[7] = 24 [48 overall]
+10-11: x 18               # data[8] = 24 [48 overall]
+11-12: x 18               # data[9] = 24 [48 overall]
+12-13: x 1c               # data[10] = 28 [52 overall]
+13-14: x 20               # data[11] = 32 [56 overall]
+14-15: x 23               # data[12] = 35 [59 overall]
+15-16: x 27               # data[13] = 39 [63 overall]
+16-17: x 27               # data[14] = 39 [63 overall]
+17-18: x 2a               # data[15] = 42 [66 overall]
+18-19: x 2c               # data[16] = 44 [68 overall]
+19-20: x 31               # data[17] = 49 [73 overall]
+20-21: x 32               # data[18] = 50 [74 overall]
+21-22: x 39               # data[19] = 57 [81 overall]
+22-23: x 39               # data[20] = 57 [81 overall]
+23-24: x 39               # data[21] = 57 [81 overall]
 # Data
-28-30: x 6161             # data[00]: aa (block prefix)
-30-35: x 6162626263       # data[01]: ..abbbc (bundle prefix)
-35-35: x                  # data[02]: .......
-35-36: x 63               # data[03]: .......c
-36-41: x 6162626263       # data[04]: ..abbbc (bundle prefix)
-41-43: x 6465             # data[05]: .......de
-43-44: x 65               # data[06]: .......e
-44-52: x 616262626465652a # data[07]: ..abbbdee* (bundle prefix)
-52-52: x                  # data[08]: ..........
-52-52: x                  # data[09]: ..........
-52-56: x 61626262         # data[10]: ..abbb (bundle prefix)
-56-60: x 6465652a         # data[11]: ......dee*
-60-63: x 656666           # data[12]: ......eff
-63-67: x 61626265         # data[13]: ..abbe (bundle prefix)
-67-67: x                  # data[14]: ......
-67-70: x 65662a           # data[15]: ......ef*
-70-72: x 6162             # data[16]: ..ab (bundle prefix)
-72-77: x 626565662a       # data[17]: ....beef*
-77-78: x 63               # data[18]: ....c
-78-85: x 6263636565662a   # data[19]: ..bcceef* (bundle prefix)
-85-85: x                  # data[20]: .........
-85-85: x                  # data[21]: .........
+24-26: x 6161             # data[00]: aa (block prefix)
+26-31: x 6162626263       # data[01]: ..abbbc (bundle prefix)
+31-31: x                  # data[02]: .......
+31-32: x 63               # data[03]: .......c
+32-37: x 6162626263       # data[04]: ..abbbc (bundle prefix)
+37-39: x 6465             # data[05]: .......de
+39-40: x 65               # data[06]: .......e
+40-48: x 616262626465652a # data[07]: ..abbbdee* (bundle prefix)
+48-48: x                  # data[08]: ..........
+48-48: x                  # data[09]: ..........
+48-52: x 61626262         # data[10]: ..abbb (bundle prefix)
+52-56: x 6465652a         # data[11]: ......dee*
+56-59: x 656666           # data[12]: ......eff
+59-63: x 61626265         # data[13]: ..abbe (bundle prefix)
+63-63: x                  # data[14]: ......
+63-66: x 65662a           # data[15]: ......ef*
+66-68: x 6162             # data[16]: ..ab (bundle prefix)
+68-73: x 626565662a       # data[17]: ....beef*
+73-74: x 63               # data[18]: ....c
+74-81: x 6263636565662a   # data[19]: ..bcceef* (bundle prefix)
+81-81: x                  # data[20]: .........
+81-81: x                  # data[21]: .........
 
 finish rows=15
 ----
 # PrefixBytes
 00-01: x 01               # bundleSize: 2
 # Offsets table
-01-02: x 02               # delta encoding: delta8
-02-06: x 00000000         # 32-bit constant: 0
-06-07: x 02               # data[0] = 2 [32 overall]
-07-08: x 07               # data[1] = 7 [37 overall]
-08-09: x 07               # data[2] = 7 [37 overall]
-09-10: x 08               # data[3] = 8 [38 overall]
-10-11: x 0d               # data[4] = 13 [43 overall]
-11-12: x 0f               # data[5] = 15 [45 overall]
-12-13: x 10               # data[6] = 16 [46 overall]
-13-14: x 18               # data[7] = 24 [54 overall]
-14-15: x 18               # data[8] = 24 [54 overall]
-15-16: x 18               # data[9] = 24 [54 overall]
-16-17: x 1c               # data[10] = 28 [58 overall]
-17-18: x 20               # data[11] = 32 [62 overall]
-18-19: x 23               # data[12] = 35 [65 overall]
-19-20: x 27               # data[13] = 39 [69 overall]
-20-21: x 27               # data[14] = 39 [69 overall]
-21-22: x 2a               # data[15] = 42 [72 overall]
-22-23: x 2c               # data[16] = 44 [74 overall]
-23-24: x 31               # data[17] = 49 [79 overall]
-24-25: x 32               # data[18] = 50 [80 overall]
-25-26: x 39               # data[19] = 57 [87 overall]
-26-27: x 39               # data[20] = 57 [87 overall]
-27-28: x 39               # data[21] = 57 [87 overall]
-28-29: x 40               # data[22] = 64 [94 overall]
-29-30: x 40               # data[23] = 64 [94 overall]
+01-02: x 01               # encoding: 1b
+02-03: x 02               # data[0] = 2 [28 overall]
+03-04: x 07               # data[1] = 7 [33 overall]
+04-05: x 07               # data[2] = 7 [33 overall]
+05-06: x 08               # data[3] = 8 [34 overall]
+06-07: x 0d               # data[4] = 13 [39 overall]
+07-08: x 0f               # data[5] = 15 [41 overall]
+08-09: x 10               # data[6] = 16 [42 overall]
+09-10: x 18               # data[7] = 24 [50 overall]
+10-11: x 18               # data[8] = 24 [50 overall]
+11-12: x 18               # data[9] = 24 [50 overall]
+12-13: x 1c               # data[10] = 28 [54 overall]
+13-14: x 20               # data[11] = 32 [58 overall]
+14-15: x 23               # data[12] = 35 [61 overall]
+15-16: x 27               # data[13] = 39 [65 overall]
+16-17: x 27               # data[14] = 39 [65 overall]
+17-18: x 2a               # data[15] = 42 [68 overall]
+18-19: x 2c               # data[16] = 44 [70 overall]
+19-20: x 31               # data[17] = 49 [75 overall]
+20-21: x 32               # data[18] = 50 [76 overall]
+21-22: x 39               # data[19] = 57 [83 overall]
+22-23: x 39               # data[20] = 57 [83 overall]
+23-24: x 39               # data[21] = 57 [83 overall]
+24-25: x 40               # data[22] = 64 [90 overall]
+25-26: x 40               # data[23] = 64 [90 overall]
 # Data
-30-32: x 6161             # data[00]: aa (block prefix)
-32-37: x 6162626263       # data[01]: ..abbbc (bundle prefix)
-37-37: x                  # data[02]: .......
-37-38: x 63               # data[03]: .......c
-38-43: x 6162626263       # data[04]: ..abbbc (bundle prefix)
-43-45: x 6465             # data[05]: .......de
-45-46: x 65               # data[06]: .......e
-46-54: x 616262626465652a # data[07]: ..abbbdee* (bundle prefix)
-54-54: x                  # data[08]: ..........
-54-54: x                  # data[09]: ..........
-54-58: x 61626262         # data[10]: ..abbb (bundle prefix)
-58-62: x 6465652a         # data[11]: ......dee*
-62-65: x 656666           # data[12]: ......eff
-65-69: x 61626265         # data[13]: ..abbe (bundle prefix)
-69-69: x                  # data[14]: ......
-69-72: x 65662a           # data[15]: ......ef*
-72-74: x 6162             # data[16]: ..ab (bundle prefix)
-74-79: x 626565662a       # data[17]: ....beef*
-79-80: x 63               # data[18]: ....c
-80-87: x 6263636565662a   # data[19]: ..bcceef* (bundle prefix)
-87-87: x                  # data[20]: .........
-87-87: x                  # data[21]: .........
-87-94: x 6263636565662a   # data[22]: ..bcceef* (bundle prefix)
-94-94: x                  # data[23]: .........
+26-28: x 6161             # data[00]: aa (block prefix)
+28-33: x 6162626263       # data[01]: ..abbbc (bundle prefix)
+33-33: x                  # data[02]: .......
+33-34: x 63               # data[03]: .......c
+34-39: x 6162626263       # data[04]: ..abbbc (bundle prefix)
+39-41: x 6465             # data[05]: .......de
+41-42: x 65               # data[06]: .......e
+42-50: x 616262626465652a # data[07]: ..abbbdee* (bundle prefix)
+50-50: x                  # data[08]: ..........
+50-50: x                  # data[09]: ..........
+50-54: x 61626262         # data[10]: ..abbb (bundle prefix)
+54-58: x 6465652a         # data[11]: ......dee*
+58-61: x 656666           # data[12]: ......eff
+61-65: x 61626265         # data[13]: ..abbe (bundle prefix)
+65-65: x                  # data[14]: ......
+65-68: x 65662a           # data[15]: ......ef*
+68-70: x 6162             # data[16]: ..ab (bundle prefix)
+70-75: x 626565662a       # data[17]: ....beef*
+75-76: x 63               # data[18]: ....c
+76-83: x 6263636565662a   # data[19]: ..bcceef* (bundle prefix)
+83-83: x                  # data[20]: .........
+83-83: x                  # data[21]: .........
+83-90: x 6263636565662a   # data[22]: ..bcceef* (bundle prefix)
+90-90: x                  # data[23]: .........
 
 get indices=(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 ----
@@ -697,7 +690,7 @@ abce
 abcf
 abg
 ----
-Size: 21
+Size: 17
 nKeys=4; bundleSize=4
 blockPrefixLen=2; currentBundleLen=15; currentBundleKeys=4
 Offsets:
@@ -708,21 +701,20 @@ abcdabceabcfabg
 finish rows=3
 ----
 # PrefixBytes
-00-01: x 02       # bundleSize: 4
+00-01: x 02     # bundleSize: 4
 # Offsets table
-01-02: x 02       # delta encoding: delta8
-02-06: x 00000000 # 32-bit constant: 0
-06-07: x 03       # data[0] = 3 [14 overall]
-07-08: x 03       # data[1] = 3 [14 overall]
-08-09: x 04       # data[2] = 4 [15 overall]
-09-10: x 05       # data[3] = 5 [16 overall]
-10-11: x 06       # data[4] = 6 [17 overall]
+01-02: x 01     # encoding: 1b
+02-03: x 03     # data[0] = 3 [10 overall]
+03-04: x 03     # data[1] = 3 [10 overall]
+04-05: x 04     # data[2] = 4 [11 overall]
+05-06: x 05     # data[3] = 5 [12 overall]
+06-07: x 06     # data[4] = 6 [13 overall]
 # Data
-11-14: x 616263   # data[00]: abc (block prefix)
-14-14: x          # data[01]: ... (bundle prefix)
-14-15: x 64       # data[02]: ...d
-15-16: x 65       # data[03]: ...e
-16-17: x 66       # data[04]: ...f
+07-10: x 616263 # data[00]: abc (block prefix)
+10-10: x        # data[01]: ... (bundle prefix)
+10-11: x 64     # data[02]: ...d
+11-12: x 65     # data[03]: ...e
+12-13: x 66     # data[04]: ...f
 
 # Try finishing without the last key which forces a shorter bundle prefix only.
 
@@ -736,7 +728,7 @@ abae
 abbf
 abc
 ----
-Size: 21
+Size: 17
 nKeys=4; bundleSize=2
 blockPrefixLen=2; currentBundleLen=7; currentBundleKeys=2
 Offsets:
@@ -747,23 +739,22 @@ abadabaeabbfabc
 finish rows=3
 ----
 # PrefixBytes
-00-01: x 01       # bundleSize: 2
+00-01: x 01   # bundleSize: 2
 # Offsets table
-01-02: x 02       # delta encoding: delta8
-02-06: x 00000000 # 32-bit constant: 0
-06-07: x 02       # data[0] = 2 [14 overall]
-07-08: x 03       # data[1] = 3 [15 overall]
-08-09: x 04       # data[2] = 4 [16 overall]
-09-10: x 05       # data[3] = 5 [17 overall]
-10-11: x 07       # data[4] = 7 [19 overall]
-11-12: x 07       # data[5] = 7 [19 overall]
+01-02: x 01   # encoding: 1b
+02-03: x 02   # data[0] = 2 [10 overall]
+03-04: x 03   # data[1] = 3 [11 overall]
+04-05: x 04   # data[2] = 4 [12 overall]
+05-06: x 05   # data[3] = 5 [13 overall]
+06-07: x 07   # data[4] = 7 [15 overall]
+07-08: x 07   # data[5] = 7 [15 overall]
 # Data
-12-14: x 6162     # data[00]: ab (block prefix)
-14-15: x 61       # data[01]: ..a (bundle prefix)
-15-16: x 64       # data[02]: ...d
-16-17: x 65       # data[03]: ...e
-17-19: x 6266     # data[04]: ..bf (bundle prefix)
-19-19: x          # data[05]: ....
+08-10: x 6162 # data[00]: ab (block prefix)
+10-11: x 61   # data[01]: ..a (bundle prefix)
+11-12: x 64   # data[02]: ...d
+12-13: x 65   # data[03]: ...e
+13-15: x 6266 # data[04]: ..bf (bundle prefix)
+15-15: x      # data[05]: ....
 
 # Test strings long enough to force 16-bit offsets, and have zero-length block
 # and bundle prefixes.
@@ -780,7 +771,7 @@ dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 ----
-Size: 686
+Size: 682
 nKeys=6; bundleSize=2
 blockPrefixLen=0; currentBundleLen=220; currentBundleKeys=2
 Offsets:
@@ -803,59 +794,58 @@ finish rows=6
 # PrefixBytes
 000-001: x 01                                       # bundleSize: 2
 # Offsets table
-001-002: x 03                                       # delta encoding: delta16
-002-006: x 00000000                                 # 32-bit constant: 0
-006-008: x 0000                                     # data[0] = 0 [26 overall]
-008-010: x 0000                                     # data[1] = 0 [26 overall]
-010-012: x 6e00                                     # data[2] = 110 [136 overall]
-012-014: x dc00                                     # data[3] = 220 [246 overall]
-014-016: x dc00                                     # data[4] = 220 [246 overall]
-016-018: x 4a01                                     # data[5] = 330 [356 overall]
-018-020: x b801                                     # data[6] = 440 [466 overall]
-020-022: x b801                                     # data[7] = 440 [466 overall]
-022-024: x 2602                                     # data[8] = 550 [576 overall]
-024-026: x 9402                                     # data[9] = 660 [686 overall]
+001-002: x 02                                       # encoding: 2b
+002-004: x 0000                                     # data[0] = 0 [22 overall]
+004-006: x 0000                                     # data[1] = 0 [22 overall]
+006-008: x 6e00                                     # data[2] = 110 [132 overall]
+008-010: x dc00                                     # data[3] = 220 [242 overall]
+010-012: x dc00                                     # data[4] = 220 [242 overall]
+012-014: x 4a01                                     # data[5] = 330 [352 overall]
+014-016: x b801                                     # data[6] = 440 [462 overall]
+016-018: x b801                                     # data[7] = 440 [462 overall]
+018-020: x 2602                                     # data[8] = 550 [572 overall]
+020-022: x 9402                                     # data[9] = 660 [682 overall]
 # Data
-026-026: x                                          # data[00]:  (block prefix)
-026-026: x                                          # data[01]:  (bundle prefix)
-026-046: x 6161616161616161616161616161616161616161 # data[02]: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-046-066: x 6161616161616161616161616161616161616161 # (continued...)
-066-086: x 6161616161616161616161616161616161616161 # (continued...)
-086-106: x 6161616161616161616161616161616161616161 # (continued...)
-106-126: x 6161616161616161616161616161616161616161 # (continued...)
-126-136: x 61616161616161616161                     # (continued...)
-136-156: x 6262626262626262626262626262626262626262 # data[03]: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-156-176: x 6262626262626262626262626262626262626262 # (continued...)
-176-196: x 6262626262626262626262626262626262626262 # (continued...)
-196-216: x 6262626262626262626262626262626262626262 # (continued...)
-216-236: x 6262626262626262626262626262626262626262 # (continued...)
-236-246: x 62626262626262626262                     # (continued...)
-246-246: x                                          # data[04]:  (bundle prefix)
-246-266: x 6363636363636363636363636363636363636363 # data[05]: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-266-286: x 6363636363636363636363636363636363636363 # (continued...)
-286-306: x 6363636363636363636363636363636363636363 # (continued...)
-306-326: x 6363636363636363636363636363636363636363 # (continued...)
-326-346: x 6363636363636363636363636363636363636363 # (continued...)
-346-356: x 63636363636363636363                     # (continued...)
-356-376: x 6464646464646464646464646464646464646464 # data[06]: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-376-396: x 6464646464646464646464646464646464646464 # (continued...)
-396-416: x 6464646464646464646464646464646464646464 # (continued...)
-416-436: x 6464646464646464646464646464646464646464 # (continued...)
-436-456: x 6464646464646464646464646464646464646464 # (continued...)
-456-466: x 64646464646464646464                     # (continued...)
-466-466: x                                          # data[07]:  (bundle prefix)
-466-486: x 6565656565656565656565656565656565656565 # data[08]: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
-486-506: x 6565656565656565656565656565656565656565 # (continued...)
-506-526: x 6565656565656565656565656565656565656565 # (continued...)
-526-546: x 6565656565656565656565656565656565656565 # (continued...)
-546-566: x 6565656565656565656565656565656565656565 # (continued...)
-566-576: x 65656565656565656565                     # (continued...)
-576-596: x 6666666666666666666666666666666666666666 # data[09]: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-596-616: x 6666666666666666666666666666666666666666 # (continued...)
-616-636: x 6666666666666666666666666666666666666666 # (continued...)
-636-656: x 6666666666666666666666666666666666666666 # (continued...)
-656-676: x 6666666666666666666666666666666666666666 # (continued...)
-676-686: x 66666666666666666666                     # (continued...)
+022-022: x                                          # data[00]:  (block prefix)
+022-022: x                                          # data[01]:  (bundle prefix)
+022-042: x 6161616161616161616161616161616161616161 # data[02]: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+042-062: x 6161616161616161616161616161616161616161 # (continued...)
+062-082: x 6161616161616161616161616161616161616161 # (continued...)
+082-102: x 6161616161616161616161616161616161616161 # (continued...)
+102-122: x 6161616161616161616161616161616161616161 # (continued...)
+122-132: x 61616161616161616161                     # (continued...)
+132-152: x 6262626262626262626262626262626262626262 # data[03]: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+152-172: x 6262626262626262626262626262626262626262 # (continued...)
+172-192: x 6262626262626262626262626262626262626262 # (continued...)
+192-212: x 6262626262626262626262626262626262626262 # (continued...)
+212-232: x 6262626262626262626262626262626262626262 # (continued...)
+232-242: x 62626262626262626262                     # (continued...)
+242-242: x                                          # data[04]:  (bundle prefix)
+242-262: x 6363636363636363636363636363636363636363 # data[05]: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+262-282: x 6363636363636363636363636363636363636363 # (continued...)
+282-302: x 6363636363636363636363636363636363636363 # (continued...)
+302-322: x 6363636363636363636363636363636363636363 # (continued...)
+322-342: x 6363636363636363636363636363636363636363 # (continued...)
+342-352: x 63636363636363636363                     # (continued...)
+352-372: x 6464646464646464646464646464646464646464 # data[06]: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+372-392: x 6464646464646464646464646464646464646464 # (continued...)
+392-412: x 6464646464646464646464646464646464646464 # (continued...)
+412-432: x 6464646464646464646464646464646464646464 # (continued...)
+432-452: x 6464646464646464646464646464646464646464 # (continued...)
+452-462: x 64646464646464646464                     # (continued...)
+462-462: x                                          # data[07]:  (bundle prefix)
+462-482: x 6565656565656565656565656565656565656565 # data[08]: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+482-502: x 6565656565656565656565656565656565656565 # (continued...)
+502-522: x 6565656565656565656565656565656565656565 # (continued...)
+522-542: x 6565656565656565656565656565656565656565 # (continued...)
+542-562: x 6565656565656565656565656565656565656565 # (continued...)
+562-572: x 65656565656565656565                     # (continued...)
+572-592: x 6666666666666666666666666666666666666666 # data[09]: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+592-612: x 6666666666666666666666666666666666666666 # (continued...)
+612-632: x 6666666666666666666666666666666666666666 # (continued...)
+632-652: x 6666666666666666666666666666666666666666 # (continued...)
+652-672: x 6666666666666666666666666666666666666666 # (continued...)
+672-682: x 66666666666666666666                     # (continued...)
 
 get indices=(0, 1, 2, 3, 4, 5)
 ----
@@ -878,7 +868,7 @@ aaaab
 aaaac
 aaaad
 ----
-Size: 20
+Size: 16
 nKeys=4; bundleSize=4
 blockPrefixLen=4; currentBundleLen=20; currentBundleKeys=4
 Offsets:
@@ -890,7 +880,7 @@ put
 aaaae
 aab
 ----
-Size: 27
+Size: 23
 nKeys=6; bundleSize=4
 blockPrefixLen=2; currentBundleLen=8; currentBundleKeys=2
 Offsets:
@@ -903,22 +893,21 @@ finish rows=5
 # PrefixBytes
 00-01: x 02       # bundleSize: 4
 # Offsets table
-01-02: x 02       # delta encoding: delta8
-02-06: x 00000000 # 32-bit constant: 0
-06-07: x 04       # data[0] = 4 [18 overall]
-07-08: x 04       # data[1] = 4 [18 overall]
-08-09: x 05       # data[2] = 5 [19 overall]
-09-10: x 06       # data[3] = 6 [20 overall]
-10-11: x 07       # data[4] = 7 [21 overall]
-11-12: x 08       # data[5] = 8 [22 overall]
-12-13: x 09       # data[6] = 9 [23 overall]
-13-14: x 09       # data[7] = 9 [23 overall]
+01-02: x 01       # encoding: 1b
+02-03: x 04       # data[0] = 4 [14 overall]
+03-04: x 04       # data[1] = 4 [14 overall]
+04-05: x 05       # data[2] = 5 [15 overall]
+05-06: x 06       # data[3] = 6 [16 overall]
+06-07: x 07       # data[4] = 7 [17 overall]
+07-08: x 08       # data[5] = 8 [18 overall]
+08-09: x 09       # data[6] = 9 [19 overall]
+09-10: x 09       # data[7] = 9 [19 overall]
 # Data
-14-18: x 61616161 # data[00]: aaaa (block prefix)
-18-18: x          # data[01]: .... (bundle prefix)
-18-19: x 61       # data[02]: ....a
-19-20: x 62       # data[03]: ....b
-20-21: x 63       # data[04]: ....c
-21-22: x 64       # data[05]: ....d
-22-23: x 65       # data[06]: ....e (bundle prefix)
-23-23: x          # data[07]: .....
+10-14: x 61616161 # data[00]: aaaa (block prefix)
+14-14: x          # data[01]: .... (bundle prefix)
+14-15: x 61       # data[02]: ....a
+15-16: x 62       # data[03]: ....b
+16-17: x 63       # data[04]: ....c
+17-18: x 64       # data[05]: ....d
+18-19: x 65       # data[06]: ....e (bundle prefix)
+19-19: x          # data[07]: .....
