@@ -218,6 +218,9 @@ type objKeyMeta struct {
 	hasRangeDels     bool
 	hasRangeKeys     bool
 	hasRangeKeyUnset bool
+	// List of RangeKeySets for this object. Used to check for overlapping
+	// RangeKeySets in external files.
+	rangeKeySets []pebble.KeyRange
 }
 
 // MergeKey adds the given key at the given meta timestamp, merging the histories as needed.
@@ -252,6 +255,7 @@ func (okm *objKeyMeta) MergeFrom(from *objKeyMeta, metaTimestamp int, cmp base.C
 	okm.hasRangeDels = okm.hasRangeDels || from.hasRangeDels
 	okm.hasRangeKeys = okm.hasRangeKeys || from.hasRangeKeys
 	okm.hasRangeKeyUnset = okm.hasRangeKeyUnset || from.hasRangeKeyUnset
+	okm.rangeKeySets = append(okm.rangeKeySets, from.rangeKeySets...)
 }
 
 // objKeyMeta looks up the objKeyMeta for a given object, creating it if necessary.
@@ -323,6 +327,25 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 		}
 	}
 	return res
+}
+
+func (k *keyManager) ExternalObjectHasOverlappingRangeKeySets(externalObjID objID) bool {
+	meta := k.objKeyMeta(externalObjID)
+	if len(meta.rangeKeySets) == 0 {
+		return false
+	}
+	ranges := meta.rangeKeySets
+	// Sort by start key.
+	slices.SortFunc(ranges, func(a, b pebble.KeyRange) int {
+		return k.comparer.Compare(a.Start, b.Start)
+	})
+	// Check overlap between adjacent ranges.
+	for i := 0; i < len(ranges)-1; i++ {
+		if ranges[i].OverlapsKeyRange(k.comparer.Compare, ranges[i+1]) {
+			return true
+		}
+	}
+	return false
 }
 
 func (k *keyManager) nextMetaTimestamp() int {
@@ -614,11 +637,17 @@ func (k *keyManager) update(o op) {
 		k.objKeyMeta(s.writerID).hasRangeKeys = true
 	case *rangeKeySetOp:
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
-		k.objKeyMeta(s.writerID).hasRangeKeys = true
+		meta := k.objKeyMeta(s.writerID)
+		meta.hasRangeKeys = true
+		meta.rangeKeySets = append(meta.rangeKeySets, pebble.KeyRange{
+			Start: s.start,
+			End:   s.end,
+		})
 	case *rangeKeyUnsetOp:
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
-		k.objKeyMeta(s.writerID).hasRangeKeys = true
-		k.objKeyMeta(s.writerID).hasRangeKeyUnset = true
+		meta := k.objKeyMeta(s.writerID)
+		meta.hasRangeKeys = true
+		meta.hasRangeKeyUnset = true
 	case *ingestOp:
 		// Some ingestion operations may attempt to ingest overlapping sstables
 		// which is prohibited. We know at generation time whether these
