@@ -95,11 +95,11 @@ next
 .
 .
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
-|  topLevelIndex.Key() = "x#inf,SEPARATOR"
-|  topLevelIndex.InPlaceValue() = (Offset: 193, Length: 26, Props: 00020801)
+|  topLevelIndex.Key() = "x"
+|  topLevelIndex.BlockHandleWithProperties() = (Offset: 193, Length: 26, Props: 00020801)
 |  topLevelIndex.isDataInvalidated()=false
-|  index.Key() = "x#inf,SEPARATOR"
-|  index.InPlaceValue() = (Offset: 62, Length: 29, Props: 00020801)
+|  index.Separator() = "x"
+|  index.BlockHandleWithProperties() = (Offset: 62, Length: 29, Props: 00020801)
 |  index.isDataInvalidated()=false
 |  data.isDataInvalidated()=false
 |  hideObsoletePoints = false
@@ -108,8 +108,8 @@ next
 |  exhaustedBounds = 1
 .
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
-|  topLevelIndex.Key() = "wc#inf,SEPARATOR"
-|  topLevelIndex.InPlaceValue() = (Offset: 161, Length: 27, Props: 00020201)
+|  topLevelIndex.Key() = "wc"
+|  topLevelIndex.BlockHandleWithProperties() = (Offset: 161, Length: 27, Props: 00020201)
 |  topLevelIndex.isDataInvalidated()=false
 |  index iter invalid
 |  index.isDataInvalidated()=true
@@ -120,8 +120,8 @@ next
 |  exhaustedBounds = 1
 .
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
-|  topLevelIndex.Key() = "wc#inf,SEPARATOR"
-|  topLevelIndex.InPlaceValue() = (Offset: 161, Length: 27, Props: 00020201)
+|  topLevelIndex.Key() = "wc"
+|  topLevelIndex.BlockHandleWithProperties() = (Offset: 161, Length: 27, Props: 00020201)
 |  topLevelIndex.isDataInvalidated()=false
 |  index iter invalid
 |  index.isDataInvalidated()=true
@@ -132,11 +132,11 @@ next
 |  exhaustedBounds = 1
 <wz@8:8>
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
-|  topLevelIndex.Key() = "x#inf,SEPARATOR"
-|  topLevelIndex.InPlaceValue() = (Offset: 193, Length: 26, Props: 00020801)
+|  topLevelIndex.Key() = "x"
+|  topLevelIndex.BlockHandleWithProperties() = (Offset: 193, Length: 26, Props: 00020801)
 |  topLevelIndex.isDataInvalidated()=false
-|  index.Key() = "x#inf,SEPARATOR"
-|  index.InPlaceValue() = (Offset: 62, Length: 29, Props: 00020801)
+|  index.Separator() = "x"
+|  index.BlockHandleWithProperties() = (Offset: 62, Length: 29, Props: 00020801)
 |  index.isDataInvalidated()=false
 |  data.isDataInvalidated()=false
 |  hideObsoletePoints = false
