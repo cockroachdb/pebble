@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -433,13 +432,12 @@ func runIterCmd(
 			if twoLevelIter, ok := origIter.(*twoLevelIterator[rowblk.Iter, *rowblk.Iter]); ok {
 				si = &twoLevelIter.secondLevel
 				if twoLevelIter.topLevelIndex.Valid() {
-					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Key())
-					v := twoLevelIter.topLevelIndex.Value()
-					bhp, err := block.DecodeHandleWithProperties(v.InPlaceValue())
+					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Separator())
+					bhp, err := twoLevelIter.topLevelIndex.BlockHandleWithProperties()
 					if err != nil {
-						fmt.Fprintf(&b, "|  topLevelIndex.InPlaceValue() failed to decode as BHP: %s\n", err)
+						fmt.Fprintf(&b, "|  topLevelIndex entry failed to decode as BHP: %s\n", err)
 					} else {
-						fmt.Fprintf(&b, "|  topLevelIndex.InPlaceValue() = (Offset: %d, Length: %d, Props: %x)\n",
+						fmt.Fprintf(&b, "|  topLevelIndex.BlockHandleWithProperties() = (Offset: %d, Length: %d, Props: %x)\n",
 							bhp.Offset, bhp.Length, bhp.Props)
 					}
 				} else {
@@ -448,13 +446,12 @@ func runIterCmd(
 				fmt.Fprintf(&b, "|  topLevelIndex.isDataInvalidated()=%t\n", twoLevelIter.topLevelIndex.IsDataInvalidated())
 			}
 			if si.index.Valid() {
-				fmt.Fprintf(&b, "|  index.Key() = %q\n", si.index.Key())
-				v := si.index.Value()
-				bhp, err := block.DecodeHandleWithProperties(v.InPlaceValue())
+				fmt.Fprintf(&b, "|  index.Separator() = %q\n", si.index.Separator())
+				bhp, err := si.index.BlockHandleWithProperties()
 				if err != nil {
-					fmt.Fprintf(&b, "|  index.InPlaceValue() failed to decode as BHP: %s\n", err)
+					fmt.Fprintf(&b, "|  index entry failed to decode as BHP: %s\n", err)
 				} else {
-					fmt.Fprintf(&b, "|  index.InPlaceValue() = (Offset: %d, Length: %d, Props: %x)\n",
+					fmt.Fprintf(&b, "|  index.BlockHandleWithProperties() = (Offset: %d, Length: %d, Props: %x)\n",
 						bhp.Offset, bhp.Length, bhp.Props)
 				}
 			} else {

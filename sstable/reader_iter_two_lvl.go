@@ -22,7 +22,7 @@ import (
 
 type twoLevelIterator[D any, PD block.DataBlockIterator[D]] struct {
 	secondLevel   singleLevelIterator[D, PD]
-	topLevelIndex rowblk.Iter
+	topLevelIndex rowblk.IndexIter
 	// pool is the pool from which the iterator was allocated and to which the
 	// iterator should be returned on Close. Because the iterator is
 	// parameterized by the type of the data block iterator, pools must be
@@ -50,8 +50,7 @@ func (i *twoLevelIterator[D, PD]) loadIndex(dir int8) loadBlockResult {
 	if !i.topLevelIndex.Valid() {
 		return loadBlockFailed
 	}
-	v := i.topLevelIndex.Value()
-	bhp, err := block.DecodeHandleWithProperties(v.InPlaceValue())
+	bhp, err := i.topLevelIndex.BlockHandleWithProperties()
 	if err != nil {
 		i.secondLevel.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry (%v)", err)
 		return loadBlockFailed
@@ -100,12 +99,13 @@ func (i *twoLevelIterator[D, PD]) resolveMaybeExcluded(dir int8) intersectsResul
 	// are < the filter's upper bound during backward iteration. We only need to
 	// determine if the opposite bound is also met.
 	//
-	// The index separator in topLevelIndex.Key() provides an inclusive
+	// The index separator in topLevelIndex.Separator() provides an inclusive
 	// upper-bound for the index block's keys, guaranteeing that all its keys
-	// are ≤ topLevelIndex.Key(). For forward iteration, this is all we need.
+	// are ≤ topLevelIndex.Separator(). For forward iteration, this is all we
+	// need.
 	if dir > 0 {
 		// Forward iteration.
-		if i.secondLevel.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Key().UserKey) {
+		if i.secondLevel.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Separator()) {
 			return blockExcluded
 		}
 		return blockIntersects
@@ -129,12 +129,12 @@ func (i *twoLevelIterator[D, PD]) resolveMaybeExcluded(dir int8) intersectsResul
 	// the previous block's separator, which provides an inclusive lower bound
 	// on the original index block's keys. Afterwards, we step forward to
 	// restore our top-level index position.
-	if peekKey := i.topLevelIndex.Prev(); peekKey == nil {
+	if !i.topLevelIndex.Prev() {
 		// The original block points to the first index block of this table. If
 		// we knew the lower bound for the entire table, it could provide a
 		// lower bound, but the code refactoring necessary to read it doesn't
 		// seem worth the payoff. We fall through to loading the block.
-	} else if i.secondLevel.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey.K.UserKey) {
+	} else if i.secondLevel.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(i.topLevelIndex.Separator()) {
 		// The lower-bound on the original index block falls within the filter's
 		// bounds, and we can skip the block (after restoring our current
 		// top-level index position).
@@ -251,7 +251,7 @@ func (i *twoLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) *ba
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
 
-	// We fall into the slow path if i.index.isDataInvalidated() even if the
+	// We fall into the slow path if i.index.IsDataInvalidated() even if the
 	// top-level iterator is already positioned correctly and all other
 	// conditions are met. An alternative structure could reuse topLevelIndex's
 	// current position and reload the index block to which it points. Arguably,
@@ -261,15 +261,14 @@ func (i *twoLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) *ba
 
 	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.IsDataInvalidated() || !i.topLevelIndex.Valid() || i.secondLevel.index.IsDataInvalidated() || err != nil ||
-		(i.secondLevel.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.secondLevel.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
+		(i.secondLevel.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.secondLevel.cmp(key, i.topLevelIndex.Separator()) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 
 		// The previous exhausted state of singleLevelIterator is no longer
 		// relevant, since we may be moving to a different index block.
 		i.secondLevel.exhaustedBounds = 0
 		flags = flags.DisableTrySeekUsingNext()
-		var ikv *base.InternalKV
-		if ikv = i.topLevelIndex.SeekGE(key, flags); ikv == nil {
+		if !i.topLevelIndex.SeekGE(key) {
 			PD(&i.secondLevel.data).Invalidate()
 			i.secondLevel.index.Invalidate()
 			return nil
@@ -288,7 +287,7 @@ func (i *twoLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) *ba
 			// same user key can span multiple index blocks. If upper is
 			// exclusive we use >= below, else we use >.
 			if i.secondLevel.upper != nil {
-				cmp := i.secondLevel.cmp(ikv.K.UserKey, i.secondLevel.upper)
+				cmp := i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.upper)
 				if (!i.secondLevel.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.secondLevel.exhaustedBounds = +1
 				}
@@ -316,13 +315,13 @@ func (i *twoLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) *ba
 		// iterator must already be positioned within or just outside the previous
 		// bounds. Therefore, the topLevelIndex iter cannot be positioned at an
 		// entry ahead of the seek position (though it can be positioned behind).
-		// The !i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 confirms that it is
+		// The !i.cmp(key, i.topLevelIndex.Separator) > 0 confirms that it is
 		// not behind. Since it is not ahead and not behind it must be at the
 		// right position.
 		//
 		// 2) This SeekGE will land on a key that is greater than the key we are
 		// currently at (guaranteed by trySeekUsingNext), but since i.cmp(key,
-		// i.topLevelIndex.Key().UserKey) <= 0, we are at the correct lower level
+		// i.topLevelIndex.Separator()) <= 0, we are at the correct lower level
 		// index block. No need to reset the state of singleLevelIterator.
 		//
 		// Note that cases 1 and 2 never overlap, and one of them must be true.
@@ -420,7 +419,7 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 	// enabled by trySeekUsingNext, or by monotonically increasing bounds
 	// (i.boundsCmp).
 
-	// We fall into the slow path if i.index.isDataInvalidated() even if the
+	// We fall into the slow path if i.index.IsDataInvalidated() even if the
 	// top-level iterator is already positioned correctly and all other
 	// conditions are met. An alternative structure could reuse topLevelIndex's
 	// current position and reload the index block to which it points. Arguably,
@@ -430,15 +429,14 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 
 	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.IsDataInvalidated() || !i.topLevelIndex.Valid() || i.secondLevel.index.IsDataInvalidated() || err != nil ||
-		(i.secondLevel.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.secondLevel.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
+		(i.secondLevel.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.secondLevel.cmp(key, i.topLevelIndex.Separator()) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 
 		// The previous exhausted state of singleLevelIterator is no longer
 		// relevant, since we may be moving to a different index block.
 		i.secondLevel.exhaustedBounds = 0
 		flags = flags.DisableTrySeekUsingNext()
-		var ikv *base.InternalKV
-		if ikv = i.topLevelIndex.SeekGE(key, flags); ikv == nil {
+		if !i.topLevelIndex.SeekGE(key) {
 			PD(&i.secondLevel.data).Invalidate()
 			i.secondLevel.index.Invalidate()
 			return nil
@@ -457,7 +455,7 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 			// same user key can span multiple index blocks. If upper is
 			// exclusive we use >= below, else we use >.
 			if i.secondLevel.upper != nil {
-				cmp := i.secondLevel.cmp(ikv.K.UserKey, i.secondLevel.upper)
+				cmp := i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.upper)
 				if (!i.secondLevel.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.secondLevel.exhaustedBounds = +1
 				}
@@ -485,13 +483,13 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 		// know that the iterator must already be positioned within or just
 		// outside the previous bounds. Therefore, the topLevelIndex iter cannot
 		// be positioned at an entry ahead of the seek position (though it can be
-		// positioned behind). The !i.cmp(key, i.topLevelIndex.Key().UserKey) > 0
+		// positioned behind). The !i.cmp(key, i.topLevelIndex.Separator()) > 0
 		// confirms that it is not behind. Since it is not ahead and not behind it
 		// must be at the right position.
 		//
 		// 2) This SeekPrefixGE will land on a key that is greater than the key we
 		// are currently at (guaranteed by trySeekUsingNext), but since i.cmp(key,
-		// i.topLevelIndex.Key().UserKey) <= 0, we are at the correct lower level
+		// i.topLevelIndex.Separator()) <= 0, we are at the correct lower level
 		// index block. No need to reset the state of singleLevelIterator.
 		//
 		// Note that cases 1 and 2 never overlap, and one of them must be true.
@@ -559,13 +557,13 @@ func (i *twoLevelIterator[D, PD]) virtualLastSeekLE() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned with a
 	// SeekGE or SeekLT after SetBounds.
 	i.secondLevel.boundsCmp = 0
-	ikv := i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone)
+	topLevelOk := i.topLevelIndex.SeekGE(key)
 	// We can have multiple internal keys with the same user key as the seek
 	// key. In that case, we want the last (greatest) internal key.
-	for ikv != nil && bytes.Equal(ikv.K.UserKey, key) {
-		ikv = i.topLevelIndex.Next()
+	for topLevelOk && bytes.Equal(i.topLevelIndex.Separator(), key) {
+		topLevelOk = i.topLevelIndex.Next()
 	}
-	if ikv == nil {
+	if !topLevelOk {
 		return i.skipBackward()
 	}
 	result := i.loadIndex(-1)
@@ -607,7 +605,6 @@ func (i *twoLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) *ba
 	i.secondLevel.boundsCmp = 0
 
 	var result loadBlockResult
-	var ikv *base.InternalKV
 	// NB: Unlike SeekGE, we don't have a fast-path here since we don't know
 	// whether the topLevelIndex is positioned after the position that would
 	// be returned by doing i.topLevelIndex.SeekGE(). To know this we would
@@ -615,8 +612,8 @@ func (i *twoLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) *ba
 	// NB: If a bound-limited block property filter is configured, it's
 	// externally ensured that the filter is disabled (through returning
 	// Intersects=false irrespective of the block props provided) during seeks.
-	if ikv = i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone); ikv == nil {
-		if ikv = i.topLevelIndex.Last(); ikv == nil {
+	if !i.topLevelIndex.SeekGE(key) {
+		if !i.topLevelIndex.Last() {
 			PD(&i.secondLevel.data).Invalidate()
 			i.secondLevel.index.Invalidate()
 			return nil
@@ -656,7 +653,7 @@ func (i *twoLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) *ba
 		// exceeded. Note that the previous entry starts with keys <=
 		// ikey.InternalKey.UserKey since even though this is the current block's
 		// separator, the same user key can span multiple index blocks.
-		if i.secondLevel.lower != nil && i.secondLevel.cmp(ikv.K.UserKey, i.secondLevel.lower) < 0 {
+		if i.secondLevel.lower != nil && i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.lower) < 0 {
 			i.secondLevel.exhaustedBounds = -1
 		}
 	}
@@ -680,11 +677,9 @@ func (i *twoLevelIterator[D, PD]) First() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
 
-	var ikv *base.InternalKV
-	if ikv = i.topLevelIndex.First(); ikv == nil {
+	if !i.topLevelIndex.First() {
 		return nil
 	}
-
 	result := i.loadIndex(+1)
 	if result == loadBlockFailed {
 		return nil
@@ -702,7 +697,7 @@ func (i *twoLevelIterator[D, PD]) First() *base.InternalKV {
 		// block separator, the same user key can span multiple index blocks.
 		// If upper is exclusive we use >= below, else we use >.
 		if i.secondLevel.upper != nil {
-			cmp := i.secondLevel.cmp(ikv.K.UserKey, i.secondLevel.upper)
+			cmp := i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.upper)
 			if (!i.secondLevel.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.secondLevel.exhaustedBounds = +1
 			}
@@ -732,11 +727,9 @@ func (i *twoLevelIterator[D, PD]) Last() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
 
-	var ikv *base.InternalKV
-	if ikv = i.topLevelIndex.Last(); ikv == nil {
+	if !i.topLevelIndex.Last() {
 		return nil
 	}
-
 	result := i.loadIndex(-1)
 	if result == loadBlockFailed {
 		return nil
@@ -753,7 +746,7 @@ func (i *twoLevelIterator[D, PD]) Last() *base.InternalKV {
 		// entry starts with keys <= ikv.InternalKey.UserKey since even though
 		// this is the current block's separator, the same user key can span
 		// multiple index blocks.
-		if i.secondLevel.lower != nil && i.secondLevel.cmp(ikv.K.UserKey, i.secondLevel.lower) < 0 {
+		if i.secondLevel.lower != nil && i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.lower) < 0 {
 			i.secondLevel.exhaustedBounds = -1
 		}
 	}
@@ -802,7 +795,7 @@ func (i *twoLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
 	// Did not find prefix in the existing second-level index block. This is the
 	// slow-path where we seek the iterator.
 	var ikv *base.InternalKV
-	if ikv = i.topLevelIndex.SeekGE(succKey, base.SeekGEFlagsNone); ikv == nil {
+	if !i.topLevelIndex.SeekGE(succKey) {
 		PD(&i.secondLevel.data).Invalidate()
 		i.secondLevel.index.Invalidate()
 		return nil
@@ -880,11 +873,10 @@ func (i *twoLevelIterator[D, PD]) skipForward() *base.InternalKV {
 		// guarantees wrt an iterator lower bound when we iterate forward. But we
 		// must never return keys that are not inside the virtual table.
 		useSeek := i.secondLevel.vState != nil &&
-			(!i.topLevelIndex.Valid() || base.InternalCompare(i.secondLevel.cmp, *i.topLevelIndex.Key(), i.secondLevel.vState.lower) < 0)
+			(!i.topLevelIndex.Valid() || i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.vState.lower.UserKey) < 0)
 
 		i.secondLevel.exhaustedBounds = 0
-		topLevelKey := i.topLevelIndex.Next()
-		if topLevelKey == nil {
+		if !i.topLevelIndex.Next() {
 			PD(&i.secondLevel.data).Invalidate()
 			i.secondLevel.index.Invalidate()
 			return nil
@@ -909,12 +901,12 @@ func (i *twoLevelIterator[D, PD]) skipForward() *base.InternalKV {
 			// result == loadBlockIrrelevant. Enforce the upper bound here since
 			// don't want to bother moving to the next entry in the top level
 			// index if upper bound is already exceeded. Note that the next
-			// entry starts with keys >= ikv.InternalKey.UserKey since even
+			// entry starts with keys >= i.topLevelIndex.Separator() since even
 			// though this is the block separator, the same user key can span
 			// multiple index blocks. If upper is exclusive we use >= below,
 			// else we use >.
 			if i.secondLevel.upper != nil {
-				cmp := i.secondLevel.cmp(topLevelKey.K.UserKey, i.secondLevel.upper)
+				cmp := i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.upper)
 				if (!i.secondLevel.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.secondLevel.exhaustedBounds = +1
 					// Next iteration will return.
@@ -930,8 +922,7 @@ func (i *twoLevelIterator[D, PD]) skipBackward() *base.InternalKV {
 			return nil
 		}
 		i.secondLevel.exhaustedBounds = 0
-		topLevelKey := i.topLevelIndex.Prev()
-		if topLevelKey == nil {
+		if !i.topLevelIndex.Prev() {
 			PD(&i.secondLevel.data).Invalidate()
 			i.secondLevel.index.Invalidate()
 			return nil
@@ -952,10 +943,10 @@ func (i *twoLevelIterator[D, PD]) skipBackward() *base.InternalKV {
 			// result == loadBlockIrrelevant. Enforce the lower bound here since
 			// don't want to bother moving to the previous entry in the top
 			// level index if lower bound is already exceeded. Note that the
-			// previous entry starts with keys <= ikv.InternalKey.UserKey since
+			// previous entry starts with keys <= i.topLevelIndex.Separator() since
 			// even though this is the current block's separator, the same user
 			// key can span multiple index blocks.
-			if i.secondLevel.lower != nil && i.secondLevel.cmp(topLevelKey.K.UserKey, i.secondLevel.lower) < 0 {
+			if i.secondLevel.lower != nil && i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.lower) < 0 {
 				i.secondLevel.exhaustedBounds = -1
 				// Next iteration will return.
 			}
