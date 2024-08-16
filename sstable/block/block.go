@@ -183,6 +183,67 @@ type DataBlockIterator[D any] interface {
 	*D // non-interface type constraint element
 }
 
+// IndexBlockIterator is a type constraint for implementations of block
+// iterators over index blocks. It's currently satisifed by the
+// *rowblk.IndexIter type.
+//
+// IndexBlockIterator requires that the type be a pointer to its type parameter,
+// I, to allow sstable iterators embed the block iterator within its struct. See
+// this example from the Go generics proposal:
+// https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
+type IndexBlockIterator[I any] interface {
+	// InitHandle initializes an iterator from the provided block handle.
+	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
+	// ResetForReuse resets the index iterator for reuse, retaining buffers to
+	// avoid future allocations.
+	ResetForReuse() I
+	// Valid returns true if the iterator is currently positioned at a valid
+	// block handle.
+	Valid() bool
+	// IsDataInvalidated returns true when the iterator has been invalidated
+	// using an Invalidate call.
+	//
+	// NB: this is different from Valid which indicates whether the iterator is
+	// currently positioned over a valid block entry.
+	IsDataInvalidated() bool
+	// Invalidate invalidates the block iterator, removing references to the
+	// block it was initialized with.
+	Invalidate()
+	// Handle returns the underlying block buffer handle, if the iterator was
+	// initialized with one.
+	Handle() BufferHandle
+	// Separator returns the separator at the iterator's current position. The
+	// iterator must be positioned at a valid row. A Separator is a user key
+	// guaranteed to be greater than or equal to every key contained within the
+	// referenced block(s).
+	Separator() []byte
+	// BlockHandleWithProperties decodes the block handle with any encoded
+	// properties at the iterator's current position.
+	BlockHandleWithProperties() (HandleWithProperties, error)
+	// SeekGE seeks the index iterator to the first block entry with a separator
+	// key greater or equal to the given key. If it returns true, the iterator
+	// is positioned over the first block that might contain the key [key], and
+	// following blocks have keys ≥ Separator(). It returns false if the seek
+	// key is greater than all index block separators.
+	SeekGE(key []byte) bool
+	// First seeks index iterator to the first block entry. It returns false if
+	// the index block is empty.
+	First() bool
+	// Last seeks index iterator to the last block entry. It returns false if
+	// the index block is empty.
+	Last() bool
+	// Next steps the index iterator to the next block entry. It returns false
+	// if the index block is exhausted.
+	Next() bool
+	// Prev steps the index iterator to the previous block entry. It returns
+	// false if the index block is exhausted.
+	Prev() bool
+	// Close closes the iterator, releasing any resources it holds.
+	Close() error
+
+	*I // non-interface type constraint element
+}
+
 // IterTransforms allow on-the-fly transformation of data at iteration time.
 //
 // These transformations could in principle be implemented as block transforms
