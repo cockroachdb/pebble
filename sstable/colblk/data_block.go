@@ -15,6 +15,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -163,7 +164,7 @@ func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
 
 	var cmpv KeyComparison
 	cmpv.PrefixLen = int32(w.comparer.Split(key))
-	cmpv.CommonPrefixLen = int32(bytesSharedPrefix(lp, key[:cmpv.PrefixLen]))
+	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
 	if len(lp) == 0 {
 		// The first key has no previous key to compare to.
 		return cmpv

@@ -6,7 +6,6 @@ package colblk
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"math/bits"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -757,9 +757,9 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 			if bytes.Compare(key, b.data[len(b.data)-prev.lastKeyLen:]) < 0 {
 				panic(errors.AssertionFailedf("keys must be added in order: %q < %q", key, b.data[len(b.data)-prev.lastKeyLen:]))
 			}
-			if bytesSharedWithPrev != bytesSharedPrefix(key, b.data[len(b.data)-prev.lastKeyLen:]) {
+			if bytesSharedWithPrev != crbytes.CommonPrefix(key, b.data[len(b.data)-prev.lastKeyLen:]) {
 				panic(errors.AssertionFailedf("bytesSharedWithPrev %d != %d", bytesSharedWithPrev,
-					bytesSharedPrefix(key, b.data[len(b.data)-prev.lastKeyLen:])))
+					crbytes.CommonPrefix(key, b.data[len(b.data)-prev.lastKeyLen:])))
 			}
 		}
 	}
@@ -1090,20 +1090,4 @@ func (b bundleCalc) offsetIndexByBundleIndex(bi int) int {
 
 func (b bundleCalc) bundleCount(rows int) int {
 	return 1 + (rows-1)>>b.bundleShift
-}
-
-// bytesSharedPrefix returns the length of the shared prefix between a and b.
-func bytesSharedPrefix(a, b []byte) int {
-	asUint64 := func(data []byte, i int) uint64 {
-		return binary.LittleEndian.Uint64(data[i:])
-	}
-	var shared int
-	n := min(len(a), len(b))
-	for shared < n-7 && asUint64(a, shared) == asUint64(b, shared) {
-		shared += 8
-	}
-	for shared < n && a[shared] == b[shared] {
-		shared++
-	}
-	return shared
 }

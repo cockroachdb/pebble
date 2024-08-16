@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
 	"golang.org/x/exp/rand"
 )
@@ -244,7 +245,7 @@ func buildBlock(schema []testColumnSpec, rows int, data []interface{}) []byte {
 			for r, v := range colData {
 				sharedPrefix := 0
 				if r > 0 {
-					sharedPrefix = bytesSharedPrefix(colData[r-1], v)
+					sharedPrefix = crbytes.CommonPrefix(colData[r-1], v)
 				}
 				pbb.Put(v, sharedPrefix)
 			}

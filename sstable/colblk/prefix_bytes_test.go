@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -46,7 +47,7 @@ func TestPrefixBytes(t *testing.T) {
 			for _, k := range inputKeys {
 				keyPrefixLenSharedWithPrev := len(k)
 				if builder.nKeys > 0 {
-					keyPrefixLenSharedWithPrev = bytesSharedPrefix(builder.LastKey(), k)
+					keyPrefixLenSharedWithPrev = crbytes.CommonPrefix(builder.LastKey(), k)
 				}
 				p := []byte(k)
 				builder.Put(p, keyPrefixLenSharedWithPrev)
@@ -149,7 +150,7 @@ func TestPrefixBytesRandomized(t *testing.T) {
 		for i := 0; i < len(userKeys); i++ {
 			keyPrefixLenSharedWithPrev := 0
 			if i > 0 {
-				keyPrefixLenSharedWithPrev = bytesSharedPrefix(userKeys[i-1], userKeys[i])
+				keyPrefixLenSharedWithPrev = crbytes.CommonPrefix(userKeys[i-1], userKeys[i])
 			}
 			pbb.Put(userKeys[i], keyPrefixLenSharedWithPrev)
 		}
@@ -247,7 +248,7 @@ func BenchmarkPrefixBytes(b *testing.B) {
 			for i := 0; i < n; i++ {
 				keyPrefixLenSharedWithPrev := 0
 				if i > 0 {
-					keyPrefixLenSharedWithPrev = bytesSharedPrefix(userKeys[i-1], userKeys[i])
+					keyPrefixLenSharedWithPrev = crbytes.CommonPrefix(userKeys[i-1], userKeys[i])
 				}
 				pbb.Put(userKeys[i], keyPrefixLenSharedWithPrev)
 			}
