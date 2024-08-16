@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 type writeTask struct {
@@ -59,12 +60,12 @@ func newWriteQueue(size int, writer *RawWriter) *writeQueue {
 }
 
 func (w *writeQueue) performWrite(task *writeTask) error {
-	var bhp BlockHandleWithProperties
+	var bhp block.HandleWithProperties
 	var err error
 	if bhp.Handle, err = w.writer.layout.WritePrecompressedDataBlock(task.buf.physical); err != nil {
 		return err
 	}
-	bhp = BlockHandleWithProperties{Handle: bhp.Handle, Props: task.buf.dataBlockProps}
+	bhp = block.HandleWithProperties{Handle: bhp.Handle, Props: task.buf.dataBlockProps}
 	if err = w.writer.addIndexEntry(
 		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock,
 		task.indexInflightSize, task.finishedIndexProps); err != nil {

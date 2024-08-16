@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/stretchr/testify/require"
 )
@@ -913,7 +914,7 @@ func TestBlockProperties(t *testing.T) {
 					var i int
 					iter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 					for kv := iter.First(); kv != nil; kv = iter.Next() {
-						bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+						bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 						if err != nil {
 							return err.Error()
 						}
@@ -1304,7 +1305,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 
 	for kv := i.First(); kv != nil; kv = i.Next() {
 		sb.WriteString(fmt.Sprintf("%s:\n", kv.K))
-		bhp, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+		bhp, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 		if err != nil {
 			return err.Error()
 		}
@@ -1326,7 +1327,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			}
 			for kv := subiter.First(); kv != nil; kv = subiter.Next() {
 				sb.WriteString(fmt.Sprintf("  %s:\n", kv.K))
-				dataBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+				dataBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 				if err != nil {
 					return err.Error()
 				}

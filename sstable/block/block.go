@@ -20,6 +20,61 @@ type Handle struct {
 	Offset, Length uint64
 }
 
+// EncodeVarints encodes the block handle into dst using a variable-width
+// encoding and returns the number of bytes written.
+func (h Handle) EncodeVarints(dst []byte) int {
+	n := binary.PutUvarint(dst, h.Offset)
+	m := binary.PutUvarint(dst[n:], h.Length)
+	return n + m
+}
+
+// HandleWithProperties is used for data blocks and first/lower level index
+// blocks, since they can be annotated using BlockPropertyCollectors.
+type HandleWithProperties struct {
+	Handle
+	Props []byte
+}
+
+// EncodeVarints encodes the block handle and properties into dst using a
+// variable-width encoding and returns the number of bytes written.
+func (h HandleWithProperties) EncodeVarints(dst []byte) []byte {
+	n := h.Handle.EncodeVarints(dst)
+	dst = append(dst[:n], h.Props...)
+	return dst
+}
+
+// DecodeHandle returns the block handle encoded in a variable-width encoding at
+// the start of src, as well as the number of bytes it occupies. It returns zero
+// if given invalid input. A block handle for a data block or a first/lower
+// level index block should not be decoded using DecodeHandle since the caller
+// may validate that the number of bytes decoded is equal to the length of src,
+// which will be false if the properties are not decoded. In those cases the
+// caller should use DecodeHandleWithProperties.
+func DecodeHandle(src []byte) (Handle, int) {
+	offset, n := binary.Uvarint(src)
+	length, m := binary.Uvarint(src[n:])
+	if n == 0 || m == 0 {
+		return Handle{}, 0
+	}
+	return Handle{Offset: offset, Length: length}, n + m
+}
+
+// DecodeHandleWithProperties returns the block handle and properties encoded in
+// a variable-width encoding at the start of src. src needs to be exactly the
+// length that was encoded. This method must be used for data block and
+// first/lower level index blocks. The properties in the block handle point to
+// the bytes in src.
+func DecodeHandleWithProperties(src []byte) (HandleWithProperties, error) {
+	bh, n := DecodeHandle(src)
+	if n == 0 {
+		return HandleWithProperties{}, errors.Errorf("invalid block.Handle")
+	}
+	return HandleWithProperties{
+		Handle: bh,
+		Props:  src[n:],
+	}, nil
+}
+
 // TrailerLen is the length of the trailer at the end of a block.
 const TrailerLen = 5
 

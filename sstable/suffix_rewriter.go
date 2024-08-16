@@ -164,7 +164,7 @@ func rewriteBlocks[R blockRewriter](
 	rw R,
 	checksumType block.ChecksumType,
 	compression block.Compression,
-	input []BlockHandleWithProperties,
+	input []block.HandleWithProperties,
 	output []blockWithSpan,
 	totalWorkers, worker int,
 	from, to []byte,
@@ -206,7 +206,7 @@ func checkWriterFilterMatchesReader(r *Reader, w *RawWriter) error {
 }
 
 func rewriteDataBlocksToWriter(
-	r *Reader, w *RawWriter, data []BlockHandleWithProperties, from, to []byte, concurrency int,
+	r *Reader, w *RawWriter, data []block.HandleWithProperties, from, to []byte, concurrency int,
 ) error {
 	if r.Properties.NumEntries == 0 {
 		// No point keys.

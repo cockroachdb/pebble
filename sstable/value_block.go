@@ -296,7 +296,7 @@ const valueBlocksIndexHandleMaxLen = blockHandleMaxLenWithoutProperties + 3
 const _ = uint(blockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
 
 func encodeValueBlocksIndexHandle(dst []byte, v valueBlocksIndexHandle) int {
-	n := encodeBlockHandle(dst, v.h)
+	n := v.h.EncodeVarints(dst)
 	dst[n] = v.blockNumByteLength
 	n++
 	dst[n] = v.blockOffsetByteLength
@@ -309,7 +309,7 @@ func encodeValueBlocksIndexHandle(dst []byte, v valueBlocksIndexHandle) int {
 func decodeValueBlocksIndexHandle(src []byte) (valueBlocksIndexHandle, int, error) {
 	var vbih valueBlocksIndexHandle
 	var n int
-	vbih.h, n = decodeBlockHandle(src)
+	vbih.h, n = block.DecodeHandle(src)
 	if n <= 0 {
 		return vbih, 0, errors.Errorf("bad BlockHandle %x", src)
 	}

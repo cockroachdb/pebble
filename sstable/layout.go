@@ -28,7 +28,7 @@ type Layout struct {
 	// ValidateBlockChecksums, which validates a static list of BlockHandles
 	// referenced in this struct.
 
-	Data       []BlockHandleWithProperties
+	Data       []block.HandleWithProperties
 	Index      []block.Handle
 	TopIndex   block.Handle
 	Filter     block.Handle
@@ -222,7 +222,7 @@ func (l *Layout) Describe(
 		case "index", "top-index":
 			iter, _ := rowblk.NewIter(r.Compare, r.Split, h.Get(), NoTransforms)
 			iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-				bh, err := decodeBlockHandleWithProperties(value)
+				bh, err := block.DecodeHandleWithProperties(value)
 				if err != nil {
 					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(enc.Offset), err)
 					return
@@ -256,7 +256,7 @@ func (l *Layout) Describe(
 						bh = vbih.h
 						isValueBlocksIndexHandle = true
 					} else {
-						bh, n = decodeBlockHandle(value)
+						bh, n = block.DecodeHandle(value)
 					}
 					if n == 0 || n != len(value) {
 						fmt.Fprintf(w, "%10d    [err: %s]\n", enc.Offset, err)
@@ -480,7 +480,7 @@ func (w *layoutWriter) clearFromCache(offset uint64) {
 }
 
 func (w *layoutWriter) recordToMetaindex(key string, h block.Handle) {
-	n := encodeBlockHandle(w.tmp[:], h)
+	n := h.EncodeVarints(w.tmp[:])
 	w.recordToMetaindexRaw(key, w.tmp[:n])
 }
 

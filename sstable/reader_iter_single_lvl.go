@@ -473,7 +473,7 @@ func (i *singleLevelIterator[P, PD]) loadBlock(dir int8) loadBlockResult {
 	}
 	// Load the next block.
 	v := i.index.Value()
-	bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
+	bhp, err := block.DecodeHandleWithProperties(v.InPlaceValue())
 	if i.dataBH == bhp.Handle && PD(&i.data).Valid() {
 		// We're already at the data block we want to load. Reset bounds in case
 		// they changed since the last seek, but don't reload the block from cache
