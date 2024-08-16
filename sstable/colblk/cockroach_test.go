@@ -15,6 +15,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -62,7 +63,7 @@ func (kw *cockroachKeyWriter) ComparePrev(key []byte) KeyComparison {
 	lp := kw.prefixes.LastKey()
 	var cmpv KeyComparison
 	cmpv.PrefixLen = int32(crdbtest.Split(key)) // TODO(jackson): Inline
-	cmpv.CommonPrefixLen = int32(bytesSharedPrefix(lp, key[:cmpv.PrefixLen]))
+	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
 	if cmpv.CommonPrefixLen == cmpv.PrefixLen {
 		cmpv.UserKeyComparison = int32(crdbtest.CompareSuffixes(key[cmpv.PrefixLen:], kw.prevSuffix))
 		return cmpv
