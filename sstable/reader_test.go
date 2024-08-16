@@ -724,7 +724,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	}()
 	require.NoError(t, err)
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
-		bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+		bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(kv.K.UserKey), bh.Length)
 		if twoLevelIndex {
@@ -737,7 +737,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 			}()
 			require.NoError(t, err)
 			for kv := iter2.First(); kv != nil; kv = iter2.Next() {
-				bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+				bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 				require.NoError(t, err)
 				fmt.Fprintf(&buf, "   %s: size %d\n", string(kv.K.UserKey), bh.Length)
 			}

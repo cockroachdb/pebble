@@ -1283,12 +1283,12 @@ func (w *RawWriter) finishDataBlockProps(buf *dataBlockBuf) error {
 // with the Writer client.
 func (w *RawWriter) maybeAddBlockPropertiesToBlockHandle(
 	bh block.Handle,
-) (BlockHandleWithProperties, error) {
+) (block.HandleWithProperties, error) {
 	err := w.finishDataBlockProps(w.dataBlockBuf)
 	if err != nil {
-		return BlockHandleWithProperties{}, err
+		return block.HandleWithProperties{}, err
 	}
-	return BlockHandleWithProperties{Handle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
+	return block.HandleWithProperties{Handle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
 }
 
 func (w *RawWriter) indexEntrySep(
@@ -1321,7 +1321,7 @@ func (w *RawWriter) indexEntrySep(
 //     indexBlockBufs.
 func (w *RawWriter) addIndexEntry(
 	sep InternalKey,
-	bhp BlockHandleWithProperties,
+	bhp block.HandleWithProperties,
 	tmp []byte,
 	flushIndexBuf *indexBlockBuf,
 	writeTo *indexBlockBuf,
@@ -1334,8 +1334,7 @@ func (w *RawWriter) addIndexEntry(
 		return nil
 	}
 
-	encoded := encodeBlockHandleWithProperties(tmp, bhp)
-
+	encoded := bhp.EncodeVarints(tmp)
 	if flushIndexBuf != nil {
 		if cap(w.indexPartitions) == 0 {
 			w.indexPartitions = make([]indexBlockAndBlockProperties, 0, 32)
@@ -1369,13 +1368,13 @@ func (w *RawWriter) addPrevDataBlockToIndexBlockProps() {
 // TODO: Improve coverage of this method. e.g. tests passed without the line
 // `w.twoLevelIndex = true` previously.
 func (w *RawWriter) addIndexEntrySync(
-	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+	prevKey, key InternalKey, bhp block.HandleWithProperties, tmp []byte,
 ) error {
 	return w.addIndexEntrySep(w.indexEntrySep(prevKey, key, w.dataBlockBuf), bhp, tmp)
 }
 
 func (w *RawWriter) addIndexEntrySep(
-	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+	sep InternalKey, bhp block.HandleWithProperties, tmp []byte,
 ) error {
 	shouldFlush := supportsTwoLevelIndex(
 		w.tableFormat) && w.indexBlock.shouldFlush(
@@ -1592,12 +1591,10 @@ func (w *RawWriter) writeTwoLevelIndex() (block.Handle, error) {
 		if err != nil {
 			return block.Handle{}, err
 		}
-		bhp := BlockHandleWithProperties{
+		w.topLevelIndexBlock.Add(b.sep, block.HandleWithProperties{
 			Handle: bh,
 			Props:  b.properties,
-		}
-		encoded := encodeBlockHandleWithProperties(w.blockBuf.tmp[:], bhp)
-		w.topLevelIndexBlock.Add(b.sep, encoded)
+		}.EncodeVarints(w.blockBuf.tmp[:]))
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size

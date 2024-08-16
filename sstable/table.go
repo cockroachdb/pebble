@@ -342,13 +342,13 @@ func readFooter(
 	{
 		end := uint64(size)
 		var n int
-		footer.metaindexBH, n = decodeBlockHandle(buf)
+		footer.metaindexBH, n = block.DecodeHandle(buf)
 		if n == 0 || footer.metaindexBH.Offset+footer.metaindexBH.Length > end {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table %s (bad metaindex block handle)", errors.Safe(fileNum))
 		}
 		buf = buf[n:]
 
-		footer.indexBH, n = decodeBlockHandle(buf)
+		footer.indexBH, n = block.DecodeHandle(buf)
 		if n == 0 || footer.indexBH.Offset+footer.indexBH.Length > end {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table %s (bad index block handle)", errors.Safe(fileNum))
 		}
@@ -362,8 +362,8 @@ func (f footer) encode(buf []byte) []byte {
 	case levelDBMagic:
 		buf = buf[:levelDBFooterLen]
 		clear(buf)
-		n := encodeBlockHandle(buf[0:], f.metaindexBH)
-		encodeBlockHandle(buf[n:], f.indexBH)
+		n := f.metaindexBH.EncodeVarints(buf[0:])
+		f.indexBH.EncodeVarints(buf[n:])
 		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
 
 	case rocksDBMagic, pebbleDBMagic:
@@ -382,8 +382,8 @@ func (f footer) encode(buf []byte) []byte {
 			panic("unknown checksum type")
 		}
 		n := 1
-		n += encodeBlockHandle(buf[n:], f.metaindexBH)
-		encodeBlockHandle(buf[n:], f.indexBH)
+		n += f.metaindexBH.EncodeVarints(buf[n:])
+		n += f.indexBH.EncodeVarints(buf[n:])
 		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], version)
 		copy(buf[len(buf)-len(rocksDBMagic):], magic)
 

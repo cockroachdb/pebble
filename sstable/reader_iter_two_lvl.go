@@ -51,7 +51,7 @@ func (i *twoLevelIterator[D, PD]) loadIndex(dir int8) loadBlockResult {
 		return loadBlockFailed
 	}
 	v := i.topLevelIndex.Value()
-	bhp, err := decodeBlockHandleWithProperties(v.InPlaceValue())
+	bhp, err := block.DecodeHandleWithProperties(v.InPlaceValue())
 	if err != nil {
 		i.secondLevel.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry (%v)", err)
 		return loadBlockFailed

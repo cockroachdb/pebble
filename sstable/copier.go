@@ -240,7 +240,7 @@ var ErrEmptySpan = errors.New("cannot copy empty span")
 // decoded block handle value.
 type indexEntry struct {
 	sep InternalKey
-	bh  BlockHandleWithProperties
+	bh  block.HandleWithProperties
 }
 
 // intersectingIndexEntries returns the entries from the index with separator
@@ -262,7 +262,7 @@ func intersectingIndexEntries(
 	var alloc bytealloc.A
 	res := make([]indexEntry, 0, r.Properties.NumDataBlocks)
 	for kv := top.SeekGE(start.UserKey, base.SeekGEFlagsNone); kv != nil; kv = top.Next() {
-		bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+		bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +285,7 @@ func intersectingIndexEntries(
 			defer sub.Close() // in-loop, but it is a short loop.
 
 			for kv := sub.SeekGE(start.UserKey, base.SeekGEFlagsNone); kv != nil; kv = sub.Next() {
-				bh, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+				bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 				if err != nil {
 					return nil, err
 				}

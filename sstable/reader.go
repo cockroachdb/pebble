@@ -35,49 +35,6 @@ import (
 
 var errReaderClosed = errors.New("pebble/table: reader is closed")
 
-// decodeBlockHandle returns the block handle encoded at the start of src, as
-// well as the number of bytes it occupies. It returns zero if given invalid
-// input. A block handle for a data block or a first/lower level index block
-// should not be decoded using decodeBlockHandle since the caller may validate
-// that the number of bytes decoded is equal to the length of src, which will
-// be false if the properties are not decoded. In those cases the caller
-// should use decodeBlockHandleWithProperties.
-func decodeBlockHandle(src []byte) (block.Handle, int) {
-	offset, n := binary.Uvarint(src)
-	length, m := binary.Uvarint(src[n:])
-	if n == 0 || m == 0 {
-		return block.Handle{}, 0
-	}
-	return block.Handle{Offset: offset, Length: length}, n + m
-}
-
-// decodeBlockHandleWithProperties returns the block handle and properties
-// encoded in src. src needs to be exactly the length that was encoded. This
-// method must be used for data block and first/lower level index blocks. The
-// properties in the block handle point to the bytes in src.
-func decodeBlockHandleWithProperties(src []byte) (BlockHandleWithProperties, error) {
-	bh, n := decodeBlockHandle(src)
-	if n == 0 {
-		return BlockHandleWithProperties{}, errors.Errorf("invalid BlockHandle")
-	}
-	return BlockHandleWithProperties{
-		Handle: bh,
-		Props:  src[n:],
-	}, nil
-}
-
-func encodeBlockHandle(dst []byte, b block.Handle) int {
-	n := binary.PutUvarint(dst, b.Offset)
-	m := binary.PutUvarint(dst[n:], b.Length)
-	return n + m
-}
-
-func encodeBlockHandleWithProperties(dst []byte, b BlockHandleWithProperties) []byte {
-	n := encodeBlockHandle(dst, b.Handle)
-	dst = append(dst[:n], b.Props...)
-	return dst
-}
-
 type loadBlockResult int8
 
 const (
@@ -558,7 +515,7 @@ func (r *Reader) readMetaindex(
 			}
 			r.valueBIH = vbih
 		} else {
-			bh, n := decodeBlockHandle(value)
+			bh, n := block.DecodeHandle(value)
 			if n == 0 || n != len(value) {
 				return base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
 			}
@@ -638,7 +595,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	l := &Layout{
-		Data:       make([]BlockHandleWithProperties, 0, r.Properties.NumDataBlocks),
+		Data:       make([]block.HandleWithProperties, 0, r.Properties.NumDataBlocks),
 		Filter:     r.filterBH,
 		RangeDel:   r.rangeDelBH,
 		RangeKey:   r.rangeKeyBH,
@@ -661,7 +618,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		l.Index = append(l.Index, r.indexBH)
 		iter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		for kv := iter.First(); kv != nil; kv = iter.Next() {
-			dataBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+			dataBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
@@ -675,7 +632,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		topIter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
 		iter := &rowblk.Iter{}
 		for kv := topIter.First(); kv != nil; kv = topIter.Next() {
-			indexBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+			indexBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
@@ -691,7 +648,7 @@ func (r *Reader) Layout() (*Layout, error) {
 				return nil, err
 			}
 			for kv := iter.First(); kv != nil; kv = iter.Next() {
-				dataBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+				dataBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 				if len(dataBH.Props) > 0 {
 					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 				}
@@ -839,7 +796,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			// The range falls completely after this file, or an error occurred.
 			return 0, topIter.Error()
 		}
-		startIdxBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+		startIdxBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 		if err != nil {
 			return 0, errCorruptIndexEntry(err)
 		}
@@ -860,7 +817,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, err
 			}
 		} else {
-			endIdxBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+			endIdxBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 			if err != nil {
 				return 0, errCorruptIndexEntry(err)
 			}
@@ -884,7 +841,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		// The range falls completely after this file, or an error occurred.
 		return 0, startIdxIter.Error()
 	}
-	startBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+	startBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 	if err != nil {
 		return 0, errCorruptIndexEntry(err)
 	}
@@ -915,7 +872,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		// The range spans beyond this file. Include data blocks through the last.
 		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
 	}
-	endBH, err := decodeBlockHandleWithProperties(kv.InPlaceValue())
+	endBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
 	if err != nil {
 		return 0, errCorruptIndexEntry(err)
 	}
