@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/rangekey"
@@ -67,10 +68,16 @@ Print the contents of the WAL files.
 	return w
 }
 
+type errAndArg struct {
+	err error
+	arg string
+}
+
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	w.fmtKey.setForComparer(w.defaultComparer, w.comparers)
 	w.fmtValue.setForComparer(w.defaultComparer, w.comparers)
+	var errs []errAndArg
 
 	for _, arg := range args {
 		func() {
@@ -107,10 +114,10 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					// preallocation and WAL recycling. We need to distinguish these
 					// errors from EOF in order to recognize that the record was
 					// truncated, but want to otherwise treat them like EOF.
-					switch err {
-					case record.ErrZeroedChunk:
+					switch {
+					case errors.Is(err, record.ErrZeroedChunk):
 						fmt.Fprintf(stdout, "EOF [%s] (may be due to WAL preallocation)\n", err)
-					case record.ErrInvalidChunk:
+					case errors.Is(err, record.ErrInvalidChunk):
 						fmt.Fprintf(stdout, "EOF [%s] (may be due to WAL recycling)\n", err)
 					default:
 						fmt.Fprintf(stdout, "%s\n", err)
@@ -163,10 +170,22 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 					case base.InternalKeyKindDeleteSized:
 						v, _ := binary.Uvarint(value)
 						fmt.Fprintf(stdout, "%s,%d", w.fmtKey.fn(ukey), v)
+					default:
+						err := errors.Newf("invalid key kind %d in key at index %d/%d of batch with seqnum %d at offset %d",
+							kind, idx, b.Count(), b.SeqNum(), offset)
+						errs = append(errs, errAndArg{err: err, arg: arg})
+						fmt.Fprintln(stdout, err)
+						fmt.Fprintln(stderr, err)
 					}
 					fmt.Fprintf(stdout, ")\n")
 				}
 			}
 		}()
+	}
+	if len(errs) > 0 {
+		fmt.Fprintln(stderr, "Errors: ")
+		for _, ea := range errs {
+			fmt.Fprintf(stderr, "%s: %s\n", ea.arg, ea.err)
+		}
 	}
 }
