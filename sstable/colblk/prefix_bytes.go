@@ -241,11 +241,10 @@ func (b PrefixBytes) At(i int) []byte {
 type PrefixBytesIter struct {
 	// buf is used for materializing a user key. It is preallocated to the maximum
 	// key length in the data block.
-	buf             []byte
-	bundlePrefixLen uint32
-
-	offsetIndex           int
-	nextBundleOffsetIndex int
+	buf                      []byte
+	sharedAndBundlePrefixLen uint32
+	offsetIndex              int
+	nextBundleOffsetIndex    int
 }
 
 // SetAt updates the provided PrefixBytesIter to hold the i'th []byte slice in
@@ -256,7 +255,7 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	// Determine the offset and length of the bundle prefix.
 	bundleOffsetIndex := b.bundleOffsetIndexForRow(i)
 	bundleOffsetStart, bundleOffsetEnd := b.rawBytes.offsets.At2(bundleOffsetIndex)
-	it.bundlePrefixLen = bundleOffsetEnd - bundleOffsetStart
+	bundlePrefixLen := bundleOffsetEnd - bundleOffsetStart
 
 	// Determine the offset and length of the row's individual suffix.
 	it.offsetIndex = b.rowSuffixIndex(i)
@@ -267,7 +266,8 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	rowSuffixStart, rowSuffixEnd := b.rowSuffixOffsets(i, it.offsetIndex)
 	rowSuffixLen := rowSuffixEnd - rowSuffixStart
 
-	it.buf = it.buf[:b.sharedPrefixLen+int(it.bundlePrefixLen+rowSuffixLen)]
+	it.sharedAndBundlePrefixLen = uint32(b.sharedPrefixLen) + bundlePrefixLen
+	it.buf = it.buf[:it.sharedAndBundlePrefixLen+rowSuffixLen]
 
 	ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
 	// Copy the shared key prefix.
@@ -276,10 +276,11 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	memmove(
 		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(bundleOffsetStart)),
-		uintptr(it.bundlePrefixLen))
+		uintptr(bundlePrefixLen))
+
 	// Copy the per-row suffix.
 	memmove(
-		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
+		unsafe.Pointer(uintptr(ptr)+uintptr(it.sharedAndBundlePrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 		uintptr(rowSuffixLen))
 	// Set nextBundleOffsetIndex so that a call to SetNext can cheaply determine
@@ -305,11 +306,11 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 			// nothing left to do, we can leave buf as-is.
 			return
 		}
-		it.buf = it.buf[:b.sharedPrefixLen+int(it.bundlePrefixLen+rowSuffixLen)]
+		it.buf = it.buf[:it.sharedAndBundlePrefixLen+rowSuffixLen]
 		// Copy in the per-row suffix.
 		ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
 		memmove(
-			unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
+			unsafe.Pointer(uintptr(ptr)+uintptr(it.sharedAndBundlePrefixLen)),
 			unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 			uintptr(rowSuffixLen))
 		return
@@ -325,19 +326,20 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 	// Read the offsets of the new bundle prefix and update the index of the
 	// next bundle.
 	bundlePrefixStart := b.rawBytes.offsets.At(it.nextBundleOffsetIndex)
-	it.bundlePrefixLen = rowSuffixStart - bundlePrefixStart
+	bundlePrefixLen := rowSuffixStart - bundlePrefixStart
 	it.nextBundleOffsetIndex = it.offsetIndex + (1 << b.bundleShift)
 
-	it.buf = it.buf[:b.sharedPrefixLen+int(it.bundlePrefixLen+rowSuffixLen)]
+	it.sharedAndBundlePrefixLen = uint32(b.sharedPrefixLen) + bundlePrefixLen
+	it.buf = it.buf[:it.sharedAndBundlePrefixLen+rowSuffixLen]
 	// Copy in the new bundle suffix.
 	ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
 	memmove(
 		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(bundlePrefixStart)),
-		uintptr(it.bundlePrefixLen))
+		uintptr(bundlePrefixLen))
 	// Copy in the per-row suffix.
 	memmove(
-		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
+		unsafe.Pointer(uintptr(ptr)+uintptr(it.sharedAndBundlePrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 		uintptr(rowSuffixLen))
 }
