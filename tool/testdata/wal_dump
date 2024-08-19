@@ -6,15 +6,15 @@ wal dump
 ../testdata/db-stage-2/000002.log
 ----
 000002.log
-0(21) seq=10 count=1
+0(21) seq=10 count=1, len=21
     SET(test formatter: foo,test value formatter: one)
-32(21) seq=11 count=1
+32(21) seq=11 count=1, len=21
     SET(test formatter: bar,test value formatter: two)
-64(23) seq=12 count=1
+64(23) seq=12 count=1, len=23
     SET(test formatter: baz,test value formatter: three)
-98(22) seq=13 count=1
+98(22) seq=13 count=1, len=22
     SET(test formatter: foo,test value formatter: four)
-131(17) seq=14 count=1
+131(17) seq=14 count=1, len=17
     DEL(test formatter: bar)
 EOF
 
@@ -24,15 +24,15 @@ wal dump
 --value=size
 ----
 000002.log
-0(21) seq=10 count=1
+0(21) seq=10 count=1, len=21
     SET(foo,<3>)
-32(21) seq=11 count=1
+32(21) seq=11 count=1, len=21
     SET(bar,<3>)
-64(23) seq=12 count=1
+64(23) seq=12 count=1, len=23
     SET(baz,<5>)
-98(22) seq=13 count=1
+98(22) seq=13 count=1, len=22
     SET(foo,<4>)
-131(17) seq=14 count=1
+131(17) seq=14 count=1, len=17
     DEL(bar)
 EOF
 
@@ -42,11 +42,11 @@ wal dump
 ../testdata/db-stage-4/000005.log
 ----
 000005.log
-0(22) seq=15 count=1
+0(22) seq=15 count=1, len=22
     SET(foo,<4>)
-33(22) seq=16 count=1
+33(22) seq=16 count=1, len=22
     SET(quux,<3>)
-66(17) seq=17 count=1
+66(17) seq=17 count=1, len=17
     DEL(baz)
 EOF
 
@@ -56,11 +56,11 @@ wal dump
 --value=%x
 ----
 000005.log
-0(22) seq=15 count=1
+0(22) seq=15 count=1, len=22
     SET(666f6f,66697665)
-33(22) seq=16 count=1
+33(22) seq=16 count=1, len=22
     SET(71757578,736978)
-66(17) seq=17 count=1
+66(17) seq=17 count=1, len=17
     DEL(62617a)
 EOF
 
@@ -70,11 +70,11 @@ wal dump
 --value=pretty:test-comparer
 ----
 000005.log
-0(22) seq=15 count=1
+0(22) seq=15 count=1, len=22
     SET(foo,test value formatter: five)
-33(22) seq=16 count=1
+33(22) seq=16 count=1, len=22
     SET(quux,test value formatter: six)
-66(17) seq=17 count=1
+66(17) seq=17 count=1, len=17
     DEL(baz)
 EOF
 
@@ -84,11 +84,11 @@ wal dump
 --value=%x
 ----
 000005.log
-0(22) seq=15 count=1
+0(22) seq=15 count=1, len=22
     SET(test formatter: foo,66697665)
-33(22) seq=16 count=1
+33(22) seq=16 count=1, len=22
     SET(test formatter: quux,736978)
-66(17) seq=17 count=1
+66(17) seq=17 count=1, len=17
     DEL(test formatter: baz)
 EOF
 
@@ -98,11 +98,11 @@ wal dump
 --value=quoted
 ----
 000005.log
-0(22) seq=15 count=1
+0(22) seq=15 count=1, len=22
     SET(foo,five)
-33(22) seq=16 count=1
+33(22) seq=16 count=1, len=22
     SET(quux,six)
-66(17) seq=17 count=1
+66(17) seq=17 count=1, len=17
     DEL(baz)
 EOF
 
@@ -110,7 +110,7 @@ wal dump
 ./testdata/mixed/000004.log
 ----
 000004.log
-0(42) seq=39 count=4
+0(42) seq=39 count=4, len=42
     SET(test formatter: a@2,test value formatter: )
     RANGEKEYSET(test formatter: a-test formatter: z:{(#40,RANGEKEYSET,@3)})
     RANGEKEYUNSET(test formatter: a-test formatter: z:{(#41,RANGEKEYUNSET,@4)})
