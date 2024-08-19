@@ -329,3 +329,46 @@ r.NextRecord() = (rr, (000006-001.log: 93890), <nil>)
   io.ReadAll(rr) = ("1d0200000000000005000000b68c7a260135dce1ce5c5498550793d15edfae62... <2055-byte record>", <nil>)
   BatchHeader: [seqNum=541,count=5]
 r.NextRecord() = (rr, (000006-001.log: 95956), EOF)
+
+# Test corrupting the tail of a batch that's large enough to be split into
+# multiple reads. Regression test for #3865.
+
+define logNum=000007 unclean-close
+batch count=2 seq=95499 size=44 sync
+batch count=5 seq=95501 size=416 sync
+batch count=29 seq=95506 size=199 sync
+batch count=19 seq=95535 size=45991 sync
+corrupt-tail len=1020
+----
+created "000007.log"
+0..55: batch #95499
+55..482: batch #95501
+482..692: batch #95506
+692..46705: batch #95535
+
+define logNum=000007 logNameIndex=001
+batch count=19 seq=95535 size=45991 sync
+batch count=19 seq=95554 size=292 sync
+----
+created "000007-001.log"
+0..46013: batch #95535
+46013..46316: batch #95554
+
+read logNum=000007
+----
+r.NextRecord() = (rr, (000007.log: 0), <nil>)
+  io.ReadAll(rr) = ("0b7501000000000002000000e48d154602d9c44d74851cfa9ff3403655489ab5... <44-byte record>", <nil>)
+  BatchHeader: [seqNum=95499,count=2]
+r.NextRecord() = (rr, (000007.log: 55), <nil>)
+  io.ReadAll(rr) = ("0d75010000000000050000008ef212bddc565748772200669dee9f906f7fe83d... <416-byte record>", <nil>)
+  BatchHeader: [seqNum=95501,count=5]
+r.NextRecord() = (rr, (000007.log: 482), <nil>)
+  io.ReadAll(rr) = ("12750100000000001d000000362bba27f0ed6f5433a12bc502873a27c67f256c... <199-byte record>", <nil>)
+  BatchHeader: [seqNum=95506,count=29]
+r.NextRecord() = (rr, (000007-001.log: 0), <nil>)
+  io.ReadAll(rr) = ("2f75010000000000130000001ddd809cbb45782c44544a15a15dd52fb7b81a74... <45991-byte record>", <nil>)
+  BatchHeader: [seqNum=95535,count=19]
+r.NextRecord() = (rr, (000007-001.log: 46013), <nil>)
+  io.ReadAll(rr) = ("427501000000000013000000b30c11cf619ea65167511346cc55bb784a9af26f... <292-byte record>", <nil>)
+  BatchHeader: [seqNum=95554,count=19]
+r.NextRecord() = (rr, (000007-001.log: 46316), EOF)
