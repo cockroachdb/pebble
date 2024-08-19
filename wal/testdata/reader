@@ -14,16 +14,16 @@ created "000001.log"
 
 read logNum=000001
 ----
-r.NextRecord() = (rr, (000001.log: 0), <nil>)
+r.NextRecord() = (rr, (000001.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("01000000000000000300000052fdfc072182654f163f5f0f9a621d729566c74d... <1024-byte record>", <nil>)
   BatchHeader: [seqNum=1,count=3]
-r.NextRecord() = (rr, (000001.log: 1035), <nil>)
+r.NextRecord() = (rr, (000001.log: 1035), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("140000000000000002000000408e3969c2e2cdcf233438bf1774ace7709a", <nil>)
   BatchHeader: [seqNum=20,count=2]
-r.NextRecord() = (rr, (000001.log: 1076), <nil>)
+r.NextRecord() = (rr, (000001.log: 1076), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1500000000000000320000004f091e9a83fdeae0ec55eb233a9b5394cb3c7856... <512000-byte record>", <nil>)
   BatchHeader: [seqNum=21,count=50]
-r.NextRecord() = (rr, (000001.log: 513252), EOF)
+r.NextRecord() = (rr, (000001.log: 513252), 0 from previous files, EOF)
 
 # Add a new physical file for the same logical log, this one with a batch that
 # only contains a LogData. This exercises a subtlety in which a sequence number
@@ -43,22 +43,22 @@ created "000001-001.log"
 
 read logNum=000001
 ----
-r.NextRecord() = (rr, (000001.log: 0), <nil>)
+r.NextRecord() = (rr, (000001.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("01000000000000000300000052fdfc072182654f163f5f0f9a621d729566c74d... <1024-byte record>", <nil>)
   BatchHeader: [seqNum=1,count=3]
-r.NextRecord() = (rr, (000001.log: 1035), <nil>)
+r.NextRecord() = (rr, (000001.log: 1035), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("140000000000000002000000408e3969c2e2cdcf233438bf1774ace7709a", <nil>)
   BatchHeader: [seqNum=20,count=2]
-r.NextRecord() = (rr, (000001.log: 1076), <nil>)
+r.NextRecord() = (rr, (000001.log: 1076), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1500000000000000320000004f091e9a83fdeae0ec55eb233a9b5394cb3c7856... <512000-byte record>", <nil>)
   BatchHeader: [seqNum=21,count=50]
-r.NextRecord() = (rr, (000001-001.log: 0), <nil>)
+r.NextRecord() = (rr, (000001-001.log: 0), 513252 from previous files, <nil>)
   io.ReadAll(rr) = ("16000000000000000200000038d0ccacfb33b57fb3d386cbe2b67a2fbdc82214... <412-byte record>", <nil>)
   BatchHeader: [seqNum=22,count=2]
-r.NextRecord() = (rr, (000001-001.log: 498), <nil>)
+r.NextRecord() = (rr, (000001-001.log: 498), 513252 from previous files, <nil>)
   io.ReadAll(rr) = ("180000000000000001000000ede8f156c48faf84dd55235d19a2df01d13021fc... <100-byte record>", <nil>)
   BatchHeader: [seqNum=24,count=1]
-r.NextRecord() = (rr, (000001-001.log: 609), EOF)
+r.NextRecord() = (rr, (000001-001.log: 609), 513252 from previous files, EOF)
 
 # Test a recycled log file. Recycle 000001.log as 000002.log. This time, do not
 # exit cleanly. This simulates a hard process exit (eg, during a fatal shutdown,
@@ -81,16 +81,16 @@ recycled "000001.log" as "000002.log"
 
 read logNum=000002
 ----
-r.NextRecord() = (rr, (000002.log: 0), <nil>)
+r.NextRecord() = (rr, (000002.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("0a000000000000000a0000007debf464698cb1084cb57d385b0d7eafbf01e41c... <100-byte record>", <nil>)
   BatchHeader: [seqNum=10,count=10]
-r.NextRecord() = (rr, (000002.log: 111), <nil>)
+r.NextRecord() = (rr, (000002.log: 111), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1400000000000000160000006db5b2c70b9dab36e3d61260d8578c9edc4fbc70... <150-byte record>", <nil>)
   BatchHeader: [seqNum=20,count=22]
-r.NextRecord() = (rr, (000002.log: 272), <nil>)
+r.NextRecord() = (rr, (000002.log: 272), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("2a000000000000000100000064713cda5c5a3723971819a640589926f23d6342... <64000-byte record>", <nil>)
   BatchHeader: [seqNum=42,count=1]
-r.NextRecord() = (rr, (000002.log: 64294), pebble/record: invalid chunk)
+r.NextRecord() = (rr, (000002.log: 64294), 0 from previous files, pebble/record: invalid chunk)
 
 # Test a typical failure scenario. Start off with a recycled log file (000003)
 # that would be on the primary device. It closes "unclean" because we're unable
@@ -125,22 +125,22 @@ created "000003-001.log"
 
 read logNum=000003
 ----
-r.NextRecord() = (rr, (000003.log: 0), <nil>)
+r.NextRecord() = (rr, (000003.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("0a000000000000000a0000009cb1f02ec47b54a974cdf40ffa6721505c795e7e... <100-byte record>", <nil>)
   BatchHeader: [seqNum=10,count=10]
-r.NextRecord() = (rr, (000003.log: 111), <nil>)
+r.NextRecord() = (rr, (000003.log: 111), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1400000000000000160000004fc0ed1998a53d1695b93be7ef4e8e09a7d06e9f... <150-byte record>", <nil>)
   BatchHeader: [seqNum=20,count=22]
-r.NextRecord() = (rr, (000003.log: 272), <nil>)
+r.NextRecord() = (rr, (000003.log: 272), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("2a000000000000000100000019458dc5400169e5", <nil>)
   BatchHeader: [seqNum=42,count=1]
-r.NextRecord() = (rr, (000003-001.log: 192), <nil>)
+r.NextRecord() = (rr, (000003-001.log: 192), 303 from previous files, <nil>)
   io.ReadAll(rr) = ("2b00000000000000030000009cbf29476e797bac2db8bfea65bda29ea50ddbe4... <80-byte record>", <nil>)
   BatchHeader: [seqNum=43,count=3]
-r.NextRecord() = (rr, (000003-001.log: 283), <nil>)
+r.NextRecord() = (rr, (000003-001.log: 283), 303 from previous files, <nil>)
   io.ReadAll(rr) = ("2e000000000000000900000027337fa5bd626044dc5d9d08085bf4ce13bc8d00... <2055-byte record>", <nil>)
   BatchHeader: [seqNum=46,count=9]
-r.NextRecord() = (rr, (000003-001.log: 2349), EOF)
+r.NextRecord() = (rr, (000003-001.log: 2349), 303 from previous files, EOF)
 
 # Extend logical log file 000003 with another log file, the result of failing
 # back to the original the device. This time do an "unclean" close.
@@ -157,25 +157,25 @@ created "000003-002.log"
 
 read logNum=000003
 ----
-r.NextRecord() = (rr, (000003.log: 0), <nil>)
+r.NextRecord() = (rr, (000003.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("0a000000000000000a0000009cb1f02ec47b54a974cdf40ffa6721505c795e7e... <100-byte record>", <nil>)
   BatchHeader: [seqNum=10,count=10]
-r.NextRecord() = (rr, (000003.log: 111), <nil>)
+r.NextRecord() = (rr, (000003.log: 111), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1400000000000000160000004fc0ed1998a53d1695b93be7ef4e8e09a7d06e9f... <150-byte record>", <nil>)
   BatchHeader: [seqNum=20,count=22]
-r.NextRecord() = (rr, (000003.log: 272), <nil>)
+r.NextRecord() = (rr, (000003.log: 272), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("2a000000000000000100000019458dc5400169e5", <nil>)
   BatchHeader: [seqNum=42,count=1]
-r.NextRecord() = (rr, (000003-001.log: 192), <nil>)
+r.NextRecord() = (rr, (000003-001.log: 192), 303 from previous files, <nil>)
   io.ReadAll(rr) = ("2b00000000000000030000009cbf29476e797bac2db8bfea65bda29ea50ddbe4... <80-byte record>", <nil>)
   BatchHeader: [seqNum=43,count=3]
-r.NextRecord() = (rr, (000003-001.log: 283), <nil>)
+r.NextRecord() = (rr, (000003-001.log: 283), 303 from previous files, <nil>)
   io.ReadAll(rr) = ("2e000000000000000900000027337fa5bd626044dc5d9d08085bf4ce13bc8d00... <2055-byte record>", <nil>)
   BatchHeader: [seqNum=46,count=9]
-r.NextRecord() = (rr, (000003-002.log: 2157), <nil>)
+r.NextRecord() = (rr, (000003-002.log: 2157), 2652 from previous files, <nil>)
   io.ReadAll(rr) = ("370000000000000002000000ff0710201f4008e679428b4994708a1af8507303... <205-byte record>", <nil>)
   BatchHeader: [seqNum=55,count=2]
-r.NextRecord() = (rr, (000003-002.log: 2373), EOF)
+r.NextRecord() = (rr, (000003-002.log: 2373), 2652 from previous files, EOF)
 
 # Test reading a log file that does not exist.
 
@@ -198,10 +198,10 @@ created "000004.log"
 
 read logNum=000004
 ----
-r.NextRecord() = (rr, (000004.log: 0), <nil>)
+r.NextRecord() = (rr, (000004.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("0100000000000000010000009a1b1b9e43558bba", <nil>)
   BatchHeader: [seqNum=1,count=1]
-r.NextRecord() = (rr, (000004.log: 31), pebble: corrupt log file logNum=4, logNameIndex=000: invalid batch)
+r.NextRecord() = (rr, (000004.log: 31), 0 from previous files, pebble: corrupt log file logNum=4, logNameIndex=000: invalid batch)
 
 # Test a two segment log file where the second log file ends in garbage. The
 # invalid chunk error of the final log file should be propagated up.
@@ -231,28 +231,28 @@ created "000005-001.log"
 
 read logNum=000005
 ----
-r.NextRecord() = (rr, (000005.log: 0), <nil>)
+r.NextRecord() = (rr, (000005.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("f97301000000000001000000ba609cd6f3a753ff06b2814e96b56fbc0e02a5c0... <592-byte record>", <nil>)
   BatchHeader: [seqNum=95225,count=1]
-r.NextRecord() = (rr, (000005.log: 603), <nil>)
+r.NextRecord() = (rr, (000005.log: 603), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("fa7301000000000009000000a5f232151b9e00243e5737fdcf83e7ffcb495e41... <295-byte record>", <nil>)
   BatchHeader: [seqNum=95226,count=9]
-r.NextRecord() = (rr, (000005.log: 909), <nil>)
+r.NextRecord() = (rr, (000005.log: 909), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("037401000000000008000000bc380c1c503de185910401b05527b1788900bbfd... <2525-byte record>", <nil>)
   BatchHeader: [seqNum=95235,count=8]
-r.NextRecord() = (rr, (000005.log: 3445), <nil>)
+r.NextRecord() = (rr, (000005.log: 3445), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("0b7401000000000000010000907cd29c9a6deaf239e76e3374f6e9eef047f57f... <2566-byte record>", <nil>)
   BatchHeader: [seqNum=95243,count=256]
-r.NextRecord() = (rr, (000005-001.log: 0), <nil>)
+r.NextRecord() = (rr, (000005-001.log: 0), 6022 from previous files, <nil>)
   io.ReadAll(rr) = ("0b75010000000000020000006cad8a0a1461d1ec53bb834b47c6853e040ae9ce... <44-byte record>", <nil>)
   BatchHeader: [seqNum=95499,count=2]
-r.NextRecord() = (rr, (000005-001.log: 55), <nil>)
+r.NextRecord() = (rr, (000005-001.log: 55), 6022 from previous files, <nil>)
   io.ReadAll(rr) = ("0d7501000000000005000000c78be2f74d28753a03854ed63e6fd0f17113688d... <416-byte record>", <nil>)
   BatchHeader: [seqNum=95501,count=5]
-r.NextRecord() = (rr, (000005-001.log: 482), <nil>)
+r.NextRecord() = (rr, (000005-001.log: 482), 6022 from previous files, <nil>)
   io.ReadAll(rr) = ("12750100000000001d00000096cedf6103af61c008d9f850e63a1dfc7518b9a7... <199-byte record>", <nil>)
   BatchHeader: [seqNum=95506,count=29]
-r.NextRecord() = (rr, (000005-001.log: 692), pebble/record: invalid chunk)
+r.NextRecord() = (rr, (000005-001.log: 692), 6022 from previous files, pebble/record: invalid chunk)
 
 # Read again, this time pretending we found a third segment with the
 # logNameIndex=002. This helps exercise error conditions switching to a new
@@ -260,28 +260,28 @@ r.NextRecord() = (rr, (000005-001.log: 692), pebble/record: invalid chunk)
 
 read logNum=000005 forceLogNameIndexes=(002)
 ----
-r.NextRecord() = (rr, (000005.log: 0), <nil>)
+r.NextRecord() = (rr, (000005.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("f97301000000000001000000ba609cd6f3a753ff06b2814e96b56fbc0e02a5c0... <592-byte record>", <nil>)
   BatchHeader: [seqNum=95225,count=1]
-r.NextRecord() = (rr, (000005.log: 603), <nil>)
+r.NextRecord() = (rr, (000005.log: 603), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("fa7301000000000009000000a5f232151b9e00243e5737fdcf83e7ffcb495e41... <295-byte record>", <nil>)
   BatchHeader: [seqNum=95226,count=9]
-r.NextRecord() = (rr, (000005.log: 909), <nil>)
+r.NextRecord() = (rr, (000005.log: 909), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("037401000000000008000000bc380c1c503de185910401b05527b1788900bbfd... <2525-byte record>", <nil>)
   BatchHeader: [seqNum=95235,count=8]
-r.NextRecord() = (rr, (000005.log: 3445), <nil>)
+r.NextRecord() = (rr, (000005.log: 3445), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("0b7401000000000000010000907cd29c9a6deaf239e76e3374f6e9eef047f57f... <2566-byte record>", <nil>)
   BatchHeader: [seqNum=95243,count=256]
-r.NextRecord() = (rr, (000005-001.log: 0), <nil>)
+r.NextRecord() = (rr, (000005-001.log: 0), 6022 from previous files, <nil>)
   io.ReadAll(rr) = ("0b75010000000000020000006cad8a0a1461d1ec53bb834b47c6853e040ae9ce... <44-byte record>", <nil>)
   BatchHeader: [seqNum=95499,count=2]
-r.NextRecord() = (rr, (000005-001.log: 55), <nil>)
+r.NextRecord() = (rr, (000005-001.log: 55), 6022 from previous files, <nil>)
   io.ReadAll(rr) = ("0d7501000000000005000000c78be2f74d28753a03854ed63e6fd0f17113688d... <416-byte record>", <nil>)
   BatchHeader: [seqNum=95501,count=5]
-r.NextRecord() = (rr, (000005-001.log: 482), <nil>)
+r.NextRecord() = (rr, (000005-001.log: 482), 6022 from previous files, <nil>)
   io.ReadAll(rr) = ("12750100000000001d00000096cedf6103af61c008d9f850e63a1dfc7518b9a7... <199-byte record>", <nil>)
   BatchHeader: [seqNum=95506,count=29]
-r.NextRecord() = (rr, (000005-002.log: 0), opening WAL file segment "000005-002.log": open 000005-002.log: file does not exist)
+r.NextRecord() = (rr, (000005-002.log: 0), 6714 from previous files, opening WAL file segment "000005-002.log": open 000005-002.log: file does not exist)
 
 # Test a scenario where 4 unique batches are split across three physical log
 # files. The first log contains (b0, b1, b2), the second log (b1) and the third
@@ -316,16 +316,16 @@ created "000006-001.log"
 
 read logNum=000006
 ----
-r.NextRecord() = (rr, (000006.log: 0), <nil>)
+r.NextRecord() = (rr, (000006.log: 0), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("170200000000000003000000cee7fc8a6db4d4cd39d0790e02d05d1c062f56fe... <395-byte record>", <nil>)
   BatchHeader: [seqNum=535,count=3]
-r.NextRecord() = (rr, (000006.log: 406), <nil>)
+r.NextRecord() = (rr, (000006.log: 406), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1a02000000000000020000000dc70d396bcbc5fc05541c74c95cdaec1232c110... <93666-byte record>", <nil>)
   BatchHeader: [seqNum=538,count=2]
-r.NextRecord() = (rr, (000006.log: 94105), <nil>)
+r.NextRecord() = (rr, (000006.log: 94105), 0 from previous files, <nil>)
   io.ReadAll(rr) = ("1c0200000000000001000000404841433f5369713ee90d8f86c50c5903fa38e9... <180-byte record>", <nil>)
   BatchHeader: [seqNum=540,count=1]
-r.NextRecord() = (rr, (000006-001.log: 93890), <nil>)
+r.NextRecord() = (rr, (000006-001.log: 93890), 94296 from previous files, <nil>)
   io.ReadAll(rr) = ("1d0200000000000005000000b68c7a260135dce1ce5c5498550793d15edfae62... <2055-byte record>", <nil>)
   BatchHeader: [seqNum=541,count=5]
-r.NextRecord() = (rr, (000006-001.log: 95956), EOF)
+r.NextRecord() = (rr, (000006-001.log: 95956), 94296 from previous files, EOF)

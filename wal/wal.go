@@ -423,10 +423,16 @@ type Offset struct {
 	// Physical indicates the file offset at which a record begins within
 	// the physical file named by PhysicalFile.
 	Physical int64
+	// PreviousFilesBytes is the bytes read from all the previous physical
+	// segment files that have been read up to the current log segment. If WAL
+	// failover is not in use, PreviousFileBytes will always be zero. Otherwise,
+	// it may be non-zero when replaying records from multiple segment files
+	// that make up a single logical WAL.
+	PreviousFilesBytes int64
 }
 
 // String implements fmt.Stringer, returning a string representation of the
 // offset.
 func (o Offset) String() string {
-	return fmt.Sprintf("(%s: %d)", o.PhysicalFile, o.Physical)
+	return fmt.Sprintf("(%s: %d), %d from previous files", o.PhysicalFile, o.Physical, o.PreviousFilesBytes)
 }
