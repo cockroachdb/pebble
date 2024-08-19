@@ -105,9 +105,11 @@ type KeySeeker interface {
 	// may be set in practice.
 	SeekGE(key []byte, boundRow int, searchDir int8) (row int)
 	// MaterializeUserKey materializes the user key of the specified row,
-	// returning a slice of the materialized user key.  The caller may use the
-	// provided keyIter and its buffer to avoid allocations and reduce work. The
-	// prevRow parameter is the row MaterializeUserKey was last invoked with.
+	// returning a slice of the materialized user key.
+	//
+	// The provided keyIter must have a buffer large enough to hold the key.
+	//
+	// The prevRow parameter is the row MaterializeUserKey was last invoked with.
 	// Implementations may take advantage of that knowledge to reduce work.
 	MaterializeUserKey(keyIter *PrefixBytesIter, prevRow, row int) []byte
 	// Release releases the KeySeeker. It's called when the seeker is no longer
@@ -317,6 +319,7 @@ func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
 	return l
 }
 
+// MaterializeUserKey is part of the colblk.KeySeeker interface.
 func (ks *defaultKeySeeker) MaterializeUserKey(keyIter *PrefixBytesIter, prevRow, row int) []byte {
 	if row == prevRow+1 && prevRow >= 0 {
 		ks.prefixes.SetNext(keyIter)

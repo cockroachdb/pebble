@@ -168,6 +168,9 @@ type cockroachKeySeeker struct {
 	sharedPrefix    []byte
 }
 
+var _ KeySeeker = (*cockroachKeySeeker)(nil)
+
+// Init is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
 	ks.reader = r
 	ks.prefixes = r.r.PrefixBytes(cockroachColPrefix)
@@ -178,6 +181,7 @@ func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
 	return nil
 }
 
+// SeekGE is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) SeekGE(key []byte, currRow int, dir int8) (row int) {
 	// TODO(jackson): Inline crdbtest.Split.
 	si := crdbtest.Split(key)
@@ -258,6 +262,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 	return l
 }
 
+// MaterializeUserKey is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) MaterializeUserKey(ki *PrefixBytesIter, prevRow, row int) []byte {
 	if prevRow+1 == row && prevRow >= 0 {
 		ks.prefixes.SetNext(ki)
@@ -286,6 +291,7 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(ki *PrefixBytesIter, prevRow, r
 	return unsafe.Slice((*byte)(ki.ptr), ki.len+13)
 }
 
+// Release is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) Release() {
 	*ks = cockroachKeySeeker{}
 	cockroachKeySeekerPool.Put(ks)
