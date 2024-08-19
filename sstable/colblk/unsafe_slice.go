@@ -92,23 +92,27 @@ func makeUnsafeUints(base uint64, ptr unsafe.Pointer, width int) UnsafeUints {
 
 // At returns the `i`-th element.
 func (s UnsafeUints) At(i int) uint64 {
-	// TODO(jackson): Experiment with other alternatives that might be faster
-	// and avoid switching on the width.
-	switch s.width {
-	case 0:
-		return s.base
-	case 1:
-		return s.base + uint64(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
-	case 2:
-		return s.base + uint64(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
-	case 4:
-		return s.base + uint64(*(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift)))
-	default:
+	// TODO(radu): this implementation assumes little-endian architecture.
+
+	// One of the most common case is decoding timestamps, which require the full
+	// 8 bytes (2^32 nanoseconds is only ~4 seconds).
+	if s.width == 8 {
 		// NB: The slice encodes 64-bit integers, there is no base (it doesn't save
 		// any bits to compute a delta). We cast directly into a *uint64 pointer and
 		// don't add the base.
 		return *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align64Shift))
 	}
+	// Another common case is 0 width, when all keys have zero logical timestamps.
+	if s.width == 0 {
+		return s.base
+	}
+	if s.width == 4 {
+		return s.base + uint64(*(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift)))
+	}
+	if s.width == 2 {
+		return s.base + uint64(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
+	}
+	return s.base + uint64(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
 }
 
 // UnsafeOffsets is a specialization of UnsafeInts (providing the same
@@ -135,6 +139,8 @@ func DecodeUnsafeOffsets(b []byte, off uint32, rows int) (_ UnsafeOffsets, endOf
 
 // At returns the `i`-th offset.
 func (s UnsafeOffsets) At(i int) uint32 {
+	// TODO(radu): this implementation assumes little-endian architecture.
+
 	// We expect offsets to be encoded as 16-bit integers in most cases.
 	if s.width == 2 {
 		return uint32(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
@@ -146,6 +152,26 @@ func (s UnsafeOffsets) At(i int) uint32 {
 		return uint32(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
 	}
 	return *(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
+}
+
+// At2 returns the `i`-th and `i+1`-th offsets.
+func (s UnsafeOffsets) At2(i int) (uint32, uint32) {
+	// TODO(radu): this implementation assumes little-endian architecture.
+
+	// We expect offsets to be encoded as 16-bit integers in most cases.
+	if s.width == 2 {
+		v := *(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift))
+		return v & 0xFFFF, v >> 16
+	}
+	if s.width <= 1 {
+		if s.width == 0 {
+			return 0, 0
+		}
+		v := *(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)))
+		return uint32(v & 0xFF), uint32(v >> 8)
+	}
+	v := *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
+	return uint32(v), uint32(v >> 32)
 }
 
 // UnsafeBuf provides a buffer without bounds checking. Every buf has a len and

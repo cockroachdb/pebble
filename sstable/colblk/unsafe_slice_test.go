@@ -15,11 +15,56 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+func TestUnsafeUints(t *testing.T) {
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	for _, r := range interestingIntRanges {
+		t.Run(r.ExpectedEncoding.String(), func(t *testing.T) {
+			for _, rows := range []int{1, 10, 100, 10000} {
+				t.Run(fmt.Sprint(rows), func(t *testing.T) {
+					vals := make([]uint64, rows)
+					for i := range vals {
+						vals[i] = r.Rand(rng)
+					}
+					var ub UintBuilder
+					ub.Init()
+					for i := 0; i < rows; i++ {
+						ub.Set(i, vals[i])
+					}
+					sz := ub.Size(rows, 0)
+					buf := aligned.ByteSlice(int(sz) + 1 /* trailing padding byte */)
+					_ = ub.Finish(0, rows, 0, buf)
+
+					uints, _ := DecodeUnsafeUints(buf, 0, rows)
+					for i := range rows {
+						if uints.At(i) != vals[i] {
+							t.Fatalf("mismatch at row %d: got %d, expected %d", i, uints.At(i), vals[i])
+						}
+					}
+					if encoding := UintEncoding(buf[0]); encoding.Width() <= 4 && !encoding.IsDelta() {
+						offsets, _ := DecodeUnsafeOffsets(buf, 0, rows)
+						for i := range rows {
+							if uint64(offsets.At(i)) != vals[i] {
+								t.Fatalf("mismatch at row %d: got %d, expected %d", i, uints.At(i), vals[i])
+							}
+						}
+						for i := 0; i < rows-1; i++ {
+							a, b := offsets.At2(i)
+							if uint64(a) != vals[i] || uint64(b) != vals[i+1] {
+								t.Fatalf("mismatch at row %d: got %d,%d, expected %d,%d", i, a, b, vals[i], vals[i+1])
+							}
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func BenchmarkUnsafeUints(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	intRanges := []intRange{
-		// const
-		{Min: 1, Max: 1, ExpectedEncoding: makeUintEncoding(0, true)},
+		// zero
+		{Min: 0, Max: 0, ExpectedEncoding: makeUintEncoding(0, false)},
 		// 1b
 		{Min: 10, Max: 200, ExpectedEncoding: makeUintEncoding(1, false)},
 		// 1b,delta
@@ -31,10 +76,11 @@ func BenchmarkUnsafeUints(b *testing.B) {
 		// 4b
 		{Min: 0, Max: math.MaxUint32, ExpectedEncoding: makeUintEncoding(4, false)},
 		// 4b,delta
-		{Min: 100_000, Max: math.MaxUint32 + 10, ExpectedEncoding: makeUintEncoding(4, true)},
+		{Min: 1_000_000_100, Max: math.MaxUint32 + 1_000_000_000, ExpectedEncoding: makeUintEncoding(4, true)},
 		// 8b
 		{Min: 0, Max: math.MaxUint64, ExpectedEncoding: makeUintEncoding(8, false)},
 	}
+
 	for _, r := range intRanges {
 		benchmarkUnsafeUints(b, rng, 1000, r)
 	}
