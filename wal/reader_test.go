@@ -176,8 +176,15 @@ func TestReader(t *testing.T) {
 					rng.Read(garbage)
 					_, err := f.Write(garbage)
 					require.NoError(t, err)
-					require.NoError(t, f.Sync())
-					fields.HasValue("sync")
+					if fields.HasValue("sync") {
+						require.NoError(t, f.Sync())
+					}
+				case "corrupt-tail":
+					length := int64(fields.MustKeyValue("len").Int())
+					garbage := make([]byte, length)
+					rng.Read(garbage)
+					_, err := f.WriteAt(garbage, offset-length)
+					require.NoError(t, err)
 				default:
 					panic(fmt.Sprintf("unrecognized command %q", fields[0]))
 				}
