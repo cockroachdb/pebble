@@ -771,7 +771,7 @@ func (d *DB) replayWAL(
 		buf             bytes.Buffer
 		mem             *memTable
 		entry           *flushableEntry
-		offset          int64 // byte offset in rr
+		offset          wal.Offset
 		lastFlushOffset int64
 		keysReplayed    int64 // number of keys replayed
 		batchesReplayed int64 // number of batches replayed
@@ -797,12 +797,13 @@ func (d *DB) replayWAL(
 			return
 		}
 		var logSize uint64
-		if offset >= lastFlushOffset {
-			logSize = uint64(offset - lastFlushOffset)
+		mergedOffset := offset.Physical + offset.PreviousFilesBytes
+		if mergedOffset >= lastFlushOffset {
+			logSize = uint64(mergedOffset - lastFlushOffset)
 		}
 		// Else, this was the initial memtable in the read-only case which must have
 		// been empty, but we need to flush it since we don't want to add to it later.
-		lastFlushOffset = offset
+		lastFlushOffset = mergedOffset
 		entry.logSize = logSize
 		if !d.opts.ReadOnly {
 			toFlush = append(toFlush, entry)
@@ -841,12 +842,14 @@ func (d *DB) replayWAL(
 	}
 	defer func() {
 		if err != nil {
-			err = errors.WithDetailf(err, "replaying wal %d, offset %d", ll.Num, offset)
+			err = errors.WithDetailf(err, "replaying wal %d, offset %s", ll.Num, offset)
 		}
 	}()
 
 	for {
-		r, offset, err := rr.NextRecord()
+		var r io.Reader
+		var err error
+		r, offset, err = rr.NextRecord()
 		if err == nil {
 			_, err = io.Copy(&buf, r)
 		}
@@ -1053,7 +1056,7 @@ func (d *DB) replayWAL(
 		buf.Reset()
 	}
 
-	d.opts.Logger.Infof("[JOB %d] WAL %s stopped reading at offset: %d; replayed %d keys in %d batches",
+	d.opts.Logger.Infof("[JOB %d] WAL %s stopped reading at offset: %s; replayed %d keys in %d batches",
 		jobID, base.DiskFileNum(ll.Num).String(), offset, keysReplayed, batchesReplayed)
 	flushMem()
 
