@@ -241,8 +241,6 @@ var _ Reader = (*virtualWALReader)(nil)
 // are no more records. The reader returned becomes stale after the next
 // NextRecord call, and should no longer be used.
 func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
-	r.recordBuf.Reset()
-
 	// On the first call, we need to open the first file.
 	if r.currIndex < 0 {
 		err := r.nextFile()
@@ -271,6 +269,7 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 		// record to be exhausted to read all of the record's chunks before
 		// attempting to read the next record. Buffering also also allows us to
 		// easily read the header of the batch down below for deduplication.
+		r.recordBuf.Reset()
 		if err == nil {
 			_, err = io.Copy(&r.recordBuf, rec)
 		}
@@ -322,7 +321,6 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 		// sequence number. We can differentiate LogData-only batches through
 		// their batch headers: they'll encode a count of zero.
 		if h.Count == 0 {
-			r.recordBuf.Reset()
 			continue
 		}
 
@@ -330,7 +328,6 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 		// number, we must've already returned this record to the client. Skip
 		// it.
 		if h.SeqNum <= r.lastSeqNum {
-			r.recordBuf.Reset()
 			continue
 		}
 		r.lastSeqNum = h.SeqNum
