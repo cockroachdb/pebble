@@ -360,6 +360,7 @@ func (r *virtualWALReader) nextFile() error {
 	}
 
 	fs, path := r.LogicalLog.SegmentLocation(r.currIndex)
+	r.off.PreviousFilesBytes += r.off.Physical
 	r.off.PhysicalFile = path
 	r.off.Physical = 0
 	var err error
