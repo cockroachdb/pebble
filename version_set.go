@@ -170,9 +170,12 @@ func (vs *versionSet) create(
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
-	newVersion := &version{}
+	var bve bulkVersionEdit
+	newVersion, err := bve.Apply(nil /* curr */, opts.Comparer, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	if err != nil {
+		return err
+	}
 	vs.append(newVersion)
-	var err error
 
 	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
 	// Note that a "snapshot" version edit is written to the manifest when it is
