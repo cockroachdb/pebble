@@ -106,6 +106,7 @@ package record
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/cockroachdb/errors"
@@ -278,6 +279,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				// beyond the partial block of the new log.
 				return ErrInvalidChunk
 			}
+			fmt.Printf("returning EOF bc r.n < blockSize; wantFirst=%t\n", wantFirst)
 			return io.EOF
 		}
 		n, err := io.ReadFull(r.r, r.buf[:])
@@ -285,6 +287,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			if err == io.EOF && !wantFirst {
 				return io.ErrUnexpectedEOF
 			}
+			fmt.Printf("returning %s; wantFirst=%t\n", err, wantFirst)
 			return err
 		}
 		r.begin, r.end, r.n = 0, 0, n

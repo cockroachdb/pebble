@@ -264,6 +264,9 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 			}
 			continue
 		}
+		if v := r.recordBuf.Len(); v > 0 {
+			panic(errors.AssertionFailedf("recordBuf is not empty: %d", v))
+		}
 
 		// Copy the record into a buffer. This ensures we read its entirety so
 		// that NextRecord returns the next record, even if the caller never
@@ -273,6 +276,10 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 		// easily read the header of the batch down below for deduplication.
 		if err == nil {
 			_, err = io.Copy(&r.recordBuf, rec)
+			fmt.Println(err)
+			if err != nil && r.recordBuf.Len() != 0 {
+				panic("err != nil and r.recordBuf nonempty")
+			}
 		}
 		// The record may be malformed. This is expected during a WAL failover,
 		// because the tail of a WAL may be only partially written or otherwise

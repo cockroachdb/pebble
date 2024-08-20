@@ -754,6 +754,7 @@ func (wm *failoverManager) logCreator(
 			}
 		}()
 		if recycleOK {
+			fmt.Println("Recycling")
 			createInfo.RecycledFileNum = recycleLog.FileNum
 			recycleLogName := dir.FS.PathJoin(dir.Dirname, makeLogFilename(NumWAL(recycleLog.FileNum), 0))
 			r.writeStart()

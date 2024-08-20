@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,12 +19,15 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/metamorphic"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -1523,4 +1527,104 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+}
+
+func TestWALFailoverRandomized(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("seed %d", seed)
+	mem := vfs.NewStrictMem()
+	failoverOpts := WALFailoverOptions{
+		Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
+		FailoverOptions: wal.FailoverOptions{
+			PrimaryDirProbeInterval:      time.Microsecond,
+			HealthyProbeLatencyThreshold: 20 * time.Microsecond,
+			HealthyInterval:              10 * time.Microsecond,
+			UnhealthySamplingInterval:    time.Microsecond,
+			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+				return 10 * time.Microsecond, true
+			},
+			ElevatedWriteStallThresholdLag: 50 * time.Microsecond,
+		},
+	}
+	mkFS := func() vfs.FS {
+		mean := time.Duration(rand.ExpFloat64() * float64(time.Microsecond))
+		p := rand.Float64()
+		t.Logf("Injecting mean %s of latency with p=%.3f", mean, p)
+		return errorfs.Wrap(mem,
+			errorfs.RandomLatency(errorfs.Randomly(p, seed), mean, seed, time.Second))
+	}
+	o := &Options{
+		FS:                          mkFS(),
+		FormatMajorVersion:          internalFormatNewest,
+		Logger:                      testLogger{t},
+		MemTableSize:                128 << 10, // 128 KiB
+		MemTableStopWritesThreshold: 4,
+		WALFailover:                 &failoverOpts,
+	}
+	d, err := Open("primary", o)
+	require.NoError(t, err)
+
+	bigValue := make([]byte, 64<<10)
+	prime := func() {
+		for i := 0; i < 5; i++ {
+			b := d.NewBatch()
+			b.Set([]byte("a"), bigValue, nil)
+			require.NoError(t, d.Apply(b, Sync))
+			require.NoError(t, d.Flush())
+		}
+	}
+	prime()
+
+	rng := rand.New(rand.NewSource(seed))
+	var wg sync.WaitGroup
+	randomOps := metamorphic.Weighted[func()]{
+		{Weight: 1, Item: func() {
+			t.Log("hard crash")
+			time.Sleep(time.Microsecond * time.Duration(rand.Intn(30)))
+			mem.SetIgnoreSyncs(true)
+			wg.Wait() // Wait for outstanding batch commits to finish.
+			_ = d.Close()
+			mem.ResetToSyncedState()
+			mem.SetIgnoreSyncs(false)
+			o.FS = mkFS() // set new latencies
+			d, err = Open("primary", o)
+			require.NoError(t, err)
+			prime()
+		}},
+		{Weight: 20, Item: func() {
+			count := rng.Intn(14) + 1
+			var k [32]byte
+			var v [16384]byte
+			b := d.NewBatch()
+			for i := 0; i < count; i++ {
+				kn := rng.Intn(cap(k)-1) + 1
+				vn := rng.Intn(cap(v))
+				fillAlpha(rng, k[:kn])
+				fillAlpha(rng, v[:vn])
+				require.NoError(t, b.Set(k[:kn], v[:vn], nil))
+			}
+			maybeSync := NoSync
+			if rng.Intn(2) == 1 {
+				maybeSync = Sync
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				require.NoError(t, b.Commit(maybeSync))
+			}()
+		}},
+		{Weight: 5, Item: func() {
+			require.NoError(t, d.Flush())
+		}},
+	}
+	nextRandomOp := randomOps.RandomDeck(rng)
+	for o := 0; o < 1000; o++ {
+		nextRandomOp()()
+	}
+}
+
+func fillAlpha(rng *rand.Rand, b []byte) {
+	for i := range b {
+		b[i] = byte('a' + rng.Intn(27))
+	}
 }

@@ -924,6 +924,7 @@ func (w *LogWriter) SyncRecordGeneralized(p []byte, ps PendingSync) (logSize int
 	// MANIFEST is currently written using Writer, it is good to support the same
 	// semantics with LogWriter.
 	for i := 0; i == 0 || len(p) > 0; i++ {
+		time.Sleep(time.Millisecond)
 		p = w.emitFragment(i, p)
 	}
 
