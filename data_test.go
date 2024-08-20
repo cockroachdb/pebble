@@ -1331,7 +1331,6 @@ func (d *DB) waitTableStats() {
 
 func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	var exciseSpan KeyRange
-	var sstContainsExciseTombstone bool
 	paths := make([]string, 0, len(td.CmdArgs))
 	for i, arg := range td.CmdArgs {
 		switch td.CmdArgs[i].Key {
@@ -1345,14 +1344,12 @@ func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 			}
 			exciseSpan.Start = []byte(fields[0])
 			exciseSpan.End = []byte(fields[1])
-		case "contains-excise-tombstone":
-			sstContainsExciseTombstone = true
 		default:
 			paths = append(paths, arg.String())
 		}
 	}
 
-	if _, err := d.IngestAndExcise(context.Background(), paths, nil /* shared */, nil /* external */, exciseSpan, sstContainsExciseTombstone); err != nil {
+	if _, err := d.IngestAndExcise(context.Background(), paths, nil /* shared */, nil /* external */, exciseSpan); err != nil {
 		return err
 	}
 	return nil

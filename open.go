@@ -502,6 +502,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// 20.1 do not guarantee that closed WALs end cleanly. But the earliest
 		// compatible Pebble format is newer and guarantees a clean EOF.
 		strictWALTail := i < len(replayWALs)-1
+		// NB: replayWAL can individually apply version edits, in which case it'll
+		// zero-out ve internally before reusing it. We need to empty out toFlush
+		// if it did that.
 		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, lf, strictWALTail)
 		if err != nil {
 			return nil, err
@@ -510,6 +513,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		if d.mu.versions.logSeqNum.Load() < maxSeqNum {
 			d.mu.versions.logSeqNum.Store(maxSeqNum)
 		}
+	}
+	if d.mu.mem.mutable == nil && !d.opts.ReadOnly {
+		// Recreate the mutable memtable if replayWAL got rid of it.
+		var entry *flushableEntry
+		d.mu.mem.mutable, entry = d.newMemTable(d.mu.versions.getNextDiskFileNum(), d.mu.versions.logSeqNum.Load(), 0 /* minSize */)
+		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 	d.mu.versions.visibleSeqNum.Store(d.mu.versions.logSeqNum.Load())
 
@@ -851,11 +860,32 @@ func (d *DB) replayWAL(
 		if err != nil {
 			return err
 		}
-		newVE, _, err := d.runCompaction(jobID, c)
+		var newVE *versionEdit
+		if c.kind == compactionKindIngestedFlushable {
+			d.mu.versions.logLock()
+			newVE, err = d.runIngestFlush(c)
+			d.mu.versions.logUnlock()
+		} else {
+			newVE, _, err = d.runCompaction(jobID, c)
+		}
 		if err != nil {
 			return errors.Wrapf(err, "running compaction during WAL replay")
 		}
 		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
+		if newVE.DeletedFiles != nil {
+			if ve.DeletedFiles == nil {
+				ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
+			}
+			for i := range newVE.DeletedFiles {
+				ve.DeletedFiles[i] = newVE.DeletedFiles[i]
+			}
+		}
+		if newVE.CreatedBackingTables != nil {
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, newVE.CreatedBackingTables...)
+		}
+		if newVE.RemovedBackingTables != nil {
+			ve.RemovedBackingTables = append(ve.RemovedBackingTables, newVE.RemovedBackingTables...)
+		}
 		return nil
 	}
 	defer func() {
@@ -905,31 +935,101 @@ func (d *DB) replayWAL(
 		batchesReplayed++
 		{
 			br := b.Reader()
-			if kind, encodedFileNum, _, ok, err := br.Next(); err != nil {
+			if kind, encodedFileNum, val, ok, err := br.Next(); err != nil {
 				return nil, 0, err
-			} else if ok && kind == InternalKeyKindIngestSST {
+			} else if ok && (kind == InternalKeyKindIngestSST || kind == InternalKeyKindExcise) {
+				// We're in the flushable ingests (+ possibly excises) case.
+				//
+				// Ingests require an up-to-date view of the LSM to determine the target
+				// level of ingested sstables, and to accurately compute excises. Outside
+				// of this case, this function avoids calling logAndApply after every flushable
+				// as regular (memtable) flushes only add files to L0 and don't need an
+				// up-to-date Version.
+				//
+				// If we have an in-progress versionEdit, we need to apply it before we proceed
+				// with the flushable ingest.
+				if mem == nil && d.mu.mem.mutable != nil {
+					mem = d.mu.mem.mutable
+					entry = d.mu.mem.queue[len(d.mu.mem.queue)-1]
+					d.mu.mem.mutable = nil
+					d.mu.mem.queue = d.mu.mem.queue[:len(d.mu.mem.queue)-1]
+				}
+				if mem != nil {
+					mem.writerUnref()
+				}
+				flushMem()
+				// mem is nil here.
+				if !d.opts.ReadOnly && len(toFlush) > 0 {
+					if err := updateVE(); err != nil {
+						return nil, 0, err
+					}
+				}
+				if d.mu.versions.logSeqNum.Load() < maxSeqNum {
+					d.mu.versions.logSeqNum.Store(maxSeqNum)
+				}
+				d.mu.versions.visibleSeqNum.Store(d.mu.versions.logSeqNum.Load())
+				if !d.opts.ReadOnly {
+					if len(ve.NewFiles) > 0 {
+						// Create an empty .log file.
+						newLogNum := d.mu.versions.getNextDiskFileNum()
+						ve.MinUnflushedLogNum = newLogNum
+
+						// Create the manifest with the updated MinUnflushedLogNum before
+						// creating the new log file. If we created the log file first, a
+						// crash before the manifest is synced could leave two WALs with
+						// unclean tails.
+						d.mu.versions.logLock()
+						if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), false /* forceRotation */, func() []compactionInfo {
+							return nil
+						}); err != nil {
+							return nil, 0, err
+						}
+					}
+					for _, entry := range toFlush {
+						entry.readerUnrefLocked(true)
+					}
+					// We've already released the references to these memtables, so we clear
+					// them out of toFlush so the caller doesn't double-unref them. Plus we
+					// don't want to double-flush already flushed memtables in updateVE().
+					toFlush = toFlush[:0]
+					*ve = versionEdit{}
+				}
 				fileNums := make([]base.DiskFileNum, 0, b.Count())
+				var exciseSpan KeyRange
 				addFileNum := func(encodedFileNum []byte) {
 					fileNum, n := binary.Uvarint(encodedFileNum)
 					if n <= 0 {
-						panic("pebble: ingest sstable file num is invalid.")
+						panic("pebble: ingest sstable file num is invalid")
 					}
 					fileNums = append(fileNums, base.DiskFileNum(fileNum))
 				}
-				addFileNum(encodedFileNum)
+				if kind == base.InternalKeyKindExcise {
+					exciseSpan.Start = append([]byte(nil), encodedFileNum...)
+					exciseSpan.End = append([]byte(nil), val...)
+				} else {
+					addFileNum(encodedFileNum)
+				}
 
 				for i := 1; i < int(b.Count()); i++ {
-					kind, encodedFileNum, _, ok, err := br.Next()
+					kind, key, val, ok, err := br.Next()
 					if err != nil {
 						return nil, 0, err
 					}
-					if kind != InternalKeyKindIngestSST {
-						panic("pebble: invalid batch key kind.")
+					if kind != InternalKeyKindIngestSST && kind != InternalKeyKindExcise {
+						panic("pebble: invalid batch key kind")
 					}
 					if !ok {
-						panic("pebble: invalid batch count.")
+						panic("pebble: invalid batch count")
 					}
-					addFileNum(encodedFileNum)
+					if kind == base.InternalKeyKindExcise {
+						if exciseSpan.Valid() {
+							panic("pebble: multiple excise spans in a single batch")
+						}
+						exciseSpan.Start = append([]byte(nil), key...)
+						exciseSpan.End = append([]byte(nil), val...)
+						continue
+					}
+					addFileNum(key)
 				}
 
 				if _, _, _, ok, err := br.Next(); err != nil {
@@ -969,11 +1069,15 @@ func (d *DB) replayWAL(
 					}
 				}
 
-				if uint32(len(meta)) != b.Count() {
+				numFiles := len(meta)
+				if exciseSpan.Valid() {
+					numFiles++
+				}
+				if uint32(numFiles) != b.Count() {
 					panic("pebble: couldn't load all files in WAL entry.")
 				}
 
-				entry, err = d.newIngestedFlushableEntry(meta, seqNum, base.DiskFileNum(ll.Num), KeyRange{})
+				entry, err = d.newIngestedFlushableEntry(meta, seqNum, base.DiskFileNum(ll.Num), exciseSpan)
 				if err != nil {
 					return nil, 0, err
 				}
@@ -991,35 +1095,8 @@ func (d *DB) replayWAL(
 					d.mu.mem.mutable = nil
 				} else {
 					toFlush = append(toFlush, entry)
-					// During WAL replay, the lsm only has L0, hence, the
-					// baseLevel is 1. For the sake of simplicity, we place the
-					// ingested files in L0 here, instead of finding their
-					// target levels. This is a simplification for the sake of
-					// simpler code. It is expected that WAL replay should be
-					// rare, and that flushables of type ingestedFlushable
-					// should also be rare. So, placing the ingested files in L0
-					// is alright.
-					//
-					// TODO(bananabrick): Maybe refactor this function to allow
-					// us to easily place ingested files in levels as low as
-					// possible during WAL replay. It would require breaking up
-					// the application of ve to the manifest into chunks and is
-					// not pretty w/o a refactor to this function and how it's
-					// used.
-					c, err := newFlush(
-						d.opts, d.mu.versions.currentVersion(),
-						1, /* base level */
-						[]*flushableEntry{entry},
-						d.timeNow(),
-					)
-					if err != nil {
-						return nil, 0, err
-					}
-					for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file.FileMetadata})
-					}
 				}
-				return toFlush, maxSeqNum, nil
+				break
 			}
 		}
 
