@@ -482,6 +482,11 @@ func (w *DataBlockWriter) Finish() []byte {
 		Columns: uint16(cols),
 		Rows:    uint32(w.rows),
 	}
+
+	// Invert the prefix-same bitmap before writing it out, because we want it
+	// to represent when the prefix changes.
+	w.prefixSame.Invert(w.rows)
+
 	w.enc.init(w.Size(), h, dataBlockCustomHeaderSize)
 
 	// Write the max key length in the custom header.
@@ -493,9 +498,6 @@ func (w *DataBlockWriter) Finish() []byte {
 	// Write the internal key trailers.
 	w.enc.encode(w.rows, &w.trailers)
 
-	// Invert the prefix-same bitmap before writing it out, because we want it
-	// to represent when the prefix changes.
-	w.prefixSame.Invert(w.rows)
 	w.enc.encode(w.rows, &w.prefixSame)
 
 	// Write the value columns.
