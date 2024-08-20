@@ -271,6 +271,8 @@ func (w *walT) dumpBatch(
 		case base.InternalKeyKindIngestSST:
 			fileNum, _ := binary.Uvarint(ukey)
 			fmt.Fprintf(stdout, "%s", base.FileNum(fileNum))
+		case base.InternalKeyKindExcise:
+			fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
 		case base.InternalKeyKindSingleDelete:
 			fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 		case base.InternalKeyKindSetWithDelete:

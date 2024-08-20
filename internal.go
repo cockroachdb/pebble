@@ -29,6 +29,7 @@ const (
 	InternalKeyKindRangeKeyMax    = base.InternalKeyKindRangeKeyMax
 	InternalKeyKindIngestSST      = base.InternalKeyKindIngestSST
 	InternalKeyKindDeleteSized    = base.InternalKeyKindDeleteSized
+	InternalKeyKindExcise         = base.InternalKeyKindExcise
 	InternalKeyKindInvalid        = base.InternalKeyKindInvalid
 )
 

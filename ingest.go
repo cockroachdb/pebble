@@ -141,7 +141,7 @@ func ingestSynthesizeShared(
 		// a.RANGEDEL.100, with a.RANGEDEL.100 being the smallest key. To create a
 		// correct bound, we just use the maximum key kind (which sorts first).
 		// Similarly, we use the smallest key kind for the largest key.
-		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, base.InternalKeyKindMax)
+		smallestPointKey := base.MakeInternalKey(sm.SmallestPointKey.UserKey, 0, base.InternalKeyKindMaxForSstable)
 		largestPointKey := base.MakeInternalKey(sm.LargestPointKey.UserKey, 0, 0)
 		if sm.LargestPointKey.IsExclusiveSentinel() {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(sm.LargestPointKey.UserKey)
@@ -217,12 +217,12 @@ func ingestLoad1External(
 		if e.EndKeyIsInclusive {
 			meta.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
-				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeInternalKey(smallestCopy, 0, base.InternalKeyKindMaxForSstable),
 				base.MakeInternalKey(largestCopy, 0, 0))
 		} else {
 			meta.ExtendPointKeyBounds(
 				opts.Comparer.Compare,
-				base.MakeInternalKey(smallestCopy, 0, InternalKeyKindMax),
+				base.MakeInternalKey(smallestCopy, 0, base.InternalKeyKindMaxForSstable),
 				base.MakeRangeDeleteSentinelKey(largestCopy))
 		}
 	}
@@ -1038,7 +1038,7 @@ func (d *DB) Ingest(ctx context.Context, paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(ctx, paths, nil /* shared */, KeyRange{}, false, nil /* external */)
+	_, err := d.ingest(ctx, paths, nil /* shared */, KeyRange{}, nil /* external */)
 	return err
 }
 
@@ -1126,7 +1126,7 @@ func (d *DB) IngestWithStats(ctx context.Context, paths []string) (IngestOperati
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(ctx, paths, nil, KeyRange{}, false, nil)
+	return d.ingest(ctx, paths, nil, KeyRange{}, nil)
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1146,7 +1146,7 @@ func (d *DB) IngestExternalFiles(
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(ctx, nil, nil, KeyRange{}, false, external)
+	return d.ingest(ctx, nil, nil, KeyRange{}, external)
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1165,7 +1165,6 @@ func (d *DB) IngestAndExcise(
 	shared []SharedSSTMeta,
 	external []ExternalFile,
 	exciseSpan KeyRange,
-	sstsContainExciseTombstone bool,
 ) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -1188,13 +1187,24 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(ctx, paths, shared, exciseSpan, sstsContainExciseTombstone, external)
+	return d.ingest(ctx, paths, shared, exciseSpan, external)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
 	meta []*fileMetadata, seqNum base.SeqNum, logNum base.DiskFileNum, exciseSpan KeyRange,
 ) (*flushableEntry, error) {
+	// If there's an excise being done atomically with the same ingest, we
+	// assign the lowest sequence number in the set of sequence numbers for this
+	// ingestion to the excise. Note that we've already allocated fileCount+1
+	// sequence numbers in this case.
+	//
+	// This mimics the behaviour in the non-flushable ingest case (see the callsite
+	// for ingestUpdateSeqNum).
+	fileSeqNumStart := seqNum
+	if exciseSpan.Valid() {
+		fileSeqNumStart = seqNum + 1 // the first seqNum is reserved for the excise.
+	}
 	// Update the sequence number for all of the sstables in the
 	// metadata. Writing the metadata to the manifest when the
 	// version edit is applied is the mechanism that persists the
@@ -1204,12 +1214,12 @@ func (d *DB) newIngestedFlushableEntry(
 	// time, then we'll lose the ingest sequence number information. But this
 	// information will also be reconstructed on node restart.
 	for i, m := range meta {
-		if err := setSeqNumInMetadata(m, seqNum+base.SeqNum(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
+		if err := setSeqNumInMetadata(m, fileSeqNumStart+base.SeqNum(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
 			return nil, err
 		}
 	}
 
-	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan)
+	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, seqNum)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry
@@ -1243,6 +1253,9 @@ func (d *DB) handleIngestAsFlushable(
 	meta []*fileMetadata, seqNum base.SeqNum, exciseSpan KeyRange,
 ) error {
 	b := d.NewBatch()
+	if exciseSpan.Valid() {
+		b.excise(exciseSpan.Start, exciseSpan.End)
+	}
 	for _, m := range meta {
 		b.ingestSST(m.FileNum)
 	}
@@ -1272,6 +1285,11 @@ func (d *DB) handleIngestAsFlushable(
 		d.mu.Lock()
 	}
 
+	// The excise span is going to outlive this ingestion call. Copy it.
+	exciseSpan = KeyRange{
+		Start: slices.Clone(exciseSpan.Start),
+		End:   slices.Clone(exciseSpan.End),
+	}
 	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
 	if err != nil {
 		return err
@@ -1314,7 +1332,6 @@ func (d *DB) ingest(
 	paths []string,
 	shared []SharedSSTMeta,
 	exciseSpan KeyRange,
-	sstsContainExciseTombstone bool,
 	external []ExternalFile,
 ) (IngestOperationStats, error) {
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
@@ -1524,17 +1541,16 @@ func (d *DB) ingest(
 		hasRemoteFiles := len(shared) > 0 || len(external) > 0
 		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
 			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold) &&
-			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles
+			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
+			(!exciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
 
-		if !canIngestFlushable || (exciseSpan.Valid() && !sstsContainExciseTombstone) {
+		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
 			//
-			// TODO(bilal): Currently, if any of the files being ingested are shared or
-			// there's an excise span present, we cannot use flushable ingests and need
-			// to wait synchronously. Either remove this caveat by fleshing out
-			// flushable ingest logic to also account for these cases, or remove this
-			// comment. Tracking issue: https://github.com/cockroachdb/pebble/issues/2676
+			// TODO(bilal): Currently, if any of the files being ingested are shared,
+			// we cannot use flushable ingests and need
+			// to wait synchronously.
 			if mem.flushable == d.mu.mem.mutable {
 				err = d.makeRoomForWrite(nil)
 			}
