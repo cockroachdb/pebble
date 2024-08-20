@@ -542,8 +542,7 @@ c: (something, .)
 .
 
 
-# Test to verify that IngestAndExcise now uses flushableIngest when directed to 
-# do so using a flag that is passed down by the caller.
+# Test to verify that IngestAndExcise now uses flushableIngest.
 
 reset
 ----
@@ -625,18 +624,18 @@ set f something
 del b-e
 ----
 
-ingest-and-excise ext5 excise=b-e contains-excise-tombstone
+ingest-and-excise ext5 excise=b-e
 ----
-flushable ingest
+memtable flushed
 
 lsm
 ----
 L0.0:
-  000010:[b#17,SET-f#17,SET]
-  000013:[x#15,SET-x#15,SET]
+  000010:[b#18,SET-f#18,SET]
+  000012:[x#15,SET-x#15,SET]
 L6:
-  000014(000009):[a#0,SET-a#0,SET]
-  000015(000009):[g#0,SET-g#0,SET]
+  000013(000009):[a#0,SET-a#0,SET]
+  000014(000009):[g#0,SET-g#0,SET]
 
 iter lower=c upper=e
 last
@@ -667,7 +666,7 @@ compact a z
 lsm
 ----
 L6:
-  000018:[a#0,SET-x#0,SET]
+  000017:[a#0,SET-x#0,SET]
 
 batch commit
 ----
@@ -683,17 +682,17 @@ set f somethingElse
 del b-e
 ----
 
-ingest-and-excise ext5 ext6 excise=b-e contains-excise-tombstone
+ingest-and-excise ext5 ext6 excise=b-e
 ----
 
 lsm
 ----
 L0.0:
-  000019:[a#22,SET-a#22,SET]
-  000020:[b#23,SET-f#23,SET]
+  000018:[a#22,SET-a#22,SET]
+  000019:[b#23,SET-f#23,SET]
 L6:
-  000021(000018):[a#0,SET-aa#0,SET]
-  000022(000018):[f#0,SET-x#0,SET]
+  000020(000017):[a#0,SET-aa#0,SET]
+  000021(000017):[f#0,SET-x#0,SET]
 
 iter lower=a upper=f
 first
@@ -708,4 +707,75 @@ aa: (old, .)
 b: (somethingElse, .)
 c: (somethingElse, .)
 .
+.
+
+# Two ovelrapping ingestions wait on one another even if
+# the overlap is only on the excise span.
+
+reset
+----
+
+batch
+set a foo
+set b bar
+set bb neverseen
+set c baz
+----
+
+build ext7
+set b foo
+set c bar
+----
+
+ingest-and-excise ext7 excise=b-g no-wait
+----
+
+build ext8
+set d gee
+set e fee
+----
+
+ingest ext8 no-wait
+----
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (foo, .)
+c: (bar, .)
+d: (gee, .)
+e: (fee, .)
+.
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000007(000006):[a#10,SET-a#10,SET]
+L6:
+  000004:[b#15,SET-c#15,SET]
+  000008:[d#16,SET-e#16,SET]
+
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (foo, .)
+c: (bar, .)
+d: (gee, .)
+e: (fee, .)
 .
