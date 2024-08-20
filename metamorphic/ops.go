@@ -879,11 +879,10 @@ func (o *ingestOp) keys() []*[]byte                     { return nil }
 func (o *ingestOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 type ingestAndExciseOp struct {
-	dbID                       objID
-	batchID                    objID
-	derivedDBID                objID
-	exciseStart, exciseEnd     []byte
-	sstContainsExciseTombstone bool
+	dbID                   objID
+	batchID                objID
+	derivedDBID            objID
+	exciseStart, exciseEnd []byte
 }
 
 func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
@@ -899,13 +898,6 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		return
 	}
 
-	if o.sstContainsExciseTombstone {
-		// Add a rangedel and rangekeydel to the batch. This ensures it'll end up
-		// inside the sstable. Note that all entries in the sstable will have the
-		// same sequence number, so the ordering within the batch doesn't matter.
-		err = firstError(err, b.DeleteRange(o.exciseStart, o.exciseEnd, t.writeOpts))
-		err = firstError(err, b.RangeKeyDelete(o.exciseStart, o.exciseEnd, t.writeOpts))
-	}
 	path, writerMeta, err2 := buildForIngest(t, o.dbID, b, 0 /* i */)
 	if err2 != nil {
 		h.Recordf("Build(%s) // %v", o.batchID, err2)
@@ -923,7 +915,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 			_, err := db.IngestAndExcise(context.Background(), []string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
 				Start: o.exciseStart,
 				End:   o.exciseEnd,
-			}, o.sstContainsExciseTombstone)
+			})
 			return err
 		}))
 	} else {
@@ -956,7 +948,7 @@ func (o *ingestAndExciseOp) syncObjs() objIDSlice {
 }
 
 func (o *ingestAndExciseOp) String() string {
-	return fmt.Sprintf("%s.IngestAndExcise(%s, %q, %q, %t /* sstContainsExciseTombstone */)", o.dbID, o.batchID, o.exciseStart, o.exciseEnd, o.sstContainsExciseTombstone)
+	return fmt.Sprintf("%s.IngestAndExcise(%s, %q, %q)", o.dbID, o.batchID, o.exciseStart, o.exciseEnd)
 }
 
 func (o *ingestAndExciseOp) keys() []*[]byte {
@@ -1976,7 +1968,7 @@ func (r *replicateOp) runSharedReplicate(
 		return
 	}
 
-	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false)
+	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end})
 	h.Recordf("%s // %v", r, err)
 }
 
@@ -2039,7 +2031,7 @@ func (r *replicateOp) runExternalReplicate(
 		return
 	}
 
-	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end}, false /* sstContainsExciseTombstone */)
+	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end})
 	h.Recordf("%s // %v", r, err)
 }
 

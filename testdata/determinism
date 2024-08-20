@@ -58,11 +58,11 @@ set alpha 5
 ----
 7:batch
 
-ingest-and-excise contains-excise-tombstone excise=a-b ext-ab
+ingest-and-excise excise=a-b ext-ab
 ----
 8:ingest-and-excise
 
-ingest-and-excise contains-excise-tombstone excise=b-c ext-bc
+ingest-and-excise excise=b-c ext-bc
 ----
 9:ingest-and-excise
 

@@ -51,7 +51,7 @@ reopen
 
 wait-loaded-initial
 ----
-[JOB 2] all initial table stats loaded
+[JOB 3] all initial table stats loaded
 
 wait-pending-table-stats
 000007
@@ -81,18 +81,18 @@ set b 2
 flush
 ----
 L0.0:
-  000012:[a#14,SET-b#15,SET]
+  000013:[a#14,SET-b#15,SET]
 
 compact a-c
 ----
 L6:
-  000012:[a#14,SET-b#15,SET]
+  000013:[a#14,SET-b#15,SET]
 
 enable
 ----
 
 wait-pending-table-stats
-000012
+000013
 ----
 num-entries: 2
 num-deletions: 0
@@ -113,9 +113,9 @@ del-range a c
 flush
 ----
 L0.0:
-  000014:[a#16,RANGEDEL-c#inf,RANGEDEL]
+  000015:[a#16,RANGEDEL-c#inf,RANGEDEL]
 L6:
-  000012:[a#14,SET-b#15,SET]
+  000013:[a#14,SET-b#15,SET]
 
 compact a-c
 ----
@@ -124,7 +124,7 @@ enable
 ----
 
 wait-pending-table-stats
-000014
+000015
 ----
 (not found)
 

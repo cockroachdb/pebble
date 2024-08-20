@@ -10,19 +10,17 @@ tree
       49      000006.log
      614      000007.sst
        0      LOCK
-      98      MANIFEST-000001
-     122      MANIFEST-000008
+     133      MANIFEST-000001
     1359      OPTIONS-000003
        0      marker.format-version.000001.013
-       0      marker.manifest.000002.MANIFEST-000008
+       0      marker.manifest.000001.MANIFEST-000001
             simple/
      614      000007.sst
-      98      MANIFEST-000001
-     122      MANIFEST-000008
+     133      MANIFEST-000001
               checkpoint/
       25        000004.log
      586        000005.sst
-      98        MANIFEST-000001
+      85        MANIFEST-000001
     1359        OPTIONS-000003
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001

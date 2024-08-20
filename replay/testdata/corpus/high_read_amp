@@ -70,14 +70,14 @@ build:
   000005.sst
   000006.log
   000007.sst
-  000009.log
-  000010.sst
+  000008.log
+  000009.sst
   LOCK
-  MANIFEST-000008
-  MANIFEST-000011
+  MANIFEST-000001
+  MANIFEST-000010
   OPTIONS-000003
   marker.format-version.000001.013
-  marker.manifest.000003.MANIFEST-000011
+  marker.manifest.000002.MANIFEST-000010
 
 start
 ----
@@ -88,12 +88,12 @@ list-files high_read_amp/checkpoint
 high_read_amp/checkpoint:
   000005.sst
   000007.sst
-  000009.log
-  000010.sst
-  MANIFEST-000011
+  000008.log
+  000009.sst
+  MANIFEST-000010
   OPTIONS-000003
   marker.format-version.000001.013
-  marker.manifest.000001.MANIFEST-000011
+  marker.manifest.000001.MANIFEST-000010
 
 commit
 set d d
@@ -114,6 +114,6 @@ stopped
 list-files high_read_amp
 ----
 high_read_amp:
-  000013.sst
-  MANIFEST-000011
+  000012.sst
+  MANIFEST-000010
   checkpoint

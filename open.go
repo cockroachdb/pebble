@@ -232,6 +232,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// allocated memory resources. Note that rather than look for an error, we
 		// look for the return of a nil DB pointer.
 		if r := recover(); db == nil {
+			// If there's an unused, recycled memtable, we need to release its memory.
+			if obsoleteMemTable := d.memTableRecycle.Swap(nil); obsoleteMemTable != nil {
+				d.freeMemTable(obsoleteMemTable)
+			}
+
 			// Release our references to the Cache. Note that both the DB, and
 			// tableCache have a reference. When we release the reference to
 			// the tableCache, and if there are no other references to
@@ -492,8 +497,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			break
 		}
 	}
-	var ve versionEdit
-	var toFlush flushableList
 	for i, lf := range replayWALs {
 		// WALs other than the last one would have been closed cleanly.
 		//
@@ -502,41 +505,30 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// 20.1 do not guarantee that closed WALs end cleanly. But the earliest
 		// compatible Pebble format is newer and guarantees a clean EOF.
 		strictWALTail := i < len(replayWALs)-1
-		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, lf, strictWALTail)
+		maxSeqNum, err := d.replayWAL(jobID, lf, strictWALTail)
 		if err != nil {
 			return nil, err
 		}
-		toFlush = append(toFlush, flush...)
 		if d.mu.versions.logSeqNum.Load() < maxSeqNum {
 			d.mu.versions.logSeqNum.Store(maxSeqNum)
 		}
 	}
+	if d.mu.mem.mutable == nil {
+		// Recreate the mutable memtable if replayWAL got rid of it.
+		var entry *flushableEntry
+		d.mu.mem.mutable, entry = d.newMemTable(d.mu.versions.getNextDiskFileNum(), d.mu.versions.logSeqNum.Load(), 0 /* minSize */)
+		d.mu.mem.queue = append(d.mu.mem.queue, entry)
+	}
 	d.mu.versions.visibleSeqNum.Store(d.mu.versions.logSeqNum.Load())
 
 	if !d.opts.ReadOnly {
-		// Create an empty .log file.
+		d.maybeScheduleFlush()
+		for d.mu.compact.flushing {
+			d.mu.compact.cond.Wait()
+		}
+
+		// Create an empty .log file for the mutable memtable.
 		newLogNum := d.mu.versions.getNextDiskFileNum()
-
-		// This logic is slightly different than RocksDB's. Specifically, RocksDB
-		// sets MinUnflushedLogNum to max-recovered-log-num + 1. We set it to the
-		// newLogNum. There should be no difference in using either value.
-		ve.MinUnflushedLogNum = newLogNum
-
-		// Create the manifest with the updated MinUnflushedLogNum before
-		// creating the new log file. If we created the log file first, a
-		// crash before the manifest is synced could leave two WALs with
-		// unclean tails.
-		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, &ve, newFileMetrics(ve.NewFiles), false /* forceRotation */, func() []compactionInfo {
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-
-		for _, entry := range toFlush {
-			entry.readerUnrefLocked(true)
-		}
-
 		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
 		if err != nil {
 			return nil, err
@@ -760,11 +752,108 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 	return version, nil
 }
 
+func (d *DB) replayIngestedFlushable(
+	b *Batch, logNum base.DiskFileNum,
+) (entry *flushableEntry, err error) {
+	br := b.Reader()
+	seqNum := b.SeqNum()
+	kind, encodedKey, val, ok, err := br.Next()
+	if !ok || err != nil || !(kind == InternalKeyKindExcise || kind == InternalKeyKindIngestSST) {
+		panic("replayIngestedFlushable called with invalid or non-flushable ingest batch")
+	}
+
+	fileNums := make([]base.DiskFileNum, 0, b.Count())
+	var exciseSpan KeyRange
+	addFileNum := func(encodedFileNum []byte) {
+		fileNum, n := binary.Uvarint(encodedFileNum)
+		if n <= 0 {
+			panic("pebble: ingest sstable file num is invalid")
+		}
+		fileNums = append(fileNums, base.DiskFileNum(fileNum))
+	}
+	if kind == base.InternalKeyKindExcise {
+		exciseSpan.Start = slices.Clone(encodedKey)
+		exciseSpan.End = slices.Clone(val)
+	} else {
+		addFileNum(encodedKey)
+	}
+
+	for i := 1; i < int(b.Count()); i++ {
+		kind, key, val, ok, err := br.Next()
+		if err != nil {
+			return nil, err
+		}
+		if kind != InternalKeyKindIngestSST && kind != InternalKeyKindExcise {
+			panic("pebble: invalid batch key kind")
+		}
+		if !ok {
+			panic("pebble: invalid batch count")
+		}
+		if kind == base.InternalKeyKindExcise {
+			if exciseSpan.Valid() {
+				panic("pebble: multiple excise spans in a single batch")
+			}
+			exciseSpan.Start = slices.Clone(key)
+			exciseSpan.End = slices.Clone(val)
+			continue
+		}
+		addFileNum(key)
+	}
+
+	if _, _, _, ok, err := br.Next(); err != nil {
+		return nil, err
+	} else if ok {
+		panic("pebble: invalid number of entries in batch")
+	}
+
+	meta := make([]*fileMetadata, len(fileNums))
+	for i, n := range fileNums {
+		var readable objstorage.Readable
+		objMeta, err := d.objProvider.Lookup(fileTypeTable, n)
+		if err != nil {
+			return nil, errors.Wrap(err, "pebble: error when looking up ingested SSTs")
+		}
+		if objMeta.IsRemote() {
+			readable, err = d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
+			if err != nil {
+				return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
+			}
+		} else {
+			path := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
+			f, err := d.opts.FS.Open(path)
+			if err != nil {
+				return nil, err
+			}
+
+			readable, err = sstable.NewSimpleReadable(f)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// NB: ingestLoad1 will close readable.
+		meta[i], err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(), readable, d.cacheID, base.PhysicalTableFileNum(n))
+		if err != nil {
+			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
+		}
+	}
+
+	numFiles := len(meta)
+	if exciseSpan.Valid() {
+		numFiles++
+	}
+	if uint32(numFiles) != b.Count() {
+		panic("pebble: couldn't load all files in WAL entry")
+	}
+
+	return d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
+}
+
 // replayWAL replays the edits in the specified WAL. If the DB is in read
 // only mode, then the WALs are replayed into memtables and not flushed. If
 // the DB is not in read only mode, then the contents of the WAL are
-// guaranteed to be flushed. Note that this flushing is very important for
-// guaranteeing durability: the application may have had a number of pending
+// guaranteed to be flushed when a flush is scheduled after this method is run.
+// Note that this flushing is very important for guaranteeing durability:
+// the application may have had a number of pending
 // fsyncs to the WAL before the process crashed, and those fsyncs may not have
 // happened but the corresponding data may now be readable from the WAL (while
 // sitting in write-back caches in the kernel or the storage device). By
@@ -772,16 +861,15 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // these changes (flush does fsyncs), we are able to guarantee that the
 // initial state of the DB is durable.
 //
-// The toFlush return value is a list of flushables associated with the WAL
-// being replayed which will be flushed. Once the version edit has been applied
-// to the manifest, it is up to the caller of replayWAL to unreference the
-// toFlush flushables returned by replayWAL.
+// This method mutates d.mu.mem.queue and possibly d.mu.mem.mutable and replays
+// WALs into the flushable queue. Flushing of the queue is expected to be handled
+// by callers.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID JobID, ve *versionEdit, ll wal.LogicalLog, strictWALTail bool,
-) (toFlush flushableList, maxSeqNum base.SeqNum, err error) {
+	jobID JobID, ll wal.LogicalLog, strictWALTail bool,
+) (maxSeqNum base.SeqNum, err error) {
 	rr := ll.OpenForRead()
 	defer rr.Close()
 	var (
@@ -800,19 +888,17 @@ func (d *DB) replayWAL(
 	// panicking where the error points to Pebble bug and not user or
 	// hardware-induced corruption.
 
-	if d.opts.ReadOnly {
-		// In read-only mode, we replay directly into the mutable memtable which will
-		// never be flushed.
-		mem = d.mu.mem.mutable
-		if mem != nil {
-			entry = d.mu.mem.queue[len(d.mu.mem.queue)-1]
-		}
-	}
-
-	// Flushes the current memtable, if not nil.
+	// "Flushes" (ie. closes off) the current memtable, if not nil.
 	flushMem := func() {
 		if mem == nil {
 			return
+		}
+		mem.writerUnref()
+		if d.mu.mem.mutable == mem {
+			d.mu.mem.mutable = nil
+		}
+		if !d.opts.ReadOnly {
+			entry.flushForced = true
 		}
 		var logSize uint64
 		mergedOffset := offset.Physical + offset.PreviousFilesBytes
@@ -823,41 +909,27 @@ func (d *DB) replayWAL(
 		// been empty, but we need to flush it since we don't want to add to it later.
 		lastFlushOffset = mergedOffset
 		entry.logSize = logSize
-		if !d.opts.ReadOnly {
-			toFlush = append(toFlush, entry)
-		}
 		mem, entry = nil, nil
 	}
+
+	mem = d.mu.mem.mutable
+	if mem != nil {
+		entry = d.mu.mem.queue[len(d.mu.mem.queue)-1]
+		if !d.opts.ReadOnly {
+			flushMem()
+		}
+	}
+
 	// Creates a new memtable if there is no current memtable.
 	ensureMem := func(seqNum base.SeqNum) {
 		if mem != nil {
 			return
 		}
 		mem, entry = d.newMemTable(base.DiskFileNum(ll.Num), seqNum, 0 /* minSize */)
-		if d.opts.ReadOnly {
-			d.mu.mem.mutable = mem
-			d.mu.mem.queue = append(d.mu.mem.queue, entry)
-		}
+		d.mu.mem.mutable = mem
+		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
-	// updateVE is used to update ve with information about new files created
-	// during the flush of any flushable not of type ingestedFlushable. For the
-	// flushable of type ingestedFlushable we use custom handling below.
-	updateVE := func() error {
-		// TODO(bananabrick): See if we can use the actual base level here,
-		// instead of using 1.
-		c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, toFlush, d.timeNow())
-		if err != nil {
-			return err
-		}
-		newVE, _, err := d.runCompaction(jobID, c)
-		if err != nil {
-			return errors.Wrapf(err, "running compaction during WAL replay")
-		}
-		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
-		return nil
-	}
 	defer func() {
 		if err != nil {
 			err = errors.WithDetailf(err, "replaying wal %d, offset %s", ll.Num, offset)
@@ -882,16 +954,16 @@ func (d *DB) replayWAL(
 			} else if record.IsInvalidRecord(err) && !strictWALTail {
 				break
 			}
-			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
+			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 
 		if buf.Len() < batchrepr.HeaderLen {
-			return nil, 0, base.CorruptionErrorf("pebble: corrupt wal %s (offset %s)",
+			return 0, base.CorruptionErrorf("pebble: corrupt wal %s (offset %s)",
 				errors.Safe(base.DiskFileNum(ll.Num)), offset)
 		}
 
 		if d.opts.ErrorIfNotPristine {
-			return nil, 0, errors.WithDetailf(ErrDBNotPristine, "location: %q", d.dirname)
+			return 0, errors.WithDetailf(ErrDBNotPristine, "location: %q", d.dirname)
 		}
 
 		// Specify Batch.db so that Batch.SetRepr will compute Batch.memTableSize
@@ -905,121 +977,24 @@ func (d *DB) replayWAL(
 		batchesReplayed++
 		{
 			br := b.Reader()
-			if kind, encodedFileNum, _, ok, err := br.Next(); err != nil {
-				return nil, 0, err
-			} else if ok && kind == InternalKeyKindIngestSST {
-				fileNums := make([]base.DiskFileNum, 0, b.Count())
-				addFileNum := func(encodedFileNum []byte) {
-					fileNum, n := binary.Uvarint(encodedFileNum)
-					if n <= 0 {
-						panic("pebble: ingest sstable file num is invalid.")
-					}
-					fileNums = append(fileNums, base.DiskFileNum(fileNum))
-				}
-				addFileNum(encodedFileNum)
-
-				for i := 1; i < int(b.Count()); i++ {
-					kind, encodedFileNum, _, ok, err := br.Next()
-					if err != nil {
-						return nil, 0, err
-					}
-					if kind != InternalKeyKindIngestSST {
-						panic("pebble: invalid batch key kind.")
-					}
-					if !ok {
-						panic("pebble: invalid batch count.")
-					}
-					addFileNum(encodedFileNum)
-				}
-
-				if _, _, _, ok, err := br.Next(); err != nil {
-					return nil, 0, err
-				} else if ok {
-					panic("pebble: invalid number of entries in batch.")
-				}
-
-				meta := make([]*fileMetadata, len(fileNums))
-				for i, n := range fileNums {
-					var readable objstorage.Readable
-					objMeta, err := d.objProvider.Lookup(fileTypeTable, n)
-					if err != nil {
-						return nil, 0, errors.Wrap(err, "pebble: error when looking up ingested SSTs")
-					}
-					if objMeta.IsRemote() {
-						readable, err = d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
-						if err != nil {
-							return nil, 0, errors.Wrap(err, "pebble: error when opening flushable ingest files")
-						}
-					} else {
-						path := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
-						f, err := d.opts.FS.Open(path)
-						if err != nil {
-							return nil, 0, err
-						}
-
-						readable, err = sstable.NewSimpleReadable(f)
-						if err != nil {
-							return nil, 0, err
-						}
-					}
-					// NB: ingestLoad1 will close readable.
-					meta[i], err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(), readable, d.cacheID, base.PhysicalTableFileNum(n))
-					if err != nil {
-						return nil, 0, errors.Wrap(err, "pebble: error when loading flushable ingest files")
-					}
-				}
-
-				if uint32(len(meta)) != b.Count() {
-					panic("pebble: couldn't load all files in WAL entry.")
-				}
-
-				entry, err = d.newIngestedFlushableEntry(meta, seqNum, base.DiskFileNum(ll.Num), KeyRange{})
+			if kind, _, _, ok, err := br.Next(); err != nil {
+				return 0, err
+			} else if ok && (kind == InternalKeyKindIngestSST || kind == InternalKeyKindExcise) {
+				// We're in the flushable ingests (+ possibly excises) case.
+				//
+				// Ingests require an up-to-date view of the LSM to determine the target
+				// level of ingested sstables, and to accurately compute excises. Instead of
+				// doing an ingest in this function, we just enqueue a flushable ingest
+				// in the flushables queue and run a regular flush.
+				flushMem()
+				// mem is nil here.
+				entry, err = d.replayIngestedFlushable(&b, base.DiskFileNum(ll.Num))
 				if err != nil {
-					return nil, 0, err
+					return 0, err
 				}
-
-				if d.opts.ReadOnly {
-					d.mu.mem.queue = append(d.mu.mem.queue, entry)
-					// We added the IngestSST flushable to the queue. But there
-					// must be at least one WAL entry waiting to be replayed. We
-					// have to ensure this newer WAL entry isn't replayed into
-					// the current value of d.mu.mem.mutable because the current
-					// mutable memtable exists before this flushable entry in
-					// the memtable queue. To ensure this, we just need to unset
-					// d.mu.mem.mutable. When a newer WAL is replayed, we will
-					// set d.mu.mem.mutable to a newer value.
-					d.mu.mem.mutable = nil
-				} else {
-					toFlush = append(toFlush, entry)
-					// During WAL replay, the lsm only has L0, hence, the
-					// baseLevel is 1. For the sake of simplicity, we place the
-					// ingested files in L0 here, instead of finding their
-					// target levels. This is a simplification for the sake of
-					// simpler code. It is expected that WAL replay should be
-					// rare, and that flushables of type ingestedFlushable
-					// should also be rare. So, placing the ingested files in L0
-					// is alright.
-					//
-					// TODO(bananabrick): Maybe refactor this function to allow
-					// us to easily place ingested files in levels as low as
-					// possible during WAL replay. It would require breaking up
-					// the application of ve to the manifest into chunks and is
-					// not pretty w/o a refactor to this function and how it's
-					// used.
-					c, err := newFlush(
-						d.opts, d.mu.versions.currentVersion(),
-						1, /* base level */
-						[]*flushableEntry{entry},
-						d.timeNow(),
-					)
-					if err != nil {
-						return nil, 0, err
-					}
-					for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file.FileMetadata})
-					}
-				}
-				return toFlush, maxSeqNum, nil
+				d.mu.mem.queue = append(d.mu.mem.queue, entry)
+				// A flushable ingest is always followed by a WAL rotation.
+				break
 			}
 		}
 
@@ -1030,30 +1005,17 @@ func (d *DB) replayWAL(
 			b.data = slices.Clone(b.data)
 			b.flushable, err = newFlushableBatch(&b, d.opts.Comparer)
 			if err != nil {
-				return nil, 0, err
+				return 0, err
 			}
 			entry := d.newFlushableEntry(b.flushable, base.DiskFileNum(ll.Num), b.SeqNum())
 			// Disable memory accounting by adding a reader ref that will never be
 			// removed.
 			entry.readerRefs.Add(1)
-			if d.opts.ReadOnly {
-				d.mu.mem.queue = append(d.mu.mem.queue, entry)
-				// We added the flushable batch to the flushable to the queue.
-				// But there must be at least one WAL entry waiting to be
-				// replayed. We have to ensure this newer WAL entry isn't
-				// replayed into the current value of d.mu.mem.mutable because
-				// the current mutable memtable exists before this flushable
-				// entry in the memtable queue. To ensure this, we just need to
-				// unset d.mu.mem.mutable. When a newer WAL is replayed, we will
-				// set d.mu.mem.mutable to a newer value.
-				d.mu.mem.mutable = nil
-			} else {
-				toFlush = append(toFlush, entry)
-			}
+			d.mu.mem.queue = append(d.mu.mem.queue, entry)
 		} else {
 			ensureMem(seqNum)
 			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
-				return nil, 0, err
+				return 0, err
 			}
 			// We loop since DB.newMemTable() slowly grows the size of allocated memtables, so the
 			// batch may not initially fit, but will eventually fit (since it is smaller than
@@ -1063,11 +1025,11 @@ func (d *DB) replayWAL(
 				ensureMem(seqNum)
 				err = mem.prepare(&b)
 				if err != nil && err != arenaskl.ErrArenaFull {
-					return nil, 0, err
+					return 0, err
 				}
 			}
 			if err = mem.apply(&b, seqNum); err != nil {
-				return nil, 0, err
+				return 0, err
 			}
 			mem.writerUnref()
 		}
@@ -1076,16 +1038,12 @@ func (d *DB) replayWAL(
 
 	d.opts.Logger.Infof("[JOB %d] WAL %s stopped reading at offset: %s; replayed %d keys in %d batches",
 		jobID, base.DiskFileNum(ll.Num).String(), offset, keysReplayed, batchesReplayed)
-	flushMem()
-
-	// mem is nil here.
-	if !d.opts.ReadOnly && batchesReplayed > 0 {
-		err = updateVE()
-		if err != nil {
-			return nil, 0, err
-		}
+	if !d.opts.ReadOnly {
+		flushMem()
 	}
-	return toFlush, maxSeqNum, err
+
+	// mem is nil here, if !ReadOnly.
+	return maxSeqNum, err
 }
 
 func readOptionsFile(opts *Options, path string) (string, error) {
