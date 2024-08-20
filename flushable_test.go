@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -47,7 +48,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 	}
 	reset()
 
-	loadFileMeta := func(paths []string) []*fileMetadata {
+	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*fileMetadata {
 		d.mu.Lock()
 		pendingOutputs := make([]base.FileNum, len(paths))
 		for i := range paths {
@@ -60,11 +61,17 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// not actually ingesting a file.
 		lr, err := ingestLoad(context.Background(), d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheID, pendingOutputs)
 		if err != nil {
-			panic(err)
+			t.Fatal(err)
 		}
 		meta := make([]*fileMetadata, len(lr.local))
+		if exciseSpan.Valid() {
+			seqNum++
+		}
 		for i := range meta {
 			meta[i] = lr.local[i].fileMetadata
+			if err := setSeqNumInMetadata(meta[i], seqNum+base.SeqNum(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if len(meta) == 0 {
 			// All of the sstables to be ingested were empty. Nothing to do.
@@ -77,8 +84,8 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		}
 
 		// Verify the sstables do not overlap.
-		if err := ingestSortAndVerify(d.cmp, lr, KeyRange{}); err != nil {
-			panic("unsorted sstables")
+		if err := ingestSortAndVerify(d.cmp, lr, exciseSpan); err != nil {
+			t.Fatal(err)
 		}
 
 		// Hard link the sstables into the DB directory. Since the sstables aren't
@@ -87,7 +94,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// fall back to copying, and if that fails we undo our work and return an
 		// error.
 		if err := ingestLinkLocal(context.Background(), jobID, d.opts, d.objProvider, lr.local); err != nil {
-			panic("couldn't hard link sstables")
+			t.Fatal(err)
 		}
 
 		// Fsync the directory we added the tables to. We need to do this at some
@@ -95,12 +102,13 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		// can have the tables referenced in the MANIFEST, but not present in the
 		// directory.
 		if err := d.dataDir.Sync(); err != nil {
-			panic("Couldn't sync data directory")
+			t.Fatal(err)
 		}
 
 		return meta
 	}
 
+	var seqNum uint64
 	datadriven.RunTest(t, "testdata/ingested_flushable_api", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
@@ -114,12 +122,26 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		case "flushable":
 			// Creates an ingestedFlushable over the input files.
 			paths := make([]string, 0, len(td.CmdArgs))
+			var exciseSpan KeyRange
+			startSeqNum := base.SeqNum(seqNum)
 			for _, arg := range td.CmdArgs {
-				paths = append(paths, arg.String())
+				switch arg.Key {
+				case "excise":
+					parts := strings.Split(arg.Vals[0], "-")
+					if len(parts) != 2 {
+						return fmt.Sprintf("invalid excise range: %s", arg.Vals[0])
+					}
+					exciseSpan.Start = []byte(parts[0])
+					exciseSpan.End = []byte(parts[1])
+					seqNum++
+				default:
+					paths = append(paths, arg.String())
+					seqNum++
+				}
 			}
 
-			meta := loadFileMeta(paths)
-			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, KeyRange{})
+			meta := loadFileMeta(paths, exciseSpan, startSeqNum)
+			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, base.SeqNum(startSeqNum))
 			return ""
 		case "iter":
 			iter := flushable.newIter(nil)
