@@ -185,6 +185,12 @@ const (
 	// fields in the Manifest and thus requires a format major version.
 	FormatSyntheticPrefixSuffix
 
+	// FormatFlushableIngestExcises is a format major version that adds support for
+	// having excises unconditionally being written as flushable ingestions. This
+	// is implemented through adding a new key kind that can go in the same batches
+	// as flushable ingested sstables.
+	FormatFlushableIngestExcises
+
 	// TODO(msbutler): add major version for synthetic suffixes
 
 	// -- Add new versions here --
@@ -222,7 +228,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
-	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix:
+	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
+		FormatFlushableIngestExcises:
 		return sstable.TableFormatPebblev4
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -234,7 +241,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix:
+		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
+		FormatFlushableIngestExcises:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -270,6 +278,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatSyntheticPrefixSuffix: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatSyntheticPrefixSuffix)
+	},
+	FormatFlushableIngestExcises: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatFlushableIngestExcises)
 	},
 }
 
