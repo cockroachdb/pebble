@@ -126,8 +126,8 @@ const (
 
 	// InternalKeyKindIngestSST is used to distinguish a batch that corresponds to
 	// the WAL entry for ingested sstables that are added to the flushable
-	// queue. This InternalKeyKind cannot appear, amongst other key kinds in a
-	// batch, or in an sstable.
+	// queue. This InternalKeyKind cannot appear amongst other key kinds in a
+	// batch (with the exception of alongside InternalKeyKindExcise), or in an sstable.
 	InternalKeyKindIngestSST InternalKeyKind = 22
 
 	// InternalKeyKindDeleteSized keys behave identically to
@@ -136,6 +136,14 @@ const (
 	// tombstone is expected to delete. This value is used to inform compaction
 	// heuristics, but is not required to be accurate for correctness.
 	InternalKeyKindDeleteSized InternalKeyKind = 23
+
+	// InternalKeyKindExcise is used to persist the Excise part of an IngestAndExcise
+	// to a WAL. An Excise is similar to a RangeDel+RangeKeyDel combined, in that it
+	// deletes all point and range keys in a given key range while also immediately
+	// truncating sstables to exclude this key span. This InternalKeyKind cannot
+	// appear amongst other key kinds in a batch (with the exception of alongside
+	// InternalKeyKindIngestSST), or in an sstable.
+	InternalKeyKindExcise InternalKeyKind = 24
 
 	// This maximum value isn't part of the file format. Future extensions may
 	// increase this value.
@@ -146,7 +154,13 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 23
+	InternalKeyKindMax InternalKeyKind = 24
+
+	// InternalKeyKindMaxForSstable is the largest valid key kind that can exist
+	// in an sstable. This should usually equal InternalKeyKindMax, except
+	// if the current InternalKeyKindMax is a kind that is never added to an
+	// sstable or memtable (eg. InternalKeyKindExcise).
+	InternalKeyKindMaxForSstable InternalKeyKind = InternalKeyKindDeleteSized
 
 	// Internal to the sstable format. Not exposed by any sstable iterator.
 	// Declared here to prevent definition of valid key kinds that set this bit.
@@ -191,6 +205,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindRangeKeyDelete: "RANGEKEYDEL",
 	InternalKeyKindIngestSST:      "INGESTSST",
 	InternalKeyKindDeleteSized:    "DELSIZED",
+	InternalKeyKindExcise:         "EXCISE",
 	InternalKeyKindInvalid:        "INVALID",
 }
 
@@ -290,6 +305,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"RANGEKEYDEL":   InternalKeyKindRangeKeyDelete,
 	"INGESTSST":     InternalKeyKindIngestSST,
 	"DELSIZED":      InternalKeyKindDeleteSized,
+	"EXCISE":        InternalKeyKindExcise,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The

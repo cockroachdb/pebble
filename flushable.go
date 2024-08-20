@@ -164,6 +164,7 @@ type ingestedFlushable struct {
 	// exciseSpan is populated if an excise operation should be performed during
 	// flush.
 	exciseSpan KeyRange
+	seqNum     base.SeqNum
 }
 
 func newIngestedFlushable(
@@ -172,6 +173,7 @@ func newIngestedFlushable(
 	newIters tableNewIters,
 	newRangeKeyIters keyspanimpl.TableNewSpanIter,
 	exciseSpan KeyRange,
+	seqNum base.SeqNum,
 ) *ingestedFlushable {
 	if invariants.Enabled {
 		for i := 1; i < len(files); i++ {
@@ -200,6 +202,7 @@ func newIngestedFlushable(
 		slice:        manifest.NewLevelSliceKeySorted(comparer.Compare, files),
 		hasRangeKeys: hasRangeKeys,
 		exciseSpan:   exciseSpan,
+		seqNum:       seqNum,
 	}
 
 	return ret
@@ -245,30 +248,69 @@ func (s *ingestedFlushable) constructRangeDelIter(
 // TODO(sumeer): *IterOptions are being ignored, so the index block load for
 // the point iterator in constructRangeDeIter is not tracked.
 func (s *ingestedFlushable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
-	return keyspanimpl.NewLevelIter(
+	liter := keyspanimpl.NewLevelIter(
 		context.TODO(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare,
 		s.constructRangeDelIter, s.slice.Iter(), manifest.FlushableIngestsLayer(),
 		manifest.KeyTypePoint,
 	)
+	if !s.exciseSpan.Valid() {
+		return liter
+	}
+	// We have an excise span to weave into the rangedel iterators.
+	//
+	// TODO(bilal): should this be pooled?
+	miter := &keyspanimpl.MergingIter{}
+	rdel := keyspan.Span{
+		Start: s.exciseSpan.Start,
+		End:   s.exciseSpan.End,
+		Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(s.seqNum, base.InternalKeyKindRangeDelete)}},
+	}
+	rdelIter := keyspan.NewIter(s.comparer.Compare, []keyspan.Span{rdel})
+	miter.Init(s.comparer, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), liter, rdelIter)
+	return miter
 }
 
 // newRangeKeyIter is part of the flushable interface.
 func (s *ingestedFlushable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
-	if !s.containsRangeKeys() {
-		return nil
+	var rkeydelIter keyspan.FragmentIterator
+	if s.exciseSpan.Valid() {
+		// We have an excise span to weave into the rangekey iterators.
+		rkeydel := keyspan.Span{
+			Start: s.exciseSpan.Start,
+			End:   s.exciseSpan.End,
+			Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(s.seqNum, base.InternalKeyKindRangeKeyDelete)}},
+		}
+		rkeydelIter = keyspan.NewIter(s.comparer.Compare, []keyspan.Span{rkeydel})
 	}
 
-	return keyspanimpl.NewLevelIter(
+	if !s.hasRangeKeys {
+		if rkeydelIter == nil {
+			// NB: we have to return the nil literal as opposed to the nil
+			// value of rkeydelIter, otherwise callers of this function will
+			// have the return value fail == nil checks.
+			return nil
+		}
+		return rkeydelIter
+	}
+
+	// TODO(bilal): should this be pooled?
+	miter := &keyspanimpl.MergingIter{}
+	liter := keyspanimpl.NewLevelIter(
 		context.TODO(),
 		keyspan.SpanIterOptions{}, s.comparer.Compare, s.newRangeKeyIters,
 		s.slice.Iter(), manifest.FlushableIngestsLayer(), manifest.KeyTypeRange,
 	)
+	miter.Init(s.comparer, keyspan.NoopTransform, new(keyspanimpl.MergingBuffers), liter)
+	if rkeydelIter != nil {
+		miter.AddLevel(rkeydelIter)
+	}
+	return miter
 }
 
 // containsRangeKeys is part of the flushable interface.
 func (s *ingestedFlushable) containsRangeKeys() bool {
-	return s.hasRangeKeys
+	return s.hasRangeKeys || s.exciseSpan.Valid()
 }
 
 // inuseBytes is part of the flushable interface.

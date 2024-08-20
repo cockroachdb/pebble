@@ -430,7 +430,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 	)
 	cache := NewCache(0)
 	defer func() {
-		if !closed {
+		if d != nil && !closed {
 			require.NoError(t, d.Close())
 		}
 		cache.Unref()
@@ -442,6 +442,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 	reset := func(strictMem bool) {
 		if d != nil && !closed {
 			require.NoError(t, d.Close())
+			d = nil
 		}
 		blockFlush = false
 
@@ -1129,7 +1130,7 @@ func testIngestSharedImpl(
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey}, false)
+			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, KeyRange{Start: startKey, End: endKey})
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -1360,7 +1361,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	}
 	_, err = d.IngestAndExcise(
 		context.Background(), []string{}, []SharedSSTMeta{sharedSSTMeta}, nil, /* external */
-		KeyRange{Start: []byte("d"), End: []byte("ee")}, false)
+		KeyRange{Start: []byte("d"), End: []byte("ee")})
 	require.NoError(t, err)
 
 	// TODO(bilal): Once reading of shared sstables is in, verify that the values
@@ -1630,7 +1631,7 @@ func TestConcurrentExcise(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
-			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey}, false)
+			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil, KeyRange{Start: startKey, End: endKey})
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d shared SSTs", len(sharedSSTs))
 
@@ -2065,7 +2066,7 @@ func TestIngestExternal(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
-			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey}, false)
+			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey})
 			require.NoError(t, err)
 			return fmt.Sprintf("replicated %d external SSTs", len(externalFiles))
 
