@@ -757,12 +757,13 @@ func (d *DB) replayIngestedFlushable(
 ) (entry *flushableEntry, err error) {
 	br := b.Reader()
 	seqNum := b.SeqNum()
-	kind, encodedKey, _, ok, err := br.Next()
-	if !ok || err != nil || kind != InternalKeyKindIngestSST {
+	kind, encodedKey, val, ok, err := br.Next()
+	if !ok || err != nil || !(kind == InternalKeyKindExcise || kind == InternalKeyKindIngestSST) {
 		panic("replayIngestedFlushable called with invalid or non-flushable ingest batch")
 	}
 
 	fileNums := make([]base.DiskFileNum, 0, b.Count())
+	var exciseSpan KeyRange
 	addFileNum := func(encodedFileNum []byte) {
 		fileNum, n := binary.Uvarint(encodedFileNum)
 		if n <= 0 {
@@ -770,18 +771,31 @@ func (d *DB) replayIngestedFlushable(
 		}
 		fileNums = append(fileNums, base.DiskFileNum(fileNum))
 	}
-	addFileNum(encodedKey)
+	if kind == base.InternalKeyKindExcise {
+		exciseSpan.Start = slices.Clone(encodedKey)
+		exciseSpan.End = slices.Clone(val)
+	} else {
+		addFileNum(encodedKey)
+	}
 
 	for i := 1; i < int(b.Count()); i++ {
-		kind, key, _, ok, err := br.Next()
+		kind, key, val, ok, err := br.Next()
 		if err != nil {
 			return nil, err
 		}
-		if kind != InternalKeyKindIngestSST {
+		if kind != InternalKeyKindIngestSST && kind != InternalKeyKindExcise {
 			panic("pebble: invalid batch key kind")
 		}
 		if !ok {
 			panic("pebble: invalid batch count")
+		}
+		if kind == base.InternalKeyKindExcise {
+			if exciseSpan.Valid() {
+				panic("pebble: multiple excise spans in a single batch")
+			}
+			exciseSpan.Start = slices.Clone(key)
+			exciseSpan.End = slices.Clone(val)
+			continue
 		}
 		addFileNum(key)
 	}
@@ -824,11 +838,14 @@ func (d *DB) replayIngestedFlushable(
 	}
 
 	numFiles := len(meta)
+	if exciseSpan.Valid() {
+		numFiles++
+	}
 	if uint32(numFiles) != b.Count() {
 		panic("pebble: couldn't load all files in WAL entry")
 	}
 
-	return d.newIngestedFlushableEntry(meta, seqNum, logNum, KeyRange{})
+	return d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
 }
 
 // replayWAL replays the edits in the specified WAL. If the DB is in read
@@ -962,8 +979,8 @@ func (d *DB) replayWAL(
 			br := b.Reader()
 			if kind, _, _, ok, err := br.Next(); err != nil {
 				return 0, err
-			} else if ok && kind == InternalKeyKindIngestSST {
-				// We're in the flushable ingests case.
+			} else if ok && (kind == InternalKeyKindIngestSST || kind == InternalKeyKindExcise) {
+				// We're in the flushable ingests (+ possibly excises) case.
 				//
 				// Ingests require an up-to-date view of the LSM to determine the target
 				// level of ingested sstables, and to accurately compute excises. Instead of

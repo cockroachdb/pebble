@@ -230,8 +230,8 @@ func (m *memTable) apply(batch *Batch, seqNum base.SeqNum) error {
 			// Don't increment seqNum for LogData, since these are not applied
 			// to the memtable.
 			seqNum--
-		case InternalKeyKindIngestSST:
-			panic("pebble: cannot apply ingested sstable key kind to memtable")
+		case InternalKeyKindIngestSST, InternalKeyKindExcise:
+			panic("pebble: cannot apply ingested sstable or excise kind keys to memtable")
 		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}

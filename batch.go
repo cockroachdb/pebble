@@ -552,6 +552,12 @@ func (b *Batch) refreshMemTableSize() error {
 			}
 			// This key kind doesn't contribute to the memtable size.
 			continue
+		case InternalKeyKindExcise:
+			if b.minimumFormatMajorVersion < FormatFlushableIngestExcises {
+				b.minimumFormatMajorVersion = FormatFlushableIngestExcises
+			}
+			// This key kind doesn't contribute to the memtable size.
+			continue
 		default:
 			// Note In some circumstances this might be temporary memory
 			// corruption that can be recovered by discarding the batch and
@@ -608,7 +614,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				b.countRangeDels++
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 				b.countRangeKeys++
-			case InternalKeyKindIngestSST:
+			case InternalKeyKindIngestSST, InternalKeyKindExcise:
 				panic("pebble: invalid key kind for batch")
 			case InternalKeyKindLogData:
 				// LogData does not contribute to memtable size.
@@ -1191,6 +1197,28 @@ func (b *Batch) ingestSST(fileNum base.FileNum) {
 	// number of sstable paths which have been added to the batch.
 	b.memTableSize = origMemTableSize
 	b.minimumFormatMajorVersion = FormatFlushableIngest
+}
+
+// Excise adds the excise span for a flushable ingest containing an excise. The data
+// will only be written to the WAL (not added to memtables or sstables).
+func (b *Batch) excise(start, end []byte) {
+	if b.Empty() {
+		b.ingestedSSTBatch = true
+	} else if !b.ingestedSSTBatch {
+		// Batch contains other key kinds.
+		panic("pebble: invalid call to excise")
+	}
+
+	origMemTableSize := b.memTableSize
+	b.prepareDeferredKeyValueRecord(len(start), len(end), InternalKeyKindExcise)
+	copy(b.deferredOp.Key, start)
+	copy(b.deferredOp.Value, end)
+	// Since excise writes only to the WAL and does not affect the memtable,
+	// we restore b.memTableSize to its original value. Note that Batch.count
+	// is not reset because for the InternalKeyKindIngestSST/Excise the count
+	// is the number of sstable paths which have been added to the batch.
+	b.memTableSize = origMemTableSize
+	b.minimumFormatMajorVersion = FormatFlushableIngestExcises
 }
 
 // Empty returns true if the batch is empty, and false otherwise.

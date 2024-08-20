@@ -130,7 +130,7 @@ switch 1
 ----
 ok
 
-# The below file-only snapshot should be errored out by the concurrent excise.
+# The below file-only snapshot should not error out, despite a concurrent excise.
 
 batch
 set d something
@@ -237,7 +237,7 @@ L6:
 build ext5
 set bb something
 set b something
-del b-c
+del-range b c
 ----
 
 lsm
@@ -257,6 +257,19 @@ batch
 set bb new
 ----
 
+iter
+first
+next
+next
+next
+next
+----
+a: (new, .)
+bb: (new, .)
+d: (new, .)
+e: (new, .)
+.
+
 lsm
 ----
 L0.0:
@@ -266,9 +279,19 @@ L6:
   000005:[a#10,SET-a#10,SET]
   000006:[e#11,SET-e#11,SET]
 
-ingest-and-excise ext5 excise=b-c contains-excise-tombstone
+ingest-and-excise ext5 excise=b-c
 ----
-flushable ingest
+
+iter
+first
+next
+next
+next
+----
+a: (new, .)
+b: (something, .)
+bb: (something, .)
+d: (new, .)
 
 lsm
 ----
@@ -277,7 +300,7 @@ L0.0:
   000010:[d#13,SET-e#14,SET]
 L6:
   000005:[a#10,SET-a#10,SET]
-  000012:[b#16,SET-bb#16,SET]
+  000012:[b#17,RANGEDEL-c#inf,RANGEDEL]
   000006:[e#11,SET-e#11,SET]
 
 unblock c1
@@ -288,7 +311,20 @@ compact a-z
 ----
 ok
 
+iter
+first
+next
+next
+next
+next
+----
+a: (new, .)
+b: (something, .)
+bb: (something, .)
+d: (new, .)
+e: (new, .)
+
 lsm
 ----
 L6:
-  000016:[a#0,SET-e#0,SET]
+  000015:[a#0,SET-e#0,SET]
