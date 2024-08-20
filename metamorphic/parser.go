@@ -76,7 +76,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *ingestOp:
 		return &t.dbID, nil, []interface{}{&t.batchIDs}
 	case *ingestAndExciseOp:
-		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd, &t.sstContainsExciseTombstone}
+		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd}
 	case *ingestExternalFilesOp:
 		return &t.dbID, nil, []interface{}{&t.objs}
 	case *initOp:

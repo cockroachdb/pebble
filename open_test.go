@@ -331,7 +331,7 @@ func TestNewDBFilenames(t *testing.T) {
 			"LOCK",
 			"MANIFEST-000001",
 			"OPTIONS-000003",
-			"marker.format-version.000004.017",
+			"marker.format-version.000005.018",
 			"marker.manifest.000001.MANIFEST-000001",
 		},
 	}
@@ -1022,8 +1022,18 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	require.NotNil(t, crashFS)
 	fs = crashFS
 
-	if n := len(getLogs()); n != 2 {
-		t.Fatalf("expected two logs, found %d\n", n)
+	newLogs := getLogs()
+	if n := len(newLogs); n > 2 || n < 1 {
+		t.Fatalf("expected one or two logs, found %d\n", n)
+	} else if n == 1 {
+		// On rare occasions, we can race between the cleaner cleaning away the old log
+		// and d.Close(). If we only see one log, confirm that it has a higher
+		// lognum than the previous log.
+		origLogNum, err := strconv.Atoi(strings.Split(logs[0], ".")[0])
+		require.NoError(t, err)
+		curLogNum, err := strconv.Atoi(strings.Split(newLogs[0], ".")[0])
+		require.NoError(t, err)
+		require.Greater(t, curLogNum, origLogNum)
 	}
 
 	// Finally, open the database with syncs enabled.

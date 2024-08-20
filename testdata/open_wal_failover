@@ -33,17 +33,17 @@ list path=(b,)
 
 list path=(a,data)
 ----
-  000004.log
+  000006.log
   LOCK
   MANIFEST-000001
   MANIFEST-000005
-  OPTIONS-000006
+  OPTIONS-000007
   marker.format-version.000001.013
   marker.manifest.000002.MANIFEST-000005
 
 # The new OPTIONS file should declare the secondary WAL path.
 
-grep-between path=(a,data/OPTIONS-000006) start=(\[WAL Failover\]) end=^$
+grep-between path=(a,data/OPTIONS-000007) start=(\[WAL Failover\]) end=^$
 ----
   secondary_dir=secondary-wals
   primary_dir_probe_interval=1s

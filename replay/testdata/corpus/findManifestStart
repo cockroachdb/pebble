@@ -76,11 +76,11 @@ list-files build
 ----
 build:
   000005.sst
-  000006.log
+  000008.log
   LOCK
   MANIFEST-000001
   MANIFEST-000007
-  OPTIONS-000008
+  OPTIONS-000009
   marker.format-version.000001.013
   marker.manifest.000002.MANIFEST-000007
 
