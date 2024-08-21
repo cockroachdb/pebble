@@ -270,25 +270,42 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(ki *PrefixBytesIter, prevRow, r
 		ks.prefixes.SetAt(ki, row)
 	}
 
+	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(ki.buf))) + uintptr(len(ki.buf)))
 	mvccWall := ks.mvccWallTimes.At(row)
 	mvccLogical := uint32(ks.mvccLogical.At(row))
 	if mvccWall == 0 && mvccLogical == 0 {
 		// This is not an MVCC key. Use the untyped suffix.
 		untypedSuffixed := ks.untypedSuffixes.At(row)
-		memmove(unsafe.Pointer(uintptr(ki.ptr)+uintptr(ki.len)), unsafe.Pointer(unsafe.SliceData(untypedSuffixed)), uintptr(len(untypedSuffixed)))
-		return unsafe.Slice((*byte)(ki.ptr), ki.len+len(untypedSuffixed))
+		res := ki.buf[:len(ki.buf)+len(untypedSuffixed)]
+		memmove(ptr, unsafe.Pointer(unsafe.SliceData(untypedSuffixed)), uintptr(len(untypedSuffixed)))
+		return res
 	}
 
+	// Inline binary.BigEndian.PutUint64. Note that this code is converted into
+	// word-size instructions by the compiler.
+	*(*byte)(ptr) = byte(mvccWall >> 56)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 1)) = byte(mvccWall >> 48)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 2)) = byte(mvccWall >> 40)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 3)) = byte(mvccWall >> 32)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 4)) = byte(mvccWall >> 24)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 5)) = byte(mvccWall >> 16)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 6)) = byte(mvccWall >> 8)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 7)) = byte(mvccWall)
+
+	ptr = unsafe.Pointer(uintptr(ptr) + 8)
 	// This is an MVCC key.
 	if mvccLogical == 0 {
-		binary.BigEndian.PutUint64(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ki.ptr)+uintptr(ki.len))), 8), mvccWall)
-		*(*byte)(unsafe.Pointer(uintptr(ki.ptr) + uintptr(ki.len) + 8)) = 9
-		return unsafe.Slice((*byte)(ki.ptr), ki.len+9)
+		*(*byte)(ptr) = 9
+		return ki.buf[:len(ki.buf)+9]
 	}
-	binary.BigEndian.PutUint64(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ki.ptr)+uintptr(ki.len))), 8), mvccWall)
-	binary.BigEndian.PutUint32(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ki.ptr)+uintptr(ki.len+8))), 4), mvccLogical)
-	*(*byte)(unsafe.Pointer(uintptr(ki.ptr) + uintptr(ki.len) + 12)) = 13
-	return unsafe.Slice((*byte)(ki.ptr), ki.len+13)
+
+	// Inline binary.BigEndian.PutUint32.
+	*(*byte)(ptr) = byte(mvccWall >> 24)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 1)) = byte(mvccWall >> 16)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 2)) = byte(mvccWall >> 8)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 3)) = byte(mvccWall)
+	*(*byte)(unsafe.Pointer(uintptr(ptr) + 4)) = 13
+	return ki.buf[:len(ki.buf)+13]
 }
 
 // Release is part of the KeySeeker interface.

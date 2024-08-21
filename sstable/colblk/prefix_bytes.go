@@ -239,8 +239,11 @@ func (b PrefixBytes) At(i int) []byte {
 // within a PrefixBytes, avoiding unnecessary copying when portions of slices
 // are shared.
 type PrefixBytesIter struct {
-	UnsafeBuf
-	bundlePrefixLen       uint32
+	// buf is used for materializing a user key. It is preallocated to the maximum
+	// key length in the data block.
+	buf             []byte
+	bundlePrefixLen uint32
+
 	offsetIndex           int
 	nextBundleOffsetIndex int
 }
@@ -264,21 +267,19 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	rowSuffixStart, rowSuffixEnd := b.rowSuffixOffsets(i, it.offsetIndex)
 
 	// Grow the size of the iterator's buffer if necessary.
-	it.len = b.sharedPrefixLen + int(it.bundlePrefixLen) + int(rowSuffixEnd-rowSuffixStart)
-	if it.len > it.cap {
-		panic(errors.AssertionFailedf("buffer too small: %d > %d", it.len, it.cap))
-	}
+	it.buf = it.buf[:b.sharedPrefixLen+int(it.bundlePrefixLen)+int(rowSuffixEnd-rowSuffixStart)]
 
+	ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
 	// Copy the shared key prefix.
-	memmove(it.ptr, b.rawBytes.data, uintptr(b.sharedPrefixLen))
+	memmove(ptr, b.rawBytes.data, uintptr(b.sharedPrefixLen))
 	// Copy the bundle prefix.
 	memmove(
-		unsafe.Pointer(uintptr(it.ptr)+uintptr(b.sharedPrefixLen)),
+		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(bundleOffsetStart)),
 		uintptr(it.bundlePrefixLen))
 	// Copy the per-row suffix.
 	memmove(
-		unsafe.Pointer(uintptr(it.ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
+		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 		uintptr(rowSuffixEnd-rowSuffixStart))
 	// Set nextBundleOffsetIndex so that a call to SetNext can cheaply determine
@@ -305,13 +306,11 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 			return
 		}
 		// Grow the buffer if necessary.
-		it.len = b.sharedPrefixLen + int(it.bundlePrefixLen) + int(rowSuffixEnd-rowSuffixStart)
-		if it.len > it.cap {
-			panic(errors.AssertionFailedf("buffer too small: %d > %d", it.len, it.cap))
-		}
+		it.buf = it.buf[:b.sharedPrefixLen+int(it.bundlePrefixLen)+int(rowSuffixEnd-rowSuffixStart)]
 		// Copy in the per-row suffix.
+		ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
 		memmove(
-			unsafe.Pointer(uintptr(it.ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
+			unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
 			unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 			uintptr(rowSuffixEnd-rowSuffixStart))
 		return
@@ -331,18 +330,16 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 	it.nextBundleOffsetIndex = it.offsetIndex + (1 << b.bundleShift)
 
 	// Grow the buffer if necessary.
-	it.len = b.sharedPrefixLen + int(it.bundlePrefixLen) + int(rowSuffixEnd-rowSuffixStart)
-	if it.len > it.cap {
-		panic(errors.AssertionFailedf("buffer too small: %d > %d", it.len, it.cap))
-	}
+	it.buf = it.buf[:b.sharedPrefixLen+int(it.bundlePrefixLen)+int(rowSuffixEnd-rowSuffixStart)]
 	// Copy in the new bundle suffix.
+	ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
 	memmove(
-		unsafe.Pointer(uintptr(it.ptr)+uintptr(b.sharedPrefixLen)),
+		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(bundlePrefixStart)),
 		uintptr(it.bundlePrefixLen))
 	// Copy in the per-row suffix.
 	memmove(
-		unsafe.Pointer(uintptr(it.ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
+		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)+uintptr(it.bundlePrefixLen)),
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 		uintptr(rowSuffixEnd-rowSuffixStart))
 }

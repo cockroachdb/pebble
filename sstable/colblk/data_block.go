@@ -327,8 +327,13 @@ func (ks *defaultKeySeeker) MaterializeUserKey(keyIter *PrefixBytesIter, prevRow
 		ks.prefixes.SetAt(keyIter, row)
 	}
 	suffix := ks.suffixes.At(row)
-	memmove(unsafe.Pointer(uintptr(keyIter.ptr)+uintptr(keyIter.len)), unsafe.Pointer(unsafe.SliceData(suffix)), uintptr(len(suffix)))
-	return unsafe.Slice((*byte)(keyIter.ptr), keyIter.len+len(suffix))
+	res := keyIter.buf[:len(keyIter.buf)+len(suffix)]
+	memmove(
+		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.buf)))+uintptr(len(keyIter.buf))),
+		unsafe.Pointer(unsafe.SliceData(suffix)),
+		uintptr(len(suffix)),
+	)
+	return res
 }
 
 func (ks *defaultKeySeeker) Release() {
@@ -596,7 +601,10 @@ func (i *DataBlockIter) Init(
 	}
 	// Allocate a keyIter buffer that's large enough to hold the largest user
 	// key in the block.
-	i.keyIter.Alloc(int(r.maximumKeyLength))
+
+	n := int(r.maximumKeyLength)
+	ptr := mallocgc(uintptr(n), nil, false)
+	i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
 	return i.keySeeker.Init(r)
 }
 
