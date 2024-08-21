@@ -325,7 +325,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					end:   iEnd.UserKey,
 				}
 
-				pc, retryLater := pickManualCompaction(
+				pc, retryLater := newPickedManualCompaction(
 					pickerByScore.vers,
 					opts,
 					compactionEnv{
@@ -1413,17 +1413,15 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 
-			// Use maybeScheduleCompactionPicker to take care of all of the
-			// initialization of the compaction-picking environment, but never
-			// pick a compaction; just call pickFile using the user-provided
-			// level.
 			var lf manifest.LevelFile
 			var ok bool
-			d.maybeScheduleCompactionPicker(func(untypedPicker compactionPicker, env compactionEnv) *pickedCompaction {
-				p := untypedPicker.(*compactionPickerByScore)
-				lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum)
-				return nil
-			})
+			env := d.makeCompactionEnv()
+			if env == nil {
+				return "unable to lock the DB for compaction picking"
+			}
+			p := d.mu.versions.picker.(*compactionPickerByScore)
+			lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum)
+			d.mu.versions.logUnlock()
 			if !ok {
 				return "(none)"
 			}

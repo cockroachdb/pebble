@@ -399,13 +399,13 @@ func (d *DB) writeFormatVersionMarker(formatVers FormatMajorVersion) error {
 // waiting for compactions to complete (or for slots to free up).
 func (d *DB) compactMarkedFilesLocked() error {
 	curr := d.mu.versions.currentVersion()
+	if curr.Stats.MarkedForCompaction == 0 {
+		return nil
+	}
+	// Attempt to schedule a compaction to rewrite a file marked for
+	// compaction.
+	d.maybeScheduleCompaction()
 	for curr.Stats.MarkedForCompaction > 0 {
-		// Attempt to schedule a compaction to rewrite a file marked for
-		// compaction.
-		d.maybeScheduleCompactionPicker(func(picker compactionPicker, env compactionEnv) *pickedCompaction {
-			return picker.pickRewriteCompaction(env)
-		})
-
 		// The above attempt might succeed and schedule a rewrite compaction. Or
 		// there might not be available compaction concurrency to schedule the
 		// compaction.  Or compaction of the file might have already been in
