@@ -32,18 +32,26 @@ func TestBitmapFixed(t *testing.T) {
 					continue
 				}
 				if r == '1' {
-					builder.Set(n, r == '1')
+					builder.Set(n)
 				}
 				n++
 			}
 			td.MaybeScanArgs(t, "rows", &n)
 
-			data := make([]byte, builder.Size(n, 0))
+			size := builder.Size(n, 0)
 			if td.HasArg("invert") {
+				size = builder.InvertedSize(n, 0)
 				builder.Invert(n)
+				if newSize := builder.Size(n, 0); size != newSize {
+					td.Fatalf(t, "InvertedSize=%d, after invert Size=%d", size, newSize)
+				}
 			}
+			data := make([]byte, builder.Size(n, size))
 
-			_ = builder.Finish(0, n, 0, data)
+			endOffset := builder.Finish(0, n, 0, data)
+			if endOffset != size {
+				td.Fatalf(t, "endOffset=%d size=%d", endOffset, size)
+			}
 			bitmap, _ = DecodeBitmap(data, 0, n)
 			dumpBitmap(&buf, bitmap)
 			fmt.Fprint(&buf, "\nBinary representation:\n")
@@ -96,7 +104,7 @@ func TestBitmapRandom(t *testing.T) {
 		for i := 0; i < size; i++ {
 			v[i] = rng.Float64() < p
 			if v[i] {
-				builder.Set(i, v[i])
+				builder.Set(i)
 			}
 		}
 		data := make([]byte, builder.Size(size, 0))
@@ -163,7 +171,7 @@ func BenchmarkBitmapBuilder(b *testing.B) {
 		var builder BitmapBuilder
 		for i := 0; i < size; i++ {
 			if v[i] {
-				builder.Set(i, v[i])
+				builder.Set(i)
 			}
 		}
 		_ = builder.Finish(0, size, 0, data)

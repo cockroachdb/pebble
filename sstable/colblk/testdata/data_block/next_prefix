@@ -1,6 +1,6 @@
 init
 ----
-size=49:
+size=50:
 0: prefixes:       prefixbytes(16): 0 keys
 1: suffixes:       bytes: 0 rows set; 0 bytes in data
 2: trailers:       uint: 0 rows
@@ -30,7 +30,7 @@ blockprefix_kiwi@99#0,SET:kiwi99
 blockprefix_kiwi@98#0,SET:kiwi98
 blockprefix_lemon@92#0,DEL:
 ----
-size=425:
+size=408:
 0: prefixes:       prefixbytes(16): 20 keys
 1: suffixes:       bytes: 20 rows set; 54 bytes in data
 2: trailers:       uint: 20 rows
@@ -187,7 +187,8 @@ finish
 224-226: x 0100                                                             # data[18] = 1
 226-228: x 0000                                                             # data[19] = 0
 # data for column 3
-228-232: x 00000000                                                         # padding to align to 64-bit boundary
+228-229: x 00                                                               # bitmap encoding
+229-232: x 000000                                                           # padding to align to 64-bit boundary
 232-240: b 0001000100000100000010110000000000000000000000000000000000000000 # bitmap word 0
 240-248: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
@@ -237,9 +238,7 @@ finish
 400-406: x 6b6977693938                                                     # data[18]: kiwi98
 406-406: x                                                                  # data[19]:
 # data for column 5
-406-408: x 0000                                                             # padding to align to 64-bit boundary
-408-416: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
-416-424: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+406-407: x 01                                                               # bitmap encoding
 
 # Scan across the block using next prefix.
 

@@ -273,7 +273,8 @@ finish
 07-08: b 00000001                                                         # bool
 08-12: x 0c000000                                                         # page start 12
 # data for column 0
-12-16: x 00000000                                                         # padding to align to 64-bit boundary
+12-13: x 00                                                               # bitmap encoding
+13-16: x 000000                                                           # padding to align to 64-bit boundary
 16-24: b 1011011101111101110110110000000000000000000000000000000000000000 # bitmap word 0
 24-32: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 32-33: x 00                                                               # block trailer padding

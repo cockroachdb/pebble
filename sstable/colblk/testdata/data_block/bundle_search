@@ -10,7 +10,7 @@
 
 init bundle-size=4
 ----
-size=49:
+size=50:
 0: prefixes:       prefixbytes(4): 0 keys
 1: suffixes:       bytes: 0 rows set; 0 bytes in data
 2: trailers:       uint: 0 rows
@@ -86,7 +86,7 @@ backwash#1,SET:v
 backwoods#1,SET:v
 bacteria#1,SET:v
 ----
-size=745:
+size=720:
 0: prefixes:       prefixbytes(4): 66 keys
 1: suffixes:       bytes: 66 rows set; 0 bytes in data
 2: trailers:       uint: 66 rows
@@ -371,7 +371,7 @@ finish
 550-551: x 80                                                               # encoding: const
 551-559: x 0101000000000000                                                 # 64-bit constant: 257
 # data for column 3
-559-560: x 00                                                               # padding to align to 64-bit boundary
+559-560: x 00                                                               # bitmap encoding
 560-568: b 1111111111111111111111111111111111111111111111111111111111111111 # bitmap word 0
 568-576: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 1
 576-584: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
@@ -514,10 +514,7 @@ finish
 716-717: x 76                                                               # data[64]: v
 717-718: x 76                                                               # data[65]: v
 # data for column 5
-718-720: x 0000                                                             # padding to align to 64-bit boundary
-720-728: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
-728-736: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 1
-736-744: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+718-719: x 01                                                               # bitmap encoding
 
 iter
 seek-ge backache
