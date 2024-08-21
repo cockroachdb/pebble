@@ -975,6 +975,12 @@ type Options struct {
 	// The default value is 1.
 	MaxConcurrentCompactions func() int
 
+	// CompactionPool is an instance of compactionPool that enforces a global
+	// maximum compaction concurrency in a multi-store configuration. By
+	// default, up to runtime.GOMAXPROCS(0) compactions are allowed to run
+	// concurrently.
+	CompactionPool *compactionPool
+
 	// MaxConcurrentDownloads specifies the maximum number of download
 	// compactions. These are compactions that copy an external file to the local
 	// store.
@@ -1267,6 +1273,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.MaxConcurrentCompactions == nil {
 		o.MaxConcurrentCompactions = func() int { return 1 }
+	}
+	if o.CompactionPool == nil {
+		o.CompactionPool = defaultCompactionPool
 	}
 	if o.MaxConcurrentDownloads == nil {
 		o.MaxConcurrentDownloads = func() int { return 1 }

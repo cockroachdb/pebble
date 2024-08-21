@@ -597,6 +597,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	d.calculateDiskAvailableBytes()
 
+	d.compactionPool = opts.CompactionPool
+
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 

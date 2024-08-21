@@ -402,9 +402,7 @@ func (d *DB) compactMarkedFilesLocked() error {
 	for curr.Stats.MarkedForCompaction > 0 {
 		// Attempt to schedule a compaction to rewrite a file marked for
 		// compaction.
-		d.maybeScheduleCompactionPicker(func(picker compactionPicker, env compactionEnv) *pickedCompaction {
-			return picker.pickRewriteCompaction(env)
-		})
+		d.maybeScheduleCompaction()
 
 		// The above attempt might succeed and schedule a rewrite compaction. Or
 		// there might not be available compaction concurrency to schedule the
