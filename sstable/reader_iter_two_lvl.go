@@ -794,7 +794,6 @@ func (i *twoLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
 
 	// Did not find prefix in the existing second-level index block. This is the
 	// slow-path where we seek the iterator.
-	var ikv *base.InternalKV
 	if !i.topLevelIndex.SeekGE(succKey) {
 		PD(&i.secondLevel.data).Invalidate()
 		i.secondLevel.index.Invalidate()
@@ -812,7 +811,7 @@ func (i *twoLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
 		// span multiple index blocks. If upper is exclusive we use >= below,
 		// else we use >.
 		if i.secondLevel.upper != nil {
-			cmp := i.secondLevel.cmp(ikv.K.UserKey, i.secondLevel.upper)
+			cmp := i.secondLevel.cmp(i.topLevelIndex.Separator(), i.secondLevel.upper)
 			if (!i.secondLevel.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.secondLevel.exhaustedBounds = +1
 			}
