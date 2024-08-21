@@ -117,7 +117,7 @@ func (s *Snapshot) closeLocked() error {
 	// If s was the previous earliest snapshot, we might be able to reclaim
 	// disk space by dropping obsolete records that were pinned by s.
 	if e := s.db.mu.snapshots.earliest(); e > s.seqNum {
-		s.db.maybeScheduleCompactionPicker(pickElisionOnly)
+		s.db.maybeScheduleCompaction()
 	}
 	s.db = nil
 	return nil

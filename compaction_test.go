@@ -2836,3 +2836,99 @@ func TestCompactionErrorStats(t *testing.T) {
 	d.mu.Unlock()
 	require.NoError(t, d.Close())
 }
+
+// TestPrioritizingCompactionPool tests the behavior of a compaction pool
+// with a maximum global concurrency of 1, ensuring that compactions are
+// scheduled in a correctly prioritized order.
+func TestPrioritizingCompactionPool(t *testing.T) {
+	var dbs []*DB
+	var buf bytes.Buffer
+	var compactInfo *CompactionInfo
+	var lastDB int
+
+	compactionPool := NewPrioritizingCompactionPool(1)
+	datadriven.RunTest(t, "testdata/prioritizing_compaction_pool",
+		func(t *testing.T, td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				dbIndex := len(dbs)
+				opts := (&Options{
+					FS:         vfs.NewMem(),
+					DebugCheck: DebugCheckLevels,
+					FormatMajorVersion: internalFormatNewest,
+					DisableAutomaticCompactions: true,
+					CompactionPool: compactionPool,
+					EventListener: &EventListener{
+						CompactionEnd: func(info CompactionInfo) {
+							// Fix the duration and output for determinism.
+							info.TotalDuration = time.Millisecond
+							info.Output.Tables = nil
+							compactInfo = &info
+							lastDB = dbIndex
+						},
+					},
+				}).WithFSDefaults()
+				d, err := runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().String()
+				d.mu.Unlock()
+				dbs = append(dbs, d)
+				return s
+
+			case "allow-compactions":
+				for _, d := range dbs {
+					d.opts.DisableAutomaticCompactions = false
+					d.mu.Lock()
+					d.maybeScheduleCompaction()
+					d.mu.Unlock()
+				}
+				return ""
+
+			case "compact":
+				parts := strings.Split(td.CmdArgs[0].Key, "-")
+				go dbs[0].Compact([]byte(parts[0]), []byte(parts[1]), false)
+				return ""
+
+			case "ingest":
+				numTables := 12
+				for i := range numTables {
+					key := i % 4
+					path := fmt.Sprintf("ext%d", key)
+					f, err := dbs[1].opts.FS.Create(path, vfs.WriteCategoryUnspecified)
+					require.NoError(t, err)
+					w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+						TableFormat: dbs[1].FormatMajorVersion().MaxTableFormat(),
+					})
+					require.NoError(t, w.Set([]byte(fmt.Sprint(key)), nil))
+					require.NoError(t, w.Close())
+					require.NoError(t, dbs[1].Ingest(context.Background(), []string{path}))
+				}
+				return ""
+
+			case "wait-for-compactions":
+				buf.Reset()
+				compactionPool.mu.Lock()
+				defer compactionPool.mu.Unlock()
+
+				for compactionPool.compactingCount > 0 {
+					compactionPool.cond.Wait()
+					fmt.Fprintf(&buf, "dbs[%d] finished a compaction: %v\n", lastDB, compactInfo)
+					fmt.Fprint(&buf, "in progress: ")
+					var numInProgress []int
+					for _, d := range dbs {
+						d.mu.Lock()
+						numInProgress = append(numInProgress, d.mu.compact.compactingCount)
+						d.mu.Unlock()
+					}
+					fmt.Fprintf(&buf, "%v\n", numInProgress)
+				}
+				return buf.String()
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
