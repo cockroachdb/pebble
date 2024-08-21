@@ -1202,6 +1202,7 @@ func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
 
 func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string) {
 	opts := WriterOptions{
+		Comparer:       testkeys.Comparer,
 		TableFormat:    TableFormatPebblev2,
 		IndexBlockSize: math.MaxInt32, // Default to a single level index for simplicity.
 	}

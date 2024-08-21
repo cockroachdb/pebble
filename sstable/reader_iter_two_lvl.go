@@ -787,7 +787,7 @@ func (i *twoLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
 	if ikv := i.secondLevel.NextPrefix(succKey); ikv != nil {
 		return ikv
 	}
-	// key == nil
+	// ikv == nil
 	if i.secondLevel.err != nil {
 		return nil
 	}

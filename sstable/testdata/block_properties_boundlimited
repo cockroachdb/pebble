@@ -21,11 +21,11 @@ table-props
 
 block-props
 ----
-c#inf,SEPARATOR:
+b@2#2,SET:
   0: [2, 6)
-e#inf,SEPARATOR:
+d@3#4,SET:
   0: [3, 10)
-g#inf,SEPARATOR:
+f@0#6,SET:
   0: [0, 3)
 i#inf,SEPARATOR:
   0: [3, 9)
@@ -77,7 +77,7 @@ next
 <c@9:3>
 <d@3:4>
     filter.Intersects([0, 3)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(g) = true
+    filter.KeyIsWithinUpperBound(f@0) = true
     filter.Intersects([3, 9)) = (true, <nil>)
 <g@8:7>
 <h@3:8>
@@ -104,7 +104,7 @@ next
 <c@9:3>
 <d@3:4>
     filter.Intersects([0, 3)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(g) = false
+    filter.KeyIsWithinUpperBound(f@0) = false
 <e@2:5>
 <f@0:6>
     filter.Intersects([3, 9)) = (true, <nil>)
@@ -148,9 +148,9 @@ next
 next
 ----
     filter.Intersects([2, 6)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(c) = true
+    filter.KeyIsWithinUpperBound(b@2) = true
     filter.Intersects([3, 10)) = (false, <nil>)
-    filter.KeyIsWithinUpperBound(e) = true
+    filter.KeyIsWithinUpperBound(d@3) = true
     filter.Intersects([0, 3)) = (true, <nil>)
 <e@2:5>
 <f@0:6>
@@ -174,9 +174,9 @@ prev
 prev
 ----
     filter.Intersects([3, 9)) = (false, <nil>)
-    filter.KeyIsWithinLowerBound(g) = true
+    filter.KeyIsWithinLowerBound(f@0) = true
     filter.Intersects([0, 3)) = (false, <nil>)
-    filter.KeyIsWithinLowerBound(e) = true
+    filter.KeyIsWithinLowerBound(d@3) = true
     filter.Intersects([3, 10)) = (true, <nil>)
 <d@3:4>
 <c@9:3>
