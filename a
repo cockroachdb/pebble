@@ -1,0 +1,145 @@
+=== RUN   TestPrioritizingCompactionPool
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:9:
+        define [0 args]
+        L5
+          a.SET.2:
+          b.SET.2:
+        L5
+          c.SET.2:
+          d.SET.2:
+        L5
+          e.SET.2:
+          f.SET.2:
+        L6
+          a.SET.1:
+          b.SET.1:
+        L6
+          c.SET.1:
+          d.SET.1:
+        L6
+          e.SET.1:
+          f.SET.1:
+        ----
+        L5:
+          000004:[a#2,SET-b#2,SET]
+          000005:[c#2,SET-d#2,SET]
+          000006:[e#2,SET-f#2,SET]
+        L6:
+          000007:[a#1,SET-b#1,SET]
+          000008:[c#1,SET-d#1,SET]
+          000009:[e#1,SET-f#1,SET]
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:39:
+        define [0 args]
+        <no input to command>
+        ----
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:42:
+        ingest [0 args]
+        <no input to command>
+        ----
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:46:
+        define [0 args]
+        L6
+          a.DEL.1:
+        L6
+          b.DEL.2:
+        L6
+          c.DEL.3:
+        L6
+          d.DEL.4:
+        L6
+          e.DEL.5:
+        L6
+          f.DEL.6:
+        ----
+        L6:
+          000004:[a#1,DEL-a#1,DEL]
+          000005:[b#2,DEL-b#2,DEL]
+          000006:[c#3,DEL-c#3,DEL]
+          000007:[d#4,DEL-d#4,DEL]
+          000008:[e#5,DEL-e#5,DEL]
+          000009:[f#6,DEL-f#6,DEL]
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:69:
+        allow-compactions [0 args]
+        <no input to command>
+        ----
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:73:
+        compact [1 args]
+        <no input to command>
+        ----
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:76:
+        compact [1 args]
+        <no input to command>
+        ----
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:79:
+        compact [1 args]
+        <no input to command>
+        ----
+dbs[1] finished a compaction: [JOB 15] compacted(default) L0 [000008 000012] (1.2KB) Score=100.00 + L6 [000004] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [1 0 0]
+dbs[0] finished a compaction: [JOB 4] compacted(default) L5 [000004] (594B) Score=0.00 + L6 [000007] (594B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [1 0 0]
+dbs[0] finished a compaction: [JOB 5] compacted(default) L5 [000005] (594B) Score=0.00 + L6 [000008] (594B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [1 0 0]
+dbs[0] finished a compaction: [JOB 6] compacted(default) L5 [000006] (594B) Score=0.00 + L6 [000009] (594B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 1 0]
+dbs[1] finished a compaction: [JOB 16] compacted(default) L0 [000009 000013] (1.2KB) Score=100.00 + L6 [000005] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 1 0]
+dbs[1] finished a compaction: [JOB 17] compacted(default) L0 [000010 000014] (1.2KB) Score=100.00 + L6 [000006] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 1 0]
+dbs[1] finished a compaction: [JOB 18] compacted(default) L0 [000011 000015] (1.2KB) Score=100.00 + L6 [000007] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 1]
+dbs[2] finished a compaction: [JOB 5] compacted(elision-only) L6 [000004] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 1]
+dbs[2] finished a compaction: [JOB 6] compacted(elision-only) L6 [000005] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 1]
+dbs[2] finished a compaction: [JOB 7] compacted(elision-only) L6 [000006] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 1]
+dbs[2] finished a compaction: [JOB 8] compacted(elision-only) L6 [000007] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 1]
+dbs[2] finished a compaction: [JOB 9] compacted(elision-only) L6 [000008] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 1]
+dbs[2] finished a compaction: [JOB 10] compacted(elision-only) L6 [000009] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+in progress: [0 0 0]
+
+    datadriven.go:144: 
+        testdata/prioritizing_compaction_pool:89:
+        wait-for-compactions [0 args]
+        <no input to command>
+        ----
+        dbs[1] finished a compaction: [JOB 15] compacted(default) L0 [000008 000012] (1.2KB) Score=100.00 + L6 [000004] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [1 0 0]
+        dbs[0] finished a compaction: [JOB 4] compacted(default) L5 [000004] (594B) Score=0.00 + L6 [000007] (594B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [1 0 0]
+        dbs[0] finished a compaction: [JOB 5] compacted(default) L5 [000005] (594B) Score=0.00 + L6 [000008] (594B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [1 0 0]
+        dbs[0] finished a compaction: [JOB 6] compacted(default) L5 [000006] (594B) Score=0.00 + L6 [000009] (594B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 1 0]
+        dbs[1] finished a compaction: [JOB 16] compacted(default) L0 [000009 000013] (1.2KB) Score=100.00 + L6 [000005] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 1 0]
+        dbs[1] finished a compaction: [JOB 17] compacted(default) L0 [000010 000014] (1.2KB) Score=100.00 + L6 [000006] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 1 0]
+        dbs[1] finished a compaction: [JOB 18] compacted(default) L0 [000011 000015] (1.2KB) Score=100.00 + L6 [000007] (590B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 1]
+        dbs[2] finished a compaction: [JOB 5] compacted(elision-only) L6 [000004] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 1]
+        dbs[2] finished a compaction: [JOB 6] compacted(elision-only) L6 [000005] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 1]
+        dbs[2] finished a compaction: [JOB 7] compacted(elision-only) L6 [000006] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 1]
+        dbs[2] finished a compaction: [JOB 8] compacted(elision-only) L6 [000007] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 1]
+        dbs[2] finished a compaction: [JOB 9] compacted(elision-only) L6 [000008] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 1]
+        dbs[2] finished a compaction: [JOB 10] compacted(elision-only) L6 [000009] (628B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 0.0s (0.0s total), output rate 0B/s
+        in progress: [0 0 0]
+--- PASS: TestPrioritizingCompactionPool (0.01s)
+PASS
+ok  	github.com/cockroachdb/pebble	0.312s
