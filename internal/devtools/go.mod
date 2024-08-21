@@ -4,7 +4,6 @@ go 1.22
 
 require (
 	github.com/cockroachdb/crlfmt v0.0.0-20230505164321-461e8663b4b4
-	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
 	honnef.co/go/tools v0.4.7
 )
 
