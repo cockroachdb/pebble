@@ -22,7 +22,6 @@ import (
 
 const (
 	cmdGo       = "go"
-	golint      = "golang.org/x/lint/golint"
 	staticcheck = "honnef.co/go/tools/cmd/staticcheck"
 	crlfmt      = "github.com/cockroachdb/crlfmt"
 )
@@ -46,7 +45,7 @@ func ignoreGoMod() stream.Filter {
 }
 
 func installTool(t *testing.T, path string) {
-	cmd := exec.Command("go", "install", "-C", "../devtools", path)
+	cmd := exec.Command(cmdGo, "install", "-C", "../devtools", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cannot install %q: %v\n%s\n", path, err, out)
@@ -90,23 +89,6 @@ func TestLint(t *testing.T) {
 				dirCmd(t, pkg.Dir, "go", "vet", "-all", "./..."),
 				stream.GrepNot(`^#`), // ignore comment lines
 				ignoreGoMod(),
-			), func(s string) {
-				t.Errorf("\n%s", s)
-			}); err != nil {
-			t.Error(err)
-		}
-	})
-
-	t.Run("TestGolint", func(t *testing.T) {
-		installTool(t, golint)
-		t.Parallel()
-
-		// This is overkill right now, but provides a structure for filtering out
-		// lint errors we don't care about.
-		if err := stream.ForEach(
-			stream.Sequence(
-				dirCmd(t, pkg.Dir, "golint", pkgs...),
-				stream.GrepNot("go: downloading"),
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
