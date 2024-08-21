@@ -11,6 +11,7 @@ import (
 	"math"
 	"runtime/pprof"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -121,21 +122,28 @@ func (c *compactionWritable) Write(p []byte) error {
 
 type compactionKind int
 
+// The ordering of these compaction kinds is important - it is used to
+// determine the priority of a pickedCompaction when multiple DBs are waiting
+// to schedule a compaction. A compactionKind is considered as being strictly
+// higher priority than the one below it.
+//
+// The ordering of these compactionKinds should mirror the order in which
+// compaction types are picked in compactionPicker.
 const (
-	compactionKindDefault compactionKind = iota
-	compactionKindFlush
-	// compactionKindMove denotes a move compaction where the input file is
-	// retained and linked in a new level without being obsoleted.
-	compactionKindMove
-	// compactionKindCopy denotes a copy compaction where the input file is
-	// copied byte-by-byte into a new file with a new FileNum in the output level.
-	compactionKindCopy
+	compactionKindFlush compactionKind = iota
 	// compactionKindDeleteOnly denotes a compaction that only deletes input
 	// files. It can occur when wide range tombstones completely contain sstables.
 	compactionKindDeleteOnly
+	// compactionKindMove denotes a move compaction where the input file is
+	// retained and linked in a new level without being obsoleted.
+	compactionKindMove
+	compactionKindDefault
+	// compactionKindCopy denotes a copy compaction where the input file is
+	// copied byte-by-byte into a new file with a new FileNum in the output level.
+	compactionKindCopy
+	compactionKindTombstoneDensity
 	compactionKindElisionOnly
 	compactionKindRead
-	compactionKindTombstoneDensity
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 )
@@ -1644,34 +1652,19 @@ func (d *DB) maybeScheduleCompactionAsync() {
 	d.mu.Unlock()
 }
 
-// maybeScheduleCompaction schedules a compaction if necessary.
-//
-// d.mu must be held when calling this.
-func (d *DB) maybeScheduleCompaction() {
-	d.maybeScheduleCompactionPicker(pickAuto)
-}
-
-func pickAuto(picker compactionPicker, env compactionEnv) *pickedCompaction {
-	return picker.pickAuto(env)
-}
-
-func pickElisionOnly(picker compactionPicker, env compactionEnv) *pickedCompaction {
-	return picker.pickElisionOnlyCompaction(env)
-}
-
-// tryScheduleDownloadCompaction tries to start a download compaction.
-//
-// Returns true if we started a download compaction (or completed it
-// immediately because it is a no-op or we hit an error).
+// tryScheduleDownloadCompactions tries to start download compactions.
 //
 // Requires d.mu to be held. Updates d.mu.compact.downloads.
-func (d *DB) tryScheduleDownloadCompaction(env compactionEnv, maxConcurrentDownloads int) bool {
+func (d *DB) tryScheduleDownloadCompactions(env compactionEnv, maxConcurrentDownloads int) {
 	vers := d.mu.versions.currentVersion()
 	for i := 0; i < len(d.mu.compact.downloads); {
+		if d.mu.compact.downloadingCount >= maxConcurrentDownloads {
+			break
+		}
 		download := d.mu.compact.downloads[i]
 		switch d.tryLaunchDownloadCompaction(download, vers, env, maxConcurrentDownloads) {
 		case launchedCompaction:
-			return true
+			continue
 		case didNotLaunchCompaction:
 			// See if we can launch a compaction for another download task.
 			i++
@@ -1680,76 +1673,297 @@ func (d *DB) tryScheduleDownloadCompaction(env compactionEnv, maxConcurrentDownl
 			d.mu.compact.downloads = slices.Delete(d.mu.compact.downloads, i, i+1)
 		}
 	}
-	return false
 }
 
-// maybeScheduleCompactionPicker schedules a compaction if necessary,
-// calling `pickFunc` to pick automatic compactions.
+// makeCompactionEnv attempts to acquire d.mu.versions.logLock in order
+// to provide the proper mutual exclusion necessary during compaction picking.
+// If the DB is closed or marked as read-only, makeCompactionEnv returns nil to
+// indicate that compactions may not be performed. Otherwise, a new
+// compactionEnv is constructed using the current DB state.
+//
+// Compaction picking needs a coherent view of a Version. In particular, we
+// need to exclude concurrent ingestions from making a decision on which level
+// to ingest into that conflicts with our compaction
+// decision. versionSet.logLock provides the necessary mutual exclusion.
+//
+// NOTE: makeCompactionEnv does not call d.mu.versions.logUnlock; it is the
+// caller's responsibility to ensure that the manifest is unlocked.
 //
 // Requires d.mu to be held.
-func (d *DB) maybeScheduleCompactionPicker(
-	pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
-) {
+func (d *DB) makeCompactionEnv() *compactionEnv {
 	if d.closed.Load() != nil || d.opts.ReadOnly {
-		return
-	}
-	maxCompactions := d.opts.MaxConcurrentCompactions()
-	maxDownloads := d.opts.MaxConcurrentDownloads()
-
-	if d.mu.compact.compactingCount >= maxCompactions &&
-		(len(d.mu.compact.downloads) == 0 || d.mu.compact.downloadingCount >= maxDownloads) {
-		if len(d.mu.compact.manual) > 0 {
-			// Inability to run head blocks later manual compactions.
-			d.mu.compact.manual[0].retries++
-		}
-		return
+		return nil
 	}
 
-	// Compaction picking needs a coherent view of a Version. In particular, we
-	// need to exclude concurrent ingestions from making a decision on which level
-	// to ingest into that conflicts with our compaction
-	// decision. versionSet.logLock provides the necessary mutual exclusion.
 	d.mu.versions.logLock()
-	defer d.mu.versions.logUnlock()
 
 	// Check for the closed flag again, in case the DB was closed while we were
 	// waiting for logLock().
 	if d.closed.Load() != nil {
-		return
+		d.mu.versions.logUnlock()
+		return nil
 	}
 
-	env := compactionEnv{
+	return &compactionEnv{
 		diskAvailBytes:          d.diskAvailBytes.Load(),
 		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
+		inProgressCompactions:   d.getInProgressCompactionInfoLocked(nil),
+		readCompactionEnv: readCompactionEnv{
+			readCompactions:          &d.mu.compact.readCompactions,
+			flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
+			rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
+		},
+	}
+}
+
+// pickAnyCompaction tries to pick a manual or automatic compaction.
+func (d *DB) pickAnyCompaction(env compactionEnv) (pc *pickedCompaction) {
+	pc = d.pickManualCompaction(env)
+	if pc == nil && !d.opts.DisableAutomaticCompactions {
+		pc = d.mu.versions.picker.pickAuto(env)
+	}
+	return pc
+}
+
+// runPickedCompaction kicks off the provided pickedCompaction. In case the
+// pickedCompaction is a manual compaction, the corresponding manualCompaction
+// is removed from d.mu.compact.manual.
+func (d *DB) runPickedCompaction(pc *pickedCompaction) {
+	var doneChannel chan error
+	if pc.isManual {
+		doneChannel = d.mu.compact.manual[0].done
+		d.mu.compact.manual = d.mu.compact.manual[1:]
 	}
 
-	if d.mu.compact.compactingCount < maxCompactions {
-		// Check for delete-only compactions first, because they're expected to be
-		// cheap and reduce future compaction work.
-		if !d.opts.private.disableDeleteOnlyCompactions &&
-			!d.opts.DisableAutomaticCompactions &&
-			len(d.mu.compact.deletionHints) > 0 {
-			d.tryScheduleDeleteOnlyCompaction()
+	d.mu.compact.compactingCount++
+	compaction := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	d.addInProgressCompaction(compaction)
+	go func() {
+		d.compact(compaction, doneChannel)
+		d.compactionPool.CompactionFinished(pc)
+	}()
+}
+
+// CompactionPool is responsible for scheduling both automatic and manual
+// compactions. In the case of multiple DB instances (i.e. a multi-store
+// configuration), implementations of CompactionPool may or may not enforce
+// a global maximum compaction concurrency.
+type CompactionPool interface {
+	// AddWaitingDB signals to the CompactionPool that the provided DB might
+	// have compaction(s) that need to be scheduled. Implementations of
+	// CompactionPool may decide when a compaction will actually be picked
+	// and run from this DB.
+	//
+	// DB.mu should NOT be held for any DB (including d) when AddWaitingDB is
+	// called.
+	AddWaitingDB(d *DB)
+	// CompactionFinished signals to the CompactionPool that the provided
+	// pickedCompaction has now finished running.
+	CompactionFinished(pc *pickedCompaction)
+}
+
+var defaultCompactionPool = &UnlimitedCompactionPool{}
+
+// UnlimitedCompactionPool implements CompactionPool. It does not enforce any
+// global maximum compaction concurrency when multiple DBs attempt to schedule
+// compactions.
+type UnlimitedCompactionPool struct{}
+
+func (ucp *UnlimitedCompactionPool) AddWaitingDB(d *DB) {
+	d.mu.Lock()
+	env := d.makeCompactionEnv()
+	if env == nil {
+		d.mu.Unlock()
+		return
+	}
+
+	pc := d.pickAnyCompaction(*env)
+	if pc != nil {
+		d.runPickedCompaction(pc)
+		// We might be able to schedule more compactions.
+		defer ucp.AddWaitingDB(d)
+	}
+
+	d.mu.versions.logUnlock()
+	d.mu.Unlock()
+}
+
+func (ucp *UnlimitedCompactionPool) CompactionFinished(pc *pickedCompaction) {
+	// No-op for an UnlimitedCompactionPool.
+}
+
+// PrioritizingCompactionPool enforces a global max compaction concurrency
+// in a multi-store configuration. If multiple DBs are waiting to perform a
+// compaction, it prioritizes the DB whose pickedCompaction has the highest
+// priority.
+type PrioritizingCompactionPool struct {
+	mu sync.Mutex
+	// compactingCount is the current number of running compactions across
+	// all DBs.
+	compactingCount int
+	// waiting contains all DBs which might have compactions that need to be
+	// scheduled. The value stored for each DB may be nil to indicate that
+	// a compaction needs to be picked from the DB.
+	waiting map[*DB]*pickedCompaction
+	// maxCompactionConcurrency defines the global max compaction concurrency
+	// across all DBs.
+	maxCompactionConcurrency int
+}
+
+// NewPrioritizingCompactionPool creates a new PrioritizingCompactionPool
+// with the specified maxCompactionConcurrency.
+func NewPrioritizingCompactionPool(maxCompactionConcurrency int) *PrioritizingCompactionPool {
+	if maxCompactionConcurrency <= 0 {
+		panic("pebble: maxCompactionConcurrency for a CompactionPool must be greater than 0")
+	}
+	return &PrioritizingCompactionPool{
+		maxCompactionConcurrency: maxCompactionConcurrency,
+		waiting:                  make(map[*DB]*pickedCompaction),
+	}
+}
+
+// shouldLimitConcurrency returns true if the provided pickedCompaction should
+// be counted towards this PrioritizingCompactionPool's compactingCount.
+func (pcp *PrioritizingCompactionPool) shouldLimitConcurrency(pc *pickedCompaction) bool {
+	return pc.kind != compactionKindDeleteOnly && pc.kind != compactionKindMove
+}
+
+// comparePickedCompactions returns true if pc1 is higher priority than pc2.
+func comparePickedCompactions(pc1 *pickedCompaction, pc2 *pickedCompaction) bool {
+	if pc1 == nil {
+		return false
+	} else if pc2 == nil {
+		return true
+	}
+
+	// If pc1 and pc2 are of different compactionKinds, pc1 is higher priority
+	// only if its compactionKind is higher priority. The relative priorities
+	// of compactionKinds are determined by the order they are defined in. See
+	// the comment below compactionKind.
+	if pc1.kind < pc2.kind {
+		return true
+	}
+	// Otherwise, use the pickedCompaction's score to break ties. This is the
+	// score of the level in the case of score-based compactions; other
+	// compaction types assign the score differently.
+	return pc1.score > pc2.score
+}
+
+// maybeScheduleWaitingCompactionLocked attempts to schedule a waiting
+// compaction from the list of waiting DBs. It prioritizes the DB with the
+// highest priority pickedCompaction as defined by comparePickedCompactions.
+//
+// c.mu must be held. DB.mu must not be held for any DB.
+func (pcp *PrioritizingCompactionPool) maybeScheduleWaitingCompactionLocked() {
+	if pcp.compactingCount >= pcp.maxCompactionConcurrency {
+		return
+	}
+
+	unlockDB := func(d *DB) {
+		d.mu.versions.logUnlock()
+		d.mu.Unlock()
+	}
+
+	var selectedDB *DB
+	// We need to find the highest-priority compaction across all waiting DBs.
+	// This is tricky because concurrent flushes, ingestions, etc. from each DB
+	// may invalidate a compaction after it is picked. For this reason, the
+	// below loop maintains the invariant that both selectedDB.mu and
+	// selectedDB.mu.versions.logLock are continuously held until we either find
+	// a higher priority compaction from one of the other DBs, or we finish
+	// iteration and start the compaction.
+	for d := range pcp.waiting {
+		d.mu.Lock()
+
+		env := d.makeCompactionEnv()
+		if env == nil {
+			// This DB is read-only or closed; skip it.
+			delete(pcp.waiting, d)
+			d.mu.Unlock()
+			continue
 		}
 
-		for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < maxCompactions {
-			if manual := d.mu.compact.manual[0]; !d.tryScheduleManualCompaction(env, manual) {
-				// Inability to run head blocks later manual compactions.
-				manual.retries++
-				break
+		if pcp.waiting[d] == nil {
+			if pcp.waiting[d] = d.pickAnyCompaction(*env); pcp.waiting[d] == nil {
+				// There are no compactions that can be scheduled from this DB.
+				// Mark it as no longer waiting.
+				delete(pcp.waiting, d)
+				unlockDB(d)
+				continue
 			}
-			d.mu.compact.manual = d.mu.compact.manual[1:]
 		}
-
-		for !d.opts.DisableAutomaticCompactions && d.mu.compact.compactingCount < maxCompactions &&
-			d.tryScheduleAutoCompaction(env, pickFunc) {
+		if selectedDB == nil {
+			selectedDB = d
+		} else if comparePickedCompactions(pcp.waiting[d], pcp.waiting[selectedDB]) {
+			// We've found a higher priority pickedCompaction - first unlock the old
+			// selectedDB, and then swap it out for the current DB.
+			unlockDB(selectedDB)
+			selectedDB = d
+		} else {
+			// This DB's pickedCompaction is lower priority than that of selectedDB.
+			// Release locks and continue.
+			unlockDB(d)
 		}
 	}
 
-	for len(d.mu.compact.downloads) > 0 && d.mu.compact.downloadingCount < maxDownloads &&
-		d.tryScheduleDownloadCompaction(env, maxDownloads) {
+	if selectedDB == nil {
+		return
 	}
+
+	// At this point, locks are held only for selectedDB.mu.
+	pc := pcp.waiting[selectedDB]
+	if pcp.shouldLimitConcurrency(pc) {
+		pcp.compactingCount++
+	}
+	selectedDB.runPickedCompaction(pc)
+	pcp.waiting[selectedDB] = nil
+
+	unlockDB(selectedDB)
+	pcp.maybeScheduleWaitingCompactionLocked()
+}
+
+func (pcp *PrioritizingCompactionPool) CompactionFinished(pc *pickedCompaction) {
+	if pcp.shouldLimitConcurrency(pc) {
+		pcp.mu.Lock()
+		defer pcp.mu.Unlock()
+
+		pcp.compactingCount--
+		pcp.maybeScheduleWaitingCompactionLocked()
+	}
+}
+
+func (pcp *PrioritizingCompactionPool) AddWaitingDB(d *DB) {
+	pcp.mu.Lock()
+	defer pcp.mu.Unlock()
+	// Mark this DB as waiting, but also invalidate any existing
+	// pickedCompaction from this DB since a higher priority compaction
+	// could be picked.
+	pcp.waiting[d] = nil
+	pcp.maybeScheduleWaitingCompactionLocked()
+}
+
+// maybeScheduleCompaction schedules a compaction if necessary.
+//
+// Requires d.mu to be held.
+func (d *DB) maybeScheduleCompaction() {
+	env := d.makeCompactionEnv()
+	if env == nil {
+		return
+	}
+	// Delete-only compactions are expected to be cheap and reduce future
+	// compaction work, so schedule them directly instead of using
+	// d.compactionPool.
+	d.tryScheduleDeleteOnlyCompaction()
+	// Download compactions have their own concurrency.
+	d.tryScheduleDownloadCompactions(*env, d.opts.MaxConcurrentDownloads())
+	d.mu.versions.logUnlock()
+
+	// NB: we must release d.mu to avoid deadlock when calling
+	// addWaitingDB below.
+	d.mu.Unlock()
+	d.compactionPool.AddWaitingDB(d)
+	d.mu.Lock()
 }
 
 // tryScheduleDeleteOnlyCompaction tries to kick off a delete-only compaction
@@ -1757,6 +1971,10 @@ func (d *DB) maybeScheduleCompactionPicker(
 //
 // Requires d.mu to be held. Updates d.mu.compact.deletionHints.
 func (d *DB) tryScheduleDeleteOnlyCompaction() {
+	if d.opts.private.disableDeleteOnlyCompactions || d.opts.DisableAutomaticCompactions || d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions() || len(d.mu.compact.deletionHints) == 0 {
+		return
+	}
+
 	v := d.mu.versions.currentVersion()
 	snapshots := d.mu.snapshots.toSlice()
 	inputs, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots)
@@ -1770,56 +1988,29 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() {
 	}
 }
 
-// tryScheduleManualCompaction tries to kick off the given manual compaction.
-//
-// Returns false if we are not able to run this compaction at this time.
-//
-// Requires d.mu to be held.
-func (d *DB) tryScheduleManualCompaction(env compactionEnv, manual *manualCompaction) bool {
+func (d *DB) pickManualCompaction(env compactionEnv) (pc *pickedCompaction) {
 	v := d.mu.versions.currentVersion()
-	env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-	pc, retryLater := pickManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
-	if pc == nil {
-		if !retryLater {
-			// Manual compaction is a no-op. Signal completion and exit.
-			manual.done <- nil
-			return true
+	for len(d.mu.compact.manual) > 0 {
+		manual := d.mu.compact.manual[0]
+		if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions() {
+			manual.retries++
+			return nil
 		}
-		// We are not able to run this manual compaction at this time.
-		return false
-	}
 
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
-	d.mu.compact.compactingCount++
-	d.addInProgressCompaction(c)
-	go d.compact(c, manual.done)
-	return true
-}
-
-// tryScheduleAutoCompaction tries to kick off an automatic compaction.
-//
-// Returns false if no automatic compactions are necessary or able to run at
-// this time.
-//
-// Requires d.mu to be held.
-func (d *DB) tryScheduleAutoCompaction(
-	env compactionEnv, pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
-) bool {
-	env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
-	env.readCompactionEnv = readCompactionEnv{
-		readCompactions:          &d.mu.compact.readCompactions,
-		flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
-		rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
+		pc, retryLater := newPickedManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
+		if pc != nil {
+			return pc
+		}
+		if retryLater {
+			// We are not able to run this manual compaction at this time.
+			manual.retries++
+			return nil
+		}
+		// Manual compaction is a no-op. Signal that it's complete.
+		manual.done <- nil
+		d.mu.compact.manual = d.mu.compact.manual[1:]
 	}
-	pc := pickFunc(d.mu.versions.picker, env)
-	if pc == nil {
-		return false
-	}
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
-	d.mu.compact.compactingCount++
-	d.addInProgressCompaction(c)
-	go d.compact(c, nil)
-	return true
+	return nil
 }
 
 // deleteCompactionHintType indicates whether the deleteCompactionHint was
