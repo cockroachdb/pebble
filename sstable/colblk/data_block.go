@@ -660,8 +660,8 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 		Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
 	}
 	// Inline i.r.values.At(row).
-	startOffset := i.r.values.offsets.At(i.row)
-	v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), i.r.values.offsets.At(i.row+1)-startOffset)
+	startOffset, endOffset := i.r.values.offsets.At2(i.row)
+	v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), endOffset-startOffset)
 	if i.r.isValueExternal.At(i.row) {
 		i.kv.V = i.getLazyValue(v)
 	} else {
