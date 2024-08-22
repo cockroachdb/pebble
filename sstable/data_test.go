@@ -428,8 +428,8 @@ func runIterCmd(
 			continue
 		case "internal-iter-state":
 			fmt.Fprintf(&b, "| %T:\n", origIter)
-			si, _ := origIter.(*singleLevelIterator[rowblk.Iter, *rowblk.Iter])
-			if twoLevelIter, ok := origIter.(*twoLevelIterator[rowblk.Iter, *rowblk.Iter]); ok {
+			si, _ := origIter.(*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
+			if twoLevelIter, ok := origIter.(*twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]); ok {
 				si = &twoLevelIter.secondLevel
 				if twoLevelIter.topLevelIndex.Valid() {
 					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Separator())

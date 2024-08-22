@@ -25,20 +25,21 @@ import (
 // key, it first looks in the index for the block that contains that key, and then
 // looks inside that block.
 //
-// singleLevelIterator is parameterized by the type of the data block iterator.
-// The type parameters are designed to allow the singleLevelIterator to embed
-// the data block iterator struct within itself, avoiding an extra allocation
-// and pointer indirection. The complication comes from the fact that we want to
-// implement the interface on a pointer receiver but embed the non-pointer type
-// within the struct. The D type parameter is the non-pointer data block
-// iterator type, and the PD type parameter is the *D type that actually
-// implements the DataBlockIterator constraint.
+// singleLevelIterator is parameterized by the type of the data block iterator
+// and index block iterator.  The type parameters are designed to allow the
+// singleLevelIterator to embed the data block and index block iterator structs
+// within itself, avoiding an extra allocation and pointer indirection. The
+// complication comes from the fact that we want to implement the interfaces on
+// pointer receivers but embed the non-pointer types within the struct. The D
+// and I type parameters are the non-pointer data and index block iterator
+// types, and the PD and PI type parameters are the *D and *I types that
+// actually implement the DataBlockIterator and IndexBlockIterator constraints.
 //
-// Unfortunately, uses of the [data] field must explicitly cast &data to the PD
-// type in order to access its interface methods. This pattern is taken from the
-// Go generics proposal:
+// Unfortunately, uses of the [data] and [index] fields must explicitly cast
+// &data/&index to the PD/PI type in order to access its interface methods. This
+// pattern is taken from the Go generics proposal:
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
-type singleLevelIterator[D any, PD block.DataBlockIterator[D]] struct {
+type singleLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]] struct {
 	ctx context.Context
 	cmp Compare
 	// Global lower/upper bound for the iterator.
@@ -56,7 +57,7 @@ type singleLevelIterator[D any, PD block.DataBlockIterator[D]] struct {
 	// endKeyInclusive is set to force the iterator to treat the upper field as
 	// inclusive while iterating instead of exclusive.
 	endKeyInclusive       bool
-	index                 rowblk.IndexIter
+	index                 I
 	indexFilterRH         objstorage.ReadHandle
 	indexFilterRHPrealloc objstorageprovider.PreallocatedReadHandle
 	data                  D
@@ -195,7 +196,7 @@ type singleLevelIterator[D any, PD block.DataBlockIterator[D]] struct {
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*singleLevelIterator[rowblk.Iter, *rowblk.Iter])(nil)
+var _ base.InternalIterator = (*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])(nil)
 
 // newRowBlockSingleLevelIterator reads the index block and creates and
 // initializes a singleLevelIterator over an sstable with row-oriented data
@@ -217,13 +218,13 @@ func newRowBlockSingleLevelIterator(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
-) (*singleLevelIterator[rowblk.Iter, *rowblk.Iter], error) {
+) (*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter], error) {
 	if r.err != nil {
 		return nil, r.err
 	}
 	// TODO(jackson): When we have a columnar-block sstable format, assert that
 	// the table format is row-oriented.
-	i := singleLevelIterRowBlockPool.Get().(*singleLevelIterator[rowblk.Iter, *rowblk.Iter])
+	i := singleLevelIterRowBlockPool.Get().(*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
@@ -264,7 +265,7 @@ func newRowBlockSingleLevelIterator(
 }
 
 // init initializes the singleLevelIterator struct. It does not read the index.
-func (i *singleLevelIterator[D, PD]) init(
+func (i *singleLevelIterator[I, PI, D, PD]) init(
 	ctx context.Context,
 	r *Reader,
 	v *virtualState,
@@ -302,7 +303,7 @@ func (i *singleLevelIterator[D, PD]) init(
 }
 
 // Helper function to check if keys returned from iterator are within virtual bounds.
-func (i *singleLevelIterator[D, PD]) maybeVerifyKey(kv *base.InternalKV) *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) maybeVerifyKey(kv *base.InternalKV) *base.InternalKV {
 	if invariants.Enabled && kv != nil && i.vState != nil {
 		key := kv.K.UserKey
 		v := i.vState
@@ -317,23 +318,23 @@ func (i *singleLevelIterator[D, PD]) maybeVerifyKey(kv *base.InternalKV) *base.I
 
 // SetupForCompaction sets up the singleLevelIterator for use with compactionIter.
 // Currently, it skips readahead ramp-up. It should be called after init is called.
-func (i *singleLevelIterator[D, PD]) SetupForCompaction() {
+func (i *singleLevelIterator[I, PI, D, PD]) SetupForCompaction() {
 	i.dataRH.SetupForCompaction()
 	if i.vbRH != nil {
 		i.vbRH.SetupForCompaction()
 	}
 }
 
-func (i *singleLevelIterator[D, PD]) resetForReuse() singleLevelIterator[D, PD] {
-	return singleLevelIterator[D, PD]{
-		index:  i.index.ResetForReuse(),
+func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() singleLevelIterator[I, PI, D, PD] {
+	return singleLevelIterator[I, PI, D, PD]{
+		index:  PI(&i.index).ResetForReuse(),
 		data:   PD(&i.data).ResetForReuse(),
 		pool:   i.pool,
 		inPool: true,
 	}
 }
 
-func (i *singleLevelIterator[D, PD]) initBounds() {
+func (i *singleLevelIterator[I, PI, D, PD]) initBounds() {
 	// Trim the iteration bounds for the current block. We don't have to check
 	// the bounds on each iteration if the block is entirely contained within the
 	// iteration bounds.
@@ -349,7 +350,7 @@ func (i *singleLevelIterator[D, PD]) initBounds() {
 	}
 	i.blockUpper = i.upper
 	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
-	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Separator()) > 0 {
+	if i.blockUpper != nil && i.cmp(i.blockUpper, PI(&i.index).Separator()) > 0 {
 		// The upper-bound is greater than the index key which itself is greater
 		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block. Even if blockUpper is inclusive
@@ -359,7 +360,7 @@ func (i *singleLevelIterator[D, PD]) initBounds() {
 	}
 }
 
-func (i *singleLevelIterator[D, PD]) initBoundsForAlreadyLoadedBlock() {
+func (i *singleLevelIterator[I, PI, D, PD]) initBoundsForAlreadyLoadedBlock() {
 	// TODO(radu): determine automatically if we need to call First or not and
 	// unify this function with initBounds().
 	if PD(&i.data).FirstUserKey() == nil {
@@ -377,7 +378,7 @@ func (i *singleLevelIterator[D, PD]) initBoundsForAlreadyLoadedBlock() {
 	}
 	i.blockUpper = i.upper
 	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
-	if i.blockUpper != nil && i.cmp(i.blockUpper, i.index.Separator()) > 0 {
+	if i.blockUpper != nil && i.cmp(i.blockUpper, PI(&i.index).Separator()) > 0 {
 		// The upper-bound is greater than the index key which itself is greater
 		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block.
@@ -416,13 +417,13 @@ var ensureBoundsOptDeterminism bool
 // synthetic prefix in order to combine them with the vState bounds. Thus, if
 // this iterator knows bounds will be passed to vState, it can signal that it
 // they should be passed without being rewritten to skip converting to and fro.
-func (i singleLevelIterator[P, PD]) SetBoundsWithSyntheticPrefix() bool {
+func (i singleLevelIterator[I, PI, P, PD]) SetBoundsWithSyntheticPrefix() bool {
 	return i.vState != nil
 }
 
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
-func (i *singleLevelIterator[P, PD]) SetBounds(lower, upper []byte) {
+func (i *singleLevelIterator[I, PI, P, PD]) SetBounds(lower, upper []byte) {
 	i.boundsCmp = 0
 	if i.vState != nil {
 		// If the reader is constructed for a virtual sstable, then we must
@@ -457,22 +458,22 @@ func (i *singleLevelIterator[P, PD]) SetBounds(lower, upper []byte) {
 	i.blockUpper = nil
 }
 
-func (i *singleLevelIterator[P, PD]) SetContext(ctx context.Context) {
+func (i *singleLevelIterator[I, PI, P, PD]) SetContext(ctx context.Context) {
 	i.ctx = ctx
 }
 
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
-func (i *singleLevelIterator[P, PD]) loadBlock(dir int8) loadBlockResult {
-	if !i.index.Valid() {
+func (i *singleLevelIterator[I, PI, P, PD]) loadBlock(dir int8) loadBlockResult {
+	if !PI(&i.index).Valid() {
 		// Ensure the data block iterator is invalidated even if loading of the block
 		// fails.
 		PD(&i.data).Invalidate()
 		return loadBlockFailed
 	}
 	// Load the next block.
-	bhp, err := i.index.BlockHandleWithProperties()
+	bhp, err := PI(&i.index).BlockHandleWithProperties()
 	if i.dataBH == bhp.Handle && PD(&i.data).Valid() {
 		// We're already at the data block we want to load. Reset bounds in case
 		// they changed since the last seek, but don't reload the block from cache
@@ -525,7 +526,7 @@ func (i *singleLevelIterator[P, PD]) loadBlock(dir int8) loadBlockResult {
 
 // readBlockForVBR implements the blockProviderWhenOpen interface for use by
 // the valueBlockReader.
-func (i *singleLevelIterator[D, PD]) readBlockForVBR(
+func (i *singleLevelIterator[I, PI, D, PD]) readBlockForVBR(
 	h block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
 	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.ValueBlock)
@@ -537,7 +538,7 @@ func (i *singleLevelIterator[D, PD]) readBlockForVBR(
 // fall within the filter's current bounds.  This function consults the
 // apprioriate bound, depending on the iteration direction, and returns either
 // `blockIntersects` or `blockExcluded`.
-func (i *singleLevelIterator[D, PD]) resolveMaybeExcluded(dir int8) intersectsResult {
+func (i *singleLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) intersectsResult {
 	// TODO(jackson): We could first try comparing to top-level index block's
 	// key, and if within bounds avoid per-data block key comparisons.
 
@@ -559,7 +560,7 @@ func (i *singleLevelIterator[D, PD]) resolveMaybeExcluded(dir int8) intersectsRe
 	// need.
 	if dir > 0 {
 		// Forward iteration.
-		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.index.Separator()) {
+		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(PI(&i.index).Separator()) {
 			return blockExcluded
 		}
 		return blockIntersects
@@ -583,19 +584,19 @@ func (i *singleLevelIterator[D, PD]) resolveMaybeExcluded(dir int8) intersectsRe
 	// previous block's separator, which provides an inclusive lower bound on
 	// the original block's keys. Afterwards, we step forward to restore our
 	// index position.
-	if !i.index.Prev() {
+	if !PI(&i.index).Prev() {
 		// The original block points to the first block of this index block. If
 		// there's a two-level index, it could potentially provide a lower
 		// bound, but the code refactoring necessary to read it doesn't seem
 		// worth the payoff. We fall through to loading the block.
-	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(i.index.Separator()) {
+	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(PI(&i.index).Separator()) {
 		// The lower-bound on the original block falls within the filter's
 		// bounds, and we can skip the block (after restoring our current index
 		// position).
-		_ = i.index.Next()
+		_ = PI(&i.index).Next()
 		return blockExcluded
 	}
-	_ = i.index.Next()
+	_ = PI(&i.index).Next()
 	return blockIntersects
 }
 
@@ -605,7 +606,7 @@ func (i *singleLevelIterator[D, PD]) resolveMaybeExcluded(dir int8) intersectsRe
 // seeks for a particular iterator.
 const numStepsBeforeSeek = 4
 
-func (i *singleLevelIterator[D, PD]) trySeekGEUsingNextWithinBlock(
+func (i *singleLevelIterator[I, PI, D, PD]) trySeekGEUsingNextWithinBlock(
 	key []byte,
 ) (kv *base.InternalKV, done bool) {
 	kv = PD(&i.data).KV()
@@ -629,7 +630,7 @@ func (i *singleLevelIterator[D, PD]) trySeekGEUsingNextWithinBlock(
 	return kv, false
 }
 
-func (i *singleLevelIterator[D, PD]) trySeekLTUsingPrevWithinBlock(
+func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 	key []byte,
 ) (kv *base.InternalKV, done bool) {
 	kv = PD(&i.data).KV()
@@ -653,7 +654,9 @@ func (i *singleLevelIterator[D, PD]) trySeekLTUsingPrevWithinBlock(
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
-func (i *singleLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
+	key []byte, flags base.SeekGEFlags,
+) *base.InternalKV {
 	if i.vState != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -694,7 +697,7 @@ func (i *singleLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) 
 }
 
 // seekGEHelper contains the common functionality for SeekGE and SeekPrefixGE.
-func (i *singleLevelIterator[D, PD]) seekGEHelper(
+func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 	key []byte, boundsCmp int, flags base.SeekGEFlags,
 ) *base.InternalKV {
 	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
@@ -703,8 +706,8 @@ func (i *singleLevelIterator[D, PD]) seekGEHelper(
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
 
 	var dontSeekWithinBlock bool
-	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && i.index.Valid() &&
-		boundsCmp > 0 && i.cmp(key, i.index.Separator()) <= 0 {
+	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && PI(&i.index).Valid() &&
+		boundsCmp > 0 && i.cmp(key, PI(&i.index).Separator()) <= 0 {
 		// Fast-path: The bounds have moved forward and this SeekGE is
 		// respecting the lower bound (guaranteed by Iterator). We know that
 		// the iterator must already be positioned within or just outside the
@@ -758,7 +761,7 @@ func (i *singleLevelIterator[D, PD]) seekGEHelper(
 
 		// Slow-path.
 
-		if !i.index.SeekGE(key) {
+		if !PI(&i.index).SeekGE(key) {
 			// The target key is greater than any key in the index block.
 			// Invalidate the block iterator so that a subsequent call to Prev()
 			// will return the last key in the table.
@@ -777,7 +780,7 @@ func (i *singleLevelIterator[D, PD]) seekGEHelper(
 			// multiple blocks. If upper is exclusive we use >= below, else
 			// we use >.
 			if i.upper != nil {
-				cmp := i.cmp(i.index.Separator(), i.upper)
+				cmp := i.cmp(PI(&i.index).Separator(), i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 					return nil
@@ -805,7 +808,7 @@ func (i *singleLevelIterator[D, PD]) seekGEHelper(
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
-func (i *singleLevelIterator[D, PD]) SeekPrefixGE(
+func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
 	if i.vState != nil {
@@ -821,7 +824,7 @@ func (i *singleLevelIterator[D, PD]) SeekPrefixGE(
 	return i.seekPrefixGE(prefix, key, flags)
 }
 
-func (i *singleLevelIterator[D, PD]) seekPrefixGE(
+func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
 	// NOTE: prefix is only used for bloom filter checking and not later work in
@@ -884,7 +887,7 @@ func shouldUseFilterBlock(reader *Reader, filterBlockSizeLimit FilterBlockSizeLi
 	return reader.tableFilter != nil && reader.filterBH.Length <= uint64(filterBlockSizeLimit)
 }
 
-func (i *singleLevelIterator[D, PD]) bloomFilterMayContain(prefix []byte) (bool, error) {
+func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte) (bool, error) {
 	// Check prefix bloom filter.
 	prefixToCheck := prefix
 	if i.transforms.SyntheticPrefix.IsSet() {
@@ -906,7 +909,7 @@ func (i *singleLevelIterator[D, PD]) bloomFilterMayContain(prefix []byte) (bool,
 }
 
 // virtualLast should only be called if i.vReader != nil.
-func (i *singleLevelIterator[D, PD]) virtualLast() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
 	if i.vState == nil {
 		panic("pebble: invalid call to virtualLast")
 	}
@@ -922,7 +925,7 @@ func (i *singleLevelIterator[D, PD]) virtualLast() *base.InternalKV {
 // virtualLast. Consider generalizing this into a SeekLE() if there are other
 // uses of this method in the future. Does a SeekLE on the upper bound of the
 // file/iterator.
-func (i *singleLevelIterator[D, PD]) virtualLastSeekLE() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 	// Callers of SeekLE don't know about virtual sstable bounds, so we may
 	// have to internally restrict the bounds.
 	//
@@ -940,7 +943,7 @@ func (i *singleLevelIterator[D, PD]) virtualLastSeekLE() *base.InternalKV {
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
 
-	indexOk := i.index.SeekGE(key)
+	indexOk := PI(&i.index).SeekGE(key)
 	// We can have multiple internal keys with the same user key as the seek
 	// key. In that case, we want the last (greatest) internal key.
 	//
@@ -960,8 +963,8 @@ func (i *singleLevelIterator[D, PD]) virtualLastSeekLE() *base.InternalKV {
 	// for now.
 	// TODO(jackson): Consider implementing SeekLE since it's easier to do in
 	// colblk.
-	for indexOk && bytes.Equal(i.index.Separator(), key) {
-		indexOk = i.index.Next()
+	for indexOk && bytes.Equal(PI(&i.index).Separator(), key) {
+		indexOk = PI(&i.index).Next()
 	}
 	if !indexOk {
 		// Cases A or B1 where B1 exhausted all blocks. In both cases the last block
@@ -1008,7 +1011,9 @@ func (i *singleLevelIterator[D, PD]) virtualLastSeekLE() *base.InternalKV {
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than or equal to the upper bound.
-func (i *singleLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) *base.InternalKV {
 	if i.vState != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
@@ -1036,7 +1041,7 @@ func (i *singleLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) 
 	i.positionedUsingLatestBounds = true
 
 	var dontSeekWithinBlock bool
-	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && i.index.Valid() &&
+	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && PI(&i.index).Valid() &&
 		boundsCmp < 0 && i.cmp(PD(&i.data).FirstUserKey(), key) < 0 {
 		// Fast-path: The bounds have moved backward, and this SeekLT is
 		// respecting the upper bound (guaranteed by Iterator). We know that
@@ -1063,8 +1068,8 @@ func (i *singleLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) 
 		// externally ensured that the filter is disabled (through returning
 		// Intersects=false irrespective of the block props provided) during
 		// seeks.
-		if !i.index.SeekGE(key) {
-			if !i.index.Last() {
+		if !PI(&i.index).SeekGE(key) {
+			if !PI(&i.index).Last() {
 				return nil
 			}
 		}
@@ -1079,7 +1084,7 @@ func (i *singleLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) 
 			// that the previous block starts with keys <= ikey.UserKey since
 			// even though this is the current block's separator, the same
 			// user key can span multiple blocks.
-			if i.lower != nil && i.cmp(i.index.Separator(), i.lower) < 0 {
+			if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
 				i.exhaustedBounds = -1
 				return nil
 			}
@@ -1114,7 +1119,7 @@ func (i *singleLevelIterator[D, PD]) SeekLT(key []byte, flags base.SeekLTFlags) 
 // package. Note that First only checks the upper bound. It is up to the caller
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
-func (i *singleLevelIterator[D, PD]) First() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
 	// virtual.
@@ -1131,13 +1136,13 @@ func (i *singleLevelIterator[D, PD]) First() *base.InternalKV {
 // index file, or for positioning in the second-level index in a two-level
 // index file. For the latter, one cannot make any claims about absolute
 // positioning.
-func (i *singleLevelIterator[D, PD]) firstInternal() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	if !i.index.First() {
+	if !PI(&i.index).First() {
 		PD(&i.data).Invalidate()
 		return nil
 	}
@@ -1165,7 +1170,7 @@ func (i *singleLevelIterator[D, PD]) firstInternal() *base.InternalKV {
 		// same user key can span multiple blocks. If upper is exclusive we
 		// use >= below, else we use >.
 		if i.upper != nil {
-			cmp := i.cmp(i.index.Separator(), i.upper)
+			cmp := i.cmp(PI(&i.index).Separator(), i.upper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.exhaustedBounds = +1
 				return nil
@@ -1181,7 +1186,7 @@ func (i *singleLevelIterator[D, PD]) firstInternal() *base.InternalKV {
 // package. Note that Last only checks the lower bound. It is up to the caller
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
-func (i *singleLevelIterator[D, PD]) Last() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
 	if i.vState != nil {
 		return i.maybeVerifyKey(i.virtualLast())
 	}
@@ -1197,13 +1202,13 @@ func (i *singleLevelIterator[D, PD]) Last() *base.InternalKV {
 // index file, or for positioning in the second-level index in a two-level
 // index file. For the latter, one cannot make any claims about absolute
 // positioning.
-func (i *singleLevelIterator[D, PD]) lastInternal() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	if !i.index.Last() {
+	if !PI(&i.index).Last() {
 		PD(&i.data).Invalidate()
 		return nil
 	}
@@ -1226,7 +1231,7 @@ func (i *singleLevelIterator[D, PD]) lastInternal() *base.InternalKV {
 		// already exceeded. Note that the previous block starts with keys <=
 		// key.UserKey since even though this is the current block's
 		// separator, the same user key can span multiple blocks.
-		if i.lower != nil && i.cmp(i.index.Separator(), i.lower) < 0 {
+		if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
 			i.exhaustedBounds = -1
 			return nil
 		}
@@ -1239,7 +1244,7 @@ func (i *singleLevelIterator[D, PD]) lastInternal() *base.InternalKV {
 // package.
 // Note: compactionIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
-func (i *singleLevelIterator[D, PD]) Next() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 	if i.exhaustedBounds == +1 {
 		panic("Next called even though exhausted upper bound")
 	}
@@ -1266,7 +1271,7 @@ func (i *singleLevelIterator[D, PD]) Next() *base.InternalKV {
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
-func (i *singleLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.exhaustedBounds == +1 {
 		panic("NextPrefix called even though exhausted upper bound")
 	}
@@ -1291,16 +1296,16 @@ func (i *singleLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV
 	// Did not find prefix in the existing data block. This is the slow-path
 	// where we effectively seek the iterator.
 	// The key is likely to be in the next data block, so try one step.
-	if !i.index.Next() {
+	if !PI(&i.index).Next() {
 		// The target key is greater than any key in the index block.
 		// Invalidate the block iterator so that a subsequent call to Prev()
 		// will return the last key in the table.
 		PD(&i.data).Invalidate()
 		return nil
 	}
-	if i.cmp(succKey, i.index.Separator()) > 0 {
+	if i.cmp(succKey, PI(&i.index).Separator()) > 0 {
 		// Not in the next data block, so seek the index.
-		if !i.index.SeekGE(succKey) {
+		if !PI(&i.index).SeekGE(succKey) {
 			// The target key is greater than any key in the index block.
 			// Invalidate the block iterator so that a subsequent call to Prev()
 			// will return the last key in the table.
@@ -1320,7 +1325,7 @@ func (i *singleLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV
 		// multiple blocks. If upper is exclusive we use >= below, else we use
 		// >.
 		if i.upper != nil {
-			cmp := i.cmp(i.index.Separator(), i.upper)
+			cmp := i.cmp(PI(&i.index).Separator(), i.upper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.exhaustedBounds = +1
 				return nil
@@ -1342,7 +1347,7 @@ func (i *singleLevelIterator[D, PD]) NextPrefix(succKey []byte) *base.InternalKV
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *singleLevelIterator[D, PD]) Prev() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
 	if i.exhaustedBounds == -1 {
 		panic("Prev called even though exhausted lower bound")
 	}
@@ -1363,9 +1368,9 @@ func (i *singleLevelIterator[D, PD]) Prev() *base.InternalKV {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator[D, PD]) skipForward() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 	for {
-		if !i.index.Next() {
+		if !PI(&i.index).Next() {
 			PD(&i.data).Invalidate()
 			break
 		}
@@ -1387,7 +1392,7 @@ func (i *singleLevelIterator[D, PD]) skipForward() *base.InternalKV {
 			// separator, the same user key can span multiple blocks. If upper
 			// is exclusive we use >= below, else we use >.
 			if i.upper != nil {
-				cmp := i.cmp(i.index.Separator(), i.upper)
+				cmp := i.cmp(PI(&i.index).Separator(), i.upper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
 					return nil
@@ -1443,9 +1448,9 @@ func (i *singleLevelIterator[D, PD]) skipForward() *base.InternalKV {
 	return nil
 }
 
-func (i *singleLevelIterator[D, PD]) skipBackward() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 	for {
-		if !i.index.Prev() {
+		if !PI(&i.index).Prev() {
 			PD(&i.data).Invalidate()
 			break
 		}
@@ -1465,7 +1470,7 @@ func (i *singleLevelIterator[D, PD]) skipBackward() *base.InternalKV {
 			// bound is already exceeded. Note that the previous block starts with
 			// keys <= key.UserKey since even though this is the current block's
 			// separator, the same user key can span multiple blocks.
-			if i.lower != nil && i.cmp(i.index.Separator(), i.lower) < 0 {
+			if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
 				i.exhaustedBounds = -1
 				return nil
 			}
@@ -1477,7 +1482,7 @@ func (i *singleLevelIterator[D, PD]) skipBackward() *base.InternalKV {
 			// safe to assume that there are no keys if we keep skipping backwards.
 			// Check the previous block, but check the lower bound before doing
 			// that.
-			if i.lower != nil && i.cmp(i.index.Separator(), i.lower) < 0 {
+			if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
 				i.exhaustedBounds = -1
 				return nil
 			}
@@ -1494,7 +1499,7 @@ func (i *singleLevelIterator[D, PD]) skipBackward() *base.InternalKV {
 
 // Error implements internalIterator.Error, as documented in the pebble
 // package.
-func (i *singleLevelIterator[D, PD]) Error() error {
+func (i *singleLevelIterator[I, PI, D, PD]) Error() error {
 	if err := PD(&i.data).Error(); err != nil {
 		return err
 	}
@@ -1503,7 +1508,7 @@ func (i *singleLevelIterator[D, PD]) Error() error {
 
 // SetCloseHook sets a function that will be called when the iterator is
 // closed.
-func (i *singleLevelIterator[D, PD]) SetCloseHook(fn func(i Iterator) error) {
+func (i *singleLevelIterator[I, PI, D, PD]) SetCloseHook(fn func(i Iterator) error) {
 	i.closeHook = fn
 }
 
@@ -1516,7 +1521,7 @@ func firstError(err0, err1 error) error {
 
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
-func (i *singleLevelIterator[D, PD]) Close() error {
+func (i *singleLevelIterator[I, PI, D, PD]) Close() error {
 	err := i.closeInternal()
 	pool := i.pool
 	*i = i.resetForReuse()
@@ -1526,7 +1531,7 @@ func (i *singleLevelIterator[D, PD]) Close() error {
 	return err
 }
 
-func (i *singleLevelIterator[D, PD]) closeInternal() error {
+func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	if invariants.Enabled && i.inPool {
 		panic("Close called on interator in pool")
 	}
@@ -1536,7 +1541,7 @@ func (i *singleLevelIterator[D, PD]) closeInternal() error {
 		err = firstError(err, i.closeHook(i))
 	}
 	err = firstError(err, PD(&i.data).Close())
-	err = firstError(err, i.index.Close())
+	err = firstError(err, PI(&i.index).Close())
 	if i.indexFilterRH != nil {
 		err = firstError(err, i.indexFilterRH.Close())
 		i.indexFilterRH = nil
@@ -1559,7 +1564,7 @@ func (i *singleLevelIterator[D, PD]) closeInternal() error {
 	return err
 }
 
-func (i *singleLevelIterator[D, PD]) String() string {
+func (i *singleLevelIterator[I, PI, D, PD]) String() string {
 	if i.vState != nil {
 		return i.vState.fileNum.String()
 	}
@@ -1567,6 +1572,6 @@ func (i *singleLevelIterator[D, PD]) String() string {
 }
 
 // DebugTree is part of the InternalIterator interface.
-func (i *singleLevelIterator[D, PD]) DebugTree(tp treeprinter.Node) {
+func (i *singleLevelIterator[I, PI, D, PD]) DebugTree(tp treeprinter.Node) {
 	tp.Childf("%T(%p) fileNum=%s", i, i, i.String())
 }

@@ -976,12 +976,12 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 					NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 				require.NoError(t, err)
 				switch i := citer.(type) {
-				case *singleLevelIterator[rowblk.Iter, *rowblk.Iter]:
+				case *singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]:
 					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
 					require.Nil(t, i.vbRH)
-				case *twoLevelIterator[rowblk.Iter, *rowblk.Iter]:
+				case *twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]:
 					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.secondLevel.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
@@ -1033,7 +1033,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 			NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 		require.NoError(t, err)
 		defer citer.Close()
-		i := citer.(*singleLevelIterator[rowblk.Iter, *rowblk.Iter])
+		i := citer.(*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}
@@ -1041,7 +1041,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		iter, err := r.NewIter(NoTransforms, nil, nil)
 		require.NoError(t, err)
 		defer iter.Close()
-		i := iter.(*singleLevelIterator[rowblk.Iter, *rowblk.Iter])
+		i := iter.(*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}
