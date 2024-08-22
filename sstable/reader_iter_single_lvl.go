@@ -176,8 +176,13 @@ type singleLevelIterator[D any, PD block.DataBlockIterator[D]] struct {
 	// present, should be used for prefix seeks or not. In some cases it is
 	// beneficial to skip a filter block even if it exists (eg. if probability of
 	// a match is high).
-	useFilterBlock         bool
-	lastBloomFilterMatched bool
+	useFilterBlock bool
+
+	// didNotPositionOnLastSeekGE is set to true if we completed a call to SeekGE
+	// or SeekPrefixGE without positioning the iterator internally. If this flag
+	// is set, the TrySeekUsingNext optimization is disabled on the next seek.
+	// This happens for example when the bloom filter excludes a prefix.
+	didNotPositionOnLastSeekGE bool
 
 	transforms IterTransforms
 
@@ -664,6 +669,11 @@ func (i *singleLevelIterator[D, PD]) SeekGE(key []byte, flags base.SeekGEFlags) 
 			key = i.lower
 		}
 	}
+	if i.didNotPositionOnLastSeekGE {
+		// Iterator is not positioned based on last seek.
+		flags = flags.DisableTrySeekUsingNext()
+		i.didNotPositionOnLastSeekGE = false
+	}
 
 	if flags.TrySeekUsingNext() {
 		// The i.exhaustedBounds comparison indicates that the upper bound was
@@ -815,6 +825,12 @@ func (i *singleLevelIterator[D, PD]) SeekPrefixGE(
 		// TODO(bananabrick): We can optimize away this check for the level iter
 		// if necessary.
 		if i.cmp(key, i.lower) < 0 {
+			if !i.reader.Split.HasPrefix(prefix, i.lower) {
+				i.err = nil // clear any cached iteration error
+				// Disable the TrySeekUsingNext optimization next time.
+				i.didNotPositionOnLastSeekGE = true
+				return nil
+			}
 			key = i.lower
 		}
 	}
@@ -824,6 +840,15 @@ func (i *singleLevelIterator[D, PD]) SeekPrefixGE(
 func (i *singleLevelIterator[D, PD]) seekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
+	if invariants.Enabled && !i.reader.Split.HasPrefix(prefix, key) {
+		panic(fmt.Sprintf("invalid prefix %q for key %q", prefix, key))
+	}
+	if i.didNotPositionOnLastSeekGE {
+		// Iterator is not positioned based on last seek.
+		flags = flags.DisableTrySeekUsingNext()
+		i.didNotPositionOnLastSeekGE = false
+	}
+
 	// NOTE: prefix is only used for bloom filter checking and not later work in
 	// this method. Hence, we can use the existing iterator position if the last
 	// SeekPrefixGE did not fail bloom filter matching.
@@ -831,11 +856,6 @@ func (i *singleLevelIterator[D, PD]) seekPrefixGE(
 	err := i.err
 	i.err = nil // clear cached iteration error
 	if i.useFilterBlock {
-		if !i.lastBloomFilterMatched {
-			// Iterator is not positioned based on last seek.
-			flags = flags.DisableTrySeekUsingNext()
-		}
-		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
 		var mayContain bool
 		mayContain, i.err = i.bloomFilterMayContain(prefix)
@@ -846,9 +866,10 @@ func (i *singleLevelIterator[D, PD]) seekPrefixGE(
 			// since the caller was allowed to call Next when SeekPrefixGE returned
 			// nil. This is no longer allowed.
 			PD(&i.data).Invalidate()
+			// Disable the TrySeekUsingNext optimization next time.
+			i.didNotPositionOnLastSeekGE = true
 			return nil
 		}
-		i.lastBloomFilterMatched = true
 	}
 	if flags.TrySeekUsingNext() {
 		// The i.exhaustedBounds comparison indicates that the upper bound was

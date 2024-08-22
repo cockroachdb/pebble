@@ -32,8 +32,12 @@ type twoLevelIterator[D any, PD block.DataBlockIterator[D]] struct {
 	// useFilterBlock controls whether we consult the bloom filter in the
 	// twoLevelIterator code. Note that secondLevel.useFilterBlock is always
 	// false - any filtering happens at the top level.
-	useFilterBlock         bool
-	lastBloomFilterMatched bool
+	useFilterBlock bool
+	// didNotPositionOnLastSeekGE is set to true if we completed a call to SeekGE
+	// or SeekPrefixGE without positioning the iterator internally. If this flag
+	// is set, the TrySeekUsingNext optimization is disabled on the next seek.
+	// This happens for example when the bloom filter excludes a prefix.
+	didNotPositionOnLastSeekGE bool
 }
 
 var _ Iterator = (*twoLevelIterator[rowblk.Iter, *rowblk.Iter])(nil)
@@ -370,8 +374,18 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 		// TODO(bananabrick): We can optimize away this check for the level iter
 		// if necessary.
 		if i.secondLevel.cmp(key, i.secondLevel.lower) < 0 {
+			if !i.secondLevel.reader.Split.HasPrefix(prefix, i.secondLevel.lower) {
+				i.secondLevel.err = nil // clear any cached iteration error
+				// Disable the TrySeekUsingNext optimization next time.
+				i.didNotPositionOnLastSeekGE = true
+				return nil
+			}
 			key = i.secondLevel.lower
 		}
+	}
+	if i.didNotPositionOnLastSeekGE {
+		flags = flags.DisableTrySeekUsingNext()
+		i.didNotPositionOnLastSeekGE = false
 	}
 
 	// NOTE: prefix is only used for bloom filter checking and not later work in
@@ -384,8 +398,7 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 	// The twoLevelIterator could be already exhausted. Utilize that when
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
 	// bounds-exhausted near the top of the file.
-	filterUsedAndDidNotMatch := i.useFilterBlock && !i.lastBloomFilterMatched
-	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
+	if flags.TrySeekUsingNext() &&
 		(i.secondLevel.exhaustedBounds == +1 || (PD(&i.secondLevel.data).IsDataInvalidated() && i.secondLevel.index.IsDataInvalidated())) &&
 		err == nil {
 		// Already exhausted, so return nil.
@@ -394,11 +407,6 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 
 	// Check prefix bloom filter.
 	if i.useFilterBlock {
-		if !i.lastBloomFilterMatched {
-			// Iterator is not positioned based on last seek.
-			flags = flags.DisableTrySeekUsingNext()
-		}
-		i.lastBloomFilterMatched = false
 		var mayContain bool
 		mayContain, i.secondLevel.err = i.secondLevel.bloomFilterMayContain(prefix)
 		if i.secondLevel.err != nil || !mayContain {
@@ -408,9 +416,10 @@ func (i *twoLevelIterator[D, PD]) SeekPrefixGE(
 			// since the caller was allowed to call Next when SeekPrefixGE returned
 			// nil. This is no longer allowed.
 			PD(&i.secondLevel.data).Invalidate()
+			// Disable the TrySeekUsingNext optimization next time.
+			i.didNotPositionOnLastSeekGE = true
 			return nil
 		}
-		i.lastBloomFilterMatched = true
 	}
 
 	// Bloom filter matches.

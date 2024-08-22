@@ -159,6 +159,12 @@ func (s Split) Prefix(k []byte) []byte {
 	return k[:i:i]
 }
 
+// HasPrefix returns true if the given key has the given prefix.
+func (s Split) HasPrefix(prefix, key []byte) bool {
+	i := s(key)
+	return bytes.Equal(prefix, key[:i:i])
+}
+
 // DefaultSplit is a trivial implementation of Split which always returns the
 // full key.
 var DefaultSplit Split = func(key []byte) int { return len(key) }
