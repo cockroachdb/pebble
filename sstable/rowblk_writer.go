@@ -33,83 +33,6 @@ const encodedBHPEstimatedSize = binary.MaxVarintLen64 * 2
 
 var errWriterClosed = errors.New("pebble: writer is closed")
 
-// WriterMetadata holds info about a finished sstable.
-type WriterMetadata struct {
-	Size          uint64
-	SmallestPoint InternalKey
-	// LargestPoint, LargestRangeKey, LargestRangeDel should not be accessed
-	// before Writer.Close is called, because they may only be set on
-	// Writer.Close.
-	LargestPoint     InternalKey
-	SmallestRangeDel InternalKey
-	LargestRangeDel  InternalKey
-	SmallestRangeKey InternalKey
-	LargestRangeKey  InternalKey
-	HasPointKeys     bool
-	HasRangeDelKeys  bool
-	HasRangeKeys     bool
-	SmallestSeqNum   base.SeqNum
-	LargestSeqNum    base.SeqNum
-	Properties       Properties
-}
-
-// SetSmallestPointKey sets the smallest point key to the given key.
-// NB: this method set the "absolute" smallest point key. Any existing key is
-// overridden.
-func (m *WriterMetadata) SetSmallestPointKey(k InternalKey) {
-	m.SmallestPoint = k
-	m.HasPointKeys = true
-}
-
-// SetSmallestRangeDelKey sets the smallest rangedel key to the given key.
-// NB: this method set the "absolute" smallest rangedel key. Any existing key is
-// overridden.
-func (m *WriterMetadata) SetSmallestRangeDelKey(k InternalKey) {
-	m.SmallestRangeDel = k
-	m.HasRangeDelKeys = true
-}
-
-// SetSmallestRangeKey sets the smallest range key to the given key.
-// NB: this method set the "absolute" smallest range key. Any existing key is
-// overridden.
-func (m *WriterMetadata) SetSmallestRangeKey(k InternalKey) {
-	m.SmallestRangeKey = k
-	m.HasRangeKeys = true
-}
-
-// SetLargestPointKey sets the largest point key to the given key.
-// NB: this method set the "absolute" largest point key. Any existing key is
-// overridden.
-func (m *WriterMetadata) SetLargestPointKey(k InternalKey) {
-	m.LargestPoint = k
-	m.HasPointKeys = true
-}
-
-// SetLargestRangeDelKey sets the largest rangedel key to the given key.
-// NB: this method set the "absolute" largest rangedel key. Any existing key is
-// overridden.
-func (m *WriterMetadata) SetLargestRangeDelKey(k InternalKey) {
-	m.LargestRangeDel = k
-	m.HasRangeDelKeys = true
-}
-
-// SetLargestRangeKey sets the largest range key to the given key.
-// NB: this method set the "absolute" largest range key. Any existing key is
-// overridden.
-func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
-	m.LargestRangeKey = k
-	m.HasRangeKeys = true
-}
-
-func (m *WriterMetadata) updateSeqNum(seqNum base.SeqNum) {
-	if m.SmallestSeqNum > seqNum {
-		m.SmallestSeqNum = seqNum
-	}
-	if m.LargestSeqNum < seqNum {
-		m.LargestSeqNum = seqNum
-	}
-}
-
 // flushDecisionOptions holds parameters to inform the sstable block flushing
 // heuristics.
 type flushDecisionOptions struct {
@@ -120,8 +43,10 @@ type flushDecisionOptions struct {
 	sizeClassAwareThreshold int
 }
 
-// RawWriter is a table writer.
-type RawWriter struct {
+// RawRowWriter is a sstable RawWriter that writes sstables with row-oriented
+// blocks. All table formats TableFormatPebblev4 and earlier write row-oriented
+// blocks and use RawRowWriter.
+type RawRowWriter struct {
 	layout layoutWriter
 	meta   WriterMetadata
 	err    error
@@ -233,7 +158,7 @@ type coordinationState struct {
 	sizeEstimate dataBlockEstimates
 }
 
-func (c *coordinationState) init(parallelismEnabled bool, writer *RawWriter) {
+func (c *coordinationState) init(parallelismEnabled bool, writer *RawRowWriter) {
 	c.parallelismEnabled = parallelismEnabled
 	// useMutex is false regardless of parallelismEnabled, because we do not do
 	// parallel compression yet.
@@ -659,7 +584,7 @@ type indexBlockAndBlockProperties struct {
 // added ordered by their start key, but they can be added out of order from
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by keyspan.Fragmenter).
-func (w *RawWriter) Add(key InternalKey, value []byte) error {
+func (w *RawRowWriter) Add(key InternalKey, value []byte) error {
 	if w.isStrictObsolete {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
@@ -677,7 +602,9 @@ func (w *RawWriter) Add(key InternalKey, value []byte) error {
 // that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 // responsibility of the caller. S1 is solely the responsibility of the
 // callee.
-func (w *RawWriter) AddWithForceObsolete(key InternalKey, value []byte, forceObsolete bool) error {
+func (w *RawRowWriter) AddWithForceObsolete(
+	key InternalKey, value []byte, forceObsolete bool,
+) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -695,7 +622,7 @@ func (w *RawWriter) AddWithForceObsolete(key InternalKey, value []byte, forceObs
 	return w.addPoint(key, value, forceObsolete)
 }
 
-func (w *RawWriter) makeAddPointDecisionV2(key InternalKey) error {
+func (w *RawRowWriter) makeAddPointDecisionV2(key InternalKey) error {
 	prevTrailer := w.lastPointKeyInfo.trailer
 	w.lastPointKeyInfo.trailer = key.Trailer
 	if w.dataBlockBuf.dataBlock.EntryCount() == 0 {
@@ -715,7 +642,7 @@ func (w *RawWriter) makeAddPointDecisionV2(key InternalKey) error {
 }
 
 // REQUIRES: at least one point has been written to the Writer.
-func (w *RawWriter) getLastPointUserKey() []byte {
+func (w *RawRowWriter) getLastPointUserKey() []byte {
 	if w.dataBlockBuf.dataBlock.EntryCount() == 0 {
 		panic(errors.AssertionFailedf("no point keys added to writer"))
 	}
@@ -723,7 +650,7 @@ func (w *RawWriter) getLastPointUserKey() []byte {
 }
 
 // REQUIRES: w.tableFormat >= TableFormatPebblev3
-func (w *RawWriter) makeAddPointDecisionV3(
+func (w *RawRowWriter) makeAddPointDecisionV3(
 	key InternalKey, valueLen int,
 ) (setHasSamePrefix bool, writeToValueBlock bool, isObsolete bool, err error) {
 	prevPointKeyInfo := w.lastPointKeyInfo
@@ -839,7 +766,7 @@ func (w *RawWriter) makeAddPointDecisionV3(
 	return setHasSamePrefix, considerWriteToValueBlock, isObsolete, nil
 }
 
-func (w *RawWriter) addPoint(key InternalKey, value []byte, forceObsolete bool) error {
+func (w *RawRowWriter) addPoint(key InternalKey, value []byte, forceObsolete bool) error {
 	if w.isStrictObsolete && key.Kind() == InternalKeyKindMerge {
 		return errors.Errorf("MERGE not supported in a strict-obsolete sstable")
 	}
@@ -968,7 +895,7 @@ func (w *RawWriter) addPoint(key InternalKey, value []byte, forceObsolete bool) 
 	return nil
 }
 
-func (w *RawWriter) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
+func (w *RawRowWriter) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
 	return keyspan.Span{
 		Start: k.UserKey,
 		End:   value,
@@ -976,7 +903,7 @@ func (w *RawWriter) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
 	}.Pretty(w.formatKey)
 }
 
-func (w *RawWriter) addTombstone(key InternalKey, value []byte) error {
+func (w *RawRowWriter) addTombstone(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && w.rangeDelBlock.EntryCount() > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
 		// tombstones overlap, their start and end keys must be identical.
@@ -1034,7 +961,7 @@ func (w *RawWriter) addTombstone(key InternalKey, value []byte) error {
 	return nil
 }
 
-func (w *RawWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
+func (w *RawRowWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
 	// This method is the emit function of the Fragmenter.
 	//
 	// NB: The span should only contain range keys and be internally consistent
@@ -1061,7 +988,7 @@ func (w *RawWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
 // spans that are perfectly aligned (same start and end keys), spans may not
 // overlap. Range keys may be added out of order relative to point keys and
 // range deletions.
-func (w *RawWriter) addRangeKey(key InternalKey, value []byte) error {
+func (w *RawRowWriter) addRangeKey(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && w.rangeKeyBlock.EntryCount() > 0 {
 		prevStartKey := w.rangeKeyBlock.CurKey()
 		prevEndKey, _, err := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.CurValue())
@@ -1143,7 +1070,7 @@ func (w *RawWriter) addRangeKey(key InternalKey, value []byte) error {
 	return nil
 }
 
-func (w *RawWriter) maybeAddToFilter(key []byte) {
+func (w *RawRowWriter) maybeAddToFilter(key []byte) {
 	if w.filter != nil {
 		prefix := key[:w.split(key)]
 		w.filter.addKey(prefix)
@@ -1155,7 +1082,7 @@ func (w *RawWriter) maybeAddToFilter(key []byte) {
 // the deletion size exceeds a threshold. It should be called after the
 // data block has been finished.
 // Invariant: w.dataBlockBuf.uncompressed must already be populated.
-func (w *RawWriter) maybeIncrementTombstoneDenseBlocks() {
+func (w *RawRowWriter) maybeIncrementTombstoneDenseBlocks() {
 	minSize := w.deletionSizeRatioThreshold * float32(len(w.dataBlockBuf.uncompressed))
 	if w.dataBlockBuf.numDeletions > w.numDeletionsThreshold || float32(w.dataBlockBuf.deletionSize) > minSize {
 		w.props.NumTombstoneDenseBlocks++
@@ -1164,7 +1091,7 @@ func (w *RawWriter) maybeIncrementTombstoneDenseBlocks() {
 	w.dataBlockBuf.deletionSize = 0
 }
 
-func (w *RawWriter) flush(key InternalKey) error {
+func (w *RawRowWriter) flush(key InternalKey) error {
 	// We're finishing a data block.
 	err := w.finishDataBlockProps(w.dataBlockBuf)
 	if err != nil {
@@ -1241,7 +1168,7 @@ func (w *RawWriter) flush(key InternalKey) error {
 	return err
 }
 
-func (w *RawWriter) maybeFlush(key InternalKey, valueLen int) error {
+func (w *RawRowWriter) maybeFlush(key InternalKey, valueLen int) error {
 	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.dataBlockOptions, w.allocatorSizeClasses) {
 		return nil
 	}
@@ -1259,7 +1186,7 @@ func (w *RawWriter) maybeFlush(key InternalKey, valueLen int) error {
 // dataBlockBuf.dataBlockProps set by this method must be encoded before any future use of the
 // dataBlockBuf.blockPropsEncoder, since the properties slice will get reused by the
 // blockPropsEncoder.
-func (w *RawWriter) finishDataBlockProps(buf *dataBlockBuf) error {
+func (w *RawRowWriter) finishDataBlockProps(buf *dataBlockBuf) error {
 	if len(w.blockPropCollectors) == 0 {
 		return nil
 	}
@@ -1281,7 +1208,7 @@ func (w *RawWriter) finishDataBlockProps(buf *dataBlockBuf) error {
 // the Writer.blockPropsEncoder, since the properties slice will get reused by the blockPropsEncoder.
 // maybeAddBlockPropertiesToBlockHandle should only be called if block is being written synchronously
 // with the Writer client.
-func (w *RawWriter) maybeAddBlockPropertiesToBlockHandle(
+func (w *RawRowWriter) maybeAddBlockPropertiesToBlockHandle(
 	bh block.Handle,
 ) (block.HandleWithProperties, error) {
 	err := w.finishDataBlockProps(w.dataBlockBuf)
@@ -1291,7 +1218,7 @@ func (w *RawWriter) maybeAddBlockPropertiesToBlockHandle(
 	return block.HandleWithProperties{Handle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
 }
 
-func (w *RawWriter) indexEntrySep(
+func (w *RawRowWriter) indexEntrySep(
 	prevKey, key InternalKey, dataBlockBuf *dataBlockBuf,
 ) InternalKey {
 	// Make a rough guess that we want key-sized scratch to compute the separator.
@@ -1319,7 +1246,7 @@ func (w *RawWriter) indexEntrySep(
 //     encoded.
 //  2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
 //     indexBlockBufs.
-func (w *RawWriter) addIndexEntry(
+func (w *RawRowWriter) addIndexEntry(
 	sep InternalKey,
 	bhp block.HandleWithProperties,
 	tmp []byte,
@@ -1350,7 +1277,7 @@ func (w *RawWriter) addIndexEntry(
 	return nil
 }
 
-func (w *RawWriter) addPrevDataBlockToIndexBlockProps() {
+func (w *RawRowWriter) addPrevDataBlockToIndexBlockProps() {
 	for i := range w.blockPropCollectors {
 		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
 	}
@@ -1367,13 +1294,13 @@ func (w *RawWriter) addPrevDataBlockToIndexBlockProps() {
 //
 // TODO: Improve coverage of this method. e.g. tests passed without the line
 // `w.twoLevelIndex = true` previously.
-func (w *RawWriter) addIndexEntrySync(
+func (w *RawRowWriter) addIndexEntrySync(
 	prevKey, key InternalKey, bhp block.HandleWithProperties, tmp []byte,
 ) error {
 	return w.addIndexEntrySep(w.indexEntrySep(prevKey, key, w.dataBlockBuf), bhp, tmp)
 }
 
-func (w *RawWriter) addIndexEntrySep(
+func (w *RawRowWriter) addIndexEntrySep(
 	sep InternalKey, bhp block.HandleWithProperties, tmp []byte,
 ) error {
 	shouldFlush := supportsTwoLevelIndex(
@@ -1530,7 +1457,7 @@ func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
 //  1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
 //  2. Store the byte slice in the Writer since it is a copy and not supported by
 //     an underlying buffer.
-func (w *RawWriter) finishIndexBlockProps() ([]byte, error) {
+func (w *RawRowWriter) finishIndexBlockProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
@@ -1552,7 +1479,7 @@ func (w *RawWriter) finishIndexBlockProps() ([]byte, error) {
 //     slice.
 //  2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
 //     That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
-func (w *RawWriter) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
+func (w *RawRowWriter) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part := indexBlockAndBlockProperties{
 		nEntries: indexBuf.block.EntryCount(), properties: props,
 	}
@@ -1571,7 +1498,7 @@ func (w *RawWriter) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) erro
 	return nil
 }
 
-func (w *RawWriter) writeTwoLevelIndex() (block.Handle, error) {
+func (w *RawRowWriter) writeTwoLevelIndex() (block.Handle, error) {
 	props, err := w.finishIndexBlockProps()
 	if err != nil {
 		return block.Handle{}, err
@@ -1608,7 +1535,7 @@ func (w *RawWriter) writeTwoLevelIndex() (block.Handle, error) {
 
 // assertFormatCompatibility ensures that the features present on the table are
 // compatible with the table format version.
-func (w *RawWriter) assertFormatCompatibility() error {
+func (w *RawRowWriter) assertFormatCompatibility() error {
 	// PebbleDBv1: block properties.
 	if len(w.blockPropCollectors) > 0 && w.tableFormat < TableFormatPebblev1 {
 		return errors.Newf(
@@ -1642,13 +1569,19 @@ func (w *RawWriter) assertFormatCompatibility() error {
 	return nil
 }
 
+// IsStrictObsolete returns true if the writer is configured to write and
+// enforce a 'strict obsolete' sstable.
+func (w *RawRowWriter) IsStrictObsolete() bool {
+	return w.isStrictObsolete
+}
+
 // UnsafeLastPointUserKey returns the last point key written to the writer to
 // which this option was passed during creation. The returned key points
 // directly into a buffer belonging to the Writer. The value's lifetime ends the
 // next time a point key is added to the Writer.
 //
 // Must not be called after Writer is closed.
-func (w *RawWriter) UnsafeLastPointUserKey() []byte {
+func (w *RawRowWriter) UnsafeLastPointUserKey() []byte {
 	if w != nil && w.dataBlockBuf.dataBlock.EntryCount() >= 1 {
 		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
 		// which was added to the Writer.
@@ -1662,7 +1595,7 @@ func (w *RawWriter) UnsafeLastPointUserKey() []byte {
 //
 // This is a low-level API that bypasses the fragmenter. The spans passed to
 // this function must be fragmented and ordered.
-func (w *RawWriter) EncodeSpan(span keyspan.Span) error {
+func (w *RawRowWriter) EncodeSpan(span keyspan.Span) error {
 	if span.Empty() {
 		return nil
 	}
@@ -1677,9 +1610,14 @@ func (w *RawWriter) EncodeSpan(span keyspan.Span) error {
 	return w.rangeKeyEncoder.Encode(span)
 }
 
+// Error returns the current accumulated error, if any.
+func (w *RawRowWriter) Error() error {
+	return w.err
+}
+
 // Close finishes writing the table and closes the underlying file that the
 // table was written to.
-func (w *RawWriter) Close() (err error) {
+func (w *RawRowWriter) Close() (err error) {
 	defer func() {
 		if w.valueBlockWriter != nil {
 			releaseValueBlockWriter(w.valueBlockWriter)
@@ -1878,7 +1816,7 @@ func (w *RawWriter) Close() (err error) {
 
 // EstimatedSize returns the estimated size of the sstable being written if a
 // call to Finish() was made without adding additional keys.
-func (w *RawWriter) EstimatedSize() uint64 {
+func (w *RawRowWriter) EstimatedSize() uint64 {
 	if w == nil {
 		return 0
 	}
@@ -1889,7 +1827,7 @@ func (w *RawWriter) EstimatedSize() uint64 {
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
-func (w *RawWriter) Metadata() (*WriterMetadata, error) {
+func (w *RawRowWriter) Metadata() (*WriterMetadata, error) {
 	if !w.layout.IsFinished() {
 		return nil, errors.New("pebble: writer is not closed")
 	}
@@ -1898,9 +1836,9 @@ func (w *RawWriter) Metadata() (*WriterMetadata, error) {
 
 // NewRawWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawWriter {
+func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	o = o.ensureDefaults()
-	w := &RawWriter{
+	w := &RawRowWriter{
 		layout: makeLayoutWriter(writable, o),
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
@@ -2018,7 +1956,7 @@ func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawWriter {
 
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
 // be used internally by Pebble.
-func (w *RawWriter) SetSnapshotPinnedProperties(
+func (w *RawRowWriter) SetSnapshotPinnedProperties(
 	pinnedKeyCount, pinnedKeySize, pinnedValueSize uint64,
 ) {
 	w.props.SnapshotPinnedKeys = pinnedKeyCount

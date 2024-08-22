@@ -178,18 +178,6 @@ rangekey: a-b:{(#1,RANGEKEYSET,@10,foo)}
 pebble: spans must be added in order: b > a
 
 build-raw
-a.RANGEKEYDEL.1:c
-b.RANGEKEYDEL.2:d
-----
-pebble: overlapping range keys must be fragmented: a#1,RANGEKEYDEL, b#2,RANGEKEYDEL
-
-build-raw
-a.RANGEKEYDEL.2:c
-a.RANGEKEYDEL.1:d
-----
-pebble: overlapping range keys must be fragmented: a#2,RANGEKEYDEL, a#1,RANGEKEYDEL
-
-build-raw
 rangekey: a-c:{(#1,RANGEKEYSET,@10,foo)}
 rangekey: c-d:{(#2,RANGEKEYSET,@10,foo)}
 ----
@@ -198,12 +186,6 @@ seqnums:  [1-2]
 
 # Range keys may have perfectly aligned spans (including sequence numbers),
 # though the key kinds must be ordered (descending).
-
-build-raw
-a.RANGEKEYDEL.1:b
-a.RANGEKEYDEL.1:b
-----
-pebble: range keys starts must be added in increasing order: a#1,RANGEKEYDEL, a#1,RANGEKEYDEL
 
 build-raw
 rangekey: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@10) (#1,RANGEKEYDEL)}
