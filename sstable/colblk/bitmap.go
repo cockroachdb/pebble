@@ -26,6 +26,8 @@ import (
 // non-zero. The summary bitmap accelerates predecessor and successor
 // operations.
 type Bitmap struct {
+	// data contains the bitmap data, according to defaultBitmapEncoding, or it
+	// is nil if the bitmap is all zeros.
 	data     UnsafeRawSlice[uint64]
 	bitCount int
 }
@@ -38,8 +40,13 @@ var _ Array[bool] = Bitmap{}
 // performed, so the caller must guarantee the bitmap is appropriately sized and
 // the provided bitCount correctly identifies the number of bits in the bitmap.
 func DecodeBitmap(b []byte, off uint32, bitCount int) (bitmap Bitmap, endOffset uint32) {
-	sz := bitmapRequiredSize(bitCount)
+	encoding := bitmapEncoding(b[off])
+	off++
+	if encoding == zeroBitmapEncoding {
+		return Bitmap{bitCount: bitCount}, off
+	}
 	off = align(off, align64)
+	sz := bitmapRequiredSize(bitCount)
 	if len(b) < int(off)+sz {
 		panic(errors.AssertionFailedf("bitmap of %d bits requires at least %d bytes; provided with %d-byte slice",
 			bitCount, bitmapRequiredSize(bitCount), len(b[off:])))
@@ -55,13 +62,25 @@ var _ DecodeFunc[Bitmap] = DecodeBitmap
 
 // At returns true if the bit at position i is set and false otherwise.
 func (b Bitmap) At(i int) bool {
-	return (b.data.At(i>>6 /* i/64 */) & (1 << uint(i%64))) != 0
+	if b.data.ptr == nil {
+		// zero bitmap case.
+		return false
+	}
+	// Inline b.data.At(i/64).
+	// The offset of the correct word is i / 64 * 8 = (i >> 3) &^ 0b111
+	const mask = ^uintptr(0b111)
+	val := *(*uint64)(unsafe.Pointer(uintptr(b.data.ptr) + (uintptr(i)>>3)&mask))
+	return val&(1<<(uint(i)&63)) != 0
 }
 
 // Successor returns the next bit greater than or equal to i set in the bitmap.
 // The i parameter must be in [0, bitCount). Returns the number of bits
 // represented by the bitmap if no next bit is set.
 func (b Bitmap) Successor(i int) int {
+	if b.data.ptr == nil {
+		// Zero bitmap case.
+		return b.bitCount
+	}
 	// nextInWord returns the index of the smallest set bit with an index >= bit
 	// within the provided word.  The returned index is an index local to the
 	// word.
@@ -127,6 +146,10 @@ func (b Bitmap) Successor(i int) int {
 // bitmap. The i parameter must be in [0, bitCount). Returns -1 if no previous
 // bit is set.
 func (b Bitmap) Predecessor(i int) int {
+	if b.data.ptr == nil {
+		// Zero bitmap case.
+		return -1
+	}
 	// prevInWord returns the index of the largest set bit ≤ bit within the
 	// provided word. The returned index is an index local to the word. Returns
 	// -1 if no set bit is found.
@@ -204,33 +227,44 @@ func (b Bitmap) String() string {
 	return sb.String()
 }
 
-// BitmapBuilder constructs a Bitmap. Bits are default false.
+// BitmapBuilder constructs a Bitmap. Bits default to false.
 type BitmapBuilder struct {
 	words []uint64
 }
 
+type bitmapEncoding uint8
+
+const (
+	// defaultBitmapEncoding encodes the bitmap using ⌈n/64⌉ words followed by
+	// ⌈⌈n/64⌉/64⌉ summary words.
+	defaultBitmapEncoding bitmapEncoding = iota
+	// zeroBitmapEncoding is used for the special case when the bitmap is empty.
+	zeroBitmapEncoding
+)
+
 // Assert that BitmapBuilder implements ColumnWriter.
 var _ ColumnWriter = (*BitmapBuilder)(nil)
 
+// bitmapRequiredSize returns the size of an encoded bitmap in bytes, using the
+// defaultBitmapEncoding.
 func bitmapRequiredSize(total int) int {
 	nWords := (total + 63) >> 6          // divide by 64
 	nSummaryWords := (nWords + 63) >> 6  // divide by 64
 	return (nWords + nSummaryWords) << 3 // multiply by 8
 }
 
-// Set sets the bit at position i if v is true and clears the bit at position i
-// otherwise. Callers need not call Set if v is false and Set(i, true) has not
-// been called yet.
-func (b *BitmapBuilder) Set(i int, v bool) {
+// Set sets the bit at position i to true.
+func (b *BitmapBuilder) Set(i int) {
 	w := i >> 6 // divide by 64
 	for len(b.words) <= w {
 		b.words = append(b.words, 0)
 	}
-	if v {
-		b.words[w] |= 1 << uint(i%64)
-	} else {
-		b.words[w] &^= 1 << uint(i%64)
-	}
+	b.words[w] |= 1 << uint(i%64)
+}
+
+// isZero returns true if no bits are set and Invert was not called.
+func (b *BitmapBuilder) isZero() bool {
+	return len(b.words) == 0
 }
 
 // Reset resets the bitmap to the empty state.
@@ -247,6 +281,21 @@ func (b *BitmapBuilder) DataType(int) DataType { return DataTypeBool }
 
 // Size implements the ColumnWriter interface.
 func (b *BitmapBuilder) Size(rows int, offset uint32) uint32 {
+	// First byte will be the encoding type.
+	offset++
+	if b.isZero() {
+		return offset
+	}
+	offset = align(offset, align64)
+	return offset + uint32(bitmapRequiredSize(rows))
+}
+
+// InvertedSize returns the size of the encoded bitmap, assuming Invert will be called.
+func (b *BitmapBuilder) InvertedSize(rows int, offset uint32) uint32 {
+	// First byte will be the encoding type.
+	offset++
+	// An inverted bitmap will never use all-zeros encoding (even if it happens to
+	// be all zero).
 	offset = align(offset, align64)
 	return offset + uint32(bitmapRequiredSize(rows))
 }
@@ -254,6 +303,9 @@ func (b *BitmapBuilder) Size(rows int, offset uint32) uint32 {
 // Invert inverts the bitmap, setting all bits that are not set and clearing all
 // bits that are set. If the bitmap's tail is sparse and is not large enough to
 // represent nRows rows, it's first materialized.
+//
+// Note that Invert can affect the Size of the bitmap. Use InvertedSize() if you
+// intend to invert the bitmap before finishing.
 func (b *BitmapBuilder) Invert(nRows int) {
 	// If the tail of b is sparse, fill in zeroes before inverting.
 	nBitmapWords := (nRows + 63) >> 6
@@ -266,6 +318,12 @@ func (b *BitmapBuilder) Invert(nRows int) {
 // Finish finalizes the bitmap, computing the per-word summary bitmap and
 // writing the resulting data to buf at offset.
 func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32 {
+	if b.isZero() {
+		buf[offset] = byte(zeroBitmapEncoding)
+		return offset + 1
+	}
+	buf[offset] = byte(defaultBitmapEncoding)
+	offset++
 	offset = alignWithZeroes(buf, offset, align64)
 	dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset]))
 
@@ -318,6 +376,14 @@ func (b *BitmapBuilder) WriteDebug(w io.Writer, rows int) {
 }
 
 func bitmapToBinFormatter(f *binfmt.Formatter, rows int) {
+	encoding := bitmapEncoding(f.PeekUint(1))
+	f.HexBytesln(1, "bitmap encoding")
+	if encoding == zeroBitmapEncoding {
+		return
+	}
+	if encoding != defaultBitmapEncoding {
+		panic(fmt.Sprintf("unknown bitmap encoding %d", encoding))
+	}
 	if aligned := align(f.Offset(), 8); aligned-f.Offset() != 0 {
 		f.HexBytesln(aligned-f.Offset(), "padding to align to 64-bit boundary")
 	}

@@ -130,7 +130,9 @@ func TestBlockWriter(t *testing.T) {
 					for r := range lineFields {
 						v, err := strconv.ParseBool(lineFields[r][c])
 						panicIfErr(dataType, lineFields[r][c], err)
-						bb.Set(r, v)
+						if v {
+							bb.Set(r)
+						}
 					}
 				case DataTypeUint:
 					b := colWriters[c].(*UintBuilder)
@@ -221,7 +223,9 @@ func buildBlock(schema []testColumnSpec, rows int, data []interface{}) []byte {
 			var bb BitmapBuilder
 			bb.Reset()
 			for row, v := range data[col].([]bool) {
-				bb.Set(row, v)
+				if v {
+					bb.Set(row)
+				}
 			}
 			cw[col] = &bb
 		case DataTypeUint:
