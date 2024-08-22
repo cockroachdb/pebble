@@ -3224,7 +3224,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 func TestIngest_UpdateSequenceNumber(t *testing.T) {
 	mem := vfs.NewMem()
 	cmp := base.DefaultComparer.Compare
-	parse := func(input string) (*sstable.RawWriter, error) {
+	parse := func(input string) (*sstable.RawRowWriter, error) {
 		f, err := mem.Create("ext", vfs.WriteCategoryUnspecified)
 		if err != nil {
 			return nil, err

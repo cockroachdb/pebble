@@ -13,12 +13,13 @@ import (
 
 // Writer is a table writer.
 type Writer struct {
-	rw *RawWriter
+	rw RawWriter
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
 	// keys must be added in order of their start user-key.
 	fragmenter  keyspan.Fragmenter
+	comparer    *base.Comparer
 	rkBuf       []byte
 	keyspanKeys []keyspan.Key
 }
@@ -38,11 +39,12 @@ func NewWriter(writable objstorage.Writable, o WriterOptions) *Writer {
 			Format: o.Comparer.FormatKey,
 			Emit:   rw.encodeFragmentedRangeKeySpan,
 		},
+		comparer: o.Comparer,
 	}
 }
 
 // Raw returns the underlying RawWriter.
-func (w *Writer) Raw() *RawWriter { return w.rw }
+func (w *Writer) Raw() RawWriter { return w.rw }
 
 // Set sets the value for the given key. The sequence number is set to 0.
 // Intended for use to externally construct an sstable before ingestion into a
@@ -51,15 +53,15 @@ func (w *Writer) Raw() *RawWriter { return w.rw }
 //
 // TODO(peter): untested
 func (w *Writer) Set(key, value []byte) error {
-	if w.rw.err != nil {
-		return w.rw.err
+	if err := w.rw.Error(); err != nil {
+		return err
 	}
-	if w.rw.isStrictObsolete {
+	if w.rw.IsStrictObsolete() {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable delete the added points.
-	return w.rw.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false)
+	return w.rw.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false)
 }
 
 // Delete deletes the value for the given key. The sequence number is set to
@@ -68,15 +70,15 @@ func (w *Writer) Set(key, value []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Delete(key []byte) error {
-	if w.rw.err != nil {
-		return w.rw.err
+	if err := w.rw.Error(); err != nil {
+		return err
 	}
-	if w.rw.isStrictObsolete {
+	if w.rw.IsStrictObsolete() {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable delete the added points.
-	return w.rw.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false)
+	return w.rw.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false)
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -89,8 +91,8 @@ func (w *Writer) Delete(key []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) DeleteRange(start, end []byte) error {
-	if w.rw.err != nil {
-		return w.rw.err
+	if err := w.rw.Error(); err != nil {
+		return err
 	}
 	return w.rw.EncodeSpan(keyspan.Span{
 		Start: start,
@@ -108,16 +110,16 @@ func (w *Writer) DeleteRange(start, end []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Merge(key, value []byte) error {
-	if w.rw.err != nil {
-		return w.rw.err
+	if err := w.rw.Error(); err != nil {
+		return err
 	}
-	if w.rw.isStrictObsolete {
+	if w.rw.IsStrictObsolete() {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable that delete the added points. If the user configured this writer
 	// to be strict-obsolete, addPoint will reject the addition of this MERGE.
-	return w.rw.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false)
+	return w.rw.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false)
 }
 
 // RangeKeySet sets a range between start (inclusive) and end (exclusive) with
@@ -182,18 +184,18 @@ func (w *Writer) RangeKeyDelete(start, end []byte) error {
 }
 
 func (w *Writer) addRangeKeySpanToFragmenter(span keyspan.Span) error {
-	if w.rw.compare(span.Start, span.End) >= 0 {
+	if w.comparer.Compare(span.Start, span.End) >= 0 {
 		return errors.Errorf(
 			"pebble: start key must be strictly less than end key",
 		)
 	}
-	if w.fragmenter.Start() != nil && w.rw.compare(w.fragmenter.Start(), span.Start) > 0 {
+	if w.fragmenter.Start() != nil && w.comparer.Compare(w.fragmenter.Start(), span.Start) > 0 {
 		return errors.Errorf("pebble: spans must be added in order: %s > %s",
-			w.rw.formatKey(w.fragmenter.Start()), w.rw.formatKey(span.Start))
+			w.comparer.FormatKey(w.fragmenter.Start()), w.comparer.FormatKey(span.Start))
 	}
 	// Add this span to the fragmenter.
 	w.fragmenter.Add(span)
-	return w.rw.err
+	return w.rw.Error()
 }
 
 // tempRangeKeyBuf returns a slice of length n from the Writer's rkBuf byte
@@ -228,10 +230,125 @@ func (w *Writer) tempRangeKeyCopy(k []byte) []byte {
 // Close finishes writing the table and closes the underlying file that the
 // table was written to.
 func (w *Writer) Close() (err error) {
-	if w.rw.err == nil {
+	if w.rw.Error() == nil {
 		// Write the range-key block, flushing any remaining spans from the
 		// fragmenter first.
 		w.fragmenter.Finish()
 	}
 	return w.rw.Close()
+}
+
+// RawWriter defines an interface for sstable writers. Implementations may vary
+// depending on the TableFormat being written.
+type RawWriter interface {
+	// Error returns the current accumulated error if any.
+	Error() error
+	// IsStrictObsolete returns true if the writer is configured to write and
+	// enforce a 'strict obsolete' sstable. This includes prohibiting the
+	// addition of MERGE keys. See the documentation in format.go for more
+	// details.
+	IsStrictObsolete() bool
+	// AddWithForceObsolete must be used when writing a strict-obsolete sstable.
+	//
+	// forceObsolete indicates whether the caller has determined that this key is
+	// obsolete even though it may be the latest point key for this userkey. This
+	// should be set to true for keys obsoleted by RANGEDELs, and is required for
+	// strict-obsolete sstables.
+	//
+	// Note that there are two properties, S1 and S2 (see comment in format.go)
+	// that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
+	// responsibility of the caller. S1 is solely the responsibility of the
+	// callee.
+	AddWithForceObsolete(
+		key InternalKey, value []byte, forceObsolete bool,
+	) error
+	// EncodeSpan encodes the keys in the given span. The span can contain
+	// either only RANGEDEL keys or only range keys.
+	//
+	// This is a low-level API that bypasses the fragmenter. The spans passed to
+	// this function must be fragmented and ordered.
+	EncodeSpan(span keyspan.Span) error
+	// Close finishes writing the table and closes the underlying file that the
+	// table was written to.
+	Close() error
+	// Metadata returns the metadata for the finished sstable. Only valid to
+	// call after the sstable has been finished.
+	Metadata() (*WriterMetadata, error)
+}
+
+// WriterMetadata holds info about a finished sstable.
+type WriterMetadata struct {
+	Size          uint64
+	SmallestPoint InternalKey
+	// LargestPoint, LargestRangeKey, LargestRangeDel should not be accessed
+	// before Writer.Close is called, because they may only be set on
+	// Writer.Close.
+	LargestPoint     InternalKey
+	SmallestRangeDel InternalKey
+	LargestRangeDel  InternalKey
+	SmallestRangeKey InternalKey
+	LargestRangeKey  InternalKey
+	HasPointKeys     bool
+	HasRangeDelKeys  bool
+	HasRangeKeys     bool
+	SmallestSeqNum   base.SeqNum
+	LargestSeqNum    base.SeqNum
+	Properties       Properties
+}
+
+// SetSmallestPointKey sets the smallest point key to the given key.
+// NB: this method set the "absolute" smallest point key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestPointKey(k InternalKey) {
+	m.SmallestPoint = k
+	m.HasPointKeys = true
+}
+
+// SetSmallestRangeDelKey sets the smallest rangedel key to the given key.
+// NB: this method set the "absolute" smallest rangedel key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestRangeDelKey(k InternalKey) {
+	m.SmallestRangeDel = k
+	m.HasRangeDelKeys = true
+}
+
+// SetSmallestRangeKey sets the smallest range key to the given key.
+// NB: this method set the "absolute" smallest range key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestRangeKey(k InternalKey) {
+	m.SmallestRangeKey = k
+	m.HasRangeKeys = true
+}
+
+// SetLargestPointKey sets the largest point key to the given key.
+// NB: this method set the "absolute" largest point key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestPointKey(k InternalKey) {
+	m.LargestPoint = k
+	m.HasPointKeys = true
+}
+
+// SetLargestRangeDelKey sets the largest rangedel key to the given key.
+// NB: this method set the "absolute" largest rangedel key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestRangeDelKey(k InternalKey) {
+	m.LargestRangeDel = k
+	m.HasRangeDelKeys = true
+}
+
+// SetLargestRangeKey sets the largest range key to the given key.
+// NB: this method set the "absolute" largest range key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
+	m.LargestRangeKey = k
+	m.HasRangeKeys = true
+}
+
+func (m *WriterMetadata) updateSeqNum(seqNum base.SeqNum) {
+	if m.SmallestSeqNum > seqNum {
+		m.SmallestSeqNum = seqNum
+	}
+	if m.LargestSeqNum < seqNum {
+		m.LargestSeqNum = seqNum
+	}
 }

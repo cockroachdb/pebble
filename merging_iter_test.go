@@ -340,7 +340,7 @@ func buildMergingIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*sstable.RawWriter, len(files))
+	writers := make([]*sstable.RawRowWriter, len(files))
 	for i := range files {
 		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
@@ -543,7 +543,7 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 
 	const targetL6FirstFileSize = 2 << 20
-	writers := make([][]*sstable.RawWriter, levelCount)
+	writers := make([][]*sstable.RawRowWriter, levelCount)
 	// A policy unlikely to have false positives.
 	filterPolicy := bloom.FilterPolicy(100)
 	for i := range files {

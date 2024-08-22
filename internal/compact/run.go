@@ -132,7 +132,7 @@ func (r *Runner) MoreDataToWrite() bool {
 // Result.Tables. Should only be called if MoreDataToWrite() returned true.
 //
 // WriteTable always closes the Writer.
-func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw *sstable.RawWriter) {
+func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw *sstable.RawRowWriter) {
 	if r.err != nil {
 		panic("error already encountered")
 	}
@@ -159,7 +159,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw *sstable.RawWr
 	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
 }
 
-func (r *Runner) writeKeysToTable(tw *sstable.RawWriter) (splitKey []byte, _ error) {
+func (r *Runner) writeKeysToTable(tw *sstable.RawRowWriter) (splitKey []byte, _ error) {
 	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
 	if r.key != nil && firstKey == nil {
 		firstKey = r.key.UserKey

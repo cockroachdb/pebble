@@ -508,7 +508,7 @@ func buildLevelIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*sstable.RawWriter, len(files))
+	writers := make([]*sstable.RawRowWriter, len(files))
 	for i := range files {
 		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
