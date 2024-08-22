@@ -195,7 +195,7 @@ func rewriteBlocks[R blockRewriter](
 	return nil
 }
 
-func checkWriterFilterMatchesReader(r *Reader, w *RawWriter) error {
+func checkWriterFilterMatchesReader(r *Reader, w *RawRowWriter) error {
 	if r.Properties.FilterPolicyName != w.filter.policyName() {
 		return errors.New("mismatched filters")
 	}
@@ -206,7 +206,7 @@ func checkWriterFilterMatchesReader(r *Reader, w *RawWriter) error {
 }
 
 func rewriteDataBlocksToWriter(
-	r *Reader, w *RawWriter, data []block.HandleWithProperties, from, to []byte, concurrency int,
+	r *Reader, w *RawRowWriter, data []block.HandleWithProperties, from, to []byte, concurrency int,
 ) error {
 	if r.Properties.NumEntries == 0 {
 		// No point keys.
@@ -326,7 +326,7 @@ func rewriteDataBlocksToWriter(
 	return nil
 }
 
-func rewriteRangeKeyBlockToWriter(r *Reader, w *RawWriter, from, to []byte) error {
+func rewriteRangeKeyBlockToWriter(r *Reader, w *RawRowWriter, from, to []byte) error {
 	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms)
 	if err != nil {
 		return err
