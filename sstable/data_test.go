@@ -152,7 +152,7 @@ func runBuildCmd(
 	for _, v := range rangeDels {
 		for _, k := range v.Keys {
 			ik := base.InternalKey{UserKey: v.Start, Trailer: k.Trailer}
-			if err := w.Raw().Add(ik, v.End); err != nil {
+			if err := w.Raw().AddWithForceObsolete(ik, v.End, false); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -227,20 +227,8 @@ func runBuildRawCmd(
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
 		value := []byte(data[j+1:])
-		switch key.Kind() {
-		case base.InternalKeyKindRangeKeyDelete,
-			base.InternalKeyKindRangeKeyUnset,
-			base.InternalKeyKindRangeKeySet:
-			// Note: specifying range keys directly (instead of spans) should only be
-			// done to check for error handling; they will not contribute to block
-			// properties.
-			if err := w.Raw().addRangeKey(key, value); err != nil {
-				return nil, nil, err
-			}
-		default:
-			if err := w.Raw().Add(key, value); err != nil {
-				return nil, nil, err
-			}
+		if err := w.Raw().AddWithForceObsolete(key, value, false); err != nil {
+			return nil, nil, err
 		}
 	}
 	if err := w.Close(); err != nil {

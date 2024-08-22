@@ -586,7 +586,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
 		tmp := kv.K
 		tmp.SetSeqNum(0)
-		if err := w.Raw().Add(tmp, kv.InPlaceValue()); err != nil {
+		if err := w.Raw().AddWithForceObsolete(tmp, kv.InPlaceValue(), false); err != nil {
 			return err
 		}
 	}
@@ -599,7 +599,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 		for ; s != nil && err == nil; s, err = rdi.Next() {
 			err = rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
-				return w.Raw().Add(k, v)
+				return w.Raw().AddWithForceObsolete(k, v, false)
 			})
 			if err != nil {
 				return err
@@ -680,7 +680,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
 		tmp := kv.K
 		tmp.SetSeqNum(0)
-		if err := w.Raw().Add(tmp, kv.InPlaceValue()); err != nil {
+		if err := w.Raw().AddWithForceObsolete(tmp, kv.InPlaceValue(), false); err != nil {
 			return err
 		}
 	}
@@ -693,7 +693,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		for ; s != nil && err == nil; s, err = rdi.Next() {
 			err = rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
-				return w.Raw().Add(k, v)
+				return w.Raw().AddWithForceObsolete(k, v, false)
 			})
 			if err != nil {
 				return err

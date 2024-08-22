@@ -176,7 +176,7 @@ func newTableCacheContainerTest(
 		}
 		tw := sstable.NewWriter(w, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
-		if err := tw.Raw().Add(ik, xxx[:i]); err != nil {
+		if err := tw.Raw().AddWithForceObsolete(ik, xxx[:i], false); err != nil {
 			return nil, nil, errors.Wrap(err, "tw.Set")
 		}
 		if err := tw.RangeKeySet([]byte("k"), []byte("l"), nil, xxx[:i]); err != nil {

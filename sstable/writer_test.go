@@ -528,7 +528,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 	w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 	// Directly testing this, because it's difficult to get the Writer to
 	// encounter an error, precisely when the writeQueue is doing block writes.
-	w.rw.coordination.writeQueue.err = errors.New("write queue write error")
+	w.rw.(*RawRowWriter).coordination.writeQueue.err = errors.New("write queue write error")
 	w.Set(ikey("a").UserKey, nil)
 	w.Set(ikey("b").UserKey, nil)
 	err = w.Close()
