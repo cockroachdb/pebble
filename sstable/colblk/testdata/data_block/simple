@@ -1,6 +1,6 @@
 init
 ----
-size=49:
+size=50:
 0: prefixes:       prefixbytes(16): 0 keys
 1: suffixes:       bytes: 0 rows set; 0 bytes in data
 2: trailers:       uint: 0 rows
@@ -16,7 +16,7 @@ c@9#0,SETWITHDEL:coconut
 c@6#0,SET:cantelope
 c@1#0,SET:clementine
 ----
-size=177:
+size=160:
 0: prefixes:       prefixbytes(16): 6 keys
 1: suffixes:       bytes: 6 rows set; 13 bytes in data
 2: trailers:       uint: 6 rows
@@ -27,7 +27,7 @@ size=177:
 write
 d@11#0,DEL:
 ----
-size=185:
+size=169:
 0: prefixes:       prefixbytes(16): 7 keys
 1: suffixes:       bytes: 7 rows set; 16 bytes in data
 2: trailers:       uint: 7 rows
@@ -115,7 +115,8 @@ finish
 087-088: x 01                                                               # data[5] = 1
 088-089: x 00                                                               # data[6] = 0
 # data for column 3
-089-096: x 00000000000000                                                   # padding to align to 64-bit boundary
+089-090: x 00                                                               # bitmap encoding
+090-096: x 000000000000                                                     # padding to align to 64-bit boundary
 096-104: b 0100101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
 104-112: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
@@ -139,9 +140,7 @@ finish
 157-167: x 636c656d656e74696e65                                             # data[5]: clementine
 167-167: x                                                                  # data[6]:
 # data for column 5
-167-168: x 00                                                               # padding to align to 64-bit boundary
-168-176: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
-176-184: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+167-168: x 01                                                               # bitmap encoding
 
 iter
 first
@@ -299,7 +298,7 @@ d@11:
 
 init
 ----
-size=49:
+size=50:
 0: prefixes:       prefixbytes(16): 0 keys
 1: suffixes:       bytes: 0 rows set; 0 bytes in data
 2: trailers:       uint: 0 rows
@@ -326,7 +325,7 @@ aaaaaaaaaaaaaaapproves@10#0,SET:a
 aaaaaaaaaaaaaaarresting@10#0,SET:a
 aaaaaaaaaaaaaaarrived@10#0,SET:a
 ----
-size=353:
+size=334:
 0: prefixes:       prefixbytes(16): 17 keys
 1: suffixes:       bytes: 17 rows set; 51 bytes in data
 2: trailers:       uint: 17 rows
@@ -451,7 +450,8 @@ finish
 265-266: x 80                                                               # encoding: const
 266-274: x 0100000000000000                                                 # 64-bit constant: 1
 # data for column 3
-274-280: x 000000000000                                                     # padding to align to 64-bit boundary
+274-275: x 00                                                               # bitmap encoding
+275-280: x 0000000000                                                       # padding to align to 64-bit boundary
 280-288: b 1111111111111111000000010000000000000000000000000000000000000000 # bitmap word 0
 288-296: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
 # data for column 4
@@ -495,9 +495,7 @@ finish
 330-331: x 61                                                               # data[15]: a
 331-332: x 61                                                               # data[16]: a
 # data for column 5
-332-336: x 00000000                                                         # padding to align to 64-bit boundary
-336-344: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
-344-352: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+332-333: x 01                                                               # bitmap encoding
 
 iter
 seek-ge aaa

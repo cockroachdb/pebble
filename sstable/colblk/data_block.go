@@ -446,11 +446,11 @@ func (w *DataBlockWriter) Add(
 ) {
 	w.KeyWriter.WriteKey(w.rows, ikey.UserKey, kcmp.PrefixLen, kcmp.CommonPrefixLen)
 	if kcmp.PrefixEqual() {
-		w.prefixSame.Set(w.rows, true)
+		w.prefixSame.Set(w.rows)
 	}
 	w.trailers.Set(w.rows, uint64(ikey.Trailer))
 	if valuePrefix.IsValueHandle() {
-		w.isValueExternal.Set(w.rows, true)
+		w.isValueExternal.Set(w.rows)
 		// Write the value with the value prefix byte preceding the value.
 		w.valuePrefixTmp[0] = byte(valuePrefix)
 		w.values.PutConcat(w.valuePrefixTmp[:], value)
@@ -475,7 +475,7 @@ func (w *DataBlockWriter) Size() int {
 	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
-	off = w.prefixSame.Size(w.rows, off)
+	off = w.prefixSame.InvertedSize(w.rows, off)
 	off = w.values.Size(w.rows, off)
 	off = w.isValueExternal.Size(w.rows, off)
 	off++ // trailer padding byte
@@ -490,6 +490,11 @@ func (w *DataBlockWriter) Finish() []byte {
 		Columns: uint16(cols),
 		Rows:    uint32(w.rows),
 	}
+
+	// Invert the prefix-same bitmap before writing it out, because we want it
+	// to represent when the prefix changes.
+	w.prefixSame.Invert(w.rows)
+
 	w.enc.init(w.Size(), h, dataBlockCustomHeaderSize)
 
 	// Write the max key length in the custom header.
@@ -501,9 +506,6 @@ func (w *DataBlockWriter) Finish() []byte {
 	// Write the internal key trailers.
 	w.enc.encode(w.rows, &w.trailers)
 
-	// Invert the prefix-same bitmap before writing it out, because we want it
-	// to represent when the prefix changes.
-	w.prefixSame.Invert(w.rows)
 	w.enc.encode(w.rows, &w.prefixSame)
 
 	// Write the value columns.
