@@ -111,48 +111,52 @@ type Iterator interface {
 // TODO(sumeer): remove the aforementioned defensive code.
 
 var (
-	singleLevelIterRowBlockPool sync.Pool // *singleLevelIterator[rowblk.Iter, *rowblk.Iter]
-	twoLevelIterRowBlockPool    sync.Pool // *twoLevelIterator[rowblk.Iter, *rowblk.Iter]
+	singleLevelIterRowBlockPool sync.Pool // *singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+	twoLevelIterRowBlockPool    sync.Pool // *twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
 )
 
 func init() {
 	singleLevelIterRowBlockPool = sync.Pool{
 		New: func() interface{} {
-			i := &singleLevelIterator[rowblk.Iter, *rowblk.Iter]{pool: &singleLevelIterRowBlockPool}
+			i := &singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]{pool: &singleLevelIterRowBlockPool}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
-			invariants.SetFinalizer(i, checkSingleLevelIterator[rowblk.Iter, *rowblk.Iter])
+			invariants.SetFinalizer(i, checkSingleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 			return i
 		},
 	}
 	twoLevelIterRowBlockPool = sync.Pool{
 		New: func() interface{} {
-			i := &twoLevelIterator[rowblk.Iter, *rowblk.Iter]{pool: &twoLevelIterRowBlockPool}
+			i := &twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]{pool: &twoLevelIterRowBlockPool}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
-			invariants.SetFinalizer(i, checkTwoLevelIterator[rowblk.Iter, *rowblk.Iter])
+			invariants.SetFinalizer(i, checkTwoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 			return i
 		},
 	}
 }
 
-func checkSingleLevelIterator[D any, PD block.DataBlockIterator[D]](obj interface{}) {
-	i := obj.(*singleLevelIterator[D, PD])
+func checkSingleLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]](
+	obj interface{},
+) {
+	i := obj.(*singleLevelIterator[I, PI, D, PD])
 	if p := PD(&i.data).Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
-	if p := i.index.Handle().Get(); p != nil {
+	if p := PI(&i.index).Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
 }
 
-func checkTwoLevelIterator[D any, PD block.DataBlockIterator[D]](obj interface{}) {
-	i := obj.(*twoLevelIterator[D, PD])
+func checkTwoLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]](
+	obj interface{},
+) {
+	i := obj.(*twoLevelIterator[I, PI, D, PD])
 	if p := PD(&i.secondLevel.data).Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
-	if p := i.secondLevel.index.Handle().Get(); p != nil {
+	if p := PI(&i.secondLevel.index).Handle().Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %p\n", p)
 		os.Exit(1)
 	}
