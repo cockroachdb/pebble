@@ -99,7 +99,7 @@ type RawRowWriter struct {
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
 	filter          filterWriter
-	indexPartitions []indexBlockAndBlockProperties
+	indexPartitions []bufferedIndexBlock
 
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
@@ -568,7 +568,7 @@ func (d *dataBlockBuf) shouldFlush(
 		d.dataBlock.EntryCount(), flushOptions, sizeClassHints)
 }
 
-type indexBlockAndBlockProperties struct {
+type bufferedIndexBlock struct {
 	nEntries int
 	// sep is the last key added to this block, for computing a separator later.
 	sep        InternalKey
@@ -1245,7 +1245,7 @@ func (w *RawRowWriter) addIndexEntry(
 	encoded := bhp.EncodeVarints(tmp)
 	if flushIndexBuf != nil {
 		if cap(w.indexPartitions) == 0 {
-			w.indexPartitions = make([]indexBlockAndBlockProperties, 0, 32)
+			w.indexPartitions = make([]bufferedIndexBlock, 0, 32)
 		}
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
@@ -1461,7 +1461,7 @@ func (w *RawRowWriter) finishIndexBlockProps() ([]byte, error) {
 //  2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
 //     That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
 func (w *RawRowWriter) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
-	part := indexBlockAndBlockProperties{
+	part := bufferedIndexBlock{
 		nEntries: indexBuf.block.EntryCount(), properties: props,
 	}
 	w.indexSepAlloc, part.sep = cloneKeyWithBuf(
@@ -1614,7 +1614,6 @@ func (w *RawRowWriter) Close() (err error) {
 	if err := w.coordination.writeQueue.finish(); err != nil {
 		return err
 	}
-
 	if w.err != nil {
 		return w.err
 	}
@@ -1812,7 +1811,10 @@ func (w *RawRowWriter) Metadata() (*WriterMetadata, error) {
 // NewRawWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
-	return newRowWriter(writable, o)
+	if o.TableFormat <= TableFormatPebblev4 {
+		return newRowWriter(writable, o)
+	}
+	return NewColumnarWriter(writable, o)
 }
 
 func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {

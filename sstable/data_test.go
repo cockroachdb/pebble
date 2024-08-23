@@ -125,6 +125,20 @@ func runBuildMemObjCmd(
 	return meta, obj, nil
 }
 
+func runBuildCmd(
+	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
+) (*WriterMetadata, *Reader, error) {
+	meta, obj, err := runBuildMemObjCmd(td, writerOpts)
+	if err != nil {
+		return nil, nil, err
+	}
+	r, err := openReader(obj, writerOpts, cacheSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	return meta, r, nil
+}
+
 func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int) (*Reader, error) {
 	readerOpts := ReaderOptions{Comparer: writerOpts.Comparer}
 	if writerOpts.FilterPolicy != nil {
@@ -141,21 +155,11 @@ func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int
 			},
 		})
 	}
-	return NewMemReader(obj.Data(), readerOpts)
-}
-
-func runBuildCmd(
-	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
-) (*WriterMetadata, *Reader, error) {
-	meta, obj, err := runBuildMemObjCmd(td, writerOpts)
+	r, err := NewMemReader(obj.Data(), readerOpts)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	r, err := openReader(obj, writerOpts, cacheSize)
-	if err != nil {
-		return nil, nil, err
-	}
-	return meta, r, nil
+	return r, nil
 }
 
 func runBuildRawCmd(
