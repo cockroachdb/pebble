@@ -59,6 +59,12 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 			version: 4,
 			want:    TableFormatPebblev4,
 		},
+		{
+			name:    "PebbleDBv5",
+			magic:   pebbleDBMagic,
+			version: 5,
+			want:    TableFormatPebblev5,
+		},
 		// Invalid cases.
 		{
 			name:    "Invalid RocksDB version",
@@ -69,8 +75,8 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 		{
 			name:    "Invalid PebbleDB version",
 			magic:   pebbleDBMagic,
-			version: 5,
-			wantErr: "pebble/table: invalid table 000001: (unsupported pebble format version 5)",
+			version: 6,
+			wantErr: "pebble/table: invalid table 000001: (unsupported pebble format version 6)",
 		},
 		{
 			name:    "Unknown magic string",

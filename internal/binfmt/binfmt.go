@@ -135,6 +135,36 @@ func (f *Formatter) HexBytesln(n int, format string, args ...interface{}) int {
 	return n
 }
 
+// HexTextln formats the next n bytes in hexadecimal format, appending a comment
+// to each line showing the ASCII equivalent characters for each byte for bytes
+// that are human-readable.
+func (f *Formatter) HexTextln(n int) int {
+	printLine := func() {
+		bytesInLine := min(f.lineWidth/2, n)
+		if f.buf.Len() == 0 {
+			f.printOffsets(bytesInLine)
+		}
+		f.printf("x %0"+strconv.Itoa(bytesInLine*2)+"x", f.data[f.off:f.off+bytesInLine])
+		commentLine := asciiChars(f.data[f.off : f.off+bytesInLine])
+		f.newline(f.buf.String(), commentLine)
+		f.off += bytesInLine
+		n -= bytesInLine
+	}
+	printLine()
+	for n > 0 {
+		printLine()
+	}
+	return n
+}
+
+// Uvarint decodes the bytes at the current offset as a uvarint, formatting them
+// in hexadecimal and prefixing the comment with the encoded decimal value.
+func (f *Formatter) Uvarint(format string, args ...interface{}) {
+	comment := fmt.Sprintf(format, args...)
+	v, n := binary.Uvarint(f.data[f.off:])
+	f.HexBytesln(n, "uvarint(%d): %s", v, comment)
+}
+
 // Line prepares a single line of formatted output that will consume n bytes,
 // but formatting those n bytes in multiple ways. The line will be prefixed with
 // the offsets for the line's entire data.
@@ -240,4 +270,16 @@ func (l Line) Done(format string, args ...interface{}) int {
 	l.f.newline(l.f.buf.String(), fmt.Sprintf(format, args...))
 	l.f.off += l.n
 	return l.n
+}
+
+func asciiChars(b []byte) string {
+	s := make([]byte, len(b))
+	for i := range b {
+		if b[i] >= 32 && b[i] <= 126 {
+			s[i] = b[i]
+		} else {
+			s[i] = '.'
+		}
+	}
+	return string(s)
 }

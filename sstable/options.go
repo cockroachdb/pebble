@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
@@ -193,6 +194,11 @@ type WriterOptions struct {
 	//
 	// The default value is the value of BlockSize.
 	IndexBlockSize int
+
+	// KeySchema describes the schema to use for sstable formats that make use
+	// of columnar blocks, decomposing keys into their constituent components.
+	// Ignored if TableFormat <= TableFormatPebblev4.
+	KeySchema colblk.KeySchema
 
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
