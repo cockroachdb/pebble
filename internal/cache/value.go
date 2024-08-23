@@ -7,9 +7,14 @@ package cache
 import "unsafe"
 
 // ValueMetadataSize denotes the number of bytes of metadata allocated for a
-// cache entry. Note that for builds with cgo disabled no metadata is allocated,
-// however, we keep the value constant to reduce friction for writing tests.
-const ValueMetadataSize = int(unsafe.Sizeof(Value{}))
+// cache entry. Note that builds with cgo disabled allocate no metadata, and
+// 32-bit builds allocate less for a cache.Value. However, we keep the value
+// constant to reduce friction for writing tests.
+const ValueMetadataSize = 32
+
+// Assert that the size of a Value{} is less than or equal to the
+// ValueMetadataSize.
+var _ uint = ValueMetadataSize - uint(unsafe.Sizeof(Value{}))
 
 // Value holds a reference counted immutable value.
 type Value struct {
