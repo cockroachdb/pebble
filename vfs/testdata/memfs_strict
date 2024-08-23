@@ -1,0 +1,282 @@
+# Created file disappears if directory is not synced.
+create /foo
+----
+
+open /foo
+----
+
+reset-to-synced
+----
+
+open /foo
+----
+error: open /foo: file does not exist
+
+# Create directory and a file in it and write and read from it.
+mkdirall /bar
+----
+
+create /bar/y
+----
+
+f.stat.name
+----
+y
+
+# Write some data; read it back.
+f.write
+abcde
+----
+
+f.close
+----
+
+open /bar/y
+----
+
+f.read 5
+----
+abcde
+
+f.close
+----
+
+open /bar
+----
+
+# Resetting causes both the directory and file to disappear.
+reset-to-synced
+----
+
+open-dir /bar
+----
+error: open /bar: file does not exist
+
+open /bar/y
+----
+error: open bar/y: file does not exist
+
+# Create the directory and file again. Link the file to another file in the same
+# dir, and to a file in the root dir. Sync the root dir. After reset, the
+# created dir and the file in the root dir are the only ones visible.
+mkdirall /bar
+----
+
+create /bar/y
+----
+
+open-dir /
+----
+
+f.sync
+----
+
+f.close
+----
+
+link /bar/y /bar/z
+----
+
+link /bar/y /z
+----
+
+open-dir /
+----
+
+f.sync
+----
+
+f.close
+----
+
+reset-to-synced
+----
+
+open-dir /bar
+----
+
+open /bar/y
+----
+error: open /bar/y: file does not exist
+
+open /bar/z
+----
+error: open /bar/z: file does not exist
+
+open /z
+----
+
+# Create the file in the directory again and this time sync /bar directory. The
+# file is preserved after reset.
+create /bar/y
+----
+
+open-dir /bar
+----
+
+f.sync
+----
+
+f.close
+----
+
+reset-to-synced
+----
+
+open-dir /bar
+----
+
+open /bar/y
+----
+
+# Unsynced data in the file is lost on reset.
+create /bar/y
+----
+
+f.write
+a
+----
+
+f.sync
+----
+
+f.write
+b
+----
+
+f.close
+----
+
+open-dir /bar
+----
+
+f.sync
+----
+
+f.close
+----
+
+reset-to-synced
+----
+
+open /bar/y
+----
+
+f.read 1
+----
+a
+
+f.read 1
+----
+error: EOF
+
+f.close
+----
+
+# reuse-for-write works correctly in strict mode in that unsynced data does not overwrite
+# previous contents when a reset happens.
+create /z
+----
+
+f.write
+abcdefgh
+----
+
+f.sync
+----
+
+f.close
+----
+
+reuse-for-write /z /y
+----
+
+f.write
+x
+----
+
+f.sync
+----
+
+# Will be lost.
+f.write
+y
+----
+
+f.close
+----
+
+open-dir /
+----
+
+f.sync
+----
+
+f.close
+----
+
+reset-to-synced
+----
+
+open /y
+----
+
+f.read 8
+----
+xbcdefgh
+
+f.close
+----
+
+# Ignore syncs.
+create /z
+----
+
+f.write
+a
+----
+
+f.sync
+----
+
+ignore-syncs
+----
+
+f.write
+b
+----
+
+f.sync
+----
+
+f.close
+----
+
+stop-ignoring-syncs
+----
+
+open-dir /
+----
+
+f.sync
+----
+
+f.close
+----
+
+reset-to-synced
+----
+
+open /z
+----
+
+f.read 1
+----
+a
+
+f.read 1
+----
+error: EOF
+
+f.close
+----

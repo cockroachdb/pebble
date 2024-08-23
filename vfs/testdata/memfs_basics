@@ -1,0 +1,174 @@
+# Create a top-level file.
+create /foo
+----
+
+# Create a child of that file. It should fail, since /foo is not a directory.
+create /foo/x
+----
+error: open foo/x: not a directory
+
+# Create a third-level file. It should fail, since /bar has not been created.
+# Similarly, opening that file should fail.
+create /bar/baz/y
+----
+error: open bar/baz/y: file does not exist
+
+open /bar/baz/y
+----
+error: open bar/baz/y: file does not exist
+
+# Make the /bar/baz directory; create a third-level file. Creation should now succeed.
+mkdirall /bar/baz
+----
+
+create /bar/baz/y
+----
+
+f.stat.name
+----
+y
+
+# Write some data; read it back.
+f.write
+abcde
+----
+
+f.close
+----
+
+open /bar/baz/y
+----
+
+f.read 5
+----
+abcde
+
+f.readat 2 1
+----
+cd
+
+f.close
+----
+
+# Link /bar/baz/y to /bar/baz/z. We should be able to read from both files
+# and remove them independently.
+link /bar/baz/y /bar/baz/z
+----
+
+open /bar/baz/z
+----
+
+f.read 5
+----
+abcde
+
+f.close
+----
+
+remove /bar/baz/z
+----
+
+open /bar/baz/y
+----
+
+f.read 5
+----
+abcde
+
+f.close
+----
+
+# Remove the file twice. The first should succeed, the second should fail.
+remove /bar/baz/y
+----
+
+remove /bar/baz/y
+----
+error: file does not exist
+
+open /bar/baz/y
+----
+error: open /bar/baz/y: file does not exist
+
+# Rename /foo to /goo. Trying to open /foo should succeed before the rename and
+# fail afterwards, and vice versa for /goo.
+open /foo
+----
+
+open /goo
+----
+error: open /goo: file does not exist
+
+rename /foo /goo
+----
+
+open /foo
+----
+error: open /foo: file does not exist
+
+open /goo
+----
+
+# Create /bar/baz/z and rename /bar/baz to /bar/caz.
+create /bar/baz/z
+----
+
+open /bar/baz/z
+----
+
+open /bar/caz/z
+----
+error: open caz/z: file does not exist
+
+rename /bar/baz /bar/caz
+----
+
+open /bar/baz/z
+----
+error: open baz/z: file does not exist
+
+open /bar/caz/z
+----
+
+reuse-for-write /bar/caz/z /bar/z
+----
+
+open /bar/caz/z
+----
+error: open /bar/caz/z: file does not exist
+
+open /bar/z
+----
+
+# Opening the root directory works.
+open /
+----
+
+f.stat.name
+----
+/
+
+# Read bytes after writing some bytes.
+create foo
+----
+
+f.write
+foobar
+----
+
+f.close
+----
+
+open-read-write foo
+----
+
+f.write
+abc
+----
+
+f.read 3
+----
+bar
+
+f.close
+----
