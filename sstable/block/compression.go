@@ -189,6 +189,13 @@ func (b *PhysicalBlock) CloneWithByteAlloc(a *bytealloc.A) PhysicalBlock {
 	}
 }
 
+// Clone returns a deep copy of the block.
+func (b PhysicalBlock) Clone() PhysicalBlock {
+	data := make([]byte, len(b.data))
+	copy(data, b.data)
+	return PhysicalBlock{data: data, trailer: b.trailer}
+}
+
 // IsCompressed returns true if the block is compressed.
 func (b *PhysicalBlock) IsCompressed() bool {
 	return CompressionIndicator(b.trailer[0]) != NoCompressionIndicator

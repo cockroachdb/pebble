@@ -27,3 +27,11 @@ func ByteSlice(n int) []byte {
 	}
 	return b
 }
+
+// Copy copies the provided byte slice into an aligned byte slice of the same
+// length.
+func Copy(s []byte) []byte {
+	dst := ByteSlice(len(s))
+	copy(dst, s)
+	return dst
+}
