@@ -1532,36 +1532,36 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 func TestWALFailoverRandomized(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
-	mem := vfs.NewStrictMem()
-	failoverOpts := WALFailoverOptions{
-		Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
-		FailoverOptions: wal.FailoverOptions{
-			PrimaryDirProbeInterval:      time.Microsecond,
-			HealthyProbeLatencyThreshold: 20 * time.Microsecond,
-			HealthyInterval:              10 * time.Microsecond,
-			UnhealthySamplingInterval:    time.Microsecond,
-			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
-				return 10 * time.Microsecond, true
+
+	makeOptions := func(mem *vfs.MemFS) *Options {
+		failoverOpts := WALFailoverOptions{
+			Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
+			FailoverOptions: wal.FailoverOptions{
+				PrimaryDirProbeInterval:      time.Microsecond,
+				HealthyProbeLatencyThreshold: 20 * time.Microsecond,
+				HealthyInterval:              10 * time.Microsecond,
+				UnhealthySamplingInterval:    time.Microsecond,
+				UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+					return 10 * time.Microsecond, true
+				},
+				ElevatedWriteStallThresholdLag: 50 * time.Microsecond,
 			},
-			ElevatedWriteStallThresholdLag: 50 * time.Microsecond,
-		},
-	}
-	mkFS := func() vfs.FS {
+		}
 		mean := time.Duration(rand.ExpFloat64() * float64(time.Microsecond))
 		p := rand.Float64()
 		t.Logf("Injecting mean %s of latency with p=%.3f", mean, p)
-		return errorfs.Wrap(mem,
-			errorfs.RandomLatency(errorfs.Randomly(p, seed), mean, seed, time.Second))
+		fs := errorfs.Wrap(mem, errorfs.RandomLatency(errorfs.Randomly(p, seed), mean, seed, time.Second))
+		return &Options{
+			FS:                          fs,
+			FormatMajorVersion:          internalFormatNewest,
+			Logger:                      testLogger{t},
+			MemTableSize:                128 << 10, // 128 KiB
+			MemTableStopWritesThreshold: 4,
+			WALFailover:                 &failoverOpts,
+		}
 	}
-	o := &Options{
-		FS:                          mkFS(),
-		FormatMajorVersion:          internalFormatNewest,
-		Logger:                      testLogger{t},
-		MemTableSize:                128 << 10, // 128 KiB
-		MemTableStopWritesThreshold: 4,
-		WALFailover:                 &failoverOpts,
-	}
-	d, err := Open("primary", o)
+	mem := vfs.NewStrictMem()
+	d, err := Open("primary", makeOptions(mem))
 	require.NoError(t, err)
 
 	bigValue := make([]byte, 64<<10)
@@ -1581,13 +1581,11 @@ func TestWALFailoverRandomized(t *testing.T) {
 		{Weight: 1, Item: func() {
 			t.Log("hard crash")
 			time.Sleep(time.Microsecond * time.Duration(rand.Intn(30)))
-			mem.SetIgnoreSyncs(true)
+			// Take a strict clone of the filesystem and use that going forward.
+			mem = mem.StrictClone(vfs.StrictCloneCfg{Probability: 50, RNG: rng})
 			wg.Wait() // Wait for outstanding batch commits to finish.
 			_ = d.Close()
-			mem.ResetToSyncedState()
-			mem.SetIgnoreSyncs(false)
-			o.FS = mkFS() // set new latencies
-			d, err = Open("primary", o)
+			d, err = Open("primary", makeOptions(mem))
 			require.NoError(t, err)
 			prime()
 		}},
