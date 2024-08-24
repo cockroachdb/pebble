@@ -564,6 +564,9 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 	return DiskUsage{}, ErrUnsupported
 }
 
+// Unwrap implements FS.Unwrap.
+func (*MemFS) Unwrap() FS { return nil }
+
 // memNode holds a file's data or a directory's children.
 type memNode struct {
 	isDir bool
@@ -721,6 +724,9 @@ func (f *memFile) Write(p []byte) (int, error) {
 			panic("stuff")
 		}
 	} else {
+		if grow := f.pos - len(f.n.mu.data); grow > 0 {
+			f.n.mu.data = append(f.n.mu.data, make([]byte, grow)...)
+		}
 		f.n.mu.data = append(f.n.mu.data[:f.pos], p...)
 	}
 	f.pos += len(p)

@@ -215,6 +215,8 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 	return m.getDiskUsage(path)
 }
 
+func (m mockFS) Unwrap() FS { return nil }
+
 var _ FS = &mockFS{}
 
 func TestDiskHealthChecking_WriteStatsCollector(t *testing.T) {

@@ -176,6 +176,13 @@ type FS interface {
 	// GetDiskUsage returns disk space statistics for the filesystem where
 	// path is any file or directory within that filesystem.
 	GetDiskUsage(path string) (DiskUsage, error)
+
+	// Unwrap is implemented by "wrapping" filesystems (those that add some
+	// functionality on top of an underlying FS); it returns the wrapped FS.
+	// It is used by vfs.Root.
+	//
+	// Returns nil if this is not a wrapping filesystem.
+	Unwrap() FS
 }
 
 // A DeviceID uniquely identifies a block device on which filesystem data is
@@ -344,6 +351,8 @@ func (defaultFS) PathDir(path string) string {
 	return filepath.Dir(path)
 }
 
+func (defaultFS) Unwrap() FS { return nil }
+
 type randomReadsOption struct{}
 
 // RandomReadsOption is an OpenOption that optimizes opened file handle for
@@ -444,18 +453,13 @@ func LinkOrCopy(fs FS, oldname, newname string) error {
 // Root returns the base FS implementation, unwrapping all nested FSs that
 // expose an Unwrap method.
 func Root(fs FS) FS {
-	type unwrapper interface {
-		Unwrap() FS
-	}
-
 	for {
-		u, ok := fs.(unwrapper)
-		if !ok {
-			break
+		n := fs.Unwrap()
+		if n == nil {
+			return fs
 		}
-		fs = u.Unwrap()
+		fs = n
 	}
-	return fs
 }
 
 // ErrUnsupported may be returned a FS when it does not support an operation.

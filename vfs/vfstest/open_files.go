@@ -119,6 +119,8 @@ func (fs *openFilesFS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
 	return fs.inner.GetDiskUsage(path)
 }
 
+func (fs *openFilesFS) Unwrap() vfs.FS { return fs.inner }
+
 func (fs *openFilesFS) wrapOpenFile(f vfs.File, err error) (vfs.File, error) {
 	if f == nil || err != nil {
 		return f, err
