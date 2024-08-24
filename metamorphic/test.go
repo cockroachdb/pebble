@@ -267,15 +267,28 @@ func (t *Test) minFMV() pebble.FormatMajorVersion {
 
 func (t *Test) restartDB(dbID objID) error {
 	db := t.getDB(dbID)
+	// If strictFS is not used, we use pebble.NoSync for writeOpts, so we can't
+	// restart the database (even if we don't revert to synced data).
 	if !t.testOpts.strictFS {
 		return nil
 	}
-	t.opts.Cache.Ref()
-	// The fs isn't necessarily a MemFS.
-	fs, ok := vfs.Root(t.opts.FS).(*vfs.MemFS)
-	if ok {
-		fs.SetIgnoreSyncs(true)
+	if t.testOpts.sharedStorageEnabled {
+		// We simulate a crash by essentially ignoring writes to disk after a
+		// certain point. However, we cannot prevent the process (which didn't
+		// actually crash) from deleting an external object before we call Close().
+		// TODO(radu): perhaps we want all syncs to fail after the "crash" point?
+		return nil
 	}
+	// We can't do this if we have more than one database since they share the
+	// same FS (and we only close/reopen one of them).
+	// TODO(radu): have each database use its own MemFS.
+	if len(t.dbs) > 1 {
+		return nil
+	}
+	t.opts.Cache.Ref()
+
+	memFS := vfs.Root(t.opts.FS).(*vfs.MemFS)
+	memFS.SetIgnoreSyncs(true)
 	if err := db.Close(); err != nil {
 		return err
 	}
@@ -287,10 +300,9 @@ func (t *Test) restartDB(dbID objID) error {
 			return err
 		}
 	}
-	if ok {
-		fs.ResetToSyncedState()
-		fs.SetIgnoreSyncs(false)
-	}
+
+	memFS.ResetToSyncedState()
+	memFS.SetIgnoreSyncs(false)
 
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
 	// are well defined within the context of retries.

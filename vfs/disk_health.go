@@ -581,6 +581,11 @@ func WithDiskHealthChecks(
 	return fs, fs
 }
 
+// Unwrap is part of the FS interface.
+func (d *diskHealthCheckingFS) Unwrap() FS {
+	return d.fs
+}
+
 // timeFilesystemOp executes the provided closure, which should perform a
 // singular filesystem operation of a type matching opType on the named file. It
 // records the provided start time such that the long-lived disk-health checking
