@@ -267,14 +267,13 @@ func (t *Test) minFMV() pebble.FormatMajorVersion {
 
 func (t *Test) restartDB(dbID objID) error {
 	db := t.getDB(dbID)
-	if !t.testOpts.strictFS {
-		return nil
-	}
 	t.opts.Cache.Ref()
-	// The fs isn't necessarily a MemFS.
-	fs, ok := vfs.Root(t.opts.FS).(*vfs.MemFS)
-	if ok {
-		fs.SetIgnoreSyncs(true)
+
+	var memFS *vfs.MemFS
+	if t.testOpts.strictFS {
+		// In strictFS mode, we ignore all writes made by db.Close.
+		memFS = vfs.Root(t.opts.FS).(*vfs.MemFS)
+		memFS.SetIgnoreSyncs(true)
 	}
 	if err := db.Close(); err != nil {
 		return err
@@ -287,9 +286,9 @@ func (t *Test) restartDB(dbID objID) error {
 			return err
 		}
 	}
-	if ok {
-		fs.ResetToSyncedState()
-		fs.SetIgnoreSyncs(false)
+	if memFS != nil {
+		memFS.ResetToSyncedState()
+		memFS.SetIgnoreSyncs(false)
 	}
 
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
