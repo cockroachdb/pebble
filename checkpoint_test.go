@@ -327,7 +327,7 @@ func TestCheckpointCompaction(t *testing.T) {
 
 func TestCheckpointFlushWAL(t *testing.T) {
 	const checkpointPath = "checkpoints/checkpoint"
-	fs := vfs.NewStrictMem()
+	fs := vfs.NewCrashableMem()
 	opts := &Options{FS: fs, Logger: testLogger{t: t}}
 	key, value := []byte("key"), []byte("value")
 
@@ -345,7 +345,7 @@ func TestCheckpointFlushWAL(t *testing.T) {
 		err = d.Checkpoint(checkpointPath, WithFlushedWAL())
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
-		fs.ResetToSyncedState()
+		fs = fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 	}
 
 	// Check that the WAL has been flushed in the checkpoint.

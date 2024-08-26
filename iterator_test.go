@@ -2107,7 +2107,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	maxProcs := runtime.GOMAXPROCS(0)
 
 	opts1 := &Options{
-		FS:                       vfs.NewStrictMem(),
+		FS:                       vfs.NewCrashableMem(),
 		Comparer:                 testkeys.Comparer,
 		FormatMajorVersion:       FormatNewest,
 		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
@@ -2120,7 +2120,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	require.NoError(t, err)
 
 	opts2 := &Options{
-		FS:                       vfs.NewStrictMem(),
+		FS:                       vfs.NewCrashableMem(),
 		Comparer:                 testkeys.Comparer,
 		FormatMajorVersion:       FormatNewest,
 		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
@@ -2245,7 +2245,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 	keyBuf := make([]byte, prefixLen+testkeys.MaxSuffixLen)
 	valBuf := make([]byte, valueSize)
 
-	mem := vfs.NewStrictMem()
+	mem := vfs.NewMem()
 	maxProcs := runtime.GOMAXPROCS(0)
 	opts := &Options{
 		FS:                       mem,
@@ -2285,14 +2285,17 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 	d.mu.Unlock()
 	b.Log(d.Metrics().String())
 	require.NoError(b, d.Close())
-	// Set ignore syncs to true so that each subbenchmark may mutate state and
-	// then revert back to the original state.
-	mem.SetIgnoreSyncs(true)
 
 	// TODO(jackson): Benchmark lazy-combined iteration versus not.
 	// TODO(jackson): Benchmark seeks.
 	for _, rkSuffix := range []string{"@10", "@50", "@75", "@100"} {
 		b.Run(fmt.Sprintf("range-keys-suffixes=%s", rkSuffix), func(b *testing.B) {
+			// Clone the filesystem so that each subbenchmark may mutate state.
+			opts := opts.Clone()
+			opts.FS = vfs.NewMem()
+			ok, err := vfs.Clone(mem, opts.FS, "", "")
+			require.NoError(b, err)
+			require.True(b, ok)
 			d, err := Open("", opts)
 			require.NoError(b, err)
 			require.NoError(b, d.RangeKeySet([]byte("b"), []byte("e"), []byte(rkSuffix), nil, nil))
@@ -2367,10 +2370,8 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 			// range keys we wrote.
 			b.StopTimer()
 			require.NoError(b, d.Close())
-			mem.ResetToSyncedState()
 		})
 	}
-
 }
 
 func BenchmarkIteratorScan(b *testing.B) {

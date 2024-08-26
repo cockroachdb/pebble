@@ -551,7 +551,7 @@ b
 a:2
 b:2
 
-ignoreSyncs true
+crash-clone
 ----
 
 lsm
@@ -592,7 +592,7 @@ close
 
 # At this point, the changes to the manifest should be lost. Note that 7.sst
 # is gone because that file was never synced.
-resetToSynced
+reset-to-crash-clone
 ----
 000002.log
 000004.sst
@@ -605,9 +605,6 @@ ext
 ext1
 marker.format-version.000004.017
 marker.manifest.000001.MANIFEST-000001
-
-ignoreSyncs false
-----
 
 open
 ----

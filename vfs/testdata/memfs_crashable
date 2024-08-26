@@ -5,12 +5,18 @@ create /foo
 open /foo
 ----
 
-reset-to-synced
+crash-clone 0 fs0
+----
+
+switch-fs fs0
 ----
 
 open /foo
 ----
 error: open /foo: file does not exist
+
+switch-fs initial
+----
 
 # Create directory and a file in it and write and read from it.
 mkdirall /bar
@@ -45,7 +51,10 @@ open /bar
 ----
 
 # Resetting causes both the directory and file to disappear.
-reset-to-synced
+crash-clone 0 fs1
+----
+
+switch-fs fs1
 ----
 
 open-dir /bar
@@ -55,6 +64,9 @@ error: open /bar: file does not exist
 open /bar/y
 ----
 error: open bar/y: file does not exist
+
+switch-fs initial
+----
 
 # Create the directory and file again. Link the file to another file in the same
 # dir, and to a file in the root dir. Sync the root dir. After reset, the
@@ -89,7 +101,10 @@ f.sync
 f.close
 ----
 
-reset-to-synced
+crash-clone 0 fs2
+----
+
+switch-fs fs2
 ----
 
 open-dir /bar
@@ -106,6 +121,9 @@ error: open /bar/z: file does not exist
 open /z
 ----
 
+switch-fs initial
+----
+
 # Create the file in the directory again and this time sync /bar directory. The
 # file is preserved after reset.
 create /bar/y
@@ -120,13 +138,19 @@ f.sync
 f.close
 ----
 
-reset-to-synced
+crash-clone 0 fs3
+----
+
+switch-fs fs3
 ----
 
 open-dir /bar
 ----
 
 open /bar/y
+----
+
+switch-fs initial
 ----
 
 # Unsynced data in the file is lost on reset.
@@ -156,7 +180,10 @@ f.sync
 f.close
 ----
 
-reset-to-synced
+crash-clone 0 fs4
+----
+
+switch-fs fs4
 ----
 
 open /bar/y
@@ -173,8 +200,11 @@ error: EOF
 f.close
 ----
 
-# reuse-for-write works correctly in strict mode in that unsynced data does not overwrite
-# previous contents when a reset happens.
+switch-fs initial
+----
+
+# reuse-for-write works correctly in that unsynced data does not overwrite
+# previous contents when a crash happens.
 create /z
 ----
 
@@ -215,7 +245,10 @@ f.sync
 f.close
 ----
 
-reset-to-synced
+crash-clone 0 fs5
+----
+
+switch-fs fs5
 ----
 
 open /y
@@ -224,59 +257,6 @@ open /y
 f.read 8
 ----
 xbcdefgh
-
-f.close
-----
-
-# Ignore syncs.
-create /z
-----
-
-f.write
-a
-----
-
-f.sync
-----
-
-ignore-syncs
-----
-
-f.write
-b
-----
-
-f.sync
-----
-
-f.close
-----
-
-stop-ignoring-syncs
-----
-
-open-dir /
-----
-
-f.sync
-----
-
-f.close
-----
-
-reset-to-synced
-----
-
-open /z
-----
-
-f.read 1
-----
-a
-
-f.read 1
-----
-error: EOF
 
 f.close
 ----

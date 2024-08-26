@@ -97,7 +97,7 @@ func TestList(t *testing.T) {
 // TestReader tests the virtual WAL reader that merges across multiple physical
 // log files.
 func TestReader(t *testing.T) {
-	fs := vfs.NewStrictMem()
+	fs := vfs.NewCrashableMem()
 	rng := rand.New(rand.NewSource(1))
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/reader", func(t *testing.T, td *datadriven.TestData) string {
@@ -190,10 +190,9 @@ func TestReader(t *testing.T) {
 				}
 			}
 			if td.HasArg("close-unclean") {
-				fs.SetIgnoreSyncs(true)
+				crashFS := fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 				require.NoError(t, w.Close())
-				fs.ResetToSyncedState()
-				fs.SetIgnoreSyncs(false)
+				fs = crashFS
 			} else {
 				require.NoError(t, w.Close())
 			}
