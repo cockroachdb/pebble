@@ -102,7 +102,7 @@ func testBasicDB(d *DB) error {
 func TestFormatMajorVersions(t *testing.T) {
 	for vers := FormatMinSupported; vers <= FormatNewest; vers++ {
 		t.Run(fmt.Sprintf("vers=%03d", vers), func(t *testing.T) {
-			fs := vfs.NewStrictMem()
+			fs := vfs.NewCrashableMem()
 			opts := (&Options{
 				FS:                 fs,
 				FormatMajorVersion: vers,
@@ -126,18 +126,15 @@ func TestFormatMajorVersions(t *testing.T) {
 			t.Run("upgrade-at-open", func(t *testing.T) {
 				for upgradeVers := vers + 1; upgradeVers <= FormatNewest; upgradeVers++ {
 					t.Run(fmt.Sprintf("upgrade-vers=%03d", upgradeVers), func(t *testing.T) {
-						// We use vfs.MemFS's option to ignore syncs so
-						// that we can perform an upgrade on the current
-						// database state in fs, and revert it when this
-						// subtest is complete.
-						fs.SetIgnoreSyncs(true)
-						defer fs.ResetToSyncedState()
+						// We use vfs.MemFS's CrashClone to perform an upgrade without
+						// affecting the original filesystem.
+						opts := opts.Clone()
+						opts.FS = fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 
 						// Re-open the database, passing a higher format
 						// major version in the Options to automatically
 						// ratchet the format major version. Ensure some
 						// basic operations pass.
-						opts := opts.Clone()
 						opts.FormatMajorVersion = upgradeVers
 						d, err = Open("", opts)
 						require.NoError(t, err)
@@ -162,12 +159,10 @@ func TestFormatMajorVersions(t *testing.T) {
 						// options.
 						require.Equal(t, vers, opts.FormatMajorVersion)
 
-						// We use vfs.MemFS's option to ignore syncs so
-						// that we can perform an upgrade on the current
-						// database state in fs, and revert it when this
-						// subtest is complete.
-						fs.SetIgnoreSyncs(true)
-						defer fs.ResetToSyncedState()
+						// We use vfs.MemFS's CrashClone to perform an upgrade without
+						// affecting the original filesystem.
+						opts := opts.Clone()
+						opts.FS = fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 
 						// Re-open the database, still at the current format
 						// major version. Perform some basic operations,

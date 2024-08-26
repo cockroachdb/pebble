@@ -583,7 +583,7 @@ func TestParallelSync(t *testing.T) {
 			name = "shared"
 		}
 		t.Run(name, func(t *testing.T) {
-			fs := vfs.NewStrictMem()
+			fs := vfs.NewCrashableMem()
 			st := DefaultSettings(fs, "")
 			st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 				"": remote.NewInMem(),
@@ -660,6 +660,7 @@ func TestParallelSync(t *testing.T) {
 			}
 			mustExist := make(map[base.DiskFileNum]struct{})
 			// "Crash" at a random time.
+			var crashFS *vfs.MemFS
 			time.AfterFunc(time.Duration(rand.Int63n(int64(10*time.Millisecond))), func() {
 				defer wg.Done()
 				if shared {
@@ -673,7 +674,7 @@ func TestParallelSync(t *testing.T) {
 				for n := range mustExistMu.m {
 					mustExist[n] = struct{}{}
 				}
-				fs.SetIgnoreSyncs(true)
+				crashFS = fs.CrashClone(vfs.CrashCloneCfg{})
 				mustExistMu.Unlock()
 				stop.Store(true)
 			})
@@ -682,8 +683,10 @@ func TestParallelSync(t *testing.T) {
 			// Now close the provider, reset the filesystem, and check that all files
 			// we expect to exist are there.
 			require.NoError(t, p.Close())
-			fs.ResetToSyncedState()
 
+			if !shared {
+				st.FS = crashFS
+			}
 			p, err = Open(st)
 			require.NoError(t, err)
 			// Check that all objects exist and can be opened.

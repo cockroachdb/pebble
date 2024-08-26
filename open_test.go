@@ -928,7 +928,7 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 // new WAL is created, the current manifest's MinUnflushedLogNum must be
 // higher than the previous WAL.
 func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
-	fs := vfs.NewStrictMem()
+	fs := vfs.NewCrashableMem()
 
 	getLogs := func() (logs []string) {
 		ls, err := fs.List("")
@@ -941,19 +941,17 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 		return logs
 	}
 
-	{
-		d, err := Open("", testingRandomized(t, &Options{FS: fs}))
-		require.NoError(t, err)
-		require.NoError(t, d.Set([]byte("abc"), nil, Sync))
+	d, err := Open("", testingRandomized(t, &Options{FS: fs}))
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("abc"), nil, Sync))
 
-		// Ignore syncs during close to simulate a crash. This will leave the WAL
-		// without an EOF trailer. It won't be an 'unclean tail' yet since the
-		// log file was not recycled, but we'll fix that down below.
-		fs.SetIgnoreSyncs(true)
-		require.NoError(t, d.Close())
-		fs.ResetToSyncedState()
-		fs.SetIgnoreSyncs(false)
-	}
+	// simulate a crash. This will leave the WAL
+	// without an EOF trailer. It won't be an 'unclean tail' yet since the
+	// log file was not recycled, but we'll fix that down below.
+	crashFS := fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
+	require.NoError(t, d.Close())
+
+	fs = crashFS
 
 	// There should be one WAL.
 	logs := getLogs()
@@ -988,12 +986,15 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	// filesystem with an errorfs that will turn off syncs after a new .log
 	// file is created and after a subsequent directory sync occurs. This
 	// simulates a crash after the new log file is created and synced.
+	crashFS = nil
 	{
 		var walCreated, dirSynced atomic.Bool
 		d, err := Open("", &Options{
 			FS: errorfs.Wrap(fs, errorfs.InjectorFunc(func(op errorfs.Op) error {
 				if dirSynced.Load() {
-					fs.SetIgnoreSyncs(true)
+					if crashFS == nil {
+						crashFS = fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
+					}
 				}
 				if op.Kind == errorfs.OpCreate && filepath.Ext(op.Path) == ".log" {
 					walCreated.Store(true)
@@ -1012,15 +1013,15 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 		require.NoError(t, d.Close())
 	}
 
-	fs.ResetToSyncedState()
-	fs.SetIgnoreSyncs(false)
+	require.NotNil(t, crashFS)
+	fs = crashFS
 
 	if n := len(getLogs()); n != 2 {
 		t.Fatalf("expected two logs, found %d\n", n)
 	}
 
 	// Finally, open the database with syncs enabled.
-	d, err := Open("", testingRandomized(t, &Options{FS: fs}))
+	d, err = Open("", testingRandomized(t, &Options{FS: fs}))
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }

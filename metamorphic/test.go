@@ -286,9 +286,8 @@ func (t *Test) restartDB(dbID objID) error {
 		return nil
 	}
 	t.opts.Cache.Ref()
-
-	memFS := vfs.Root(t.opts.FS).(*vfs.MemFS)
-	memFS.SetIgnoreSyncs(true)
+	fs := vfs.Root(t.opts.FS).(*vfs.MemFS)
+	crashFS := fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 	if err := db.Close(); err != nil {
 		return err
 	}
@@ -300,9 +299,11 @@ func (t *Test) restartDB(dbID objID) error {
 			return err
 		}
 	}
-
-	memFS.ResetToSyncedState()
-	memFS.SetIgnoreSyncs(false)
+	t.opts.FS = crashFS
+	t.opts.WithFSDefaults()
+	if t.opts.WALFailover != nil {
+		t.opts.WALFailover.Secondary.FS = t.opts.FS
+	}
 
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
 	// are well defined within the context of retries.

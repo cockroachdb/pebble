@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
+	"math/rand"
 	"os"
 	"path"
 	"slices"
@@ -32,35 +34,34 @@ func NewMem() *MemFS {
 	}
 }
 
-// NewStrictMem returns a "strict" memory-backed FS implementation. The
-// behaviour is strict wrt needing a Sync() call on files or directories for the
-// state changes to be finalized. Any changes that are not finalized are visible
-// to reads until MemFS.ResetToSyncedState() is called, at which point they are
-// discarded and no longer visible. All open files must be closed before calling
-// ResetToSyncedState().
+// NewCrashableMem returns a memory-backed FS implementation that supports the
+// CrashClone() method. This method can be used to obtain a copy of the FS after
+// a simulated crash, where only data that was last synced is guaranteed to be
+// there (with no guarantees one way or the other about more recently written
+// data).
+//
+// Note: when CrashClone() is not necessary, NewMem() is faster and should be
+// preferred.
 //
 // Expected usage:
 //
-//	strictFS := NewStrictMem()
-//	db := Open(..., &Options{FS: strictFS})
-//	// Do and commit various operations.
-//	...
-//	// Prevent any more changes to finalized state.
-//	strictFS.SetIgnoreSyncs(true)
-//	// This will finish any ongoing background flushes, compactions but none of these writes will
-//	// be finalized since syncs are being ignored.
-//	db.Close()
-//	// Discard unsynced state.
-//	strictFS.ResetToSyncedState()
-//	// Allow changes to finalized state.
-//	strictFS.SetIgnoreSyncs(false)
-//	// Open the DB. This DB should have the same state as if the earlier strictFS operations and
-//	// db.Close() were not called.
-//	db := Open(..., &Options{FS: strictFS})
-func NewStrictMem() *MemFS {
+//		fs := NewCrashableMem()
+//		db := Open(..., &Options{FS: fs})
+//		// Do and commit various operations.
+//		...
+//		// Make a clone of the FS after a simulated crash.
+//	 crashedFS := fs.CrashClone(CrashCloneCfg{Probability: 50, RNG: rand.New(rand.NewSource(0))})
+//
+//		// This will finish any ongoing background flushes, compactions but none of these writes will
+//		// affect crashedFS.
+//		db.Close()
+//
+//		// Open the DB against the crash clone.
+//		db := Open(..., &Options{FS: crashedFS})
+func NewCrashableMem() *MemFS {
 	return &MemFS{
-		root:   newRootMemNode(),
-		strict: true,
+		root:      newRootMemNode(),
+		crashable: true,
 	}
 }
 
@@ -82,13 +83,16 @@ type MemFS struct {
 	mu   sync.Mutex
 	root *memNode
 
+	// cloneMu is used to block all modification operations while we clone the
+	// filesystem. Only used when crashable is true.
+	cloneMu sync.RWMutex
+
 	// lockFiles holds a map of open file locks. Presence in this map indicates
 	// a file lock is currently held. Keys are strings holding the path of the
 	// locked file. The stored value is untyped and  unused; only presence of
 	// the key within the map is significant.
 	lockedFiles sync.Map
-	strict      bool
-	ignoreSyncs bool
+	crashable   bool
 	// Windows has peculiar semantics with respect to hard links and deleting
 	// open files. In tests meant to exercise this behavior, this flag can be
 	// set to error if removing an open file.
@@ -116,33 +120,33 @@ func (y *MemFS) String() string {
 	return s.String()
 }
 
-// SetIgnoreSyncs sets the MemFS.ignoreSyncs field. See the usage comment with NewStrictMem() for
-// details.
-func (y *MemFS) SetIgnoreSyncs(ignoreSyncs bool) {
-	if !y.strict {
-		panic("SetIgnoreSyncs can only be used on a strict MemFS")
-	}
-	y.mu.Lock()
-	y.ignoreSyncs = ignoreSyncs
-	y.mu.Unlock()
+// CrashCloneCfg configures a CrashClone call. The zero value corresponds to the
+// crash clone containing exactly the data that was last synced.
+type CrashCloneCfg struct {
+	// UnsyncedDataPercent is the probability that a data block or directory entry
+	// that was not synced will be part of the clone. If 0, the clone will contain
+	// exactly the data that was last synced. If 100, the clone will be identical
+	// to the current filesystem.
+	UnsyncedDataPercent int
+	// RNG must be set if UnsyncedDataPercent > 0.
+	RNG *rand.Rand
 }
 
-// ResetToSyncedState discards state in the FS that is not synced. See the usage
-// comment with NewStrictMem() for details. All files must be closed before
-// calling this method.
-func (y *MemFS) ResetToSyncedState() {
-	if !y.strict {
-		panic("ResetToSyncedState can only be used on a strict MemFS")
+// CrashClone creates a new filesystem that reflects a possible state of this
+// filesystem after a crash at this moment. The new filesystem will contain all
+// data that was synced, and some fraction of the data that was not synced. The
+// latter is controlled by CrashCloneCfg.
+func (y *MemFS) CrashClone(cfg CrashCloneCfg) *MemFS {
+	if !y.crashable {
+		panic("not a strict MemFS")
 	}
-	y.mu.Lock()
-	y.root.descend("", func(path string, n *memNode) error {
-		if v := n.refs.Load(); v > 0 {
-			return errors.AssertionFailedf("file %s has %d open references; cannot reset to synced state", path, v)
-		}
-		return nil
-	})
-	y.root.resetToSyncedState()
-	y.mu.Unlock()
+	// Block all modification operations while we clone.
+	y.cloneMu.Lock()
+	defer y.cloneMu.Unlock()
+	newFS := &MemFS{crashable: true}
+	newFS.windowsSemantics = y.windowsSemantics
+	newFS.root = y.root.CrashClone(&cfg)
+	return newFS
 }
 
 // walk walks the directory tree for the fullname, calling f at each step. If
@@ -215,6 +219,10 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 
 // Create implements FS.Create.
 func (y *MemFS) Create(fullname string, category DiskWriteCategory) (File, error) {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -242,6 +250,10 @@ func (y *MemFS) Create(fullname string, category DiskWriteCategory) (File, error
 
 // Link implements FS.Link.
 func (y *MemFS) Link(oldname, newname string) error {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	var n *memNode
 	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -268,6 +280,8 @@ func (y *MemFS) Link(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
+			y.cloneMu.RLock()
+			defer y.cloneMu.RUnlock()
 			if _, ok := dir.children[frag]; ok {
 				return &os.LinkError{
 					Op:  "link",
@@ -344,6 +358,10 @@ func (y *MemFS) OpenDir(fullname string) (File, error) {
 
 // Remove implements FS.Remove.
 func (y *MemFS) Remove(fullname string) error {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	return y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
@@ -373,6 +391,10 @@ func (y *MemFS) Remove(fullname string) error {
 
 // RemoveAll implements FS.RemoveAll.
 func (y *MemFS) RemoveAll(fullname string) error {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
@@ -396,6 +418,10 @@ func (y *MemFS) RemoveAll(fullname string) error {
 
 // Rename implements FS.Rename.
 func (y *MemFS) Rename(oldname, newname string) error {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	var n *memNode
 	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -430,6 +456,10 @@ func (y *MemFS) Rename(oldname, newname string) error {
 
 // ReuseForWrite implements FS.ReuseForWrite.
 func (y *MemFS) ReuseForWrite(oldname, newname string, category DiskWriteCategory) (File, error) {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	if err := y.Rename(oldname, newname); err != nil {
 		return nil, err
 	}
@@ -448,6 +478,10 @@ func (y *MemFS) ReuseForWrite(oldname, newname string, category DiskWriteCategor
 
 // MkdirAll implements FS.MkdirAll.
 func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	return y.walk(dirname, func(dir *memNode, frag string, final bool) error {
 		if frag == "" {
 			if final {
@@ -476,6 +510,10 @@ func (y *MemFS) MkdirAll(dirname string, perm os.FileMode) error {
 
 // Lock implements FS.Lock.
 func (y *MemFS) Lock(fullname string) (io.Closer, error) {
+	if y.crashable {
+		y.cloneMu.RLock()
+		defer y.cloneMu.RUnlock()
+	}
 	// FS.Lock excludes other processes, but other processes cannot see this
 	// process' memory. However some uses (eg, Cockroach tests) may open and
 	// close the same MemFS-backed database multiple times. We want mutual
@@ -596,6 +634,13 @@ func newRootMemNode() *memNode {
 	}
 }
 
+func cloneChildren(f map[string]*memNode) map[string]*memNode {
+	if len(f) == 0 {
+		return make(map[string]*memNode)
+	}
+	return maps.Clone(f)
+}
+
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	if f.isDir {
 		w.WriteString("          ")
@@ -626,29 +671,39 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	}
 }
 
-func (f *memNode) descend(path string, fn func(string, *memNode) error) {
-	fn(path, f)
+func (f *memNode) CrashClone(cfg *CrashCloneCfg) *memNode {
+	newNode := &memNode{isDir: f.isDir}
 	if f.isDir {
-		for name, v := range f.children {
-			fn(path+sep+name, v)
+		newNode.children = cloneChildren(f.syncedChildren)
+		// Randomly include some non-synced children.
+		for name, child := range f.children {
+			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.Intn(100) < cfg.UnsyncedDataPercent {
+				newNode.children[name] = child
+			}
 		}
-	}
-}
-
-func (f *memNode) resetToSyncedState() {
-	if f.isDir {
-		f.children = make(map[string]*memNode)
-		for k, v := range f.syncedChildren {
-			f.children[k] = v
+		for name, child := range newNode.children {
+			newNode.children[name] = child.CrashClone(cfg)
 		}
-		for _, v := range f.children {
-			v.resetToSyncedState()
-		}
+		newNode.syncedChildren = cloneChildren(newNode.children)
 	} else {
-		f.mu.Lock()
-		f.mu.data = slices.Clone(f.mu.syncedData)
-		f.mu.Unlock()
+		newNode.mu.data = slices.Clone(f.mu.syncedData)
+		newNode.mu.modTime = f.mu.modTime
+		// Randomly include some non-synced blocks.
+		const blockSize = 4096
+		for i := 0; i < len(f.mu.data); i += blockSize {
+			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.Intn(100) < cfg.UnsyncedDataPercent {
+				block := f.mu.data[i:min(i+blockSize, len(f.mu.data))]
+				if grow := i + len(block) - len(newNode.mu.data); grow > 0 {
+					// Grow the file, leaving 0s for any unsynced blocks past the synced
+					// length.
+					newNode.mu.data = append(newNode.mu.data, make([]byte, grow)...)
+				}
+				copy(newNode.mu.data[i:], block)
+			}
+		}
+		newNode.mu.syncedData = slices.Clone(newNode.mu.data)
 	}
+	return newNode
 }
 
 // memFile is a reader or writer of a node's data. Implements File.
@@ -709,6 +764,10 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (f *memFile) Write(p []byte) (int, error) {
+	if f.fs.crashable {
+		f.fs.cloneMu.RLock()
+		defer f.fs.cloneMu.RUnlock()
+	}
 	if !f.write {
 		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
@@ -742,6 +801,10 @@ func (f *memFile) Write(p []byte) (int, error) {
 }
 
 func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
+	if f.fs.crashable {
+		f.fs.cloneMu.RLock()
+		defer f.fs.cloneMu.RUnlock()
+	}
 	if !f.write {
 		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
@@ -779,22 +842,18 @@ func (f *memFile) Stat() (FileInfo, error) {
 }
 
 func (f *memFile) Sync() error {
-	if f.fs == nil || !f.fs.strict {
+	if f.fs == nil || !f.fs.crashable {
 		return nil
 	}
+	f.fs.cloneMu.RLock()
+	defer f.fs.cloneMu.RUnlock()
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
-	if f.fs.ignoreSyncs {
-		return nil
-	}
 	if f.n.isDir {
-		f.n.syncedChildren = make(map[string]*memNode)
-		for k, v := range f.n.children {
-			f.n.syncedChildren[k] = v
-		}
+		f.n.syncedChildren = cloneChildren(f.n.children)
 	} else {
 		f.n.mu.Lock()
-		f.n.mu.syncedData = slices.Clone(f.n.mu.data)
+		f.n.mu.syncedData = append(f.n.mu.syncedData[:0], f.n.mu.data...)
 		f.n.mu.Unlock()
 	}
 	return nil

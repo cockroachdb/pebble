@@ -38,7 +38,7 @@ const (
 
 func TestFailoverWriter(t *testing.T) {
 	datadriven.Walk(t, "testdata/failover_writer", func(t *testing.T, path string) {
-		memFS := vfs.NewStrictMem()
+		memFS := vfs.NewCrashableMem()
 		dirs := [numDirIndices]dirAndFileHandle{
 			{Dir: Dir{Dirname: "pri"}},
 			{Dir: Dir{Dirname: "sec"}},
@@ -69,7 +69,9 @@ func TestFailoverWriter(t *testing.T) {
 		dirIndex := 0
 
 		printLogFiles := func(b *strings.Builder, num NumWAL) {
-			memFS.ResetToSyncedState()
+			memFS = memFS.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
+			setDirsFunc(t, memFS, &dirs)
+			setDirsFunc(t, memFS, &testDirs)
 			type filenameAndFS struct {
 				name string
 				fs   vfs.FS
@@ -615,7 +617,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		}
 	}
 	const numLogWriters = 4
-	memFS := vfs.NewStrictMem()
+	memFS := vfs.NewCrashableMem()
 	dirs := [numDirIndices]dirAndFileHandle{{Dir: Dir{Dirname: "pri"}}, {Dir: Dir{Dirname: "sec"}}}
 	for _, dir := range dirs {
 		require.NoError(t, memFS.MkdirAll(dir.Dirname, 0755))
