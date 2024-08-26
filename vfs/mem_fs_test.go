@@ -7,6 +7,7 @@ package vfs
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,7 +18,9 @@ import (
 )
 
 func runMemFSDataDriven(t *testing.T, path string, fs *MemFS) {
+	fsMap := map[string]*MemFS{"initial": fs}
 	var f File
+	rng := rand.New(rand.NewSource(0))
 	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		var err error
 		switch td.Cmd {
@@ -39,12 +42,17 @@ func runMemFSDataDriven(t *testing.T, path string, fs *MemFS) {
 			err = fs.Rename(td.CmdArgs[0].String(), td.CmdArgs[1].String())
 		case "reuse-for-write":
 			f, err = fs.ReuseForWrite(td.CmdArgs[0].String(), td.CmdArgs[1].String(), WriteCategoryUnspecified)
-		case "reset-to-synced":
-			fs.ResetToSyncedState()
-		case "ignore-syncs":
-			fs.SetIgnoreSyncs(true)
-		case "stop-ignoring-syncs":
-			fs.SetIgnoreSyncs(false)
+		case "crash-clone":
+			p, _ := strconv.Atoi(td.CmdArgs[0].String())
+			fsName := td.CmdArgs[1].String()
+			newFs := fs.CrashClone(CrashCloneCfg{UnsyncedDataPercent: p, RNG: rng})
+			fsMap[fsName] = newFs
+		case "switch-fs":
+			fsName := td.CmdArgs[0].String()
+			fs = fsMap[fsName]
+			if fs == nil {
+				td.Fatalf(t, "no fs %q", fsName)
+			}
 		case "f.write":
 			_, err = f.Write([]byte(strings.TrimSpace(td.Input)))
 		case "f.sync":
@@ -116,8 +124,8 @@ func TestMemFSList(t *testing.T) {
 	runMemFSDataDriven(t, "testdata/memfs_list", NewMem())
 }
 
-func TestMemFSStrict(t *testing.T) {
-	runMemFSDataDriven(t, "testdata/memfs_strict", NewStrictMem())
+func TestMemFSCrashable(t *testing.T) {
+	runMemFSDataDriven(t, "testdata/memfs_crashable", NewCrashableMem())
 }
 
 func TestMemFile(t *testing.T) {

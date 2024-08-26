@@ -57,7 +57,7 @@ func parseOptions(
 				return true
 			case "TestOptions.strictfs":
 				opts.strictFS = true
-				opts.Opts.FS = vfs.NewStrictMem()
+				opts.Opts.FS = vfs.NewCrashableMem()
 				return true
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
@@ -755,7 +755,7 @@ func RandomOptions(
 	testOpts.Threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
 	if testOpts.strictFS {
 		opts.DisableWAL = false
-		opts.FS = vfs.NewStrictMem()
+		opts.FS = vfs.NewCrashableMem()
 	} else if !testOpts.useDisk {
 		opts.FS = vfs.NewMem()
 	}

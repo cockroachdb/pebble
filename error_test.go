@@ -352,12 +352,13 @@ L6:
 }
 
 func TestDBWALRotationCrash(t *testing.T) {
-	memfs := vfs.NewStrictMem()
+	memfs := vfs.NewCrashableMem()
 
+	var crashFS *vfs.MemFS
 	var index atomic.Int32
 	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
 		if op.Kind.ReadOrWrite() == errorfs.OpIsWrite && index.Add(-1) == -1 {
-			memfs.SetIgnoreSyncs(true)
+			crashFS = memfs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 		}
 		return nil
 	})
@@ -392,8 +393,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 
 	fs := errorfs.Wrap(memfs, inj)
 	for k := int32(0); ; k++ {
-		// Run, simulating a crash by ignoring syncs after the k-th write
-		// operation after Open.
+		// Run, simulating a crash after the k-th write operation after Open.
 		index.Store(math.MaxInt32)
 		err := run(fs, k)
 		if !triggered() {
@@ -409,8 +409,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 
 		// Reset the filesystem to its state right before the simulated
 		// "crash", restore syncs, and run again without crashing.
-		memfs.ResetToSyncedState()
-		memfs.SetIgnoreSyncs(false)
+		memfs = crashFS
 		index.Store(math.MaxInt32)
 		require.NoError(t, run(fs, k))
 	}
@@ -428,15 +427,19 @@ func TestDBCompactionCrash(t *testing.T) {
 	// crashIndex holds the value of k at which the crash is induced and is
 	// decremented by the errorfs on each write operation.
 	var crashIndex atomic.Int32
-	mkFS := func() (vfs.FS, *vfs.MemFS) {
-		memfs := vfs.NewStrictMem()
+	var crashFS *vfs.MemFS
+	crashRNG := rand.New(rand.NewSource(seed))
+	mkFS := func() vfs.FS {
+		memfs := vfs.NewCrashableMem()
 		inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
 			if op.Kind.ReadOrWrite() == errorfs.OpIsWrite && crashIndex.Add(-1) == -1 {
-				memfs.SetIgnoreSyncs(true)
+				// Allow an arbitrary subset of non-synced state to survive beyond the
+				// crash point.
+				crashFS = memfs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 10, RNG: crashRNG})
 			}
 			return nil
 		})
-		return errorfs.Wrap(memfs, inj), memfs
+		return errorfs.Wrap(memfs, inj)
 	}
 	triggered := func() bool { return crashIndex.Load() < 0 }
 
@@ -523,8 +526,7 @@ func TestDBCompactionCrash(t *testing.T) {
 			// Run, simulating a crash by ignoring syncs after the k-th write
 			// operation after Open.
 			crashIndex.Store(math.MaxInt32)
-			fs, memfs := mkFS()
-			i, err := run(t, fs, k, seed)
+			i, err := run(t, mkFS(), k, seed)
 			if !triggered() {
 				// Stop when we reach a value of k greater than the number of
 				// write operations performed during `run`.
@@ -540,13 +542,8 @@ func TestDBCompactionCrash(t *testing.T) {
 			// Reset the filesystem to its state right before the simulated
 			// "crash", restore syncs and run again without crashing. No errors
 			// should be encountered.
-			//
-			// TODO(jackson): Allow an arbitrary subset of synced state to
-			// survive beyond the crash point.
-			memfs.ResetToSyncedState()
-			memfs.SetIgnoreSyncs(false)
 			crashIndex.Store(math.MaxInt32)
-			_, err = run(t, fs, math.MaxInt32, seed)
+			_, err = run(t, crashFS, math.MaxInt32, seed)
 			require.False(t, triggered())
 			// TODO(jackson): Add assertions on the database keys.
 			require.NoError(t, err)

@@ -422,7 +422,8 @@ func TestIngestLinkFallback(t *testing.T) {
 func TestOverlappingIngestedSSTs(t *testing.T) {
 	dir := ""
 	var (
-		mem        vfs.FS
+		mem        *vfs.MemFS
+		crashClone *vfs.MemFS
 		d          *DB
 		opts       *Options
 		closed     = false
@@ -446,7 +447,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		blockFlush = false
 
 		if strictMem {
-			mem = vfs.NewStrictMem()
+			mem = vfs.NewCrashableMem()
 		} else {
 			mem = vfs.NewMem()
 		}
@@ -513,16 +514,13 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			reset(td.HasArg("strictMem"))
 			return ""
 
-		case "ignoreSyncs":
-			var ignoreSyncs bool
-			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "true" {
-				ignoreSyncs = true
-			}
-			mem.(*vfs.MemFS).SetIgnoreSyncs(ignoreSyncs)
+		case "crash-clone":
+			crashClone = mem.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 			return ""
 
-		case "resetToSynced":
-			mem.(*vfs.MemFS).ResetToSyncedState()
+		case "reset-to-crash-clone":
+			mem = crashClone
+			crashClone = nil
 			files, err := mem.List(dir)
 			sort.Strings(files)
 			require.NoError(t, err)
