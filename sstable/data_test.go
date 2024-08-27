@@ -68,105 +68,55 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 func runBuildCmd(
 	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
 ) (*WriterMetadata, *Reader, error) {
-
 	f0 := &objstorage.MemObj{}
 	if err := optsFromArgs(td, writerOpts); err != nil {
 		return nil, nil, err
 	}
 
-	w := NewWriter(f0, *writerOpts)
+	w := NewRawWriter(f0, *writerOpts)
 	defer func() {
 		if w != nil {
 			_ = w.Close()
 		}
 	}()
-	var rangeDels []keyspan.Span
-	rangeDelFrag := keyspan.Fragmenter{
-		Cmp:    DefaultComparer.Compare,
-		Format: DefaultComparer.FormatKey,
-		Emit: func(s keyspan.Span) {
-			rangeDels = append(rangeDels, s)
-		},
-	}
-	var rangeKeys []keyspan.Span
-	rangeKeyFrag := keyspan.Fragmenter{
-		Cmp:    DefaultComparer.Compare,
-		Format: DefaultComparer.FormatKey,
-		Emit: func(s keyspan.Span) {
-			rangeKeys = append(rangeKeys, s)
-		},
-	}
 	for _, data := range strings.Split(td.Input, "\n") {
-		if strings.HasPrefix(data, "rangekey:") {
-			var err error
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err = errors.Errorf("%v", r)
-					}
-				}()
-				rangeKeyFrag.Add(keyspan.ParseSpan(strings.TrimPrefix(data, "rangekey:")))
+		err := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = errors.Errorf("%v", r)
+				}
 			}()
-			if err != nil {
-				return nil, nil, err
-			}
-			continue
-		}
 
-		forceObsolete := false
-		if strings.HasPrefix(data, "force-obsolete:") {
-			data = strings.TrimSpace(strings.TrimPrefix(data, "force-obsolete:"))
-			forceObsolete = true
-		}
-		j := strings.Index(data, ":")
-		key := base.ParseInternalKey(data[:j])
-		value := []byte(data[j+1:])
-		switch key.Kind() {
-		case InternalKeyKindRangeDelete:
-			if forceObsolete {
-				return nil, nil, errors.Errorf("force-obsolete is not allowed for RANGEDEL")
-			}
-			var err error
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err = errors.Errorf("%v", r)
+			switch {
+			case strings.HasPrefix(data, "EncodeSpan:"):
+				return w.EncodeSpan(keyspan.ParseSpan(strings.TrimPrefix(data, "EncodeSpan:")))
+			default:
+				forceObsolete := strings.HasPrefix(data, "force-obsolete:")
+				if forceObsolete {
+					data = strings.TrimSpace(strings.TrimPrefix(data, "force-obsolete:"))
+				}
+				j := strings.Index(data, ":")
+				key := base.ParseInternalKey(data[:j])
+				value := []byte(data[j+1:])
+				switch key.Kind() {
+				case InternalKeyKindRangeDelete:
+					if forceObsolete {
+						return errors.Errorf("force-obsolete is not allowed for RANGEDEL")
 					}
-				}()
-				rangeDelFrag.Add(keyspan.Span{
-					Start: key.UserKey,
-					End:   value,
-					Keys:  []keyspan.Key{{Trailer: key.Trailer}},
-				})
-			}()
-			if err != nil {
-				return nil, nil, err
+					return w.AddWithForceObsolete(key, value, false /* forceObsolete */)
+				default:
+					return w.AddWithForceObsolete(key, value, forceObsolete)
+				}
 			}
-		default:
-			if err := w.Raw().AddWithForceObsolete(key, value, forceObsolete); err != nil {
-				return nil, nil, err
-			}
-		}
-	}
-	rangeDelFrag.Finish()
-	for _, v := range rangeDels {
-		for _, k := range v.Keys {
-			ik := base.InternalKey{UserKey: v.Start, Trailer: k.Trailer}
-			if err := w.Raw().AddWithForceObsolete(ik, v.End, false); err != nil {
-				return nil, nil, err
-			}
-		}
-	}
-	rangeKeyFrag.Finish()
-	for _, s := range rangeKeys {
-		if err := w.addRangeKeySpanToFragmenter(s); err != nil {
+		}()
+		if err != nil {
 			return nil, nil, err
 		}
 	}
 	if err := w.Close(); err != nil {
 		return nil, nil, err
 	}
-	meta, err := w.Raw().Metadata()
+	meta, err := w.Metadata()
 	w = nil
 	if err != nil {
 		return nil, nil, err
@@ -209,16 +159,16 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 
-	w := NewWriter(f0, *opts)
+	w := NewRawWriter(f0, *opts)
 	defer func() {
 		if w != nil {
 			_ = w.Close()
 		}
 	}()
 	for _, data := range strings.Split(td.Input, "\n") {
-		if strings.HasPrefix(data, "rangekey:") {
-			data = strings.TrimPrefix(data, "rangekey:")
-			if err := w.addRangeKeySpanToFragmenter(keyspan.ParseSpan(data)); err != nil {
+		if strings.HasPrefix(data, "EncodeSpan:") {
+			data = strings.TrimPrefix(data, "EncodeSpan:")
+			if err := w.EncodeSpan(keyspan.ParseSpan(data)); err != nil {
 				return nil, nil, err
 			}
 			continue
@@ -227,14 +177,14 @@ func runBuildRawCmd(
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
 		value := []byte(data[j+1:])
-		if err := w.Raw().AddWithForceObsolete(key, value, false); err != nil {
+		if err := w.AddWithForceObsolete(key, value, false); err != nil {
 			return nil, nil, err
 		}
 	}
 	if err := w.Close(); err != nil {
 		return nil, nil, err
 	}
-	meta, err := w.Raw().Metadata()
+	meta, err := w.Metadata()
 	w = nil
 	if err != nil {
 		return nil, nil, err
