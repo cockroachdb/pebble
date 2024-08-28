@@ -210,15 +210,14 @@ const (
 
 // ParseTableFormat parses the given magic bytes and version into its
 // corresponding internal TableFormat.
-func ParseTableFormat(magic []byte, version uint32, fileNum base.DiskFileNum) (TableFormat, error) {
+func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 	switch string(magic) {
 	case levelDBMagic:
 		return TableFormatLevelDB, nil
 	case rocksDBMagic:
 		if version != rocksDBFormatVersion2 {
 			return TableFormatUnspecified, base.CorruptionErrorf(
-				"pebble/table: invalid table %s (unsupported rocksdb format version %d)", errors.Safe(fileNum), errors.Safe(version),
-			)
+				"(unsupported rocksdb format version %d)", errors.Safe(version))
 		}
 		return TableFormatRocksDBv2, nil
 	case pebbleDBMagic:
@@ -233,13 +232,11 @@ func ParseTableFormat(magic []byte, version uint32, fileNum base.DiskFileNum) (T
 			return TableFormatPebblev4, nil
 		default:
 			return TableFormatUnspecified, base.CorruptionErrorf(
-				"pebble/table: invalid table %s (unsupported pebble format version %d)", errors.Safe(fileNum), errors.Safe(version),
-			)
+				"(unsupported pebble format version %d)", errors.Safe(version))
 		}
 	default:
 		return TableFormatUnspecified, base.CorruptionErrorf(
-			"pebble/table: invalid table %s (bad magic number: 0x%x)", errors.Safe(fileNum), magic,
-		)
+			"(bad magic number: 0x%x)", magic)
 	}
 }
 

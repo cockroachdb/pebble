@@ -51,7 +51,7 @@ sstable check
 testdata/bad-magic.sst
 ----
 bad-magic.sst
-pebble/table: invalid table 000000 (bad magic number: 0xf6cff485b741e288)
+pebble/table: invalid table 000000: (bad magic number: 0xf6cff485b741e288)
 
 sstable check
 ./testdata/mixed/000005.sst
