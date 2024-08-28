@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,25 +64,30 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 			name:    "Invalid RocksDB version",
 			magic:   rocksDBMagic,
 			version: 1,
-			wantErr: "pebble/table: invalid table 000001 (unsupported rocksdb format version 1)",
+			wantErr: "pebble/table: invalid table 000001: (unsupported rocksdb format version 1)",
 		},
 		{
 			name:    "Invalid PebbleDB version",
 			magic:   pebbleDBMagic,
 			version: 5,
-			wantErr: "pebble/table: invalid table 000001 (unsupported pebble format version 5)",
+			wantErr: "pebble/table: invalid table 000001: (unsupported pebble format version 5)",
 		},
 		{
 			name:    "Unknown magic string",
 			magic:   "foo",
-			wantErr: "pebble/table: invalid table 000001 (bad magic number: 0x666f6f)",
+			wantErr: "pebble/table: invalid table 000001: (bad magic number: 0x666f6f)",
 		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			// Tuple -> TableFormat.
-			f, err := ParseTableFormat([]byte(tc.magic), tc.version, 1)
+			f, err := ParseTableFormat([]byte(tc.magic), tc.version)
+			if err != nil {
+				// Keep the formatting consistent with what the Reader observes
+				// through readFooter.
+				err = errors.Wrapf(err, "pebble/table: invalid table %s", errors.Safe(base.DiskFileNum(1)))
+			}
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				require.Equal(t, tc.wantErr, err.Error())
