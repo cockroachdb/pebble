@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"maps"
 	"math/rand"
 	"os"
 	"path"
@@ -138,7 +137,7 @@ type CrashCloneCfg struct {
 // latter is controlled by CrashCloneCfg.
 func (y *MemFS) CrashClone(cfg CrashCloneCfg) *MemFS {
 	if !y.crashable {
-		panic("not a strict MemFS")
+		panic("not a crashable MemFS")
 	}
 	// Block all modification operations while we clone.
 	y.cloneMu.Lock()
@@ -635,10 +634,11 @@ func newRootMemNode() *memNode {
 }
 
 func cloneChildren(f map[string]*memNode) map[string]*memNode {
-	if len(f) == 0 {
-		return make(map[string]*memNode)
+	m := make(map[string]*memNode)
+	for k, v := range f {
+		m[k] = v
 	}
-	return maps.Clone(f)
+	return m
 }
 
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
@@ -671,6 +671,8 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 	}
 }
 
+// CrashClone creates a crash-consistent clone of the subtree rooted at f, and
+// returns the new subtree. cloneMu must be held (in write mode).
 func (f *memNode) CrashClone(cfg *CrashCloneCfg) *memNode {
 	newNode := &memNode{isDir: f.isDir}
 	if f.isDir {
