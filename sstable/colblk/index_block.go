@@ -38,7 +38,6 @@ type IndexBlockWriter struct {
 	offsets         UintBuilder
 	lengths         UintBuilder
 	blockProperties RawBytesBuilder
-	numColumns      int
 	rows            int
 	enc             blockEncoder
 }
@@ -56,7 +55,6 @@ func (w *IndexBlockWriter) Init(blockProperties ...ColumnWriter) {
 	w.separators.Init()
 	w.offsets.Init()
 	w.lengths.InitWithDefault()
-	w.numColumns = indexBlockColumnCount
 	w.blockProperties.Init()
 	w.rows = 0
 }
@@ -72,8 +70,7 @@ func (w *IndexBlockWriter) Reset() {
 }
 
 // AddBlockHandle adds a new separator and end offset of a data block to the
-// index block.  Add returns the index of the row. The caller should add rows to
-// the block properties columns too if necessary.
+// index block.  Add returns the index of the row.
 //
 // AddBlockHandle should only be used for first-level index blocks.
 func (w *IndexBlockWriter) AddBlockHandle(
@@ -90,7 +87,7 @@ func (w *IndexBlockWriter) AddBlockHandle(
 
 // Size returns the size of the pending index block.
 func (w *IndexBlockWriter) Size() int {
-	off := blockHeaderSize(w.numColumns, indexBlockCustomHeaderSize)
+	off := blockHeaderSize(indexBlockColumnCount, indexBlockCustomHeaderSize)
 	off = w.separators.Size(w.rows, off)
 	off = w.offsets.Size(w.rows, off)
 	off = w.lengths.Size(w.rows, off)
@@ -103,7 +100,7 @@ func (w *IndexBlockWriter) Size() int {
 func (w *IndexBlockWriter) Finish() []byte {
 	w.enc.init(w.Size(), Header{
 		Version: Version1,
-		Columns: uint16(w.numColumns),
+		Columns: indexBlockColumnCount,
 		Rows:    uint32(w.rows),
 	}, indexBlockCustomHeaderSize)
 	w.enc.encode(w.rows, &w.separators)
@@ -118,6 +115,7 @@ type IndexReader struct {
 	separators RawBytes
 	offsets    UnsafeUints
 	lengths    UnsafeUints // only used for second-level index blocks
+	blockProps RawBytes
 	br         BlockReader
 }
 
@@ -127,6 +125,7 @@ func (r *IndexReader) Init(data []byte) {
 	r.separators = r.br.RawBytes(indexBlockColumnSeparator)
 	r.offsets = r.br.Uints(indexBlockColumnOffsets)
 	r.lengths = r.br.Uints(indexBlockColumnLengths)
+	r.blockProps = r.br.RawBytes(indexBlockColumnBlockProperties)
 }
 
 // DebugString prints a human-readable explanation of the keyspan block's binary
@@ -232,7 +231,7 @@ func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, err
 			Offset: i.r.offsets.At(i.row),
 			Length: i.r.lengths.At(i.row),
 		},
-		Props: i.r.br.RawBytes(indexBlockColumnBlockProperties).At(i.row),
+		Props: i.r.blockProps.At(i.row),
 	}, nil
 }
 
