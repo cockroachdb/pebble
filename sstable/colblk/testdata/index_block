@@ -11,18 +11,14 @@ bonifide   963  326    bp6
 000-001: x 01                   # version 1
 001-003: x 0400                 # 4 columns
 003-007: x 06000000             # 6 rows
-# column 0
-007-008: b 00000011             # bytes
-008-012: x 1b000000             # page start 27
-# column 1
-012-013: b 00000010             # uint
-013-017: x 4c000000             # page start 76
-# column 2
-017-018: b 00000010             # uint
-018-022: x 5a000000             # page start 90
-# column 3
-022-023: b 00000011             # bytes
-023-027: x 68000000             # page start 104
+007-008: b 00000011             # col 0: bytes
+008-012: x 1b000000             # col 0: page start 27
+012-013: b 00000010             # col 1: uint
+013-017: x 4c000000             # col 1: page start 76
+017-018: b 00000010             # col 2: uint
+018-022: x 5a000000             # col 2: page start 90
+022-023: b 00000011             # col 3: bytes
+023-027: x 68000000             # col 3: page start 104
 # data for column 0
 # rawbytes
 # offsets table
@@ -139,18 +135,14 @@ coat        293128  32104
 000-001: x 01                   # version 1
 001-003: x 0400                 # 4 columns
 003-007: x 05000000             # 5 rows
-# column 0
-007-008: b 00000011             # bytes
-008-012: x 1b000000             # page start 27
-# column 1
-012-013: b 00000010             # uint
-013-017: x 47000000             # page start 71
-# column 2
-017-018: b 00000010             # uint
-018-022: x 5c000000             # page start 92
-# column 3
-022-023: b 00000011             # bytes
-023-027: x 68000000             # page start 104
+007-008: b 00000011             # col 0: bytes
+008-012: x 1b000000             # col 0: page start 27
+012-013: b 00000010             # col 1: uint
+013-017: x 47000000             # col 1: page start 71
+017-018: b 00000010             # col 2: uint
+018-022: x 5c000000             # col 2: page start 92
+022-023: b 00000011             # col 3: bytes
+023-027: x 68000000             # col 3: page start 104
 # data for column 0
 # rawbytes
 # offsets table

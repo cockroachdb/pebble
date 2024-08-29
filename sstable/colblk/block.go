@@ -394,9 +394,8 @@ func (r *BlockReader) headerToBinFormatter(f *binfmt.Formatter) {
 	f.HexBytesln(2, "%d columns", r.header.Columns)
 	f.HexBytesln(4, "%d rows", r.header.Rows)
 	for i := 0; i < int(r.header.Columns); i++ {
-		f.CommentLine("column %d", i)
-		f.Byte("%s", r.DataType(i))
-		f.HexBytesln(4, "page start %d", r.pageStart(i))
+		f.Byte("col %d: %s", i, r.DataType(i))
+		f.HexBytesln(4, "col %d: page start %d", i, r.pageStart(i))
 	}
 }
 

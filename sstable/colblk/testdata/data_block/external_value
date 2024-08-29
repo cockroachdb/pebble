@@ -46,24 +46,18 @@ finish
 004-005: x 01                                                               # version 1
 005-007: x 0600                                                             # 6 columns
 007-011: x 14000000                                                         # 20 rows
-# column 0
-011-012: b 00000100                                                         # prefixbytes
-012-016: x 29000000                                                         # page start 41
-# column 1
-016-017: b 00000011                                                         # bytes
-017-021: x 6e000000                                                         # page start 110
-# column 2
-021-022: b 00000010                                                         # uint
-022-026: x ba000000                                                         # page start 186
-# column 3
-026-027: b 00000001                                                         # bool
-027-031: x e4000000                                                         # page start 228
-# column 4
-031-032: b 00000011                                                         # bytes
-032-036: x f8000000                                                         # page start 248
-# column 5
-036-037: b 00000001                                                         # bool
-037-041: x 6f020000                                                         # page start 623
+011-012: b 00000100                                                         # col 0: prefixbytes
+012-016: x 29000000                                                         # col 0: page start 41
+016-017: b 00000011                                                         # col 1: bytes
+017-021: x 6e000000                                                         # col 1: page start 110
+021-022: b 00000010                                                         # col 2: uint
+022-026: x ba000000                                                         # col 2: page start 186
+026-027: b 00000001                                                         # col 3: bool
+027-031: x e4000000                                                         # col 3: page start 228
+031-032: b 00000011                                                         # col 4: bytes
+032-036: x f8000000                                                         # col 4: page start 248
+036-037: b 00000001                                                         # col 5: bool
+037-041: x 6f020000                                                         # col 5: page start 623
 # data for column 0
 # PrefixBytes
 041-042: x 04                                                               # bundleSize: 16
