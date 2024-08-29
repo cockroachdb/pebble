@@ -69,6 +69,11 @@ func (w *IndexBlockWriter) Reset() {
 	w.enc.reset()
 }
 
+// Rows returns the number of entries in the index block so far.
+func (w *IndexBlockWriter) Rows() int {
+	return w.rows
+}
+
 // AddBlockHandle adds a new separator and end offset of a data block to the
 // index block.  Add returns the index of the row.
 //
@@ -83,6 +88,11 @@ func (w *IndexBlockWriter) AddBlockHandle(
 	w.blockProperties.Put(blockProperties)
 	w.rows++
 	return idx
+}
+
+// UnsafeSeparator returns the separator of the i'th entry.
+func (w *IndexBlockWriter) UnsafeSeparator(i int) []byte {
+	return w.separators.UnsafeGet(i)
 }
 
 // Size returns the size of the pending index block.

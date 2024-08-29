@@ -39,9 +39,11 @@ func TestIndexBlock(t *testing.T) {
 				}
 				w.AddBlockHandle([]byte(fields[0]), h, bp)
 			}
+			fmt.Fprintf(&buf, "UnsafeSeparator(Rows()-1) = %q\n", w.UnsafeSeparator(w.Rows()-1))
 			data := w.Finish()
 			r.Init(data)
-			return r.DebugString()
+			fmt.Fprint(&buf, r.DebugString())
+			return buf.String()
 		case "iter":
 			var it IndexIter
 			it.Init(&r)

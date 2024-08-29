@@ -6,6 +6,7 @@ bacitracin 412  212
 banana     632  215    bp5
 bonifide   963  326    bp6
 ----
+UnsafeSeparator(Rows()-1) = "bonifide"
 # index block header
 # columnar block header
 000-001: x 01                   # version 1
@@ -130,6 +131,7 @@ catatonic   102422  20442
 cephalopod  122864   9104   bp4
 coat        293128  32104
 ----
+UnsafeSeparator(Rows()-1) = "coat"
 # index block header
 # columnar block header
 000-001: x 01                   # version 1

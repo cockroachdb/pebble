@@ -165,13 +165,18 @@ func (b *RawBytesBuilder) PutConcat(s1, s2 []byte) {
 	b.offsets.Set(b.rows, uint64(len(b.data)))
 }
 
-// LastSlice returns the last slice added to the builder. The returned slice is
+// Rows returns the count of slices that have been added to the builder.
+func (b *RawBytesBuilder) Rows() int {
+	return b.rows
+}
+
+// UnsafeGet returns the i'th slice added to the builder. The returned slice is
 // owned by the builder and must not be mutated.
-func (b *RawBytesBuilder) LastSlice() []byte {
+func (b *RawBytesBuilder) UnsafeGet(i int) []byte {
 	if b.rows == 0 {
 		return nil
 	}
-	return b.data[b.offsets.array.elems.At(b.rows-1):b.offsets.array.elems.At(b.rows)]
+	return b.data[b.offsets.array.elems.At(i):b.offsets.array.elems.At(i+1)]
 }
 
 // Finish writes the serialized byte slices to buf starting at offset. The buf
