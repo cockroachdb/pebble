@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"golang.org/x/exp/rand"
 )
 
@@ -35,12 +36,13 @@ func TestKeyspanBlock(t *testing.T) {
 			return buf.String()
 		case "add":
 			for _, line := range strings.Split(td.Input, "\n") {
-				s := keyspan.ParseSpan(line)
-				w.AddSpan(&s)
+				w.AddSpan(keyspan.ParseSpan(line))
 			}
 			fmt.Fprint(&buf, &w)
 			return buf.String()
 		case "finish":
+			sm, la := w.UnsafeBoundaryKeys()
+			fmt.Fprintf(&buf, "Boundaries: %s — %s\n", sm.Pretty(testkeys.Comparer.FormatKey), la.Pretty(testkeys.Comparer.FormatKey))
 			block := w.Finish()
 			kr.Init(block)
 			fmt.Fprint(&buf, kr.DebugString())
@@ -90,7 +92,7 @@ func benchmarkKeyspanBlockRangeDeletions(b *testing.B, numSpans, keysPerSpan, ke
 			t := base.MakeTrailer(base.SeqNum(j), base.InternalKeyKindRangeDelete)
 			s.Keys = append(s.Keys, keyspan.Key{Trailer: t})
 		}
-		w.AddSpan(&s)
+		w.AddSpan(s)
 	}
 	block := w.Finish()
 	avgRowSize := float64(w.Size()) / float64(numSpans*keysPerSpan)

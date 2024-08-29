@@ -49,6 +49,7 @@ size=73:
 
 finish
 ----
+Boundaries: a#0,RANGEDEL — e#inf,RANGEDEL
 # keyspan block header
 00-04: x 05000000 # user key count: 5
 # columnar block header
@@ -226,6 +227,7 @@ size=70:
 
 finish
 ----
+Boundaries: b#4,RANGEKEYSET — d#inf,RANGEKEYSET
 # keyspan block header
 00-04: x 02000000         # user key count: 2
 # columnar block header
@@ -311,6 +313,7 @@ size=80:
 
 finish
 ----
+Boundaries: b#4,RANGEKEYSET — g#inf,RANGEKEYSET
 # keyspan block header
 00-04: x 04000000       # user key count: 4
 # columnar block header

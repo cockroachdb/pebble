@@ -82,7 +82,7 @@ func (w *KeyspanBlockWriter) Reset() {
 
 // AddSpan appends a new Span to the pending block. Spans must already be
 // fragmented (non-overlapping) and added in sorted order.
-func (w *KeyspanBlockWriter) AddSpan(s *keyspan.Span) {
+func (w *KeyspanBlockWriter) AddSpan(s keyspan.Span) {
 	// When keyspans are fragmented, abutting spans share a user key. One span's
 	// end key is the next span's start key.  Check if the previous user key
 	// equals this span's start key, and avoid encoding it again if so.
@@ -107,6 +107,26 @@ func (w *KeyspanBlockWriter) AddSpan(s *keyspan.Span) {
 		w.values.Put(s.Keys[i].Value)
 		w.keyCount++
 	}
+}
+
+// KeyCount returns the count of keyspan.Keys written to the writer.
+func (w *KeyspanBlockWriter) KeyCount() int {
+	return w.keyCount
+}
+
+// UnsafeBoundaryKeys returns the smallest and largest keys written to the
+// keyspan block so far. The returned internal keys have user keys that point
+// directly into the block writer's memory and must not be mutated.
+func (w *KeyspanBlockWriter) UnsafeBoundaryKeys() (smallest, largest base.InternalKey) {
+	if w.keyCount == 0 {
+		return smallest, largest
+	}
+	smallest.UserKey = w.boundaryUserKeys.UnsafeGet(0)
+	smallest.Trailer = base.InternalKeyTrailer(w.trailers.Get(0))
+	largest.UserKey = w.boundaryUserKeys.UnsafeGet(w.boundaryUserKeys.rows - 1)
+	largest.Trailer = base.MakeTrailer(base.SeqNumMax,
+		base.InternalKeyTrailer(w.trailers.Get(w.keyCount-1)).Kind())
+	return smallest, largest
 }
 
 // Size returns the size of the pending block.
