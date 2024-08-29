@@ -59,7 +59,7 @@ var _ Array[uint64] = UnsafeUints{}
 func DecodeUnsafeUints(b []byte, off uint32, rows int) (_ UnsafeUints, endOffset uint32) {
 	encoding := UintEncoding(b[off])
 	if !encoding.IsValid() {
-		panic(errors.AssertionFailedf("invalid encoding 0x%x", b))
+		panic(errors.AssertionFailedf("invalid encoding 0x%x", b[off:off+1]))
 	}
 	off++
 	var base uint64

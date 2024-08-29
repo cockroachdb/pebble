@@ -181,7 +181,8 @@ func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
 	// CommonPrefixLen, it would sort after [key].)
 	if cmpv.CommonPrefixLen == cmpv.PrefixLen {
 		// The keys share the same MVCC prefix. Compare the suffixes.
-		cmpv.UserKeyComparison = int32(w.comparer.CompareSuffixes(key[cmpv.PrefixLen:], w.suffixes.LastSlice()))
+		cmpv.UserKeyComparison = int32(w.comparer.CompareSuffixes(key[cmpv.PrefixLen:],
+			w.suffixes.UnsafeGet(w.suffixes.rows-1)))
 		if invariants.Enabled {
 			if !w.comparer.Equal(lp, key[:cmpv.PrefixLen]) {
 				panic(errors.AssertionFailedf("keys have different logical prefixes: %q != %q", lp, key[:cmpv.PrefixLen]))
@@ -206,7 +207,8 @@ func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
 		// so the UserKeyComparison should be equal to the result of comparing
 		// the prefixes and nonzero.
 		if cmpv.UserKeyComparison == 0 {
-			panic(errors.AssertionFailedf("user keys should not be equal: %q+%q, %q", lp, w.suffixes.LastSlice(), key))
+			panic(errors.AssertionFailedf("user keys should not be equal: %q+%q, %q",
+				lp, w.suffixes.UnsafeGet(w.suffixes.rows-1), key))
 		}
 		if v := w.comparer.Compare(key, lp); v != int(cmpv.UserKeyComparison) {
 			panic(errors.AssertionFailedf("user key comparison mismatch: Compare(%q, %q) = %d ≠ %d",
