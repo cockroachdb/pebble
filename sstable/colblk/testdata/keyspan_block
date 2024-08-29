@@ -55,21 +55,16 @@ finish
 04-05: x 01       # version 1
 05-07: x 0500     # 5 columns
 07-11: x 07000000 # 7 rows
-# column 0
-11-12: b 00000011 # bytes
-12-16: x 24000000 # page start 36
-# column 1
-16-17: b 00000010 # uint
-17-21: x 30000000 # page start 48
-# column 2
-21-22: b 00000010 # uint
-22-26: x 36000000 # page start 54
-# column 3
-26-27: b 00000011 # bytes
-27-31: x 46000000 # page start 70
-# column 4
-31-32: b 00000011 # bytes
-32-36: x 47000000 # page start 71
+11-12: b 00000011 # col 0: bytes
+12-16: x 24000000 # col 0: page start 36
+16-17: b 00000010 # col 1: uint
+17-21: x 30000000 # col 1: page start 48
+21-22: b 00000010 # col 2: uint
+22-26: x 36000000 # col 2: page start 54
+26-27: b 00000011 # col 3: bytes
+27-31: x 46000000 # col 3: page start 70
+31-32: b 00000011 # col 4: bytes
+32-36: x 47000000 # col 4: page start 71
 # data for column 0
 # rawbytes
 # offsets table
@@ -237,21 +232,16 @@ finish
 04-05: x 01               # version 1
 05-07: x 0500             # 5 columns
 07-11: x 01000000         # 1 rows
-# column 0
-11-12: b 00000011         # bytes
-12-16: x 24000000         # page start 36
-# column 1
-16-17: b 00000010         # uint
-17-21: x 2a000000         # page start 42
-# column 2
-21-22: b 00000010         # uint
-22-26: x 2d000000         # page start 45
-# column 3
-26-27: b 00000011         # bytes
-27-31: x 36000000         # page start 54
-# column 4
-31-32: b 00000011         # bytes
-32-36: x 3b000000         # page start 59
+11-12: b 00000011         # col 0: bytes
+12-16: x 24000000         # col 0: page start 36
+16-17: b 00000010         # col 1: uint
+17-21: x 2a000000         # col 1: page start 42
+21-22: b 00000010         # col 2: uint
+22-26: x 2d000000         # col 2: page start 45
+26-27: b 00000011         # col 3: bytes
+27-31: x 36000000         # col 3: page start 54
+31-32: b 00000011         # col 4: bytes
+32-36: x 3b000000         # col 4: page start 59
 # data for column 0
 # rawbytes
 # offsets table
@@ -327,21 +317,16 @@ finish
 04-05: x 01             # version 1
 05-07: x 0500           # 5 columns
 07-11: x 02000000       # 2 rows
-# column 0
-11-12: b 00000011       # bytes
-12-16: x 24000000       # page start 36
-# column 1
-16-17: b 00000010       # uint
-17-21: x 2e000000       # page start 46
-# column 2
-21-22: b 00000010       # uint
-22-26: x 33000000       # page start 51
-# column 3
-26-27: b 00000011       # bytes
-27-31: x 38000000       # page start 56
-# column 4
-31-32: b 00000011       # bytes
-32-36: x 40000000       # page start 64
+11-12: b 00000011       # col 0: bytes
+12-16: x 24000000       # col 0: page start 36
+16-17: b 00000010       # col 1: uint
+17-21: x 2e000000       # col 1: page start 46
+21-22: b 00000010       # col 2: uint
+22-26: x 33000000       # col 2: page start 51
+26-27: b 00000011       # col 3: bytes
+27-31: x 38000000       # col 3: page start 56
+31-32: b 00000011       # col 4: bytes
+32-36: x 40000000       # col 4: page start 64
 # data for column 0
 # rawbytes
 # offsets table

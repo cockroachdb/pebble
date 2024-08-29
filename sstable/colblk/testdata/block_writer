@@ -20,9 +20,8 @@ finish
 00-01: x 01       # version 1
 01-03: x 0100     # 1 columns
 03-07: x 0a000000 # 10 rows
-# column 0
-07-08: b 00000010 # uint
-08-12: x 0c000000 # page start 12
+07-08: b 00000010 # col 0: uint
+08-12: x 0c000000 # col 0: page start 12
 # data for column 0
 12-13: x 00       # encoding: zero
 13-14: x 00       # block trailer padding
@@ -53,9 +52,8 @@ finish
 00-01: x 01               # version 1
 01-03: x 0100             # 1 columns
 03-07: x 0c000000         # 12 rows
-# column 0
-07-08: b 00000010         # uint
-08-12: x 0c000000         # page start 12
+07-08: b 00000010         # col 0: uint
+08-12: x 0c000000         # col 0: page start 12
 # data for column 0
 12-13: x 80               # encoding: const
 13-21: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
@@ -81,9 +79,8 @@ finish
 00-01: x 01               # version 1
 01-03: x 0100             # 1 columns
 03-07: x 05000000         # 5 rows
-# column 0
-07-08: b 00000010         # uint
-08-12: x 0c000000         # page start 12
+07-08: b 00000010         # col 0: uint
+08-12: x 0c000000         # col 0: page start 12
 # data for column 0
 12-13: x 81               # encoding: 1b,delta
 13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
@@ -115,9 +112,8 @@ finish
 00-01: x 01               # version 1
 01-03: x 0100             # 1 columns
 03-07: x 06000000         # 6 rows
-# column 0
-07-08: b 00000010         # uint
-08-12: x 0c000000         # page start 12
+07-08: b 00000010         # col 0: uint
+08-12: x 0c000000         # col 0: page start 12
 # data for column 0
 12-13: x 82               # encoding: 2b,delta
 13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
@@ -151,9 +147,8 @@ finish
 00-01: x 01       # version 1
 01-03: x 0100     # 1 columns
 03-07: x 09000000 # 9 rows
-# column 0
-07-08: b 00000010 # uint
-08-12: x 0c000000 # page start 12
+07-08: b 00000010 # col 0: uint
+08-12: x 0c000000 # col 0: page start 12
 # data for column 0
 12-13: x 04       # encoding: 4b
 13-16: x 000000   # padding (aligning to 32-bit boundary)
@@ -192,9 +187,8 @@ finish
 00-01: x 01       # version 1
 01-03: x 0100     # 1 columns
 03-07: x 0a000000 # 10 rows
-# column 0
-07-08: b 00000010 # uint
-08-12: x 0c000000 # page start 12
+07-08: b 00000010 # col 0: uint
+08-12: x 0c000000 # col 0: page start 12
 # data for column 0
 12-13: x 01       # encoding: 1b
 13-14: x 00       # data[0] = 0
@@ -223,9 +217,8 @@ finish
 00-01: x 01       # version 1
 01-03: x 0100     # 1 columns
 03-07: x 02000000 # 2 rows
-# column 0
-07-08: b 00000010 # uint
-08-12: x 0c000000 # page start 12
+07-08: b 00000010 # col 0: uint
+08-12: x 0c000000 # col 0: page start 12
 # data for column 0
 12-13: x 02       # encoding: 2b
 13-14: x 00       # padding (aligning to 16-bit boundary)
@@ -269,9 +262,8 @@ finish
 00-01: x 01                                                               # version 1
 01-03: x 0100                                                             # 1 columns
 03-07: x 18000000                                                         # 24 rows
-# column 0
-07-08: b 00000001                                                         # bool
-08-12: x 0c000000                                                         # page start 12
+07-08: b 00000001                                                         # col 0: bool
+08-12: x 0c000000                                                         # col 0: page start 12
 # data for column 0
 12-13: x 00                                                               # bitmap encoding
 13-16: x 000000                                                           # padding to align to 64-bit boundary
@@ -300,12 +292,10 @@ finish
 000-001: x 01                     # version 1
 001-003: x 0200                   # 2 columns
 003-007: x 09000000               # 9 rows
-# column 0
-007-008: b 00000011               # bytes
-008-012: x 11000000               # page start 17
-# column 1
-012-013: b 00000010               # uint
-013-017: x 5a000000               # page start 90
+007-008: b 00000011               # col 0: bytes
+008-012: x 11000000               # col 0: page start 17
+012-013: b 00000010               # col 1: uint
+013-017: x 5a000000               # col 1: page start 90
 # data for column 0
 # rawbytes
 # offsets table
