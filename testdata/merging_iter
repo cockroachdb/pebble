@@ -5,14 +5,14 @@
 # Each file is defined using: the first line specifies the smallest and largest internal
 # keys and the second line the point key-value pairs in the sstable in order. The rangedel
 # key-value pairs should also be in increasing order relative to the other rangedel pairs.
-# The largest file key can take the form of <userkey>.RANGEDEL.72057594037927935, which
+# The largest file key can take the form of <userkey>.RANGEDEL.inf, which
 # represents the range deletion sentinel.
 
 # The rangedel should not delete any points in any sstable.  The two files were involved in a
 # compaction and then the second file got moved to a lower level.
 define
 L
-a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30 e.RANGEDEL.inf
 a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:e
 L
 e.SET.10 g.SET.20
@@ -142,10 +142,10 @@ a#15,SET:15
 
 define
 L
-c.SET.30 f.RANGEDEL.72057594037927935
+c.SET.30 f.RANGEDEL.inf
 c.SET.30:30 d.SET.27:27 e.RANGEDEL.8:f
 L
-a.SET.10 c.RANGEDEL.72057594037927935
+a.SET.10 c.RANGEDEL.inf
 a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:c
 ----
 L1:
@@ -237,7 +237,7 @@ b#14,SET:14
 # The rangedel should not delete anything.
 define
 L
-a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30 e.RANGEDEL.inf
 a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:e
 L
 e.SET.10 g.SET.20
@@ -436,7 +436,7 @@ define
 L
 a.SET.2 a.SET.2
 a.SET.2:2
-c.RANGEDEL.4 e.RANGEDEL.72057594037927935
+c.RANGEDEL.4 e.RANGEDEL.inf
 c.RANGEDEL.4:e
 f.SET.3 f.SET.3
 f.SET.3:3
@@ -494,13 +494,13 @@ a#2,SET:2
 
 define
 L
-kq.RANGEDEL.100 p.RANGEDEL.72057594037927935
+kq.RANGEDEL.100 p.RANGEDEL.inf
 kq.RANGEDEL.100:p
 L
 b.SET.90 o.SET.65
 b.SET.90:90 cat.SET.70:70 g.SET.80:80 o.SET.65:65
 L
-a.SET.41 z.RANGEDEL.72057594037927935
+a.SET.41 z.RANGEDEL.inf
 a.SET.41:41 koujdlp.MERGE.37:37 ok.SET.46:46 v.SET.43:43 v.RANGEDEL.19:z
 ----
 L1:
@@ -523,7 +523,7 @@ koujdlp#37,MERGE:37
 
 define
 L
-a.SET.103 jyk.RANGEDEL.72057594037927935
+a.SET.103 jyk.RANGEDEL.inf
 a.SET.103:103 imd.SET.793:793 iwoeionch.SET.792:792 c.RANGEDEL.101:jyk
 L
 b.SET.90 o.SET.65
@@ -617,7 +617,7 @@ d#10,SET:d10
 # stats.
 define
 L
-a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30 g.RANGEDEL.inf
 a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
 ----
 L1:
@@ -649,7 +649,7 @@ f#21,SET:21
 
 define
 L
-a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30 g.RANGEDEL.inf
 a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
 ----
 L1:
@@ -810,7 +810,7 @@ err=injected error
 # same table.
 define
 L
-a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30 g.RANGEDEL.inf
 a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
 ----
 L1:
@@ -887,7 +887,7 @@ err=injected error
 
 define
 L
-a.SET.103 jd.RANGEDEL.72057594037927935
+a.SET.103 jd.RANGEDEL.inf
 a.SET.103:103 imd.SET.793:793 iwoeionch.SET.792:792 c.RANGEDEL.101:jd
 L
 b.SET.90 o.SET.65

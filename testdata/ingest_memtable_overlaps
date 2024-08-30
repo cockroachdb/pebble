@@ -126,7 +126,7 @@ set b 1
 ----
 
 overlaps
-a.RANGEDEL.2-b.RANGEDEL.72057594037927935
+a.RANGEDEL.2-b.RANGEDEL.inf
 ----
 false
 
@@ -135,7 +135,7 @@ del-range b c
 ----
 
 overlaps
-a.RANGEDEL.2-b.RANGEDEL.72057594037927935
+a.RANGEDEL.2-b.RANGEDEL.inf
 ----
 false
 
@@ -145,7 +145,7 @@ del-range b c
 ----
 
 overlaps
-d.RANGEDEL.2-e.RANGEDEL.72057594037927935
+d.RANGEDEL.2-e.RANGEDEL.inf
 ----
 true
 
@@ -166,7 +166,7 @@ range-key-set a c 1 val1
 overlaps
 a-c
 b-c
-a.RANGEDEL.2-b.RANGEDEL.72057594037927935
+a.RANGEDEL.2-b.RANGEDEL.inf
 d-e
 ----
 true

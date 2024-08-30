@@ -5,7 +5,7 @@
 # Each file is defined using: the first line specifies the smallest and largest internal
 # keys and the second line the point key-value pairs in the sstable in order. The rangedel
 # key-value pairs should also be in increasing order relative to the other rangedel pairs.
-# The largest file key can take the form of <userkey>.RANGEDEL.72057594037927935, which
+# The largest file key can take the form of <userkey>.RANGEDEL.inf, which
 # represents the range deletion sentinel.
 #
 # Many of the correct case definitions are borrowed from merging_iter since it defines
@@ -15,7 +15,7 @@
 # we consider the file boundaries, which is why its lower sequence number is ok.
 define
 L
-a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30 e.RANGEDEL.inf
 a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:f
 L
 e.SET.10 g.SET.20
@@ -54,7 +54,7 @@ L
 c.SET.30 f.RANGEDEL.0
 c.SET.30:30 d.SET.27:27 a.RANGEDEL.8:f
 L
-a.SET.10 c.RANGEDEL.72057594037927935
+a.SET.10 c.RANGEDEL.inf
 a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:f
 ----
 Level 1
@@ -86,7 +86,7 @@ check
 # The two files do not overlap despite the seeming overlap of the range tombstones.
 define
 L
-a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30 e.RANGEDEL.inf
 a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
 L
 e.SET.10 g.SET.20
@@ -102,7 +102,7 @@ check
 
 define
 L
-a.SET.30 e.RANGEDEL.72057594037927935
+a.SET.30 e.RANGEDEL.inf
 a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
 L
 a.SET.10 g.SET.20
@@ -121,7 +121,7 @@ found InternalKey c#27,SET in L1: fileNum=000010 and InternalKey c#28,SET in L2:
 # lower level.
 define
 L
-a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30 g.RANGEDEL.inf
 a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:g
 L
 g.SET.10 j.SET.20
@@ -171,10 +171,10 @@ tombstone b-g:{(#10,RANGEDEL)} in L2: fileNum=000017 deletes key c#8,SET in L1: 
 
 define
 L
-a.RANGEDEL.8 c.RANGEDEL.72057594037927935
+a.RANGEDEL.8 c.RANGEDEL.inf
 a.RANGEDEL.8:c
 L
-a.RANGEDEL.6 d.RANGEDEL.72057594037927935
+a.RANGEDEL.6 d.RANGEDEL.inf
 a.RANGEDEL.6:d b.RANGEDEL.10:c
 ----
 Level 1
@@ -226,7 +226,7 @@ out of order keys b#2,SET >= b#3,SET in L1: fileNum=000023
 # Case 1: Fragmented but not ordered.
 define write-unfragmented disable-key-order-checks
 L
-a.RANGEDEL.1 g.RANGEDEL.72057594037927935
+a.RANGEDEL.1 g.RANGEDEL.inf
 d.RANGEDEL.2:e d.RANGEDEL.1:e f.RANGEDEL.3:g a.RANGEDEL.4:b
 ----
 Level 1
@@ -239,7 +239,7 @@ unordered or unfragmented range delete tombstones f-g:{(#3,RANGEDEL)}, a-b:{(#4,
 # Case 2: Ordered but not fragmented.
 define write-unfragmented disable-key-order-checks
 L
-a.RANGEDEL.1 d.RANGEDEL.72057594037927935
+a.RANGEDEL.1 d.RANGEDEL.inf
 a.RANGEDEL.1:d b.RANGEDEL.2:c
 ----
 Level 1
@@ -252,7 +252,7 @@ unordered or unfragmented range delete tombstones a-d:{(#1,RANGEDEL)}, b-c:{(#2,
 # Case 3: Verify check is done before truncation.
 define write-unfragmented disable-key-order-checks
 L
-a.RANGEDEL.1 b.RANGEDEL.72057594037927935
+a.RANGEDEL.1 b.RANGEDEL.inf
 a.RANGEDEL.1:z d.RANGEDEL.2:e
 ----
 Level 1
@@ -363,7 +363,7 @@ merge processing error on key a#9,SINGLEDEL in L1: fileNum=000033: finish failed
 
 define
 L
-a@9.SET.9 f.RANGEDEL.72057594037927935
+a@9.SET.9 f.RANGEDEL.inf
 a@9.SET.9:a9 a@6.SET.6:a6 a.RANGEDEL.5:f
 f@6.SET.6 f@6.SET.6
 f@6.SET.6:f6
