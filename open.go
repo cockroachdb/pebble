@@ -548,6 +548,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 
+	d.compactionPool = opts.CompactionPool
+
 	if !d.opts.ReadOnly {
 		// If the Options specify a format major version higher than the
 		// loaded database's, upgrade it. If this is a new database, this

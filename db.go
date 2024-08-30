@@ -323,6 +323,20 @@ type DB struct {
 	// compactionShedulers.Wait() should not be called while the DB.mu is held.
 	compactionSchedulers sync.WaitGroup
 
+	// compactionPool is responsible for scheduling both automatic and manual
+	// compactions.
+	//
+	// The compactionPool may enforce a global max compaction concurrency in a
+	// multi-store configuration. Each Pebble store (i.e. an instance of *DB)
+	// has its own per-store compaction concurrency which is controlled by
+	// opts.MaxConcurrentCompactions. However, in a multi-store configuration,
+	// disk I/O is a per-store resource while CPU is shared across stores.
+	// A significant portion of compaction is CPU-intensive, and so
+	// CompactionPool may be used to ensure that excessive compactions don't
+	// interrupt foreground CPU tasks even if the disks are capable of handling
+	// the additional throughput from those compactions.
+	compactionPool CompactionPool
+
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
 	// particular, the current version, log.*, mem.*, and snapshot list need to
