@@ -13,7 +13,7 @@ L0
 # The range deletion sentinel acts as a clean cut boundary.
 setup-inputs a a
 L1
-  a.SET.1-b.RANGEDEL.72057594037927935
+  a.SET.1-b.RANGEDEL.inf
   b.SET.1-c.SET.2
 ----
 L1
@@ -24,7 +24,7 @@ setup-inputs a a
 L1
   a.SET.5-b.SET.6
 L2
-  a.SET.3-c.RANGEDEL.72057594037927935
+  a.SET.3-c.RANGEDEL.inf
   c.SET.3-d.SET.2
 ----
 L1

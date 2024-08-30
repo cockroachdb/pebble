@@ -25,7 +25,7 @@ expand-inputs 2
 2: e#5,SET-f#6,SET
 
 define
-a.SET.1-b.RANGEDEL.72057594037927935
+a.SET.1-b.RANGEDEL.inf
 b.SET.1-d.SET.4
 e.SET.2-f.SET.6
 ----

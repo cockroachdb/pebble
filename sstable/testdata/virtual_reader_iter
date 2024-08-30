@@ -500,7 +500,7 @@ point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
 seqnums:  [1-5]
 
-virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
+virtualize lower=a.SET.1 upper=e.RANGEDEL.inf
 ----
 bounds:  [a#1,SET-e#inf,RANGEDEL]
 
@@ -537,7 +537,7 @@ point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
 seqnums:  [1-5]
 
-virtualize lower=a.SET.1 upper=e.RANGEDEL.72057594037927935
+virtualize lower=a.SET.1 upper=e.RANGEDEL.inf
 ----
 bounds:  [a#1,SET-e#inf,RANGEDEL]
 

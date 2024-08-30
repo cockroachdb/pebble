@@ -82,10 +82,10 @@ L6:
 # forward direction Iterator sees the keys:
 #
 #   t#1,SET
-#   y#72057594037927935,RANGEDEL
+#   y#inf,RANGEDEL
 #   z#1,MERGE
 #
-# Normally the record y#72057594037927935,RANGEDEL is skipped by
+# Normally the record y#inf,RANGEDEL is skipped by
 # Iterator during iteration, but logic to do so was missing from
 # Iterator.nextUserKey. The result was that next could return the same
 # key that iterator was currently pointed at.

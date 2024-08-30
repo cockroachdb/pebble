@@ -1017,7 +1017,7 @@ L3 start=tmgc.MERGE.384 end=tmgc.MERGE.384
   tmgc.MERGE.384:bar
   tmgc.RANGEDEL.383:tvsalezade
   tmgc.RANGEDEL.331:tvsalezade
-L3 start=tmgc.RANGEDEL.383 end=tvsalezade.RANGEDEL.72057594037927935
+L3 start=tmgc.RANGEDEL.383 end=tvsalezade.RANGEDEL.inf
   tmgc.RANGEDEL.383:tvsalezade
   tmgc.SET.375:baz
   tmgc.RANGEDEL.356:tvsalezade
@@ -1057,7 +1057,7 @@ L5 start=b.SET.7 end=b.SET.6
   b.SET.7:b7
   b.SET.6:b6
   b.RANGEDEL.1:z
-L5 start=b.SET.5 end=z.RANGEDEL.72057594037927935
+L5 start=b.SET.5 end=z.RANGEDEL.inf
   b.SET.5:b5
   b.SET.4:b4
   b.RANGEDEL.1:z
@@ -1094,12 +1094,12 @@ b: (b10, .)
 # Regression test for cockroachdb/cockroach#89777.
 
 define target-file-sizes=(1)
-L5 start=g.RANGEDEL.1 end=z.RANGEDEL.72057594037927935
+L5 start=g.RANGEDEL.1 end=z.RANGEDEL.inf
   a.RANGEDEL.1:z
   m.SET.1:bar
 L6
   m.SET.0:bax
-L6 start=a.SET.1 end=g.RANGEDEL.72057594037927935
+L6 start=a.SET.1 end=g.RANGEDEL.inf
   a.SET.1:foo
   a.RANGEDEL.1:z
 ----
@@ -1212,7 +1212,7 @@ y: (y, .)
 # Regression test for cockroachdb/cockroach#89777.
 
 define snapshots=(2)
-L5 start=g.RANGEDEL.3 end=n.RANGEDEL.72057594037927935
+L5 start=g.RANGEDEL.3 end=n.RANGEDEL.inf
   a.RANGEDEL.3:z
   m.SET.1:bar
 L5
