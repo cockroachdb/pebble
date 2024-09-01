@@ -59,7 +59,6 @@ type entry struct {
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
 	referenced atomic.Bool
-	shard      *shard
 	// Reference count for the entry. The entry is freed when the reference count
 	// drops to zero.
 	ref refcnt
@@ -71,7 +70,6 @@ func newEntry(s *shard, key key, size int64) *entry {
 		key:   key,
 		size:  size,
 		ptype: etCold,
-		shard: s,
 	}
 	e.blockLink.next = e
 	e.blockLink.prev = e
