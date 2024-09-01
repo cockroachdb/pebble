@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/overlap"
@@ -246,7 +247,7 @@ func ingestLoad1(
 	opts *Options,
 	fmv FormatMajorVersion,
 	readable objstorage.Readable,
-	cacheID uint64,
+	cacheID cache.ID,
 	fileNum base.FileNum,
 ) (*fileMetadata, error) {
 	o := opts.MakeReaderOptions()
@@ -429,7 +430,7 @@ func ingestLoad(
 	paths []string,
 	shared []SharedSSTMeta,
 	external []ExternalFile,
-	cacheID uint64,
+	cacheID cache.ID,
 	pending []base.FileNum,
 ) (ingestLoadResult, error) {
 	localFileNums := pending[:len(paths)]

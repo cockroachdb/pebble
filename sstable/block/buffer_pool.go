@@ -40,7 +40,7 @@ func (b Value) Get() []byte {
 // backed by a buffer pool, MakeHandle inserts the value into the block cache,
 // returning a handle to the now resident value.
 func (b Value) MakeHandle(
-	c *cache.Cache, cacheID uint64, fileNum base.DiskFileNum, offset uint64,
+	c *cache.Cache, cacheID cache.ID, fileNum base.DiskFileNum, offset uint64,
 ) BufferHandle {
 	if b.buf.Valid() {
 		return BufferHandle{b: b.buf}

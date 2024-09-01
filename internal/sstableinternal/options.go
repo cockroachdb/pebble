@@ -15,7 +15,7 @@ type CacheOptions struct {
 	// Cache can be nil, in which case no cache is used. When non-nil, the other
 	// fields must be set accordingly.
 	Cache   *cache.Cache
-	CacheID uint64
+	CacheID cache.ID
 	FileNum base.DiskFileNum
 }
 

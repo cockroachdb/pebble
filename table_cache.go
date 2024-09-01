@@ -101,7 +101,7 @@ type tableCacheOpts struct {
 
 	loggerAndTracer   LoggerAndTracer
 	cache             *cache.Cache
-	cacheID           uint64
+	cacheID           cache.ID
 	objProvider       objstorage.Provider
 	readerOpts        sstable.ReaderOptions
 	sstStatsCollector *sstable.CategoryStatsCollector
@@ -121,7 +121,7 @@ type tableCacheContainer struct {
 // doesn't match Options.Cache.
 func newTableCacheContainer(
 	tc *TableCache,
-	cacheID uint64,
+	cacheID cache.ID,
 	objProvider objstorage.Provider,
 	opts *Options,
 	size int,
@@ -364,7 +364,7 @@ func (c *TableCache) getShard(fileNum base.DiskFileNum) *tableCacheShard {
 }
 
 type tableCacheKey struct {
-	cacheID uint64
+	cacheID cache.ID
 	fileNum base.DiskFileNum
 }
 
@@ -1209,7 +1209,7 @@ type tableCacheNode struct {
 
 	// Storing the cache id associated with the DB instance here
 	// avoids the need to thread the dbOpts struct through many functions.
-	cacheID uint64
+	cacheID cache.ID
 }
 
 func (n *tableCacheNode) next() *tableCacheNode {
