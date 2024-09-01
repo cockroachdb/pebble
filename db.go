@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -278,7 +279,7 @@ type DB struct {
 	// The number of bytes available on disk.
 	diskAvailBytes atomic.Uint64
 
-	cacheID        uint64
+	cacheID        cache.ID
 	dirname        string
 	opts           *Options
 	cmp            Compare

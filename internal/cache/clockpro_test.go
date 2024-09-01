@@ -259,7 +259,7 @@ func TestReserveColdTarget(t *testing.T) {
 	defer cache.Unref()
 
 	for i := 0; i < 50; i++ {
-		cache.Set(uint64(i+1), base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
+		cache.Set(ID(i+1), base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
 	}
 
 	if cache.Size() != 50 {

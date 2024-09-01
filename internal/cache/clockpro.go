@@ -32,7 +32,7 @@ import (
 
 type fileKey struct {
 	// id is the namespace for fileNums.
-	id      uint64
+	id      ID
 	fileNum base.DiskFileNum
 }
 
@@ -111,7 +111,7 @@ type shard struct {
 	countTest int64
 }
 
-func (c *shard) Get(id uint64, fileNum base.DiskFileNum, offset uint64) Handle {
+func (c *shard) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
 	c.mu.RLock()
 	var value *Value
 	if e, _ := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
@@ -129,7 +129,7 @@ func (c *shard) Get(id uint64, fileNum base.DiskFileNum, offset uint64) Handle {
 	return Handle{value: value}
 }
 
-func (c *shard) Set(id uint64, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
+func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
 	if n := value.refs(); n != 1 {
 		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
@@ -220,7 +220,7 @@ func (c *shard) checkConsistency() {
 }
 
 // Delete deletes the cached value for the specified file and offset.
-func (c *shard) Delete(id uint64, fileNum base.DiskFileNum, offset uint64) {
+func (c *shard) Delete(id ID, fileNum base.DiskFileNum, offset uint64) {
 	// The common case is there is nothing to delete, so do a quick check with
 	// shared lock.
 	k := key{fileKey{id, fileNum}, offset}
@@ -249,7 +249,7 @@ func (c *shard) Delete(id uint64, fileNum base.DiskFileNum, offset uint64) {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *shard) EvictFile(id uint64, fileNum base.DiskFileNum) {
+func (c *shard) EvictFile(id ID, fileNum base.DiskFileNum) {
 	fkey := key{fileKey{id, fileNum}, 0}
 	for c.evictFileRun(fkey) {
 		// Sched switch to give another goroutine an opportunity to acquire the
@@ -678,6 +678,9 @@ type Cache struct {
 	}
 }
 
+// TODO
+type ID uint64
+
 // New creates a new cache of the specified size. Memory for the cache is
 // allocated on demand, not during initialization. The cache is created with a
 // reference count of 1. Each DB it is associated with adds a reference, so the
@@ -755,7 +758,7 @@ func newShards(size int64, shards int) *Cache {
 	return c
 }
 
-func (c *Cache) getShard(id uint64, fileNum base.DiskFileNum, offset uint64) *shard {
+func (c *Cache) getShard(id ID, fileNum base.DiskFileNum, offset uint64) *shard {
 	if id == 0 {
 		panic("pebble: 0 cache ID is invalid")
 	}
@@ -811,7 +814,7 @@ func (c *Cache) Unref() {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Cache) Get(id uint64, fileNum base.DiskFileNum, offset uint64) Handle {
+func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
 	return c.getShard(id, fileNum, offset).Get(id, fileNum, offset)
 }
 
@@ -819,17 +822,17 @@ func (c *Cache) Get(id uint64, fileNum base.DiskFileNum, offset uint64) Handle {
 // existing value if present. A Handle is returned which provides faster
 // retrieval of the cached value than Get (lock-free and avoidance of the map
 // lookup). The value must have been allocated by Cache.Alloc.
-func (c *Cache) Set(id uint64, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
+func (c *Cache) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
 	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
 }
 
 // Delete deletes the cached value for the specified file and offset.
-func (c *Cache) Delete(id uint64, fileNum base.DiskFileNum, offset uint64) {
+func (c *Cache) Delete(id ID, fileNum base.DiskFileNum, offset uint64) {
 	c.getShard(id, fileNum, offset).Delete(id, fileNum, offset)
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *Cache) EvictFile(id uint64, fileNum base.DiskFileNum) {
+func (c *Cache) EvictFile(id ID, fileNum base.DiskFileNum) {
 	if id == 0 {
 		panic("pebble: 0 cache ID is invalid")
 	}
@@ -909,6 +912,6 @@ func (c *Cache) Metrics() Metrics {
 
 // NewID returns a new ID to be used as a namespace for cached file
 // blocks.
-func (c *Cache) NewID() uint64 {
-	return c.idAlloc.Add(1)
+func (c *Cache) NewID() ID {
+	return ID(c.idAlloc.Add(1))
 }

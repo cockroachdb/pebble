@@ -17,7 +17,7 @@ import (
 func fibonacciHash(k *key, seed uintptr) uintptr {
 	const m = 11400714819323198485
 	h := uint64(seed)
-	h ^= k.id * m
+	h ^= uint64(k.id) * m
 	h ^= uint64(k.fileNum) * m
 	h ^= k.offset * m
 	return uintptr(h)
