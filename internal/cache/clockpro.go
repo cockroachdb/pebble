@@ -143,7 +143,7 @@ func (c *shard) Set(id uint64, fileNum base.DiskFileNum, offset uint64, value *V
 	switch {
 	case e == nil:
 		// no cache entry? add it
-		e = newEntry(c, k, int64(len(value.buf)))
+		e = newEntry(k, int64(len(value.buf)))
 		e.setValue(value)
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-cold")
