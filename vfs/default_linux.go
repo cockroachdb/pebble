@@ -144,7 +144,7 @@ func isSyncRangeSupported(fd uintptr) bool {
 func deviceIDFromFileInfo(finfo fs.FileInfo) DeviceID {
 	statInfo := finfo.Sys().(*syscall.Stat_t)
 	return DeviceID{
-		major: unix.Major(statInfo.Dev),
-		minor: unix.Minor(statInfo.Dev),
+		major: unix.Major(uint64(statInfo.Dev)),
+		minor: unix.Minor(uint64(statInfo.Dev)),
 	}
 }
