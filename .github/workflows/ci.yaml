@@ -164,3 +164,18 @@ jobs:
 
     - name: format-check
       run: make format-check
+
+  go-build-other-archs:
+    name: go-build-other-archs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
+      - run: GOARCH=mips go build ./...
+      - run: GOARCH=mipsle go build ./...
+      - run: GOARCH=mips64le go build ./...
