@@ -44,6 +44,7 @@ func entryAllocNew() *entry {
 
 func entryAllocFree(e *entry) {
 	a := entryAllocPool.Get().(*entryAllocCache)
+	*e = entry{}
 	a.free(e)
 	entryAllocPool.Put(a)
 }
