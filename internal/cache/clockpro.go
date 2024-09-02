@@ -645,11 +645,16 @@ type Metrics struct {
 //
 // # Memory Management
 //
+// A normal implementation of the block cache would result in GC having to read
+// through all the structures and keep track of the liveness of many objects.
+// This was found to cause significant overhead in CRDB when compared to the
+// earlier use of RocksDB.
+//
 // In order to reduce pressure on the Go GC, manual memory management is
 // performed for the data stored in the cache. Manual memory management is
-// performed by calling into C.{malloc,free} to allocate memory. Cache.Values
-// are reference counted and the memory backing a manual value is freed when
-// the reference count drops to 0.
+// performed by calling into C.{malloc,free} to allocate memory; this memory is
+// outside the purview of the GC. Cache.Values are reference counted and the
+// memory backing a manual value is freed when the reference count drops to 0.
 //
 // Manual memory management brings the possibility of memory leaks. It is
 // imperative that every Handle returned by Cache.{Get,Set} is eventually
