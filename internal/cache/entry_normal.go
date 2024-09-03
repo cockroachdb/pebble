@@ -79,7 +79,7 @@ func (c *entryAllocCache) alloc() *entry {
 		if entriesGoAllocated {
 			return &entry{}
 		}
-		b := manual.New(entrySize)
+		b := manual.New(manual.BlockCacheEntry, entrySize)
 		return (*entry)(unsafe.Pointer(&b[0]))
 	}
 	e := c.entries[n-1]
@@ -90,7 +90,7 @@ func (c *entryAllocCache) alloc() *entry {
 func (c *entryAllocCache) dealloc(e *entry) {
 	if !entriesGoAllocated {
 		buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(e))[:entrySize:entrySize]
-		manual.Free(buf)
+		manual.Free(manual.BlockCacheEntry, buf)
 	}
 }
 
