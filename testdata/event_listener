@@ -230,6 +230,7 @@ Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
 Ingestions: 1  as flushable: 0 (0B in 0 tables)
+Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 
 # Set up a scenario where the table to be ingested overlaps with the memtable.
 # The table is ingested as a flushable. The flush metrics refect the flushed
@@ -331,6 +332,7 @@ Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
 Ingestions: 2  as flushable: 1 (1.2KB in 2 tables)
+Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 
 sstables
 ----

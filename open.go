@@ -246,7 +246,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
 				case *memTable:
-					manual.Free(t.arenaBuf)
+					manual.Free(manual.MemTable, t.arenaBuf)
 					t.arenaBuf = nil
 				}
 			}

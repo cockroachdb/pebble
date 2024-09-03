@@ -92,7 +92,7 @@ type memTable struct {
 func (m *memTable) free() {
 	if m != nil {
 		m.releaseAccountingReservation()
-		manual.Free(m.arenaBuf)
+		manual.Free(manual.MemTable, m.arenaBuf)
 		m.arenaBuf = nil
 	}
 }
