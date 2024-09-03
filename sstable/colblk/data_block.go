@@ -586,7 +586,8 @@ type DataBlockIter struct {
 	kvRow   int // the row currently held in kv
 }
 
-var _ base.InternalIterator = (*DataBlockIter)(nil)
+// Assert that *DataBlockIter implements block.DataBlockIterator.
+var _ block.DataBlockIterator = (*DataBlockIter)(nil)
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.

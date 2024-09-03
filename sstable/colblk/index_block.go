@@ -160,12 +160,8 @@ type IndexIter struct {
 	allocReader IndexReader
 }
 
-// Assert that IndexIter satisfies the block.IndexBlockIterator constraint.
-var _ = satisfiesIndexBlock[IndexIter, *IndexIter](IndexIter{})
-
-func satisfiesIndexBlock[T any, PT block.IndexBlockIterator[T]](indexBlock T) PT {
-	return &indexBlock
-}
+// Assert that IndexIter satisfies the block.IndexBlockIterator interface.
+var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
 // Init initializes an index iterator from the provided reader.
 func (i *IndexIter) Init(r *IndexReader) {

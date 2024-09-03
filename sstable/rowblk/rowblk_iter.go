@@ -202,8 +202,8 @@ type blockEntry struct {
 	valSize  int32
 }
 
-// blockIter implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*Iter)(nil)
+// *Iter implements the block.DataBlockIterator interface.
+var _ block.DataBlockIterator = (*Iter)(nil)
 
 // NewIter constructs a new row-oriented block iterator over the provided serialized block.
 func NewIter(

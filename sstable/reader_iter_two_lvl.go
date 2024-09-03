@@ -20,7 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
-type twoLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]] struct {
+type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]] struct {
 	secondLevel   singleLevelIterator[I, PI, D, PD]
 	topLevelIndex rowblk.IndexIter
 	// pool is the pool from which the iterator was allocated and to which the

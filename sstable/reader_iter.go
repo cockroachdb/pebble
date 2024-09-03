@@ -15,6 +15,40 @@ import (
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
+// dataBlockIterator extends the block.IndexBlockIterator interface with a
+// constraint that the implementing type be a pointer to a type I.
+//
+// DataBlockIterator requires that the type be a pointer to its type parameter,
+// D, to allow sstable iterators embed the block iterator within its struct. See
+// this example from the Go generics proposal:
+// https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
+type dataBlockIterator[D any] interface {
+	block.DataBlockIterator
+
+	// ResetForReuse resets the data block iterator for reuse, retaining buffers
+	// to avoid future allocations.
+	ResetForReuse() D
+
+	*D // non-interface type constraint element
+}
+
+// indexBlockIterator extends the block.IndexBlockIterator interface with a
+// constraint that the implementing type be a pointer to a type I.
+//
+// indexBlockIterator requires that the type be a pointer to its type parameter,
+// I, to allow sstable iterators embed the block iterator within its struct. See
+// this example from the Go generics proposal:
+// https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
+type indexBlockIterator[I any] interface {
+	block.IndexBlockIterator
+
+	// ResetForReuse resets the index iterator for reuse, retaining buffers to
+	// avoid future allocations.
+	ResetForReuse() I
+
+	*I // non-interface type constraint element
+}
+
 // Iterator iterates over an entire table of data.
 type Iterator interface {
 	base.InternalIterator
@@ -134,7 +168,7 @@ func init() {
 	}
 }
 
-func checkSingleLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]](
+func checkSingleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]](
 	obj interface{},
 ) {
 	i := obj.(*singleLevelIterator[I, PI, D, PD])
@@ -148,7 +182,7 @@ func checkSingleLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD b
 	}
 }
 
-func checkTwoLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]](
+func checkTwoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]](
 	obj interface{},
 ) {
 	i := obj.(*twoLevelIterator[I, PI, D, PD])
