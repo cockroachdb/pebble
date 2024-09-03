@@ -39,7 +39,7 @@ import (
 // &data/&index to the PD/PI type in order to access its interface methods. This
 // pattern is taken from the Go generics proposal:
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
-type singleLevelIterator[I any, PI block.IndexBlockIterator[I], D any, PD block.DataBlockIterator[D]] struct {
+type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]] struct {
 	ctx context.Context
 	cmp Compare
 	// Global lower/upper bound for the iterator.
