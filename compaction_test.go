@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -1705,10 +1706,7 @@ func TestCompactionReadTriggeredQueue(t *testing.T) {
 				queue = &readCompactionQueue{}
 				return "(success)"
 			case "add-compaction":
-				for _, line := range strings.Split(td.Input, "\n") {
-					if line == "" {
-						continue
-					}
+				for _, line := range crstrings.Lines(td.Input) {
 					parts := strings.Split(line, " ")
 
 					if len(parts) != 3 {
@@ -1824,10 +1822,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 			case "add-read-compaction":
 				d.mu.Lock()
 				td.MaybeScanArgs(t, "flushing", &d.mu.compact.flushing)
-				for _, line := range strings.Split(td.Input, "\n") {
-					if line == "" {
-						continue
-					}
+				for _, line := range crstrings.Lines(td.Input) {
 					parts := strings.Split(line, " ")
 					if len(parts) != 3 {
 						return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end> <filenum>"
@@ -1947,11 +1942,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 				d.mu.Unlock()
 
 				var buf bytes.Buffer
-				for _, line := range strings.Split(td.Input, "\n") {
+				for _, line := range crstrings.Lines(td.Input) {
 					parts := strings.Fields(line)
-					if len(parts) == 0 {
-						continue
-					}
 					c.flushing = nil
 					c.startLevel.level = -1
 
