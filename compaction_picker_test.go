@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -864,10 +865,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			return buf.String()
 
 		case "add-read-compaction":
-			for _, line := range strings.Split(td.Input, "\n") {
-				if line == "" {
-					continue
-				}
+			for _, line := range crstrings.Lines(td.Input) {
 				parts := strings.Split(line, " ")
 				if len(parts) != 3 {
 					return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end> <filenum>"

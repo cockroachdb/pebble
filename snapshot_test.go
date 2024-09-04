@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -88,11 +89,8 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			}
 			snapshots = make(map[string]Reader)
 
-			for _, line := range strings.Split(td.Input, "\n") {
+			for _, line := range crstrings.Lines(td.Input) {
 				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
 				var err error
 				switch parts[0] {
 				case "set":
@@ -160,11 +158,8 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			defer iter.Close()
 
 			var b bytes.Buffer
-			for _, line := range strings.Split(td.Input, "\n") {
+			for _, line := range crstrings.Lines(td.Input) {
 				parts := strings.Fields(line)
-				if len(parts) == 0 {
-					continue
-				}
 				switch parts[0] {
 				case "first":
 					iter.First()

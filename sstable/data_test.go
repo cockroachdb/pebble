@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -254,11 +255,8 @@ func runIterCmd(
 			}
 		}
 	}
-	for _, line := range strings.Split(td.Input, "\n") {
+	for _, line := range crstrings.Lines(td.Input) {
 		parts := strings.Fields(line)
-		if len(parts) == 0 {
-			continue
-		}
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) < 2 || len(parts) > 3 {

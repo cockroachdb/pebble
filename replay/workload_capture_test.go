@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -109,11 +110,7 @@ func TestWorkloadCollector(t *testing.T) {
 				return buf.String()
 			case "ingest":
 				ingestInfo := pebble.TableIngestInfo{}
-				for _, line := range strings.Split(td.Input, "\n") {
-					if line == "" {
-						continue
-					}
-
+				for _, line := range crstrings.Lines(td.Input) {
 					parts := strings.FieldsFunc(line, func(r rune) bool { return unicode.IsSpace(r) || r == ':' })
 					tableInfo := pebble.TableInfo{Size: 10 << 10}
 					fileNum, err := strconv.ParseUint(parts[0], 10, 64)
