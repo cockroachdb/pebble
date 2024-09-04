@@ -13,7 +13,8 @@ import (
 
 // Writer is a table writer.
 type Writer struct {
-	rw RawWriter
+	rw  RawWriter
+	err error
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
@@ -32,15 +33,37 @@ type Writer struct {
 func NewWriter(writable objstorage.Writable, o WriterOptions) *Writer {
 	o = o.ensureDefaults()
 	rw := NewRawWriter(writable, o)
-	return &Writer{
+	w := &Writer{}
+	*w = Writer{
 		rw: rw,
 		fragmenter: keyspan.Fragmenter{
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
-			Emit:   rw.encodeFragmentedRangeKeySpan,
+			Emit:   w.encodeFragmentedRangeKeySpan,
 		},
 		comparer: o.Comparer,
 	}
+	return w
+}
+
+func (w *Writer) encodeFragmentedRangeKeySpan(s keyspan.Span) {
+	// This method is the emit function of the Fragmenter.
+	//
+	// NB: The span should only contain range keys and be internally consistent
+	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
+	//
+	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
+	// we may want to in the future.
+	keyspan.SortKeysBySuffix(w.comparer.CompareSuffixes, s.Keys)
+
+	if w.Error() == nil {
+		w.rw.EncodeSpan(s)
+	}
+}
+
+// Error returns the current accumulated error if any.
+func (w *Writer) Error() error {
+	return errors.CombineErrors(w.rw.Error(), w.err)
 }
 
 // Raw returns the underlying RawWriter.
@@ -53,7 +76,7 @@ func (w *Writer) Raw() RawWriter { return w.rw }
 //
 // TODO(peter): untested
 func (w *Writer) Set(key, value []byte) error {
-	if err := w.rw.Error(); err != nil {
+	if err := w.Error(); err != nil {
 		return err
 	}
 	if w.rw.IsStrictObsolete() {
@@ -70,7 +93,7 @@ func (w *Writer) Set(key, value []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Delete(key []byte) error {
-	if err := w.rw.Error(); err != nil {
+	if err := w.Error(); err != nil {
 		return err
 	}
 	if w.rw.IsStrictObsolete() {
@@ -91,7 +114,7 @@ func (w *Writer) Delete(key []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) DeleteRange(start, end []byte) error {
-	if err := w.rw.Error(); err != nil {
+	if err := w.Error(); err != nil {
 		return err
 	}
 	return w.rw.EncodeSpan(keyspan.Span{
@@ -110,7 +133,7 @@ func (w *Writer) DeleteRange(start, end []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Merge(key, value []byte) error {
-	if err := w.rw.Error(); err != nil {
+	if err := w.Error(); err != nil {
 		return err
 	}
 	if w.rw.IsStrictObsolete() {
@@ -195,7 +218,7 @@ func (w *Writer) addRangeKeySpanToFragmenter(span keyspan.Span) error {
 	}
 	// Add this span to the fragmenter.
 	w.fragmenter.Add(span)
-	return w.rw.Error()
+	return w.Error()
 }
 
 // tempRangeKeyBuf returns a slice of length n from the Writer's rkBuf byte
@@ -227,15 +250,21 @@ func (w *Writer) tempRangeKeyCopy(k []byte) []byte {
 	return buf
 }
 
+// Metadata returns the metadata for the finished sstable. Only valid to call
+// after the sstable has been finished.
+func (w *Writer) Metadata() (*WriterMetadata, error) {
+	return w.rw.Metadata()
+}
+
 // Close finishes writing the table and closes the underlying file that the
 // table was written to.
 func (w *Writer) Close() (err error) {
-	if w.rw.Error() == nil {
+	if w.Error() == nil {
 		// Write the range-key block, flushing any remaining spans from the
 		// fragmenter first.
 		w.fragmenter.Finish()
 	}
-	return w.rw.Close()
+	return errors.CombineErrors(w.rw.Close(), w.err)
 }
 
 // RawWriter defines an interface for sstable writers. Implementations may vary
@@ -268,6 +297,9 @@ type RawWriter interface {
 	// This is a low-level API that bypasses the fragmenter. The spans passed to
 	// this function must be fragmented and ordered.
 	EncodeSpan(span keyspan.Span) error
+	// EstimatedSize returns the estimated size of the sstable being written if
+	// a call to Close() was made without adding additional keys.
+	EstimatedSize() uint64
 	// Close finishes writing the table and closes the underlying file that the
 	// table was written to.
 	Close() error

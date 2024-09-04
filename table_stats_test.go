@@ -215,7 +215,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 						rKeySpan.Keys = append(rKeySpan.Keys, k)
 					} else {
 						k := base.InternalKey{UserKey: s.Start, Trailer: k.Trailer}
-						if err = w.Add(k, s.End); err != nil {
+						if err = w.AddWithForceObsolete(k, s.End, false /* forceObsolete */); err != nil {
 							return err.Error()
 						}
 					}

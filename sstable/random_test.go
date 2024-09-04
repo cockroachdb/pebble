@@ -391,7 +391,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 			value = valueBuf[:cfg.rng.Intn(cfg.maxValLen+1)]
 			cfg.rng.Read(value)
 		}
-		if err := w.Add(keys[i], value); err != nil {
+		if err := w.AddWithForceObsolete(keys[i], value, false /* forceObsolete */); err != nil {
 			return nil, err
 		}
 	}

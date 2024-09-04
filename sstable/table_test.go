@@ -465,7 +465,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						IndexBlockSize: indexBlockSize,
 					})
 					for _, k := range keys[:nk] {
-						if err := w.Add(InternalKey{UserKey: []byte(k)}, xxx[:vLen]); err != nil {
+						if err := w.AddWithForceObsolete(InternalKey{UserKey: []byte(k)}, xxx[:vLen], false /* forceObsolete */); err != nil {
 							t.Errorf("nk=%d, vLen=%d: set: %v", nk, vLen, err)
 							continue loop
 						}

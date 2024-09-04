@@ -201,12 +201,12 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					switch ikey.Kind() {
 					case InternalKeyKindRangeDelete:
 						if writeUnfragmented {
-							err = w.Add(ikey, value)
+							err = w.AddWithForceObsolete(ikey, value, false /* forceObsolete */)
 							break
 						}
 						frag.Add(rangedel.Decode(ikey, value, nil))
 					default:
-						err = w.Add(ikey, value)
+						err = w.AddWithForceObsolete(ikey, value, false /* forceObsolete */)
 					}
 					if err != nil {
 						return err.Error()
@@ -214,7 +214,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				frag.Finish()
 				for _, v := range tombstones {
-					if err := rangedel.Encode(v, w.Add); err != nil {
+					if err := w.EncodeSpan(v); err != nil {
 						return err.Error()
 					}
 				}
