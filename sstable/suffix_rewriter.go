@@ -97,7 +97,7 @@ func rewriteKeySuffixesInBlocks(
 
 	tableFormat := r.tableFormat
 	o.TableFormat = tableFormat
-	w := NewRawWriter(out, o)
+	w := newRowWriter(out, o)
 	defer func() {
 		if w != nil {
 			w.Close()
@@ -388,7 +388,7 @@ func RewriteKeySuffixesViaWriter(
 	}
 
 	o.IsStrictObsolete = false
-	w := NewRawWriter(out, o)
+	w := newRowWriter(out, o)
 	defer func() {
 		if w != nil {
 			w.Close()

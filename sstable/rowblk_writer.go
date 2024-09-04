@@ -109,7 +109,6 @@ type RawRowWriter struct {
 	indexSepAlloc bytealloc.A
 
 	rangeKeyEncoder rangekey.Encoder
-	rangeKeySpan    keyspan.Span
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
 	dataBlockBuf *dataBlockBuf
@@ -578,13 +577,13 @@ type indexBlockAndBlockProperties struct {
 	block []byte
 }
 
-// Add adds a key/value pair to the table being written. For a given Writer,
-// the keys passed to Add must be in increasing order. The exception to this
+// add adds a key/value pair to the table being written. For a given Writer,
+// the keys passed to add must be in increasing order. The exception to this
 // rule is range deletion tombstones. Range deletion tombstones need to be
 // added ordered by their start key, but they can be added out of order from
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by keyspan.Fragmenter).
-func (w *RawRowWriter) Add(key InternalKey, value []byte) error {
+func (w *RawRowWriter) add(key InternalKey, value []byte) error {
 	if w.isStrictObsolete {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
@@ -959,24 +958,6 @@ func (w *RawRowWriter) addTombstone(key InternalKey, value []byte) error {
 	w.props.RawValueSize += uint64(len(value))
 	w.rangeDelBlock.Add(key, value)
 	return nil
-}
-
-func (w *RawRowWriter) encodeFragmentedRangeKeySpan(span keyspan.Span) {
-	// This method is the emit function of the Fragmenter.
-	//
-	// NB: The span should only contain range keys and be internally consistent
-	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
-	//
-	// We use w.rangeKeySpan to avoid allocations.
-
-	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
-	// we may want to in the future.
-	w.rangeKeySpan = span
-	keyspan.SortKeysBySuffix(w.suffixCmp, w.rangeKeySpan.Keys)
-
-	if w.err == nil {
-		w.err = w.EncodeSpan(w.rangeKeySpan)
-	}
 }
 
 // addRangeKey adds a range key set, unset, or delete key/value pair to the
@@ -1600,7 +1581,7 @@ func (w *RawRowWriter) EncodeSpan(span keyspan.Span) error {
 		return nil
 	}
 	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
-		return rangedel.Encode(span, w.Add)
+		return rangedel.Encode(span, w.add)
 	}
 	for i := range w.blockPropCollectors {
 		if err := w.blockPropCollectors[i].AddRangeKeys(span); err != nil {
@@ -1836,7 +1817,11 @@ func (w *RawRowWriter) Metadata() (*WriterMetadata, error) {
 
 // NewRawWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewRawWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
+func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
+	return newRowWriter(writable, o)
+}
+
+func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	o = o.ensureDefaults()
 	w := &RawRowWriter{
 		layout: makeLayoutWriter(writable, o),

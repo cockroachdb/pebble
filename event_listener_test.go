@@ -139,10 +139,10 @@ func TestEventListener(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 			})
-			if err := w.Add(base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), nil); err != nil {
+			if err := w.Set([]byte("a"), nil); err != nil {
 				return err.Error()
 			}
 			if err := w.Close(); err != nil {
@@ -173,10 +173,10 @@ func TestEventListener(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 				})
-				if err := w.Add(base.MakeInternalKey([]byte{key}, 0, InternalKeyKindSet), nil); err != nil {
+				if err := w.Set([]byte{key}, nil); err != nil {
 					return err
 				}
 				if err := w.Close(); err != nil {

@@ -2740,7 +2740,11 @@ func (d *DB) newCompactionOutput(
 		d.opts.Experimental.MaxWriterConcurrency > 0 &&
 			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
-	tw := sstable.NewRawWriter(writable, writerOpts)
+	// TODO(jackson): Make the compaction body generic over the RawWriter type,
+	// so that we don't need to pay the cost of dynamic dispatch. For now, we
+	// type assert into the only concrete RawWriter type we see (until colblk is
+	// integrated).
+	tw := sstable.NewRawWriter(writable, writerOpts).(*sstable.RawRowWriter)
 	return objMeta, tw, cpuWorkHandle, nil
 }
 

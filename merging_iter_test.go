@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -240,14 +239,14 @@ func TestMergingIterCornerCases(t *testing.T) {
 					case InternalKeyKindRangeDelete:
 						frag.Add(keyspan.Span{Start: ikey.UserKey, End: value, Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
 					default:
-						if err := w.Add(ikey, value); err != nil {
+						if err := w.AddWithForceObsolete(ikey, value, false /* forceObsolete */); err != nil {
 							return err.Error()
 						}
 					}
 				}
 				frag.Finish()
 				for _, v := range tombstones {
-					if err := rangedel.Encode(v, w.Add); err != nil {
+					if err := w.EncodeSpan(v); err != nil {
 						return err.Error()
 					}
 				}
@@ -340,7 +339,7 @@ func buildMergingIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*sstable.RawRowWriter, len(files))
+	writers := make([]sstable.RawWriter, len(files))
 	for i := range files {
 		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
@@ -366,7 +365,7 @@ func buildMergingIterTables(
 		ikey.UserKey = key
 		j := rand.Intn(len(writers))
 		w := writers[j]
-		w.Add(ikey, nil)
+		w.AddWithForceObsolete(ikey, nil, false /* forceObsolete */)
 	}
 
 	for _, w := range writers {
@@ -543,7 +542,7 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 
 	const targetL6FirstFileSize = 2 << 20
-	writers := make([][]*sstable.RawRowWriter, levelCount)
+	writers := make([][]sstable.RawWriter, levelCount)
 	// A policy unlikely to have false positives.
 	filterPolicy := bloom.FilterPolicy(100)
 	for i := range files {
@@ -583,23 +582,28 @@ func buildLevelsForMergingIterSeqSeek(
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
 		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
-		w.Add(ikey, nil)
+		require.NoError(b, w.AddWithForceObsolete(ikey, nil, false /* forceObsolete */))
 	}
 	if writeRangeTombstoneToLowestLevel {
-		tombstoneKey := base.MakeInternalKey(keys[0], 1, InternalKeyKindRangeDelete)
-		w.Add(tombstoneKey, []byte(fmt.Sprintf("%08d", i)))
+		require.NoError(b, w.EncodeSpan(keyspan.Span{
+			Start: keys[0],
+			End:   []byte(fmt.Sprintf("%08d", i)),
+			Keys: []keyspan.Key{{
+				Trailer: base.MakeTrailer(1, InternalKeyKindRangeDelete),
+			}},
+		}))
 	}
 	for j := 1; j < len(files); j++ {
 		for _, k := range []int{0, len(keys) - 1} {
 			ikey := base.MakeInternalKey(keys[k], base.SeqNum(j), InternalKeyKindSet)
-			writers[j][0].Add(ikey, nil)
+			require.NoError(b, writers[j][0].AddWithForceObsolete(ikey, nil, false /* forceObsolete */))
 		}
 	}
 	lastKey := []byte(fmt.Sprintf("%08d", i))
 	keys = append(keys, lastKey)
 	for j := 0; j < len(files); j++ {
 		lastIKey := base.MakeInternalKey(lastKey, base.SeqNum(j), InternalKeyKindSet)
-		writers[j][1].Add(lastIKey, nil)
+		require.NoError(b, writers[j][1].AddWithForceObsolete(lastIKey, nil, false /* forceObsolete */))
 	}
 	for _, levelWriters := range writers {
 		for j, w := range levelWriters {

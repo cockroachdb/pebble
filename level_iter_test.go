@@ -250,14 +250,14 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 				return err.Error()
 			}
 		default:
-			if err := w.Add(ikey, value); err != nil {
+			if err := w.AddWithForceObsolete(ikey, value, false /* forceObsolete */); err != nil {
 				return err.Error()
 			}
 		}
 	}
 	f.Finish()
 	for _, v := range tombstones {
-		if err := rangedel.Encode(v, w.Add); err != nil {
+		if err := w.EncodeSpan(v); err != nil {
 			return err.Error()
 		}
 	}
@@ -508,7 +508,7 @@ func buildLevelIterTables(
 		files[i] = f
 	}
 
-	writers := make([]*sstable.RawRowWriter, len(files))
+	writers := make([]sstable.RawWriter, len(files))
 	for i := range files {
 		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
@@ -525,7 +525,7 @@ func buildLevelIterTables(
 			key := []byte(fmt.Sprintf("%08d", i))
 			keys = append(keys, key)
 			ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
-			w.Add(ikey, nil)
+			require.NoError(b, w.AddWithForceObsolete(ikey, nil, false /* forceObsolete */))
 		}
 		if err := w.Close(); err != nil {
 			b.Fatal(err)
