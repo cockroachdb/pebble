@@ -5,7 +5,6 @@
 package sstable
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/binary"
@@ -497,32 +496,9 @@ func (r *Reader) readMetaindex(
 			errors.Safe(len(data)), errors.Safe(metaindexBH.Length))
 	}
 
-	i, err := rowblk.NewRawIter(bytes.Compare, data)
+	var meta map[string]block.Handle
+	meta, r.valueBIH, err = decodeMetaindex(data)
 	if err != nil {
-		return err
-	}
-
-	meta := map[string]block.Handle{}
-	for valid := i.First(); valid; valid = i.Next() {
-		value := i.Value()
-		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
-			vbih, n, err := decodeValueBlocksIndexHandle(i.Value())
-			if err != nil {
-				return err
-			}
-			if n == 0 || n != len(value) {
-				return base.CorruptionErrorf("pebble/table: invalid table (bad value blocks index handle)")
-			}
-			r.valueBIH = vbih
-		} else {
-			bh, n := block.DecodeHandle(value)
-			if n == 0 || n != len(value) {
-				return base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
-			}
-			meta[string(i.Key().UserKey)] = bh
-		}
-	}
-	if err := i.Close(); err != nil {
 		return err
 	}
 
@@ -576,7 +552,6 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	l := &Layout{
 		Data:       make([]block.HandleWithProperties, 0, r.Properties.NumDataBlocks),
-		Filter:     r.filterBH,
 		RangeDel:   r.rangeDelBH,
 		RangeKey:   r.rangeKeyBH,
 		ValueIndex: r.valueBIH.h,
@@ -584,6 +559,9 @@ func (r *Reader) Layout() (*Layout, error) {
 		MetaIndex:  r.metaIndexBH,
 		Footer:     r.footerBH,
 		Format:     r.tableFormat,
+	}
+	if r.filterBH.Length > 0 {
+		l.Filter = []NamedBlockHandle{{Name: "fullfilter." + r.tableFilter.policy.Name(), Handle: r.filterBH}}
 	}
 
 	indexH, err := r.readIndex(context.Background(), nil, nil, nil)
@@ -647,31 +625,9 @@ func (r *Reader) Layout() (*Layout, error) {
 			return nil, err
 		}
 		defer vbiH.Release()
-		vbiBlock := vbiH.Get()
-		indexEntryLen := int(r.valueBIH.blockNumByteLength + r.valueBIH.blockOffsetByteLength +
-			r.valueBIH.blockLengthByteLength)
-		i := 0
-		for len(vbiBlock) != 0 {
-			if len(vbiBlock) < indexEntryLen {
-				return nil, errors.Errorf(
-					"remaining value index block %d does not contain a full entry of length %d",
-					len(vbiBlock), indexEntryLen)
-			}
-			n := int(r.valueBIH.blockNumByteLength)
-			bn := int(littleEndianGet(vbiBlock, n))
-			if bn != i {
-				return nil, errors.Errorf("unexpected block num %d, expected %d",
-					bn, i)
-			}
-			i++
-			vbiBlock = vbiBlock[n:]
-			n = int(r.valueBIH.blockOffsetByteLength)
-			blockOffset := littleEndianGet(vbiBlock, n)
-			vbiBlock = vbiBlock[n:]
-			n = int(r.valueBIH.blockLengthByteLength)
-			blockLen := littleEndianGet(vbiBlock, n)
-			vbiBlock = vbiBlock[n:]
-			l.ValueBlock = append(l.ValueBlock, block.Handle{Offset: blockOffset, Length: blockLen})
+		l.ValueBlock, err = decodeValueBlockIndex(vbiH.Get(), r.valueBIH)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -693,7 +649,11 @@ func (r *Reader) ValidateBlockChecksums() error {
 		blocks[i] = l.Data[i].Handle
 	}
 	blocks = append(blocks, l.Index...)
-	blocks = append(blocks, l.TopIndex, l.Filter, l.RangeDel, l.RangeKey, l.Properties, l.MetaIndex)
+	blocks = append(blocks, l.TopIndex)
+	for _, bh := range l.Filter {
+		blocks = append(blocks, bh.Handle)
+	}
+	blocks = append(blocks, l.RangeDel, l.RangeKey, l.Properties, l.MetaIndex)
 
 	// Sorting by offset ensures we are performing a sequential scan of the
 	// file.

@@ -18,6 +18,13 @@ type IndexIter struct {
 // Assert that IndexIter satisfies the block.IndexBlockIterator interface.
 var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
+// Init initializes an iterator from the provided block data slice.
+func (i *IndexIter) Init(
+	cmp base.Compare, split base.Split, blk []byte, transforms block.IterTransforms,
+) error {
+	return i.iter.Init(cmp, split, blk, transforms)
+}
+
 // InitHandle initializes an iterator from the provided block handle.
 func (i *IndexIter) InitHandle(
 	cmp base.Compare, split base.Split, block block.BufferHandle, transforms block.IterTransforms,

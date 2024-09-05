@@ -14,11 +14,13 @@ import (
 	"slices"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
@@ -31,7 +33,7 @@ type Layout struct {
 	Data       []block.HandleWithProperties
 	Index      []block.Handle
 	TopIndex   block.Handle
-	Filter     block.Handle
+	Filter     []NamedBlockHandle
 	RangeDel   block.Handle
 	RangeKey   block.Handle
 	ValueBlock []block.Handle
@@ -42,59 +44,75 @@ type Layout struct {
 	Format     TableFormat
 }
 
+// NamedBlockHandle holds a block.Handle and corresponding name.
+type NamedBlockHandle struct {
+	block.Handle
+	Name string
+}
+
+// FilterByName retrieves the block handle of the named filter, if it exists.
+// The provided the name should be the name as it appears in the metaindex
+// block.
+func (l *Layout) FilterByName(name string) (block.Handle, bool) {
+	for i := range l.Filter {
+		if l.Filter[i].Name == name {
+			return l.Filter[i].Handle, true
+		}
+	}
+	return block.Handle{}, false
+}
+
+func (l *Layout) orderedBlocks() []NamedBlockHandle {
+	var blocks []NamedBlockHandle
+	for i := range l.Data {
+		blocks = append(blocks, NamedBlockHandle{l.Data[i].Handle, "data"})
+	}
+	for i := range l.Index {
+		blocks = append(blocks, NamedBlockHandle{l.Index[i], "index"})
+	}
+	if l.TopIndex.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.TopIndex, "top-index"})
+	}
+	blocks = append(blocks, l.Filter...)
+	if l.RangeDel.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.RangeDel, "range-del"})
+	}
+	if l.RangeKey.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.RangeKey, "range-key"})
+	}
+	for i := range l.ValueBlock {
+		blocks = append(blocks, NamedBlockHandle{l.ValueBlock[i], "value-block"})
+	}
+	if l.ValueIndex.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.ValueIndex, "value-index"})
+	}
+	if l.Properties.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.Properties, "properties"})
+	}
+	if l.MetaIndex.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.MetaIndex, "meta-index"})
+	}
+	if l.Footer.Length != 0 {
+		if l.Footer.Length == levelDBFooterLen {
+			blocks = append(blocks, NamedBlockHandle{l.Footer, "leveldb-footer"})
+		} else {
+			blocks = append(blocks, NamedBlockHandle{l.Footer, "footer"})
+		}
+	}
+	slices.SortFunc(blocks, func(a, b NamedBlockHandle) int {
+		return cmp.Compare(a.Offset, b.Offset)
+	})
+	return blocks
+}
+
 // Describe returns a description of the layout. If the verbose parameter is
 // true, details of the structure of each block are returned as well.
 func (l *Layout) Describe(
 	w io.Writer, verbose bool, r *Reader, fmtRecord func(key *base.InternalKey, value []byte),
 ) {
 	ctx := context.TODO()
-	type namedBlockHandle struct {
-		block.Handle
-		name string
-	}
-	var blocks []namedBlockHandle
 
-	for i := range l.Data {
-		blocks = append(blocks, namedBlockHandle{l.Data[i].Handle, "data"})
-	}
-	for i := range l.Index {
-		blocks = append(blocks, namedBlockHandle{l.Index[i], "index"})
-	}
-	if l.TopIndex.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.TopIndex, "top-index"})
-	}
-	if l.Filter.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.Filter, "filter"})
-	}
-	if l.RangeDel.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.RangeDel, "range-del"})
-	}
-	if l.RangeKey.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.RangeKey, "range-key"})
-	}
-	for i := range l.ValueBlock {
-		blocks = append(blocks, namedBlockHandle{l.ValueBlock[i], "value-block"})
-	}
-	if l.ValueIndex.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.ValueIndex, "value-index"})
-	}
-	if l.Properties.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.Properties, "properties"})
-	}
-	if l.MetaIndex.Length != 0 {
-		blocks = append(blocks, namedBlockHandle{l.MetaIndex, "meta-index"})
-	}
-	if l.Footer.Length != 0 {
-		if l.Footer.Length == levelDBFooterLen {
-			blocks = append(blocks, namedBlockHandle{l.Footer, "leveldb-footer"})
-		} else {
-			blocks = append(blocks, namedBlockHandle{l.Footer, "footer"})
-		}
-	}
-
-	slices.SortFunc(blocks, func(a, b namedBlockHandle) int {
-		return cmp.Compare(a.Offset, b.Offset)
-	})
+	blocks := l.orderedBlocks()
 	// TODO(jackson): This function formats offsets within blocks by adding the
 	// block's offset. A block's offset is an offset in the physical, compressed
 	// file whereas KV pairs offsets are within the uncompressed block. This is
@@ -103,20 +121,20 @@ func (l *Layout) Describe(
 
 	for i := range blocks {
 		b := &blocks[i]
-		fmt.Fprintf(w, "%10d  %s (%d)\n", b.Offset, b.name, b.Length)
+		fmt.Fprintf(w, "%10d  %s (%d)\n", b.Offset, b.Name, b.Length)
 
 		if !verbose {
 			continue
 		}
-		if b.name == "filter" {
+		if b.Name == "filter" {
 			continue
 		}
 
-		if b.name == "footer" || b.name == "leveldb-footer" {
+		if b.Name == "footer" || b.Name == "leveldb-footer" {
 			trailer, offset := make([]byte, b.Length), b.Offset
 			_ = r.readable.ReadAt(ctx, trailer, int64(offset))
 
-			if b.name == "footer" {
+			if b.Name == "footer" {
 				checksumType := block.ChecksumType(trailer[0])
 				fmt.Fprintf(w, "%10d    checksum type: %s\n", offset, checksumType)
 				trailer, offset = trailer[1:], offset+1
@@ -135,14 +153,14 @@ func (l *Layout) Describe(
 			fmt.Fprintf(w, "%10d    [padding]\n", offset)
 
 			trailing := 12
-			if b.name == "leveldb-footer" {
+			if b.Name == "leveldb-footer" {
 				trailing = 8
 			}
 
 			offset += uint64(len(trailer) - trailing)
 			trailer = trailer[len(trailer)-trailing:]
 
-			if b.name == "footer" {
+			if b.Name == "footer" {
 				version := trailer[:4]
 				fmt.Fprintf(w, "%10d    version: %d\n", offset, binary.LittleEndian.Uint32(version))
 				trailer, offset = trailer[4:], offset+4
@@ -171,7 +189,7 @@ func (l *Layout) Describe(
 		}
 
 		var lastKey InternalKey
-		switch b.name {
+		switch b.Name {
 		case "data", "range-del", "range-key":
 			iter, _ := rowblk.NewIter(r.Compare, r.Split, h.Get(), NoTransforms)
 			iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
@@ -210,7 +228,7 @@ func (l *Layout) Describe(
 					}
 				}
 
-				if b.name == "data" {
+				if b.Name == "data" {
 					if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
 						fmt.Fprintf(w, "              WARNING: OUT OF ORDER KEYS!\n")
 					}
@@ -284,6 +302,198 @@ func (l *Layout) Describe(
 
 	last := blocks[len(blocks)-1]
 	fmt.Fprintf(w, "%10d  EOF\n", last.Offset+last.Length)
+}
+
+func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
+	foot, err := parseFooter(data, 0, int64(len(data)))
+	if err != nil {
+		return Layout{}, err
+	}
+	decompressedMeta, err := decompressInMemory(data, foot.metaindexBH)
+	if err != nil {
+		return Layout{}, errors.Wrap(err, "decompressing metaindex")
+	}
+	meta, vbih, err := decodeMetaindex(decompressedMeta)
+	if err != nil {
+		return Layout{}, err
+	}
+	layout := Layout{
+		MetaIndex:  foot.metaindexBH,
+		Properties: meta[metaPropertiesName],
+		RangeDel:   meta[metaRangeDelV2Name],
+		RangeKey:   meta[metaRangeKeyName],
+		ValueIndex: vbih.h,
+		Footer:     foot.footerBH,
+		Format:     foot.format,
+	}
+	var props Properties
+	decompressedProps, err := decompressInMemory(data, layout.Properties)
+	if err != nil {
+		return Layout{}, errors.Wrap(err, "decompressing properties")
+	}
+	if err := props.load(decompressedProps, map[string]struct{}{}); err != nil {
+		return Layout{}, err
+	}
+
+	if props.IndexType == twoLevelIndex {
+		decompressed, err := decompressInMemory(data, foot.indexBH)
+		if err != nil {
+			return Layout{}, errors.Wrap(err, "decompressing two-level index")
+		}
+		layout.TopIndex = foot.indexBH
+		topLevelIter, err := newIndexIter(foot.format, comparer, decompressed)
+		if err != nil {
+			return Layout{}, err
+		}
+		err = forEachIndexEntry(topLevelIter, func(bhp block.HandleWithProperties) {
+			layout.Index = append(layout.Index, bhp.Handle)
+		})
+		if err != nil {
+			return Layout{}, err
+		}
+	} else {
+		layout.Index = append(layout.Index, foot.indexBH)
+	}
+	for _, indexBH := range layout.Index {
+		decompressed, err := decompressInMemory(data, indexBH)
+		if err != nil {
+			return Layout{}, errors.Wrap(err, "decompressing index block")
+		}
+		indexIter, err := newIndexIter(foot.format, comparer, decompressed)
+		if err != nil {
+			return Layout{}, err
+		}
+		err = forEachIndexEntry(indexIter, func(bhp block.HandleWithProperties) {
+			layout.Data = append(layout.Data, bhp)
+		})
+		if err != nil {
+			return Layout{}, err
+		}
+	}
+
+	if layout.ValueIndex.Length > 0 {
+		vbiBlock, err := decompressInMemory(data, layout.ValueIndex)
+		if err != nil {
+			return Layout{}, errors.Wrap(err, "decompressing value index")
+		}
+		layout.ValueBlock, err = decodeValueBlockIndex(vbiBlock, vbih)
+		if err != nil {
+			return Layout{}, err
+		}
+	}
+
+	return layout, nil
+}
+
+func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
+	typ := block.CompressionIndicator(data[bh.Offset+bh.Length])
+	var decompressed []byte
+	if typ == block.NoCompressionIndicator {
+		return data[bh.Offset : bh.Offset+bh.Length], nil
+	}
+	// Decode the length of the decompressed value.
+	decodedLen, prefixLen, err := block.DecompressedLen(typ, data[bh.Offset:bh.Offset+bh.Length])
+	if err != nil {
+		return nil, err
+	}
+	decompressed = make([]byte, decodedLen)
+	if err := block.DecompressInto(typ, data[int(bh.Offset)+prefixLen:bh.Offset+bh.Length], decompressed); err != nil {
+		return nil, err
+	}
+	return decompressed, nil
+}
+
+func newIndexIter(
+	tableFormat TableFormat, comparer *base.Comparer, data []byte,
+) (block.IndexBlockIterator, error) {
+	var iter block.IndexBlockIterator
+	var err error
+	if tableFormat <= TableFormatPebblev4 {
+		iter = new(rowblk.IndexIter)
+		err = iter.Init(comparer.Compare, comparer.Split, data, block.NoTransforms)
+	} else {
+		iter = new(colblk.IndexIter)
+		err = iter.Init(comparer.Compare, comparer.Split, data, block.NoTransforms)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return iter, nil
+}
+
+func forEachIndexEntry(
+	indexIter block.IndexBlockIterator, fn func(block.HandleWithProperties),
+) error {
+	for v := indexIter.First(); v; v = indexIter.Next() {
+		bhp, err := indexIter.BlockHandleWithProperties()
+		if err != nil {
+			return err
+		}
+		fn(bhp)
+	}
+	return indexIter.Close()
+}
+
+func decodeMetaindex(
+	data []byte,
+) (meta map[string]block.Handle, vbih valueBlocksIndexHandle, err error) {
+	i, err := rowblk.NewRawIter(bytes.Compare, data)
+	if err != nil {
+		return nil, valueBlocksIndexHandle{}, err
+	}
+	defer func() { err = firstError(err, i.Close()) }()
+
+	meta = map[string]block.Handle{}
+	for valid := i.First(); valid; valid = i.Next() {
+		value := i.Value()
+		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
+			var n int
+			vbih, n, err = decodeValueBlocksIndexHandle(i.Value())
+			if err != nil {
+				return nil, vbih, err
+			}
+			if n == 0 || n != len(value) {
+				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad value blocks index handle)")
+			}
+		} else {
+			bh, n := block.DecodeHandle(value)
+			if n == 0 || n != len(value) {
+				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
+			}
+			meta[string(i.Key().UserKey)] = bh
+		}
+	}
+	return meta, vbih, nil
+}
+
+func decodeValueBlockIndex(data []byte, vbih valueBlocksIndexHandle) ([]block.Handle, error) {
+	var valueBlocks []block.Handle
+	indexEntryLen := int(vbih.blockNumByteLength + vbih.blockOffsetByteLength +
+		vbih.blockLengthByteLength)
+	i := 0
+	for len(data) != 0 {
+		if len(data) < indexEntryLen {
+			return nil, errors.Errorf(
+				"remaining value index block %d does not contain a full entry of length %d",
+				len(data), indexEntryLen)
+		}
+		n := int(vbih.blockNumByteLength)
+		bn := int(littleEndianGet(data, n))
+		if bn != i {
+			return nil, errors.Errorf("unexpected block num %d, expected %d",
+				bn, i)
+		}
+		i++
+		data = data[n:]
+		n = int(vbih.blockOffsetByteLength)
+		blockOffset := littleEndianGet(data, n)
+		data = data[n:]
+		n = int(vbih.blockLengthByteLength)
+		blockLen := littleEndianGet(data, n)
+		data = data[n:]
+		valueBlocks = append(valueBlocks, block.Handle{Offset: blockOffset, Length: blockLen})
+	}
+	return valueBlocks, nil
 }
 
 // layoutWriter writes the structure of an sstable to durable storage. It

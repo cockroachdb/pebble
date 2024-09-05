@@ -127,13 +127,15 @@ func rewriteKeySuffixesInBlocks(
 
 	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
 	// already have ensured this is valid if it exists).
-	if w.filter != nil && l.Filter.Length > 0 {
-		filterBlock, _, err := readBlockBuf(r, l.Filter, nil)
-		if err != nil {
-			return nil, TableFormatUnspecified, errors.Wrap(err, "reading filter")
-		}
-		w.filter = copyFilterWriter{
-			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
+	if w.filter != nil {
+		if filterBlockBH, ok := l.FilterByName(w.filter.metaName()); ok {
+			filterBlock, _, err := readBlockBuf(r, filterBlockBH, nil)
+			if err != nil {
+				return nil, TableFormatUnspecified, errors.Wrap(err, "reading filter")
+			}
+			w.filter = copyFilterWriter{
+				origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
+			}
 		}
 	}
 

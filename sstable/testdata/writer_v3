@@ -218,6 +218,22 @@ layout
        714  footer (53)
        767  EOF
 
+# Exercise the non-Reader layout-decoding codepath.
+
+decode-layout
+----
+         0  data (22)
+        27  data (22)
+        54  data (22)
+        81  index (22)
+       108  index (22)
+       135  index (22)
+       162  top-index (51)
+       218  properties (453)
+       676  meta-index (33)
+       714  footer (53)
+       767  EOF
+
 scan
 ----
 a#1,SET:a

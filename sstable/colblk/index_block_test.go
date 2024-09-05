@@ -46,7 +46,7 @@ func TestIndexBlock(t *testing.T) {
 			return buf.String()
 		case "iter":
 			var it IndexIter
-			it.Init(&r)
+			it.InitReader(&r)
 			for _, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
 				var valid bool
