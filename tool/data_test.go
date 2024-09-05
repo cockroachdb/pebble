@@ -146,6 +146,20 @@ func runTests(t *testing.T, path string) {
 				if err := c.Execute(); err != nil {
 					return err.Error()
 				}
+				output := buf.String()
+				if output == "" {
+					return ""
+				}
+				output = strings.TrimSuffix(output, "\n")
+				buf.Reset()
+				for _, l := range strings.Split(output, "\n") {
+					if strings.HasPrefix(l, "Cgo memory usage:") {
+						buf.WriteString("Cgo memory usage: <redacted>")
+					} else {
+						buf.WriteString(l)
+					}
+					buf.WriteString("\n")
+				}
 				return buf.String()
 			})
 		})
