@@ -1695,7 +1695,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 			case corruptionLocationTopIndex:
 				bh = layout.TopIndex
 			case corruptionLocationFilter:
-				bh = layout.Filter
+				bh = layout.Filter[0].Handle
 			case corruptionLocationRangeDel:
 				bh = layout.RangeDel
 			case corruptionLocationProperties:

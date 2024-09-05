@@ -109,6 +109,7 @@ func formatWriterMetadata(td *datadriven.TestData, m *WriterMetadata) string {
 
 func runDataDriven(t *testing.T, file string, tableFormat TableFormat, parallelism bool) {
 	var r *Reader
+	var obj *objstorage.MemObj
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
@@ -124,10 +125,15 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			}
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runBuildCmd(td, &WriterOptions{
+			wopts := &WriterOptions{
 				TableFormat: tableFormat,
 				Parallelism: parallelism,
-			}, 0)
+			}
+			meta, obj, err = runBuildMemObjCmd(td, wopts)
+			if err != nil {
+				return err.Error()
+			}
+			r, err = openReader(obj, wopts, 0)
 			if err != nil {
 				return err.Error()
 			}
@@ -216,6 +222,23 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 
 		case "layout":
 			l, err := r.Layout()
+			if err != nil {
+				return err.Error()
+			}
+			verbose := false
+			if len(td.CmdArgs) > 0 {
+				if td.CmdArgs[0].Key == "verbose" {
+					verbose = true
+				} else {
+					return "unknown arg"
+				}
+			}
+			var buf bytes.Buffer
+			l.Describe(&buf, verbose, r, nil)
+			return buf.String()
+
+		case "decode-layout":
+			l, err := decodeLayout(testkeys.Comparer, obj.Data())
 			if err != nil {
 				return err.Error()
 			}
@@ -657,7 +680,9 @@ func TestWriterClearCache(t *testing.T) {
 			f(bh)
 		}
 		f(layout.TopIndex)
-		f(layout.Filter)
+		for _, nbh := range layout.Filter {
+			f(nbh.Handle)
+		}
 		f(layout.RangeDel)
 		for _, bh := range layout.ValueBlock {
 			f(bh)

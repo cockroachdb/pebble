@@ -175,6 +175,8 @@ type DataBlockIterator interface {
 // iterators over index blocks. It's currently satisifed by the
 // *rowblk.IndexIter type.
 type IndexBlockIterator interface {
+	// Init initializes the block iterator from the provided block.
+	Init(base.Compare, base.Split, []byte, IterTransforms) error
 	// InitHandle initializes an iterator from the provided block handle.
 	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
 	// Valid returns true if the iterator is currently positioned at a valid

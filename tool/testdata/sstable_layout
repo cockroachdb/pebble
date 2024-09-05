@@ -45,7 +45,7 @@ h.table-bloom.no-compression.sst
      22464  data (2035)
      24504  data (2036)
      26545  data (249)
-     26799  filter (2245)
+     26799  fullfilter.rocksdb.BuiltinBloomFilter (2245)
      29049  index (325)
      29379  range-del (421)
      29805  properties (453)
