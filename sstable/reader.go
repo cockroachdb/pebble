@@ -559,29 +559,9 @@ func (r *Reader) readMetaindex(
 	}
 
 	for name, fp := range filters {
-		types := []struct {
-			ftype  FilterType
-			prefix string
-		}{
-			{TableFilter, "fullfilter."},
-		}
-		var done bool
-		for _, t := range types {
-			if bh, ok := meta[t.prefix+name]; ok {
-				r.filterBH = bh
-
-				switch t.ftype {
-				case TableFilter:
-					r.tableFilter = newTableFilterReader(fp, r.filterMetricsTracker)
-				default:
-					return base.CorruptionErrorf("unknown filter type: %v", errors.Safe(t.ftype))
-				}
-
-				done = true
-				break
-			}
-		}
-		if done {
+		if bh, ok := meta["fullfilter."+name]; ok {
+			r.filterBH = bh
+			r.tableFilter = newTableFilterReader(fp, r.filterMetricsTracker)
 			break
 		}
 	}
