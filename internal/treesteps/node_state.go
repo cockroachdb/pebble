@@ -12,6 +12,7 @@ import (
 
 type nodeState struct {
 	recording *Recording
+	depth     int
 	node      Node
 	name      string
 
@@ -41,9 +42,16 @@ func buildTree(n *nodeState) TreeNode {
 			}
 		}
 	}
-	for i := range info.children {
-		c := nodeStateLocked(n.recording, info.children[i])
-		t.Children = append(t.Children, buildTree(c))
+	if n.depth < n.recording.maxTreeDepth {
+		for i := range info.children {
+			c := nodeStateLocked(n.recording, info.children[i])
+			c.depth = n.depth + 1
+			t.Children = append(t.Children, buildTree(c))
+		}
+	} else {
+		for range info.children {
+			t.Children = append(t.Children, TreeNode{Name: "..."})
+		}
 	}
 	return t
 }
