@@ -24,11 +24,11 @@ func TestCompressionRoundtrip(t *testing.T) {
 
 	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
 		t.Run(compression.String(), func(t *testing.T) {
-			payload := make([]byte, rng.Intn(10<<10 /* 10 KiB */))
+			payload := make([]byte, 1+rng.Intn(10<<10 /* 10 KiB */))
 			rng.Read(payload)
 			// Create a randomly-sized buffer to house the compressed output. If it's
 			// not sufficient, Compress should allocate one that is.
-			compressedBuf := make([]byte, rng.Intn(1<<10 /* 1 KiB */))
+			compressedBuf := make([]byte, 1+rng.Intn(1<<10 /* 1 KiB */))
 
 			btyp, compressed := compress(compression, payload, compressedBuf)
 			v, err := decompress(btyp, compressed)

@@ -11,6 +11,7 @@ import (
 	"bytes"
 
 	"github.com/DataDog/zstd"
+	"github.com/cockroachdb/errors"
 )
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
@@ -27,6 +28,12 @@ const UseStandardZstdLib = true
 // decodeZstd decompresses src with the Zstandard algorithm. The destination
 // buffer must already be sufficiently sized, otherwise decodeZstd may error.
 func decodeZstd(dst, src []byte) ([]byte, error) {
+	if len(src) == 0 {
+		return nil, errors.Errorf("decodeZstd: empty src buffer")
+	}
+	if len(dst) == 0 {
+		return nil, errors.Errorf("decodeZstd: empty dst buffer")
+	}
 	n, err := zstd.DecompressInto(dst, src)
 	// NB: zstd.DecompressInto may return n < 0 if err != nil.
 	if err != nil {
