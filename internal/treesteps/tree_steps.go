@@ -28,11 +28,18 @@ import (
 // in-progress recording (this applies to all nodes in the hierarchy).
 //
 // See SegmentTree in tree_steps_test.go for an example.
-func StartRecording(root Node, name string) *Recording {
+func StartRecording(root Node, name string, opts ...RecordingOption) *Recording {
 	mu.Lock()
 	defer mu.Unlock()
 	mu.recordingInProgress.Store(true)
-	w := &Recording{name: name}
+	w := &Recording{
+		name:         name,
+		maxTreeDepth: 20,
+		maxOpDepth:   10,
+	}
+	for _, o := range opts {
+		o(w)
+	}
 
 	if mu.nodeMap == nil {
 		mu.nodeMap = make(map[Node]*nodeState)
@@ -40,6 +47,31 @@ func StartRecording(root Node, name string) *Recording {
 	w.root = nodeStateLocked(w, root)
 	w.stepLockedf("initial")
 	return w
+}
+
+// RecordingOption is an optional argument to StartRecording.
+type RecordingOption func(*Recording)
+
+// MaxTreeDepth configures a recording to only show trees up to a certain depth.
+// Operations and node updates below that level are ignored.
+func MaxTreeDepth(maxTreeDepth int) RecordingOption {
+	return func(r *Recording) {
+		r.maxTreeDepth = maxTreeDepth
+		if r.maxOpDepth > r.maxTreeDepth {
+			r.maxOpDepth = r.maxTreeDepth
+		}
+	}
+}
+
+// MaxOpDepth configures a recording to only show operations for nodes up to a
+// certain depth. Operations and node updates below that level are ignored.
+func MaxOpDepth(maxOpDepth int) RecordingOption {
+	return func(r *Recording) {
+		r.maxOpDepth = maxOpDepth
+		if r.maxTreeDepth < r.maxOpDepth {
+			r.maxTreeDepth = r.maxOpDepth
+		}
+	}
 }
 
 // NodeUpdated can be used to trigger a new step in any recording that involves
@@ -53,6 +85,12 @@ func NodeUpdated(n Node, reason string) {
 	mu.Lock()
 	defer mu.Unlock()
 	if ns, ok := mu.nodeMap[n]; ok {
+		if ns.depth > ns.recording.maxOpDepth {
+			// Ignore node updates below the op depth (if we are not stepping through
+			// operations on these nodes, we should not step through their updates
+			// either).
+			return
+		}
 		if reason == "" {
 			reason = " updated"
 		} else {
@@ -103,9 +141,11 @@ func (ni *NodeInfo) AddChildren(nodes ...Node) {
 // Recording captures the step-by-step propagation of operations. See
 // StartRecording.
 type Recording struct {
-	name  string
-	root  *nodeState
-	steps []Step
+	name         string
+	maxTreeDepth int
+	maxOpDepth   int
+	root         *nodeState
+	steps        []Step
 }
 
 // Finish completes the recording and returns the recorded steps.
@@ -165,6 +205,10 @@ func StartOpf(node Node, format string, args ...any) *Op {
 	defer mu.Unlock()
 	ns, ok := mu.nodeMap[node]
 	if !ok {
+		return nil
+	}
+	if ns.depth > ns.recording.maxOpDepth {
+		// Ignore any ops for nodes below maxOpDepth.
 		return nil
 	}
 	op := &Op{

@@ -133,6 +133,13 @@ func TestSegmentTree(t *testing.T) {
 	var tree *SegmentTree
 	datadriven.RunTest(t, "testdata/segment_tree", func(t *testing.T, td *datadriven.TestData) string {
 		var r *Recording
+		var opts []RecordingOption
+		if val := 0; td.MaybeScanArgs(t, "max-tree-depth", &val) {
+			opts = append(opts, MaxTreeDepth(val))
+		}
+		if val := 0; td.MaybeScanArgs(t, "max-op-depth", &val) {
+			opts = append(opts, MaxOpDepth(val))
+		}
 		switch td.Cmd {
 		case "init":
 			var xRange int
@@ -144,14 +151,14 @@ func TestSegmentTree(t *testing.T) {
 			var x, delta int
 			td.ScanArgs(t, "x", &x)
 			td.ScanArgs(t, "delta", &delta)
-			r = StartRecording(tree.Root(), "Segment Tree add")
+			r = StartRecording(tree.Root(), "Segment Tree add", opts...)
 			tree.Add(x, delta)
 
 		case "sum":
 			var x1, x2 int
 			td.ScanArgs(t, "x1", &x1)
 			td.ScanArgs(t, "x2", &x2)
-			r = StartRecording(tree.Root(), "Segment Tree sum")
+			r = StartRecording(tree.Root(), "Segment Tree sum", opts...)
 			tree.Sum(x1, x2)
 
 		default:
