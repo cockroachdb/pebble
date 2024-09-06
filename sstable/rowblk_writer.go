@@ -1550,12 +1550,6 @@ func (w *RawRowWriter) assertFormatCompatibility() error {
 	return nil
 }
 
-// IsStrictObsolete returns true if the writer is configured to write and
-// enforce a 'strict obsolete' sstable.
-func (w *RawRowWriter) IsStrictObsolete() bool {
-	return w.isStrictObsolete
-}
-
 // UnsafeLastPointUserKey returns the last point key written to the writer to
 // which this option was passed during creation. The returned key points
 // directly into a buffer belonging to the Writer. The value's lifetime ends the

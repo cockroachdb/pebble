@@ -19,10 +19,14 @@ type Writer struct {
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
 	// keys must be added in order of their start user-key.
-	fragmenter  keyspan.Fragmenter
-	comparer    *base.Comparer
-	rkBuf       []byte
-	keyspanKeys []keyspan.Key
+	fragmenter keyspan.Fragmenter
+	comparer   *base.Comparer
+	// isStrictObsolete is true if the writer is configured to write and enforce
+	// a 'strict obsolete' sstable. This includes prohibiting the addition of
+	// MERGE keys. See the documentation in format.go for more details.
+	isStrictObsolete bool
+	rkBuf            []byte
+	keyspanKeys      []keyspan.Key
 }
 
 // NewWriter returns a new table writer intended for building external sstables
@@ -41,7 +45,8 @@ func NewWriter(writable objstorage.Writable, o WriterOptions) *Writer {
 			Format: o.Comparer.FormatKey,
 			Emit:   w.encodeFragmentedRangeKeySpan,
 		},
-		comparer: o.Comparer,
+		comparer:         o.Comparer,
+		isStrictObsolete: o.IsStrictObsolete,
 	}
 	return w
 }
@@ -79,7 +84,7 @@ func (w *Writer) Set(key, value []byte) error {
 	if err := w.Error(); err != nil {
 		return err
 	}
-	if w.rw.IsStrictObsolete() {
+	if w.isStrictObsolete {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
@@ -96,7 +101,7 @@ func (w *Writer) Delete(key []byte) error {
 	if err := w.Error(); err != nil {
 		return err
 	}
-	if w.rw.IsStrictObsolete() {
+	if w.isStrictObsolete {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
@@ -136,7 +141,7 @@ func (w *Writer) Merge(key, value []byte) error {
 	if err := w.Error(); err != nil {
 		return err
 	}
-	if w.rw.IsStrictObsolete() {
+	if w.isStrictObsolete {
 		return errors.Errorf("use AddWithForceObsolete")
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
@@ -272,11 +277,6 @@ func (w *Writer) Close() (err error) {
 type RawWriter interface {
 	// Error returns the current accumulated error if any.
 	Error() error
-	// IsStrictObsolete returns true if the writer is configured to write and
-	// enforce a 'strict obsolete' sstable. This includes prohibiting the
-	// addition of MERGE keys. See the documentation in format.go for more
-	// details.
-	IsStrictObsolete() bool
 	// AddWithForceObsolete must be used when writing a strict-obsolete sstable.
 	//
 	// forceObsolete indicates whether the caller has determined that this key is
