@@ -57,6 +57,14 @@ var _ Array[uint64] = UnsafeUints{}
 // DecodeUnsafeUints decodes the structure of a slice of uints from a
 // byte slice.
 func DecodeUnsafeUints(b []byte, off uint32, rows int) (_ UnsafeUints, endOffset uint32) {
+	if rows == 0 {
+		// NB: &b[off] is actually pointing beyond the uints serialization.  We
+		// ensure this is always valid at the block-level by appending a
+		// trailing 0x00 block padding byte to all serialized columnar blocks.
+		// This means &b[off] will always point to a valid, allocated byte even
+		// if this is the last column of the block.
+		return makeUnsafeUints(0, unsafe.Pointer(&b[off]), 0), off
+	}
 	encoding := UintEncoding(b[off])
 	if !encoding.IsValid() {
 		panic(errors.AssertionFailedf("invalid encoding 0x%x", b[off:off+1]))

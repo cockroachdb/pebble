@@ -208,3 +208,9 @@ cat
 orange
 zucchini
 lemon
+
+# Test serializing a RawBytes structure with no rows. The serialization should
+# require zero bytes to represent.
+
+build offset=0
+----

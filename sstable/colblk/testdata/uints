@@ -486,3 +486,15 @@ finish rows=3 offset=1
 12-16: x 00000000         # data[0] = 0 + 1 = 1
 16-20: x bff90000         # data[1] = 63935 + 1 = 63936
 20-24: x ffffffff         # data[2] = 4294967295 + 1 = 4294967296
+
+# Test serializing with zero rows. The representation should require zero bytes.
+
+init
+----
+
+size rows=(0) offset=0
+----
+Size(0, 0) = 0
+
+finish rows=0 offset=0
+----

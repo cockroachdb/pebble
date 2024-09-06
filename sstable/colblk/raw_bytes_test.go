@@ -8,9 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -32,7 +32,7 @@ func TestRawBytes(t *testing.T) {
 			td.ScanArgs(t, "offset", &startOffset)
 
 			var count int
-			for _, k := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for _, k := range crstrings.Lines(td.Input) {
 				builder.Put([]byte(k))
 				count++
 			}
