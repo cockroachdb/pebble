@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -332,6 +333,8 @@ type Metrics struct {
 		optionsFileSize  uint64
 		manifestFileSize uint64
 	}
+
+	manualMemory manual.Metrics
 }
 
 var (
@@ -655,6 +658,22 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.Flush.AsIngestCount),
 		humanize.Bytes.Uint64(m.Flush.AsIngestBytes),
 		redact.Safe(m.Flush.AsIngestTableCount))
+
+	var inUseTotal uint64
+	for i := range m.manualMemory {
+		inUseTotal += m.manualMemory[i].InUseBytes
+	}
+	inUse := func(purpose manual.Purpose) uint64 {
+		return m.manualMemory[purpose].InUseBytes
+	}
+	w.Printf("Cgo memory usage: %s  block cache: %s (data: %s, maps: %s, entries: %s)  memtables: %s\n",
+		humanize.Bytes.Uint64(inUseTotal),
+		humanize.Bytes.Uint64(inUse(manual.BlockCacheData)+inUse(manual.BlockCacheMap)+inUse(manual.BlockCacheEntry)),
+		humanize.Bytes.Uint64(inUse(manual.BlockCacheData)),
+		humanize.Bytes.Uint64(inUse(manual.BlockCacheMap)),
+		humanize.Bytes.Uint64(inUse(manual.BlockCacheEntry)),
+		humanize.Bytes.Uint64(inUse(manual.MemTable)),
+	)
 }
 
 func hitRate(hits, misses int64) float64 {
@@ -678,5 +697,8 @@ func (m *Metrics) StringForTests() string {
 		const tableCacheSizeAdjustment = 212
 		mCopy.TableCache.Size += mCopy.TableCache.Count * tableCacheSizeAdjustment
 	}
+	// Don't show cgo memory statistics as they can vary based on architecture,
+	// invariants tag, etc.
+	mCopy.manualMemory = manual.Metrics{}
 	return redact.StringWithoutMarkers(&mCopy)
 }

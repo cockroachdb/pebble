@@ -2041,6 +2041,8 @@ func (d *DB) Metrics() *Metrics {
 
 	metrics.Uptime = d.timeNow().Sub(d.openedAt)
 
+	metrics.manualMemory = manual.GetMetrics()
+
 	return metrics
 }
 
@@ -2368,7 +2370,7 @@ func (d *DB) newMemTable(
 		memtblOpts.releaseAccountingReservation = mem.releaseAccountingReservation
 	} else {
 		mem = new(memTable)
-		memtblOpts.arenaBuf = manual.New(int(size))
+		memtblOpts.arenaBuf = manual.New(manual.MemTable, int(size))
 		memtblOpts.releaseAccountingReservation = d.opts.Cache.Reserve(int(size))
 		d.memTableCount.Add(1)
 		d.memTableReserved.Add(int64(size))

@@ -22,7 +22,7 @@ func newValue(n int) *Value {
 	// When we're not performing leak detection, the lifetime of the returned
 	// Value is exactly the lifetime of the backing buffer and we can manually
 	// allocate both.
-	b := manual.New(ValueMetadataSize + n)
+	b := manual.New(manual.BlockCacheData, ValueMetadataSize+n)
 	v := (*Value)(unsafe.Pointer(&b[0]))
 	v.buf = b[ValueMetadataSize:]
 	v.ref.init(1)
@@ -35,5 +35,5 @@ func (v *Value) free() {
 	n := ValueMetadataSize + cap(v.buf)
 	buf := (*[manual.MaxArrayLen]byte)(unsafe.Pointer(v))[:n:n]
 	v.buf = nil
-	manual.Free(buf)
+	manual.Free(manual.BlockCacheData, buf)
 }
