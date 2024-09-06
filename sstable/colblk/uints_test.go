@@ -27,8 +27,10 @@ func TestUintEncoding(t *testing.T) {
 
 func TestUints(t *testing.T) {
 	var b UintBuilder
+	var out bytes.Buffer
 
 	datadriven.RunTest(t, "testdata/uints", func(t *testing.T, td *datadriven.TestData) string {
+		out.Reset()
 		switch td.Cmd {
 		case "init":
 			defaultZero := td.HasArg("default-zero")
@@ -48,12 +50,18 @@ func TestUints(t *testing.T) {
 				b.Set(i, v)
 			}
 			return ""
+		case "get":
+			var indices []int
+			td.ScanArgs(t, "indices", &indices)
+			for _, i := range indices {
+				fmt.Fprintf(&out, "b.Get(%d) = %d\n", i, b.Get(i))
+			}
+			return out.String()
 		case "size":
 			var offset uint32
 			var rowCounts []int
 			td.ScanArgs(t, "rows", &rowCounts)
 			td.MaybeScanArgs(t, "offset", &offset)
-			var out bytes.Buffer
 			for _, rows := range rowCounts {
 				sz := b.Size(rows, offset)
 				if offset > 0 {
