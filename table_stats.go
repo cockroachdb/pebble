@@ -443,9 +443,8 @@ func (d *DB) loadTableRangeDelStats(
 		}
 		stats.RangeDeletionsBytesEstimate += estimate
 
-		// If any files were completely contained with the range,
 		// hintSeqNum is the smallest sequence number contained in any
-		// such file.
+		// file overlapping with the hint and in a level below it.
 		if hintSeqNum == math.MaxUint64 {
 			continue
 		}
@@ -557,47 +556,46 @@ func (d *DB) estimateReclaimedSizeBeneath(
 		overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end))
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
+			// Determine whether we need to update size estimates and hint seqnums
+			// based on the type of hint and the type of keys in this file.
+			var updateEstimates, updateHints bool
+			switch hintType {
+			case deleteCompactionHintTypePointKeyOnly:
+				// The range deletion byte estimates should only be updated if this
+				// table contains point keys. This ends up being an overestimate in
+				// the case that table also has range keys, but such keys are expected
+				// to contribute a negligible amount of the table's overall size,
+				// relative to point keys.
+				if file.HasPointKeys {
+					updateEstimates = true
+				}
+				// As the initiating span contained only range dels, hints can only be
+				// updated if this table does _not_ contain range keys.
+				if !file.HasRangeKeys {
+					updateHints = true
+				}
+			case deleteCompactionHintTypeRangeKeyOnly:
+				// The initiating span contained only range key dels. The estimates
+				// apply only to point keys, and are therefore not updated.
+				updateEstimates = false
+				// As the initiating span contained only range key dels, hints can
+				// only be updated if this table does _not_ contain point keys.
+				if !file.HasPointKeys {
+					updateHints = true
+				}
+			case deleteCompactionHintTypePointAndRangeKey:
+				// Always update the estimates and hints, as this hint type can drop a
+				// file, irrespective of the mixture of keys. Similar to above, the
+				// range del bytes estimates is an overestimate.
+				updateEstimates, updateHints = true, true
+			default:
+				panic(fmt.Sprintf("pebble: unknown hint type %s", hintType))
+			}
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
 				// The range fully contains the file, so skip looking it up in table
-				// cache/looking at its indexes and add the full file size. Whether the
-				// disk estimate and hint seqnums are updated depends on a) the type of
-				// hint that requested the estimate and b) the keys contained in this
-				// current file.
-				var updateEstimates, updateHints bool
-				switch hintType {
-				case deleteCompactionHintTypePointKeyOnly:
-					// The range deletion byte estimates should only be updated if this
-					// table contains point keys. This ends up being an overestimate in
-					// the case that table also has range keys, but such keys are expected
-					// to contribute a negligible amount of the table's overall size,
-					// relative to point keys.
-					if file.HasPointKeys {
-						updateEstimates = true
-					}
-					// As the initiating span contained only range dels, hints can only be
-					// updated if this table does _not_ contain range keys.
-					if !file.HasRangeKeys {
-						updateHints = true
-					}
-				case deleteCompactionHintTypeRangeKeyOnly:
-					// The initiating span contained only range key dels. The estimates
-					// apply only to point keys, and are therefore not updated.
-					updateEstimates = false
-					// As the initiating span contained only range key dels, hints can
-					// only be updated if this table does _not_ contain point keys.
-					if !file.HasPointKeys {
-						updateHints = true
-					}
-				case deleteCompactionHintTypePointAndRangeKey:
-					// Always update the estimates and hints, as this hint type can drop a
-					// file, irrespective of the mixture of keys. Similar to above, the
-					// range del bytes estimates is an overestimate.
-					updateEstimates, updateHints = true, true
-				default:
-					panic(fmt.Sprintf("pebble: unknown hint type %s", hintType))
-				}
+				// cache/looking at its indexes and add the full file size.
 				if updateEstimates {
 					estimate += file.Size
 				}
@@ -632,6 +630,11 @@ func (d *DB) estimateReclaimedSizeBeneath(
 					return 0, hintSeqNum, err
 				}
 				estimate += size
+				if updateHints && hintSeqNum > file.SmallestSeqNum && d.FormatMajorVersion() >= FormatVirtualSSTables {
+					// If the format major version is past Virtual SSTables, deletion only
+					// hints can also apply to partial overlaps with sstables.
+					hintSeqNum = file.SmallestSeqNum
+				}
 			}
 		}
 	}

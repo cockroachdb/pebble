@@ -1716,7 +1716,9 @@ func (d *DB) ingest(
 // any. If the entirety of m is deleted by exciseSpan, no new sstables are added
 // and m is deleted. Note that ve is updated in-place.
 //
-// The manifest lock must be held when calling this method.
+// This method is agnostic to whether d.mu is held or not. Some cases call it with
+// the db mutex held (eg. ingest-time excises), while in the case of compactions
+// the mutex is not held.
 func (d *DB) excise(
 	ctx context.Context, exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
 ) ([]manifest.NewFileEntry, error) {
