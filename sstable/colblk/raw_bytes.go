@@ -81,6 +81,9 @@ func defaultSliceFormatter(x []byte) string {
 }
 
 func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func([]byte) string) {
+	if count == 0 {
+		return
+	}
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}

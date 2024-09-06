@@ -391,6 +391,9 @@ func computeMinMax[I constraints.Unsigned](values []I) (I, I) {
 func uintsToBinFormatter(
 	f *binfmt.Formatter, rows int, uintFormatter func(el, base uint64) string,
 ) {
+	if rows == 0 {
+		return
+	}
 	if uintFormatter == nil {
 		uintFormatter = func(v, base uint64) string {
 			if base == 0 {

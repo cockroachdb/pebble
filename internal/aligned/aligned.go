@@ -14,6 +14,9 @@ import (
 // make([]byte, n) is aligned. In practice it often is, especially for larger n,
 // but small n can often be misaligned.
 func ByteSlice(n int) []byte {
+	if n == 0 {
+		return []byte{}
+	}
 	a := make([]uint64, (n+7)/8)
 	b := unsafe.Slice((*byte)(unsafe.Pointer(&a[0])), n)
 
