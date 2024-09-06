@@ -13,6 +13,12 @@ size rows=(100)
 ----
 Size(100, 0) = 1
 
+get indices=(0, 10, 99)
+----
+b.Get(0) = 0
+b.Get(10) = 0
+b.Get(99) = 0
+
 finish rows=100
 ----
 0-1: x 00 # encoding: zero
@@ -68,6 +74,13 @@ Size(2, 0) = 1
 Size(1, 0) = 1
 Size(0, 0) = 0
 
+get indices=(0, 5, 6, 7)
+----
+b.Get(0) = 0
+b.Get(5) = 10
+b.Get(6) = 0
+b.Get(7) = 10
+
 # Check width=8 encoding.
 finish rows=8
 ----
@@ -101,7 +114,6 @@ size rows=(9, 8) offset=2
 ----
 Size(9, 2) = 22 [20 w/o offset]
 Size(8, 2) = 11 [9 w/o offset]
-
 
 size rows=(9, 8) offset=5
 ----
@@ -390,6 +402,18 @@ write
 size rows=5
 ----
 Size(5, 0) = 6
+
+get indices=(0, 1, 2, 3, 4, 5, 6, 7, 20)
+----
+b.Get(0) = 1
+b.Get(1) = 0
+b.Get(2) = 92
+b.Get(3) = 1
+b.Get(4) = 0
+b.Get(5) = 0
+b.Get(6) = 0
+b.Get(7) = 86
+b.Get(20) = 221
 
 finish rows=5
 ----

@@ -12,6 +12,7 @@ import (
 	"math/bits"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"golang.org/x/exp/constraints"
@@ -206,8 +207,16 @@ func (b *UintBuilder) Reset() {
 }
 
 // Get gets the value of the provided row index. The provided row must have been
-// Set.
+// Set or the builder must have been initialized with InitWithDefault.
 func (b *UintBuilder) Get(row int) uint64 {
+	// If the UintBuilder is configured to use a zero value for unset rows, it's
+	// possible that the array has not been grown to a size that includes [row].
+	if b.array.n <= row {
+		if invariants.Enabled && !b.useDefault {
+			panic(errors.AssertionFailedf("Get(%d) on UintBuilder with array of size %d", row, b.array.n))
+		}
+		return 0
+	}
 	return b.array.elems.At(row)
 }
 
