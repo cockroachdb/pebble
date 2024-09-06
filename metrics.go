@@ -84,6 +84,10 @@ type LevelMetrics struct {
 	TablesIngested uint64
 	// The number of sstables moved to this level by a "move" compaction.
 	TablesMoved uint64
+	// The number of sstables deleted in a level by a delete-only compaction.
+	TablesDeleted uint64
+	// The number of sstables excised in a level by a delete-only compaction.
+	TablesExcised uint64
 
 	MultiLevel struct {
 		// BytesInTop are the total bytes in a multilevel compaction coming from the top level.
