@@ -373,7 +373,7 @@ range-deletions-bytes-estimate: 8246
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000005] (643B) Score=11.56 + L6 [000007] (13KB) Score=1.06 -> L6 [000008] (4.6KB), in 1.0s (2.0s total), output rate 4.6KB/s
+[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000008] (8.1KB), in 1.0s (2.0s total), output rate 8.1KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
 # 2x, the table with the point tombstone (000004) will be selected as the
@@ -416,4 +416,4 @@ range-deletions-bytes-estimate: 8246
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000005] (643B) Score=11.56 + L6 [000007] (13KB) Score=1.06 -> L6 [000008] (4.6KB), in 1.0s (2.0s total), output rate 4.6KB/s
+[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000008] (8.1KB), in 1.0s (2.0s total), output rate 8.1KB/s
