@@ -119,14 +119,18 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("[JOB %d] compacting(%s) ",
 			redact.Safe(i.JobID),
 			redact.SafeString(i.Reason))
-		w.Printf("%s", i.Annotations)
+		if len(i.Annotations) > 0 {
+			w.Printf("%s ", i.Annotations)
+		}
 		w.Printf("%s; ", levelInfos(i.Input))
 		w.Printf("OverlappingRatio: Single %.2f, Multi %.2f", i.SingleLevelOverlappingRatio, i.MultiLevelOverlappingRatio)
 		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
 	w.Printf("[JOB %d] compacted(%s) ", redact.Safe(i.JobID), redact.SafeString(i.Reason))
-	w.Printf("%s", i.Annotations)
+	if len(i.Annotations) > 0 {
+		w.Printf("%s ", i.Annotations)
+	}
 	w.Print(levelInfos(i.Input))
 	w.Printf(" -> L%d [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
 		redact.Safe(i.Output.Level),

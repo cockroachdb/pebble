@@ -837,7 +837,7 @@ func TestExcise(t *testing.T) {
 
 			current.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, l manifest.Layer) {
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, l.Level())
+					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, l.Level(), d.mu.versions.getNextFileNum)
 					if err != nil {
 						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
@@ -1189,7 +1189,7 @@ func testIngestSharedImpl(
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level)
+					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level, d.mu.versions.getNextFileNum)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -1690,7 +1690,7 @@ func TestConcurrentExcise(t *testing.T) {
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level)
+					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level, d.mu.versions.getNextFileNum)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()

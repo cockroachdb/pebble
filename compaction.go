@@ -11,6 +11,7 @@ import (
 	"math"
 	"runtime/pprof"
 	"slices"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -251,6 +252,11 @@ type compaction struct {
 	// lower level in the LSM during runCompaction.
 	allowedZeroSeqNum bool
 
+	// deletionHints are set if this is a compactionKindDeleteOnly. Used to figure
+	// out whether an input must be deleted in its entirety, or excised into
+	// virtual sstables.
+	deletionHints []deleteCompactionHint
+
 	metrics map[int]*LevelMetrics
 
 	pickerMetrics compactionPickerMetrics
@@ -390,18 +396,23 @@ func newCompaction(
 }
 
 func newDeleteOnlyCompaction(
-	opts *Options, cur *version, inputs []compactionLevel, beganAt time.Time,
+	opts *Options,
+	cur *version,
+	inputs []compactionLevel,
+	beganAt time.Time,
+	hints []deleteCompactionHint,
 ) *compaction {
 	c := &compaction{
-		kind:      compactionKindDeleteOnly,
-		cmp:       opts.Comparer.Compare,
-		equal:     opts.Comparer.Equal,
-		comparer:  opts.Comparer,
-		formatKey: opts.Comparer.FormatKey,
-		logger:    opts.Logger,
-		version:   cur,
-		beganAt:   beganAt,
-		inputs:    inputs,
+		kind:          compactionKindDeleteOnly,
+		cmp:           opts.Comparer.Compare,
+		equal:         opts.Comparer.Equal,
+		comparer:      opts.Comparer,
+		formatKey:     opts.Comparer.FormatKey,
+		logger:        opts.Logger,
+		version:       cur,
+		beganAt:       beganAt,
+		inputs:        inputs,
+		deletionHints: hints,
 	}
 
 	// Set c.smallest, c.largest.
@@ -1013,10 +1024,13 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
 			if !rollback {
-				// On success all compactions other than move-compactions transition the
-				// file into the Compacted state. Move-compacted files become eligible
-				// for compaction again and transition back to NotCompacting.
-				if c.kind != compactionKindMove {
+				// On success all compactions other than move and delete-only compactions
+				// transition the file into the Compacted state. Move-compacted files
+				// become eligible for compaction again and transition back to NotCompacting.
+				// Delete-only compactions could, on rare occasion, leave files untouched
+				// (eg. if files have a loose bound), so we revert them all to NotCompacting
+				// just in case they need to be compacted again.
+				if c.kind != compactionKindMove && c.kind != compactionKindDeleteOnly {
 					f.SetCompactionState(manifest.CompactionStateCompacted)
 				} else {
 					f.SetCompactionState(manifest.CompactionStateNotCompacting)
@@ -1282,7 +1296,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
-				newFiles, err := d.excise(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, l)
+				newFiles, err := d.excise(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, l, d.mu.versions.getNextFileNum)
 				if err != nil {
 					return nil, err
 				}
@@ -1759,11 +1773,11 @@ func (d *DB) maybeScheduleCompactionPicker(
 func (d *DB) tryScheduleDeleteOnlyCompaction() {
 	v := d.mu.versions.currentVersion()
 	snapshots := d.mu.snapshots.toSlice()
-	inputs, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots)
+	inputs, resolvedHints, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots, d.FormatMajorVersion())
 	d.mu.compact.deletionHints = unresolvedHints
 
 	if len(inputs) > 0 {
-		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow())
+		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints)
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
@@ -1914,8 +1928,8 @@ func (h deleteCompactionHint) String() string {
 	)
 }
 
-func (h *deleteCompactionHint) canDelete(
-	cmp Compare, m *fileMetadata, snapshots compact.Snapshots,
+func (h *deleteCompactionHint) canDeleteOrExcise(
+	cmp Compare, m *fileMetadata, snapshots compact.Snapshots, fmv FormatMajorVersion,
 ) bool {
 	// The file can only be deleted if all of its keys are older than the
 	// earliest tombstone aggregated into the hint. Note that we use
@@ -1960,18 +1974,36 @@ func (h *deleteCompactionHint) canDelete(
 	default:
 		panic(fmt.Sprintf("pebble: unknown delete compaction hint type: %d", h.hintType))
 	}
-
-	// The file's keys must be completely contained within the hint range.
-	return cmp(h.start, m.Smallest.UserKey) <= 0 && cmp(m.Largest.UserKey, h.end) < 0
+	if fmv < FormatVirtualSSTables {
+		// The file's keys must be completely contained within the hint range.
+		return cmp(h.start, m.Smallest.UserKey) <= 0 &&
+			base.UserKeyExclusive(h.end).CompareUpperBounds(cmp, m.UserKeyBounds().End) >= 0
+	}
+	// Check for any overlap. In cases of partial overlap, we excise the part of the file
+	// that overlaps with the deletion hint.
+	return cmp(h.end, m.Smallest.UserKey) > 0 &&
+		(m.UserKeyBounds().End.CompareUpperBounds(cmp, base.UserKeyInclusive(h.start)) >= 0)
 }
 
 func checkDeleteCompactionHints(
-	cmp Compare, v *version, hints []deleteCompactionHint, snapshots compact.Snapshots,
-) ([]compactionLevel, []deleteCompactionHint) {
+	cmp Compare,
+	v *version,
+	hints []deleteCompactionHint,
+	snapshots compact.Snapshots,
+	fmv FormatMajorVersion,
+) (levels []compactionLevel, resolved, unresolved []deleteCompactionHint) {
 	var files map[*fileMetadata]bool
 	var byLevel [numLevels][]*fileMetadata
 
+	// Deletion only compactions can be quadratic (O(mn)) in terms of runtime
+	// where m = number of files in the delete-only compaction and n = number
+	// of resolved hints. To prevent these from growing unbounded, we cap
+	// the number of hints we resolve for one delete-only compaction.
+	const maxHintsPerDeleteOnlyCompaction = 10
+
 	unresolvedHints := hints[:0]
+	// Lazily populate resolvedHints, similar to files above.
+	resolvedHints := make([]deleteCompactionHint, 0)
 	for _, h := range hints {
 		// Check each compaction hint to see if it's resolvable. Resolvable
 		// hints are removed and trigger a delete-only compaction if any files
@@ -2013,7 +2045,8 @@ func checkDeleteCompactionHints(
 		// ______________________________________________________________
 		//     a b c d e f g h i j k l m n o p q r s t u v w x y z
 
-		if snapshots.Index(h.tombstoneLargestSeqNum) != snapshots.Index(h.fileSmallestSeqNum) {
+		if snapshots.Index(h.tombstoneLargestSeqNum) != snapshots.Index(h.fileSmallestSeqNum) ||
+			len(resolvedHints) >= maxHintsPerDeleteOnlyCompaction {
 			// Cannot resolve yet.
 			unresolvedHints = append(unresolvedHints, h)
 			continue
@@ -2025,7 +2058,7 @@ func checkDeleteCompactionHints(
 			overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end))
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
-				if m.IsCompacting() || !h.canDelete(cmp, m, snapshots) || files[m] {
+				if m.IsCompacting() || !h.canDeleteOrExcise(cmp, m, snapshots, fmv) || files[m] {
 					continue
 				}
 				if files == nil {
@@ -2037,6 +2070,7 @@ func checkDeleteCompactionHints(
 				byLevel[l] = append(byLevel[l], m)
 			}
 		}
+		resolvedHints = append(resolvedHints, h)
 	}
 
 	var compactLevels []compactionLevel
@@ -2049,7 +2083,7 @@ func checkDeleteCompactionHints(
 			files: manifest.NewLevelSliceKeySorted(cmp, files),
 		})
 	}
-	return compactLevels, unresolvedHints
+	return compactLevels, resolvedHints, unresolvedHints
 }
 
 // compact runs one compaction and maybe schedules another call to compact.
@@ -2349,24 +2383,201 @@ func (d *DB) runCopyCompaction(
 	return ve, compact.Stats{}, nil
 }
 
+func (d *DB) applyHintOnFile(
+	h deleteCompactionHint,
+	f *fileMetadata,
+	level int,
+	levelMetrics *LevelMetrics,
+	ve *versionEdit,
+	nextFileNum func() base.FileNum,
+	snapshots compact.Snapshots,
+) (newFiles []manifest.NewFileEntry, err error) {
+	if !h.canDeleteOrExcise(d.cmp, f, snapshots, d.FormatMajorVersion()) {
+		return nil, nil
+	}
+
+	// The hint overlaps with at least part of the file.
+	if d.cmp(h.start, f.Smallest.UserKey) <= 0 &&
+		base.UserKeyExclusive(h.end).CompareUpperBounds(d.cmp, f.UserKeyBounds().End) >= 0 {
+		// The hint deletes the entirety of this file.
+		ve.DeletedFiles[deletedFileEntry{
+			Level:   level,
+			FileNum: f.FileNum,
+		}] = f
+		levelMetrics.TablesDeleted++
+		return nil, nil
+	}
+	// The hint overlaps with only a part of the file, not the entirety of it. We need
+	// to use d.excise.
+	if d.FormatMajorVersion() < FormatVirtualSSTables {
+		// A future hint will apply to this file and delete it in its entirety.
+		return nil, nil
+	}
+	levelMetrics.TablesExcised++
+	newFiles, err = d.excise(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, ve, level, nextFileNum)
+	if err != nil {
+		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
+	}
+	if _, ok := ve.DeletedFiles[deletedFileEntry{
+		Level:   level,
+		FileNum: f.FileNum,
+	}]; !ok {
+		// This hint did not touch this file.
+		return nil, nil
+	}
+	return newFiles, nil
+}
+
+func (d *DB) runDeleteOnlyCompactionForLevel(
+	c *compaction,
+	cl compactionLevel,
+	levelMetrics *LevelMetrics,
+	ve *versionEdit,
+	nextFileNum func() base.FileNum,
+	snapshots compact.Snapshots,
+	fragments []deleteCompactionHintFragment,
+) error {
+	curFragment := 0
+	iter := cl.files.Iter()
+
+	// Outer loop loops on files. Middle lop loops on fragments. Inner loop
+	// loops on raw fragments of hints. Number of fragments are bounded by
+	// the number of hints this compaction was created with, which is capped
+	// in the compaction picker to avoid very CPU-hot loops here.
+	for f := iter.First(); f != nil; f = iter.Next() {
+		// curFile usually matches f, except if f got excised in which case
+		// it maps to the "current state" of f.
+		curFile := f
+		for curFragment < len(fragments) && d.cmp(fragments[curFragment].start, f.Smallest.UserKey) <= 0 {
+			curFragment++
+		}
+		if curFragment > 0 {
+			curFragment--
+		}
+
+		for ; curFragment < len(fragments); curFragment++ {
+			if f.UserKeyBounds().End.CompareUpperBounds(d.cmp, base.UserKeyInclusive(fragments[curFragment].start)) < 0 {
+				break
+			}
+			// Process all overlapping hints with this file. Note that applying
+			// a hint twice is idempotent; curFile should have already been excised
+			// the first time, resulting in no change the second time.
+			for _, h := range fragments[curFragment].hints {
+				if h.tombstoneLevel >= cl.level {
+					// We cannot excise out the deletion tombstone itself, or anything
+					// above it.
+					continue
+				}
+				if !h.canDeleteOrExcise(d.cmp, curFile, snapshots, d.FormatMajorVersion()) {
+					continue
+				}
+				newFiles, err := d.applyHintOnFile(h, curFile, cl.level, levelMetrics, ve, nextFileNum, snapshots)
+				if err != nil {
+					return err
+				}
+				if _, ok := ve.DeletedFiles[manifest.DeletedFileEntry{Level: cl.level, FileNum: curFile.FileNum}]; ok {
+					if f != curFile {
+						delete(ve.DeletedFiles, manifest.DeletedFileEntry{Level: cl.level, FileNum: curFile.FileNum})
+						for i := range ve.NewFiles {
+							if ve.NewFiles[i].Meta == curFile {
+								copy(ve.NewFiles[i:], ve.NewFiles[i+1:])
+								ve.NewFiles = ve.NewFiles[:len(ve.NewFiles)-1]
+								break
+							}
+						}
+					}
+					curFile = nil
+				}
+				if len(newFiles) > 0 {
+					curFile = newFiles[len(newFiles)-1].Meta
+				} else if curFile == nil {
+					// Nothing remains of the file.
+					break
+				}
+			}
+			if curFile == nil {
+				// Nothing remains of the file.
+				break
+			}
+		}
+		if _, ok := ve.DeletedFiles[deletedFileEntry{
+			Level:   cl.level,
+			FileNum: f.FileNum,
+		}]; !ok {
+			panic("pebble: delete-only compaction scheduled with hints that did not delete or excise a file")
+		}
+	}
+	return nil
+}
+
+type deleteCompactionHintFragment struct {
+	start []byte
+	hints []deleteCompactionHint
+}
+
+func fragmentDeleteCompactionHints(
+	cmp Compare, hints []deleteCompactionHint,
+) []deleteCompactionHintFragment {
+	fragments := make([]deleteCompactionHintFragment, 0, len(hints)*2)
+	for i := range hints {
+		fragments = append(fragments, deleteCompactionHintFragment{start: hints[i].start},
+			deleteCompactionHintFragment{start: hints[i].end})
+	}
+	slices.SortFunc(fragments, func(i, j deleteCompactionHintFragment) int {
+		return cmp(i.start, j.start)
+	})
+	j := 0
+	// Deduplicate fragments.
+	for i := 1; i < len(fragments); i++ {
+		if !bytes.Equal(fragments[i].start, fragments[j].start) {
+			j++
+			fragments[j] = fragments[i]
+		}
+	}
+	fragments = fragments[:j+1]
+	for _, h := range hints {
+		startIdx := sort.Search(len(fragments), func(i int) bool {
+			return cmp(fragments[i].start, h.start) >= 0
+		})
+		endIdx := sort.Search(len(fragments), func(i int) bool {
+			return cmp(fragments[i].start, h.end) >= 0
+		})
+		for i := startIdx; i < endIdx; i++ {
+			fragments[i].hints = append(fragments[i].hints, h)
+		}
+	}
+	return fragments
+}
+
+// Runs a delete-only compaction.
+//
+// d.mu must *not* be held when calling this.
 func (d *DB) runDeleteOnlyCompaction(
-	jobID JobID, c *compaction,
+	jobID JobID, c *compaction, snapshots compact.Snapshots,
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
+	nextFileNumGetter := func() base.FileNum {
+		// TODO(bilal): Replace d.mu.versions.nextFileNum with an
+		// atomic to avoid the need to grab the DB mutex for this.
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.versions.getNextFileNum()
+	}
+
 	c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
+	fragments := fragmentDeleteCompactionHints(d.cmp, c.deletionHints)
 	ve = &versionEdit{
 		DeletedFiles: map[deletedFileEntry]*fileMetadata{},
 	}
 	for _, cl := range c.inputs {
 		levelMetrics := &LevelMetrics{}
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
-			ve.DeletedFiles[deletedFileEntry{
-				Level:   cl.level,
-				FileNum: f.FileNum,
-			}] = f
+		if err := d.runDeleteOnlyCompactionForLevel(c, cl, levelMetrics, ve, nextFileNumGetter, snapshots, fragments); err != nil {
+			return nil, stats, err
 		}
 		c.metrics[cl.level] = levelMetrics
 	}
+	// Refresh the disk available statistic whenever a compaction/flush
+	// completes, before re-acquiring the mutex.
+	d.calculateDiskAvailableBytes()
 	return ve, stats, nil
 }
 
@@ -2409,9 +2620,17 @@ func (d *DB) runMoveCompaction(
 func (d *DB) runCompaction(
 	jobID JobID, c *compaction,
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
+	if c.cancel.Load() {
+		return ve, stats, ErrCancelledCompaction
+	}
 	switch c.kind {
 	case compactionKindDeleteOnly:
-		return d.runDeleteOnlyCompaction(jobID, c)
+		// Release the d.mu lock while doing I/O.
+		// Note the unusual order: Unlock and then Lock.
+		snapshots := d.mu.snapshots.toSlice()
+		d.mu.Unlock()
+		defer d.mu.Lock()
+		return d.runDeleteOnlyCompaction(jobID, c, snapshots)
 	case compactionKindMove:
 		return d.runMoveCompaction(jobID, c)
 	case compactionKindCopy:
@@ -2432,10 +2651,6 @@ func (d *DB) runCompaction(
 		vers := d.mu.versions.currentVersion()
 		vers.Ref()
 		defer vers.UnrefLocked()
-	}
-
-	if c.cancel.Load() {
-		return ve, stats, ErrCancelledCompaction
 	}
 
 	// The table is typically written at the maximum allowable format implied by
