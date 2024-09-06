@@ -384,8 +384,8 @@ func bitmapToBinFormatter(f *binfmt.Formatter, rows int) {
 	if encoding != defaultBitmapEncoding {
 		panic(fmt.Sprintf("unknown bitmap encoding %d", encoding))
 	}
-	if aligned := align(f.Offset(), 8); aligned-f.Offset() != 0 {
-		f.HexBytesln(aligned-f.Offset(), "padding to align to 64-bit boundary")
+	if aligned := align(f.RelativeOffset(), 8); aligned-f.RelativeOffset() != 0 {
+		f.HexBytesln(aligned-f.RelativeOffset(), "padding to align to 64-bit boundary")
 	}
 	bitmapWords := (rows + 63) / 64
 	for i := 0; i < bitmapWords; i++ {

@@ -239,6 +239,14 @@ func (r *KeyspanReader) DebugString() string {
 // f.Offset() is positioned at the beginning of the same keyspan block described
 // by r.
 func (r *KeyspanReader) Describe(f *binfmt.Formatter) {
+	// Set the relative offset. When loaded into memory, the beginning of blocks
+	// are aligned. Padding that ensures alignment is done relative to the
+	// current offset. Setting the relative offset ensures that if we're
+	// describing this block within a larger structure (eg, f.Offset()>0), we
+	// compute padding appropriately assuming the current byte f.Offset() is
+	// aligned.
+	f.SetRelativeOffset()
+
 	f.CommentLine("keyspan block header")
 	f.HexBytesln(4, "user key count: %d", r.boundaryKeysCount)
 	r.blockReader.headerToBinFormatter(f)

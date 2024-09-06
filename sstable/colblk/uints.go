@@ -429,8 +429,8 @@ func uintsToBinFormatter(
 		return
 	}
 
-	if off := align(f.Offset(), width); off != f.Offset() {
-		f.HexBytesln(off-f.Offset(), "padding (aligning to %d-bit boundary)", width*8)
+	if off := align(f.RelativeOffset(), width); off != f.RelativeOffset() {
+		f.HexBytesln(off-f.RelativeOffset(), "padding (aligning to %d-bit boundary)", width*8)
 	}
 	for i := 0; i < rows; i++ {
 		f.HexBytesln(width, "data[%d] = %s", i, uintFormatter(f.PeekUint(width), base))

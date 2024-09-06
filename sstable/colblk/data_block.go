@@ -565,6 +565,14 @@ func (r *DataBlockReader) Init(schema KeySchema, data []byte) {
 // Describe descirbes the binary format of the data block, assuming f.Offset()
 // is positioned at the beginning of the same data block described by r.
 func (r *DataBlockReader) Describe(f *binfmt.Formatter) {
+	// Set the relative offset. When loaded into memory, the beginning of blocks
+	// are aligned. Padding that ensures alignment is done relative to the
+	// current offset. Setting the relative offset ensures that if we're
+	// describing this block within a larger structure (eg, f.Offset()>0), we
+	// compute padding appropriately assuming the current byte f.Offset() is
+	// aligned.
+	f.SetRelativeOffset()
+
 	f.CommentLine("data block header")
 	f.HexBytesln(4, "maximum key length: %d", r.maximumKeyLength)
 	r.r.headerToBinFormatter(f)

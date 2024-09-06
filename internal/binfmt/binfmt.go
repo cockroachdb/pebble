@@ -28,14 +28,36 @@ func New(data []byte) *Formatter {
 
 // Formatter is a utility for formatting binary data with descriptive comments.
 type Formatter struct {
-	buf   bytes.Buffer
-	lines [][2]string // (binary data, comment) tuples
-	data  []byte
-	off   int
+	buf    bytes.Buffer
+	lines  [][2]string // (binary data, comment) tuples
+	data   []byte
+	off    int
+	relOff int
 
 	// config
 	lineWidth       int
 	offsetFormatStr string
+}
+
+// SetRelativeOffset sets the reference point for relative offset calculations
+// to the current offset. Future calls to RelativeOffset() will return an offset
+// relative to the current offset.
+func (f *Formatter) SetRelativeOffset() {
+	f.relOff = f.off
+}
+
+// RelativeOffset retrieves the current offset relative to the offset at the
+// last time SetRelativeOffset was called. If SetRelativeOffset was never
+// called, RelativeOffset is equivalent to Offset.
+func (f *Formatter) RelativeOffset() int {
+	return f.off - f.relOff
+}
+
+// RelativeData returns the subslice of the original data slice beginning at the
+// offset at which SetRelativeOffset was last called. If SetRelativeOffset was
+// never called, RelativeData is equivalent to Data.
+func (f *Formatter) RelativeData() []byte {
+	return f.data[f.relOff:]
 }
 
 // LineWidth sets the Formatter's maximum line width for binary data.

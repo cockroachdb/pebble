@@ -88,8 +88,8 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 		sliceFormatter = defaultSliceFormatter
 	}
 
-	rb, _ := DecodeRawBytes(f.Data(), uint32(f.Offset()), count)
-	dataOffset := uint64(f.Offset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
+	rb, _ := DecodeRawBytes(f.RelativeData(), uint32(f.RelativeOffset()), count)
+	dataOffset := uint64(f.RelativeOffset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
 	f.CommentLine("rawbytes")
 	f.CommentLine("offsets table")
 	uintsToBinFormatter(f, count+1, func(offset, base uint64) string {
