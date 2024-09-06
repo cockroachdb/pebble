@@ -570,11 +570,11 @@ func prefixBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter fu
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}
-	pb, _ := DecodePrefixBytes(f.Data(), uint32(f.Offset()), count)
+	pb, _ := DecodePrefixBytes(f.RelativeData(), uint32(f.RelativeOffset()), count)
 	f.CommentLine("PrefixBytes")
 	f.HexBytesln(1, "bundleSize: %d", 1<<pb.bundleShift)
 	f.CommentLine("Offsets table")
-	dataOffset := uint64(f.Offset()) + uint64(uintptr(pb.rawBytes.data)-uintptr(pb.rawBytes.start))
+	dataOffset := uint64(f.RelativeOffset()) + uint64(uintptr(pb.rawBytes.data)-uintptr(pb.rawBytes.start))
 	uintsToBinFormatter(f, pb.rawBytes.slices+1,
 		func(offsetDelta, offsetBase uint64) string {
 			// NB: offsetBase will always be zero for PrefixBytes columns.
