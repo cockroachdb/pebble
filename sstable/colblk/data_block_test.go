@@ -61,7 +61,7 @@ func TestDataBlock(t *testing.T) {
 				block := w.Finish()
 				r.Init(testKeysSchema, block)
 				f := binfmt.New(r.r.data).LineWidth(20)
-				r.toFormatter(f)
+				r.Describe(f)
 
 				return f.String()
 			case "iter":

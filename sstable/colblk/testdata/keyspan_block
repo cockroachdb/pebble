@@ -123,6 +123,7 @@ Boundaries: a#0,RANGEDEL — e#inf,RANGEDEL
 72-72: x          # data[4]:
 72-72: x          # data[5]:
 72-72: x          # data[6]:
+72-73: x 00       # block padding byte
 
 # Test iterating over the block's spans.
 
@@ -277,6 +278,7 @@ Boundaries: b#4,RANGEKEYSET — d#inf,RANGEKEYSET
 61-62: x 07               # data[1] = 7 [69 overall]
 # data
 62-69: x 636f636f6e7574   # data[0]: coconut
+69-70: x 00               # block padding byte
 
 iter
 seek-ge a
@@ -374,6 +376,7 @@ Boundaries: b#4,RANGEKEYSET — g#inf,RANGEKEYSET
 # data
 68-75: x 636f636f6e7574 # data[0]: coconut
 75-79: x 74726565       # data[1]: tree
+79-80: x 00             # block padding byte
 
 iter
 seek-ge dog
