@@ -1701,10 +1701,13 @@ func (d *DB) ingest(
 // sstables that exclude exciseSpan, returning a slice of newly-created files if
 // any. If the entirety of m is deleted by exciseSpan, no new sstables are added
 // and m is deleted. Note that ve is updated in-place.
-//
-// The manifest lock must be held when calling this method.
 func (d *DB) excise(
-	ctx context.Context, exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
+	ctx context.Context,
+	exciseSpan base.UserKeyBounds,
+	m *fileMetadata,
+	ve *versionEdit,
+	level int,
+	nextFileNumGetter func() base.FileNum,
 ) ([]manifest.NewFileEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
@@ -1767,7 +1770,7 @@ func (d *DB) excise(
 		leftFile := &fileMetadata{
 			Virtual:     true,
 			FileBacking: m.FileBacking,
-			FileNum:     d.mu.versions.getNextFileNum(),
+			FileNum:     nextFileNumGetter(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:        m.SmallestSeqNum,
@@ -1864,7 +1867,7 @@ func (d *DB) excise(
 	rightFile := &fileMetadata{
 		Virtual:     true,
 		FileBacking: m.FileBacking,
-		FileNum:     d.mu.versions.getNextFileNum(),
+		FileNum:     nextFileNumGetter(),
 		// Note that these are loose bounds for smallest/largest seqnums, but they're
 		// sufficient for maintaining correctness.
 		SmallestSeqNum:        m.SmallestSeqNum,
@@ -2055,7 +2058,7 @@ func (d *DB) ingestSplit(
 		// as we're guaranteed to not have any data overlap between splitFile and
 		// s.ingestFile. d.excise will return an error if we pass an inclusive user
 		// key bound _and_ we end up seeing data overlap at the end key.
-		added, err := d.excise(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
+		added, err := d.excise(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level, d.mu.versions.getNextFileNum)
 		if err != nil {
 			return err
 		}
@@ -2296,7 +2299,7 @@ func (d *DB) ingestApply(
 			iter := overlaps.Iter()
 
 			for m := iter.First(); m != nil; m = iter.Next() {
-				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, level)
+				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, level, d.mu.versions.getNextFileNum)
 				if err != nil {
 					return nil, err
 				}

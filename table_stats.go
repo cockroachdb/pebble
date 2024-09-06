@@ -443,9 +443,8 @@ func (d *DB) loadTableRangeDelStats(
 		}
 		stats.RangeDeletionsBytesEstimate += estimate
 
-		// If any files were completely contained with the range,
 		// hintSeqNum is the smallest sequence number contained in any
-		// such file.
+		// file overlapping with the hint and in a level below it.
 		if hintSeqNum == math.MaxUint64 {
 			continue
 		}
@@ -632,6 +631,9 @@ func (d *DB) estimateReclaimedSizeBeneath(
 					return 0, hintSeqNum, err
 				}
 				estimate += size
+				if hintSeqNum > file.SmallestSeqNum {
+					hintSeqNum = file.SmallestSeqNum
+				}
 			}
 		}
 	}
