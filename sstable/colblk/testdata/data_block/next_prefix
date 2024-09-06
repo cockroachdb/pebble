@@ -233,6 +233,7 @@ finish
 406-406: x                                                                  # data[19]:
 # data for column 5
 406-407: x 01                                                               # bitmap encoding
+407-408: x 00                                                               # block padding byte
 
 # Scan across the block using next prefix.
 

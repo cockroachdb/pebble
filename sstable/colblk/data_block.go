@@ -562,13 +562,16 @@ func (r *DataBlockReader) Init(schema KeySchema, data []byte) {
 	r.maximumKeyLength = binary.LittleEndian.Uint32(data[:dataBlockCustomHeaderSize])
 }
 
-func (r *DataBlockReader) toFormatter(f *binfmt.Formatter) {
+// Describe descirbes the binary format of the data block, assuming f.Offset()
+// is positioned at the beginning of the same data block described by r.
+func (r *DataBlockReader) Describe(f *binfmt.Formatter) {
 	f.CommentLine("data block header")
 	f.HexBytesln(4, "maximum key length: %d", r.maximumKeyLength)
 	r.r.headerToBinFormatter(f)
 	for i := 0; i < int(r.r.header.Columns); i++ {
 		r.r.columnToBinFormatter(f, i, int(r.r.header.Rows))
 	}
+	f.HexBytesln(1, "block padding byte")
 }
 
 // DataBlockIter iterates over a columnar data block.

@@ -142,12 +142,19 @@ func (r *IndexReader) Init(data []byte) {
 // representation.
 func (r *IndexReader) DebugString() string {
 	f := binfmt.New(r.br.data).LineWidth(20)
+	r.Describe(f)
+	return f.String()
+}
+
+// Describe describes the binary format of the index block, assuming f.Offset()
+// is positioned at the beginning of the same index block described by r.
+func (r *IndexReader) Describe(f *binfmt.Formatter) {
 	f.CommentLine("index block header")
 	r.br.headerToBinFormatter(f)
 	for i := 0; i < indexBlockColumnCount; i++ {
 		r.br.columnToBinFormatter(f, i, int(r.br.header.Rows))
 	}
-	return f.String()
+	f.HexBytesln(1, "block padding byte")
 }
 
 // IndexIter is an iterator over the block entries in an index block.

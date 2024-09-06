@@ -231,6 +231,14 @@ func (r *KeyspanReader) Init(data []byte) {
 // representation.
 func (r *KeyspanReader) DebugString() string {
 	f := binfmt.New(r.blockReader.data).LineWidth(20)
+	r.Describe(f)
+	return f.String()
+}
+
+// Describe describes the binary format of the keyspan block, assuming
+// f.Offset() is positioned at the beginning of the same keyspan block described
+// by r.
+func (r *KeyspanReader) Describe(f *binfmt.Formatter) {
 	f.CommentLine("keyspan block header")
 	f.HexBytesln(4, "user key count: %d", r.boundaryKeysCount)
 	r.blockReader.headerToBinFormatter(f)
@@ -246,7 +254,7 @@ func (r *KeyspanReader) DebugString() string {
 		}
 		r.blockReader.columnToBinFormatter(f, i, rows)
 	}
-	return f.String()
+	f.HexBytesln(1, "block padding byte")
 }
 
 // searchBoundaryKeys returns the index of the first boundary key greater than

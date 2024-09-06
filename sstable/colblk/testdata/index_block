@@ -74,6 +74,7 @@ UnsafeSeparator(Rows()-1) = "bonifide"
 121-121: x                      # data[3]:
 121-124: x 627035               # data[4]: bp5
 124-127: x 627036               # data[5]: bp6
+127-128: x 00                   # block padding byte
 
 iter
 seek-ge zoo
@@ -193,6 +194,7 @@ UnsafeSeparator(Rows()-1) = "coat"
 114-114: x                      # data[2]:
 114-117: x 627034               # data[3]: bp4
 117-117: x                      # data[4]:
+117-118: x 00                   # block padding byte
 
 iter
 first

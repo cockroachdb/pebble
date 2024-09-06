@@ -258,6 +258,7 @@ finish
 623-624: x 00                                                               # bitmap encoding
 624-632: b 1100111011111011000001110000000000000000000000000000000000000000 # bitmap word 0
 632-640: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+640-641: x 00                                                               # block padding byte
 
 # Scan across the block using next.
 iter

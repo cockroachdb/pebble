@@ -509,6 +509,7 @@ finish
 717-718: x 76                                                               # data[65]: v
 # data for column 5
 718-719: x 01                                                               # bitmap encoding
+719-720: x 00                                                               # block padding byte
 
 iter
 seek-ge backache
