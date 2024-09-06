@@ -25,7 +25,7 @@ func newValue(n int) *Value {
 	if n == 0 {
 		return nil
 	}
-	b := manual.New(n)
+	b := manual.New(manual.BlockCacheData, n)
 	v := &Value{buf: b}
 	v.ref.init(1)
 	// Note: this is a no-op if invariants and tracing are disabled or race is
@@ -47,7 +47,7 @@ func (v *Value) free() {
 	for i := range v.buf {
 		v.buf[i] = 0xff
 	}
-	manual.Free(v.buf)
+	manual.Free(manual.BlockCacheData, v.buf)
 	// Setting Value.buf to nil is needed for correctness of the leak checking
 	// that is performed when the "invariants" or "tracing" build tags are
 	// enabled.

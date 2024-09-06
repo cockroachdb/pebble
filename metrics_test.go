@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -99,6 +100,9 @@ func exampleMetrics() Metrics {
 		l.MultiLevel.BytesInTop = base + 4
 		l.MultiLevel.BytesIn = base + 4
 		l.MultiLevel.BytesRead = base + 4
+	}
+	for i := range m.manualMemory {
+		m.manualMemory[i].InUseBytes = uint64((i + 1) * 1024)
 	}
 	return m
 }
@@ -329,6 +333,9 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 
 			m := d.Metrics()
+			// Don't show memory usage as that can depend on architecture, invariants
+			// tag, etc.
+			m.manualMemory = manual.Metrics{}
 			// Some subset of cases show non-determinism in cache hits/misses.
 			if td.HasArg("zero-cache-hits-misses") {
 				// Avoid non-determinism.

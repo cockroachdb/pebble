@@ -11,10 +11,13 @@ package manual
 // compilation).
 
 // New allocates a slice of size n.
-func New(n int) []byte {
+func New(purpose Purpose, n int) []byte {
+	recordAlloc(purpose, n)
 	return make([]byte, n)
 }
 
-// Free frees the specified slice.
-func Free(b []byte) {
+// Free frees the specified slice. It has to be exactly the slice that was
+// returned by New.
+func Free(purpose Purpose, b []byte) {
+	recordFree(purpose, cap(b))
 }
