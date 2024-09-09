@@ -1,0 +1,529 @@
+init
+----
+size=50:
+0: prefixes:       prefixbytes(16): 0 keys
+1: suffixes:       bytes: 0 rows set; 0 bytes in data
+2: trailers:       uint: 0 rows
+3: prefix changed: bitmap
+4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bitmap
+
+write
+a@10#0,SET:apple
+b@5#0,SET:banana
+b@2#0,SETWITHDEL:blueberry
+c@9#0,SETWITHDEL:coconut
+c@6#0,SET:cantelope
+c@1#0,SET:clementine
+----
+size=160:
+0: prefixes:       prefixbytes(16): 6 keys
+1: suffixes:       bytes: 6 rows set; 13 bytes in data
+2: trailers:       uint: 6 rows
+3: prefix changed: bitmap
+4: values:         bytes: 6 rows set; 46 bytes in data
+5: is-value-ext:   bitmap
+
+finish rows=5
+----
+LastKey: c@6#0,SET
+# data block header
+000-004: x 04000000                                                         # maximum key length: 4
+# columnar block header
+004-005: x 01                                                               # version 1
+005-007: x 0600                                                             # 6 columns
+007-011: x 05000000                                                         # 5 rows
+011-012: b 00000100                                                         # col 0: prefixbytes
+012-016: x 29000000                                                         # col 0: page start 41
+016-017: b 00000011                                                         # col 1: bytes
+017-021: x 35000000                                                         # col 1: page start 53
+021-022: b 00000010                                                         # col 2: uint
+022-026: x 47000000                                                         # col 2: page start 71
+026-027: b 00000001                                                         # col 3: bool
+027-031: x 4d000000                                                         # col 3: page start 77
+031-032: b 00000011                                                         # col 4: bytes
+032-036: x 60000000                                                         # col 4: page start 96
+036-037: b 00000001                                                         # col 5: bool
+037-041: x 8b000000                                                         # col 5: page start 139
+# data for column 0
+# PrefixBytes
+041-042: x 04                                                               # bundleSize: 16
+# Offsets table
+042-043: x 01                                                               # encoding: 1b
+043-044: x 00                                                               # data[0] = 0 [50 overall]
+044-045: x 00                                                               # data[1] = 0 [50 overall]
+045-046: x 01                                                               # data[2] = 1 [51 overall]
+046-047: x 02                                                               # data[3] = 2 [52 overall]
+047-048: x 02                                                               # data[4] = 2 [52 overall]
+048-049: x 03                                                               # data[5] = 3 [53 overall]
+049-050: x 03                                                               # data[6] = 3 [53 overall]
+# Data
+050-050: x                                                                  # data[00]:  (block prefix)
+050-050: x                                                                  # data[01]:  (bundle prefix)
+050-051: x 61                                                               # data[02]: a
+051-052: x 62                                                               # data[03]: b
+052-052: x                                                                  # data[04]: .
+052-053: x 63                                                               # data[05]: c
+053-053: x                                                                  # data[06]: .
+# data for column 1
+# rawbytes
+# offsets table
+053-054: x 01                                                               # encoding: 1b
+054-055: x 00                                                               # data[0] = 0 [60 overall]
+055-056: x 03                                                               # data[1] = 3 [63 overall]
+056-057: x 05                                                               # data[2] = 5 [65 overall]
+057-058: x 07                                                               # data[3] = 7 [67 overall]
+058-059: x 09                                                               # data[4] = 9 [69 overall]
+059-060: x 0b                                                               # data[5] = 11 [71 overall]
+# data
+060-063: x 403130                                                           # data[0]: @10
+063-065: x 4035                                                             # data[1]: @5
+065-067: x 4032                                                             # data[2]: @2
+067-069: x 4039                                                             # data[3]: @9
+069-071: x 4036                                                             # data[4]: @6
+# data for column 2
+071-072: x 01                                                               # encoding: 1b
+072-073: x 01                                                               # data[0] = 1
+073-074: x 01                                                               # data[1] = 1
+074-075: x 12                                                               # data[2] = 18
+075-076: x 12                                                               # data[3] = 18
+076-077: x 01                                                               # data[4] = 1
+# data for column 3
+077-078: x 00                                                               # bitmap encoding
+078-080: x 0000                                                             # padding to align to 64-bit boundary
+080-088: b 0000101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+# data for column 4
+# rawbytes
+# offsets table
+096-097: x 01                                                               # encoding: 1b
+097-098: x 00                                                               # data[0] = 0 [103 overall]
+098-099: x 05                                                               # data[1] = 5 [108 overall]
+099-100: x 0b                                                               # data[2] = 11 [114 overall]
+100-101: x 14                                                               # data[3] = 20 [123 overall]
+101-102: x 1b                                                               # data[4] = 27 [130 overall]
+102-103: x 24                                                               # data[5] = 36 [139 overall]
+# data
+103-108: x 6170706c65                                                       # data[0]: apple
+108-114: x 62616e616e61                                                     # data[1]: banana
+114-123: x 626c75656265727279                                               # data[2]: blueberry
+123-130: x 636f636f6e7574                                                   # data[3]: coconut
+130-139: x 63616e74656c6f7065                                               # data[4]: cantelope
+# data for column 5
+139-140: x 01                                                               # bitmap encoding
+140-141: x 00                                                               # block padding byte
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@10:apple
+b@5:banana
+b@2:blueberry
+c@9:coconut
+c@6:cantelope
+.
+
+init
+----
+size=50:
+0: prefixes:       prefixbytes(16): 0 keys
+1: suffixes:       bytes: 0 rows set; 0 bytes in data
+2: trailers:       uint: 0 rows
+3: prefix changed: bitmap
+4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bitmap
+
+write
+capillaceous@95720#0,SET:value
+capillaire@95720#0,SET:value
+capillament@95720#0,SET:value
+capillarectasia@95720#0,SET:value
+capillarily@95720#0,SET:value
+capillarimeter@95720#0,SET:value
+capillariness@95720#0,SET:value
+capillariomotor@95720#0,SET:value
+capillarity@95720#0,SET:value
+capillary@95720#0,SET:value
+capillation@95720#0,SET:value
+capilliculture@95720#0,SET:value
+capilliform@95720#0,SET:value
+capillitial@95720#0,SET:value
+capillitium@95720#0,SET:value
+capillose@95720#0,SET:value
+capistrate@95720#0,SET:value
+capital@95720#0,SET:value
+capitaldom@95720#0,SET:value
+capitaled@95720#0,SET:value
+capitalism@95720#0,SET:value
+capitalist@95720#0,SET:value
+capitalistic@95720#0,SET:value
+capitalistically@95720#0,SET:value
+capitalizable@95720#0,SET:value
+capitalization@95720#0,SET:value
+capitalize@95720#0,SET:value
+capitally@95720#0,SET:value
+capitalness@95720#0,SET:value
+capitan@95720#0,SET:value
+capitate@95720#0,SET:value
+capitated@95720#0,SET:value
+capitatim@95720#0,SET:value
+capitation@95720#0,SET:value
+capitative@95720#0,SET:value
+capitatum@95720#0,SET:value
+capitellar@95720#0,SET:value
+capitellate@95720#0,SET:value
+capitelliform@95720#0,SET:value
+capitellum@95720#0,SET:value
+capitulate@95720#0,SET:value
+capitulation@95720#0,SET:value
+capitulator@95720#0,SET:value
+----
+size=1038:
+0: prefixes:       prefixbytes(16): 43 keys
+1: suffixes:       bytes: 43 rows set; 258 bytes in data
+2: trailers:       uint: 43 rows
+3: prefix changed: bitmap
+4: values:         bytes: 43 rows set; 215 bytes in data
+5: is-value-ext:   bitmap
+
+# Add an additional key that substantially increases the size of the block
+# because it does not share a) the prefix b) suffix or c) trailer of the
+# previous keys.
+
+write
+dactylioglyphtic@75722285210#539623603,SETWITHDEL:value
+----
+size=1484:
+0: prefixes:       prefixbytes(16): 44 keys
+1: suffixes:       bytes: 44 rows set; 270 bytes in data
+2: trailers:       uint: 44 rows
+3: prefix changed: bitmap
+4: values:         bytes: 44 rows set; 220 bytes in data
+5: is-value-ext:   bitmap
+
+# Finish the block without this last KV.
+
+finish rows=43
+----
+LastKey: capitulator@95720#0,SET
+# data block header
+0000-0004: x 1c000000                                                         # maximum key length: 28
+# columnar block header
+0004-0005: x 01                                                               # version 1
+0005-0007: x 0600                                                             # 6 columns
+0007-0011: x 2b000000                                                         # 43 rows
+0011-0012: b 00000100                                                         # col 0: prefixbytes
+0012-0016: x 29000000                                                         # col 0: page start 41
+0016-0017: b 00000011                                                         # col 1: bytes
+0017-0021: x 8e010000                                                         # col 1: page start 398
+0021-0022: b 00000010                                                         # col 2: uint
+0022-0026: x ea020000                                                         # col 2: page start 746
+0026-0027: b 00000001                                                         # col 3: bool
+0027-0031: x f3020000                                                         # col 3: page start 755
+0031-0032: b 00000011                                                         # col 4: bytes
+0032-0036: x 08030000                                                         # col 4: page start 776
+0036-0037: b 00000001                                                         # col 5: bool
+0037-0041: x 0c040000                                                         # col 5: page start 1036
+# data for column 0
+# PrefixBytes
+0041-0042: x 04                                                               # bundleSize: 16
+# Offsets table
+0042-0043: x 02                                                               # encoding: 2b
+0043-0044: x 00                                                               # padding (aligning to 16-bit boundary)
+0044-0046: x 0400                                                             # data[0] = 4 [142 overall]
+0046-0048: x 0600                                                             # data[1] = 6 [144 overall]
+0048-0050: x 0c00                                                             # data[2] = 12 [150 overall]
+0050-0052: x 1000                                                             # data[3] = 16 [154 overall]
+0052-0054: x 1500                                                             # data[4] = 21 [159 overall]
+0054-0056: x 1e00                                                             # data[5] = 30 [168 overall]
+0056-0058: x 2300                                                             # data[6] = 35 [173 overall]
+0058-0060: x 2b00                                                             # data[7] = 43 [181 overall]
+0060-0062: x 3200                                                             # data[8] = 50 [188 overall]
+0062-0064: x 3b00                                                             # data[9] = 59 [197 overall]
+0064-0066: x 4000                                                             # data[10] = 64 [202 overall]
+0066-0068: x 4300                                                             # data[11] = 67 [205 overall]
+0068-0070: x 4800                                                             # data[12] = 72 [210 overall]
+0070-0072: x 5000                                                             # data[13] = 80 [218 overall]
+0072-0074: x 5500                                                             # data[14] = 85 [223 overall]
+0074-0076: x 5a00                                                             # data[15] = 90 [228 overall]
+0076-0078: x 5f00                                                             # data[16] = 95 [233 overall]
+0078-0080: x 6200                                                             # data[17] = 98 [236 overall]
+0080-0082: x 6200                                                             # data[18] = 98 [236 overall]
+0082-0084: x 6800                                                             # data[19] = 104 [242 overall]
+0084-0086: x 6b00                                                             # data[20] = 107 [245 overall]
+0086-0088: x 7100                                                             # data[21] = 113 [251 overall]
+0088-0090: x 7600                                                             # data[22] = 118 [256 overall]
+0090-0092: x 7c00                                                             # data[23] = 124 [262 overall]
+0092-0094: x 8200                                                             # data[24] = 130 [268 overall]
+0094-0096: x 8a00                                                             # data[25] = 138 [276 overall]
+0096-0098: x 9600                                                             # data[26] = 150 [288 overall]
+0098-0100: x 9f00                                                             # data[27] = 159 [297 overall]
+0100-0102: x a900                                                             # data[28] = 169 [307 overall]
+0102-0104: x af00                                                             # data[29] = 175 [313 overall]
+0104-0106: x b400                                                             # data[30] = 180 [318 overall]
+0106-0108: x bb00                                                             # data[31] = 187 [325 overall]
+0108-0110: x be00                                                             # data[32] = 190 [328 overall]
+0110-0112: x c200                                                             # data[33] = 194 [332 overall]
+0112-0114: x c700                                                             # data[34] = 199 [337 overall]
+0114-0116: x c800                                                             # data[35] = 200 [338 overall]
+0116-0118: x cc00                                                             # data[36] = 204 [342 overall]
+0118-0120: x d100                                                             # data[37] = 209 [347 overall]
+0120-0122: x d600                                                             # data[38] = 214 [352 overall]
+0122-0124: x da00                                                             # data[39] = 218 [356 overall]
+0124-0126: x df00                                                             # data[40] = 223 [361 overall]
+0126-0128: x e500                                                             # data[41] = 229 [367 overall]
+0128-0130: x ed00                                                             # data[42] = 237 [375 overall]
+0130-0132: x f200                                                             # data[43] = 242 [380 overall]
+0132-0134: x f700                                                             # data[44] = 247 [385 overall]
+0134-0136: x fe00                                                             # data[45] = 254 [392 overall]
+0136-0138: x 0401                                                             # data[46] = 260 [398 overall]
+# Data
+0138-0142: x 63617069                                                         # data[00]: capi (block prefix)
+0142-0144: x 6c6c                                                             # data[01]: ....ll (bundle prefix)
+0144-0150: x 6163656f7573                                                     # data[02]: ......aceous
+0150-0154: x 61697265                                                         # data[03]: ......aire
+0154-0159: x 616d656e74                                                       # data[04]: ......ament
+0159-0168: x 617265637461736961                                               # data[05]: ......arectasia
+0168-0173: x 6172696c79                                                       # data[06]: ......arily
+0173-0181: x 6172696d65746572                                                 # data[07]: ......arimeter
+0181-0188: x 6172696e657373                                                   # data[08]: ......ariness
+0188-0197: x 6172696f6d6f746f72                                               # data[09]: ......ariomotor
+0197-0202: x 6172697479                                                       # data[10]: ......arity
+0202-0205: x 617279                                                           # data[11]: ......ary
+0205-0210: x 6174696f6e                                                       # data[12]: ......ation
+0210-0218: x 6963756c74757265                                                 # data[13]: ......iculture
+0218-0223: x 69666f726d                                                       # data[14]: ......iform
+0223-0228: x 697469616c                                                       # data[15]: ......itial
+0228-0233: x 697469756d                                                       # data[16]: ......itium
+0233-0236: x 6f7365                                                           # data[17]: ......ose
+0236-0236: x                                                                  # data[18]: .... (bundle prefix)
+0236-0242: x 737472617465                                                     # data[19]: ....strate
+0242-0245: x 74616c                                                           # data[20]: ....tal
+0245-0251: x 74616c646f6d                                                     # data[21]: ....taldom
+0251-0256: x 74616c6564                                                       # data[22]: ....taled
+0256-0262: x 74616c69736d                                                     # data[23]: ....talism
+0262-0268: x 74616c697374                                                     # data[24]: ....talist
+0268-0276: x 74616c6973746963                                                 # data[25]: ....talistic
+0276-0286: x 74616c6973746963616c                                             # data[26]: ....talistically
+0286-0288: x 6c79                                                             # (continued...)
+0288-0297: x 74616c697a61626c65                                               # data[27]: ....talizable
+0297-0307: x 74616c697a6174696f6e                                             # data[28]: ....talization
+0307-0313: x 74616c697a65                                                     # data[29]: ....talize
+0313-0318: x 74616c6c79                                                       # data[30]: ....tally
+0318-0325: x 74616c6e657373                                                   # data[31]: ....talness
+0325-0328: x 74616e                                                           # data[32]: ....tan
+0328-0332: x 74617465                                                         # data[33]: ....tate
+0332-0337: x 7461746564                                                       # data[34]: ....tated
+0337-0338: x 74                                                               # data[35]: ....t (bundle prefix)
+0338-0342: x 6174696d                                                         # data[36]: .....atim
+0342-0347: x 6174696f6e                                                       # data[37]: .....ation
+0347-0352: x 6174697665                                                       # data[38]: .....ative
+0352-0356: x 6174756d                                                         # data[39]: .....atum
+0356-0361: x 656c6c6172                                                       # data[40]: .....ellar
+0361-0367: x 656c6c617465                                                     # data[41]: .....ellate
+0367-0375: x 656c6c69666f726d                                                 # data[42]: .....elliform
+0375-0380: x 656c6c756d                                                       # data[43]: .....ellum
+0380-0385: x 756c617465                                                       # data[44]: .....ulate
+0385-0392: x 756c6174696f6e                                                   # data[45]: .....ulation
+0392-0398: x 756c61746f72                                                     # data[46]: .....ulator
+# data for column 1
+# rawbytes
+# offsets table
+0398-0399: x 02                                                               # encoding: 2b
+0399-0400: x 00                                                               # padding (aligning to 16-bit boundary)
+0400-0402: x 0000                                                             # data[0] = 0 [488 overall]
+0402-0404: x 0600                                                             # data[1] = 6 [494 overall]
+0404-0406: x 0c00                                                             # data[2] = 12 [500 overall]
+0406-0408: x 1200                                                             # data[3] = 18 [506 overall]
+0408-0410: x 1800                                                             # data[4] = 24 [512 overall]
+0410-0412: x 1e00                                                             # data[5] = 30 [518 overall]
+0412-0414: x 2400                                                             # data[6] = 36 [524 overall]
+0414-0416: x 2a00                                                             # data[7] = 42 [530 overall]
+0416-0418: x 3000                                                             # data[8] = 48 [536 overall]
+0418-0420: x 3600                                                             # data[9] = 54 [542 overall]
+0420-0422: x 3c00                                                             # data[10] = 60 [548 overall]
+0422-0424: x 4200                                                             # data[11] = 66 [554 overall]
+0424-0426: x 4800                                                             # data[12] = 72 [560 overall]
+0426-0428: x 4e00                                                             # data[13] = 78 [566 overall]
+0428-0430: x 5400                                                             # data[14] = 84 [572 overall]
+0430-0432: x 5a00                                                             # data[15] = 90 [578 overall]
+0432-0434: x 6000                                                             # data[16] = 96 [584 overall]
+0434-0436: x 6600                                                             # data[17] = 102 [590 overall]
+0436-0438: x 6c00                                                             # data[18] = 108 [596 overall]
+0438-0440: x 7200                                                             # data[19] = 114 [602 overall]
+0440-0442: x 7800                                                             # data[20] = 120 [608 overall]
+0442-0444: x 7e00                                                             # data[21] = 126 [614 overall]
+0444-0446: x 8400                                                             # data[22] = 132 [620 overall]
+0446-0448: x 8a00                                                             # data[23] = 138 [626 overall]
+0448-0450: x 9000                                                             # data[24] = 144 [632 overall]
+0450-0452: x 9600                                                             # data[25] = 150 [638 overall]
+0452-0454: x 9c00                                                             # data[26] = 156 [644 overall]
+0454-0456: x a200                                                             # data[27] = 162 [650 overall]
+0456-0458: x a800                                                             # data[28] = 168 [656 overall]
+0458-0460: x ae00                                                             # data[29] = 174 [662 overall]
+0460-0462: x b400                                                             # data[30] = 180 [668 overall]
+0462-0464: x ba00                                                             # data[31] = 186 [674 overall]
+0464-0466: x c000                                                             # data[32] = 192 [680 overall]
+0466-0468: x c600                                                             # data[33] = 198 [686 overall]
+0468-0470: x cc00                                                             # data[34] = 204 [692 overall]
+0470-0472: x d200                                                             # data[35] = 210 [698 overall]
+0472-0474: x d800                                                             # data[36] = 216 [704 overall]
+0474-0476: x de00                                                             # data[37] = 222 [710 overall]
+0476-0478: x e400                                                             # data[38] = 228 [716 overall]
+0478-0480: x ea00                                                             # data[39] = 234 [722 overall]
+0480-0482: x f000                                                             # data[40] = 240 [728 overall]
+0482-0484: x f600                                                             # data[41] = 246 [734 overall]
+0484-0486: x fc00                                                             # data[42] = 252 [740 overall]
+0486-0488: x 0201                                                             # data[43] = 258 [746 overall]
+# data
+0488-0494: x 403935373230                                                     # data[0]: @95720
+0494-0500: x 403935373230                                                     # data[1]: @95720
+0500-0506: x 403935373230                                                     # data[2]: @95720
+0506-0512: x 403935373230                                                     # data[3]: @95720
+0512-0518: x 403935373230                                                     # data[4]: @95720
+0518-0524: x 403935373230                                                     # data[5]: @95720
+0524-0530: x 403935373230                                                     # data[6]: @95720
+0530-0536: x 403935373230                                                     # data[7]: @95720
+0536-0542: x 403935373230                                                     # data[8]: @95720
+0542-0548: x 403935373230                                                     # data[9]: @95720
+0548-0554: x 403935373230                                                     # data[10]: @95720
+0554-0560: x 403935373230                                                     # data[11]: @95720
+0560-0566: x 403935373230                                                     # data[12]: @95720
+0566-0572: x 403935373230                                                     # data[13]: @95720
+0572-0578: x 403935373230                                                     # data[14]: @95720
+0578-0584: x 403935373230                                                     # data[15]: @95720
+0584-0590: x 403935373230                                                     # data[16]: @95720
+0590-0596: x 403935373230                                                     # data[17]: @95720
+0596-0602: x 403935373230                                                     # data[18]: @95720
+0602-0608: x 403935373230                                                     # data[19]: @95720
+0608-0614: x 403935373230                                                     # data[20]: @95720
+0614-0620: x 403935373230                                                     # data[21]: @95720
+0620-0626: x 403935373230                                                     # data[22]: @95720
+0626-0632: x 403935373230                                                     # data[23]: @95720
+0632-0638: x 403935373230                                                     # data[24]: @95720
+0638-0644: x 403935373230                                                     # data[25]: @95720
+0644-0650: x 403935373230                                                     # data[26]: @95720
+0650-0656: x 403935373230                                                     # data[27]: @95720
+0656-0662: x 403935373230                                                     # data[28]: @95720
+0662-0668: x 403935373230                                                     # data[29]: @95720
+0668-0674: x 403935373230                                                     # data[30]: @95720
+0674-0680: x 403935373230                                                     # data[31]: @95720
+0680-0686: x 403935373230                                                     # data[32]: @95720
+0686-0692: x 403935373230                                                     # data[33]: @95720
+0692-0698: x 403935373230                                                     # data[34]: @95720
+0698-0704: x 403935373230                                                     # data[35]: @95720
+0704-0710: x 403935373230                                                     # data[36]: @95720
+0710-0716: x 403935373230                                                     # data[37]: @95720
+0716-0722: x 403935373230                                                     # data[38]: @95720
+0722-0728: x 403935373230                                                     # data[39]: @95720
+0728-0734: x 403935373230                                                     # data[40]: @95720
+0734-0740: x 403935373230                                                     # data[41]: @95720
+0740-0746: x 403935373230                                                     # data[42]: @95720
+# data for column 2
+0746-0747: x 80                                                               # encoding: const
+0747-0755: x 0100000000000000                                                 # 64-bit constant: 1
+# data for column 3
+0755-0756: x 00                                                               # bitmap encoding
+0756-0760: x 00000000                                                         # padding to align to 64-bit boundary
+0760-0768: b 1111111111111111111111111111111111111111000001110000000000000000 # bitmap word 0
+0768-0776: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+# data for column 4
+# rawbytes
+# offsets table
+0776-0777: x 01                                                               # encoding: 1b
+0777-0778: x 00                                                               # data[0] = 0 [821 overall]
+0778-0779: x 05                                                               # data[1] = 5 [826 overall]
+0779-0780: x 0a                                                               # data[2] = 10 [831 overall]
+0780-0781: x 0f                                                               # data[3] = 15 [836 overall]
+0781-0782: x 14                                                               # data[4] = 20 [841 overall]
+0782-0783: x 19                                                               # data[5] = 25 [846 overall]
+0783-0784: x 1e                                                               # data[6] = 30 [851 overall]
+0784-0785: x 23                                                               # data[7] = 35 [856 overall]
+0785-0786: x 28                                                               # data[8] = 40 [861 overall]
+0786-0787: x 2d                                                               # data[9] = 45 [866 overall]
+0787-0788: x 32                                                               # data[10] = 50 [871 overall]
+0788-0789: x 37                                                               # data[11] = 55 [876 overall]
+0789-0790: x 3c                                                               # data[12] = 60 [881 overall]
+0790-0791: x 41                                                               # data[13] = 65 [886 overall]
+0791-0792: x 46                                                               # data[14] = 70 [891 overall]
+0792-0793: x 4b                                                               # data[15] = 75 [896 overall]
+0793-0794: x 50                                                               # data[16] = 80 [901 overall]
+0794-0795: x 55                                                               # data[17] = 85 [906 overall]
+0795-0796: x 5a                                                               # data[18] = 90 [911 overall]
+0796-0797: x 5f                                                               # data[19] = 95 [916 overall]
+0797-0798: x 64                                                               # data[20] = 100 [921 overall]
+0798-0799: x 69                                                               # data[21] = 105 [926 overall]
+0799-0800: x 6e                                                               # data[22] = 110 [931 overall]
+0800-0801: x 73                                                               # data[23] = 115 [936 overall]
+0801-0802: x 78                                                               # data[24] = 120 [941 overall]
+0802-0803: x 7d                                                               # data[25] = 125 [946 overall]
+0803-0804: x 82                                                               # data[26] = 130 [951 overall]
+0804-0805: x 87                                                               # data[27] = 135 [956 overall]
+0805-0806: x 8c                                                               # data[28] = 140 [961 overall]
+0806-0807: x 91                                                               # data[29] = 145 [966 overall]
+0807-0808: x 96                                                               # data[30] = 150 [971 overall]
+0808-0809: x 9b                                                               # data[31] = 155 [976 overall]
+0809-0810: x a0                                                               # data[32] = 160 [981 overall]
+0810-0811: x a5                                                               # data[33] = 165 [986 overall]
+0811-0812: x aa                                                               # data[34] = 170 [991 overall]
+0812-0813: x af                                                               # data[35] = 175 [996 overall]
+0813-0814: x b4                                                               # data[36] = 180 [1001 overall]
+0814-0815: x b9                                                               # data[37] = 185 [1006 overall]
+0815-0816: x be                                                               # data[38] = 190 [1011 overall]
+0816-0817: x c3                                                               # data[39] = 195 [1016 overall]
+0817-0818: x c8                                                               # data[40] = 200 [1021 overall]
+0818-0819: x cd                                                               # data[41] = 205 [1026 overall]
+0819-0820: x d2                                                               # data[42] = 210 [1031 overall]
+0820-0821: x d7                                                               # data[43] = 215 [1036 overall]
+# data
+0821-0826: x 76616c7565                                                       # data[0]: value
+0826-0831: x 76616c7565                                                       # data[1]: value
+0831-0836: x 76616c7565                                                       # data[2]: value
+0836-0841: x 76616c7565                                                       # data[3]: value
+0841-0846: x 76616c7565                                                       # data[4]: value
+0846-0851: x 76616c7565                                                       # data[5]: value
+0851-0856: x 76616c7565                                                       # data[6]: value
+0856-0861: x 76616c7565                                                       # data[7]: value
+0861-0866: x 76616c7565                                                       # data[8]: value
+0866-0871: x 76616c7565                                                       # data[9]: value
+0871-0876: x 76616c7565                                                       # data[10]: value
+0876-0881: x 76616c7565                                                       # data[11]: value
+0881-0886: x 76616c7565                                                       # data[12]: value
+0886-0891: x 76616c7565                                                       # data[13]: value
+0891-0896: x 76616c7565                                                       # data[14]: value
+0896-0901: x 76616c7565                                                       # data[15]: value
+0901-0906: x 76616c7565                                                       # data[16]: value
+0906-0911: x 76616c7565                                                       # data[17]: value
+0911-0916: x 76616c7565                                                       # data[18]: value
+0916-0921: x 76616c7565                                                       # data[19]: value
+0921-0926: x 76616c7565                                                       # data[20]: value
+0926-0931: x 76616c7565                                                       # data[21]: value
+0931-0936: x 76616c7565                                                       # data[22]: value
+0936-0941: x 76616c7565                                                       # data[23]: value
+0941-0946: x 76616c7565                                                       # data[24]: value
+0946-0951: x 76616c7565                                                       # data[25]: value
+0951-0956: x 76616c7565                                                       # data[26]: value
+0956-0961: x 76616c7565                                                       # data[27]: value
+0961-0966: x 76616c7565                                                       # data[28]: value
+0966-0971: x 76616c7565                                                       # data[29]: value
+0971-0976: x 76616c7565                                                       # data[30]: value
+0976-0981: x 76616c7565                                                       # data[31]: value
+0981-0986: x 76616c7565                                                       # data[32]: value
+0986-0991: x 76616c7565                                                       # data[33]: value
+0991-0996: x 76616c7565                                                       # data[34]: value
+0996-1001: x 76616c7565                                                       # data[35]: value
+1001-1006: x 76616c7565                                                       # data[36]: value
+1006-1011: x 76616c7565                                                       # data[37]: value
+1011-1016: x 76616c7565                                                       # data[38]: value
+1016-1021: x 76616c7565                                                       # data[39]: value
+1021-1026: x 76616c7565                                                       # data[40]: value
+1026-1031: x 76616c7565                                                       # data[41]: value
+1031-1036: x 76616c7565                                                       # data[42]: value
+# data for column 5
+1036-1037: x 01                                                               # bitmap encoding
+1037-1038: x 00                                                               # block padding byte

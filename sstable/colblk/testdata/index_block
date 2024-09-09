@@ -6,7 +6,7 @@ bacitracin 412  212
 banana     632  215    bp5
 bonifide   963  326    bp6
 ----
-UnsafeSeparator(Rows()-1) = "bonifide"
+UnsafeSeparator(5) = "bonifide"
 # index block header
 # columnar block header
 000-001: x 01                   # version 1
@@ -125,6 +125,78 @@ block 1: 141-253 props="bp2"
 block 0: 24-48 props="bp1"
 .
 
+# Rebuild the same index block, but excluding the last row during the final Finish().
+
+build rows=5
+apple       24   24    bp1
+applied    141  112    bp2
+atone      195   49    bp3
+bacitracin 412  212
+banana     632  215    bp5
+bonifide   963  326    bp6
+----
+UnsafeSeparator(4) = "banana"
+# index block header
+# columnar block header
+000-001: x 01                   # version 1
+001-003: x 0400                 # 4 columns
+003-007: x 05000000             # 5 rows
+007-008: b 00000011             # col 0: bytes
+008-012: x 1b000000             # col 0: page start 27
+012-013: b 00000010             # col 1: uint
+013-017: x 43000000             # col 1: page start 67
+017-018: b 00000010             # col 2: uint
+018-022: x 4e000000             # col 2: page start 78
+022-023: b 00000011             # col 3: bytes
+023-027: x 54000000             # col 3: page start 84
+# data for column 0
+# rawbytes
+# offsets table
+027-028: x 01                   # encoding: 1b
+028-029: x 00                   # data[0] = 0 [34 overall]
+029-030: x 05                   # data[1] = 5 [39 overall]
+030-031: x 0c                   # data[2] = 12 [46 overall]
+031-032: x 11                   # data[3] = 17 [51 overall]
+032-033: x 1b                   # data[4] = 27 [61 overall]
+033-034: x 21                   # data[5] = 33 [67 overall]
+# data
+034-039: x 6170706c65           # data[0]: apple
+039-046: x 6170706c696564       # data[1]: applied
+046-051: x 61746f6e65           # data[2]: atone
+051-061: x 6261636974726163696e # data[3]: bacitracin
+061-067: x 62616e616e61         # data[4]: banana
+# data for column 1
+067-068: x 02                   # encoding: 2b
+068-070: x 1800                 # data[0] = 24
+070-072: x 8d00                 # data[1] = 141
+072-074: x c300                 # data[2] = 195
+074-076: x 9c01                 # data[3] = 412
+076-078: x 7802                 # data[4] = 632
+# data for column 2
+078-079: x 01                   # encoding: 1b
+079-080: x 18                   # data[0] = 24
+080-081: x 70                   # data[1] = 112
+081-082: x 31                   # data[2] = 49
+082-083: x d4                   # data[3] = 212
+083-084: x d7                   # data[4] = 215
+# data for column 3
+# rawbytes
+# offsets table
+084-085: x 01                   # encoding: 1b
+085-086: x 00                   # data[0] = 0 [91 overall]
+086-087: x 03                   # data[1] = 3 [94 overall]
+087-088: x 06                   # data[2] = 6 [97 overall]
+088-089: x 09                   # data[3] = 9 [100 overall]
+089-090: x 09                   # data[4] = 9 [100 overall]
+090-091: x 0c                   # data[5] = 12 [103 overall]
+# data
+091-094: x 627031               # data[0]: bp1
+094-097: x 627032               # data[1]: bp2
+097-100: x 627033               # data[2]: bp3
+100-100: x                      # data[3]:
+100-103: x 627035               # data[4]: bp5
+103-104: x 00                   # block padding byte
+
 build
 cat           3021   2052   bp1
 catastrophe  91251   1899
@@ -132,7 +204,7 @@ catatonic   102422  20442
 cephalopod  122864   9104   bp4
 coat        293128  32104
 ----
-UnsafeSeparator(Rows()-1) = "coat"
+UnsafeSeparator(4) = "coat"
 # index block header
 # columnar block header
 000-001: x 01                   # version 1
@@ -225,3 +297,71 @@ block 2: 102422-122864
 block 1: 91251-93150
 block 0: 3021-5073 props="bp1"
 .
+
+# Rebuild the same index block but excluding the final row during Finish().
+
+build rows=4
+cat           3021   2052   bp1
+catastrophe  91251   1899
+catatonic   102422  20442
+cephalopod  122864   9104   bp4
+coat        293128  32104
+----
+UnsafeSeparator(3) = "cephalopod"
+# index block header
+# columnar block header
+000-001: x 01                   # version 1
+001-003: x 0400                 # 4 columns
+003-007: x 04000000             # 4 rows
+007-008: b 00000011             # col 0: bytes
+008-012: x 1b000000             # col 0: page start 27
+012-013: b 00000010             # col 1: uint
+013-017: x 42000000             # col 1: page start 66
+017-018: b 00000010             # col 2: uint
+018-022: x 54000000             # col 2: page start 84
+022-023: b 00000011             # col 3: bytes
+023-027: x 5e000000             # col 3: page start 94
+# data for column 0
+# rawbytes
+# offsets table
+027-028: x 01                   # encoding: 1b
+028-029: x 00                   # data[0] = 0 [33 overall]
+029-030: x 03                   # data[1] = 3 [36 overall]
+030-031: x 0e                   # data[2] = 14 [47 overall]
+031-032: x 17                   # data[3] = 23 [56 overall]
+032-033: x 21                   # data[4] = 33 [66 overall]
+# data
+033-036: x 636174               # data[0]: cat
+036-046: x 636174617374726f7068 # data[1]: catastrophe
+046-047: x 65                   # (continued...)
+047-056: x 63617461746f6e6963   # data[2]: catatonic
+056-066: x 63657068616c6f706f64 # data[3]: cephalopod
+# data for column 1
+066-067: x 04                   # encoding: 4b
+067-068: x 00                   # padding (aligning to 32-bit boundary)
+068-072: x cd0b0000             # data[0] = 3021
+072-076: x 73640100             # data[1] = 91251
+076-080: x 16900100             # data[2] = 102422
+080-084: x f0df0100             # data[3] = 122864
+# data for column 2
+084-085: x 02                   # encoding: 2b
+085-086: x 00                   # padding (aligning to 16-bit boundary)
+086-088: x 0408                 # data[0] = 2052
+088-090: x 6b07                 # data[1] = 1899
+090-092: x da4f                 # data[2] = 20442
+092-094: x 9023                 # data[3] = 9104
+# data for column 3
+# rawbytes
+# offsets table
+094-095: x 01                   # encoding: 1b
+095-096: x 00                   # data[0] = 0 [100 overall]
+096-097: x 03                   # data[1] = 3 [103 overall]
+097-098: x 03                   # data[2] = 3 [103 overall]
+098-099: x 03                   # data[3] = 3 [103 overall]
+099-100: x 06                   # data[4] = 6 [106 overall]
+# data
+100-103: x 627031               # data[0]: bp1
+103-103: x                      # data[1]:
+103-103: x                      # data[2]:
+103-106: x 627034               # data[3]: bp4
+106-107: x 00                   # block padding byte

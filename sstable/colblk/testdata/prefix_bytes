@@ -13,6 +13,10 @@ Offsets:
 Data (len=3):
 abc
 
+unsafe-get i=(0)
+----
+UnsafeGet(0) = abc
+
 finish rows=1
 ----
 # PrefixBytes
@@ -42,6 +46,10 @@ Offsets:
 Data (len=3):
 abc
 
+unsafe-get i=(0)
+----
+UnsafeGet(0) = abc
+
 put
 abcd
 ----
@@ -52,6 +60,11 @@ Offsets:
   0000  0000  0003  0007
 Data (len=7):
 abcabcd
+
+unsafe-get i=(0, 1)
+----
+UnsafeGet(0) = abc
+UnsafeGet(1) = abcd
 
 put
 abce
@@ -64,6 +77,11 @@ Offsets:
 Data (len=11):
 abcabcdabce
 
+unsafe-get i=(1, 2)
+----
+UnsafeGet(1) = abcd
+UnsafeGet(2) = abce
+
 put
 abdd
 ----
@@ -75,6 +93,11 @@ Offsets:
 Data (len=15):
 abcabcdabceabdd
 
+unsafe-get i=(2, 3)
+----
+UnsafeGet(2) = abce
+UnsafeGet(3) = abdd
+
 put
 abde
 ----
@@ -85,6 +108,11 @@ Offsets:
   0000  0002  0003  0007  0011  0015  0000  0019
 Data (len=19):
 abcabcdabceabddabde
+
+unsafe-get i=(3, 4)
+----
+UnsafeGet(3) = abdd
+UnsafeGet(4) = abde
 
 # Try finishing just the n-1 rows.
 
@@ -222,6 +250,11 @@ Offsets:
 Data (len=32):
 aaabbbcaaabbbccaaabbbcdeaaabbbce
 
+unsafe-get i=(2, 3)
+----
+UnsafeGet(2) = aaabbbcde
+UnsafeGet(3) = aaabbbce
+
 put
 aaabbbdee*
 ----
@@ -232,6 +265,11 @@ Offsets:
   0000  0007  0007  0015  0024  0032  0000  0042
 Data (len=42):
 aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
+
+unsafe-get i=(3, 4)
+----
+UnsafeGet(3) = aaabbbce
+UnsafeGet(4) = aaabbbdee*
 
 put
 aaabbbdee*
@@ -244,6 +282,11 @@ Offsets:
 Data (len=42):
 aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
 
+unsafe-get i=(4, 5)
+----
+UnsafeGet(4) = aaabbbdee*
+UnsafeGet(5) = aaabbbdee*
+
 put
 aaabbbdee*
 ----
@@ -254,6 +297,11 @@ Offsets:
   0000  0007  0007  0015  0024  0032  0000  0042  0042  0042
 Data (len=42):
 aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*
+
+unsafe-get i=(5, 6)
+----
+UnsafeGet(5) = aaabbbdee*
+UnsafeGet(6) = aaabbbdee*
 
 put
 aaabbbeff
@@ -266,6 +314,11 @@ Offsets:
   0051
 Data (len=51):
 aaabbbcaaabbbccaaabbbcdeaaabbbceaaabbbdee*aaabbbeff
+
+unsafe-get i=(6, 7)
+----
+UnsafeGet(6) = aaabbbdee*
+UnsafeGet(7) = aaabbbeff
 
 put
 aaabbe

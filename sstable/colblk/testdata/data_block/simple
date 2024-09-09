@@ -37,6 +37,7 @@ size=169:
 
 finish
 ----
+LastKey: d@11#0,DEL
 # data block header
 000-004: x 04000000                                                         # maximum key length: 4
 # columnar block header
@@ -330,6 +331,7 @@ size=334:
 
 finish
 ----
+LastKey: aaaaaaaaaaaaaaarrived@10#0,SET
 # data block header
 000-004: x 1c000000                                                         # maximum key length: 28
 # columnar block header

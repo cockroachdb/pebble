@@ -57,6 +57,9 @@ type KeyWriter interface {
 	// WriteKey is guaranteed to be called sequentially with increasing row
 	// indexes, beginning at zero.
 	WriteKey(row int, key []byte, keyPrefixLen, keyPrefixLenSharedWithPrev int32)
+	// MaterializeKey appends the zero-indexed row'th key written to dst,
+	// returning the result.
+	MaterializeKey(dst []byte, row int) []byte
 }
 
 // KeyComparison holds information about a key and its comparison to another a
@@ -162,7 +165,7 @@ type defaultKeyWriter struct {
 }
 
 func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
-	lp := w.prefixes.LastKey()
+	lp := w.prefixes.UnsafeGet(w.prefixes.nKeys - 1)
 
 	var cmpv KeyComparison
 	cmpv.PrefixLen = int32(w.comparer.Split(key))
@@ -223,6 +226,12 @@ func (w *defaultKeyWriter) WriteKey(
 ) {
 	w.prefixes.Put(key[:keyPrefixLen], int(keyPrefixLenSharedWithPrev))
 	w.suffixes.Put(key[keyPrefixLen:])
+}
+
+func (w *defaultKeyWriter) MaterializeKey(dst []byte, row int) []byte {
+	dst = append(dst, w.prefixes.UnsafeGet(row)...)
+	dst = append(dst, w.suffixes.UnsafeGet(row)...)
+	return dst
 }
 
 func (w *defaultKeyWriter) NumColumns() int {
@@ -367,6 +376,7 @@ type DataBlockWriter struct {
 	rows             int
 	maximumKeyLength int
 	valuePrefixTmp   [1]byte
+	lastUserKeyTmp   []byte
 }
 
 // TODO(jackson): Add an isObsolete bitmap column.
@@ -395,6 +405,8 @@ func (w *DataBlockWriter) Init(schema KeySchema) {
 	w.isValueExternal.Reset()
 	w.rows = 0
 	w.maximumKeyLength = 0
+	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
+	w.enc.reset()
 }
 
 // Reset resets the data block writer to its initial state, retaining buffers.
@@ -406,6 +418,7 @@ func (w *DataBlockWriter) Reset() {
 	w.isValueExternal.Reset()
 	w.rows = 0
 	w.maximumKeyLength = 0
+	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
 	w.enc.reset()
 }
 
@@ -484,36 +497,50 @@ func (w *DataBlockWriter) Size() int {
 	return int(off)
 }
 
-// Finish serializes the pending data block.
-func (w *DataBlockWriter) Finish() []byte {
+// Finish serializes the pending data block, including the first [rows] rows.
+// The value of [rows] must be Rows() or Rows()-1. The provided size must be the
+// size of the data block with the provided row count (i.e., the return value of
+// [Size] when DataBlockWriter.Rows() = [rows]).
+//
+// Finish the returns the serialized, uncompressed data block and the
+// InternalKey of the last key contained within the data block. The memory of
+// the lastKey's UserKey is owned by the DataBlockWriter. The caller must
+// copy it if they require it to outlive a Reset of the writer.
+func (w *DataBlockWriter) Finish(rows, size int) (finished []byte, lastKey base.InternalKey) {
+	if invariants.Enabled && rows != w.rows && rows != w.rows-1 {
+		panic(errors.AssertionFailedf("data block has %d rows; asked to finish %d", w.rows, rows))
+	}
+
 	cols := len(w.Schema.ColumnTypes) + dataBlockColumnMax
 	h := Header{
 		Version: Version1,
 		Columns: uint16(cols),
-		Rows:    uint32(w.rows),
+		Rows:    uint32(rows),
 	}
 
 	// Invert the prefix-same bitmap before writing it out, because we want it
 	// to represent when the prefix changes.
-	w.prefixSame.Invert(w.rows)
+	w.prefixSame.Invert(rows)
 
-	w.enc.init(w.Size(), h, dataBlockCustomHeaderSize)
+	w.enc.init(size, h, dataBlockCustomHeaderSize)
 
 	// Write the max key length in the custom header.
 	binary.LittleEndian.PutUint32(w.enc.data()[:dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
 
-	// Write the user-defined key columns.
-	w.enc.encode(w.rows, w.KeyWriter)
+	w.enc.encode(rows, w.KeyWriter)
+	w.enc.encode(rows, &w.trailers)
+	w.enc.encode(rows, &w.prefixSame)
+	w.enc.encode(rows, &w.values)
+	w.enc.encode(rows, &w.isValueExternal)
+	finished = w.enc.finish()
 
-	// Write the internal key trailers.
-	w.enc.encode(w.rows, &w.trailers)
-
-	w.enc.encode(w.rows, &w.prefixSame)
-
-	// Write the value columns.
-	w.enc.encode(w.rows, &w.values)
-	w.enc.encode(w.rows, &w.isValueExternal)
-	return w.enc.finish()
+	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
+	w.lastUserKeyTmp = w.KeyWriter.MaterializeKey(w.lastUserKeyTmp[:0], rows-1)
+	lastKey = base.InternalKey{
+		UserKey: w.lastUserKeyTmp,
+		Trailer: base.InternalKeyTrailer(w.trailers.Get(rows - 1)),
+	}
+	return finished, lastKey
 }
 
 // DataBlockReaderSize is the size of a DataBlockReader struct. If allocating

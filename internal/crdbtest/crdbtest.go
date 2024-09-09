@@ -103,6 +103,30 @@ func EncodeMVCCKey(dst []byte, key []byte, walltime uint64, logical uint32) []by
 	return EncodeTimestamp(dst, walltime, logical)
 }
 
+// AppendTimestamp appends an encoded MVCC timestamp onto key, returning the new
+// key. The provided key should already have the 0x00 sentinel byte (i.e., key
+// should be a proper prefix from the perspective of Pebble).
+func AppendTimestamp(key []byte, walltime uint64, logical uint32) []byte {
+	if key[len(key)-1] != 0 {
+		panic(errors.AssertionFailedf("key does not end with 0x00 sentinel byte: %x", key))
+	}
+	if logical == 0 {
+		if walltime == 0 {
+			return key
+		}
+		key = append(key, make([]byte, 9)...)
+		binary.BigEndian.PutUint64(key[len(key)-9:], walltime)
+		key[len(key)-1] = 9 // Version length byte
+		return key
+	}
+	key = append(key, make([]byte, 13)...)
+	binary.BigEndian.PutUint64(key[len(key)-13:], walltime)
+	binary.BigEndian.PutUint32(key[len(key)-5:], logical)
+	key[len(key)-1] = 13 // Version length byte
+	return key
+
+}
+
 // EncodeTimestamp encodes a MVCC timestamp into a key, returning the new key.
 // The key's capacity must be sufficiently large to hold the encoded timestamp.
 func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
