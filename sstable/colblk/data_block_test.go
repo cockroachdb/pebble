@@ -44,7 +44,7 @@ func TestDataBlock(t *testing.T) {
 			case "write":
 				for _, line := range strings.Split(td.Input, "\n") {
 					j := strings.IndexRune(line, ':')
-					ik := base.ParsePrettyInternalKey(line[:j])
+					ik := base.ParseInternalKey(line[:j])
 
 					kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 					valueString := line[j+1:]
