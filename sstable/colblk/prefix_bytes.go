@@ -689,6 +689,9 @@ func (b *PrefixBytesBuilder) Reset() {
 	}
 }
 
+// Rows returns the number of keys added to the builder.
+func (b *PrefixBytesBuilder) Rows() int { return b.nKeys }
+
 // prefixBytesSizing maintains metadata about the size of the accumulated data
 // and its encoded size. Every key addition computes a new prefixBytesSizing
 // struct. The PrefixBytesBuilder maintains two prefixBytesSizing structs, one
@@ -861,10 +864,27 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 	}
 }
 
-// LastKey returns the last key added to the builder through Put. The key is
-// guaranteed to be stable until Finish or Reset is called.
-func (b *PrefixBytesBuilder) LastKey() []byte {
-	return b.data[len(b.data)-b.sizings[(b.nKeys+1)&1].lastKeyLen:]
+// UnsafeGet returns the zero-indexed i'th key added to the builder through Put.
+// UnsafeGet may only be used to retrieve the Rows()-1'th or Rows()-2'th keys.
+// If called with a different i value, UnsafeGet panics.  The keys returned by
+// UnsafeGet are guaranteed to be stable until Finish or Reset is called. The
+// caller must not mutate the returned slice.
+func (b *PrefixBytesBuilder) UnsafeGet(i int) []byte {
+	switch i {
+	case b.nKeys - 1:
+		// The last key is the [lastKeyLen] bytes.
+		return b.data[len(b.data)-b.sizings[i&1].lastKeyLen:]
+	case b.nKeys - 2:
+		// Check if the very last key is a duplicate of the second-to-last key.
+		lastKeyLen := b.sizings[(i+1)&1].lastKeyLen
+		if b.offsets.elems.At(b.rowSuffixIndex(i+1)) == b.offsets.elems.At(b.rowSuffixIndex(i+2)) {
+			return b.data[len(b.data)-b.sizings[i&1].lastKeyLen:]
+		}
+		lastLastKeyLen := b.sizings[i&1].lastKeyLen
+		return b.data[len(b.data)-lastKeyLen-lastLastKeyLen : len(b.data)-lastKeyLen]
+	default:
+		panic(errors.AssertionFailedf("UnsafeGet(%d) called on PrefixBytes with %d keys", i, b.nKeys))
+	}
 }
 
 // addOffset adds an offset to the offsets table. If necessary, addOffset will
