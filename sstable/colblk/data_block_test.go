@@ -28,6 +28,7 @@ func TestDataBlock(t *testing.T) {
 	var w DataBlockWriter
 	var r DataBlockReader
 	var it DataBlockIter
+	var sizes []int
 	datadriven.Walk(t, "testdata/data_block", func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 			buf.Reset()
@@ -40,6 +41,7 @@ func TestDataBlock(t *testing.T) {
 					w.Init(testKeysSchema)
 				}
 				fmt.Fprint(&buf, &w)
+				sizes = sizes[:0]
 				return buf.String()
 			case "write":
 				for _, line := range strings.Split(td.Input, "\n") {
@@ -54,16 +56,19 @@ func TestDataBlock(t *testing.T) {
 					}
 					v := []byte(line[j+1:])
 					w.Add(ik, v, vp, kcmp)
+					sizes = append(sizes, w.Size())
 				}
 				fmt.Fprint(&buf, &w)
 				return buf.String()
 			case "finish":
-				block := w.Finish()
+				rows := w.Rows()
+				td.MaybeScanArgs(t, "rows", &rows)
+				block, lastKey := w.Finish(rows, sizes[rows-1])
 				r.Init(testKeysSchema, block)
 				f := binfmt.New(r.r.data).LineWidth(20)
 				r.Describe(f)
-
-				return f.String()
+				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), f.String())
+				return buf.String()
 			case "iter":
 				it.Init(&r, testKeysSchema.NewKeySeeker(), func([]byte) base.LazyValue {
 					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
@@ -106,7 +111,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 			w.Add(ik, values[j], vp, kcmp)
 			j++
 		}
-		w.Finish()
+		w.Finish(w.Rows(), w.Size())
 	}
 }
 

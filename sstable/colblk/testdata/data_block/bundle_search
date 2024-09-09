@@ -96,6 +96,7 @@ size=720:
 
 finish
 ----
+LastKey: bacteria#1,SET
 # data block header
 000-004: x 10000000                                                         # maximum key length: 16
 # columnar block header

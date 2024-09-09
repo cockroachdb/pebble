@@ -7,8 +7,10 @@ package colblk
 import (
 	"bytes"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -97,26 +99,35 @@ func (w *IndexBlockWriter) UnsafeSeparator(i int) []byte {
 
 // Size returns the size of the pending index block.
 func (w *IndexBlockWriter) Size() int {
+	return w.size(w.rows)
+}
+
+func (w *IndexBlockWriter) size(rows int) int {
 	off := blockHeaderSize(indexBlockColumnCount, indexBlockCustomHeaderSize)
-	off = w.separators.Size(w.rows, off)
-	off = w.offsets.Size(w.rows, off)
-	off = w.lengths.Size(w.rows, off)
-	off = w.blockProperties.Size(w.rows, off)
+	off = w.separators.Size(rows, off)
+	off = w.offsets.Size(rows, off)
+	off = w.lengths.Size(rows, off)
+	off = w.blockProperties.Size(rows, off)
 	off++
 	return int(off)
 }
 
-// Finish serializes the pending index block.
-func (w *IndexBlockWriter) Finish() []byte {
-	w.enc.init(w.Size(), Header{
+// Finish serializes the pending index block, including the first [rows] rows.
+// The value of [rows] must be Rows() or Rows()-1.
+func (w *IndexBlockWriter) Finish(rows int) []byte {
+	if invariants.Enabled && rows != w.rows && rows != w.rows-1 {
+		panic(errors.AssertionFailedf("index block has %d rows; asked to finish %d", w.rows, rows))
+	}
+
+	w.enc.init(w.size(rows), Header{
 		Version: Version1,
 		Columns: indexBlockColumnCount,
-		Rows:    uint32(w.rows),
+		Rows:    uint32(rows),
 	}, indexBlockCustomHeaderSize)
-	w.enc.encode(w.rows, &w.separators)
-	w.enc.encode(w.rows, &w.offsets)
-	w.enc.encode(w.rows, &w.lengths)
-	w.enc.encode(w.rows, &w.blockProperties)
+	w.enc.encode(rows, &w.separators)
+	w.enc.encode(rows, &w.offsets)
+	w.enc.encode(rows, &w.lengths)
+	w.enc.encode(rows, &w.blockProperties)
 	return w.enc.finish()
 }
 

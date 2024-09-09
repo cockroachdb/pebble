@@ -60,7 +60,7 @@ type cockroachKeyWriter struct {
 }
 
 func (kw *cockroachKeyWriter) ComparePrev(key []byte) KeyComparison {
-	lp := kw.prefixes.LastKey()
+	lp := kw.prefixes.UnsafeGet(kw.prefixes.Rows() - 1)
 	var cmpv KeyComparison
 	cmpv.PrefixLen = int32(crdbtest.Split(key)) // TODO(jackson): Inline
 	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
@@ -98,6 +98,14 @@ func (kw *cockroachKeyWriter) WriteKey(
 		kw.logicalTimes.Set(row, uint64(logicalTime))
 	}
 	kw.untypedSuffixes.Put(untypedSuffix)
+}
+
+func (kw *cockroachKeyWriter) MaterializeKey(dst []byte, i int) []byte {
+	dst = append(dst, kw.prefixes.UnsafeGet(i)...)
+	if untypedSuffixed := kw.untypedSuffixes.UnsafeGet(i); len(untypedSuffixed) > 0 {
+		return append(dst, untypedSuffixed...)
+	}
+	return crdbtest.AppendTimestamp(dst, kw.wallTimes.Get(i), uint32(kw.logicalTimes.Get(i)))
 }
 
 func (kw *cockroachKeyWriter) Reset() {
@@ -334,7 +342,7 @@ func TestCockroachDataBlock(t *testing.T) {
 		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp)
 		count++
 	}
-	serializedBlock := w.Finish()
+	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
 	var reader DataBlockReader
 	var it DataBlockIter
 	reader.Init(cockroachKeySchema, serializedBlock)
@@ -410,7 +418,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp)
 			count++
 		}
-		_ = w.Finish()
+		_, _ = w.Finish(w.Rows(), w.Size())
 	}
 }
 
@@ -454,7 +462,7 @@ func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig,
 		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp)
 		count++
 	}
-	serializedBlock := w.Finish()
+	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
 	var reader DataBlockReader
 	var it DataBlockIter
 	reader.Init(cockroachKeySchema, serializedBlock)

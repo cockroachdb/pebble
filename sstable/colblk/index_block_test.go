@@ -39,8 +39,11 @@ func TestIndexBlock(t *testing.T) {
 				}
 				w.AddBlockHandle([]byte(fields[0]), h, bp)
 			}
-			fmt.Fprintf(&buf, "UnsafeSeparator(Rows()-1) = %q\n", w.UnsafeSeparator(w.Rows()-1))
-			data := w.Finish()
+
+			rows := w.Rows()
+			d.MaybeScanArgs(t, "rows", &rows)
+			data := w.Finish(rows)
+			fmt.Fprintf(&buf, "UnsafeSeparator(%d) = %q\n", rows-1, w.UnsafeSeparator(rows-1))
 			r.Init(data)
 			fmt.Fprint(&buf, r.DebugString())
 			return buf.String()

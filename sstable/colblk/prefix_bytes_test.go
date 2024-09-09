@@ -47,7 +47,7 @@ func TestPrefixBytes(t *testing.T) {
 			for _, k := range inputKeys {
 				keyPrefixLenSharedWithPrev := len(k)
 				if builder.nKeys > 0 {
-					keyPrefixLenSharedWithPrev = crbytes.CommonPrefix(builder.LastKey(), k)
+					keyPrefixLenSharedWithPrev = crbytes.CommonPrefix(builder.UnsafeGet(builder.nKeys-1), k)
 				}
 				p := []byte(k)
 				builder.Put(p, keyPrefixLenSharedWithPrev)
@@ -55,6 +55,13 @@ func TestPrefixBytes(t *testing.T) {
 				sizeAtRowCount = append(sizeAtRowCount, builder.Size(keys, 0))
 			}
 			fmt.Fprint(&out, builder.debugString(0))
+			return out.String()
+		case "unsafe-get":
+			var indices []int
+			td.ScanArgs(t, "i", &indices)
+			for _, i := range indices {
+				fmt.Fprintf(&out, "UnsafeGet(%d) = %s\n", i, builder.UnsafeGet(i))
+			}
 			return out.String()
 		case "finish":
 			var rows int
