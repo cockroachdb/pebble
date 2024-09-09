@@ -150,7 +150,7 @@ func (p *debugParser) DiskFileNum() base.DiskFileNum {
 
 // InternalKey parses the next token as an internal key.
 func (p *debugParser) InternalKey() base.InternalKey {
-	return base.ParsePrettyInternalKey(p.Next())
+	return base.ParseInternalKey(p.Next())
 }
 
 // Errf panics with an error which includes the original string and the last
