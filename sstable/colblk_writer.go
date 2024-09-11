@@ -311,8 +311,10 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 	// block with this key-value pair included. Check to see if we should flush
 	// the current block, either with or without the added key-value pair.
 	size := w.dataBlock.Size()
+	fmt.Printf("size with %s is %d; size without is %d\n", key.UserKey, size, w.pendingDataBlockSize)
 	if shouldFlushWithoutLatestKV(size, w.pendingDataBlockSize,
 		entriesWithoutKV, w.dataBlockOptions, w.allocatorSizeClasses) {
+		fmt.Printf("flushing excluding %q\n", key.UserKey)
 		// Flush the data block excluding the key we just added.
 		w.flushDataBlockWithoutNextKey(key.UserKey)
 		// flushDataBlockWithoutNextKey reset the data block builder, and we can
@@ -519,6 +521,7 @@ func (w *RawColumnWriter) flushDataBlockWithoutNextKey(nextKey []byte) {
 	w.separatorBuf = w.comparer.Separator(w.separatorBuf[:0], lastKey.UserKey, nextKey)
 	w.enqueueDataBlock(serializedBlock, lastKey, w.separatorBuf)
 	w.dataBlock.Reset()
+	w.pendingDataBlockSize = 0
 }
 
 // maybeIncrementTombstoneDenseBlocks increments the number of tombstone dense
@@ -882,6 +885,7 @@ func shouldFlushWithoutLatestKV(
 		// Even with the new KV we still haven't exceeded the target block size.
 		// There's no harm to committing to flushing with the new KV (and
 		// possibly additional future KVs).
+		fmt.Printf("sizeWithKV (%d) < blockSize (%d) so not flusing\n", sizeWithKV, flushOptions.blockSize)
 		return false
 	}
 
@@ -891,6 +895,7 @@ func shouldFlushWithoutLatestKV(
 		// If the block size could not be mapped to a size class, we fall back
 		// to flushing without the KV since we already know sizeWithKV >=
 		// blockSize.
+		fmt.Printf("no size class info but sizeWithKV (%d) >= blockSize (%d) so flushing\n", sizeWithKV, flushOptions.blockSize)
 		return true
 	}
 	// Even though sizeWithKV >= blockSize, we may still want to defer flushing
