@@ -1683,6 +1683,13 @@ func (wa WriteAmpHeuristic) pick(
 	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
 		return pcOrig
 	}
+	// We consider the addition of a level as an "expansion" of the compaction.
+	// If pcMulti is past the expanded compaction byte size limit already,
+	// we don't consider it.
+	if pcMulti.compactionSize() >= expandedCompactionByteSizeLimit(
+		opts, adjustedOutputLevel(pcMulti.outputLevel.level, pcMulti.baseLevel), diskAvailBytes) {
+		return pcOrig
+	}
 	picked := pcOrig
 	if pcMulti.predictedWriteAmp() <= pcOrig.predictedWriteAmp()+wa.AddPropensity {
 		picked = pcMulti
