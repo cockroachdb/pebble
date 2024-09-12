@@ -1,22 +1,32 @@
 # Format for define command:
+#
+# L
+#   <filenum>:[<smallest-key>-<largest-key>)
+#     kv kv kv ..
+#     kv kv ..
+#   <filenum>:[<smallest-key>-<largest-key>)
+#     kv kv kv ..
+#     kv kv ..
+# L
+# ...
+#
 # Levels are ordered from higher to lower, and each new level starts with an L
-# Each level is defined using an even number of lines where every pair of lines represents
-# a file. The files within a level are ordered from smaller to larger keys.
-# Each file is defined using: the first line specifies the smallest and largest internal
-# keys and the second line the point key-value pairs in the sstable in order. The rangedel
-# key-value pairs should also be in increasing order relative to the other rangedel pairs.
-# The largest file key can take the form of <userkey>.RANGEDEL.inf, which
-# represents the range deletion sentinel.
+# For each level, one or more files are defined. A file definition starts with
+# the file metadata representation, at one indentation level. Followed are KVs
+# arbitrarily spread over one or more lines, at two indentation levels. Point
+# KVs should be ordered relative to each other, and rangedels should be ordered
+# relative to each other.
 
 # The rangedel should not delete any points in any sstable.  The two files were involved in a
 # compaction and then the second file got moved to a lower level.
 define
 L
-a.SET.30 e.RANGEDEL.inf
-a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:e
+  000000:[a#30,SET-e#inf,RANGEDEL]
+    a#30,SET:30 c#27,SET:27
+    a#8,RANGEDEL:e
 L
-e.SET.10 g.SET.20
-e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
+  000001:[e#10,SET-g#20,SET]
+    e#10,SET:10 g#20,SET:20 e#8,RANGEDEL:g
 ----
 L1:
   000000:[a#30,SET-e#inf,RANGEDEL]
@@ -98,11 +108,12 @@ a#30,SET:30
 
 define
 L
-a.SET.15 f.SET.16
-a.SET.15:15 c.SET.13:13 f.SET.16:16 a.RANGEDEL.12:f
+  000002:[a#15,SET-f#16,SET]
+    a#15,SET:15 c#13,SET:13 f#16,SET:16
+    a#12,RANGEDEL:f
 L
-e.SET.10 g.SET.15
-e.SET.10:10 g.SET.15:15
+  000003:[e#10,SET-g#15,SET]
+    e#10,SET:10 g#15,SET:15
 ----
 L1:
   000002:[a#15,SET-f#16,SET]
@@ -142,11 +153,11 @@ a#15,SET:15
 
 define
 L
-c.SET.30 f.RANGEDEL.inf
-c.SET.30:30 d.SET.27:27 e.RANGEDEL.8:f
+  000004:[c#30,SET-f#inf,RANGEDEL]
+    c#30,SET:30 d#27,SET:27 e#8,RANGEDEL:f
 L
-a.SET.10 c.RANGEDEL.inf
-a.SET.10:10 b.SET.12:12 a.RANGEDEL.8:c
+  000005:[a#10,SET-c#inf,RANGEDEL]
+    a#10,SET:10 b#12,SET:12 a#8,RANGEDEL:c
 ----
 L1:
   000004:[c#30,SET-f#inf,RANGEDEL]
@@ -205,11 +216,12 @@ a#10,SET:10
 
 define
 L
-c.SET.15 g.SET.16
-c.SET.15:15 f.SET.13:13 g.SET.16:16 c.RANGEDEL.12:g
+  000006:[c#15,SET-g#16,SET]
+    c#15,SET:15 f#13,SET:13 g#16,SET:16
+    c#12,RANGEDEL:g
 L
-b.SET.14 d.SET.10
-b.SET.14:14 d.SET.10:10
+  000007:[b#14,SET-d#10,SET]
+    b#14,SET:14 d#10,SET:10
 ----
 L1:
   000006:[c#15,SET-g#16,SET]
@@ -237,11 +249,11 @@ b#14,SET:14
 # The rangedel should not delete anything.
 define
 L
-a.SET.30 e.RANGEDEL.inf
-a.SET.30:30 c.SET.27:27 a.RANGEDEL.8:e
+  000008:[a#30,SET-e#inf,RANGEDEL]
+    a#30,SET:30 c#27,SET:27 a#8,RANGEDEL:e
 L
-e.SET.10 g.SET.20
-e.SET.10:10 g.SET.20:20 e.RANGEDEL.8:g
+  000009:[e#10,SET-g#20,SET]
+    e#10,SET:10 g#20,SET:20 e#8,RANGEDEL:g
 ----
 L1:
   000008:[a#30,SET-e#inf,RANGEDEL]
@@ -293,8 +305,8 @@ g#20,SET:20
 
 define
 L
-a.SET.9 d.SET.6
-a.SET.9:9 b.SET.8:8 c.SET.7:7 d.SET.6:6
+  000010:[a#9,SET-d#6,SET]
+    a#9,SET:9 b#8,SET:8 c#7,SET:7 d#6,SET:6
 ----
 L1:
   000010:[a#9,SET-d#6,SET]
@@ -334,11 +346,11 @@ b#8,SET:8
 
 define
 L
-a.SET.9 d.SET.6
-a.SET.9:9 b.SET.8:8 c.SET.7:7 d.SET.6:6
+  000011:[a#9,SET-d#6,SET]
+    a#9,SET:9 b#8,SET:8 c#7,SET:7 d#6,SET:6
 L
-c.SET.5 f.SET.2
-c.SET.5:5 d.SET.4:4 e.SET.3:3 f.SET.2:2
+  000012:[c#5,SET-f#2,SET]
+    c#5,SET:5 d#4,SET:4 e#3,SET:3 f#2,SET:2
 ----
 L1:
   000011:[a#9,SET-d#6,SET]
@@ -389,11 +401,11 @@ err=pebble: unsupported reverse prefix iteration
 
 define
 L
-c.SET.9 f.SET.6
-c.SET.9:9 d.SET.8:8 e.SET.7:7 f.SET.6:6
+  000013:[c#9,SET-f#6,SET]
+    c#9,SET:9 d#8,SET:8 e#7,SET:7 f#6,SET:6
 L
-a.SET.5 d.SET.2
-a.SET.5:5 b.SET.4:4 c.SET.3:3 d.SET.2:2
+  000014:[a#5,SET-d#2,SET]
+    a#5,SET:5 b#4,SET:4 c#3,SET:3 d#2,SET:2
 ----
 L1:
   000013:[c#9,SET-f#6,SET]
@@ -434,15 +446,15 @@ err=injected error
 
 define
 L
-a.SET.2 a.SET.2
-a.SET.2:2
-c.RANGEDEL.4 e.RANGEDEL.inf
-c.RANGEDEL.4:e
-f.SET.3 f.SET.3
-f.SET.3:3
+  000015:[a#2,SET-a#2,SET]
+    a#2,SET:2
+  000016:[c#4,RANGEDEL-e#inf,RANGEDEL]
+    c#4,RANGEDEL:e
+  000017:[f#3,SET-f#3,SET]
+    f#3,SET:3
 L
-a.SET.0 f.SET.0
-a.SET.0:1 b.SET.0:1 c.SET.0:1 d.SET.0:1 e.SET.0:1 f.SET.0:1
+  000018:[a#0,SET-f#0,SET]
+    a#0,SET:1 b#0,SET:1 c#0,SET:1 d#0,SET:1 e#0,SET:1 f#0,SET:1
 ----
 L1:
   000015:[a#2,SET-a#2,SET]
@@ -494,14 +506,15 @@ a#2,SET:2
 
 define
 L
-kq.RANGEDEL.100 p.RANGEDEL.inf
-kq.RANGEDEL.100:p
+  000019:[kq#100,RANGEDEL-p#inf,RANGEDEL]
+    kq#100,RANGEDEL:p
 L
-b.SET.90 o.SET.65
-b.SET.90:90 cat.SET.70:70 g.SET.80:80 o.SET.65:65
+  000020:[b#90,SET-o#65,SET]
+    b#90,SET:90 cat#70,SET:70 g#80,SET:80 o#65,SET:65
 L
-a.SET.41 z.RANGEDEL.inf
-a.SET.41:41 koujdlp.MERGE.37:37 ok.SET.46:46 v.SET.43:43 v.RANGEDEL.19:z
+  000021:[a#41,SET-z#inf,RANGEDEL]
+    a#41,SET:41 koujdlp.MERGE.37:37 ok#46,SET:46 v#43,SET:43
+    v#19,RANGEDEL:z
 ----
 L1:
   000019:[kq#100,RANGEDEL-p#inf,RANGEDEL]
@@ -523,14 +536,15 @@ koujdlp#37,MERGE:37
 
 define
 L
-a.SET.103 jyk.RANGEDEL.inf
-a.SET.103:103 imd.SET.793:793 iwoeionch.SET.792:792 c.RANGEDEL.101:jyk
+  000022:[a#103,SET-jyk#inf,RANGEDEL]
+    a#103,SET:103 imd#793,SET:793 iwoeionch#792,SET:792
+    c#101,RANGEDEL:jyk
 L
-b.SET.90 o.SET.65
-b.SET.90:90 cat.SET.70:70 g.SET.80:80 o.SET.65:65
+  000023:[b#90,SET-o#65,SET]
+    b#90,SET:90 cat#70,SET:70 g#80,SET:80 o#65,SET:65
 L
-all.SET.0 zk.SET.722
-all.SET.0:0 c.SET.0:0 zk.SET.722:722
+  000024:[all#0,SET-zk#722,SET]
+    all#0,SET:0 c#0,SET:0 zk#722,SET:722
 ----
 L1:
   000022:[a#103,SET-jyk#inf,RANGEDEL]
@@ -566,8 +580,9 @@ err=injected error
 # range deletion tombstones. Keys a, d are not deleted, while the rest are.
 define
 L
-a.SET.10 d.SET.10
-a.SET.10:a10 b.SET.10:b10 c.SET.10:c10 d.SET.10:d10 b.RANGEDEL.12:d
+  000025:[a#10,SET-d#10,SET]
+    a#10,SET:a10 b#10,SET:b10 c#10,SET:c10 d#10,SET:d10
+    b#12,RANGEDEL:d
 ----
 L1:
   000025:[a#10,SET-d#10,SET]
@@ -617,8 +632,8 @@ d#10,SET:d10
 # stats.
 define
 L
-a.SET.30 g.RANGEDEL.inf
-a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
+  000026:[a#30,SET-g#inf,RANGEDEL]
+    a#30,SET:30 a#20,RANGEDEL:g b#19,SET:19 c#18,SET:18 d#17,SET:17 e#16,SET:16 f#21,SET:21
 ----
 L1:
   000026:[a#30,SET-g#inf,RANGEDEL]
@@ -649,8 +664,8 @@ f#21,SET:21
 
 define
 L
-a.SET.30 g.RANGEDEL.inf
-a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
+  000027:[a#30,SET-g#inf,RANGEDEL]
+    a#30,SET:30 a#20,RANGEDEL:g b#19,SET:19 c#18,SET:18 d#17,SET:17 e#16,SET:16 f#21,SET:21
 ----
 L1:
   000027:[a#30,SET-g#inf,RANGEDEL]
@@ -677,11 +692,11 @@ err=injected error
 
 define
 L
-a.SET.30 c.SET.27
-a.SET.30:30 c.SET.27:27
+  000028:[a#30,SET-c#27,SET]
+    a#30,SET:30 c#27,SET:27
 L
-e.SET.10 g.SET.20
-e.SET.10:10 g.SET.20:20
+  000029:[e#10,SET-g#20,SET]
+    e#10,SET:10 g#20,SET:20
 ----
 L1:
   000028:[a#30,SET-c#27,SET]
@@ -810,8 +825,8 @@ err=injected error
 # same table.
 define
 L
-a.SET.30 g.RANGEDEL.inf
-a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
+  000030:[a#30,SET-g#inf,RANGEDEL]
+    a#30,SET:30 a#20,RANGEDEL:g b#19,SET:19 c#18,SET:18 d#17,SET:17 e#16,SET:16 f#21,SET:21
 ----
 L1:
   000030:[a#30,SET-g#inf,RANGEDEL]
@@ -844,10 +859,10 @@ err=injected error
 
 define
 L
-a.SET.10 c.SET.10
-a.SET.10:a10 c.SET.10:c10
-d.SET.10 g.SET.10
-d.SET.10:d10 g.SET.10:g10
+  000031:[a#10,SET-c#10,SET]
+    a#10,SET:a10 c#10,SET:c10
+  000032:[d#10,SET-g#10,SET]
+    d#10,SET:d10 g#10,SET:g10
 ----
 L1:
   000031:[a#10,SET-c#10,SET]
@@ -887,14 +902,14 @@ err=injected error
 
 define
 L
-a.SET.103 jd.RANGEDEL.inf
-a.SET.103:103 imd.SET.793:793 iwoeionch.SET.792:792 c.RANGEDEL.101:jd
+  000033:[a#103,SET-jd#inf,RANGEDEL]
+    a#103,SET:103 imd#793,SET:793 iwoeionch#792,SET:792 c#101,RANGEDEL:jd
 L
-b.SET.90 o.SET.65
-b.SET.90:90 cat.SET.70:70 g.SET.80:80 o.SET.65:65
+  000034:[b#90,SET-o#65,SET]
+    b#90,SET:90 cat#70,SET:70 g#80,SET:80 o#65,SET:65
 L
-all.SET.0 zk.SET.722
-all.SET.0:0 c.SET.0:0 zk.SET.722:722
+  000035:[all#0,SET-zk#722,SET]
+    all#0,SET:0 c#0,SET:0 zk#722,SET:722
 ----
 L1:
   000033:[a#103,SET-jd#inf,RANGEDEL]

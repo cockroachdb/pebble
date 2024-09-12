@@ -783,7 +783,9 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 // representation.
 func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 	defer func() {
-		err = errors.CombineErrors(err, maybeRecover())
+		if r := recover(); r != nil {
+			err = errors.CombineErrors(err, errFromPanic(r))
+		}
 	}()
 
 	// Input format:
