@@ -408,7 +408,7 @@ type RefCount interface {
 // Reader reads a virtual WAL.
 type Reader interface {
 	// NextRecord returns a reader for the next record. It returns io.EOF if there
-	// are no more records. The reader returned becomes stale after the next Next
+	// are no more records. The reader returned becomes stale after the next NextRecord
 	// call, and should no longer be used.
 	NextRecord() (io.Reader, Offset, error)
 	// Close the reader.
