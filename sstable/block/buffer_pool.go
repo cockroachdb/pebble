@@ -89,7 +89,8 @@ func (bh BufferHandle) Get() []byte {
 	return nil
 }
 
-// Release releases the buffer, either back to the block cache or BufferPool.
+// Release releases the buffer, either back to the block cache or BufferPool. It
+// is okay to call Release on a zero-value BufferHandle (to no effect).
 func (bh BufferHandle) Release() {
 	bh.h.Release()
 	bh.b.Release()

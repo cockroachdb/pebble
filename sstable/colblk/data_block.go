@@ -96,6 +96,10 @@ func (kcmp KeyComparison) PrefixEqual() bool { return kcmp.PrefixLen == kcmp.Com
 type KeySeeker interface {
 	// Init initializes the iterator to read from the provided DataBlockReader.
 	Init(b *DataBlockReader) error
+	// CompareFirstUserKey compares the provided key to the first user key
+	// contained within the data block. It's equivalent to performing
+	//   Compare(firstUserKey, k)
+	CompareFirstUserKey(k []byte) int
 	// SeekGE returns the index of the first row with a key greater than or
 	// equal to [key].
 	//
@@ -290,6 +294,18 @@ func (ks *defaultKeySeeker) Init(r *DataBlockReader) error {
 	ks.suffixes = r.r.RawBytes(defaultKeySchemaColumnSuffix)
 	ks.sharedPrefix = ks.prefixes.SharedPrefix()
 	return nil
+}
+
+// CompareFirstUserKey compares the provided key to the first user key
+// contained within the data block. It's equivalent to performing
+//
+//	Compare(firstUserKey, k)
+func (ks *defaultKeySeeker) CompareFirstUserKey(k []byte) int {
+	si := ks.comparer.Split(k)
+	if v := ks.comparer.Compare(ks.prefixes.UnsafeFirstSlice(), k[:si]); v != 0 {
+		return v
+	}
+	return ks.comparer.Compare(ks.suffixes.At(0), k[si:])
 }
 
 func (ks *defaultKeySeeker) SeekGE(key []byte, currRow int, dir int8) (row int) {
@@ -631,13 +647,89 @@ func (r *DataBlockReader) Describe(f *binfmt.Formatter) {
 	f.HexBytesln(1, "block padding byte")
 }
 
+// MultiDataBlockIter wraps a DataBlockIter, implementing the block package's
+// DataBlockIterator. MultiDataBlockIter retains configuration (the KeySchema
+// and lazy value retriever) across initialization for additional blocks. It
+// also is responsible for maintaining handles to block buffer handles.
+//
+// In constrast, the DataBlockIter type it wraps operates solely within the
+// context of iterating over an individual block. While a DataBlockIter may be
+// reused, it does not retain any configuration beyond a reset.
+type MultiDataBlockIter struct {
+	DataBlockIter
+	h block.BufferHandle
+	r DataBlockReader
+
+	// KeySchema configures the DataBlockIterConfig to use the provided
+	// KeySchema when initializing the DataBlockIter for iteration over a new
+	// block.
+	KeySchema KeySchema
+	// GetLazyValuer configures the DataBlockIterConfig to initialize the
+	// DataBlockIter to use the provided handler for retrieving lazy values.
+	GetLazyValuer block.GetLazyValueForPrefixAndValueHandler
+}
+
+// Assert that *DataBlockIterConfig implements block.DataBlockIterator.
+var _ block.DataBlockIterator = (*MultiDataBlockIter)(nil)
+
+// InitHandle initializes the block from the provided buffer handle.
+func (c *MultiDataBlockIter) InitHandle(
+	cmp base.Compare, split base.Split, h block.BufferHandle, t block.IterTransforms,
+) error {
+	c.h.Release()
+	c.h = h
+	c.r.Init(c.KeySchema, h.Get())
+	return c.DataBlockIter.Init(&c.r, c.KeySchema.NewKeySeeker(), c.GetLazyValuer)
+}
+
+// Handle returns the handle to the block.
+func (c *MultiDataBlockIter) Handle() block.BufferHandle {
+	return c.h
+}
+
+// Invalidate invalidates the block iterator, removing references to the block
+// it was initialized with.
+func (c *MultiDataBlockIter) Invalidate() {
+	c.DataBlockIter = DataBlockIter{}
+}
+
+// IsDataInvalidated returns true when the iterator has been invalidated
+// using an Invalidate call.
+func (c *MultiDataBlockIter) IsDataInvalidated() bool {
+	return c.DataBlockIter.r == nil
+}
+
+// ResetForReuse resets the iterator for reuse, retaining buffers and
+// configuration, to avoid future allocations.
+func (i *MultiDataBlockIter) ResetForReuse() MultiDataBlockIter {
+	return MultiDataBlockIter{
+		DataBlockIter: DataBlockIter{
+			keyIter: PrefixBytesIter{buf: i.DataBlockIter.keyIter.buf},
+		},
+		KeySchema:     i.KeySchema,
+		GetLazyValuer: i.GetLazyValuer,
+	}
+}
+
+// Close implements the base.InternalIterator interface.
+func (i *MultiDataBlockIter) Close() error {
+	if i.keySeeker != nil {
+		i.keySeeker.Release()
+		i.keySeeker = nil
+	}
+	i.DataBlockIter = DataBlockIter{}
+	i.h.Release()
+	i.h = block.BufferHandle{}
+	return nil
+}
+
 // DataBlockIter iterates over a columnar data block.
 type DataBlockIter struct {
 	// configuration
-	r            *DataBlockReader
-	maxRow       int
-	keySeeker    KeySeeker
-	getLazyValue func([]byte) base.LazyValue
+	r             *DataBlockReader
+	maxRow        int
+	keySeeker     KeySeeker
+	getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 
 	// state
 	keyIter PrefixBytesIter
@@ -646,30 +738,40 @@ type DataBlockIter struct {
 	kvRow   int // the row currently held in kv
 }
 
-var _ base.InternalIterator = (*DataBlockIter)(nil)
-
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.
 func (i *DataBlockIter) Init(
-	r *DataBlockReader, keyIterator KeySeeker, getLazyValue func([]byte) base.LazyValue,
+	r *DataBlockReader,
+	keyIterator KeySeeker,
+	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
 ) error {
 	*i = DataBlockIter{
-		r:            r,
-		maxRow:       int(r.r.header.Rows) - 1,
-		keySeeker:    keyIterator,
-		getLazyValue: getLazyValue,
-		row:          -1,
-		kvRow:        math.MinInt,
-		kv:           base.InternalKV{},
-		keyIter:      PrefixBytesIter{},
+		r:             r,
+		maxRow:        int(r.r.header.Rows) - 1,
+		keySeeker:     keyIterator,
+		getLazyValuer: getLazyValuer,
+		row:           -1,
+		kvRow:         math.MinInt,
+		kv:            base.InternalKV{},
+		keyIter:       PrefixBytesIter{},
 	}
 	// Allocate a keyIter buffer that's large enough to hold the largest user
 	// key in the block.
-
 	n := int(r.maximumKeyLength)
-	ptr := mallocgc(uintptr(n), nil, false)
-	i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
+	if cap(i.keyIter.buf) < n {
+		ptr := mallocgc(uintptr(n), nil, false)
+		i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
+	} else {
+		i.keyIter.buf = i.keyIter.buf[:0]
+	}
 	return i.keySeeker.Init(r)
+}
+
+// CompareFirstUserKey compares the provided key to the first user key
+// contained within the data block. It's equivalent to performing
+// Compare(firstUserKey, k).
+func (i *DataBlockIter) CompareFirstUserKey(k []byte) int {
+	return i.keySeeker.CompareFirstUserKey(k)
 }
 
 // SeekGE implements the base.InternalIterator interface.
@@ -727,7 +829,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 	startOffset, endOffset := i.r.values.offsets.At2(i.row)
 	v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), endOffset-startOffset)
 	if i.r.isValueExternal.At(i.row) {
-		i.kv.V = i.getLazyValue(v)
+		i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
 	} else {
 		i.kv.V = base.MakeInPlaceValue(v)
 	}
@@ -773,12 +875,6 @@ func (i *DataBlockIter) Error() error {
 	return nil // infallible
 }
 
-// Close implements the base.InternalIterator interface.
-func (i *DataBlockIter) Close() error {
-	*i = DataBlockIter{}
-	return nil
-}
-
 // SetBounds implements the base.InternalIterator interface.
 func (i *DataBlockIter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are handled by sstable.Iterator.
@@ -821,7 +917,7 @@ func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
 		startOffset := i.r.values.offsets.At(row)
 		v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), i.r.values.offsets.At(row+1)-startOffset)
 		if i.r.isValueExternal.At(row) {
-			i.kv.V = i.getLazyValue(v)
+			i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
 		} else {
 			i.kv.V = base.MakeInPlaceValue(v)
 		}
@@ -829,4 +925,22 @@ func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
 		i.kvRow = row
 		return &i.kv
 	}
+}
+
+// Valid returns true if the iterator is currently positioned at a valid KV.
+func (i *DataBlockIter) Valid() bool {
+	return i.row < 0 || i.row > i.maxRow
+}
+
+// KV returns the key-value pair at the current iterator position. The
+// iterator must be positioned over a valid KV.
+func (i *DataBlockIter) KV() *base.InternalKV {
+	return &i.kv
+}
+
+// Close implements the base.InternalIterator interface.
+func (i *DataBlockIter) Close() error {
+	i.keySeeker.Release()
+	i.keySeeker = nil
+	return nil
 }
