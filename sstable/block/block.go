@@ -158,8 +158,10 @@ type DataBlockIterator interface {
 	// KV returns the key-value pair at the current iterator position. The
 	// iterator must be Valid().
 	KV() *base.InternalKV
-	// FirstUserKey returns the first user key contained within the data block.
-	FirstUserKey() []byte
+	// CompareFirstUserKey compares the provided key to the first user key
+	// contained within the data block. It's equivalent to performing
+	//   Compare(firstUserKey, k)
+	CompareFirstUserKey(k []byte) int
 	// Invalidate invalidates the block iterator, removing references to the block
 	// it was initialized with.
 	Invalidate()
