@@ -371,6 +371,10 @@ type DataBlockWriter struct {
 	// isValueExternal is the column writer for the is-value-external bitmap
 	// that indicates when a value is stored out-of-band in a value block.
 	isValueExternal BitmapBuilder
+	// isObsolete is the column writer for the is-obsolete bitmap that indicates
+	// when a key is known to be obsolete/non-live (i.e., shadowed by another
+	// identical point key or range deletion with a higher sequence number).
+	isObsolete BitmapBuilder
 
 	enc              blockEncoder
 	rows             int
@@ -379,13 +383,12 @@ type DataBlockWriter struct {
 	lastUserKeyTmp   []byte
 }
 
-// TODO(jackson): Add an isObsolete bitmap column.
-
 const (
 	dataBlockColumnTrailer = iota
 	dataBlockColumnPrefixChanged
 	dataBlockColumnValue
 	dataBlockColumnIsValueExternal
+	dataBlockColumnIsObsolete
 	dataBlockColumnMax
 )
 
@@ -403,6 +406,7 @@ func (w *DataBlockWriter) Init(schema KeySchema) {
 	w.prefixSame.Reset()
 	w.values.Init()
 	w.isValueExternal.Reset()
+	w.isObsolete.Reset()
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
@@ -416,6 +420,7 @@ func (w *DataBlockWriter) Reset() {
 	w.prefixSame.Reset()
 	w.values.Reset()
 	w.isValueExternal.Reset()
+	w.isObsolete.Reset()
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
@@ -445,6 +450,10 @@ func (w *DataBlockWriter) String() string {
 	w.isValueExternal.WriteDebug(&buf, w.rows)
 	fmt.Fprintln(&buf)
 
+	fmt.Fprintf(&buf, "%d: is-obsolete:    ", len(w.Schema.ColumnTypes)+dataBlockColumnIsObsolete)
+	w.isObsolete.WriteDebug(&buf, w.rows)
+	fmt.Fprintln(&buf)
+
 	return buf.String()
 }
 
@@ -457,11 +466,18 @@ func (w *DataBlockWriter) String() string {
 // The caller is required to pass this in because in expected use cases, the
 // caller will also require the same information.
 func (w *DataBlockWriter) Add(
-	ikey base.InternalKey, value []byte, valuePrefix block.ValuePrefix, kcmp KeyComparison,
+	ikey base.InternalKey,
+	value []byte,
+	valuePrefix block.ValuePrefix,
+	kcmp KeyComparison,
+	isObsolete bool,
 ) {
 	w.KeyWriter.WriteKey(w.rows, ikey.UserKey, kcmp.PrefixLen, kcmp.CommonPrefixLen)
 	if kcmp.PrefixEqual() {
 		w.prefixSame.Set(w.rows)
+	}
+	if isObsolete {
+		w.isObsolete.Set(w.rows)
 	}
 	w.trailers.Set(w.rows, uint64(ikey.Trailer))
 	if valuePrefix.IsValueHandle() {
@@ -493,6 +509,7 @@ func (w *DataBlockWriter) Size() int {
 	off = w.prefixSame.InvertedSize(w.rows, off)
 	off = w.values.Size(w.rows, off)
 	off = w.isValueExternal.Size(w.rows, off)
+	off = w.isObsolete.Size(w.rows, off)
 	off++ // trailer padding byte
 	return int(off)
 }
@@ -532,6 +549,7 @@ func (w *DataBlockWriter) Finish(rows, size int) (finished []byte, lastKey base.
 	w.enc.encode(rows, &w.prefixSame)
 	w.enc.encode(rows, &w.values)
 	w.enc.encode(rows, &w.isValueExternal)
+	w.enc.encode(rows, &w.isObsolete)
 	finished = w.enc.finish()
 
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
@@ -568,6 +586,9 @@ type DataBlockReader struct {
 	// true, the value contains a ValuePrefix byte followed by an encoded value
 	// handle indicating the value's location within the value block(s).
 	isValueExternal Bitmap
+	// isObsolete is the column reader for the is-obsolete bitmap
+	// that indicates whether a key is obsolete/non-live.
+	isObsolete Bitmap
 	// maximumKeyLength is the maximum length of a user key in the block.
 	// Iterators may use it to allocate a sufficiently large buffer up front,
 	// and elide size checks during iteration.
@@ -586,6 +607,7 @@ func (r *DataBlockReader) Init(schema KeySchema, data []byte) {
 	r.prefixChanged = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
 	r.values = r.r.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
 	r.isValueExternal = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
+	r.isObsolete = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
 	r.maximumKeyLength = binary.LittleEndian.Uint32(data[:dataBlockCustomHeaderSize])
 }
 

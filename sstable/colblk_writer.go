@@ -305,7 +305,7 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 	// including the key in the block. The data block writer permits us to
 	// finish the block excluding the last-appended KV.
 	entriesWithoutKV := w.dataBlock.Rows()
-	w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp)
+	w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete)
 
 	// Now that we've appended the KV pair, we can compute the exact size of the
 	// block with this key-value pair included. Check to see if we should flush
@@ -317,7 +317,7 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 		w.flushDataBlockWithoutNextKey(key.UserKey)
 		// flushDataBlockWithoutNextKey reset the data block builder, and we can
 		// add the key to this next block now.
-		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp)
+		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete)
 		w.pendingDataBlockSize = w.dataBlock.Size()
 	} else {
 		// We're not flushing the data block, and we're committing to including
