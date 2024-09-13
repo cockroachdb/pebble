@@ -75,9 +75,9 @@ func TestDataBlock(t *testing.T) {
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), f.String())
 				return buf.String()
 			case "iter":
-				it.Init(&r, testKeysSchema.NewKeySeeker(), func([]byte) base.LazyValue {
+				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-				})
+				}))
 				return itertest.RunInternalIterCmd(t, td, &it)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -143,4 +143,10 @@ func randTestKey(rng *rand.Rand, buf []byte, prefixLen int) []byte {
 	}
 	testkeys.WriteSuffix(buf[prefixLen:], suffix)
 	return buf
+}
+
+type getLazyValuer func([]byte) base.LazyValue
+
+func (g getLazyValuer) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+	return g(handle)
 }
