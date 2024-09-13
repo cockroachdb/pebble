@@ -189,6 +189,24 @@ func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
 	return nil
 }
 
+// CompareFirstUserKey compares the provided key to the first user key
+// contained within the data block. It's equivalent to performing
+//
+//	Compare(firstUserKey, k)
+func (ks *cockroachKeySeeker) CompareFirstUserKey(k []byte) int {
+	prefix, untypedSuffix, wallTime, logicalTime := crdbtest.DecodeTimestamp(k)
+	if v := crdbtest.Compare(ks.prefixes.UnsafeFirstSlice(), prefix); v != 0 {
+		return v
+	}
+	if len(untypedSuffix) > 0 {
+		return crdbtest.Compare(ks.untypedSuffixes.At(0), untypedSuffix)
+	}
+	if v := cmp.Compare(ks.mvccWallTimes.At(0), wallTime); v != 0 {
+		return v
+	}
+	return cmp.Compare(uint32(ks.mvccLogical.At(0)), logicalTime)
+}
+
 // SeekGE is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) SeekGE(key []byte, currRow int, dir int8) (row int) {
 	// TODO(jackson): Inline crdbtest.Split.
@@ -346,9 +364,9 @@ func TestCockroachDataBlock(t *testing.T) {
 	var reader DataBlockReader
 	var it DataBlockIter
 	reader.Init(cockroachKeySchema, serializedBlock)
-	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), func([]byte) base.LazyValue {
+	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	})
+	}))
 
 	t.Run("Next", func(t *testing.T) {
 		// Scan the block using Next and ensure that all the keys values match.
@@ -466,9 +484,9 @@ func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig,
 	var reader DataBlockReader
 	var it DataBlockIter
 	reader.Init(cockroachKeySchema, serializedBlock)
-	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), func([]byte) base.LazyValue {
+	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	})
+	}))
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {
