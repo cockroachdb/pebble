@@ -45,6 +45,11 @@ func TestDataBlock(t *testing.T) {
 				return buf.String()
 			case "write":
 				for _, line := range strings.Split(td.Input, "\n") {
+					isObsolete := strings.HasSuffix(line, "obsolete")
+					if isObsolete {
+						line = strings.TrimSuffix(line, "obsolete")
+					}
+
 					j := strings.IndexRune(line, ':')
 					ik := base.ParseInternalKey(line[:j])
 
@@ -55,7 +60,7 @@ func TestDataBlock(t *testing.T) {
 						vp = block.ValueHandlePrefix(kcmp.PrefixEqual(), 0)
 					}
 					v := []byte(line[j+1:])
-					w.Add(ik, v, vp, kcmp)
+					w.Add(ik, v, vp, kcmp, isObsolete)
 					sizes = append(sizes, w.Size())
 				}
 				fmt.Fprint(&buf, &w)
@@ -108,7 +113,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 			vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
-			w.Add(ik, values[j], vp, kcmp)
+			w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
 			j++
 		}
 		w.Finish(w.Rows(), w.Size())

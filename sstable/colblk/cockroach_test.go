@@ -339,7 +339,7 @@ func TestCockroachDataBlock(t *testing.T) {
 	for w.Size() < targetBlockSize {
 		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp)
+		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
 		count++
 	}
 	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
@@ -415,7 +415,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 		for w.Size() < targetBlockSize {
 			ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp)
+			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
 			count++
 		}
 		_, _ = w.Finish(w.Rows(), w.Size())
@@ -459,7 +459,7 @@ func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig,
 	for w.Size() < targetBlockSize {
 		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp)
+		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
 		count++
 	}
 	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
