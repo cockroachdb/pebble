@@ -521,9 +521,12 @@ func (i *Iter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
-// FirstUserKey returns the user key of the first key in the block.
-func (i *Iter) FirstUserKey() []byte {
-	return i.firstUserKey
+// CompareFirstUserKey compares the provided key to the first user key
+// contained within the data block. It's equivalent to performing
+//
+//	Compare(firstUserKey, k)
+func (i *Iter) CompareFirstUserKey(k []byte) int {
+	return i.cmp(i.firstUserKey, k)
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
