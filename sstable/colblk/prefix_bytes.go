@@ -234,6 +234,12 @@ func (b PrefixBytes) At(i int) []byte {
 	return slices.Concat(b.SharedPrefix(), b.RowBundlePrefix(i), b.RowSuffix(i))
 }
 
+// UnsafeFirstSlice returns first slice in the PrefixBytes. The returned slice
+// points directly into the PrefixBytes buffer and must not be mutated.
+func (b *PrefixBytes) UnsafeFirstSlice() []byte {
+	return b.rawBytes.slice(0, b.rawBytes.offsets.At(2))
+}
+
 // PrefixBytesIter is an iterator and associated buffers for PrefixBytes. It
 // provides a means for efficiently iterating over the []byte slices contained
 // within a PrefixBytes, avoiding unnecessary copying when portions of slices
