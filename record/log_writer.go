@@ -84,11 +84,15 @@ type syncQueue struct {
 
 const dequeueBits = 32
 
+// unpack extracts the head and tail indices from a 64-bit unsigned integer.
+// The head index is stored in the most-significant 32 bits, and the tail index
+// is stored in the least-significant 32 bits. The mask is used to isolate the
+// relevant bits for each index.
 func (q *syncQueue) unpack(ptrs uint64) (head, tail uint32) {
 	const mask = 1<<dequeueBits - 1
 	head = uint32((ptrs >> dequeueBits) & mask)
 	tail = uint32(ptrs & mask)
-	return
+	return head, tail
 }
 
 func (q *syncQueue) push(wg *sync.WaitGroup, err *error) {
