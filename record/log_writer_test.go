@@ -158,7 +158,7 @@ func TestSyncError(t *testing.T) {
 		require.NoError(t, err)
 		syncWG.Wait()
 		if injectedErr != syncErr {
-			t.Fatalf("unexpected %v but found %v", injectedErr, syncErr)
+			t.Fatalf("expected %v but found %v", injectedErr, syncErr)
 		}
 	}
 	// First waiter receives error.
