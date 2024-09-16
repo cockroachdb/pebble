@@ -245,6 +245,12 @@ func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 	}
 }
 
+// BlockColumnar returns true iff the table format uses the columnar format for
+// data, index and keyspan blocks.
+func (f TableFormat) BlockColumnar() bool {
+	return f >= TableFormatPebblev5
+}
+
 // AsTuple returns the TableFormat's (Magic String, Version) tuple.
 func (f TableFormat) AsTuple() (string, uint32) {
 	switch f {

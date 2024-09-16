@@ -11,6 +11,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
@@ -18,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
@@ -196,7 +196,7 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])(nil)
+var _ base.InternalIterator = (*singleLevelIteratorRowBlocks)(nil)
 
 // newRowBlockSingleLevelIterator reads the index block and creates and
 // initializes a singleLevelIterator over an sstable with row-oriented data
@@ -218,13 +218,14 @@ func newRowBlockSingleLevelIterator(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
-) (*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter], error) {
+) (*singleLevelIteratorRowBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	// TODO(jackson): When we have a columnar-block sstable format, assert that
-	// the table format is row-oriented.
-	i := singleLevelIterRowBlockPool.Get().(*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
+	if r.tableFormat.BlockColumnar() {
+		panic(errors.AssertionFailedf("table format %s uses block columnar format", r.tableFormat))
+	}
+	i := singleLevelIterRowBlockPool.Get().(*singleLevelIteratorRowBlocks)
 	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
