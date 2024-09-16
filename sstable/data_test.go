@@ -241,35 +241,36 @@ func runIterCmdMaskingFilter(maskingFilter TestKeysMaskingFilter) runIterCmdOpti
 }
 
 func runIterCmd(
-	td *datadriven.TestData, origIter Iterator, printValue bool, opt ...runIterCmdOption,
+	td *datadriven.TestData, iter Iterator, printValue bool, opt ...runIterCmdOption,
 ) string {
 	var opts runIterCmdOptions
 	for _, o := range opt {
 		o(&opts)
 	}
 
-	iter := newIterAdapter(origIter)
 	defer iter.Close()
 
 	var b bytes.Buffer
 	var prefix []byte
 	var maskingSuffix []byte
-	skipMaskedKeys := func(direction int) {
+	var kv *base.InternalKV
+	skipMaskedKeys := func(direction int, kv *base.InternalKV) *base.InternalKV {
 		if len(maskingSuffix) == 0 {
-			return
+			return kv
 		}
-		for iter.Valid() {
-			k := iter.Key().UserKey
+		for kv != nil {
+			k := kv.K.UserKey
 			suffix := k[testkeys.Comparer.Split(k):]
 			if len(suffix) == 0 || testkeys.Comparer.CompareSuffixes(suffix, maskingSuffix) <= 0 {
-				return
+				return kv
 			}
 			if direction > 0 {
-				iter.Next()
+				kv = iter.Next()
 			} else {
-				iter.Prev()
+				kv = iter.Prev()
 			}
 		}
+		return kv
 	}
 	for _, line := range crstrings.Lines(td.Input) {
 		parts := strings.Fields(line)
@@ -287,8 +288,8 @@ func runIterCmd(
 					flags = flags.EnableTrySeekUsingNext()
 				}
 			}
-			iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags)
-			skipMaskedKeys(+1)
+			kv = iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags)
+			kv = skipMaskedKeys(+1, kv)
 		case "seek-prefix-ge":
 			if len(parts) != 2 && len(parts) != 3 {
 				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
@@ -302,44 +303,44 @@ func runIterCmd(
 					flags = flags.EnableTrySeekUsingNext()
 				}
 			}
-			iter.SeekPrefixGE(prefix, prefix /* key */, flags)
-			skipMaskedKeys(+1)
+			kv = iter.SeekPrefixGE(prefix, prefix /* key */, flags)
+			kv = skipMaskedKeys(+1, kv)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return "seek-lt <key>\n"
 			}
 			prefix = nil
-			iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
-			skipMaskedKeys(-1)
+			kv = iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
+			kv = skipMaskedKeys(-1, kv)
 		case "first":
 			prefix = nil
-			iter.First()
-			skipMaskedKeys(+1)
+			kv = iter.First()
+			kv = skipMaskedKeys(+1, kv)
 		case "last":
 			prefix = nil
-			iter.Last()
-			skipMaskedKeys(-1)
+			kv = iter.Last()
+			kv = skipMaskedKeys(-1, kv)
 		case "next":
-			iter.Next()
-			skipMaskedKeys(+1)
+			kv = iter.Next()
+			kv = skipMaskedKeys(+1, kv)
 		case "next-ignore-result":
-			iter.NextIgnoreResult()
+			_ = iter.Next()
 		case "prev":
-			iter.Prev()
-			skipMaskedKeys(-1)
+			kv = iter.Prev()
+			kv = skipMaskedKeys(-1, kv)
 		case "next-prefix":
 			if len(parts) != 1 {
 				return "next-prefix should have no parameter\n"
 			}
-			if iter.Key() == nil {
+			if kv == nil {
 				return "next-prefix cannot be called on exhauster iterator\n"
 			}
-			k := iter.Key().UserKey
+			k := kv.K.UserKey
 			prefixLen := testkeys.Comparer.Split(k)
 			k = k[:prefixLen]
 			kSucc := testkeys.Comparer.ImmediateSuccessor(nil, k)
-			iter.NextPrefix(kSucc)
-			skipMaskedKeys(+1)
+			kv = iter.NextPrefix(kSucc)
+			kv = skipMaskedKeys(+1, kv)
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
 				return "set-bounds lower=<lower> upper=<upper>\n"
@@ -364,6 +365,7 @@ func runIterCmd(
 				}
 			}
 			iter.SetBounds(lower, upper)
+			kv = nil
 		case "stats":
 			// The timing is non-deterministic, so set to 0.
 			opts.stats.BlockReadDuration = 0
@@ -379,9 +381,9 @@ func runIterCmd(
 			}
 			continue
 		case "internal-iter-state":
-			fmt.Fprintf(&b, "| %T:\n", origIter)
-			si, _ := origIter.(*singleLevelIteratorRowBlocks)
-			if twoLevelIter, ok := origIter.(*twoLevelIteratorRowBlocks); ok {
+			fmt.Fprintf(&b, "| %T:\n", iter)
+			si, _ := iter.(*singleLevelIteratorRowBlocks)
+			if twoLevelIter, ok := iter.(*twoLevelIteratorRowBlocks); ok {
 				si = &twoLevelIter.secondLevel
 				if twoLevelIter.topLevelIndex.Valid() {
 					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Separator())
@@ -421,13 +423,19 @@ func runIterCmd(
 		if opts.everyOp != nil {
 			opts.everyOp(&b)
 		}
-		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
-			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
-			if printValue {
-				fmt.Fprintf(&b, ":%s", string(iter.Value()))
-			}
-		} else if err := iter.Error(); err != nil {
+		var v []byte
+		err := iter.Error()
+		if err == nil && kv != nil {
+			v, _, err = kv.Value(nil)
+		}
+
+		if err != nil {
 			fmt.Fprintf(&b, "<err=%v>", err)
+		} else if kv != nil && checkValidPrefix(prefix, kv.K.UserKey) {
+			fmt.Fprintf(&b, "<%s:%d>", kv.K.UserKey, kv.K.SeqNum())
+			if printValue {
+				fmt.Fprintf(&b, ":%s", string(v))
+			}
 		} else {
 			fmt.Fprintf(&b, ".")
 		}

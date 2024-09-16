@@ -155,16 +155,19 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return formatWriterMetadata(td, meta)
 
 		case "scan":
-			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
-			iter := newIterAdapter(origIter)
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				v, _, err := kv.Value(nil)
+				if err != nil {
+					return err.Error()
+				}
+				fmt.Fprintf(&buf, "%s:%s\n", kv.K, v)
 			}
 			return buf.String()
 
@@ -350,7 +353,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 
 		case "scan-raw":
 			// Raw scan does not fetch from value blocks.
-			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
@@ -359,45 +362,46 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				i.data.SetGetLazyValuer(nil)
 				i.data.SetHasValuePrefix(false)
 			}
-			switch i := origIter.(type) {
+			switch i := iter.(type) {
 			case *twoLevelIteratorRowBlocks:
 				forceIgnoreValueBlocks(&i.secondLevel)
 			case *singleLevelIteratorRowBlocks:
 				forceIgnoreValueBlocks(i)
 			}
-			iter := newIterAdapter(origIter)
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for valid := iter.First(); valid; valid = iter.Next() {
-				v := iter.Value()
-				if iter.Key().Kind() == InternalKeyKindSet {
-					prefix := block.ValuePrefix(v[0])
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				if kv.K.Kind() == InternalKeyKindSet {
+					prefix := block.ValuePrefix(kv.V.ValueOrHandle[0])
 					setWithSamePrefix := prefix.SetHasSamePrefix()
 					if prefix.IsValueHandle() {
 						attribute := prefix.ShortAttribute()
-						vh := decodeValueHandle(v[1:])
+						vh := decodeValueHandle(kv.V.ValueOrHandle[1:])
 						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",
-							iter.Key(), vh.valueLen, vh.blockNum, vh.offsetInBlock, attribute, setWithSamePrefix)
+							kv.K, vh.valueLen, vh.blockNum, vh.offsetInBlock, attribute, setWithSamePrefix)
 					} else {
-						fmt.Fprintf(&buf, "%s:in-place %s, same-pre %t\n", iter.Key(), v[1:], setWithSamePrefix)
+						fmt.Fprintf(&buf, "%s:in-place %s, same-pre %t\n", kv.K, kv.V.ValueOrHandle[1:], setWithSamePrefix)
 					}
 				} else {
-					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), v)
+					fmt.Fprintf(&buf, "%s:%s\n", kv.K, kv.V.ValueOrHandle)
 				}
 			}
 			return buf.String()
 
 		case "scan":
-			origIter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
 			}
-			iter := newIterAdapter(origIter)
 			defer iter.Close()
 			var buf bytes.Buffer
-			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
+				v, _, err := kv.Value(nil)
+				if err != nil {
+					return err.Error()
+				}
+				fmt.Fprintf(&buf, "%s:%s\n", kv.K, v)
 			}
 			return buf.String()
 
