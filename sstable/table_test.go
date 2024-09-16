@@ -66,40 +66,32 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		if err != nil {
 			return err
 		}
-		i := newIterAdapter(iter)
-		if !i.SeekGE([]byte(k), base.SeekGEFlagsNone) || string(i.Key().UserKey) != k {
+		kv := iter.SeekGE([]byte(k), base.SeekGEFlagsNone)
+		if kv == nil || string(kv.K.UserKey) != k {
 			return errors.Errorf("Find %q: key was not in the table", k)
 		}
-		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
-			return errors.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
-		}
-		if string(i.Value()) != v {
-			return errors.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
-		}
-		if v1 := i.Value(); len(v1) != cap(v1) {
-			return errors.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
+		if actualValue, _, err := kv.Value(nil); err != nil {
+			return err
+		} else if string(actualValue) != v {
+			return errors.Errorf("Find %q: got value %q, want %q", k, actualValue, v)
 		}
 
 		// Check using SeekLT.
-		if !i.SeekLT([]byte(k), base.SeekLTFlagsNone) {
-			i.First()
+		kv = iter.SeekLT([]byte(k), base.SeekLTFlagsNone)
+		if kv == nil {
+			kv = iter.First()
 		} else {
-			i.Next()
+			kv = iter.Next()
 		}
-		if string(i.Key().UserKey) != k {
+		if string(kv.K.UserKey) != k {
 			return errors.Errorf("Find %q: key was not in the table", k)
 		}
-		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
-			return errors.Errorf("Find %q: len(k1)=%d, cap(k1)=%d", k, len(k1), cap(k1))
+		if actualValue, _, err := kv.Value(nil); err != nil {
+			return err
+		} else if string(actualValue) != v {
+			return errors.Errorf("Find %q: got value %q, want %q", k, actualValue, v)
 		}
-		if string(i.Value()) != v {
-			return errors.Errorf("Find %q: got value %q, want %q", k, i.Value(), v)
-		}
-		if v1 := i.Value(); len(v1) != cap(v1) {
-			return errors.Errorf("Find %q: len(v1)=%d, cap(v1)=%d", k, len(v1), cap(v1))
-		}
-
-		if err := i.Close(); err != nil {
+		if err := iter.Close(); err != nil {
 			return err
 		}
 	}
@@ -116,11 +108,10 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		if err != nil {
 			return err
 		}
-		i := newIterAdapter(iter)
-		if i.SeekGE([]byte(s), base.SeekGEFlagsNone) && s == string(i.Key().UserKey) {
+		if kv := iter.SeekGE([]byte(s), base.SeekGEFlagsNone); kv != nil && s == string(kv.K.UserKey) {
 			return errors.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
-		if err := i.Close(); err != nil {
+		if err := iter.Close(); err != nil {
 			return err
 		}
 	}
@@ -146,16 +137,16 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		if err != nil {
 			return err
 		}
-		n, i := 0, newIterAdapter(iter)
-		for valid := i.SeekGE([]byte(ct.start), base.SeekGEFlagsNone); valid; valid = i.Next() {
+		n := 0
+		for kv := iter.SeekGE([]byte(ct.start), base.SeekGEFlagsNone); kv != nil; kv = iter.Next() {
 			n++
 		}
 		if n != ct.count {
 			return errors.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
 		}
 		n = 0
-		for valid := i.Last(); valid; valid = i.Prev() {
-			if bytes.Compare(i.Key().UserKey, []byte(ct.start)) < 0 {
+		for kv := iter.Last(); kv != nil; kv = iter.Prev() {
+			if bytes.Compare(kv.K.UserKey, []byte(ct.start)) < 0 {
 				break
 			}
 			n++
@@ -163,7 +154,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		if n != ct.count {
 			return errors.Errorf("count %q: got %d, want %d", ct.start, n, ct.count)
 		}
-		if err := i.Close(); err != nil {
+		if err := iter.Close(); err != nil {
 			return err
 		}
 	}
@@ -199,11 +190,10 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		if err != nil {
 			return err
 		}
-		i := newIterAdapter(iter)
 
 		if lower == nil {
 			n := 0
-			for valid := i.First(); valid; valid = i.Next() {
+			for kv := iter.First(); kv != nil; kv = iter.Next() {
 				n++
 			}
 			if expected := upperIdx; expected != n {
@@ -213,7 +203,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 
 		if upper == nil {
 			n := 0
-			for valid := i.Last(); valid; valid = i.Prev() {
+			for kv := iter.Last(); kv != nil; kv = iter.Prev() {
 				n++
 			}
 			if expected := len(words) - lowerIdx; expected != n {
@@ -223,7 +213,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 
 		if lower != nil {
 			n := 0
-			for valid := i.SeekGE(lower, base.SeekGEFlagsNone); valid; valid = i.Next() {
+			for kv := iter.SeekGE(lower, base.SeekGEFlagsNone); kv != nil; kv = iter.Next() {
 				n++
 			}
 			if expected := upperIdx - lowerIdx; expected != n {
@@ -233,7 +223,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 
 		if upper != nil {
 			n := 0
-			for valid := i.SeekLT(upper, base.SeekLTFlagsNone); valid; valid = i.Prev() {
+			for kv := iter.SeekLT(upper, base.SeekLTFlagsNone); kv != nil; kv = iter.Prev() {
 				n++
 			}
 			if expected := upperIdx - lowerIdx; expected != n {
@@ -241,7 +231,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 			}
 		}
 
-		if err := i.Close(); err != nil {
+		if err := iter.Close(); err != nil {
 			return err
 		}
 	}
@@ -486,11 +476,10 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					}
 					iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 					require.NoError(t, err)
-					i := newIterAdapter(iter)
-					for valid := i.First(); valid; valid = i.Next() {
+					for kv := iter.First(); kv != nil; kv = iter.Next() {
 						got++
 					}
-					if err := i.Close(); err != nil {
+					if err := iter.Close(); err != nil {
 						t.Errorf("nk=%d, vLen=%d: Iterator close: %v", nk, vLen, err)
 						continue
 					}
@@ -522,13 +511,12 @@ func TestReaderSymtheticSeqNum(t *testing.T) {
 
 	iter, err := r.NewIter(transforms, nil /* lower */, nil /* upper */)
 	require.NoError(t, err)
-	i := newIterAdapter(iter)
-	for valid := i.First(); valid; valid = i.Next() {
-		if syntheticSeqNum != i.Key().SeqNum() {
-			t.Fatalf("expected %d, but found %d", syntheticSeqNum, i.Key().SeqNum())
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		if syntheticSeqNum != kv.K.SeqNum() {
+			t.Fatalf("expected %d, but found %d", syntheticSeqNum, kv.K.SeqNum())
 		}
 	}
-	require.NoError(t, i.Close())
+	require.NoError(t, iter.Close())
 	require.NoError(t, r.Close())
 }
 
