@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -381,8 +380,8 @@ func runIterCmd(
 			continue
 		case "internal-iter-state":
 			fmt.Fprintf(&b, "| %T:\n", origIter)
-			si, _ := origIter.(*singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
-			if twoLevelIter, ok := origIter.(*twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]); ok {
+			si, _ := origIter.(*singleLevelIteratorRowBlocks)
+			if twoLevelIter, ok := origIter.(*twoLevelIteratorRowBlocks); ok {
 				si = &twoLevelIter.secondLevel
 				if twoLevelIter.topLevelIndex.Valid() {
 					fmt.Fprintf(&b, "|  topLevelIndex.Key() = %q\n", twoLevelIter.topLevelIndex.Separator())

@@ -144,15 +144,18 @@ type Iterator interface {
 //
 // TODO(sumeer): remove the aforementioned defensive code.
 
+type singleLevelIteratorRowBlocks = singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+type twoLevelIteratorRowBlocks = twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+
 var (
-	singleLevelIterRowBlockPool sync.Pool // *singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
-	twoLevelIterRowBlockPool    sync.Pool // *twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+	singleLevelIterRowBlockPool sync.Pool // *singleLevelIteratorRowBlocks
+	twoLevelIterRowBlockPool    sync.Pool // *twoLevelIteratorRowBlocks
 )
 
 func init() {
 	singleLevelIterRowBlockPool = sync.Pool{
 		New: func() interface{} {
-			i := &singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]{pool: &singleLevelIterRowBlockPool}
+			i := &singleLevelIteratorRowBlocks{pool: &singleLevelIterRowBlockPool}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
 			invariants.SetFinalizer(i, checkSingleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 			return i
@@ -160,7 +163,7 @@ func init() {
 	}
 	twoLevelIterRowBlockPool = sync.Pool{
 		New: func() interface{} {
-			i := &twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]{pool: &twoLevelIterRowBlockPool}
+			i := &twoLevelIteratorRowBlocks{pool: &twoLevelIterRowBlockPool}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
 			invariants.SetFinalizer(i, checkTwoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
 			return i

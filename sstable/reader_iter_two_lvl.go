@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
@@ -36,7 +37,7 @@ type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterat
 	lastBloomFilterMatched bool
 }
 
-var _ Iterator = (*twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])(nil)
+var _ Iterator = (*twoLevelIteratorRowBlocks)(nil)
 
 // loadIndex loads the index block at the current top level index position and
 // leaves i.index unpositioned. If unsuccessful, it gets i.secondLevel.err to any error
@@ -165,13 +166,14 @@ func newRowBlockTwoLevelIterator(
 	statsCollector *CategoryStatsCollector,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
-) (*twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter], error) {
+) (*twoLevelIteratorRowBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	// TODO(jackson): When we have a columnar-block sstable format, assert that
-	// the table format is row-oriented.
-	i := twoLevelIterRowBlockPool.Get().(*twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
+	if r.tableFormat.BlockColumnar() {
+		panic(errors.AssertionFailedf("table format %s uses block columnar format", r.tableFormat))
+	}
+	i := twoLevelIterRowBlockPool.Get().(*twoLevelIteratorRowBlocks)
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
 		stats, categoryAndQoS, statsCollector, bufferPool)
