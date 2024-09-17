@@ -9,13 +9,17 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
 
@@ -48,13 +52,62 @@ func TestKeyspanBlock(t *testing.T) {
 			fmt.Fprint(&buf, kr.DebugString())
 			return buf.String()
 		case "iter":
-			var iter KeyspanIter
-			iter.Init(base.DefaultComparer.Compare, &kr)
+			var iter keyspanIter
+			iter.init(base.DefaultComparer.Compare, &kr, block.NoFragmentTransforms)
 			return keyspan.RunFragmentIteratorCmd(&iter, td.Input, nil)
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+// TestKeyspanBlockPooling exercises the NewKeyspanIter constructor of a
+// KeyspanIter and the Close behavior that retains keyspan iters within a pool.
+func TestKeyspanBlockPooling(t *testing.T) {
+	var w KeyspanBlockWriter
+	w.Init(testkeys.Comparer.Equal)
+	s1 := keyspan.ParseSpan("b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}")
+	s2 := keyspan.ParseSpan("c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}")
+	w.AddSpan(s1)
+	w.AddSpan(s2)
+	b := w.Finish()
+
+	c := cache.New(10 << 10)
+	defer c.Unref()
+	v := block.Alloc(len(b), nil)
+	copy(v.Get(), b)
+	v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
+
+	getBlockAndIterate := func() {
+		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
+		require.NotNil(t, h.Get())
+		it := NewKeyspanIter(testkeys.Comparer.Compare, block.CacheBufferHandle(h), block.NoFragmentTransforms)
+		defer it.Close()
+		s, err := it.First()
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, s1.String(), s.String())
+		s, err = it.Next()
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, s2.String(), s.String())
+		s, err = it.Next()
+		require.NoError(t, err)
+		require.Nil(t, s)
+	}
+
+	const workers = 8
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 10; i++ {
+				getBlockAndIterate()
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func BenchmarkKeyspanBlock_RangeDeletions(b *testing.B) {
@@ -94,14 +147,13 @@ func benchmarkKeyspanBlockRangeDeletions(b *testing.B, numSpans, keysPerSpan, ke
 		}
 		w.AddSpan(s)
 	}
-	block := w.Finish()
 	avgRowSize := float64(w.Size()) / float64(numSpans*keysPerSpan)
 
 	var kr KeyspanReader
-	kr.Init(block)
+	kr.Init(w.Finish())
 
 	var it KeyspanIter
-	it.Init(base.DefaultComparer.Compare, &kr)
+	it.init(base.DefaultComparer.Compare, &kr, block.NoFragmentTransforms)
 	b.Run("SeekGE", func(b *testing.B) {
 		rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
