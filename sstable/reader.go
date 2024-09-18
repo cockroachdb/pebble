@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -51,6 +52,7 @@ type Reader struct {
 
 	// The following fields are copied from the ReadOptions.
 	cacheOpts            sstableinternal.CacheOptions
+	keySchema            colblk.KeySchema
 	loadBlockSema        *fifo.Semaphore
 	deniedUserProperties map[string]struct{}
 	filterMetricsTracker *FilterMetricsTracker
@@ -163,13 +165,25 @@ func (r *Reader) newPointIter(
 	var res Iterator
 	var err error
 	if r.Properties.IndexType == twoLevelIndex {
-		res, err = newRowBlockTwoLevelIterator(
-			ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
-			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		if r.tableFormat.BlockColumnar() {
+			res, err = newColumnBlockTwoLevelIterator(
+				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
+				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		} else {
+			res, err = newRowBlockTwoLevelIterator(
+				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
+				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		}
 	} else {
-		res, err = newRowBlockSingleLevelIterator(
-			ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
-			stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		if r.tableFormat.BlockColumnar() {
+			res, err = newColumnBlockSingleLevelIterator(
+				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
+				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		} else {
+			res, err = newRowBlockSingleLevelIterator(
+				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
+				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+		}
 	}
 	if err != nil {
 		// Note: we don't want to return res here - it will be a nil
@@ -245,7 +259,7 @@ func (r *Reader) newCompactionIter(
 // any range deletions.
 func (r *Reader) NewRawRangeDelIter(
 	ctx context.Context, transforms FragmentIterTransforms,
-) (keyspan.FragmentIterator, error) {
+) (iter keyspan.FragmentIterator, err error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
@@ -254,11 +268,15 @@ func (r *Reader) NewRawRangeDelIter(
 		return nil, err
 	}
 	transforms.ElideSameSeqNum = true
-	i, err := rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareSuffixes, r.Split, h, transforms)
-	if err != nil {
-		return nil, err
+	if r.tableFormat.BlockColumnar() {
+		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
+	} else {
+		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareSuffixes, r.Split, h, transforms)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return keyspan.MaybeAssert(i, r.Compare), nil
+	return keyspan.MaybeAssert(iter, r.Compare), nil
 }
 
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
@@ -266,7 +284,7 @@ func (r *Reader) NewRawRangeDelIter(
 // range keys.
 func (r *Reader) NewRawRangeKeyIter(
 	ctx context.Context, transforms FragmentIterTransforms,
-) (keyspan.FragmentIterator, error) {
+) (iter keyspan.FragmentIterator, err error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
@@ -274,11 +292,15 @@ func (r *Reader) NewRawRangeKeyIter(
 	if err != nil {
 		return nil, err
 	}
-	i, err := rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareSuffixes, r.Split, h, transforms)
-	if err != nil {
-		return nil, err
+	if r.tableFormat.BlockColumnar() {
+		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
+	} else {
+		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareSuffixes, r.Split, h, transforms)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return keyspan.MaybeAssert(i, r.Compare), nil
+	return keyspan.MaybeAssert(iter, r.Compare), nil
 }
 
 func (r *Reader) readIndex(
@@ -836,6 +858,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r := &Reader{
 		readable:             f,
 		cacheOpts:            o.internal.CacheOpts,
+		keySchema:            o.KeySchema,
 		loadBlockSema:        o.LoadBlockSema,
 		deniedUserProperties: o.DeniedUserProperties,
 		filterMetricsTracker: o.FilterMetricsTracker,
@@ -870,6 +893,13 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r.indexBH = footer.indexBH
 	r.metaIndexBH = footer.metaindexBH
 	r.footerBH = footer.footerBH
+
+	// If the table format indicates that blocks are encoded within the columnar
+	// format, we require a key schema to interpret it correctly.
+	if r.tableFormat.BlockColumnar() && len(r.keySchema.ColumnTypes) == 0 {
+		r.err = errors.Newf("pebble/table: key schema required for reading tables of format %s", r.tableFormat)
+		return nil, r.Close()
+	}
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Comparer = o.Comparer

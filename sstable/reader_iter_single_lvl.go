@@ -198,6 +198,70 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 // singleLevelIterator implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*singleLevelIteratorRowBlocks)(nil)
 
+// newColumnBlockSingleLevelIterator reads the index block and creates and
+// initializes a singleLevelIterator over an sstable with column-oriented data
+// blocks.
+//
+// Note that lower, upper are iterator bounds and are separate from virtual
+// sstable bounds. If the virtualState passed in is not nil, then virtual
+// sstable bounds will be enforced.
+func newColumnBlockSingleLevelIterator(
+	ctx context.Context,
+	r *Reader,
+	v *virtualState,
+	transforms IterTransforms,
+	lower, upper []byte,
+	filterer *BlockPropertiesFilterer,
+	filterBlockSizeLimit FilterBlockSizeLimit,
+	stats *base.InternalIteratorStats,
+	categoryAndQoS CategoryAndQoS,
+	statsCollector *CategoryStatsCollector,
+	rp ReaderProvider,
+	bufferPool *block.BufferPool,
+) (*singleLevelIteratorColumnBlocks, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if !r.tableFormat.BlockColumnar() {
+		panic(errors.AssertionFailedf("table format %d should not use columnar block format", r.tableFormat))
+	}
+	i := singleLevelIterColumnBlockPool.Get().(*singleLevelIteratorColumnBlocks)
+	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
+	i.init(
+		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
+		stats, categoryAndQoS, statsCollector, bufferPool,
+	)
+	i.data.KeySchema = r.keySchema
+	if r.Properties.NumValueBlocks > 0 {
+		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
+		// can outlive the singleLevelIterator due to be being embedded in a
+		// LazyValue. This consumes ~2% in microbenchmark CPU profiles, but we
+		// should only optimize this if it shows up as significant in end-to-end
+		// CockroachDB benchmarks, since it is tricky to do so. One possibility
+		// is that if many sstable iterators only get positioned at latest
+		// versions of keys, and therefore never expose a LazyValue that is
+		// separated to their callers, they can put this valueBlockReader into a
+		// sync.Pool.
+		i.vbReader = &valueBlockReader{
+			bpOpen: i,
+			rp:     rp,
+			vbih:   r.valueBIH,
+			stats:  stats,
+		}
+		i.data.GetLazyValuer = i.vbReader
+		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
+	}
+	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
+	if err == nil {
+		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
+	}
+	if err != nil {
+		_ = i.Close()
+		return nil, err
+	}
+	return i, nil
+}
+
 // newRowBlockSingleLevelIterator reads the index block and creates and
 // initializes a singleLevelIterator over an sstable with row-oriented data
 // blocks.

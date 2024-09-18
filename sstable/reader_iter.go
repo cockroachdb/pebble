@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
@@ -144,12 +145,18 @@ type Iterator interface {
 //
 // TODO(sumeer): remove the aforementioned defensive code.
 
-type singleLevelIteratorRowBlocks = singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
-type twoLevelIteratorRowBlocks = twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+type (
+	singleLevelIteratorRowBlocks    = singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+	twoLevelIteratorRowBlocks       = twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
+	singleLevelIteratorColumnBlocks = singleLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter]
+	twoLevelIteratorColumnBlocks    = twoLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter]
+)
 
 var (
-	singleLevelIterRowBlockPool sync.Pool // *singleLevelIteratorRowBlocks
-	twoLevelIterRowBlockPool    sync.Pool // *twoLevelIteratorRowBlocks
+	singleLevelIterRowBlockPool    sync.Pool // *singleLevelIteratorRowBlocks
+	twoLevelIterRowBlockPool       sync.Pool // *twoLevelIteratorRowBlocks
+	singleLevelIterColumnBlockPool sync.Pool // *singleLevelIteratorColumnBlocks
+	twoLevelIterColumnBlockPool    sync.Pool // *singleLevelIteratorColumnBlocks
 )
 
 func init() {
@@ -166,6 +173,26 @@ func init() {
 			i := &twoLevelIteratorRowBlocks{pool: &twoLevelIterRowBlockPool}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
 			invariants.SetFinalizer(i, checkTwoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
+			return i
+		},
+	}
+	singleLevelIterColumnBlockPool = sync.Pool{
+		New: func() interface{} {
+			i := &singleLevelIteratorColumnBlocks{
+				pool: &singleLevelIterColumnBlockPool,
+			}
+			// Note: this is a no-op if invariants are disabled or race is enabled.
+			invariants.SetFinalizer(i, checkSingleLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter])
+			return i
+		},
+	}
+	twoLevelIterColumnBlockPool = sync.Pool{
+		New: func() interface{} {
+			i := &twoLevelIteratorColumnBlocks{
+				pool: &twoLevelIterColumnBlockPool,
+			}
+			// Note: this is a no-op if invariants are disabled or race is enabled.
+			invariants.SetFinalizer(i, checkTwoLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter])
 			return i
 		},
 	}

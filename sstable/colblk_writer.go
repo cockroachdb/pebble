@@ -95,7 +95,7 @@ type RawColumnWriter struct {
 	layout layoutWriter
 
 	separatorBuf          []byte
-	tmp                   []byte
+	tmp                   [blockHandleLikelyMaxLen]byte
 	disableKeyOrderChecks bool
 }
 
@@ -761,6 +761,7 @@ func (w *RawColumnWriter) Close() (err error) {
 		panic(errors.AssertionFailedf("pebble: %d of queued data blocks but layout offset is %d",
 			w.queuedDataSize, w.layout.offset))
 	}
+	w.props.DataSize = w.layout.offset
 	if _, err = w.flushBufferedIndexBlocks(); err != nil {
 		return err
 	}
