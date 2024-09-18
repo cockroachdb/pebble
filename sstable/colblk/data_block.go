@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -578,6 +579,101 @@ func (w *DataBlockWriter) Finish(rows, size int) (finished []byte, lastKey base.
 		Trailer: base.InternalKeyTrailer(w.trailers.Get(rows - 1)),
 	}
 	return finished, lastKey
+}
+
+// DataBlockRewriter rewrites data blocks. See RewriteSuffixes.
+type DataBlockRewriter struct {
+	KeySchema KeySchema
+
+	writer    DataBlockWriter
+	reader    DataBlockReader
+	iter      DataBlockIter
+	keySeeker KeySeeker
+	keyBuf    []byte
+	// keyAlloc grown throughout the lifetime of the rewriter.
+	keyAlloc        bytealloc.A
+	prefixBytesIter PrefixBytesIter
+	initialized     bool
+}
+
+// RewriteSuffixes rewrites the input block. It expects the input block to only
+// contain keys with the suffix `from`. It rewrites the block to contain the
+// same keys with the suffix `to`.
+//
+// RewriteSuffixes returns the start and end keys of the rewritten block, and
+// the finished rewritten block. The returned start and end keys have indefinite
+// lifetimes. The returned rewritten block is owned by the DataBlockRewriter. If
+// it must be retained beyond the next call to RewriteSuffixes, the caller
+// should make a copy.
+func (rw *DataBlockRewriter) RewriteSuffixes(
+	input []byte, from []byte, to []byte,
+) (start, end base.InternalKey, rewritten []byte, err error) {
+	if !rw.initialized {
+		rw.keySeeker = rw.KeySchema.NewKeySeeker()
+		rw.writer.Init(rw.KeySchema)
+		rw.initialized = true
+	}
+
+	// TODO(jackson): RewriteSuffixes performs a naïve rewrite of the block,
+	// iterating over the input block while building a new block, KV-by-KV.
+	// Since key columns are stored separately from other data, we could copy
+	// columns that are unchanged (at least all the non-key columns, and in
+	// practice a PrefixBytes column) wholesale without retrieving rows
+	// one-by-one. In practice, there a few obstacles to making this work:
+	//
+	// - Only the beginning of a data block is assumed to be aligned. Columns
+	//   then add padding as necessary to align data that needs to be aligned.
+	//   If we copy a column, we have no guarantee that the alignment of the
+	//   column start in the old block matches the alignment in the new block.
+	//   We'd have to add padding to between columns to match the original
+	//   alignment. It's a bit subtle.
+	// - We still need to read all the key columns in order to synthesize
+	//   [start] and [end].
+	//
+	// The columnar format is designed to support fast IterTransforms at read
+	// time, including IterTransforms.SyntheticSuffix. Our effort might be
+	// better spent dropping support for the physical rewriting of data blocks
+	// we're performing here and instead use a read-time IterTransform.
+
+	rw.reader.Init(rw.KeySchema, input)
+	rw.keySeeker.Init(&rw.reader)
+	rw.writer.Reset()
+	if err = rw.iter.Init(&rw.reader, rw.keySeeker, nil, block.IterTransforms{}); err != nil {
+		return base.InternalKey{}, base.InternalKey{}, nil, err
+	}
+	if cap(rw.prefixBytesIter.buf) < int(rw.reader.maximumKeyLength) {
+		rw.prefixBytesIter.buf = make([]byte, rw.reader.maximumKeyLength)
+	}
+	if newMax := int(rw.reader.maximumKeyLength) - len(from) + len(to); cap(rw.keyBuf) < newMax {
+		rw.keyBuf = make([]byte, newMax)
+	}
+
+	// Rewrite each key-value pair one-by-one.
+	for i, kv := 0, rw.iter.First(); kv != nil; i, kv = i+1, rw.iter.Next() {
+		value := kv.V.ValueOrHandle
+		valuePrefix := block.InPlaceValuePrefix(false /* setHasSamePrefix (unused) */)
+		isValueExternal := rw.reader.isValueExternal.At(i)
+		if isValueExternal {
+			valuePrefix = block.ValuePrefix(kv.V.ValueOrHandle[0])
+			value = kv.V.ValueOrHandle[1:]
+		}
+		kcmp := rw.writer.KeyWriter.ComparePrev(kv.K.UserKey)
+		if !bytes.Equal(kv.K.UserKey[kcmp.PrefixLen:], from) {
+			return base.InternalKey{}, base.InternalKey{}, nil,
+				errors.Newf("key %s has suffix 0x%x; require 0x%x", kv.K, kv.K.UserKey[kcmp.PrefixLen:], from)
+		}
+		rw.keyBuf = append(rw.keyBuf[:0], kv.K.UserKey[:kcmp.PrefixLen]...)
+		rw.keyBuf = append(rw.keyBuf, to...)
+		if i == 0 {
+			start.UserKey, rw.keyAlloc = rw.keyAlloc.Copy(rw.keyBuf)
+			start.Trailer = kv.K.Trailer
+		}
+		k := base.InternalKey{UserKey: rw.keyBuf, Trailer: kv.K.Trailer}
+		rw.writer.Add(k, value, valuePrefix, kcmp, rw.reader.isObsolete.At(i))
+	}
+	rewritten, end = rw.writer.Finish(int(rw.reader.r.header.Rows), rw.writer.Size())
+	end.UserKey, rw.keyAlloc = rw.keyAlloc.Copy(end.UserKey)
+	return start, end, rewritten, nil
 }
 
 // DataBlockReaderSize is the size of a DataBlockReader struct. If allocating
