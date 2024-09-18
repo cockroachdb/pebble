@@ -28,6 +28,8 @@ func TestDataBlock(t *testing.T) {
 	var w DataBlockWriter
 	var r DataBlockReader
 	var it DataBlockIter
+	var rw DataBlockRewriter
+	rw.KeySchema = testKeysSchema
 	var sizes []int
 	datadriven.Walk(t, "testdata/data_block", func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
@@ -64,6 +66,22 @@ func TestDataBlock(t *testing.T) {
 					sizes = append(sizes, w.Size())
 				}
 				fmt.Fprint(&buf, &w)
+				return buf.String()
+			case "rewrite":
+				var from, to string
+				td.ScanArgs(t, "from", &from)
+				td.ScanArgs(t, "to", &to)
+				start, end, rewrittenBlock, err := rw.RewriteSuffixes(r.r.data, []byte(from), []byte(to))
+				if err != nil {
+					return fmt.Sprintf("error: %s", err)
+				}
+				r.Init(testKeysSchema, rewrittenBlock)
+				f := binfmt.New(r.r.data).LineWidth(20)
+				r.Describe(f)
+				fmt.Fprintf(&buf, "Start: %s\nEnd: %s\n%s",
+					start.Pretty(testkeys.Comparer.FormatKey),
+					end.Pretty(testkeys.Comparer.FormatKey),
+					f.String())
 				return buf.String()
 			case "finish":
 				rows := w.Rows()
