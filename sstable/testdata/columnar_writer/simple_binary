@@ -96,7 +96,7 @@ describe-binary
 129-130: x 00                                                               # data[0] = 0 [30 overall]
 130-131: x 01                                                               # data[1] = 1 [31 overall]
 # data
-131-132: x 63                                                               # data[0]: c
+131-132: x 62                                                               # data[0]: b
 # data for column 1
 132-133: x 00                                                               # encoding: zero
 # data for column 2
@@ -109,48 +109,73 @@ describe-binary
 # data
 136-136: x                                                                  # data[0]:
 136-137: x 00                                                               # block padding byte
-137-142: x 006e700d74                                                       # index block trailer
-# block 2 properties (0142-0630)
+137-142: x 0068409d2a                                                       # index block trailer
+# block 2 properties (0142-0628)
 142-162: x 000c016f62736f6c6574652d6b65790000230170                         # ...obsolete-key..#.p
 162-182: x 6562626c652e7261772e706f696e742d746f6d62                         # ebble.raw.point-tomb
 182-202: x 73746f6e652e6b65792e73697a6501002404726f                         # stone.key.size..$.ro
 202-222: x 636b7364622e626c6f636b2e62617365642e7461                         # cksdb.block.based.ta
 222-242: x 626c652e696e6465782e7479706500000000080a                         # ble.index.type......
-242-262: x 1a636f6d70617261746f726c6576656c64622e42                         # .comparatorleveldb.B
-262-282: x 79746577697365436f6d70617261746f720c070d                         # ytewiseComparator...
-282-302: x 72657373696f6e4e6f436f6d7072657373696f6e                         # ressionNoCompression
-302-322: x 13085f5f6f7074696f6e7377696e646f775f6269                         # ..__optionswindow_bi
-322-342: x 74733d2d31343b206c6576656c3d33323736373b                         # ts=-14; level=32767;
-342-362: x 2073747261746567793d303b206d61785f646963                         #  strategy=0; max_dic
-362-382: x 745f62797465733d303b207a7374645f6d61785f                         # t_bytes=0; zstd_max_
-382-402: x 747261696e5f62797465733d303b20656e61626c                         # train_bytes=0; enabl
-402-422: x 65643d303b20080901646174612e73697a650009                         # ed=0; ...data.size..
-422-442: x 0b01656c657465642e6b65797301080b0166696c                         # ..eleted.keys....fil
-442-462: x 7465722e73697a6500080a01696e6465782e7369                         # ter.size....index.si
-462-482: x 7a6529080e016d657267652e6f706572616e6473                         # ze)...merge.operands
-482-502: x 00130312746f72706562626c652e636f6e636174                         # ....torpebble.concat
-502-522: x 656e617465080f016e756d2e646174612e626c6f                         # enate...num.data.blo
-522-542: x 636b73010c0701656e7472696573020c0f017261                         # cks....entries....ra
-542-562: x 6e67652d64656c6574696f6e730008130e70726f                         # nge-deletions....pro
-562-582: x 70657274792e636f6c6c6563746f72735b6f6273                         # perty.collectors[obs
-582-602: x 6f6c6574652d6b65795d080c017261772e6b6579                         # olete-key]...raw.key
-602-622: x 2e73697a65120c0a0176616c75652e73697a6501                         # .size....value.size.
-622-630: x 0000000001000000                                                 # ........
-630-635: x 00e72c41d2                                                       # properties block trailer
-# block 3 meta-index (0635-0668)
-635-655: x 001204726f636b7364622e70726f706572746965                         # meta-index
-655-668: x 738e01e8030000000001000000                                       # (continued...)
-668-673: x 00d1441df9                                                       # meta-index block trailer
+242-262: x 18636f6d70617261746f72706562626c652e696e                         # .comparatorpebble.in
+262-282: x 7465726e616c2e746573746b6579730c070d7265                         # ternal.testkeys...re
+282-302: x 7373696f6e4e6f436f6d7072657373696f6e1308                         # ssionNoCompression..
+302-322: x 5f5f6f7074696f6e7377696e646f775f62697473                         # __optionswindow_bits
+322-342: x 3d2d31343b206c6576656c3d33323736373b2073                         # =-14; level=32767; s
+342-362: x 747261746567793d303b206d61785f646963745f                         # trategy=0; max_dict_
+362-382: x 62797465733d303b207a7374645f6d61785f7472                         # bytes=0; zstd_max_tr
+382-402: x 61696e5f62797465733d303b20656e61626c6564                         # ain_bytes=0; enabled
+402-422: x 3d303b20080901646174612e73697a6565090b01                         # =0; ...data.sizee...
+422-442: x 656c657465642e6b65797301080b0166696c7465                         # eleted.keys....filte
+442-462: x 722e73697a6500080a01696e6465782e73697a65                         # r.size....index.size
+462-482: x 29080e016d657267652e6f706572616e64730013                         # )...merge.operands..
+482-502: x 0312746f72706562626c652e636f6e636174656e                         # ..torpebble.concaten
+502-522: x 617465080f016e756d2e646174612e626c6f636b                         # ate...num.data.block
+522-542: x 73010c0701656e7472696573020c0f0172616e67                         # s....entries....rang
+542-562: x 652d64656c6574696f6e730008130e70726f7065                         # e-deletions....prope
+562-582: x 7274792e636f6c6c6563746f72735b6f62736f6c                         # rty.collectors[obsol
+582-602: x 6574652d6b65795d080c017261772e6b65792e73                         # ete-key]...raw.key.s
+602-622: x 697a65120c0a0176616c75652e73697a65010000                         # ize....value.size...
+622-628: x 000001000000                                                     # ......
+628-633: x 00c8496f99                                                       # properties block trailer
+# block 3 meta-index (0633-0666)
+633-653: x 001204726f636b7364622e70726f706572746965                         # meta-index
+653-666: x 738e01e6030000000001000000                                       # (continued...)
+666-671: x 007ce6ac6c                                                       # meta-index block trailer
 # sstable footer
-673-674: x 01                                                               # checksum type
-674-676: x fb04                                                             # uvarint(635): metaindex.Offset
-676-677: x 21                                                               # uvarint(33): metaindex.Length
-677-678: x 65                                                               # uvarint(101): index.Offset
-678-679: x 24                                                               # uvarint(36): index.Length
-679-699: x 0000000000000000000000000000000000000000                         # padding
-699-714: x 000000000000000000000000000000                                   # (continued...)
-714-718: x 05000000                                                         # table version
-718-726: x f09faab3f09faab3                                                 # magic
+671-672: x 01                                                               # checksum type
+672-674: x f904                                                             # uvarint(633): metaindex.Offset
+674-675: x 21                                                               # uvarint(33): metaindex.Length
+675-676: x 65                                                               # uvarint(101): index.Offset
+676-677: x 24                                                               # uvarint(36): index.Length
+677-697: x 0000000000000000000000000000000000000000                         # padding
+697-712: x 000000000000000000000000000000                                   # (continued...)
+712-716: x 05000000                                                         # table version
+716-724: x f09faab3f09faab3                                                 # magic
+
+open
+----
+ok
+
+props
+----
+rocksdb.num.entries: 2
+rocksdb.raw.key.size: 18
+rocksdb.raw.value.size: 1
+pebble.raw.point-tombstone.key.size: 1
+rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 1
+rocksdb.compression: NoCompression
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 101
+rocksdb.filter.size: 0
+rocksdb.index.size: 41
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+obsolete-key:  
 
 build block-size=150
 a.SET.1:apple
@@ -254,7 +279,7 @@ describe-binary
 149-150: x 00                                                               # data[0] = 0 [30 overall]
 150-151: x 01                                                               # data[1] = 1 [31 overall]
 # data
-151-152: x 64                                                               # data[0]: d
+151-152: x 63                                                               # data[0]: c
 # data for column 1
 152-153: x 00                                                               # encoding: zero
 # data for column 2
@@ -267,46 +292,46 @@ describe-binary
 # data
 156-156: x                                                                  # data[0]:
 156-157: x 00                                                               # block padding byte
-157-162: x 00a8858853                                                       # index block trailer
-# block 2 properties (0162-0611)
+157-162: x 00f38b9a72                                                       # index block trailer
+# block 2 properties (0162-0609)
 162-182: x 000c016f62736f6c6574652d6b65790000240472                         # ...obsolete-key..$.r
 182-202: x 6f636b7364622e626c6f636b2e62617365642e74                         # ocksdb.block.based.t
 202-222: x 61626c652e696e6465782e747970650000000008                         # able.index.type.....
-222-242: x 0a1a636f6d70617261746f726c6576656c64622e                         # ..comparatorleveldb.
-242-262: x 4279746577697365436f6d70617261746f720c07                         # BytewiseComparator..
-262-282: x 0d72657373696f6e4e6f436f6d7072657373696f                         # .ressionNoCompressio
-282-302: x 6e13085f5f6f7074696f6e7377696e646f775f62                         # n..__optionswindow_b
-302-322: x 6974733d2d31343b206c6576656c3d3332373637                         # its=-14; level=32767
-322-342: x 3b2073747261746567793d303b206d61785f6469                         # ; strategy=0; max_di
-342-362: x 63745f62797465733d303b207a7374645f6d6178                         # ct_bytes=0; zstd_max
-362-382: x 5f747261696e5f62797465733d303b20656e6162                         # _train_bytes=0; enab
-382-402: x 6c65643d303b20080901646174612e73697a6500                         # led=0; ...data.size.
-402-422: x 090b01656c657465642e6b65797300080b016669                         # ...eleted.keys....fi
-422-442: x 6c7465722e73697a6500080a01696e6465782e73                         # lter.size....index.s
-442-462: x 697a6529080e016d657267652e6f706572616e64                         # ize)...merge.operand
-462-482: x 7300130312746f72706562626c652e636f6e6361                         # s....torpebble.conca
-482-502: x 74656e617465080f016e756d2e646174612e626c                         # tenate...num.data.bl
-502-522: x 6f636b73010c0701656e7472696573030c0f0172                         # ocks....entries....r
-522-542: x 616e67652d64656c6574696f6e730008130e7072                         # ange-deletions....pr
-542-562: x 6f70657274792e636f6c6c6563746f72735b6f62                         # operty.collectors[ob
-562-582: x 736f6c6574652d6b65795d080c017261772e6b65                         # solete-key]...raw.ke
-582-602: x 792e73697a651b0c0a0176616c75652e73697a65                         # y.size....value.size
-602-611: x 140000000001000000                                               # .........
-611-616: x 0049367307                                                       # properties block trailer
-# block 3 meta-index (0616-0649)
-616-636: x 001204726f636b7364622e70726f706572746965                         # meta-index
-636-649: x 73a201c1030000000001000000                                       # (continued...)
-649-654: x 00eabf36fd                                                       # meta-index block trailer
+222-242: x 0a18636f6d70617261746f72706562626c652e69                         # ..comparatorpebble.i
+242-262: x 6e7465726e616c2e746573746b6579730c070d72                         # nternal.testkeys...r
+262-282: x 657373696f6e4e6f436f6d7072657373696f6e13                         # essionNoCompression.
+282-302: x 085f5f6f7074696f6e7377696e646f775f626974                         # .__optionswindow_bit
+302-322: x 733d2d31343b206c6576656c3d33323736373b20                         # s=-14; level=32767; 
+322-342: x 73747261746567793d303b206d61785f64696374                         # strategy=0; max_dict
+342-362: x 5f62797465733d303b207a7374645f6d61785f74                         # _bytes=0; zstd_max_t
+362-382: x 7261696e5f62797465733d303b20656e61626c65                         # rain_bytes=0; enable
+382-402: x 643d303b20080901646174612e73697a6579090b                         # d=0; ...data.sizey..
+402-422: x 01656c657465642e6b65797300080b0166696c74                         # .eleted.keys....filt
+422-442: x 65722e73697a6500080a01696e6465782e73697a                         # er.size....index.siz
+442-462: x 6529080e016d657267652e6f706572616e647300                         # e)...merge.operands.
+462-482: x 130312746f72706562626c652e636f6e63617465                         # ...torpebble.concate
+482-502: x 6e617465080f016e756d2e646174612e626c6f63                         # nate...num.data.bloc
+502-522: x 6b73010c0701656e7472696573030c0f0172616e                         # ks....entries....ran
+522-542: x 67652d64656c6574696f6e730008130e70726f70                         # ge-deletions....prop
+542-562: x 657274792e636f6c6c6563746f72735b6f62736f                         # erty.collectors[obso
+562-582: x 6c6574652d6b65795d080c017261772e6b65792e                         # lete-key]...raw.key.
+582-602: x 73697a651b0c0a0176616c75652e73697a651400                         # size....value.size..
+602-609: x 00000001000000                                                   # .......
+609-614: x 009eee16e5                                                       # properties block trailer
+# block 3 meta-index (0614-0647)
+614-634: x 001204726f636b7364622e70726f706572746965                         # meta-index
+634-647: x 73a201bf030000000001000000                                       # (continued...)
+647-652: x 00494860f2                                                       # meta-index block trailer
 # sstable footer
-654-655: x 01                                                               # checksum type
-655-657: x e804                                                             # uvarint(616): metaindex.Offset
-657-658: x 21                                                               # uvarint(33): metaindex.Length
-658-659: x 79                                                               # uvarint(121): index.Offset
-659-660: x 24                                                               # uvarint(36): index.Length
-660-680: x 0000000000000000000000000000000000000000                         # padding
-680-695: x 000000000000000000000000000000                                   # (continued...)
-695-699: x 05000000                                                         # table version
-699-707: x f09faab3f09faab3                                                 # magic
+652-653: x 01                                                               # checksum type
+653-655: x e604                                                             # uvarint(614): metaindex.Offset
+655-656: x 21                                                               # uvarint(33): metaindex.Length
+656-657: x 79                                                               # uvarint(121): index.Offset
+657-658: x 24                                                               # uvarint(36): index.Length
+658-678: x 0000000000000000000000000000000000000000                         # padding
+678-693: x 000000000000000000000000000000                                   # (continued...)
+693-697: x 05000000                                                         # table version
+697-705: x f09faab3f09faab3                                                 # magic
 
 build block-size=150
 a.SET.1:apple
@@ -982,7 +1007,7 @@ describe-binary
 1091-1092: x 70                                                               # data[5]: p
 1092-1093: x 72                                                               # data[6]: r
 1093-1094: x 74                                                               # data[7]: t
-1094-1095: x 76                                                               # data[8]: v
+1094-1095: x 75                                                               # data[8]: u
 # data for column 1
 1095-1096: x 02                                                               # encoding: 2b
 1096-1098: x 0000                                                             # data[0] = 0
@@ -1020,46 +1045,70 @@ describe-binary
 1125-1125: x                                                                  # data[7]:
 1125-1125: x                                                                  # data[8]:
 1125-1126: x 00                                                               # block padding byte
-1126-1131: x 0054096967                                                       # index block trailer
-# block 10 properties (1131-1582)
+1126-1131: x 00c2ad88e0                                                       # index block trailer
+# block 10 properties (1131-1581)
 1131-1151: x 000c016f62736f6c6574652d6b65790000240472                         # ...obsolete-key..$.r
 1151-1171: x 6f636b7364622e626c6f636b2e62617365642e74                         # ocksdb.block.based.t
 1171-1191: x 61626c652e696e6465782e747970650000000008                         # able.index.type.....
-1191-1211: x 0a1a636f6d70617261746f726c6576656c64622e                         # ..comparatorleveldb.
-1211-1231: x 4279746577697365436f6d70617261746f720c07                         # BytewiseComparator..
-1231-1251: x 0d72657373696f6e4e6f436f6d7072657373696f                         # .ressionNoCompressio
-1251-1271: x 6e13085f5f6f7074696f6e7377696e646f775f62                         # n..__optionswindow_b
-1271-1291: x 6974733d2d31343b206c6576656c3d3332373637                         # its=-14; level=32767
-1291-1311: x 3b2073747261746567793d303b206d61785f6469                         # ; strategy=0; max_di
-1311-1331: x 63745f62797465733d303b207a7374645f6d6178                         # ct_bytes=0; zstd_max
-1331-1351: x 5f747261696e5f62797465733d303b20656e6162                         # _train_bytes=0; enab
-1351-1371: x 6c65643d303b20080901646174612e73697a6500                         # led=0; ...data.size.
-1371-1391: x 090b01656c657465642e6b65797300080b016669                         # ...eleted.keys....fi
-1391-1411: x 6c7465722e73697a6500080a01696e6465782e73                         # lter.size....index.s
-1411-1431: x 697a6553080e016d657267652e6f706572616e64                         # izeS...merge.operand
-1431-1451: x 7300130312746f72706562626c652e636f6e6361                         # s....torpebble.conca
-1451-1471: x 74656e617465080f016e756d2e646174612e626c                         # tenate...num.data.bl
-1471-1491: x 6f636b73090c0701656e7472696573150c0f0172                         # ocks....entries....r
-1491-1511: x 616e67652d64656c6574696f6e730008130e7072                         # ange-deletions....pr
-1511-1531: x 6f70657274792e636f6c6c6563746f72735b6f62                         # operty.collectors[ob
-1531-1551: x 736f6c6574652d6b65795d080c027261772e6b65                         # solete-key]...raw.ke
-1551-1571: x 792e73697a65bd010c0a0276616c75652e73697a                         # y.size.....value.siz
-1571-1582: x 6599010000000001000000                                           # e..........
-1582-1587: x 000f05509b                                                       # properties block trailer
-# block 11 meta-index (1587-1620)
-1587-1607: x 001204726f636b7364622e70726f706572746965                         # meta-index
-1607-1620: x 73eb08c3030000000001000000                                       # (continued...)
-1620-1625: x 00a46d3a42                                                       # meta-index block trailer
+1191-1211: x 0a18636f6d70617261746f72706562626c652e69                         # ..comparatorpebble.i
+1211-1231: x 6e7465726e616c2e746573746b6579730c070d72                         # nternal.testkeys...r
+1231-1251: x 657373696f6e4e6f436f6d7072657373696f6e13                         # essionNoCompression.
+1251-1271: x 085f5f6f7074696f6e7377696e646f775f626974                         # .__optionswindow_bit
+1271-1291: x 733d2d31343b206c6576656c3d33323736373b20                         # s=-14; level=32767; 
+1291-1311: x 73747261746567793d303b206d61785f64696374                         # strategy=0; max_dict
+1311-1331: x 5f62797465733d303b207a7374645f6d61785f74                         # _bytes=0; zstd_max_t
+1331-1351: x 7261696e5f62797465733d303b20656e61626c65                         # rain_bytes=0; enable
+1351-1371: x 643d303b20080902646174612e73697a65980809                         # d=0; ...data.size...
+1371-1391: x 0b01656c657465642e6b65797300080b0166696c                         # ..eleted.keys....fil
+1391-1411: x 7465722e73697a6500080a01696e6465782e7369                         # ter.size....index.si
+1411-1431: x 7a6553080e016d657267652e6f706572616e6473                         # zeS...merge.operands
+1431-1451: x 00130312746f72706562626c652e636f6e636174                         # ....torpebble.concat
+1451-1471: x 656e617465080f016e756d2e646174612e626c6f                         # enate...num.data.blo
+1471-1491: x 636b73090c0701656e7472696573150c0f017261                         # cks....entries....ra
+1491-1511: x 6e67652d64656c6574696f6e730008130e70726f                         # nge-deletions....pro
+1511-1531: x 70657274792e636f6c6c6563746f72735b6f6273                         # perty.collectors[obs
+1531-1551: x 6f6c6574652d6b65795d080c027261772e6b6579                         # olete-key]...raw.key
+1551-1571: x 2e73697a65bd010c0a0276616c75652e73697a65                         # .size.....value.size
+1571-1581: x 99010000000001000000                                             # ..........
+1581-1586: x 009f2bf65d                                                       # properties block trailer
+# block 11 meta-index (1586-1619)
+1586-1606: x 001204726f636b7364622e70726f706572746965                         # meta-index
+1606-1619: x 73eb08c2030000000001000000                                       # (continued...)
+1619-1624: x 000797b712                                                       # meta-index block trailer
 # sstable footer
-1625-1626: x 01                                                               # checksum type
-1626-1628: x b30c                                                             # uvarint(1587): metaindex.Offset
-1628-1629: x 21                                                               # uvarint(33): metaindex.Length
-1629-1631: x 9808                                                             # uvarint(1048): index.Offset
-1631-1632: x 4e                                                               # uvarint(78): index.Length
-1632-1652: x 0000000000000000000000000000000000000000                         # padding
-1652-1666: x 0000000000000000000000000000                                     # (continued...)
-1666-1670: x 05000000                                                         # table version
-1670-1678: x f09faab3f09faab3                                                 # magic
+1624-1625: x 01                                                               # checksum type
+1625-1627: x b20c                                                             # uvarint(1586): metaindex.Offset
+1627-1628: x 21                                                               # uvarint(33): metaindex.Length
+1628-1630: x 9808                                                             # uvarint(1048): index.Offset
+1630-1631: x 4e                                                               # uvarint(78): index.Length
+1631-1651: x 0000000000000000000000000000000000000000                         # padding
+1651-1665: x 0000000000000000000000000000                                     # (continued...)
+1665-1669: x 05000000                                                         # table version
+1669-1677: x f09faab3f09faab3                                                 # magic
+
+open
+----
+ok
+
+props
+----
+rocksdb.num.entries: 21
+rocksdb.raw.key.size: 189
+rocksdb.raw.value.size: 153
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 9
+rocksdb.compression: NoCompression
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 1048
+rocksdb.filter.size: 0
+rocksdb.index.size: 83
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+obsolete-key:  
 
 # Test a sstable containing only a range deletion.
 
@@ -1139,46 +1188,46 @@ describe-binary
 089-089: x                                          # data[0]:
 089-090: x 00                                       # block padding byte
 090-095: x 0049ef6fdf                               # range-del block trailer
-# block 2 properties (0095-0545)
+# block 2 properties (0095-0543)
 095-115: x 000c026f62736f6c6574652d6b65790074002404 # ...obsolete-key.t.$.
 115-135: x 726f636b7364622e626c6f636b2e62617365642e # rocksdb.block.based.
 135-155: x 7461626c652e696e6465782e7479706500000000 # table.index.type....
-155-175: x 080a1a636f6d70617261746f726c6576656c6462 # ...comparatorleveldb
-175-195: x 2e4279746577697365436f6d70617261746f720c # .BytewiseComparator.
-195-215: x 070d72657373696f6e4e6f436f6d707265737369 # ..ressionNoCompressi
-215-235: x 6f6e13085f5f6f7074696f6e7377696e646f775f # on..__optionswindow_
-235-255: x 626974733d2d31343b206c6576656c3d33323736 # bits=-14; level=3276
-255-275: x 373b2073747261746567793d303b206d61785f64 # 7; strategy=0; max_d
-275-295: x 6963745f62797465733d303b207a7374645f6d61 # ict_bytes=0; zstd_ma
-295-315: x 785f747261696e5f62797465733d303b20656e61 # x_train_bytes=0; ena
-315-335: x 626c65643d303b20080901646174612e73697a65 # bled=0; ...data.size
-335-355: x 00090b01656c657465642e6b65797300080b0166 # ....eleted.keys....f
-355-375: x 696c7465722e73697a6500080a01696e6465782e # ilter.size....index.
-375-395: x 73697a6521080e016d657267652e6f706572616e # size!...merge.operan
-395-415: x 647300130312746f72706562626c652e636f6e63 # ds....torpebble.conc
-415-435: x 6174656e617465080f016e756d2e646174612e62 # atenate...num.data.b
-435-455: x 6c6f636b73000c0701656e7472696573000c0f01 # locks....entries....
-455-475: x 72616e67652d64656c6574696f6e730108130e70 # range-deletions....p
-475-495: x 726f70657274792e636f6c6c6563746f72735b6f # roperty.collectors[o
-495-515: x 62736f6c6574652d6b65795d080c017261772e6b # bsolete-key]...raw.k
-515-535: x 65792e73697a65000c0a0176616c75652e73697a # ey.size....value.siz
-535-545: x 65000000000001000000                     # e.........
-545-550: x 0051e3ec07                               # properties block trailer
-# block 3 meta-index (0550-0609)
-550-570: x 001203726f636b7364622e70726f706572746965 # meta-index
-570-590: x 735fc203001202726f636b7364622e72616e6765 # (continued...)
-590-609: x 5f64656c322139000000001800000002000000   # (continued...)
-609-614: x 0035ff967f                               # meta-index block trailer
+155-175: x 080a18636f6d70617261746f72706562626c652e # ...comparatorpebble.
+175-195: x 696e7465726e616c2e746573746b6579730c070d # internal.testkeys...
+195-215: x 72657373696f6e4e6f436f6d7072657373696f6e # ressionNoCompression
+215-235: x 13085f5f6f7074696f6e7377696e646f775f6269 # ..__optionswindow_bi
+235-255: x 74733d2d31343b206c6576656c3d33323736373b # ts=-14; level=32767;
+255-275: x 2073747261746567793d303b206d61785f646963 #  strategy=0; max_dic
+275-295: x 745f62797465733d303b207a7374645f6d61785f # t_bytes=0; zstd_max_
+295-315: x 747261696e5f62797465733d303b20656e61626c # train_bytes=0; enabl
+315-335: x 65643d303b20080901646174612e73697a650009 # ed=0; ...data.size..
+335-355: x 0b01656c657465642e6b65797300080b0166696c # ..eleted.keys....fil
+355-375: x 7465722e73697a6500080a01696e6465782e7369 # ter.size....index.si
+375-395: x 7a6521080e016d657267652e6f706572616e6473 # ze!...merge.operands
+395-415: x 00130312746f72706562626c652e636f6e636174 # ....torpebble.concat
+415-435: x 656e617465080f016e756d2e646174612e626c6f # enate...num.data.blo
+435-455: x 636b73000c0701656e7472696573000c0f017261 # cks....entries....ra
+455-475: x 6e67652d64656c6574696f6e730108130e70726f # nge-deletions....pro
+475-495: x 70657274792e636f6c6c6563746f72735b6f6273 # perty.collectors[obs
+495-515: x 6f6c6574652d6b65795d080c017261772e6b6579 # olete-key]...raw.key
+515-535: x 2e73697a65000c0a0176616c75652e73697a6500 # .size....value.size.
+535-543: x 0000000001000000                         # ........
+543-548: x 00dbad0e95                               # properties block trailer
+# block 3 meta-index (0548-0607)
+548-568: x 001203726f636b7364622e70726f706572746965 # meta-index
+568-588: x 735fc003001202726f636b7364622e72616e6765 # (continued...)
+588-607: x 5f64656c322139000000001800000002000000   # (continued...)
+607-612: x 003b051800                               # meta-index block trailer
 # sstable footer
-614-615: x 01                                       # checksum type
-615-617: x a604                                     # uvarint(550): metaindex.Offset
-617-618: x 3b                                       # uvarint(59): metaindex.Length
-618-619: x 00                                       # uvarint(0): index.Offset
-619-620: x 1c                                       # uvarint(28): index.Length
-620-640: x 0000000000000000000000000000000000000000 # padding
-640-655: x 000000000000000000000000000000           # (continued...)
-655-659: x 05000000                                 # table version
-659-667: x f09faab3f09faab3                         # magic
+612-613: x 01                                       # checksum type
+613-615: x a404                                     # uvarint(548): metaindex.Offset
+615-616: x 3b                                       # uvarint(59): metaindex.Length
+616-617: x 00                                       # uvarint(0): index.Offset
+617-618: x 1c                                       # uvarint(28): index.Length
+618-638: x 0000000000000000000000000000000000000000 # padding
+638-653: x 000000000000000000000000000000           # (continued...)
+653-657: x 05000000                                 # table version
+657-665: x f09faab3f09faab3                         # magic
 
 # Test a sstable containing only range keys.
 
@@ -1272,43 +1321,43 @@ describe-binary
 100-100: x                                          # data[1]:
 100-101: x 00                                       # block padding byte
 101-106: x 00e75b3245                               # range-key block trailer
-# block 2 properties (0106-0556)
+# block 2 properties (0106-0554)
 106-126: x 000c026f62736f6c6574652d6b65790074002404 # ...obsolete-key.t.$.
 126-146: x 726f636b7364622e626c6f636b2e62617365642e # rocksdb.block.based.
 146-166: x 7461626c652e696e6465782e7479706500000000 # table.index.type....
-166-186: x 080a1a636f6d70617261746f726c6576656c6462 # ...comparatorleveldb
-186-206: x 2e4279746577697365436f6d70617261746f720c # .BytewiseComparator.
-206-226: x 070d72657373696f6e4e6f436f6d707265737369 # ..ressionNoCompressi
-226-246: x 6f6e13085f5f6f7074696f6e7377696e646f775f # on..__optionswindow_
-246-266: x 626974733d2d31343b206c6576656c3d33323736 # bits=-14; level=3276
-266-286: x 373b2073747261746567793d303b206d61785f64 # 7; strategy=0; max_d
-286-306: x 6963745f62797465733d303b207a7374645f6d61 # ict_bytes=0; zstd_ma
-306-326: x 785f747261696e5f62797465733d303b20656e61 # x_train_bytes=0; ena
-326-346: x 626c65643d303b20080901646174612e73697a65 # bled=0; ...data.size
-346-366: x 00090b01656c657465642e6b65797300080b0166 # ....eleted.keys....f
-366-386: x 696c7465722e73697a6500080a01696e6465782e # ilter.size....index.
-386-406: x 73697a6521080e016d657267652e6f706572616e # size!...merge.operan
-406-426: x 647300130312746f72706562626c652e636f6e63 # ds....torpebble.conc
-426-446: x 6174656e617465080f016e756d2e646174612e62 # atenate...num.data.b
-446-466: x 6c6f636b73000c0701656e7472696573000c0f01 # locks....entries....
-466-486: x 72616e67652d64656c6574696f6e730008130e70 # range-deletions....p
-486-506: x 726f70657274792e636f6c6c6563746f72735b6f # roperty.collectors[o
-506-526: x 62736f6c6574652d6b65795d080c017261772e6b # bsolete-key]...raw.k
-526-546: x 65792e73697a65000c0a0176616c75652e73697a # ey.size....value.siz
-546-556: x 65000000000001000000                     # e.........
-556-561: x 00410e9cbb                               # properties block trailer
-# block 3 meta-index (0561-0618)
-561-581: x 001002706562626c652e72616e67655f6b657921 # meta-index
-581-601: x 44001203726f636b7364622e70726f7065727469 # (continued...)
-601-618: x 65736ac203000000001500000002000000       # (continued...)
-618-623: x 00866c7813                               # meta-index block trailer
+166-186: x 080a18636f6d70617261746f72706562626c652e # ...comparatorpebble.
+186-206: x 696e7465726e616c2e746573746b6579730c070d # internal.testkeys...
+206-226: x 72657373696f6e4e6f436f6d7072657373696f6e # ressionNoCompression
+226-246: x 13085f5f6f7074696f6e7377696e646f775f6269 # ..__optionswindow_bi
+246-266: x 74733d2d31343b206c6576656c3d33323736373b # ts=-14; level=32767;
+266-286: x 2073747261746567793d303b206d61785f646963 #  strategy=0; max_dic
+286-306: x 745f62797465733d303b207a7374645f6d61785f # t_bytes=0; zstd_max_
+306-326: x 747261696e5f62797465733d303b20656e61626c # train_bytes=0; enabl
+326-346: x 65643d303b20080901646174612e73697a650009 # ed=0; ...data.size..
+346-366: x 0b01656c657465642e6b65797300080b0166696c # ..eleted.keys....fil
+366-386: x 7465722e73697a6500080a01696e6465782e7369 # ter.size....index.si
+386-406: x 7a6521080e016d657267652e6f706572616e6473 # ze!...merge.operands
+406-426: x 00130312746f72706562626c652e636f6e636174 # ....torpebble.concat
+426-446: x 656e617465080f016e756d2e646174612e626c6f # enate...num.data.blo
+446-466: x 636b73000c0701656e7472696573000c0f017261 # cks....entries....ra
+466-486: x 6e67652d64656c6574696f6e730008130e70726f # nge-deletions....pro
+486-506: x 70657274792e636f6c6c6563746f72735b6f6273 # perty.collectors[obs
+506-526: x 6f6c6574652d6b65795d080c017261772e6b6579 # olete-key]...raw.key
+526-546: x 2e73697a65000c0a0176616c75652e73697a6500 # .size....value.size.
+546-554: x 0000000001000000                         # ........
+554-559: x 00eb027e31                               # properties block trailer
+# block 3 meta-index (0559-0616)
+559-579: x 001002706562626c652e72616e67655f6b657921 # meta-index
+579-599: x 44001203726f636b7364622e70726f7065727469 # (continued...)
+599-616: x 65736ac003000000001500000002000000       # (continued...)
+616-621: x 006d0a7327                               # meta-index block trailer
 # sstable footer
-623-624: x 01                                       # checksum type
-624-626: x b104                                     # uvarint(561): metaindex.Offset
-626-627: x 39                                       # uvarint(57): metaindex.Length
-627-628: x 00                                       # uvarint(0): index.Offset
-628-629: x 1c                                       # uvarint(28): index.Length
-629-649: x 0000000000000000000000000000000000000000 # padding
-649-664: x 000000000000000000000000000000           # (continued...)
-664-668: x 05000000                                 # table version
-668-676: x f09faab3f09faab3                         # magic
+621-622: x 01                                       # checksum type
+622-624: x af04                                     # uvarint(559): metaindex.Offset
+624-625: x 39                                       # uvarint(57): metaindex.Length
+625-626: x 00                                       # uvarint(0): index.Offset
+626-627: x 1c                                       # uvarint(28): index.Length
+627-647: x 0000000000000000000000000000000000000000 # padding
+647-662: x 000000000000000000000000000000           # (continued...)
+662-666: x 05000000                                 # table version
+666-674: x f09faab3f09faab3                         # magic
