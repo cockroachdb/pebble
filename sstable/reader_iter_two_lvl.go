@@ -145,6 +145,69 @@ func (i *twoLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) intersec
 	return blockIntersects
 }
 
+// newColumnBlockTwoLevelIterator reads the top-level index block and creates and
+// initializes a two-level iterator over an sstable with column-oriented data
+// blocks.
+//
+// Note that lower, upper are iterator bounds and are separate from virtual
+// sstable bounds. If the virtualState passed in is not nil, then virtual
+// sstable bounds will be enforced.
+func newColumnBlockTwoLevelIterator(
+	ctx context.Context,
+	r *Reader,
+	v *virtualState,
+	transforms IterTransforms,
+	lower, upper []byte,
+	filterer *BlockPropertiesFilterer,
+	filterBlockSizeLimit FilterBlockSizeLimit,
+	stats *base.InternalIteratorStats,
+	categoryAndQoS CategoryAndQoS,
+	statsCollector *CategoryStatsCollector,
+	rp ReaderProvider,
+	bufferPool *block.BufferPool,
+) (*twoLevelIteratorColumnBlocks, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if !r.tableFormat.BlockColumnar() {
+		panic(errors.AssertionFailedf("table format %d should not use columnar block format", r.tableFormat))
+	}
+	i := twoLevelIterColumnBlockPool.Get().(*twoLevelIteratorColumnBlocks)
+	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
+		false, // Disable the use of the filter block in the second level.
+		stats, categoryAndQoS, statsCollector, bufferPool)
+	if r.Properties.NumValueBlocks > 0 {
+		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
+		// can outlive the singleLevelIterator due to be being embedded in a
+		// LazyValue. This consumes ~2% in microbenchmark CPU profiles, but we
+		// should only optimize this if it shows up as significant in end-to-end
+		// CockroachDB benchmarks, since it is tricky to do so. One possibility
+		// is that if many sstable iterators only get positioned at latest
+		// versions of keys, and therefore never expose a LazyValue that is
+		// separated to their callers, they can put this valueBlockReader into a
+		// sync.Pool.
+		i.secondLevel.vbReader = &valueBlockReader{
+			bpOpen: &i.secondLevel,
+			rp:     rp,
+			vbih:   r.valueBIH,
+			stats:  stats,
+		}
+		i.secondLevel.data.GetLazyValuer = i.secondLevel.vbReader
+		i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
+	}
+	i.secondLevel.data.KeySchema = r.keySchema
+	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
+	topLevelIndexH, err := r.readIndex(ctx, i.secondLevel.indexFilterRH, stats, &i.secondLevel.iterStats)
+	if err == nil {
+		err = i.topLevelIndex.InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, topLevelIndexH, transforms)
+	}
+	if err != nil {
+		_ = i.Close()
+		return nil, err
+	}
+	return i, nil
+}
+
 // newRowBlockTwoLevelIterator reads the top-level index block and creates and
 // initializes a two-level iterator over an sstable with row-oriented data
 // blocks.
