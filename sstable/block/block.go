@@ -282,14 +282,25 @@ func (ss SyntheticSuffix) IsSet() bool {
 }
 
 // SyntheticPrefix represents a byte slice that is implicitly prepended to every
-// key in a file being read or accessed by a reader.  Note that the table is
-// assumed to contain "prefix-less" keys that become full keys when prepended
-// with the synthetic prefix. The table's bloom filters are constructed only on
-// the "prefix-less" keys in the table, but interactions with the file including
-// seeks and reads, will all behave as if the file had been constructed from
-// keys that did include the prefix. Note that all Compare operations may act on
-// a prefix-less key as the synthetic prefix will never modify key metadata
-// stored in the key suffix.
+// key in a file being read or accessed by a reader. Note that since the byte
+// slice is prepended to every KV rather than replacing a byte prefix, the
+// result of prepending the synthetic prefix must be a full, valid key while the
+// partial key physically stored within the sstable need not be a valid key
+// according to user key semantics.
+//
+// Note that elsewhere we use the language of 'prefix' to describe the user key
+// portion of a MVCC key, as defined by the Comparer's base.Split method. The
+// SyntheticPrefix is related only in that it's a byte prefix that is
+// incorporated into the logical MVCC prefix.
+//
+// The table's bloom filters are constructed only on the partial keys physically
+// stored in the table, but interactions with the file including seeks and
+// reads, will all behave as if the file had been constructed from keys that
+// include the synthetic prefix. Note that all Compare operations will act on a
+// partial key (before any prepending), so the Comparer must support comparing
+// these partial keys.
+//
+// The synthetic prefix will never modify key metadata stored in the key suffix.
 //
 // NB: Since this transformation currently only applies to point keys, a block
 // with range keys cannot be iterated over with a synthetic prefix.
