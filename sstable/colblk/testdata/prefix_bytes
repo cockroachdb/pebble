@@ -964,3 +964,81 @@ finish rows=5
 17-18: x 64       # data[05]: ....d
 18-19: x 65       # data[06]: ....e (bundle prefix)
 19-19: x          # data[07]: .....
+
+# Test a PrefixBytes that only contains empty slices.
+
+init bundle-size=4
+----
+Size: 0
+
+put
+----
+Size: 2
+nKeys=1; bundleSize=4
+blockPrefixLen=0; currentBundleLen=0; currentBundleKeys=1
+Offsets:
+  0000  0000  0000
+Data (len=0):
+
+put
+----
+Size: 2
+nKeys=2; bundleSize=4
+blockPrefixLen=0; currentBundleLen=0; currentBundleKeys=1
+Offsets:
+  0000  0000  0000  0000
+Data (len=0):
+
+put
+----
+Size: 2
+nKeys=3; bundleSize=4
+blockPrefixLen=0; currentBundleLen=0; currentBundleKeys=1
+Offsets:
+  0000  0000  0000  0000  0000
+Data (len=0):
+
+put
+----
+Size: 2
+nKeys=4; bundleSize=4
+blockPrefixLen=0; currentBundleLen=0; currentBundleKeys=1
+Offsets:
+  0000  0000  0000  0000  0000  0000
+Data (len=0):
+
+put
+----
+Size: 2
+nKeys=5; bundleSize=4
+blockPrefixLen=0; currentBundleLen=0; currentBundleKeys=1
+Offsets:
+  0000  0000  0000  0000  0000  0000  0000  0000
+Data (len=0):
+
+finish rows=5
+----
+# PrefixBytes
+0-1: x 02 # bundleSize: 4
+# Offsets table
+1-2: x 00 # encoding: zero
+# Data
+2-2: x    # data[00]:  (block prefix)
+2-2: x    # data[01]:  (bundle prefix)
+2-2: x    # data[02]:
+2-2: x    # data[03]:
+2-2: x    # data[04]:
+2-2: x    # data[05]:
+2-2: x    # data[06]:  (bundle prefix)
+2-2: x    # data[07]:
+
+get indices=(0, 1, 2, 3, 4)
+----
+----
+
+
+
+
+
+----
+----

@@ -746,9 +746,6 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 	prev := &b.sizings[1-currIdx]
 
 	if invariants.Enabled {
-		if len(key) == 0 {
-			panic(errors.AssertionFailedf("key must be non-empty"))
-		}
 		if b.maxShared == 0 {
 			panic(errors.AssertionFailedf("maxShared must be positive"))
 		}
@@ -1021,15 +1018,18 @@ func (b *PrefixBytesBuilder) Finish(
 	width := uint32(sz.offsetEncoding.Width())
 	buf[offset] = byte(sz.offsetEncoding)
 	offset++
-	offset = alignWithZeroes(buf, offset, width)
 	switch width {
+	case 0:
+		// All empty slices. Nothing else to write.
 	case 1:
 		offsetDest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset]))
 		writePrefixCompressed[uint8](b, rows, sz, offsetDest, buf[stringDataOffset:])
 	case align16:
+		offset = alignWithZeroes(buf, offset, align16)
 		offsetDest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset]))
 		writePrefixCompressed[uint16](b, rows, sz, offsetDest, buf[stringDataOffset:])
 	case align32:
+		offset = alignWithZeroes(buf, offset, align32)
 		offsetDest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset]))
 		writePrefixCompressed[uint32](b, rows, sz, offsetDest, buf[stringDataOffset:])
 	default:
