@@ -125,7 +125,7 @@ func compare(a, b []byte) int {
 func split(a []byte) int {
 	i := bytes.LastIndexByte(a, suffixDelim)
 	if i == 0 {
-		panic("split called on bare prefix")
+		panic(fmt.Sprintf("Split called on bare suffix %q", a))
 	}
 	if i > 0 {
 		return i
