@@ -965,6 +965,8 @@ func (w *LogWriter) emitEOFTrailer() {
 	b.written.Store(i + int32(recyclableHeaderSize))
 }
 
+// emitFragment writes a fragment of a record to the current block. It returns
+// the remaining bytes of the record that need to be written.
 func (w *LogWriter) emitFragment(n int, p []byte) (remainingP []byte) {
 	b := w.block
 	i := b.written.Load()
