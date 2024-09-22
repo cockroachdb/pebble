@@ -179,12 +179,16 @@ func TestReader(t *testing.T) {
 					if fields.HasValue("sync") {
 						require.NoError(t, f.Sync())
 					}
+
+					fmt.Fprintf(&buf, "%d..%d: write-garbage\n", offset, offset+int64(size))
 				case "corrupt-tail":
 					length := int64(fields.MustKeyValue("len").Int())
 					garbage := make([]byte, length)
 					rng.Read(garbage)
 					_, err := f.WriteAt(garbage, offset-length)
 					require.NoError(t, err)
+
+					fmt.Fprintf(&buf, "%d..%d: corrupt-tail\n", offset-length, offset)
 				default:
 					panic(fmt.Sprintf("unrecognized command %q", fields[0]))
 				}
@@ -206,7 +210,7 @@ func TestReader(t *testing.T) {
 			require.NoError(t, err)
 			log, ok := logs.Get(NumWAL(logNum))
 			if !ok {
-				return "not found"
+				return fmt.Sprintf("log with logNum %d not found", logNum)
 			}
 
 			segments := log.segments

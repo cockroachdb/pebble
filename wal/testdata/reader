@@ -181,7 +181,7 @@ r.NextRecord() = (rr, (000003-002.log: 2373), 2652 from previous files, EOF)
 
 read logNum=000004
 ----
-not found
+log with logNum 4 not found
 
 # Test a corrupted log file that encodes a record too small to be a valid batch.
 # The second "batch" only has a length of 5.
@@ -228,6 +228,7 @@ created "000005-001.log"
 0..55: batch #95499
 55..482: batch #95501
 482..692: batch #95506
+692..1045: write-garbage
 
 read logNum=000005
 ----
@@ -345,6 +346,7 @@ created "000007.log"
 55..482: batch #95501
 482..692: batch #95506
 692..46705: batch #95535
+45685..46705: corrupt-tail
 
 define logNum=000007 logNameIndex=001
 batch count=19 seq=95535 size=45991 sync
