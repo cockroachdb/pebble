@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
@@ -81,62 +80,30 @@ func RewriteKeySuffixesAndReturnFormat(
 func rewriteKeySuffixesInBlocks(
 	r *Reader, out objstorage.Writable, o WriterOptions, from, to []byte, concurrency int,
 ) (*WriterMetadata, TableFormat, error) {
-	if o.Comparer == nil || o.Comparer.Split == nil {
-		return nil, TableFormatUnspecified,
-			errors.New("a valid splitter is required to rewrite suffixes")
-	}
-	if concurrency < 1 {
+	o = o.ensureDefaults()
+	switch {
+	case concurrency < 1:
 		return nil, TableFormatUnspecified, errors.New("concurrency must be >= 1")
-	}
-	// Even though NumValueBlocks = 0 => NumValuesInValueBlocks = 0, check both
-	// as a defensive measure.
-	if r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0 {
+	case r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0:
 		return nil, TableFormatUnspecified,
 			errors.New("sstable with a single suffix should not have value blocks")
+	case r.Properties.ComparerName != o.Comparer.Name:
+		return nil, TableFormatUnspecified, errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters",
+			r.Properties.ComparerName, o.Comparer.Name)
+	case o.FilterPolicy != nil && r.Properties.FilterPolicyName != o.FilterPolicy.Name():
+		return nil, TableFormatUnspecified, errors.New("mismatched filters")
 	}
 
-	tableFormat := r.tableFormat
-	o.TableFormat = tableFormat
-	w := newRowWriter(out, o)
+	o.TableFormat = r.tableFormat
+	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
 			w.Close()
 		}
 	}()
 
-	for _, c := range w.blockPropCollectors {
-		if !c.SupportsSuffixReplacement() {
-			return nil, TableFormatUnspecified,
-				errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
-		}
-	}
-
-	l, err := r.Layout()
-	if err != nil {
-		return nil, TableFormatUnspecified, errors.Wrap(err, "reading layout")
-	}
-
-	if err := rewriteDataBlocksToWriter(r, w, l.Data, from, to, concurrency); err != nil {
-		return nil, TableFormatUnspecified, errors.Wrap(err, "rewriting data blocks")
-	}
-
-	// Copy over the range key block and replace suffixes in it if it exists.
-	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
-		return nil, TableFormatUnspecified, errors.Wrap(err, "rewriting range key blocks")
-	}
-
-	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
-	// already have ensured this is valid if it exists).
-	if w.filter != nil {
-		if filterBlockBH, ok := l.FilterByName(w.filter.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(r, filterBlockBH, nil)
-			if err != nil {
-				return nil, TableFormatUnspecified, errors.Wrap(err, "reading filter")
-			}
-			w.filter = copyFilterWriter{
-				origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
-			}
-		}
+	if err := w.rewriteSuffixes(r, o, from, to, concurrency); err != nil {
+		return nil, TableFormatUnspecified, err
 	}
 
 	if err := w.Close(); err != nil {
@@ -145,7 +112,7 @@ func rewriteKeySuffixesInBlocks(
 	}
 	writerMeta, err := w.Metadata()
 	w = nil
-	return writerMeta, tableFormat, err
+	return writerMeta, r.tableFormat, err
 }
 
 var errBadKind = errors.New("key does not have expected kind (set)")
@@ -161,89 +128,54 @@ type blockRewriter interface {
 	) (start, end base.InternalKey, rewritten []byte, err error)
 }
 
-func rewriteBlocks[R blockRewriter](
+func rewriteDataBlocksInParallel(
 	r *Reader,
-	rw R,
-	checksumType block.ChecksumType,
-	compression block.Compression,
+	opts WriterOptions,
 	input []block.HandleWithProperties,
-	output []blockWithSpan,
-	totalWorkers, worker int,
 	from, to []byte,
-) error {
-	var blockAlloc bytealloc.A
-	var compressedBuf []byte
-	var inputBlock, inputBlockBuf []byte
-	checksummer := block.Checksummer{Type: checksumType}
-	// We'll assume all blocks are _roughly_ equal so round-robin static partition
-	// of each worker doing every ith block is probably enough.
-	for i := worker; i < len(input); i += totalWorkers {
-		bh := input[i]
-		var err error
-		inputBlock, inputBlockBuf, err = readBlockBuf(r, bh.Handle, inputBlockBuf)
-		if err != nil {
-			return err
-		}
-		var outputBlock []byte
-		output[i].start, output[i].end, outputBlock, err =
-			rw.RewriteSuffixes(inputBlock, from, to)
-		if err != nil {
-			return err
-		}
-		compressedBuf = compressedBuf[:cap(compressedBuf)]
-		finished := block.CompressAndChecksum(&compressedBuf, outputBlock, compression, &checksummer)
-		output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
-	}
-	return nil
-}
-
-func checkWriterFilterMatchesReader(r *Reader, w *RawRowWriter) error {
-	if r.Properties.FilterPolicyName != w.filter.policyName() {
-		return errors.New("mismatched filters")
-	}
-	if was, is := r.Properties.ComparerName, w.props.ComparerName; was != is {
-		return errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters", was, is)
-	}
-	return nil
-}
-
-func rewriteDataBlocksToWriter(
-	r *Reader, w *RawRowWriter, data []block.HandleWithProperties, from, to []byte, concurrency int,
-) error {
+	concurrency int,
+	newDataBlockRewriter func() blockRewriter,
+) ([]blockWithSpan, error) {
 	if r.Properties.NumEntries == 0 {
 		// No point keys.
-		return nil
+		return nil, nil
 	}
-	blocks := make([]blockWithSpan, len(data))
-
-	if w.filter != nil {
-		if err := checkWriterFilterMatchesReader(r, w); err != nil {
-			return err
-		}
-	}
+	output := make([]blockWithSpan, len(input))
 
 	g := &sync.WaitGroup{}
 	g.Add(concurrency)
 	errCh := make(chan error, concurrency)
-	for i := 0; i < concurrency; i++ {
-		worker := i
+	for j := 0; j < concurrency; j++ {
+		worker := j
 		go func() {
 			defer g.Done()
-
-			rw := rowblk.NewRewriter(
-				r.Comparer,
-				w.dataBlockBuf.dataBlock.RestartInterval)
-			err := rewriteBlocks(
-				r,
-				rw,
-				w.blockBuf.checksummer.Type,
-				w.compression,
-				data,
-				blocks,
-				concurrency,
-				worker,
-				from, to,
-			)
+			rw := newDataBlockRewriter()
+			var blockAlloc bytealloc.A
+			var compressedBuf []byte
+			var inputBlock, inputBlockBuf []byte
+			checksummer := block.Checksummer{Type: opts.Checksum}
+			// We'll assume all blocks are _roughly_ equal so round-robin static partition
+			// of each worker doing every ith block is probably enough.
+			err := func() error {
+				for i := worker; i < len(input); i += concurrency {
+					bh := input[i]
+					var err error
+					inputBlock, inputBlockBuf, err = readBlockBuf(r, bh.Handle, inputBlockBuf)
+					if err != nil {
+						return err
+					}
+					var outputBlock []byte
+					output[i].start, output[i].end, outputBlock, err =
+						rw.RewriteSuffixes(inputBlock, from, to)
+					if err != nil {
+						return err
+					}
+					compressedBuf = compressedBuf[:cap(compressedBuf)]
+					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, opts.Compression, &checksummer)
+					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
+				}
+				return nil
+			}()
 			if err != nil {
 				errCh <- err
 			}
@@ -252,83 +184,12 @@ func rewriteDataBlocksToWriter(
 	g.Wait()
 	close(errCh)
 	if err, ok := <-errCh; ok {
-		return err
+		return nil, err
 	}
-
-	// oldShortIDs maps the shortID for the block property collector in the old
-	// blocks to the shortID in the new blocks. Initialized once for the sstable.
-	var oldShortIDs []shortID
-	// oldProps is the property value in an old block, indexed by the shortID in
-	// the new block. Slice is reused for each block.
-	var oldProps [][]byte
-	if len(w.blockPropCollectors) > 0 {
-		oldProps = make([][]byte, len(w.blockPropCollectors))
-		oldShortIDs = make([]shortID, math.MaxUint8)
-		for i := range oldShortIDs {
-			oldShortIDs[i] = invalidShortID
-		}
-		for i, p := range w.blockPropCollectors {
-			if prop, ok := r.Properties.UserProperties[p.Name()]; ok {
-				was, is := shortID(prop[0]), shortID(i)
-				oldShortIDs[was] = is
-			} else {
-				return errors.Errorf("sstable does not contain property %s", p.Name())
-			}
-		}
-	}
-
-	for i := range blocks {
-		// Write the rewritten block to the file.
-		bh, err := w.layout.WritePrecompressedDataBlock(blocks[i].physical)
-		if err != nil {
-			return err
-		}
-
-		// Load any previous values for our prop collectors into oldProps.
-		for i := range oldProps {
-			oldProps[i] = nil
-		}
-		decoder := makeBlockPropertiesDecoder(len(oldProps), data[i].Props)
-		for !decoder.Done() {
-			id, val, err := decoder.Next()
-			if err != nil {
-				return err
-			}
-			if oldShortIDs[id].IsValid() {
-				oldProps[oldShortIDs[id]] = val
-			}
-		}
-
-		for i, p := range w.blockPropCollectors {
-			if err := p.AddCollectedWithSuffixReplacement(oldProps[i], from, to); err != nil {
-				return err
-			}
-		}
-
-		bhp, err := w.maybeAddBlockPropertiesToBlockHandle(bh)
-		if err != nil {
-			return err
-		}
-		var nextKey InternalKey
-		if i+1 < len(blocks) {
-			nextKey = blocks[i+1].start
-		}
-		if err = w.addIndexEntrySync(blocks[i].end, nextKey, bhp, w.dataBlockBuf.tmp[:]); err != nil {
-			return err
-		}
-	}
-
-	w.meta.Size = w.layout.offset
-	w.meta.updateSeqNum(blocks[0].start.SeqNum())
-	w.props.NumEntries = r.Properties.NumEntries
-	w.props.RawKeySize = r.Properties.RawKeySize
-	w.props.RawValueSize = r.Properties.RawValueSize
-	w.meta.SetSmallestPointKey(blocks[0].start)
-	w.meta.SetLargestPointKey(blocks[len(blocks)-1].end)
-	return nil
+	return output, nil
 }
 
-func rewriteRangeKeyBlockToWriter(r *Reader, w *RawRowWriter, from, to []byte) error {
+func rewriteRangeKeyBlockToWriter(r *Reader, w RawWriter, from, to []byte) error {
 	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms)
 	if err != nil {
 		return err
@@ -359,6 +220,29 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w *RawRowWriter, from, to []byte) e
 		}
 	}
 	return err
+}
+
+// getShortIDs returns a slice keyed by the shortIDs of the block property
+// collector in r, with the values containing a new shortID corresponding to the
+// index of the corresponding block property collector in collectors.
+//
+// getShortIDs errors if any of the collectors are not found in the sstable.
+func getShortIDs(r *Reader, collectors []BlockPropertyCollector) ([]shortID, error) {
+	if len(collectors) == 0 {
+		return nil, nil
+	}
+	shortIDs := make([]shortID, math.MaxUint8)
+	for i := range shortIDs {
+		shortIDs[i] = invalidShortID
+	}
+	for i, p := range collectors {
+		prop, ok := r.Properties.UserProperties[p.Name()]
+		if !ok {
+			return nil, errors.Errorf("sstable does not contain property %s", p.Name())
+		}
+		shortIDs[shortID(prop[0])] = shortID(i)
+	}
+	return shortIDs, nil
 }
 
 type copyFilterWriter struct {
