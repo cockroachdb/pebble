@@ -861,6 +861,12 @@ func (w *RawColumnWriter) Close() (err error) {
 	return nil
 }
 
+func (w *RawColumnWriter) rewriteSuffixes(
+	r *Reader, wo WriterOptions, from, to []byte, concurrency int,
+) error {
+	panic("unimplemented")
+}
+
 func shouldFlushWithoutLatestKV(
 	sizeWithKV int,
 	sizeWithoutKV int,

@@ -306,6 +306,12 @@ type RawWriter interface {
 	// Metadata returns the metadata for the finished sstable. Only valid to
 	// call after the sstable has been finished.
 	Metadata() (*WriterMetadata, error)
+
+	// rewriteSuffixes rewrites the table's data blocks to all contain the
+	// provided suffix. It's specifically used for the implementation of
+	// RewriteKeySuffixesAndReturnFormat. See that function's documentation for
+	// more details.
+	rewriteSuffixes(r *Reader, wo WriterOptions, from, to []byte, concurrency int) error
 }
 
 // WriterMetadata holds info about a finished sstable.
