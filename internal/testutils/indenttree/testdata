@@ -1,0 +1,138 @@
+parse
+a
+----
+<root>
+ └── a
+
+parse
+a
+b
+----
+<root>
+ ├── a
+ └── b
+
+parse
+a
+ a1
+ a2
+b
+ b1
+----
+<root>
+ ├── a
+ │    ├── a1
+ │    └── a2
+ └── b
+      └── b1
+
+parse
+a
+ a1
+ a2
+  a21
+  a22
+b
+ b1
+ b2
+ b3
+  b31
+   b311
+----
+<root>
+ ├── a
+ │    ├── a1
+ │    └── a2
+ │         ├── a21
+ │         └── a22
+ └── b
+      ├── b1
+      ├── b2
+      └── b3
+           └── b31
+                └── b311
+
+parse
+a
+   a1
+   a2
+   a21
+    a211
+b
+   b1
+   b2
+    b211
+   b3
+----
+<root>
+ ├── a
+ │    ├── a1
+ │    ├── a2
+ │    └── a21
+ │         └── a211
+ └── b
+      ├── b1
+      ├── b2
+      │    └── b211
+      └── b3
+
+parse
+a
+  a1
+b
+  b1
+----
+<root>
+ ├── a
+ │    └── a1
+ └── b
+      └── b1
+
+
+# Error cases.
+
+parse
+----
+error: empty input
+
+parse
+a
+ a1
+b
+  b1
+----
+error: inconsistent indentation in input:
+a
+ a1
+b
+  b1
+
+parse
+a
+ a1
+ a2
+  a21
+b
+  b11
+----
+error: inconsistent indentation in input:
+a
+ a1
+ a2
+  a21
+b
+  b11
+
+parse
+a
+  a1
+    a11
+b
+    b12
+----
+error: inconsistent indentation in input:
+a
+  a1
+    a11
+b
+    b12
