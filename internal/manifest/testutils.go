@@ -160,14 +160,10 @@ func (p *debugParser) Errf(format string, args ...any) {
 	panic(errors.Errorf("error parsing %q at token %q: %s", p.original, p.lastToken, msg))
 }
 
-// maybeRecover can be used in a defer to convert panics into errors.
-func maybeRecover() error {
-	if r := recover(); r != nil {
-		err, ok := r.(error)
-		if !ok {
-			err = errors.Errorf("%v", r)
-		}
+// errFromPanic can be used in a recover block to convert panics into errors.
+func errFromPanic(r any) error {
+	if err, ok := r.(error); ok {
 		return err
 	}
-	return nil
+	return errors.Errorf("%v", r)
 }
