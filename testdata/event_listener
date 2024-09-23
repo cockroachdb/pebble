@@ -24,7 +24,6 @@ close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 1] MANIFEST created 000001
 open-dir: wal
-sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal
 [JOB 1] WAL created 000002

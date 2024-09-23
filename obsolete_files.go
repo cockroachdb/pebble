@@ -338,7 +338,7 @@ func (d *DB) onObsoleteTableDelete(fileSize uint64, isLocal bool) {
 // are not actually deleted by this method. A subsequent call to
 // deleteObsoleteFiles must be performed. Must be not be called concurrently
 // with compactions and flushes. db.mu must be held when calling this function.
-func (d *DB) scanObsoleteFiles(list []string) {
+func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlushable) {
 	// Disable automatic compactions temporarily to avoid concurrent compactions /
 	// flushes from interfering. The original value is restored on completion.
 	disabledPrev := d.opts.DisableAutomaticCompactions
@@ -356,14 +356,11 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	d.mu.versions.addLiveFileNums(liveFileNums)
 	// Protect against files which are only referred to by the ingestedFlushable
 	// from being deleted. These are added to the flushable queue on WAL replay
-	// during read only mode and aren't part of the Version. Note that if
-	// !d.opts.ReadOnly, then all flushables of type ingestedFlushable have
-	// already been flushed.
-	for _, fEntry := range d.mu.mem.queue {
-		if f, ok := fEntry.flushable.(*ingestedFlushable); ok {
-			for _, file := range f.files {
-				liveFileNums[file.FileBacking.DiskFileNum] = struct{}{}
-			}
+	// and handle their own obsoletion/deletion. We exclude them from this obsolete
+	// file scan to avoid double-deleting these files.
+	for _, f := range flushableIngests {
+		for _, file := range f.files {
+			liveFileNums[file.FileBacking.DiskFileNum] = struct{}{}
 		}
 	}
 
