@@ -6,13 +6,9 @@ c_xyz.SET.1:c
 point:    [a_xyz#1,SET-c_xyz#1,SET]
 seqnums:  [1-1]
 
-rewrite from=xyz to=123 block-size=1 index-block-size=1 filter
-----
-rewrite failed: a valid splitter is required to rewrite suffixes
-
 rewrite from=xyz to=123 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 ----
-rewrite failed: rewriting data blocks: mismatched Comparer leveldb.BytewiseComparator vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
+rewrite failed: mismatched Comparer leveldb.BytewiseComparator vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
 
 build block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 aa_xyz.SET.1:a

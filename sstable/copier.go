@@ -103,6 +103,9 @@ func CopySpan(
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
 	if r.tableFilter != nil {
+		if w.filter != nil && r.Properties.FilterPolicyName != w.filter.policyName() {
+			return 0, errors.New("mismatched filters")
+		}
 		filterBlock, err := r.readFilter(ctx, rh, nil, nil)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
@@ -127,11 +130,6 @@ func CopySpan(
 	w.props.TopLevelIndexSize = 0
 	w.props.IndexSize = 0
 	w.props.IndexType = 0
-	if w.filter != nil {
-		if err := checkWriterFilterMatchesReader(r, w); err != nil {
-			return 0, err
-		}
-	}
 
 	// Find the blocks that intersect our span.
 	blocks, err := intersectingIndexEntries(ctx, r, rh, indexH, start, end)
