@@ -18,7 +18,6 @@ create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 open-dir: db
-sync: db/MANIFEST-000001
 create: db/000002.log
 sync: db
 create: db/marker.format-version.000001.017
