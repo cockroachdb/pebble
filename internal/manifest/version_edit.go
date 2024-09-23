@@ -546,7 +546,9 @@ func (v *VersionEdit) String() string {
 // needed.
 func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 	defer func() {
-		err = errors.CombineErrors(err, maybeRecover())
+		if r := recover(); r != nil {
+			err = errors.CombineErrors(err, errFromPanic(r))
+		}
 	}()
 
 	var ve VersionEdit

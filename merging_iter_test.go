@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils/indenttree"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -139,7 +140,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 	}
 }
 
-func TestMergingIterCornerCases(t *testing.T) {
+func TestMergingIterDataDriven(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
 	fmtKey := DefaultComparer.FormatKey
@@ -148,7 +149,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Indexed by FileNum.
-	var readers []*sstable.Reader
+	readers := make(map[base.FileNum]*sstable.Reader)
 	defer func() {
 		for _, r := range readers {
 			r.Close()
@@ -191,83 +192,77 @@ func TestMergingIterCornerCases(t *testing.T) {
 	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
-			lines := strings.Split(d.Input, "\n")
-
+			levels, err := indenttree.Parse(d.Input)
+			if err != nil {
+				d.Fatalf(t, "%v", err)
+			}
 			var files [numLevels][]*fileMetadata
-			var level int
-			for i := 0; i < len(lines); i++ {
-				line := lines[i]
-				line = strings.TrimSpace(line)
-				if line == "L" || line == "L0" {
-					// start next level
-					level++
-					continue
+			for l := range levels {
+				if levels[l].Value() != "L" {
+					d.Fatalf(t, "top-level strings should be L")
 				}
-				keys := strings.Fields(line)
-				smallestKey := base.ParseInternalKey(keys[0])
-				largestKey := base.ParseInternalKey(keys[1])
-				m := (&fileMetadata{
-					FileNum: fileNum,
-				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
-				m.InitPhysicalBacking()
-				files[level] = append(files[level], m)
+				for _, file := range levels[l].Children() {
+					m, err := manifest.ParseFileMetadataDebug(file.Value())
+					if err != nil {
+						d.Fatalf(t, "file metadata: %s", err)
+					}
+					files[l+1] = append(files[l+1], m)
 
-				i++
-				line = lines[i]
-				line = strings.TrimSpace(line)
-				name := fmt.Sprint(fileNum)
-				fileNum++
-				f, err := memFS.Create(name, vfs.WriteCategoryUnspecified)
-				if err != nil {
-					return err.Error()
-				}
-				w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
-				var tombstones []keyspan.Span
-				frag := keyspan.Fragmenter{
-					Cmp:    cmp,
-					Format: fmtKey,
-					Emit: func(fragmented keyspan.Span) {
-						tombstones = append(tombstones, fragmented)
-					},
-				}
-				keyvalues := strings.Fields(line)
-				for _, kv := range keyvalues {
-					j := strings.Index(kv, ":")
-					ikey := base.ParseInternalKey(kv[:j])
-					value := []byte(kv[j+1:])
-					switch ikey.Kind() {
-					case InternalKeyKindRangeDelete:
-						frag.Add(keyspan.Span{Start: ikey.UserKey, End: value, Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
-					default:
-						if err := w.AddWithForceObsolete(ikey, value, false /* forceObsolete */); err != nil {
+					name := fmt.Sprint(fileNum)
+					fileNum++
+					f, err := memFS.Create(name, vfs.WriteCategoryUnspecified)
+					if err != nil {
+						return err.Error()
+					}
+					w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+					var tombstones []keyspan.Span
+					frag := keyspan.Fragmenter{
+						Cmp:    cmp,
+						Format: fmtKey,
+						Emit: func(fragmented keyspan.Span) {
+							tombstones = append(tombstones, fragmented)
+						},
+					}
+
+					for _, kvRow := range file.Children() {
+						for _, kv := range strings.Fields(kvRow.Value()) {
+							j := strings.Index(kv, ":")
+							ikey := base.ParseInternalKey(kv[:j])
+							value := []byte(kv[j+1:])
+							switch ikey.Kind() {
+							case InternalKeyKindRangeDelete:
+								frag.Add(keyspan.Span{Start: ikey.UserKey, End: value, Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
+							default:
+								if err := w.AddWithForceObsolete(ikey, value, false /* forceObsolete */); err != nil {
+									return err.Error()
+								}
+							}
+						}
+					}
+					frag.Finish()
+					for _, v := range tombstones {
+						if err := w.EncodeSpan(v); err != nil {
 							return err.Error()
 						}
 					}
-				}
-				frag.Finish()
-				for _, v := range tombstones {
-					if err := w.EncodeSpan(v); err != nil {
+					if err := w.Close(); err != nil {
 						return err.Error()
 					}
+					f, err = memFS.Open(name)
+					if err != nil {
+						return err.Error()
+					}
+					readable, err := sstable.NewSimpleReadable(f)
+					if err != nil {
+						return err.Error()
+					}
+					r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
+					if err != nil {
+						return err.Error()
+					}
+					readers[m.FileNum] = r
 				}
-				if err := w.Close(); err != nil {
-					return err.Error()
-				}
-				f, err = memFS.Open(name)
-				if err != nil {
-					return err.Error()
-				}
-				readable, err := sstable.NewSimpleReadable(f)
-				if err != nil {
-					return err.Error()
-				}
-				r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
-				if err != nil {
-					return err.Error()
-				}
-				readers = append(readers, r)
 			}
-
 			v = newVersion(opts, files)
 			return v.String()
 		case "iter":
