@@ -85,3 +85,25 @@ coalesce
 a-c:{(#5,RANGEKEYSET,@5,foo) (#5,RANGEKEYUNSET,@5) (#5,RANGEKEYDEL)}
 ----
 a-c:{(#5,RANGEKEYSET,@5,foo) (#5,RANGEKEYDEL)}
+
+# Verify that the suffix comparison is strict w.r.t. the ignorable synthetic
+# tag.
+coalesce
+a-c:{(#5,RANGEKEYUNSET,@3,foo) (#4,RANGEKEYSET,@3)}
+----
+a-c:{(#5,RANGEKEYUNSET,@3,foo)}
+
+coalesce
+a-c:{(#5,RANGEKEYUNSET,@3_synthetic,foo) (#4,RANGEKEYSET,@3_synthetic)}
+----
+a-c:{(#5,RANGEKEYUNSET,@3_synthetic,foo)}
+
+coalesce
+a-c:{(#5,RANGEKEYUNSET,@3_synthetic,foo) (#4,RANGEKEYSET,@3)}
+----
+a-c:{(#5,RANGEKEYUNSET,@3_synthetic,foo) (#4,RANGEKEYSET,@3)}
+
+coalesce
+a-c:{(#5,RANGEKEYUNSET,@3,foo) (#4,RANGEKEYSET,@3_synthetic)}
+----
+a-c:{(#5,RANGEKEYUNSET,@3,foo) (#4,RANGEKEYSET,@3_synthetic)}

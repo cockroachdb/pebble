@@ -231,11 +231,7 @@ func Compare(a, b []byte) int {
 	// Compare the version part of the key. Note that when the version is a
 	// timestamp, the timestamp encoding causes byte comparison to be equivalent
 	// to timestamp comparison.
-	return CompareSuffixes(a[aSep+1:], b[bSep+1:])
-}
-
-// CompareSuffixes compares suffixes (normally timestamps).
-func CompareSuffixes(a, b []byte) int {
+	a, b = a[aSep+1:], b[bSep+1:]
 	if len(a) == 0 || len(b) == 0 {
 		// Empty suffixes come before non-empty suffixes.
 		return cmp.Compare(len(a), len(b))
@@ -244,6 +240,18 @@ func CompareSuffixes(a, b []byte) int {
 		normalizeEngineKeyVersionForCompare(b),
 		normalizeEngineKeyVersionForCompare(a),
 	)
+}
+
+// CompareSuffixes compares suffixes (normally timestamps).
+func CompareSuffixes(a, b []byte) int {
+	if len(a) == 0 || len(b) == 0 {
+		// Empty suffixes come before non-empty suffixes.
+		return cmp.Compare(len(a), len(b))
+	}
+	// Here we are not using normalizeEngineKeyVersionForCompare for historical
+	// reasons, summarized in
+	// https://github.com/cockroachdb/cockroach/issues/130533.
+	return bytes.Compare(b[:len(b)-1], a[:len(a)-1])
 }
 
 // Equal implements base.Equal for Cockroach keys.

@@ -28,10 +28,13 @@ func TestComparer(t *testing.T) {
 
 			if len(suffix) == withWall {
 				// Append a suffix that encodes a zero logical value that should be
-				// ignored in comparisons.
+				// ignored in key comparisons, but not suffix comparisons.
 				newSuffix := slices.Concat(suffix[:withWall-1], zeroLogical[:], []byte{withLogical})
-				if Comparer.CompareSuffixes(suffix, newSuffix) != 0 {
-					t.Fatalf("expected suffixes %x and %x to be equal", suffix, newSuffix)
+				if Comparer.CompareSuffixes(suffix, newSuffix) != 1 {
+					t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
+				}
+				if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
+					t.Fatalf("expected keys with suffixes %x and %x to be equal", suffix, newSuffix)
 				}
 				suffixes = append(suffixes, newSuffix)
 				suffix = newSuffix
@@ -39,10 +42,14 @@ func TestComparer(t *testing.T) {
 			if len(suffix) != withLogical {
 				t.Fatalf("unexpected suffix %x", suffix)
 			}
-			// Append a synthetic bit that should be ignored in comparisons.
+			// Append a synthetic bit that should be ignored in key comparisons, but
+			// not suffix comparisons.
 			newSuffix := slices.Concat(suffix[:withLogical-1], []byte{1}, []byte{withSynthetic})
-			if Comparer.CompareSuffixes(suffix, newSuffix) != 0 {
-				t.Fatalf("expected suffixes %x and %x to be equal", suffix, newSuffix)
+			if Comparer.CompareSuffixes(suffix, newSuffix) != 1 {
+				t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
+			}
+			if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
+				t.Fatalf("expected keys with suffixes %x and %x to be equal", suffix, newSuffix)
 			}
 			suffixes = append(suffixes, newSuffix)
 		}

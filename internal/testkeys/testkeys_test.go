@@ -306,3 +306,13 @@ func TestComparer(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestIgnorableSuffix(t *testing.T) {
+	require.Equal(t, 0, Comparer.Compare([]byte("foo@1"), []byte("foo@1_synthetic")))
+	require.Equal(t, 1, Comparer.Compare([]byte("foo@1"), []byte("foo@2_synthetic")))
+	require.Equal(t, 1, Comparer.Compare([]byte("foo@1_synthetic"), []byte("foo@2")))
+	require.Equal(t, -1, Comparer.CompareSuffixes([]byte("@1"), []byte("@1_synthetic")))
+	require.Equal(t, 1, Comparer.CompareSuffixes([]byte("@1_synthetic"), []byte("@1")))
+	require.Equal(t, 0, Comparer.CompareSuffixes([]byte("@1_synthetic"), []byte("@1_synthetic")))
+	require.Equal(t, 0, Comparer.CompareSuffixes([]byte("@1"), []byte("@1")))
+}

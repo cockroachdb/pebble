@@ -15,14 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// CompareSuffixes compares two key suffixes and returns -1, 0, or +1.
-//
-// The empty slice suffix must be 'less than' any non-empty suffix.
-//
-// A full key k is composed of a prefix k[:Split(k)] and suffix k[Split(k):].
-// Suffixes are compared to break ties between equal prefixes.
-type CompareSuffixes func(a, b []byte) int
-
 // Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
 // to' or 'greater than' b.
 //
@@ -34,12 +26,29 @@ type CompareSuffixes func(a, b []byte) int
 //
 // In other words, if prefix(a) = a[:Split(a)] and suffix(a) = a[Split(a):]:
 //
-//	  Compare(a, b) = bytes.Compare(prefix(a), prefix(b)) if not 0, or
-//		                CompareSuffixes(suffix(a), suffix(b)) otherwise.
+//	  Compare(a, b) = bytes.Compare(prefix(a), prefix(b)) if not 0,
+//		                otherwise either 0 or CompareSuffixes(suffix(a), suffix(b))
+//
+// The "either 0" part is because CompareSuffixes is allowed to be more strict;
+// see CompareSuffixes.
 //
 // Compare defaults to using the formula above but it can be customized if there
-// is a (potentially faster) specialization.
+// is a (potentially faster) specialization or it has to compare suffixes
+// differently.
 type Compare func(a, b []byte) int
+
+// CompareSuffixes compares two key suffixes and returns -1, 0, or +1.
+//
+// For historical reasons (see
+// https://github.com/cockroachdb/cockroach/issues/130533 for a summary), we
+// allow this function to be more strict than Compare. Specifically, Compare may
+// treat two suffixes as equal whereas CompareSuffixes might not.
+//
+// The empty slice suffix must be 'less than' any non-empty suffix.
+//
+// A full key k is composed of a prefix k[:Split(k)] and suffix k[Split(k):].
+// Suffixes are compared to break ties between equal prefixes.
+type CompareSuffixes func(a, b []byte) int
 
 // defaultCompare implements Compare in terms of Split and CompareSuffixes, as
 // mentioned above.
@@ -432,6 +441,15 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 				return errors.Errorf("incorrect Split result %d on '%x' (prefix '%x' suffix '%x')", n, key, p, s)
 			}
 		}
+		for i := 1; i < len(suffixes); i++ {
+			a := slices.Concat(p, suffixes[i-1])
+			b := slices.Concat(p, suffixes[i])
+			// Make sure the Compare function agrees with CompareSuffixes, with the
+			// caveat that it can consider some consecutive suffixes to be equal.
+			if cmp := c.Compare(a, b); cmp > 0 {
+				return errors.Errorf("Compare(%s, %s)=%d, expected <= 0", c.FormatKey(a), c.FormatKey(b), cmp)
+			}
+		}
 	}
 
 	// Check the Compare/Equals functions on all possible combinations.
@@ -442,18 +460,22 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 				for _, bs := range suffixes {
 					b := slices.Concat(bp, bs)
 					result := c.Compare(a, b)
-
-					expected := bytes.Compare(ap, bp)
-					if expected == 0 {
-						expected = c.CompareSuffixes(as, bs)
-					}
-
 					if (result == 0) != c.Equal(a, b) {
 						return errors.Errorf("Equal(%s, %s) doesn't agree with Compare", c.FormatKey(a), c.FormatKey(b))
 					}
 
-					if result != expected {
-						return errors.Errorf("Compare(%s, %s)=%d, expected %d", c.FormatKey(a), c.FormatKey(b), result, expected)
+					if prefixCmp := bytes.Compare(ap, bp); prefixCmp != 0 {
+						if result != prefixCmp {
+							return errors.Errorf("Compare(%s, %s)=%d, expected %d", c.FormatKey(a), c.FormatKey(b), result, prefixCmp)
+						}
+					} else {
+						// We allow Compare to return equality for suffixes even when
+						// CompareSuffixes does not.
+						if result != 0 {
+							if suffixCmp := c.CompareSuffixes(as, bs); result != suffixCmp {
+								return errors.Errorf("Compare(%s, %s)=%d, expected %d", c.FormatKey(a), c.FormatKey(b), result, suffixCmp)
+							}
+						}
 					}
 				}
 			}
