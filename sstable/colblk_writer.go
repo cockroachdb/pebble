@@ -662,7 +662,6 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 	// writing a large file or the index separators happen to be excessively
 	// long, we may have several index blocks and need to construct a
 	// "two-level" index structure.
-	w.props.IndexPartitions = uint64(len(w.indexBuffering.partitions))
 	switch len(w.indexBuffering.partitions) {
 	case 0:
 		// This is impossible because we'll flush the index block immediately
@@ -696,6 +695,7 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 		}
 		w.props.IndexSize += rootIndex.Length + block.TrailerLen
 		w.props.IndexType = twoLevelIndex
+		w.props.IndexPartitions = uint64(len(w.indexBuffering.partitions))
 	}
 	return rootIndex, nil
 }

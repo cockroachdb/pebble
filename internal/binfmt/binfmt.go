@@ -36,7 +36,13 @@ type Formatter struct {
 
 	// config
 	lineWidth       int
+	linePrefix      string
 	offsetFormatStr string
+}
+
+// SetLinePrefix sets a prefix for each line of formatted output.
+func (f *Formatter) SetLinePrefix(prefix string) {
+	f.linePrefix = prefix
 }
 
 // SetAnchorOffset sets the reference point for relative offset calculations to
@@ -183,6 +189,7 @@ func (f *Formatter) String() string {
 		binaryLineWidth = max(binaryLineWidth, len(lineData[0]))
 	}
 	for _, lineData := range f.lines {
+		fmt.Fprint(&f.buf, f.linePrefix)
 		fmt.Fprint(&f.buf, lineData[0])
 		if len(lineData[1]) > 0 {
 			if len(lineData[0]) == 0 {
