@@ -48,12 +48,13 @@ func TestWriter(t *testing.T) {
 }
 
 func testRewriterParallelism(t *testing.T, parallelism bool) {
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		tdFile := "testdata/rewriter"
-		if format == TableFormatPebblev3 {
-			tdFile = "testdata/rewriter_v3"
-		}
-		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, tdFile, format, parallelism) })
+	formatFiles := map[TableFormat]string{
+		TableFormatPebblev2: "testdata/rewriter",
+		TableFormatPebblev3: "testdata/rewriter_v3",
+		TableFormatPebblev5: "testdata/rewriter_v5",
+	}
+	for format, file := range formatFiles {
+		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, file, format, parallelism) })
 	}
 }
 
