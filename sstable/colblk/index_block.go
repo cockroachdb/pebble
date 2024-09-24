@@ -233,6 +233,9 @@ func (i *IndexIter) RowIndex() int {
 // ResetForReuse resets the IndexIter for reuse, retaining buffers to avoid
 // future allocations.
 func (i *IndexIter) ResetForReuse() IndexIter {
+	if invariants.Enabled && i.h != (block.BufferHandle{}) {
+		panic(errors.AssertionFailedf("IndexIter reset for reuse with non-empty handle"))
+	}
 	return IndexIter{ /* nothing to retain */ }
 }
 
