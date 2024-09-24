@@ -26,7 +26,11 @@ type CompareSuffixes func(a, b []byte) int
 // Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
 // to' or 'greater than' b.
 //
-// Both a and b must be valid keys.
+// Both a and b must be valid keys. Note that because of synthetic prefix
+// functionality, the Compare function can be called on a key (either from the
+// database or passed as an argument for an iterator operation) after the
+// synthetic prefix has been removed. In general, this implies that removing any
+// leading bytes from a prefix must yield another valid prefix.
 //
 // A key a is less than b if a's prefix is byte-wise less than b's prefix, or if
 // the prefixes are equal and a's suffix is less than b's suffix (according to
@@ -422,6 +426,14 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 	slices.SortFunc(suffixes, c.CompareSuffixes)
 	if !slices.IsSortedFunc(suffixes, c.CompareSuffixes) {
 		return errors.Errorf("CompareSuffixes is inconsistent")
+	}
+
+	n := len(prefixes)
+	// Removing leading bytes from prefixes must yield valid prefixes.
+	for i := 0; i < n; i++ {
+		for j := 1; j < len(prefixes[i]); j++ {
+			prefixes = append(prefixes, prefixes[i][j:])
+		}
 	}
 
 	// Check the split function.
