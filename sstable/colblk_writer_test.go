@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -30,8 +31,10 @@ func TestColumnarWriter(t *testing.T) {
 		}
 	}()
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	var buf bytes.Buffer
 	datadriven.Walk(t, "testdata/columnar_writer", func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
+			buf.Reset()
 			switch td.Cmd {
 			case "build":
 				var writerOpts WriterOptions
@@ -60,6 +63,13 @@ func TestColumnarWriter(t *testing.T) {
 				})
 				require.NoError(t, err)
 				return "ok"
+			case "layout":
+				l, err := r.Layout()
+				if err != nil {
+					return err.Error()
+				}
+				l.Describe(&buf, true /* verbose */, r, nil)
+				return buf.String()
 			case "props":
 				return r.Properties.String()
 			case "describe-binary":

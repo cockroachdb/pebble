@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -119,6 +120,11 @@ func (l *Layout) Describe(
 	// confusing and can result in blocks' KVs offsets overlapping one another.
 	// We should just print offsets relative to the block start.
 
+	formatting := rowblkFormatting
+	if l.Format.BlockColumnar() {
+		formatting = colblkFormatting
+	}
+
 	for i := range blocks {
 		b := &blocks[i]
 		fmt.Fprintf(w, "%10d  %s (%d)\n", b.Offset, b.Name, b.Length)
@@ -178,130 +184,260 @@ func (l *Layout) Describe(
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
 		}
+		err = func() error {
+			// Defer release of the block handle so we always return the handle
+			// to the cache.
+			defer h.Release()
 
-		formatTrailer := func() {
-			trailer := make([]byte, block.TrailerLen)
-			offset := int64(b.Offset + b.Length)
-			_ = r.readable.ReadAt(ctx, trailer, offset)
-			algo := block.CompressionIndicator(trailer[0])
-			checksum := binary.LittleEndian.Uint32(trailer[1:])
-			fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, algo, checksum)
-		}
+			formatTrailer := func() {
+				trailer := make([]byte, block.TrailerLen)
+				offset := int64(b.Offset + b.Length)
+				_ = r.readable.ReadAt(ctx, trailer, offset)
+				algo := block.CompressionIndicator(trailer[0])
+				checksum := binary.LittleEndian.Uint32(trailer[1:])
+				fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, algo, checksum)
+			}
 
-		var lastKey InternalKey
-		switch b.Name {
-		case "data", "range-del", "range-key":
-			iter, _ := rowblk.NewIter(r.Compare, r.Split, h.Get(), NoTransforms)
-			iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-
-				// The format of the numbers in the record line is:
-				//
-				//   (<total> = <length> [<shared>] + <unshared> + <value>)
-				//
-				// <total>    is the total number of bytes for the record.
-				// <length>   is the size of the 3 varint encoded integers for <shared>,
-				//            <unshared>, and <value>.
-				// <shared>   is the number of key bytes shared with the previous key.
-				// <unshared> is the number of unshared key bytes.
-				// <value>    is the number of value bytes.
-				fmt.Fprintf(w, "%10d    record (%d = %d [%d] + %d + %d)",
-					b.Offset+uint64(enc.Offset), enc.Length,
-					enc.Length-int32(enc.KeyUnshared+enc.ValueLen), enc.KeyShared, enc.KeyUnshared, enc.ValueLen)
-				if enc.IsRestart {
-					fmt.Fprintf(w, " [restart]\n")
-				} else {
-					fmt.Fprintf(w, "\n")
-				}
-				if fmtRecord != nil {
-					fmt.Fprintf(w, "              ")
-					if l.Format < TableFormatPebblev3 {
+			var lastKey InternalKey
+			switch b.Name {
+			case "data":
+				formatting.formatDataBlock(w, r, *b, h.Get(), func(key *base.InternalKey, value []byte) {
+					if fmtRecord != nil {
 						fmtRecord(key, value)
-					} else {
-						if key.Kind() != InternalKeyKindSet {
-							fmtRecord(key, value)
-						} else if !block.ValuePrefix(value[0]).IsValueHandle() {
-							fmtRecord(key, value[1:])
-						} else {
-							vh := decodeValueHandle(value[1:])
-							fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh)))
-						}
 					}
-				}
-
-				if b.Name == "data" {
 					if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
 						fmt.Fprintf(w, "              WARNING: OUT OF ORDER KEYS!\n")
 					}
 					lastKey.Trailer = key.Trailer
 					lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
-				}
-			})
-			formatTrailer()
-		case "index", "top-index":
-			iter, _ := rowblk.NewIter(r.Compare, r.Split, h.Get(), NoTransforms)
-			iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-				bh, err := block.DecodeHandleWithProperties(value)
-				if err != nil {
-					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(enc.Offset), err)
-					return
-				}
-				fmt.Fprintf(w, "%10d    block:%d/%d",
-					b.Offset+uint64(enc.Offset), bh.Offset, bh.Length)
-				if enc.IsRestart {
-					fmt.Fprintf(w, " [restart]\n")
-				} else {
-					fmt.Fprintf(w, "\n")
-				}
-			})
-			formatTrailer()
-		case "properties":
-			iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
-			iter.Describe(w, b.Offset,
-				func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-					fmt.Fprintf(w, "%10d    %s (%d)", b.Offset+uint64(enc.Offset), key.UserKey, enc.Length)
 				})
-			formatTrailer()
-		case "meta-index":
-			iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
-			iter.Describe(w, b.Offset,
-				func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-					var bh block.Handle
-					var n int
-					var vbih valueBlocksIndexHandle
-					isValueBlocksIndexHandle := false
-					if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
-						vbih, n, err = decodeValueBlocksIndexHandle(value)
-						bh = vbih.h
-						isValueBlocksIndexHandle = true
-					} else {
-						bh, n = block.DecodeHandle(value)
-					}
-					if n == 0 || n != len(value) {
-						fmt.Fprintf(w, "%10d    [err: %s]\n", enc.Offset, err)
-						return
-					}
-					var vbihStr string
-					if isValueBlocksIndexHandle {
-						vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
-							vbih.blockNumByteLength, vbih.blockOffsetByteLength, vbih.blockLengthByteLength)
-					}
-					fmt.Fprintf(w, "%10d    %s block:%d/%d%s",
-						b.Offset+uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
-				})
-			formatTrailer()
-		case "value-block":
-			// We don't peer into the value-block since it can't be interpreted
-			// without the valueHandles.
-		case "value-index":
-			// We have already read the value-index to construct the list of
-			// value-blocks, so no need to do it again.
+				formatTrailer()
+			case "range-del", "range-key":
+				// TODO(jackson): colblk ignores fmtRecord, because it doesn't
+				// make sense in the context.
+				formatting.formatKeyspanBlock(w, r, *b, h.Get(), fmtRecord)
+				formatTrailer()
+			case "index", "top-index":
+				formatting.formatIndexBlock(w, r, *b, h.Get())
+				formatTrailer()
+			case "properties":
+				iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
+				iter.Describe(w, b.Offset,
+					func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+						fmt.Fprintf(w, "%10d    %s (%d)", b.Offset+uint64(enc.Offset), key.UserKey, enc.Length)
+					})
+				formatTrailer()
+			case "meta-index":
+				iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
+				iter.Describe(w, b.Offset,
+					func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+						var bh block.Handle
+						var n int
+						var vbih valueBlocksIndexHandle
+						isValueBlocksIndexHandle := false
+						if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
+							vbih, n, err = decodeValueBlocksIndexHandle(value)
+							bh = vbih.h
+							isValueBlocksIndexHandle = true
+						} else {
+							bh, n = block.DecodeHandle(value)
+						}
+						if n == 0 || n != len(value) {
+							fmt.Fprintf(w, "%10d    [err: %s]\n", enc.Offset, err)
+							return
+						}
+						var vbihStr string
+						if isValueBlocksIndexHandle {
+							vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
+								vbih.blockNumByteLength, vbih.blockOffsetByteLength, vbih.blockLengthByteLength)
+						}
+						fmt.Fprintf(w, "%10d    %s block:%d/%d%s",
+							b.Offset+uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
+					})
+				formatTrailer()
+			case "value-block":
+				// We don't peer into the value-block since it can't be interpreted
+				// without the valueHandles.
+			case "value-index":
+				// We have already read the value-index to construct the list of
+				// value-blocks, so no need to do it again.
+			}
+			return nil
+		}()
+		if err != nil {
+			fmt.Fprintf(w, "  [err: %s]\n", err)
 		}
-
-		h.Release()
 	}
 
 	last := blocks[len(blocks)-1]
 	fmt.Fprintf(w, "%10d  EOF\n", last.Offset+last.Length)
+}
+
+type blockFormatting struct {
+	formatIndexBlock   formatBlockFunc
+	formatDataBlock    formatBlockFuncKV
+	formatKeyspanBlock formatBlockFuncKV
+}
+
+type (
+	formatBlockFunc   func(io.Writer, *Reader, NamedBlockHandle, []byte) error
+	formatBlockFuncKV func(io.Writer, *Reader, NamedBlockHandle, []byte, func(*base.InternalKey, []byte)) error
+)
+
+var (
+	rowblkFormatting = blockFormatting{
+		formatIndexBlock:   formatRowblkIndexBlock,
+		formatDataBlock:    formatRowblkDataBlock,
+		formatKeyspanBlock: formatRowblkDataBlock,
+	}
+	colblkFormatting = blockFormatting{
+		formatIndexBlock:   formatColblkIndexBlock,
+		formatDataBlock:    formatColblkDataBlock,
+		formatKeyspanBlock: formatColblkKeyspanBlock,
+	}
+)
+
+func formatColblkIndexBlock(w io.Writer, r *Reader, b NamedBlockHandle, data []byte) error {
+	iter := new(colblk.IndexIter)
+	if err := iter.Init(r.Compare, r.Split, data, NoTransforms); err != nil {
+		return err
+	}
+	defer iter.Close()
+	i := 0
+	for v := iter.First(); v; v = iter.Next() {
+		bh, err := iter.BlockHandleWithProperties()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(w, "%10d    block:%d/%d\n", i, bh.Offset, bh.Length)
+		i++
+	}
+	return nil
+}
+
+func formatColblkDataBlock(
+	w io.Writer,
+	r *Reader,
+	b NamedBlockHandle,
+	data []byte,
+	fmtRecord func(key *base.InternalKey, value []byte),
+) error {
+	var reader colblk.DataBlockReader
+	reader.Init(r.keySchema, data)
+	f := binfmt.New(data)
+	f.SetLinePrefix("               ")
+	reader.Describe(f)
+	fmt.Fprint(w, f.String())
+
+	if fmtRecord != nil {
+		var iter colblk.DataBlockIter
+		if err := iter.Init(&reader, r.keySchema.NewKeySeeker(), describingLazyValueHandler{}); err != nil {
+			return err
+		}
+		defer iter.Close()
+		for kv := iter.First(); kv != nil; kv = iter.Next() {
+			fmtRecord(&kv.K, kv.V.ValueOrHandle)
+		}
+	}
+	return nil
+}
+
+// describingLazyValueHandler is a block.GetLazyValueForPrefixAndValueHandler
+// that replaces a value handle with an in-place value describing the handle.
+type describingLazyValueHandler struct{}
+
+// Assert that debugLazyValueHandler implements the
+// block.GetLazyValueForPrefixAndValueHandler interface.
+var _ block.GetLazyValueForPrefixAndValueHandler = describingLazyValueHandler{}
+
+func (describingLazyValueHandler) GetLazyValueForPrefixAndValueHandle(
+	handle []byte,
+) base.LazyValue {
+	vh := decodeValueHandle(handle[1:])
+	return base.LazyValue{ValueOrHandle: []byte(fmt.Sprintf("value handle %+v", vh))}
+}
+
+func formatColblkKeyspanBlock(
+	w io.Writer, r *Reader, b NamedBlockHandle, data []byte, _ func(*base.InternalKey, []byte),
+) error {
+	var reader colblk.KeyspanReader
+	reader.Init(data)
+	f := binfmt.New(data)
+	f.SetLinePrefix("               ")
+	reader.Describe(f)
+	fmt.Fprint(w, f.String())
+	return nil
+}
+
+func formatRowblkIndexBlock(w io.Writer, r *Reader, b NamedBlockHandle, data []byte) error {
+	iter, err := rowblk.NewIter(r.Compare, r.Split, data, NoTransforms)
+	if err != nil {
+		return err
+	}
+	iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+		bh, err := block.DecodeHandleWithProperties(value)
+		if err != nil {
+			fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(enc.Offset), err)
+			return
+		}
+		fmt.Fprintf(w, "%10d    block:%d/%d",
+			b.Offset+uint64(enc.Offset), bh.Offset, bh.Length)
+		if enc.IsRestart {
+			fmt.Fprintf(w, " [restart]\n")
+		} else {
+			fmt.Fprintf(w, "\n")
+		}
+	})
+	return nil
+}
+
+func formatRowblkDataBlock(
+	w io.Writer,
+	r *Reader,
+	b NamedBlockHandle,
+	data []byte,
+	fmtRecord func(key *base.InternalKey, value []byte),
+) error {
+	iter, err := rowblk.NewIter(r.Compare, r.Split, data, NoTransforms)
+	if err != nil {
+		return err
+	}
+	iter.Describe(w, b.Offset, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+		// The format of the numbers in the record line is:
+		//
+		//   (<total> = <length> [<shared>] + <unshared> + <value>)
+		//
+		// <total>    is the total number of bytes for the record.
+		// <length>   is the size of the 3 varint encoded integers for <shared>,
+		//            <unshared>, and <value>.
+		// <shared>   is the number of key bytes shared with the previous key.
+		// <unshared> is the number of unshared key bytes.
+		// <value>    is the number of value bytes.
+		fmt.Fprintf(w, "%10d    record (%d = %d [%d] + %d + %d)",
+			b.Offset+uint64(enc.Offset), enc.Length,
+			enc.Length-int32(enc.KeyUnshared+enc.ValueLen), enc.KeyShared, enc.KeyUnshared, enc.ValueLen)
+		if enc.IsRestart {
+			fmt.Fprintf(w, " [restart]\n")
+		} else {
+			fmt.Fprintf(w, "\n")
+		}
+		if fmtRecord != nil {
+			fmt.Fprintf(w, "              ")
+			if r.tableFormat < TableFormatPebblev3 {
+				fmtRecord(key, value)
+			} else {
+				if key.Kind() != InternalKeyKindSet {
+					fmtRecord(key, value)
+				} else if !block.ValuePrefix(value[0]).IsValueHandle() {
+					fmtRecord(key, value[1:])
+				} else {
+					vh := decodeValueHandle(value[1:])
+					fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh)))
+				}
+			}
+		}
+	})
+	return nil
 }
 
 func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {

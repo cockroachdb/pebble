@@ -7,6 +7,9 @@ package sstable
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // TableFormat specifies the format version for sstables. The legacy LevelDB
@@ -249,6 +252,13 @@ func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 // data, index and keyspan blocks.
 func (f TableFormat) BlockColumnar() bool {
 	return f >= TableFormatPebblev5
+}
+
+func (f TableFormat) newIndexIter() block.IndexBlockIterator {
+	if !f.BlockColumnar() {
+		return new(rowblk.IndexIter)
+	}
+	return new(colblk.IndexIter)
 }
 
 // AsTuple returns the TableFormat's (Magic String, Version) tuple.
