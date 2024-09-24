@@ -596,9 +596,13 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
-		iter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
-		for kv := iter.First(); kv != nil; kv = iter.Next() {
-			dataBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+		iter := r.tableFormat.newIndexIter()
+		err := iter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms)
+		if err != nil {
+			return nil, errors.Wrap(err, "reading index block")
+		}
+		for valid := iter.First(); valid; valid = iter.Next() {
+			dataBH, err := iter.BlockHandleWithProperties()
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
@@ -609,10 +613,14 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.indexBH
-		topIter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
-		iter := &rowblk.Iter{}
-		for kv := topIter.First(); kv != nil; kv = topIter.Next() {
-			indexBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+		topIter := r.tableFormat.newIndexIter()
+		err := topIter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms)
+		if err != nil {
+			return nil, errors.Wrap(err, "reading index block")
+		}
+		iter := r.tableFormat.newIndexIter()
+		for valid := topIter.First(); valid; valid = topIter.Next() {
+			indexBH, err := topIter.BlockHandleWithProperties()
 			if err != nil {
 				return nil, errCorruptIndexEntry(err)
 			}
@@ -627,18 +635,17 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err := iter.Init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
 				return nil, err
 			}
-			for kv := iter.First(); kv != nil; kv = iter.Next() {
-				dataBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
-				if len(dataBH.Props) > 0 {
-					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
-				}
+			for valid := iter.First(); valid; valid = iter.Next() {
+				dataBH, err := iter.BlockHandleWithProperties()
 				if err != nil {
 					return nil, errCorruptIndexEntry(err)
+				}
+				if len(dataBH.Props) > 0 {
+					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 				}
 				l.Data = append(l.Data, dataBH)
 			}
 			subIndex.Release()
-			*iter = iter.ResetForReuse()
 		}
 	}
 	if r.valueBIH.h.Length != 0 {

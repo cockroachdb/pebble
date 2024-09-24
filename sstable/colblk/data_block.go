@@ -759,8 +759,9 @@ func (i *DataBlockIter) Init(
 		keyIter:       PrefixBytesIter{},
 	}
 	// Allocate a keyIter buffer that's large enough to hold the largest user
-	// key in the block.
-	n := int(r.maximumKeyLength)
+	// key in the block with 1 byte to spare (so that pointer arithmetic is
+	// never pointing beyond the allocation, which would violate Go rules).
+	n := int(r.maximumKeyLength) + 1
 	if cap(i.keyIter.buf) < n {
 		ptr := mallocgc(uintptr(n), nil, false)
 		i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
