@@ -6,8 +6,10 @@ package sstable
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"math"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -144,7 +146,11 @@ func rewriteDataBlocksInParallel(
 
 	g := &sync.WaitGroup{}
 	g.Add(concurrency)
-	errCh := make(chan error, concurrency)
+	type workerErr struct {
+		worker int
+		err    error
+	}
+	errCh := make(chan workerErr, concurrency)
 	for j := 0; j < concurrency; j++ {
 		worker := j
 		go func() {
@@ -177,14 +183,20 @@ func rewriteDataBlocksInParallel(
 				return nil
 			}()
 			if err != nil {
-				errCh <- err
+				errCh <- workerErr{worker: worker, err: err}
 			}
 		}()
 	}
 	g.Wait()
 	close(errCh)
-	if err, ok := <-errCh; ok {
-		return nil, err
+	if werr, ok := <-errCh; ok {
+		// Collect errors from all workers and sort them by worker for determinism.
+		werrs := []workerErr{werr}
+		for werr := range errCh {
+			werrs = append(werrs, werr)
+		}
+		slices.SortFunc(werrs, func(a, b workerErr) int { return cmp.Compare(a.worker, b.worker) })
+		return nil, werrs[0].err
 	}
 	return output, nil
 }

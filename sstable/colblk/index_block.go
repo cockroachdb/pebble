@@ -191,13 +191,15 @@ var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
 // InitReader initializes an index iterator from the provided reader.
 func (i *IndexIter) InitReader(r *IndexReader) {
-	*i = IndexIter{r: r, n: int(r.br.header.Rows), allocReader: i.allocReader}
+	*i = IndexIter{r: r, n: int(r.br.header.Rows), h: i.h, allocReader: i.allocReader}
 }
 
 // Init initializes an iterator from the provided block data slice.
 func (i *IndexIter) Init(
 	cmp base.Compare, split base.Split, blk []byte, transforms block.IterTransforms,
 ) error {
+	i.h.Release()
+	i.h = block.BufferHandle{}
 	// TODO(jackson): Handle the transforms.
 	i.allocReader.Init(blk)
 	i.InitReader(&i.allocReader)
@@ -206,7 +208,7 @@ func (i *IndexIter) Init(
 
 // InitHandle initializes an iterator from the provided block handle.
 func (i *IndexIter) InitHandle(
-	cmp base.Compare, split base.Split, block block.BufferHandle, transforms block.IterTransforms,
+	cmp base.Compare, split base.Split, blk block.BufferHandle, transforms block.IterTransforms,
 ) error {
 	// TODO(jackson): Handle the transforms.
 
@@ -216,8 +218,10 @@ func (i *IndexIter) InitHandle(
 	// common to open an iterator and perform just a few seeks, so avoiding the
 	// overhead can be material.)
 	i.h.Release()
-	i.h = block
-	return i.Init(cmp, split, i.h.Get(), transforms)
+	i.h = blk
+	i.allocReader.Init(i.h.Get())
+	i.InitReader(&i.allocReader)
+	return nil
 }
 
 // RowIndex returns the index of the block entry at the iterator's current
@@ -229,6 +233,9 @@ func (i *IndexIter) RowIndex() int {
 // ResetForReuse resets the IndexIter for reuse, retaining buffers to avoid
 // future allocations.
 func (i *IndexIter) ResetForReuse() IndexIter {
+	if invariants.Enabled && i.h != (block.BufferHandle{}) {
+		panic(errors.AssertionFailedf("IndexIter reset for reuse with non-empty handle"))
+	}
 	return IndexIter{ /* nothing to retain */ }
 }
 
@@ -242,7 +249,6 @@ func (i *IndexIter) Valid() bool {
 // it was initialized with.
 func (i *IndexIter) Invalidate() {
 	i.r = nil
-	i.h = block.BufferHandle{}
 }
 
 // IsDataInvalidated returns true when the iterator has been invalidated

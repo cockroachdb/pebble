@@ -589,6 +589,10 @@ func (w *RawColumnWriter) enqueueDataBlock(
 		// lifetime of the DataBlockWriters?
 		cb.physical = cb.physical.Clone()
 	}
+	return w.enqueuePhysicalBlock(cb, separator)
+}
+
+func (w *RawColumnWriter) enqueuePhysicalBlock(cb *compressedBlock, separator []byte) error {
 	dataBlockHandle := block.Handle{
 		Offset: w.queuedDataSize,
 		Length: uint64(cb.physical.LengthWithoutTrailer()),
@@ -891,7 +895,92 @@ func (w *RawColumnWriter) Close() (err error) {
 func (w *RawColumnWriter) rewriteSuffixes(
 	r *Reader, wo WriterOptions, from, to []byte, concurrency int,
 ) error {
-	panic("unimplemented")
+	for _, c := range w.blockPropCollectors {
+		if !c.SupportsSuffixReplacement() {
+			return errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
+		}
+	}
+	l, err := r.Layout()
+	if err != nil {
+		return errors.Wrap(err, "reading layout")
+	}
+	// Copy data blocks in parallel, rewriting suffixes as we go.
+	blocks, err := rewriteDataBlocksInParallel(r, wo, l.Data, from, to, concurrency, func() blockRewriter {
+		return &colblk.DataBlockRewriter{KeySchema: wo.KeySchema}
+	})
+	if err != nil {
+		return errors.Wrap(err, "rewriting data blocks")
+	}
+
+	// oldShortIDs maps the shortID for the block property collector in the old
+	// blocks to the shortID in the new blocks. Initialized once for the sstable.
+	oldShortIDs, err := getShortIDs(r, w.blockPropCollectors)
+	if err != nil {
+		return errors.Wrap(err, "getting short IDs")
+	}
+	oldProps := make([][]byte, len(w.blockPropCollectors))
+	for i := range blocks {
+		cb := compressedBlockPool.Get().(*compressedBlock)
+		cb.physical = blocks[i].physical
+
+		// Load any previous values for our prop collectors into oldProps.
+		for i := range oldProps {
+			oldProps[i] = nil
+		}
+		decoder := makeBlockPropertiesDecoder(len(oldProps), l.Data[i].Props)
+		for !decoder.Done() {
+			id, val, err := decoder.Next()
+			if err != nil {
+				return err
+			}
+			if oldShortIDs[id].IsValid() {
+				oldProps[oldShortIDs[id]] = val
+			}
+		}
+		for i, p := range w.blockPropCollectors {
+			if err := p.AddCollectedWithSuffixReplacement(oldProps[i], from, to); err != nil {
+				return err
+			}
+		}
+		var separator []byte
+		if i+1 < len(blocks) {
+			w.separatorBuf = w.comparer.Separator(w.separatorBuf[:0], blocks[i].end.UserKey, blocks[i+1].start.UserKey)
+			separator = w.separatorBuf
+		} else {
+			w.separatorBuf = w.comparer.Successor(w.separatorBuf[:0], blocks[i].end.UserKey)
+			separator = w.separatorBuf
+		}
+		w.enqueuePhysicalBlock(cb, separator)
+	}
+
+	if len(blocks) > 0 {
+		w.meta.updateSeqNum(blocks[0].start.SeqNum())
+		w.props.NumEntries = r.Properties.NumEntries
+		w.props.RawKeySize = r.Properties.RawKeySize
+		w.props.RawValueSize = r.Properties.RawValueSize
+		w.meta.SetSmallestPointKey(blocks[0].start)
+		w.meta.SetLargestPointKey(blocks[len(blocks)-1].end)
+	}
+
+	// Copy range key block, replacing suffixes if it exists.
+	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
+		return errors.Wrap(err, "rewriting range key blocks")
+	}
+	// Copy over the filter block if it exists.
+	if w.filterBlock != nil {
+		if filterBlockBH, ok := l.FilterByName(w.filterBlock.metaName()); ok {
+			filterBlock, _, err := readBlockBuf(r, filterBlockBH, nil)
+			if err != nil {
+				return errors.Wrap(err, "reading filter")
+			}
+			w.filterBlock = copyFilterWriter{
+				origPolicyName: w.filterBlock.policyName(),
+				origMetaName:   w.filterBlock.metaName(),
+				data:           filterBlock,
+			}
+		}
+	}
+	return nil
 }
 
 func shouldFlushWithoutLatestKV(
