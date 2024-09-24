@@ -115,12 +115,6 @@ var Comparer = &base.Comparer{
 //     value is smaller.
 func compare(a, b []byte) int {
 	ai, bi := split(a), split(b)
-	if ai == 0 && len(a) > 0 {
-		panic(fmt.Sprintf("Compare called with bare suffix %s", a))
-	}
-	if bi == 0 && len(b) > 0 {
-		panic(fmt.Sprintf("Compare called with bare suffix %s", b))
-	}
 	if v := bytes.Compare(a[:ai], b[:bi]); v != 0 {
 		return v
 	}
@@ -129,10 +123,7 @@ func compare(a, b []byte) int {
 
 func split(a []byte) int {
 	i := bytes.LastIndexByte(a, suffixDelim)
-	if i == 0 {
-		panic(fmt.Sprintf("Split called on bare suffix %q", a))
-	}
-	if i > 0 {
+	if i >= 0 {
 		return i
 	}
 	return len(a)

@@ -178,8 +178,6 @@ func DecodeTimestamp(mvccKey []byte) ([]byte, []byte, uint64, uint32) {
 
 // Split implements base.Split for CockroachDB keys.
 func Split(key []byte) int {
-	// TODO(radu): Pebble sometimes passes empty "keys" and we have to tolerate
-	// them until we fix that.
 	if len(key) == 0 {
 		return 0
 	}
@@ -187,8 +185,8 @@ func Split(key []byte) int {
 	// Last byte is the version length + 1 when there is a version, else it is
 	// 0.
 	versionLen := int(key[len(key)-1])
-	if versionLen >= len(key) {
-		panic(errors.AssertionFailedf("empty key"))
+	if versionLen > len(key) {
+		panic(errors.AssertionFailedf("invalid version length"))
 	}
 	return len(key) - versionLen
 }
@@ -196,8 +194,6 @@ func Split(key []byte) int {
 // Compare compares cockroach keys, including the version (which could be MVCC
 // timestamps).
 func Compare(a, b []byte) int {
-	// TODO(radu): Pebble sometimes passes empty "keys" and we have to tolerate
-	// them until we fix that.
 	if len(a) == 0 || len(b) == 0 {
 		return cmp.Compare(len(a), len(b))
 	}
@@ -208,11 +204,6 @@ func Compare(a, b []byte) int {
 	// SplitMVCCKey instead of doing this.
 	aEnd := len(a) - 1
 	bEnd := len(b) - 1
-	if aEnd < 0 || bEnd < 0 {
-		// This should never happen unless there is some sort of corruption of
-		// the keys.
-		panic(errors.AssertionFailedf("malformed key: %x, %x", a, b))
-	}
 
 	// Compute the index of the separator between the key and the version. If the
 	// separator is found to be at -1 for both keys, then we are comparing bare
