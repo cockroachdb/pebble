@@ -33,6 +33,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type tableFormatFile struct {
+	TableFormat TableFormat
+	File        string
+}
+
 func testWriterParallelism(t *testing.T, parallelism bool) {
 	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
 		tdFile := "testdata/writer"
@@ -48,12 +53,15 @@ func TestWriter(t *testing.T) {
 }
 
 func testRewriterParallelism(t *testing.T, parallelism bool) {
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		tdFile := "testdata/rewriter"
-		if format == TableFormatPebblev3 {
-			tdFile = "testdata/rewriter_v3"
-		}
-		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, tdFile, format, parallelism) })
+	formatFiles := []tableFormatFile{
+		{TableFormat: TableFormatPebblev2, File: "testdata/rewriter"},
+		{TableFormat: TableFormatPebblev3, File: "testdata/rewriter_v3"},
+		{TableFormat: TableFormatPebblev5, File: "testdata/rewriter_v5"},
+	}
+	for _, tff := range formatFiles {
+		t.Run(tff.TableFormat.String(), func(t *testing.T) {
+			runDataDriven(t, tff.File, tff.TableFormat, parallelism)
+		})
 	}
 }
 

@@ -1,0 +1,233 @@
+build block-size=1 index-block-size=1 filter
+a@xyz.SET.1:a
+b@xyz.SET.1:b
+c@xyz.SET.1:c
+----
+point:    [a@xyz#1,SET-c@xyz#1,SET]
+seqnums:  [1-1]
+
+rewrite from=@xyz to=@123 block-size=1 index-block-size=1 filter comparer=split-4b-suffix
+----
+rewrite failed: mismatched Comparer pebble.internal.testkeys vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
+
+build block-size=1 index-block-size=1 filter
+aa@xyz.SET.1:a
+ba@xyz.SET.1:b
+ca@xyz.SET.1:c
+----
+point:    [aa@xyz#1,SET-ca@xyz#1,SET]
+seqnums:  [1-1]
+
+rewrite from=yz to=23 block-size=1 index-block-size=1 filter comparer=testkeys
+----
+rewrite failed: rewriting data blocks: key aa@xyz#1,SET has suffix 0x4078797a; require 0x797a
+
+rewrite from=a@xyz to=a@123 block-size=1 index-block-size=1 filter comparer=testkeys
+----
+rewrite failed: rewriting data blocks: key aa@xyz#1,SET has suffix 0x4078797a; require 0x614078797a
+
+build block-size=1 index-block-size=1 filter comparer=testkeys
+a@000.SET.1:a
+b@000.SET.1:b
+c@000.SET.1:c
+----
+point:    [a@000#1,SET-c@000#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (80)
+        85  data (80)
+       170  data (80)
+       255  index (40)
+       300  index (48)
+       353  index (44)
+       402  top-index (61)
+       468  fullfilter.rocksdb.BuiltinBloomFilter (69)
+       542  properties (515)
+      1062  meta-index (80)
+      1147  footer (53)
+      1200  EOF
+
+scan
+----
+a@000#1,SET:a
+b@000#1,SET:b
+c@000#1,SET:c
+
+get
+b@000
+f@000
+c@000
+----
+b
+get f@000: pebble: not found
+c
+
+rewrite from=@000 to=@123 block-size=1 index-block-size=1 filter comparer=testkeys
+----
+point:    [a@123#1,SET-c@123#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (80)
+        85  data (80)
+       170  data (80)
+       255  index (40)
+       300  index (48)
+       353  index (44)
+       402  top-index (61)
+       468  fullfilter.rocksdb.BuiltinBloomFilter (69)
+       542  properties (515)
+      1062  meta-index (80)
+      1147  footer (53)
+      1200  EOF
+
+scan
+----
+a@123#1,SET:a
+b@123#1,SET:b
+c@123#1,SET:c
+
+get
+b@123
+f@123
+c@123
+----
+b
+get f@123: pebble: not found
+c
+
+rewrite from=@123 to=@456 block-size=1 index-block-size=1 filter comparer=testkeys concurrency=2
+----
+point:    [a@456#1,SET-c@456#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (80)
+        85  data (80)
+       170  data (80)
+       255  index (40)
+       300  index (48)
+       353  index (44)
+       402  top-index (61)
+       468  fullfilter.rocksdb.BuiltinBloomFilter (69)
+       542  properties (515)
+      1062  meta-index (80)
+      1147  footer (53)
+      1200  EOF
+
+scan
+----
+a@456#1,SET:a
+b@456#1,SET:b
+c@456#1,SET:c
+
+get
+b@456
+f@456
+c@456
+----
+b
+get f@456: pebble: not found
+c
+
+rewrite from=@456 to=@123 block-size=1 index-block-size=1 filter comparer=testkeys concurrency=3
+----
+point:    [a@123#1,SET-c@123#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (80)
+        85  data (80)
+       170  data (80)
+       255  index (40)
+       300  index (48)
+       353  index (44)
+       402  top-index (61)
+       468  fullfilter.rocksdb.BuiltinBloomFilter (69)
+       542  properties (515)
+      1062  meta-index (80)
+      1147  footer (53)
+      1200  EOF
+
+scan
+----
+a@123#1,SET:a
+b@123#1,SET:b
+c@123#1,SET:c
+
+get
+b@123
+f@123
+c@123
+----
+b
+get f@123: pebble: not found
+c
+
+
+rewrite from=@123 to=@000 block-size=1 index-block-size=1 filter comparer=testkeys concurrency=4
+----
+point:    [a@000#1,SET-c@000#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (80)
+        85  data (80)
+       170  data (80)
+       255  index (40)
+       300  index (48)
+       353  index (44)
+       402  top-index (61)
+       468  fullfilter.rocksdb.BuiltinBloomFilter (69)
+       542  properties (515)
+      1062  meta-index (80)
+      1147  footer (53)
+      1200  EOF
+
+scan
+----
+a@000#1,SET:a
+b@000#1,SET:b
+c@000#1,SET:c
+
+get
+b@000
+f@000
+c@000
+----
+b
+get f@000: pebble: not found
+c
+
+# Rewrite a table that contain only range keys.
+
+build block-size=1 index-block-size=1 filter comparer=testkeys
+EncodeSpan: a-b:{(#1,RANGEKEYSET,@000)}
+EncodeSpan: b-c:{(#1,RANGEKEYSET,@000)}
+EncodeSpan: c-d:{(#1,RANGEKEYSET,@000)}
+----
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-1]
+
+scan-range-key
+----
+a-b:{(#1,RANGEKEYSET,@000)}
+b-c:{(#1,RANGEKEYSET,@000)}
+c-d:{(#1,RANGEKEYSET,@000)}
+
+rewrite from=@000 to=@123 block-size=1 index-block-size=1 filter comparer=testkeys
+----
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-1]
+
+scan-range-key
+----
+a-b:{(#1,RANGEKEYSET,@123)}
+b-c:{(#1,RANGEKEYSET,@123)}
+c-d:{(#1,RANGEKEYSET,@123)}
