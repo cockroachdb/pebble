@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -54,15 +55,37 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 			}
 		case "filter":
 			writerOpts.FilterPolicy = bloom.FilterPolicy(10)
-		case "comparer-split-4b-suffix":
-			writerOpts.Comparer = test4bSuffixComparer
+		case "comparer":
+			var err error
+			if writerOpts.Comparer, err = comparerFromCmdArg(arg); err != nil {
+				return err
+			}
 		case "writing-to-lowest-level":
 			writerOpts.WritingToLowestLevel = true
 		case "is-strict-obsolete":
 			writerOpts.IsStrictObsolete = true
 		}
 	}
+	if writerOpts.Comparer == nil {
+		writerOpts.Comparer = testkeys.Comparer
+	}
+	if len(writerOpts.KeySchema.ColumnTypes) == 0 {
+		writerOpts.KeySchema = colblk.DefaultKeySchema(writerOpts.Comparer, 16)
+	}
 	return nil
+}
+
+func comparerFromCmdArg(arg datadriven.CmdArg) (*Comparer, error) {
+	switch arg.Vals[0] {
+	case "split-4b-suffix":
+		return test4bSuffixComparer, nil
+	case "testkeys":
+		return testkeys.Comparer, nil
+	case "default":
+		return base.DefaultComparer, nil
+	default:
+		return nil, errors.Errorf("unknown comparer: %s", arg.Vals[0])
+	}
 }
 
 func runBuildMemObjCmd(
@@ -139,7 +162,10 @@ func runBuildCmd(
 }
 
 func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int) (*Reader, error) {
-	readerOpts := ReaderOptions{Comparer: writerOpts.Comparer}
+	readerOpts := ReaderOptions{
+		Comparer:  writerOpts.Comparer,
+		KeySchema: writerOpts.KeySchema,
+	}
 	if writerOpts.FilterPolicy != nil {
 		readerOpts.Filters = map[string]FilterPolicy{
 			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
@@ -149,9 +175,7 @@ func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int
 		c := cache.New(int64(cacheSize))
 		defer c.Unref()
 		readerOpts.SetInternal(sstableinternal.ReaderOptions{
-			CacheOpts: sstableinternal.CacheOptions{
-				Cache: c,
-			},
+			CacheOpts: sstableinternal.CacheOptions{Cache: c},
 		})
 	}
 	r, err := NewMemReader(obj.Data(), readerOpts)
@@ -164,6 +188,10 @@ func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int
 func runBuildRawCmd(
 	td *datadriven.TestData, opts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
+	if err := optsFromArgs(td, opts); err != nil {
+		return nil, nil, err
+	}
+
 	mem := vfs.NewMem()
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, "" /* dirName */))
 	if err != nil {
@@ -211,7 +239,10 @@ func runBuildRawCmd(
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := NewReader(context.Background(), f1, ReaderOptions{})
+	r, err := NewReader(context.Background(), f1, ReaderOptions{
+		Comparer:  opts.Comparer,
+		KeySchema: opts.KeySchema,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -470,7 +501,10 @@ func runRewriteCmd(
 	if err != nil {
 		return nil, r, errors.Wrap(err, "rewrite failed")
 	}
-	readerOpts := ReaderOptions{Comparer: opts.Comparer}
+	readerOpts := ReaderOptions{
+		Comparer:  opts.Comparer,
+		KeySchema: opts.KeySchema,
+	}
 	if opts.FilterPolicy != nil {
 		readerOpts.Filters = map[string]FilterPolicy{
 			opts.FilterPolicy.Name(): opts.FilterPolicy,
