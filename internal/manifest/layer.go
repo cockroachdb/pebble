@@ -26,6 +26,7 @@ func Level(level int) Layer {
 	if level < 0 || level >= NumLevels {
 		panic("invalid level")
 	}
+	// LOL
 	return Layer{
 		kind:  levelLayer,
 		value: uint16(level),
