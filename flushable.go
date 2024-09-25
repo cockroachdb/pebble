@@ -365,7 +365,7 @@ func (s *ingestedFlushable) anyFileOverlaps(bounds base.UserKeyBounds) bool {
 		if !bounds.End.IsUpperBoundFor(s.comparer.Compare, fileBounds.Start) {
 			// The file starts after the bounds end. There is no overlap, and
 			// further files will not overlap either (the files are sorted).
-			return false
+			break
 		}
 		// There is overlap. Note that UserKeyBounds.Overlaps() performs exactly the
 		// checks above.

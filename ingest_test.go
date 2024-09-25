@@ -648,7 +648,7 @@ func TestExcise(t *testing.T) {
 			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
-			FormatMajorVersion: FormatVirtualSSTables,
+			FormatMajorVersion: FormatFlushableIngestExcises,
 			Logger:             testLogger{t},
 		}
 		if blockSize != 0 {
@@ -707,6 +707,18 @@ func TestExcise(t *testing.T) {
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
+			return ""
+
+		case "block-flush":
+			d.mu.Lock()
+			d.mu.compact.flushing = true
+			d.mu.Unlock()
+			return ""
+
+		case "allow-flush":
+			d.mu.Lock()
+			d.mu.compact.flushing = false
+			d.mu.Unlock()
 			return ""
 
 		case "ingest":

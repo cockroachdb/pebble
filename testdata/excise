@@ -515,16 +515,16 @@ set c something
 
 ingest-and-excise ext5 excise=c-cc
 ----
-memtable flushed
+flushable ingest
 
 lsm
 ----
 L0.0:
-  000012:[x#14,SET-x#14,SET]
+  000013:[x#14,SET-x#14,SET]
 L6:
-  000013(000009):[a#0,SET-b#0,SET]
+  000014(000009):[a#0,SET-b#0,SET]
   000010:[c#17,SET-c#17,SET]
-  000014(000009):[d@6#15,DEL-d@6#0,SET]
+  000015(000009):[d@6#15,DEL-d@6#0,SET]
 
 iter lower=c upper=e
 last
@@ -626,16 +626,16 @@ del b-e
 
 ingest-and-excise ext5 excise=b-e
 ----
-memtable flushed
+flushable ingest
 
 lsm
 ----
 L0.0:
   000010:[b#18,SET-f#18,SET]
-  000012:[x#15,SET-x#15,SET]
+  000013:[x#15,SET-x#15,SET]
 L6:
-  000013(000009):[a#0,SET-a#0,SET]
-  000014(000009):[g#0,SET-g#0,SET]
+  000014(000009):[a#0,SET-a#0,SET]
+  000015(000009):[g#0,SET-g#0,SET]
 
 iter lower=c upper=e
 last
@@ -666,7 +666,7 @@ compact a z
 lsm
 ----
 L6:
-  000017:[a#0,SET-x#0,SET]
+  000018:[a#0,SET-x#0,SET]
 
 batch commit
 ----
@@ -688,11 +688,11 @@ ingest-and-excise ext5 ext6 excise=b-e
 lsm
 ----
 L0.0:
-  000018:[a#22,SET-a#22,SET]
-  000019:[b#23,SET-f#23,SET]
+  000019:[a#22,SET-a#22,SET]
+  000020:[b#23,SET-f#23,SET]
 L6:
-  000020(000017):[a#0,SET-aa#0,SET]
-  000021(000017):[f#0,SET-x#0,SET]
+  000021(000018):[a#0,SET-aa#0,SET]
+  000022(000018):[f#0,SET-x#0,SET]
 
 iter lower=a upper=f
 first
@@ -709,7 +709,7 @@ c: (somethingElse, .)
 .
 .
 
-# Two ovelrapping ingestions wait on one another even if
+# Two overlapping ingestions wait on one another even if
 # the overlap is only on the excise span.
 
 reset
@@ -756,14 +756,6 @@ e: (fee, .)
 flush
 ----
 
-lsm
-----
-L0.0:
-  000007(000006):[a#10,SET-a#10,SET]
-L6:
-  000004:[b#15,SET-c#15,SET]
-  000008:[d#16,SET-e#16,SET]
-
 
 iter
 first
@@ -778,4 +770,62 @@ b: (foo, .)
 c: (bar, .)
 d: (gee, .)
 e: (fee, .)
+.
+
+# Regression test for #3963. Ensure that flushable ingests with excises
+# correctly compute boundary overlaps with eventually file-only snapshots.
+
+reset
+----
+
+batch
+set a foo
+set b bar
+set c baz
+set e something
+----
+
+flush
+----
+
+block-flush
+----
+
+batch
+set b foobar
+set d barbaz
+----
+
+build ext8
+set d foobar
+set e somethingelse
+----
+
+ingest-and-excise ext8 excise=b-g no-wait
+----
+
+file-only-snapshot s1
+b c
+----
+ok
+
+batch
+set b invisible
+----
+
+allow-flush
+----
+
+flush
+----
+
+# This iterator should not return any keys.
+
+iter snapshot=s1 lower=b upper=c
+first
+next
+next
+----
+.
+.
 .
