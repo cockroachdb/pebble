@@ -238,11 +238,11 @@ layout
         78  index (22)
        105  index (22)
        132  index (22)
-       159  top-index (50)
-       214  properties (453)
-       672  meta-index (33)
-       710  footer (53)
-       763  EOF
+       159  top-index (48)
+       212  properties (451)
+       668  meta-index (33)
+       706  footer (53)
+       759  EOF
 
 scan
 ----
@@ -266,11 +266,11 @@ layout
          0  data (21)
         26  data (21)
         52  data (21)
-        78  index (47)
-       130  properties (551)
-       686  meta-index (33)
-       724  leveldb-footer (48)
-       772  EOF
+        78  index (45)
+       128  properties (549)
+       682  meta-index (33)
+       720  leveldb-footer (48)
+       768  EOF
 
 # Range keys, if present, are shown in the layout.
 
@@ -287,7 +287,7 @@ layout
          0  data (8)
         13  index (21)
         39  range-key (79)
-       123  properties (501)
-       629  meta-index (57)
-       691  footer (53)
-       744  EOF
+       123  properties (499)
+       627  meta-index (57)
+       689  footer (53)
+       742  EOF
