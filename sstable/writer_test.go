@@ -1200,17 +1200,3 @@ func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format
 		})
 	}
 }
-
-var test4bSuffixComparer = &base.Comparer{
-	Compare:   base.DefaultComparer.Compare,
-	Equal:     base.DefaultComparer.Equal,
-	Separator: base.DefaultComparer.Separator,
-	Successor: base.DefaultComparer.Successor,
-	Split: func(key []byte) int {
-		if len(key) > 4 {
-			return len(key) - 4
-		}
-		return len(key)
-	},
-	Name: "comparer-split-4b-suffix",
-}
