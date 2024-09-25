@@ -48,6 +48,9 @@ type KeyWriter interface {
 	// key. The returned KeyComparison's UserKeyComparison field is equivalent
 	// to Compare(key, prevKey) where prevKey is the last key passed to
 	// WriteKey.
+	//
+	// If no key has been written yet, ComparePrev returns a KeyComparison with
+	// only PrefixLen set.
 	ComparePrev(key []byte) KeyComparison
 	// WriteKey writes a user key into the KeyWriter's columns. The
 	// keyPrefixLenSharedWithPrev parameter takes the number of bytes prefixing
@@ -169,15 +172,14 @@ type defaultKeyWriter struct {
 }
 
 func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
-	lp := w.prefixes.UnsafeGet(w.prefixes.nKeys - 1)
-
 	var cmpv KeyComparison
 	cmpv.PrefixLen = int32(w.comparer.Split(key))
-	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
-	if len(lp) == 0 {
+	if w.prefixes.nKeys == 0 {
 		// The first key has no previous key to compare to.
 		return cmpv
 	}
+	lp := w.prefixes.UnsafeGet(w.prefixes.nKeys - 1)
+	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
 
 	if invariants.Enabled && bytes.Compare(lp, key[:cmpv.PrefixLen]) > 0 {
 		panic(errors.AssertionFailedf("keys are not in order: %q > %q", lp, key[:cmpv.PrefixLen]))
