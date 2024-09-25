@@ -993,14 +993,13 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	// file is created and after a subsequent directory sync occurs. This
 	// simulates a crash after the new log file is created and synced.
 	crashFS = nil
+	var crashFSAtomic atomic.Pointer[vfs.MemFS]
 	{
 		var walCreated, dirSynced atomic.Bool
 		d, err := Open("", &Options{
 			FS: errorfs.Wrap(fs, errorfs.InjectorFunc(func(op errorfs.Op) error {
 				if dirSynced.Load() {
-					if crashFS == nil {
-						crashFS = fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
-					}
+					crashFSAtomic.CompareAndSwap(nil, fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0}))
 				}
 				if op.Kind == errorfs.OpCreate && filepath.Ext(op.Path) == ".log" {
 					walCreated.Store(true)
@@ -1019,8 +1018,8 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 		require.NoError(t, d.Close())
 	}
 
-	require.NotNil(t, crashFS)
-	fs = crashFS
+	require.NotNil(t, crashFSAtomic.Load())
+	fs = crashFSAtomic.Load()
 
 	newLogs := getLogs()
 	if n := len(newLogs); n > 2 || n < 1 {
