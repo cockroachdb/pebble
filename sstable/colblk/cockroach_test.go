@@ -60,9 +60,13 @@ type cockroachKeyWriter struct {
 }
 
 func (kw *cockroachKeyWriter) ComparePrev(key []byte) KeyComparison {
-	lp := kw.prefixes.UnsafeGet(kw.prefixes.Rows() - 1)
 	var cmpv KeyComparison
 	cmpv.PrefixLen = int32(crdbtest.Split(key)) // TODO(jackson): Inline
+	if kw.prefixes.Rows() == 0 {
+		cmpv.UserKeyComparison = 1
+		return cmpv
+	}
+	lp := kw.prefixes.UnsafeGet(kw.prefixes.Rows() - 1)
 	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
 	if cmpv.CommonPrefixLen == cmpv.PrefixLen {
 		cmpv.UserKeyComparison = int32(crdbtest.CompareSuffixes(key[cmpv.PrefixLen:], kw.prevSuffix))
