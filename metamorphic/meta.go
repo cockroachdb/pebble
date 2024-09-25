@@ -256,7 +256,7 @@ To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir
 				err,
 				out,
 				optionsStr,
-				formattedOps,
+				opsPath,
 				readFile(filepath.Join(runDir, "history")),
 				topLevelTestName, runDir,
 			)
@@ -332,7 +332,7 @@ To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --compare
 						metaDir, names[0], names[i], text,
 						names[0], optionsStrA,
 						names[i], optionsStrB,
-						formattedOps,
+						opsPath,
 						topLevelTestName, metaDir, names[0], names[i])
 					os.Exit(1)
 				}
