@@ -126,6 +126,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			var meta *WriterMetadata
 			var err error
 			wopts := &WriterOptions{
+				Comparer:    testkeys.Comparer,
 				TableFormat: tableFormat,
 				Parallelism: parallelism,
 			}
@@ -147,6 +148,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			var meta *WriterMetadata
 			var err error
 			meta, r, err = runBuildRawCmd(td, &WriterOptions{
+				Comparer:    testkeys.Comparer,
 				TableFormat: tableFormat,
 			})
 			if err != nil {
