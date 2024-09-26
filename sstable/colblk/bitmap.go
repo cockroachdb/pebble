@@ -73,10 +73,10 @@ func (b Bitmap) At(i int) bool {
 	return val&(1<<(uint(i)&63)) != 0
 }
 
-// Successor returns the next bit greater than or equal to i set in the bitmap.
+// SeekSetBitGE returns the next bit greater than or equal to i set in the bitmap.
 // The i parameter must be in [0, bitCount). Returns the number of bits
 // represented by the bitmap if no next bit is set.
-func (b Bitmap) Successor(i int) int {
+func (b Bitmap) SeekSetBitGE(i int) int {
 	if b.data.ptr == nil {
 		// Zero bitmap case.
 		return b.bitCount
@@ -291,7 +291,7 @@ func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32
 	}
 	// Ensure the last word of the bitmap does not contain any set bits beyond
 	// the last row. This is not just for determinism but also to ensure that
-	// the summary bitmap is correct (which is necessary for Bitmap.Successor
+	// the summary bitmap is correct (which is necessary for Bitmap.SeekSetBitGE
 	// correctness).
 	if i := nRows % 64; len(b.words) >= nBitmapWords && i != 0 {
 		b.words[nBitmapWords-1] &= (1 << i) - 1

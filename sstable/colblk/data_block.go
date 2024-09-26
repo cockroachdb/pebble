@@ -331,12 +331,12 @@ func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
 		return index
 	}
 	// Otherwise, the row at [index] sorts before the search key and we need to
-	// search forward. Binary search between [index+1, prefixChanged.Successor(index+1)].
+	// search forward. Binary search between [index+1, prefixChanged.SeekSetBitGE(index+1)].
 	//
 	// Define f(l-1) == false and f(u) == true.
 	// Invariant: f(l-1) == false, f(u) == true.
 	l := index + 1
-	u := ks.reader.prefixChanged.Successor(index + 1)
+	u := ks.reader.prefixChanged.SeekSetBitGE(index + 1)
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
 		// l ≤ h < u
@@ -865,7 +865,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 // prefix as the previous entry. Checking the value prefix byte bit requires
 // locating that byte which requires decoding 3 varints per key/value pair.
 func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
-	return i.decodeRow(i.r.prefixChanged.Successor(i.row + 1))
+	return i.decodeRow(i.r.prefixChanged.SeekSetBitGE(i.row + 1))
 }
 
 // Prev moves the iterator to the previous KV pair in the block.
