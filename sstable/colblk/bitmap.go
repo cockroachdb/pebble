@@ -81,33 +81,11 @@ func (b Bitmap) Successor(i int) int {
 		// Zero bitmap case.
 		return b.bitCount
 	}
-	// nextInWord returns the index of the smallest set bit with an index >= bit
-	// within the provided word.  The returned index is an index local to the
-	// word.
-	nextInWord := func(word uint64, bit uint) int {
-		// We want to find the index of the next set bit. We can accomplish this
-		// by clearing the trailing `bit` bits from the word and counting the
-		// number of trailing zeros. For example, consider the word and bit=37:
-		//
-		//           word: 1010101010111111111110000001110101010101011111111111000000111011
-		//
-		//         1<<bit: 0000000000000000000000000010000000000000000000000000000000000000
-		//       1<<bit-1: 0000000000000000000000000001111111111111111111111111111111111111
-		//      ^1<<bit-1: 1111111111111111111111111110000000000000000000000000000000000000
-		// word&^1<<bit-1: 1010101010111111111110000000000000000000000000000000000000000000
-		//
-		// Counting the trailing zeroes of this last value gives us 43. For
-		// visualizing, 1<<43 is:
-		//
-		//                 0000000000000000000010000000000000000000000000000000000000000000
-		//
-		return bits.TrailingZeros64(word &^ ((1 << bit) - 1))
-	}
 
 	wordIdx := i >> 6 // i/64
 	// Fast path for common case of reasonably dense bitmaps; if the there's a
-	// bit > i set in the same word, return it.
-	if next := nextInWord(b.data.At(wordIdx), uint(i%64)); next < 64 {
+	// bit ≥ i set in the same word, return it.
+	if next := nextBitInWord(b.data.At(wordIdx), uint(i%64)); next < 64 {
 		return wordIdx<<6 + next
 	}
 
@@ -118,7 +96,7 @@ func (b Bitmap) Successor(i int) int {
 	// on the summary word to get the index of which word has a set bit, if any.
 	summaryTableOffset, summaryTableEnd := b.summaryTableBounds()
 	summaryWordIdx := summaryTableOffset + wordIdx>>6
-	summaryNext := nextInWord(b.data.At(summaryWordIdx), uint(wordIdx%64)+1)
+	summaryNext := nextBitInWord(b.data.At(summaryWordIdx), uint(wordIdx%64)+1)
 	// If [summaryNext] == 64, then there are no set bits in any of the earlier
 	// words represented by the summary word at [summaryWordIdx]. In that case,
 	// we need to keep scanning the summary table forwards.
@@ -150,33 +128,10 @@ func (b Bitmap) Predecessor(i int) int {
 		// Zero bitmap case.
 		return -1
 	}
-	// prevInWord returns the index of the largest set bit ≤ bit within the
-	// provided word. The returned index is an index local to the word. Returns
-	// -1 if no set bit is found.
-	prevInWord := func(word uint64, bit uint) int {
-		// We want to find the index of the previous set bit. We can accomplish
-		// this by clearing the leading `bit` bits from the word and counting
-		// the number of leading zeros. For example, consider the word and
-		// bit=42:
-		//
-		//              word: 1010101010111111111110000001110101010101011111111111000000111011
-		//
-		//        1<<(bit+1): 0000000000000000000010000000000000000000000000000000000000000000
-		//      1<<(bit+1)-1: 0000000000000000000001111111111111111111111111111111111111111111
-		// word&1<<(bit+1)-1: 0000000000000000000000000001110101010101011111111111000000111011
-		//
-		// Counting the leading zeroes of this last value gives us 27 leading
-		// zeros. 63-27 gives index 36. For visualizing, 1<<36 is:
-		//
-		//                    0000000000000000000000000001000000000000000000000000000000000000
-		//
-		return 63 - bits.LeadingZeros64(word&((1<<(bit+1))-1))
-	}
-
 	wordIdx := i >> 6 // i/64
 	// Fast path for common case of reasonably dense bitmaps; if the there's a
-	// bit < i set in the same word, return it.
-	if prev := prevInWord(b.data.At(wordIdx), uint(i%64)); prev >= 0 {
+	// bit ≤ i set in the same word, return it.
+	if prev := prevBitInWord(b.data.At(wordIdx), uint(i%64)); prev >= 0 {
 		return (wordIdx << 6) + prev
 	}
 
@@ -187,7 +142,7 @@ func (b Bitmap) Predecessor(i int) int {
 	// summary word to get the index of which word has a set bit, if any.
 	summaryTableOffset, _ := b.summaryTableBounds()
 	summaryWordIdx := summaryTableOffset + wordIdx>>6
-	summaryPrev := prevInWord(b.data.At(summaryWordIdx), uint(wordIdx%64)-1)
+	summaryPrev := prevBitInWord(b.data.At(summaryWordIdx), uint(wordIdx%64)-1)
 	// If [summaryPrev] is negative, then there are no set bits in any of the
 	// earlier words represented by the summary word at [summaryWordIdx]. In
 	// that case, we need to keep scanning the summary table backwards.
@@ -395,4 +350,52 @@ func bitmapToBinFormatter(f *binfmt.Formatter, rows int) {
 	for i := 0; i < summaryWords; i++ {
 		f.Line(8).Append("b ").Binary(8).Done("bitmap summary word %d-%d", i*64, i*64+63)
 	}
+}
+
+// nextBitInWord returns the index of the smallest set bit with an index ≥ bit
+// within the provided word. The given index must be in the [0, 63] interval.
+// The returned index is an index local to the word. Returns 64 if no set bit is
+// found.
+func nextBitInWord(word uint64, bit uint) int {
+	// We want to find the index of the next set bit. We can accomplish this
+	// by clearing the trailing `bit` bits from the word and counting the
+	// number of trailing zeros. For example, consider the word and bit=37:
+	//
+	//           word: 1010101010111111111110000001110101010101011111111111000000111011
+	//
+	//         1<<bit: 0000000000000000000000000010000000000000000000000000000000000000
+	//       1<<bit-1: 0000000000000000000000000001111111111111111111111111111111111111
+	//      ^1<<bit-1: 1111111111111111111111111110000000000000000000000000000000000000
+	// word&^1<<bit-1: 1010101010111111111110000000000000000000000000000000000000000000
+	//
+	// Counting the trailing zeroes of this last value gives us 43. For
+	// visualizing, 1<<43 is:
+	//
+	//                 0000000000000000000010000000000000000000000000000000000000000000
+	//
+	return bits.TrailingZeros64(word &^ ((1 << bit) - 1))
+}
+
+// prevBitInWord returns the index of the largest set bit ≤ bit within the
+// provided word. The given bit index must be in the [0, 63] interval. The
+// returned bit index is an index local to the word. Returns -1 if no set bit is
+// found.
+func prevBitInWord(word uint64, bit uint) int {
+	// We want to find the index of the previous set bit. We can accomplish
+	// this by clearing the leading `bit` bits from the word and counting
+	// the number of leading zeros. For example, consider the word and
+	// bit=42:
+	//
+	//              word: 1010101010111111111110000001110101010101011111111111000000111011
+	//
+	//        1<<(bit+1): 0000000000000000000010000000000000000000000000000000000000000000
+	//      1<<(bit+1)-1: 0000000000000000000001111111111111111111111111111111111111111111
+	// word&1<<(bit+1)-1: 0000000000000000000000000001110101010101011111111111000000111011
+	//
+	// Counting the leading zeroes of this last value gives us 27 leading
+	// zeros. 63-27 gives index 36. For visualizing, 1<<36 is:
+	//
+	//                    0000000000000000000000000001000000000000000000000000000000000000
+	//
+	return 63 - bits.LeadingZeros64(word&((1<<(bit+1))-1))
 }

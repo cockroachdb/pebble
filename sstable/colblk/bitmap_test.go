@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 	"time"
 	"unicode"
@@ -77,6 +78,35 @@ func TestBitmapFixed(t *testing.T) {
 			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
 		}
 	})
+}
+
+func TestNextPrevBitInWord(t *testing.T) {
+	words := []uint64{0, math.MaxUint64}
+	for i := 0; i < 1000; i++ {
+		words = append(words, rand.Uint64())
+	}
+	for _, w := range words {
+		// Check that we can reconstruct the word if we jump from set bit to set
+		// bit.
+		var val uint64
+		for i := 0; i < 64; i++ {
+			i = nextBitInWord(w, uint(i))
+			if i == 64 {
+				break
+			}
+			val |= 1 << i
+		}
+		require.Equal(t, w, val)
+		val = 0
+		for i := 63; i >= 0; i-- {
+			i = prevBitInWord(w, uint(i))
+			if i == -1 {
+				break
+			}
+			val |= 1 << i
+		}
+		require.Equal(t, w, val)
+	}
 }
 
 func dumpBitmap(w io.Writer, b Bitmap) {
