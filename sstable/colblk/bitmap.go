@@ -7,6 +7,7 @@ package colblk
 import (
 	"fmt"
 	"io"
+	"math"
 	"math/bits"
 	"slices"
 	"strings"
@@ -85,7 +86,7 @@ func (b Bitmap) SeekSetBitGE(i int) int {
 	wordIdx := i >> 6 // i/64
 	// Fast path for common case of reasonably dense bitmaps; if the there's a
 	// bit ≥ i set in the same word, return it.
-	if next := nextBitInWord(b.data.At(wordIdx), uint(i%64)); next < 64 {
+	if next := nextBitInWord(b.data.At(wordIdx), uint(i)&63); next < 64 {
 		return wordIdx<<6 + next
 	}
 
@@ -120,10 +121,10 @@ func (b Bitmap) SeekSetBitGE(i int) int {
 	return (wordIdx << 6) + bits.TrailingZeros64(b.data.At(wordIdx))
 }
 
-// Predecessor returns the previous bit less than or equal to i set in the
+// SeekSetBitLE returns the previous bit less than or equal to i set in the
 // bitmap. The i parameter must be in [0, bitCount). Returns -1 if no previous
 // bit is set.
-func (b Bitmap) Predecessor(i int) int {
+func (b Bitmap) SeekSetBitLE(i int) int {
 	if b.data.ptr == nil {
 		// Zero bitmap case.
 		return -1
@@ -131,7 +132,7 @@ func (b Bitmap) Predecessor(i int) int {
 	wordIdx := i >> 6 // i/64
 	// Fast path for common case of reasonably dense bitmaps; if the there's a
 	// bit ≤ i set in the same word, return it.
-	if prev := prevBitInWord(b.data.At(wordIdx), uint(i%64)); prev >= 0 {
+	if prev := prevBitInWord(b.data.At(wordIdx), uint(i)&63); prev >= 0 {
 		return (wordIdx << 6) + prev
 	}
 
@@ -165,6 +166,61 @@ func (b Bitmap) Predecessor(i int) int {
 	// which bit is set.
 	wordIdx = ((summaryWordIdx - summaryTableOffset) << 6) + summaryPrev
 	return (wordIdx << 6) + 63 - bits.LeadingZeros64(b.data.At(wordIdx))
+}
+
+// SeekUnsetBitGE returns the next bit greater than or equal to i that is unset
+// in the bitmap. The i parameter must be in [0, bitCount). Returns the number
+// of bits represented by the bitmap if no next bit is unset.
+func (b Bitmap) SeekUnsetBitGE(i int) int {
+	if b.data.ptr == nil {
+		// Zero bitmap case.
+		return i
+	}
+
+	wordIdx := i >> 6 // i/64
+	// If the there's a bit ≥ i unset in the same word, return it.
+	if next := nextBitInWord(^b.data.At(wordIdx), uint(i)&63); next < 64 {
+		return wordIdx<<6 + next
+	}
+	numWords := (b.bitCount + 63) >> 6
+	var word uint64
+	for wordIdx++; ; wordIdx++ {
+		if wordIdx >= numWords {
+			return b.bitCount
+		}
+		word = b.data.At(wordIdx)
+		if word != math.MaxUint64 {
+			break
+		}
+	}
+	return wordIdx<<6 + bits.TrailingZeros64(^word)
+}
+
+// SeekUnsetBitLE returns the previous bit less than or equal to i set in the
+// bitmap. The i parameter must be in [0, bitCount). Returns -1 if no previous
+// bit is unset.
+func (b Bitmap) SeekUnsetBitLE(i int) int {
+	if b.data.ptr == nil {
+		// Zero bitmap case.
+		return i
+	}
+
+	wordIdx := i >> 6 // i/64
+	// If there's a bit ≤ i unset in the same word, return it.
+	if prev := prevBitInWord(^b.data.At(wordIdx), uint(i)&63); prev >= 0 {
+		return (wordIdx << 6) + prev
+	}
+	var word uint64
+	for wordIdx--; ; wordIdx-- {
+		if wordIdx < 0 {
+			return -1
+		}
+		word = b.data.At(wordIdx)
+		if word != math.MaxUint64 {
+			break
+		}
+	}
+	return (wordIdx << 6) + 63 - bits.LeadingZeros64(^word)
 }
 
 func (b Bitmap) summaryTableBounds() (startOffset, endOffset int) {
@@ -214,7 +270,7 @@ func (b *BitmapBuilder) Set(i int) {
 	for len(b.words) <= w {
 		b.words = append(b.words, 0)
 	}
-	b.words[w] |= 1 << uint(i%64)
+	b.words[w] |= 1 << uint(i&63)
 }
 
 // isZero returns true if no bits are set and Invert was not called.
