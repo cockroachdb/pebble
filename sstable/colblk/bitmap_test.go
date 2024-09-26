@@ -73,6 +73,20 @@ func TestBitmapFixed(t *testing.T) {
 				fmt.Fprintf(&buf, "bitmap.SeekSetBitLE(%d) = %d\n", idx, bitmap.SeekSetBitLE(idx))
 			}
 
+		case "seek-unset-ge":
+			var indexes []int
+			td.ScanArgs(t, "indexes", &indexes)
+			for _, idx := range indexes {
+				fmt.Fprintf(&buf, "bitmap.SeekUnsetBitGE(%d) = %d\n", idx, bitmap.SeekUnsetBitGE(idx))
+			}
+
+		case "seek-unset-le":
+			var indexes []int
+			td.ScanArgs(t, "indexes", &indexes)
+			for _, idx := range indexes {
+				fmt.Fprintf(&buf, "bitmap.SeekUnsetBitLE(%d) = %d\n", idx, bitmap.SeekUnsetBitLE(idx))
+			}
+
 		default:
 			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
 		}
@@ -168,6 +182,31 @@ func TestBitmapRandom(t *testing.T) {
 			for j := pred + 1; j < i; j++ {
 				if bitmap.At(j) {
 					t.Fatalf("b.SeekSetBitLE(%d) = %d; bit at index %d is set", i, pred, j)
+				}
+			}
+		}
+		for i := 0; i < size; i++ {
+			succ := bitmap.SeekUnsetBitGE(i)
+			// Ensure that SeekUnsetBitGE always returns the index of an unset bit.
+			if succ != size && bitmap.At(succ) {
+				t.Fatalf("b.SeekUnsetBitGE(%d) = %d; bit at index %d is set", i, succ, succ)
+			}
+			pred := bitmap.SeekUnsetBitLE(i)
+			// Ensure that SeekUnsetBitLE always returns the index of an unset bit.
+			if pred >= 0 && bitmap.At(pred) {
+				t.Fatalf("b.SeekUnsetBitLE(%d) = %d; bit at index %d is set", i, pred, pred)
+			}
+
+			// Ensure there are only set bits between i and succ.
+			for j := i; j < succ; j++ {
+				if !bitmap.At(j) {
+					t.Fatalf("b.SeekUnsetBitGE(%d) = %d; bit at index %d is unset", i, succ, j)
+				}
+			}
+			// Ensure there are only set bits between pred and i.
+			for j := pred + 1; j < i; j++ {
+				if !bitmap.At(j) {
+					t.Fatalf("b.SeekUnsetBitLE(%d) = %d; bit at index %d is unset", i, pred, j)
 				}
 			}
 		}

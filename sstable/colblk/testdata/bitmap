@@ -84,6 +84,46 @@ bitmap.SeekSetBitLE(14) = 14
 bitmap.SeekSetBitLE(15) = 14
 bitmap.SeekSetBitLE(16) = 14
 
+seek-unset-ge indexes=(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+----
+bitmap.SeekUnsetBitGE(0) = 1
+bitmap.SeekUnsetBitGE(1) = 1
+bitmap.SeekUnsetBitGE(2) = 3
+bitmap.SeekUnsetBitGE(3) = 3
+bitmap.SeekUnsetBitGE(4) = 5
+bitmap.SeekUnsetBitGE(5) = 5
+bitmap.SeekUnsetBitGE(6) = 9
+bitmap.SeekUnsetBitGE(7) = 9
+bitmap.SeekUnsetBitGE(8) = 9
+bitmap.SeekUnsetBitGE(9) = 9
+bitmap.SeekUnsetBitGE(10) = 10
+bitmap.SeekUnsetBitGE(11) = 11
+bitmap.SeekUnsetBitGE(12) = 15
+bitmap.SeekUnsetBitGE(13) = 15
+bitmap.SeekUnsetBitGE(14) = 15
+bitmap.SeekUnsetBitGE(15) = 15
+bitmap.SeekUnsetBitGE(16) = 16
+
+seek-unset-le indexes=(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+----
+bitmap.SeekUnsetBitLE(0) = -1
+bitmap.SeekUnsetBitLE(1) = 1
+bitmap.SeekUnsetBitLE(2) = 1
+bitmap.SeekUnsetBitLE(3) = 3
+bitmap.SeekUnsetBitLE(4) = 3
+bitmap.SeekUnsetBitLE(5) = 5
+bitmap.SeekUnsetBitLE(6) = 5
+bitmap.SeekUnsetBitLE(7) = 5
+bitmap.SeekUnsetBitLE(8) = 5
+bitmap.SeekUnsetBitLE(9) = 9
+bitmap.SeekUnsetBitLE(10) = 10
+bitmap.SeekUnsetBitLE(11) = 11
+bitmap.SeekUnsetBitLE(12) = 11
+bitmap.SeekUnsetBitLE(13) = 11
+bitmap.SeekUnsetBitLE(14) = 11
+bitmap.SeekUnsetBitLE(15) = 15
+bitmap.SeekUnsetBitLE(16) = 16
+
 # Test calling Invert() before finishing.
 
 build invert
