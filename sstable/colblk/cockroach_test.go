@@ -243,12 +243,12 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		seekWallTime = binary.LittleEndian.Uint64(seekSuffix)
 	default:
 		// The suffix is untyped. Compare the untyped suffixes.
-		// Binary search between [index, prefixChanged.Successor(index)].
+		// Binary search between [index, prefixChanged.SeekSetBitGE(index)].
 		//
 		// Define f(l-1) == false and f(u) == true.
 		// Invariant: f(l-1) == false, f(u) == true.
 		l := index
-		u := ks.reader.prefixChanged.Successor(index)
+		u := ks.reader.prefixChanged.SeekSetBitGE(index)
 		for l < u {
 			h := int(uint(l+u) >> 1) // avoid overflow when computing h
 			// l ≤ h < u
@@ -264,12 +264,12 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 
 	// TODO(jackson): What if the row has an untyped suffix?
 
-	// Binary search between [index, prefixChanged.Successor(index)].
+	// Binary search between [index, prefixChanged.SeekSetBitGE(index)].
 	//
 	// Define f(l-1) == false and f(u) == true.
 	// Invariant: f(l-1) == false, f(u) == true.
 	l := index
-	u := ks.reader.prefixChanged.Successor(index)
+	u := ks.reader.prefixChanged.SeekSetBitGE(index)
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
 		// l ≤ h < u

@@ -21,9 +21,8 @@ import (
 
 func TestBitmapFixed(t *testing.T) {
 	var bitmap Bitmap
-	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/bitmap", func(t *testing.T, td *datadriven.TestData) string {
-		buf.Reset()
+		var buf bytes.Buffer
 		switch td.Cmd {
 		case "build":
 			var builder BitmapBuilder
@@ -59,24 +58,25 @@ func TestBitmapFixed(t *testing.T) {
 			f := binfmt.New(data)
 			bitmapToBinFormatter(f, n)
 			fmt.Fprint(&buf, f.String())
-			return buf.String()
-		case "successor":
+
+		case "seek-set-ge":
 			var indexes []int
 			td.ScanArgs(t, "indexes", &indexes)
 			for _, idx := range indexes {
-				fmt.Fprintf(&buf, "bitmap.Successor(%d) = %d\n", idx, bitmap.Successor(idx))
+				fmt.Fprintf(&buf, "bitmap.SeekSetBitGE(%d) = %d\n", idx, bitmap.SeekSetBitGE(idx))
 			}
-			return buf.String()
-		case "predecessor":
+
+		case "seek-set-le":
 			var indexes []int
 			td.ScanArgs(t, "indexes", &indexes)
 			for _, idx := range indexes {
-				fmt.Fprintf(&buf, "bitmap.Predecessor(%d) = %d\n", idx, bitmap.Predecessor(idx))
+				fmt.Fprintf(&buf, "bitmap.SeekSetBitLE(%d) = %d\n", idx, bitmap.SeekSetBitLE(idx))
 			}
-			return buf.String()
+
 		default:
 			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
 		}
+		return buf.String()
 	})
 }
 
@@ -147,27 +147,27 @@ func TestBitmapRandom(t *testing.T) {
 			}
 		}
 		for i := 0; i < size; i++ {
-			succ := bitmap.Successor(i)
-			// Ensure that Successor always returns the index of a set bit.
+			succ := bitmap.SeekSetBitGE(i)
+			// Ensure that SeekSetBitGE always returns the index of a set bit.
 			if succ != size && !bitmap.At(succ) {
-				t.Fatalf("b.Successor(%d) = %d; bit at index %d is not set", i, succ, succ)
+				t.Fatalf("b.SeekSetBitGE(%d) = %d; bit at index %d is not set", i, succ, succ)
 			}
-			pred := bitmap.Predecessor(i)
-			// Ensure that Predecessor always returns the index of a set bit.
+			pred := bitmap.SeekSetBitLE(i)
+			// Ensure that SeekSetBitLE always returns the index of a set bit.
 			if pred >= 0 && !bitmap.At(pred) {
-				t.Fatalf("b.Predecessor(%d) = %d; bit at index %d is not set", i, pred, pred)
+				t.Fatalf("b.SeekSetBitLE(%d) = %d; bit at index %d is not set", i, pred, pred)
 			}
 
 			// Ensure there are no set bits between i and succ.
 			for j := i; j < succ; j++ {
 				if bitmap.At(j) {
-					t.Fatalf("b.Successor(%d) = %d; bit at index %d is set", i, succ, j)
+					t.Fatalf("b.SeekSetBitGE(%d) = %d; bit at index %d is set", i, succ, j)
 				}
 			}
 			// Ensure there are no set bits between pred and i.
 			for j := pred + 1; j < i; j++ {
 				if bitmap.At(j) {
-					t.Fatalf("b.Predecessor(%d) = %d; bit at index %d is set", i, pred, j)
+					t.Fatalf("b.SeekSetBitLE(%d) = %d; bit at index %d is set", i, pred, j)
 				}
 			}
 		}

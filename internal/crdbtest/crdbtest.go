@@ -71,7 +71,7 @@ var Comparer = base.Comparer{
 		}
 		n := len(dst)
 		// Engine key comparison uses bytes.Compare on the roachpb.Key, which is the same semantics as
-		// pebble.DefaultComparer, so reuse the latter's Successor implementation.
+		// pebble.DefaultComparer, so reuse the latter's SeekSetBitGE implementation.
 		dst = base.DefaultComparer.Successor(dst, aKey)
 		// Did it pick a successor different than aKey -- if it did not we can't do better than a.
 		buf := dst[n:]
