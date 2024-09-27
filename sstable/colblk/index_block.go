@@ -53,7 +53,7 @@ const (
 )
 
 // Init initializes the index block writer.
-func (w *IndexBlockWriter) Init(blockProperties ...ColumnWriter) {
+func (w *IndexBlockWriter) Init() {
 	w.separators.Init()
 	w.offsets.Init()
 	w.lengths.InitWithDefault()
