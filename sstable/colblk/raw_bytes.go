@@ -107,13 +107,14 @@ func (b *RawBytes) ptr(offset uint32) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(b.data) + uintptr(offset))
 }
 
+//gcassert:inline
 func (b *RawBytes) slice(start, end uint32) []byte {
 	return unsafe.Slice((*byte)(b.ptr(start)), end-start)
 }
 
 // At returns the []byte at index i. The returned slice should not be mutated.
 func (b RawBytes) At(i int) []byte {
-	return b.slice(b.offsets.At(i), b.offsets.At(i+1))
+	return b.slice(b.offsets.At2(i))
 }
 
 // Slices returns the number of []byte slices encoded within the RawBytes.

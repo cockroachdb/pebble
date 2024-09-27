@@ -11,4 +11,5 @@ fi
 git diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- "*.go" \
   | xargs -rn1 dirname \
   | sort -u \
+  | grep -v "internal/devtools" \
   | xargs echo

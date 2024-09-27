@@ -146,6 +146,8 @@ func DecodeUnsafeOffsets(b []byte, off uint32, rows int) (_ UnsafeOffsets, endOf
 }
 
 // At returns the `i`-th offset.
+//
+//gcassert:inline
 func (s UnsafeOffsets) At(i int) uint32 {
 	// TODO(radu): this implementation assumes little-endian architecture.
 
@@ -163,6 +165,8 @@ func (s UnsafeOffsets) At(i int) uint32 {
 }
 
 // At2 returns the `i`-th and `i+1`-th offsets.
+//
+//gcassert:inline
 func (s UnsafeOffsets) At2(i int) (uint32, uint32) {
 	// TODO(radu): this implementation assumes little-endian architecture.
 
