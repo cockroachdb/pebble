@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ const (
 	cmdGo       = "go"
 	staticcheck = "honnef.co/go/tools/cmd/staticcheck"
 	crlfmt      = "github.com/cockroachdb/crlfmt"
+	gcassert    = "github.com/jordanlewis/gcassert/cmd/gcassert"
 )
 
 func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
@@ -90,6 +92,43 @@ func TestLint(t *testing.T) {
 				stream.GrepNot(`^#`), // ignore comment lines
 				ignoreGoMod(),
 			), func(s string) {
+				t.Errorf("\n%s", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
+	t.Run("TestGCAssert", func(t *testing.T) {
+		installTool(t, gcassert)
+		t.Parallel()
+
+		// Build a list of all packages that contain a gcassert directive.
+		var packages []string
+		if err := stream.ForEach(
+			dirCmd(
+				t, pkg.Dir, "git", "grep", "-nE", `// ?gcassert`,
+			), func(s string) {
+				// s here is of the form
+				//   some/package/file.go:123:// gcassert:inline
+				// and we want to extract the package path.
+				filePath := s[:strings.Index(s, ":")]                  // up to the line number
+				pkgPath := filePath[:strings.LastIndex(filePath, "/")] // up to the file name
+				path := fmt.Sprintf("./%s", pkgPath)
+				if !slices.Contains(packages, path) {
+					packages = append(packages, path)
+				}
+			}); err != nil {
+			t.Error(err)
+		}
+		slices.Sort(packages)
+
+		if err := stream.ForEach(
+			dirCmd(t, pkg.Dir, "gcassert", packages...),
+			func(s string) {
+				if strings.HasPrefix(s, "See ") && strings.HasSuffix(s, " for full output.") {
+					t.Log(s)
+					return
+				}
 				t.Errorf("\n%s", s)
 			}); err != nil {
 			t.Error(err)
