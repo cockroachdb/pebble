@@ -27,6 +27,7 @@ func TestBitmapFixed(t *testing.T) {
 		case "build":
 			var builder BitmapBuilder
 			var n int
+			var off uint32
 			for _, r := range td.Input {
 				if unicode.IsSpace(r) {
 					continue
@@ -37,25 +38,29 @@ func TestBitmapFixed(t *testing.T) {
 				n++
 			}
 			td.MaybeScanArgs(t, "rows", &n)
+			td.MaybeScanArgs(t, "offset", &off)
 
-			size := builder.Size(n, 0)
+			size := builder.Size(n, off)
 			if td.HasArg("invert") {
-				size = builder.InvertedSize(n, 0)
+				size = builder.InvertedSize(n, off)
 				builder.Invert(n)
-				if newSize := builder.Size(n, 0); size != newSize {
+				if newSize := builder.Size(n, off); size != newSize {
 					td.Fatalf(t, "InvertedSize=%d, after invert Size=%d", size, newSize)
 				}
 			}
-			data := make([]byte, builder.Size(n, size))
+			data := make([]byte, size)
 
-			endOffset := builder.Finish(0, n, 0, data)
+			endOffset := builder.Finish(0, n, off, data)
 			if endOffset != size {
 				td.Fatalf(t, "endOffset=%d size=%d", endOffset, size)
 			}
-			bitmap, _ = DecodeBitmap(data, 0, n)
+			bitmap, _ = DecodeBitmap(data, off, n)
 			dumpBitmap(&buf, bitmap)
 			fmt.Fprint(&buf, "\nBinary representation:\n")
 			f := binfmt.New(data)
+			if off > 0 {
+				f.HexBytesln(int(off), "initial offset")
+			}
 			bitmapToBinFormatter(f, n)
 			fmt.Fprint(&buf, f.String())
 
