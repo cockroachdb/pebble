@@ -132,6 +132,21 @@ func (w *KeyspanBlockWriter) UnsafeBoundaryKeys() (smallest, largest base.Intern
 	return smallest, largest
 }
 
+// UnsafeLastSpan returns the start and end user keys of the last span written
+// to the block and the trailer of its largest key. The returned keys point
+// directly into the block writer's memory and must not be mutated.
+func (w *KeyspanBlockWriter) UnsafeLastSpan() (
+	start, end []byte,
+	largestTrailer base.InternalKeyTrailer,
+) {
+	if w.keyCount == 0 {
+		return nil, nil, 0
+	}
+	return w.boundaryUserKeys.UnsafeGet(w.boundaryUserKeys.rows - 2),
+		w.boundaryUserKeys.UnsafeGet(w.boundaryUserKeys.rows - 1),
+		base.InternalKeyTrailer(w.trailers.Get(w.keyCount - 1))
+}
+
 // Size returns the size of the pending block.
 func (w *KeyspanBlockWriter) Size() int {
 	off := blockHeaderSize(keyspanColumnCount, keyspanHeaderSize)

@@ -183,9 +183,6 @@ func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
 	lp := w.prefixes.UnsafeGet(w.prefixes.nKeys - 1)
 	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen]))
 
-	if invariants.Enabled && bytes.Compare(lp, key[:cmpv.PrefixLen]) > 0 {
-		panic(errors.AssertionFailedf("keys are not in order: %q > %q", lp, key[:cmpv.PrefixLen]))
-	}
 	// Keys are written in order and prefixes must be sorted lexicograpgically,
 	// so CommonPrefixLen == PrefixLen implies that the keys share the same
 	// logical prefix. (If the previous key had a prefix longer than

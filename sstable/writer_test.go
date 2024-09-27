@@ -34,12 +34,13 @@ import (
 )
 
 func testWriterParallelism(t *testing.T, parallelism bool) {
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		tdFile := "testdata/writer"
-		if format == TableFormatPebblev3 {
-			tdFile = "testdata/writer_v3"
-		}
-		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, tdFile, format, parallelism) })
+	formatFiles := map[TableFormat]string{
+		TableFormatPebblev2: "testdata/writer",
+		TableFormatPebblev3: "testdata/writer_v3",
+		TableFormatPebblev5: "testdata/writer_v5",
+	}
+	for format, file := range formatFiles {
+		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, file, format, parallelism) })
 	}
 }
 func TestWriter(t *testing.T) {
