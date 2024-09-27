@@ -39,12 +39,15 @@ type tableFormatFile struct {
 }
 
 func testWriterParallelism(t *testing.T, parallelism bool) {
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		tdFile := "testdata/writer"
-		if format == TableFormatPebblev3 {
-			tdFile = "testdata/writer_v3"
-		}
-		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, tdFile, format, parallelism) })
+	formatFiles := []tableFormatFile{
+		{TableFormat: TableFormatPebblev2, File: "testdata/writer"},
+		{TableFormat: TableFormatPebblev3, File: "testdata/writer_v3"},
+		{TableFormat: TableFormatPebblev5, File: "testdata/writer_v5"},
+	}
+	for _, tff := range formatFiles {
+		t.Run(tff.TableFormat.String(), func(t *testing.T) {
+			runDataDriven(t, tff.File, tff.TableFormat, parallelism)
+		})
 	}
 }
 func TestWriter(t *testing.T) {
