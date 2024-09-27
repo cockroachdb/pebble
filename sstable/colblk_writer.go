@@ -212,6 +212,30 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 	return sz
 }
 
+// ComparePrev compares the provided user to the last point key written to the
+// writer. The returned value is equivalent to Compare(key, prevKey) where
+// prevKey is the last point key written to the writer.
+//
+// If no key has been written yet, ComparePrev returns +1.
+//
+// Must not be called after Writer is closed.
+func (w *RawColumnWriter) ComparePrev(k []byte) int {
+	if w == nil || w.dataBlock.Rows() == 0 {
+		return +1
+	}
+	return int(w.dataBlock.KeyWriter.ComparePrev(k).UserKeyComparison)
+}
+
+// SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
+// be used internally by Pebble.
+func (w *RawColumnWriter) SetSnapshotPinnedProperties(
+	pinnedKeyCount, pinnedKeySize, pinnedValueSize uint64,
+) {
+	w.props.SnapshotPinnedKeys = pinnedKeyCount
+	w.props.SnapshotPinnedKeySize = pinnedKeySize
+	w.props.SnapshotPinnedValueSize = pinnedValueSize
+}
+
 // Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
 func (w *RawColumnWriter) Metadata() (*WriterMetadata, error) {
