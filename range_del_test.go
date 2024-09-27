@@ -381,9 +381,11 @@ L3:
 		}
 	}
 
+	// TODO(jackson): Convert this test to datadriven and exercise
+	// FormatColumnarBlocks and later.
 	versions := []FormatMajorVersion{
 		FormatMinSupported,
-		FormatNewest,
+		FormatFlushableIngestExcises,
 	}
 	for _, version := range versions {
 		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {

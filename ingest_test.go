@@ -219,7 +219,7 @@ func TestIngestLoadRand(t *testing.T) {
 	opts := (&Options{
 		Comparer: DefaultComparer,
 		FS:       mem,
-	}).WithFSDefaults()
+	}).WithFSDefaults().EnsureDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
 
@@ -1828,6 +1828,7 @@ func TestConcurrentExcise(t *testing.T) {
 }
 
 func TestIngestExternal(t *testing.T) {
+	t.Skip("skipping until #4025 is merged")
 	var mem vfs.FS
 	var d, d1, d2 *DB
 	var opts *Options

@@ -20,8 +20,9 @@ import (
 func TestExternalIterator(t *testing.T) {
 	mem := vfs.NewMem()
 	o := &Options{
-		FS:       mem,
-		Comparer: testkeys.Comparer,
+		FormatMajorVersion: FormatColumnarBlocks,
+		FS:                 mem,
+		Comparer:           testkeys.Comparer,
 	}
 	o.testingRandomized(t)
 	o.EnsureDefaults()

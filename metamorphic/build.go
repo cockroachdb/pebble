@@ -253,7 +253,8 @@ func openExternalObj(
 	objReader, objSize, err := t.externalStorage.ReadObject(context.Background(), externalObjName(externalObjID))
 	panicIfErr(err)
 	opts := sstable.ReaderOptions{
-		Comparer: t.opts.Comparer,
+		Comparer:  t.opts.Comparer,
+		KeySchema: t.opts.KeySchema,
 	}
 	reader, err = sstable.NewReader(
 		context.Background(),

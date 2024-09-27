@@ -312,6 +312,12 @@ f7 bounds=(gc,gf) synthetic-prefix=g
 f8 bounds=(gg,gj) synthetic-prefix=g
 ----
 
+lsm verbose
+----
+L6:
+  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:1254
+  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:968
+
 iter
 seek-ge g
 next
@@ -330,8 +336,8 @@ gi: (foo, .)
 lsm verbose
 ----
 L6:
-  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:947
-  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:628
+  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:1254
+  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:968
 
 download g h via-backing-file-download
 ----

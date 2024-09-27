@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -177,8 +178,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					}
 				}
 				writerOpts := sstable.WriterOptions{
-					TableFormat: FormatNewest.MaxTableFormat(),
 					Comparer:    testkeys.Comparer,
+					KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+					TableFormat: FormatNewest.MaxTableFormat(),
 				}
 				writerOpts.SetInternal(sstableinternal.WriterOptions{
 					DisableKeyOrderChecks: disableKeyOrderChecks,
@@ -230,7 +232,10 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				// Set FileNum for logging purposes.
-				readerOpts := sstable.ReaderOptions{Comparer: testkeys.Comparer}
+				readerOpts := sstable.ReaderOptions{
+					Comparer:  testkeys.Comparer,
+					KeySchema: writerOpts.KeySchema,
+				}
 				readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)})
 				r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 				if err != nil {

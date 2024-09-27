@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 )
@@ -687,6 +688,12 @@ type Options struct {
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
 
+		// EnableColumnarBlocks is used to decide whether to enable writing
+		// TableFormatPebblev5 sstables. This setting is only respected by
+		// FormatColumnarBlocks. In lower format major versions, the
+		// TableFormatPebblev5 format is prohibited.
+		EnableColumnarBlocks func() bool
+
 		// EnableValueBlocks is used to decide whether to enable writing
 		// TableFormatPebblev3 sstables. This setting is only respected by a
 		// specific subset of format major versions: FormatSSTableValueBlocks,
@@ -880,6 +887,12 @@ type Options struct {
 	//
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
+
+	// KeySchema defines the schema of a user key. When columnar blocks are in
+	// use (see FormatColumnarBlocks), the user may specify how a key should be
+	// decomposed into columns. If not set, colblk.DefaultKeySchema is used to
+	// construct a default key schema.
+	KeySchema colblk.KeySchema
 
 	// Lock, if set, must be a database lock acquired through LockDirectory for
 	// the same directory passed to Open. If provided, Open will skip locking
@@ -1191,6 +1204,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Experimental.KeyValidationFunc == nil {
 		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
+	}
+	if len(o.KeySchema.ColumnTypes) == 0 {
+		o.KeySchema = colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
 	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
@@ -1999,11 +2015,12 @@ func (o *Options) Validate() error {
 func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	var readerOpts sstable.ReaderOptions
 	if o != nil {
-		readerOpts.LoadBlockSema = o.LoadBlockSema
 		readerOpts.Comparer = o.Comparer
-		readerOpts.Merger = o.Merger
 		readerOpts.Filters = o.Filters
+		readerOpts.KeySchema = o.KeySchema
+		readerOpts.LoadBlockSema = o.LoadBlockSema
 		readerOpts.LoggerAndTracer = o.LoggerAndTracer
+		readerOpts.Merger = o.Merger
 	}
 	return readerOpts
 }
@@ -2035,6 +2052,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+	writerOpts.KeySchema = o.KeySchema
 	writerOpts.AllocatorSizeClasses = o.AllocatorSizeClasses
 	writerOpts.NumDeletionsThreshold = o.Experimental.NumDeletionsThreshold
 	writerOpts.DeletionSizeRatioThreshold = o.Experimental.DeletionSizeRatioThreshold

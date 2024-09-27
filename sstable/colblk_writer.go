@@ -126,9 +126,10 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 			blockSizeThreshold:      (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
 			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
 		},
-		allocatorSizeClasses: o.AllocatorSizeClasses,
-		opts:                 o,
-		layout:               makeLayoutWriter(writable, o),
+		allocatorSizeClasses:  o.AllocatorSizeClasses,
+		opts:                  o,
+		layout:                makeLayoutWriter(writable, o),
+		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
 	}
 	w.dataBlock.Init(o.KeySchema)
 	w.indexBlock.Init()

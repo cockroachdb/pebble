@@ -2732,17 +2732,7 @@ func (d *DB) runCompaction(
 		defer vers.UnrefLocked()
 	}
 
-	// The table is typically written at the maximum allowable format implied by
-	// the current format major version of the DB.
-	tableFormat := d.FormatMajorVersion().MaxTableFormat()
-	// In format major versions with maximum table formats of Pebblev3, value
-	// blocks were conditional on an experimental setting. In format major
-	// versions with maximum table formats of Pebblev4 and higher, value blocks
-	// are always enabled.
-	if tableFormat == sstable.TableFormatPebblev3 &&
-		(d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks()) {
-		tableFormat = sstable.TableFormatPebblev2
-	}
+	tableFormat := d.tableFormat()
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
@@ -3033,10 +3023,8 @@ func (d *DB) newCompactionOutput(
 			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
 	// TODO(jackson): Make the compaction body generic over the RawWriter type,
-	// so that we don't need to pay the cost of dynamic dispatch. For now, we
-	// type assert into the only concrete RawWriter type we see (until colblk is
-	// integrated).
-	tw := sstable.NewRawWriter(writable, writerOpts).(*sstable.RawRowWriter)
+	// so that we don't need to pay the cost of dynamic dispatch.
+	tw := sstable.NewRawWriter(writable, writerOpts)
 	return objMeta, tw, cpuWorkHandle, nil
 }
 
