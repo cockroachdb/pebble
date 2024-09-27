@@ -24,7 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -597,11 +596,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
 		s, err := rdi.First()
 		for ; s != nil && err == nil; s, err = rdi.Next() {
-			err = rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
-				k.SetSeqNum(0)
-				return w.Raw().AddWithForceObsolete(k, v, false)
-			})
-			if err != nil {
+			if err = w.DeleteRange(s.Start, s.End); err != nil {
 				return err
 			}
 		}
@@ -691,10 +686,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
 		s, err := rdi.First()
 		for ; s != nil && err == nil; s, err = rdi.Next() {
-			err = rangedel.Encode(*s, func(k base.InternalKey, v []byte) error {
-				k.SetSeqNum(0)
-				return w.Raw().AddWithForceObsolete(k, v, false)
-			})
+			err = w.DeleteRange(s.Start, s.End)
 			if err != nil {
 				return err
 			}

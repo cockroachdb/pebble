@@ -102,8 +102,8 @@ func TestIngestLoad(t *testing.T) {
 			}
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
-				if strings.HasPrefix(data, "rangekey: ") {
-					data = strings.TrimPrefix(data, "rangekey: ")
+				if strings.HasPrefix(data, "EncodeSpan: ") {
+					data = strings.TrimPrefix(data, "EncodeSpan: ")
 					err := w.EncodeSpan(keyspan.ParseSpan(data))
 					if err != nil {
 						return err.Error()
@@ -3269,8 +3269,8 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			TableFormat: sstable.TableFormatMax,
 		})
 		for _, data := range strings.Split(input, "\n") {
-			if strings.HasPrefix(data, "rangekey: ") {
-				data = strings.TrimPrefix(data, "rangekey: ")
+			if strings.HasPrefix(data, "EncodeSpan: ") {
+				data = strings.TrimPrefix(data, "EncodeSpan: ")
 				err := w.EncodeSpan(keyspan.ParseSpan(data))
 				if err != nil {
 					return nil, err

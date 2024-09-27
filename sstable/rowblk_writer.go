@@ -577,19 +577,6 @@ type bufferedIndexBlock struct {
 	block []byte
 }
 
-// add adds a key/value pair to the table being written. For a given Writer,
-// the keys passed to add must be in increasing order. The exception to this
-// rule is range deletion tombstones. Range deletion tombstones need to be
-// added ordered by their start key, but they can be added out of order from
-// point entries. Additionally, range deletion tombstones must be fragmented
-// (i.e. by keyspan.Fragmenter).
-func (w *RawRowWriter) add(key InternalKey, value []byte) error {
-	if w.isStrictObsolete {
-		return errors.Errorf("use AddWithForceObsolete")
-	}
-	return w.AddWithForceObsolete(key, value, false)
-}
-
 // AddWithForceObsolete must be used when writing a strict-obsolete sstable.
 //
 // forceObsolete indicates whether the caller has determined that this key is
@@ -1575,7 +1562,7 @@ func (w *RawRowWriter) EncodeSpan(span keyspan.Span) error {
 		return nil
 	}
 	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
-		return rangedel.Encode(span, w.add)
+		return rangedel.Encode(span, w.addTombstone)
 	}
 	for i := range w.blockPropCollectors {
 		if err := w.blockPropCollectors[i].AddRangeKeys(span); err != nil {
