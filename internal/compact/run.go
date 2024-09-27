@@ -132,7 +132,7 @@ func (r *Runner) MoreDataToWrite() bool {
 // Result.Tables. Should only be called if MoreDataToWrite() returned true.
 //
 // WriteTable always closes the Writer.
-func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw *sstable.RawRowWriter) {
+func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWriter) {
 	if r.err != nil {
 		panic("error already encountered")
 	}
@@ -159,7 +159,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw *sstable.RawRo
 	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
 }
 
-func (r *Runner) writeKeysToTable(tw *sstable.RawRowWriter) (splitKey []byte, _ error) {
+func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ error) {
 	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
 	if r.key != nil && firstKey == nil {
 		firstKey = r.key.UserKey
@@ -171,13 +171,13 @@ func (r *Runner) writeKeysToTable(tw *sstable.RawRowWriter) (splitKey []byte, _ 
 		r.cmp, firstKey, r.TableSplitLimit(firstKey),
 		r.cfg.TargetOutputFileSize, r.cfg.Grandparents.Iter(), r.iter.Frontiers(),
 	)
-	lastUserKeyFn := func() []byte {
-		return tw.UnsafeLastPointUserKey()
+	comparePrev := func(k []byte) int {
+		return tw.ComparePrev(k)
 	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	key, value := r.key, r.value
 	for ; key != nil; key, value = r.iter.Next() {
-		if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), lastUserKeyFn) {
+		if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), comparePrev) {
 			break
 		}
 

@@ -61,7 +61,7 @@ func TestOutputSplitter(t *testing.T) {
 				if i > 0 || rand.Intn(2) == 0 {
 					f.Advance([]byte(key))
 				}
-				if s.ShouldSplitBefore([]byte(key), estimatedSize, func() []byte { return []byte(last) }) {
+				if s.ShouldSplitBefore([]byte(key), estimatedSize, func(k []byte) int { return f.cmp(k, []byte(last)) }) {
 					return fmt.Sprintf("%s %d: split at %q", key, estimatedSize, s.SplitKey())
 				}
 				last = key

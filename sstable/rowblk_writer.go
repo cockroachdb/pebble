@@ -1550,19 +1550,18 @@ func (w *RawRowWriter) assertFormatCompatibility() error {
 	return nil
 }
 
-// UnsafeLastPointUserKey returns the last point key written to the writer to
-// which this option was passed during creation. The returned key points
-// directly into a buffer belonging to the Writer. The value's lifetime ends the
-// next time a point key is added to the Writer.
+// ComparePrev compares the provided user to the last point key written to the
+// writer. The returned value is equivalent to Compare(key, prevKey) where
+// prevKey is the last point key written to the writer.
+//
+// If no key has been written yet, ComparePrev returns +1.
 //
 // Must not be called after Writer is closed.
-func (w *RawRowWriter) UnsafeLastPointUserKey() []byte {
-	if w != nil && w.dataBlockBuf.dataBlock.EntryCount() >= 1 {
-		// w.dataBlockBuf.dataBlock.curKey is guaranteed to point to the last point key
-		// which was added to the Writer.
-		return w.dataBlockBuf.dataBlock.CurUserKey()
+func (w *RawRowWriter) ComparePrev(k []byte) int {
+	if w == nil || w.dataBlockBuf.dataBlock.EntryCount() == 0 {
+		return +1
 	}
-	return nil
+	return w.compare(k, w.dataBlockBuf.dataBlock.CurUserKey())
 }
 
 // EncodeSpan encodes the keys in the given span. The span can contain either

@@ -197,7 +197,7 @@ func (s *OutputSplitter) setNextBoundary(nextGrandparent *manifest.FileMetadata)
 // key. It is passed the current estimated file size and a function that can be
 // used to retrieve the previous user key.
 //
-// The lastUserKeyFn function is used to guarantee no split user keys, without
+// The comparePrevFn function is used to guarantee no split user keys, without
 // OutputSplitter copying each key internally. It is not performance sensitive,
 // as it is only called once we decide to split.
 //
@@ -206,7 +206,7 @@ func (s *OutputSplitter) setNextBoundary(nextGrandparent *manifest.FileMetadata)
 //
 // INVARIANT: nextUserKey must match the current frontier.
 func (s *OutputSplitter) ShouldSplitBefore(
-	nextUserKey []byte, estimatedFileSize uint64, lastUserKeyFn func() []byte,
+	nextUserKey []byte, estimatedFileSize uint64, comparePrevFn func([]byte) int,
 ) ShouldSplit {
 	if invariants.Enabled && s.splitKey != nil {
 		panic("ShouldSplitBefore called after it returned SplitNow")
@@ -255,10 +255,10 @@ func (s *OutputSplitter) ShouldSplitBefore(
 		}
 
 		// TODO(radu): it would make for a cleaner interface if we didn't rely on a
-		// lastUserKeyFn. We could make a copy of the key here and split at the next
+		// comparePrevFn. We could make a copy of the key here and split at the next
 		// user key that is different; the main difficulty is that various tests
 		// expect 1 key per output table if the target file size is very small.
-		if lastKey := lastUserKeyFn(); lastKey == nil || s.cmp(lastKey, nextUserKey) != 0 {
+		if comparePrevFn(nextUserKey) != 0 {
 			s.splitKey = slices.Clone(nextUserKey)
 			return SplitNow
 		}
