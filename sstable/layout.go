@@ -331,7 +331,9 @@ func formatColblkDataBlock(
 
 	if fmtRecord != nil {
 		var iter colblk.DataBlockIter
-		if err := iter.Init(&reader, r.keySchema.NewKeySeeker(), describingLazyValueHandler{}); err != nil {
+		if err := iter.Init(
+			&reader, r.keySchema.NewKeySeeker(), describingLazyValueHandler{}, block.IterTransforms{},
+		); err != nil {
 			return err
 		}
 		defer iter.Close()

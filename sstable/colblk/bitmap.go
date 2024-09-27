@@ -62,6 +62,8 @@ func DecodeBitmap(b []byte, off uint32, bitCount int) (bitmap Bitmap, endOffset 
 var _ DecodeFunc[Bitmap] = DecodeBitmap
 
 // At returns true if the bit at position i is set and false otherwise.
+//
+//gcassert:inline
 func (b Bitmap) At(i int) bool {
 	if b.data.ptr == nil {
 		// zero bitmap case.

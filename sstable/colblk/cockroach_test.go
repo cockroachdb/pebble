@@ -370,7 +370,7 @@ func TestCockroachDataBlock(t *testing.T) {
 	reader.Init(cockroachKeySchema, serializedBlock)
 	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}))
+	}), block.IterTransforms{})
 
 	t.Run("Next", func(t *testing.T) {
 		// Scan the block using Next and ensure that all the keys values match.
@@ -490,7 +490,7 @@ func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig,
 	reader.Init(cockroachKeySchema, serializedBlock)
 	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}))
+	}), block.IterTransforms{})
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {

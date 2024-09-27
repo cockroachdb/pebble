@@ -75,10 +75,18 @@ func TestDataBlock(t *testing.T) {
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), f.String())
 				return buf.String()
 			case "iter":
+				var transforms block.IterTransforms
+				var seqNum uint64
+				td.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
+				transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)
 				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-				}))
-				return itertest.RunInternalIterCmd(t, td, &it)
+				}), transforms)
+				var o []itertest.IterOpt
+				if td.HasArg("verbose") {
+					o = append(o, itertest.Verbose)
+				}
+				return itertest.RunInternalIterCmd(t, td, &it, o...)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}

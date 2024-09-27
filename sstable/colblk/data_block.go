@@ -682,7 +682,7 @@ func (c *MultiDataBlockIter) InitHandle(
 	c.h.Release()
 	c.h = h
 	c.r.Init(c.KeySchema, h.Get())
-	return c.DataBlockIter.Init(&c.r, c.KeySchema.NewKeySeeker(), c.GetLazyValuer)
+	return c.DataBlockIter.Init(&c.r, c.KeySchema.NewKeySeeker(), c.GetLazyValuer, t)
 }
 
 // Handle returns the handle to the block.
@@ -733,6 +733,7 @@ type DataBlockIter struct {
 	maxRow        int
 	keySeeker     KeySeeker
 	getLazyValuer block.GetLazyValueForPrefixAndValueHandler
+	transforms    block.IterTransforms
 
 	// state
 	keyIter PrefixBytesIter
@@ -747,12 +748,14 @@ func (i *DataBlockIter) Init(
 	r *DataBlockReader,
 	keyIterator KeySeeker,
 	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
+	transforms block.IterTransforms,
 ) error {
 	*i = DataBlockIter{
 		r:             r,
 		maxRow:        int(r.r.header.Rows) - 1,
 		keySeeker:     keyIterator,
 		getLazyValuer: getLazyValuer,
+		transforms:    transforms,
 		row:           -1,
 		kvRow:         math.MinInt,
 		kv:            base.InternalKV{},
@@ -825,13 +828,16 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 		return nil
 	}
 	i.row++
+	// Inline decodeKey().
 	i.kv.K = base.InternalKey{
 		UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
 		Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
 	}
+	if n := i.transforms.SyntheticSeqNum; n != 0 {
+		i.kv.K.SetSeqNum(base.SeqNum(n))
+	}
 	// Inline i.r.values.At(row).
-	startOffset, endOffset := i.r.values.offsets.At2(i.row)
-	v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), endOffset-startOffset)
+	v := i.r.values.slice(i.r.values.offsets.At2(i.row))
 	if i.r.isValueExternal.At(i.row) {
 		i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
 	} else {
@@ -913,9 +919,14 @@ func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
 		// Already synthesized the kv at row.
 		return &i.kv
 	default:
+		i.row = row
+		// Inline decodeKey().
 		i.kv.K = base.InternalKey{
-			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, row),
-			Trailer: base.InternalKeyTrailer(i.r.trailers.At(row)),
+			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
+			Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+		}
+		if n := i.transforms.SyntheticSeqNum; n != 0 {
+			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 		// Inline i.r.values.At(row).
 		startOffset := i.r.values.offsets.At(row)
@@ -925,11 +936,25 @@ func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
 		} else {
 			i.kv.V = base.MakeInPlaceValue(v)
 		}
-		i.row = row
 		i.kvRow = row
 		return &i.kv
 	}
 }
+
+// decodeKey updates i.kv.K to the key for i.row (which must be valid).
+// This function does not inline, so we copy its code verbatim. For any updates
+// to this code, all code preceded by "Inline decodeKey" must be updated.
+func (i *DataBlockIter) decodeKey() {
+	i.kv.K = base.InternalKey{
+		UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
+		Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+	}
+	if n := i.transforms.SyntheticSeqNum; n != 0 {
+		i.kv.K.SetSeqNum(base.SeqNum(n))
+	}
+}
+
+var _ = (*DataBlockIter).decodeKey
 
 // Valid returns true if the iterator is currently positioned at a valid KV.
 func (i *DataBlockIter) Valid() bool {
