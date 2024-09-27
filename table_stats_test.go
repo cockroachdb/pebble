@@ -14,7 +14,6 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -207,20 +206,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			})
 			m = &fileMetadata{}
 			for _, line := range strings.Split(td.Input, "\n") {
-				s := keyspan.ParseSpan(line)
-				// Range dels can be written sequentially. Range keys must be collected.
-				rKeySpan := keyspan.Span{Start: s.Start, End: s.End}
-				for _, k := range s.Keys {
-					if rangekey.IsRangeKey(k.Kind()) {
-						rKeySpan.Keys = append(rKeySpan.Keys, k)
-					} else {
-						k := base.InternalKey{UserKey: s.Start, Trailer: k.Trailer}
-						if err = w.AddWithForceObsolete(k, s.End, false /* forceObsolete */); err != nil {
-							return err.Error()
-						}
-					}
-				}
-				err = w.EncodeSpan(rKeySpan)
+				err = w.EncodeSpan(keyspan.ParseSpan(line))
 				if err != nil {
 					return err.Error()
 				}
