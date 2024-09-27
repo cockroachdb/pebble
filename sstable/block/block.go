@@ -232,6 +232,8 @@ type IndexBlockIterator interface {
 // (at least for non-virtual sstables), but applying them during iteration is
 // preferable.
 type IterTransforms struct {
+	// SyntheticSeqNum, if set, overrides the sequence number in all keys. It is
+	// set if the sstable was ingested or it is foregin.
 	SyntheticSeqNum    SyntheticSeqNum
 	HideObsoletePoints bool
 	SyntheticPrefix    SyntheticPrefix

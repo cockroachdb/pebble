@@ -1,0 +1,155 @@
+init
+----
+size=51:
+0: prefixes:       prefixbytes(16): 0 keys
+1: suffixes:       bytes: 0 rows set; 0 bytes in data
+2: trailers:       uint: 0 rows
+3: prefix changed: bitmap
+4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bitmap
+6: is-obsolete:    bitmap
+
+write
+a@10#1,SET:apple
+b@5#2,SET:banana
+b@2#3,SETWITHDEL:blueberry
+c@9#4,SETWITHDEL:coconut
+c@6#5,SET:cantaloupe
+c@1#6,SET:clementine
+----
+size=170:
+0: prefixes:       prefixbytes(16): 6 keys
+1: suffixes:       bytes: 6 rows set; 13 bytes in data
+2: trailers:       uint: 6 rows
+3: prefix changed: bitmap
+4: values:         bytes: 6 rows set; 47 bytes in data
+5: is-value-ext:   bitmap
+6: is-obsolete:    bitmap
+
+finish
+----
+LastKey: c@1#6,SET
+# data block header
+000-004: x 04000000                                                         # maximum key length: 4
+# columnar block header
+004-005: x 01                                                               # version 1
+005-007: x 0700                                                             # 7 columns
+007-011: x 06000000                                                         # 6 rows
+011-012: b 00000100                                                         # col 0: prefixbytes
+012-016: x 2e000000                                                         # col 0: page start 46
+016-017: b 00000011                                                         # col 1: bytes
+017-021: x 3b000000                                                         # col 1: page start 59
+021-022: b 00000010                                                         # col 2: uint
+022-026: x 50000000                                                         # col 2: page start 80
+026-027: b 00000001                                                         # col 3: bool
+027-031: x 5e000000                                                         # col 3: page start 94
+031-032: b 00000011                                                         # col 4: bytes
+032-036: x 70000000                                                         # col 4: page start 112
+036-037: b 00000001                                                         # col 5: bool
+037-041: x a7000000                                                         # col 5: page start 167
+041-042: b 00000001                                                         # col 6: bool
+042-046: x a8000000                                                         # col 6: page start 168
+# data for column 0
+# PrefixBytes
+046-047: x 04                                                               # bundleSize: 16
+# Offsets table
+047-048: x 01                                                               # encoding: 1b
+048-049: x 00                                                               # data[0] = 0 [56 overall]
+049-050: x 00                                                               # data[1] = 0 [56 overall]
+050-051: x 01                                                               # data[2] = 1 [57 overall]
+051-052: x 02                                                               # data[3] = 2 [58 overall]
+052-053: x 02                                                               # data[4] = 2 [58 overall]
+053-054: x 03                                                               # data[5] = 3 [59 overall]
+054-055: x 03                                                               # data[6] = 3 [59 overall]
+055-056: x 03                                                               # data[7] = 3 [59 overall]
+# Data
+056-056: x                                                                  # data[00]:  (block prefix)
+056-056: x                                                                  # data[01]:  (bundle prefix)
+056-057: x 61                                                               # data[02]: a
+057-058: x 62                                                               # data[03]: b
+058-058: x                                                                  # data[04]: .
+058-059: x 63                                                               # data[05]: c
+059-059: x                                                                  # data[06]: .
+059-059: x                                                                  # data[07]: .
+# data for column 1
+# rawbytes
+# offsets table
+059-060: x 01                                                               # encoding: 1b
+060-061: x 00                                                               # data[0] = 0 [67 overall]
+061-062: x 03                                                               # data[1] = 3 [70 overall]
+062-063: x 05                                                               # data[2] = 5 [72 overall]
+063-064: x 07                                                               # data[3] = 7 [74 overall]
+064-065: x 09                                                               # data[4] = 9 [76 overall]
+065-066: x 0b                                                               # data[5] = 11 [78 overall]
+066-067: x 0d                                                               # data[6] = 13 [80 overall]
+# data
+067-070: x 403130                                                           # data[0]: @10
+070-072: x 4035                                                             # data[1]: @5
+072-074: x 4032                                                             # data[2]: @2
+074-076: x 4039                                                             # data[3]: @9
+076-078: x 4036                                                             # data[4]: @6
+078-080: x 4031                                                             # data[5]: @1
+# data for column 2
+080-081: x 02                                                               # encoding: 2b
+081-082: x 00                                                               # padding (aligning to 16-bit boundary)
+082-084: x 0101                                                             # data[0] = 257
+084-086: x 0102                                                             # data[1] = 513
+086-088: x 1203                                                             # data[2] = 786
+088-090: x 1204                                                             # data[3] = 1042
+090-092: x 0105                                                             # data[4] = 1281
+092-094: x 0106                                                             # data[5] = 1537
+# data for column 3
+094-095: x 00                                                               # bitmap encoding
+095-096: x 00                                                               # padding to align to 64-bit boundary
+096-104: b 0000101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+104-112: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+# data for column 4
+# rawbytes
+# offsets table
+112-113: x 01                                                               # encoding: 1b
+113-114: x 00                                                               # data[0] = 0 [120 overall]
+114-115: x 05                                                               # data[1] = 5 [125 overall]
+115-116: x 0b                                                               # data[2] = 11 [131 overall]
+116-117: x 14                                                               # data[3] = 20 [140 overall]
+117-118: x 1b                                                               # data[4] = 27 [147 overall]
+118-119: x 25                                                               # data[5] = 37 [157 overall]
+119-120: x 2f                                                               # data[6] = 47 [167 overall]
+# data
+120-125: x 6170706c65                                                       # data[0]: apple
+125-131: x 62616e616e61                                                     # data[1]: banana
+131-140: x 626c75656265727279                                               # data[2]: blueberry
+140-147: x 636f636f6e7574                                                   # data[3]: coconut
+147-157: x 63616e74616c6f757065                                             # data[4]: cantaloupe
+157-167: x 636c656d656e74696e65                                             # data[5]: clementine
+# data for column 5
+167-168: x 01                                                               # bitmap encoding
+# data for column 6
+168-169: x 01                                                               # bitmap encoding
+169-170: x 00                                                               # block padding byte
+
+iter verbose synthetic-seq-num=1234
+first
+next
+next
+seek-ge c
+next
+prev
+prev
+prev
+seek-lt c
+prev
+prev
+next
+----
+a@10#1234,SET:apple
+b@5#1234,SET:banana
+b@2#1234,SETWITHDEL:blueberry
+c@9#1234,SETWITHDEL:coconut
+c@6#1234,SET:cantaloupe
+c@9#1234,SETWITHDEL:coconut
+b@2#1234,SETWITHDEL:blueberry
+b@5#1234,SET:banana
+b@2#1234,SETWITHDEL:blueberry
+b@5#1234,SET:banana
+a@10#1234,SET:apple
+b@5#1234,SET:banana
