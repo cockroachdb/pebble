@@ -1254,10 +1254,16 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
 			minVersion: FormatDeleteSizedAndObsolete,
+			maxVersion: FormatFlushableIngestExcises,
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
 			minVersion: FormatDeleteSizedAndObsolete,
+			maxVersion: FormatFlushableIngestExcises,
+		},
+		{
+			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev5",
+			minVersion: FormatColumnarBlocks,
 		},
 		{
 			testData: "testdata/manual_compaction_multilevel",
