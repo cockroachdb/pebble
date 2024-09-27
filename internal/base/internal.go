@@ -230,6 +230,11 @@ func MakeTrailer(seqNum SeqNum, kind InternalKeyKind) InternalKeyTrailer {
 	return (InternalKeyTrailer(seqNum) << 8) | InternalKeyTrailer(kind)
 }
 
+// String imlements the fmt.Stringer interface.
+func (t InternalKeyTrailer) String() string {
+	return fmt.Sprintf("%s,%s", SeqNum(t>>8), InternalKeyKind(t&0xff))
+}
+
 // SeqNum returns the sequence number component of the trailer.
 func (t InternalKeyTrailer) SeqNum() SeqNum {
 	return SeqNum(t >> 8)

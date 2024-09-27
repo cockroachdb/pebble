@@ -274,8 +274,9 @@ type randomTableConfig struct {
 
 func (cfg *randomTableConfig) readerOpts() ReaderOptions {
 	rOpts := ReaderOptions{
-		Comparer: testkeys.Comparer,
-		Filters:  map[string]FilterPolicy{},
+		Comparer:  testkeys.Comparer,
+		KeySchema: cfg.wopts.KeySchema,
+		Filters:   map[string]FilterPolicy{},
 	}
 	if cfg.wopts.FilterPolicy != nil {
 		rOpts.Filters[cfg.wopts.FilterPolicy.Name()] = cfg.wopts.FilterPolicy
