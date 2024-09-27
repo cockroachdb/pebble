@@ -9,9 +9,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
@@ -87,4 +91,59 @@ func TestIndexBlock(t *testing.T) {
 			panic(fmt.Sprintf("unknown command: %s", d.Cmd))
 		}
 	})
+}
+
+// TestIndexIterInitHandle exercises initializing an IndexIter through
+// InitHandle.
+func TestIndexIterInitHandle(t *testing.T) {
+	var w IndexBlockWriter
+	w.Init()
+	bh1 := block.Handle{Offset: 0, Length: 2000}
+	bh2 := block.Handle{Offset: 2008, Length: 1000}
+	w.AddBlockHandle([]byte("a"), bh1, nil)
+	w.AddBlockHandle([]byte("b"), bh2, nil)
+	b := w.Finish(w.Rows())
+
+	c := cache.New(10 << 10)
+	defer c.Unref()
+	v := block.Alloc(len(b), nil)
+	copy(v.Get(), b)
+	v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
+
+	getBlockAndIterate := func(it *IndexIter) {
+		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
+		require.NotNil(t, h.Get())
+		require.NoError(t, it.InitHandle(
+			testkeys.Comparer.Compare,
+			testkeys.Comparer.Split,
+			block.CacheBufferHandle(h),
+			block.NoTransforms))
+		defer it.Close()
+		require.True(t, it.First())
+		bh, err := it.BlockHandleWithProperties()
+		require.NoError(t, err)
+		require.Equal(t, bh1, bh.Handle)
+		require.True(t, it.Next())
+		bh, err = it.BlockHandleWithProperties()
+		require.NoError(t, err)
+		require.Equal(t, bh2, bh.Handle)
+		require.False(t, it.Next())
+		require.False(t, it.IsDataInvalidated())
+		it.Invalidate()
+		require.True(t, it.IsDataInvalidated())
+	}
+
+	const workers = 8
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			var iter IndexIter
+			defer wg.Done()
+			for i := 0; i < 10; i++ {
+				getBlockAndIterate(&iter)
+			}
+		}()
+	}
+	wg.Wait()
 }
