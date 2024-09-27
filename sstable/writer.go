@@ -300,6 +300,17 @@ type RawWriter interface {
 	// EstimatedSize returns the estimated size of the sstable being written if
 	// a call to Close() was made without adding additional keys.
 	EstimatedSize() uint64
+	// ComparePrev compares the provided user to the last point key written to the
+	// writer. The returned value is equivalent to Compare(key, prevKey) where
+	// prevKey is the last point key written to the writer.
+	//
+	// If no key has been written yet, ComparePrev returns +1.
+	//
+	// Must not be called after Writer is closed.
+	ComparePrev(k []byte) int
+	// SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
+	// be used internally by Pebble.
+	SetSnapshotPinnedProperties(keyCount, keySize, valueSize uint64)
 	// Close finishes writing the table and closes the underlying file that the
 	// table was written to.
 	Close() error
