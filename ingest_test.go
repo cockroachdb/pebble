@@ -623,6 +623,17 @@ func TestExcise(t *testing.T) {
 		}
 		require.NoError(t, d.Close())
 	}()
+	clearFlushed := func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		// Wait for any ongoing flushes to stop first, otherwise the
+		// EventListener may set flushed=true due to a flush that was already in
+		// progress.
+		for d.mu.compact.flushing {
+			d.mu.compact.cond.Wait()
+		}
+		flushed = false
+	}
 
 	var opts *Options
 	reset := func(blockSize int) {
@@ -722,13 +733,9 @@ func TestExcise(t *testing.T) {
 			return ""
 
 		case "ingest":
-			flushed = false
-			noWait := false
-			for i := range td.CmdArgs {
-				switch td.CmdArgs[i].Key {
-				case "no-wait":
-					noWait = true
-				}
+			noWait := td.HasArg("no-wait")
+			if !noWait {
+				clearFlushed()
 			}
 			if err := runIngestCmd(td, d, mem); err != nil {
 				return err.Error()
@@ -748,16 +755,10 @@ func TestExcise(t *testing.T) {
 			return ""
 
 		case "ingest-and-excise":
-			flushed = false
-			noWait := false
-			for i := range td.CmdArgs {
-				switch td.CmdArgs[i].Key {
-				case "no-wait":
-					noWait = true
-				}
-			}
 			var prevFlushableIngests uint64
+			noWait := td.HasArg("no-wait")
 			if !noWait {
+				clearFlushed()
 				d.mu.Lock()
 				prevFlushableIngests = d.mu.versions.metrics.Flush.AsIngestCount
 				d.mu.Unlock()
