@@ -1,0 +1,282 @@
+build
+a.SET.1:a
+----
+point:    [a#1,SET-a#1,SET]
+seqnums:  [1-1]
+
+scan
+----
+a#1,SET:a
+
+scan-range-del
+----
+
+scan-range-key
+----
+
+build
+a.SET.1:a
+b.DEL.2:
+c.MERGE.3:c
+EncodeSpan: d-e:{(#4,RANGEDEL)}
+f.SET.5:f
+g.DEL.6:
+h.MERGE.7:h
+EncodeSpan: i-j:{(#8,RANGEDEL)}
+EncodeSpan: j-k:{(#9,RANGEKEYDEL)}
+EncodeSpan: k-l:{(#10,RANGEKEYUNSET,@5)}
+EncodeSpan: l-m:{(#11,RANGEKEYSET,@10,foo)}
+----
+point:    [a#1,SET-h#7,MERGE]
+rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
+rangekey: [j#9,RANGEKEYDEL-m#inf,RANGEKEYSET]
+seqnums:  [1-11]
+
+build
+a.SET.1:a
+b.DEL.2:
+c.MERGE.3:c
+EncodeSpan: d-e:{(#4,RANGEDEL)}
+f.SET.5:f
+g.DEL.6:
+h.MERGE.7:h
+EncodeSpan: i-j:{(#8,RANGEDEL)}
+----
+point:    [a#1,SET-h#7,MERGE]
+rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
+seqnums:  [1-8]
+
+scan
+----
+a#1,SET:a
+b#2,DEL:
+c#3,MERGE:c
+f#5,SET:f
+g#6,DEL:
+h#7,MERGE:h
+
+scan-range-del
+----
+d-e:{(#4,RANGEDEL)}
+i-j:{(#8,RANGEDEL)}
+
+# 3: a-----------m
+# 2:      f------------s
+# 1:          j---------------z
+
+build
+EncodeSpan: a-f:{(#3,RANGEDEL)}
+EncodeSpan: f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+EncodeSpan: j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+EncodeSpan: m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+EncodeSpan: s-z:{(#1,RANGEDEL)}
+----
+rangedel: [a#3,RANGEDEL-z#inf,RANGEDEL]
+seqnums:  [1-3]
+
+scan
+----
+
+scan-range-del
+----
+a-f:{(#3,RANGEDEL)}
+f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+s-z:{(#1,RANGEDEL)}
+
+scan-range-key
+----
+
+# The range tombstone upper bound is exclusive, so a point operation
+# on that same key will be the actual boundary.
+
+build
+EncodeSpan: a-b:{(#3,RANGEDEL)}
+b.SET.4:c
+----
+point:    [b#4,SET-b#4,SET]
+rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
+seqnums:  [3-4]
+
+build
+EncodeSpan: a-b:{(#3,RANGEDEL)}
+b.SET.2:c
+----
+point:    [b#2,SET-b#2,SET]
+rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
+seqnums:  [2-3]
+
+build
+EncodeSpan: a-c:{(#3,RANGEDEL)}
+b.SET.2:c
+----
+point:    [b#2,SET-b#2,SET]
+rangedel: [a#3,RANGEDEL-c#inf,RANGEDEL]
+seqnums:  [2-3]
+
+# Keys must be added in order.
+
+build
+a.SET.1:b
+a.SET.2:c
+----
+pebble: keys must be added in strictly increasing order: a#2,SET
+
+build
+b.SET.1:a
+a.SET.2:b
+----
+pebble: keys must be added in strictly increasing order: a#2,SET
+
+build
+b.RANGEDEL.1:c
+a.RANGEDEL.2:b
+----
+RANGEDEL must be added through EncodeSpan
+
+build
+EncodeSpan: b-c:{(#1,RANGEDEL)}
+EncodeSpan: a-b:{(#2,RANGEDEL)}
+----
+pebble: keys must be added in order: b-c:{(#1,RANGEDEL)}, a-b:{(#2,RANGEDEL)}
+
+build-raw
+EncodeSpan: a-c:{(#1,RANGEDEL)}
+EncodeSpan: a-c:{(#2,RANGEDEL)}
+----
+pebble: keys must be added in order: a-c:{(#1,RANGEDEL)}, a-c:{(#2,RANGEDEL)}
+
+build-raw
+EncodeSpan: a-c:{(#1,RANGEDEL)}
+EncodeSpan: b-d:{(#2,RANGEDEL)}
+----
+pebble: keys must be added in order: a-c:{(#1,RANGEDEL)}, b-d:{(#2,RANGEDEL)}
+
+build-raw
+EncodeSpan: a-c:{(#2,RANGEDEL)}
+EncodeSpan: a-d:{(#1,RANGEDEL)}
+----
+pebble: keys must be added in order: a-c:{(#2,RANGEDEL)}, a-d:{(#1,RANGEDEL)}
+
+build-raw
+EncodeSpan: a-c:{(#1,RANGEDEL)}
+EncodeSpan: c-d:{(#2,RANGEDEL)}
+----
+rangedel: [a#1,RANGEDEL-d#inf,RANGEDEL]
+seqnums:  [1-2]
+
+build-raw
+EncodeSpan: a-b:{(#2,RANGEKEYSET,@10,foo) (#1,RANGEKEYSET,@10,foo)}
+----
+rangekey: [a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+seqnums:  [1-2]
+
+build-raw
+EncodeSpan: b-c:{(#2,RANGEKEYSET,@10,foo)}
+EncodeSpan: a-b:{(#1,RANGEKEYSET,@10,foo)}
+----
+pebble: keys must be added in order: b-c:{(#2,RANGEKEYSET)}, a-b:{(#1,RANGEKEYSET,@10,foo)}
+
+build-raw
+EncodeSpan: a-c:{(#1,RANGEKEYSET,@10,foo)}
+EncodeSpan: c-d:{(#2,RANGEKEYSET,@10,foo)}
+----
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-2]
+
+# Range keys may have perfectly aligned spans (including sequence numbers),
+# though the key kinds must be ordered (descending).
+
+build-raw
+EncodeSpan: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@10) (#1,RANGEKEYDEL)}
+----
+rangekey: [a#1,RANGEKEYSET-b#inf,RANGEKEYDEL]
+seqnums:  [1-1]
+
+# Setting a very small index-block-size results in a two-level index.
+
+build block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:    [a#1,SET-c#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (74)
+        79  data (74)
+       158  data (74)
+       237  index (36)
+       278  index (44)
+       327  index (44)
+       376  top-index (53)
+       434  properties (480)
+       919  meta-index (33)
+       957  footer (53)
+      1010  EOF
+
+# Exercise the non-Reader layout-decoding codepath.
+
+decode-layout
+----
+         0  data (74)
+        79  data (74)
+       158  data (74)
+       237  index (36)
+       278  index (44)
+       327  index (44)
+       376  top-index (53)
+       434  properties (480)
+       919  meta-index (33)
+       957  footer (53)
+      1010  EOF
+
+scan
+----
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
+
+# Enabling leveldb format disables the creation of a two-level index
+# (the input data here mirrors the test case above).
+
+build leveldb block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:    [a#1,SET-c#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+         0  data (21)
+        26  data (21)
+        52  data (21)
+        78  index (45)
+       128  properties (549)
+       682  meta-index (33)
+       720  leveldb-footer (48)
+       768  EOF
+
+# Range keys, if present, are shown in the layout.
+
+build
+EncodeSpan: a-b:{(#3,RANGEKEYSET,@3,foo)}
+EncodeSpan: b-c:{(#2,RANGEKEYSET,@2,bar)}
+EncodeSpan: c-d:{(#1,RANGEKEYSET,@1,baz)}
+----
+rangekey: [a#3,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-3]
+
+layout
+----
+         0  index (28)
+        33  range-key (84)
+       122  properties (441)
+       568  meta-index (57)
+       630  footer (53)
+       683  EOF

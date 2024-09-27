@@ -254,11 +254,31 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 	for _, k := range span.Keys {
 		w.meta.updateSeqNum(k.SeqNum())
 	}
+
+	blockWriter := &w.rangeKeyBlock
 	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
-		w.rangeDelBlock.AddSpan(span)
-		return nil
+		blockWriter = &w.rangeDelBlock
 	}
-	w.rangeKeyBlock.AddSpan(span)
+	if !w.disableKeyOrderChecks && blockWriter.KeyCount() > 0 {
+		// Check that spans are being added in fragmented order. If the two
+		// tombstones overlap, their start and end keys must be identical.
+		prevStart, prevEnd, prevTrailer := blockWriter.UnsafeLastSpan()
+		if w.opts.Comparer.Equal(prevStart, span.Start) && w.opts.Comparer.Equal(prevEnd, span.End) {
+			if prevTrailer < span.Keys[0].Trailer {
+				w.err = errors.Errorf("pebble: keys must be added in order: %s-%s:{(#%s)}, %s",
+					w.opts.Comparer.FormatKey(prevStart),
+					w.opts.Comparer.FormatKey(prevEnd),
+					prevTrailer, span.Pretty(w.opts.Comparer.FormatKey))
+			}
+		} else if c := w.opts.Comparer.Compare(prevEnd, span.Start); c > 0 {
+			w.err = errors.Errorf("pebble: keys must be added in order: %s-%s:{(#%s)}, %s",
+				w.opts.Comparer.FormatKey(prevStart),
+				w.opts.Comparer.FormatKey(prevEnd),
+				prevTrailer, span.Pretty(w.opts.Comparer.FormatKey))
+			return w.err
+		}
+	}
+	blockWriter.AddSpan(span)
 	return nil
 }
 
@@ -759,6 +779,9 @@ func (w *RawColumnWriter) Close() (err error) {
 			w.err = err
 		}
 	}()
+	if w.layout.writable == nil {
+		return w.err
+	}
 
 	// Finish the last data block and send it to the write queue if it contains
 	// any pending KVs.
