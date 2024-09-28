@@ -14,6 +14,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"golang.org/x/exp/rand"
@@ -348,8 +349,8 @@ type KeyConfig struct {
 }
 
 func (cfg KeyConfig) String() string {
-	return fmt.Sprintf("AlphaLen=%d,Shared=%d,PrefixLen=%d,Logical=%d",
-		cfg.PrefixAlphabetLen, cfg.PrefixLenShared, cfg.PrefixLen, cfg.Logical)
+	return fmt.Sprintf("AlphaLen=%d,Prefix=%d,Shared=%d%s",
+		cfg.PrefixAlphabetLen, cfg.PrefixLen, cfg.PrefixLenShared, crstrings.If(cfg.Logical != 0, ",Logical"))
 }
 
 // RandomKVs constructs count random KVs with the provided parameters.

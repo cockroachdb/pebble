@@ -444,24 +444,25 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 	}
 }
 
-func BenchmarkCockroachDataBlockIter(b *testing.B) {
+func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
 	for _, alphaLen := range []int{4, 8, 26} {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
 			for _, prefixLen := range []int{8, 32, 128} {
 				lenShared := int(float64(prefixLen) * lenSharedPct)
 				for _, logical := range []uint32{0, 1} {
 					for _, valueLen := range []int{8, 128, 1024} {
-						keyConfig := crdbtest.KeyConfig{
-							PrefixAlphabetLen: alphaLen,
-							PrefixLen:         prefixLen,
-							PrefixLenShared:   lenShared,
-							Logical:           logical,
-							BaseWallTime:      uint64(time.Now().UnixNano()),
+						cfg := benchConfig{
+							KeyConfig: crdbtest.KeyConfig{
+								PrefixAlphabetLen: alphaLen,
+								PrefixLen:         prefixLen,
+								PrefixLenShared:   lenShared,
+								Logical:           logical,
+							},
+							ValueLen: valueLen,
 						}
-						b.Run(fmt.Sprintf("%s,value=%d", keyConfig, valueLen),
-							func(b *testing.B) {
-								benchmarkCockroachDataBlockIter(b, keyConfig, valueLen)
-							})
+						b.Run(cfg.String(), func(b *testing.B) {
+							benchmarkCockroachDataBlockIter(b, cfg)
+						})
 					}
 				}
 			}
@@ -469,11 +470,48 @@ func BenchmarkCockroachDataBlockIter(b *testing.B) {
 	}
 }
 
-func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig, valueLen int) {
+var shortBenchConfigs = []benchConfig{
+	{
+		KeyConfig: crdbtest.KeyConfig{
+			PrefixAlphabetLen: 8,
+			PrefixLen:         8,
+			PrefixLenShared:   4,
+		},
+		ValueLen: 8,
+	},
+	{
+		KeyConfig: crdbtest.KeyConfig{
+			PrefixAlphabetLen: 8,
+			PrefixLen:         128,
+			PrefixLenShared:   64,
+		},
+		ValueLen: 128,
+	},
+}
+
+func BenchmarkCockroachDataBlockIterShort(b *testing.B) {
+	for _, cfg := range shortBenchConfigs {
+		b.Run(cfg.String(), func(b *testing.B) {
+			benchmarkCockroachDataBlockIter(b, cfg)
+		})
+	}
+}
+
+type benchConfig struct {
+	crdbtest.KeyConfig
+	ValueLen int
+}
+
+func (cfg benchConfig) String() string {
+	return fmt.Sprintf("%s,ValueLen=%d", cfg.KeyConfig, cfg.ValueLen)
+}
+
+func benchmarkCockroachDataBlockIter(b *testing.B, cfg benchConfig) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewSource(seed))
-	keys, values := crdbtest.RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+	cfg.BaseWallTime = seed
+	keys, values := crdbtest.RandomKVs(rng, targetBlockSize/cfg.ValueLen, cfg.KeyConfig, cfg.ValueLen)
 
 	var w DataBlockWriter
 	w.Init(cockroachKeySchema)
