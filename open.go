@@ -177,7 +177,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone && formatVersion < FormatMinForSharedObjects {
 			return nil, errors.Newf(
 				"pebble: database %q configured with shared objects but written in too old format major version %d",
-				formatVersion)
+				dirname, formatVersion)
 		}
 	}
 
