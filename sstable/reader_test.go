@@ -32,7 +32,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -625,28 +624,30 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	var buf strings.Builder
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
-	iter, err := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
+	iter := r.tableFormat.newIndexIter()
+	require.NoError(t, iter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms))
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
 	require.NoError(t, err)
-	for kv := iter.First(); kv != nil; kv = iter.Next() {
-		bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+	for valid := iter.First(); valid; valid = iter.Next() {
+		bh, err := iter.BlockHandleWithProperties()
 		require.NoError(t, err)
-		fmt.Fprintf(&buf, " %s: size %d\n", string(kv.K.UserKey), bh.Length)
+		fmt.Fprintf(&buf, " %s: size %d\n", string(iter.Separator()), bh.Length)
 		if twoLevelIndex {
 			b, err := r.readBlock(context.Background(), bh.Handle, nil, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
-			iter2, err := rowblk.NewIter(r.Compare, r.Split, b.Get(), NoTransforms)
+			iter2 := r.tableFormat.newIndexIter()
+			require.NoError(t, iter2.Init(r.Compare, r.Split, b.Get(), NoTransforms))
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()
 			require.NoError(t, err)
-			for kv := iter2.First(); kv != nil; kv = iter2.Next() {
-				bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+			for valid := iter2.First(); valid; valid = iter2.Next() {
+				bh, err := iter2.BlockHandleWithProperties()
 				require.NoError(t, err)
-				fmt.Fprintf(&buf, "   %s: size %d\n", string(kv.K.UserKey), bh.Length)
+				fmt.Fprintf(&buf, "   %s: size %d\n", string(iter2.Separator()), bh.Length)
 			}
 		}
 	}

@@ -24,8 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -859,7 +857,7 @@ func TestBlockProperties(t *testing.T) {
 			return runTablePropsCmd(r, td)
 
 		case "block-props":
-			return runBlockPropsCmd(r, td)
+			return runBlockPropsCmd(r)
 
 		case "filter":
 			syntheticSuffix := make([]byte, 0, binary.MaxVarintLen64)
@@ -912,9 +910,12 @@ func TestBlockProperties(t *testing.T) {
 
 					var blocks []int
 					var i int
-					iter, _ := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
-					for kv := iter.First(); kv != nil; kv = iter.Next() {
-						bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+					iter := r.tableFormat.newIndexIter()
+					if err := iter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms); err != nil {
+						return err.Error()
+					}
+					for valid := iter.First(); valid; valid = iter.Next() {
+						bh, err := iter.BlockHandleWithProperties()
 						if err != nil {
 							return err.Error()
 						}
@@ -1022,7 +1023,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 		case "table-props":
 			return runTablePropsCmd(r, td)
 		case "block-props":
-			return runBlockPropsCmd(r, td)
+			return runBlockPropsCmd(r)
 		case "iter":
 			var buf bytes.Buffer
 			var lower, upper []byte
@@ -1267,17 +1268,17 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 	return r, formatWriterMetadata(td, meta)
 }
 
-func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
+func runBlockPropsCmd(r *Reader) string {
 	bh, err := r.readIndex(context.Background(), nil, nil, nil)
 	if err != nil {
 		return err.Error()
 	}
+	defer bh.Release()
 	twoLevelIndex := r.Properties.IndexPartitions > 0
-	i, err := rowblk.NewIter(r.Compare, r.Split, bh.Get(), NoTransforms)
-	if err != nil {
+	i := r.tableFormat.newIndexIter()
+	if err := i.Init(r.Compare, r.Split, bh.Get(), NoTransforms); err != nil {
 		return err.Error()
 	}
-	defer bh.Release()
 	var sb strings.Builder
 	decodeProps := func(props []byte, indent string) error {
 		d := makeBlockPropertiesDecoder(11, props)
@@ -1304,9 +1305,9 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		return nil
 	}
 
-	for kv := i.First(); kv != nil; kv = i.Next() {
-		sb.WriteString(fmt.Sprintf("%s:\n", kv.K))
-		bhp, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+	for valid := i.First(); valid; valid = i.Next() {
+		sb.WriteString(fmt.Sprintf("%s:\n", i.Separator()))
+		bhp, err := i.BlockHandleWithProperties()
 		if err != nil {
 			return err.Error()
 		}
@@ -1317,26 +1318,32 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		// If the table has a two-level index, also decode the index
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
-			subiter := &rowblk.Iter{}
 			subIndex, err := r.readBlock(
 				context.Background(), bhp.Handle, nil, nil, nil, nil, nil)
 			if err != nil {
 				return err.Error()
 			}
-			if err := subiter.Init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
+			err = func() error {
+				defer subIndex.Release()
+				subiter := r.tableFormat.newIndexIter()
+				if err := subiter.Init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
+					return err
+				}
+				for valid := subiter.First(); valid; valid = subiter.Next() {
+					sb.WriteString(fmt.Sprintf("  %s:\n", subiter.Separator()))
+					dataBH, err := subiter.BlockHandleWithProperties()
+					if err != nil {
+						return err
+					}
+					if err := decodeProps(dataBH.Props, "    "); err != nil {
+						return err
+					}
+				}
+				return nil
+			}()
+			if err != nil {
 				return err.Error()
 			}
-			for kv := subiter.First(); kv != nil; kv = subiter.Next() {
-				sb.WriteString(fmt.Sprintf("  %s:\n", kv.K))
-				dataBH, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
-				if err != nil {
-					return err.Error()
-				}
-				if err := decodeProps(dataBH.Props, "    "); err != nil {
-					return err.Error()
-				}
-			}
-			subIndex.Release()
 		}
 	}
 	return sb.String()
