@@ -49,13 +49,11 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 	reset()
 
 	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*fileMetadata {
-		d.mu.Lock()
 		pendingOutputs := make([]base.FileNum, len(paths))
 		for i := range paths {
 			pendingOutputs[i] = d.mu.versions.getNextFileNum()
 		}
-		jobID := d.newJobIDLocked()
-		d.mu.Unlock()
+		jobID := d.newJobID()
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.

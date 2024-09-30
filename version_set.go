@@ -113,7 +113,7 @@ type versionSet struct {
 
 	// The next file number. A single counter is used to assign file
 	// numbers for the WAL, MANIFEST, sstable, and OPTIONS files.
-	nextFileNum uint64
+	nextFileNum atomic.Uint64
 
 	// The current manifest file number.
 	manifestFileNum base.DiskFileNum
@@ -154,7 +154,7 @@ func (vs *versionSet) init(
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[base.DiskFileNum]tableInfo)
 	vs.virtualBackings = manifest.MakeVirtualBackings()
-	vs.nextFileNum = 1
+	vs.nextFileNum.Store(1)
 	vs.manifestMarker = marker
 	vs.getFormatMajorVersion = getFMV
 }
@@ -181,7 +181,7 @@ func (vs *versionSet) create(
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
-	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum, nil /* virtualBackings */)
+	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum.Load(), nil /* virtualBackings */)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
@@ -270,7 +270,7 @@ func (vs *versionSet) load(
 			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
 		if ve.NextFileNum != 0 {
-			vs.nextFileNum = ve.NextFileNum
+			vs.nextFileNum.Store(ve.NextFileNum)
 		}
 		if ve.LastSeqNum != 0 {
 			// logSeqNum is the _next_ sequence number that will be assigned,
@@ -294,7 +294,7 @@ func (vs *versionSet) load(
 	// function and could have only updated it to some other non-zero value,
 	// so it cannot be 0 here.
 	if vs.minUnflushedLogNum == 0 {
-		if vs.nextFileNum >= 2 {
+		if vs.nextFileNum.Load() >= 2 {
 			// We either have a freshly created DB, or a DB created by RocksDB
 			// that has not had a single flushed SSTable yet. This is because
 			// RocksDB bumps up nextFileNum in this case without bumping up
@@ -441,7 +441,7 @@ func (vs *versionSet) logAndApply(
 
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
-			vs.nextFileNum <= uint64(ve.MinUnflushedLogNum) {
+			vs.nextFileNum.Load() <= uint64(ve.MinUnflushedLogNum) {
 			panic(fmt.Sprintf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
 				ve.MinUnflushedLogNum))
 		}
@@ -452,7 +452,7 @@ func (vs *versionSet) logAndApply(
 	// current filenum and not the next one.
 	//
 	// TODO(sbhola): figure out why this is correct and update comment.
-	ve.NextFileNum = vs.nextFileNum
+	ve.NextFileNum = vs.nextFileNum.Load()
 
 	// LastSeqNum is set to the current upper bound on the assigned sequence
 	// numbers. Note that this is exactly the behavior of RocksDB. LastSeqNum is
@@ -542,7 +542,7 @@ func (vs *versionSet) logAndApply(
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
 	// to be called.
 	minUnflushedLogNum := vs.minUnflushedLogNum
-	nextFileNum := vs.nextFileNum
+	nextFileNum := vs.nextFileNum.Load()
 
 	// Note: this call populates ve.RemovedBackingTables.
 	zombieBackings, removedVirtualBackings, localLiveSizeDelta :=
@@ -949,21 +949,21 @@ func (vs *versionSet) createManifest(
 	return nil
 }
 
+// NB: This method is not safe for concurrent use. It is only safe
+// to be called when concurrent changes to nextFileNum are not expected.
 func (vs *versionSet) markFileNumUsed(fileNum base.DiskFileNum) {
-	if vs.nextFileNum <= uint64(fileNum) {
-		vs.nextFileNum = uint64(fileNum + 1)
+	if vs.nextFileNum.Load() <= uint64(fileNum) {
+		vs.nextFileNum.Store(uint64(fileNum + 1))
 	}
 }
 
 func (vs *versionSet) getNextFileNum() base.FileNum {
-	x := vs.nextFileNum
-	vs.nextFileNum++
+	x := vs.nextFileNum.Add(1) - 1
 	return base.FileNum(x)
 }
 
 func (vs *versionSet) getNextDiskFileNum() base.DiskFileNum {
-	x := vs.nextFileNum
-	vs.nextFileNum++
+	x := vs.nextFileNum.Add(1) - 1
 	return base.DiskFileNum(x)
 }
 
