@@ -243,6 +243,10 @@ func (b Bitmap) String() string {
 // BitmapBuilder constructs a Bitmap. Bits default to false.
 type BitmapBuilder struct {
 	words []uint64
+	// minNonZeroRowCount is the row count at which the bitmap should begin to
+	// use the defaultBitmapEncoding (as opposed to the zeroBitmapEncoding).
+	// It's updated on the first call to Set and defaults to zero.
+	minNonZeroRowCount int
 }
 
 type bitmapEncoding uint8
@@ -268,6 +272,14 @@ func bitmapRequiredSize(total int) int {
 
 // Set sets the bit at position i to true.
 func (b *BitmapBuilder) Set(i int) {
+	// If no bits have been set, record the row count at which the bitmap begins
+	// to encode any set bits at all. This is used to determine whether the
+	// bitmap should be encoded using the all-zeros encoding.
+	if b.minNonZeroRowCount == 0 {
+		b.minNonZeroRowCount = i + 1
+	} else {
+		b.minNonZeroRowCount = min(b.minNonZeroRowCount, i+1)
+	}
 	w := i >> 6 // divide by 64
 	for len(b.words) <= w {
 		b.words = append(b.words, 0)
@@ -276,14 +288,15 @@ func (b *BitmapBuilder) Set(i int) {
 }
 
 // isZero returns true if no bits are set and Invert was not called.
-func (b *BitmapBuilder) isZero() bool {
-	return len(b.words) == 0
+func (b *BitmapBuilder) isZero(rows int) bool {
+	return b.minNonZeroRowCount == 0 || rows < b.minNonZeroRowCount
 }
 
 // Reset resets the bitmap to the empty state.
 func (b *BitmapBuilder) Reset() {
 	clear(b.words)
 	b.words = b.words[:0]
+	b.minNonZeroRowCount = 0
 }
 
 // NumColumns implements the ColumnWriter interface.
@@ -296,7 +309,7 @@ func (b *BitmapBuilder) DataType(int) DataType { return DataTypeBool }
 func (b *BitmapBuilder) Size(rows int, offset uint32) uint32 {
 	// First byte will be the encoding type.
 	offset++
-	if b.isZero() {
+	if b.isZero(rows) {
 		return offset
 	}
 	offset = align(offset, align64)
@@ -320,6 +333,10 @@ func (b *BitmapBuilder) InvertedSize(rows int, offset uint32) uint32 {
 // Note that Invert can affect the Size of the bitmap. Use InvertedSize() if you
 // intend to invert the bitmap before finishing.
 func (b *BitmapBuilder) Invert(nRows int) {
+	// Inverted bitmaps never use the all-zero encoding, so we set
+	// rowCountIncludingFirstSetBit to 1 so that as long as the bitmap is
+	// finished encoding any rows at all, it uses the default encoding.
+	b.minNonZeroRowCount = 1
 	// If the tail of b is sparse, fill in zeroes before inverting.
 	nBitmapWords := (nRows + 63) >> 6
 	b.words = slices.Grow(b.words, nBitmapWords-len(b.words))[:nBitmapWords]
@@ -331,7 +348,7 @@ func (b *BitmapBuilder) Invert(nRows int) {
 // Finish finalizes the bitmap, computing the per-word summary bitmap and
 // writing the resulting data to buf at offset.
 func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32 {
-	if b.isZero() {
+	if b.isZero(nRows) {
 		buf[offset] = byte(zeroBitmapEncoding)
 		return offset + 1
 	}
