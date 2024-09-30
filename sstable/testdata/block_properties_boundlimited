@@ -21,13 +21,13 @@ table-props
 
 block-props
 ----
-b@2#2,SET:
+b@2:
   0: [2, 6)
-d@3#4,SET:
+d@3:
   0: [3, 10)
-f@0#6,SET:
+f@0:
   0: [0, 3)
-i#inf,SEPARATOR:
+i:
   0: [3, 9)
 
 # Test an interator with a bound-limited filter that has a filtering criteria

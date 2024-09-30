@@ -31,7 +31,7 @@ table-props
 # is printed, along with the properties for the block, keyed by the shortID.
 block-props
 ----
-c#3,SET:
+c:
   0: [1, 4)
 
 # Multiple collectors.
@@ -56,7 +56,7 @@ table-props
 
 block-props
 ----
-c#3,SET:
+c:
   0: [1, 4)
   1: [7, 10)
 
@@ -88,16 +88,16 @@ table-props
 
 block-props
 ----
-b#2,SET:
+b:
   0: [1, 9)
   1: [5, 7)
-d#4,SET:
+d:
   0: [2, 8)
   1: [1, 3)
-f#6,SET:
+f:
   0: [4, 6)
   1: [4, 8)
-h#8,SET:
+h:
   0: [3, 7)
   1: [3, 9)
 
@@ -122,7 +122,7 @@ collectors
 
 block-props
 ----
-d#inf,SEPARATOR:
+d:
   0: [5, 16)
 
 table-props
@@ -149,7 +149,7 @@ collectors
 
 block-props
 ----
-d#inf,SEPARATOR:
+d:
   0: [5, 16)
 
 table-props
@@ -176,7 +176,7 @@ collectors
 
 block-props
 ----
-d#inf,SEPARATOR:
+d:
 
 table-props
 ----
@@ -205,11 +205,11 @@ collectors
 
 block-props
 ----
-a@5#1,SET:
+a@5:
   0: [5, 6)
-b@10#2,SET:
+b@10:
   0: [10, 11)
-d#inf,SEPARATOR:
+d:
   0: [15, 16)
 
 table-props
@@ -307,29 +307,29 @@ table-props
 
 block-props
 ----
-a@1#1,SET:
+a@1:
   0: [1, 2)
-  a@1#1,SET:
+  a@1:
     0: [1, 2)
-b@10#2,SET:
+b@10:
   0: [10, 11)
-  b@10#2,SET:
+  b@10:
     0: [10, 11)
-c@15#3,SET:
+c@15:
   0: [15, 16)
-  c@15#3,SET:
+  c@15:
     0: [15, 16)
-d@25#4,SET:
+d@25:
   0: [25, 26)
-  d@25#4,SET:
+  d@25:
     0: [25, 26)
-e@3#5,SET:
+e@3:
   0: [3, 4)
-  e@3#5,SET:
+  e@3:
     0: [3, 4)
-g#inf,SEPARATOR:
+g:
   0: [5, 6)
-  g#inf,SEPARATOR:
+  g:
     0: [5, 6)
 
 # Test the same sstable, but with a larger index block size that fits multiple
@@ -353,21 +353,21 @@ collectors
 
 block-props
 ----
-c@15#3,SET:
+c@15:
   0: [1, 16)
-  a@1#1,SET:
+  a@1:
     0: [1, 2)
-  b@10#2,SET:
+  b@10:
     0: [10, 11)
-  c@15#3,SET:
+  c@15:
     0: [15, 16)
-g#inf,SEPARATOR:
+g:
   0: [3, 26)
-  d@25#4,SET:
+  d@25:
     0: [25, 26)
-  e@3#5,SET:
+  e@3:
     0: [3, 4)
-  g#inf,SEPARATOR:
+  g:
     0: [5, 6)
 
 iter upper=f point-key-filter=(suffix-point-keys-only,1,2)
@@ -404,23 +404,23 @@ seqnums:  [1-5]
 
 block-props
 ----
-b@10#2,SET:
+b@10:
   0: [1, 11)
-  a@1#1,SET:
+  a@1:
     0: [1, 2)
-  b@10#2,SET:
+  b@10:
     0: [10, 11)
-d@25#4,SET:
+d@25:
   0: [15, 26)
-  c@15#3,SET:
+  c@15:
     0: [15, 16)
-  d@25#4,SET:
+  d@25:
     0: [25, 26)
-g#inf,SEPARATOR:
+g:
   0: [3, 6)
-  e@3#5,SET:
+  e@3:
     0: [3, 4)
-  g#inf,SEPARATOR:
+  g:
     0: [5, 6)
 
 # Regression test for a bug in boundary checking when skipping over irrelevant
@@ -600,13 +600,13 @@ seqnums:  [1-5]
 
 block-props
 ----
-c@15#3,SET:
+c@15:
   0: [1, 16)
-  c@15#3,SET:
+  c@15:
     0: [1, 16)
-g#inf,SEPARATOR:
+g:
   0: [3, 26)
-  g#inf,SEPARATOR:
+  g:
     0: [3, 26)
 
 iter point-key-filter=(suffix-point-keys-only,1,2)
@@ -639,11 +639,11 @@ seqnums:  [1-5]
 
 block-props
 ----
-b@10#2,SET:
+b@10:
   0: [1, 11)
-d@25#4,SET:
+d@25:
   0: [15, 26)
-g#inf,SEPARATOR:
+g:
   0: [3, 6)
 
 iter point-key-filter=(suffix-point-keys-only,1,2)
@@ -674,11 +674,11 @@ collectors
 
 block-props
 ----
-a@5#1,SET:
+a@5:
   0: [5, 6)
-b@8#2,SET:
+b@8:
   0: [8, 9)
-d#inf,SEPARATOR:
+d:
   0: [7, 8)
 
 table-props
@@ -711,27 +711,27 @@ seqnums:  [1-3]
 
 block-props
 ----
-a@9#2,SET:
+a@9:
   0: [9, 11)
-  a@10#1,SET:
+  a@10:
     0: [10, 11)
-  a@9#2,SET:
+  a@9:
     0: [9, 10)
-a@7#2,SET:
+a@7:
   0: [7, 9)
-  a@8#2,SET:
+  a@8:
     0: [8, 9)
-  a@7#2,SET:
+  a@7:
     0: [7, 8)
-b#inf,SEPARATOR:
+b:
   0: [8, 10)
-  aa@9#3,SET:
+  aa@9:
     0: [9, 10)
-  b#inf,SEPARATOR:
+  b:
     0: [8, 9)
-g#inf,SEPARATOR:
+g:
   0: [5, 6)
-  g#inf,SEPARATOR:
+  g:
     0: [5, 6)
 
 # Regression test for a nil-pointer when we find a second-level index block
