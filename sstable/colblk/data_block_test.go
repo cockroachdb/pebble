@@ -43,12 +43,14 @@ func TestDataBlock(t *testing.T) {
 				fmt.Fprint(&buf, &w)
 				sizes = sizes[:0]
 				return buf.String()
-			case "write":
+			case "write", "write-block":
+				// write-block does init/write/finish in a single command, and doesn't
+				// print anything.
+				if td.Cmd == "write-block" {
+					w.Init(testKeysSchema)
+				}
 				for _, line := range strings.Split(td.Input, "\n") {
-					isObsolete := strings.HasSuffix(line, "obsolete")
-					if isObsolete {
-						line = strings.TrimSuffix(line, "obsolete")
-					}
+					line, isObsolete := strings.CutSuffix(line, "obsolete")
 
 					j := strings.IndexRune(line, ':')
 					ik := base.ParseInternalKey(line[:j])
@@ -62,6 +64,11 @@ func TestDataBlock(t *testing.T) {
 					v := []byte(line[j+1:])
 					w.Add(ik, v, vp, kcmp, isObsolete)
 					sizes = append(sizes, w.Size())
+				}
+				if td.Cmd == "write-block" {
+					block, _ := w.Finish(w.Rows(), w.Size())
+					r.Init(testKeysSchema, block)
+					return ""
 				}
 				fmt.Fprint(&buf, &w)
 				return buf.String()
@@ -79,6 +86,7 @@ func TestDataBlock(t *testing.T) {
 				var seqNum uint64
 				td.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 				transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)
+				transforms.HideObsoletePoints = td.HasArg("hide-obsolete-points")
 				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 				}), transforms)
