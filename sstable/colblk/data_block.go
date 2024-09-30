@@ -740,6 +740,11 @@ type DataBlockIter struct {
 	row     int
 	kv      base.InternalKV
 	kvRow   int // the row currently held in kv
+
+	// nextObsoletePoint is the row index of the first obsolete point after i.row.
+	// It is used to optimize skipping of obsolete points during forward
+	// iteration.
+	nextObsoletePoint int
 }
 
 // Init initializes the data block iterator, configuring it to read from the
@@ -750,9 +755,10 @@ func (i *DataBlockIter) Init(
 	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
 	transforms block.IterTransforms,
 ) error {
+	numRows := int(r.r.header.Rows)
 	*i = DataBlockIter{
 		r:             r,
-		maxRow:        int(r.r.header.Rows) - 1,
+		maxRow:        numRows - 1,
 		keySeeker:     keyIterator,
 		getLazyValuer: getLazyValuer,
 		transforms:    transforms,
@@ -760,6 +766,10 @@ func (i *DataBlockIter) Init(
 		kvRow:         math.MinInt,
 		kv:            base.InternalKV{},
 		keyIter:       PrefixBytesIter{},
+	}
+	if i.transforms.HideObsoletePoints && r.isObsolete.SeekSetBitGE(0) == numRows {
+		// There are no obsolete points in the block; don't bother checking.
+		i.transforms.HideObsoletePoints = false
 	}
 	// Allocate a keyIter buffer that's large enough to hold the largest user
 	// key in the block with 1 byte to spare (so that pointer arithmetic is
@@ -787,7 +797,17 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	if flags.TrySeekUsingNext() {
 		searchDir = +1
 	}
-	return i.decodeRow(i.keySeeker.SeekGE(key, i.row, searchDir))
+	i.row = i.keySeeker.SeekGE(key, i.row, searchDir)
+	if i.transforms.HideObsoletePoints {
+		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
+		if i.atObsoletePointForward() {
+			i.skipObsoletePointsForward()
+			if i.row > i.maxRow {
+				return nil
+			}
+		}
+	}
+	return i.decodeRow()
 }
 
 // SeekPrefixGE implements the base.InternalIterator interface.
@@ -806,18 +826,47 @@ func (i *DataBlockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 
 // SeekLT implements the base.InternalIterator interface.
 func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV {
-	row := i.keySeeker.SeekGE(key, i.row, 0 /* searchDir */)
-	return i.decodeRow(row - 1)
+	i.row = i.keySeeker.SeekGE(key, i.row, 0 /* searchDir */) - 1
+	if i.transforms.HideObsoletePoints {
+		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(max(i.row, 0))
+		if i.atObsoletePointBackward() {
+			i.skipObsoletePointsBackward()
+			if i.row < 0 {
+				return nil
+			}
+		}
+	}
+	return i.decodeRow()
 }
 
 // First implements the base.InternalIterator interface.
 func (i *DataBlockIter) First() *base.InternalKV {
-	return i.decodeRow(0)
+	i.row = 0
+	if i.transforms.HideObsoletePoints {
+		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(0)
+		if i.atObsoletePointForward() {
+			i.skipObsoletePointsForward()
+			if i.row > i.maxRow {
+				return nil
+			}
+		}
+	}
+	return i.decodeRow()
 }
 
 // Last implements the base.InternalIterator interface.
 func (i *DataBlockIter) Last() *base.InternalKV {
-	return i.decodeRow(i.r.BlockReader().Rows() - 1)
+	i.row = i.maxRow
+	if i.transforms.HideObsoletePoints {
+		i.nextObsoletePoint = i.maxRow + 1
+		if i.atObsoletePointBackward() {
+			i.skipObsoletePointsBackward()
+			if i.row < 0 {
+				return nil
+			}
+		}
+	}
+	return i.decodeRow()
 }
 
 // Next advances to the next KV pair in the block.
@@ -828,6 +877,12 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 		return nil
 	}
 	i.row++
+	if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
+		i.skipObsoletePointsForward()
+		if i.row > i.maxRow {
+			return nil
+		}
+	}
 	// Inline decodeKey().
 	i.kv.K = base.InternalKey{
 		UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
@@ -856,7 +911,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 // organized as a slice of 64-bit words. If a 64-bit word in the bitmap is zero
 // then all of the rows corresponding to the bits in that word have the same
 // prefix and we can skip ahead. If a row is non-zero a small bit of bit
-// shifting and masking combined with bits.TrailingZeros64 can identify the the
+// shifting and masking combined with bits.TrailingZeros64 can identify the
 // next bit that is set after the current row. The bitmap uses 1 bit/row (0.125
 // bytes/row). A 32KB block containing 1300 rows (25 bytes/row) would need a
 // bitmap of 21 64-bit words. Even in the worst case where every word is 0 this
@@ -864,19 +919,82 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 // time of ~30 ns if a row is found and decodeRow are called. In more normal
 // cases, NextPrefix takes ~15% longer that a single Next call.
 //
-// For comparision, the rowblk nextPrefixV3 optimizations work by setting a bit
+// For comparison, the rowblk nextPrefixV3 optimizations work by setting a bit
 // in the value prefix byte that indicates that the current key has the same
 // prefix as the previous key. Additionally, a bit is stolen from the restart
 // table entries indicating whether a restart table entry has the same key
 // prefix as the previous entry. Checking the value prefix byte bit requires
 // locating that byte which requires decoding 3 varints per key/value pair.
 func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
-	return i.decodeRow(i.r.prefixChanged.SeekSetBitGE(i.row + 1))
+	i.row = i.r.prefixChanged.SeekSetBitGE(i.row + 1)
+	if i.transforms.HideObsoletePoints {
+		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
+		if i.atObsoletePointForward() {
+			i.skipObsoletePointsForward()
+		}
+	}
+
+	return i.decodeRow()
 }
 
 // Prev moves the iterator to the previous KV pair in the block.
 func (i *DataBlockIter) Prev() *base.InternalKV {
-	return i.decodeRow(i.row - 1)
+	i.row--
+	if i.transforms.HideObsoletePoints && i.atObsoletePointBackward() {
+		i.skipObsoletePointsBackward()
+		if i.row < 0 {
+			return nil
+		}
+	}
+	return i.decodeRow()
+}
+
+// atObsoletePointForward returns true if i.row is an obsolete point. It is
+// separate from skipObsoletePointsForward() because that method does not
+// inline. It can only be used during forward iteration (i.e. i.row was
+// incremented).
+//
+//gcassert:inline
+func (i *DataBlockIter) atObsoletePointForward() bool {
+	if invariants.Enabled && i.row > i.nextObsoletePoint {
+		panic("invalid nextObsoletePoint")
+	}
+	return i.row == i.nextObsoletePoint && i.row <= i.maxRow
+}
+
+func (i *DataBlockIter) skipObsoletePointsForward() {
+	if invariants.Enabled {
+		i.atObsoletePointCheck()
+	}
+	i.row = i.r.isObsolete.SeekUnsetBitGE(i.row)
+	i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
+}
+
+// atObsoletePointBackward returns true if i.row is an obsolete point. It is
+// separate from skipObsoletePointsBackward() because that method does not
+// inline. It can only be used during reverse iteration (i.e. i.row was
+// decremented).
+//
+//gcassert:inline
+func (i *DataBlockIter) atObsoletePointBackward() bool {
+	return i.row >= 0 && i.r.isObsolete.At(i.row)
+}
+
+func (i *DataBlockIter) skipObsoletePointsBackward() {
+	if invariants.Enabled {
+		i.atObsoletePointCheck()
+	}
+	i.row = i.r.isObsolete.SeekUnsetBitLE(i.row)
+	i.nextObsoletePoint = i.row + 1
+}
+
+func (i *DataBlockIter) atObsoletePointCheck() {
+	// We extract this code into a separate function to avoid getting a spurious
+	// error from GCAssert about At not being inlined because it is compiled out
+	// altogether in non-invariant builds.
+	if !i.transforms.HideObsoletePoints || !i.r.isObsolete.At(i.row) {
+		panic("expected obsolete point")
+	}
 }
 
 // Error implements the base.InternalIterator interface. A DataBlockIter is
@@ -906,20 +1024,15 @@ func (i *DataBlockIter) DebugTree(tp treeprinter.Node) {
 	tp.Childf("%T(%p)", i, i)
 }
 
-func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
+// decodeRow decodes i.row into i.kv. If i.row is invalid, it returns nil.
+func (i *DataBlockIter) decodeRow() *base.InternalKV {
 	switch {
-	case row < 0:
-		i.row = -1
+	case i.row < 0 || i.row > i.maxRow:
 		return nil
-	case row >= i.r.BlockReader().Rows():
-		i.row = i.r.BlockReader().Rows()
-		return nil
-	case i.kvRow == row:
-		i.row = row
+	case i.kvRow == i.row:
 		// Already synthesized the kv at row.
 		return &i.kv
 	default:
-		i.row = row
 		// Inline decodeKey().
 		i.kv.K = base.InternalKey{
 			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
@@ -929,14 +1042,14 @@ func (i *DataBlockIter) decodeRow(row int) *base.InternalKV {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 		// Inline i.r.values.At(row).
-		startOffset := i.r.values.offsets.At(row)
-		v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), i.r.values.offsets.At(row+1)-startOffset)
-		if i.r.isValueExternal.At(row) {
+		startOffset := i.r.values.offsets.At(i.row)
+		v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), i.r.values.offsets.At(i.row+1)-startOffset)
+		if i.r.isValueExternal.At(i.row) {
 			i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
 		} else {
 			i.kv.V = base.MakeInPlaceValue(v)
 		}
-		i.kvRow = row
+		i.kvRow = i.row
 		return &i.kv
 	}
 }

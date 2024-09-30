@@ -77,10 +77,10 @@ func (b Bitmap) At(i int) bool {
 }
 
 // SeekSetBitGE returns the next bit greater than or equal to i set in the bitmap.
-// The i parameter must be in [0, bitCount). Returns the number of bits
-// represented by the bitmap if no next bit is set.
+// The i parameter must be ≥ 0. Returns the number of bits
+// represented by the bitmap if no next bit is set (or if i >= bitCount).
 func (b Bitmap) SeekSetBitGE(i int) int {
-	if b.data.ptr == nil {
+	if b.data.ptr == nil || i >= b.bitCount {
 		// Zero bitmap case.
 		return b.bitCount
 	}

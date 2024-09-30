@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crbytes"
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -461,7 +462,7 @@ func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
 							ValueLen: valueLen,
 						}
 						b.Run(cfg.String(), func(b *testing.B) {
-							benchmarkCockroachDataBlockIter(b, cfg)
+							benchmarkCockroachDataBlockIter(b, cfg, block.IterTransforms{})
 						})
 					}
 				}
@@ -492,8 +493,37 @@ var shortBenchConfigs = []benchConfig{
 func BenchmarkCockroachDataBlockIterShort(b *testing.B) {
 	for _, cfg := range shortBenchConfigs {
 		b.Run(cfg.String(), func(b *testing.B) {
-			benchmarkCockroachDataBlockIter(b, cfg)
+			benchmarkCockroachDataBlockIter(b, cfg, block.IterTransforms{})
 		})
+	}
+}
+
+func BenchmarkCockroachDataBlockIterTransforms(b *testing.B) {
+	transforms := []struct {
+		description string
+		transforms  block.IterTransforms
+	}{
+		{},
+		{
+			description: "SynthSeqNum",
+			transforms: block.IterTransforms{
+				SyntheticSeqNum: 1234,
+			},
+		},
+		{
+			description: "HideObsolete",
+			transforms: block.IterTransforms{
+				HideObsoletePoints: true,
+			},
+		},
+	}
+	for _, cfg := range shortBenchConfigs {
+		for _, t := range transforms {
+			name := cfg.String() + crstrings.If(t.description != "", ","+t.description)
+			b.Run(name, func(b *testing.B) {
+				benchmarkCockroachDataBlockIter(b, cfg, t.transforms)
+			})
+		}
 	}
 }
 
@@ -506,7 +536,9 @@ func (cfg benchConfig) String() string {
 	return fmt.Sprintf("%s,ValueLen=%d", cfg.KeyConfig, cfg.ValueLen)
 }
 
-func benchmarkCockroachDataBlockIter(b *testing.B, cfg benchConfig) {
+func benchmarkCockroachDataBlockIter(
+	b *testing.B, cfg benchConfig, transforms block.IterTransforms,
+) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewSource(seed))
@@ -519,7 +551,8 @@ func benchmarkCockroachDataBlockIter(b *testing.B, cfg benchConfig) {
 	for w.Size() < targetBlockSize {
 		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
+		isObsolete := rng.Intn(20) == 0
+		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, isObsolete)
 		count++
 	}
 	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
@@ -528,7 +561,7 @@ func benchmarkCockroachDataBlockIter(b *testing.B, cfg benchConfig) {
 	reader.Init(cockroachKeySchema, serializedBlock)
 	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}), block.IterTransforms{})
+	}), transforms)
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {
