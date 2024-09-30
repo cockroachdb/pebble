@@ -231,3 +231,16 @@ scan-range-key
 a-b:{(#1,RANGEKEYSET,@123)}
 b-c:{(#1,RANGEKEYSET,@123)}
 c-d:{(#1,RANGEKEYSET,@123)}
+
+build block-size=1 index-block-size=1 filter
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:    [a#1,SET-c#1,SET]
+seqnums:  [1-1]
+
+rewrite from= to=@123 block-size=1 index-block-size=1 filter
+----
+point:    [a@123#1,SET-c@123#1,SET]
+seqnums:  [1-1]

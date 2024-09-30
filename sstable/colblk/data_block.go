@@ -638,10 +638,14 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	if err = rw.iter.Init(&rw.reader, rw.keySeeker, nil, block.IterTransforms{}); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
-	if cap(rw.prefixBytesIter.buf) < int(rw.reader.maximumKeyLength) {
-		rw.prefixBytesIter.buf = make([]byte, rw.reader.maximumKeyLength)
+
+	// Allocate a keyIter buffer that's large enough to hold the largest user
+	// key in the block with 1 byte to spare (so that pointer arithmetic is
+	// never pointing beyond the allocation, which would violate Go rules).
+	if cap(rw.prefixBytesIter.buf) < int(rw.reader.maximumKeyLength)+1 {
+		rw.prefixBytesIter.buf = make([]byte, rw.reader.maximumKeyLength+1)
 	}
-	if newMax := int(rw.reader.maximumKeyLength) - len(from) + len(to); cap(rw.keyBuf) < newMax {
+	if newMax := int(rw.reader.maximumKeyLength) - len(from) + len(to) + 1; cap(rw.keyBuf) < newMax {
 		rw.keyBuf = make([]byte, newMax)
 	}
 
@@ -703,7 +707,10 @@ type DataBlockReader struct {
 	isObsolete Bitmap
 	// maximumKeyLength is the maximum length of a user key in the block.
 	// Iterators may use it to allocate a sufficiently large buffer up front,
-	// and elide size checks during iteration.
+	// and elide size checks during iteration. Note that iterators should add +1
+	// to the key length to ensure pointer arithmetric that computes a pointer
+	// to the tail of the key does not point to memory beyond the allocation
+	// (prohibited by Go pointer rules).
 	maximumKeyLength uint32
 }
 
