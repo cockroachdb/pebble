@@ -2667,9 +2667,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 func (d *DB) newCompactionOutput(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, CPUWorkHandle, error) {
-	d.mu.Lock()
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
-	d.mu.Unlock()
 
 	var writeCategory vfs.DiskWriteCategory
 	if d.opts.EnableSQLRowSpillMetrics {

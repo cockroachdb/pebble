@@ -283,9 +283,9 @@ func TestVirtualReadsWiring(t *testing.T) {
 	l6 := currVersion.Levels[6]
 	l6FileIter := l6.Iter()
 	parentFile := l6FileIter.First()
-	f1 := FileNum(d.mu.versions.nextFileNum)
+	f1 := FileNum(d.mu.versions.nextFileNum.Load())
 	f2 := f1 + 1
-	d.mu.versions.nextFileNum += 2
+	d.mu.versions.nextFileNum.Add(2)
 
 	seqNumA := parentFile.Smallest.SeqNum()
 	// See SeqNum comments above.

@@ -1355,14 +1355,12 @@ func (d *DB) ingest(
 	// the file number ordering to be out of alignment with sequence number
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
-	d.mu.Lock()
 	pendingOutputs := make([]base.FileNum, len(paths)+len(shared)+len(external))
 	for i := 0; i < len(paths)+len(shared)+len(external); i++ {
 		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
 
-	jobID := d.newJobIDLocked()
-	d.mu.Unlock()
+	jobID := d.newJobID()
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
