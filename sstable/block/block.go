@@ -233,8 +233,11 @@ type IndexBlockIterator interface {
 // preferable.
 type IterTransforms struct {
 	// SyntheticSeqNum, if set, overrides the sequence number in all keys. It is
-	// set if the sstable was ingested or it is foregin.
-	SyntheticSeqNum    SyntheticSeqNum
+	// set if the sstable was ingested or it is foreign.
+	SyntheticSeqNum SyntheticSeqNum
+	// HideObsoletePoints, if true, skips over obsolete points during iteration.
+	// This is the norm when the sstable is foreign or the largest sequence number
+	// of the sstable is below the one we are reading.
 	HideObsoletePoints bool
 	SyntheticPrefix    SyntheticPrefix
 	SyntheticSuffix    SyntheticSuffix
