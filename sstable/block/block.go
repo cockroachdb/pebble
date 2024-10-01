@@ -191,7 +191,9 @@ type IndexBlockIterator interface {
 	// currently positioned over a valid block entry.
 	IsDataInvalidated() bool
 	// Invalidate invalidates the block iterator, removing references to the
-	// block it was initialized with.
+	// block it was initialized with. The iterator may continue to be used after
+	// a call to Invalidate, but all positioning methods should return false.
+	// Valid() must also return false.
 	Invalidate()
 	// Handle returns the underlying block buffer handle, if the iterator was
 	// initialized with one.
@@ -217,10 +219,12 @@ type IndexBlockIterator interface {
 	// the index block is empty.
 	Last() bool
 	// Next steps the index iterator to the next block entry. It returns false
-	// if the index block is exhausted.
+	// if the index block is exhausted in the forward direction. A call to Next
+	// while already exhausted in the forward direction is a no-op.
 	Next() bool
 	// Prev steps the index iterator to the previous block entry. It returns
-	// false if the index block is exhausted.
+	// false if the index block is exhausted in the reverse direction. A call to
+	// Prev while already exhausted in the reverse direction is a no-op.
 	Prev() bool
 	// Close closes the iterator, releasing any resources it holds.
 	Close() error

@@ -68,6 +68,11 @@ func TestIndexBlock(t *testing.T) {
 					valid = it.Next()
 				case "prev":
 					valid = it.Prev()
+				case "is-valid":
+					fmt.Fprintf(&buf, "Valid()=%t\n", it.Valid())
+					continue
+				case "invalidate":
+					it.Invalidate()
 				default:
 					panic(fmt.Sprintf("unknown command: %s", fields[0]))
 				}
