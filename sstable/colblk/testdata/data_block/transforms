@@ -21,18 +21,18 @@ prev
 prev
 next
 ----
-a@10#1234,SET:apple
-b@5#1234,SET:banana
-b@2#1234,SETWITHDEL:blueberry
-c@9#1234,SETWITHDEL:coconut
-c@6#1234,SET:cantaloupe
-c@9#1234,SETWITHDEL:coconut
-b@2#1234,SETWITHDEL:blueberry
-b@5#1234,SET:banana
-b@2#1234,SETWITHDEL:blueberry
-b@5#1234,SET:banana
-a@10#1234,SET:apple
-b@5#1234,SET:banana
+    first: a@10#1234,SET:apple
+     next: b@5#1234,SET:banana
+     next: b@2#1234,SETWITHDEL:blueberry
+seek-ge c: c@9#1234,SETWITHDEL:coconut
+     next: c@6#1234,SET:cantaloupe
+     prev: c@9#1234,SETWITHDEL:coconut
+     prev: b@2#1234,SETWITHDEL:blueberry
+     prev: b@5#1234,SET:banana
+seek-lt c: b@2#1234,SETWITHDEL:blueberry
+     prev: b@5#1234,SET:banana
+     prev: a@10#1234,SET:apple
+     next: b@5#1234,SET:banana
 
 write-block
 a@10#1,SET:apple obsolete
@@ -51,10 +51,10 @@ next
 next
 next
 ----
-b@5:banana
-c@9:coconut
-c@1:clementine
-.
+first: b@5:banana
+ next: c@9:coconut
+ next: c@1:clementine
+ next: .
 
 iter hide-obsolete-points
 first
@@ -68,16 +68,16 @@ prev
 prev
 prev
 ----
-b@5:banana
-c@9:coconut
-c@1:clementine
-.
-c@1:clementine
-c@9:coconut
-c@1:clementine
-c@9:coconut
-b@5:banana
-.
+first: b@5:banana
+ next: c@9:coconut
+ next: c@1:clementine
+ next: .
+ prev: c@1:clementine
+ prev: c@9:coconut
+ next: c@1:clementine
+ prev: c@9:coconut
+ prev: b@5:banana
+ prev: .
 
 
 iter hide-obsolete-points
@@ -89,31 +89,31 @@ prev
 prev
 next
 ----
-c@1:clementine
-c@9:coconut
-c@1:clementine
-c@9:coconut
-b@5:banana
-.
-b@5:banana
+last: c@1:clementine
+prev: c@9:coconut
+next: c@1:clementine
+prev: c@9:coconut
+prev: b@5:banana
+prev: .
+next: b@5:banana
 
 iter hide-obsolete-points
 seek-ge a
 prev
 next
 ----
-b@5:banana
-.
-b@5:banana
+seek-ge a: b@5:banana
+     prev: .
+     next: b@5:banana
 
 iter hide-obsolete-points
 seek-ge d
 prev
 prev
 ----
-.
-c@1:clementine
-c@9:coconut
+seek-ge d: .
+     prev: c@1:clementine
+     prev: c@9:coconut
 
 iter hide-obsolete-points
 seek-lt c
@@ -123,12 +123,12 @@ prev
 prev
 prev
 ----
-b@5:banana
-c@9:coconut
-c@1:clementine
-c@9:coconut
-b@5:banana
-.
+seek-lt c: b@5:banana
+     next: c@9:coconut
+     next: c@1:clementine
+     prev: c@9:coconut
+     prev: b@5:banana
+     prev: .
 
 # Test a block with only obsolete points.
 write-block
@@ -160,24 +160,24 @@ seek-lt b
 next
 prev
 ----
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
+    first: .
+     next: .
+     prev: .
+     last: .
+     next: .
+     prev: .
+seek-ge a: .
+     next: .
+     prev: .
+seek-ge b: .
+     next: .
+     prev: .
+seek-ge c: .
+     next: .
+     prev: .
+seek-lt z: .
+     next: .
+     prev: .
+seek-lt b: .
+     next: .
+     prev: .

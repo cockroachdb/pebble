@@ -528,11 +528,11 @@ seek-ge bac
 seek-ge bacl
 seek-ge bacu
 ----
-backache:v
-backslide:v
-backslide:v
-backhanded:v
-backhanded:v
-bacchanal:v
-bacteria:v
-.
+  seek-ge backache: backache:v
+ seek-ge backslide: backslide:v
+  seek-ge backslid: backslide:v
+seek-ge backhanded: backhanded:v
+ seek-ge backhande: backhanded:v
+       seek-ge bac: bacchanal:v
+      seek-ge bacl: bacteria:v
+      seek-ge bacu: .

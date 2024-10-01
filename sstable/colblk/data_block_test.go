@@ -100,15 +100,21 @@ func TestDataBlock(t *testing.T) {
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), f.String())
 				return buf.String()
 			case "iter":
-				var transforms block.IterTransforms
 				var seqNum uint64
+				var syntheticPrefix, syntheticSuffix string
 				td.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
-				transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)
-				transforms.HideObsoletePoints = td.HasArg("hide-obsolete-points")
+				td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
+				td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
+				transforms := block.IterTransforms{
+					SyntheticSeqNum:    block.SyntheticSeqNum(seqNum),
+					HideObsoletePoints: td.HasArg("hide-obsolete-points"),
+					SyntheticPrefix:    []byte(syntheticPrefix),
+					SyntheticSuffix:    []byte(syntheticSuffix),
+				}
 				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
 					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 				}), transforms)
-				var o []itertest.IterOpt
+				o := []itertest.IterOpt{itertest.ShowCommands}
 				if td.HasArg("verbose") {
 					o = append(o, itertest.Verbose)
 				}

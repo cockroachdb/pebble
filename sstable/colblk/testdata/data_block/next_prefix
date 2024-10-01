@@ -252,17 +252,17 @@ next-prefix
 next-prefix
 next-prefix
 ----
-blockprefix_apple@98:apple98
-blockprefix_banana@94:banana94
-blockprefix_coconut:coconut
-blockprefix_guava@99:guava99
-blockprefix_kiwi@99:kiwi99
-blockprefix_lemon@92:
-.
+      first: blockprefix_apple@98:apple98
+next-prefix: blockprefix_banana@94:banana94
+next-prefix: blockprefix_coconut:coconut
+next-prefix: blockprefix_guava@99:guava99
+next-prefix: blockprefix_kiwi@99:kiwi99
+next-prefix: blockprefix_lemon@92:
+next-prefix: .
 
 iter
 seek-ge blockprefix_banana@73
 next-prefix
 ----
-blockprefix_banana@72:banana72
-blockprefix_coconut:coconut
+seek-ge blockprefix_banana@73: blockprefix_banana@72:banana72
+                  next-prefix: blockprefix_coconut:coconut

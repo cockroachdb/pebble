@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -22,6 +23,7 @@ import (
 
 type iterCmdOpts struct {
 	fmtKV           formatKV
+	showCommands    bool
 	withoutNewlines bool
 	stats           *base.InternalIteratorStats
 }
@@ -37,6 +39,12 @@ type formatKV func(w io.Writer, key *base.InternalKey, v []byte, iter base.Inter
 func Condensed(opts *iterCmdOpts) {
 	opts.fmtKV = condensedFormatKV
 	opts.withoutNewlines = true
+}
+
+// ShowCommands configures RunInternalIterCmd to show the command in each output
+// line (so you don't have to visually match the line to the command).
+func ShowCommands(opts *iterCmdOpts) {
+	opts.showCommands = true
 }
 
 // Verbose configures RunInternalIterCmd to output verbose results.
@@ -125,11 +133,13 @@ func RunInternalIterCmdWriter(
 		require.NoError(t, err)
 		return &kv.K, v
 	}
-	for _, line := range strings.Split(d.Input, "\n") {
+	lines := crstrings.Lines(d.Input)
+	maxCmdLen := 1
+	for _, line := range lines {
+		maxCmdLen = max(maxCmdLen, len(line))
+	}
+	for _, line := range lines {
 		parts := strings.Fields(line)
-		if len(parts) == 0 {
-			continue
-		}
 		var key *base.InternalKey
 		var value []byte
 		switch parts[0] {
@@ -221,6 +231,9 @@ func RunInternalIterCmdWriter(
 		default:
 			fmt.Fprintf(w, "unknown op: %s", parts[0])
 			return
+		}
+		if o.showCommands {
+			fmt.Fprintf(w, "%*s: ", min(maxCmdLen, 40), line)
 		}
 		o.fmtKV(w, key, value, iter)
 		if !o.withoutNewlines {

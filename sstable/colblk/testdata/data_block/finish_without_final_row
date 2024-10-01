@@ -127,12 +127,12 @@ next
 next
 next
 ----
-a@10:apple
-b@5:banana
-b@2:blueberry
-c@9:coconut
-c@6:cantelope
-.
+first: a@10:apple
+ next: b@5:banana
+ next: b@2:blueberry
+ next: c@9:coconut
+ next: c@6:cantelope
+ next: .
 
 init
 ----
