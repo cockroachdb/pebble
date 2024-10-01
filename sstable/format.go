@@ -214,9 +214,9 @@ const (
 //     RANGEDELs when a Pebble-external writer is trying to construct a strict
 //     obsolete sstable.
 
-// ParseTableFormat parses the given magic bytes and version into its
+// parseTableFormat parses the given magic bytes and version into its
 // corresponding internal TableFormat.
-func ParseTableFormat(magic []byte, version uint32) (TableFormat, error) {
+func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 	switch string(magic) {
 	case levelDBMagic:
 		return TableFormatLevelDB, nil
@@ -286,6 +286,8 @@ func (f TableFormat) AsTuple() (string, uint32) {
 // String returns the TableFormat (Magic String,Version) tuple.
 func (f TableFormat) String() string {
 	switch f {
+	case TableFormatUnspecified:
+		return "unspecified"
 	case TableFormatLevelDB:
 		return "(LevelDB)"
 	case TableFormatRocksDBv2:
@@ -303,4 +305,22 @@ func (f TableFormat) String() string {
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
+}
+
+var tableFormatStrings = func() map[string]TableFormat {
+	strs := make(map[string]TableFormat, NumTableFormats)
+	for f := TableFormatUnspecified; f < NumTableFormats; f++ {
+		strs[f.String()] = f
+	}
+	return strs
+}()
+
+// ParseTableFormatString parses a TableFormat from its human-readable string
+// representation.
+func ParseTableFormatString(s string) (TableFormat, error) {
+	f, ok := tableFormatStrings[s]
+	if !ok {
+		return TableFormatUnspecified, errors.Errorf("unknown table format %q", s)
+	}
+	return f, nil
 }

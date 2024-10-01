@@ -88,7 +88,7 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			// Tuple -> TableFormat.
-			f, err := ParseTableFormat([]byte(tc.magic), tc.version)
+			f, err := parseTableFormat([]byte(tc.magic), tc.version)
 			if err != nil {
 				// Keep the formatting consistent with what the Reader observes
 				// through readFooter.

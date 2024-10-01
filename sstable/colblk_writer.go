@@ -511,35 +511,37 @@ func (w *RawColumnWriter) evaluatePoint(
 	//  . The value to be sufficiently large. (Currently we simply require a
 	//    non-zero length, so all non-empty values are eligible for storage
 	//    out-of-band in a value block.)
-	if w.opts.DisableValueBlocks || !eval.kcmp.PrefixEqual() ||
-		prevKeyKind != InternalKeyKindSet || keyKind == InternalKeyKindSet {
+	//
+	// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
+	// valueHandle, this should be > 3. But tiny values are common in test and
+	// unlikely in production, so we use 0 here for better test coverage.
+	const tinyValueThreshold = 0
+	useValueBlock := !w.opts.DisableValueBlocks &&
+		eval.kcmp.PrefixEqual() &&
+		prevKeyKind == InternalKeyKindSet &&
+		keyKind == InternalKeyKindSet &&
+		valueLen > tinyValueThreshold &&
+		w.valueBlock != nil
+	if !useValueBlock {
 		return eval, nil
 	}
 	// NB: it is possible that eval.kcmp.UserKeyComparison == 0, i.e., these two
 	// SETs have identical user keys (because of an open snapshot). This should
 	// be the rare case.
 
-	// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
-	// valueHandle, this should be > 3. But tiny values are common in test and
-	// unlikely in production, so we use 0 here for better test coverage.
-	const tinyValueThreshold = 0
-	if valueLen <= tinyValueThreshold {
-		return eval, nil
-	}
-
 	// If there are bounds requiring some keys' values to be in-place, compare
 	// the prefix against the bounds.
 	if !w.opts.RequiredInPlaceValueBound.IsEmpty() {
 		if w.comparer.Compare(w.opts.RequiredInPlaceValueBound.Upper, key.UserKey[:eval.kcmp.PrefixLen]) <= 0 {
 			// Common case for CockroachDB. Make it empty since all future keys
-			// in this sstable will also have cmpUpper <= 0.
+			// will be >= this key.
 			w.opts.RequiredInPlaceValueBound = UserKeyPrefixBound{}
 		} else if w.comparer.Compare(key.UserKey[:eval.kcmp.PrefixLen], w.opts.RequiredInPlaceValueBound.Lower) >= 0 {
 			// Don't write to value block if the key is within the bounds.
 			return eval, nil
 		}
 	}
-	eval.writeToValueBlock = w.valueBlock != nil
+	eval.writeToValueBlock = true
 	return eval, nil
 }
 
