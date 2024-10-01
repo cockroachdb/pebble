@@ -125,6 +125,60 @@ block 1: 141-253 props="bp2"
 block 0: 24-48 props="bp1"
 .
 
+# Test Next-ing an index iterator that's already exhausted in the forward
+# direction. The sstable iterators do this in some circumstances. The Next
+# should be a no-op and a subsequent Prev should still return to the last block
+# handle in the block.
+
+iter
+last
+next
+next
+prev
+----
+block 5: 963-1289 props="bp6"
+.
+.
+block 5: 963-1289 props="bp6"
+
+# Test Prev-ing an index iterator that's already exhausted in the reverse
+# direction. The sstable iterators do this in some circumstances. The Prev
+# should be a no-op and a subsequent Next should still return to the first block
+# handle in the block.
+
+iter
+first
+prev
+prev
+next
+----
+block 0: 24-48 props="bp1"
+.
+.
+block 0: 24-48 props="bp1"
+
+# Test Invalidate() and ensure that Valid() and all positioning methods return
+# false after it.
+
+iter
+first
+invalidate
+is-valid
+next
+prev
+first
+last
+seek-ge a
+----
+block 0: 24-48 props="bp1"
+.
+Valid()=false
+.
+.
+.
+.
+.
+
 # Rebuild the same index block, but excluding the last row during the final Finish().
 
 build rows=5

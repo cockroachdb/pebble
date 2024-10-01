@@ -242,13 +242,14 @@ func (i *IndexIter) ResetForReuse() IndexIter {
 // Valid returns true if the iterator is currently positioned at a valid block
 // handle.
 func (i *IndexIter) Valid() bool {
-	return 0 <= i.row && i.row < int(i.r.br.header.Rows)
+	return 0 <= i.row && i.row < i.n
 }
 
 // Invalidate invalidates the block iterator, removing references to the block
 // it was initialized with.
 func (i *IndexIter) Invalidate() {
 	i.r = nil
+	i.n = 0
 }
 
 // IsDataInvalidated returns true when the iterator has been invalidated
@@ -321,17 +322,19 @@ func (i *IndexIter) Last() bool {
 }
 
 // Next steps the index iterator to the next block entry. It returns false if
-// the index block is exhausted.
+// the index block is exhausted in the forward direction. A call to Next while
+// already exhausted in the forward direction is a no-op.
 func (i *IndexIter) Next() bool {
-	i.row++
+	i.row = min(i.n, i.row+1)
 	return i.row < i.n
 }
 
 // Prev steps the index iterator to the previous block entry. It returns false
-// if the index block is exhausted.
+// if the index block is exhausted in the reverse direction. A call to Prev
+// while already exhausted in the reverse direction is a no-op.
 func (i *IndexIter) Prev() bool {
-	i.row--
-	return i.row >= 0
+	i.row = max(-1, i.row-1)
+	return i.row >= 0 && i.row < i.n
 }
 
 // Close closes the iterator, releasing any resources it holds.
