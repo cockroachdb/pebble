@@ -162,8 +162,10 @@ type DataBlockIterator interface {
 	// contained within the data block. It's equivalent to performing
 	//   Compare(firstUserKey, k)
 	CompareFirstUserKey(k []byte) int
-	// Invalidate invalidates the block iterator, removing references to the block
-	// it was initialized with.
+	// Invalidate invalidates the block iterator, removing references to the
+	// block it was initialized with. The iterator may continue to be used after
+	// a call to Invalidate, but all positioning methods should return false.
+	// Valid() must also return false.
 	Invalidate()
 	// IsDataInvalidated returns true when the iterator has been invalidated
 	// using an Invalidate call.

@@ -118,6 +118,9 @@ func TestDataBlock(t *testing.T) {
 				if td.HasArg("verbose") {
 					o = append(o, itertest.Verbose)
 				}
+				if td.HasArg("invalidated") {
+					it = DataBlockIter{}
+				}
 				return itertest.RunInternalIterCmd(t, td, &it, o...)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)

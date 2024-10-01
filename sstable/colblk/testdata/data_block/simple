@@ -302,6 +302,21 @@ seek-lt c@10: b@2:blueberry
 seek-lt d@11: c@1:clementine
 seek-lt d@10: d@11: 
 
+iter invalidated
+first
+seek-ge foo
+next
+prev
+seek-lt foo
+last
+----
+      first: .
+seek-ge foo: .
+       next: .
+       prev: .
+seek-lt foo: .
+       last: .
+
 init
 ----
 size=51:

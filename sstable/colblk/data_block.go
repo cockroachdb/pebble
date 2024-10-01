@@ -790,8 +790,21 @@ func (c *MultiDataBlockIter) Handle() block.BufferHandle {
 	return c.h
 }
 
+// Valid returns true if the iterator is currently positioned at a valid KV.
+func (i *MultiDataBlockIter) Valid() bool {
+	return i.row >= 0 && i.row <= i.maxRow
+}
+
+// KV returns the key-value pair at the current iterator position. The
+// iterator must be positioned over a valid KV.
+func (i *MultiDataBlockIter) KV() *base.InternalKV {
+	return &i.kv
+}
+
 // Invalidate invalidates the block iterator, removing references to the block
-// it was initialized with.
+// it was initialized with. The iterator may continue to be used after
+// a call to Invalidate, but all positioning methods should return false.
+// Valid() must also return false.
 func (c *MultiDataBlockIter) Invalidate() {
 	c.DataBlockIter = DataBlockIter{}
 }
@@ -893,6 +906,9 @@ func (i *DataBlockIter) CompareFirstUserKey(k []byte) int {
 
 // SeekGE implements the base.InternalIterator interface.
 func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	searchDir := int8(0)
 	if flags.TrySeekUsingNext() {
 		searchDir = +1
@@ -926,6 +942,9 @@ func (i *DataBlockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 
 // SeekLT implements the base.InternalIterator interface.
 func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	i.row = i.keySeeker.SeekGE(key, i.row, 0 /* searchDir */) - 1
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(max(i.row, 0))
@@ -941,6 +960,9 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 
 // First implements the base.InternalIterator interface.
 func (i *DataBlockIter) First() *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	i.row = 0
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(0)
@@ -956,6 +978,9 @@ func (i *DataBlockIter) First() *base.InternalKV {
 
 // Last implements the base.InternalIterator interface.
 func (i *DataBlockIter) Last() *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	i.row = i.maxRow
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.maxRow + 1
@@ -971,6 +996,9 @@ func (i *DataBlockIter) Last() *base.InternalKV {
 
 // Next advances to the next KV pair in the block.
 func (i *DataBlockIter) Next() *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	// Inline decodeRow, but avoiding unnecessary checks against i.row.
 	if i.row >= i.maxRow {
 		i.row = i.maxRow + 1
@@ -1026,6 +1054,9 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 // prefix as the previous entry. Checking the value prefix byte bit requires
 // locating that byte which requires decoding 3 varints per key/value pair.
 func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	i.row = i.r.prefixChanged.SeekSetBitGE(i.row + 1)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
@@ -1039,6 +1070,9 @@ func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
 
 // Prev moves the iterator to the previous KV pair in the block.
 func (i *DataBlockIter) Prev() *base.InternalKV {
+	if i.r == nil {
+		return nil
+	}
 	i.row--
 	if i.transforms.HideObsoletePoints && i.atObsoletePointBackward() {
 		i.skipObsoletePointsBackward()
@@ -1168,17 +1202,6 @@ func (i *DataBlockIter) decodeKey() {
 }
 
 var _ = (*DataBlockIter).decodeKey
-
-// Valid returns true if the iterator is currently positioned at a valid KV.
-func (i *DataBlockIter) Valid() bool {
-	return i.row < 0 || i.row > i.maxRow
-}
-
-// KV returns the key-value pair at the current iterator position. The
-// iterator must be positioned over a valid KV.
-func (i *DataBlockIter) KV() *base.InternalKV {
-	return &i.kv
-}
 
 // Close implements the base.InternalIterator interface.
 func (i *DataBlockIter) Close() error {
