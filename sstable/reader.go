@@ -232,21 +232,40 @@ func (r *Reader) newCompactionIter(
 		transforms.HideObsoletePoints = true
 	}
 	if r.Properties.IndexType == twoLevelIndex {
-		i, err := newRowBlockTwoLevelIterator(
+		if !r.tableFormat.BlockColumnar() {
+			i, err := newRowBlockTwoLevelIterator(
+				context.Background(),
+				r, vState, transforms, nil /* lower */, nil /* upper */, nil,
+				NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
+			if err != nil {
+				return nil, err
+			}
+			i.SetupForCompaction()
+			return i, nil
+		}
+		i, err := newColumnBlockTwoLevelIterator(
 			context.Background(),
 			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
-			NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
-		)
+			NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
 		if err != nil {
 			return nil, err
 		}
 		i.SetupForCompaction()
 		return i, nil
 	}
-	i, err := newRowBlockSingleLevelIterator(
+	if !r.tableFormat.BlockColumnar() {
+		i, err := newRowBlockSingleLevelIterator(
+			context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
+			nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
+		if err != nil {
+			return nil, err
+		}
+		i.SetupForCompaction()
+		return i, nil
+	}
+	i, err := newColumnBlockSingleLevelIterator(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
-		nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool,
-	)
+		nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +758,10 @@ func (r *Reader) CommonProperties() *CommonProperties {
 // data blocks overlapped and add that same fraction of the metadata blocks to the
 // estimate.
 func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
-	return estimateDiskUsage[rowblk.IndexIter, *rowblk.IndexIter](r, start, end)
+	if !r.tableFormat.BlockColumnar() {
+		return estimateDiskUsage[rowblk.IndexIter, *rowblk.IndexIter](r, start, end)
+	}
+	return estimateDiskUsage[colblk.IndexIter, *colblk.IndexIter](r, start, end)
 }
 
 func estimateDiskUsage[I any, PI indexBlockIterator[I]](
