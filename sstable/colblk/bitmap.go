@@ -338,7 +338,10 @@ func (b *BitmapBuilder) Invert(nRows int) {
 	b.minNonZeroRowCount = 1
 	// If the tail of b is sparse, fill in zeroes before inverting.
 	nBitmapWords := (nRows + 63) >> 6
-	b.words = slices.Grow(b.words, nBitmapWords-len(b.words))[:nBitmapWords]
+	if len(b.words) < nBitmapWords {
+		b.words = slices.Grow(b.words, nBitmapWords-len(b.words))
+	}
+	b.words = b.words[:nBitmapWords]
 	for i := range b.words {
 		b.words[i] = ^b.words[i]
 	}
