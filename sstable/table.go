@@ -351,7 +351,7 @@ func parseFooter(buf []byte, off, size int64) (footer, error) {
 		footer.footerBH.Length = uint64(len(buf))
 		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
 
-		format, err := ParseTableFormat(magic, version)
+		format, err := parseTableFormat(magic, version)
 		if err != nil {
 			return footer, err
 		}
@@ -430,7 +430,7 @@ func supportsTwoLevelIndex(format TableFormat) bool {
 	switch format {
 	case TableFormatLevelDB:
 		return false
-	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4:
+	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4, TableFormatPebblev5:
 		return true
 	default:
 		panic("sstable: unspecified table format version")

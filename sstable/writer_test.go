@@ -295,7 +295,6 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			require.NoError(t, r.Close())
 		}
 	}()
-	formatVersion := TableFormatMax
 	formatMeta := func(m *WriterMetadata) string {
 		return fmt.Sprintf("value-blocks: num-values %d, num-blocks: %d, size: %d",
 			m.Properties.NumValuesInValueBlocks, m.Properties.NumValueBlocks,
@@ -322,11 +321,22 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				_ = r.Close()
 				r = nil
 			}
+			formatVersion := TableFormatMax
 			var meta *WriterMetadata
 			var err error
 			var blockSize int
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
+			}
+			if arg, ok := td.Arg("table-format"); ok {
+				// The datadriven cmd parser will parse the TableFormat string
+				// because its string representation looks like the datadriven
+				// format for multiple arguments (<arg1>,<arg2>).
+				name, v := arg.TwoVals(t)
+				formatVersion, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
+				if err != nil {
+					return err.Error()
+				}
 			}
 			var inPlaceValueBound UserKeyPrefixBound
 			if td.HasArg("in-place-bound") {
@@ -370,16 +380,20 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			forceIgnoreValueBlocks := func(i *singleLevelIteratorRowBlocks) {
+			forceRowIterIgnoreValueBlocks := func(i *singleLevelIteratorRowBlocks) {
 				i.vbReader = nil
 				i.data.SetGetLazyValuer(nil)
 				i.data.SetHasValuePrefix(false)
 			}
 			switch i := iter.(type) {
 			case *twoLevelIteratorRowBlocks:
-				forceIgnoreValueBlocks(&i.secondLevel)
+				forceRowIterIgnoreValueBlocks(&i.secondLevel)
 			case *singleLevelIteratorRowBlocks:
-				forceIgnoreValueBlocks(i)
+				forceRowIterIgnoreValueBlocks(i)
+			case *twoLevelIteratorColumnBlocks, *singleLevelIteratorColumnBlocks:
+				return "column iterator does not support raw scan"
+			default:
+				return fmt.Sprintf("unknown iterator type: %T", i)
 			}
 			defer iter.Close()
 
@@ -456,7 +470,11 @@ func TestWriterWithValueBlocks(t *testing.T) {
 
 				} else {
 					require.False(t, callerOwned)
-					fmt.Fprintf(&buf, "(in-place: len %d): %s\n", values[i].Len(), string(v))
+					if values[i].Len() > 0 {
+						fmt.Fprintf(&buf, "(in-place: len %d): %s\n", values[i].Len(), string(v))
+					} else {
+						fmt.Fprintf(&buf, "(in-place: len %d):\n", values[i].Len())
+					}
 				}
 			}
 			return buf.String()
