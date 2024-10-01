@@ -290,27 +290,27 @@ next
 next
 next
 ----
-blockprefix_apple@98:apple98
-blockprefix_apple@52:mock external value
-blockprefix_apple@23:mock external value
-blockprefix_apple@11:mock external value
-blockprefix_banana@94:banana94
-blockprefix_banana@93:
-blockprefix_banana@93:mock external value
-blockprefix_banana@72:mock external value
-blockprefix_banana@9:mock external value
-blockprefix_banana@1:mock external value
-blockprefix_coconut:coconut
-blockprefix_coconut@92:mock external value
-blockprefix_coconut@35:mock external value
-blockprefix_coconut@22:mock external value
-blockprefix_coconut@21:mock external value
-blockprefix_coconut@1:mock external value
-blockprefix_guava@99:mock external value
-blockprefix_kiwi@99:mock external value
-blockprefix_kiwi@98:mock external value
-blockprefix_lemon@92:
-.
+first: blockprefix_apple@98:apple98
+ next: blockprefix_apple@52:mock external value
+ next: blockprefix_apple@23:mock external value
+ next: blockprefix_apple@11:mock external value
+ next: blockprefix_banana@94:banana94
+ next: blockprefix_banana@93:
+ next: blockprefix_banana@93:mock external value
+ next: blockprefix_banana@72:mock external value
+ next: blockprefix_banana@9:mock external value
+ next: blockprefix_banana@1:mock external value
+ next: blockprefix_coconut:coconut
+ next: blockprefix_coconut@92:mock external value
+ next: blockprefix_coconut@35:mock external value
+ next: blockprefix_coconut@22:mock external value
+ next: blockprefix_coconut@21:mock external value
+ next: blockprefix_coconut@1:mock external value
+ next: blockprefix_guava@99:mock external value
+ next: blockprefix_kiwi@99:mock external value
+ next: blockprefix_kiwi@98:mock external value
+ next: blockprefix_lemon@92:
+ next: .
 
 # Scan across the block using next prefix.
 
@@ -323,17 +323,17 @@ next-prefix
 next-prefix
 next-prefix
 ----
-blockprefix_apple@98:apple98
-blockprefix_banana@94:banana94
-blockprefix_coconut:coconut
-blockprefix_guava@99:mock external value
-blockprefix_kiwi@99:mock external value
-blockprefix_lemon@92:
-.
+      first: blockprefix_apple@98:apple98
+next-prefix: blockprefix_banana@94:banana94
+next-prefix: blockprefix_coconut:coconut
+next-prefix: blockprefix_guava@99:mock external value
+next-prefix: blockprefix_kiwi@99:mock external value
+next-prefix: blockprefix_lemon@92:
+next-prefix: .
 
 iter
 seek-ge blockprefix_banana@73
 next-prefix
 ----
-blockprefix_banana@72:mock external value
-blockprefix_coconut:coconut
+seek-ge blockprefix_banana@73: blockprefix_banana@72:mock external value
+                  next-prefix: blockprefix_coconut:coconut

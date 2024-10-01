@@ -158,14 +158,14 @@ next
 next
 next
 ----
-a@10:apple
-b@5:banana
-b@2:blueberry
-c@9:coconut
-c@6:cantelope
-c@1:clementine
-d@11: 
-.
+first: a@10:apple
+ next: b@5:banana
+ next: b@2:blueberry
+ next: c@9:coconut
+ next: c@6:cantelope
+ next: c@1:clementine
+ next: d@11: 
+ next: .
 
 iter
 last
@@ -177,14 +177,14 @@ prev
 prev
 prev
 ----
-d@11: 
-c@1:clementine
-c@6:cantelope
-c@9:coconut
-b@2:blueberry
-b@5:banana
-a@10:apple
-.
+last: d@11: 
+prev: c@1:clementine
+prev: c@6:cantelope
+prev: c@9:coconut
+prev: b@2:blueberry
+prev: b@5:banana
+prev: a@10:apple
+prev: .
 
 iter
 seek-ge a
@@ -200,18 +200,18 @@ seek-ge b@2
 seek-ge b@1
 seek-ge c
 ----
-a@10:apple
-a@10:apple
-b@5:banana
-b@5:banana
-b@5:banana
-b@5:banana
-b@5:banana
-b@2:blueberry
-b@2:blueberry
-b@2:blueberry
-c@9:coconut
-c@9:coconut
+       seek-ge a: a@10:apple
+    seek-ge a@10: a@10:apple
+     seek-ge a@3: b@5:banana
+     seek-ge a@1: b@5:banana
+       seek-ge b: b@5:banana
+seek-ge b@999999: b@5:banana
+     seek-ge b@5: b@5:banana
+     seek-ge b@4: b@2:blueberry
+     seek-ge b@3: b@2:blueberry
+     seek-ge b@2: b@2:blueberry
+     seek-ge b@1: c@9:coconut
+       seek-ge c: c@9:coconut
 
 iter
 seek-ge c@10
@@ -229,20 +229,20 @@ seek-ge d
 seek-ge d@11
 seek-ge d@10
 ----
-c@9:coconut
-c@9:coconut
-c@6:cantelope
-c@6:cantelope
-c@6:cantelope
-c@1:clementine
-c@1:clementine
-c@1:clementine
-c@1:clementine
-c@1:clementine
-d@11: 
-d@11: 
-d@11: 
-.
+seek-ge c@10: c@9:coconut
+ seek-ge c@9: c@9:coconut
+ seek-ge c@8: c@6:cantelope
+ seek-ge c@7: c@6:cantelope
+ seek-ge c@6: c@6:cantelope
+ seek-ge c@5: c@1:clementine
+ seek-ge c@4: c@1:clementine
+ seek-ge c@3: c@1:clementine
+ seek-ge c@2: c@1:clementine
+ seek-ge c@1: c@1:clementine
+ seek-ge c@0: d@11: 
+   seek-ge d: d@11: 
+seek-ge d@11: d@11: 
+seek-ge d@10: .
 
 iter
 seek-lt a
@@ -258,18 +258,18 @@ seek-lt b@2
 seek-lt b@1
 seek-lt c
 ----
-.
-.
-a@10:apple
-a@10:apple
-a@10:apple
-a@10:apple
-a@10:apple
-b@5:banana
-b@5:banana
-b@5:banana
-b@2:blueberry
-b@2:blueberry
+       seek-lt a: .
+    seek-lt a@10: .
+     seek-lt a@3: a@10:apple
+     seek-lt a@1: a@10:apple
+       seek-lt b: a@10:apple
+seek-lt b@999999: a@10:apple
+     seek-lt b@5: a@10:apple
+     seek-lt b@4: b@5:banana
+     seek-lt b@3: b@5:banana
+     seek-lt b@2: b@5:banana
+     seek-lt b@1: b@2:blueberry
+       seek-lt c: b@2:blueberry
 
 iter
 seek-lt c@10
@@ -287,20 +287,20 @@ seek-lt d
 seek-lt d@11
 seek-lt d@10
 ----
-b@2:blueberry
-b@2:blueberry
-c@9:coconut
-c@9:coconut
-c@9:coconut
-c@6:cantelope
-c@6:cantelope
-c@6:cantelope
-c@6:cantelope
-c@6:cantelope
-c@1:clementine
-c@1:clementine
-c@1:clementine
-d@11: 
+seek-lt c@10: b@2:blueberry
+ seek-lt c@9: b@2:blueberry
+ seek-lt c@8: c@9:coconut
+ seek-lt c@7: c@9:coconut
+ seek-lt c@6: c@9:coconut
+ seek-lt c@5: c@6:cantelope
+ seek-lt c@4: c@6:cantelope
+ seek-lt c@3: c@6:cantelope
+ seek-lt c@2: c@6:cantelope
+ seek-lt c@1: c@6:cantelope
+ seek-lt c@0: c@1:clementine
+   seek-lt d: c@1:clementine
+seek-lt d@11: c@1:clementine
+seek-lt d@10: d@11: 
 
 init
 ----
@@ -513,13 +513,13 @@ seek-ge aaaaaaaaaaaaaaapparh
 seek-ge aaaaaaaaaaaaaaarresting@10
 seek-ge aaaaaaaaaaaaaaarrived@10
 ----
-aaaaaaaaaaaaaaappalling@10:a
-aaaaaaaaaaaaaaappalling@10:a
-aaaaaaaaaaaaaaappalling@10:a
-aaaaaaaaaaaaaaapparel@10:a
-aaaaaaaaaaaaaaapparition@10:a
-aaaaaaaaaaaaaaarresting@10:a
-aaaaaaaaaaaaaaarrived@10:a
+                       seek-ge aaa: aaaaaaaaaaaaaaappalling@10:a
+                 seek-ge aaaaaaaaa: aaaaaaaaaaaaaaappalling@10:a
+         seek-ge aaaaaaaaaaaaaaapp: aaaaaaaaaaaaaaappalling@10:a
+  seek-ge aaaaaaaaaaaaaaapparel@10: aaaaaaaaaaaaaaapparel@10:a
+      seek-ge aaaaaaaaaaaaaaapparh: aaaaaaaaaaaaaaapparition@10:a
+seek-ge aaaaaaaaaaaaaaarresting@10: aaaaaaaaaaaaaaarresting@10:a
+  seek-ge aaaaaaaaaaaaaaarrived@10: aaaaaaaaaaaaaaarrived@10:a
 
 iter
 seek-lt aaa
@@ -530,10 +530,10 @@ seek-lt aaaaaaaaaaaaaaapparh
 seek-lt aaaaaaaaaaaaaaarresting@10
 seek-lt aaaaaaaaaaaaaaarrived@10
 ----
-.
-.
-.
-aaaaaaaaaaaaaaappalling@10:a
-aaaaaaaaaaaaaaapparel@10:a
-aaaaaaaaaaaaaaapproves@10:a
-aaaaaaaaaaaaaaarresting@10:a
+                       seek-lt aaa: .
+                 seek-lt aaaaaaaaa: .
+         seek-lt aaaaaaaaaaaaaaapp: .
+  seek-lt aaaaaaaaaaaaaaapparel@10: aaaaaaaaaaaaaaappalling@10:a
+      seek-lt aaaaaaaaaaaaaaapparh: aaaaaaaaaaaaaaapparel@10:a
+seek-lt aaaaaaaaaaaaaaarresting@10: aaaaaaaaaaaaaaapproves@10:a
+  seek-lt aaaaaaaaaaaaaaarrived@10: aaaaaaaaaaaaaaarresting@10:a
