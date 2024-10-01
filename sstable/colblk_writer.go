@@ -512,7 +512,7 @@ func (w *RawColumnWriter) evaluatePoint(
 	//    non-zero length, so all non-empty values are eligible for storage
 	//    out-of-band in a value block.)
 	if w.opts.DisableValueBlocks || !eval.kcmp.PrefixEqual() ||
-		prevKeyKind != InternalKeyKindSet || keyKind == InternalKeyKindSet {
+		prevKeyKind != InternalKeyKindSet || keyKind != InternalKeyKindSet {
 		return eval, nil
 	}
 	// NB: it is possible that eval.kcmp.UserKeyComparison == 0, i.e., these two
