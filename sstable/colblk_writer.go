@@ -258,6 +258,34 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 	blockWriter := &w.rangeKeyBlock
 	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
 		blockWriter = &w.rangeDelBlock
+		// Update range delete properties.
+		// NB: These properties are computed differently than the rowblk sstable
+		// writer because this writer does not flatten them into row key-value
+		// pairs.
+		w.props.RawKeySize += uint64(len(span.Start) + len(span.End))
+		count := uint64(len(span.Keys))
+		w.props.NumEntries += count
+		w.props.NumDeletions += count
+		w.props.NumRangeDeletions += count
+	} else {
+		// Update range key properties.
+		// NB: These properties are computed differently than the rowblk sstable
+		// writer because this writer does not flatten them into row key-value
+		// pairs.
+		w.props.RawRangeKeyKeySize += uint64(len(span.Start) + len(span.End))
+		for _, k := range span.Keys {
+			w.props.RawRangeKeyValueSize += uint64(len(k.Value))
+			switch k.Kind() {
+			case base.InternalKeyKindRangeKeyDelete:
+				w.props.NumRangeKeyDels++
+			case base.InternalKeyKindRangeKeySet:
+				w.props.NumRangeKeySets++
+			case base.InternalKeyKindRangeKeyUnset:
+				w.props.NumRangeKeyUnsets++
+			default:
+				panic(errors.Errorf("pebble: invalid range key type: %s", k.Kind()))
+			}
+		}
 	}
 	if !w.disableKeyOrderChecks && blockWriter.KeyCount() > 0 {
 		// Check that spans are being added in fragmented order. If the two

@@ -88,6 +88,26 @@ s-z:{(#1,RANGEDEL)}
 scan-range-key
 ----
 
+props
+----
+rocksdb.num.entries: 9
+rocksdb.raw.key.size: 10
+rocksdb.raw.value.size: 0
+rocksdb.deleted.keys: 9
+rocksdb.num.range-deletions: 9
+rocksdb.num.data.blocks: 0
+rocksdb.compression: Snappy
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 0
+rocksdb.filter.size: 0
+rocksdb.index.size: 33
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+obsolete-key: hex:0074
+
 # The range tombstone upper bound is exclusive, so a point operation
 # on that same key will be the actual boundary.
 
@@ -276,7 +296,32 @@ layout
 ----
          0  index (28)
         33  range-key (84)
-       122  properties (441)
-       568  meta-index (57)
-       630  footer (53)
-       683  EOF
+       122  properties (528)
+       655  meta-index (57)
+       717  footer (53)
+       770  EOF
+
+props
+----
+rocksdb.num.entries: 0
+rocksdb.raw.key.size: 0
+rocksdb.raw.value.size: 0
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+pebble.num.range-key-dels: 0
+pebble.num.range-key-sets: 3
+rocksdb.num.data.blocks: 0
+rocksdb.compression: Snappy
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 0
+rocksdb.filter.size: 0
+rocksdb.index.size: 33
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+pebble.num.range-key-unsets: 0
+rocksdb.property.collectors: [obsolete-key]
+pebble.raw.range-key.key.size: 6
+pebble.raw.range-key.value.size: 9
+obsolete-key: hex:0074
