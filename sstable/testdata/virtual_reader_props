@@ -1,5 +1,5 @@
 # Simple sanity test with single level index.
-build
+build table-format=(Pebble,v4)
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -23,8 +23,34 @@ props:
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
 
+# Repeat the above with (Pebble,v5).
+
+build table-format=(Pebble,v5)
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+point:    [a#1,SET-d#1,SET]
+seqnums:  [1-1]
+
+# Note that the raw key/value sizes aren't accurate here because we use
+# Reader.EstimateDiskUsage with virtual sstables bounds to determine virtual
+# sstable size which is then used to extrapolate virtual sstable properties, and
+# for tiny sstables, virtual sstable sizes aren't accurate.
+virtualize lower=b.SET.1 upper=c.SET.1 show-props
+----
+bounds:  [b#1,SET-c#1,SET]
+filenum: 000002
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 5
+  rocksdb.raw.value.size: 1
+  rocksdb.num.data.blocks: 1
+
+
 # Test 2: Similar to test 1 but force two level iterators.
-build block-size=1 index-block-size=1
+build block-size=1 index-block-size=1 table-format=(Pebble,v4)
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -36,7 +62,7 @@ seqnums:  [1-1]
 virtualize lower=b.SET.1 upper=c.SET.1 show-props
 ----
 bounds:  [b#1,SET-c#1,SET]
-filenum: 000002
+filenum: 000003
 props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 2
@@ -96,13 +122,87 @@ constrain a,aa,false
 ----
 b,aa,false
 
-build block-size=1 index-block-size=1
+# Repeat the above with (Pebble,v5).
+
+build block-size=1 index-block-size=1 table-format=(Pebble,v5)
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+point:    [a#1,SET-d#1,SET]
+seqnums:  [1-1]
+
+virtualize lower=b.SET.1 upper=c.SET.1 show-props
+----
+bounds:  [b#1,SET-c#1,SET]
+filenum: 000004
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 5
+  rocksdb.raw.value.size: 1
+  rocksdb.num.data.blocks: 1
+
+# Test the constrain bounds function. It performs some subtle shrinking and
+# expanding of bounds. The current virtual sstable bounds are [b,c].
+# 1. start key < virtual sstable start key, end key is exclusive.
+constrain a,bb,false
+----
+b,bb,false
+
+# 2. start key < virtual sstable start key, end key is inclusive.
+constrain a,bb,true
+----
+b,bb,true
+
+# 3. start key is within virtual sstable bounds, end key is at virtual sstable
+# end bound, but is exclusive.
+constrain bb,c,false
+----
+bb,c,false
+
+# 3. start key is within virtual sstable bounds, end key is at virtual sstable
+# end bound, but is inclusive.
+constrain bb,c,true
+----
+bb,c,true
+
+# 4. start key is within virtual sstable bounds, end key is above virtual
+# sstable end bound and is exclusive.
+constrain bb,e,false
+----
+bb,c,true
+
+# 5. start key is within virtual sstable bounds, end key is above virtual
+# sstable end bound and is inclusive.
+constrain bb,e,true
+----
+bb,c,true
+
+# 6. Both start, end keys fit within virtual sstable bounds.
+constrain bb,bbb,false
+----
+bb,bbb,false
+
+# 6. Both start, end keys are out of bounds, but overlap.
+constrain a,d,false
+----
+b,c,true
+
+# 7. start, end keys have no overlap with virtual sstable bounds. Note that
+# lower becomes greater than upper here. We support this in the iterators
+# and don't return any keys for this case.
+constrain a,aa,false
+----
+b,aa,false
+
+build block-size=1 index-block-size=1 table-format=(Pebble,v4)
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
-d.RANGEDEL.4:e
+EncodeSpan: d-e:{(#4,RANGEDEL)}
 EncodeSpan: a-d:{(#11,RANGEKEYSET,@10,foo)}
-g.RANGEDEL.5:l
+EncodeSpan: g-l:{(#5,RANGEDEL)}
 EncodeSpan: y-z:{(#12,RANGEKEYSET,@11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
@@ -115,7 +215,7 @@ seqnums:  [1-12]
 virtualize lower=a.SET.1 upper=f.SET.1 show-props
 ----
 bounds:  [a#1,SET-f#1,SET]
-filenum: 000003
+filenum: 000005
 props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 4
@@ -125,7 +225,38 @@ props:
   pebble.num.range-key-sets: 1
   rocksdb.num.data.blocks: 1
 
-build
+# Repeat the above with (Pebble,v5).
+
+build block-size=1 index-block-size=1 table-format=(Pebble,v5)
+a.SET.1:a
+d.SET.2:d
+f.SET.3:f
+EncodeSpan: d-e:{(#4,RANGEDEL)}
+EncodeSpan: a-d:{(#11,RANGEKEYSET,@10,foo)}
+EncodeSpan: g-l:{(#5,RANGEDEL)}
+EncodeSpan: y-z:{(#12,RANGEKEYSET,@11,foo)}
+----
+point:    [a#1,SET-f#3,SET]
+rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
+rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
+seqnums:  [1-12]
+
+# Note that we shouldn't have range del spans which cross virtual sstable
+# boundaries; num.range-key-sets must be >= 1.
+virtualize lower=a.SET.1 upper=f.SET.1 show-props
+----
+bounds:  [a#1,SET-f#1,SET]
+filenum: 000006
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 6
+  rocksdb.raw.value.size: 1
+  rocksdb.deleted.keys: 1
+  rocksdb.num.range-deletions: 1
+  pebble.num.range-key-sets: 1
+  rocksdb.num.data.blocks: 1
+
+build table-format=(Pebble,v4)
 a.SET.1:a
 b.SET.2:b
 c.SET.3:c
@@ -141,9 +272,34 @@ seqnums:  [1-9]
 virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-filenum: 000004
+filenum: 000007
 props:
   rocksdb.num.entries: 2
   rocksdb.raw.key.size: 10
+  rocksdb.raw.value.size: 2
+  rocksdb.num.data.blocks: 1
+
+# Repeat the above with (Pebble,v5).
+
+build table-format=(Pebble,v5)
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+dd.SET.5:dd
+ddd.SET.6:ddd
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,SET-h#9,SET]
+seqnums:  [1-9]
+
+virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
+----
+bounds:  [dd#5,SET-ddd#6,SET]
+filenum: 000008
+props:
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 11
   rocksdb.raw.value.size: 2
   rocksdb.num.data.blocks: 1
