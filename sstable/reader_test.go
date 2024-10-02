@@ -165,6 +165,16 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 					NewTestKeysBlockPropertyCollector,
 				},
 			}
+			if arg, ok := td.Arg("table-format"); ok {
+				// The datadriven cmd parser will parse the TableFormat string
+				// because its string representation looks like the datadriven
+				// format for multiple arguments (<arg1>,<arg2>).
+				name, v := arg.TwoVals(t)
+				writerOpts.TableFormat, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			wMeta, r, err = runBuildCmd(td, writerOpts, 0)
 			if err != nil {
 				return err.Error()
