@@ -198,18 +198,18 @@ func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
 // contained within the data block. It's equivalent to performing
 //
 //	Compare(firstUserKey, k)
-func (ks *cockroachKeySeeker) CompareFirstUserKey(k []byte) int {
+func (ks *cockroachKeySeeker) IsLowerBound(k []byte) bool {
 	prefix, untypedSuffix, wallTime, logicalTime := crdbtest.DecodeTimestamp(k)
 	if v := crdbtest.Compare(ks.prefixes.UnsafeFirstSlice(), prefix); v != 0 {
-		return v
+		return v > 0
 	}
 	if len(untypedSuffix) > 0 {
-		return crdbtest.Compare(ks.untypedSuffixes.At(0), untypedSuffix)
+		return crdbtest.Compare(ks.untypedSuffixes.At(0), untypedSuffix) >= 0
 	}
 	if v := cmp.Compare(ks.mvccWallTimes.At(0), wallTime); v != 0 {
-		return v
+		return v > 0
 	}
-	return cmp.Compare(uint32(ks.mvccLogical.At(0)), logicalTime)
+	return cmp.Compare(uint32(ks.mvccLogical.At(0)), logicalTime) >= 0
 }
 
 // SeekGE is part of the KeySeeker interface.

@@ -429,13 +429,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) initBoundsForAlreadyLoadedBlock() {
 	// TODO(radu): determine automatically if we need to call First or not and
 	// unify this function with initBounds().
 	i.blockLower = i.lower
-	if i.blockLower != nil {
-		// TODO(radu): this should be <= 0
-		if PD(&i.data).CompareFirstUserKey(i.blockLower) > 0 {
-			// The lower-bound is less than the first key in the block. No need
-			// to check the lower-bound again for this block.
-			i.blockLower = nil
-		}
+	if i.blockLower != nil && PD(&i.data).IsLowerBound(i.blockLower) {
+		// The lower-bound is less than the first key in the block. No need
+		// to check the lower-bound again for this block.
+		i.blockLower = nil
 	}
 	i.blockUpper = i.upper
 	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
@@ -1103,7 +1100,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 
 	var dontSeekWithinBlock bool
 	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && PI(&i.index).Valid() &&
-		boundsCmp < 0 && PD(&i.data).CompareFirstUserKey(key) < 0 {
+		boundsCmp < 0 && !PD(&i.data).IsLowerBound(key) {
 		// Fast-path: The bounds have moved backward, and this SeekLT is
 		// respecting the upper bound (guaranteed by Iterator). We know that
 		// the iterator must already be positioned within or just outside the
