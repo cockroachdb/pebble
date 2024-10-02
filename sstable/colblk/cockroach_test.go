@@ -213,14 +213,16 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte) bool {
 }
 
 // SeekGE is part of the KeySeeker interface.
-func (ks *cockroachKeySeeker) SeekGE(key []byte, currRow int, dir int8) (row int) {
+func (ks *cockroachKeySeeker) SeekGE(
+	key []byte, boundRow int, searchDir int8,
+) (row int, equalPrefix bool) {
 	// TODO(jackson): Inline crdbtest.Split.
 	si := crdbtest.Split(key)
 	row, eq := ks.prefixes.Search(key[:si-1])
 	if eq {
-		return ks.seekGEOnSuffix(row, key[si:])
+		return ks.seekGEOnSuffix(row, key[si:]), true
 	}
-	return row
+	return row, false
 }
 
 // seekGEOnSuffix is a helper function for SeekGE when a seek key's prefix
