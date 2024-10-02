@@ -5,8 +5,6 @@
 package colblk
 
 import (
-	"bytes"
-
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -178,9 +176,10 @@ func (r *IndexReader) Describe(f *binfmt.Formatter) {
 
 // IndexIter is an iterator over the block entries in an index block.
 type IndexIter struct {
-	r   *IndexReader
-	n   int
-	row int
+	compare base.Compare
+	r       *IndexReader
+	n       int
+	row     int
 
 	h           block.BufferHandle
 	allocReader IndexReader
@@ -190,8 +189,14 @@ type IndexIter struct {
 var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
 // InitReader initializes an index iterator from the provided reader.
-func (i *IndexIter) InitReader(r *IndexReader) {
-	*i = IndexIter{r: r, n: int(r.br.header.Rows), h: i.h, allocReader: i.allocReader}
+func (i *IndexIter) InitReader(compare base.Compare, r *IndexReader) {
+	*i = IndexIter{
+		compare:     compare,
+		r:           r,
+		n:           int(r.br.header.Rows),
+		h:           i.h,
+		allocReader: i.allocReader,
+	}
 }
 
 // Init initializes an iterator from the provided block data slice.
@@ -202,7 +207,7 @@ func (i *IndexIter) Init(
 	i.h = block.BufferHandle{}
 	// TODO(jackson): Handle the transforms.
 	i.allocReader.Init(blk)
-	i.InitReader(&i.allocReader)
+	i.InitReader(cmp, &i.allocReader)
 	return nil
 }
 
@@ -220,7 +225,7 @@ func (i *IndexIter) InitHandle(
 	i.h.Release()
 	i.h = blk
 	i.allocReader.Init(i.h.Get())
-	i.InitReader(&i.allocReader)
+	i.InitReader(cmp, &i.allocReader)
 	return nil
 }
 
@@ -295,7 +300,7 @@ func (i *IndexIter) SeekGE(key []byte) bool {
 
 		// TODO(jackson): Is Bytes.At or Bytes.Slice(Bytes.Offset(h),
 		// Bytes.Offset(h+1)) faster in this code?
-		c := bytes.Compare(key, i.r.separators.At(h))
+		c := i.compare(key, i.r.separators.At(h))
 		if c > 0 {
 			index = h + 1 // preserves f(index-1) == false
 		} else {
