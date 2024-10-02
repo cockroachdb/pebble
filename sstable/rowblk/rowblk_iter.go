@@ -521,12 +521,10 @@ func (i *Iter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
-// CompareFirstUserKey compares the provided key to the first user key
-// contained within the data block. It's equivalent to performing
-//
-//	Compare(firstUserKey, k)
-func (i *Iter) CompareFirstUserKey(k []byte) int {
-	return i.cmp(i.firstUserKey, k)
+// IsLowerBound implements the block.DataBlockIterator interface.
+func (i *Iter) IsLowerBound(k []byte) bool {
+	// Note: we ignore HideObsoletePoints, but false negatives are allowed.
+	return i.cmp(i.firstUserKey, k) >= 0
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble

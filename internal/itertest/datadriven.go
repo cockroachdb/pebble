@@ -142,6 +142,9 @@ func RunInternalIterCmdWriter(
 		parts := strings.Fields(line)
 		var key *base.InternalKey
 		var value []byte
+		if o.showCommands {
+			fmt.Fprintf(w, "%*s: ", min(maxCmdLen, 40), line)
+		}
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) < 2 || len(parts) > 3 {
@@ -228,12 +231,18 @@ func RunInternalIterCmdWriter(
 				*o.stats = base.InternalIteratorStats{}
 			}
 			continue
+		case "is-lower-bound":
+			// This command is specific to colblk.DataBlockIter.
+			if len(parts) != 2 {
+				fmt.Fprint(w, "is-lower-bound <key>\n")
+				return
+			}
+			i := iter.(interface{ IsLowerBound(key []byte) bool })
+			fmt.Fprintf(w, "%v\n", i.IsLowerBound([]byte(parts[1])))
+			continue
 		default:
 			fmt.Fprintf(w, "unknown op: %s", parts[0])
 			return
-		}
-		if o.showCommands {
-			fmt.Fprintf(w, "%*s: ", min(maxCmdLen, 40), line)
 		}
 		o.fmtKV(w, key, value, iter)
 		if !o.withoutNewlines {
