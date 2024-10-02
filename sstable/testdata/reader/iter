@@ -12,11 +12,11 @@ next
 next
 next
 ----
-<a:1>:A
-<b:2>:B
-<c:3>:C
-<d:4>:D
-.
+first: <a:1>:A
+ next: <b:2>:B
+ next: <c:3>:C
+ next: <d:4>:D
+ next: .
 
 iter
 seek-ge a
@@ -25,11 +25,11 @@ next
 next
 next
 ----
-<a:1>:A
-<b:2>:B
-<c:3>:C
-<d:4>:D
-.
+seek-ge a: <a:1>:A
+     next: <b:2>:B
+     next: <c:3>:C
+     next: <d:4>:D
+     next: .
 
 iter
 seek-ge b
@@ -37,38 +37,38 @@ next
 next
 next
 ----
-<b:2>:B
-<c:3>:C
-<d:4>:D
-.
+seek-ge b: <b:2>:B
+     next: <c:3>:C
+     next: <d:4>:D
+     next: .
 
 iter
 seek-ge c
 next
 next
 ----
-<c:3>:C
-<d:4>:D
-.
+seek-ge c: <c:3>:C
+     next: <d:4>:D
+     next: .
 
 iter
 seek-ge d
 next
 ----
-<d:4>:D
-.
+seek-ge d: <d:4>:D
+     next: .
 
 iter
 seek-ge e
 ----
-.
+seek-ge e: .
 
 iter
 seek-ge d
 seek-ge z
 ----
-<d:4>:D
-.
+seek-ge d: <d:4>:D
+seek-ge z: .
 
 iter
 seek-ge b
@@ -76,10 +76,10 @@ seek-ge c
 seek-ge d
 seek-ge e
 ----
-<b:2>:B
-<c:3>:C
-<d:4>:D
-.
+seek-ge b: <b:2>:B
+seek-ge c: <c:3>:C
+seek-ge d: <d:4>:D
+seek-ge e: .
 
 iter
 last
@@ -88,11 +88,11 @@ prev
 prev
 prev
 ----
-<d:4>:D
-<c:3>:C
-<b:2>:B
-<a:1>:A
-.
+last: <d:4>:D
+prev: <c:3>:C
+prev: <b:2>:B
+prev: <a:1>:A
+prev: .
 
 iter
 seek-lt e
@@ -101,11 +101,11 @@ prev
 prev
 prev
 ----
-<d:4>:D
-<c:3>:C
-<b:2>:B
-<a:1>:A
-.
+seek-lt e: <d:4>:D
+     prev: <c:3>:C
+     prev: <b:2>:B
+     prev: <a:1>:A
+     prev: .
 
 iter
 seek-lt d
@@ -113,31 +113,31 @@ prev
 prev
 prev
 ----
-<c:3>:C
-<b:2>:B
-<a:1>:A
-.
+seek-lt d: <c:3>:C
+     prev: <b:2>:B
+     prev: <a:1>:A
+     prev: .
 
 iter
 seek-lt c
 prev
 prev
 ----
-<b:2>:B
-<a:1>:A
-.
+seek-lt c: <b:2>:B
+     prev: <a:1>:A
+     prev: .
 
 iter
 seek-lt b
 prev
 ----
-<a:1>:A
-.
+seek-lt b: <a:1>:A
+     prev: .
 
 iter
 seek-lt a
 ----
-.
+seek-lt a: .
 
 iter
 seek-lt d
@@ -145,10 +145,10 @@ seek-lt c
 seek-lt b
 seek-lt a
 ----
-<c:3>:C
-<b:2>:B
-<a:1>:A
-.
+seek-lt d: <c:3>:C
+seek-lt c: <b:2>:B
+seek-lt b: <a:1>:A
+seek-lt a: .
 
 iter globalSeqNum=1
 first
@@ -157,11 +157,11 @@ next
 next
 next
 ----
-<a:1>:A
-<b:1>:B
-<c:1>:C
-<d:1>:D
-.
+first: <a:1>:A
+ next: <b:1>:B
+ next: <c:1>:C
+ next: <d:1>:D
+ next: .
 
 iter globalSeqNum=10
 first
@@ -170,16 +170,16 @@ next
 next
 next
 ----
-<a:10>:A
-<b:10>:B
-<c:10>:C
-<d:10>:D
-.
+first: <a:10>:A
+ next: <b:10>:B
+ next: <c:10>:C
+ next: <d:10>:D
+ next: .
 
 iter globalSeqNum=0
 seek-lt x
 ----
-<d:4>:D
+seek-lt x: <d:4>:D
 
 get
 b
@@ -207,14 +207,14 @@ set-bounds lower= upper=
 seek-ge c
 seek-lt b
 ----
-<c:3>:C
-<a:1>:A
-.
-.
-.
-.
-<c:3>:C
-<a:1>:A
+                 seek-ge c: <c:3>:C
+                 seek-lt b: <a:1>:A
+set-bounds lower=b upper=c: .
+                 seek-ge c: .
+                 seek-lt b: .
+  set-bounds lower= upper=: .
+                 seek-ge c: <c:3>:C
+                 seek-lt b: <a:1>:A
 
 # Verify that seeking past the end of the sstable leaves the iterator
 # in a state where prev returns the last key in the table.
@@ -224,9 +224,9 @@ seek-lt d
 seek-ge f
 prev
 ----
-<c:3>:C
-.
-<d:4>:D
+seek-lt d: <c:3>:C
+seek-ge f: .
+     prev: <d:4>:D
 
 # Verify that seeking before the beginning of the sstable leaves the
 # iterator in a state where next returns the first key in the table.
@@ -236,9 +236,9 @@ seek-ge b
 seek-lt a
 next
 ----
-<b:2>:B
-.
-<a:1>:A
+seek-ge b: <b:2>:B
+seek-lt a: .
+     next: <a:1>:A
 
 
 # Verify the optimization to use next when doing SeekGE.
@@ -251,12 +251,12 @@ seek-ge c true
 seek-ge d true
 seek-ge e true
 ----
-<a:1>:A
-<a:1>:A
-<b:2>:B
-<c:3>:C
-<d:4>:D
-.
+seek-ge a false: <a:1>:A
+ seek-ge a true: <a:1>:A
+ seek-ge b true: <b:2>:B
+ seek-ge c true: <c:3>:C
+ seek-ge d true: <d:4>:D
+ seek-ge e true: .
 
 # Verify the optimization to use next when doing SeekPrefixGE.
 
@@ -268,12 +268,12 @@ seek-prefix-ge c true
 seek-prefix-ge d true
 seek-prefix-ge e true
 ----
-<a:1>:A
-<a:1>:A
-<b:2>:B
-<c:3>:C
-<d:4>:D
-.
+seek-prefix-ge a false: <a:1>:A
+ seek-prefix-ge a true: <a:1>:A
+ seek-prefix-ge b true: <b:2>:B
+ seek-prefix-ge c true: <c:3>:C
+ seek-prefix-ge d true: <d:4>:D
+ seek-prefix-ge e true: .
 
 # Verify that iteration from before the beginning or after the end of
 # the sstable does not "wrap around". A bug previously allowed this to
@@ -291,11 +291,11 @@ next
 next
 next
 ----
-<a:1>:a
-.
-<a:1>:a
-.
-.
+first: <a:1>:a
+ prev: .
+ next: <a:1>:a
+ next: .
+ next: .
 
 iter
 last
@@ -304,11 +304,11 @@ prev
 prev
 prev
 ----
-<a:1>:a
-.
-<a:1>:a
-.
-.
+last: <a:1>:a
+next: .
+prev: <a:1>:a
+prev: .
+prev: .
 
 # Build a sufficiently large SST to enable two-level indexes.
 
@@ -418,13 +418,13 @@ next
 next
 next
 ----
-<a:1>:A
-.
-<a:1>:A
-<aae:1>:E
-<aaf:1>:F
-<aag:1>:G
-<aah:1>:H
+first: <a:1>:A
+ prev: .
+ next: <a:1>:A
+ next: <aae:1>:E
+ next: <aaf:1>:F
+ next: <aag:1>:G
+ next: <aah:1>:H
 
 iter
 last
@@ -433,11 +433,11 @@ prev
 prev
 prev
 ----
-<ddz:4>:Z
-.
-<ddz:4>:Z
-<ddy:4>:Y
-<ddx:4>:X
+last: <ddz:4>:Z
+next: .
+prev: <ddz:4>:Z
+prev: <ddy:4>:Y
+prev: <ddx:4>:X
 
 iter
 first
@@ -448,13 +448,13 @@ seek-ge x
 prev
 prev
 ----
-<a:1>:A
-.
-<a:1>:A
-<aae:1>:E
-.
-<ddz:4>:Z
-<ddy:4>:Y
+    first: <a:1>:A
+     prev: .
+     next: <a:1>:A
+     next: <aae:1>:E
+seek-ge x: .
+     prev: <ddz:4>:Z
+     prev: <ddy:4>:Y
 
 iter
 first
@@ -465,13 +465,13 @@ seek-prefix-ge x
 prev
 prev
 ----
-<a:1>:A
-.
-<a:1>:A
-<aae:1>:E
-.
-.
-.
+           first: <a:1>:A
+            prev: .
+            next: <a:1>:A
+            next: <aae:1>:E
+seek-prefix-ge x: .
+            prev: .
+            prev: .
 
 iter
 last
@@ -482,13 +482,13 @@ seek-lt a
 next
 next
 ----
-<ddz:4>:Z
-.
-<ddz:4>:Z
-<ddy:4>:Y
-.
-<a:1>:A
-<aae:1>:E
+     last: <ddz:4>:Z
+     next: .
+     prev: <ddz:4>:Z
+     prev: <ddy:4>:Y
+seek-lt a: .
+     next: <a:1>:A
+     next: <aae:1>:E
 
 # Test that SeekPrefixGE does not position the iterator far outside the iterator bounds.
 # Doing so would break the subsequent SeekGE that is utilizing the next instead of seek
@@ -501,12 +501,12 @@ set-bounds lower=aae upper=b
 seek-ge aae
 next
 ----
-.
-<a:1>:A
-.
-.
-<aae:1>:E
-<aaf:1>:F
+set-bounds lower=a upper=aae: .
+                   seek-ge a: <a:1>:A
+          seek-prefix-ge aad: .
+set-bounds lower=aae upper=b: .
+                 seek-ge aae: <aae:1>:E
+                        next: <aaf:1>:F
 
 # Test that using Next does not mislead a twoLevelIterator into believing that the
 # iterator has been positioned based on the latest iterator bounds. The Next call
@@ -521,13 +521,13 @@ set-bounds lower=bbf upper=c
 seek-ge bbf
 next
 ----
-.
-<bbq:2>:Q
-.
-.
-.
-<bbf:2>:F
-<bbg:2>:G
+set-bounds lower=bbq upper=d: .
+                 seek-ge bbq: <bbq:2>:Q
+set-bounds lower=b upper=bbf: .
+          next-ignore-result: .
+set-bounds lower=bbf upper=c: .
+                 seek-ge bbf: <bbf:2>:F
+                        next: <bbg:2>:G
 
 build
 a@10.SET.10:a10
@@ -547,13 +547,13 @@ next
 next
 next
 ----
-<a@10:10>:a10
-<a@5:5>:a5
-<b@20:20>:b20
-<b@17:17>:b17
-<c@30:30>:c30
-<d@40:40>:d40
-.
+first: <a@10:10>:a10
+ next: <a@5:5>:a5
+ next: <b@20:20>:b20
+ next: <b@17:17>:b17
+ next: <c@30:30>:c30
+ next: <d@40:40>:d40
+ next: .
 
 iter
 seek-ge a@5
@@ -567,16 +567,16 @@ seek-ge b@18
 prev
 next
 ----
-<a@5:5>:a5
-<a@10:10>:a10
-<a@5:5>:a5
-<b@20:20>:b20
-<b@17:17>:b17
-<b@17:17>:b17
-<b@20:20>:b20
-<b@17:17>:b17
-<b@20:20>:b20
-<b@17:17>:b17
+ seek-ge a@5: <a@5:5>:a5
+        prev: <a@10:10>:a10
+   seek-lt b: <a@5:5>:a5
+        next: <b@20:20>:b20
+        next: <b@17:17>:b17
+   seek-lt c: <b@17:17>:b17
+        prev: <b@20:20>:b20
+seek-ge b@18: <b@17:17>:b17
+        prev: <b@20:20>:b20
+        next: <b@17:17>:b17
 
 iter
 seek-ge a@10
@@ -585,11 +585,11 @@ next-prefix
 next-prefix
 next-prefix
 ----
-<a@10:10>:a10
-<b@20:20>:b20
-<c@30:30>:c30
-<d@40:40>:d40
-.
+seek-ge a@10: <a@10:10>:a10
+ next-prefix: <b@20:20>:b20
+ next-prefix: <c@30:30>:c30
+ next-prefix: <d@40:40>:d40
+ next-prefix: .
 
 build
 a@10.SET.10:a10
@@ -617,13 +617,13 @@ next-prefix
 next-prefix
 next-prefix
 ----
-<a@10:10>:a10
-<aa@30:10>:aa30
-<abcd@50:10>:abcd50
-<b@20:20>:b20
-<c:20>:c
-<d@70:16>:d70
-.
+seek-ge a@10: <a@10:10>:a10
+ next-prefix: <aa@30:10>:aa30
+ next-prefix: <abcd@50:10>:abcd50
+ next-prefix: <b@20:20>:b20
+ next-prefix: <c:20>:c
+ next-prefix: <d@70:16>:d70
+ next-prefix: .
 
 
 build
@@ -695,26 +695,26 @@ next-prefix
 seek-ge aa@10
 next-prefix
 ----
-<a@49:49>:a49
-<b@20:20>:b20
-.
-<a@47:47>:a47
-<b@20:20>:b20
-.
-<a@36:36>:a36
-<b@20:20>:b20
-.
-<a@33:33>:a33
-<b@20:20>:b20
-.
-<a@30:30>:a30
-<b@20:20>:b20
-.
-<a@26:26>:a26
-<b@20:20>:b20
-.
-<a@20:20>:a20
-<b@20:20>:b20
-.
-<b@20:20>:b20
-.
+ seek-ge a@49: <a@49:49>:a49
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+ seek-ge a@47: <a@47:47>:a47
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+ seek-ge a@36: <a@36:36>:a36
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+ seek-ge a@33: <a@33:33>:a33
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+ seek-ge a@30: <a@30:30>:a30
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+ seek-ge a@26: <a@26:26>:a26
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+ seek-ge a@20: <a@20:20>:a20
+  next-prefix: <b@20:20>:b20
+  next-prefix: .
+seek-ge aa@10: <b@20:20>:b20
+  next-prefix: .

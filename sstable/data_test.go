@@ -252,6 +252,7 @@ func runBuildRawCmd(
 type runIterCmdOption func(*runIterCmdOptions)
 
 type runIterCmdOptions struct {
+	showCommands  bool
 	everyOp       func(io.Writer)
 	stats         *base.InternalIteratorStats
 	maskingFilter TestKeysMaskingFilter
@@ -264,6 +265,8 @@ func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
 func runIterCmdStats(stats *base.InternalIteratorStats) runIterCmdOption {
 	return func(opts *runIterCmdOptions) { opts.stats = stats }
 }
+
+var runIterCmdShowCommands = func(opts *runIterCmdOptions) { opts.showCommands = true }
 
 // runIterCmdMaskingFilter associates a masking filter and enables use of the
 // "with-masking" command.
@@ -303,7 +306,12 @@ func runIterCmd(
 		}
 		return kv
 	}
-	for _, line := range crstrings.Lines(td.Input) {
+	lines := crstrings.Lines(td.Input)
+	maxCmdLen := 1
+	for _, line := range lines {
+		maxCmdLen = max(maxCmdLen, len(line))
+	}
+	for _, line := range lines {
 		parts := strings.Fields(line)
 		switch parts[0] {
 		case "seek-ge":
@@ -460,6 +468,9 @@ func runIterCmd(
 			v, _, err = kv.Value(nil)
 		}
 
+		if opts.showCommands {
+			fmt.Fprintf(&b, "%*s: ", min(maxCmdLen, 40), line)
+		}
 		if err != nil {
 			fmt.Fprintf(&b, "<err=%v>", err)
 		} else if kv != nil && checkValidPrefix(prefix, kv.K.UserKey) {

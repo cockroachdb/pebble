@@ -32,13 +32,13 @@ stats
 next
 stats
 ----
-<c@10:10>
+first: <c@10:10>
 {BlockBytes:251 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<c@9:9>
+ next: <c@9:9>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:1 ValueBytes:4 ValueBytesFetched:4}}
-<c@8:8>
+ next: <c@8:8>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:2 ValueBytes:8 ValueBytesFetched:8}}
-<d@7:9>
+ next: <d@7:9>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:2 ValueBytes:8 ValueBytesFetched:8}}
 
 # seek-ge e@37 starts at the restart point at the beginning of the block and
@@ -54,12 +54,12 @@ next
 next
 stats
 ----
-<e@37:47>
+seek-ge e@37: <e@37:47>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:4 ValueBytes:18 ValueBytesFetched:5}}
-<e@36:46>
-<e@35:45>
-<e@34:44>
-<e@33:43>
+        next: <e@36:46>
+        next: <e@35:45>
+        next: <e@34:44>
+        next: <e@33:43>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:8 ValueBytes:38 ValueBytesFetched:25}}
 
 # seek-ge e@26 lands at the restart point e@26.
@@ -71,9 +71,9 @@ stats
 prev
 stats
 ----
-<e@26:36>
+seek-ge e@26: <e@26:36>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:1 ValueBytes:5 ValueBytesFetched:5}}
-<e@27:37>
+        prev: <e@27:37>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:2 ValueBytes:10 ValueBytesFetched:10}}
-<e@28:38>
+        prev: <e@28:38>
 {BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:3 ValueBytes:15 ValueBytesFetched:15}}

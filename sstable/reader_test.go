@@ -744,7 +744,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 				if err != nil {
 					return err.Error()
 				}
-				return runIterCmd(d, iter, printValue, runIterCmdStats(&stats))
+				return runIterCmd(d, iter, printValue, runIterCmdStats(&stats), runIterCmdShowCommands)
 
 			case "get":
 				var b bytes.Buffer

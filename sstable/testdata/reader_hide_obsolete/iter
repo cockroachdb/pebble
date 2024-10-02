@@ -26,22 +26,22 @@ prev
 prev
 prev
 ----
-<a:1>:A
-<b:4>:
-<b:2>:B
-<c:5>:
-<c:3>:C
-<d:4>:D4
-<d:2>:D2
-.
-<d:2>:D2
-<d:4>:D4
-<c:3>:C
-<c:5>:
-<b:2>:B
-<b:4>:
-<a:1>:A
-.
+first: <a:1>:A
+ next: <b:4>:
+ next: <b:2>:B
+ next: <c:5>:
+ next: <c:3>:C
+ next: <d:4>:D4
+ next: <d:2>:D2
+ next: .
+ prev: <d:2>:D2
+ prev: <d:4>:D4
+ prev: <c:3>:C
+ prev: <c:5>:
+ prev: <b:2>:B
+ prev: <b:4>:
+ prev: <a:1>:A
+ prev: .
 
 iter hide-obsolete-points=true
 first
@@ -55,16 +55,16 @@ prev
 prev
 prev
 ----
-<a:1>:A
-<b:4>:
-<c:5>:
-<d:4>:D4
-.
-<d:4>:D4
-<c:5>:
-<b:4>:
-<a:1>:A
-.
+first: <a:1>:A
+ next: <b:4>:
+ next: <c:5>:
+ next: <d:4>:D4
+ next: .
+ prev: <d:4>:D4
+ prev: <c:5>:
+ prev: <b:4>:
+ prev: <a:1>:A
+ prev: .
 
 iter hide-obsolete-points=true
 seek-ge c
@@ -78,16 +78,16 @@ next
 prev
 prev
 ----
-<c:5>:
-<b:4>:
-<a:1>:A
-<b:4>:
-<c:5>:
-<d:4>:D4
-<b:4>:
-<c:5>:
-<b:4>:
-<a:1>:A
+seek-ge c: <c:5>:
+     prev: <b:4>:
+     prev: <a:1>:A
+     next: <b:4>:
+     next: <c:5>:
+     next: <d:4>:D4
+seek-lt c: <b:4>:
+     next: <c:5>:
+     prev: <b:4>:
+     prev: <a:1>:A
 
 build
 a.SET.3:A
@@ -111,14 +111,14 @@ next
 next
 next
 ----
-<a:3>:A
-<a:2>:A2
-<b:20>:B20
-<b:18>:B18
-<b:16>:B16
-<b:14>:B14
-<c:30>:C30
-<c:28>:C28
+first: <a:3>:A
+ next: <a:2>:A2
+ next: <b:20>:B20
+ next: <b:18>:B18
+ next: <b:16>:B16
+ next: <b:14>:B14
+ next: <c:30>:C30
+ next: <c:28>:C28
 
 iter hide-obsolete-points=true
 first
@@ -136,20 +136,20 @@ prev
 prev
 prev
 ----
-<a:3>:A
-<b:20>:B20
-<b:18>:B18
-<b:16>:B16
-<c:30>:C30
-<c:28>:C28
-<c:26>:
-<c:26>:
-<c:28>:C28
-<c:30>:C30
-<b:16>:B16
-<b:18>:B18
-<b:20>:B20
-<a:3>:A
+first: <a:3>:A
+ next: <b:20>:B20
+ next: <b:18>:B18
+ next: <b:16>:B16
+ next: <c:30>:C30
+ next: <c:28>:C28
+ next: <c:26>:
+ last: <c:26>:
+ prev: <c:28>:C28
+ prev: <c:30>:C30
+ prev: <b:16>:B16
+ prev: <b:18>:B18
+ prev: <b:20>:B20
+ prev: <a:3>:A
 
 build
 b.MERGE.20:B20
@@ -169,13 +169,13 @@ next
 next
 next
 ----
-<b:20>:B20
-<b:16>:B16
-<b:14>:B14
-<c:30>:C30
-<c:28>:
-<c:26>:
-.
+first: <b:20>:B20
+ next: <b:16>:B16
+ next: <b:14>:B14
+ next: <c:30>:C30
+ next: <c:28>:
+ next: <c:26>:
+ next: .
 
 iter hide-obsolete-points=true
 first
@@ -184,11 +184,11 @@ next
 next
 next
 ----
-<b:20>:B20
-<b:16>:B16
-<c:30>:C30
-<c:28>:
-.
+first: <b:20>:B20
+ next: <b:16>:B16
+ next: <c:30>:C30
+ next: <c:28>:
+ next: .
 
 build
 b.SETWITHDEL.20:B20
@@ -204,18 +204,18 @@ next
 next
 next
 ----
-<b:20>:B20
-<b:16>:B16
-<b:14>:B14
-<b:12>:B12
-.
+first: <b:20>:B20
+ next: <b:16>:B16
+ next: <b:14>:B14
+ next: <b:12>:B12
+ next: .
 
 iter hide-obsolete-points=true
 first
 next
 ----
-<b:20>:B20
-.
+first: <b:20>:B20
+ next: .
 
 build writing-to-lowest-level
 a.SET.10:A10
@@ -233,19 +233,19 @@ next
 next
 next
 ----
-<a:10>:A10
-<b:20>:
-<b:16>:B16
-<b:14>:B14
-<b:12>:B12
-.
+first: <a:10>:A10
+ next: <b:20>:
+ next: <b:16>:B16
+ next: <b:14>:B14
+ next: <b:12>:B12
+ next: .
 
 iter hide-obsolete-points=true
 first
 next
 ----
-<a:10>:A10
-.
+first: <a:10>:A10
+ next: .
 
 build writing-to-lowest-level
 a.SET.10:A10
@@ -267,21 +267,21 @@ next
 next
 next
 ----
-<a:10>:A10
-<b:16>:B16
-<b:14>:B14
-<c:30>:
-<c:28>:C28
-<d:40>:
-<d:30>:D30
-.
+first: <a:10>:A10
+ next: <b:16>:B16
+ next: <b:14>:B14
+ next: <c:30>:
+ next: <c:28>:C28
+ next: <d:40>:
+ next: <d:30>:D30
+ next: .
 
 iter hide-obsolete-points=true
 first
 next
 ----
-<a:10>:A10
-.
+first: <a:10>:A10
+ next: .
 
 build writing-to-lowest-level
 force-obsolete: a.SET.1:A
@@ -299,12 +299,12 @@ next
 next
 next
 ----
-<a:1>:A
-<b:4>:
-<b:2>:B
-<c:5>:
-<d:10>:D10
-.
+first: <a:1>:A
+ next: <b:4>:
+ next: <b:2>:B
+ next: <c:5>:
+ next: <d:10>:D10
+ next: .
 
 iter hide-obsolete-points=true
 first
@@ -331,14 +331,14 @@ force-obsolete: cc.DEL.5:
 iter hide-obsolete-points-without-filter=true
 last
 ----
-<a:10>:A10
+last: <a:10>:A10
 
 iter hide-obsolete-points-without-filter=true
 seek-lt d
 ----
-<a:10>:A10
+seek-lt d: <a:10>:A10
 
 iter hide-obsolete-points-without-filter=true
 seek-lt c
 ----
-<a:10>:A10
+seek-lt c: <a:10>:A10
