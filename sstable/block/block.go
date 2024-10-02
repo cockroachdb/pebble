@@ -293,7 +293,7 @@ const NoSyntheticSeqNum SyntheticSeqNum = 0
 // RangeKeyUnset keys are not supported when a synthetic suffix is used.
 type SyntheticSuffix []byte
 
-// IsSet returns true if the synthetic suffix is not enpty.
+// IsSet returns true if the synthetic suffix is not empty.
 func (ss SyntheticSuffix) IsSet() bool {
 	return len(ss) > 0
 }

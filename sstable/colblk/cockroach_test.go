@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crdbtest"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -198,12 +199,18 @@ func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
 // contained within the data block. It's equivalent to performing
 //
 //	Compare(firstUserKey, k)
-func (ks *cockroachKeySeeker) IsLowerBound(k []byte) bool {
+func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool {
 	prefix, untypedSuffix, wallTime, logicalTime := crdbtest.DecodeTimestamp(k)
 	if v := crdbtest.Compare(ks.prefixes.UnsafeFirstSlice(), prefix); v != 0 {
 		return v > 0
 	}
+	if len(syntheticSuffix) > 0 {
+		return crdbtest.Compare(syntheticSuffix, k[len(prefix):]) >= 0
+	}
 	if len(untypedSuffix) > 0 {
+		if invariants.Enabled && ks.mvccWallTimes.At(0) != 0 {
+			panic("comparing timestamp with untyped suffix")
+		}
 		return crdbtest.Compare(ks.untypedSuffixes.At(0), untypedSuffix) >= 0
 	}
 	if v := cmp.Compare(ks.mvccWallTimes.At(0), wallTime); v != 0 {
@@ -250,12 +257,12 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		seekWallTime = binary.LittleEndian.Uint64(seekSuffix)
 	default:
 		// The suffix is untyped. Compare the untyped suffixes.
-		// Binary search between [index, prefixChanged.SeekSetBitGE(index)].
+		// Binary search between [index, prefixChanged.SeekSetBitGE(index+1)].
 		//
 		// Define f(l-1) == false and f(u) == true.
 		// Invariant: f(l-1) == false, f(u) == true.
 		l := index
-		u := ks.reader.prefixChanged.SeekSetBitGE(index)
+		u := ks.reader.prefixChanged.SeekSetBitGE(index + 1)
 		for l < u {
 			h := int(uint(l+u) >> 1) // avoid overflow when computing h
 			// l ≤ h < u
@@ -309,6 +316,7 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(ki *PrefixBytesIter, prevRow, r
 	if mvccWall == 0 && mvccLogical == 0 {
 		// This is not an MVCC key. Use the untyped suffix.
 		untypedSuffixed := ks.untypedSuffixes.At(row)
+		// Slice first, to check that the capacity is sufficient.
 		res := ki.buf[:len(ki.buf)+len(untypedSuffixed)]
 		memmove(ptr, unsafe.Pointer(unsafe.SliceData(untypedSuffixed)), uintptr(len(untypedSuffixed)))
 		return res
@@ -341,6 +349,23 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(ki *PrefixBytesIter, prevRow, r
 	return ki.buf[:len(ki.buf)+13]
 }
 
+// MaterializeUserKeyWithSyntheticSuffix is part of the KeySeeker interface.
+func (ks *cockroachKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
+	ki *PrefixBytesIter, suffix []byte, prevRow, row int,
+) []byte {
+	if prevRow+1 == row && prevRow >= 0 {
+		ks.prefixes.SetNext(ki)
+	} else {
+		ks.prefixes.SetAt(ki, row)
+	}
+
+	// Slice first, to check that the capacity is sufficient.
+	res := ki.buf[:len(ki.buf)+len(suffix)]
+	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(ki.buf))) + uintptr(len(ki.buf)))
+	memmove(ptr, unsafe.Pointer(unsafe.SliceData(suffix)), uintptr(len(suffix)))
+	return res
+}
+
 // Release is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) Release() {
 	*ks = cockroachKeySeeker{}
@@ -371,9 +396,13 @@ func TestCockroachDataBlock(t *testing.T) {
 	var reader DataBlockReader
 	var it DataBlockIter
 	reader.Init(cockroachKeySchema, serializedBlock)
-	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
-		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}), block.IterTransforms{})
+	it.Init(
+		&reader, cockroachKeySchema.NewKeySeeker(), crdbtest.Compare, crdbtest.Split,
+		getLazyValuer(func([]byte) base.LazyValue {
+			return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+		}),
+		block.IterTransforms{},
+	)
 
 	t.Run("Next", func(t *testing.T) {
 		// Scan the block using Next and ensure that all the keys values match.
@@ -561,9 +590,13 @@ func benchmarkCockroachDataBlockIter(
 	var reader DataBlockReader
 	var it DataBlockIter
 	reader.Init(cockroachKeySchema, serializedBlock)
-	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
-		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}), transforms)
+	it.Init(
+		&reader, cockroachKeySchema.NewKeySeeker(), crdbtest.Compare, crdbtest.Split,
+		getLazyValuer(func([]byte) base.LazyValue {
+			return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+		}),
+		transforms,
+	)
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {

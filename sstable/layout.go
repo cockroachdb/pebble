@@ -332,7 +332,7 @@ func formatColblkDataBlock(
 	if fmtRecord != nil {
 		var iter colblk.DataBlockIter
 		if err := iter.Init(
-			&reader, r.keySchema.NewKeySeeker(), describingLazyValueHandler{}, block.IterTransforms{},
+			&reader, r.keySchema.NewKeySeeker(), r.Compare, r.Split, describingLazyValueHandler{}, block.IterTransforms{},
 		); err != nil {
 			return err
 		}
