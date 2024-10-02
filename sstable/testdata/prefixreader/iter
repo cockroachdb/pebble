@@ -10,63 +10,63 @@ seek-prefix-ge a
 next
 next
 ----
-<a:1>:A
-<aa:2>:AA
-.
+seek-prefix-ge a: <a:1>:A
+            next: <aa:2>:AA
+            next: .
 
 iter
 seek-prefix-ge aa
 next
 ----
-<aa:2>:AA
-.
+seek-prefix-ge aa: <aa:2>:AA
+             next: .
 
 iter
 seek-prefix-ge aa
 prev
 ----
-<aa:2>:AA
-.
+seek-prefix-ge aa: <aa:2>:AA
+             prev: .
 
 iter
 seek-prefix-ge c
 prev
 ----
-<c:3>:C
-.
+seek-prefix-ge c: <c:3>:C
+            prev: .
 
 iter
 seek-prefix-ge b
 ----
-.
+seek-prefix-ge b: .
 
 iter
 seek-prefix-ge c
 next
 ----
-<c:3>:C
-.
+seek-prefix-ge c: <c:3>:C
+            next: .
 
 iter
 seek-prefix-ge d
 next
 ----
-<d:4>:D
-.
+seek-prefix-ge d: <d:4>:D
+            next: .
 
 iter
 seek-prefix-ge e
 ----
-.
+seek-prefix-ge e: .
 
 iter
 seek-prefix-ge c
 seek-prefix-ge d
 seek-prefix-ge e
 ----
-<c:3>:C
-<d:4>:D
-.
+seek-prefix-ge c: <c:3>:C
+seek-prefix-ge d: <d:4>:D
+seek-prefix-ge e: .
 
 iter
 seek-prefix-ge c
@@ -75,11 +75,11 @@ seek-prefix-ge a
 next
 next
 ----
-<c:3>:C
-.
-<a:1>:A
-<aa:2>:AA
-.
+seek-prefix-ge c: <c:3>:C
+            next: .
+seek-prefix-ge a: <a:1>:A
+            next: <aa:2>:AA
+            next: .
 
 iter
 seek-prefix-ge aa
@@ -90,13 +90,13 @@ next
 seek-prefix-ge c
 next
 ----
-<aa:2>:AA
-.
-<a:1>:A
-<aa:2>:AA
-.
-<c:3>:C
-.
+seek-prefix-ge aa: <aa:2>:AA
+             next: .
+ seek-prefix-ge a: <a:1>:A
+             next: <aa:2>:AA
+             next: .
+ seek-prefix-ge c: <c:3>:C
+             next: .
 
 iter
 seek-prefix-ge c
@@ -107,22 +107,22 @@ seek-prefix-ge a
 next
 next
 ----
-<c:3>:C
-.
-<aa:2>:AA
-.
-<a:1>:A
-<aa:2>:AA
-.
+ seek-prefix-ge c: <c:3>:C
+             next: .
+seek-prefix-ge aa: <aa:2>:AA
+             next: .
+ seek-prefix-ge a: <a:1>:A
+             next: <aa:2>:AA
+             next: .
 
 iter
 seek-prefix-ge a
 next
 next
 ----
-<a:1>:A
-<aa:2>:AA
-.
+seek-prefix-ge a: <a:1>:A
+            next: <aa:2>:AA
+            next: .
 
 iter
 seek-prefix-ge a
@@ -130,17 +130,17 @@ next
 prev
 prev
 ----
-<a:1>:A
-<aa:2>:AA
-<a:1>:A
-.
+seek-prefix-ge a: <a:1>:A
+            next: <aa:2>:AA
+            prev: <a:1>:A
+            prev: .
 
 iter
 seek-prefix-ge a
 prev
 ----
-<a:1>:A
-.
+seek-prefix-ge a: <a:1>:A
+            prev: .
 
 iter
 seek-prefix-ge a
@@ -150,12 +150,12 @@ next
 next
 next
 ----
-<a:1>:A
-<a:1>:A
-<aa:2>:AA
-<c:3>:C
-<d:4>:D
-.
+seek-prefix-ge a: <a:1>:A
+       seek-ge a: <a:1>:A
+            next: <aa:2>:AA
+            next: <c:3>:C
+            next: <d:4>:D
+            next: .
 
 iter
 seek-prefix-ge a
@@ -164,11 +164,11 @@ next
 next
 next
 ----
-<a:1>:A
-<aa:2>:AA
-<c:3>:C
-<d:4>:D
-.
+seek-prefix-ge a: <a:1>:A
+      seek-ge aa: <aa:2>:AA
+            next: <c:3>:C
+            next: <d:4>:D
+            next: .
 
 iter
 seek-prefix-ge aa
@@ -176,10 +176,10 @@ seek-ge c
 next
 next
 ----
-<aa:2>:AA
-<c:3>:C
-<d:4>:D
-.
+seek-prefix-ge aa: <aa:2>:AA
+        seek-ge c: <c:3>:C
+             next: <d:4>:D
+             next: .
 
 iter
 seek-prefix-ge aa
@@ -188,11 +188,11 @@ next
 next
 next
 ----
-<aa:2>:AA
-<aa:2>:AA
-<c:3>:C
-<d:4>:D
-.
+seek-prefix-ge aa: <aa:2>:AA
+        seek-lt c: <aa:2>:AA
+             next: <c:3>:C
+             next: <d:4>:D
+             next: .
 
 iter
 seek-prefix-ge aa
@@ -200,19 +200,19 @@ seek-lt c
 prev
 prev
 ----
-<aa:2>:AA
-<aa:2>:AA
-<a:1>:A
-.
+seek-prefix-ge aa: <aa:2>:AA
+        seek-lt c: <aa:2>:AA
+             prev: <a:1>:A
+             prev: .
 
 iter
 seek-lt c
 seek-prefix-ge aa
 prev
 ----
-<aa:2>:AA
-<aa:2>:AA
-.
+        seek-lt c: <aa:2>:AA
+seek-prefix-ge aa: <aa:2>:AA
+             prev: .
 
 iter
 seek-lt c
@@ -221,10 +221,10 @@ next
 next
 
 ----
-<aa:2>:AA
-<a:1>:A
-<aa:2>:AA
-.
+       seek-lt c: <aa:2>:AA
+seek-prefix-ge a: <a:1>:A
+            next: <aa:2>:AA
+            next: .
 
 iter
 seek-ge aa
@@ -233,15 +233,15 @@ next
 next
 
 ----
-<aa:2>:AA
-<a:1>:A
-<aa:2>:AA
-.
+      seek-ge aa: <aa:2>:AA
+seek-prefix-ge a: <a:1>:A
+            next: <aa:2>:AA
+            next: .
 
 iter
 seek-prefix-ge 1
 ----
-.
+seek-prefix-ge 1: .
 
 get
 a
@@ -263,8 +263,8 @@ seek-prefix-ge aa true
 seek-prefix-ge d true
 seek-prefix-ge c false
 ----
-<a:1>:A
-<a:1>:A
-<aa:2>:AA
-<d:4>:D
-<c:3>:C
+seek-prefix-ge a false: <a:1>:A
+ seek-prefix-ge a true: <a:1>:A
+seek-prefix-ge aa true: <aa:2>:AA
+ seek-prefix-ge d true: <d:4>:D
+seek-prefix-ge c false: <c:3>:C

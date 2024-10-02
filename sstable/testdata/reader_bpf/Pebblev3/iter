@@ -21,10 +21,10 @@ next
 next
 next
 ----
-<c@10:10>
-<d@7:9>
-<e@15:8>
-<f@7:5>
+first: <c@10:10>
+ next: <d@7:9>
+ next: <e@15:8>
+ next: <f@7:5>
 
 
 # The block property filter matches data block 2 and 4.
@@ -32,8 +32,8 @@ iter block-property-filter=(7,8)
 first
 next
 ----
-<d@7:9>
-<f@7:5>
+first: <d@7:9>
+ next: <f@7:5>
 
 # Use the same block property filter, but use seeks to find these entries.
 # With the bug the second seek-ge below would step to the second lower-level
@@ -47,13 +47,13 @@ seek-ge c
 next
 next
 ----
-.
-.
-.
-.
-<d@7:9>
-<f@7:5>
-.
+set-bounds lower=a upper=c: .
+                 seek-ge a: .
+            seek-ge b true: .
+set-bounds lower=c upper=g: .
+                 seek-ge c: <d@7:9>
+                      next: <f@7:5>
+                      next: .
 
 # Regression test for #2816
 #
@@ -92,8 +92,8 @@ seek-ge wc
 internal-iter-state
 next
 ----
-.
-.
+set-bounds lower=v upper=v: .
+              seek-ge wz@8: .
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "x"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 193, Length: 26, Props: 00020801)
@@ -106,7 +106,7 @@ next
 |  dataBH = (Offset: 62, Length: 29)
 |  (boundsCmp,positionedUsingLatestBounds) = (0,true)
 |  exhaustedBounds = 1
-.
+              seek-ge wb@2: .
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "wc"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 161, Length: 27, Props: 00020201)
@@ -118,7 +118,7 @@ next
 |  dataBH = (Offset: 62, Length: 29)
 |  (boundsCmp,positionedUsingLatestBounds) = (0,true)
 |  exhaustedBounds = 1
-.
+set-bounds lower=v upper=z: .
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "wc"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 161, Length: 27, Props: 00020201)
@@ -130,7 +130,7 @@ next
 |  dataBH = (Offset: 62, Length: 29)
 |  (boundsCmp,positionedUsingLatestBounds) = (1,false)
 |  exhaustedBounds = 1
-<wz@8:8>
+                seek-ge wc: <wz@8:8>
 | *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "x"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 193, Length: 26, Props: 00020801)
@@ -143,4 +143,4 @@ next
 |  dataBH = (Offset: 62, Length: 29)
 |  (boundsCmp,positionedUsingLatestBounds) = (0,false)
 |  exhaustedBounds = 0
-.
+                      next: .

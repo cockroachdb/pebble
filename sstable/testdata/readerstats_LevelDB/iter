@@ -34,26 +34,26 @@ stats
 first
 stats
 ----
-<a:1>
+      first: <a:1>
 {BlockBytes:74 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<b:2>
+       next: <b:2>
 {BlockBytes:74 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<c:3>
+       next: <c:3>
 {BlockBytes:108 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<d:4>
+       next: <d:4>
 {BlockBytes:108 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-.
+       next: .
 {BlockBytes:108 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<a:1>
+      first: <a:1>
 {BlockBytes:142 BlockBytesInCache:34 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<b:2>
+       next: <b:2>
 {BlockBytes:142 BlockBytesInCache:34 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<c:3>
+       next: <c:3>
 {BlockBytes:176 BlockBytesInCache:68 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<d:4>
+       next: <d:4>
 {BlockBytes:176 BlockBytesInCache:68 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-.
+       next: .
 {BlockBytes:176 BlockBytesInCache:68 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-<a:1>
+      first: <a:1>
 {BlockBytes:34 BlockBytesInCache:34 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
