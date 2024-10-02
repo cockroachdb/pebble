@@ -11,6 +11,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strings"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/intern"
@@ -254,7 +255,13 @@ func (p *Properties) String() string {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		fmt.Fprintf(&buf, "%s: %s\n", key, p.UserProperties[key])
+		// If there are characters outside of the printable ASCII range, print
+		// the value in hexadecimal.
+		if strings.IndexFunc(p.UserProperties[key], func(r rune) bool { return r < ' ' || r > '~' }) != -1 {
+			fmt.Fprintf(&buf, "%s: hex:%x\n", key, p.UserProperties[key])
+		} else {
+			fmt.Fprintf(&buf, "%s: %s\n", key, p.UserProperties[key])
+		}
 	}
 	return buf.String()
 }

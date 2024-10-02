@@ -281,6 +281,9 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			}
 			return formatWriterMetadata(td, meta)
 
+		case "props":
+			return r.Properties.String()
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
