@@ -521,12 +521,15 @@ func (i *Iter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
-// CompareFirstUserKey compares the provided key to the first user key
+// IsLowerBound compares the provided key to the first user key
 // contained within the data block. It's equivalent to performing
 //
 //	Compare(firstUserKey, k)
-func (i *Iter) CompareFirstUserKey(k []byte) int {
-	return i.cmp(i.firstUserKey, k)
+func (i *Iter) IsLowerBound(k []byte) bool {
+	// TODO(radu): we're not taking HideObsoletePoints into consideration. Today
+	// this is ok because the method is used for some optimizations and false
+	// negatives are ok.
+	return i.cmp(i.firstUserKey, k) >= 0
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble

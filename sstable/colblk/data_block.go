@@ -100,10 +100,9 @@ func (kcmp KeyComparison) PrefixEqual() bool { return kcmp.PrefixLen == kcmp.Com
 type KeySeeker interface {
 	// Init initializes the iterator to read from the provided DataBlockReader.
 	Init(b *DataBlockReader) error
-	// CompareFirstUserKey compares the provided key to the first user key
-	// contained within the data block. It's equivalent to performing
-	//   Compare(firstUserKey, k)
-	CompareFirstUserKey(k []byte) int
+	// IsLowerBound returns true if all keys in the data block are >= the given
+	// key. If the data block contains no keys, returns true.
+	IsLowerBound(k []byte) bool
 	// SeekGE returns the index of the first row with a key greater than or
 	// equal to [key].
 	//
@@ -297,18 +296,16 @@ func (ks *defaultKeySeeker) Init(r *DataBlockReader) error {
 	return nil
 }
 
-// CompareFirstUserKey compares the provided key to the first user key
-// contained within the data block. It's equivalent to performing
-//
-//	Compare(firstUserKey, k)
-func (ks *defaultKeySeeker) CompareFirstUserKey(k []byte) int {
+// IsLowerBound is part of the KeySeeker interface.
+func (ks *defaultKeySeeker) IsLowerBound(k []byte) bool {
 	si := ks.comparer.Split(k)
 	if v := ks.comparer.Compare(ks.prefixes.UnsafeFirstSlice(), k[:si]); v != 0 {
-		return v
+		return v > 0
 	}
-	return ks.comparer.Compare(ks.suffixes.At(0), k[si:])
+	return ks.comparer.Compare(ks.suffixes.At(0), k[si:]) >= 0
 }
 
+// SeekGE is part of the KeySeeker interface.
 func (ks *defaultKeySeeker) SeekGE(key []byte, currRow int, dir int8) (row int) {
 	si := ks.comparer.Split(key)
 	row, eq := ks.prefixes.Search(key[:si])
@@ -897,11 +894,21 @@ func (i *DataBlockIter) Init(
 	return i.keySeeker.Init(r)
 }
 
-// CompareFirstUserKey compares the provided key to the first user key
-// contained within the data block. It's equivalent to performing
-// Compare(firstUserKey, k).
-func (i *DataBlockIter) CompareFirstUserKey(k []byte) int {
-	return i.keySeeker.CompareFirstUserKey(k)
+// IsLowerBound implements the block.DataBlockIterator interface.
+func (i *DataBlockIter) IsLowerBound(k []byte) bool {
+	// FOO
+	if i.keySeeker.IsLowerBound(k) {
+		return true
+	}
+	// If we are hiding obsolete points, it is possible that all points < k are
+	// hidden.
+	if i.transforms.HideObsoletePoints && i.r.isObsolete.At(0) {
+		row := i.keySeeker.SeekGE(k, -1 /* boundRow */, 0 /* searchDir */)
+		// Note: for the case where all underlying keys are < k, both row and
+		// SeekUnsetBitGE() will be maxRow+1.
+		return row <= i.r.isObsolete.SeekUnsetBitGE(0)
+	}
+	return false
 }
 
 // SeekGE implements the base.InternalIterator interface.

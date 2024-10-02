@@ -158,10 +158,13 @@ type DataBlockIterator interface {
 	// KV returns the key-value pair at the current iterator position. The
 	// iterator must be Valid().
 	KV() *base.InternalKV
-	// CompareFirstUserKey compares the provided key to the first user key
-	// contained within the data block. It's equivalent to performing
-	//   Compare(firstUserKey, k)
-	CompareFirstUserKey(k []byte) int
+	// IsLowerBound returns true if all keys produced by this iterator are >= the
+	// given key. It returns the same result as Compare(First().UserKey, k) >= 0,
+	// but without positioning the iterator.
+	//
+	// If the iterator produces no keys (i.e. First() is nil), returns true for
+	// any key.
+	IsLowerBound(k []byte) bool
 	// Invalidate invalidates the block iterator, removing references to the
 	// block it was initialized with. The iterator may continue to be used after
 	// a call to Invalidate, but all positioning methods should return false.

@@ -34,6 +34,19 @@ seek-lt c: b@2#1234,SETWITHDEL:blueberry
      prev: a@10#1234,SET:apple
      next: b@5#1234,SET:banana
 
+iter verbose synthetic-seq-num=1234
+is-lower-bound a
+is-lower-bound a@11
+is-lower-bound a@10
+is-lower-bound a@9
+is-lower-bound b
+----
+   is-lower-bound a: true
+is-lower-bound a@11: true
+is-lower-bound a@10: true
+ is-lower-bound a@9: false
+   is-lower-bound b: false
+
 write-block
 a@10#1,SET:apple obsolete
 b@5#3,SET:banana
@@ -55,6 +68,19 @@ first: b@5:banana
  next: c@9:coconut
  next: c@1:clementine
  next: .
+
+iter hide-obsolete-points
+is-lower-bound a@10
+is-lower-bound b
+is-lower-bound b@5
+is-lower-bound b@4
+is-lower-bound d
+----
+is-lower-bound a@10: true
+   is-lower-bound b: true
+ is-lower-bound b@5: true
+ is-lower-bound b@4: false
+   is-lower-bound d: false
 
 iter hide-obsolete-points
 first
