@@ -103,8 +103,8 @@ type KeySeeker interface {
 	// IsLowerBound returns true if all keys in the data block are >= the given
 	// key. If the data block contains no keys, returns true.
 	IsLowerBound(k []byte) bool
-	// SeekGE returns the index of the first row with a key greater than or
-	// equal to [key].
+	// SeekGE returns the index of the first row with a key greater than or equal
+	// to [key], and whether that row has the same prefix as [key].
 	//
 	// If the caller externally knows a bound on where the key is located, it
 	// may indicate it through [boundRow] and [searchDir]. A [searchDir] value
@@ -113,7 +113,7 @@ type KeySeeker interface {
 	// ≥ [boundRow]. Implementations may use this information to constrain the
 	// search. See (base.SeekGEFlags).TrySeekUsingNext for context on when this
 	// may be set in practice.
-	SeekGE(key []byte, boundRow int, searchDir int8) (row int)
+	SeekGE(key []byte, boundRow int, searchDir int8) (row int, equalPrefix bool)
 	// MaterializeUserKey materializes the user key of the specified row,
 	// returning a slice of the materialized user key.
 	//
@@ -306,13 +306,15 @@ func (ks *defaultKeySeeker) IsLowerBound(k []byte) bool {
 }
 
 // SeekGE is part of the KeySeeker interface.
-func (ks *defaultKeySeeker) SeekGE(key []byte, currRow int, dir int8) (row int) {
+func (ks *defaultKeySeeker) SeekGE(
+	key []byte, boundRow int, searchDir int8,
+) (row int, equalPrefix bool) {
 	si := ks.comparer.Split(key)
 	row, eq := ks.prefixes.Search(key[:si])
 	if eq {
-		return ks.seekGEOnSuffix(row, key[si:])
+		return ks.seekGEOnSuffix(row, key[si:]), true
 	}
-	return row
+	return row, false
 }
 
 // seekGEOnSuffix is a helper function for SeekGE when a seek key's prefix
@@ -909,7 +911,7 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	if flags.TrySeekUsingNext() {
 		searchDir = +1
 	}
-	i.row = i.keySeeker.SeekGE(key, i.row, searchDir)
+	i.row, _ = i.keySeeker.SeekGE(key, i.row, searchDir)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
 		if i.atObsoletePointForward() {
@@ -941,7 +943,8 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 	if i.r == nil {
 		return nil
 	}
-	i.row = i.keySeeker.SeekGE(key, i.row, 0 /* searchDir */) - 1
+	geRow, _ := i.keySeeker.SeekGE(key, i.row, 0 /* searchDir */)
+	i.row = geRow - 1
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(max(i.row, 0))
 		if i.atObsoletePointBackward() {
