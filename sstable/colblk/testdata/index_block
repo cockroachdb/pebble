@@ -419,3 +419,79 @@ UnsafeSeparator(3) = "cephalopod"
 103-103: x                      # data[2]:
 103-106: x 627034               # data[3]: bp4
 106-107: x 00                   # block padding byte
+
+build
+cat@20 3021   2052   bp1
+cat@10 91251   1899
+cat@5 91251   1899
+----
+UnsafeSeparator(2) = "cat@5"
+# index block header
+# columnar block header
+00-01: x 01           # version 1
+01-03: x 0400         # 4 columns
+03-07: x 03000000     # 3 rows
+07-08: b 00000011     # col 0: bytes
+08-12: x 1b000000     # col 0: page start 27
+12-13: b 00000010     # col 1: uint
+13-17: x 31000000     # col 1: page start 49
+17-18: b 00000010     # col 2: uint
+18-22: x 40000000     # col 2: page start 64
+22-23: b 00000011     # col 3: bytes
+23-27: x 48000000     # col 3: page start 72
+# data for column 0
+# rawbytes
+# offsets table
+27-28: x 01           # encoding: 1b
+28-29: x 00           # data[0] = 0 [32 overall]
+29-30: x 06           # data[1] = 6 [38 overall]
+30-31: x 0c           # data[2] = 12 [44 overall]
+31-32: x 11           # data[3] = 17 [49 overall]
+# data
+32-38: x 636174403230 # data[0]: cat@20
+38-44: x 636174403130 # data[1]: cat@10
+44-49: x 6361744035   # data[2]: cat@5
+# data for column 1
+49-50: x 04           # encoding: 4b
+50-52: x 0000         # padding (aligning to 32-bit boundary)
+52-56: x cd0b0000     # data[0] = 3021
+56-60: x 73640100     # data[1] = 91251
+60-64: x 73640100     # data[2] = 91251
+# data for column 2
+64-65: x 02           # encoding: 2b
+65-66: x 00           # padding (aligning to 16-bit boundary)
+66-68: x 0408         # data[0] = 2052
+68-70: x 6b07         # data[1] = 1899
+70-72: x 6b07         # data[2] = 1899
+# data for column 3
+# rawbytes
+# offsets table
+72-73: x 01           # encoding: 1b
+73-74: x 00           # data[0] = 0 [77 overall]
+74-75: x 03           # data[1] = 3 [80 overall]
+75-76: x 03           # data[2] = 3 [80 overall]
+76-77: x 03           # data[3] = 3 [80 overall]
+# data
+77-80: x 627031       # data[0]: bp1
+80-80: x              # data[1]:
+80-80: x              # data[2]:
+80-81: x 00           # block padding byte
+
+iter
+seek-ge cat
+seek-ge cat@21
+seek-ge cat@20
+seek-ge cat@19
+seek-ge cat@10
+seek-ge cat@9
+seek-ge cat@5
+seek-ge cat@2
+----
+block 0: 3021-5073 props="bp1"
+block 0: 3021-5073 props="bp1"
+block 0: 3021-5073 props="bp1"
+block 1: 91251-93150
+block 1: 91251-93150
+block 2: 91251-93150
+block 2: 91251-93150
+.
