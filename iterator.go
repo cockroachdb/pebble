@@ -2407,29 +2407,34 @@ func (i *Iterator) Close() error {
 		i.rangeKey = nil
 	}
 	if alloc := i.alloc; alloc != nil {
+		var (
+			keyBuf               []byte
+			boundsBuf            [2][]byte
+			prefixOrFullSeekKey  []byte
+			mergingIterHeapItems []*mergingIterLevel
+		)
+
 		// Avoid caching the key buf if it is overly large. The constant is fairly
 		// arbitrary.
-		if cap(i.keyBuf) >= maxKeyBufCacheSize {
-			alloc.keyBuf = nil
-		} else {
-			alloc.keyBuf = i.keyBuf
+		if cap(i.keyBuf) < maxKeyBufCacheSize {
+			keyBuf = i.keyBuf
 		}
-		if cap(i.prefixOrFullSeekKey) >= maxKeyBufCacheSize {
-			alloc.prefixOrFullSeekKey = nil
-		} else {
-			alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
+		if cap(i.prefixOrFullSeekKey) < maxKeyBufCacheSize {
+			prefixOrFullSeekKey = i.prefixOrFullSeekKey
 		}
 		for j := range i.boundsBuf {
-			if cap(i.boundsBuf[j]) >= maxKeyBufCacheSize {
-				alloc.boundsBuf[j] = nil
-			} else {
-				alloc.boundsBuf[j] = i.boundsBuf[j]
+			if cap(i.boundsBuf[j]) < maxKeyBufCacheSize {
+				boundsBuf[j] = i.boundsBuf[j]
 			}
 		}
+		mergingIterHeapItems = alloc.merging.heap.items
 		*alloc = iterAlloc{
-			keyBuf:              alloc.keyBuf,
-			boundsBuf:           alloc.boundsBuf,
-			prefixOrFullSeekKey: alloc.prefixOrFullSeekKey,
+			keyBuf:              keyBuf,
+			boundsBuf:           boundsBuf,
+			prefixOrFullSeekKey: prefixOrFullSeekKey,
+			merging: mergingIter{
+				heap: mergingIterHeap{items: mergingIterHeapItems},
+			},
 		}
 		iterAllocPool.Put(alloc)
 	} else if alloc := i.getIterAlloc; alloc != nil {
