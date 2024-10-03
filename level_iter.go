@@ -85,13 +85,14 @@ type levelIter struct {
 	files    manifest.LevelIterator
 	err      error
 
-	// When rangeDelIterFn != nil, the caller requires that this function gets
-	// called with a range deletion iterator whenever the current file changes.
-	// The iterator is relinquished to the caller which is responsible for closing
-	// it.
-	// When rangeDelIterFn != nil, the levelIter will also interleave the
+	// When rangeDelIterSetter != nil, the caller requires that this function
+	// gets called with a range deletion iterator whenever the current file
+	// changes.  The iterator is relinquished to the caller which is responsible
+	// for closing it.
+	//
+	// When rangeDelIterSetter != nil, the levelIter will also interleave the
 	// boundaries of range deletions among point keys.
-	rangeDelIterFn func(rangeDelIter keyspan.FragmentIterator)
+	rangeDelIterSetter rangeDelIterSetter
 
 	// interleaving is used when rangeDelIterFn != nil to interleave the
 	// boundaries of range deletions among point keys. When the leve iterator is
@@ -121,6 +122,10 @@ type levelIter struct {
 	// which construct "impossible" situations (e.g. seeking to a key before the
 	// lower bound).
 	disableInvariants bool
+}
+
+type rangeDelIterSetter interface {
+	setRangeDelIter(rangeDelIter keyspan.FragmentIterator)
 }
 
 // levelIter implements the base.InternalIterator interface.
@@ -182,8 +187,8 @@ func (l *levelIter) init(
 //
 // The range deletion iterator passed to rangeDelIterFn is relinquished to the
 // implementor who is responsible for closing it.
-func (l *levelIter) initRangeDel(rangeDelIterFn func(rangeDelIter keyspan.FragmentIterator)) {
-	l.rangeDelIterFn = rangeDelIterFn
+func (l *levelIter) initRangeDel(rangeDelSetter rangeDelIterSetter) {
+	l.rangeDelIterSetter = rangeDelSetter
 }
 
 func (l *levelIter) initCombinedIterState(state *combinedIterState) {
@@ -566,20 +571,20 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		}
 
 		iterKinds := iterPointKeys
-		if l.rangeDelIterFn != nil {
+		if l.rangeDelIterSetter != nil {
 			iterKinds |= iterRangeDeletions
 		}
 
 		var iters iterSet
 		iters, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterKinds)
 		if l.err != nil {
-			if l.rangeDelIterFn != nil {
-				l.rangeDelIterFn(nil)
+			if l.rangeDelIterSetter != nil {
+				l.rangeDelIterSetter.setRangeDelIter(nil)
 			}
 			return noFileLoaded
 		}
 		l.iter = iters.Point()
-		if l.rangeDelIterFn != nil && iters.rangeDeletion != nil {
+		if l.rangeDelIterSetter != nil && iters.rangeDeletion != nil {
 			// If this file has range deletions, interleave the bounds of the
 			// range deletions among the point keys. When used with a
 			// mergingIter, this ensures we don't move beyond a file with range
@@ -602,7 +607,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			l.iter = &l.interleaving
 
 			// Relinquish iters.rangeDeletion to the caller.
-			l.rangeDelIterFn(iters.rangeDeletion)
+			l.rangeDelIterSetter.setRangeDelIter(iters.rangeDeletion)
 		}
 		return newFileLoaded
 	}
@@ -911,8 +916,8 @@ func (l *levelIter) Close() error {
 		l.err = l.iter.Close()
 		l.iter = nil
 	}
-	if l.rangeDelIterFn != nil {
-		l.rangeDelIterFn(nil)
+	if l.rangeDelIterSetter != nil {
+		l.rangeDelIterSetter.setRangeDelIter(nil)
 	}
 	return l.err
 }
