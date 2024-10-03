@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // PrefixBytes holds an array of lexicographically ordered byte slices. It
@@ -248,9 +249,29 @@ type PrefixBytesIter struct {
 	// buf is used for materializing a user key. It is preallocated to the maximum
 	// key length in the data block.
 	buf                      []byte
+	syntheticPrefixLen       uint32
 	sharedAndBundlePrefixLen uint32
 	offsetIndex              int
 	nextBundleOffsetIndex    int
+}
+
+// Init initializes the prefix bytes iterator; maxKeyLength must be
+// large enough to fit any key in the block after applying any synthetic prefix
+// and/or suffix.
+func (i *PrefixBytesIter) Init(maxKeyLength int, syntheticPrefix block.SyntheticPrefix) {
+	// Allocate a buffer that's large enough to hold the largest user key in the
+	// block with 1 byte to spare (so that pointer arithmetic is never pointing
+	// beyond the allocation, which would violate Go rules).
+	n := maxKeyLength + 1
+	if cap(i.buf) < n {
+		ptr := mallocgc(uintptr(n), nil, false)
+		i.buf = unsafe.Slice((*byte)(ptr), n)
+	}
+	i.buf = i.buf[:0]
+	i.syntheticPrefixLen = uint32(len(syntheticPrefix))
+	if syntheticPrefix.IsSet() {
+		i.buf = append(i.buf, syntheticPrefix...)
+	}
 }
 
 // SetAt updates the provided PrefixBytesIter to hold the i'th []byte slice in
@@ -272,21 +293,24 @@ func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	rowSuffixStart, rowSuffixEnd := b.rowSuffixOffsets(i, it.offsetIndex)
 	rowSuffixLen := rowSuffixEnd - rowSuffixStart
 
-	it.sharedAndBundlePrefixLen = uint32(b.sharedPrefixLen) + bundlePrefixLen
+	it.sharedAndBundlePrefixLen = it.syntheticPrefixLen + uint32(b.sharedPrefixLen) + bundlePrefixLen
 	it.buf = it.buf[:it.sharedAndBundlePrefixLen+rowSuffixLen]
 
 	ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(it.syntheticPrefixLen))
 	// Copy the shared key prefix.
 	memmove(ptr, b.rawBytes.data, uintptr(b.sharedPrefixLen))
 	// Copy the bundle prefix.
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(b.sharedPrefixLen))
 	memmove(
-		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)),
+		ptr,
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(bundleOffsetStart)),
 		uintptr(bundlePrefixLen))
 
 	// Copy the per-row suffix.
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(bundlePrefixLen))
 	memmove(
-		unsafe.Pointer(uintptr(ptr)+uintptr(it.sharedAndBundlePrefixLen)),
+		ptr,
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 		uintptr(rowSuffixLen))
 	// Set nextBundleOffsetIndex so that a call to SetNext can cheaply determine
@@ -335,17 +359,19 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 	bundlePrefixLen := rowSuffixStart - bundlePrefixStart
 	it.nextBundleOffsetIndex = it.offsetIndex + (1 << b.bundleShift)
 
-	it.sharedAndBundlePrefixLen = uint32(b.sharedPrefixLen) + bundlePrefixLen
+	it.sharedAndBundlePrefixLen = it.syntheticPrefixLen + uint32(b.sharedPrefixLen) + bundlePrefixLen
 	it.buf = it.buf[:it.sharedAndBundlePrefixLen+rowSuffixLen]
 	// Copy in the new bundle suffix.
 	ptr := unsafe.Pointer(unsafe.SliceData(it.buf))
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(it.syntheticPrefixLen) + uintptr(b.sharedPrefixLen))
 	memmove(
-		unsafe.Pointer(uintptr(ptr)+uintptr(b.sharedPrefixLen)),
+		ptr,
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(bundlePrefixStart)),
 		uintptr(bundlePrefixLen))
 	// Copy in the per-row suffix.
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(bundlePrefixLen))
 	memmove(
-		unsafe.Pointer(uintptr(ptr)+uintptr(it.sharedAndBundlePrefixLen)),
+		ptr,
 		unsafe.Pointer(uintptr(b.rawBytes.data)+uintptr(rowSuffixStart)),
 		uintptr(rowSuffixLen))
 }

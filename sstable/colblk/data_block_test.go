@@ -28,8 +28,7 @@ func TestDataBlock(t *testing.T) {
 	var w DataBlockWriter
 	var r DataBlockReader
 	var it DataBlockIter
-	var rw DataBlockRewriter
-	rw.KeySchema = testKeysSchema
+	rw := NewDataBlockRewriter(testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split)
 	var sizes []int
 	datadriven.Walk(t, "testdata/data_block", func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
@@ -111,9 +110,13 @@ func TestDataBlock(t *testing.T) {
 					SyntheticPrefix:    []byte(syntheticPrefix),
 					SyntheticSuffix:    []byte(syntheticSuffix),
 				}
-				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
-					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-				}), transforms)
+				it.Init(
+					&r, testKeysSchema.NewKeySeeker(), testkeys.Comparer.Compare, testkeys.Comparer.Split,
+					getLazyValuer(func([]byte) base.LazyValue {
+						return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+					}),
+					transforms,
+				)
 				o := []itertest.IterOpt{itertest.ShowCommands}
 				if td.HasArg("verbose") {
 					o = append(o, itertest.Verbose)

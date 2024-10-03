@@ -1,3 +1,4 @@
+# Test synthetic sequence numbers.
 write-block
 a@10#1,SET:apple
 b@5#2,SET:banana
@@ -207,3 +208,194 @@ seek-lt z: .
 seek-lt b: .
      next: .
      prev: .
+
+# Test synthetic prefix.
+write-block
+blockprefix_a@10#1,SET:apple
+blockprefix_b@5#3,SET:banana
+blockprefix_blueberry#3,SET:blueberry
+blockprefix_c@9#4,SET:coconut
+blockprefix_c@6#5,SET:cantaloupe
+blockprefix_c@1#7,SET:clementine
+----
+
+iter synthetic-prefix=foo_
+first
+next
+next
+next
+next
+next
+prev
+----
+first: foo_blockprefix_a@10:apple
+ next: foo_blockprefix_b@5:banana
+ next: foo_blockprefix_blueberry:blueberry
+ next: foo_blockprefix_c@9:coconut
+ next: foo_blockprefix_c@6:cantaloupe
+ next: foo_blockprefix_c@1:clementine
+ prev: foo_blockprefix_c@6:cantaloupe
+
+iter synthetic-prefix=foo_
+last
+prev
+next
+prev
+prev
+prev
+prev
+prev
+prev
+next
+----
+last: foo_blockprefix_c@1:clementine
+prev: foo_blockprefix_c@6:cantaloupe
+next: foo_blockprefix_c@1:clementine
+prev: foo_blockprefix_c@6:cantaloupe
+prev: foo_blockprefix_c@9:coconut
+prev: foo_blockprefix_blueberry:blueberry
+prev: foo_blockprefix_b@5:banana
+prev: foo_blockprefix_a@10:apple
+prev: .
+next: foo_blockprefix_a@10:apple
+
+iter synthetic-prefix=foo_
+seek-ge foo_blockprefix
+seek-ge foo_blockprefix_b
+seek-ge foo_blockprefix_bb
+seek-ge foo_blockprefix_d
+prev
+seek-ge fo
+seek-ge foa_a
+seek-ge foz_a
+prev
+----
+   seek-ge foo_blockprefix: foo_blockprefix_a@10:apple
+ seek-ge foo_blockprefix_b: foo_blockprefix_b@5:banana
+seek-ge foo_blockprefix_bb: foo_blockprefix_blueberry:blueberry
+ seek-ge foo_blockprefix_d: .
+                      prev: foo_blockprefix_c@1:clementine
+                seek-ge fo: foo_blockprefix_a@10:apple
+             seek-ge foa_a: foo_blockprefix_a@10:apple
+             seek-ge foz_a: .
+                      prev: foo_blockprefix_c@1:clementine
+
+iter synthetic-prefix=foo_
+seek-lt foo_blockprefix_d
+seek-lt foo_blockprefix_bb
+seek-lt foo_blockprefix_b
+seek-lt foo_blockprefix
+next
+seek-lt foz_a
+seek-lt foa_a
+next
+seek-lt fo
+next
+----
+ seek-lt foo_blockprefix_d: foo_blockprefix_c@1:clementine
+seek-lt foo_blockprefix_bb: foo_blockprefix_b@5:banana
+ seek-lt foo_blockprefix_b: foo_blockprefix_a@10:apple
+   seek-lt foo_blockprefix: .
+                      next: foo_blockprefix_a@10:apple
+             seek-lt foz_a: foo_blockprefix_c@1:clementine
+             seek-lt foa_a: .
+                      next: foo_blockprefix_a@10:apple
+                seek-lt fo: .
+                      next: foo_blockprefix_a@10:apple
+
+iter synthetic-prefix=foo_
+is-lower-bound fo
+is-lower-bound foo_
+is-lower-bound foo_blockprefix_a@10
+is-lower-bound foo_blockprefix_a@9
+is-lower-bound fop
+----
+                  is-lower-bound fo: true
+                is-lower-bound foo_: true
+is-lower-bound foo_blockprefix_a@10: true
+ is-lower-bound foo_blockprefix_a@9: false
+                 is-lower-bound fop: false
+
+# Test synthetic suffix.
+write-block
+a@1#1,SET:a
+b@2#1,SET:b
+c@3#1,SET:c
+d@1#1,SET:d
+----
+
+iter synthetic-suffix=@10
+first
+next
+next
+next
+next
+prev
+----
+first: a@10:a
+ next: b@10:b
+ next: c@10:c
+ next: d@10:d
+ next: .
+ prev: d@10:d
+
+iter synthetic-suffix=@10
+last
+prev
+prev
+prev
+prev
+next
+----
+last: d@10:d
+prev: c@10:c
+prev: b@10:b
+prev: a@10:a
+prev: .
+next: a@10:a
+
+iter synthetic-suffix=@10
+seek-ge b
+seek-ge b@11
+seek-ge b@10
+seek-ge b@9
+seek-ge d
+seek-ge d@11
+seek-ge d@10
+seek-ge d@9
+----
+   seek-ge b: b@10:b
+seek-ge b@11: b@10:b
+seek-ge b@10: b@10:b
+ seek-ge b@9: c@10:c
+   seek-ge d: d@10:d
+seek-ge d@11: d@10:d
+seek-ge d@10: d@10:d
+ seek-ge d@9: .
+
+iter synthetic-suffix=@10
+seek-lt e
+seek-lt d@9
+seek-lt d@10
+seek-lt d@11
+seek-lt d
+seek-lt c@9
+seek-lt c@10
+seek-lt c@11
+seek-lt c
+seek-lt a@9
+seek-lt a@10
+seek-lt a
+----
+   seek-lt e: d@10:d
+ seek-lt d@9: d@10:d
+seek-lt d@10: c@10:c
+seek-lt d@11: c@10:c
+   seek-lt d: c@10:c
+ seek-lt c@9: c@10:c
+seek-lt c@10: b@10:b
+seek-lt c@11: b@10:b
+   seek-lt c: b@10:b
+ seek-lt a@9: a@10:a
+seek-lt a@10: .
+   seek-lt a: .
