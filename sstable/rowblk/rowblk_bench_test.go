@@ -225,7 +225,8 @@ func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 						PrefixAlphabetLen: alphaLen,
 						PrefixLen:         prefixLen,
 						PrefixLenShared:   lenShared,
-						Logical:           0,
+						AvgKeysPerPrefix:  2,
+						PercentLogical:    0,
 						BaseWallTime:      uint64(time.Now().UnixNano()),
 					}
 					b.Run(fmt.Sprintf("%s,valueLen=%d", keyConfig, valueLen), func(b *testing.B) {
@@ -270,13 +271,13 @@ func BenchmarkCockroachDataBlockIter(b *testing.B) {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
 			for _, prefixLen := range []int{8, 32, 128} {
 				lenShared := int(float64(prefixLen) * lenSharedPct)
-				for _, logical := range []uint32{0, 1} {
+				for _, logical := range []int{0, 100} {
 					for _, valueLen := range []int{8, 128, 1024} {
 						keyConfig := crdbtest.KeyConfig{
 							PrefixAlphabetLen: alphaLen,
 							PrefixLen:         prefixLen,
 							PrefixLenShared:   lenShared,
-							Logical:           logical,
+							PercentLogical:    logical,
 							BaseWallTime:      uint64(time.Now().UnixNano()),
 						}
 						b.Run(fmt.Sprintf("%s,value=%d", keyConfig, valueLen),

@@ -6,10 +6,16 @@ package crdbtest
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
+	"golang.org/x/exp/rand"
 )
 
 func TestComparer(t *testing.T) {
@@ -60,4 +66,59 @@ func TestComparer(t *testing.T) {
 	if err := base.CheckComparer(&Comparer, prefixes, suffixes); err != nil {
 		t.Error(err)
 	}
+}
+
+func TestDataDriven(t *testing.T) {
+	var keys [][]byte
+	datadriven.RunTest(t, "testdata", func(t *testing.T, d *datadriven.TestData) string {
+		seed := uint64(1234)
+		count := 10
+		valueLen := 4
+		cfg := KeyConfig{
+			PrefixAlphabetLen: 8,
+			PrefixLenShared:   4,
+			PrefixLen:         8,
+			AvgKeysPerPrefix:  2,
+			PercentLogical:    10,
+		}
+		const layout = "2006-01-02T15:04:05"
+		baseWallTime := "2020-01-01T00:00:00"
+		d.MaybeScanArgs(t, "seed", &seed)
+		d.MaybeScanArgs(t, "count", &count)
+		d.MaybeScanArgs(t, "alpha-len", &cfg.PrefixAlphabetLen)
+		d.MaybeScanArgs(t, "prefix-len-shared", &cfg.PrefixLenShared)
+		d.MaybeScanArgs(t, "prefix-len", &cfg.PrefixLen)
+		d.MaybeScanArgs(t, "avg-keys-pre-prefix", &cfg.AvgKeysPerPrefix)
+		d.MaybeScanArgs(t, "percent-logical", &cfg.PercentLogical)
+		d.MaybeScanArgs(t, "base-wall-time", &baseWallTime)
+		d.MaybeScanArgs(t, "value-len", &valueLen)
+		cfg.BaseWallTime = uint64(testutils.CheckErr(time.Parse(layout, baseWallTime)).UnixNano())
+
+		rng := rand.New(rand.NewSource(seed))
+		var buf strings.Builder
+		switch d.Cmd {
+		case "rand-kvs":
+			var vals [][]byte
+			keys, vals = RandomKVs(rng, count, cfg, valueLen)
+			for i, key := range keys {
+				n := Split(key)
+				prefix := key[:n-1]
+				suffix := key[n : len(key)-1]
+				fmt.Fprintf(&buf, "%s @ %X = %X\n", prefix, suffix, vals[i])
+			}
+
+		case "rand-query-keys":
+			queryKeys := RandomQueryKeys(rng, count, keys, cfg.BaseWallTime)
+			for _, key := range queryKeys {
+				n := Split(key)
+				prefix := key[:n-1]
+				suffix := key[n : len(key)-1]
+				fmt.Fprintf(&buf, "%s @ %X\n", prefix, suffix)
+			}
+
+		default:
+			d.Fatalf(t, "unknown command %q", d.Cmd)
+		}
+		return buf.String()
+	})
 }

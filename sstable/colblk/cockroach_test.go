@@ -415,7 +415,7 @@ func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 						PrefixAlphabetLen: alphaLen,
 						PrefixLen:         prefixLen,
 						PrefixLenShared:   lenShared,
-						Logical:           0,
+						PercentLogical:    0,
 						BaseWallTime:      uint64(time.Now().UnixNano()),
 					}
 					b.Run(fmt.Sprintf("%s,valueLen=%d", keyConfig, valueLen), func(b *testing.B) {
@@ -455,20 +455,23 @@ func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
 			for _, prefixLen := range []int{8, 32, 128} {
 				lenShared := int(float64(prefixLen) * lenSharedPct)
-				for _, logical := range []uint32{0, 1} {
-					for _, valueLen := range []int{8, 128, 1024} {
-						cfg := benchConfig{
-							KeyConfig: crdbtest.KeyConfig{
-								PrefixAlphabetLen: alphaLen,
-								PrefixLen:         prefixLen,
-								PrefixLenShared:   lenShared,
-								Logical:           logical,
-							},
-							ValueLen: valueLen,
+				for _, avgKeysPerPrefix := range []int{1, 10, 100} {
+					for _, percentLogical := range []int{0, 50} {
+						for _, valueLen := range []int{8, 128, 1024} {
+							cfg := benchConfig{
+								KeyConfig: crdbtest.KeyConfig{
+									PrefixAlphabetLen: alphaLen,
+									PrefixLen:         prefixLen,
+									PrefixLenShared:   lenShared,
+									AvgKeysPerPrefix:  avgKeysPerPrefix,
+									PercentLogical:    percentLogical,
+								},
+								ValueLen: valueLen,
+							}
+							b.Run(cfg.String(), func(b *testing.B) {
+								benchmarkCockroachDataBlockIter(b, cfg, block.IterTransforms{})
+							})
 						}
-						b.Run(cfg.String(), func(b *testing.B) {
-							benchmarkCockroachDataBlockIter(b, cfg, block.IterTransforms{})
-						})
 					}
 				}
 			}
@@ -482,6 +485,8 @@ var shortBenchConfigs = []benchConfig{
 			PrefixAlphabetLen: 8,
 			PrefixLen:         8,
 			PrefixLenShared:   4,
+			AvgKeysPerPrefix:  4,
+			PercentLogical:    10,
 		},
 		ValueLen: 8,
 	},
@@ -490,6 +495,8 @@ var shortBenchConfigs = []benchConfig{
 			PrefixAlphabetLen: 8,
 			PrefixLen:         128,
 			PrefixLenShared:   64,
+			AvgKeysPerPrefix:  4,
+			PercentLogical:    10,
 		},
 		ValueLen: 128,
 	},
@@ -560,6 +567,7 @@ func benchmarkCockroachDataBlockIter(
 		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, isObsolete)
 		count++
 	}
+	keys = keys[:count]
 	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
 	var reader DataBlockReader
 	var it DataBlockIter
@@ -585,16 +593,28 @@ func benchmarkCockroachDataBlockIter(
 		b.StopTimer()
 		b.ReportMetric(avgRowSize, "bytes/row")
 	})
-	b.Run("SeekGE", func(b *testing.B) {
-		rng := rand.New(rand.NewSource(seed))
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			k := keys[rng.Intn(count)]
-			if kv := it.SeekGE(k, base.SeekGEFlagsNone); kv == nil {
-				b.Fatalf("%q not found", k)
+	for _, queryLatest := range []bool{false, true} {
+		b.Run("SeekGE"+crstrings.If(queryLatest, "Latest"), func(b *testing.B) {
+			rng := rand.New(rand.NewSource(seed))
+			const numQueryKeys = 65536
+			baseWallTime := cfg.BaseWallTime
+			if queryLatest {
+				baseWallTime += 24 * uint64(time.Hour)
 			}
-		}
-		b.StopTimer()
-		b.ReportMetric(avgRowSize, "bytes/row")
-	})
+			queryKeys := crdbtest.RandomQueryKeys(rng, numQueryKeys, keys, baseWallTime)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				k := queryKeys[i%numQueryKeys]
+				if kv := it.SeekGE(k, base.SeekGEFlagsNone); kv == nil {
+					// SeekGE should always end up finding a key if we are querying for the
+					// latest version of each prefix and we are not hiding any points.
+					if queryLatest && !transforms.HideObsoletePoints {
+						b.Fatalf("%q not found", k)
+					}
+				}
+			}
+			b.StopTimer()
+			b.ReportMetric(avgRowSize, "bytes/row")
+		})
+	}
 }
