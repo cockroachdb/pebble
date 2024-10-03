@@ -231,7 +231,7 @@ func newColumnBlockSingleLevelIterator(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
 		stats, categoryAndQoS, statsCollector, bufferPool,
 	)
-	i.data.KeySchema = r.keySchema
+	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 		// can outlive the singleLevelIterator due to be being embedded in a
@@ -248,9 +248,10 @@ func newColumnBlockSingleLevelIterator(
 			vbih:   r.valueBIH,
 			stats:  stats,
 		}
-		i.data.GetLazyValuer = i.vbReader
+		getLazyValuer = i.vbReader
 		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
+	i.data.InitOnce(r.keySchema, getLazyValuer)
 	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
 	if err == nil {
 		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)

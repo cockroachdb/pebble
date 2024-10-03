@@ -31,6 +31,10 @@ func TestDataBlock(t *testing.T) {
 	var rw DataBlockRewriter
 	rw.KeySchema = testKeysSchema
 	var sizes []int
+	it.InitOnce(testKeysSchema, getLazyValuer(func([]byte) base.LazyValue {
+		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+	}))
+
 	datadriven.Walk(t, "testdata/data_block", func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 			buf.Reset()
@@ -111,15 +115,16 @@ func TestDataBlock(t *testing.T) {
 					SyntheticPrefix:    []byte(syntheticPrefix),
 					SyntheticSuffix:    []byte(syntheticSuffix),
 				}
-				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
-					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-				}), transforms)
+				if err := it.Init(&r, transforms); err != nil {
+					return err.Error()
+				}
+
 				o := []itertest.IterOpt{itertest.ShowCommands}
 				if td.HasArg("verbose") {
 					o = append(o, itertest.Verbose)
 				}
 				if td.HasArg("invalidated") {
-					it = DataBlockIter{}
+					it.Invalidate()
 				}
 				return itertest.RunInternalIterCmd(t, td, &it, o...)
 			default:
