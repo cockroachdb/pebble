@@ -148,8 +148,8 @@ type Iterator interface {
 type (
 	singleLevelIteratorRowBlocks    = singleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
 	twoLevelIteratorRowBlocks       = twoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter]
-	singleLevelIteratorColumnBlocks = singleLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter]
-	twoLevelIteratorColumnBlocks    = twoLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter]
+	singleLevelIteratorColumnBlocks = singleLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.DataBlockIter, *colblk.DataBlockIter]
+	twoLevelIteratorColumnBlocks    = twoLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.DataBlockIter, *colblk.DataBlockIter]
 )
 
 var (
@@ -182,7 +182,7 @@ func init() {
 				pool: &singleLevelIterColumnBlockPool,
 			}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
-			invariants.SetFinalizer(i, checkSingleLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter])
+			invariants.SetFinalizer(i, checkSingleLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.DataBlockIter, *colblk.DataBlockIter])
 			return i
 		},
 	}
@@ -192,7 +192,7 @@ func init() {
 				pool: &twoLevelIterColumnBlockPool,
 			}
 			// Note: this is a no-op if invariants are disabled or race is enabled.
-			invariants.SetFinalizer(i, checkTwoLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.MultiDataBlockIter, *colblk.MultiDataBlockIter])
+			invariants.SetFinalizer(i, checkTwoLevelIterator[colblk.IndexIter, *colblk.IndexIter, colblk.DataBlockIter, *colblk.DataBlockIter])
 			return i
 		},
 	}

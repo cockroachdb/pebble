@@ -592,6 +592,14 @@ type DataBlockRewriter struct {
 	initialized     bool
 }
 
+type assertNoExternalValues struct{}
+
+var _ block.GetLazyValueForPrefixAndValueHandler = assertNoExternalValues{}
+
+func (assertNoExternalValues) GetLazyValueForPrefixAndValueHandle(value []byte) base.LazyValue {
+	panic(errors.AssertionFailedf("pebble: sstable contains values in value blocks"))
+}
+
 // RewriteSuffixes rewrites the input block. It expects the input block to only
 // contain keys with the suffix `from`. It rewrites the block to contain the
 // same keys with the suffix `to`.
@@ -605,6 +613,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
 	if !rw.initialized {
+		rw.iter.InitOnce(rw.KeySchema, assertNoExternalValues{})
 		rw.keySeeker = rw.KeySchema.NewKeySeeker()
 		rw.writer.Init(rw.KeySchema)
 		rw.initialized = true
@@ -634,7 +643,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	rw.reader.Init(rw.KeySchema, input)
 	rw.keySeeker.Init(&rw.reader)
 	rw.writer.Reset()
-	if err = rw.iter.Init(&rw.reader, rw.keySeeker, nil, block.IterTransforms{}); err != nil {
+	if err = rw.iter.Init(&rw.reader, block.IterTransforms{}); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
 
@@ -749,102 +758,22 @@ func (r *DataBlockReader) Describe(f *binfmt.Formatter) {
 	f.HexBytesln(1, "block padding byte")
 }
 
-// MultiDataBlockIter wraps a DataBlockIter, implementing the block package's
-// DataBlockIterator. MultiDataBlockIter retains configuration (the KeySchema
-// and lazy value retriever) across initialization for additional blocks. It
-// also is responsible for maintaining handles to block buffer handles.
-//
-// In constrast, the DataBlockIter type it wraps operates solely within the
-// context of iterating over an individual block. While a DataBlockIter may be
-// reused, it does not retain any configuration beyond a reset.
-type MultiDataBlockIter struct {
-	DataBlockIter
-	h block.BufferHandle
-	r DataBlockReader
-
-	// KeySchema configures the DataBlockIterConfig to use the provided
-	// KeySchema when initializing the DataBlockIter for iteration over a new
-	// block.
-	KeySchema KeySchema
-	// GetLazyValuer configures the DataBlockIterConfig to initialize the
-	// DataBlockIter to use the provided handler for retrieving lazy values.
-	GetLazyValuer block.GetLazyValueForPrefixAndValueHandler
-}
-
-// Assert that *DataBlockIterConfig implements block.DataBlockIterator.
-var _ block.DataBlockIterator = (*MultiDataBlockIter)(nil)
-
-// InitHandle initializes the block from the provided buffer handle.
-func (c *MultiDataBlockIter) InitHandle(
-	cmp base.Compare, split base.Split, h block.BufferHandle, t block.IterTransforms,
-) error {
-	c.h.Release()
-	c.h = h
-	c.r.Init(c.KeySchema, h.Get())
-	return c.DataBlockIter.Init(&c.r, c.KeySchema.NewKeySeeker(), c.GetLazyValuer, t)
-}
-
-// Handle returns the handle to the block.
-func (c *MultiDataBlockIter) Handle() block.BufferHandle {
-	return c.h
-}
-
-// Valid returns true if the iterator is currently positioned at a valid KV.
-func (i *MultiDataBlockIter) Valid() bool {
-	return i.row >= 0 && i.row <= i.maxRow
-}
-
-// KV returns the key-value pair at the current iterator position. The
-// iterator must be positioned over a valid KV.
-func (i *MultiDataBlockIter) KV() *base.InternalKV {
-	return &i.kv
-}
-
-// Invalidate invalidates the block iterator, removing references to the block
-// it was initialized with. The iterator may continue to be used after
-// a call to Invalidate, but all positioning methods should return false.
-// Valid() must also return false.
-func (c *MultiDataBlockIter) Invalidate() {
-	c.DataBlockIter = DataBlockIter{}
-}
-
-// IsDataInvalidated returns true when the iterator has been invalidated
-// using an Invalidate call.
-func (c *MultiDataBlockIter) IsDataInvalidated() bool {
-	return c.DataBlockIter.r == nil
-}
-
-// ResetForReuse resets the iterator for reuse, retaining buffers and
-// configuration, to avoid future allocations.
-func (i *MultiDataBlockIter) ResetForReuse() MultiDataBlockIter {
-	return MultiDataBlockIter{
-		DataBlockIter: DataBlockIter{
-			keyIter: PrefixBytesIter{buf: i.DataBlockIter.keyIter.buf},
-		},
-		KeySchema:     i.KeySchema,
-		GetLazyValuer: i.GetLazyValuer,
-	}
-}
-
-// Close implements the base.InternalIterator interface.
-func (i *MultiDataBlockIter) Close() error {
-	if i.keySeeker != nil {
-		i.keySeeker.Release()
-		i.keySeeker = nil
-	}
-	i.DataBlockIter = DataBlockIter{}
-	i.h.Release()
-	i.h = block.BufferHandle{}
-	return nil
-}
+// Assert that *DataBlockIter implements block.DataBlockIterator.
+var _ block.DataBlockIterator = (*DataBlockIter)(nil)
 
 // DataBlockIter iterates over a columnar data block.
 type DataBlockIter struct {
-	// configuration
+	// keySchema configures the DataBlockIterConfig to use the provided
+	// KeySchema when initializing the DataBlockIter for iteration over a new
+	// block.
+	keySchema KeySchema
+	// getLazyValuer configures the DataBlockIterConfig to initialize the
+	// DataBlockIter to use the provided handler for retrieving lazy values.
+	getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	r             *DataBlockReader
+	h             block.BufferHandle
 	maxRow        int
 	keySeeker     KeySeeker
-	getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	transforms    block.IterTransforms
 
 	// state
@@ -857,27 +786,42 @@ type DataBlockIter struct {
 	// It is used to optimize skipping of obsolete points during forward
 	// iteration.
 	nextObsoletePoint int
+
+	readerAlloc DataBlockReader
+}
+
+// InitOnce configures the data block iterator's key schema and lazy value
+// handler. The iterator must be initialized with a block before it can be used.
+// It may be reinitialized with new blocks without calling InitOnce again.
+func (i *DataBlockIter) InitOnce(
+	keySchema KeySchema, getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
+) {
+	i.keySchema = keySchema
+	i.getLazyValuer = getLazyValuer
 }
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.
-func (i *DataBlockIter) Init(
-	r *DataBlockReader,
-	keyIterator KeySeeker,
-	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
-	transforms block.IterTransforms,
-) error {
+func (i *DataBlockIter) Init(r *DataBlockReader, transforms block.IterTransforms) error {
 	numRows := int(r.r.header.Rows)
+	keySchema := i.keySchema
+	getLazyValuer := i.getLazyValuer
+	keySeeker := i.keySeeker
+	if keySeeker == nil {
+		keySeeker = i.keySchema.NewKeySeeker()
+	}
 	*i = DataBlockIter{
-		r:             r,
-		maxRow:        numRows - 1,
-		keySeeker:     keyIterator,
+		keySchema:     keySchema,
 		getLazyValuer: getLazyValuer,
+		r:             r,
+		h:             i.h,
+		maxRow:        numRows - 1,
+		keySeeker:     keySeeker,
 		transforms:    transforms,
-		row:           -1,
-		kvRow:         math.MinInt,
-		kv:            base.InternalKV{},
 		keyIter:       PrefixBytesIter{},
+		row:           -1,
+		kv:            base.InternalKV{},
+		kvRow:         math.MinInt,
 	}
 	if i.transforms.HideObsoletePoints && r.isObsolete.SeekSetBitGE(0) == numRows {
 		// There are no obsolete points in the block; don't bother checking.
@@ -894,6 +838,80 @@ func (i *DataBlockIter) Init(
 		i.keyIter.buf = i.keyIter.buf[:0]
 	}
 	return i.keySeeker.Init(r)
+}
+
+// InitHandle initializes the block from the provided buffer handle.
+func (i *DataBlockIter) InitHandle(
+	cmp base.Compare, split base.Split, h block.BufferHandle, t block.IterTransforms,
+) error {
+	i.h.Release()
+	i.h = h
+	i.readerAlloc.Init(i.keySchema, h.Get())
+	if i.keySeeker == nil {
+		i.keySeeker = i.keySchema.NewKeySeeker()
+	}
+	i.transforms = t
+	i.r = &i.readerAlloc
+	numRows := int(i.readerAlloc.r.header.Rows)
+	if i.transforms.HideObsoletePoints && i.r.isObsolete.SeekSetBitGE(0) == numRows {
+		// There are no obsolete points in the block; don't bother checking.
+		i.transforms.HideObsoletePoints = false
+	}
+	// Allocate a keyIter buffer that's large enough to hold the largest user
+	// key in the block with 1 byte to spare (so that pointer arithmetic is
+	// never pointing beyond the allocation, which would violate Go rules).
+	n := int(i.r.maximumKeyLength) + 1
+	if cap(i.keyIter.buf) < n {
+		ptr := mallocgc(uintptr(n), nil, false)
+		i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
+	} else {
+		i.keyIter.buf = i.keyIter.buf[:0]
+	}
+	i.maxRow = numRows - 1
+	i.kvRow = math.MinInt
+	i.row = -1
+	return i.keySeeker.Init(i.r)
+}
+
+// Handle returns the handle to the block.
+func (i *DataBlockIter) Handle() block.BufferHandle {
+	return i.h
+}
+
+// Valid returns true if the iterator is currently positioned at a valid KV.
+func (i *DataBlockIter) Valid() bool {
+	return i.row >= 0 && i.row <= i.maxRow && !i.IsDataInvalidated()
+}
+
+// KV returns the key-value pair at the current iterator position. The
+// iterator must be positioned over a valid KV.
+func (i *DataBlockIter) KV() *base.InternalKV {
+	return &i.kv
+}
+
+// Invalidate invalidates the block iterator, removing references to the block
+// it was initialized with. The iterator may continue to be used after
+// a call to Invalidate, but all positioning methods should return false.
+// Valid() must also return false.
+func (i *DataBlockIter) Invalidate() {
+	i.r = nil
+}
+
+// IsDataInvalidated returns true when the iterator has been invalidated
+// using an Invalidate call.
+func (i *DataBlockIter) IsDataInvalidated() bool {
+	return i.r == nil
+}
+
+// ResetForReuse resets the iterator for reuse, retaining buffers and
+// configuration supplied to InitOnce, to avoid future allocations.
+func (i *DataBlockIter) ResetForReuse() DataBlockIter {
+	return DataBlockIter{
+		keySchema:     i.keySchema,
+		getLazyValuer: i.getLazyValuer,
+		keyIter:       PrefixBytesIter{buf: i.keyIter.buf},
+		keySeeker:     i.keySeeker,
+	}
 }
 
 // IsLowerBound implements the block.DataBlockIterator interface.
@@ -1204,7 +1222,15 @@ var _ = (*DataBlockIter).decodeKey
 
 // Close implements the base.InternalIterator interface.
 func (i *DataBlockIter) Close() error {
-	i.keySeeker.Release()
-	i.keySeeker = nil
+	if i.keySeeker != nil {
+		i.keySeeker.Release()
+		i.keySeeker = nil
+	}
+	i.r = nil
+	i.h.Release()
+	i.h = block.BufferHandle{}
+	i.transforms = block.IterTransforms{}
+	i.kv = base.InternalKV{}
+	i.readerAlloc = DataBlockReader{}
 	return nil
 }
