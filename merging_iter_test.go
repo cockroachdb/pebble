@@ -302,7 +302,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
-				li.initRangeDel(levelIters[i].setRangeDelIter)
+				li.initRangeDel(&levelIters[i])
 			}
 			miter := &mergingIter{}
 			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, levelIters...)
@@ -688,7 +688,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		l := newLevelIter(
 			context.Background(), IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),
 			manifest.Level(level), internalIterOpts{})
-		l.initRangeDel(mils[level].setRangeDelIter)
+		l.initRangeDel(&mils[level])
 		mils[level].iter = l
 	}
 	var stats base.InternalIteratorStats
