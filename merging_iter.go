@@ -44,6 +44,9 @@ type mergingIterLevel struct {
 	tombstone *keyspan.Span
 }
 
+// Assert that *mergingIterLevel implements rangeDelIterSetter.
+var _ rangeDelIterSetter = (*mergingIterLevel)(nil)
+
 func (ml *mergingIterLevel) setRangeDelIter(iter keyspan.FragmentIterator) {
 	ml.tombstone = nil
 	if ml.rangeDelIter != nil {

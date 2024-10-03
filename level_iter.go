@@ -91,7 +91,7 @@ type levelIter struct {
 	// it.
 	// When rangeDelIterFn != nil, the levelIter will also interleave the
 	// boundaries of range deletions among point keys.
-	rangeDelIterFn func(rangeDelIter keyspan.FragmentIterator)
+	rangeDelIterFn rangeDelIterSetter
 
 	// interleaving is used when rangeDelIterFn != nil to interleave the
 	// boundaries of range deletions among point keys. When the leve iterator is
@@ -121,6 +121,10 @@ type levelIter struct {
 	// which construct "impossible" situations (e.g. seeking to a key before the
 	// lower bound).
 	disableInvariants bool
+}
+
+type rangeDelIterSetter interface {
+	setRangeDelIter(rangeDelIter keyspan.FragmentIterator)
 }
 
 // levelIter implements the base.InternalIterator interface.
@@ -182,8 +186,8 @@ func (l *levelIter) init(
 //
 // The range deletion iterator passed to rangeDelIterFn is relinquished to the
 // implementor who is responsible for closing it.
-func (l *levelIter) initRangeDel(rangeDelIterFn func(rangeDelIter keyspan.FragmentIterator)) {
-	l.rangeDelIterFn = rangeDelIterFn
+func (l *levelIter) initRangeDel(rangeDelSetter rangeDelIterSetter) {
+	l.rangeDelIterFn = rangeDelSetter
 }
 
 func (l *levelIter) initCombinedIterState(state *combinedIterState) {
@@ -574,7 +578,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		iters, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterKinds)
 		if l.err != nil {
 			if l.rangeDelIterFn != nil {
-				l.rangeDelIterFn(nil)
+				l.rangeDelIterFn.setRangeDelIter(nil)
 			}
 			return noFileLoaded
 		}
@@ -602,7 +606,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			l.iter = &l.interleaving
 
 			// Relinquish iters.rangeDeletion to the caller.
-			l.rangeDelIterFn(iters.rangeDeletion)
+			l.rangeDelIterFn.setRangeDelIter(iters.rangeDeletion)
 		}
 		return newFileLoaded
 	}
@@ -912,7 +916,7 @@ func (l *levelIter) Close() error {
 		l.iter = nil
 	}
 	if l.rangeDelIterFn != nil {
-		l.rangeDelIterFn(nil)
+		l.rangeDelIterFn.setRangeDelIter(nil)
 	}
 	return l.err
 }
