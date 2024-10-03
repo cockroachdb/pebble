@@ -111,15 +111,20 @@ func TestDataBlock(t *testing.T) {
 					SyntheticPrefix:    []byte(syntheticPrefix),
 					SyntheticSuffix:    []byte(syntheticSuffix),
 				}
-				it.Init(&r, testKeysSchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
+				it.KeySchema = testKeysSchema
+				it.GetLazyValuer = getLazyValuer(func([]byte) base.LazyValue {
 					return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-				}), transforms)
+				})
+				if err := it.Init(&r, transforms); err != nil {
+					return err.Error()
+				}
+
 				o := []itertest.IterOpt{itertest.ShowCommands}
 				if td.HasArg("verbose") {
 					o = append(o, itertest.Verbose)
 				}
 				if td.HasArg("invalidated") {
-					it = DataBlockIter{}
+					it.Invalidate()
 				}
 				return itertest.RunInternalIterCmd(t, td, &it, o...)
 			default:

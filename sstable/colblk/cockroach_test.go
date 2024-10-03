@@ -368,10 +368,14 @@ func TestCockroachDataBlock(t *testing.T) {
 	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
 	var reader DataBlockReader
 	var it DataBlockIter
-	reader.Init(cockroachKeySchema, serializedBlock)
-	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
+	it.KeySchema = cockroachKeySchema
+	it.GetLazyValuer = getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}), block.IterTransforms{})
+	})
+	reader.Init(cockroachKeySchema, serializedBlock)
+	if err := it.Init(&reader, block.IterTransforms{}); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("Next", func(t *testing.T) {
 		// Scan the block using Next and ensure that all the keys values match.
@@ -558,10 +562,14 @@ func benchmarkCockroachDataBlockIter(
 	serializedBlock, _ := w.Finish(w.Rows(), w.Size())
 	var reader DataBlockReader
 	var it DataBlockIter
-	reader.Init(cockroachKeySchema, serializedBlock)
-	it.Init(&reader, cockroachKeySchema.NewKeySeeker(), getLazyValuer(func([]byte) base.LazyValue {
+	it.KeySchema = cockroachKeySchema
+	it.GetLazyValuer = getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}), transforms)
+	})
+	reader.Init(cockroachKeySchema, serializedBlock)
+	if err := it.Init(&reader, transforms); err != nil {
+		b.Fatal(err)
+	}
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {
