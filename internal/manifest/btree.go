@@ -9,6 +9,7 @@ import (
 	stdcmp "cmp"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -68,8 +69,10 @@ type leafNode struct {
 	subtreeCount int
 	items        [maxItems]*FileMetadata
 	// annot contains one annotation per annotator, merged over the entire
-	// node's files (and all descendants for non-leaf nodes).
-	annot []annotation
+	// node's files (and all descendants for non-leaf nodes). Protected by
+	// annotMu.
+	annotMu sync.RWMutex
+	annot   []annotation
 }
 
 type node struct {
@@ -106,13 +109,16 @@ func newNode() *node {
 // mutable node.
 func mut(n **node) *node {
 	if (*n).ref.Load() == 1 {
-		// Exclusive ownership. Can mutate in place.
+		// Exclusive ownership. Can mutate in place. Still need to lock out
+		// any concurrent writes to annot.
+		(*n).annotMu.Lock()
+		defer (*n).annotMu.Unlock()
 
 		// Whenever a node will be mutated, reset its annotations to be marked
 		// as uncached. This ensures any future calls to (*node).annotation
 		// will recompute annotations on the modified subtree.
 		for i := range (*n).annot {
-			(*n).annot[i].valid = false
+			(*n).annot[i].valid.Store(false)
 		}
 		return *n
 	}

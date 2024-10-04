@@ -2302,9 +2302,6 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	readState := d.loadReadState()
 	defer readState.unref()
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	totalSize = *d.mu.annotators.totalSize.VersionRangeAnnotation(readState.current, bounds)
 	remoteSize = *d.mu.annotators.remoteSize.VersionRangeAnnotation(readState.current, bounds)
 	externalSize = *d.mu.annotators.externalSize.VersionRangeAnnotation(readState.current, bounds)
