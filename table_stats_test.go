@@ -12,11 +12,11 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -192,7 +192,7 @@ func TestTableStats(t *testing.T) {
 
 func TestTableRangeDeletionIter(t *testing.T) {
 	var m *fileMetadata
-	cmp := base.DefaultComparer
+	cmp := testkeys.Comparer
 	fs := vfs.NewMem()
 	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch cmd := td.Cmd; cmd {
@@ -202,6 +202,8 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return err.Error()
 			}
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+				Comparer:    cmp,
+				KeySchema:   colblk.DefaultKeySchema(cmp, 16),
 				TableFormat: sstable.TableFormatMax,
 			})
 			m = &fileMetadata{}
@@ -238,7 +240,10 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err = sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
+			r, err = sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{
+				Comparer:  cmp,
+				KeySchema: colblk.DefaultKeySchema(cmp, 16),
+			})
 			if err != nil {
 				return err.Error()
 			}
