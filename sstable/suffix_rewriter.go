@@ -238,23 +238,35 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w RawWriter, from, to []byte) error
 // collector in r, with the values containing a new shortID corresponding to the
 // index of the corresponding block property collector in collectors.
 //
+// Additionally, getShortIDs returns n which is the number of block property
+// collectors used when writing the provided collectors to r. Specifically, the
+// caller may pass n to makeBlockPropertiesDecoder as numCollectedProps and be
+// guaranteed that they will decode the property for each collector named in
+// collectors if it is encoded in r. This is necessary when len(collectors) is
+// not necessarily the length of the block property collectors when the sstable
+// in r was written.
+//
 // getShortIDs errors if any of the collectors are not found in the sstable.
-func getShortIDs(r *Reader, collectors []BlockPropertyCollector) ([]shortID, error) {
+func getShortIDs(
+	r *Reader, collectors []BlockPropertyCollector,
+) (shortIDs []shortID, n int, err error) {
 	if len(collectors) == 0 {
-		return nil, nil
+		return nil, 0, nil
 	}
-	shortIDs := make([]shortID, math.MaxUint8)
+	shortIDs = make([]shortID, math.MaxUint8)
 	for i := range shortIDs {
 		shortIDs[i] = invalidShortID
 	}
 	for i, p := range collectors {
 		prop, ok := r.Properties.UserProperties[p.Name()]
 		if !ok {
-			return nil, errors.Errorf("sstable does not contain property %s", p.Name())
+			return nil, 0, errors.Errorf("sstable does not contain property %s", p.Name())
 		}
-		shortIDs[shortID(prop[0])] = shortID(i)
+		oldShortID := shortID(prop[0])
+		shortIDs[oldShortID] = shortID(i)
+		n = max(n, int(oldShortID)+1)
 	}
-	return shortIDs, nil
+	return shortIDs, n, nil
 }
 
 type copyFilterWriter struct {
