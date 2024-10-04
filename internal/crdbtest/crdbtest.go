@@ -155,7 +155,9 @@ func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
 }
 
 // DecodeTimestamp decodes a MVCC timestamp from a serialized MVCC key.
-func DecodeTimestamp(mvccKey []byte) ([]byte, []byte, uint64, uint32) {
+func DecodeTimestamp(
+	mvccKey []byte,
+) (prefix []byte, untypedSuffix []byte, wallTime uint64, logicalTime uint32) {
 	tsLen := int(mvccKey[len(mvccKey)-1])
 	keyPartEnd := len(mvccKey) - tsLen
 	if keyPartEnd < 0 {
