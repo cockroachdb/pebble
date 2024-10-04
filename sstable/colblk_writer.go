@@ -967,7 +967,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 
 	// oldShortIDs maps the shortID for the block property collector in the old
 	// blocks to the shortID in the new blocks. Initialized once for the sstable.
-	oldShortIDs, err := getShortIDs(r, w.blockPropCollectors)
+	oldShortIDs, n, err := getShortIDs(r, w.blockPropCollectors)
 	if err != nil {
 		return errors.Wrap(err, "getting short IDs")
 	}
@@ -980,7 +980,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		for i := range oldProps {
 			oldProps[i] = nil
 		}
-		decoder := makeBlockPropertiesDecoder(len(oldProps), l.Data[i].Props)
+		decoder := makeBlockPropertiesDecoder(n, l.Data[i].Props)
 		for !decoder.Done() {
 			id, val, err := decoder.Next()
 			if err != nil {

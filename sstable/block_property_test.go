@@ -11,7 +11,8 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/bits"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func TestIntervalEncodeDecode(t *testing.T) {
@@ -1349,6 +1351,52 @@ func runBlockPropsCmd(r *Reader) string {
 	return sb.String()
 }
 
+func randomTestCollectors(
+	rng *rand.Rand,
+) (names []string, collectors []func() BlockPropertyCollector) {
+	names = slices.Clone(testCollectorNames())
+	rng.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
+	names = names[:rng.Intn(len(names)+1)]
+	collectors = testCollectorsByNames(names...)
+	return names, collectors
+}
+
+func testCollectorsByNames(names ...string) []func() BlockPropertyCollector {
+	collectors := make([]func() BlockPropertyCollector, len(names))
+	for i, name := range names {
+		collectors[i] = testCollectorConstructors[name]
+	}
+	return collectors
+}
+
+var testCollectorNames = func() []string {
+	names := make([]string, 0, len(testCollectorConstructors))
+	for name := range testCollectorConstructors {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+var testCollectorConstructors = map[string]func() BlockPropertyCollector{
+	"count": keyCountCollectorFn("count"),
+	"parity": func() BlockPropertyCollector {
+		fn := func(v uint64) uint64 { return v & 1 }
+		m := &testkeySuffixIntervalMapper{fn: fn}
+		return NewBlockIntervalCollector("parity", m, m)
+	},
+	"log10": func() BlockPropertyCollector {
+		fn := func(v uint64) uint64 { return uint64(math.Log10(float64(v))) + 1 }
+		m := &testkeySuffixIntervalMapper{fn: fn}
+		return NewBlockIntervalCollector("log10", m, m)
+	},
+	"onebits": func() BlockPropertyCollector {
+		fn := func(v uint64) uint64 { return uint64(bits.OnesCount(uint(v))) }
+		m := &testkeySuffixIntervalMapper{fn: fn}
+		return NewBlockIntervalCollector("onebits", m, m)
+	},
+}
+
 type keyCountCollector struct {
 	name                string
 	block, index, table int
@@ -1402,7 +1450,7 @@ func (p *keyCountCollector) AddCollectedWithSuffixReplacement(
 ) error {
 	n, err := strconv.Atoi(string(oldProp))
 	if err != nil {
-		return err
+		return errors.Wrap(err, "parsing key count property")
 	}
 	p.block = n
 	return nil
@@ -1412,42 +1460,45 @@ func (p *keyCountCollector) SupportsSuffixReplacement() bool {
 	return true
 }
 
-type intSuffixIntervalMapper struct {
-	suffixLen int
+type testkeySuffixIntervalMapper struct {
+	fn func(uint64) uint64
 }
 
-var _ IntervalMapper = (*intSuffixIntervalMapper)(nil)
-var _ BlockIntervalSuffixReplacer = (*intSuffixIntervalMapper)(nil)
-
-func newIntSuffixIntervalMapper(suffixLen int) *intSuffixIntervalMapper {
-	return &intSuffixIntervalMapper{suffixLen: suffixLen}
-}
+var _ IntervalMapper = (*testkeySuffixIntervalMapper)(nil)
+var _ BlockIntervalSuffixReplacer = (*testkeySuffixIntervalMapper)(nil)
 
 // MapPointKey is part of the IntervalMapper interface.
-func (i *intSuffixIntervalMapper) MapPointKey(
+func (i *testkeySuffixIntervalMapper) MapPointKey(
 	key InternalKey, value []byte,
 ) (BlockInterval, error) {
-	return stringToInterval(key.UserKey[len(key.UserKey)-i.suffixLen:]), nil
+	j := testkeys.Comparer.Split(key.UserKey)
+	if len(key.UserKey) == j {
+		return BlockInterval{}, nil
+	}
+	v, err := testkeys.ParseSuffix(key.UserKey[j:])
+	if err != nil {
+		return BlockInterval{}, errors.Wrap(err, "mapping point key")
+	}
+	mv := i.fn(uint64(v))
+	return BlockInterval{mv, mv + 1}, nil
 }
 
 // MapRangeKeys is part of the IntervalMapper interface.
-func (i *intSuffixIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error) {
+func (i *testkeySuffixIntervalMapper) MapRangeKeys(span Span) (BlockInterval, error) {
 	return BlockInterval{}, nil
 }
 
 // ApplySuffixReplacement is part of the BlockIntervalSuffixReplacer interface.
-func (i *intSuffixIntervalMapper) ApplySuffixReplacement(
+func (i *testkeySuffixIntervalMapper) ApplySuffixReplacement(
 	interval BlockInterval, newSuffix []byte,
 ) (BlockInterval, error) {
-	if len(newSuffix) > i.suffixLen {
-		newSuffix = newSuffix[len(newSuffix)-i.suffixLen:]
+	if len(newSuffix) == 0 {
+		return BlockInterval{}, nil
 	}
-	return stringToInterval(newSuffix), nil
-}
-
-func intSuffixIntervalCollectorFn(name string, suffixLen int) func() BlockPropertyCollector {
-	m := newIntSuffixIntervalMapper(suffixLen)
-	return func() BlockPropertyCollector {
-		return NewBlockIntervalCollector(name, m, m)
+	v, err := testkeys.ParseSuffix(newSuffix)
+	if err != nil {
+		return BlockInterval{}, errors.Wrap(err, "applying suffix replacement")
 	}
+	mv := i.fn(uint64(v))
+	return BlockInterval{mv, mv + 1}, nil
 }
