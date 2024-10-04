@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -1674,14 +1675,21 @@ func TestReader_TableFormat(t *testing.T) {
 		f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 		require.NoError(t, err)
 
-		opts := WriterOptions{TableFormat: want}
+		opts := WriterOptions{
+			Comparer:    testkeys.Comparer,
+			KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+			TableFormat: want,
+		}
 		w := NewRawWriter(objstorageprovider.NewFileWritable(f), opts)
 		err = w.Close()
 		require.NoError(t, err)
 
 		f, err = fs.Open("test")
 		require.NoError(t, err)
-		r, err := newReader(f, ReaderOptions{})
+		r, err := newReader(f, ReaderOptions{
+			Comparer:  opts.Comparer,
+			KeySchema: opts.KeySchema,
+		})
 		require.NoError(t, err)
 		defer r.Close()
 

@@ -31,9 +31,7 @@ const (
 	TableFormatPebblev5 // Columnar blocks.
 	NumTableFormats
 
-	// TODO(jackson): Update TableFormatMax to `NumTableFormats-1` once
-	// TableFormatPebblev5 is stable.
-	TableFormatMax = TableFormatPebblev4
+	TableFormatMax = NumTableFormats - 1
 
 	// TableFormatMinSupported is the minimum format supported by Pebble.  This
 	// package still supports older formats for uses outside of Pebble

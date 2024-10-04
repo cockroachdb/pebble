@@ -31,9 +31,9 @@ build block-size=1 index-block-size=1
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
-d.RANGEDEL.4:e
+EncodeSpan: d-e:{(#4,RANGEDEL)}
 EncodeSpan: a-d:{(#11,RANGEKEYSET,@10,foo)}
-g.RANGEDEL.5:l
+EncodeSpan: g-l:{(#5,RANGEDEL)}
 EncodeSpan: y-z:{(#12,RANGEKEYSET,@11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
@@ -493,7 +493,7 @@ build
 a.SET.1:a
 d.SET.2:d
 e.SET.3:e
-d.RANGEDEL.4:e
+EncodeSpan: d-e:{(#4,RANGEDEL)}
 f.SET.5:f
 ----
 point:    [a#1,SET-f#5,SET]
@@ -530,7 +530,7 @@ build block-size=1 index-block-size=1
 a.SET.1:a
 d.SET.2:d
 e.SET.3:e
-d.RANGEDEL.4:e
+EncodeSpan: d-e:{(#4,RANGEDEL)}
 f.SET.5:f
 ----
 point:    [a#1,SET-f#5,SET]
@@ -568,9 +568,9 @@ a.SET.1:a
 b.SET.5:b
 d.SET.2:d
 f.SET.3:f
-d.RANGEDEL.4:e
+EncodeSpan: d-e:{(#4,RANGEDEL)}
 EncodeSpan: a-d:{(#11,RANGEKEYSET,@10,foo)}
-g.RANGEDEL.5:l
+EncodeSpan: g-l:{(#5,RANGEDEL)}
 EncodeSpan: y-z:{(#12,RANGEKEYSET,@11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]

@@ -12,8 +12,10 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -121,10 +123,18 @@ func TestSplitAndEncodeSpan(t *testing.T) {
 			}
 
 			obj := &objstorage.MemObj{}
-			tw := sstable.NewRawWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatMax})
+			wo := sstable.WriterOptions{
+				Comparer:    testkeys.Comparer,
+				KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				TableFormat: sstable.TableFormatMax,
+			}
+			tw := sstable.NewRawWriter(obj, wo)
 			require.NoError(t, SplitAndEncodeSpan(base.DefaultComparer.Compare, &span, upToKey, tw))
 			require.NoError(t, tw.Close())
-			_, rangeDels, rangeKeys := sstable.ReadAll(obj)
+			_, rangeDels, rangeKeys := sstable.ReadAll(obj, sstable.ReaderOptions{
+				Comparer:  wo.Comparer,
+				KeySchema: wo.KeySchema,
+			})
 			require.LessOrEqual(t, len(rangeDels)+len(rangeKeys), 1)
 			s := "."
 			if all := append(rangeDels, rangeKeys...); len(all) == 1 {
