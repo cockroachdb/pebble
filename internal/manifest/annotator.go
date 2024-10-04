@@ -6,6 +6,7 @@ package manifest
 
 import (
 	"sort"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -30,10 +31,6 @@ import (
 // computed incrementally as edits are applied to a level.
 type Annotator[T any] struct {
 	Aggregator AnnotationAggregator[T]
-
-	// scratch is used to hold the aggregated annotation value when computing
-	// range annotations in order to avoid additional allocations.
-	scratch *T
 }
 
 // An AnnotationAggregator defines how an annotation should be accumulated
@@ -76,39 +73,53 @@ type annotation struct {
 	// v is contains the annotation value, the output of either
 	// AnnotationAggregator.Accumulate or AnnotationAggregator.Merge.
 	// NB: This is untyped for the same reason as annotator above.
-	v interface{}
+	v atomic.Value
 	// valid indicates whether future reads of the annotation may use the
 	// value as-is. If false, v will be zeroed and recalculated.
-	valid bool
+	valid atomic.Bool
 }
 
-// findAnnotation finds this Annotator's annotation on a node, creating
-// one if it doesn't already exist.
-func (a *Annotator[T]) findAnnotation(n *node) *annotation {
+func (a *Annotator[T]) findExistingAnnotation(n *node) *annotation {
+	n.annotMu.RLock()
+	defer n.annotMu.RUnlock()
 	for i := range n.annot {
 		if n.annot[i].annotator == a {
 			return &n.annot[i]
 		}
 	}
+	return nil
+}
+
+// findAnnotation finds this Annotator's annotation on a node, creating
+// one if it doesn't already exist.
+func (a *Annotator[T]) findAnnotation(n *node) *annotation {
+	if a := a.findExistingAnnotation(n); a != nil {
+		return a
+	}
+	n.annotMu.Lock()
+	defer n.annotMu.Unlock()
 
 	// This node has never been annotated by a. Create a new annotation.
 	n.annot = append(n.annot, annotation{
 		annotator: a,
-		v:         a.Aggregator.Zero(nil),
+		v:         atomic.Value{},
 	})
+	n.annot[len(n.annot)-1].v.Store(a.Aggregator.Zero(nil))
 	return &n.annot[len(n.annot)-1]
 }
 
 // nodeAnnotation computes this annotator's annotation of this node across all
 // files in the node's subtree. The second return value indicates whether the
 // annotation is stable and thus cacheable.
-func (a *Annotator[T]) nodeAnnotation(n *node) (_ *T, cacheOK bool) {
+func (a *Annotator[T]) nodeAnnotation(n *node) (t *T, cacheOK bool) {
 	annot := a.findAnnotation(n)
-	t := annot.v.(*T)
 	// If the annotation is already marked as valid, we can return it without
 	// recomputing anything.
-	if annot.valid {
-		return t, true
+	if annot.valid.Load() {
+		// The load of these two atomics should be safe, as we don't need to
+		// guarantee invalidations are concurrent-safe. See the comment on
+		// InvalidateLevelAnnotation about why.
+		return annot.v.Load().(*T), true
 	}
 
 	t = a.Aggregator.Zero(t)
@@ -128,10 +139,14 @@ func (a *Annotator[T]) nodeAnnotation(n *node) (_ *T, cacheOK bool) {
 		}
 	}
 
-	annot.v = t
-	annot.valid = valid
+	if valid {
+		// Two valid annotations should be identical, so this is
+		// okay.
+		annot.v.Store(t)
+		annot.valid.Store(valid)
+	}
 
-	return t, annot.valid
+	return t, valid
 }
 
 // accumulateRangeAnnotation computes this annotator's annotation across all
@@ -145,13 +160,14 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 	// node's subtree is already known to be within each bound.
 	fullyWithinLowerBound bool,
 	fullyWithinUpperBound bool,
-) {
+	dst *T,
+) *T {
 	// If this node's subtree is fully within the bounds, compute a regular
 	// annotation.
 	if fullyWithinLowerBound && fullyWithinUpperBound {
 		v, _ := a.nodeAnnotation(n)
-		a.scratch = a.Aggregator.Merge(v, a.scratch)
-		return
+		dst = a.Aggregator.Merge(v, dst)
+		return dst
 	}
 
 	// We will accumulate annotations from each item in the end-exclusive
@@ -177,13 +193,13 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 			if agg, ok := a.Aggregator.(PartialOverlapAnnotationAggregator[T]); ok {
 				fb := n.items[i].UserKeyBounds()
 				if cmp(bounds.Start, fb.Start) > 0 || bounds.End.CompareUpperBounds(cmp, fb.End) < 0 {
-					a.scratch = agg.AccumulatePartialOverlap(n.items[i], a.scratch, bounds)
+					dst = agg.AccumulatePartialOverlap(n.items[i], dst, bounds)
 					continue
 				}
 			}
 		}
-		v, _ := a.Aggregator.Accumulate(n.items[i], a.scratch)
-		a.scratch = v
+		v, _ := a.Aggregator.Accumulate(n.items[i], dst)
+		dst = v
 	}
 
 	if !n.leaf {
@@ -202,7 +218,7 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 		}
 
 		for i := leftChild; i <= rightChild; i++ {
-			a.accumulateRangeAnnotation(
+			dst = a.accumulateRangeAnnotation(
 				n.children[i],
 				cmp,
 				bounds,
@@ -212,16 +228,18 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 				// If this child is to the left of rightItem, then its entire
 				// subtree is within the upper bound.
 				fullyWithinUpperBound || i < rightItem,
+				dst,
 			)
 		}
 	}
+	return dst
 }
 
 // InvalidateAnnotation removes any existing cached annotations from this
 // annotator from a node's subtree.
 func (a *Annotator[T]) invalidateNodeAnnotation(n *node) {
 	annot := a.findAnnotation(n)
-	annot.valid = false
+	annot.valid.Store(false)
 	if !n.leaf {
 		for i := int16(0); i <= n.count; i++ {
 			a.invalidateNodeAnnotation(n.children[i])
@@ -232,8 +250,7 @@ func (a *Annotator[T]) invalidateNodeAnnotation(n *node) {
 // LevelAnnotation calculates the annotation defined by this Annotator for all
 // files in the given LevelMetadata. A pointer to the Annotator is used as the
 // key for pre-calculated values, so the same Annotator must be used to avoid
-// duplicate computation. Annotation must not be called concurrently, and in
-// practice this is achieved by requiring callers to hold DB.mu.
+// duplicate computation.
 func (a *Annotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 	if lm.Empty() {
 		return a.Aggregator.Zero(nil)
@@ -246,8 +263,7 @@ func (a *Annotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 // MultiLevelAnnotation calculates the annotation defined by this Annotator for
 // all files across the given levels. A pointer to the Annotator is used as the
 // key for pre-calculated values, so the same Annotator must be used to avoid
-// duplicate computation. Annotation must not be called concurrently, and in
-// practice this is achieved by requiring callers to hold DB.mu.
+// duplicate computation.
 func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 	aggregated := a.Aggregator.Zero(nil)
 	for l := 0; l < len(lms); l++ {
@@ -263,43 +279,46 @@ func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 // the files within LevelMetadata which are within the range
 // [lowerBound, upperBound). A pointer to the Annotator is used as the key for
 // pre-calculated values, so the same Annotator must be used to avoid duplicate
-// computation. Annotation must not be called concurrently, and in practice this
-// is achieved by requiring callers to hold DB.mu.
+// computation.
 func (a *Annotator[T]) LevelRangeAnnotation(lm LevelMetadata, bounds base.UserKeyBounds) *T {
 	if lm.Empty() {
 		return a.Aggregator.Zero(nil)
 	}
 
-	a.scratch = a.Aggregator.Zero(a.scratch)
-	a.accumulateRangeAnnotation(lm.tree.root, lm.tree.cmp, bounds, false, false)
-	return a.scratch
+	var dst *T
+	dst = a.Aggregator.Zero(dst)
+	dst = a.accumulateRangeAnnotation(lm.tree.root, lm.tree.cmp, bounds, false, false, dst)
+	return dst
 }
 
 // VersionRangeAnnotation calculates the annotation defined by this Annotator
 // for all files within the given Version which are within the range
 // defined by bounds.
 func (a *Annotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBounds) *T {
+	var dst *T
+	dst = a.Aggregator.Zero(dst)
 	accumulateSlice := func(ls LevelSlice) {
 		if ls.Empty() {
 			return
 		}
-		a.accumulateRangeAnnotation(ls.iter.r, v.cmp.Compare, bounds, false, false)
+		dst = a.accumulateRangeAnnotation(ls.iter.r, v.cmp.Compare, bounds, false, false, dst)
 	}
-	a.scratch = a.Aggregator.Zero(a.scratch)
 	for _, ls := range v.L0SublevelFiles {
 		accumulateSlice(ls)
 	}
 	for _, lm := range v.Levels[1:] {
 		accumulateSlice(lm.Slice())
 	}
-	return a.scratch
+	return dst
 }
 
 // InvalidateAnnotation clears any cached annotations defined by Annotator. A
 // pointer to the Annotator is used as the key for pre-calculated values, so
 // the same Annotator must be used to clear the appropriate cached annotation.
-// InvalidateAnnotation must not be called concurrently, and in practice this
-// is achieved by requiring callers to hold DB.mu.
+// Calls to InvalidateLevelAnnotation are *not* concurrent-safe with any other
+// calls to Annotator methods for the same Annotator (concurrent calls from other
+// annotators are fine). Any calls to this function must have some externally-guaranteed
+// mutual exclusion.
 func (a *Annotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
 	if lm.Empty() {
 		return
