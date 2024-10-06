@@ -287,6 +287,11 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 				panic(errors.Errorf("pebble: invalid range key type: %s", k.Kind()))
 			}
 		}
+		for i := range w.blockPropCollectors {
+			if err := w.blockPropCollectors[i].AddRangeKeys(span); err != nil {
+				return err
+			}
+		}
 	}
 	if !w.disableKeyOrderChecks && blockWriter.KeyCount() > 0 {
 		// Check that spans are being added in fragmented order. If the two
