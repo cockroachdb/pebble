@@ -100,9 +100,10 @@ func (kcmp KeyComparison) PrefixEqual() bool { return kcmp.PrefixLen == kcmp.Com
 type KeySeeker interface {
 	// Init initializes the iterator to read from the provided DataBlockReader.
 	Init(b *DataBlockReader) error
-	// IsLowerBound returns true if all keys in the data block are >= the given
-	// key. If the data block contains no keys, returns true.
-	IsLowerBound(k []byte) bool
+	// IsLowerBound returns true if all keys in the data block (after suffix
+	// replacement if syntheticSuffix is not empty) are >= the given key. If the
+	// data block contains no keys, returns true.
+	IsLowerBound(k []byte, syntheticSuffix []byte) bool
 	// SeekGE returns the index of the first row with a key greater than or equal
 	// to [key], and whether that row has the same prefix as [key].
 	//
@@ -119,9 +120,22 @@ type KeySeeker interface {
 	//
 	// The provided keyIter must have a buffer large enough to hold the key.
 	//
-	// The prevRow parameter is the row MaterializeUserKey was last invoked with.
-	// Implementations may take advantage of that knowledge to reduce work.
+	// The prevRow parameter is the row MaterializeUserKey was last invoked with
+	// (or a negative number if not applicable). Implementations may take
+	// advantage of that knowledge to reduce work.
 	MaterializeUserKey(keyIter *PrefixBytesIter, prevRow, row int) []byte
+	// MaterializeUserKeyWithSyntheticSuffix is a variant of MaterializeUserKey
+	// where the suffix is replaced.
+	//
+	// The provided keyIter must have a buffer large enough to hold the key after
+	// suffix replacement.
+	//
+	// The prevRow parameter is the row MaterializeUserKeyWithSyntheticSuffix was
+	// last invoked with (or a negative number if not applicable). Implementations
+	// may take advantage of that knowledge to reduce work.
+	MaterializeUserKeyWithSyntheticSuffix(
+		keyIter *PrefixBytesIter, syntheticSuffix []byte, prevRow, row int,
+	) []byte
 	// Release releases the KeySeeker. It's called when the seeker is no longer
 	// in use. Implementations may pool KeySeeker objects.
 	Release()
@@ -297,12 +311,16 @@ func (ks *defaultKeySeeker) Init(r *DataBlockReader) error {
 }
 
 // IsLowerBound is part of the KeySeeker interface.
-func (ks *defaultKeySeeker) IsLowerBound(k []byte) bool {
+func (ks *defaultKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool {
 	si := ks.comparer.Split(k)
 	if v := ks.comparer.Compare(ks.prefixes.UnsafeFirstSlice(), k[:si]); v != 0 {
 		return v > 0
 	}
-	return ks.comparer.Compare(ks.suffixes.At(0), k[si:]) >= 0
+	suffix := syntheticSuffix
+	if len(suffix) == 0 {
+		suffix = ks.suffixes.At(0)
+	}
+	return ks.comparer.Compare(suffix, k[si:]) >= 0
 }
 
 // SeekGE is part of the KeySeeker interface.
@@ -354,6 +372,24 @@ func (ks *defaultKeySeeker) MaterializeUserKey(keyIter *PrefixBytesIter, prevRow
 		ks.prefixes.SetAt(keyIter, row)
 	}
 	suffix := ks.suffixes.At(row)
+	res := keyIter.buf[:len(keyIter.buf)+len(suffix)]
+	memmove(
+		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.buf)))+uintptr(len(keyIter.buf))),
+		unsafe.Pointer(unsafe.SliceData(suffix)),
+		uintptr(len(suffix)),
+	)
+	return res
+}
+
+// MaterializeUserKeyWithSyntheticSuffix is part of the colblk.KeySeeker interface.
+func (ks *defaultKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
+	keyIter *PrefixBytesIter, suffix []byte, prevRow, row int,
+) []byte {
+	if row == prevRow+1 && prevRow >= 0 {
+		ks.prefixes.SetNext(keyIter)
+	} else {
+		ks.prefixes.SetAt(keyIter, row)
+	}
 	res := keyIter.buf[:len(keyIter.buf)+len(suffix)]
 	memmove(
 		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.buf)))+uintptr(len(keyIter.buf))),
@@ -585,11 +621,24 @@ type DataBlockRewriter struct {
 	reader    DataBlockReader
 	iter      DataBlockIter
 	keySeeker KeySeeker
+	compare   base.Compare
+	split     base.Split
 	keyBuf    []byte
 	// keyAlloc grown throughout the lifetime of the rewriter.
 	keyAlloc        bytealloc.A
 	prefixBytesIter PrefixBytesIter
 	initialized     bool
+}
+
+// NewDataBlockRewriter creates a block rewriter.
+func NewDataBlockRewriter(
+	keySchema KeySchema, compare base.Compare, split base.Split,
+) *DataBlockRewriter {
+	return &DataBlockRewriter{
+		KeySchema: keySchema,
+		compare:   compare,
+		split:     split,
+	}
 }
 
 type assertNoExternalValues struct{}
@@ -613,7 +662,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
 	if !rw.initialized {
-		rw.iter.InitOnce(rw.KeySchema, assertNoExternalValues{})
+		rw.iter.InitOnce(rw.KeySchema, rw.compare, rw.split, assertNoExternalValues{})
 		rw.keySeeker = rw.KeySchema.NewKeySeeker()
 		rw.writer.Init(rw.KeySchema)
 		rw.initialized = true
@@ -763,20 +812,33 @@ var _ block.DataBlockIterator = (*DataBlockIter)(nil)
 
 // DataBlockIter iterates over a columnar data block.
 type DataBlockIter struct {
+	// -- Fields that are initialized once --
+	// For any changes to these fields, InitOnce should be updated.
+
 	// keySchema configures the DataBlockIterConfig to use the provided
 	// KeySchema when initializing the DataBlockIter for iteration over a new
 	// block.
 	keySchema KeySchema
+	cmp       base.Compare
+	split     base.Split
 	// getLazyValuer configures the DataBlockIterConfig to initialize the
 	// DataBlockIter to use the provided handler for retrieving lazy values.
 	getLazyValuer block.GetLazyValueForPrefixAndValueHandler
-	r             *DataBlockReader
-	h             block.BufferHandle
-	maxRow        int
-	keySeeker     KeySeeker
-	transforms    block.IterTransforms
 
-	// state
+	// -- Fields that are initialized for each block --
+	// For any changes to these fields, InitHandle should be updated.
+
+	r            *DataBlockReader
+	h            block.BufferHandle
+	maxRow       int
+	transforms   block.IterTransforms
+	noTransforms bool
+	keySeeker    KeySeeker
+
+	// -- State --
+	// For any changes to these fields, InitHandle (which resets them) should be
+	// updated.
+
 	keyIter PrefixBytesIter
 	row     int
 	kv      base.InternalKV
@@ -794,82 +856,77 @@ type DataBlockIter struct {
 // handler. The iterator must be initialized with a block before it can be used.
 // It may be reinitialized with new blocks without calling InitOnce again.
 func (i *DataBlockIter) InitOnce(
-	keySchema KeySchema, getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
+	keySchema KeySchema,
+	cmp base.Compare,
+	split base.Split,
+	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
 ) {
 	i.keySchema = keySchema
+	i.cmp = cmp
+	i.split = split
 	i.getLazyValuer = getLazyValuer
 }
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.
 func (i *DataBlockIter) Init(r *DataBlockReader, transforms block.IterTransforms) error {
+	i.r = r
+	// Leave i.h unchanged.
 	numRows := int(r.r.header.Rows)
-	keySchema := i.keySchema
-	getLazyValuer := i.getLazyValuer
-	keySeeker := i.keySeeker
-	if keySeeker == nil {
-		keySeeker = i.keySchema.NewKeySeeker()
-	}
-	*i = DataBlockIter{
-		keySchema:     keySchema,
-		getLazyValuer: getLazyValuer,
-		r:             r,
-		h:             i.h,
-		maxRow:        numRows - 1,
-		keySeeker:     keySeeker,
-		transforms:    transforms,
-		keyIter:       PrefixBytesIter{},
-		row:           -1,
-		kv:            base.InternalKV{},
-		kvRow:         math.MinInt,
-	}
+	i.maxRow = numRows - 1
+	i.transforms = transforms
 	if i.transforms.HideObsoletePoints && r.isObsolete.SeekSetBitGE(0) == numRows {
 		// There are no obsolete points in the block; don't bother checking.
 		i.transforms.HideObsoletePoints = false
 	}
-	// Allocate a keyIter buffer that's large enough to hold the largest user
-	// key in the block with 1 byte to spare (so that pointer arithmetic is
-	// never pointing beyond the allocation, which would violate Go rules).
-	n := int(r.maximumKeyLength) + 1
-	if cap(i.keyIter.buf) < n {
-		ptr := mallocgc(uintptr(n), nil, false)
-		i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
-	} else {
-		i.keyIter.buf = i.keyIter.buf[:0]
+	i.noTransforms = i.transforms.NoTransforms()
+
+	if i.keySeeker == nil {
+		i.keySeeker = i.keySchema.NewKeySeeker()
 	}
+
+	// The worst case is when the largest key in the block has no suffix.
+	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(r.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
+	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
+	i.row = -1
+	i.kv = base.InternalKV{}
+	i.kvRow = math.MinInt
+	i.nextObsoletePoint = 0
 	return i.keySeeker.Init(r)
 }
 
 // InitHandle initializes the block from the provided buffer handle.
 func (i *DataBlockIter) InitHandle(
-	cmp base.Compare, split base.Split, h block.BufferHandle, t block.IterTransforms,
+	cmp base.Compare, split base.Split, h block.BufferHandle, transforms block.IterTransforms,
 ) error {
+	i.cmp = cmp
+	i.split = split
+	i.r = &i.readerAlloc
+	i.readerAlloc.Init(i.keySchema, h.Get())
 	i.h.Release()
 	i.h = h
-	i.readerAlloc.Init(i.keySchema, h.Get())
-	if i.keySeeker == nil {
-		i.keySeeker = i.keySchema.NewKeySeeker()
-	}
-	i.transforms = t
-	i.r = &i.readerAlloc
+
 	numRows := int(i.readerAlloc.r.header.Rows)
+	i.maxRow = numRows - 1
+
+	i.transforms = transforms
 	if i.transforms.HideObsoletePoints && i.r.isObsolete.SeekSetBitGE(0) == numRows {
 		// There are no obsolete points in the block; don't bother checking.
 		i.transforms.HideObsoletePoints = false
 	}
-	// Allocate a keyIter buffer that's large enough to hold the largest user
-	// key in the block with 1 byte to spare (so that pointer arithmetic is
-	// never pointing beyond the allocation, which would violate Go rules).
-	n := int(i.r.maximumKeyLength) + 1
-	if cap(i.keyIter.buf) < n {
-		ptr := mallocgc(uintptr(n), nil, false)
-		i.keyIter.buf = unsafe.Slice((*byte)(ptr), n)[:0]
-	} else {
-		i.keyIter.buf = i.keyIter.buf[:0]
+	i.noTransforms = i.transforms.NoTransforms()
+
+	if i.keySeeker == nil {
+		i.keySeeker = i.keySchema.NewKeySeeker()
 	}
-	i.maxRow = numRows - 1
-	i.kvRow = math.MinInt
+
+	// The worst case is when the largest key in the block has no suffix.
+	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(i.r.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
+	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
 	i.row = -1
+	i.kv = base.InternalKV{}
+	i.kvRow = math.MinInt
+	i.nextObsoletePoint = 0
 	return i.keySeeker.Init(i.r)
 }
 
@@ -916,8 +973,50 @@ func (i *DataBlockIter) ResetForReuse() DataBlockIter {
 
 // IsLowerBound implements the block.DataBlockIterator interface.
 func (i *DataBlockIter) IsLowerBound(k []byte) bool {
+	if i.transforms.SyntheticPrefix.IsSet() {
+		var keyPrefix []byte
+		keyPrefix, k = splitKey(k, len(i.transforms.SyntheticPrefix))
+		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix); cmp != 0 {
+			return cmp < 0
+		}
+	}
+	// If we are hiding obsolete points, it is possible that all points < k are
+	// hidden.
 	// Note: we ignore HideObsoletePoints, but false negatives are allowed.
-	return i.keySeeker.IsLowerBound(k)
+	return i.keySeeker.IsLowerBound(k, i.transforms.SyntheticSuffix)
+}
+
+// splitKey splits a key into k[:at] and k[at:].
+func splitKey(k []byte, at int) (before, after []byte) {
+	if len(k) <= at {
+		return k, nil
+	}
+	return k[:at], k[at:]
+}
+
+// seekGEInternal is a wrapper around keySeeker.SeekGE which takes into account
+// the synthetic prefix and suffix.
+func (i *DataBlockIter) seekGEInternal(key []byte, boundRow int, searchDir int8) (row int) {
+	if i.transforms.SyntheticPrefix.IsSet() {
+		var keyPrefix []byte
+		keyPrefix, key = splitKey(key, len(i.transforms.SyntheticPrefix))
+		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix); cmp != 0 {
+			if cmp < 0 {
+				return 0
+			}
+			return i.maxRow + 1
+		}
+	}
+	if i.transforms.SyntheticSuffix.IsSet() {
+		n := i.split(key)
+		row, eq := i.keySeeker.SeekGE(key[:n], boundRow, searchDir)
+		if eq && i.cmp(key[n:], i.transforms.SyntheticSuffix) > 0 {
+			row = i.r.prefixChanged.SeekSetBitGE(row + 1)
+		}
+		return row
+	}
+	row, _ = i.keySeeker.SeekGE(key, boundRow, searchDir)
+	return row
 }
 
 // SeekGE implements the base.InternalIterator interface.
@@ -929,7 +1028,12 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	if flags.TrySeekUsingNext() {
 		searchDir = +1
 	}
-	i.row, _ = i.keySeeker.SeekGE(key, i.row, searchDir)
+	if i.noTransforms {
+		// Fast path.
+		i.row, _ = i.keySeeker.SeekGE(key, i.row, searchDir)
+		return i.decodeRow()
+	}
+	i.row = i.seekGEInternal(key, i.row, searchDir)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
 		if i.atObsoletePointForward() {
@@ -961,8 +1065,7 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 	if i.r == nil {
 		return nil
 	}
-	geRow, _ := i.keySeeker.SeekGE(key, i.row, 0 /* searchDir */)
-	i.row = geRow - 1
+	i.row = i.seekGEInternal(key, i.row, 0 /* searchDir */) - 1
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(max(i.row, 0))
 		if i.atObsoletePointBackward() {
@@ -1022,19 +1125,29 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 		return nil
 	}
 	i.row++
-	if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
-		i.skipObsoletePointsForward()
-		if i.row > i.maxRow {
-			return nil
+	// Inline decodeKey(), adding obsolete points logic.
+	if i.noTransforms {
+		// Fast path.
+		i.kv.K = base.InternalKey{
+			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
+			Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
 		}
-	}
-	// Inline decodeKey().
-	i.kv.K = base.InternalKey{
-		UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
-		Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
-	}
-	if n := i.transforms.SyntheticSeqNum; n != 0 {
-		i.kv.K.SetSeqNum(base.SeqNum(n))
+	} else {
+		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
+			i.skipObsoletePointsForward()
+			if i.row > i.maxRow {
+				return nil
+			}
+		}
+		if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(&i.keyIter, suffix, i.kvRow, i.row)
+		} else {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
+		}
+		i.kv.K.Trailer = base.InternalKeyTrailer(i.r.trailers.At(i.row))
+		if n := i.transforms.SyntheticSeqNum; n != 0 {
+			i.kv.K.SetSeqNum(base.SeqNum(n))
+		}
 	}
 	// Inline i.r.values.At(row).
 	v := i.r.values.slice(i.r.values.offsets.At2(i.row))
@@ -1185,12 +1298,22 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 		return &i.kv
 	default:
 		// Inline decodeKey().
-		i.kv.K = base.InternalKey{
-			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
-			Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
-		}
-		if n := i.transforms.SyntheticSeqNum; n != 0 {
-			i.kv.K.SetSeqNum(base.SeqNum(n))
+		if i.noTransforms {
+			// Fast path.
+			i.kv.K = base.InternalKey{
+				UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
+				Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+			}
+		} else {
+			if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
+				i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(&i.keyIter, suffix, i.kvRow, i.row)
+			} else {
+				i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
+			}
+			i.kv.K.Trailer = base.InternalKeyTrailer(i.r.trailers.At(i.row))
+			if n := i.transforms.SyntheticSeqNum; n != 0 {
+				i.kv.K.SetSeqNum(base.SeqNum(n))
+			}
 		}
 		// Inline i.r.values.At(row).
 		startOffset := i.r.values.offsets.At(i.row)
@@ -1209,12 +1332,22 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 // This function does not inline, so we copy its code verbatim. For any updates
 // to this code, all code preceded by "Inline decodeKey" must be updated.
 func (i *DataBlockIter) decodeKey() {
-	i.kv.K = base.InternalKey{
-		UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
-		Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
-	}
-	if n := i.transforms.SyntheticSeqNum; n != 0 {
-		i.kv.K.SetSeqNum(base.SeqNum(n))
+	if i.noTransforms {
+		// Fast path.
+		i.kv.K = base.InternalKey{
+			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
+			Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+		}
+	} else {
+		if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(&i.keyIter, suffix, i.kvRow, i.row)
+		} else {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
+		}
+		i.kv.K.Trailer = base.InternalKeyTrailer(i.r.trailers.At(i.row))
+		if n := i.transforms.SyntheticSeqNum; n != 0 {
+			i.kv.K.SetSeqNum(base.SeqNum(n))
+		}
 	}
 }
 

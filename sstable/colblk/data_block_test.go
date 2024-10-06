@@ -28,10 +28,9 @@ func TestDataBlock(t *testing.T) {
 	var w DataBlockWriter
 	var r DataBlockReader
 	var it DataBlockIter
-	var rw DataBlockRewriter
-	rw.KeySchema = testKeysSchema
+	rw := NewDataBlockRewriter(testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split)
 	var sizes []int
-	it.InitOnce(testKeysSchema, getLazyValuer(func([]byte) base.LazyValue {
+	it.InitOnce(testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
 

@@ -196,7 +196,7 @@ func newColumnBlockTwoLevelIterator(
 		getLazyValuer = i.secondLevel.vbReader
 		i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, getLazyValuer)
+	i.secondLevel.data.InitOnce(r.keySchema, r.Compare, r.Split, getLazyValuer)
 	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
 	topLevelIndexH, err := r.readIndex(ctx, i.secondLevel.indexFilterRH, stats, &i.secondLevel.iterStats)
 	if err == nil {

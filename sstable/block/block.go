@@ -256,6 +256,14 @@ type IterTransforms struct {
 // NoTransforms is the default value for IterTransforms.
 var NoTransforms = IterTransforms{}
 
+// NoTransforms returns true if there are no transforms enabled.
+func (t *IterTransforms) NoTransforms() bool {
+	return t.SyntheticSeqNum == 0 &&
+		!t.HideObsoletePoints &&
+		!t.SyntheticPrefix.IsSet() &&
+		!t.SyntheticSuffix.IsSet()
+}
+
 // FragmentIterTransforms allow on-the-fly transformation of range deletion or
 // range key data at iteration time.
 type FragmentIterTransforms struct {
@@ -293,7 +301,7 @@ const NoSyntheticSeqNum SyntheticSeqNum = 0
 // RangeKeyUnset keys are not supported when a synthetic suffix is used.
 type SyntheticSuffix []byte
 
-// IsSet returns true if the synthetic suffix is not enpty.
+// IsSet returns true if the synthetic suffix is not empty.
 func (ss SyntheticSuffix) IsSet() bool {
 	return len(ss) > 0
 }
