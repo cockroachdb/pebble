@@ -251,7 +251,7 @@ func newColumnBlockSingleLevelIterator(
 		getLazyValuer = i.vbReader
 		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, getLazyValuer)
+	i.data.InitOnce(r.keySchema, i.cmp, r.Split, getLazyValuer)
 	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
 	if err == nil {
 		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
