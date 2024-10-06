@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -666,6 +667,10 @@ func (w *RawColumnWriter) enqueuePhysicalBlock(cb *compressedBlock, separator []
 	i := w.indexBlock.AddBlockHandle(separator, dataBlockHandle, dataBlockProps)
 	sizeWithEntry := w.indexBlock.Size()
 	if shouldFlushWithoutLatestKV(sizeWithEntry, w.indexBlockSize, i, w.indexBlockOptions, w.allocatorSizeClasses) {
+		// NB: finishIndexBlock will use blockPropsEncoder, so we must clone the
+		// data block's props first.
+		dataBlockProps = slices.Clone(dataBlockProps)
+
 		if err = w.finishIndexBlock(w.indexBlock.Rows() - 1); err != nil {
 			return err
 		}
