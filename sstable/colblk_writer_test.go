@@ -42,6 +42,7 @@ func TestColumnarWriter(t *testing.T) {
 				writerOpts.Compression = block.NoCompression
 				writerOpts.TableFormat = TableFormatPebblev5
 				writerOpts.KeySchema = keySchema
+				writerOpts.BlockPropertyCollectors = []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector}
 				if err := optsFromArgs(td, &writerOpts); err != nil {
 					require.NoError(t, err)
 				}
