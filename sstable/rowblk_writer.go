@@ -1794,16 +1794,10 @@ func (w *RawRowWriter) Metadata() (*WriterMetadata, error) {
 	return &w.meta, nil
 }
 
-// NewRawWriter returns a new table writer for the file. Closing the writer will
-// close the file.
-func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
-	if o.TableFormat <= TableFormatPebblev4 {
-		return newRowWriter(writable, o)
-	}
-	return NewColumnarWriter(writable, o)
-}
-
 func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
+	if o.TableFormat.BlockColumnar() {
+		panic(errors.AssertionFailedf("newRowWriter cannot create sstables with %s format", o.TableFormat))
+	}
 	o = o.ensureDefaults()
 	w := &RawRowWriter{
 		layout: makeLayoutWriter(writable, o),

@@ -296,7 +296,7 @@ func RewriteKeySuffixesViaWriter(
 	}
 
 	o.IsStrictObsolete = false
-	w := newRowWriter(out, o)
+	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
 			w.Close()
@@ -326,7 +326,9 @@ func RewriteKeySuffixesViaWriter(
 		if err != nil {
 			return nil, err
 		}
-		w.addPoint(scratch, val, false)
+		if err := w.AddWithForceObsolete(scratch, val, false); err != nil {
+			return nil, err
+		}
 		kv = i.Next()
 	}
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {

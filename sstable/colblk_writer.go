@@ -103,9 +103,12 @@ type RawColumnWriter struct {
 // Assert that *RawColumnWriter implements RawWriter.
 var _ RawWriter = (*RawColumnWriter)(nil)
 
-func NewColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumnWriter {
+func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumnWriter {
 	if writable == nil {
 		panic("pebble: nil writable")
+	}
+	if !o.TableFormat.BlockColumnar() {
+		panic(errors.AssertionFailedf("newColumnarWriter cannot create sstables with %s format", o.TableFormat))
 	}
 	o = o.ensureDefaults()
 	w := &RawColumnWriter{

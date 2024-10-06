@@ -11,6 +11,15 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 )
 
+// NewRawWriter returns a new table writer for the file. Closing the writer will
+// close the file.
+func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
+	if o.TableFormat <= TableFormatPebblev4 {
+		return newRowWriter(writable, o)
+	}
+	return newColumnarWriter(writable, o)
+}
+
 // Writer is a table writer.
 type Writer struct {
 	rw  RawWriter
