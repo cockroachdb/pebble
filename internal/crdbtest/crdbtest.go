@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"golang.org/x/exp/rand"
 )
 
@@ -154,29 +155,60 @@ func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
 	return key
 }
 
-// DecodeTimestamp decodes a MVCC timestamp from a serialized MVCC key.
-func DecodeTimestamp(
-	mvccKey []byte,
-) (prefix []byte, untypedSuffix []byte, wallTime uint64, logicalTime uint32) {
-	tsLen := int(mvccKey[len(mvccKey)-1])
-	keyPartEnd := len(mvccKey) - tsLen
-	if keyPartEnd < 0 {
+// DecodeEngineKey decodes an Engine key (the key that gets stored in Pebble).
+// Returns:
+//
+//   - roachKey: key prefix without the separator byte; corresponds to
+//     MVCCKey.Key / EngineKey.Key (roachpb.Key type).
+//
+//   - untypedVersion: when the suffix does not correspond to a timestamp,
+//     untypedVersion is set to the suffix without the length
+//     byte; corresponds to EngineKey.Version.
+//
+//   - wallTime, logicalTime: timestamp for the key, or 0 if the key does not
+//     correspond to a timestamp.
+func DecodeEngineKey(
+	engineKey []byte,
+) (roachKey []byte, untypedVersion []byte, wallTime uint64, logicalTime uint32) {
+	tsLen := int(engineKey[len(engineKey)-1])
+	tsStart := len(engineKey) - tsLen
+	if tsStart < 0 {
+		if invariants.Enabled {
+			panic("invalid length byte")
+		}
 		return nil, nil, 0, 0
 	}
-
-	key := mvccKey[:keyPartEnd]
-	if tsLen > 0 {
-		ts := mvccKey[keyPartEnd : len(mvccKey)-1]
-		switch len(ts) {
-		case 8:
-			return key, nil, binary.BigEndian.Uint64(ts[:8]), 0
-		case 12, 13:
-			return key, nil, binary.BigEndian.Uint64(ts[:8]), binary.BigEndian.Uint32(ts[8:12])
-		default:
-			return key, ts, 0, 0
-		}
+	roachKeyEnd := tsStart - 1
+	if roachKeyEnd < 0 {
+		roachKeyEnd = 0
+	} else if invariants.Enabled && engineKey[roachKeyEnd] != 0 {
+		panic("invalid separator byte")
 	}
-	return key, nil, 0, 0
+
+	roachKey = engineKey[:roachKeyEnd]
+	untypedVersion, wallTime, logicalTime = DecodeSuffix(engineKey[tsStart:])
+	return roachKey, untypedVersion, wallTime, logicalTime
+}
+
+// DecodeSuffix decodes the suffix of a key. If the suffix is a timestamp,
+// wallTime and logicalTime are returned; otherwise untypedVersion contains the
+// version (which is the suffix without the terminator length byte).
+//
+//gcassert:inline
+func DecodeSuffix(suffix []byte) (untypedVersion []byte, wallTime uint64, logicalTime uint32) {
+	if invariants.Enabled && len(suffix) > 0 && len(suffix) != int(suffix[len(suffix)-1]) {
+		panic("invalid length byte")
+	}
+	switch len(suffix) {
+	case 0:
+		return nil, 0, 0
+	case 9:
+		return nil, binary.BigEndian.Uint64(suffix[:8]), 0
+	case 13, 14:
+		return nil, binary.BigEndian.Uint64(suffix[:8]), binary.BigEndian.Uint32(suffix[8:12])
+	default:
+		return suffix[:len(suffix)-1], 0, 0
+	}
 }
 
 // Split implements base.Split for CockroachDB keys.
