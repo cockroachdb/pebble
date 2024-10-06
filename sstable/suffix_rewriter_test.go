@@ -24,7 +24,6 @@ func TestRewriteSuffixProps(t *testing.T) {
 
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed %d", seed)
-	rng := rand.New(rand.NewSource(seed))
 
 	// This test rewrites a test from suffix @212 to @645. Since the [from] and
 	// [to] suffixes are fixed, we also can fix the expected properties for the
@@ -42,6 +41,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 	// Test suffix rewriting from every table format.
 	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
 		t.Run(format.String(), func(t *testing.T) {
+			rng := rand.New(rand.NewSource(seed))
 			// Construct a test sstable.
 			wOpts := WriterOptions{
 				FilterPolicy:     bloom.FilterPolicy(10),
