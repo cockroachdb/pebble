@@ -272,6 +272,14 @@ type FragmentIterTransforms struct {
 	SyntheticSuffix SyntheticSuffix
 }
 
+// NoTransforms returns true if there are no transforms enabled.
+func (t *FragmentIterTransforms) NoTransforms() bool {
+	// NoTransforms returns true if there are no transforms enabled.
+	return t.SyntheticSeqNum == 0 &&
+		!t.SyntheticPrefix.IsSet() &&
+		!t.SyntheticSuffix.IsSet()
+}
+
 // NoFragmentTransforms is the default value for IterTransforms.
 var NoFragmentTransforms = FragmentIterTransforms{}
 

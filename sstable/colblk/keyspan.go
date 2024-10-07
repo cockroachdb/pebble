@@ -303,6 +303,39 @@ func (r *KeyspanReader) searchBoundaryKeys(cmp base.Compare, key []byte) (index 
 	return i, false
 }
 
+// searchBoundaryKeys returns the index of the first boundary key greater than
+// or equal to key and whether or not the key was found exactly.
+func (r *KeyspanReader) searchBoundaryKeysWithSyntheticPrefix(
+	cmp base.Compare, key []byte, syntheticPrefix []byte,
+) (index int, equal bool) {
+	// The seek key must have the synthetic prefix, otherwise it falls entirely
+	// before or after the block's boundary keys.
+	var keyPrefix []byte
+	keyPrefix, key = splitKey(key, len(syntheticPrefix))
+	if cmp := bytes.Compare(keyPrefix, syntheticPrefix); cmp != 0 {
+		if cmp < 0 {
+			return 0, false
+		}
+		return int(r.boundaryKeysCount), false
+	}
+
+	i, j := 0, int(r.boundaryKeysCount)
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		switch cmp(key, r.boundaryKeys.At(h)) {
+		case +1:
+			i = h + 1
+		case 0:
+			return h, true
+		default:
+			// -1
+			j = h
+		}
+	}
+	return i, false
+}
+
 // NewKeyspanIter constructs a new iterator over a keyspan columnar block.
 func NewKeyspanIter(
 	cmp base.Compare, h block.BufferHandle, transforms block.FragmentIterTransforms,
@@ -358,16 +391,21 @@ func (i *KeyspanIter) Close() {
 // A keyspanIter is an iterator over a keyspan block. It implements the
 // keyspan.FragmentIterator interface.
 type keyspanIter struct {
-	r          *KeyspanReader
-	cmp        base.Compare
-	transforms block.FragmentIterTransforms
-	span       keyspan.Span
+	r            *KeyspanReader
+	cmp          base.Compare
+	transforms   block.FragmentIterTransforms
+	noTransforms bool
+	span         keyspan.Span
 	// When positioned, the current span's start key is the user key at
 	//   i.r.userKeys.At(i.startBoundIndex)
 	// and the current span's end key is the user key at
 	//   i.r.userKeys.At(i.startBoundIndex+1)
 	startBoundIndex int
 	keyBuf          [2]keyspan.Key
+	// startKeyBuf and endKeyBuf are used when transforms.SyntheticPrefix is
+	// set.
+	startKeyBuf []byte
+	endKeyBuf   []byte
 }
 
 // Assert that KeyspanIter implements the FragmentIterator interface.
@@ -381,10 +419,17 @@ func (i *keyspanIter) init(
 	i.r = r
 	i.cmp = cmp
 	i.transforms = transforms
+	i.noTransforms = transforms.NoTransforms()
 	i.span.Start, i.span.End = nil, nil
 	i.startBoundIndex = -1
 	if i.span.Keys == nil {
 		i.span.Keys = i.keyBuf[:0]
+	}
+	i.startKeyBuf = i.startKeyBuf[:0]
+	i.endKeyBuf = i.endKeyBuf[:0]
+	if transforms.SyntheticPrefix.IsSet() {
+		i.startKeyBuf = append(i.startKeyBuf, transforms.SyntheticPrefix...)
+		i.endKeyBuf = append(i.endKeyBuf, transforms.SyntheticPrefix...)
 	}
 }
 
@@ -393,7 +438,13 @@ func (i *keyspanIter) init(
 // span with an end key greater than the given key.
 func (i *keyspanIter) SeekGE(key []byte) (*keyspan.Span, error) {
 	// Seek among the boundary keys.
-	j, eq := i.r.searchBoundaryKeys(i.cmp, key)
+	var j int
+	var eq bool
+	if i.transforms.SyntheticPrefix.IsSet() {
+		j, eq = i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix)
+	} else {
+		j, eq = i.r.searchBoundaryKeys(i.cmp, key)
+	}
 	// If the found boundary key does not exactly equal the given key, it's
 	// strictly greater than key. We need to back up one to consider the span
 	// that ends at the this boundary key.
@@ -407,14 +458,19 @@ func (i *keyspanIter) SeekGE(key []byte) (*keyspan.Span, error) {
 // given key. This is equivalent to seeking to the last span with a start
 // key less than the given key.
 func (i *keyspanIter) SeekLT(key []byte) (*keyspan.Span, error) {
-	// Seek among the boundary keys.
-	j, eq := i.r.searchBoundaryKeys(i.cmp, key)
-	// If eq is true, the found boundary key exactly equals the given key. A
-	// span that starts at exactly [key] does not contain any keys strictly less
-	// than [key], so back up one index.
-	if eq {
-		j--
+	var j int
+	if i.transforms.SyntheticPrefix.IsSet() {
+		j, _ = i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix)
+	} else {
+		j, _ = i.r.searchBoundaryKeys(i.cmp, key)
 	}
+	// searchBoundaryKeys seeks to the first boundary key greater than or equal
+	// to key. The span beginning at the boundary key j necessarily does NOT
+	// cover any key less < key (it only contains keys ≥ key). Back up one to
+	// the first span that begins before [key], or to -1 if there is no such
+	// span.
+	j--
+
 	// If all boundaries are less than [key], or only the last boundary is
 	// greater than the key, then we want the last span so we clamp the index to
 	// the second to last boundary.
@@ -499,8 +555,6 @@ func (i *keyspanIter) isNonemptySpan(startBoundIndex int) bool {
 // materializeSpan constructs the current span from i.startBoundIndex and
 // i.{start,end}KeyIndex.
 func (i *keyspanIter) materializeSpan() *keyspan.Span {
-	// TODO(jackson): Apply i.transforms.
-
 	i.span = keyspan.Span{
 		Start: i.r.boundaryKeys.At(i.startBoundIndex),
 		End:   i.r.boundaryKeys.At(i.startBoundIndex + 1),
@@ -518,6 +572,50 @@ func (i *keyspanIter) materializeSpan() *keyspan.Span {
 			Value:   i.r.values.At(int(j)),
 		})
 	}
+	if i.noTransforms {
+		return &i.span
+	}
+	if i.transforms.SyntheticSeqNum != block.NoSyntheticSeqNum {
+		for j := range i.span.Keys {
+			i.span.Keys[j].Trailer = base.MakeTrailer(
+				base.SeqNum(i.transforms.SyntheticSeqNum), i.span.Keys[j].Trailer.Kind())
+		}
+	}
+	if i.transforms.SyntheticSuffix.IsSet() {
+		for j := range i.span.Keys {
+			k := &i.span.Keys[j]
+			switch k.Kind() {
+			case base.InternalKeyKindRangeKeySet:
+				if len(k.Suffix) > 0 {
+					// TODO(jackson): Assert synthetic suffix is >= k.Suffix.
+					k.Suffix = i.transforms.SyntheticSuffix
+				}
+			case base.InternalKeyKindRangeKeyDelete:
+				// Nothing to do.
+			default:
+				panic(base.AssertionFailedf("synthetic suffix not supported with key kind %s", k.Kind()))
+			}
+		}
+	}
+	if i.transforms.SyntheticPrefix.IsSet() || invariants.Sometimes(10) {
+		i.startKeyBuf = i.startKeyBuf[:len(i.transforms.SyntheticPrefix)]
+		i.endKeyBuf = i.endKeyBuf[:len(i.transforms.SyntheticPrefix)]
+		if invariants.Enabled {
+			if !bytes.Equal(i.startKeyBuf, i.transforms.SyntheticPrefix) {
+				panic(errors.AssertionFailedf("keyspanIter: synthetic prefix mismatch %q, %q",
+					i.startKeyBuf, i.transforms.SyntheticPrefix))
+			}
+			if !bytes.Equal(i.endKeyBuf, i.transforms.SyntheticPrefix) {
+				panic(errors.AssertionFailedf("keyspanIter: synthetic prefix mismatch %q, %q",
+					i.endKeyBuf, i.transforms.SyntheticPrefix))
+			}
+		}
+		i.startKeyBuf = append(i.startKeyBuf, i.span.Start...)
+		i.endKeyBuf = append(i.endKeyBuf, i.span.End...)
+		i.span.Start = i.startKeyBuf
+		i.span.End = i.endKeyBuf
+	}
+
 	return &i.span
 }
 
