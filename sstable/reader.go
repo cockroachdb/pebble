@@ -286,7 +286,6 @@ func (r *Reader) NewRawRangeDelIter(
 	if err != nil {
 		return nil, err
 	}
-	transforms.ElideSameSeqNum = true
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {

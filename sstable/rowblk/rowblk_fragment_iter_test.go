@@ -81,7 +81,6 @@ func TestBlockFragmentIterator(t *testing.T) {
 
 		case "iter":
 			var transforms block.FragmentIterTransforms
-			transforms.ElideSameSeqNum = d.HasArg("elide-same-seq-num")
 			var seqNum uint64
 			d.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 			transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)

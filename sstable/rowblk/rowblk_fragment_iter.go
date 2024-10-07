@@ -48,10 +48,6 @@ type fragmentIter struct {
 	// fileNum is used for logging/debugging.
 	fileNum base.DiskFileNum
 
-	// elideSameSeqnum, if true, returns only the first-occurring (in forward
-	// order) Key for each sequence number.
-	elideSameSeqnum bool
-
 	syntheticSuffix block.SyntheticSuffix
 	syntheticPrefix block.SyntheticPrefix
 	// startKeyBuf is a buffer that is reused to store the start key of the span
@@ -92,7 +88,6 @@ func NewFragmentIter(
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.fileNum = fileNum
-	i.elideSameSeqnum = transforms.ElideSameSeqNum
 	i.syntheticSuffix = transforms.SyntheticSuffix
 	i.syntheticPrefix = transforms.SyntheticPrefix
 	if transforms.SyntheticPrefix.IsSet() {
@@ -161,19 +156,6 @@ func (i *fragmentIter) addToSpan(
 // applySpanTransforms applies changes to the span that we decoded, if
 // appropriate.
 func (i *fragmentIter) applySpanTransforms() error {
-	if i.elideSameSeqnum && len(i.span.Keys) > 0 {
-		lastSeqNum := i.span.Keys[0].SeqNum()
-		k := 1
-		for j := 1; j < len(i.span.Keys); j++ {
-			if lastSeqNum != i.span.Keys[j].SeqNum() {
-				lastSeqNum = i.span.Keys[j].SeqNum()
-				i.span.Keys[k] = i.span.Keys[j]
-				k++
-			}
-		}
-		i.span.Keys = i.span.Keys[:k]
-	}
-
 	if i.syntheticPrefix.IsSet() || invariants.Sometimes(10) {
 		// We have to make a copy of the start key because it will not stay valid
 		// across multiple blockIter operations.
