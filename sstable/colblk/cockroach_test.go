@@ -287,11 +287,18 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 
 	// TODO(jackson): What if the row has an untyped suffix?
 
-	// Binary search between [index, prefixChanged.SeekSetBitGE(index+1)].
+	// First check the suffix at index, because querying for the latest value is
+	// the most common case.
+	if latestWallTime := ks.mvccWallTimes.At(index); latestWallTime < seekWallTime ||
+		(latestWallTime == seekWallTime && uint32(ks.mvccLogical.At(index)) <= seekLogicalTime) {
+		return index
+	}
+
+	// Binary search between [index+1, prefixChanged.SeekSetBitGE(index+1)].
 	//
 	// Define f(i) = true iff key at i is >= seek key.
 	// Invariant: f(l-1) == false, f(u) == true.
-	l := index
+	l := index + 1
 	u := ks.reader.prefixChanged.SeekSetBitGE(index + 1)
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
