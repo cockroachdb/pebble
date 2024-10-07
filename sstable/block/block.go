@@ -268,9 +268,6 @@ func (t *IterTransforms) NoTransforms() bool {
 // range key data at iteration time.
 type FragmentIterTransforms struct {
 	SyntheticSeqNum SyntheticSeqNum
-	// ElideSameSeqNum, if true, returns only the first-occurring (in forward
-	// order) keyspan.Key for each sequence number.
-	ElideSameSeqNum bool
 	SyntheticPrefix SyntheticPrefix
 	SyntheticSuffix SyntheticSuffix
 }
