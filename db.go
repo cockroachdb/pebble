@@ -874,7 +874,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		d.opts.Logger.Fatalf("pebble: fatal commit error: %v", err)
 	}
 	// If this is a large batch, we need to clear the batch contents as the
-	// flushable batch may still be present in the flushables queue.
+	// flushable batch may still be present in the flushable queue.
 	//
 	// TODO(peter): Currently large batches are written to the WAL. We could
 	// skip the WAL write and instead wait for the large batch to be flushed to
