@@ -115,7 +115,7 @@ func describeSSTableBinary(f *binfmt.Formatter, schema colblk.KeySchema) error {
 					f.HexBytesln(block.TrailerLen, "%s block trailer", bh.Name)
 					continue
 				case "data":
-					var r colblk.DataBlockReader
+					var r colblk.DataBlockDecoder
 					// NB: The byte slice used to Init must be aligned (like an
 					// allocated block would be in practice).
 					r.Init(schema, aligned.Copy(f.Data()[bh.Offset:bh.Offset+bh.Length]))

@@ -322,7 +322,7 @@ func formatColblkDataBlock(
 	data []byte,
 	fmtRecord func(key *base.InternalKey, value []byte),
 ) error {
-	var reader colblk.DataBlockReader
+	var reader colblk.DataBlockDecoder
 	reader.Init(r.keySchema, data)
 	f := binfmt.New(data)
 	f.SetLinePrefix("               ")
