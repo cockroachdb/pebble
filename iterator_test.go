@@ -1893,7 +1893,7 @@ func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
 						valid = iter.Next()
 					}
 					if iter.Error() != nil {
-						b.Fatalf(iter.Error().Error())
+						b.Fatal(iter.Error().Error())
 					}
 				}
 				iter.Close()
@@ -2203,17 +2203,17 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 			t.Fatalf("iteration didn't produce identical results")
 		}
 		if hasP1 && !bytes.Equal(iter1.Key(), iter2.Key()) {
-			t.Fatalf(fmt.Sprintf("iteration didn't produce identical point keys: %s, %s", iter1.Key(), iter2.Key()))
+			t.Fatalf("iteration didn't produce identical point keys: %s, %s", iter1.Key(), iter2.Key())
 		}
 		if hasR1 {
 			// Confirm that the range key is the same.
 			b1, e1 := iter1.RangeBounds()
 			b2, e2 := iter2.RangeBounds()
 			if !bytes.Equal(b1, b2) || !bytes.Equal(e1, e2) {
-				t.Fatalf(fmt.Sprintf(
+				t.Fatalf(
 					"iteration didn't produce identical range keys: [%s, %s], [%s, %s]",
 					b1, e1, b2, e2,
-				))
+				)
 			}
 
 		}
@@ -2221,7 +2221,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 		// Confirm that the returned point key wasn't hidden.
 		for j, pkey := range keys {
 			if bytes.Equal(iter1.Key(), pkey) && pointKeyHidden[j] {
-				t.Fatalf(fmt.Sprintf("hidden point key was exposed %s %d", pkey, keyTimeStamps[j]))
+				t.Fatalf("hidden point key was exposed %s %d", pkey, keyTimeStamps[j])
 			}
 		}
 	}
