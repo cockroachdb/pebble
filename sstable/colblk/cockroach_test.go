@@ -183,7 +183,7 @@ var cockroachKeySeekerPool = sync.Pool{
 }
 
 type cockroachKeySeeker struct {
-	reader          *DataBlockReader
+	reader          *DataBlockDecoder
 	roachKeys       PrefixBytes
 	mvccWallTimes   UnsafeUints
 	mvccLogical     UnsafeUints
@@ -194,7 +194,7 @@ type cockroachKeySeeker struct {
 var _ KeySeeker = (*cockroachKeySeeker)(nil)
 
 // Init is part of the KeySeeker interface.
-func (ks *cockroachKeySeeker) Init(r *DataBlockReader) error {
+func (ks *cockroachKeySeeker) Init(r *DataBlockDecoder) error {
 	ks.reader = r
 	ks.roachKeys = r.r.PrefixBytes(cockroachColRoachKey)
 	ks.mvccWallTimes = r.r.Uints(cockroachColMVCCWallTime)
@@ -403,7 +403,7 @@ func TestCockroachDataBlock(t *testing.T) {
 		BaseWallTime:      seed,
 	}, valueLen)
 
-	var reader DataBlockReader
+	var reader DataBlockDecoder
 	var it DataBlockIter
 	it.InitOnce(cockroachKeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
@@ -450,7 +450,7 @@ func generateDataBlock(
 ) (data []byte, keys [][]byte, values [][]byte) {
 	keys, values = crdbtest.RandomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
 
-	var w DataBlockWriter
+	var w DataBlockEncoder
 	w.Init(cockroachKeySchema)
 	count := 0
 	for w.Size() < targetBlockSize {
@@ -492,7 +492,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 	rng := rand.New(rand.NewSource(seed))
 	_, keys, values := generateDataBlock(rng, targetBlockSize, keyConfig, valueLen)
 
-	var w DataBlockWriter
+	var w DataBlockEncoder
 	w.Init(cockroachKeySchema)
 
 	b.ResetTimer()
@@ -629,7 +629,7 @@ func benchmarkCockroachDataBlockIter(
 
 	serializedBlock, keys, _ := generateDataBlock(rng, targetBlockSize, cfg.KeyConfig, cfg.ValueLen)
 
-	var reader DataBlockReader
+	var reader DataBlockDecoder
 	var it DataBlockIter
 	it.InitOnce(cockroachKeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}

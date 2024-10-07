@@ -41,7 +41,7 @@ type RawColumnWriter struct {
 	props                Properties
 	// block writers buffering unflushed data.
 	dataBlock struct {
-		colblk.DataBlockWriter
+		colblk.DataBlockEncoder
 		// numDeletions stores the count of point tombstones in this data block.
 		// It's used to determine if this data block is considered
 		// tombstone-dense for the purposes of compaction.

@@ -25,8 +25,8 @@ var testKeysSchema = DefaultKeySchema(testkeys.Comparer, 16)
 
 func TestDataBlock(t *testing.T) {
 	var buf bytes.Buffer
-	var w DataBlockWriter
-	var r DataBlockReader
+	var w DataBlockEncoder
+	var r DataBlockDecoder
 	var it DataBlockIter
 	rw := NewDataBlockRewriter(testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split)
 	var sizes []int
@@ -149,7 +149,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 	rng := rand.New(rand.NewSource(seed))
 	keys, values := makeTestKeyRandomKVs(rng, prefixSize, valueSize, targetBlockSize)
 
-	var w DataBlockWriter
+	var w DataBlockEncoder
 	w.Init(testKeysSchema)
 	b.ResetTimer()
 
