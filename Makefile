@@ -132,7 +132,7 @@ endif
 
 .PHONY: format
 format:
-	go install -C internal/devtools github.com/cockroachdb/crlfmt && crlfmt -w -tab 2 ../..
+	go install -C internal/devtools github.com/cockroachdb/crlfmt && crlfmt -w -tab 2 .
 
 .PHONY: format-check
 format-check:
