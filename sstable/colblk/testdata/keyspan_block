@@ -162,6 +162,21 @@ d-e:{(#0,RANGEDEL)}
 c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
 
 iter
+seek-lt coconut
+seek-lt c
+seek-lt banana
+seek-lt b
+seek-lt apple
+seek-lt a
+----
+c-d:{(#100,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#100,RANGEDEL) (#20,RANGEDEL) (#0,RANGEDEL)}
+a-b:{(#0,RANGEDEL)}
+a-b:{(#0,RANGEDEL)}
+.
+
+iter
 first
 next
 next
@@ -393,7 +408,82 @@ seek-lt g
 seek-lt z
 seek-lt e
 ----
-e-g:{(#5,RANGEKEYSET,@1,tree)}
+b-d:{(#4,RANGEKEYSET,@3,coconut)}
 e-g:{(#5,RANGEKEYSET,@1,tree)}
 e-g:{(#5,RANGEKEYSET,@1,tree)}
 b-d:{(#4,RANGEKEYSET,@3,coconut)}
+
+iter synthetic-seq-num=99
+first
+next
+next
+----
+b-d:{(#99,RANGEKEYSET,@3,coconut)}
+e-g:{(#99,RANGEKEYSET,@1,tree)}
+.
+
+iter synthetic-suffix=@9
+first
+next
+next
+----
+b-d:{(#4,RANGEKEYSET,@9,coconut)}
+e-g:{(#5,RANGEKEYSET,@9,tree)}
+.
+
+iter synthetic-prefix=foo
+first
+next
+next
+----
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+fooe-foog:{(#5,RANGEKEYSET,@1,tree)}
+.
+
+iter synthetic-prefix=foo
+seek-ge fax
+seek-ge fun
+prev
+----
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+.
+fooe-foog:{(#5,RANGEKEYSET,@1,tree)}
+
+iter synthetic-prefix=foo
+seek-ge fooa
+seek-ge foob
+seek-ge foobanana
+seek-ge foococonut
+seek-ge fooc
+seek-ge foofoo
+----
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+fooe-foog:{(#5,RANGEKEYSET,@1,tree)}
+
+iter synthetic-prefix=foo
+seek-lt fax
+next
+seek-lt fun
+----
+.
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+fooe-foog:{(#5,RANGEKEYSET,@1,tree)}
+
+iter synthetic-prefix=foo
+seek-lt fooa
+seek-lt foob
+seek-lt foobanana
+seek-lt foococonut
+seek-lt fooc
+seek-lt foofoo
+----
+.
+.
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+foob-food:{(#4,RANGEKEYSET,@3,coconut)}
+fooe-foog:{(#5,RANGEKEYSET,@1,tree)}

@@ -36,3 +36,27 @@ func TestIterTransforms(t *testing.T) {
 	transforms.SyntheticSuffix = []byte{1}
 	require.False(t, transforms.NoTransforms())
 }
+
+func TestFragmentIterTransforms(t *testing.T) {
+	require.True(t, NoFragmentTransforms.NoTransforms())
+	var transforms FragmentIterTransforms
+	require.True(t, transforms.NoTransforms())
+	require.False(t, transforms.SyntheticPrefix.IsSet())
+	require.False(t, transforms.SyntheticSuffix.IsSet())
+	transforms.SyntheticPrefix = []byte{}
+	require.False(t, transforms.SyntheticPrefix.IsSet())
+	transforms.SyntheticSuffix = []byte{}
+	require.False(t, transforms.SyntheticSuffix.IsSet())
+	require.True(t, transforms.NoTransforms())
+
+	transforms.SyntheticSeqNum = 123
+	require.False(t, transforms.NoTransforms())
+
+	transforms = NoFragmentTransforms
+	transforms.SyntheticPrefix = []byte{1}
+	require.False(t, transforms.NoTransforms())
+
+	transforms = NoFragmentTransforms
+	transforms.SyntheticSuffix = []byte{1}
+	require.False(t, transforms.NoTransforms())
+}
