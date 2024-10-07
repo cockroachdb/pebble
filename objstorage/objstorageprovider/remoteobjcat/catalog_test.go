@@ -7,7 +7,7 @@ package remoteobjcat_test
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"strconv"
 	"strings"

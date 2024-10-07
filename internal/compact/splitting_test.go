@@ -7,7 +7,7 @@ package compact
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -58,7 +58,7 @@ func TestOutputSplitter(t *testing.T) {
 				fmt.Sscanf(l, "%s %d", &key, &estimatedSize)
 				// Advance the frontier, except (sometimes) for the first key where the
 				// splitter allows for the frontier to already be at the next user key.
-				if i > 0 || rand.Intn(2) == 0 {
+				if i > 0 || rand.IntN(2) == 0 {
 					f.Advance([]byte(key))
 				}
 				if s.ShouldSplitBefore([]byte(key), estimatedSize, func(k []byte) bool { return f.cmp(k, []byte(last)) == 0 }) {

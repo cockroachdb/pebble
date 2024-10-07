@@ -7,13 +7,13 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/rate"
-	"golang.org/x/exp/rand"
 )
 
 const (
@@ -163,7 +163,7 @@ func newDB() *DB {
 
 // drainCompaction simulates background compactions.
 func (db *DB) drainCompaction() {
-	rng := rand.New(rand.NewSource(1))
+	rng := rand.New(rand.NewPCG(0, 1))
 
 	for {
 		db.compactionMu.Lock()
@@ -176,7 +176,7 @@ func (db *DB) drainCompaction() {
 
 		var delay bool
 		for i, size := int64(0), int64(0); i < *l0Table; i += size {
-			size = 10000 + rng.Int63n(500)
+			size = 10000 + rng.Int64N(500)
 			if size > (*l0Table - i) {
 				size = *l0Table - i
 			}
@@ -206,7 +206,7 @@ func (db *DB) drainCompaction() {
 		for t := 0; t < tablesToCompact; t++ {
 			db.compactionPacer.fill(memtableSize)
 			for i, size := int64(0), int64(0); i < memtableSize; i += size {
-				size = 10000 + rng.Int63n(500)
+				size = 10000 + rng.Int64N(500)
 				if size > (totalCompactionBytes - i) {
 					size = totalCompactionBytes - i
 				}
@@ -237,7 +237,7 @@ func (db *DB) fillCompaction(size int64) {
 
 // drainMemtable simulates memtable flushing.
 func (db *DB) drainMemtable() {
-	rng := rand.New(rand.NewSource(2))
+	rng := rand.New(rand.NewPCG(0, 2))
 
 	for {
 		db.mu.Lock()
@@ -249,7 +249,7 @@ func (db *DB) drainMemtable() {
 
 		var delay bool
 		for i, size := int64(0), int64(0); i < *memtable; i += size {
-			size = 1000 + rng.Int63n(50)
+			size = 1000 + rng.Int64N(50)
 			if size > (*memtable - i) {
 				size = *memtable - i
 			}
@@ -325,17 +325,17 @@ func simulateWrite(db *DB, measureLatencyMode bool) {
 
 	if !measureLatencyMode {
 		go func() {
-			rng := rand.New(rand.NewSource(3))
+			rng := rand.New(rand.NewPCG(0, 3))
 			for {
-				secs := 5 + rng.Intn(5)
+				secs := 5 + rng.IntN(5)
 				time.Sleep(time.Duration(secs) * time.Second)
-				mb := 10 + rng.Intn(20)
+				mb := 10 + rng.IntN(20)
 				setRate(mb)
 			}
 		}()
 	}
 
-	rng := rand.New(rand.NewSource(uint64(4)))
+	rng := rand.New(rand.NewPCG(0, uint64(4)))
 
 	totalWrites := int64(0)
 	percentiles := []int64{50, 95, 99}
@@ -344,7 +344,7 @@ func simulateWrite(db *DB, measureLatencyMode bool) {
 
 	startTime := time.Now()
 	for totalWrites <= writeAmount {
-		size := 1000 + rng.Int63n(50)
+		size := 1000 + rng.Int64N(50)
 		if !measureLatencyMode {
 			limiter.Wait(float64(size))
 		}

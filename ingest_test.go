@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,7 +42,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestSSTableKeyCompare(t *testing.T) {
@@ -149,7 +149,7 @@ func TestIngestLoad(t *testing.T) {
 
 func TestIngestLoadRand(t *testing.T) {
 	mem := vfs.NewMem()
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	cmp := DefaultComparer.Compare
 	version := internalFormatNewest
 
@@ -161,7 +161,7 @@ func TestIngestLoadRand(t *testing.T) {
 		return data
 	}
 
-	paths := make([]string, 1+rng.Intn(10))
+	paths := make([]string, 1+rng.IntN(10))
 	pending := make([]base.FileNum, len(paths))
 	expected := make([]ingestLocalMeta, len(paths))
 	for i := range paths {
@@ -180,10 +180,10 @@ func TestIngestLoadRand(t *testing.T) {
 			f, err := mem.Create(paths[i], vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
-			keys := make([]InternalKey, 1+rng.Intn(100))
+			keys := make([]InternalKey, 1+rng.IntN(100))
 			for i := range keys {
 				keys[i] = base.MakeInternalKey(
-					randBytes(1+rng.Intn(10)),
+					randBytes(1+rng.IntN(10)),
 					0,
 					InternalKeyKindSet)
 			}
@@ -3529,7 +3529,7 @@ func TestIngestValidation(t *testing.T) {
 	)
 
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	t.Logf("rng seed = %d", seed)
 
 	// errfsCounter is used by test cases that make use of an errorfs.Injector
@@ -3640,7 +3640,7 @@ func TestIngestValidation(t *testing.T) {
 				case corruptionLocationEnd:
 					blockIdx = len(l.Data) - 1
 				case corruptionLocationInternal:
-					blockIdx = 1 + rng.Intn(len(l.Data)-2)
+					blockIdx = 1 + rng.IntN(len(l.Data)-2)
 				default:
 					t.Fatalf("unknown corruptionLocation: %T", tc.cLoc)
 				}
@@ -3707,12 +3707,14 @@ func TestIngestValidation(t *testing.T) {
 			var keyVals []keyVal
 			for i := 0; i < nKeys; i++ {
 				key := make([]byte, keySize)
-				_, err = rng.Read(key)
-				require.NoError(t, err)
+				for j := range key {
+					key[j] = byte(rng.Uint32())
+				}
 
 				val := make([]byte, valSize)
-				_, err = rng.Read(val)
-				require.NoError(t, err)
+				for j := range val {
+					val[j] = byte(rng.Uint32())
+				}
 
 				keyVals = append(keyVals, keyVal{key, val})
 			}

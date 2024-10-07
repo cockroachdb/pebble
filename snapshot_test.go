@@ -7,7 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"runtime"
 	"strings"
@@ -64,7 +64,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 	defer close()
 
 	randVersion := func() FormatMajorVersion {
-		return FormatMinSupported + FormatMajorVersion(rand.Intn(int(internalFormatNewest-FormatMinSupported)+1))
+		return FormatMinSupported + FormatMajorVersion(rand.IntN(int(internalFormatNewest-FormatMinSupported)+1))
 	}
 	datadriven.RunTest(t, "testdata/snapshot", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {

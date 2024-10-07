@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -224,7 +224,7 @@ func randomSubset(t *testing.T, ops []string, removeProbability float64) []strin
 	res := ops[:1:1]
 	ops = ops[1:]
 	// Regardless of the probability, we choose at least one op to remove.
-	x := rand.Intn(len(ops))
+	x := rand.IntN(len(ops))
 	for i := range ops {
 		if i == x || rand.Float64() < removeProbability {
 			// Remove this op.

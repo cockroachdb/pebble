@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -15,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestRawBytes(t *testing.T) {
@@ -74,9 +74,9 @@ func TestRawBytes(t *testing.T) {
 func BenchmarkRawBytes(b *testing.B) {
 	seed := uint64(205295296)
 	generateRandomSlices := func(sliceSize, totalByteSize int) [][]byte {
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		randInt := func(lo, hi int) int {
-			return lo + rng.Intn(hi-lo)
+			return lo + rng.IntN(hi-lo)
 		}
 		data := make([]byte, totalByteSize)
 		for i := range data {

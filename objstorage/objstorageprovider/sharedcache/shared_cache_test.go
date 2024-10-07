@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"sync"
 	"testing"
@@ -17,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestSharedCache(t *testing.T) {
@@ -128,7 +128,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 
 	seed := uint64(time.Now().UnixNano())
 	fmt.Printf("seed: %v\n", seed)
-	rand.Seed(seed)
+	rng := rand.New(rand.NewPCG(0, seed))
 
 	helper := func(
 		blockSize int,
@@ -140,7 +140,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 					if invariants.RaceEnabled {
 						maxShards = 8
 					}
-					numShards := rand.Intn(maxShards) + 1
+					numShards := rng.IntN(maxShards) + 1
 					cacheSize := shardingBlockSize * int64(numShards) // minimum allowed cache size
 
 					cache, err := sharedcache.Open(fs, base.DefaultLogger, "", blockSize, shardingBlockSize, cacheSize, numShards)
@@ -152,7 +152,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 
 					// With invariants on, Write will modify its input buffer.
 					// If size == 0, we can see panics below, so force a nonzero size.
-					size := rand.Int63n(cacheSize-1) + 1
+					size := rng.Int64N(cacheSize-1) + 1
 					objData := make([]byte, size)
 					wrote := make([]byte, size)
 					for i := 0; i < int(size); i++ {
@@ -171,9 +171,8 @@ func TestSharedCacheRandomized(t *testing.T) {
 					wg := sync.WaitGroup{}
 					for i := 0; i < numDistinctReads; i++ {
 						wg.Add(1)
-						go func() {
+						go func(offset int64) {
 							defer wg.Done()
-							offset := rand.Int63n(size)
 
 							got := make([]byte, size-offset)
 							err := cache.ReadAt(ctx, base.DiskFileNum(1), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
@@ -184,9 +183,9 @@ func TestSharedCacheRandomized(t *testing.T) {
 							err = cache.ReadAt(ctx, base.DiskFileNum(1), got, offset, readable, readable.Size(), sharedcache.ReadFlags{})
 							require.NoError(t, err)
 							require.Equal(t, objData[int(offset):], got)
-						}()
+						}(rng.Int64N(size))
 						// If concurrent reads, only wait 50% of loop iterations on average.
-						if concurrentReads && rand.Intn(2) == 0 {
+						if concurrentReads && rng.Int64N(2) == 0 {
 							wg.Wait()
 						}
 						if !concurrentReads {
@@ -203,10 +202,10 @@ func TestSharedCacheRandomized(t *testing.T) {
 
 	if !invariants.RaceEnabled {
 		for i := 0; i < 5; i++ {
-			exp := rand.Intn(11) + 10   // [10, 20]
+			exp := rng.IntN(11) + 10    // [10, 20]
 			randomBlockSize := 1 << exp // [1 KB, 1 MB]
 
-			factor := rand.Intn(4) + 1                                 // [1, 4]
+			factor := rng.IntN(4) + 1                                  // [1, 4]
 			randomShardingBlockSize := int64(randomBlockSize * factor) // [1 KB, 4 MB]
 
 			t.Run("random block and sharding block size", helper(randomBlockSize, randomShardingBlockSize))

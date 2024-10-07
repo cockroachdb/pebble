@@ -7,7 +7,7 @@ package pebble
 import (
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"slices"
 	"testing"
 	"time"
@@ -138,16 +138,16 @@ func TestDeletionPacerHistory(t *testing.T) {
 		// If report is 0, this event is a Sum(). Otherwise it is an Add().
 		report int64
 	}
-	numEvents := 1 + rand.Intn(200)
-	timeframe := time.Duration(1+rand.Intn(60*100)) * time.Second
+	numEvents := 1 + rand.IntN(200)
+	timeframe := time.Duration(1+rand.IntN(60*100)) * time.Second
 	events := make([]event, numEvents)
 	startTime := time.Now()
 	for i := range events {
-		events[i].time = startTime.Add(time.Duration(rand.Int63n(int64(timeframe))))
-		if rand.Intn(3) == 0 {
+		events[i].time = startTime.Add(time.Duration(rand.Int64N(int64(timeframe))))
+		if rand.IntN(3) == 0 {
 			events[i].report = 0
 		} else {
-			events[i].report = int64(rand.Intn(100000))
+			events[i].report = int64(rand.IntN(100000))
 		}
 	}
 	slices.SortFunc(events, func(a, b event) int { return a.time.Compare(b.time) })

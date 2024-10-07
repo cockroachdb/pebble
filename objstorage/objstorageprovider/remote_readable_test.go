@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -27,7 +27,7 @@ func (r *testObjectReader) init(size int) {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const lettersLen = len(letters)
 	for i := 0; i < len(r.buf); i++ {
-		r.buf[i] = letters[rand.Intn(lettersLen)]
+		r.buf[i] = letters[rand.IntN(lettersLen)]
 	}
 }
 

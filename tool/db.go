@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"text/tabwriter"
 

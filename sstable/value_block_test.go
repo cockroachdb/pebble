@@ -7,7 +7,7 @@ package sstable
 import (
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
@@ -59,7 +59,7 @@ func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
 func TestLittleEndianGetPut(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	testCases := []uint64{
-		0, (1 << 10) - 1, (1 << 25) + 1, math.MaxUint32, math.MaxUint64, uint64(rand.Int63())}
+		0, (1 << 10) - 1, (1 << 25) + 1, math.MaxUint32, math.MaxUint64, rand.Uint64()}
 	var buf [8]byte
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%d", tc), func(t *testing.T) {

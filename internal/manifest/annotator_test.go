@@ -5,7 +5,7 @@
 package manifest
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -79,9 +79,9 @@ func bounds(i int, j int, exclusive bool) base.UserKeyBounds {
 }
 
 func randomBounds(rng *rand.Rand, count int) base.UserKeyBounds {
-	first := rng.Intn(count)
-	second := rng.Intn(count)
-	exclusive := rng.Intn(2) == 0
+	first := rng.IntN(count)
+	second := rng.IntN(count)
+	exclusive := rng.IntN(2) == 0
 	return bounds(min(first, second), max(first, second), exclusive)
 }
 
@@ -130,7 +130,7 @@ func TestNumFilesRangeAnnotationRandomized(t *testing.T) {
 
 	v, _ := makeTestVersion(count)
 
-	rng := rand.New(rand.NewSource(int64(0)))
+	rng := rand.New(rand.NewPCG(0, 0))
 	for i := 0; i < numIterations; i++ {
 		requireMatchOverlaps(t, v, randomBounds(rng, count*11))
 	}
@@ -140,13 +140,13 @@ func BenchmarkNumFilesRangeAnnotation(b *testing.B) {
 	const count = 100_000
 	v, files := makeTestVersion(count)
 
-	rng := rand.New(rand.NewSource(int64(0)))
+	rng := rand.New(rand.NewPCG(0, 0))
 	b.Run("annotator", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b := randomBounds(rng, count*11)
 			// Randomly delete and reinsert a file to verify that range
 			// annotations are still fast despite small mutations.
-			toDelete := rng.Intn(count)
+			toDelete := rng.IntN(count)
 			v.Levels[6].tree.Delete(files[toDelete])
 
 			NumFilesAnnotator.LevelRangeAnnotation(v.Levels[6], b)
@@ -160,7 +160,7 @@ func BenchmarkNumFilesRangeAnnotation(b *testing.B) {
 	b.Run("overlaps", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b := randomBounds(rng, count*11)
-			toDelete := rng.Intn(count)
+			toDelete := rng.IntN(count)
 			v.Levels[6].tree.Delete(files[toDelete])
 
 			overlaps := v.Overlaps(6, b)

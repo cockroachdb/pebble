@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -33,7 +34,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 // try repeatedly calls f, sleeping between calls with exponential back-off,
@@ -319,12 +319,12 @@ func TestRandomWrites(t *testing.T) {
 	}
 	xxx := bytes.Repeat([]byte("x"), 512)
 
-	rng := rand.New(rand.NewSource(123))
+	rng := rand.New(rand.NewPCG(0, 123))
 	const N = 1000
 	for i := 0; i < N; i++ {
-		k := rng.Intn(len(keys))
-		if rng.Intn(20) != 0 {
-			wants[k] = rng.Intn(len(xxx) + 1)
+		k := rng.IntN(len(keys))
+		if rng.IntN(20) != 0 {
+			wants[k] = rng.IntN(len(xxx) + 1)
 			if err := d.Set(keys[k], xxx[:wants[k]], nil); err != nil {
 				t.Fatalf("i=%d: Set: %v", i, err)
 			}
@@ -335,7 +335,7 @@ func TestRandomWrites(t *testing.T) {
 			}
 		}
 
-		if i != N-1 || rng.Intn(50) != 0 {
+		if i != N-1 || rng.IntN(50) != 0 {
 			continue
 		}
 		for k := range keys {
@@ -938,7 +938,7 @@ func TestFlushEmpty(t *testing.T) {
 }
 
 func TestRollManifest(t *testing.T) {
-	toPreserve := rand.Int31n(5) + 1
+	toPreserve := rand.Int32N(5) + 1
 	opts := &Options{
 		MaxManifestFileSize:   1,
 		L0CompactionThreshold: 10,
@@ -1863,7 +1863,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 }
 
 func BenchmarkDelete(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	const keyCount = 10000
 	var keys [keyCount][]byte
 	for i := 0; i < keyCount; i++ {
@@ -2092,7 +2092,9 @@ func TestWALFailoverAvoidsWriteStall(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 	value := make([]byte, 1<<20)
-	rand.Read(value)
+	for i := range value {
+		value[i] = byte(rand.Uint32())
+	}
 	// After ~8 writes, the default write stall threshold is exceeded, but the
 	// writes will not block indefinitely since failover has or will happen, and
 	// wal.Manager.ElevateWriteStallThresholdForFailover() will return true.
@@ -2155,7 +2157,7 @@ func TestDeterminism(t *testing.T) {
 						FormatMajorVersion:          FormatNewest,
 						DisableAutomaticCompactions: true,
 					}
-					opts.Experimental.IngestSplit = func() bool { return rand.Intn(2) == 1 }
+					opts.Experimental.IngestSplit = func() bool { return rand.IntN(2) == 1 }
 					var err error
 					if d, err = runDBDefineCmdReuseFS(td, opts); err != nil {
 						return err.Error()
@@ -2442,7 +2444,7 @@ func TestLoadBlockSema(t *testing.T) {
 					defer wg.Done()
 					const numQueries = 100
 					for i := 0; i < numQueries; i++ {
-						val, closer, err := db.Get(key(rand.Intn(numRegions), rand.Intn(numKeys)))
+						val, closer, err := db.Get(key(rand.IntN(numRegions), rand.IntN(numKeys)))
 						require.NoError(t, err)
 						require.Equal(t, []byte("value"), val)
 						if closer != nil {

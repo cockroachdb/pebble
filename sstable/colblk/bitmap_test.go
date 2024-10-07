@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"testing"
 	"time"
 	"unicode"
@@ -16,7 +17,6 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestBitmapFixed(t *testing.T) {
@@ -144,8 +144,8 @@ func dumpBitmap(w io.Writer, b Bitmap) {
 func TestBitmapRandom(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
-	rng := rand.New(rand.NewSource(seed))
-	size := rng.Intn(4096) + 1
+	rng := rand.New(rand.NewPCG(0, seed))
+	size := rng.IntN(4096) + 1
 
 	testWithProbability := func(t *testing.T, p float64) {
 		var builder BitmapBuilder
@@ -233,11 +233,11 @@ func TestBitmapRandom(t *testing.T) {
 
 func BenchmarkBitmapBuilder(b *testing.B) {
 	seed := uint64(10024282523)
-	rng := rand.New(rand.NewSource(seed))
-	size := rng.Intn(4096) + 1
+	rng := rand.New(rand.NewPCG(0, seed))
+	size := rng.IntN(4096) + 1
 	v := make([]bool, size)
 	for i := 0; i < size; i++ {
-		v[i] = rng.Intn(2) == 0
+		v[i] = rng.IntN(2) == 0
 	}
 	data := make([]byte, bitmapRequiredSize(size))
 	b.ResetTimer()

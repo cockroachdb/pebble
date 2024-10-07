@@ -4,7 +4,7 @@
 
 package randvar
 
-import "golang.org/x/exp/rand"
+import "math/rand/v2"
 
 // Weighted is a random number generator that generates numbers in the range
 // [0,len(weights)-1] where the probability of i is weights(i)/sum(weights).

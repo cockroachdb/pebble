@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path"
 	"slices"
@@ -679,7 +679,7 @@ func (f *memNode) CrashClone(cfg *CrashCloneCfg) *memNode {
 		newNode.children = cloneChildren(f.syncedChildren)
 		// Randomly include some non-synced children.
 		for name, child := range f.children {
-			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.Intn(100) < cfg.UnsyncedDataPercent {
+			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.IntN(100) < cfg.UnsyncedDataPercent {
 				newNode.children[name] = child
 			}
 		}
@@ -693,7 +693,7 @@ func (f *memNode) CrashClone(cfg *CrashCloneCfg) *memNode {
 		// Randomly include some non-synced blocks.
 		const blockSize = 4096
 		for i := 0; i < len(f.mu.data); i += blockSize {
-			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.Intn(100) < cfg.UnsyncedDataPercent {
+			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.IntN(100) < cfg.UnsyncedDataPercent {
 				block := f.mu.data[i:min(i+blockSize, len(f.mu.data))]
 				if grow := i + len(block) - len(newNode.mu.data); grow > 0 {
 					// Grow the file, leaving 0s for any unsynced blocks past the synced

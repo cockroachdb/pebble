@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"strconv"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
-	"golang.org/x/exp/rand"
 )
 
 type testColumnSpec struct {
@@ -183,7 +183,7 @@ func randBlock(rng *rand.Rand, rows int, schema []testColumnSpec) ([]byte, []int
 		case DataTypeBool:
 			v := make([]bool, rows)
 			for row := 0; row < rows; row++ {
-				v[row] = (rng.Int31() % 2) == 0
+				v[row] = (rng.Int32() % 2) == 0
 			}
 			data[col] = v
 		case DataTypeUint:
@@ -195,15 +195,19 @@ func randBlock(rng *rand.Rand, rows int, schema []testColumnSpec) ([]byte, []int
 		case DataTypeBytes:
 			v := make([][]byte, rows)
 			for row := 0; row < rows; row++ {
-				v[row] = make([]byte, rng.Intn(20))
-				rng.Read(v[row])
+				v[row] = make([]byte, rng.IntN(20))
+				for j := range v[row] {
+					v[row][j] = byte(rng.Uint32())
+				}
 			}
 			data[col] = v
 		case DataTypePrefixBytes:
 			v := make([][]byte, rows)
 			for row := 0; row < rows; row++ {
-				v[row] = make([]byte, rng.Intn(20)+1)
-				rng.Read(v[row])
+				v[row] = make([]byte, rng.IntN(20)+1)
+				for j := range v[row] {
+					v[row][j] = byte(rng.Uint32())
+				}
 			}
 			// PrefixBytes are required to be lexicographically sorted.
 			slices.SortFunc(v, bytes.Compare)
@@ -307,9 +311,9 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []testColumn
 func TestBlockWriterRandomized(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("Seed: %d", seed)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	randInt := func(lo, hi int) int {
-		return lo + rng.Intn(hi-lo)
+		return lo + rng.IntN(hi-lo)
 	}
 	testRandomBlock(t, rng, randInt(1, 100), []testColumnSpec{{DataType: DataTypeBool}})
 	for _, r := range interestingIntRanges {
@@ -319,7 +323,7 @@ func TestBlockWriterRandomized(t *testing.T) {
 	testRandomBlock(t, rng, randInt(1, 100), []testColumnSpec{{DataType: DataTypePrefixBytes, BundleSize: 1 << randInt(0, 6)}})
 
 	for i := 0; i < 100; i++ {
-		schema := make([]testColumnSpec, 2+rng.Intn(8))
+		schema := make([]testColumnSpec, 2+rng.IntN(8))
 		for j := range schema {
 			schema[j].DataType = DataType(randInt(1, int(dataTypesCount)))
 			if schema[j].DataType == DataTypePrefixBytes {

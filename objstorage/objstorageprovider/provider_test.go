@@ -7,7 +7,7 @@ package objstorageprovider
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -204,7 +204,7 @@ func TestProvider(t *testing.T) {
 				}
 				var rh objstorage.ReadHandle
 				// Test both ways of getting a handle.
-				if rand.Intn(2) == 0 {
+				if rand.IntN(2) == 0 {
 					rh = r.NewReadHandle(objstorage.NoReadBefore)
 				} else {
 					var prealloc PreallocatedReadHandle
@@ -619,7 +619,7 @@ func TestParallelSync(t *testing.T) {
 			for n := 0; n < numGoroutines; n++ {
 				go func(startNum int, shared bool) {
 					defer wg.Done()
-					rng := rand.New(rand.NewSource(int64(startNum)))
+					rng := rand.New(rand.NewPCG(0, uint64(startNum)))
 					for i := 0; i < numOps; i++ {
 						if stop.Load() {
 							return
@@ -634,7 +634,7 @@ func TestParallelSync(t *testing.T) {
 						if err := w.Finish(); err != nil {
 							panic(err)
 						}
-						if rng.Intn(2) == 0 {
+						if rng.IntN(2) == 0 {
 							if stop.Load() {
 								return
 							}
@@ -644,12 +644,12 @@ func TestParallelSync(t *testing.T) {
 							setMustExist(num, true)
 						}
 
-						if rng.Intn(4) == 0 {
+						if rng.IntN(4) == 0 {
 							setMustExist(num, false)
 							if err := p.Remove(base.FileTypeTable, num); err != nil {
 								panic(err)
 							}
-							if rng.Intn(2) == 0 {
+							if rng.IntN(2) == 0 {
 								if err := p.Sync(); err != nil {
 									panic(err)
 								}
@@ -661,7 +661,7 @@ func TestParallelSync(t *testing.T) {
 			mustExist := make(map[base.DiskFileNum]struct{})
 			// "Crash" at a random time.
 			var crashFS *vfs.MemFS
-			time.AfterFunc(time.Duration(rand.Int63n(int64(10*time.Millisecond))), func() {
+			time.AfterFunc(time.Duration(rand.Int64N(int64(10*time.Millisecond))), func() {
 				defer wg.Done()
 				if shared {
 					// TODO(radu): we cannot simulate a crash in shared mode because we

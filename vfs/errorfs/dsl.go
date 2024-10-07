@@ -7,7 +7,7 @@ package errorfs
 import (
 	"fmt"
 	"go/token"
-	"math/rand"
+	"math/rand/v2"
 	"path/filepath"
 	"strconv"
 

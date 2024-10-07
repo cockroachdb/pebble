@@ -7,7 +7,8 @@ package sstable
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	randv1 "math/rand"
+	"math/rand/v2"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -49,14 +50,14 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 	fs := vfs.NewMem()
 	f, err := fs.Create("random.sst", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
 	cfg := randomTableConfig{
 		wopts:     nil, /* leave to randomize */
-		keys:      testkeys.Alpha(3 + rng.Intn(2)),
+		keys:      testkeys.Alpha(3 + rng.IntN(2)),
 		keyCount:  10_000,
-		maxValLen: rng.Intn(64) + 1,
-		maxSuffix: rng.Int63n(95) + 5,
-		maxSeqNum: rng.Int63n(1000) + 10,
+		maxValLen: rng.IntN(64) + 1,
+		maxSuffix: rng.Int64N(95) + 5,
+		maxSeqNum: rng.Int64N(1000) + 10,
 		rng:       rng,
 	}
 	cfg.randomize()
@@ -100,7 +101,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 	// random operations on the range deletion and range key iterators?
 	var stats base.InternalIteratorStats
 	filterBlockSizeLimit := AlwaysUseFilterBlock
-	if rng.Intn(2) == 1 {
+	if rng.IntN(2) == 1 {
 		filterBlockSizeLimit = NeverUseFilterBlock
 	}
 	it, err := r.NewPointIter(
@@ -130,7 +131,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		{Item: ops.runNext, Weight: 5},
 		{Item: ops.runNextPrefix, Weight: 5},
 		{Item: ops.runPrev, Weight: 5},
-	}.RandomDeck(rng)
+	}.RandomDeck(randv1.New(randv1.NewSource(rng.Int64())))
 
 	for i := 0; i < 1000; i++ {
 		beforeCount := counter.Load()
@@ -179,7 +180,7 @@ func (r *opRunner) runSeekGE() bool {
 	k := r.randKey()
 	flags := base.SeekGEFlagsNone
 	if strings.HasPrefix(r.latestOpDesc, "SeekGE") &&
-		r.wopts.Comparer.Compare(k, r.latestSeekKey) > 0 && r.rng.Intn(2) == 1 {
+		r.wopts.Comparer.Compare(k, r.latestSeekKey) > 0 && r.rng.IntN(2) == 1 {
 		flags = flags.EnableTrySeekUsingNext()
 	}
 	r.latestOpDesc = fmt.Sprintf("SeekGE(%q, TrySeekUsingNext()=%t)",
@@ -195,7 +196,7 @@ func (r *opRunner) runSeekPrefixGE() bool {
 	i := r.wopts.Comparer.Split(k)
 	flags := base.SeekGEFlagsNone
 	if strings.HasPrefix(r.latestOpDesc, "SeekPrefixGE") &&
-		r.wopts.Comparer.Compare(k, r.latestSeekKey) > 0 && r.rng.Intn(2) == 1 {
+		r.wopts.Comparer.Compare(k, r.latestSeekKey) > 0 && r.rng.IntN(2) == 1 {
 		flags = flags.EnableTrySeekUsingNext()
 	}
 	r.latestOpDesc = fmt.Sprintf("SeekPrefixGE(%q, %q, TrySeekUsingNext()=%t)",
@@ -289,17 +290,17 @@ func (cfg *randomTableConfig) randomize() {
 		cfg.wopts = &WriterOptions{
 			Comparer: testkeys.Comparer,
 			// Test all table formats in [TableFormatLevelDB, TableFormatMax].
-			TableFormat:             TableFormat(cfg.rng.Intn(int(TableFormatMax)) + 1),
-			BlockRestartInterval:    (1 << cfg.rng.Intn(6)),             // {1, 2, 4, ..., 32}
+			TableFormat:             TableFormat(cfg.rng.IntN(int(TableFormatMax)) + 1),
+			BlockRestartInterval:    (1 << cfg.rng.IntN(6)),             // {1, 2, 4, ..., 32}
 			BlockSizeThreshold:      min(int(100*cfg.rng.Float64()), 1), // 1-100%
-			BlockSize:               (1 << cfg.rng.Intn(18)),            // {1, 2, 4, ..., 128 KiB}
-			IndexBlockSize:          (1 << cfg.rng.Intn(20)),            // {1, 2, 4, ..., 512 KiB}
+			BlockSize:               (1 << cfg.rng.IntN(18)),            // {1, 2, 4, ..., 128 KiB}
+			IndexBlockSize:          (1 << cfg.rng.IntN(20)),            // {1, 2, 4, ..., 512 KiB}
 			BlockPropertyCollectors: nil,
 			KeySchema:               colblk.DefaultKeySchema(testkeys.Comparer, 16 /* bundle size */),
-			WritingToLowestLevel:    cfg.rng.Intn(2) == 1,
-			Parallelism:             cfg.rng.Intn(2) == 1,
+			WritingToLowestLevel:    cfg.rng.IntN(2) == 1,
+			Parallelism:             cfg.rng.IntN(2) == 1,
 		}
-		if v := cfg.rng.Intn(11); v > 0 {
+		if v := cfg.rng.IntN(11); v > 0 {
 			cfg.wopts.FilterPolicy = bloom.FilterPolicy(v)
 		}
 		if cfg.wopts.TableFormat >= TableFormatPebblev1 && cfg.rng.Float64() < 0.75 {
@@ -313,8 +314,8 @@ func (cfg *randomTableConfig) randomize() {
 func (cfg *randomTableConfig) randKey() []byte {
 	return testkeys.KeyAt(cfg.keys, cfg.randKeyIdx(), cfg.randSuffix())
 }
-func (cfg *randomTableConfig) randSuffix() int64 { return cfg.rng.Int63n(cfg.maxSuffix + 1) }
-func (cfg *randomTableConfig) randKeyIdx() int64 { return cfg.rng.Int63n(cfg.keys.Count()) }
+func (cfg *randomTableConfig) randSuffix() int64 { return cfg.rng.Int64N(cfg.maxSuffix + 1) }
+func (cfg *randomTableConfig) randKeyIdx() int64 { return cfg.rng.Int64N(cfg.keys.Count()) }
 
 func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, error) {
 	// Construct a weighted distribution of key kinds.
@@ -335,7 +336,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 			Item: base.InternalKeyKindDeleteSized, Weight: 5,
 		})
 	}
-	nextRandomKind := kinds.RandomDeck(cfg.rng)
+	nextRandomKind := kinds.RandomDeck(randv1.New(randv1.NewSource(cfg.rng.Int64())))
 
 	type keyID struct {
 		idx    int64
@@ -349,16 +350,16 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 	sstKeys := cfg.keys.Slice(cfg.keys.Count()/20, cfg.keys.Count()-cfg.keys.Count()/20)
 	randomKey := func() keyID {
 		k := keyID{
-			idx:    cfg.rng.Int63n(sstKeys.Count()),
-			suffix: cfg.rng.Int63n(cfg.maxSuffix + 1),
-			seqNum: base.SeqNum(cfg.rng.Int63n(cfg.maxSeqNum + 1)),
+			idx:    cfg.rng.Int64N(sstKeys.Count()),
+			suffix: cfg.rng.Int64N(cfg.maxSuffix + 1),
+			seqNum: base.SeqNum(cfg.rng.Int64N(cfg.maxSeqNum + 1)),
 		}
 		// If we've already generated this exact key, try again.
 		for keyMap[k] {
 			k = keyID{
-				idx:    cfg.rng.Int63n(sstKeys.Count()),
-				suffix: cfg.rng.Int63n(cfg.maxSuffix + 1),
-				seqNum: base.SeqNum(cfg.rng.Int63n(cfg.maxSeqNum + 1)),
+				idx:    cfg.rng.Int64N(sstKeys.Count()),
+				suffix: cfg.rng.Int64N(cfg.maxSuffix + 1),
+				seqNum: base.SeqNum(cfg.rng.Int64N(cfg.maxSeqNum + 1)),
 			}
 		}
 		keyMap[k] = true
@@ -392,8 +393,10 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 		var value []byte
 		switch keys[i].Kind() {
 		case base.InternalKeyKindSet, base.InternalKeyKindMerge:
-			value = valueBuf[:cfg.rng.Intn(cfg.maxValLen+1)]
-			cfg.rng.Read(value)
+			value = valueBuf[:cfg.rng.IntN(cfg.maxValLen+1)]
+			for j := range value {
+				value[j] = byte(cfg.rng.Uint32())
+			}
 		}
 		if err := w.AddWithForceObsolete(keys[i], value, false /* forceObsolete */); err != nil {
 			return nil, err

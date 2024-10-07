@@ -6,21 +6,20 @@ package fastrand
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"sync"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/rand"
 )
 
 type defaultRand struct {
 	mu  sync.Mutex
-	src rand.PCGSource
+	src rand.PCG
 }
 
 func newDefaultRand() *defaultRand {
 	r := &defaultRand{}
-	r.src.Seed(uint64(time.Now().UnixNano()))
+	r.src.Seed(0, uint64(time.Now().UnixNano()))
 	return r
 }
 
@@ -70,15 +69,15 @@ func BenchmarkSTDefaultRand(b *testing.B) {
 			name = fmt.Sprintf("new-period=%d", newPeriod)
 		}
 		b.Run(name, func(b *testing.B) {
-			r := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+			r := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 			b.ResetTimer()
 			var x uint32
 			for i := 0; i < b.N; i++ {
 				if newPeriod > 0 && i%newPeriod == 0 {
-					r = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+					r = rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 				}
 				// Arbitrary constant.
-				x = uint32(r.Uint64n(2097152))
+				x = uint32(r.Uint64N(2097152))
 			}
 			xg = x
 		})

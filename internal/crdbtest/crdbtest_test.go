@@ -7,6 +7,7 @@ package crdbtest
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -15,7 +16,6 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
-	"golang.org/x/exp/rand"
 )
 
 func TestComparer(t *testing.T) {
@@ -94,7 +94,7 @@ func TestDataDriven(t *testing.T) {
 		d.MaybeScanArgs(t, "value-len", &valueLen)
 		cfg.BaseWallTime = uint64(testutils.CheckErr(time.Parse(layout, baseWallTime)).UnixNano())
 
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		var buf strings.Builder
 		switch d.Cmd {
 		case "rand-kvs":

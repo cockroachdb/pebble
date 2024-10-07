@@ -7,12 +7,12 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/rate"
-	"golang.org/x/exp/rand"
 )
 
 const (
@@ -144,7 +144,7 @@ func newDB() *DB {
 
 // drainCompaction simulates background compactions.
 func (db *DB) drainCompaction() {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 	for {
 		db.compactionMu.Lock()
@@ -156,7 +156,7 @@ func (db *DB) drainCompaction() {
 		db.compactionMu.Unlock()
 
 		for i, size := int64(0), int64(0); i < *l0Table; i += size {
-			size = 10000 + rng.Int63n(500)
+			size = 10000 + rng.Int64N(500)
 			if size > (*l0Table - i) {
 				size = *l0Table - i
 			}
@@ -186,7 +186,7 @@ func (db *DB) drainCompaction() {
 
 		for t := 0; t < tablesToCompact; t++ {
 			for i, size := int64(0), int64(0); i < memtableSize; i += size {
-				size = 10000 + rng.Int63n(500)
+				size = 10000 + rng.Int64N(500)
 				if size > (totalCompactionBytes - i) {
 					size = totalCompactionBytes - i
 				}
@@ -217,7 +217,7 @@ func (db *DB) fillCompaction(size int64) {
 
 // drainMemtable simulates memtable flushing.
 func (db *DB) drainMemtable() {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 	for {
 		db.mu.Lock()
@@ -228,7 +228,7 @@ func (db *DB) drainMemtable() {
 		db.mu.Unlock()
 
 		for i, size := int64(0), int64(0); i < *memtable; i += size {
-			size = 1000 + rng.Int63n(50)
+			size = 1000 + rng.Int64N(50)
 			if size > (*memtable - i) {
 				size = *memtable - i
 			}
@@ -315,19 +315,19 @@ func simulateWrite(db *DB) {
 	}
 
 	go func() {
-		rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 		for {
-			secs := 5 + rng.Intn(5)
+			secs := 5 + rng.IntN(5)
 			time.Sleep(time.Duration(secs) * time.Second)
-			mb := 11 + rng.Intn(20)
+			mb := 11 + rng.IntN(20)
 			setRate(mb)
 		}
 	}()
 
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 	for {
-		size := 1000 + rng.Int63n(50)
+		size := 1000 + rng.Int64N(50)
 		limiter.Wait(float64(size))
 		db.writeLimiter.Wait(float64(size))
 		db.fillMemtable(size)

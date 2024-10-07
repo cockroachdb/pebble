@@ -6,11 +6,11 @@ package pebble
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/vfs"
-	"golang.org/x/exp/rand"
 )
 
 func BenchmarkReadState(b *testing.B) {
@@ -24,7 +24,7 @@ func BenchmarkReadState(b *testing.B) {
 	for _, updateFrac := range []float32{0, 0.1, 0.5} {
 		b.Run(fmt.Sprintf("updates=%.0f", updateFrac*100), func(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 				for pb.Next() {
 					if rng.Float32() < updateFrac {

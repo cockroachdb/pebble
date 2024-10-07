@@ -5,9 +5,8 @@
 package randvar
 
 import (
+	"math/rand/v2"
 	"sync"
-
-	"golang.org/x/exp/rand"
 )
 
 // Deck is a random number generator that generates numbers in the range

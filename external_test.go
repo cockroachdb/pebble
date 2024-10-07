@@ -7,6 +7,7 @@ package pebble_test
 import (
 	"bytes"
 	"io"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 // TestIteratorErrors is a randomized test designed to ensure that errors
@@ -29,7 +29,7 @@ import (
 func TestIteratorErrors(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
-	rng := rand.New(rand.NewSource(uint64(seed)))
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
 
 	// Generate a random database by running the metamorphic test with the
 	// WriteOpConfig. We'll perform ~10,000 random operations that mutate the

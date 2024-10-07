@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func short(s string) string {
@@ -134,14 +134,14 @@ func TestRandom(t *testing.T) {
 		r *rand.Rand
 	)
 	reset := func() {
-		i, r = 0, rand.New(rand.NewSource(0))
+		i, r = 0, rand.New(rand.NewPCG(0, 0))
 	}
 	gen := func() (string, bool) {
 		if i == n {
 			return "", false
 		}
 		i++
-		return strings.Repeat(string(uint8(i)), r.Intn(2*blockSize+16)), true
+		return strings.Repeat(string(uint8(i)), r.IntN(2*blockSize+16)), true
 	}
 	testGenerator(t, reset, gen)
 }
@@ -231,11 +231,11 @@ func TestNonExhaustiveRead(t *testing.T) {
 	const n = 100
 	buf := new(bytes.Buffer)
 	p := make([]byte, 10)
-	rnd := rand.New(rand.NewSource(1))
+	rnd := rand.New(rand.NewPCG(0, 1))
 
 	w := NewWriter(buf)
 	for i := 0; i < n; i++ {
-		length := len(p) + rnd.Intn(3*blockSize)
+		length := len(p) + rnd.IntN(3*blockSize)
 		s := string(uint8(i)) + "123456789abcdefgh"
 		_, _ = w.WriteRecord([]byte(big(s, length)))
 	}
@@ -839,7 +839,7 @@ func TestSize(t *testing.T) {
 	zeroes := make([]byte, 8<<10)
 	w := NewWriter(&buf)
 	for i := 0; i < 100; i++ {
-		n := rand.Intn(len(zeroes))
+		n := rand.IntN(len(zeroes))
 		_, err := w.WriteRecord(zeroes[:n])
 		require.NoError(t, err)
 		require.NoError(t, w.Flush())
@@ -867,9 +867,9 @@ func TestRecycleLog(t *testing.T) {
 	const min = 16
 	const max = 4096
 
-	rnd := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rnd := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	randBlock := func() []byte {
-		data := make([]byte, rand.Intn(max-min)+min)
+		data := make([]byte, rand.IntN(max-min)+min)
 		tmp := data
 		for len(tmp) >= 8 {
 			binary.LittleEndian.PutUint64(tmp, rand.Uint64())
@@ -887,7 +887,7 @@ func TestRecycleLog(t *testing.T) {
 	// with random data.
 	backing := make([]byte, 1<<20)
 	for i := 1; i <= 100; i++ {
-		blocks := rnd.Intn(100)
+		blocks := rnd.IntN(100)
 		limitedBuf := &limitedWriter{
 			Writer: bytes.NewBuffer(backing[:0]),
 			limit:  blocks,
@@ -895,7 +895,7 @@ func TestRecycleLog(t *testing.T) {
 
 		w := NewLogWriter(limitedBuf, base.DiskFileNum(i), LogWriterConfig{
 			WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
-		sizes := make([]int, 10+rnd.Intn(100))
+		sizes := make([]int, 10+rnd.IntN(100))
 		for j := range sizes {
 			data := randBlock()
 			if _, err := w.WriteRecord(data); err != nil {

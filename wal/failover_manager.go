@@ -7,6 +7,7 @@ package wal
 import (
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
-	"golang.org/x/exp/rand"
 )
 
 // dirProber probes the primary dir, until it is confirmed to be healthy. If
@@ -69,9 +69,8 @@ func (p *dirProber) init(
 		iterationForTesting: notifyIterationForTesting,
 	}
 	// Random bytes for writing, to defeat any FS compression optimization.
-	_, err := rand.Read(p.buf[:])
-	if err != nil {
-		panic(err)
+	for i := range p.buf {
+		p.buf[i] = byte(rand.Uint32())
 	}
 	// dirProber has an explicit stop() method instead of listening on
 	// stopper.shouldQuiesce. This structure helps negotiate the shutdown

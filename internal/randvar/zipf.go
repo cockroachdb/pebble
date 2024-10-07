@@ -21,10 +21,10 @@ package randvar
 
 import (
 	"math"
+	"math/rand/v2"
 	"sync"
 
 	"github.com/cockroachdb/errors"
-	"golang.org/x/exp/rand"
 )
 
 const (

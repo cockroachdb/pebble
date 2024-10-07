@@ -6,6 +6,7 @@ package manifest_test
 
 import (
 	"io"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/metamorphic"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 // TestInuseKeyRangesRandomized is a randomized test that generates a random
@@ -27,7 +27,7 @@ import (
 func TestInuseKeyRangesRandomized(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 
 	// Generate a random database by running the metamorphic test.
 	testOpts := metamorphic.RandomOptions(rng, nil /* custom opt parsers */)
@@ -49,15 +49,15 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	smallest := make([]byte, maxKeyLen+testkeys.MaxSuffixLen)
 	largest := make([]byte, maxKeyLen+testkeys.MaxSuffixLen)
 	for i := 0; i < 1000; i++ {
-		n := testkeys.WriteKeyAt(smallest[:cap(smallest)], ks, rng.Int63n(ks.Count()), rng.Int63n(maxSuffix))
+		n := testkeys.WriteKeyAt(smallest[:cap(smallest)], ks, rng.Int64N(ks.Count()), rng.Int64N(maxSuffix))
 		smallest = smallest[:n]
-		n = testkeys.WriteKeyAt(largest[:cap(largest)], ks, rng.Int63n(ks.Count()), rng.Int63n(maxSuffix))
+		n = testkeys.WriteKeyAt(largest[:cap(largest)], ks, rng.Int64N(ks.Count()), rng.Int64N(maxSuffix))
 		largest = largest[:n]
 		if testOpts.Opts.Comparer.Compare(smallest, largest) > 0 {
 			smallest, largest = largest, smallest
 		}
 
-		level := rng.Intn(manifest.NumLevels)
+		level := rng.IntN(manifest.NumLevels)
 		cmp := testOpts.Opts.Comparer.Compare
 		keyRanges := v.CalculateInuseKeyRanges(level, manifest.NumLevels-1, smallest, largest)
 		t.Logf("%d: [%s, %s] levels L%d-L6: ", i, smallest, largest, level)

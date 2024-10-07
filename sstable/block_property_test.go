@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"math/bits"
+	"math/rand/v2"
 	"slices"
 	"sort"
 	"strconv"
@@ -26,7 +27,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestIntervalEncodeDecode(t *testing.T) {
@@ -1356,7 +1356,7 @@ func randomTestCollectors(
 ) (names []string, collectors []func() BlockPropertyCollector) {
 	names = slices.Clone(testCollectorNames())
 	rng.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
-	names = names[:rng.Intn(len(names)+1)]
+	names = names[:rng.IntN(len(names)+1)]
 	collectors = testCollectorsByNames(names...)
 	return names, collectors
 }

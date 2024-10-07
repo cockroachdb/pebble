@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/aligned"
-	"golang.org/x/exp/rand"
 )
 
 func TestUnsafeUints(t *testing.T) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	for _, r := range interestingIntRanges {
 		t.Run(r.ExpectedEncoding.String(), func(t *testing.T) {
 			for _, rows := range []int{1, 10, 100, 10000} {
@@ -61,7 +61,7 @@ func TestUnsafeUints(t *testing.T) {
 }
 
 func BenchmarkUnsafeUints(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	intRanges := []intRange{
 		// zero
 		{Min: 0, Max: 0, ExpectedEncoding: makeUintEncoding(0, false)},
@@ -105,7 +105,7 @@ func benchmarkUnsafeUints(b *testing.B, rng *rand.Rand, rows int, intRange intRa
 		s, _ := DecodeUnsafeUints(buf, 0, rows)
 		var reads [256]int
 		for i := range reads {
-			reads[i] = rng.Intn(rows)
+			reads[i] = rng.IntN(rows)
 		}
 		b.ResetTimer()
 		var result uint8
@@ -118,7 +118,7 @@ func benchmarkUnsafeUints(b *testing.B, rng *rand.Rand, rows int, intRange intRa
 }
 
 func BenchmarkUnsafeUintOffsets(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	intRanges := []intRange{
 		// 2b
 		{Min: 0, Max: math.MaxUint16, ExpectedEncoding: makeUintEncoding(2, false)},
@@ -136,7 +136,7 @@ func benchmarkUnsafeOffsets(b *testing.B, rng *rand.Rand, rows int, intRange int
 		s, _ := DecodeUnsafeOffsets(buf, 0, rows)
 		var reads [256]int
 		for i := range reads {
-			reads[i] = rng.Intn(rows)
+			reads[i] = rng.IntN(rows)
 		}
 		b.ResetTimer()
 		var result uint8

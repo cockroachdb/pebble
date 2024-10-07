@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"sort"
@@ -22,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func readManifest(filename string) (*Version, error) {
@@ -494,7 +494,7 @@ func TestL0Sublevels(t *testing.T) {
 
 func TestAddL0FilesEquivalence(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	t.Logf("seed: %d", seed)
 
 	var inUseKeys [][]byte
@@ -503,19 +503,19 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 	var s, s2 *L0Sublevels
 	keySpace := testkeys.Alpha(8)
 
-	flushSplitMaxBytes := rng.Int63n(1 << 20)
+	flushSplitMaxBytes := rng.Int64N(1 << 20)
 
 	// The outer loop runs once for each version edit. The inner loop(s) run
 	// once for each file, or each file bound.
 	for i := 0; i < 100; i++ {
 		var filesToAdd []*FileMetadata
-		numFiles := 1 + rng.Intn(9)
+		numFiles := 1 + rng.IntN(9)
 		keys := make([][]byte, 0, 2*numFiles)
 		for j := 0; j < 2*numFiles; j++ {
 			if rng.Float64() <= keyReusePct && len(inUseKeys) > 0 {
-				keys = append(keys, inUseKeys[rng.Intn(len(inUseKeys))])
+				keys = append(keys, inUseKeys[rng.IntN(len(inUseKeys))])
 			} else {
-				newKey := testkeys.Key(keySpace, rng.Int63n(keySpace.Count()))
+				newKey := testkeys.Key(keySpace, rng.Int64N(keySpace.Count()))
 				inUseKeys = append(inUseKeys, newKey)
 				keys = append(keys, newKey)
 			}
@@ -529,7 +529,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			}
 			meta := (&FileMetadata{
 				FileNum:               base.FileNum(i*10 + j + 1),
-				Size:                  rng.Uint64n(1 << 20),
+				Size:                  rng.Uint64N(1 << 20),
 				SmallestSeqNum:        base.SeqNum(2*i + 1),
 				LargestSeqNum:         base.SeqNum(2*i + 2),
 				LargestSeqNumAbsolute: base.SeqNum(2*i + 2),
