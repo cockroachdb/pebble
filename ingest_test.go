@@ -219,7 +219,7 @@ func TestIngestLoadRand(t *testing.T) {
 	opts := (&Options{
 		Comparer: DefaultComparer,
 		FS:       mem,
-	}).WithFSDefaults()
+	}).WithFSDefaults().EnsureDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
 
