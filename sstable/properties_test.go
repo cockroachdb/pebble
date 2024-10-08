@@ -5,7 +5,7 @@
 package sstable
 
 import (
-	"math/rand"
+	randv1 "math/rand"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -114,7 +114,7 @@ func TestPropertiesSave(t *testing.T) {
 
 	check1(expected)
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := randv1.New(randv1.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 1000; i++ {
 		v, _ := quick.Value(reflect.TypeOf(Properties{}), rng)
 		props := v.Interface().(Properties)

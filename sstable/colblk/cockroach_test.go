@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"slices"
 	"sync"
 	"testing"
@@ -23,7 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 const (
@@ -402,7 +402,7 @@ func TestCockroachDataBlock(t *testing.T) {
 	const valueLen = 100
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, crdbtest.KeyConfig{
 		PrefixAlphabetLen: 26,
 		PrefixLen:         12,
@@ -434,7 +434,7 @@ func TestCockroachDataBlock(t *testing.T) {
 		require.Equal(t, len(keys), i)
 	})
 	t.Run("SeekGE", func(t *testing.T) {
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		for _, i := range rng.Perm(len(keys)) {
 			kv := it.SeekGE(keys[i], base.SeekGEFlagsNone)
 			if kv == nil {
@@ -461,7 +461,7 @@ func generateDataBlock(
 	w.Init(cockroachKeySchema)
 	count := 0
 	for w.Size() < targetBlockSize {
-		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
 		count++
@@ -496,7 +496,7 @@ func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	_, keys, values := generateDataBlock(rng, targetBlockSize, keyConfig, valueLen)
 
 	var w DataBlockEncoder
@@ -507,7 +507,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 		w.Reset()
 		var count int
 		for w.Size() < targetBlockSize {
-			ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+			ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
 			count++
@@ -631,7 +631,7 @@ func benchmarkCockroachDataBlockIter(
 ) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	cfg.BaseWallTime = seed
 
 	serializedBlock, keys, _ := generateDataBlock(rng, targetBlockSize, cfg.KeyConfig, cfg.ValueLen)
@@ -668,7 +668,7 @@ func benchmarkCockroachDataBlockIter(
 	})
 	for _, queryLatest := range []bool{false, true} {
 		b.Run("SeekGE"+crstrings.If(queryLatest, "Latest"), func(b *testing.B) {
-			rng := rand.New(rand.NewSource(seed))
+			rng := rand.New(rand.NewPCG(1, seed))
 			const numQueryKeys = 65536
 			baseWallTime := cfg.BaseWallTime
 			if queryLatest {

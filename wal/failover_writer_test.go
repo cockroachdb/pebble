@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"sync"
@@ -601,11 +601,11 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		seed = time.Now().UnixNano()
 		t.Logf("seed: %d", seed)
 	}
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
 	records := make([][]byte, 20<<10)
 	recordsMap := map[string]int{}
 	for i := range records {
-		records[i] = make([]byte, 50+rng.Intn(100))
+		records[i] = make([]byte, 50+rng.IntN(100))
 		for {
 			randStr(records[i], rng)
 			if _, ok := recordsMap[string(records[i])]; ok {
@@ -727,7 +727,7 @@ func randStr(fill []byte, rng *rand.Rand) {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const lettersLen = len(letters)
 	for i := 0; i < len(fill); i++ {
-		fill[i] = letters[rng.Intn(lettersLen)]
+		fill[i] = letters[rng.IntN(lettersLen)]
 	}
 }
 

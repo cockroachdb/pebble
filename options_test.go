@@ -6,7 +6,7 @@ package pebble
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"testing"
 	"time"
@@ -30,7 +30,7 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 	if o.FormatMajorVersion == FormatDefault {
 		// Pick a random format major version from the range
 		// [FormatMinSupported, FormatNewest].
-		n := rand.Intn(int(internalFormatNewest - FormatMinSupported + 1))
+		n := rand.IntN(int(internalFormatNewest - FormatMinSupported + 1))
 		o.FormatMajorVersion = FormatMinSupported + FormatMajorVersion(n)
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}

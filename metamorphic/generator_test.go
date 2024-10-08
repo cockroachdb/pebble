@@ -6,13 +6,13 @@ package metamorphic
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestGenerator(t *testing.T) {
@@ -130,7 +130,7 @@ func TestGeneratorRandom(t *testing.T) {
 	ops := randvar.NewUniform(1000, 10000)
 	cfgs := []string{"default", "multiInstance"}
 	generateFromSeed := func(cfg OpConfig) string {
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		count := ops.Uint64(rng)
 		return formatOps(generate(rng, count, cfg, newKeyManager(cfg.numInstances)))
 	}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestSetupInitialState(t *testing.T) {
@@ -150,7 +150,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 			checkOptions(t, standard[i])
 		})
 	}
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
 			o := RandomOptions(rng, nil)
@@ -170,7 +170,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 	const numOps = 10_000
 	metaDir := t.TempDir()
 
-	rng := rand.New(rand.NewSource(fixedSeed))
+	rng := rand.New(rand.NewPCG(0, fixedSeed))
 	ops := generate(rng, numOps, presetConfigs[0], newKeyManager(1 /* numInstances */))
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)

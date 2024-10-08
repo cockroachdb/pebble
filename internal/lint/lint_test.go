@@ -212,6 +212,7 @@ func TestLint(t *testing.T) {
 			"errors":                  "github.com/cockroachdb/errors",
 			"pkg/errors":              "github.com/cockroachdb/errors",
 			"golang.org/x/exp/slices": "slices",
+			"golang.org/x/exp/rand":   "math/rand/v2",
 		}
 
 		// grepBuf creates a grep string that matches any forbidden import pkgs.

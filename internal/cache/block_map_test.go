@@ -7,12 +7,12 @@ package cache
 import (
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"golang.org/x/exp/rand"
 )
 
 // The Pebble block cache can be configured with a capacity of GBs or 10s of
@@ -24,11 +24,11 @@ import (
 const benchSize = 32 * 1024
 
 func BenchmarkGoMapInsert(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	for i := range keys {
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.DiskFileNum(rng.Uint64N(1 << 20))
+		keys[i].offset = uint64(rng.IntN(1 << 20))
 	}
 	b.ResetTimer()
 
@@ -45,11 +45,11 @@ func BenchmarkGoMapInsert(b *testing.B) {
 }
 
 func BenchmarkSwissMapInsert(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	for i := range keys {
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.DiskFileNum(rng.Uint64N(1 << 20))
+		keys[i].offset = uint64(rng.IntN(1 << 20))
 	}
 	e := &entry{}
 	b.ResetTimer()
@@ -72,13 +72,13 @@ func BenchmarkSwissMapInsert(b *testing.B) {
 }
 
 func BenchmarkGoMapLookupHit(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	m := make(map[key]*entry, len(keys))
 	e := &entry{}
 	for i := range keys {
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.DiskFileNum(rng.Uint64N(1 << 20))
+		keys[i].offset = uint64(rng.IntN(1 << 20))
 		m[keys[i]] = e
 	}
 	b.ResetTimer()
@@ -97,13 +97,13 @@ func BenchmarkGoMapLookupHit(b *testing.B) {
 }
 
 func BenchmarkSwissMapLookupHit(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	m := newBlockMap(len(keys))
 	e := &entry{}
 	for i := range keys {
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.DiskFileNum(rng.Uint64N(1 << 20))
+		keys[i].offset = uint64(rng.IntN(1 << 20))
 		m.Put(keys[i], e)
 	}
 	b.ResetTimer()
@@ -125,14 +125,14 @@ func BenchmarkSwissMapLookupHit(b *testing.B) {
 }
 
 func BenchmarkGoMapLookupMiss(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	m := make(map[key]*entry, len(keys))
 	e := &entry{}
 	for i := range keys {
 		keys[i].id = 1
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.DiskFileNum(rng.Uint64N(1 << 20))
+		keys[i].offset = uint64(rng.IntN(1 << 20))
 		m[keys[i]] = e
 		keys[i].id = 2
 	}
@@ -152,14 +152,14 @@ func BenchmarkGoMapLookupMiss(b *testing.B) {
 }
 
 func BenchmarkSwissMapLookupMiss(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	keys := make([]key, benchSize)
 	m := newBlockMap(len(keys))
 	e := &entry{}
 	for i := range keys {
 		keys[i].id = 1
-		keys[i].fileNum = base.DiskFileNum(rng.Uint64n(1 << 20))
-		keys[i].offset = uint64(rng.Intn(1 << 20))
+		keys[i].fileNum = base.DiskFileNum(rng.Uint64N(1 << 20))
+		keys[i].offset = uint64(rng.IntN(1 << 20))
 		m.Put(keys[i], e)
 		keys[i].id = 2
 	}

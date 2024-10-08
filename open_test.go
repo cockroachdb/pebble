@@ -11,7 +11,8 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	randv1 "math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1654,12 +1655,12 @@ func TestWALFailoverRandomized(t *testing.T) {
 
 	d, err := Open("primary", makeOptions(mem))
 	require.NoError(t, err)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
 	var wg sync.WaitGroup
 	var n uint64
 	randomOps := metamorphic.Weighted[func()]{
 		{Weight: 1, Item: func() {
-			time.Sleep(time.Microsecond * time.Duration(rand.Intn(30)))
+			time.Sleep(time.Microsecond * time.Duration(rand.IntN(30)))
 			t.Log("initiating hard crash")
 			setIsCrashing(true)
 			// Take a crash-consistent clone of the filesystem and use that going forward.
@@ -1672,19 +1673,19 @@ func TestWALFailoverRandomized(t *testing.T) {
 			setIsCrashing(false)
 		}},
 		{Weight: 20, Item: func() {
-			count := rng.Intn(14) + 1
+			count := rng.IntN(14) + 1
 			var k [2]byte
 			var v [4096]byte
 			b := d.NewBatch()
 			for i := 0; i < count; i++ {
 				j := uint16((n + uint64(i)) % keyspaceSize)
 				binary.BigEndian.PutUint16(k[:], j)
-				vn := max(rng.Intn(cap(v)), 2)
+				vn := max(rng.IntN(cap(v)), 2)
 				binary.BigEndian.PutUint16(v[:], j)
 				require.NoError(t, b.Set(k[:], v[:vn], nil))
 			}
 			maybeSync := NoSync
-			if rng.Intn(2) == 1 {
+			if rng.IntN(2) == 1 {
 				maybeSync = Sync
 			}
 			wg.Add(1)
@@ -1699,7 +1700,7 @@ func TestWALFailoverRandomized(t *testing.T) {
 			n += uint64(count)
 		}},
 	}
-	nextRandomOp := randomOps.RandomDeck(rng)
+	nextRandomOp := randomOps.RandomDeck(randv1.New(randv1.NewSource(rng.Int64())))
 	for o := 0; o < 1000; o++ {
 		nextRandomOp()()
 	}

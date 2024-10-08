@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"sort"
 	"strings"
@@ -405,7 +405,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 	// We want to test the case where the appended record with the excluded files
 	// makes the manifest cross 32KB. This will happen for a range of values
 	// around 450.
-	n := 400 + rand.Intn(100)
+	n := 400 + rand.IntN(100)
 	for i := 0; i < n; i++ {
 		err := d.Set(mkKey(i), nil, nil)
 		require.NoError(t, err)

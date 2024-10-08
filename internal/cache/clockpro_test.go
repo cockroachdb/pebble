@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"runtime"
 	"strconv"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestCache(t *testing.T) {
@@ -238,10 +238,10 @@ func BenchmarkCacheGet(b *testing.B) {
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 		for pb.Next() {
-			h := cache.Get(1, base.DiskFileNum(0), uint64(rng.Intn(size)))
+			h := cache.Get(1, base.DiskFileNum(0), uint64(rng.IntN(size)))
 			if h.Get() == nil {
 				b.Fatal("failed to lookup value")
 			}

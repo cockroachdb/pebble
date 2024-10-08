@@ -11,7 +11,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,7 +55,7 @@ func Open(fs vfs.FS, fsDir string) *Tracer {
 		workerDataCh: make(chan eventBuf, channelBufSize),
 	}
 
-	t.handleID.Store(uint64(rand.NewSource(time.Now().UnixNano()).Int63()))
+	t.handleID.Store(rand.Uint64())
 
 	t.workerWait.Add(1)
 	go t.workerLoop()

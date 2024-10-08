@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go/token"
 	"hash/maphash"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -140,7 +140,7 @@ func (p *keyedPrng) withKey(key string, fn func(*rand.Rand)) {
 			panic(err)
 		}
 		seed := p.mu.h.Sum64()
-		prng = rand.New(rand.NewSource(int64(seed)))
+		prng = rand.New(rand.NewPCG(0, seed))
 		p.mu.perFilePrng[key] = prng
 	}
 	fn(prng)

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"os"
 	"path"
 	"path/filepath"
@@ -36,7 +37,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 // get is a testing helper that simulates a read and helps verify bloom filters
@@ -101,8 +101,8 @@ func TestVirtualReader(t *testing.T) {
 		for run := 0; run < 100; run++ {
 			var blockSize, indexBlockSize int
 			if run > 0 {
-				blockSize = rand.Intn(200)
-				indexBlockSize = rand.Intn(200)
+				blockSize = rand.IntN(200)
+				indexBlockSize = rand.IntN(200)
 			}
 			t.Logf("run %d: blockSize=%d indexBlockSize=%d", run, blockSize, indexBlockSize)
 			runVirtualReaderTest(t, "testdata/virtual_reader_iter", blockSize, indexBlockSize)
@@ -1057,18 +1057,18 @@ type readerWorkload struct {
 // valid state. If seekAfterInvalid is empty after this call, then Next or Prev
 // will be used, else SeekLT/SeekPrev will be used.
 func (rw *readerWorkload) setCallAfterInvalid() {
-	if rw.rng.Intn(3) == 0 {
+	if rw.rng.IntN(3) == 0 {
 		rw.seekKeyAfterInvalid = rw.seekKeyAfterInvalid[:0]
 		rw.t.Logf("Handle Invalid: Next/Prev")
 		return
 	}
-	idx := rw.rng.Int63n(rw.ks.Count())
-	ts := rw.rng.Int63n(rw.maxTs)
+	idx := rw.rng.Int64N(rw.ks.Count())
+	ts := rw.rng.Int64N(rw.maxTs)
 	key := testkeys.KeyAt(rw.ks, idx, ts)
 	rw.seekKeyAfterInvalid = append(rw.seekKeyAfterInvalid[:0], rw.prefix...)
 	rw.seekKeyAfterInvalid = append(rw.seekKeyAfterInvalid, key...)
 
-	if rw.rng.Int31n(10) == 0 {
+	if rw.rng.Int32N(10) == 0 {
 		// Occasioinally seek without a prefix, even if there is one, which may not
 		// land the iterator back in valid key space. This further checks that both
 		// iterators behave the same in in invalid key space.
@@ -1161,24 +1161,24 @@ func createReadWorkload(
 	for i := 0; i < callCount; i++ {
 		var seekKey []byte
 
-		callType := readCallType(rng.Intn(int(Last + 1)))
+		callType := readCallType(rng.IntN(int(Last + 1)))
 		repeatCount := 0
 		if callType == First || callType == Last {
 			// Sqrt the likelihood of calling First and Last as they're not very interesting.
-			callType = readCallType(rng.Intn(int(Last + 1)))
+			callType = readCallType(rng.IntN(int(Last + 1)))
 		}
 		if callType == SeekLT || callType == SeekGE || callType == SeekPrefixGE {
-			idx := rng.Int63n(int64(ks.MaxLen()))
-			ts := rng.Int63n(maxTS) + 1
+			idx := rng.Int64N(int64(ks.MaxLen()))
+			ts := rng.Int64N(maxTS) + 1
 			key := testkeys.KeyAt(ks, idx, ts)
-			if prefix != nil && rng.Intn(10) != 0 {
+			if prefix != nil && rng.IntN(10) != 0 {
 				// If there's a prefix, prepend it most of the time.
 				seekKey = append(seekKey, prefix...)
 			}
 			seekKey = append(seekKey, key...)
 		}
 		if callType == Next || callType == Prev {
-			repeatCount = rng.Intn(100)
+			repeatCount = rng.IntN(100)
 		}
 		calls = append(calls, readCall{callType: callType, seekKey: seekKey, repeatCount: repeatCount})
 	}
@@ -1216,18 +1216,18 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 	filterPolicyCandidates := []FilterPolicy{nil, bloom.FilterPolicy(1), bloom.FilterPolicy(10)}
 
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	mem := vfs.NewMem()
 
-	blockSize := blockSizeCandidates[rng.Intn(len(blockSizeCandidates))]
-	restartInterval := restartIntervalCandidates[rng.Intn(len(restartIntervalCandidates))]
-	filterPolicy := filterPolicyCandidates[rng.Intn(len(filterPolicyCandidates))]
-	if rng.Intn(10) < 9 {
-		randKey := testkeys.Key(ks, rng.Int63n(ks.Count()))
+	blockSize := blockSizeCandidates[rng.IntN(len(blockSizeCandidates))]
+	restartInterval := restartIntervalCandidates[rng.IntN(len(restartIntervalCandidates))]
+	filterPolicy := filterPolicyCandidates[rng.IntN(len(filterPolicyCandidates))]
+	if rng.IntN(10) < 9 {
+		randKey := testkeys.Key(ks, rng.Int64N(ks.Count()))
 		// Choose from 3 prefix candidates: "_" sorts before all keys, randKey sorts
 		// somewhere between all keys, and "~" sorts after all keys
 		prefixCandidates := []string{"~", string(randKey) + "_", "_"}
-		syntheticPrefix = []byte(prefixCandidates[rng.Intn(len(prefixCandidates))])
+		syntheticPrefix = []byte(prefixCandidates[rng.IntN(len(prefixCandidates))])
 	}
 	t.Logf("Configured Block Size %d, Restart Interval %d, Seed %d, Prefix %s, Filter policy %v", blockSize, restartInterval, seed, string(syntheticPrefix), filterPolicy)
 
@@ -1271,7 +1271,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			createFile := func(randSuffix bool, prefix []byte) string {
 				// initialize a new rng so that every createFile
 				// call generates the same sequence of random numbers.
-				localRng := rand.New(rand.NewSource(seed))
+				localRng := rand.New(rand.NewPCG(0, seed))
 				name := "randTS"
 				if !randSuffix {
 					name = "fixedTS"
@@ -1294,13 +1294,13 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 					// We need to call rng here even if we don't actually use the ts
 					// because the sequence of rng calls must be identical for the treatment
 					// and control sst.
-					ts := localRng.Int63n(maxTs)
+					ts := localRng.Int64N(maxTs)
 					if !randSuffix {
 						ts = suffix
 					}
 					var keyToWrite []byte
 					key := testkeys.KeyAt(ks, keyIdx, ts)
-					if rng.Intn(10) == 0 && randSuffix {
+					if rng.IntN(10) == 0 && randSuffix {
 						// Occasionally include keys without a suffix.
 						key = testkeys.Key(ks, keyIdx)
 					}
@@ -1310,7 +1310,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 						keyToWrite = key
 					}
 					require.NoError(t, w.Set(keyToWrite, []byte(fmt.Sprint(keyIdx))))
-					skipIdx := localRng.Int63n(5) + 1
+					skipIdx := localRng.Int64N(5) + 1
 					keyIdx += skipIdx
 				}
 				require.NoError(t, w.Close())
@@ -1478,7 +1478,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 func TestValidateBlockChecksums(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	t.Logf("using seed = %d", seed)
 
 	var allFiles []string
@@ -1608,9 +1608,9 @@ func TestValidateBlockChecksums(t *testing.T) {
 			var bh block.Handle
 			switch location {
 			case corruptionLocationData:
-				bh = layout.Data[rng.Intn(len(layout.Data))].Handle
+				bh = layout.Data[rng.IntN(len(layout.Data))].Handle
 			case corruptionLocationIndex:
-				bh = layout.Index[rng.Intn(len(layout.Index))]
+				bh = layout.Index[rng.IntN(len(layout.Index))]
 			case corruptionLocationTopIndex:
 				bh = layout.TopIndex
 			case corruptionLocationFilter:
@@ -1626,7 +1626,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 			}
 
 			// Corrupt a random byte within the selected block.
-			pos := int64(bh.Offset) + rng.Int63n(int64(bh.Length))
+			pos := int64(bh.Offset) + rng.Int64N(int64(bh.Length))
 			t.Logf("altering file=%s @ offset = %d", file, pos)
 
 			b := make([]byte, 1)
@@ -1833,11 +1833,11 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
 				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					it.SeekGE(keys[rng.Intn(len(keys))], base.SeekGEFlagsNone)
+					it.SeekGE(keys[rng.IntN(len(keys))], base.SeekGEFlagsNone)
 				}
 
 				b.StopTimer()
@@ -1854,11 +1854,11 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
 				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					it.SeekLT(keys[rng.Intn(len(keys))], base.SeekLTFlagsNone)
+					it.SeekLT(keys[rng.IntN(len(keys))], base.SeekLTFlagsNone)
 				}
 
 				b.StopTimer()
@@ -2053,12 +2053,14 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		options.TableFormat = tableFormat
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
-		rng := rand.New(rand.NewSource(100))
+		rng := rand.New(rand.NewPCG(0, 100))
 		for i := int64(0); i < keys.Count(); i++ {
 			for v := 0; v < versionCount; v++ {
 				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, int64(versionCount-v+1))
 				key := keyBuf[:n+sharedPrefixLen]
-				rng.Read(val)
+				for j := range val {
+					val[j] = byte(rng.Uint32())
+				}
 				require.NoError(b, w.Set(key, val))
 			}
 		}
@@ -2143,7 +2145,10 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	const sharedPrefixLen = 32
 	const unsharedPrefixLen = 8
 	val := make([]byte, 100)
-	rand.New(rand.NewSource(100)).Read(val)
+	rng := rand.New(rand.NewPCG(0, 100))
+	for j := range val {
+		val[j] = byte(rng.Uint32())
+	}
 
 	// Take the very large keyspace consisting of alphabetic characters of
 	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
@@ -2327,11 +2332,13 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		options.TableFormat = tableFormat
 		w := NewRawWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
-		rng := rand.New(rand.NewSource(100))
+		rng := rand.New(rand.NewPCG(0, 100))
 		for i := int64(0); i < keys.Count(); i++ {
 			n := testkeys.WriteKey(keyBuf, keys, i)
 			key := keyBuf[:n]
-			rng.Read(val)
+			for j := range val {
+				val[j] = byte(rng.Uint32())
+			}
 			forceObsolete := true
 			if i == 0 {
 				forceObsolete = false

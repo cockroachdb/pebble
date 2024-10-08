@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"sort"
@@ -570,12 +570,14 @@ func buildHeavyWorkload(t *testing.T) vfs.FS {
 	ks := testkeys.Alpha(5)
 	var bufKey = make([]byte, ks.MaxLen())
 	var bufVal [512]byte
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		b := d.NewBatch()
 		for j := 0; j < 1000; j++ {
-			rng.Read(bufVal[:])
-			n := testkeys.WriteKey(bufKey[:], ks, rng.Int63n(ks.Count()))
+			for k := range bufVal {
+				bufVal[k] = byte(rng.Uint32())
+			}
+			n := testkeys.WriteKey(bufKey[:], ks, rng.Int64N(ks.Count()))
 			require.NoError(t, b.Set(bufKey[:n], bufVal[:], pebble.NoSync))
 		}
 		require.NoError(t, b.Commit(pebble.NoSync))

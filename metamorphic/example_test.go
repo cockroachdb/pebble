@@ -7,14 +7,14 @@ package metamorphic_test
 import (
 	"fmt"
 	"io"
+	"math/rand/v2"
 
 	"github.com/cockroachdb/pebble/metamorphic"
-	"golang.org/x/exp/rand"
 )
 
 func ExampleExecute() {
 	const seed = 1698702489658104000
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 
 	// Generate a random database by running the metamorphic test.
 	testOpts := metamorphic.RandomOptions(rng, nil /* custom opt parsers */)

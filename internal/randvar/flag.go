@@ -6,12 +6,12 @@ package randvar
 
 import (
 	"encoding/binary"
+	"math/rand/v2"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"golang.org/x/exp/rand"
 )
 
 var randVarRE = regexp.MustCompile(`^(?:(latest|uniform|zipf):)?(\d+)(?:-(\d+))?$`)

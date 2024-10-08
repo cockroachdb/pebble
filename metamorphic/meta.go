@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path"
@@ -30,7 +31,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -170,13 +170,13 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		topLevelTestName = path.Dir(topLevelTestName)
 	}
 
-	rng := rand.New(rand.NewSource(runOpts.seed))
+	rng := rand.New(rand.NewPCG(0, runOpts.seed))
 	opCount := runOpts.ops.Uint64(rng)
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
 	km := newKeyManager(runOpts.numInstances)
-	cfg := presetConfigs[rng.Intn(len(presetConfigs))]
+	cfg := presetConfigs[rng.IntN(len(presetConfigs))]
 	if runOpts.previousOpsPath != "" {
 		// During cross-version testing, we load keys from an `ops` file
 		// produced by a metamorphic test run of an earlier Pebble version.

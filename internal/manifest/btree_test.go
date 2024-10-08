@@ -7,7 +7,7 @@ package manifest
 import (
 	stdcmp "cmp"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"sync"
@@ -335,12 +335,12 @@ func TestIterCmpRand(t *testing.T) {
 		require.NoError(t, tr.Insert(newItem(key(i))))
 	}
 
-	seed := time.Now().UnixNano()
-	rng := rand.New(rand.NewSource(seed))
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewPCG(0, seed))
 	iters1 := make([]*LevelIterator, iterCount)
 	iters2 := make([]*LevelIterator, iterCount)
 	for i := 0; i < iterCount; i++ {
-		k := rng.Intn(itemCount)
+		k := rng.IntN(itemCount)
 		iter := LevelIterator{iter: tr.Iter()}
 		iter.SeekGE(base.DefaultComparer.Compare, key(k).UserKey)
 		iters1[i] = &iter
@@ -539,16 +539,16 @@ func TestIterEndSentinel(t *testing.T) {
 func TestRandomizedBTree(t *testing.T) {
 	const maxFileNum = 50_000
 
-	seed := time.Now().UnixNano()
+	seed := uint64(time.Now().UnixNano())
 	t.Log("seed", seed)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 
 	var numOps int
 	if invariants.RaceEnabled {
 		// Reduce the number of ops in race mode so the test doesn't take very long.
-		numOps = 1_000 + rng.Intn(4_000)
+		numOps = 1_000 + rng.IntN(4_000)
 	} else {
-		numOps = 10_000 + rng.Intn(40_000)
+		numOps = 10_000 + rng.IntN(40_000)
 	}
 
 	var metadataAlloc [maxFileNum]FileMetadata
@@ -574,7 +574,7 @@ func TestRandomizedBTree(t *testing.T) {
 		{
 			// Insert
 			fn: func() {
-				f := &metadataAlloc[rng.Intn(maxFileNum)]
+				f := &metadataAlloc[rng.IntN(maxFileNum)]
 				err := tree.Insert(f)
 				if ref[f.FileNum] {
 					require.Error(t, err, "btree.Insert should error if file already exists")
@@ -588,7 +588,7 @@ func TestRandomizedBTree(t *testing.T) {
 		{
 			// Delete
 			fn: func() {
-				f := &metadataAlloc[rng.Intn(maxFileNum)]
+				f := &metadataAlloc[rng.IntN(maxFileNum)]
 				tree.Delete(f)
 				delete(ref, f.FileNum)
 			},
@@ -619,7 +619,7 @@ func TestRandomizedBTree(t *testing.T) {
 	}
 
 	for i := 0; i < numOps; i++ {
-		w := rng.Intn(weightSum)
+		w := rng.IntN(weightSum)
 		for j := range ops {
 			w -= ops[j].weight
 			if w < 0 {
@@ -819,7 +819,7 @@ func BenchmarkBTreeIter(b *testing.B) {
 // BenchmarkBTreeIterSeekGE measures the cost of seeking a btree iterator
 // forward.
 func BenchmarkBTreeIterSeekGE(b *testing.B) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewPCG(0, rand.Uint64()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []InternalKey
 		var tr btree
@@ -835,7 +835,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			k := keys[rng.Intn(len(keys))]
+			k := keys[rng.IntN(len(keys))]
 			it := LevelIterator{iter: tr.Iter()}
 			f := it.SeekGE(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
@@ -853,7 +853,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 // BenchmarkBTreeIterSeekLT measures the cost of seeking a btree iterator
 // backward.
 func BenchmarkBTreeIterSeekLT(b *testing.B) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []InternalKey
 		var tr btree
@@ -869,7 +869,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			j := rng.Intn(len(keys))
+			j := rng.IntN(len(keys))
 			k := keys[j]
 			it := LevelIterator{iter: tr.Iter()}
 			f := it.SeekLT(base.DefaultComparer.Compare, k.UserKey)

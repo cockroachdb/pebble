@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 type testCommitEnv struct {
@@ -401,7 +401,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					b.ResetTimer()
 
 					b.RunParallel(func(pb *testing.PB) {
-						rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+						rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 						buf := make([]byte, keySize)
 
 						for pb.Next() {
