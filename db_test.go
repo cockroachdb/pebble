@@ -1185,6 +1185,13 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 			require.NoError(t, d.Ingest(context.Background(), []string{path}))
 		}
 
+		d.mu.Lock()
+		fmt.Println(d.mu.compact.compactingCount)
+		for c := range d.mu.compact.inProgress {
+			fmt.Println(c)
+		}
+		d.mu.Unlock()
+
 		require.NoError(t, d.Close())
 	}
 }
