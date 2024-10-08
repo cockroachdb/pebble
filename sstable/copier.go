@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
 // CopySpan produces a copy of a approximate subset of an input sstable.
@@ -61,8 +60,6 @@ func CopySpan(
 		o.FilterPolicy = nil
 	}
 	o.TableFormat = r.tableFormat
-	w := newRowWriter(output, o)
-
 	// We don't want the writer to attempt to write out block property data in
 	// index blocks. This data won't be valid since we're not passing the actual
 	// key data through the writer. We also remove the table-level properties
@@ -70,13 +67,12 @@ func CopySpan(
 	//
 	// TODO(dt,radu): Figure out how to populate the prop collector state with
 	// block props from the original sst.
-	w.blockPropCollectors = nil
+	o.BlockPropertyCollectors = nil
+	o.disableObsoleteCollector = true
+	w := NewRawWriter(output, o)
 
 	defer func() {
 		if w != nil {
-			// set w.err to any non-nil error just so it aborts instead of finishing.
-			w.err = base.ErrNotFound
-			// w.Close now owns calling output.Abort().
 			w.Close()
 		}
 	}()
@@ -103,33 +99,20 @@ func CopySpan(
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
 	if r.tableFilter != nil {
-		if w.filter != nil && r.Properties.FilterPolicyName != w.filter.policyName() {
-			return 0, errors.New("mismatched filters")
-		}
 		filterBlock, err := r.readFilterBlock(ctx, noEnv, rh)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
 		filterBytes := append([]byte{}, filterBlock.Get()...)
 		filterBlock.Release()
-		w.filter = copyFilterWriter{
-			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBytes,
-		}
+		w.copyFilter(filterBytes, r.Properties.FilterPolicyName)
 	}
 
 	// Copy all the props from the source file; we can't compute our own for many
 	// that depend on seeing every key, such as total count or size so we copy the
 	// original props instead. This will result in over-counts but that is safer
 	// than under-counts.
-	w.props = r.Properties
-	// Remove all user properties to disable block properties, which we do not
-	// calculate.
-	w.props.UserProperties = nil
-	// Reset props that we'll re-derive as we build our own index.
-	w.props.IndexPartitions = 0
-	w.props.TopLevelIndexSize = 0
-	w.props.IndexSize = 0
-	w.props.IndexType = 0
+	w.copyProperties(r.Properties)
 
 	// Find the blocks that intersect our span.
 	blocks, err := intersectingIndexEntries(ctx, r, rh, indexH, start, end)
@@ -147,30 +130,6 @@ func CopySpan(
 	// Copy all blocks byte-for-byte without doing any per-key processing.
 	var blocksNotInCache []indexEntry
 
-	copyBlocksToFile := func(blocks []indexEntry) error {
-		blockOffset := blocks[0].bh.Offset
-		// The block lengths don't include their trailers, which just sit after the
-		// block length, before the next offset; We get the ones between the blocks
-		// we copy implicitly but need to explicitly add the last trailer to length.
-		length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + block.TrailerLen - blockOffset
-		if spanEnd := length + blockOffset; spanEnd < blockOffset {
-			return base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", blockOffset, spanEnd)
-		}
-		if err := objstorage.Copy(ctx, rh, w.layout.writable, blockOffset, length); err != nil {
-			return err
-		}
-		// Update w.meta.Size so subsequently flushed metadata has correct offsets.
-		w.meta.Size += length
-		for i := range blocks {
-			blocks[i].bh.Offset = w.layout.offset
-			// blocks[i].bh.Length remains unmodified.
-			if err := w.addIndexEntrySep(blocks[i].sep, blocks[i].bh, w.dataBlockBuf.tmp[:]); err != nil {
-				return err
-			}
-			w.layout.offset += uint64(blocks[i].bh.Length) + block.TrailerLen
-		}
-		return nil
-	}
 	for i := range blocks {
 		h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, blocks[i].bh.Offset)
 		if h.Get() == nil {
@@ -184,30 +143,24 @@ func CopySpan(
 		if len(blocksNotInCache) > 0 {
 			// We have some blocks that were not in cache preceding this block.
 			// Copy them using objstorage.Copy.
-			if err := copyBlocksToFile(blocksNotInCache); err != nil {
+			if err := w.copyDataBlocks(ctx, blocksNotInCache, rh); err != nil {
 				h.Release()
 				return 0, err
 			}
 			blocksNotInCache = nil
 		}
 
-		// layout.WriteDataBlock keeps layout.offset up-to-date for us.
-		bh, err := w.layout.WriteDataBlock(h.Get(), &w.dataBlockBuf.blockBuf)
+		err := w.addDataBlock(h.Get(), blocks[i].sep, blocks[i].bh)
 		h.Release()
 		if err != nil {
 			return 0, err
 		}
-		blocks[i].bh.Handle = bh
-		if err := w.addIndexEntrySep(blocks[i].sep, blocks[i].bh, w.dataBlockBuf.tmp[:]); err != nil {
-			return 0, err
-		}
-		w.meta.Size += uint64(bh.Length) + block.TrailerLen
 	}
 
 	if len(blocksNotInCache) > 0 {
 		// We have some remaining blocks that were not in cache. Copy them
 		// using objstorage.Copy.
-		if err := copyBlocksToFile(blocksNotInCache); err != nil {
+		if err := w.copyDataBlocks(ctx, blocksNotInCache, rh); err != nil {
 			return 0, err
 		}
 		blocksNotInCache = nil
@@ -220,7 +173,11 @@ func CopySpan(
 		w = nil
 		return 0, err
 	}
-	wrote := w.meta.Size
+	meta, err := w.Metadata()
+	if err != nil {
+		return 0, err
+	}
+	wrote := meta.Size
 	w = nil
 	return wrote, nil
 }
@@ -237,7 +194,7 @@ var ErrEmptySpan = errors.New("cannot copy empty span")
 // indexEntry captures the two components of an sst index entry: the key and the
 // decoded block handle value.
 type indexEntry struct {
-	sep InternalKey
+	sep []byte
 	bh  block.HandleWithProperties
 }
 
@@ -251,7 +208,8 @@ func intersectingIndexEntries(
 	indexH block.BufferHandle,
 	start, end InternalKey,
 ) ([]indexEntry, error) {
-	top, err := rowblk.NewIter(r.Compare, r.Split, indexH.Get(), NoTransforms)
+	top := r.tableFormat.newIndexIter()
+	err := top.Init(r.Compare, r.Split, indexH.Get(), NoTransforms)
 	if err != nil {
 		return nil, err
 	}
@@ -259,15 +217,15 @@ func intersectingIndexEntries(
 
 	var alloc bytealloc.A
 	res := make([]indexEntry, 0, r.Properties.NumDataBlocks)
-	for kv := top.SeekGE(start.UserKey, base.SeekGEFlagsNone); kv != nil; kv = top.Next() {
-		bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+	for valid := top.SeekGE(start.UserKey); valid; valid = top.Next() {
+		bh, err := top.BlockHandleWithProperties()
 		if err != nil {
 			return nil, err
 		}
 		if r.Properties.IndexType != twoLevelIndex {
-			entry := indexEntry{bh: bh, sep: kv.K}
+			entry := indexEntry{bh: bh, sep: top.Separator()}
 			alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
-			alloc, entry.sep.UserKey = alloc.Copy(entry.sep.UserKey)
+			alloc, entry.sep = alloc.Copy(entry.sep)
 			res = append(res, entry)
 		} else {
 			subBlk, err := r.readIndexBlock(ctx, noEnv, rh, bh.Handle)
@@ -276,34 +234,32 @@ func intersectingIndexEntries(
 			}
 			defer subBlk.Release() // in-loop, but it is a short loop.
 
-			sub, err := rowblk.NewIter(r.Compare, r.Split, subBlk.Get(), NoTransforms)
+			sub := r.tableFormat.newIndexIter()
+			err = sub.Init(r.Compare, r.Split, subBlk.Get(), NoTransforms)
 			if err != nil {
 				return nil, err
 			}
 			defer sub.Close() // in-loop, but it is a short loop.
 
-			for kv := sub.SeekGE(start.UserKey, base.SeekGEFlagsNone); kv != nil; kv = sub.Next() {
-				bh, err := block.DecodeHandleWithProperties(kv.InPlaceValue())
+			for valid := sub.SeekGE(start.UserKey); valid; valid = sub.Next() {
+				bh, err := sub.BlockHandleWithProperties()
 				if err != nil {
 					return nil, err
 				}
-				entry := indexEntry{bh: bh, sep: kv.K}
+				entry := indexEntry{bh: bh, sep: top.Separator()}
 				alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
-				alloc, entry.sep.UserKey = alloc.Copy(entry.sep.UserKey)
+				alloc, entry.sep = alloc.Copy(entry.sep)
 				res = append(res, entry)
-				if base.InternalCompare(r.Compare, end, kv.K) <= 0 {
+				if r.Compare(end.UserKey, entry.sep) <= 0 {
 					break
 				}
 			}
-			if err := sub.Error(); err != nil {
-				return nil, err
-			}
 		}
-		if base.InternalCompare(r.Compare, end, kv.K) <= 0 {
+		if r.Compare(end.UserKey, top.Separator()) <= 0 {
 			break
 		}
 	}
-	return res, top.Error()
+	return res, nil
 }
 
 // copyWholeFileBecauseOfUnsupportedFeature is a thin wrapper around Copy that
