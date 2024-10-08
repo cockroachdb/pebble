@@ -8,13 +8,13 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/rand/v2"
 	"sync"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -810,14 +810,14 @@ func (i *Iterator) maybeSampleRead() {
 	}
 	bytesRead := uint64(len(i.key) + i.value.Len())
 	for i.readSampling.bytesUntilReadSampling < bytesRead {
-		i.readSampling.bytesUntilReadSampling += uint64(fastrand.Uint32n(2 * uint32(samplingPeriod)))
+		i.readSampling.bytesUntilReadSampling += uint64(rand.Uint32N(2 * uint32(samplingPeriod)))
 		// The block below tries to adjust for the case where this is the
 		// first read in a newly-opened iterator. As bytesUntilReadSampling
 		// starts off at zero, we don't want to sample the first read of
 		// every newly-opened iterator, but we do want to sample some of them.
 		if !i.readSampling.initialSamplePassed {
 			i.readSampling.initialSamplePassed = true
-			if fastrand.Uint32n(uint32(i.readSampling.bytesUntilReadSampling)) > uint32(bytesRead) {
+			if rand.Uint32N(uint32(i.readSampling.bytesUntilReadSampling)) > uint32(bytesRead) {
 				continue
 			}
 		}

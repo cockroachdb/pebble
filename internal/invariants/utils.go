@@ -4,10 +4,10 @@
 
 package invariants
 
-import "github.com/cockroachdb/pebble/internal/fastrand"
+import "math/rand/v2"
 
 // Sometimes returns true percent% of the time if we were built with the
 // "invariants" of "race" build tags
 func Sometimes(percent int) bool {
-	return Enabled && fastrand.Uint32()%100 < uint32(percent)
+	return Enabled && rand.Uint32N(100) < uint32(percent)
 }
