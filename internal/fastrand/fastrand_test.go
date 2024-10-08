@@ -6,6 +6,7 @@ package fastrand
 
 import (
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"sync"
 	"testing"
@@ -32,9 +33,21 @@ func (r *defaultRand) Uint32() uint32 {
 
 func BenchmarkFastRand(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
+		var x uint32
 		for pb.Next() {
-			Uint32()
+			x ^= Uint32()
 		}
+		fmt.Fprintf(io.Discard, "%v", x)
+	})
+}
+
+func BenchmarkRandV2(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		var x uint32
+		for pb.Next() {
+			x ^= rand.Uint32()
+		}
+		fmt.Fprintf(io.Discard, "%v", x)
 	})
 }
 
@@ -57,9 +70,18 @@ func BenchmarkSTFastRand(b *testing.B) {
 	var x uint32
 	for i := 0; i < b.N; i++ {
 		// Arbitrary constant.
-		x = Uint32n(2097152)
+		x ^= Uint32n(2097152)
 	}
-	xg = x
+	fmt.Fprintf(io.Discard, "%v", x)
+}
+
+func BenchmarkSTRandV2(b *testing.B) {
+	var x uint32
+	for i := 0; i < b.N; i++ {
+		// Arbitrary constant.
+		x ^= rand.Uint32N(2097152)
+	}
+	fmt.Fprintf(io.Discard, "%v", x)
 }
 
 func BenchmarkSTDefaultRand(b *testing.B) {
