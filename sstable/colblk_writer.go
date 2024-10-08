@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -149,7 +150,10 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 		}
 	}
 
-	numBlockPropertyCollectors := len(o.BlockPropertyCollectors) + 1 // +1 for the obsolete collector
+	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
+	if !o.disableObsoleteCollector {
+		numBlockPropertyCollectors++
+	}
 	if numBlockPropertyCollectors > maxPropertyCollectors {
 		panic(errors.New("pebble: too many block property collectors"))
 	}
@@ -157,7 +161,9 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	for _, constructFn := range o.BlockPropertyCollectors {
 		w.blockPropCollectors = append(w.blockPropCollectors, constructFn())
 	}
-	w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+	if !o.disableObsoleteCollector {
+		w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+	}
 	var buf bytes.Buffer
 	buf.WriteString("[")
 	for i := range w.blockPropCollectors {
@@ -1089,4 +1095,130 @@ func shouldFlushWithoutLatestKV(
 		return false
 	}
 	return true
+}
+
+// copyDataBlocks adds a range of blocks to the table as-is. These blocks could be
+// compressed. It's specifically used by the sstable copier that can copy parts
+// of an sstable to a new sstable, using CopySpan().
+func (w *RawColumnWriter) copyDataBlocks(
+	ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle,
+) error {
+	buf := make([]byte, 0, 256<<10)
+	var blocksToRead []indexEntry
+	var blocksToReadCumulativeLength uint64
+	readAndFlushBlocks := func() error {
+		// We need to flush blocksToRead into the write queue. We do this by issuing
+		// one big read from the read handle into the buffer, and then enqueueing the
+		// writing of those blocks one-by-one.
+		//
+		// TODO(bilal): Consider refactoring the write queue to support writing multiple
+		// blocks in one request.
+		if blocksToReadCumulativeLength > uint64(cap(buf)) {
+			buf = make([]byte, 0, blocksToReadCumulativeLength)
+		}
+		if err := rh.ReadAt(ctx, buf[:blocksToReadCumulativeLength], int64(blocksToRead[0].bh.Offset)); err != nil {
+			return err
+		}
+		for i := range blocksToRead {
+			offsetDiff := blocksToRead[i].bh.Offset - blocksToRead[0].bh.Offset
+			blockBuf := buf[offsetDiff : offsetDiff+blocksToRead[i].bh.Length+block.TrailerLen]
+			cb := compressedBlockPool.Get().(*compressedBlock)
+			cb.physical = block.NewPhysicalBlock(blockBuf)
+			if err := w.enqueuePhysicalBlock(cb, blocksToRead[i].sep); err != nil {
+				return err
+			}
+		}
+		blocksToRead = blocksToRead[:0]
+		blocksToReadCumulativeLength = 0
+		return nil
+	}
+	// Iterate through blocks until we have enough to fill cap(buf). When we have more than
+	// one block in blocksToRead and adding the next block would exceed the buffer capacity,
+	// we read and flush existing blocks in blocksToRead. This allows us to read as many
+	// blocks in one IO request as possible, while still utilizing the write queue in this
+	// writer.
+	lastBlockOffset := uint64(0)
+	for _, bl := range blocks {
+		if bl.bh.Offset < lastBlockOffset {
+			panic("pebble: copyDataBlocks called with blocks out of order")
+		}
+		lastBlockOffset = bl.bh.Offset
+		// lengthAddition is the delta added to bytesToReadCumulativeLength if we were to
+		// add bl to blocksToRead.
+		lengthAddition := bl.bh.Length + block.TrailerLen
+		if len(blocksToRead) > 0 {
+			// Add the space between this block and the last one in blocksToRead.
+			lengthAddition += bl.bh.Offset - (blocksToRead[len(blocksToRead)-1].bh.Offset + blocksToRead[len(blocksToRead)-1].bh.Length + block.TrailerLen)
+		}
+		if len(blocksToRead) > 0 && blocksToReadCumulativeLength+lengthAddition > uint64(cap(buf)) {
+			// Adding this block would exceed the buffer capacity. Flush blocks in the buffer
+			// so far. Note that readAndFlushBlocks reasets blocksToRead and
+			// blocksToReadCumulativeLength.
+			if err := readAndFlushBlocks(); err != nil {
+				return err
+			}
+		}
+		blocksToRead = append(blocksToRead, bl)
+		blocksToReadCumulativeLength += lengthAddition
+	}
+	if len(blocksToRead) > 0 {
+		return readAndFlushBlocks()
+	}
+	return nil
+}
+
+// addDataBlock adds a raw uncompressed data block to the table as-is. It's specifically used
+// by the sstable copier that can copy parts of an sstable to a new sstable,
+// using CopySpan().
+func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
+	// Serialize the data block, compress it and send it to the write queue.
+	cb := compressedBlockPool.Get().(*compressedBlock)
+	cb.blockBuf.checksummer.Type = w.opts.Checksum
+	cb.physical = block.CompressAndChecksum(
+		&cb.blockBuf.compressedBuf,
+		b,
+		w.opts.Compression,
+		&cb.blockBuf.checksummer,
+	)
+	if !cb.physical.IsCompressed() {
+		// If the block isn't compressed, cb.physical's underlying data points
+		// directly into a buffer owned by w.dataBlock. Clone it before passing
+		// it to the write queue to be asynchronously written to disk.
+		// TODO(jackson): Should we try to avoid this clone by tracking the
+		// lifetime of the DataBlockWriters?
+		cb.physical = cb.physical.Clone()
+	}
+	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
+		return err
+	}
+	return nil
+}
+
+// copyFilter copies the specified filter to the table. It's specifically used
+// by the sstable copier that can copy parts of an sstable to a new sstable,
+// using CopySpan().
+func (w *RawColumnWriter) copyFilter(filter []byte, filterName string) error {
+	if w.filterBlock != nil && filterName != w.filterBlock.policyName() {
+		return errors.New("mismatched filters")
+	}
+	w.filterBlock = copyFilterWriter{
+		origPolicyName: w.filterBlock.policyName(), origMetaName: w.filterBlock.metaName(), data: filter,
+	}
+	return nil
+}
+
+// copyProperties copies properties from the specified props, and resets others
+// to prepare for copying data blocks from another sstable, using the copy/addDataBlock(s)
+// methods above. It's specifically used by the sstable copier that can copy parts of an
+// sstable to a new sstable, using CopySpan().
+func (w *RawColumnWriter) copyProperties(props Properties) {
+	w.props = props
+	// Remove all user properties to disable block properties, which we do not
+	// calculate for CopySpan.
+	w.props.UserProperties = nil
+	// Reset props that we'll re-derive as we build our own index.
+	w.props.IndexPartitions = 0
+	w.props.TopLevelIndexSize = 0
+	w.props.IndexSize = 0
+	w.props.IndexType = 0
 }

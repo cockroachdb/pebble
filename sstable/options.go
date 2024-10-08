@@ -272,6 +272,10 @@ type WriterOptions struct {
 	// DeletionSizeRatioThreshold mirrors
 	// Options.Experimental.DeletionSizeRatioThreshold.
 	DeletionSizeRatioThreshold float32
+
+	// disableObsoleteCollector is used to disable the obsolete key block property
+	// collector automatically added by sstable block writers.
+	disableObsoleteCollector bool
 }
 
 // SetInternal sets the internal writer options. Note that even though this
