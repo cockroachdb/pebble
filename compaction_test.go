@@ -10,7 +10,7 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -914,12 +914,12 @@ func TestManualCompaction(t *testing.T) {
 		}
 	}()
 
-	seed := time.Now().UnixNano()
-	rng := rand.New(rand.NewSource(seed))
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewPCG(0, seed))
 	t.Logf("seed: %d", seed)
 
 	randVersion := func(min, max FormatMajorVersion) FormatMajorVersion {
-		return FormatMajorVersion(int(min) + rng.Intn(int(max)-int(min)+1))
+		return FormatMajorVersion(int(min) + rng.IntN(int(max)-int(min)+1))
 	}
 
 	var compactionLog bytes.Buffer

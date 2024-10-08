@@ -8,13 +8,13 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"os"
 	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/sstable"
-	"golang.org/x/exp/rand"
 )
 
 const maxValueSize = 20
@@ -237,7 +237,7 @@ func (g *generator) randKeyToSingleDelete(id objID) []byte {
 	if length == 0 {
 		return nil
 	}
-	return keys[g.rng.Intn(length)]
+	return keys[g.rng.IntN(length)]
 }
 
 func resizeBuffer(buf []byte, prefixLen, suffixLen int) []byte {
@@ -412,7 +412,7 @@ func (g *generator) dbDownload() {
 		start, end := keys[0], keys[1]
 		spans[i].StartKey = start
 		spans[i].EndKey = end
-		spans[i].ViaBackingFileDownload = g.rng.Intn(2) == 0
+		spans[i].ViaBackingFileDownload = g.rng.IntN(2) == 0
 	}
 	dbID := g.dbs.rand(g.rng)
 	g.add(&downloadOp{
@@ -433,7 +433,7 @@ func (g *generator) dbRatchetFormatMajorVersion() {
 
 	dbID := g.dbs.rand(g.rng)
 	n := int(newestFormatMajorVersionToTest - minimumFormatMajorVersion)
-	vers := pebble.FormatMajorVersion(g.rng.Intn(n+1)) + minimumFormatMajorVersion
+	vers := pebble.FormatMajorVersion(g.rng.IntN(n+1)) + minimumFormatMajorVersion
 	g.add(&dbRatchetFormatMajorVersionOp{dbID: dbID, vers: vers})
 }
 
@@ -564,7 +564,7 @@ func (g *generator) randKeyTypesAndMask() (keyTypes uint32, maskSuffix []byte) {
 	case p < 0.8: // 60% probability
 		keyTypes = uint32(pebble.IterKeyTypePointsAndRanges)
 		// With 50% probability, enable masking.
-		if g.rng.Intn(2) == 1 {
+		if g.rng.IntN(2) == 1 {
 			maskSuffix = g.keyGenerator.UniformSuffix()
 		}
 	default: // 20% probability
@@ -614,13 +614,13 @@ func (g *generator) newIterUsingClone() {
 
 	var refreshBatch bool
 	if readerID.tag() == batchTag {
-		refreshBatch = g.rng.Intn(2) == 1
+		refreshBatch = g.rng.IntN(2) == 1
 	}
 
 	opts := g.itersLastOpts[existingIterID]
 	// With 50% probability, consider modifying the iterator options used by the
 	// clone.
-	if g.rng.Intn(2) == 1 {
+	if g.rng.IntN(2) == 1 {
 		g.maybeMutateOptions(readerID, &opts)
 	}
 	g.itersLastOpts[iterID] = opts
@@ -820,7 +820,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// batches which haven't been presisted to the DB. But we're only picking
 	// keys in a best effort manner, and the logic is better than picking a
 	// random key.
-	if g.rng.Intn(10) >= 1 {
+	if g.rng.IntN(10) >= 1 {
 		possibleKeys := make([][]byte, 0, 100)
 		inRangeKeys := g.keyManager.InRangeKeysForObj(g.dbIDForObj(iterID), lower, upper)
 		for _, keyMeta := range inRangeKeys {
@@ -835,7 +835,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 		}
 
 		if len(possibleKeys) > 0 {
-			key = possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))]
+			key = possibleKeys[g.rng.IntN(len(possibleKeys))]
 		}
 	}
 
@@ -956,7 +956,7 @@ func (g *generator) readerGet() {
 	// ranges, restrict the read to fall within one of the provided key ranges.
 	var key []byte
 	if bounds := g.snapshotBounds[readerID]; len(bounds) > 0 {
-		kr := bounds[g.rng.Intn(len(bounds))]
+		kr := bounds[g.rng.IntN(len(bounds))]
 		key = g.keyGenerator.RandKeyInRange(0.001, kr) // 0.1% new keys
 	} else {
 		key = g.keyGenerator.RandKey(0.001) // 0.1% new keys
@@ -1356,7 +1356,7 @@ func (g *generator) writerIngestExternalFiles() {
 		}
 		// Randomly set up synthetic prefix.
 		var syntheticPrefix sstable.SyntheticPrefix
-		if g.rng.Intn(2) == 0 {
+		if g.rng.IntN(2) == 0 {
 			syntheticPrefix = randBytes(g.rng, 1, 5)
 			start = syntheticPrefix.Apply(start)
 			end = syntheticPrefix.Apply(end)
@@ -1391,7 +1391,7 @@ func (g *generator) writerIngestExternalFiles() {
 
 	// Randomly set synthetic suffixes.
 	for i := range objs {
-		if g.rng.Intn(2) == 0 {
+		if g.rng.IntN(2) == 0 {
 			// We can only use a synthetic suffix if we don't have range dels or RangeKeyUnsets.
 			if meta := g.keyManager.objKeyMeta(objs[i].externalObjID); meta.hasRangeDels || meta.hasRangeKeyUnset {
 				continue
@@ -1521,21 +1521,21 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 	// With 95% probability, allow changes to any options at all. This ensures
 	// that in 5% of cases there are no changes, and SetOptions hits its fast
 	// path.
-	if g.rng.Intn(100) >= 5 {
+	if g.rng.IntN(100) >= 5 {
 		if !g.maybeSetSnapshotIterBounds(readerID, opts) {
 			// With 1/3 probability, clear existing bounds.
-			if opts.lower != nil && g.rng.Intn(3) == 0 {
+			if opts.lower != nil && g.rng.IntN(3) == 0 {
 				opts.lower = nil
 			}
-			if opts.upper != nil && g.rng.Intn(3) == 0 {
+			if opts.upper != nil && g.rng.IntN(3) == 0 {
 				opts.upper = nil
 			}
 			// With 1/3 probability, update the bounds.
-			if g.rng.Intn(3) == 0 {
+			if g.rng.IntN(3) == 0 {
 				// Generate a new key with a .1% probability.
 				opts.lower = g.keyGenerator.RandKey(0.001)
 			}
-			if g.rng.Intn(3) == 0 {
+			if g.rng.IntN(3) == 0 {
 				// Generate a new key with a .1% probability.
 				opts.upper = g.keyGenerator.RandKey(0.001)
 			}
@@ -1545,16 +1545,16 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 		}
 
 		// With 1/3 probability, update the key-types/mask.
-		if g.rng.Intn(3) == 0 {
+		if g.rng.IntN(3) == 0 {
 			opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
 		}
 
 		// With 1/3 probability, clear existing filter.
-		if opts.filterMax > 0 && g.rng.Intn(3) == 0 {
+		if opts.filterMax > 0 && g.rng.IntN(3) == 0 {
 			opts.filterMax, opts.filterMin = 0, 0
 		}
 		// With 10% probability, set a filter range.
-		if g.rng.Intn(10) == 1 {
+		if g.rng.IntN(10) == 1 {
 			opts.filterMin = uint64(g.keyGenerator.UniformSuffixInt() + 1)
 			opts.filterMax = uint64(g.keyGenerator.UniformSuffixInt() + 1)
 			if opts.filterMin > opts.filterMax {

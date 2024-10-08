@@ -13,7 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -150,7 +150,7 @@ func runCrossVersion(
 	seed int64,
 	factor int,
 ) error {
-	prng := rand.New(rand.NewSource(seed))
+	prng := rand.New(rand.NewPCG(0, uint64(seed)))
 	// Use prng to derive deterministic seeds to provide to the child
 	// metamorphic runs. The same seed is used for all runs on a particular
 	// Pebble version.

@@ -9,7 +9,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"strings"
@@ -98,7 +98,7 @@ func TestList(t *testing.T) {
 // log files.
 func TestReader(t *testing.T) {
 	fs := vfs.NewCrashableMem()
-	rng := rand.New(rand.NewSource(1))
+	rng := rand.New(rand.NewPCG(1, 1))
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/reader", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
@@ -142,7 +142,9 @@ func TestReader(t *testing.T) {
 					if len(repr) >= batchrepr.HeaderLen {
 						count := uint32(fields.MustKeyValue("count").Uint64())
 						seq = fields.MustKeyValue("seq").Uint64()
-						rng.Read(repr[batchrepr.HeaderLen:])
+						for i := range repr[batchrepr.HeaderLen:] {
+							repr[i] = byte(rng.Uint32())
+						}
 						batchrepr.SetSeqNum(repr, base.SeqNum(seq))
 						batchrepr.SetCount(repr, count)
 					}
@@ -173,7 +175,9 @@ func TestReader(t *testing.T) {
 				case "write-garbage":
 					size := fields.MustKeyValue("size").Int()
 					garbage := make([]byte, size)
-					rng.Read(garbage)
+					for i := range garbage {
+						garbage[i] = byte(rng.Uint32())
+					}
 					_, err := f.Write(garbage)
 					require.NoError(t, err)
 					if fields.HasValue("sync") {
@@ -184,7 +188,9 @@ func TestReader(t *testing.T) {
 				case "corrupt-tail":
 					length := int64(fields.MustKeyValue("len").Int())
 					garbage := make([]byte, length)
-					rng.Read(garbage)
+					for i := range garbage {
+						garbage[i] = byte(rng.Uint32())
+					}
 					_, err := f.WriteAt(garbage, offset-length)
 					require.NoError(t, err)
 

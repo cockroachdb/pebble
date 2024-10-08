@@ -7,7 +7,7 @@ package keyspan
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -109,22 +109,22 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	cmp := comparer.Compare
 	formatKey := comparer.FormatKey
 
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
 	t.Logf("seed = %d", seed)
 
 	// Use a key space of alphanumeric strings, with a random max length between
 	// 1-2. Repeat keys are more common at the lower max lengths.
-	ks := testkeys.Alpha(rng.Intn(2) + 1)
+	ks := testkeys.Alpha(rng.IntN(2) + 1)
 
 	// Generate between 1-15 range keys.
 	const maxRangeKeys = 15
 	var original, fragmented []Span
-	numRangeKeys := 1 + rng.Intn(maxRangeKeys)
+	numRangeKeys := 1 + rng.IntN(maxRangeKeys)
 	for i := 0; i < numRangeKeys; i++ {
-		startIdx := rng.Int63n(ks.Count())
-		endIdx := rng.Int63n(ks.Count())
+		startIdx := rng.Int64N(ks.Count())
+		endIdx := rng.Int64N(ks.Count())
 		for startIdx == endIdx {
-			endIdx = rng.Int63n(ks.Count())
+			endIdx = rng.Int64N(ks.Count())
 		}
 		if startIdx > endIdx {
 			startIdx, endIdx = endIdx, startIdx
@@ -132,10 +132,10 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 
 		key := Key{
 			Trailer: base.MakeTrailer(base.SeqNum(i), base.InternalKeyKindRangeKeySet),
-			Value:   []byte(fmt.Sprintf("v%d", rng.Intn(3))),
+			Value:   []byte(fmt.Sprintf("v%d", rng.IntN(3))),
 		}
 		// Generate suffixes 0, 1, 2, or 3 with 0 indicating none.
-		if suffix := rng.Int63n(4); suffix > 0 {
+		if suffix := rng.Int64N(4); suffix > 0 {
 			key.Suffix = testkeys.Suffix(suffix)
 		}
 		original = append(original, Span{
@@ -145,7 +145,7 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 		})
 
 		for startIdx < endIdx {
-			width := rng.Int63n(endIdx-startIdx) + 1
+			width := rng.Int64N(endIdx-startIdx) + 1
 			fragmented = append(fragmented, Span{
 				Start: testkeys.Key(ks, startIdx),
 				End:   testkeys.Key(ks, startIdx+width),
@@ -176,11 +176,11 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 		{weight: 50, fn: func() string { return "next" }},
 		{weight: 50, fn: func() string { return "prev" }},
 		{weight: 5, fn: func() string {
-			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
+			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
 			return fmt.Sprintf("seekge(%s)", k)
 		}},
 		{weight: 5, fn: func() string {
-			k := testkeys.Key(ks, rng.Int63n(ks.Count()))
+			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
 			return fmt.Sprintf("seeklt(%s)", k)
 		}},
 	}
@@ -190,7 +190,7 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	}
 	var referenceHistory, fragmentedHistory bytes.Buffer
 	for i := 0; i < numIterOps; i++ {
-		p := rng.Intn(totalWeight)
+		p := rng.IntN(totalWeight)
 		opIndex := 0
 		if i == 0 {
 			// First op is always a First().

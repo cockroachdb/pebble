@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"testing"
@@ -20,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestKeyspanBlock(t *testing.T) {
@@ -165,12 +165,12 @@ func benchmarkKeyspanBlockRangeDeletions(b *testing.B, numSpans, keysPerSpan, ke
 	var it KeyspanIter
 	it.init(base.DefaultComparer.Compare, &kr, block.NoFragmentTransforms)
 	b.Run("SeekGE", func(b *testing.B) {
-		rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 		b.ResetTimer()
 		var sum uint64
 		for i := 0; i < b.N; i++ {
-			if s, _ := it.SeekGE(keys[rng.Intn(len(keys))]); s != nil {
+			if s, _ := it.SeekGE(keys[rng.IntN(len(keys))]); s != nil {
 				for _, k := range s.Keys {
 					sum += uint64(k.Trailer)
 				}

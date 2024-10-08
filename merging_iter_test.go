@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,7 +28,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestMergingIter(t *testing.T) {
@@ -40,9 +40,9 @@ func TestMergingIter(t *testing.T) {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
 		// split is in increasing order, but different splits may overlap in
 		// range. Some of the splits may be empty.
-		splits := make([][]string, 1+r.Intn(2+len(testKeyValuePairs)))
+		splits := make([][]string, 1+r.IntN(2+len(testKeyValuePairs)))
 		for _, kv := range testKeyValuePairs {
-			j := r.Intn(len(splits))
+			j := r.IntN(len(splits))
 			splits[j] = append(splits[j], kv)
 		}
 		return splits
@@ -358,7 +358,7 @@ func buildMergingIterTables(
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
 		ikey.UserKey = key
-		j := rand.Intn(len(writers))
+		j := rand.IntN(len(writers))
 		w := writers[j]
 		w.AddWithForceObsolete(ikey, nil, false /* forceObsolete */)
 	}
@@ -418,11 +418,11 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							var stats base.InternalIteratorStats
 							m := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 								func(a []byte) int { return len(a) }, iters...)
-							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+							rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								m.SeekGE(keys[rng.Intn(len(keys))], base.SeekGEFlagsNone)
+								m.SeekGE(keys[rng.IntN(len(keys))], base.SeekGEFlagsNone)
 							}
 							m.Close()
 						})

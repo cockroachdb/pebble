@@ -6,7 +6,7 @@ package block
 
 import (
 	"encoding/binary"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -18,17 +18,19 @@ import (
 func TestCompressionRoundtrip(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	seed := time.Now().UnixNano()
+	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed %d", seed)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 
 	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
 		t.Run(compression.String(), func(t *testing.T) {
-			payload := make([]byte, 1+rng.Intn(10<<10 /* 10 KiB */))
-			rng.Read(payload)
+			payload := make([]byte, 1+rng.IntN(10<<10 /* 10 KiB */))
+			for i := range payload {
+				payload[i] = byte(rng.Uint32())
+			}
 			// Create a randomly-sized buffer to house the compressed output. If it's
 			// not sufficient, Compress should allocate one that is.
-			compressedBuf := make([]byte, 1+rng.Intn(1<<10 /* 1 KiB */))
+			compressedBuf := make([]byte, 1+rng.IntN(1<<10 /* 1 KiB */))
 
 			btyp, compressed := compress(compression, payload, compressedBuf)
 			v, err := decompress(btyp, compressed)
@@ -47,15 +49,17 @@ func TestCompressionRoundtrip(t *testing.T) {
 // decompress returns an error.
 func TestDecompressionError(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	rng := rand.New(rand.NewSource(1 /* fixed seed */))
+	rng := rand.New(rand.NewPCG(0, 1 /* fixed seed */))
 
 	// Create a buffer to represent a faux zstd compressed block. It's prefixed
 	// with a uvarint of the appropriate length, followed by garabge.
-	fauxCompressed := make([]byte, rng.Intn(10<<10 /* 10 KiB */))
+	fauxCompressed := make([]byte, rng.IntN(10<<10 /* 10 KiB */))
 	compressedPayloadLen := len(fauxCompressed) - binary.MaxVarintLen64
 	n := binary.PutUvarint(fauxCompressed, uint64(compressedPayloadLen))
 	fauxCompressed = fauxCompressed[:n+compressedPayloadLen]
-	rng.Read(fauxCompressed[n:])
+	for i := range fauxCompressed[:n] {
+		fauxCompressed[i] = byte(rng.Uint32())
+	}
 
 	v, err := decompress(ZstdCompressionIndicator, fauxCompressed)
 	t.Log(err)

@@ -7,7 +7,7 @@ package vfs
 import (
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +20,7 @@ import (
 func runMemFSDataDriven(t *testing.T, path string, fs *MemFS) {
 	fsMap := map[string]*MemFS{"initial": fs}
 	var f File
-	rng := rand.New(rand.NewSource(0))
+	rng := rand.New(rand.NewPCG(0, 0))
 	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		var err error
 		switch td.Cmd {

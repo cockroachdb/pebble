@@ -11,6 +11,7 @@ import (
 	"cmp"
 	"encoding/binary"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"golang.org/x/exp/rand"
 )
 
 const withWall = 9
@@ -397,7 +397,7 @@ func RandomKVs(rng *rand.Rand, count int, cfg KeyConfig, valueLen int) (keys, va
 	g := makeCockroachKeyGen(rng, cfg)
 	sharedPrefix := make([]byte, cfg.PrefixLenShared)
 	for i := 0; i < len(sharedPrefix); i++ {
-		sharedPrefix[i] = byte(rng.Intn(cfg.PrefixAlphabetLen) + 'a')
+		sharedPrefix[i] = byte(rng.IntN(cfg.PrefixAlphabetLen) + 'a')
 	}
 
 	keys = make([][]byte, 0, count)
@@ -412,7 +412,9 @@ func RandomKVs(rng *rand.Rand, count int, cfg KeyConfig, valueLen int) (keys, va
 			wallTime, logicalTime := g.randTimestamp()
 			k := makeKey(prefix, wallTime, logicalTime)
 			v := make([]byte, valueLen)
-			_, _ = rng.Read(v)
+			for j := range v {
+				v[j] = byte(rng.Uint32())
+			}
 			keys = append(keys, k)
 			vals = append(vals, v)
 		}
@@ -445,10 +447,10 @@ func RandomQueryKeys(
 	prefixes = slices.CompactFunc(prefixes, bytes.Equal)
 	result := make([][]byte, count)
 	for i := range result {
-		prefix := prefixes[rng.Intn(len(prefixes))]
-		wallTime := baseWallTime + rng.Uint64n(uint64(time.Hour))
+		prefix := prefixes[rng.IntN(len(prefixes))]
+		wallTime := baseWallTime + rng.Uint64N(uint64(time.Hour))
 		var logicalTime uint32
-		if rng.Intn(10) == 0 {
+		if rng.IntN(10) == 0 {
 			logicalTime = rng.Uint32()
 		}
 		result[i] = makeKey(prefix, wallTime, logicalTime)
@@ -472,14 +474,14 @@ func (g *cockroachKeyGen) randPrefix(blockPrefix []byte) []byte {
 	prefix := make([]byte, 0, g.cfg.PrefixLen+MaxSuffixLen)
 	prefix = append(prefix, blockPrefix...)
 	for len(prefix) < g.cfg.PrefixLen {
-		prefix = append(prefix, byte(g.rng.Intn(g.cfg.PrefixAlphabetLen)+'a'))
+		prefix = append(prefix, byte(g.rng.IntN(g.cfg.PrefixAlphabetLen)+'a'))
 	}
 	return prefix
 }
 
 func (g *cockroachKeyGen) randTimestamp() (wallTime uint64, logicalTime uint32) {
-	wallTime = g.cfg.BaseWallTime + g.rng.Uint64n(uint64(time.Hour))
-	if g.cfg.PercentLogical > 0 && g.rng.Intn(100) < g.cfg.PercentLogical {
+	wallTime = g.cfg.BaseWallTime + g.rng.Uint64N(uint64(time.Hour))
+	if g.cfg.PercentLogical > 0 && g.rng.IntN(100) < g.cfg.PercentLogical {
 		logicalTime = g.rng.Uint32()
 	}
 	return wallTime, logicalTime

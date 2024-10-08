@@ -7,6 +7,7 @@ package rowblk
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"golang.org/x/exp/rand"
 )
 
 var (
@@ -31,7 +31,7 @@ var (
 // This ensures we benchmark when suffix replacement adds a larger suffix.
 func chooseOrigSuffix(rng *rand.Rand) []byte {
 	origSuffix := []byte("@10")
-	if rng.Intn(10)%2 == 0 {
+	if rng.IntN(10)%2 == 0 {
 		origSuffix = []byte("@9")
 	}
 	return origSuffix
@@ -86,7 +86,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 				b.Run(fmt.Sprintf("syntheticPrefix=%t;syntheticSuffix=%t;restart=%d", withSyntheticPrefix, withSyntheticSuffix, restartInterval),
 					func(b *testing.B) {
 						w := &Writer{RestartInterval: restartInterval}
-						rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+						rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 						keys, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
@@ -96,7 +96,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 						}
 						b.ResetTimer()
 						for i := 0; i < b.N; i++ {
-							k := keys[rng.Intn(len(keys))]
+							k := keys[rng.IntN(len(keys))]
 							it.SeekGE(k, base.SeekGEFlagsNone)
 							if testing.Verbose() {
 								if !it.Valid() && !withSyntheticSuffix {
@@ -121,7 +121,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 				b.Run(fmt.Sprintf("syntheticPrefix=%t;syntheticSuffix=%t;restart=%d", withSyntheticPrefix, withSyntheticSuffix, restartInterval),
 					func(b *testing.B) {
 						w := &Writer{RestartInterval: restartInterval}
-						rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+						rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 						keys, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
@@ -131,7 +131,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 						}
 						b.ResetTimer()
 						for i := 0; i < b.N; i++ {
-							j := rng.Intn(len(keys))
+							j := rng.IntN(len(keys))
 							it.SeekLT(keys[j], base.SeekLTFlagsNone)
 							if testing.Verbose() {
 								if j == 0 {
@@ -163,7 +163,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 				b.Run(fmt.Sprintf("syntheticPrefix=%t;syntheticSuffix=%t;restart=%d", withSyntheticPrefix, withSyntheticSuffix, restartInterval),
 					func(b *testing.B) {
 						w := &Writer{RestartInterval: restartInterval}
-						rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+						rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 						_, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
@@ -193,7 +193,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 				b.Run(fmt.Sprintf("syntheticPrefix=%t;syntheticSuffix=%t;restart=%d", withSyntheticPrefix, withSyntheticSuffix, restartInterval),
 					func(b *testing.B) {
 						w := &Writer{RestartInterval: restartInterval}
-						rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+						rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 						_, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
@@ -241,7 +241,7 @@ func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	keys, values := crdbtest.RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
 
 	var w Writer
@@ -252,7 +252,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 		var j int
 		var prevKeyLen int
 		for w.EstimatedSize() < targetBlockSize {
-			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			var samePrefix bool
 			if j > 0 {
 				samePrefix = bytes.Equal(keys[j], keys[j-1])
@@ -294,7 +294,7 @@ func BenchmarkCockroachDataBlockIter(b *testing.B) {
 func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	keys, values := crdbtest.RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
 
 	var w Writer
@@ -302,7 +302,7 @@ func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig,
 	var count int
 	var prevKeyLen int
 	for w.EstimatedSize() < targetBlockSize {
-		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		var samePrefix bool
 		if count > 0 {
 			samePrefix = bytes.Equal(keys[count], keys[count-1])
@@ -331,10 +331,10 @@ func benchmarkCockroachDataBlockIter(b *testing.B, keyConfig crdbtest.KeyConfig,
 		b.ReportMetric(avgRowSize, "bytes/row")
 	})
 	b.Run("SeekGE", func(b *testing.B) {
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			k := keys[rng.Intn(count)]
+			k := keys[rng.IntN(count)]
 			if kv := it.SeekGE(k, base.SeekGEFlagsNone); kv == nil {
 				b.Fatalf("%q not found", k)
 			}

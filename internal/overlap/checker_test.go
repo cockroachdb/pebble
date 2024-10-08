@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -179,7 +179,7 @@ func (tt *testTables) Points(
 ) (base.InternalIterator, error) {
 	t := tt.get(m)
 	tt.openedIterators = append(tt.openedIterators, fmt.Sprintf("%s/points", t.name))
-	if len(t.points) == 0 && rand.Intn(2) == 0 {
+	if len(t.points) == 0 && rand.IntN(2) == 0 {
 		return nil, nil
 	}
 	return base.NewFakeIter(t.points), nil
@@ -190,7 +190,7 @@ func (tt *testTables) RangeDels(
 ) (keyspan.FragmentIterator, error) {
 	t := tt.get(m)
 	tt.openedIterators = append(tt.openedIterators, fmt.Sprintf("%s/range-del", t.name))
-	if len(t.rangeDels) == 0 && rand.Intn(2) == 0 {
+	if len(t.rangeDels) == 0 && rand.IntN(2) == 0 {
 		return nil, nil
 	}
 	return keyspan.NewIter(bytes.Compare, t.rangeDels), nil
@@ -201,7 +201,7 @@ func (tt *testTables) RangeKeys(
 ) (keyspan.FragmentIterator, error) {
 	t := tt.get(m)
 	tt.openedIterators = append(tt.openedIterators, fmt.Sprintf("%s/range-key", t.name))
-	if len(t.rangeKeys) == 0 && rand.Intn(2) == 0 {
+	if len(t.rangeKeys) == 0 && rand.IntN(2) == 0 {
 		return nil, nil
 	}
 	return keyspan.NewIter(bytes.Compare, t.rangeKeys), nil

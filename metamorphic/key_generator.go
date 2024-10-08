@@ -7,11 +7,11 @@ package metamorphic
 import (
 	"cmp"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"golang.org/x/exp/rand"
 )
 
 type keyGenerator struct {
@@ -126,7 +126,7 @@ func (kg *keyGenerator) UniformSuffix() []byte {
 // suffix as an integer.
 func (kg *keyGenerator) UniformSuffixInt() int64 {
 	maxVal := kg.cfg.writeSuffixDist.Max()
-	return kg.rng.Int63n(int64(maxVal))
+	return kg.rng.Int64N(int64(maxVal))
 }
 
 // randKey returns a random key (either a previously known key or a new key).
@@ -163,7 +163,7 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 			for {
 				// Pick a prefix on each iteration in case most or all suffixes are
 				// already in use for any individual prefix.
-				p := kg.rng.Intn(len(prefixes))
+				p := kg.rng.IntN(len(prefixes))
 				suffix := int64(kg.cfg.writeSuffixDist.Uint64(kg.rng))
 
 				var key []byte
@@ -305,7 +305,7 @@ func (kg *keyGenerator) parseKey(k []byte) (prefix []byte, suffix int64) {
 }
 
 func randBytes(rng *rand.Rand, minLen, maxLen int) []byte {
-	n := minLen + rng.Intn(maxLen-minLen+1)
+	n := minLen + rng.IntN(maxLen-minLen+1)
 	if n == 0 {
 		return nil
 	}
@@ -333,5 +333,5 @@ func randBytes(rng *rand.Rand, minLen, maxLen int) []byte {
 }
 
 func pickOneUniform[S ~[]E, E any](rng *rand.Rand, x S) E {
-	return x[rng.Intn(len(x))]
+	return x[rng.IntN(len(x))]
 }

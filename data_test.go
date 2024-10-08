@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"regexp"
 	"strconv"
 	"strings"
@@ -417,9 +417,9 @@ func parseValue(s string) []byte {
 			panic(err)
 		}
 		b := make([]byte, n)
-		rnd := rand.New(rand.NewSource(int64(n)))
-		if _, err := rnd.Read(b); err != nil {
-			panic(err)
+		rnd := rand.New(rand.NewPCG(0, uint64(n)))
+		for i := range b {
+			b[i] = byte(rnd.Uint32())
 		}
 		return b
 	}
@@ -569,7 +569,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
-	if blockSize == 0 && rand.Intn(4) == 0 {
+	if blockSize == 0 && rand.IntN(4) == 0 {
 		// Force two-level indexes if not already forced on or off.
 		blockSize = 5
 	}
@@ -1092,9 +1092,9 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			var randBytes int
 			if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
 				value = make([]byte, randBytes)
-				rnd := rand.New(rand.NewSource(int64(key.SeqNum())))
-				if _, err := rnd.Read(value[:]); err != nil {
-					return nil, err
+				rnd := rand.New(rand.NewPCG(0, uint64(key.SeqNum())))
+				for j := range value {
+					value[j] = byte(rnd.Uint32())
 				}
 			}
 			if err := mem.set(key, value); err != nil {

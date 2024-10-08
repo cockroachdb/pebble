@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -18,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestPrefixBytes(t *testing.T) {
@@ -117,9 +117,9 @@ func TestPrefixBytesRandomized(t *testing.T) {
 
 	var pbb PrefixBytesBuilder
 	runTest := func(t *testing.T, maxKeyCount, maxKeyLen, maxAlphaLen int) {
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		randInt := func(lo, hi int) int {
-			return lo + rng.Intn(hi-lo)
+			return lo + rng.IntN(hi-lo)
 		}
 		minLen := randInt(4, maxKeyLen)
 		maxLen := randInt(4, maxKeyLen)
@@ -164,7 +164,7 @@ func TestPrefixBytesRandomized(t *testing.T) {
 
 		n := len(userKeys)
 		// Sometimes finish all but the last key.
-		if rng.Intn(2) == 0 {
+		if rng.IntN(2) == 0 {
 			n--
 			t.Logf("Omitting the last key %q; new last key is %q", userKeys[len(userKeys)-1], userKeys[n-1])
 		}
@@ -220,9 +220,9 @@ func TestPrefixBytesRandomized(t *testing.T) {
 func BenchmarkPrefixBytes(b *testing.B) {
 	runBenchmark := func(b *testing.B, alphaLen int) {
 		seed := uint64(205295296)
-		rng := rand.New(rand.NewSource(seed))
+		rng := rand.New(rand.NewPCG(0, seed))
 		randInt := func(lo, hi int) int {
-			return lo + rng.Intn(hi-lo)
+			return lo + rng.IntN(hi-lo)
 		}
 		minLen := 8
 		maxLen := 128

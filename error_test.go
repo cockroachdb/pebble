@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -428,7 +428,7 @@ func TestDBCompactionCrash(t *testing.T) {
 	// decremented by the errorfs on each write operation.
 	var crashIndex atomic.Int32
 	var crashFS *vfs.MemFS
-	crashRNG := rand.New(rand.NewSource(seed))
+	crashRNG := rand.New(rand.NewPCG(0, uint64(seed)))
 	mkFS := func() vfs.FS {
 		memfs := vfs.NewCrashableMem()
 		inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
@@ -452,8 +452,8 @@ func TestDBCompactionCrash(t *testing.T) {
 		if runtime.GOOS != "windows" {
 			fs = errorfs.Wrap(fs, errorfs.RandomLatency(nil, 20*time.Microsecond, seed, 0 /* no limit */))
 		}
-		rng := rand.New(rand.NewSource(seed))
-		maxConcurrentCompactions := rng.Intn(3) + 2
+		rng := rand.New(rand.NewPCG(0, uint64(seed)))
+		maxConcurrentCompactions := rng.IntN(3) + 2
 		opts := &Options{
 			DisableTableStats:           true,
 			FS:                          fs,
@@ -493,17 +493,19 @@ func TestDBCompactionCrash(t *testing.T) {
 		for _, ts := range timestamps {
 			for _, i := range perm {
 				n := testkeys.WriteKeyAt(buf, ks, int64(i), int64(ts))
-				_, err = rng.Read(vbuf)
+				for j := range vbuf {
+					vbuf[j] = byte(rng.Uint32())
+				}
 				require.NoError(t, err)
 				require.NoError(t, b.Set(buf[:n], vbuf, nil))
-				if rng.Intn(10) == 1 {
+				if rng.IntN(10) == 1 {
 					if err = d.Apply(b, nil); err != nil || triggered() {
 						b = nil
 						break done
 					}
 					b.Reset()
 				}
-				if rng.Intn(100) == 1 {
+				if rng.IntN(100) == 1 {
 					if err = d.Flush(); err != nil || triggered() {
 						break done
 					}
@@ -520,8 +522,8 @@ func TestDBCompactionCrash(t *testing.T) {
 	// Run the test with increasing values of k until a subtest runs to
 	// completion without performing a k-th write operation.
 	done := false
-	rng := rand.New(rand.NewSource(seed))
-	for k := int32(0); !done; k += rng.Int31n(5) + 1 {
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+	for k := int32(0); !done; k += rng.Int32N(5) + 1 {
 		t.Run(fmt.Sprintf("k=%d", k), func(t *testing.T) {
 			// Run, simulating a crash by ignoring syncs after the k-th write
 			// operation after Open.

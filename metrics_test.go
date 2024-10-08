@@ -7,7 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"strconv"
 	"strings"
@@ -471,9 +471,10 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			data := make([]byte, 1<<10) // 1 KiB
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-			_, err := rng.Read(data)
-			require.NoError(t, err)
+			rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
+			for i := range data {
+				data[i] = byte(rng.Uint32())
+			}
 
 			buf := make([]byte, ks.MaxLen())
 			for i := 0; ; i++ {

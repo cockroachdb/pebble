@@ -7,6 +7,7 @@ package colblk
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -18,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"golang.org/x/exp/rand"
 )
 
 var testKeysSchema = DefaultKeySchema(testkeys.Comparer, 16)
@@ -146,7 +146,7 @@ func BenchmarkDataBlockWriter(b *testing.B) {
 func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(0, seed))
 	keys, values := makeTestKeyRandomKVs(rng, prefixSize, valueSize, targetBlockSize)
 
 	var w DataBlockEncoder
@@ -157,7 +157,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 		w.Reset()
 		var j int
 		for w.Size() < targetBlockSize {
-			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64n(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 			vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
 			w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
@@ -175,18 +175,20 @@ func makeTestKeyRandomKVs(
 	for i := range keys {
 		keys[i] = randTestKey(rng, make([]byte, prefixSize+testkeys.MaxSuffixLen), prefixSize)
 		vals[i] = make([]byte, valueSize)
-		rng.Read(vals[i])
+		for j := range vals[i] {
+			vals[i][j] = byte(rng.Uint32())
+		}
 	}
 	slices.SortFunc(keys, bytes.Compare)
 	return keys, vals
 }
 
 func randTestKey(rng *rand.Rand, buf []byte, prefixLen int) []byte {
-	suffix := rng.Int63n(100)
+	suffix := rng.Int64N(100)
 	sl := testkeys.SuffixLen(suffix)
 	buf = buf[0 : prefixLen+sl]
 	for i := 0; i < prefixLen; i++ {
-		buf[i] = byte(rng.Intn(26) + 'a')
+		buf[i] = byte(rng.IntN(26) + 'a')
 	}
 	testkeys.WriteSuffix(buf[prefixLen:], suffix)
 	return buf

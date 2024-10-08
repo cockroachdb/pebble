@@ -7,13 +7,13 @@ package testkeys
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestGenerateAlphabetKey(t *testing.T) {
@@ -247,7 +247,7 @@ func TestRandomPrefixInRange(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			rng := rand.New(rand.NewSource(0))
+			rng := rand.New(rand.NewPCG(0, 0))
 			keys := make(map[string]struct{})
 			for i := 1; i < 100; i++ {
 				key := RandomPrefixInRange([]byte(tc.a), []byte(tc.b), rng)
@@ -265,11 +265,11 @@ func TestRandomPrefixInRange(t *testing.T) {
 	}
 
 	t.Run("randomized", func(t *testing.T) {
-		rng := rand.New(rand.NewSource(0))
+		rng := rand.New(rand.NewPCG(0, 0))
 		keys := [][]byte{[]byte("a"), []byte("zzz")}
 		for n := 0; n < 1000; n++ {
-			i := rng.Intn(len(keys) - 1)
-			j := i + 1 + rng.Intn(len(keys)-1-i)
+			i := rng.IntN(len(keys) - 1)
+			j := i + 1 + rng.IntN(len(keys)-1-i)
 			a, b := keys[i], keys[j]
 			key := RandomPrefixInRange(a, b, rng)
 			if Comparer.Compare(key, a) == 0 {

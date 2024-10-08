@@ -17,12 +17,12 @@ import (
 	"cmp"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"golang.org/x/exp/rand"
 )
 
 const alpha = "abcdefghijklmnopqrstuvwxyz"
@@ -421,7 +421,7 @@ func RandomPrefixInRange(a, b []byte, rng *rand.Rand) []byte {
 
 	// We will generate a piece of a key from the Alpha(maxLength) keyspace. Note
 	// that maxLength cannot be higher than ~13 or we will encounter overflows.
-	maxLength := 4 + rng.Intn(8)
+	maxLength := 4 + rng.IntN(8)
 
 	// Skip any common prefix (but leave at least one character in each key).
 	skipPrefix := 0
@@ -445,7 +445,7 @@ func RandomPrefixInRange(a, b []byte, rng *rand.Rand) []byte {
 	if bpIdx <= apIdx {
 		panic("unreachable")
 	}
-	generatedIdx := apIdx + rng.Int63n(bpIdx-apIdx)
+	generatedIdx := apIdx + rng.Int64N(bpIdx-apIdx)
 	if generatedIdx == apIdx {
 		// Return key a. We handle this separately in case we trimmed aPiece above.
 		return append([]byte(nil), a...)

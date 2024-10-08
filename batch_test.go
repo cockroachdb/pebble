@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"testing"
@@ -1611,9 +1611,9 @@ func TestBatchSpanCaching(t *testing.T) {
 		require.NoError(t, b.Set(k, k, nil))
 	}
 
-	seed := int64(time.Now().UnixNano())
+	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed = %d", seed)
-	rng := rand.New(rand.NewSource(seed))
+	rng := rand.New(rand.NewPCG(seed, seed))
 	iters := make([][]*Iterator, ks.Count())
 	defer func() {
 		for _, keyIters := range iters {
@@ -1677,12 +1677,12 @@ func TestBatchSpanCaching(t *testing.T) {
 		default: /* 45 % */
 			// Create a new iterator through cloning a random existing iterator
 			// and check that it observes the right state.
-			readKey := rng.Int63n(nextWriteKey + 1)
+			readKey := rng.Int64N(nextWriteKey + 1)
 			itersForReadKey := iters[readKey]
 			if len(itersForReadKey) == 0 {
 				continue
 			}
-			iter, err := itersForReadKey[rng.Intn(len(itersForReadKey))].Clone(CloneOptions{})
+			iter, err := itersForReadKey[rng.IntN(len(itersForReadKey))].Clone(CloneOptions{})
 			require.NoError(t, err)
 			checkIter(iter, readKey)
 			iters[readKey] = append(iters[readKey], iter)

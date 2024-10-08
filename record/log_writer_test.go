@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -619,7 +619,7 @@ func TestPendingSyncsWithHighestSyncIndex(t *testing.T) {
 			// Randomly inject sleep, to allow pop to catch up, so that highestIndex
 			// doesn't overwrite everything. With this, we see some sparseness of
 			// indices in pops, but we get enough popped indices.
-			if rand.Intn(2) == 0 {
+			if rand.IntN(2) == 0 {
 				time.Sleep(time.Millisecond)
 			}
 		}

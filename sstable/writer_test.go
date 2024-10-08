@@ -9,7 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
@@ -305,7 +305,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 	}
 
 	parallelism := false
-	if rand.Intn(2) == 0 {
+	if rand.IntN(2) == 0 {
 		parallelism = true
 	}
 	t.Logf("writer parallelism %t", parallelism)
@@ -1045,10 +1045,10 @@ func TestWriterRace(t *testing.T) {
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
 		go func() {
-			val := make([]byte, rand.Intn(1000))
+			val := make([]byte, rand.IntN(1000))
 			opts := WriterOptions{
 				Comparer:    testkeys.Comparer,
-				BlockSize:   rand.Intn(1 << 10),
+				BlockSize:   rand.IntN(1 << 10),
 				Compression: block.NoCompression,
 			}
 			defer wg.Done()

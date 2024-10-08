@@ -7,7 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"strings"
@@ -671,8 +671,8 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 	var (
 		fileNum     = base.FileNum(0)
-		seed        = time.Now().UnixNano()
-		rng         = rand.New(rand.NewSource(seed))
+		seed        = uint64(time.Now().UnixNano())
+		rng         = rand.New(rand.NewPCG(0, seed))
 		endKeyspace = 26 * 26
 		cmp         = base.DefaultComparer.Compare
 	)
@@ -716,10 +716,10 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 		}
 		var files [NumLevels][]*FileMetadata
 		for l := 0; l < NumLevels; l++ {
-			for i := 0; i < rand.Intn(10); i++ {
-				s := rng.Intn(endKeyspace)
-				maxWidth := rng.Intn(endKeyspace-s) + 1
-				e := rng.Intn(maxWidth) + s
+			for i := 0; i < rand.IntN(10); i++ {
+				s := rng.IntN(endKeyspace)
+				maxWidth := rng.IntN(endKeyspace-s) + 1
+				e := rng.IntN(maxWidth) + s
 				sKey, eKey := makeUserKey(s), makeUserKey(e)
 				// Discard the key range if it overlaps any existing files
 				// within this level.
@@ -742,10 +742,10 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 		}
 		t.Log(v.DebugString())
 		for i := 0; i < 1000; i++ {
-			l := rng.Intn(NumLevels)
-			s := rng.Intn(endKeyspace)
-			maxWidth := rng.Intn(endKeyspace-s) + 1
-			e := rng.Intn(maxWidth) + s
+			l := rng.IntN(NumLevels)
+			s := rng.IntN(endKeyspace)
+			maxWidth := rng.IntN(endKeyspace-s) + 1
+			e := rng.IntN(maxWidth) + s
 			sKey, eKey := makeUserKey(s), makeUserKey(e)
 			keyRanges := v.CalculateInuseKeyRanges(l, NumLevels-1, sKey, eKey)
 

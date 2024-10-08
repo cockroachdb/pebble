@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestRewriteSuffixProps(t *testing.T) {
@@ -41,7 +41,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 	// Test suffix rewriting from every table format.
 	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
 		t.Run(format.String(), func(t *testing.T) {
-			rng := rand.New(rand.NewSource(seed))
+			rng := rand.New(rand.NewPCG(0, seed))
 			// Construct a test sstable.
 			wOpts := WriterOptions{
 				FilterPolicy:     bloom.FilterPolicy(10),
@@ -60,7 +60,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 			// NB: Although we set the table format to a random value, the
 			// suffix rewriting routine will ignore it and rewrite to the same
 			// table format as the original sstable.
-			rwOpts.TableFormat = TableFormatPebblev2 + TableFormat(rng.Intn(int(TableFormatMax-TableFormatPebblev2)+1))
+			rwOpts.TableFormat = TableFormatPebblev2 + TableFormat(rng.IntN(int(TableFormatMax-TableFormatPebblev2)+1))
 			rwOpts.IsStrictObsolete = rwOpts.TableFormat >= TableFormatPebblev3
 			// Rewrite with a random subset of the original collectors, in a
 			// random order.
@@ -68,7 +68,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 			rng.Shuffle(len(newCollectors), func(i, j int) {
 				newCollectors[i], newCollectors[j] = newCollectors[j], newCollectors[i]
 			})
-			newCollectors = newCollectors[:rng.Intn(len(newCollectors)+1)]
+			newCollectors = newCollectors[:rng.IntN(len(newCollectors)+1)]
 			rwOpts.BlockPropertyCollectors = testCollectorsByNames(newCollectors...)
 			expectedProps := make(map[string][]byte)
 			for _, collector := range newCollectors {

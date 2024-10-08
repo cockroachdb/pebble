@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"slices"
 	"sort"
 	"strconv"
@@ -134,7 +134,7 @@ func genBenchIOs(
 	// The choice of objects will be the same across all IO sizes.
 	b := make([]int, count)
 	for i := range b {
-		b[i] = rand.Intn(total)
+		b[i] = rand.IntN(total)
 	}
 	// For each b[i], find the index such that sum[idx-1] <= b < sum[idx].
 	// Sorting b makes this easier: we can "merge" the sorted arrays b and sum.
@@ -152,7 +152,7 @@ func genBenchIOs(
 	for _, ioSize := range sizes {
 		for _, idx := range rIdx {
 			// Random ioSize aligned offset.
-			ofs := ioSize * rand.Intn(size[idx]*maxIOSize/ioSize)
+			ofs := ioSize * rand.IntN(size[idx]*maxIOSize/ioSize)
 
 			res = append(res, benchIO{
 				readableIdx: idx,

@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -123,7 +123,7 @@ func TestVersionSet(t *testing.T) {
 			mu.Lock()
 			vs.logLock()
 
-			forceRotation := rand.Intn(3) == 0
+			forceRotation := rand.IntN(3) == 0
 			err = vs.logAndApply(
 				0 /* jobID */, ve, fileMetrics, forceRotation,
 				func() []compactionInfo { return nil },

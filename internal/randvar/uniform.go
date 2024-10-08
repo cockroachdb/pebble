@@ -16,9 +16,8 @@
 package randvar
 
 import (
+	"math/rand/v2"
 	"sync/atomic"
-
-	"golang.org/x/exp/rand"
 )
 
 // Uniform is a random number generator that generates draws from a uniform
@@ -50,5 +49,5 @@ func (g *Uniform) Max() uint64 {
 // Uint64 returns a random Uint64 between min and max, drawn from a uniform
 // distribution.
 func (g *Uniform) Uint64(rng *rand.Rand) uint64 {
-	return rng.Uint64n(g.Max()-g.min+1) + g.min
+	return rng.Uint64N(g.Max()-g.min+1) + g.min
 }
