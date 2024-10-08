@@ -1,0 +1,72 @@
+
+# Simple test case with row blocks.
+
+build test1 format=pebblev4
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+----
+
+iter test1
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test1 test2 b.SET.10 cc.SET.0
+----
+copied 661 bytes
+
+iter test2
+----
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test1 test21 a.SET.10 bb.SET.0
+----
+copied 658 bytes
+
+iter test21
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+
+# Try the above with columnar blocks.
+
+build test3 format=pebblev5
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+----
+
+iter test3
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test3 test4 b.SET.10 cc.SET.0
+----
+copied 790 bytes
+
+iter test4
+----
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test3 test5 a.SET.10 bb.SET.0
+----
+copied 787 bytes
+
+iter test5
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz

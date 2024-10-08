@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -1881,7 +1882,8 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	w.props.PropertyCollectorNames = "[]"
 
 	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
-	if w.tableFormat >= TableFormatPebblev4 {
+	shouldAddObsoleteCollector := w.tableFormat >= TableFormatPebblev4 && !o.disableObsoleteCollector
+	if shouldAddObsoleteCollector {
 		numBlockPropertyCollectors++
 	}
 
@@ -1894,7 +1896,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		for _, constructFn := range o.BlockPropertyCollectors {
 			w.blockPropCollectors = append(w.blockPropCollectors, constructFn())
 		}
-		if w.tableFormat >= TableFormatPebblev4 {
+		if shouldAddObsoleteCollector {
 			w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
 		}
 
@@ -2010,6 +2012,76 @@ func (w *RawRowWriter) rewriteSuffixes(
 				origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
 			}
 		}
+	}
+	return nil
+}
+
+// copyDataBlocks implements RawWriter.
+func (w *RawRowWriter) copyDataBlocks(
+	ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle,
+) error {
+	blockOffset := blocks[0].bh.Offset
+	// The block lengths don't include their trailers, which just sit after the
+	// block length, before the next offset; We get the ones between the blocks
+	// we copy implicitly but need to explicitly add the last trailer to length.
+	length := blocks[len(blocks)-1].bh.Offset + blocks[len(blocks)-1].bh.Length + block.TrailerLen - blockOffset
+	if spanEnd := length + blockOffset; spanEnd < blockOffset {
+		return base.AssertionFailedf("invalid intersecting span for CopySpan [%d, %d)", blockOffset, spanEnd)
+	}
+	if err := objstorage.Copy(ctx, rh, w.layout.writable, blockOffset, length); err != nil {
+		return err
+	}
+	// Update w.meta.Size so subsequently flushed metadata has correct offsets.
+	w.meta.Size += length
+	for i := range blocks {
+		blocks[i].bh.Offset = w.layout.offset
+		// blocks[i].bh.Length remains unmodified.
+		sepKey := base.MakeInternalKey(blocks[i].sep, base.SeqNumMax, base.InternalKeyKindSeparator)
+		if err := w.addIndexEntrySep(sepKey, blocks[i].bh, w.dataBlockBuf.tmp[:]); err != nil {
+			return err
+		}
+		w.layout.offset += uint64(blocks[i].bh.Length) + block.TrailerLen
+	}
+	return nil
+}
+
+// addDataBlock implements RawWriter.
+func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
+	// layout.WriteDataBlock keeps layout.offset up-to-date for us.
+	bh, err := w.layout.WriteDataBlock(b, &w.dataBlockBuf.blockBuf)
+	if err != nil {
+		return err
+	}
+	bhp.Handle = bh
+
+	sepKey := base.MakeInternalKey(sep, base.SeqNumMax, base.InternalKeyKindSeparator)
+	if err := w.addIndexEntrySep(sepKey, bhp, w.dataBlockBuf.tmp[:]); err != nil {
+		return err
+	}
+	w.meta.Size += uint64(bh.Length) + block.TrailerLen
+	return nil
+}
+
+// copyProperties implements RawWriter.
+func (w *RawRowWriter) copyProperties(props Properties) {
+	w.props = props
+	// Remove all user properties to disable block properties, which we do not
+	// calculate.
+	w.props.UserProperties = nil
+	// Reset props that we'll re-derive as we build our own index.
+	w.props.IndexPartitions = 0
+	w.props.TopLevelIndexSize = 0
+	w.props.IndexSize = 0
+	w.props.IndexType = 0
+}
+
+// copyFilter implements RawWriter.
+func (w *RawRowWriter) copyFilter(filter []byte, filterName string) error {
+	if w.filter != nil && filterName != w.filter.policyName() {
+		return errors.New("mismatched filters")
+	}
+	w.filter = copyFilterWriter{
+		origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filter,
 	}
 	return nil
 }

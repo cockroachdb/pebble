@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -149,7 +150,10 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 		}
 	}
 
-	numBlockPropertyCollectors := len(o.BlockPropertyCollectors) + 1 // +1 for the obsolete collector
+	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
+	if !o.disableObsoleteCollector {
+		numBlockPropertyCollectors++
+	}
 	if numBlockPropertyCollectors > maxPropertyCollectors {
 		panic(errors.New("pebble: too many block property collectors"))
 	}
@@ -157,7 +161,9 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	for _, constructFn := range o.BlockPropertyCollectors {
 		w.blockPropCollectors = append(w.blockPropCollectors, constructFn())
 	}
-	w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+	if !o.disableObsoleteCollector {
+		w.blockPropCollectors = append(w.blockPropCollectors, &w.obsoleteCollector)
+	}
 	var buf bytes.Buffer
 	buf.WriteString("[")
 	for i := range w.blockPropCollectors {
@@ -1089,4 +1095,119 @@ func shouldFlushWithoutLatestKV(
 		return false
 	}
 	return true
+}
+
+// copyDataBlocks adds a range of blocks to the table as-is. These blocks could be
+// compressed. It's specifically used by the sstable copier that can copy parts
+// of an sstable to a new sstable, using CopySpan().
+func (w *RawColumnWriter) copyDataBlocks(
+	ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle,
+) error {
+	buf := make([]byte, 0, 256<<10)
+	readAndFlushBlocks := func(firstBlockIdx, lastBlockIdx int) error {
+		if firstBlockIdx > lastBlockIdx {
+			panic("pebble: readAndFlushBlocks called with invalid block range")
+		}
+		// We need to flush blocks[firstBlockIdx:lastBlockIdx+1] into the write queue.
+		// We do this by issuing one big read from the read handle into the buffer, and
+		// then enqueueing the writing of those blocks one-by-one.
+		//
+		// TODO(bilal): Consider refactoring the write queue to support writing multiple
+		// blocks in one request.
+		lastBH := blocks[lastBlockIdx].bh
+		blocksToReadLen := lastBH.Offset + lastBH.Length + block.TrailerLen - blocks[firstBlockIdx].bh.Offset
+		if blocksToReadLen > uint64(cap(buf)) {
+			buf = make([]byte, 0, blocksToReadLen)
+		}
+		if err := rh.ReadAt(ctx, buf[:blocksToReadLen], int64(blocks[firstBlockIdx].bh.Offset)); err != nil {
+			return err
+		}
+		for i := firstBlockIdx; i <= lastBlockIdx; i++ {
+			offsetDiff := blocks[i].bh.Offset - blocks[firstBlockIdx].bh.Offset
+			blockBuf := buf[offsetDiff : offsetDiff+blocks[i].bh.Length+block.TrailerLen]
+			cb := compressedBlockPool.Get().(*compressedBlock)
+			cb.physical = block.NewPhysicalBlock(blockBuf)
+			if err := w.enqueuePhysicalBlock(cb, blocks[i].sep); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	// Iterate through blocks until we have enough to fill cap(buf). When we have more than
+	// one block in blocksToRead and adding the next block would exceed the buffer capacity,
+	// we read and flush existing blocks in blocksToRead. This allows us to read as many
+	// blocks in one IO request as possible, while still utilizing the write queue in this
+	// writer.
+	lastBlockOffset := uint64(0)
+	for i := 0; i < len(blocks); i++ {
+		if blocks[i].bh.Offset < lastBlockOffset {
+			panic("pebble: copyDataBlocks called with blocks out of order")
+		}
+		start := i
+		// Note the i++ in the initializing condition; this means we will always flush at least
+		// one block.
+		for i++; i < len(blocks) && (blocks[i].bh.Length+blocks[i].bh.Offset+block.TrailerLen-blocks[start].bh.Offset) <= uint64(cap(buf)); i++ {
+		}
+		// i points to one index past the last block we want to read.
+		if err := readAndFlushBlocks(start, i-1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addDataBlock adds a raw uncompressed data block to the table as-is. It's specifically used
+// by the sstable copier that can copy parts of an sstable to a new sstable,
+// using CopySpan().
+func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
+	// Serialize the data block, compress it and send it to the write queue.
+	cb := compressedBlockPool.Get().(*compressedBlock)
+	cb.blockBuf.checksummer.Type = w.opts.Checksum
+	cb.physical = block.CompressAndChecksum(
+		&cb.blockBuf.compressedBuf,
+		b,
+		w.opts.Compression,
+		&cb.blockBuf.checksummer,
+	)
+	if !cb.physical.IsCompressed() {
+		// If the block isn't compressed, cb.physical's underlying data points
+		// directly into a buffer owned by w.dataBlock. Clone it before passing
+		// it to the write queue to be asynchronously written to disk.
+		// TODO(jackson): Should we try to avoid this clone by tracking the
+		// lifetime of the DataBlockWriters?
+		cb.physical = cb.physical.Clone()
+	}
+	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
+		return err
+	}
+	return nil
+}
+
+// copyFilter copies the specified filter to the table. It's specifically used
+// by the sstable copier that can copy parts of an sstable to a new sstable,
+// using CopySpan().
+func (w *RawColumnWriter) copyFilter(filter []byte, filterName string) error {
+	if w.filterBlock != nil && filterName != w.filterBlock.policyName() {
+		return errors.New("mismatched filters")
+	}
+	w.filterBlock = copyFilterWriter{
+		origPolicyName: w.filterBlock.policyName(), origMetaName: w.filterBlock.metaName(), data: filter,
+	}
+	return nil
+}
+
+// copyProperties copies properties from the specified props, and resets others
+// to prepare for copying data blocks from another sstable, using the copy/addDataBlock(s)
+// methods above. It's specifically used by the sstable copier that can copy parts of an
+// sstable to a new sstable, using CopySpan().
+func (w *RawColumnWriter) copyProperties(props Properties) {
+	w.props = props
+	// Remove all user properties to disable block properties, which we do not
+	// calculate for CopySpan.
+	w.props.UserProperties = nil
+	// Reset props that we'll re-derive as we build our own index.
+	w.props.IndexPartitions = 0
+	w.props.TopLevelIndexSize = 0
+	w.props.IndexSize = 0
+	w.props.IndexType = 0
 }
