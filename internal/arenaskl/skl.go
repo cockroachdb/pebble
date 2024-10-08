@@ -45,13 +45,13 @@ package arenaskl // import "github.com/cockroachdb/pebble/internal/arenaskl"
 
 import (
 	"math"
+	"math/rand/v2"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/fastrand"
 )
 
 const (
@@ -337,7 +337,7 @@ func (s *Skiplist) newNode(
 }
 
 func (s *Skiplist) randomHeight() uint32 {
-	rnd := fastrand.Uint32()
+	rnd := rand.Uint32()
 
 	h := uint32(1)
 	for h < maxHeight && rnd <= probabilities[h] {
