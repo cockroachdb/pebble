@@ -167,6 +167,15 @@ type PhysicalBlock struct {
 	trailer Trailer
 }
 
+// NewPhysicalBlock returns a new PhysicalBlock with the provided block
+// data. The trailer is set from the last TrailerLen bytes of the
+// block. The data could be compressed.
+func NewPhysicalBlock(data []byte) PhysicalBlock {
+	trailer := Trailer(data[len(data)-TrailerLen:])
+	data = data[:len(data)-TrailerLen]
+	return PhysicalBlock{data: data, trailer: trailer}
+}
+
 // LengthWithTrailer returns the length of the data block, including the trailer.
 func (b *PhysicalBlock) LengthWithTrailer() int {
 	return len(b.data) + TrailerLen

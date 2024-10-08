@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -1089,4 +1090,126 @@ func shouldFlushWithoutLatestKV(
 		return false
 	}
 	return true
+}
+
+// copyDataBlocks adds a range of blocks to the table as-is. These blocks could be
+// compressed. It's specifically used by the sstable copier that can copy parts
+// of an sstable to a new sstable, using CopySpan().
+func (w *RawColumnWriter) copyDataBlocks(
+	ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle,
+) error {
+	buf := make([]byte, 0, 256<<10)
+	var blocksToRead []indexEntry
+	var lenSoFar uint64
+	flushBlocks := func() error {
+		// We need to flush blocksToRead into the write queue. We do this by issuing
+		// one big read from the read handle into the buffer, and then enqueueing the
+		// writing of those blocks one-by-one.
+		//
+		// TODO(bilal): Consider refactoring the write queue to support writing multiple
+		// blocks in one request.
+		if err := rh.ReadAt(ctx, buf[:lenSoFar], int64(blocksToRead[0].bh.Offset)); err != nil {
+			return err
+		}
+		for i := range blocksToRead {
+			blockBuf := buf[:blocksToRead[i].bh.Length+block.TrailerLen]
+			buf = buf[blocksToRead[i].bh.Length+block.TrailerLen : cap(buf)]
+			sep := blocksToRead[i].sep
+			cb := compressedBlockPool.Get().(*compressedBlock)
+			cb.physical = block.NewPhysicalBlock(blockBuf)
+			sepKey := base.MakeInternalKey(sep, base.SeqNumMax, base.InternalKeyKindSeparator)
+			if cap(w.separatorBuf) < sepKey.Size() {
+				w.separatorBuf = make([]byte, sepKey.Size()*2)
+			}
+			w.separatorBuf = w.separatorBuf[:sepKey.Size()]
+			sepKey.Encode(w.separatorBuf)
+			if err := w.enqueuePhysicalBlock(cb, w.separatorBuf); err != nil {
+				return err
+			}
+		}
+		blocksToRead = blocksToRead[:0]
+		lenSoFar = 0
+		return nil
+	}
+	// Iterate through blocks until we have enough to fill the buffer. If the first block
+	// exceeds the capacity of the buffer, grow the buffer.
+	for _, bl := range blocks {
+		if len(blocksToRead) > 0 && lenSoFar+bl.bh.Length+block.TrailerLen > uint64(cap(buf)) {
+			if err := flushBlocks(); err != nil {
+				return err
+			}
+		}
+		if lenSoFar+bl.bh.Length+block.TrailerLen > uint64(cap(buf)) {
+			// len(blocksToRead) == 0.
+			buf = make([]byte, 0, bl.bh.Length+block.TrailerLen)
+		}
+		blocksToRead = append(blocksToRead, bl)
+		lenSoFar += bl.bh.Length + block.TrailerLen
+	}
+	if len(blocksToRead) > 0 {
+		return flushBlocks()
+	}
+	return nil
+}
+
+// addDataBlock adds a raw uncompressed data block to the table as-is. It's specifically used
+// by the sstable copier that can copy parts of an sstable to a new sstable,
+// using CopySpan().
+func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
+	// Serialize the data block, compress it and send it to the write queue.
+	cb := compressedBlockPool.Get().(*compressedBlock)
+	cb.blockBuf.checksummer.Type = w.opts.Checksum
+	cb.physical = block.CompressAndChecksum(
+		&cb.blockBuf.compressedBuf,
+		b,
+		w.opts.Compression,
+		&cb.blockBuf.checksummer,
+	)
+	if !cb.physical.IsCompressed() {
+		// If the block isn't compressed, cb.physical's underlying data points
+		// directly into a buffer owned by w.dataBlock. Clone it before passing
+		// it to the write queue to be asynchronously written to disk.
+		// TODO(jackson): Should we try to avoid this clone by tracking the
+		// lifetime of the DataBlockWriters?
+		cb.physical = cb.physical.Clone()
+	}
+	sepKey := base.MakeInternalKey(sep, base.SeqNumMax, base.InternalKeyKindSeparator)
+	if cap(w.separatorBuf) < sepKey.Size() {
+		w.separatorBuf = make([]byte, sepKey.Size()*2)
+	}
+	w.separatorBuf = w.separatorBuf[:sepKey.Size()]
+	sepKey.Encode(w.separatorBuf)
+	if err := w.enqueuePhysicalBlock(cb, w.separatorBuf); err != nil {
+		return err
+	}
+	return nil
+}
+
+// copyFilter copies the specified filter to the table. It's specifically used
+// by the sstable copier that can copy parts of an sstable to a new sstable,
+// using CopySpan().
+func (w *RawColumnWriter) copyFilter(filter []byte, filterName string) error {
+	if w.filterBlock != nil && filterName != w.filterBlock.policyName() {
+		return errors.New("mismatched filters")
+	}
+	w.filterBlock = copyFilterWriter{
+		origPolicyName: w.filterBlock.policyName(), origMetaName: w.filterBlock.metaName(), data: filter,
+	}
+	return nil
+}
+
+// copyProperties copies properties from the specified props, and resets others
+// to prepare for copying data blocks from another sstable, using the copy/addDataBlock(s)
+// methods above. It's specifically used by the sstable copier that can copy parts of an
+// sstable to a new sstable, using CopySpan().
+func (w *RawColumnWriter) copyProperties(props Properties) {
+	w.props = props
+	// Remove all user properties to disable block properties, which we do not
+	// calculate for CopySpan.
+	w.props.UserProperties = nil
+	// Reset props that we'll re-derive as we build our own index.
+	w.props.IndexPartitions = 0
+	w.props.TopLevelIndexSize = 0
+	w.props.IndexSize = 0
+	w.props.IndexType = 0
 }
