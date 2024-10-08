@@ -98,6 +98,12 @@ func TestLint(t *testing.T) {
 		}
 	})
 
+	// In most cases, go vet fails because of a build error; running the rest of
+	// the checks would just result in a lot of noise.
+	if t.Failed() {
+		t.Log("go vet failed; skipping other lint checks")
+	}
+
 	t.Run("TestGCAssert", func(t *testing.T) {
 		installTool(t, gcassert)
 		t.Parallel()
