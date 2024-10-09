@@ -817,8 +817,10 @@ func (i *Iterator) maybeSampleRead() {
 		// every newly-opened iterator, but we do want to sample some of them.
 		if !i.readSampling.initialSamplePassed {
 			i.readSampling.initialSamplePassed = true
-			if rand.Uint32N(uint32(i.readSampling.bytesUntilReadSampling)) > uint32(bytesRead) {
-				continue
+			if i.readSampling.bytesUntilReadSampling > bytesRead {
+				if rand.Uint64N(i.readSampling.bytesUntilReadSampling) > bytesRead {
+					continue
+				}
 			}
 		}
 		i.sampleRead()
