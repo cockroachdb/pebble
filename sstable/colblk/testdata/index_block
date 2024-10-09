@@ -85,11 +85,11 @@ seek-ge babble
 seek-ge assumption
 ----
 .
-block 5: 963-1289 props="bp6"
-block 0: 24-48 props="bp1"
-block 4: 632-847 props="bp5"
-block 3: 412-624
-block 2: 195-244 props="bp3"
+separator: bonifide  block 5: 963-1289 props="bp6"
+separator: apple  block 0: 24-48 props="bp1"
+separator: banana  block 4: 632-847 props="bp5"
+separator: bacitracin  block 3: 412-624
+separator: atone  block 2: 195-244 props="bp3"
 
 iter
 first
@@ -100,12 +100,12 @@ next
 next
 next
 ----
-block 0: 24-48 props="bp1"
-block 1: 141-253 props="bp2"
-block 2: 195-244 props="bp3"
-block 3: 412-624
-block 4: 632-847 props="bp5"
-block 5: 963-1289 props="bp6"
+separator: apple  block 0: 24-48 props="bp1"
+separator: applied  block 1: 141-253 props="bp2"
+separator: atone  block 2: 195-244 props="bp3"
+separator: bacitracin  block 3: 412-624
+separator: banana  block 4: 632-847 props="bp5"
+separator: bonifide  block 5: 963-1289 props="bp6"
 .
 
 iter
@@ -117,12 +117,12 @@ prev
 prev
 prev
 ----
-block 5: 963-1289 props="bp6"
-block 4: 632-847 props="bp5"
-block 3: 412-624
-block 2: 195-244 props="bp3"
-block 1: 141-253 props="bp2"
-block 0: 24-48 props="bp1"
+separator: bonifide  block 5: 963-1289 props="bp6"
+separator: banana  block 4: 632-847 props="bp5"
+separator: bacitracin  block 3: 412-624
+separator: atone  block 2: 195-244 props="bp3"
+separator: applied  block 1: 141-253 props="bp2"
+separator: apple  block 0: 24-48 props="bp1"
 .
 
 # Test Next-ing an index iterator that's already exhausted in the forward
@@ -136,10 +136,10 @@ next
 next
 prev
 ----
-block 5: 963-1289 props="bp6"
+separator: bonifide  block 5: 963-1289 props="bp6"
 .
 .
-block 5: 963-1289 props="bp6"
+separator: bonifide  block 5: 963-1289 props="bp6"
 
 # Test Prev-ing an index iterator that's already exhausted in the reverse
 # direction. The sstable iterators do this in some circumstances. The Prev
@@ -152,10 +152,10 @@ prev
 prev
 next
 ----
-block 0: 24-48 props="bp1"
+separator: apple  block 0: 24-48 props="bp1"
 .
 .
-block 0: 24-48 props="bp1"
+separator: apple  block 0: 24-48 props="bp1"
 
 # Test Invalidate() and ensure that Valid() and all positioning methods return
 # false after it.
@@ -170,7 +170,7 @@ first
 last
 seek-ge a
 ----
-block 0: 24-48 props="bp1"
+separator: apple  block 0: 24-48 props="bp1"
 .
 Valid()=false
 .
@@ -330,11 +330,11 @@ next
 next
 next
 ----
-block 0: 3021-5073 props="bp1"
-block 1: 91251-93150
-block 2: 102422-122864
-block 3: 122864-131968 props="bp4"
-block 4: 293128-325232
+separator: cat  block 0: 3021-5073 props="bp1"
+separator: catastrophe  block 1: 91251-93150
+separator: catatonic  block 2: 102422-122864
+separator: cephalopod  block 3: 122864-131968 props="bp4"
+separator: coat  block 4: 293128-325232
 .
 
 iter
@@ -345,11 +345,11 @@ prev
 prev
 prev
 ----
-block 4: 293128-325232
-block 3: 122864-131968 props="bp4"
-block 2: 102422-122864
-block 1: 91251-93150
-block 0: 3021-5073 props="bp1"
+separator: coat  block 4: 293128-325232
+separator: cephalopod  block 3: 122864-131968 props="bp4"
+separator: catatonic  block 2: 102422-122864
+separator: catastrophe  block 1: 91251-93150
+separator: cat  block 0: 3021-5073 props="bp1"
 .
 
 # Rebuild the same index block but excluding the final row during Finish().
@@ -421,9 +421,9 @@ UnsafeSeparator(3) = "cephalopod"
 106-107: x 00                   # block padding byte
 
 build
-cat@20 3021   2052   bp1
-cat@10 91251   1899
-cat@5 91251   1899
+cat@20 3021  2052   bp1
+cat@10 91251 1899
+cat@5  91251 1899
 ----
 UnsafeSeparator(2) = "cat@5"
 # index block header
@@ -487,11 +487,151 @@ seek-ge cat@9
 seek-ge cat@5
 seek-ge cat@2
 ----
-block 0: 3021-5073 props="bp1"
-block 0: 3021-5073 props="bp1"
-block 0: 3021-5073 props="bp1"
-block 1: 91251-93150
-block 1: 91251-93150
-block 2: 91251-93150
-block 2: 91251-93150
+separator: cat@20  block 0: 3021-5073 props="bp1"
+separator: cat@20  block 0: 3021-5073 props="bp1"
+separator: cat@20  block 0: 3021-5073 props="bp1"
+separator: cat@10  block 1: 91251-93150
+separator: cat@10  block 1: 91251-93150
+separator: cat@5  block 2: 91251-93150
+separator: cat@5  block 2: 91251-93150
 .
+
+build
+aa       1   1    bp1
+ab@10    2   1    bp2
+abc      3   1    bp3
+ad@5     4   1    bp4
+----
+UnsafeSeparator(3) = "ad@5"
+# index block header
+# columnar block header
+00-01: x 01         # version 1
+01-03: x 0400       # 4 columns
+03-07: x 04000000   # 4 rows
+07-08: b 00000011   # col 0: bytes
+08-12: x 1b000000   # col 0: page start 27
+12-13: b 00000010   # col 1: uint
+13-17: x 2f000000   # col 1: page start 47
+17-18: b 00000010   # col 2: uint
+18-22: x 34000000   # col 2: page start 52
+22-23: b 00000011   # col 3: bytes
+23-27: x 39000000   # col 3: page start 57
+# data for column 0
+# rawbytes
+# offsets table
+27-28: x 01         # encoding: 1b
+28-29: x 00         # data[0] = 0 [33 overall]
+29-30: x 02         # data[1] = 2 [35 overall]
+30-31: x 07         # data[2] = 7 [40 overall]
+31-32: x 0a         # data[3] = 10 [43 overall]
+32-33: x 0e         # data[4] = 14 [47 overall]
+# data
+33-35: x 6161       # data[0]: aa
+35-40: x 6162403130 # data[1]: ab@10
+40-43: x 616263     # data[2]: abc
+43-47: x 61644035   # data[3]: ad@5
+# data for column 1
+47-48: x 01         # encoding: 1b
+48-49: x 01         # data[0] = 1
+49-50: x 02         # data[1] = 2
+50-51: x 03         # data[2] = 3
+51-52: x 04         # data[3] = 4
+# data for column 2
+52-53: x 01         # encoding: 1b
+53-54: x 01         # data[0] = 1
+54-55: x 01         # data[1] = 1
+55-56: x 01         # data[2] = 1
+56-57: x 01         # data[3] = 1
+# data for column 3
+# rawbytes
+# offsets table
+57-58: x 01         # encoding: 1b
+58-59: x 00         # data[0] = 0 [63 overall]
+59-60: x 03         # data[1] = 3 [66 overall]
+60-61: x 06         # data[2] = 6 [69 overall]
+61-62: x 09         # data[3] = 9 [72 overall]
+62-63: x 0c         # data[4] = 12 [75 overall]
+# data
+63-66: x 627031     # data[0]: bp1
+66-69: x 627032     # data[1]: bp2
+69-72: x 627033     # data[2]: bp3
+72-75: x 627034     # data[3]: bp4
+75-76: x 00         # block padding byte
+
+iter synthetic-prefix=foo-
+first
+next
+next
+----
+separator: foo-aa  block 0: 1-2 props="bp1"
+separator: foo-ab@10  block 1: 2-3 props="bp2"
+separator: foo-abc  block 2: 3-4 props="bp3"
+
+iter synthetic-prefix=foo-
+seek-ge aa
+seek-ge foa
+seek-ge foo-
+seek-ge foo-a
+seek-ge foo-aa
+seek-ge foo-ab
+seek-ge foo-ab@11
+seek-ge foo-ab@5
+seek-ge fop
+prev
+seek-ge z
+prev
+----
+separator: foo-aa  block 0: 1-2 props="bp1"
+separator: foo-aa  block 0: 1-2 props="bp1"
+separator: foo-aa  block 0: 1-2 props="bp1"
+separator: foo-aa  block 0: 1-2 props="bp1"
+separator: foo-aa  block 0: 1-2 props="bp1"
+separator: foo-ab@10  block 1: 2-3 props="bp2"
+separator: foo-ab@10  block 1: 2-3 props="bp2"
+separator: foo-abc  block 2: 3-4 props="bp3"
+.
+separator: foo-ad@5  block 3: 4-5 props="bp4"
+.
+separator: foo-ad@5  block 3: 4-5 props="bp4"
+
+iter synthetic-suffix=@20
+first
+next
+next
+----
+separator: aa@20  block 0: 1-2 props="bp1"
+separator: ab@20  block 1: 2-3 props="bp2"
+separator: abc@20  block 2: 3-4 props="bp3"
+
+iter synthetic-suffix=@20
+seek-ge aa
+seek-ge ab
+seek-ge ab@21
+seek-ge ab@20
+seek-ge ab@19
+----
+separator: aa@20  block 0: 1-2 props="bp1"
+separator: ab@20  block 1: 2-3 props="bp2"
+separator: ab@20  block 1: 2-3 props="bp2"
+separator: ab@20  block 1: 2-3 props="bp2"
+separator: abc@20  block 2: 3-4 props="bp3"
+
+iter synthetic-prefix=foo- synthetic-suffix=@20
+first
+next
+next
+----
+separator: foo-aa@20  block 0: 1-2 props="bp1"
+separator: foo-ab@20  block 1: 2-3 props="bp2"
+separator: foo-abc@20  block 2: 3-4 props="bp3"
+
+iter synthetic-prefix=foo- synthetic-suffix=@20
+seek-ge foo-aa
+seek-ge foo-ab@21
+seek-ge foo-ab@20
+seek-ge foo-ab@19
+----
+separator: foo-aa@20  block 0: 1-2 props="bp1"
+separator: foo-ab@20  block 1: 2-3 props="bp2"
+separator: foo-ab@20  block 1: 2-3 props="bp2"
+separator: foo-abc@20  block 2: 3-4 props="bp3"
