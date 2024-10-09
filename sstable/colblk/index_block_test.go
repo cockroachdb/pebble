@@ -52,8 +52,15 @@ func TestIndexBlock(t *testing.T) {
 			fmt.Fprint(&buf, r.DebugString())
 			return buf.String()
 		case "iter":
+			var syntheticPrefix, syntheticSuffix string
+			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
+			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
+			transforms := block.IterTransforms{
+				SyntheticPrefix: []byte(syntheticPrefix),
+				SyntheticSuffix: []byte(syntheticSuffix),
+			}
 			var it IndexIter
-			it.InitReader(testkeys.Comparer.Compare, &r)
+			it.InitReader(testkeys.Comparer.Compare, testkeys.Comparer.Split, &r, transforms)
 			for _, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
 				var valid bool
@@ -86,7 +93,8 @@ func TestIndexBlock(t *testing.T) {
 					if len(bhp.Props) > 0 {
 						bp = fmt.Sprintf(" props=%q", bhp.Props)
 					}
-					fmt.Fprintf(&buf, "block %d: %d-%d%s\n", it.row, bhp.Offset, bhp.Offset+bhp.Length, bp)
+					fmt.Fprintf(&buf, "separator: %s  block %d: %d-%d%s\n",
+						testkeys.Comparer.FormatKey(it.Separator()), it.row, bhp.Offset, bhp.Offset+bhp.Length, bp)
 				} else {
 					fmt.Fprintln(&buf, ".")
 				}

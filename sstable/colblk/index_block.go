@@ -5,6 +5,8 @@
 package colblk
 
 import (
+	"slices"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -177,25 +179,38 @@ func (r *IndexReader) Describe(f *binfmt.Formatter) {
 // IndexIter is an iterator over the block entries in an index block.
 type IndexIter struct {
 	compare base.Compare
+	split   base.Split
 	r       *IndexReader
 	n       int
 	row     int
 
+	syntheticPrefix block.SyntheticPrefix
+	syntheticSuffix block.SyntheticSuffix
+	noTransforms    bool
+
 	h           block.BufferHandle
 	allocReader IndexReader
+	keyBuf      []byte
 }
 
 // Assert that IndexIter satisfies the block.IndexBlockIterator interface.
 var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
 // InitReader initializes an index iterator from the provided reader.
-func (i *IndexIter) InitReader(compare base.Compare, r *IndexReader) {
+func (i *IndexIter) InitReader(
+	compare base.Compare, split base.Split, r *IndexReader, transforms block.IterTransforms,
+) {
 	*i = IndexIter{
-		compare:     compare,
-		r:           r,
-		n:           int(r.br.header.Rows),
-		h:           i.h,
-		allocReader: i.allocReader,
+		compare:         compare,
+		split:           split,
+		r:               r,
+		n:               int(r.br.header.Rows),
+		h:               i.h,
+		allocReader:     i.allocReader,
+		keyBuf:          i.keyBuf,
+		syntheticPrefix: transforms.SyntheticPrefix,
+		syntheticSuffix: transforms.SyntheticSuffix,
+		noTransforms:    !transforms.SyntheticPrefix.IsSet() && !transforms.SyntheticSuffix.IsSet(),
 	}
 }
 
@@ -205,9 +220,8 @@ func (i *IndexIter) Init(
 ) error {
 	i.h.Release()
 	i.h = block.BufferHandle{}
-	// TODO(jackson): Handle the transforms.
 	i.allocReader.Init(blk)
-	i.InitReader(cmp, &i.allocReader)
+	i.InitReader(cmp, split, &i.allocReader, transforms)
 	return nil
 }
 
@@ -215,8 +229,6 @@ func (i *IndexIter) Init(
 func (i *IndexIter) InitHandle(
 	cmp base.Compare, split base.Split, blk block.BufferHandle, transforms block.IterTransforms,
 ) error {
-	// TODO(jackson): Handle the transforms.
-
 	// TODO(jackson): If block.h != nil, use a *IndexReader that's allocated
 	// when the block is loaded into the block cache. On cache hits, this will
 	// reduce the amount of setup necessary to use an iterator. (It's relatively
@@ -225,7 +237,7 @@ func (i *IndexIter) InitHandle(
 	i.h.Release()
 	i.h = blk
 	i.allocReader.Init(i.h.Get())
-	i.InitReader(cmp, &i.allocReader)
+	i.InitReader(cmp, split, &i.allocReader, transforms)
 	return nil
 }
 
@@ -272,7 +284,22 @@ func (i *IndexIter) Handle() block.BufferHandle {
 // Separator returns the separator at the iterator's current position. The
 // iterator must be positioned at a valid row.
 func (i *IndexIter) Separator() []byte {
-	return i.r.separators.At(i.row)
+	key := i.r.separators.At(i.row)
+	if i.noTransforms {
+		return key
+	}
+	return i.applyTransforms(key)
+}
+
+func (i *IndexIter) applyTransforms(key []byte) []byte {
+	if i.syntheticSuffix.IsSet() {
+		key = key[:i.split(key)]
+	}
+	i.keyBuf = slices.Grow(i.keyBuf[:0], len(i.syntheticPrefix)+len(key)+len(i.syntheticSuffix))
+	i.keyBuf = append(i.keyBuf, i.syntheticPrefix...)
+	i.keyBuf = append(i.keyBuf, key...)
+	i.keyBuf = append(i.keyBuf, i.syntheticSuffix...)
+	return i.keyBuf
 }
 
 // BlockHandleWithProperties decodes the block handle with any encoded
@@ -300,7 +327,14 @@ func (i *IndexIter) SeekGE(key []byte) bool {
 
 		// TODO(jackson): Is Bytes.At or Bytes.Slice(Bytes.Offset(h),
 		// Bytes.Offset(h+1)) faster in this code?
-		c := i.compare(key, i.r.separators.At(h))
+		separator := i.r.separators.At(h)
+		if !i.noTransforms {
+			// TODO(radu): compare without materializing the transformed key.
+			separator = i.applyTransforms(separator)
+		}
+		// TODO(radu): experiment with splitting the separator prefix and suffix in
+		// separate columns and using bytes.Compare() on the prefix in the hot path.
+		c := i.compare(key, separator)
 		if c > 0 {
 			index = h + 1 // preserves f(index-1) == false
 		} else {
