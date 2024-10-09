@@ -741,7 +741,7 @@ const DataBlockDecoderSize = unsafe.Sizeof(DataBlockDecoder{})
 // A DataBlockDecoder holds state for interpreting a columnar data block. It may
 // be shared among multiple DataBlockIters.
 type DataBlockDecoder struct {
-	r BlockReader
+	r BlockDecoder
 	// trailers holds an array of the InternalKey trailers, encoding the key
 	// kind and sequence number of each key.
 	trailers UnsafeUints
@@ -770,8 +770,8 @@ type DataBlockDecoder struct {
 	maximumKeyLength uint32
 }
 
-// BlockReader returns a pointer to the underlying BlockReader.
-func (r *DataBlockDecoder) BlockReader() *BlockReader {
+// BlockDecoder returns a pointer to the underlying BlockDecoder.
+func (r *DataBlockDecoder) BlockReader() *BlockDecoder {
 	return &r.r
 }
 

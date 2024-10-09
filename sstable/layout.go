@@ -361,7 +361,7 @@ func (describingLazyValueHandler) GetLazyValueForPrefixAndValueHandle(
 func formatColblkKeyspanBlock(
 	w io.Writer, r *Reader, b NamedBlockHandle, data []byte, _ func(*base.InternalKey, []byte),
 ) error {
-	var reader colblk.KeyspanReader
+	var reader colblk.KeyspanDecoder
 	reader.Init(data)
 	f := binfmt.New(data)
 	f.SetLinePrefix("               ")

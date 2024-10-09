@@ -281,7 +281,7 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 // DecodeColumn decodes the col'th column of the provided reader's block as a
 // column of dataType using decodeFunc.
 func DecodeColumn[V any](
-	r *BlockReader, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
+	r *BlockDecoder, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
 ) V {
 	if uint16(col) >= r.header.Columns {
 		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
@@ -296,25 +296,25 @@ func DecodeColumn[V any](
 	return v
 }
 
-// A BlockReader holds metadata for accessing the columns of a columnar block.
-type BlockReader struct {
+// A BlockDecoder holds metadata for accessing the columns of a columnar block.
+type BlockDecoder struct {
 	data             []byte
 	header           Header
 	customHeaderSize uint32
 }
 
-// ReadBlock decodes the header of the provided columnar block and returns a new
-// BlockReader configured to read from the block. The caller must ensure that
-// the data is formatted as to the block layout specification.
-func ReadBlock(data []byte, customHeaderSize uint32) BlockReader {
-	r := BlockReader{}
+// DecodeBlock decodes the header of the provided columnar block and returns a
+// new BlockDecoder configured to read from the block. The caller must ensure
+// that the data is formatted as to the block layout specification.
+func DecodeBlock(data []byte, customHeaderSize uint32) BlockDecoder {
+	r := BlockDecoder{}
 	r.Init(data, customHeaderSize)
 	return r
 }
 
-// Init initializes a BlockReader with the data contained in the provided block.
-func (r *BlockReader) Init(data []byte, customHeaderSize uint32) {
-	*r = BlockReader{
+// Init initializes a BlockDecoder with the data contained in the provided block.
+func (d *BlockDecoder) Init(data []byte, customHeaderSize uint32) {
+	*d = BlockDecoder{
 		data:             data,
 		header:           DecodeHeader(data[customHeaderSize:]),
 		customHeaderSize: customHeaderSize,
@@ -322,89 +322,89 @@ func (r *BlockReader) Init(data []byte, customHeaderSize uint32) {
 }
 
 // Rows returns the number of rows in the block, as indicated by the block header.
-func (r *BlockReader) Rows() int {
-	return int(r.header.Rows)
+func (d *BlockDecoder) Rows() int {
+	return int(d.header.Rows)
 }
 
 // DataType returns the data type of the col'th column. Every column's data type
 // is encoded within the block header.
-func (r *BlockReader) DataType(col int) DataType {
-	if uint16(col) >= r.header.Columns {
-		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
+func (d *BlockDecoder) DataType(col int) DataType {
+	if uint16(col) >= d.header.Columns {
+		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, d.header.Columns))
 	}
-	return r.dataType(col)
+	return d.dataType(col)
 }
 
-func (r *BlockReader) dataType(col int) DataType {
-	return DataType(*(*uint8)(r.pointer(r.customHeaderSize + blockHeaderBaseSize + columnHeaderSize*uint32(col))))
+func (d *BlockDecoder) dataType(col int) DataType {
+	return DataType(*(*uint8)(d.pointer(d.customHeaderSize + blockHeaderBaseSize + columnHeaderSize*uint32(col))))
 }
 
 // Bitmap retrieves the col'th column as a bitmap. The column must be of type
 // DataTypeBool.
-func (r *BlockReader) Bitmap(col int) Bitmap {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeBool, DecodeBitmap)
+func (d *BlockDecoder) Bitmap(col int) Bitmap {
+	return DecodeColumn(d, col, int(d.header.Rows), DataTypeBool, DecodeBitmap)
 }
 
 // RawBytes retrieves the col'th column as a column of byte slices. The column
 // must be of type DataTypeBytes.
-func (r *BlockReader) RawBytes(col int) RawBytes {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeBytes, DecodeRawBytes)
+func (d *BlockDecoder) RawBytes(col int) RawBytes {
+	return DecodeColumn(d, col, int(d.header.Rows), DataTypeBytes, DecodeRawBytes)
 }
 
 // PrefixBytes retrieves the col'th column as a prefix-compressed byte slice column. The column
 // must be of type DataTypePrefixBytes.
-func (r *BlockReader) PrefixBytes(col int) PrefixBytes {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypePrefixBytes, DecodePrefixBytes)
+func (d *BlockDecoder) PrefixBytes(col int) PrefixBytes {
+	return DecodeColumn(d, col, int(d.header.Rows), DataTypePrefixBytes, DecodePrefixBytes)
 }
 
 // Uints retrieves the col'th column as a column of uints. The column must be
 // of type DataTypeUint.
-func (r *BlockReader) Uints(col int) UnsafeUints {
-	return DecodeColumn(r, col, int(r.header.Rows), DataTypeUint, DecodeUnsafeUints)
+func (d *BlockDecoder) Uints(col int) UnsafeUints {
+	return DecodeColumn(d, col, int(d.header.Rows), DataTypeUint, DecodeUnsafeUints)
 }
 
-func (r *BlockReader) pageStart(col int) uint32 {
-	if uint16(col) >= r.header.Columns {
+func (d *BlockDecoder) pageStart(col int) uint32 {
+	if uint16(col) >= d.header.Columns {
 		// -1 for the trailing version byte
-		return uint32(len(r.data) - 1)
+		return uint32(len(d.data) - 1)
 	}
 	return binary.LittleEndian.Uint32(
-		unsafe.Slice((*byte)(r.pointer(r.customHeaderSize+uint32(blockHeaderBaseSize+columnHeaderSize*col+1))), 4))
+		unsafe.Slice((*byte)(d.pointer(d.customHeaderSize+uint32(blockHeaderBaseSize+columnHeaderSize*col+1))), 4))
 }
 
-func (r *BlockReader) pointer(offset uint32) unsafe.Pointer {
-	return unsafe.Pointer(uintptr(unsafe.Pointer(&r.data[0])) + uintptr(offset))
+func (d *BlockDecoder) pointer(offset uint32) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(unsafe.Pointer(&d.data[0])) + uintptr(offset))
 }
 
 // FormattedString returns a formatted representation of the block's binary
 // data.
-func (r *BlockReader) FormattedString() string {
-	f := binfmt.New(r.data)
-	r.headerToBinFormatter(f)
-	for i := 0; i < int(r.header.Columns); i++ {
-		r.columnToBinFormatter(f, i, int(r.header.Rows))
+func (d *BlockDecoder) FormattedString() string {
+	f := binfmt.New(d.data)
+	d.headerToBinFormatter(f)
+	for i := 0; i < int(d.header.Columns); i++ {
+		d.columnToBinFormatter(f, i, int(d.header.Rows))
 	}
 	f.HexBytesln(1, "block trailer padding")
 	return f.String()
 }
 
-func (r *BlockReader) headerToBinFormatter(f *binfmt.Formatter) {
+func (d *BlockDecoder) headerToBinFormatter(f *binfmt.Formatter) {
 	f.CommentLine("columnar block header")
 	f.HexBytesln(1, "version %v", Version(f.PeekUint(1)))
-	f.HexBytesln(2, "%d columns", r.header.Columns)
-	f.HexBytesln(4, "%d rows", r.header.Rows)
-	for i := 0; i < int(r.header.Columns); i++ {
-		f.Byte("col %d: %s", i, r.DataType(i))
-		f.HexBytesln(4, "col %d: page start %d", i, r.pageStart(i))
+	f.HexBytesln(2, "%d columns", d.header.Columns)
+	f.HexBytesln(4, "%d rows", d.header.Rows)
+	for i := 0; i < int(d.header.Columns); i++ {
+		f.Byte("col %d: %s", i, d.DataType(i))
+		f.HexBytesln(4, "col %d: page start %d", i, d.pageStart(i))
 	}
 }
 
-func (r *BlockReader) formatColumn(
+func (d *BlockDecoder) formatColumn(
 	f *binfmt.Formatter, col int, fn func(*binfmt.Formatter, DataType),
 ) {
 	f.CommentLine("data for column %d", col)
-	dataType := r.DataType(col)
-	colSize := r.pageStart(col+1) - r.pageStart(col)
+	dataType := d.DataType(col)
+	colSize := d.pageStart(col+1) - d.pageStart(col)
 	endOff := f.Offset() + int(colSize)
 	fn(f, dataType)
 
@@ -419,8 +419,8 @@ func (r *BlockReader) formatColumn(
 	}
 }
 
-func (r *BlockReader) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
-	r.formatColumn(f, col, func(f *binfmt.Formatter, dataType DataType) {
+func (d *BlockDecoder) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
+	d.formatColumn(f, col, func(f *binfmt.Formatter, dataType DataType) {
 		switch dataType {
 		case DataTypeBool:
 			bitmapToBinFormatter(f, rows)

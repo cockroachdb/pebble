@@ -129,17 +129,18 @@ func (w *IndexBlockWriter) Finish(rows int) []byte {
 	return w.enc.finish()
 }
 
-// An IndexReader reads columnar index blocks.
-type IndexReader struct {
+// An IndexBlockDecoder reads columnar index blocks.
+type IndexBlockDecoder struct {
 	separators RawBytes
 	offsets    UnsafeUints
 	lengths    UnsafeUints // only used for second-level index blocks
 	blockProps RawBytes
-	br         BlockReader
+	br         BlockDecoder
 }
 
-// Init initializes the index reader with the given serialized index block.
-func (r *IndexReader) Init(data []byte) {
+// Init initializes the index block decoder with the given serialized index
+// block.
+func (r *IndexBlockDecoder) Init(data []byte) {
 	r.br.Init(data, indexBlockCustomHeaderSize)
 	r.separators = r.br.RawBytes(indexBlockColumnSeparator)
 	r.offsets = r.br.Uints(indexBlockColumnOffsets)
@@ -149,7 +150,7 @@ func (r *IndexReader) Init(data []byte) {
 
 // DebugString prints a human-readable explanation of the keyspan block's binary
 // representation.
-func (r *IndexReader) DebugString() string {
+func (r *IndexBlockDecoder) DebugString() string {
 	f := binfmt.New(r.br.data).LineWidth(20)
 	r.Describe(f)
 	return f.String()
@@ -157,7 +158,7 @@ func (r *IndexReader) DebugString() string {
 
 // Describe describes the binary format of the index block, assuming f.Offset()
 // is positioned at the beginning of the same index block described by r.
-func (r *IndexReader) Describe(f *binfmt.Formatter) {
+func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -177,25 +178,25 @@ func (r *IndexReader) Describe(f *binfmt.Formatter) {
 // IndexIter is an iterator over the block entries in an index block.
 type IndexIter struct {
 	compare base.Compare
-	r       *IndexReader
+	r       *IndexBlockDecoder
 	n       int
 	row     int
 
-	h           block.BufferHandle
-	allocReader IndexReader
+	h            block.BufferHandle
+	allocDecoder IndexBlockDecoder
 }
 
 // Assert that IndexIter satisfies the block.IndexBlockIterator interface.
 var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
-// InitReader initializes an index iterator from the provided reader.
-func (i *IndexIter) InitReader(compare base.Compare, r *IndexReader) {
+// InitWithDecoder initializes an index iterator from the provided decoder.
+func (i *IndexIter) InitWithDecoder(compare base.Compare, r *IndexBlockDecoder) {
 	*i = IndexIter{
-		compare:     compare,
-		r:           r,
-		n:           int(r.br.header.Rows),
-		h:           i.h,
-		allocReader: i.allocReader,
+		compare:      compare,
+		r:            r,
+		n:            int(r.br.header.Rows),
+		h:            i.h,
+		allocDecoder: i.allocDecoder,
 	}
 }
 
@@ -206,8 +207,8 @@ func (i *IndexIter) Init(
 	i.h.Release()
 	i.h = block.BufferHandle{}
 	// TODO(jackson): Handle the transforms.
-	i.allocReader.Init(blk)
-	i.InitReader(cmp, &i.allocReader)
+	i.allocDecoder.Init(blk)
+	i.InitWithDecoder(cmp, &i.allocDecoder)
 	return nil
 }
 
@@ -217,15 +218,15 @@ func (i *IndexIter) InitHandle(
 ) error {
 	// TODO(jackson): Handle the transforms.
 
-	// TODO(jackson): If block.h != nil, use a *IndexReader that's allocated
+	// TODO(jackson): If block.h != nil, use a *IndexBlockDecoder that's allocated
 	// when the block is loaded into the block cache. On cache hits, this will
 	// reduce the amount of setup necessary to use an iterator. (It's relatively
 	// common to open an iterator and perform just a few seeks, so avoiding the
 	// overhead can be material.)
 	i.h.Release()
 	i.h = blk
-	i.allocReader.Init(i.h.Get())
-	i.InitReader(cmp, &i.allocReader)
+	i.allocDecoder.Init(i.h.Get())
+	i.InitWithDecoder(cmp, &i.allocDecoder)
 	return nil
 }
 
