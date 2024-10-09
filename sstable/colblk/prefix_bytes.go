@@ -450,7 +450,7 @@ func (b *PrefixBytes) BundleCount() int {
 	return b.bundleCount(b.rows)
 }
 
-// Search searchs for the first key in the PrefixBytes that is greater than or
+// Search searches for the first key in the PrefixBytes that is greater than or
 // equal to k, returning the index of the key and whether an equal key was
 // found. If multiple keys are equal, the index of the first such key is
 // returned. If all keys are < k, Search returns Rows() for the row index.
@@ -458,11 +458,12 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 	// First compare to the block-level shared prefix.
 	n := min(len(k), b.sharedPrefixLen)
 	c := bytes.Compare(k[:n], unsafe.Slice((*byte)(b.rawBytes.data), b.sharedPrefixLen))
-	switch {
-	case c < 0 || (c == 0 && n < b.sharedPrefixLen):
-		// Search key is less than any prefix in the block.
-		return 0, false
-	case c > 0:
+	// Note that c cannot be 0 when n < b.sharedPrefixLen.
+	if c != 0 {
+		if c < 0 {
+			// Search key is less than any prefix in the block.
+			return 0, false
+		}
 		// Search key is greater than any key in the block.
 		return b.rows, false
 	}
