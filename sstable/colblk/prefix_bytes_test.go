@@ -148,7 +148,7 @@ func TestPrefixBytesRandomized(t *testing.T) {
 
 		bundleShift := randInt(1, 4)
 		// Reset rather than Init-ing when possible to exercise the Reset code path.
-		if pbb.bundleShift == bundleShift {
+		if pbb.bundleShift == uint32(bundleShift) {
 			pbb.Reset()
 		} else {
 			pbb.Init(1 << bundleShift)

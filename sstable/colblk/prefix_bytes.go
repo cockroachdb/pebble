@@ -211,9 +211,9 @@ func DecodePrefixBytes(
 	// The first byte of a PrefixBytes-encoded column is the bundle size
 	// expressed as log2 of the bundle size (the bundle size must always be a
 	// power of two)
-	bundleShift := int(*((*uint8)(unsafe.Pointer(&b[offset]))))
+	bundleShift := uint32(*((*uint8)(unsafe.Pointer(&b[offset]))))
 	calc := makeBundleCalc(bundleShift)
-	nBundles := calc.bundleCount(count)
+	nBundles := int(calc.bundleCount(count))
 
 	rb, endOffset := DecodeRawBytes(b, offset+1, count+nBundles)
 	pb := PrefixBytes{
@@ -689,7 +689,7 @@ func (b *PrefixBytesBuilder) Init(bundleSize int) {
 		panic(errors.AssertionFailedf("prefixbytes bundle size %d is not a power of 2", bundleSize))
 	}
 	*b = PrefixBytesBuilder{
-		bundleCalc: makeBundleCalc(bits.TrailingZeros32(uint32(bundleSize))),
+		bundleCalc: makeBundleCalc(uint32(bits.TrailingZeros32(uint32(bundleSize)))),
 		data:       b.data[:0],
 		bundleSize: bundleSize,
 		offsets:    b.offsets,
@@ -1098,13 +1098,13 @@ func (b *PrefixBytesBuilder) WriteDebug(w io.Writer, rows int) {
 // bundleCalc provides facilities for computing indexes and offsets within a
 // PrefixBytes structure.
 type bundleCalc struct {
-	bundleShift int // log2(bundleSize)
+	bundleShift uint32 // log2(bundleSize)
 	// bundleMask is a mask with 1s across the high bits that indicate the
 	// bundle and 0s for the bits that indicate the position within the bundle.
-	bundleMask int
+	bundleMask uint32
 }
 
-func makeBundleCalc(bundleShift int) bundleCalc {
+func makeBundleCalc(bundleShift uint32) bundleCalc {
 	return bundleCalc{
 		bundleShift: bundleShift,
 		bundleMask:  ^((1 << bundleShift) - 1),
@@ -1127,7 +1127,7 @@ func (b bundleCalc) rowSuffixIndex(row int) int {
 func (b bundleCalc) bundleOffsetIndexForRow(row int) int {
 	// AND-ing the row with the bundle mask removes the least significant bits
 	// of the row, which encode the row's index within the bundle.
-	return (row >> b.bundleShift) + (row & b.bundleMask)
+	return int((uint32(row) >> b.bundleShift) + (uint32(row) & b.bundleMask))
 }
 
 // offsetIndexByBundleIndex computes the index of the offset encoding the start
