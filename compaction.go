@@ -2562,15 +2562,6 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 			panic("pebble: delete-only compaction scheduled with hints that did not delete or excise a file")
 		}
 	}
-	// Remove any files that were added and deleted in the same versionEdit.
-	ve.NewFiles = slices.DeleteFunc(ve.NewFiles, func(e manifest.NewFileEntry) bool {
-		deletedFileEntry := manifest.DeletedFileEntry{Level: cl.level, FileNum: e.Meta.FileNum}
-		if _, deleted := ve.DeletedFiles[deletedFileEntry]; deleted {
-			delete(ve.DeletedFiles, deletedFileEntry)
-			return true
-		}
-		return false
-	})
 	return nil
 }
 
@@ -2633,6 +2624,27 @@ func (d *DB) runDeleteOnlyCompaction(
 		}
 		c.metrics[cl.level] = levelMetrics
 	}
+	// Remove any files that were added and deleted in the same versionEdit.
+	ve.NewFiles = slices.DeleteFunc(ve.NewFiles, func(e manifest.NewFileEntry) bool {
+		deletedFileEntry := manifest.DeletedFileEntry{Level: e.Level, FileNum: e.Meta.FileNum}
+		if _, deleted := ve.DeletedFiles[deletedFileEntry]; deleted {
+			delete(ve.DeletedFiles, deletedFileEntry)
+			return true
+		}
+		return false
+	})
+	// Remove any entries from CreatedBackingTables that are not used in any
+	// NewFiles.
+	usedBackingFiles := make(map[base.DiskFileNum]struct{})
+	for _, e := range ve.NewFiles {
+		if e.Meta.Virtual {
+			usedBackingFiles[e.Meta.FileBacking.DiskFileNum] = struct{}{}
+		}
+	}
+	ve.CreatedBackingTables = slices.DeleteFunc(ve.CreatedBackingTables, func(b *fileBacking) bool {
+		_, used := usedBackingFiles[b.DiskFileNum]
+		return !used
+	})
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	d.calculateDiskAvailableBytes()
@@ -2683,6 +2695,15 @@ func (d *DB) runCompaction(
 	}
 	switch c.kind {
 	case compactionKindDeleteOnly:
+		// Before dropping the db mutex, grab a ref to the current version. This
+		// prevents any concurrent excises from deleting files that this compaction
+		// needs to read/maintain a reference to.
+		//
+		// Note that delete-only compactions can call excise(), which needs to be able
+		// to read these files.
+		vers := d.mu.versions.currentVersion()
+		vers.Ref()
+		defer vers.UnrefLocked()
 		// Release the d.mu lock while doing I/O.
 		// Note the unusual order: Unlock and then Lock.
 		snapshots := d.mu.snapshots.toSlice()
