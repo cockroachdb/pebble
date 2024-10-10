@@ -68,7 +68,7 @@ d@7: (., [d-"d\x00") @5=foo UPDATED)
 # Test a LSM with range keys fragmented within a prefix.
 # This is a regression test for cockroachdb/cockroach#86102.
 
-reset target-file-size=1
+reset target-file-sizes=(1)
 ----
 
 batch commit

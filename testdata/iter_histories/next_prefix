@@ -84,7 +84,7 @@ p@10: (p@10, .)
 p@1: (p@1, .)
 q@100: (q@100, .)
 
-reset target-file-size=1
+reset target-file-sizes=(1)
 ----
 
 populate keylen=1 timestamps=(1, 10, 100)

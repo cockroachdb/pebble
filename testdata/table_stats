@@ -209,7 +209,7 @@ num-entries: 4
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 68
+range-deletions-bytes-estimate: 78
 
 # Hints that partially overlap tables in lower levels only count blocks that are
 # contained within the hint.
@@ -247,7 +247,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 33
+range-deletions-bytes-estimate: 52
 
 # Table 000005 deletes the second block in table 000006 (containing 'd') and the
 # first block in table 000007 (containing 'e').
@@ -258,7 +258,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 66
+range-deletions-bytes-estimate: 78
 
 # Test the interaction between point and range key deletions.
 
@@ -491,7 +491,7 @@ range-deletions-bytes-estimate: 26
 
 # Test point tombstone compensation that uses DELSIZED keys.
 
-define format-major-version=15
+define format-major-version=15 block-size=32768
 L6
   bar.SET.0:<rand-bytes=10>
   bax.SET.0:<rand-bytes=10>
