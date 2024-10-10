@@ -178,8 +178,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(
-			context.Background(), b.Handle, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
+		h, err := r.readBlockInternal(context.Background(), noEnv, noReadHandle, b.Handle)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
