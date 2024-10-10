@@ -44,8 +44,6 @@ const (
 	loadBlockIrrelevant
 )
 
-type blockTransform func([]byte) ([]byte, error)
-
 // Reader is a table reader.
 type Reader struct {
 	readable objstorage.Readable
@@ -328,7 +326,7 @@ func (r *Reader) readIndex(
 	iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.indexBH, nil, readHandle, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.indexBH, readHandle, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readFilter(
@@ -338,21 +336,21 @@ func (r *Reader) readFilter(
 	iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
-	return r.readBlock(ctx, r.filterBH, nil /* transform */, readHandle, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.filterBH, readHandle, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeDel(
 	ctx context.Context, stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.rangeDelBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.rangeDelBH, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
 
 func (r *Reader) readRangeKey(
 	ctx context.Context, stats *base.InternalIteratorStats, iterStats *iterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
+	return r.readBlock(ctx, r.rangeKeyBH, nil /* readHandle */, stats, iterStats, nil /* buffer pool */)
 }
 
 func checkChecksum(
@@ -393,7 +391,6 @@ var deterministicReadBlockDurationForTesting = false
 func (r *Reader) readBlock(
 	ctx context.Context,
 	bh block.Handle,
-	transform blockTransform,
 	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
 	iterStats *iterStatsAccumulator,
@@ -481,21 +478,6 @@ func (r *Reader) readBlock(
 		compressed.Release()
 	}
 
-	if transform != nil {
-		// Transforming blocks is very rare, so the extra copy of the
-		// transformed data is not problematic.
-		tmpTransformed, err := transform(decompressed.Get())
-		if err != nil {
-			decompressed.Release()
-			return block.BufferHandle{}, err
-		}
-
-		transformed := block.Alloc(len(tmpTransformed), bufferPool)
-		copy(transformed.Get(), tmpTransformed)
-		decompressed.Release()
-		decompressed = transformed
-	}
-
 	if iterStats != nil {
 		iterStats.reportStats(bh.Length, 0, readDuration)
 	}
@@ -523,7 +505,7 @@ func (r *Reader) readMetaindex(
 	defer r.metaBufferPool.Release()
 
 	b, err := r.readBlock(
-		ctx, metaindexBH, nil /* transform */, readHandle, nil, /* stats */
+		ctx, metaindexBH, readHandle, nil, /* stats */
 		nil /* iterStats */, &r.metaBufferPool)
 	if err != nil {
 		return err
@@ -544,7 +526,7 @@ func (r *Reader) readMetaindex(
 
 	if bh, ok := meta[metaPropertiesName]; ok {
 		b, err = r.readBlock(
-			ctx, bh, nil /* transform */, readHandle, nil, /* stats */
+			ctx, bh, readHandle, nil, /* stats */
 			nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			return err
@@ -645,7 +627,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			l.Index = append(l.Index, indexBH.Handle)
 
 			subIndex, err := r.readBlock(context.Background(), indexBH.Handle,
-				nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
+				nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 			if err != nil {
 				return nil, err
 			}
@@ -673,7 +655,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	}
 	if r.valueBIH.h.Length != 0 {
-		vbiH, err := r.readBlock(context.Background(), r.valueBIH.h, nil, nil, nil, nil, nil /* buffer pool */)
+		vbiH, err := r.readBlock(context.Background(), r.valueBIH.h, nil, nil, nil, nil /* buffer pool */)
 		if err != nil {
 			return nil, err
 		}
@@ -726,7 +708,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		}
 
 		// Read the block, which validates the checksum.
-		h, err := r.readBlock(context.Background(), bh, nil, rh, nil, nil /* iterStats */, nil /* buffer pool */)
+		h, err := r.readBlock(context.Background(), bh, rh, nil, nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			return err
 		}
@@ -800,7 +782,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 			return 0, errCorruptIndexEntry(err)
 		}
 		startIdxBlock, err := r.readBlock(context.Background(), startIndexBH.Handle,
-			nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
+			nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 		if err != nil {
 			return 0, err
 		}
@@ -817,7 +799,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 				return 0, errCorruptIndexEntry(err)
 			}
 			endIdxBlock, err := r.readBlock(context.Background(),
-				endIndexBH.Handle, nil /* transform */, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
+				endIndexBH.Handle, nil /* readHandle */, nil /* stats */, nil /* iterStats */, nil /* buffer pool */)
 			if err != nil {
 				return 0, err
 			}
