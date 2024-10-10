@@ -107,25 +107,25 @@ func describeSSTableBinary(f *binfmt.Formatter, schema colblk.KeySchema) error {
 			if block.CompressionIndicator(f.Data()[bh.Offset+bh.Length]) == block.NoCompressionIndicator {
 				switch bh.Name {
 				case "top-index", "index":
-					var r colblk.IndexReader
+					var d colblk.IndexBlockDecoder
 					// NB: The byte slice used to Init must be aligned (like an
 					// allocated block would be in practice).
-					r.Init(aligned.Copy(f.Data()[bh.Offset : bh.Offset+bh.Length]))
-					r.Describe(f)
+					d.Init(aligned.Copy(f.Data()[bh.Offset : bh.Offset+bh.Length]))
+					d.Describe(f)
 					f.HexBytesln(block.TrailerLen, "%s block trailer", bh.Name)
 					continue
 				case "data":
-					var r colblk.DataBlockDecoder
+					var d colblk.DataBlockDecoder
 					// NB: The byte slice used to Init must be aligned (like an
 					// allocated block would be in practice).
-					r.Init(schema, aligned.Copy(f.Data()[bh.Offset:bh.Offset+bh.Length]))
-					r.Describe(f)
+					d.Init(schema, aligned.Copy(f.Data()[bh.Offset:bh.Offset+bh.Length]))
+					d.Describe(f)
 					f.HexBytesln(block.TrailerLen, "%s block trailer", bh.Name)
 					continue
 				case "range-del", "range-key":
-					var r colblk.KeyspanReader
-					r.Init(aligned.Copy(f.Data()[bh.Offset : bh.Offset+bh.Length]))
-					r.Describe(f)
+					var d colblk.KeyspanDecoder
+					d.Init(aligned.Copy(f.Data()[bh.Offset : bh.Offset+bh.Length]))
+					d.Describe(f)
 					f.HexBytesln(block.TrailerLen, "%s block trailer", bh.Name)
 					continue
 				case "properties":

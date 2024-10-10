@@ -155,8 +155,8 @@ func TestBlockWriter(t *testing.T) {
 			return ""
 		case "finish":
 			block := FinishBlock(int(rows), colWriters)
-			r := ReadBlock(block, 0)
-			return r.FormattedString()
+			d := DecodeBlock(block, 0)
+			return d.FormattedString()
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
@@ -274,16 +274,16 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []testColumn
 
 	t.Run(sb.String(), func(t *testing.T) {
 		block, data := randBlock(rng, rows, schema)
-		r := ReadBlock(block, 0)
-		if uint32(r.header.Columns) != uint32(len(schema)) {
-			t.Fatalf("expected %d columns, but found %d\n", len(schema), r.header.Columns)
+		d := DecodeBlock(block, 0)
+		if uint32(d.header.Columns) != uint32(len(schema)) {
+			t.Fatalf("expected %d columns, but found %d\n", len(schema), d.header.Columns)
 		}
-		if r.header.Rows != uint32(rows) {
-			t.Fatalf("expected %d rows, but found %d\n", rows, r.header.Rows)
+		if d.header.Rows != uint32(rows) {
+			t.Fatalf("expected %d rows, but found %d\n", rows, d.header.Rows)
 		}
 		for col := range schema {
-			if schema[col].DataType != r.DataType(col) {
-				t.Fatalf("schema mismatch: %s != %s\n", schema[col], r.DataType(col))
+			if schema[col].DataType != d.DataType(col) {
+				t.Fatalf("schema mismatch: %s != %s\n", schema[col], d.DataType(col))
 			}
 		}
 
@@ -292,17 +292,17 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []testColumn
 			var got interface{}
 			switch spec.DataType {
 			case DataTypeBool:
-				got = Clone(r.Bitmap(col), rows)
+				got = Clone(d.Bitmap(col), rows)
 			case DataTypeUint:
-				got = Clone(r.Uints(col), rows)
+				got = Clone(d.Uints(col), rows)
 			case DataTypeBytes:
-				got = Clone(r.RawBytes(col), rows)
+				got = Clone(d.RawBytes(col), rows)
 			case DataTypePrefixBytes:
-				got = Clone(r.PrefixBytes(col), rows)
+				got = Clone(d.PrefixBytes(col), rows)
 			}
 			if !reflect.DeepEqual(data[col], got) {
 				t.Fatalf("%d: %s: expected\n%+v\ngot\n%+v\n% x",
-					col, schema[col], data[col], got, r.data)
+					col, schema[col], data[col], got, d.data)
 			}
 		}
 	})

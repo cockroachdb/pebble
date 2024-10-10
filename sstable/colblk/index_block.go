@@ -131,17 +131,18 @@ func (w *IndexBlockWriter) Finish(rows int) []byte {
 	return w.enc.finish()
 }
 
-// An IndexReader reads columnar index blocks.
-type IndexReader struct {
+// An IndexBlockDecoder reads columnar index blocks.
+type IndexBlockDecoder struct {
 	separators RawBytes
 	offsets    UnsafeUints
 	lengths    UnsafeUints // only used for second-level index blocks
 	blockProps RawBytes
-	br         BlockReader
+	br         BlockDecoder
 }
 
-// Init initializes the index reader with the given serialized index block.
-func (r *IndexReader) Init(data []byte) {
+// Init initializes the index block decoder with the given serialized index
+// block.
+func (r *IndexBlockDecoder) Init(data []byte) {
 	r.br.Init(data, indexBlockCustomHeaderSize)
 	r.separators = r.br.RawBytes(indexBlockColumnSeparator)
 	r.offsets = r.br.Uints(indexBlockColumnOffsets)
@@ -151,7 +152,7 @@ func (r *IndexReader) Init(data []byte) {
 
 // DebugString prints a human-readable explanation of the keyspan block's binary
 // representation.
-func (r *IndexReader) DebugString() string {
+func (r *IndexBlockDecoder) DebugString() string {
 	f := binfmt.New(r.br.data).LineWidth(20)
 	r.Describe(f)
 	return f.String()
@@ -159,7 +160,7 @@ func (r *IndexReader) DebugString() string {
 
 // Describe describes the binary format of the index block, assuming f.Offset()
 // is positioned at the beginning of the same index block described by r.
-func (r *IndexReader) Describe(f *binfmt.Formatter) {
+func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -180,7 +181,7 @@ func (r *IndexReader) Describe(f *binfmt.Formatter) {
 type IndexIter struct {
 	compare base.Compare
 	split   base.Split
-	r       *IndexReader
+	d       *IndexBlockDecoder
 	n       int
 	row     int
 
@@ -188,25 +189,25 @@ type IndexIter struct {
 	syntheticSuffix block.SyntheticSuffix
 	noTransforms    bool
 
-	h           block.BufferHandle
-	allocReader IndexReader
-	keyBuf      []byte
+	h            block.BufferHandle
+	allocDecoder IndexBlockDecoder
+	keyBuf       []byte
 }
 
 // Assert that IndexIter satisfies the block.IndexBlockIterator interface.
 var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
-// InitReader initializes an index iterator from the provided reader.
-func (i *IndexIter) InitReader(
-	compare base.Compare, split base.Split, r *IndexReader, transforms block.IterTransforms,
+// InitWithDecoder initializes an index iterator from the provided reader.
+func (i *IndexIter) InitWithDecoder(
+	compare base.Compare, split base.Split, d *IndexBlockDecoder, transforms block.IterTransforms,
 ) {
 	*i = IndexIter{
 		compare:         compare,
 		split:           split,
-		r:               r,
-		n:               int(r.br.header.Rows),
+		d:               d,
+		n:               int(d.br.header.Rows),
 		h:               i.h,
-		allocReader:     i.allocReader,
+		allocDecoder:    i.allocDecoder,
 		keyBuf:          i.keyBuf,
 		syntheticPrefix: transforms.SyntheticPrefix,
 		syntheticSuffix: transforms.SyntheticSuffix,
@@ -220,8 +221,8 @@ func (i *IndexIter) Init(
 ) error {
 	i.h.Release()
 	i.h = block.BufferHandle{}
-	i.allocReader.Init(blk)
-	i.InitReader(cmp, split, &i.allocReader, transforms)
+	i.allocDecoder.Init(blk)
+	i.InitWithDecoder(cmp, split, &i.allocDecoder, transforms)
 	return nil
 }
 
@@ -229,15 +230,15 @@ func (i *IndexIter) Init(
 func (i *IndexIter) InitHandle(
 	cmp base.Compare, split base.Split, blk block.BufferHandle, transforms block.IterTransforms,
 ) error {
-	// TODO(jackson): If block.h != nil, use a *IndexReader that's allocated
+	// TODO(jackson): If block.h != nil, use a *IndexBlockDecoder that's allocated
 	// when the block is loaded into the block cache. On cache hits, this will
 	// reduce the amount of setup necessary to use an iterator. (It's relatively
 	// common to open an iterator and perform just a few seeks, so avoiding the
 	// overhead can be material.)
 	i.h.Release()
 	i.h = blk
-	i.allocReader.Init(i.h.Get())
-	i.InitReader(cmp, split, &i.allocReader, transforms)
+	i.allocDecoder.Init(i.h.Get())
+	i.InitWithDecoder(cmp, split, &i.allocDecoder, transforms)
 	return nil
 }
 
@@ -265,14 +266,14 @@ func (i *IndexIter) Valid() bool {
 // Invalidate invalidates the block iterator, removing references to the block
 // it was initialized with.
 func (i *IndexIter) Invalidate() {
-	i.r = nil
+	i.d = nil
 	i.n = 0
 }
 
 // IsDataInvalidated returns true when the iterator has been invalidated
 // using an Invalidate call. NB: this is different from Valid.
 func (i *IndexIter) IsDataInvalidated() bool {
-	return i.r == nil
+	return i.d == nil
 }
 
 // Handle returns the underlying block buffer handle, if the iterator was
@@ -284,7 +285,7 @@ func (i *IndexIter) Handle() block.BufferHandle {
 // Separator returns the separator at the iterator's current position. The
 // iterator must be positioned at a valid row.
 func (i *IndexIter) Separator() []byte {
-	key := i.r.separators.At(i.row)
+	key := i.d.separators.At(i.row)
 	if i.noTransforms {
 		return key
 	}
@@ -307,10 +308,10 @@ func (i *IndexIter) applyTransforms(key []byte) []byte {
 func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, error) {
 	return block.HandleWithProperties{
 		Handle: block.Handle{
-			Offset: i.r.offsets.At(i.row),
-			Length: i.r.lengths.At(i.row),
+			Offset: i.d.offsets.At(i.row),
+			Length: i.d.lengths.At(i.row),
 		},
-		Props: i.r.blockProps.At(i.row),
+		Props: i.d.blockProps.At(i.row),
 	}, nil
 }
 
@@ -327,7 +328,7 @@ func (i *IndexIter) SeekGE(key []byte) bool {
 
 		// TODO(jackson): Is Bytes.At or Bytes.Slice(Bytes.Offset(h),
 		// Bytes.Offset(h+1)) faster in this code?
-		separator := i.r.separators.At(h)
+		separator := i.d.separators.At(h)
 		if !i.noTransforms {
 			// TODO(radu): compare without materializing the transformed key.
 			separator = i.applyTransforms(separator)
