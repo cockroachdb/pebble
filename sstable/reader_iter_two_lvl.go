@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -38,11 +37,11 @@ type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterat
 
 var _ Iterator = (*twoLevelIteratorRowBlocks)(nil)
 
-// loadIndex loads the index block at the current top level index position and
-// leaves i.index unpositioned. If unsuccessful, it gets i.secondLevel.err to any error
-// encountered, which may be nil if we have simply exhausted the entire table.
-// This is used for two level indexes.
-func (i *twoLevelIterator[I, PI, D, PD]) loadIndex(dir int8) loadBlockResult {
+// loadSecondLevelIndexBlock loads the index block at the current top level
+// index position and leaves i.index unpositioned. If unsuccessful, it gets
+// i.secondLevel.err to any error encountered, which may be nil if we have
+// simply exhausted the entire table. This is used for two level indexes.
+func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loadBlockResult {
 	// Ensure the index data block iterators are invalidated even if loading of
 	// the index fails.
 	PD(&i.secondLevel.data).Invalidate()
@@ -69,9 +68,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadIndex(dir int8) loadBlockResult {
 		}
 		// blockIntersects
 	}
-	ctx := objiotracing.WithBlockType(i.secondLevel.ctx, objiotracing.MetadataBlock)
-	indexBlock, err := i.secondLevel.reader.readBlock(
-		ctx, bhp.Handle, i.secondLevel.indexFilterRH, i.secondLevel.stats, &i.secondLevel.iterStats, i.secondLevel.bufferPool)
+	indexBlock, err := i.secondLevel.reader.readIndexBlock(i.secondLevel.ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH, bhp.Handle)
 	if err == nil {
 		err = PI(&i.secondLevel.index).InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, indexBlock, i.secondLevel.transforms)
 	}
@@ -198,7 +195,7 @@ func newColumnBlockTwoLevelIterator(
 	}
 	i.secondLevel.data.InitOnce(r.keySchema, r.Compare, r.Split, getLazyValuer)
 	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
-	topLevelIndexH, err := r.readIndex(ctx, i.secondLevel.indexFilterRH, stats, &i.secondLevel.iterStats)
+	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH)
 	if err == nil {
 		err = i.topLevelIndex.InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, topLevelIndexH, transforms)
 	}
@@ -265,7 +262,7 @@ func newRowBlockTwoLevelIterator(
 
 	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
 
-	topLevelIndexH, err := r.readIndex(ctx, i.secondLevel.indexFilterRH, stats, &i.secondLevel.iterStats)
+	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH)
 	if err == nil {
 		err = i.topLevelIndex.InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, topLevelIndexH, transforms)
 	}
@@ -341,7 +338,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 			return nil
 		}
 
-		result := i.loadIndex(+1)
+		result := i.loadSecondLevelIndexBlock(+1)
 		if result == loadBlockFailed {
 			i.secondLevel.boundsCmp = 0
 			return nil
@@ -509,7 +506,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 			return nil
 		}
 
-		result := i.loadIndex(+1)
+		result := i.loadSecondLevelIndexBlock(+1)
 		if result == loadBlockFailed {
 			i.secondLevel.boundsCmp = 0
 			return nil
@@ -633,7 +630,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 	if !topLevelOk {
 		return i.skipBackward()
 	}
-	result := i.loadIndex(-1)
+	result := i.loadSecondLevelIndexBlock(-1)
 	if result == loadBlockFailed {
 		i.secondLevel.boundsCmp = 0
 		return nil
@@ -688,7 +685,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 			return nil
 		}
 
-		result = i.loadIndex(-1)
+		result = i.loadSecondLevelIndexBlock(-1)
 		if result == loadBlockFailed {
 			return nil
 		}
@@ -702,7 +699,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 		}
 		// Else loadBlockIrrelevant, so fall through.
 	} else {
-		result = i.loadIndex(-1)
+		result = i.loadSecondLevelIndexBlock(-1)
 		if result == loadBlockFailed {
 			return nil
 		}
@@ -749,7 +746,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	if !PI(&i.topLevelIndex).First() {
 		return nil
 	}
-	result := i.loadIndex(+1)
+	result := i.loadSecondLevelIndexBlock(+1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -799,7 +796,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
 	if !PI(&i.topLevelIndex).Last() {
 		return nil
 	}
-	result := i.loadIndex(-1)
+	result := i.loadSecondLevelIndexBlock(-1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -868,7 +865,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Intern
 		PI(&i.secondLevel.index).Invalidate()
 		return nil
 	}
-	result := i.loadIndex(+1)
+	result := i.loadSecondLevelIndexBlock(+1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -949,7 +946,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 			PI(&i.secondLevel.index).Invalidate()
 			return nil
 		}
-		result := i.loadIndex(+1)
+		result := i.loadSecondLevelIndexBlock(+1)
 		if result == loadBlockFailed {
 			return nil
 		}
@@ -995,7 +992,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			PI(&i.secondLevel.index).Invalidate()
 			return nil
 		}
-		result := i.loadIndex(-1)
+		result := i.loadSecondLevelIndexBlock(-1)
 		if result == loadBlockFailed {
 			return nil
 		}
