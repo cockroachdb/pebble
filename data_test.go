@@ -13,6 +13,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -791,20 +792,14 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 // the caller to have set an appropriate FS already.
 func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
+	if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
+		return nil, err
+	}
 
 	var snapshots []base.SeqNum
 	var levelMaxBytes map[int]int64
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
-		case "target-file-sizes":
-			opts.Levels = make([]LevelOptions, len(arg.Vals))
-			for i := range arg.Vals {
-				size, err := strconv.ParseInt(arg.Vals[i], 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				opts.Levels[i].TargetFileSize = size
-			}
 		case "snapshots":
 			snapshots = make([]base.SeqNum, len(arg.Vals))
 			for i := range arg.Vals {
@@ -813,12 +808,6 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 					return nil, errors.New("Snapshots must be in ascending order")
 				}
 			}
-		case "lbase-max-bytes":
-			lbaseMaxBytes, err := strconv.ParseInt(arg.Vals[0], 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			opts.LBaseMaxBytes = lbaseMaxBytes
 		case "level-max-bytes":
 			levelMaxBytes = map[int]int64{}
 			for i := range arg.Vals {
@@ -834,75 +823,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				}
 				levelMaxBytes[level] = size
 			}
-		case "memtable-size":
-			memTableSize, err := strconv.ParseUint(arg.Vals[0], 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			opts.MemTableSize = memTableSize
-		case "auto-compactions":
-			switch arg.Vals[0] {
-			case "off":
-				opts.DisableAutomaticCompactions = true
-			case "on":
-				opts.DisableAutomaticCompactions = false
-			default:
-				return nil, errors.Errorf("Unrecognized %q %q arg value: %q", td.Cmd, arg.Key, arg.Vals[0])
-			}
-		case "enable-table-stats":
-			enable, err := strconv.ParseBool(arg.Vals[0])
-			if err != nil {
-				return nil, errors.Errorf("%s: could not parse %q as bool: %s", td.Cmd, arg.Vals[0], err)
-			}
-			opts.DisableTableStats = !enable
-		case "block-size":
-			size, err := strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return nil, err
-			}
-			for _, levelOpts := range opts.Levels {
-				levelOpts.BlockSize = size
-			}
-		case "bloom-bits-per-key":
-			v, err := strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return nil, err
-			}
-			fp := bloom.FilterPolicy(v)
-			opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
-			for i := range opts.Levels {
-				opts.Levels[i].FilterPolicy = fp
-			}
-		case "format-major-version":
-			fmv, err := strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return nil, err
-			}
-			opts.FormatMajorVersion = FormatMajorVersion(fmv)
-		case "disable-multi-level":
-			opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
 		}
-	}
-
-	// This is placed after the argument parsing above, because the arguments
-	// to define should be parsed even if td.Input is empty.
-	if td.Input == "" {
-		// Empty LSM.
-		d, err := Open("", opts)
-		if err != nil {
-			return nil, err
-		}
-		d.mu.Lock()
-		for i := range snapshots {
-			s := &Snapshot{db: d}
-			s.seqNum = snapshots[i]
-			d.mu.snapshots.pushBack(s)
-		}
-		for l, maxBytes := range levelMaxBytes {
-			d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
-		}
-		d.mu.Unlock()
-		return d, nil
 	}
 
 	d, err := Open("", opts)
@@ -910,13 +831,24 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		return nil, err
 	}
 	d.mu.Lock()
-	d.mu.versions.dynamicBaseLevel = false
+	defer d.mu.Unlock()
 	for i := range snapshots {
 		s := &Snapshot{db: d}
 		s.seqNum = snapshots[i]
 		d.mu.snapshots.pushBack(s)
 	}
-	defer d.mu.Unlock()
+	// Set the level max bytes only right before we exit; the body of this
+	// function expects it to be unset.
+	defer func() {
+		for l, maxBytes := range levelMaxBytes {
+			d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
+		}
+	}()
+	if td.Input == "" {
+		// Empty LSM.
+		return d, nil
+	}
+	d.mu.versions.dynamicBaseLevel = false
 
 	var mem *memTable
 	var start, end *base.InternalKey
@@ -1117,10 +1049,6 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		}
 		d.updateReadStateLocked(nil)
 		d.updateTableStatsLocked(ve.NewFiles)
-	}
-
-	for l, maxBytes := range levelMaxBytes {
-		d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
 	}
 
 	return d, nil
@@ -1466,29 +1394,6 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			default:
 				return errors.Errorf("Unrecognized %q arg value: %q", cmdArg.Key, cmdArg.Vals[0])
 			}
-		case "inject-errors":
-			injs := make([]errorfs.Injector, len(cmdArg.Vals))
-			for i := 0; i < len(cmdArg.Vals); i++ {
-				inj, err := errorfs.ParseDSL(cmdArg.Vals[i])
-				if err != nil {
-					return err
-				}
-				injs[i] = inj
-			}
-			opts.FS = errorfs.Wrap(opts.FS, errorfs.Any(injs...))
-		case "enable-table-stats":
-			enable, err := strconv.ParseBool(cmdArg.Vals[0])
-			if err != nil {
-				return errors.Errorf("%s: could not parse %q as bool: %s", cmdArg.Key, cmdArg.Vals[0], err)
-			}
-			opts.DisableTableStats = !enable
-		case "format-major-version":
-			v, err := strconv.Atoi(cmdArg.Vals[0])
-			if err != nil {
-				return err
-			}
-			// Override the DB version.
-			opts.FormatMajorVersion = FormatMajorVersion(v)
 		case "block-size":
 			v, err := strconv.Atoi(cmdArg.Vals[0])
 			if err != nil {
@@ -1496,32 +1401,6 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 			for i := range opts.Levels {
 				opts.Levels[i].BlockSize = v
-			}
-		case "cache-size":
-			if opts.Cache != nil {
-				opts.Cache.Unref()
-				opts.Cache = nil
-			}
-			size, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
-			if err != nil {
-				return err
-			}
-			opts.Cache = NewCache(size)
-		case "index-block-size":
-			v, err := strconv.Atoi(cmdArg.Vals[0])
-			if err != nil {
-				return err
-			}
-			for i := range opts.Levels {
-				opts.Levels[i].IndexBlockSize = v
-			}
-		case "target-file-size":
-			v, err := strconv.Atoi(cmdArg.Vals[0])
-			if err != nil {
-				return err
-			}
-			for i := range opts.Levels {
-				opts.Levels[i].TargetFileSize = int64(v)
 			}
 		case "bloom-bits-per-key":
 			v, err := strconv.Atoi(cmdArg.Vals[0])
@@ -1533,12 +1412,77 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			for i := range opts.Levels {
 				opts.Levels[i].FilterPolicy = fp
 			}
+		case "cache-size":
+			if opts.Cache != nil {
+				opts.Cache.Unref()
+				opts.Cache = nil
+			}
+			size, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.Cache = NewCache(size)
+		case "disable-multi-level":
+			opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
+		case "enable-table-stats":
+			enable, err := strconv.ParseBool(cmdArg.Vals[0])
+			if err != nil {
+				return errors.Errorf("%s: could not parse %q as bool: %s", cmdArg.Key, cmdArg.Vals[0], err)
+			}
+			opts.DisableTableStats = !enable
+		case "format-major-version":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			opts.FormatMajorVersion = FormatMajorVersion(v)
+		case "index-block-size":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			for i := range opts.Levels {
+				opts.Levels[i].IndexBlockSize = v
+			}
+		case "inject-errors":
+			injs := make([]errorfs.Injector, len(cmdArg.Vals))
+			for i := 0; i < len(cmdArg.Vals); i++ {
+				inj, err := errorfs.ParseDSL(cmdArg.Vals[i])
+				if err != nil {
+					return err
+				}
+				injs[i] = inj
+			}
+			opts.FS = errorfs.Wrap(opts.FS, errorfs.Any(injs...))
+		case "lbase-max-bytes":
+			lbaseMaxBytes, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.LBaseMaxBytes = lbaseMaxBytes
+		case "memtable-size":
+			memTableSize, err := strconv.ParseUint(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.MemTableSize = memTableSize
 		case "merger":
 			switch cmdArg.Vals[0] {
 			case "appender":
 				opts.Merger = base.DefaultMerger
 			default:
 				return errors.Newf("unrecognized Merger %q\n", cmdArg.Vals[0])
+			}
+		case "target-file-sizes":
+			if len(opts.Levels) < len(cmdArg.Vals) {
+				opts.Levels = slices.Grow(opts.Levels, len(cmdArg.Vals)-len(opts.Levels))[0:len(cmdArg.Vals)]
+			}
+			for i := range cmdArg.Vals {
+				size, err := strconv.ParseInt(cmdArg.Vals[i], 10, 64)
+				if err != nil {
+					return err
+				}
+				opts.Levels[i].TargetFileSize = size
 			}
 		}
 	}
