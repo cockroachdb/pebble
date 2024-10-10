@@ -24,7 +24,7 @@ const (
 	// entries are Go allocated rather than manually allocated.
 	//
 	// If cgo is disabled we need to allocate the entries using the Go allocator
-	// and is violates the Go GC rules to put Go pointers (such as the entry
+	// and this violates the Go GC rules to put Go pointers (such as the entry
 	// pointer fields) into untyped memory (i.e. a []byte).
 	entriesGoAllocated = invariants.RaceEnabled || !cgoEnabled
 )
