@@ -646,7 +646,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(iter.Separator()), bh.Length)
 		if twoLevelIndex {
-			b, err := r.readBlock(context.Background(), bh.Handle, nil, nil, nil, nil, nil)
+			b, err := r.readBlock(context.Background(), bh.Handle, nil, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2 := r.tableFormat.newIndexIter()

@@ -533,7 +533,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	require.NoError(t, err)
 
 	b, err := r.readBlock(
-		context.Background(), r.metaIndexBH, nil, nil, nil, nil, nil)
+		context.Background(), r.metaIndexBH, nil, nil, nil, nil)
 	require.NoError(t, err)
 	defer b.Release()
 
