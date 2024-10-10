@@ -5,10 +5,13 @@
 package sstable
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // NewRawWriter returns a new table writer for the file. Closing the writer will
@@ -332,6 +335,27 @@ type RawWriter interface {
 	// RewriteKeySuffixesAndReturnFormat. See that function's documentation for
 	// more details.
 	rewriteSuffixes(r *Reader, wo WriterOptions, from, to []byte, concurrency int) error
+
+	// copyDataBlocks copies data blocks to the table from the specified ReadHandle.
+	// It's specifically used by the sstable copier that can copy parts of an sstable
+	// to a new sstable, using CopySpan().
+	copyDataBlocks(ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle) error
+
+	// addDataBlock adds a raw data block to the table as-is. It's specifically used
+	// by the sstable copier that can copy parts of an sstable to a new sstable,
+	// using CopySpan().
+	addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error
+
+	// copyFilter copies the specified filter to the table. It's specifically used
+	// by the sstable copier that can copy parts of an sstable to a new sstable,
+	// using CopySpan().
+	copyFilter(filter []byte, filterName string) error
+
+	// copyProperties copies properties from the specified props, and resets others
+	// to prepare for copying data blocks from another sstable. It's specifically
+	// used by the sstable copier that can copy parts of an sstable to a new sstable,
+	// using CopySpan().
+	copyProperties(props Properties)
 }
 
 // WriterMetadata holds info about a finished sstable.
