@@ -212,51 +212,50 @@ func (w *KeyspanBlockWriter) String() string {
 	return buf.String()
 }
 
-// A KeyspanReader exposes facilities for reading a keyspan block. A
-// KeyspanReader is safe for concurrent use and may be used by multiple
-// KeyspanIters concurrently.
-type KeyspanReader struct {
-	blockReader BlockReader
+// A KeyspanDecoder exposes facilities for decoding a keyspan block. A
+// KeyspanDecoder is safe for concurrent use after initialization.
+type KeyspanDecoder struct {
+	blockDecoder BlockDecoder
 	// Span boundary columns with boundaryKeysCount elements.
 	boundaryKeysCount  uint32
 	boundaryKeys       RawBytes
 	boundaryKeyIndices UnsafeUints
 
-	// keyspan.Key columns with blockReader.header.Rows elements.
+	// keyspan.Key columns with blockDecoder.header.Rows elements.
 	trailers UnsafeUints
 	suffixes RawBytes
 	values   RawBytes
 }
 
-// Init initializes the keyspan reader with the given block data.
-func (r *KeyspanReader) Init(data []byte) {
-	r.boundaryKeysCount = binary.LittleEndian.Uint32(data[:4])
-	r.blockReader.Init(data, keyspanHeaderSize)
+// Init initializes the keyspan decoder with the given block data.
+func (d *KeyspanDecoder) Init(data []byte) {
+	d.boundaryKeysCount = binary.LittleEndian.Uint32(data[:4])
+	d.blockDecoder.Init(data, keyspanHeaderSize)
 	// The boundary key columns have a different number of rows than the other
 	// columns, so we call DecodeColumn directly, taking care to pass in
 	// rows=r.boundaryKeysCount.
-	r.boundaryKeys = DecodeColumn(&r.blockReader, keyspanColBoundaryUserKeys,
-		int(r.boundaryKeysCount), DataTypeBytes, DecodeRawBytes)
-	r.boundaryKeyIndices = DecodeColumn(&r.blockReader, keyspanColBoundaryKeyIndices,
-		int(r.boundaryKeysCount), DataTypeUint, DecodeUnsafeUints)
+	d.boundaryKeys = DecodeColumn(&d.blockDecoder, keyspanColBoundaryUserKeys,
+		int(d.boundaryKeysCount), DataTypeBytes, DecodeRawBytes)
+	d.boundaryKeyIndices = DecodeColumn(&d.blockDecoder, keyspanColBoundaryKeyIndices,
+		int(d.boundaryKeysCount), DataTypeUint, DecodeUnsafeUints)
 
-	r.trailers = r.blockReader.Uints(keyspanColTrailers)
-	r.suffixes = r.blockReader.RawBytes(keyspanColSuffixes)
-	r.values = r.blockReader.RawBytes(keyspanColValues)
+	d.trailers = d.blockDecoder.Uints(keyspanColTrailers)
+	d.suffixes = d.blockDecoder.RawBytes(keyspanColSuffixes)
+	d.values = d.blockDecoder.RawBytes(keyspanColValues)
 }
 
 // DebugString prints a human-readable explanation of the keyspan block's binary
 // representation.
-func (r *KeyspanReader) DebugString() string {
-	f := binfmt.New(r.blockReader.data).LineWidth(20)
-	r.Describe(f)
+func (d *KeyspanDecoder) DebugString() string {
+	f := binfmt.New(d.blockDecoder.data).LineWidth(20)
+	d.Describe(f)
 	return f.String()
 }
 
 // Describe describes the binary format of the keyspan block, assuming
 // f.Offset() is positioned at the beginning of the same keyspan block described
 // by r.
-func (r *KeyspanReader) Describe(f *binfmt.Formatter) {
+func (d *KeyspanDecoder) Describe(f *binfmt.Formatter) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -266,26 +265,26 @@ func (r *KeyspanReader) Describe(f *binfmt.Formatter) {
 	f.SetAnchorOffset()
 
 	f.CommentLine("keyspan block header")
-	f.HexBytesln(4, "user key count: %d", r.boundaryKeysCount)
-	r.blockReader.headerToBinFormatter(f)
+	f.HexBytesln(4, "user key count: %d", d.boundaryKeysCount)
+	d.blockDecoder.headerToBinFormatter(f)
 
 	for i := 0; i < keyspanColumnCount; i++ {
 		// Not all columns in a keyspan block have the same number of rows; the
 		// boundary columns columns are different (and their lengths are held in
 		// the keyspan block header that precedes the ordinary columnar block
 		// header).
-		rows := int(r.blockReader.header.Rows)
+		rows := int(d.blockDecoder.header.Rows)
 		if i == keyspanColBoundaryUserKeys || i == keyspanColBoundaryKeyIndices {
-			rows = int(r.boundaryKeysCount)
+			rows = int(d.boundaryKeysCount)
 		}
-		r.blockReader.columnToBinFormatter(f, i, rows)
+		d.blockDecoder.columnToBinFormatter(f, i, rows)
 	}
 	f.HexBytesln(1, "block padding byte")
 }
 
 // searchBoundaryKeys returns the index of the first boundary key greater than
 // or equal to key and whether or not the key was found exactly.
-func (r *KeyspanReader) searchBoundaryKeysWithSyntheticPrefix(
+func (d *KeyspanDecoder) searchBoundaryKeysWithSyntheticPrefix(
 	cmp base.Compare, key []byte, syntheticPrefix block.SyntheticPrefix,
 ) (index int, equal bool) {
 	if syntheticPrefix.IsSet() {
@@ -297,15 +296,15 @@ func (r *KeyspanReader) searchBoundaryKeysWithSyntheticPrefix(
 			if cmp < 0 {
 				return 0, false
 			}
-			return int(r.boundaryKeysCount), false
+			return int(d.boundaryKeysCount), false
 		}
 	}
 
-	i, j := 0, int(r.boundaryKeysCount)
+	i, j := 0, int(d.boundaryKeysCount)
 	for i < j {
 		h := int(uint(i+j) >> 1) // avoid overflow when computing h
 		// i ≤ h < j
-		switch cmp(key, r.boundaryKeys.At(h)) {
+		switch cmp(key, d.boundaryKeys.At(h)) {
 		case +1:
 			i = h + 1
 		case 0:
@@ -325,12 +324,12 @@ func NewKeyspanIter(
 	i := keyspanIterPool.Get().(*KeyspanIter)
 	i.closeCheck = invariants.CloseChecker{}
 	i.handle = h
-	// TODO(jackson): We can teach the block cache to stash a *KeyspanReader.
-	// Then all iters would use the same reader rather than needing to allocate
-	// their own KeyspanReader and parse the high-level block structure
+	// TODO(jackson): We can teach the block cache to stash a *KeyspanDecoder.
+	// Then all iters would use the same decoder rather than needing to allocate
+	// their own KeyspanDecoder and parse the high-level block structure
 	// themselves.
-	i.allocReader.Init(h.Get())
-	i.init(cmp, &i.allocReader, transforms)
+	i.allocDecoder.Init(h.Get())
+	i.init(cmp, &i.allocDecoder, transforms)
 	return i
 }
 
@@ -346,8 +345,8 @@ var keyspanIterPool = sync.Pool{
 // keyspan.FragmentIterator interface.
 type KeyspanIter struct {
 	keyspanIter
-	handle      block.BufferHandle
-	allocReader KeyspanReader
+	handle       block.BufferHandle
+	allocDecoder KeyspanDecoder
 
 	closeCheck invariants.CloseChecker
 }
@@ -365,7 +364,7 @@ func (i *KeyspanIter) Close() {
 	}
 
 	i.keyspanIter.Close()
-	i.allocReader = KeyspanReader{}
+	i.allocDecoder = KeyspanDecoder{}
 	i.closeCheck.Close()
 	keyspanIterPool.Put(i)
 }
@@ -373,7 +372,7 @@ func (i *KeyspanIter) Close() {
 // A keyspanIter is an iterator over a keyspan block. It implements the
 // keyspan.FragmentIterator interface.
 type keyspanIter struct {
-	r            *KeyspanReader
+	r            *KeyspanDecoder
 	cmp          base.Compare
 	transforms   block.FragmentIterTransforms
 	noTransforms bool
@@ -394,9 +393,9 @@ type keyspanIter struct {
 var _ keyspan.FragmentIterator = (*keyspanIter)(nil)
 
 // init initializes the iterator with the given comparison function and keyspan
-// reader.
+// decoder.
 func (i *keyspanIter) init(
-	cmp base.Compare, r *KeyspanReader, transforms block.FragmentIterTransforms,
+	cmp base.Compare, r *KeyspanDecoder, transforms block.FragmentIterTransforms,
 ) {
 	i.r = r
 	i.cmp = cmp

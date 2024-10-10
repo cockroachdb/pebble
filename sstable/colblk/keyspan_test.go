@@ -25,7 +25,7 @@ import (
 
 func TestKeyspanBlock(t *testing.T) {
 	var buf bytes.Buffer
-	var kr KeyspanReader
+	var kr KeyspanDecoder
 	var w KeyspanBlockWriter
 	datadriven.RunTest(t, "testdata/keyspan_block", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
@@ -159,7 +159,7 @@ func benchmarkKeyspanBlockRangeDeletions(b *testing.B, numSpans, keysPerSpan, ke
 	}
 	avgRowSize := float64(w.Size()) / float64(numSpans*keysPerSpan)
 
-	var kr KeyspanReader
+	var kr KeyspanDecoder
 	kr.Init(w.Finish())
 
 	var it KeyspanIter

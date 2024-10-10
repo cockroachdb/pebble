@@ -21,7 +21,7 @@ import (
 )
 
 func TestIndexBlock(t *testing.T) {
-	var r IndexReader
+	var decoder IndexBlockDecoder
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/index_block", func(t *testing.T, d *datadriven.TestData) string {
 		buf.Reset()
@@ -48,8 +48,8 @@ func TestIndexBlock(t *testing.T) {
 			d.MaybeScanArgs(t, "rows", &rows)
 			data := w.Finish(rows)
 			fmt.Fprintf(&buf, "UnsafeSeparator(%d) = %q\n", rows-1, w.UnsafeSeparator(rows-1))
-			r.Init(data)
-			fmt.Fprint(&buf, r.DebugString())
+			decoder.Init(data)
+			fmt.Fprint(&buf, decoder.DebugString())
 			return buf.String()
 		case "iter":
 			var syntheticPrefix, syntheticSuffix string
@@ -60,7 +60,7 @@ func TestIndexBlock(t *testing.T) {
 				SyntheticSuffix: []byte(syntheticSuffix),
 			}
 			var it IndexIter
-			it.InitReader(testkeys.Comparer.Compare, testkeys.Comparer.Split, &r, transforms)
+			it.InitWithDecoder(testkeys.Comparer.Compare, testkeys.Comparer.Split, &decoder, transforms)
 			for _, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
 				var valid bool

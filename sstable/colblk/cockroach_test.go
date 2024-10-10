@@ -183,24 +183,22 @@ var cockroachKeySeekerPool = sync.Pool{
 }
 
 type cockroachKeySeeker struct {
-	reader          *DataBlockDecoder
 	roachKeys       PrefixBytes
+	roachKeyChanged Bitmap
 	mvccWallTimes   UnsafeUints
 	mvccLogical     UnsafeUints
 	untypedVersions RawBytes
-	sharedPrefix    []byte
 }
 
 var _ KeySeeker = (*cockroachKeySeeker)(nil)
 
 // Init is part of the KeySeeker interface.
-func (ks *cockroachKeySeeker) Init(r *DataBlockDecoder) error {
-	ks.reader = r
-	ks.roachKeys = r.r.PrefixBytes(cockroachColRoachKey)
-	ks.mvccWallTimes = r.r.Uints(cockroachColMVCCWallTime)
-	ks.mvccLogical = r.r.Uints(cockroachColMVCCLogical)
-	ks.untypedVersions = r.r.RawBytes(cockroachColUntypedVersion)
-	ks.sharedPrefix = ks.roachKeys.SharedPrefix()
+func (ks *cockroachKeySeeker) Init(d *DataBlockDecoder) error {
+	ks.roachKeys = d.r.PrefixBytes(cockroachColRoachKey)
+	ks.roachKeyChanged = d.prefixChanged
+	ks.mvccWallTimes = d.r.Uints(cockroachColMVCCWallTime)
+	ks.mvccLogical = d.r.Uints(cockroachColMVCCLogical)
+	ks.untypedVersions = d.r.RawBytes(cockroachColUntypedVersion)
 	return nil
 }
 
@@ -271,7 +269,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		// Define f(i) = true iff key at i is >= seek key.
 		// Invariant: f(l-1) == false, f(u) == true.
 		l := index
-		u := ks.reader.prefixChanged.SeekSetBitGE(index + 1)
+		u := ks.roachKeyChanged.SeekSetBitGE(index + 1)
 		for l < u {
 			h := int(uint(l+u) >> 1) // avoid overflow when computing h
 			// l ≤ h < u
@@ -299,7 +297,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 	// Define f(i) = true iff key at i is >= seek key.
 	// Invariant: f(l-1) == false, f(u) == true.
 	l := index + 1
-	u := ks.reader.prefixChanged.SeekSetBitGE(index + 1)
+	u := ks.roachKeyChanged.SeekSetBitGE(index + 1)
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
 		// l ≤ h < u
