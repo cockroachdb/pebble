@@ -137,23 +137,23 @@ type IndexBlockDecoder struct {
 	offsets    UnsafeUints
 	lengths    UnsafeUints // only used for second-level index blocks
 	blockProps RawBytes
-	br         BlockDecoder
+	bd         BlockDecoder
 }
 
 // Init initializes the index block decoder with the given serialized index
 // block.
 func (r *IndexBlockDecoder) Init(data []byte) {
-	r.br.Init(data, indexBlockCustomHeaderSize)
-	r.separators = r.br.RawBytes(indexBlockColumnSeparator)
-	r.offsets = r.br.Uints(indexBlockColumnOffsets)
-	r.lengths = r.br.Uints(indexBlockColumnLengths)
-	r.blockProps = r.br.RawBytes(indexBlockColumnBlockProperties)
+	r.bd.Init(data, indexBlockCustomHeaderSize)
+	r.separators = r.bd.RawBytes(indexBlockColumnSeparator)
+	r.offsets = r.bd.Uints(indexBlockColumnOffsets)
+	r.lengths = r.bd.Uints(indexBlockColumnLengths)
+	r.blockProps = r.bd.RawBytes(indexBlockColumnBlockProperties)
 }
 
 // DebugString prints a human-readable explanation of the keyspan block's binary
 // representation.
 func (r *IndexBlockDecoder) DebugString() string {
-	f := binfmt.New(r.br.data).LineWidth(20)
+	f := binfmt.New(r.bd.data).LineWidth(20)
 	r.Describe(f)
 	return f.String()
 }
@@ -170,9 +170,9 @@ func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter) {
 	f.SetAnchorOffset()
 
 	f.CommentLine("index block header")
-	r.br.headerToBinFormatter(f)
+	r.bd.headerToBinFormatter(f)
 	for i := 0; i < indexBlockColumnCount; i++ {
-		r.br.columnToBinFormatter(f, i, int(r.br.header.Rows))
+		r.bd.columnToBinFormatter(f, i, int(r.bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 }
@@ -205,7 +205,7 @@ func (i *IndexIter) InitWithDecoder(
 		compare:         compare,
 		split:           split,
 		d:               d,
-		n:               int(d.br.header.Rows),
+		n:               int(d.bd.header.Rows),
 		h:               i.h,
 		allocDecoder:    i.allocDecoder,
 		keyBuf:          i.keyBuf,

@@ -296,16 +296,16 @@ var _ KeySeeker = (*defaultKeySeeker)(nil)
 
 type defaultKeySeeker struct {
 	comparer     *base.Comparer
-	reader       *DataBlockDecoder
+	decoder      *DataBlockDecoder
 	prefixes     PrefixBytes
 	suffixes     RawBytes
 	sharedPrefix []byte
 }
 
-func (ks *defaultKeySeeker) Init(r *DataBlockDecoder) error {
-	ks.reader = r
-	ks.prefixes = r.r.PrefixBytes(defaultKeySchemaColumnPrefix)
-	ks.suffixes = r.r.RawBytes(defaultKeySchemaColumnSuffix)
+func (ks *defaultKeySeeker) Init(d *DataBlockDecoder) error {
+	ks.decoder = d
+	ks.prefixes = d.d.PrefixBytes(defaultKeySchemaColumnPrefix)
+	ks.suffixes = d.d.RawBytes(defaultKeySchemaColumnSuffix)
 	ks.sharedPrefix = ks.prefixes.SharedPrefix()
 	return nil
 }
@@ -351,7 +351,7 @@ func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
 	// Define f(l-1) == false and f(u) == true.
 	// Invariant: f(l-1) == false, f(u) == true.
 	l := index + 1
-	u := ks.reader.prefixChanged.SeekSetBitGE(index + 1)
+	u := ks.decoder.prefixChanged.SeekSetBitGE(index + 1)
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
 		// l ≤ h < u
@@ -616,8 +616,8 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 type DataBlockRewriter struct {
 	KeySchema KeySchema
 
-	writer    DataBlockEncoder
-	reader    DataBlockDecoder
+	encoder   DataBlockEncoder
+	decoder   DataBlockDecoder
 	iter      DataBlockIter
 	keySeeker KeySeeker
 	compare   base.Compare
@@ -663,7 +663,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	if !rw.initialized {
 		rw.iter.InitOnce(rw.KeySchema, rw.compare, rw.split, assertNoExternalValues{})
 		rw.keySeeker = rw.KeySchema.NewKeySeeker()
-		rw.writer.Init(rw.KeySchema)
+		rw.encoder.Init(rw.KeySchema)
 		rw.initialized = true
 	}
 
@@ -688,20 +688,20 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	// better spent dropping support for the physical rewriting of data blocks
 	// we're performing here and instead use a read-time IterTransform.
 
-	rw.reader.Init(rw.KeySchema, input)
-	rw.keySeeker.Init(&rw.reader)
-	rw.writer.Reset()
-	if err = rw.iter.Init(&rw.reader, block.IterTransforms{}); err != nil {
+	rw.decoder.Init(rw.KeySchema, input)
+	rw.keySeeker.Init(&rw.decoder)
+	rw.encoder.Reset()
+	if err = rw.iter.Init(&rw.decoder, block.IterTransforms{}); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
 
 	// Allocate a keyIter buffer that's large enough to hold the largest user
 	// key in the block with 1 byte to spare (so that pointer arithmetic is
 	// never pointing beyond the allocation, which would violate Go rules).
-	if cap(rw.prefixBytesIter.buf) < int(rw.reader.maximumKeyLength)+1 {
-		rw.prefixBytesIter.buf = make([]byte, rw.reader.maximumKeyLength+1)
+	if cap(rw.prefixBytesIter.buf) < int(rw.decoder.maximumKeyLength)+1 {
+		rw.prefixBytesIter.buf = make([]byte, rw.decoder.maximumKeyLength+1)
 	}
-	if newMax := int(rw.reader.maximumKeyLength) - len(from) + len(to) + 1; cap(rw.keyBuf) < newMax {
+	if newMax := int(rw.decoder.maximumKeyLength) - len(from) + len(to) + 1; cap(rw.keyBuf) < newMax {
 		rw.keyBuf = make([]byte, newMax)
 	}
 
@@ -709,12 +709,12 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	for i, kv := 0, rw.iter.First(); kv != nil; i, kv = i+1, rw.iter.Next() {
 		value := kv.V.ValueOrHandle
 		valuePrefix := block.InPlaceValuePrefix(false /* setHasSamePrefix (unused) */)
-		isValueExternal := rw.reader.isValueExternal.At(i)
+		isValueExternal := rw.decoder.isValueExternal.At(i)
 		if isValueExternal {
 			valuePrefix = block.ValuePrefix(kv.V.ValueOrHandle[0])
 			value = kv.V.ValueOrHandle[1:]
 		}
-		kcmp := rw.writer.KeyWriter.ComparePrev(kv.K.UserKey)
+		kcmp := rw.encoder.KeyWriter.ComparePrev(kv.K.UserKey)
 		if !bytes.Equal(kv.K.UserKey[kcmp.PrefixLen:], from) {
 			return base.InternalKey{}, base.InternalKey{}, nil,
 				errors.Newf("key %s has suffix 0x%x; require 0x%x", kv.K, kv.K.UserKey[kcmp.PrefixLen:], from)
@@ -726,9 +726,9 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 			start.Trailer = kv.K.Trailer
 		}
 		k := base.InternalKey{UserKey: rw.keyBuf, Trailer: kv.K.Trailer}
-		rw.writer.Add(k, value, valuePrefix, kcmp, rw.reader.isObsolete.At(i))
+		rw.encoder.Add(k, value, valuePrefix, kcmp, rw.decoder.isObsolete.At(i))
 	}
-	rewritten, end = rw.writer.Finish(int(rw.reader.r.header.Rows), rw.writer.Size())
+	rewritten, end = rw.encoder.Finish(int(rw.decoder.d.header.Rows), rw.encoder.Size())
 	end.UserKey, rw.keyAlloc = rw.keyAlloc.Copy(end.UserKey)
 	return start, end, rewritten, nil
 }
@@ -741,7 +741,7 @@ const DataBlockDecoderSize = unsafe.Sizeof(DataBlockDecoder{})
 // A DataBlockDecoder holds state for interpreting a columnar data block. It may
 // be shared among multiple DataBlockIters.
 type DataBlockDecoder struct {
-	r BlockDecoder
+	d BlockDecoder
 	// trailers holds an array of the InternalKey trailers, encoding the key
 	// kind and sequence number of each key.
 	trailers UnsafeUints
@@ -771,24 +771,24 @@ type DataBlockDecoder struct {
 }
 
 // BlockDecoder returns a pointer to the underlying BlockDecoder.
-func (r *DataBlockDecoder) BlockReader() *BlockDecoder {
-	return &r.r
+func (d *DataBlockDecoder) BlockDecoder() *BlockDecoder {
+	return &d.d
 }
 
 // Init initializes the data block reader with the given serialized data block.
-func (r *DataBlockDecoder) Init(schema KeySchema, data []byte) {
-	r.r.Init(data, dataBlockCustomHeaderSize)
-	r.trailers = r.r.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
-	r.prefixChanged = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
-	r.values = r.r.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
-	r.isValueExternal = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
-	r.isObsolete = r.r.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
-	r.maximumKeyLength = binary.LittleEndian.Uint32(data[:dataBlockCustomHeaderSize])
+func (d *DataBlockDecoder) Init(schema KeySchema, data []byte) {
+	d.d.Init(data, dataBlockCustomHeaderSize)
+	d.trailers = d.d.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
+	d.prefixChanged = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
+	d.values = d.d.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
+	d.isValueExternal = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
+	d.isObsolete = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
+	d.maximumKeyLength = binary.LittleEndian.Uint32(data[:dataBlockCustomHeaderSize])
 }
 
 // Describe descirbes the binary format of the data block, assuming f.Offset()
 // is positioned at the beginning of the same data block described by r.
-func (r *DataBlockDecoder) Describe(f *binfmt.Formatter) {
+func (d *DataBlockDecoder) Describe(f *binfmt.Formatter) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -798,10 +798,10 @@ func (r *DataBlockDecoder) Describe(f *binfmt.Formatter) {
 	f.SetAnchorOffset()
 
 	f.CommentLine("data block header")
-	f.HexBytesln(4, "maximum key length: %d", r.maximumKeyLength)
-	r.r.headerToBinFormatter(f)
-	for i := 0; i < int(r.r.header.Columns); i++ {
-		r.r.columnToBinFormatter(f, i, int(r.r.header.Rows))
+	f.HexBytesln(4, "maximum key length: %d", d.maximumKeyLength)
+	d.d.headerToBinFormatter(f)
+	for i := 0; i < int(d.d.header.Columns); i++ {
+		d.d.columnToBinFormatter(f, i, int(d.d.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 }
@@ -827,7 +827,7 @@ type DataBlockIter struct {
 	// -- Fields that are initialized for each block --
 	// For any changes to these fields, InitHandle should be updated.
 
-	r            *DataBlockDecoder
+	d            *DataBlockDecoder
 	h            block.BufferHandle
 	maxRow       int
 	transforms   block.IterTransforms
@@ -848,7 +848,7 @@ type DataBlockIter struct {
 	// iteration.
 	nextObsoletePoint int
 
-	readerAlloc DataBlockDecoder
+	decoderAlloc DataBlockDecoder
 }
 
 // InitOnce configures the data block iterator's key schema and lazy value
@@ -869,9 +869,9 @@ func (i *DataBlockIter) InitOnce(
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.
 func (i *DataBlockIter) Init(r *DataBlockDecoder, transforms block.IterTransforms) error {
-	i.r = r
+	i.d = r
 	// Leave i.h unchanged.
-	numRows := int(r.r.header.Rows)
+	numRows := int(r.d.header.Rows)
 	i.maxRow = numRows - 1
 	i.transforms = transforms
 	if i.transforms.HideObsoletePoints && r.isObsolete.SeekSetBitGE(0) == numRows {
@@ -900,16 +900,16 @@ func (i *DataBlockIter) InitHandle(
 ) error {
 	i.cmp = cmp
 	i.split = split
-	i.r = &i.readerAlloc
-	i.readerAlloc.Init(i.keySchema, h.Get())
+	i.d = &i.decoderAlloc
+	i.decoderAlloc.Init(i.keySchema, h.Get())
 	i.h.Release()
 	i.h = h
 
-	numRows := int(i.readerAlloc.r.header.Rows)
+	numRows := int(i.decoderAlloc.d.header.Rows)
 	i.maxRow = numRows - 1
 
 	i.transforms = transforms
-	if i.transforms.HideObsoletePoints && i.r.isObsolete.SeekSetBitGE(0) == numRows {
+	if i.transforms.HideObsoletePoints && i.d.isObsolete.SeekSetBitGE(0) == numRows {
 		// There are no obsolete points in the block; don't bother checking.
 		i.transforms.HideObsoletePoints = false
 	}
@@ -920,13 +920,13 @@ func (i *DataBlockIter) InitHandle(
 	}
 
 	// The worst case is when the largest key in the block has no suffix.
-	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(i.r.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
+	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(i.d.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
 	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
 	i.row = -1
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
 	i.nextObsoletePoint = 0
-	return i.keySeeker.Init(i.r)
+	return i.keySeeker.Init(i.d)
 }
 
 // Handle returns the handle to the block.
@@ -950,13 +950,13 @@ func (i *DataBlockIter) KV() *base.InternalKV {
 // a call to Invalidate, but all positioning methods should return false.
 // Valid() must also return false.
 func (i *DataBlockIter) Invalidate() {
-	i.r = nil
+	i.d = nil
 }
 
 // IsDataInvalidated returns true when the iterator has been invalidated
 // using an Invalidate call.
 func (i *DataBlockIter) IsDataInvalidated() bool {
-	return i.r == nil
+	return i.d == nil
 }
 
 // ResetForReuse resets the iterator for reuse, retaining buffers and
@@ -1010,7 +1010,7 @@ func (i *DataBlockIter) seekGEInternal(key []byte, boundRow int, searchDir int8)
 		n := i.split(key)
 		row, eq := i.keySeeker.SeekGE(key[:n], boundRow, searchDir)
 		if eq && i.cmp(key[n:], i.transforms.SyntheticSuffix) > 0 {
-			row = i.r.prefixChanged.SeekSetBitGE(row + 1)
+			row = i.d.prefixChanged.SeekSetBitGE(row + 1)
 		}
 		return row
 	}
@@ -1020,7 +1020,7 @@ func (i *DataBlockIter) seekGEInternal(key []byte, boundRow int, searchDir int8)
 
 // SeekGE implements the base.InternalIterator interface.
 func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
 	searchDir := int8(0)
@@ -1034,7 +1034,7 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	}
 	i.row = i.seekGEInternal(key, i.row, searchDir)
 	if i.transforms.HideObsoletePoints {
-		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
+		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
 		if i.atObsoletePointForward() {
 			i.skipObsoletePointsForward()
 			if i.row > i.maxRow {
@@ -1061,12 +1061,12 @@ func (i *DataBlockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 
 // SeekLT implements the base.InternalIterator interface.
 func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
 	i.row = i.seekGEInternal(key, i.row, 0 /* searchDir */) - 1
 	if i.transforms.HideObsoletePoints {
-		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(max(i.row, 0))
+		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(max(i.row, 0))
 		if i.atObsoletePointBackward() {
 			i.skipObsoletePointsBackward()
 			if i.row < 0 {
@@ -1079,12 +1079,12 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 
 // First implements the base.InternalIterator interface.
 func (i *DataBlockIter) First() *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
 	i.row = 0
 	if i.transforms.HideObsoletePoints {
-		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(0)
+		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(0)
 		if i.atObsoletePointForward() {
 			i.skipObsoletePointsForward()
 			if i.row > i.maxRow {
@@ -1097,7 +1097,7 @@ func (i *DataBlockIter) First() *base.InternalKV {
 
 // Last implements the base.InternalIterator interface.
 func (i *DataBlockIter) Last() *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
 	i.row = i.maxRow
@@ -1115,7 +1115,7 @@ func (i *DataBlockIter) Last() *base.InternalKV {
 
 // Next advances to the next KV pair in the block.
 func (i *DataBlockIter) Next() *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
 	// Inline decodeRow, but avoiding unnecessary checks against i.row.
@@ -1129,7 +1129,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 		// Fast path.
 		i.kv.K = base.InternalKey{
 			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
-			Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+			Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 		}
 	} else {
 		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
@@ -1143,14 +1143,14 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 		} else {
 			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
 		}
-		i.kv.K.Trailer = base.InternalKeyTrailer(i.r.trailers.At(i.row))
+		i.kv.K.Trailer = base.InternalKeyTrailer(i.d.trailers.At(i.row))
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 	}
 	// Inline i.r.values.At(row).
-	v := i.r.values.slice(i.r.values.offsets.At2(i.row))
-	if i.r.isValueExternal.At(i.row) {
+	v := i.d.values.slice(i.d.values.offsets.At2(i.row))
+	if i.d.isValueExternal.At(i.row) {
 		i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
 	} else {
 		i.kv.V = base.MakeInPlaceValue(v)
@@ -1183,12 +1183,12 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 // prefix as the previous entry. Checking the value prefix byte bit requires
 // locating that byte which requires decoding 3 varints per key/value pair.
 func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
-	i.row = i.r.prefixChanged.SeekSetBitGE(i.row + 1)
+	i.row = i.d.prefixChanged.SeekSetBitGE(i.row + 1)
 	if i.transforms.HideObsoletePoints {
-		i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
+		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
 		if i.atObsoletePointForward() {
 			i.skipObsoletePointsForward()
 		}
@@ -1199,7 +1199,7 @@ func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
 
 // Prev moves the iterator to the previous KV pair in the block.
 func (i *DataBlockIter) Prev() *base.InternalKV {
-	if i.r == nil {
+	if i.d == nil {
 		return nil
 	}
 	i.row--
@@ -1229,8 +1229,8 @@ func (i *DataBlockIter) skipObsoletePointsForward() {
 	if invariants.Enabled {
 		i.atObsoletePointCheck()
 	}
-	i.row = i.r.isObsolete.SeekUnsetBitGE(i.row)
-	i.nextObsoletePoint = i.r.isObsolete.SeekSetBitGE(i.row)
+	i.row = i.d.isObsolete.SeekUnsetBitGE(i.row)
+	i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
 }
 
 // atObsoletePointBackward returns true if i.row is an obsolete point. It is
@@ -1240,14 +1240,14 @@ func (i *DataBlockIter) skipObsoletePointsForward() {
 //
 //gcassert:inline
 func (i *DataBlockIter) atObsoletePointBackward() bool {
-	return i.row >= 0 && i.r.isObsolete.At(i.row)
+	return i.row >= 0 && i.d.isObsolete.At(i.row)
 }
 
 func (i *DataBlockIter) skipObsoletePointsBackward() {
 	if invariants.Enabled {
 		i.atObsoletePointCheck()
 	}
-	i.row = i.r.isObsolete.SeekUnsetBitLE(i.row)
+	i.row = i.d.isObsolete.SeekUnsetBitLE(i.row)
 	i.nextObsoletePoint = i.row + 1
 }
 
@@ -1255,7 +1255,7 @@ func (i *DataBlockIter) atObsoletePointCheck() {
 	// We extract this code into a separate function to avoid getting a spurious
 	// error from GCAssert about At not being inlined because it is compiled out
 	// altogether in non-invariant builds.
-	if !i.transforms.HideObsoletePoints || !i.r.isObsolete.At(i.row) {
+	if !i.transforms.HideObsoletePoints || !i.d.isObsolete.At(i.row) {
 		panic("expected obsolete point")
 	}
 }
@@ -1301,7 +1301,7 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 			// Fast path.
 			i.kv.K = base.InternalKey{
 				UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
-				Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+				Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 			}
 		} else {
 			if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
@@ -1309,15 +1309,15 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 			} else {
 				i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
 			}
-			i.kv.K.Trailer = base.InternalKeyTrailer(i.r.trailers.At(i.row))
+			i.kv.K.Trailer = base.InternalKeyTrailer(i.d.trailers.At(i.row))
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.kv.K.SetSeqNum(base.SeqNum(n))
 			}
 		}
 		// Inline i.r.values.At(row).
-		startOffset := i.r.values.offsets.At(i.row)
-		v := unsafe.Slice((*byte)(i.r.values.ptr(startOffset)), i.r.values.offsets.At(i.row+1)-startOffset)
-		if i.r.isValueExternal.At(i.row) {
+		startOffset := i.d.values.offsets.At(i.row)
+		v := unsafe.Slice((*byte)(i.d.values.ptr(startOffset)), i.d.values.offsets.At(i.row+1)-startOffset)
+		if i.d.isValueExternal.At(i.row) {
 			i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
 		} else {
 			i.kv.V = base.MakeInPlaceValue(v)
@@ -1335,7 +1335,7 @@ func (i *DataBlockIter) decodeKey() {
 		// Fast path.
 		i.kv.K = base.InternalKey{
 			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
-			Trailer: base.InternalKeyTrailer(i.r.trailers.At(i.row)),
+			Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 		}
 	} else {
 		if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
@@ -1343,7 +1343,7 @@ func (i *DataBlockIter) decodeKey() {
 		} else {
 			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
 		}
-		i.kv.K.Trailer = base.InternalKeyTrailer(i.r.trailers.At(i.row))
+		i.kv.K.Trailer = base.InternalKeyTrailer(i.d.trailers.At(i.row))
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
@@ -1358,11 +1358,11 @@ func (i *DataBlockIter) Close() error {
 		i.keySeeker.Release()
 		i.keySeeker = nil
 	}
-	i.r = nil
+	i.d = nil
 	i.h.Release()
 	i.h = block.BufferHandle{}
 	i.transforms = block.IterTransforms{}
 	i.kv = base.InternalKV{}
-	i.readerAlloc = DataBlockDecoder{}
+	i.decoderAlloc = DataBlockDecoder{}
 	return nil
 }

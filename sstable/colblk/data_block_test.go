@@ -81,12 +81,12 @@ func TestDataBlock(t *testing.T) {
 				var from, to string
 				td.ScanArgs(t, "from", &from)
 				td.ScanArgs(t, "to", &to)
-				start, end, rewrittenBlock, err := rw.RewriteSuffixes(r.r.data, []byte(from), []byte(to))
+				start, end, rewrittenBlock, err := rw.RewriteSuffixes(r.d.data, []byte(from), []byte(to))
 				if err != nil {
 					return fmt.Sprintf("error: %s", err)
 				}
 				r.Init(testKeysSchema, rewrittenBlock)
-				f := binfmt.New(r.r.data).LineWidth(20)
+				f := binfmt.New(r.d.data).LineWidth(20)
 				r.Describe(f)
 				fmt.Fprintf(&buf, "Start: %s\nEnd: %s\n%s",
 					start.Pretty(testkeys.Comparer.FormatKey),
@@ -98,7 +98,7 @@ func TestDataBlock(t *testing.T) {
 				td.MaybeScanArgs(t, "rows", &rows)
 				block, lastKey := w.Finish(rows, sizes[rows-1])
 				r.Init(testKeysSchema, block)
-				f := binfmt.New(r.r.data).LineWidth(20)
+				f := binfmt.New(r.d.data).LineWidth(20)
 				r.Describe(f)
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), f.String())
 				return buf.String()

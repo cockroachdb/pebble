@@ -194,11 +194,11 @@ var _ KeySeeker = (*cockroachKeySeeker)(nil)
 
 // Init is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) Init(d *DataBlockDecoder) error {
-	ks.roachKeys = d.r.PrefixBytes(cockroachColRoachKey)
+	ks.roachKeys = d.d.PrefixBytes(cockroachColRoachKey)
 	ks.roachKeyChanged = d.prefixChanged
-	ks.mvccWallTimes = d.r.Uints(cockroachColMVCCWallTime)
-	ks.mvccLogical = d.r.Uints(cockroachColMVCCLogical)
-	ks.untypedVersions = d.r.RawBytes(cockroachColUntypedVersion)
+	ks.mvccWallTimes = d.d.Uints(cockroachColMVCCWallTime)
+	ks.mvccLogical = d.d.Uints(cockroachColMVCCLogical)
+	ks.untypedVersions = d.d.RawBytes(cockroachColUntypedVersion)
 	return nil
 }
 
@@ -408,13 +408,13 @@ func TestCockroachDataBlock(t *testing.T) {
 		BaseWallTime:      seed,
 	}, valueLen)
 
-	var reader DataBlockDecoder
+	var decoder DataBlockDecoder
 	var it DataBlockIter
 	it.InitOnce(cockroachKeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
-	reader.Init(cockroachKeySchema, serializedBlock)
-	if err := it.Init(&reader, block.IterTransforms{}); err != nil {
+	decoder.Init(cockroachKeySchema, serializedBlock)
+	if err := it.Init(&decoder, block.IterTransforms{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -634,13 +634,13 @@ func benchmarkCockroachDataBlockIter(
 
 	serializedBlock, keys, _ := generateDataBlock(rng, targetBlockSize, cfg.KeyConfig, cfg.ValueLen)
 
-	var reader DataBlockDecoder
+	var decoder DataBlockDecoder
 	var it DataBlockIter
 	it.InitOnce(cockroachKeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
-	reader.Init(cockroachKeySchema, serializedBlock)
-	if err := it.Init(&reader, transforms); err != nil {
+	decoder.Init(cockroachKeySchema, serializedBlock)
+	if err := it.Init(&decoder, transforms); err != nil {
 		b.Fatal(err)
 	}
 	avgRowSize := float64(len(serializedBlock)) / float64(len(keys))

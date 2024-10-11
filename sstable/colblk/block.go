@@ -281,16 +281,16 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 // DecodeColumn decodes the col'th column of the provided reader's block as a
 // column of dataType using decodeFunc.
 func DecodeColumn[V any](
-	r *BlockDecoder, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
+	d *BlockDecoder, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
 ) V {
-	if uint16(col) >= r.header.Columns {
-		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, r.header.Columns))
+	if uint16(col) >= d.header.Columns {
+		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, d.header.Columns))
 	}
-	if dt := r.dataType(col); dt != dataType {
+	if dt := d.dataType(col); dt != dataType {
 		panic(errors.AssertionFailedf("column %d is type %s; not %s", col, dt, dataType))
 	}
-	v, endOffset := decodeFunc(r.data, r.pageStart(col), rows)
-	if nextColumnOff := r.pageStart(col + 1); endOffset != nextColumnOff {
+	v, endOffset := decodeFunc(d.data, d.pageStart(col), rows)
+	if nextColumnOff := d.pageStart(col + 1); endOffset != nextColumnOff {
 		panic(errors.AssertionFailedf("column %d decoded to offset %d; expected %d", col, endOffset, nextColumnOff))
 	}
 	return v
@@ -307,9 +307,9 @@ type BlockDecoder struct {
 // new BlockDecoder configured to read from the block. The caller must ensure
 // that the data is formatted as to the block layout specification.
 func DecodeBlock(data []byte, customHeaderSize uint32) BlockDecoder {
-	r := BlockDecoder{}
-	r.Init(data, customHeaderSize)
-	return r
+	d := BlockDecoder{}
+	d.Init(data, customHeaderSize)
+	return d
 }
 
 // Init initializes a BlockDecoder with the data contained in the provided block.
