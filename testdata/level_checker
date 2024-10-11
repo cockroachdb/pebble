@@ -227,7 +227,7 @@ out of order keys b#2,SET >= b#3,SET in L1: fileNum=000023
 define write-unfragmented disable-key-order-checks
 L
 a.RANGEDEL.1 g.RANGEDEL.inf
-EncodeSpan:d-e:{(#2,RANGEDEL)} EncodeSpan:d-e:{(#1,RANGEDEL)} EncodeSpan:f-g:{(#3,RANGEDEL)} EncodeSpan:a-b:{(#4,RANGEDEL)}
+EncodeSpan:d-e:{(#2,RANGEDEL)-(#1,RANGEDEL)} EncodeSpan:f-g:{(#3,RANGEDEL)} EncodeSpan:a-b:{(#4,RANGEDEL)}
 ----
 Level 1
   file 0: [a#1,RANGEDEL-g#inf,RANGEDEL]
@@ -253,7 +253,7 @@ unordered or unfragmented range delete tombstones a-d:{(#1,RANGEDEL)}, b-c:{(#2,
 define write-unfragmented disable-key-order-checks
 L
 a.RANGEDEL.1 b.RANGEDEL.inf
-a.RANGEDEL.1:z d.RANGEDEL.2:e
+EncodeSpan:a-z:{(#1,RANGEDEL)} EncodeSpan:d-e:{(#2,RANGEDEL)}
 ----
 Level 1
   file 0: [a#1,RANGEDEL-b#inf,RANGEDEL]

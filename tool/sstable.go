@@ -148,9 +148,10 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 	}
 	o := sstable.ReaderOptions{
 		Comparer:  s.opts.Comparer,
+		Comparers: s.comparers,
+		KeySchema: s.opts.KeySchema,
 		Filters:   s.opts.Filters,
 		Mergers:   s.mergers,
-		Comparers: s.comparers,
 	}
 	c := pebble.NewCache(128 << 20 /* 128 MB */)
 	defer c.Unref()

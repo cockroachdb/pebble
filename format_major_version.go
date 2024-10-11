@@ -191,12 +191,18 @@ const (
 	// as flushable ingested sstables.
 	FormatFlushableIngestExcises
 
+	// FormatColumnarBlocks is a format major version enabling use of the
+	// TableFormatPebblev5 table format, that encodes sstable data blocks, index
+	// blocks and keyspan blocks by organizing the KVs into columns within the
+	// block.
+	FormatColumnarBlocks
+
 	// TODO(msbutler): add major version for synthetic suffixes
 
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
-	FormatNewest FormatMajorVersion = iota - 1
+	FormatNewest FormatMajorVersion = iota - 2
 
 	// Experimental versions, which are excluded by FormatNewest (but can be used
 	// in tests) can be defined here.
@@ -231,6 +237,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises:
 		return sstable.TableFormatPebblev4
+	case FormatColumnarBlocks:
+		return sstable.TableFormatPebblev5
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
@@ -242,7 +250,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
-		FormatFlushableIngestExcises:
+		FormatFlushableIngestExcises, FormatColumnarBlocks:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -281,6 +289,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatFlushableIngestExcises: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatFlushableIngestExcises)
+	},
+	FormatColumnarBlocks: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatColumnarBlocks)
 	},
 }
 
@@ -325,6 +336,28 @@ func lookupFormatMajorVersion(
 // database was written with a higher format version.
 func (d *DB) FormatMajorVersion() FormatMajorVersion {
 	return FormatMajorVersion(d.mu.formatVers.vers.Load())
+}
+
+// tableFormat returns the TableFormat that new sstables should use.
+func (d *DB) tableFormat() sstable.TableFormat {
+	// The table is typically written at the maximum allowable format implied by
+	// the current format major version of the DB.
+	f := d.FormatMajorVersion().MaxTableFormat()
+	switch f {
+	case sstable.TableFormatPebblev3:
+		// In format major versions with maximum table formats of Pebblev3,
+		// value blocks were conditional on an experimental setting. In format
+		// major versions with maximum table formats of Pebblev4 and higher,
+		// value blocks are always enabled.
+		if d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks() {
+			f = sstable.TableFormatPebblev2
+		}
+	case sstable.TableFormatPebblev5:
+		if d.opts.Experimental.EnableColumnarBlocks == nil || !d.opts.Experimental.EnableColumnarBlocks() {
+			f = sstable.TableFormatPebblev4
+		}
+	}
+	return f
 }
 
 // RatchetFormatMajorVersion ratchets the opened database's format major

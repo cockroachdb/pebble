@@ -38,6 +38,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
@@ -217,8 +218,9 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	opts := (&Options{
-		Comparer: DefaultComparer,
-		FS:       mem,
+		Comparer:  base.DefaultComparer,
+		KeySchema: colblk.DefaultKeySchema(base.DefaultComparer, 16),
+		FS:        mem,
 	}).WithFSDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
@@ -3627,7 +3629,7 @@ func TestIngestValidation(t *testing.T) {
 				require.NoError(t, err)
 				// Compute the layout of the sstable in order to find the
 				// appropriate block locations to corrupt.
-				r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
+				r, err := sstable.NewReader(context.Background(), readable, opts.MakeReaderOptions())
 				require.NoError(t, err)
 				l, err := r.Layout()
 				require.NoError(t, err)
@@ -3666,8 +3668,10 @@ func TestIngestValidation(t *testing.T) {
 				defer func() { _ = fs.Remove(ingestTableName) }()
 
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-					BlockSize:   blockSize,     // Create many smaller blocks.
+					BlockSize:   blockSize, // Create many smaller blocks.
+					Comparer:    opts.Comparer,
 					Compression: NoCompression, // For simpler debugging.
+					KeySchema:   opts.KeySchema,
 				})
 				for _, kv := range keyVals {
 					require.NoError(t, w.Set(kv.key, kv.val))
