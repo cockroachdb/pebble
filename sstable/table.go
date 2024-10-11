@@ -74,7 +74,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
@@ -254,31 +253,6 @@ type footer struct {
 	metaindexBH block.Handle
 	indexBH     block.Handle
 	footerBH    block.Handle
-}
-
-func describeFooter(f *binfmt.Formatter) {
-	f.CommentLine("sstable footer")
-	data := f.Data()
-	switch string(data[len(data)-len(rocksDBMagic):]) {
-	case levelDBMagic:
-		f.Uvarint("metaindex.Offset")
-		f.Uvarint("metaindex.Length")
-		f.Uvarint("index.Offset")
-		f.Uvarint("index.Length")
-		f.HexBytesln(f.Remaining()-len(levelDBMagic), "padding")
-		f.HexBytesln(len(levelDBMagic), "magic")
-	case rocksDBMagic, pebbleDBMagic:
-		f.HexBytesln(1, "checksum type")
-		f.Uvarint("metaindex.Offset")
-		f.Uvarint("metaindex.Length")
-		f.Uvarint("index.Offset")
-		f.Uvarint("index.Length")
-		f.HexBytesln(f.Remaining()-len(levelDBMagic)-4, "padding")
-		f.HexBytesln(4, "table version")
-		f.HexBytesln(len(rocksDBMagic), "magic")
-	default:
-		f.HexBytesln(f.Remaining(), "unknown magic ???")
-	}
 }
 
 // TODO(sumeer): should the threshold be configurable.
