@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -612,10 +613,11 @@ func TestCompaction(t *testing.T) {
 
 	mem := vfs.NewMem()
 	opts := &Options{
-		FS:                    mem,
-		MemTableSize:          memTableSize,
 		DebugCheck:            DebugCheckLevels,
+		FS:                    mem,
+		KeySchema:             colblk.DefaultKeySchema(base.DefaultComparer, 16),
 		L0CompactionThreshold: 8,
+		MemTableSize:          memTableSize,
 	}
 	opts.testingRandomized(t).WithFSDefaults()
 	d, err := Open("", opts)
@@ -1254,13 +1256,19 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
 			minVersion: FormatDeleteSizedAndObsolete,
+			maxVersion: FormatFlushableIngestExcises,
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
 			minVersion: FormatDeleteSizedAndObsolete,
+			maxVersion: FormatFlushableIngestExcises,
 		},
 		{
 			testData: "testdata/manual_compaction_multilevel",
+		},
+		{
+			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev5",
+			minVersion: FormatColumnarBlocks,
 		},
 	}
 
@@ -1273,7 +1281,6 @@ func TestManualCompaction(t *testing.T) {
 			if maxVersion == 0 {
 				maxVersion = internalFormatNewest
 			}
-
 			runTest(t, tc.testData, minVersion, maxVersion, tc.verbose)
 		})
 	}

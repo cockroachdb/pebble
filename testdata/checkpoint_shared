@@ -27,6 +27,10 @@ create: db/marker.format-version.000002.018
 close: db/marker.format-version.000002.018
 remove: db/marker.format-version.000001.017
 sync: db
+create: db/marker.format-version.000003.019
+close: db/marker.format-version.000003.019
+remove: db/marker.format-version.000002.018
+sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
 close: db/temporary.000003.dbtmp
@@ -89,9 +93,9 @@ close: .
 open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.format-version.000001.018
-sync-data: checkpoints/checkpoint1/marker.format-version.000001.018
-close: checkpoints/checkpoint1/marker.format-version.000001.018
+create: checkpoints/checkpoint1/marker.format-version.000001.019
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.019
+close: checkpoints/checkpoint1/marker.format-version.000001.019
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 open: db/MANIFEST-000001 (options: *vfs.sequentialReadsOption)
@@ -138,9 +142,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint2
 link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
 open-dir: checkpoints/checkpoint2
-create: checkpoints/checkpoint2/marker.format-version.000001.018
-sync-data: checkpoints/checkpoint2/marker.format-version.000001.018
-close: checkpoints/checkpoint2/marker.format-version.000001.018
+create: checkpoints/checkpoint2/marker.format-version.000001.019
+sync-data: checkpoints/checkpoint2/marker.format-version.000001.019
+close: checkpoints/checkpoint2/marker.format-version.000001.019
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 open: db/MANIFEST-000001 (options: *vfs.sequentialReadsOption)
@@ -183,9 +187,9 @@ close: checkpoints
 open-dir: checkpoints/checkpoint3
 link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
 open-dir: checkpoints/checkpoint3
-create: checkpoints/checkpoint3/marker.format-version.000001.018
-sync-data: checkpoints/checkpoint3/marker.format-version.000001.018
-close: checkpoints/checkpoint3/marker.format-version.000001.018
+create: checkpoints/checkpoint3/marker.format-version.000001.019
+sync-data: checkpoints/checkpoint3/marker.format-version.000001.019
+close: checkpoints/checkpoint3/marker.format-version.000001.019
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 open: db/MANIFEST-000001 (options: *vfs.sequentialReadsOption)
@@ -242,7 +246,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 REMOTE-OBJ-CATALOG-000001
-marker.format-version.000002.018
+marker.format-version.000003.019
 marker.manifest.000001.MANIFEST-000001
 marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 
@@ -252,7 +256,7 @@ list checkpoints/checkpoint1
 MANIFEST-000001
 OPTIONS-000003
 REMOTE-OBJ-CATALOG-000001
-marker.format-version.000001.018
+marker.format-version.000001.019
 marker.manifest.000001.MANIFEST-000001
 marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 
@@ -304,7 +308,7 @@ list checkpoints/checkpoint2
 MANIFEST-000001
 OPTIONS-000003
 REMOTE-OBJ-CATALOG-000001
-marker.format-version.000001.018
+marker.format-version.000001.019
 marker.manifest.000001.MANIFEST-000001
 marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 

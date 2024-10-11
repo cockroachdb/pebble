@@ -38,6 +38,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
@@ -217,8 +218,9 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	opts := (&Options{
-		Comparer: DefaultComparer,
-		FS:       mem,
+		Comparer:  base.DefaultComparer,
+		KeySchema: colblk.DefaultKeySchema(base.DefaultComparer, 16),
+		FS:        mem,
 	}).WithFSDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
