@@ -372,9 +372,9 @@ func (ks *defaultKeySeeker) MaterializeUserKey(keyIter *PrefixBytesIter, prevRow
 		ks.prefixes.SetAt(keyIter, row)
 	}
 	suffix := ks.suffixes.At(row)
-	res := keyIter.buf[:len(keyIter.buf)+len(suffix)]
+	res := keyIter.Buf[:len(keyIter.Buf)+len(suffix)]
 	memmove(
-		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.buf)))+uintptr(len(keyIter.buf))),
+		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.Buf)))+uintptr(len(keyIter.Buf))),
 		unsafe.Pointer(unsafe.SliceData(suffix)),
 		uintptr(len(suffix)),
 	)
@@ -390,9 +390,9 @@ func (ks *defaultKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 	} else {
 		ks.prefixes.SetAt(keyIter, row)
 	}
-	res := keyIter.buf[:len(keyIter.buf)+len(suffix)]
+	res := keyIter.Buf[:len(keyIter.Buf)+len(suffix)]
 	memmove(
-		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.buf)))+uintptr(len(keyIter.buf))),
+		unsafe.Pointer(uintptr(unsafe.Pointer(unsafe.SliceData(keyIter.Buf)))+uintptr(len(keyIter.Buf))),
 		unsafe.Pointer(unsafe.SliceData(suffix)),
 		uintptr(len(suffix)),
 	)
@@ -698,8 +698,8 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	// Allocate a keyIter buffer that's large enough to hold the largest user
 	// key in the block with 1 byte to spare (so that pointer arithmetic is
 	// never pointing beyond the allocation, which would violate Go rules).
-	if cap(rw.prefixBytesIter.buf) < int(rw.decoder.maximumKeyLength)+1 {
-		rw.prefixBytesIter.buf = make([]byte, rw.decoder.maximumKeyLength+1)
+	if cap(rw.prefixBytesIter.Buf) < int(rw.decoder.maximumKeyLength)+1 {
+		rw.prefixBytesIter.Buf = make([]byte, rw.decoder.maximumKeyLength+1)
 	}
 	if newMax := int(rw.decoder.maximumKeyLength) - len(from) + len(to) + 1; cap(rw.keyBuf) < newMax {
 		rw.keyBuf = make([]byte, newMax)
@@ -773,6 +773,11 @@ type DataBlockDecoder struct {
 // BlockDecoder returns a pointer to the underlying BlockDecoder.
 func (d *DataBlockDecoder) BlockDecoder() *BlockDecoder {
 	return &d.d
+}
+
+// PrefixChanged returns the prefix-changed bitmap.
+func (d *DataBlockDecoder) PrefixChanged() Bitmap {
+	return d.prefixChanged
 }
 
 // Init initializes the data block reader with the given serialized data block.
@@ -965,7 +970,7 @@ func (i *DataBlockIter) ResetForReuse() DataBlockIter {
 	return DataBlockIter{
 		keySchema:     i.keySchema,
 		getLazyValuer: i.getLazyValuer,
-		keyIter:       PrefixBytesIter{buf: i.keyIter.buf},
+		keyIter:       PrefixBytesIter{Buf: i.keyIter.Buf},
 		keySeeker:     i.keySeeker,
 	}
 }
