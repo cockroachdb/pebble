@@ -322,17 +322,17 @@ func formatColblkDataBlock(
 	data []byte,
 	fmtRecord func(key *base.InternalKey, value []byte),
 ) error {
-	var reader colblk.DataBlockDecoder
-	reader.Init(r.keySchema, data)
+	var decoder colblk.DataBlockDecoder
+	decoder.Init(r.keySchema, data)
 	f := binfmt.New(data)
 	f.SetLinePrefix("               ")
-	reader.Describe(f)
+	decoder.Describe(f)
 	fmt.Fprint(w, f.String())
 
 	if fmtRecord != nil {
 		var iter colblk.DataBlockIter
 		iter.InitOnce(r.keySchema, r.Compare, r.Split, describingLazyValueHandler{})
-		if err := iter.Init(&reader, block.IterTransforms{}); err != nil {
+		if err := iter.Init(&decoder, block.IterTransforms{}); err != nil {
 			return err
 		}
 		defer iter.Close()
@@ -361,11 +361,11 @@ func (describingLazyValueHandler) GetLazyValueForPrefixAndValueHandle(
 func formatColblkKeyspanBlock(
 	w io.Writer, r *Reader, b NamedBlockHandle, data []byte, _ func(*base.InternalKey, []byte),
 ) error {
-	var reader colblk.KeyspanDecoder
-	reader.Init(data)
+	var decoder colblk.KeyspanDecoder
+	decoder.Init(data)
 	f := binfmt.New(data)
 	f.SetLinePrefix("               ")
-	reader.Describe(f)
+	decoder.Describe(f)
 	fmt.Fprint(w, f.String())
 	return nil
 }
