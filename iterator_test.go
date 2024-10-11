@@ -2229,6 +2229,40 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	}
 }
 
+func TestIteratorSeekPrefixGERandomized(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(seed, seed))
+	ks := testkeys.Alpha(2)
+	d := newTestkeysDatabase(t, ks, rng)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Scan through the keys and construct a map from unique prefix to the
+	// largest key with that prefix.
+	m := make(map[string]string) // prefix -> largest user key
+	iter, err := d.NewIter(nil)
+	require.NoError(t, err)
+	defer iter.Close()
+	for valid := iter.First(); valid; valid = iter.Next() {
+		prefix := string(d.opts.Comparer.Split.Prefix(iter.Key()))
+		if _, ok := m[prefix]; !ok {
+			m[string(prefix)] = string(iter.Key())
+		}
+	}
+	// Perform a few seeks for random prefixes and ensure that result matches
+	// the map constructed.
+	for i := 0; i < 100; i++ {
+		k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+		t.Logf("SeekPrefixGE(%q)", k)
+		exists := iter.SeekPrefixGE(k)
+		expectedKey, expectedOk := m[string(k)]
+		require.Equal(t, expectedOk, exists)
+		if exists {
+			require.Equal(t, expectedKey, string(iter.Key()))
+		}
+	}
+}
+
 // BenchmarkIterator_RangeKeyMasking benchmarks a scan through a keyspace with
 // 10,000 random suffixed point keys, and three range keys covering most of the
 // keyspace. It varies the suffix of the range keys in subbenchmarks to exercise
