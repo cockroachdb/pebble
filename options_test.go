@@ -34,6 +34,11 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 		o.FormatMajorVersion = FormatMinSupported + FormatMajorVersion(n)
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}
+	// Enable columnar blocks if using a format major version that supports it.
+	if o.FormatMajorVersion >= FormatColumnarBlocks && o.Experimental.EnableColumnarBlocks == nil {
+		o.Experimental.EnableColumnarBlocks = func() bool { return true }
+	}
+	o.EnsureDefaults()
 	return o
 }
 

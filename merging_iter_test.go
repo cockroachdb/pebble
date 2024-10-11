@@ -256,7 +256,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-					r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{})
+					r, err := sstable.NewReader(context.Background(), readable, opts.MakeReaderOptions())
 					if err != nil {
 						return err.Error()
 					}

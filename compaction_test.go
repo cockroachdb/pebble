@@ -27,11 +27,13 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -612,11 +614,14 @@ func TestCompaction(t *testing.T) {
 
 	mem := vfs.NewMem()
 	opts := &Options{
-		FS:                    mem,
-		MemTableSize:          memTableSize,
+		Comparer:              testkeys.Comparer,
 		DebugCheck:            DebugCheckLevels,
+		FS:                    mem,
+		KeySchema:             colblk.DefaultKeySchema(testkeys.Comparer, 16),
 		L0CompactionThreshold: 8,
+		MemTableSize:          memTableSize,
 	}
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.testingRandomized(t).WithFSDefaults()
 	d, err := Open("", opts)
 	if err != nil {
@@ -657,7 +662,7 @@ func TestCompaction(t *testing.T) {
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}
-				r, err := sstable.NewReader(context.Background(), f, sstable.ReaderOptions{})
+				r, err := sstable.NewReader(context.Background(), f, opts.MakeReaderOptions())
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}
@@ -948,6 +953,7 @@ func TestManualCompaction(t *testing.T) {
 			EventListener:               compactionLogEventListener,
 			FormatMajorVersion:          randVersion(minVersion, maxVersion),
 		}).WithFSDefaults()
+		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 		var err error
 		d, err = Open("", opts)
@@ -1051,6 +1057,7 @@ func TestManualCompaction(t *testing.T) {
 					FormatMajorVersion:          randVersion(minVersion, maxVersion),
 					DisableAutomaticCompactions: true,
 				}).WithFSDefaults()
+				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -1254,13 +1261,19 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_file_boundaries_delsized",
 			minVersion: FormatDeleteSizedAndObsolete,
+			maxVersion: FormatFlushableIngestExcises,
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
 			minVersion: FormatDeleteSizedAndObsolete,
+			maxVersion: FormatFlushableIngestExcises,
 		},
 		{
 			testData: "testdata/manual_compaction_multilevel",
+		},
+		{
+			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev5",
+			minVersion: FormatColumnarBlocks,
 		},
 	}
 
@@ -1273,7 +1286,6 @@ func TestManualCompaction(t *testing.T) {
 			if maxVersion == 0 {
 				maxVersion = internalFormatNewest
 			}
-
 			runTest(t, tc.testData, minVersion, maxVersion, tc.verbose)
 		})
 	}
@@ -1348,7 +1360,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			},
 			FormatMajorVersion: internalFormatNewest,
 		}).WithFSDefaults()
-
+		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		return opts, nil
 	}
 
@@ -1608,6 +1620,7 @@ func TestCompactionTombstones(t *testing.T) {
 					},
 					FormatMajorVersion: internalFormatNewest,
 				}).WithFSDefaults()
+				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
@@ -2444,6 +2457,7 @@ func TestMarkedForCompaction(t *testing.T) {
 			},
 		},
 	}).WithFSDefaults()
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	reset := func() {
 		if d != nil {
