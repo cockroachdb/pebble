@@ -93,7 +93,7 @@ func CopySpan(
 		r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
 	defer rh.Close()
 	rh.SetupForCompaction()
-	indexH, err := r.readIndex(ctx, rh, nil, nil)
+	indexH, err := r.readTopLevelIndexBlock(ctx, noEnv, rh)
 	if err != nil {
 		return 0, err
 	}
@@ -106,7 +106,7 @@ func CopySpan(
 		if w.filter != nil && r.Properties.FilterPolicyName != w.filter.policyName() {
 			return 0, errors.New("mismatched filters")
 		}
-		filterBlock, err := r.readFilter(ctx, rh, nil, nil)
+		filterBlock, err := r.readFilterBlock(ctx, noEnv, rh)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
@@ -270,7 +270,7 @@ func intersectingIndexEntries(
 			alloc, entry.sep.UserKey = alloc.Copy(entry.sep.UserKey)
 			res = append(res, entry)
 		} else {
-			subBlk, err := r.readBlock(ctx, bh.Handle, rh, nil, nil, nil)
+			subBlk, err := r.readIndexBlock(ctx, noEnv, rh, bh.Handle)
 			if err != nil {
 				return nil, err
 			}
