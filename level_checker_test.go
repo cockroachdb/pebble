@@ -20,11 +20,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -177,8 +177,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					}
 				}
 				writerOpts := sstable.WriterOptions{
-					TableFormat: FormatNewest.MaxTableFormat(),
 					Comparer:    testkeys.Comparer,
+					KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+					TableFormat: FormatNewest.MaxTableFormat(),
 				}
 				writerOpts.SetInternal(sstableinternal.WriterOptions{
 					DisableKeyOrderChecks: disableKeyOrderChecks,
@@ -192,22 +193,26 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 						tombstones = append(tombstones, fragmented)
 					},
 				}
-				keyvalues := strings.Fields(line)
-				for _, kv := range keyvalues {
+				keyValues := strings.Fields(line)
+				for _, kv := range keyValues {
+					if strings.HasPrefix(kv, "EncodeSpan:") {
+						kv = kv[len("EncodeSpan:"):]
+						s := keyspan.ParseSpan(kv)
+						if writeUnfragmented {
+							if err = w.EncodeSpan(s); err != nil {
+								return err.Error()
+							}
+						} else if s.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
+							frag.Add(s)
+						} else {
+							t.Fatalf("unexpected span: %s", s.Pretty(testkeys.Comparer.FormatKey))
+						}
+						continue
+					}
 					j := strings.Index(kv, ":")
 					ikey := base.ParseInternalKey(kv[:j])
 					value := []byte(kv[j+1:])
-					var err error
-					switch ikey.Kind() {
-					case InternalKeyKindRangeDelete:
-						if writeUnfragmented {
-							err = w.AddWithForceObsolete(ikey, value, false /* forceObsolete */)
-							break
-						}
-						frag.Add(rangedel.Decode(ikey, value, nil))
-					default:
-						err = w.AddWithForceObsolete(ikey, value, false /* forceObsolete */)
-					}
+					err = w.AddWithForceObsolete(ikey, value, false /* forceObsolete */)
 					if err != nil {
 						return err.Error()
 					}
@@ -230,7 +235,10 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				// Set FileNum for logging purposes.
-				readerOpts := sstable.ReaderOptions{Comparer: testkeys.Comparer}
+				readerOpts := sstable.ReaderOptions{
+					Comparer:  testkeys.Comparer,
+					KeySchema: writerOpts.KeySchema,
+				}
 				readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)})
 				r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 				if err != nil {
