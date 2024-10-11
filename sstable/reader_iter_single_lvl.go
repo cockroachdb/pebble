@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -74,18 +73,9 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	vbRHPrealloc objstorageprovider.PreallocatedReadHandle
 	err          error
 	closeHook    func(i Iterator) error
-	// stats and iterStats are slightly different. stats is a shared struct
-	// supplied from the outside, and represents stats for the whole iterator
-	// tree and can be reset from the outside (e.g. when the pebble.Iterator is
-	// being reused). It is currently only provided when the iterator tree is
-	// rooted at pebble.Iterator. iterStats is this sstable iterator's private
-	// stats that are reported to a CategoryStatsCollector when this iterator is
-	// closed. More paths are instrumented with this as the
-	// CategoryStatsCollector needed for this is provided by the
-	// tableCacheContainer (which is more universally used).
-	stats      *base.InternalIteratorStats
-	iterStats  iterStatsAccumulator
-	bufferPool *block.BufferPool
+
+	iterStats    iterStatsAccumulator
+	readBlockEnv readBlockEnv
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -252,7 +242,7 @@ func newColumnBlockSingleLevelIterator(
 		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
 	i.data.InitOnce(r.keySchema, i.cmp, r.Split, getLazyValuer)
-	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
+	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
 	if err == nil {
 		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
 	}
@@ -319,7 +309,7 @@ func newRowBlockSingleLevelIterator(
 		i.data.SetHasValuePrefix(true)
 	}
 
-	indexH, err := r.readIndex(ctx, i.indexFilterRH, stats, &i.iterStats)
+	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
 	if err == nil {
 		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
 	}
@@ -352,15 +342,18 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 	i.useFilterBlock = useFilterBlock
 	i.reader = r
 	i.cmp = r.Compare
-	i.stats = stats
 	i.transforms = transforms
-	i.bufferPool = bufferPool
 	if v != nil {
 		i.vState = v
 		i.endKeyInclusive, i.lower, i.upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
 
 	i.iterStats.init(categoryAndQoS, statsCollector)
+	i.readBlockEnv = readBlockEnv{
+		Stats:      stats,
+		IterStats:  &i.iterStats,
+		BufferPool: bufferPool,
+	}
 
 	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
 		r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
@@ -521,10 +514,10 @@ func (i *singleLevelIterator[I, PI, P, PD]) SetContext(ctx context.Context) {
 	i.ctx = ctx
 }
 
-// loadBlock loads the block at the current index position and leaves i.data
+// loadDataBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
-func (i *singleLevelIterator[I, PI, P, PD]) loadBlock(dir int8) loadBlockResult {
+func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockResult {
 	if !PI(&i.index).Valid() {
 		// Ensure the data block iterator is invalidated even if loading of the block
 		// fails.
@@ -539,8 +532,8 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadBlock(dir int8) loadBlockResult 
 		// or disk.
 		//
 		// It's safe to leave i.data in its original state here, as all callers to
-		// loadBlock make an absolute positioning call (i.e. a seek, first, or last)
-		// to `i.data` right after loadBlock returns loadBlockOK.
+		// loadDataBlock make an absolute positioning call (i.e. a seek, first, or last)
+		// to `i.data` right after loadDataBlock returns loadBlockOK.
 		i.initBounds()
 		return loadBlockOK
 	}
@@ -566,9 +559,7 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadBlock(dir int8) loadBlockResult 
 		}
 		// blockIntersects
 	}
-	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.DataBlock)
-	block, err := i.reader.readBlock(
-		ctx, i.dataBH, i.dataRH, i.stats, &i.iterStats, i.bufferPool)
+	block, err := i.reader.readDataBlock(i.ctx, i.readBlockEnv, i.dataRH, i.dataBH)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -586,10 +577,11 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadBlock(dir int8) loadBlockResult 
 // readBlockForVBR implements the blockProviderWhenOpen interface for use by
 // the valueBlockReader.
 func (i *singleLevelIterator[I, PI, D, PD]) readBlockForVBR(
-	h block.Handle, stats *base.InternalIteratorStats,
+	bh block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
-	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.ValueBlock)
-	return i.reader.readBlock(ctx, h, i.vbRH, stats, &i.iterStats, i.bufferPool)
+	env := i.readBlockEnv
+	env.Stats = stats
+	return i.reader.readValueBlock(i.ctx, env, i.vbRH, bh)
 }
 
 // resolveMaybeExcluded is invoked when the block-property filterer has found
@@ -827,7 +819,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			PD(&i.data).Invalidate()
 			return nil
 		}
-		result := i.loadBlock(+1)
+		result := i.loadDataBlock(+1)
 		if result == loadBlockFailed {
 			return nil
 		}
@@ -959,7 +951,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 		}
 	}
 
-	dataH, err := i.reader.readFilter(i.ctx, i.indexFilterRH, i.stats, &i.iterStats)
+	dataH, err := i.reader.readFilterBlock(i.ctx, i.readBlockEnv, i.indexFilterRH)
 	if err != nil {
 		return false, err
 	}
@@ -1035,7 +1027,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 	// > key. So there could be keys in the block > key. But the block preceding
 	// this block cannot have any keys > key, otherwise it would have been the
 	// result of the original index.SeekGE.
-	result := i.loadBlock(-1)
+	result := i.loadDataBlock(-1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -1133,7 +1125,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 			}
 		}
 		// INVARIANT: ikey != nil.
-		result := i.loadBlock(-1)
+		result := i.loadDataBlock(-1)
 		if result == loadBlockFailed {
 			return nil
 		}
@@ -1205,7 +1197,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 		PD(&i.data).Invalidate()
 		return nil
 	}
-	result := i.loadBlock(+1)
+	result := i.loadDataBlock(+1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -1271,7 +1263,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 		PD(&i.data).Invalidate()
 		return nil
 	}
-	result := i.loadBlock(-1)
+	result := i.loadDataBlock(-1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -1372,7 +1364,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Int
 			return nil
 		}
 	}
-	result := i.loadBlock(+1)
+	result := i.loadDataBlock(+1)
 	if result == loadBlockFailed {
 		return nil
 	}
@@ -1433,7 +1425,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 			PD(&i.data).Invalidate()
 			break
 		}
-		result := i.loadBlock(+1)
+		result := i.loadDataBlock(+1)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
@@ -1442,7 +1434,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 				// We checked that i.index was at a valid entry, so
 				// loadBlockFailed could not have happened due to i.index
 				// being exhausted, and must be due to an error.
-				panic("loadBlock should not have failed with no error")
+				panic("loadDataBlock should not have failed with no error")
 			}
 			// result == loadBlockIrrelevant. Enforce the upper bound here
 			// since don't want to bother moving to the next block if upper
@@ -1513,7 +1505,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			PD(&i.data).Invalidate()
 			break
 		}
-		result := i.loadBlock(-1)
+		result := i.loadDataBlock(-1)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
@@ -1522,7 +1514,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 				// We checked that i.index was at a valid entry, so
 				// loadBlockFailed could not have happened due to to i.index
 				// being exhausted, and must be due to an error.
-				panic("loadBlock should not have failed with no error")
+				panic("loadDataBlock should not have failed with no error")
 			}
 			// result == loadBlockIrrelevant. Enforce the lower bound here
 			// since don't want to bother moving to the previous block if lower

@@ -482,6 +482,7 @@ k k
 open: db/000014.sst (options: *vfs.randomReadsOption)
 read-at(509, 53): db/000014.sst
 read-at(472, 37): db/000014.sst
+read-at(53, 419): db/000014.sst
 z z
 .
 

@@ -47,7 +47,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter(context.Background(), nil, nil /* stats */, nil)
+		dataH, err := r.readFilterBlock(context.Background(), noEnv, noReadHandle)
 		if err != nil {
 			return nil, err
 		}
@@ -629,7 +629,7 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func indexLayoutString(t *testing.T, r *Reader) string {
-	indexH, err := r.readIndex(context.Background(), nil, nil, nil)
+	indexH, err := r.readTopLevelIndexBlock(context.Background(), noEnv, noReadHandle)
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder
@@ -646,7 +646,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(iter.Separator()), bh.Length)
 		if twoLevelIndex {
-			b, err := r.readBlock(context.Background(), bh.Handle, nil, nil, nil, nil)
+			b, err := r.readIndexBlock(context.Background(), noEnv, noReadHandle, bh.Handle)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2 := r.tableFormat.newIndexIter()
@@ -948,6 +948,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	{
 		var pool block.BufferPool
 		pool.Init(5)
+		defer pool.Release()
 		citer, err := r.NewCompactionIter(
 			NoTransforms, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r), &pool)
 		require.NoError(t, err)
