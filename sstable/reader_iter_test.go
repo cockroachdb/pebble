@@ -51,6 +51,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 
 	var pool block.BufferPool
 	pool.Init(5)
+	defer pool.Release()
 
 	var stats base.InternalIteratorStats
 	for k := 0; k < 20; k++ {

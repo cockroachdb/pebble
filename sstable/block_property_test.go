@@ -902,7 +902,7 @@ func TestBlockProperties(t *testing.T) {
 
 				// Enumerate point key data blocks encoded into the index.
 				if f != nil {
-					indexH, err := r.readIndex(context.Background(), nil, nil, nil)
+					indexH, err := r.readTopLevelIndexBlock(context.Background(), noEnv, noReadHandle)
 					if err != nil {
 						return err.Error()
 					}
@@ -1271,7 +1271,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 }
 
 func runBlockPropsCmd(r *Reader) string {
-	bh, err := r.readIndex(context.Background(), nil, nil, nil)
+	bh, err := r.readTopLevelIndexBlock(context.Background(), noEnv, noReadHandle)
 	if err != nil {
 		return err.Error()
 	}
@@ -1320,8 +1320,7 @@ func runBlockPropsCmd(r *Reader) string {
 		// If the table has a two-level index, also decode the index
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
-			subIndex, err := r.readBlock(
-				context.Background(), bhp.Handle, nil, nil, nil, nil)
+			subIndex, err := r.readIndexBlock(context.Background(), noEnv, noReadHandle, bhp.Handle)
 			if err != nil {
 				return err.Error()
 			}
