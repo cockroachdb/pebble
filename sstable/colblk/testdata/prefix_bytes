@@ -964,3 +964,40 @@ finish rows=5
 17-18: x 64       # data[05]: ....d
 18-19: x 65       # data[06]: ....e (bundle prefix)
 19-19: x          # data[07]: .....
+
+init bundle-size=4
+----
+Size: 0
+
+put
+a
+a
+a
+a
+a
+a
+a
+aa
+aa
+aa
+aa
+aa
+ab
+ab
+ab
+ab
+----
+Size: 27
+nKeys=16; bundleSize=4
+blockPrefixLen=1; currentBundleLen=2; currentBundleKeys=1
+Offsets:
+  0000  0001  0001  0001  0001  0001  0002  0002  0002  0002
+  0004  0006  0006  0006  0006  0006  0000  0008  0008  0008
+  0008
+Data (len=8):
+aaaaaaab
+
+unsafe-get i=(15, 14)
+----
+UnsafeGet(15) = ab
+UnsafeGet(14) = ab
