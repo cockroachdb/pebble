@@ -178,15 +178,11 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlockInternal(context.Background(), noEnv, noReadHandle, b.Handle)
-		if err != nil {
-			fmt.Fprintf(w, "  [err: %s]\n", err)
-			continue
-		}
-		err = func() error {
-			// Defer release of the block handle so we always return the handle
-			// to the cache.
-			defer h.Release()
+		err := func() error {
+			var h block.BufferHandle
+			var err error
+			// Defer release of any block handle that will have been read.
+			defer func() { h.Release() }()
 
 			formatTrailer := func() {
 				trailer := make([]byte, block.TrailerLen)
@@ -200,6 +196,10 @@ func (l *Layout) Describe(
 			var lastKey InternalKey
 			switch b.Name {
 			case "data":
+				h, err = r.readDataBlock(ctx, noEnv, noReadHandle, b.Handle)
+				if err != nil {
+					return err
+				}
 				formatting.formatDataBlock(w, r, *b, h.Get(), func(key *base.InternalKey, value []byte) {
 					if fmtRecord != nil {
 						fmtRecord(key, value)
@@ -211,22 +211,58 @@ func (l *Layout) Describe(
 					lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 				})
 				formatTrailer()
-			case "range-del", "range-key":
+
+			case "range-del":
+				if b.Handle != r.rangeDelBH {
+					return base.AssertionFailedf("range-del block handle does not match rangeDelBH")
+				}
+				h, err = r.readRangeDelBlock(ctx, noEnv)
 				// TODO(jackson): colblk ignores fmtRecord, because it doesn't
 				// make sense in the context.
 				formatting.formatKeyspanBlock(w, r, *b, h.Get(), fmtRecord)
 				formatTrailer()
+
+			case "range-key":
+				if b.Handle != r.rangeKeyBH {
+					return base.AssertionFailedf("range-del block handle does not match rangeDelBH")
+				}
+				h, err = r.readRangeKeyBlock(ctx, noEnv)
+				if err != nil {
+					return err
+				}
+				// TODO(jackson): colblk ignores fmtRecord, because it doesn't
+				// make sense in the context.
+				formatting.formatKeyspanBlock(w, r, *b, h.Get(), fmtRecord)
+				formatTrailer()
+
 			case "index", "top-index":
+				h, err = r.readIndexBlock(ctx, noEnv, noReadHandle, b.Handle)
+				if err != nil {
+					return err
+				}
 				formatting.formatIndexBlock(w, r, *b, h.Get())
 				formatTrailer()
+
 			case "properties":
+				h, err = r.readBlockInternal(ctx, noEnv, noReadHandle, b.Handle)
+				if err != nil {
+					return err
+				}
 				iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
 				iter.Describe(w, b.Offset,
 					func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 						fmt.Fprintf(w, "%10d    %s (%d)", b.Offset+uint64(enc.Offset), key.UserKey, enc.Length)
 					})
 				formatTrailer()
+
 			case "meta-index":
+				if b.Handle != r.metaindexBH {
+					return base.AssertionFailedf("range-del block handle does not match rangeDelBH")
+				}
+				h, err = r.readMetaindexBlock(ctx, noEnv, noReadHandle)
+				if err != nil {
+					return err
+				}
 				iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
 				iter.Describe(w, b.Offset,
 					func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
@@ -254,6 +290,7 @@ func (l *Layout) Describe(
 							b.Offset+uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
 					})
 				formatTrailer()
+
 			case "value-block":
 				// We don't peer into the value-block since it can't be interpreted
 				// without the valueHandles.
