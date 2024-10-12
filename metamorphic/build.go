@@ -252,9 +252,7 @@ func openExternalObj(
 ) {
 	objReader, objSize, err := t.externalStorage.ReadObject(context.Background(), externalObjName(externalObjID))
 	panicIfErr(err)
-	opts := sstable.ReaderOptions{
-		Comparer: t.opts.Comparer,
-	}
+	opts := t.opts.MakeReaderOptions()
 	reader, err = sstable.NewReader(
 		context.Background(),
 		objstorageprovider.NewRemoteReadable(objReader, objSize),

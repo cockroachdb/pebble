@@ -289,6 +289,7 @@ func defaultOptions() *pebble.Options {
 		}},
 		BlockPropertyCollectors: blockPropertyCollectorConstructors,
 	}
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	// We don't want to run the level checker every time because it can slow down
 	// downloads and background compactions too much.
