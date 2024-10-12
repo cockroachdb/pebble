@@ -202,7 +202,7 @@ const (
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
-	FormatNewest FormatMajorVersion = iota - 2
+	FormatNewest FormatMajorVersion = iota - 1
 
 	// Experimental versions, which are excluded by FormatNewest (but can be used
 	// in tests) can be defined here.

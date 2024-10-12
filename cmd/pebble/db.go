@@ -61,6 +61,7 @@ func newPebbleDB(dir string) DB {
 		Comparer:                    &crdbtest.Comparer,
 		DisableWAL:                  disableWAL,
 		FormatMajorVersion:          pebble.FormatNewest,
+		KeySchema:                   crdbtest.KeySchema,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
 		LBaseMaxBytes:               64 << 20, // 64 MB
