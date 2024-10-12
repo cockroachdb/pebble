@@ -28,7 +28,7 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 
 	// When we add a new version, we should add a check for the new version in
 	// addition to updating these expected values.
-	require.Equal(t, FormatNewest, FormatMajorVersion(18))
+	require.Equal(t, FormatNewest, FormatMajorVersion(19))
 	require.Equal(t, internalFormatNewest, FormatMajorVersion(19))
 }
 
