@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
@@ -213,6 +214,35 @@ func TestPrefixBytesRandomized(t *testing.T) {
 					runTest(t, maxKeyCount, maxKeyLen, maxAlphaLen)
 				})
 			}
+		}
+	}
+}
+
+func TestPrefixBytesBuilder_UnsafeGet(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("Seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, seed))
+	ks := testkeys.Alpha(2)
+	var pbb PrefixBytesBuilder
+	pbb.Init(8)
+
+	var prevKey []byte
+	var prevPrevKey []byte
+	for i := 0; i < int(ks.Count()); i++ {
+		versionCount := int(rng.Int64N(10))
+		k := testkeys.Key(ks, int64(i))
+		for j := 0; j < versionCount; j++ {
+			rows := pbb.Rows()
+			if rows >= 1 && string(prevKey) != string(pbb.UnsafeGet(rows-1)) {
+				t.Fatalf("pbb.UnsafeGet(%d) = %q; expected previous key %q", rows-1, pbb.UnsafeGet(rows-1), prevKey)
+			}
+			if rows >= 2 && string(prevPrevKey) != string(pbb.UnsafeGet(rows-2)) {
+				t.Fatalf("pbb.UnsafeGet(%d) = %q; expected key before previous %q", rows-2, pbb.UnsafeGet(rows-2), prevPrevKey)
+			}
+			t.Logf("%d: Put(%q)", rows, k)
+			pbb.Put(k, crbytes.CommonPrefix(k, prevKey))
+			prevPrevKey = prevKey
+			prevKey = k
 		}
 	}
 }

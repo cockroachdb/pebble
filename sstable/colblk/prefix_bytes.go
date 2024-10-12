@@ -731,7 +731,7 @@ func (b *PrefixBytesBuilder) Rows() int { return b.nKeys }
 // for the state after the most recent key addition, and one for the state after
 // the second most recent key addition.
 type prefixBytesSizing struct {
-	lastKeyLen                int // the length of the last key added
+	lastKeyOff                int // the offset in data where the last key added begins
 	offsetCount               int // the count of offsets required to encode the data
 	blockPrefixLen            int // the length of the block prefix
 	currentBundleDistinctLen  int // the length of the "current" bundle's distinct keys
@@ -755,11 +755,11 @@ type prefixBytesSizing struct {
 }
 
 func (sz *prefixBytesSizing) String() string {
-	return fmt.Sprintf("lastKeyLen:%d offsetCount:%d blockPrefixLen:%d\n"+
+	return fmt.Sprintf("lastKeyOff:%d offsetCount:%d blockPrefixLen:%d\n"+
 		"currentBundleDistinct{Len,Keys}: (%d,%d)\n"+
 		"currentBundlePrefix{Len,Offset}: (%d,%d)\n"+
 		"completedBundleLen:%d compressedDataLen:%d offsetEncoding:%s",
-		sz.lastKeyLen, sz.offsetCount, sz.blockPrefixLen, sz.currentBundleDistinctLen,
+		sz.lastKeyOff, sz.offsetCount, sz.blockPrefixLen, sz.currentBundleDistinctLen,
 		sz.currentBundleDistinctKeys, sz.currentBundlePrefixLen, sz.currentBundlePrefixOffset,
 		sz.completedBundleLen, sz.compressedDataLen, sz.offsetEncoding)
 }
@@ -786,12 +786,12 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 			panic(errors.AssertionFailedf("maxShared must be positive"))
 		}
 		if b.nKeys > 0 {
-			if bytes.Compare(key, b.data[len(b.data)-prev.lastKeyLen:]) < 0 {
-				panic(errors.AssertionFailedf("keys must be added in order: %q < %q", key, b.data[len(b.data)-prev.lastKeyLen:]))
+			if bytes.Compare(key, b.data[prev.lastKeyOff:]) < 0 {
+				panic(errors.AssertionFailedf("keys must be added in order: %q < %q", key, b.data[prev.lastKeyOff:]))
 			}
-			if bytesSharedWithPrev != crbytes.CommonPrefix(key, b.data[len(b.data)-prev.lastKeyLen:]) {
+			if bytesSharedWithPrev != crbytes.CommonPrefix(key, b.data[prev.lastKeyOff:]) {
 				panic(errors.AssertionFailedf("bytesSharedWithPrev %d != %d", bytesSharedWithPrev,
-					crbytes.CommonPrefix(key, b.data[len(b.data)-prev.lastKeyLen:])))
+					crbytes.CommonPrefix(key, b.data[prev.lastKeyOff:])))
 			}
 		}
 	}
@@ -807,7 +807,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		b.data = append(b.data, key...)
 		b.addOffset(uint32(len(b.data)))
 		*curr = prefixBytesSizing{
-			lastKeyLen:                len(key),
+			lastKeyOff:                0,
 			offsetCount:               b.offsets.count,
 			blockPrefixLen:            min(len(key), int(b.maxShared)),
 			currentBundleDistinctLen:  len(key),
@@ -837,7 +837,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		blockPrefixLen := min(prev.blockPrefixLen, bytesSharedWithPrev)
 		b.nKeys++
 		*curr = prefixBytesSizing{
-			lastKeyLen:         len(key),
+			lastKeyOff:         len(b.data),
 			offsetCount:        b.offsets.count + 2,
 			blockPrefixLen:     blockPrefixLen,
 			completedBundleLen: completedBundleSize,
@@ -872,7 +872,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		// if the bundle prefix length changes no adjustment is needed to that
 		// value or to the first key in the bundle.
 		*curr = prefixBytesSizing{
-			lastKeyLen:                len(key),
+			lastKeyOff:                len(b.data),
 			offsetCount:               prev.offsetCount + 1,
 			blockPrefixLen:            min(prev.blockPrefixLen, bytesSharedWithPrev),
 			currentBundleDistinctLen:  prev.currentBundleDistinctLen + len(key),
@@ -905,16 +905,16 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 func (b *PrefixBytesBuilder) UnsafeGet(i int) []byte {
 	switch i {
 	case b.nKeys - 1:
-		// The last key is the [lastKeyLen] bytes.
-		return b.data[len(b.data)-b.sizings[i&1].lastKeyLen:]
+		lastKeyOff := b.sizings[i&1].lastKeyOff
+		return b.data[lastKeyOff:]
 	case b.nKeys - 2:
-		// Check if the very last key is a duplicate of the second-to-last key.
-		lastKeyLen := b.sizings[(i+1)&1].lastKeyLen
-		if b.offsets.elems.At(b.rowSuffixIndex(i+1)) == b.offsets.elems.At(b.rowSuffixIndex(i+2)) {
-			return b.data[len(b.data)-b.sizings[i&1].lastKeyLen:]
+		lastKeyOff := b.sizings[(i+1)&1].lastKeyOff
+		secondLastKeyOff := b.sizings[i&1].lastKeyOff
+		if secondLastKeyOff == lastKeyOff {
+			// The last key is a duplicate of the second-to-last key.
+			return b.data[secondLastKeyOff:]
 		}
-		lastLastKeyLen := b.sizings[i&1].lastKeyLen
-		return b.data[len(b.data)-lastKeyLen-lastLastKeyLen : len(b.data)-lastKeyLen]
+		return b.data[secondLastKeyOff:lastKeyOff]
 	default:
 		panic(errors.AssertionFailedf("UnsafeGet(%d) called on PrefixBytes with %d keys", i, b.nKeys))
 	}
