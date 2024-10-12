@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // RawBytes holds an array of byte slices, stored as a concatenated data section
@@ -80,7 +81,9 @@ func defaultSliceFormatter(x []byte) string {
 	return string(x)
 }
 
-func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func([]byte) string) {
+func rawBytesToBinFormatter(
+	f *binfmt.Formatter, tp treeprinter.Node, count int, sliceFormatter func([]byte) string,
+) {
 	if count == 0 {
 		return
 	}
@@ -90,17 +93,17 @@ func rawBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func(
 
 	rb, _ := DecodeRawBytes(f.RelativeData(), uint32(f.RelativeOffset()), count)
 	dataOffset := uint64(f.RelativeOffset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
-	f.CommentLine("rawbytes")
-	f.CommentLine("offsets table")
-	uintsToBinFormatter(f, count+1, func(offset, base uint64) string {
+	n := tp.Child("offsets table")
+	uintsToBinFormatter(f, n, count+1, func(offset, base uint64) string {
 		// NB: base is always zero for RawBytes columns.
 		return fmt.Sprintf("%d [%d overall]", offset+base, offset+base+dataOffset)
 	})
-	f.CommentLine("data")
+	n = tp.Child("data")
 	for i := 0; i < rb.slices; i++ {
 		s := rb.At(i)
 		f.HexBytesln(len(s), "data[%d]: %s", i, sliceFormatter(s))
 	}
+	f.ToTreePrinter(n)
 }
 
 func (b *RawBytes) ptr(offset uint32) unsafe.Pointer {

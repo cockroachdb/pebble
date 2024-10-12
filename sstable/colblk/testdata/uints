@@ -21,11 +21,13 @@ b.Get(99) = 0
 
 finish rows=100
 ----
-0-1: x 00 # encoding: zero
+uints
+ └── 0-1: x 00 # encoding: zero
 
 finish rows=10
 ----
-0-1: x 00 # encoding: zero
+uints
+ └── 0-1: x 00 # encoding: zero
 
 init
 ----
@@ -54,7 +56,8 @@ Size(0, 0) = 0
 
 finish rows=8
 ----
-0-1: x 00 # encoding: zero
+uints
+ └── 0-1: x 00 # encoding: zero
 
 write
 5:10
@@ -84,15 +87,16 @@ b.Get(7) = 10
 # Check width=8 encoding.
 finish rows=8
 ----
-0-1: x 01 # encoding: 1b
-1-2: x 00 # data[0] = 0
-2-3: x 00 # data[1] = 0
-3-4: x 00 # data[2] = 0
-4-5: x 00 # data[3] = 0
-5-6: x 00 # data[4] = 0
-6-7: x 0a # data[5] = 10
-7-8: x 00 # data[6] = 0
-8-9: x 0a # data[7] = 10
+uints
+ ├── 0-1: x 01 # encoding: 1b
+ ├── 1-2: x 00 # data[0] = 0
+ ├── 2-3: x 00 # data[1] = 0
+ ├── 3-4: x 00 # data[2] = 0
+ ├── 4-5: x 00 # data[3] = 0
+ ├── 5-6: x 00 # data[4] = 0
+ ├── 6-7: x 0a # data[5] = 10
+ ├── 7-8: x 00 # data[6] = 0
+ └── 8-9: x 0a # data[7] = 10
 
 # Add 1000 which should force a 16-bit encoding.
 
@@ -134,18 +138,19 @@ Size(8, 0) = 9
 
 finish rows=10
 ----
-00-01: x 02   # encoding: 2b
-01-02: x 00   # padding (aligning to 16-bit boundary)
-02-04: x 0000 # data[0] = 0
-04-06: x 0000 # data[1] = 0
-06-08: x 0000 # data[2] = 0
-08-10: x 0000 # data[3] = 0
-10-12: x 0000 # data[4] = 0
-12-14: x 0a00 # data[5] = 10
-14-16: x 0000 # data[6] = 0
-16-18: x 0a00 # data[7] = 10
-18-20: x e803 # data[8] = 1000
-20-22: x ffff # data[9] = 65535
+uints
+ ├── 00-01: x 02   # encoding: 2b
+ ├── 01-02: x 00   # padding (aligning to 16-bit boundary)
+ ├── 02-04: x 0000 # data[0] = 0
+ ├── 04-06: x 0000 # data[1] = 0
+ ├── 06-08: x 0000 # data[2] = 0
+ ├── 08-10: x 0000 # data[3] = 0
+ ├── 10-12: x 0000 # data[4] = 0
+ ├── 12-14: x 0a00 # data[5] = 10
+ ├── 14-16: x 0000 # data[6] = 0
+ ├── 16-18: x 0a00 # data[7] = 10
+ ├── 18-20: x e803 # data[8] = 1000
+ └── 20-22: x ffff # data[9] = 65535
 
 # 2^16 should trigger a 32-bit encoding.
 #
@@ -176,20 +181,21 @@ Size(8, 0) = 9
 
 finish rows=12
 ----
-00-01: x 04       # encoding: 4b
-01-04: x 000000   # padding (aligning to 32-bit boundary)
-04-08: x 00000000 # data[0] = 0
-08-12: x 00000000 # data[1] = 0
-12-16: x 00000000 # data[2] = 0
-16-20: x 00000000 # data[3] = 0
-20-24: x 00000000 # data[4] = 0
-24-28: x 0a000000 # data[5] = 10
-28-32: x 00000000 # data[6] = 0
-32-36: x 0a000000 # data[7] = 10
-36-40: x e8030000 # data[8] = 1000
-40-44: x ffff0000 # data[9] = 65535
-44-48: x 00000100 # data[10] = 65536
-48-52: x ffffffff # data[11] = 4294967295
+uints
+ ├── 00-01: x 04       # encoding: 4b
+ ├── 01-04: x 000000   # padding (aligning to 32-bit boundary)
+ ├── 04-08: x 00000000 # data[0] = 0
+ ├── 08-12: x 00000000 # data[1] = 0
+ ├── 12-16: x 00000000 # data[2] = 0
+ ├── 16-20: x 00000000 # data[3] = 0
+ ├── 20-24: x 00000000 # data[4] = 0
+ ├── 24-28: x 0a000000 # data[5] = 10
+ ├── 28-32: x 00000000 # data[6] = 0
+ ├── 32-36: x 0a000000 # data[7] = 10
+ ├── 36-40: x e8030000 # data[8] = 1000
+ ├── 40-44: x ffff0000 # data[9] = 65535
+ ├── 44-48: x 00000100 # data[10] = 65536
+ └── 48-52: x ffffffff # data[11] = 4294967295
 
 # 2^32 should trigger a 64-bit encoding.
 #
@@ -208,21 +214,22 @@ Size(8, 0) = 9
 
 finish rows=13
 ----
-000-001: x 08               # encoding: 8b
-001-008: x 00000000000000   # padding (aligning to 64-bit boundary)
-008-016: x 0000000000000000 # data[0] = 0
-016-024: x 0000000000000000 # data[1] = 0
-024-032: x 0000000000000000 # data[2] = 0
-032-040: x 0000000000000000 # data[3] = 0
-040-048: x 0000000000000000 # data[4] = 0
-048-056: x 0a00000000000000 # data[5] = 10
-056-064: x 0000000000000000 # data[6] = 0
-064-072: x 0a00000000000000 # data[7] = 10
-072-080: x e803000000000000 # data[8] = 1000
-080-088: x ffff000000000000 # data[9] = 65535
-088-096: x 0000010000000000 # data[10] = 65536
-096-104: x ffffffff00000000 # data[11] = 4294967295
-104-112: x 0000000001000000 # data[12] = 4294967296
+uints
+ ├── 000-001: x 08               # encoding: 8b
+ ├── 001-008: x 00000000000000   # padding (aligning to 64-bit boundary)
+ ├── 008-016: x 0000000000000000 # data[0] = 0
+ ├── 016-024: x 0000000000000000 # data[1] = 0
+ ├── 024-032: x 0000000000000000 # data[2] = 0
+ ├── 032-040: x 0000000000000000 # data[3] = 0
+ ├── 040-048: x 0000000000000000 # data[4] = 0
+ ├── 048-056: x 0a00000000000000 # data[5] = 10
+ ├── 056-064: x 0000000000000000 # data[6] = 0
+ ├── 064-072: x 0a00000000000000 # data[7] = 10
+ ├── 072-080: x e803000000000000 # data[8] = 1000
+ ├── 080-088: x ffff000000000000 # data[9] = 65535
+ ├── 088-096: x 0000010000000000 # data[10] = 65536
+ ├── 096-104: x ffffffff00000000 # data[11] = 4294967295
+ └── 104-112: x 0000000001000000 # data[12] = 4294967296
 
 # Repeat the above tests but with a zero default value, and without explicitly
 # setting any of the zero values.
@@ -265,15 +272,16 @@ Size(0, 0) = 0
 # Finish the b8 so we can test 16-bit encoding.
 finish rows=8
 ----
-0-1: x 01 # encoding: 1b
-1-2: x 00 # data[0] = 0
-2-3: x 00 # data[1] = 0
-3-4: x 00 # data[2] = 0
-4-5: x 00 # data[3] = 0
-5-6: x 00 # data[4] = 0
-6-7: x 0a # data[5] = 10
-7-8: x 00 # data[6] = 0
-8-9: x 0a # data[7] = 10
+uints
+ ├── 0-1: x 01 # encoding: 1b
+ ├── 1-2: x 00 # data[0] = 0
+ ├── 2-3: x 00 # data[1] = 0
+ ├── 3-4: x 00 # data[2] = 0
+ ├── 4-5: x 00 # data[3] = 0
+ ├── 5-6: x 00 # data[4] = 0
+ ├── 6-7: x 0a # data[5] = 10
+ ├── 7-8: x 00 # data[6] = 0
+ └── 8-9: x 0a # data[7] = 10
 
 # Add 1000 which should force a 16-bit delta encoding.
 
@@ -300,18 +308,19 @@ Size(8, 0) = 9
 
 finish rows=10
 ----
-00-01: x 02   # encoding: 2b
-01-02: x 00   # padding (aligning to 16-bit boundary)
-02-04: x 0000 # data[0] = 0
-04-06: x 0000 # data[1] = 0
-06-08: x 0000 # data[2] = 0
-08-10: x 0000 # data[3] = 0
-10-12: x 0000 # data[4] = 0
-12-14: x 0a00 # data[5] = 10
-14-16: x 0000 # data[6] = 0
-16-18: x 0a00 # data[7] = 10
-18-20: x e803 # data[8] = 1000
-20-22: x ffff # data[9] = 65535
+uints
+ ├── 00-01: x 02   # encoding: 2b
+ ├── 01-02: x 00   # padding (aligning to 16-bit boundary)
+ ├── 02-04: x 0000 # data[0] = 0
+ ├── 04-06: x 0000 # data[1] = 0
+ ├── 06-08: x 0000 # data[2] = 0
+ ├── 08-10: x 0000 # data[3] = 0
+ ├── 10-12: x 0000 # data[4] = 0
+ ├── 12-14: x 0a00 # data[5] = 10
+ ├── 14-16: x 0000 # data[6] = 0
+ ├── 16-18: x 0a00 # data[7] = 10
+ ├── 18-20: x e803 # data[8] = 1000
+ └── 20-22: x ffff # data[9] = 65535
 
 # 2^16 should trigger a 32-bit encoding.
 
@@ -342,20 +351,21 @@ Size(8, 0) = 9
 
 finish rows=12
 ----
-00-01: x 04       # encoding: 4b
-01-04: x 000000   # padding (aligning to 32-bit boundary)
-04-08: x 00000000 # data[0] = 0
-08-12: x 00000000 # data[1] = 0
-12-16: x 00000000 # data[2] = 0
-16-20: x 00000000 # data[3] = 0
-20-24: x 00000000 # data[4] = 0
-24-28: x 0a000000 # data[5] = 10
-28-32: x 00000000 # data[6] = 0
-32-36: x 0a000000 # data[7] = 10
-36-40: x e8030000 # data[8] = 1000
-40-44: x ffff0000 # data[9] = 65535
-44-48: x 00000100 # data[10] = 65536
-48-52: x ffffffff # data[11] = 4294967295
+uints
+ ├── 00-01: x 04       # encoding: 4b
+ ├── 01-04: x 000000   # padding (aligning to 32-bit boundary)
+ ├── 04-08: x 00000000 # data[0] = 0
+ ├── 08-12: x 00000000 # data[1] = 0
+ ├── 12-16: x 00000000 # data[2] = 0
+ ├── 16-20: x 00000000 # data[3] = 0
+ ├── 20-24: x 00000000 # data[4] = 0
+ ├── 24-28: x 0a000000 # data[5] = 10
+ ├── 28-32: x 00000000 # data[6] = 0
+ ├── 32-36: x 0a000000 # data[7] = 10
+ ├── 36-40: x e8030000 # data[8] = 1000
+ ├── 40-44: x ffff0000 # data[9] = 65535
+ ├── 44-48: x 00000100 # data[10] = 65536
+ └── 48-52: x ffffffff # data[11] = 4294967295
 
 # 2^32 should trigger a 64-bit encoding.
 
@@ -374,21 +384,22 @@ Size(8, 0) = 9
 
 finish rows=13
 ----
-000-001: x 08               # encoding: 8b
-001-008: x 00000000000000   # padding (aligning to 64-bit boundary)
-008-016: x 0000000000000000 # data[0] = 0
-016-024: x 0000000000000000 # data[1] = 0
-024-032: x 0000000000000000 # data[2] = 0
-032-040: x 0000000000000000 # data[3] = 0
-040-048: x 0000000000000000 # data[4] = 0
-048-056: x 0a00000000000000 # data[5] = 10
-056-064: x 0000000000000000 # data[6] = 0
-064-072: x 0a00000000000000 # data[7] = 10
-072-080: x e803000000000000 # data[8] = 1000
-080-088: x ffff000000000000 # data[9] = 65535
-088-096: x 0000010000000000 # data[10] = 65536
-096-104: x ffffffff00000000 # data[11] = 4294967295
-104-112: x 0000000001000000 # data[12] = 4294967296
+uints
+ ├── 000-001: x 08               # encoding: 8b
+ ├── 001-008: x 00000000000000   # padding (aligning to 64-bit boundary)
+ ├── 008-016: x 0000000000000000 # data[0] = 0
+ ├── 016-024: x 0000000000000000 # data[1] = 0
+ ├── 024-032: x 0000000000000000 # data[2] = 0
+ ├── 032-040: x 0000000000000000 # data[3] = 0
+ ├── 040-048: x 0000000000000000 # data[4] = 0
+ ├── 048-056: x 0a00000000000000 # data[5] = 10
+ ├── 056-064: x 0000000000000000 # data[6] = 0
+ ├── 064-072: x 0a00000000000000 # data[7] = 10
+ ├── 072-080: x e803000000000000 # data[8] = 1000
+ ├── 080-088: x ffff000000000000 # data[9] = 65535
+ ├── 088-096: x 0000010000000000 # data[10] = 65536
+ ├── 096-104: x ffffffff00000000 # data[11] = 4294967295
+ └── 104-112: x 0000000001000000 # data[12] = 4294967296
 
 # Test serializing a few columns using delta encoding.
 
@@ -417,12 +428,13 @@ b.Get(20) = 221
 
 finish rows=5
 ----
-0-1: x 01 # encoding: 1b
-1-2: x 01 # data[0] = 1
-2-3: x 00 # data[1] = 0
-3-4: x 5c # data[2] = 92
-4-5: x 01 # data[3] = 1
-5-6: x 00 # data[4] = 0
+uints
+ ├── 0-1: x 01 # encoding: 1b
+ ├── 1-2: x 01 # data[0] = 1
+ ├── 2-3: x 00 # data[1] = 0
+ ├── 3-4: x 5c # data[2] = 92
+ ├── 4-5: x 01 # data[3] = 1
+ └── 5-6: x 00 # data[4] = 0
 
 # Test a situation where the most recently written value requirs a wider delta
 # encoding, but we Finish with few enough rows that we should serialize using
@@ -449,26 +461,28 @@ Size(7, 0) = 32
 
 finish rows=6
 ----
-00-01: x 02   # encoding: 2b
-01-02: x 00   # padding (aligning to 16-bit boundary)
-02-04: x 0000 # data[0] = 0
-04-06: x 1d00 # data[1] = 29
-06-08: x 5302 # data[2] = 595
-08-10: x 0200 # data[3] = 2
-10-12: x 0200 # data[4] = 2
-12-14: x 0900 # data[5] = 9
+uints
+ ├── 00-01: x 02   # encoding: 2b
+ ├── 01-02: x 00   # padding (aligning to 16-bit boundary)
+ ├── 02-04: x 0000 # data[0] = 0
+ ├── 04-06: x 1d00 # data[1] = 29
+ ├── 06-08: x 5302 # data[2] = 595
+ ├── 08-10: x 0200 # data[3] = 2
+ ├── 10-12: x 0200 # data[4] = 2
+ └── 12-14: x 0900 # data[5] = 9
 
 finish rows=7
 ----
-00-01: x 04       # encoding: 4b
-01-04: x 000000   # padding (aligning to 32-bit boundary)
-04-08: x 00000000 # data[0] = 0
-08-12: x 1d000000 # data[1] = 29
-12-16: x 53020000 # data[2] = 595
-16-20: x 02000000 # data[3] = 2
-20-24: x 02000000 # data[4] = 2
-24-28: x 09000000 # data[5] = 9
-28-32: x fb120100 # data[6] = 70395
+uints
+ ├── 00-01: x 04       # encoding: 4b
+ ├── 01-04: x 000000   # padding (aligning to 32-bit boundary)
+ ├── 04-08: x 00000000 # data[0] = 0
+ ├── 08-12: x 1d000000 # data[1] = 29
+ ├── 12-16: x 53020000 # data[2] = 595
+ ├── 16-20: x 02000000 # data[3] = 2
+ ├── 20-24: x 02000000 # data[4] = 2
+ ├── 24-28: x 09000000 # data[5] = 9
+ └── 28-32: x fb120100 # data[6] = 70395
 
 # Test the constant encoding.
 
@@ -485,8 +499,9 @@ Size(6, 0) = 9
 
 finish rows=6
 ----
-0-1: x 80               # encoding: const
-1-9: x 0100000000000000 # 64-bit constant: 1
+uints
+ ├── 0-1: x 80               # encoding: const
+ └── 1-9: x 0100000000000000 # 64-bit constant: 1
 
 # Test 32-bit delta encoding.
 
@@ -503,13 +518,14 @@ Size(3, 1) = 24 [23 w/o offset]
 
 finish rows=3 offset=1
 ----
-00-01: x 00               # artificial start offset
-01-02: x 84               # encoding: 4b,delta
-02-10: x 0100000000000000 # 64-bit constant: 1
-10-12: x 0000             # padding (aligning to 32-bit boundary)
-12-16: x 00000000         # data[0] = 0 + 1 = 1
-16-20: x bff90000         # data[1] = 63935 + 1 = 63936
-20-24: x ffffffff         # data[2] = 4294967295 + 1 = 4294967296
+uints
+ ├── 00-01: x 00 # artificial start offset
+ ├── 01-02: x 84               # encoding: 4b,delta
+ ├── 02-10: x 0100000000000000 # 64-bit constant: 1
+ ├── 10-12: x 0000             # padding (aligning to 32-bit boundary)
+ ├── 12-16: x 00000000         # data[0] = 0 + 1 = 1
+ ├── 16-20: x bff90000         # data[1] = 63935 + 1 = 63936
+ └── 20-24: x ffffffff         # data[2] = 4294967295 + 1 = 4294967296
 
 # Test serializing with zero rows. The representation should require zero bytes.
 
@@ -522,3 +538,4 @@ Size(0, 0) = 0
 
 finish rows=0 offset=0
 ----
+uints

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,8 +62,9 @@ func TestBitmapFixed(t *testing.T) {
 			if off > 0 {
 				f.HexBytesln(int(off), "initial offset")
 			}
-			bitmapToBinFormatter(f, n)
-			fmt.Fprint(&buf, f.String())
+			tp := treeprinter.New()
+			bitmapToBinFormatter(f, tp.Child("bitmap"), n)
+			fmt.Fprint(&buf, tp.String())
 
 		case "seek-set-ge":
 			var indexes []int

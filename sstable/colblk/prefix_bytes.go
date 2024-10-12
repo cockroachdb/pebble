@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -599,21 +600,25 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 	return b.rows, false
 }
 
-func prefixBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter func([]byte) string) {
+func prefixBytesToBinFormatter(
+	f *binfmt.Formatter, tp treeprinter.Node, count int, sliceFormatter func([]byte) string,
+) {
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}
 	pb, _ := DecodePrefixBytes(f.RelativeData(), uint32(f.RelativeOffset()), count)
-	f.CommentLine("PrefixBytes")
-	f.HexBytesln(1, "bundleSize: %d", 1<<pb.bundleShift)
-	f.CommentLine("Offsets table")
+
+	f.HexBytesln(1, "bundle size: %d", 1<<pb.bundleShift)
+	f.ToTreePrinter(tp)
+
+	n := tp.Child("offsets table")
 	dataOffset := uint64(f.RelativeOffset()) + uint64(uintptr(pb.rawBytes.data)-uintptr(pb.rawBytes.start))
-	uintsToBinFormatter(f, pb.rawBytes.slices+1,
-		func(offsetDelta, offsetBase uint64) string {
-			// NB: offsetBase will always be zero for PrefixBytes columns.
-			return fmt.Sprintf("%d [%d overall]", offsetDelta+offsetBase, offsetDelta+offsetBase+dataOffset)
-		})
-	f.CommentLine("Data")
+	uintsToBinFormatter(f, n, pb.rawBytes.slices+1, func(offsetDelta, offsetBase uint64) string {
+		// NB: offsetBase will always be zero for PrefixBytes columns.
+		return fmt.Sprintf("%d [%d overall]", offsetDelta+offsetBase, offsetDelta+offsetBase+dataOffset)
+	})
+
+	n = tp.Child("data")
 
 	// The first offset encodes the length of the block prefix.
 	blockPrefixLen := pb.rawBytes.offsets.At(0)
@@ -647,6 +652,7 @@ func prefixBytesToBinFormatter(f *binfmt.Formatter, count int, sliceFormatter fu
 		}
 		startOff = endOff
 	}
+	f.ToTreePrinter(n)
 }
 
 // PrefixBytesBuilder encodes a column of lexicographically-sorted byte slices,

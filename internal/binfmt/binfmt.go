@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // New constructs a new binary formatter.
@@ -114,11 +116,6 @@ func (f *Formatter) Byte(format string, args ...interface{}) int {
 	return 1
 }
 
-// CommentLine adds a full-width comment line to the output.
-func (f *Formatter) CommentLine(format string, args ...interface{}) {
-	f.newline("", strings.TrimSpace(fmt.Sprintf(format, args...)))
-}
-
 // HexBytesln formats the next n bytes in hexadecimal format, appending the
 // formatted comment string to each line and ending on a newline.
 func (f *Formatter) HexBytesln(n int, format string, args ...interface{}) int {
@@ -206,6 +203,17 @@ func (f *Formatter) String() string {
 		fmt.Fprintln(&f.buf)
 	}
 	return f.buf.String()
+}
+
+// ToTreePrinter formats the current output and creates a treeprinter child node
+// for each line. The current output is reset; the position within the binary
+// buffer is not.
+func (f *Formatter) ToTreePrinter(tp treeprinter.Node) {
+	for _, l := range strings.Split(strings.TrimRight(f.String(), "\n"), "\n") {
+		tp.Child(l)
+	}
+	f.buf.Reset()
+	f.lines = f.lines[:0]
 }
 
 // Pointer returns a pointer into the original data slice at the specified
