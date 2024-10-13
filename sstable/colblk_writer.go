@@ -1139,7 +1139,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 	// blocks in one IO request as possible, while still utilizing the write queue in this
 	// writer.
 	lastBlockOffset := uint64(0)
-	for i := 0; i < len(blocks); i++ {
+	for i := 0; i < len(blocks); {
 		if blocks[i].bh.Offset < lastBlockOffset {
 			panic("pebble: copyDataBlocks called with blocks out of order")
 		}
