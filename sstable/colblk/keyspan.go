@@ -248,14 +248,15 @@ func (d *KeyspanDecoder) Init(data []byte) {
 // representation.
 func (d *KeyspanDecoder) DebugString() string {
 	f := binfmt.New(d.blockDecoder.data).LineWidth(20)
-	d.Describe(f)
-	return f.String()
+	tp := treeprinter.New()
+	d.Describe(f, tp.Child("keyspan-decoder"))
+	return tp.String()
 }
 
 // Describe describes the binary format of the keyspan block, assuming
 // f.Offset() is positioned at the beginning of the same keyspan block described
 // by r.
-func (d *KeyspanDecoder) Describe(f *binfmt.Formatter) {
+func (d *KeyspanDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -264,9 +265,10 @@ func (d *KeyspanDecoder) Describe(f *binfmt.Formatter) {
 	// aligned.
 	f.SetAnchorOffset()
 
-	f.CommentLine("keyspan block header")
+	n := tp.Child("keyspan block header")
 	f.HexBytesln(4, "user key count: %d", d.boundaryKeysCount)
-	d.blockDecoder.headerToBinFormatter(f)
+	f.ToTreePrinter(n)
+	d.blockDecoder.headerToBinFormatter(f, n)
 
 	for i := 0; i < keyspanColumnCount; i++ {
 		// Not all columns in a keyspan block have the same number of rows; the
@@ -277,9 +279,10 @@ func (d *KeyspanDecoder) Describe(f *binfmt.Formatter) {
 		if i == keyspanColBoundaryUserKeys || i == keyspanColBoundaryKeyIndices {
 			rows = int(d.boundaryKeysCount)
 		}
-		d.blockDecoder.columnToBinFormatter(f, i, rows)
+		d.blockDecoder.columnToBinFormatter(f, n, i, rows)
 	}
 	f.HexBytesln(1, "block padding byte")
+	f.ToTreePrinter(n)
 }
 
 // searchBoundaryKeys returns the index of the first boundary key greater than

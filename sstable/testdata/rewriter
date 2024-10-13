@@ -36,18 +36,18 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (25)
-        30  data (25)
-        60  data (25)
-        90  fullfilter.rocksdb.BuiltinBloomFilter (69)
-       164  index (22)
-       191  index (22)
-       218  index (22)
-       245  top-index (48)
-       298  properties (486)
-       789  meta-index (79)
-       873  footer (53)
-       926  EOF
+sstable
+ ├── data  offset: 0  length: 25
+ ├── data  offset: 30  length: 25
+ ├── data  offset: 60  length: 25
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 90  length: 69
+ ├── index  offset: 164  length: 22
+ ├── index  offset: 191  length: 22
+ ├── index  offset: 218  length: 22
+ ├── top-index  offset: 245  length: 48
+ ├── properties  offset: 298  length: 486
+ ├── meta-index  offset: 789  length: 79
+ └── footer  offset: 873  length: 53
 
 scan
 ----
@@ -71,18 +71,18 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (25)
-        30  data (25)
-        60  data (25)
-        90  fullfilter.rocksdb.BuiltinBloomFilter (69)
-       164  index (22)
-       191  index (22)
-       218  index (22)
-       245  top-index (48)
-       298  properties (486)
-       789  meta-index (79)
-       873  footer (53)
-       926  EOF
+sstable
+ ├── data  offset: 0  length: 25
+ ├── data  offset: 30  length: 25
+ ├── data  offset: 60  length: 25
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 90  length: 69
+ ├── index  offset: 164  length: 22
+ ├── index  offset: 191  length: 22
+ ├── index  offset: 218  length: 22
+ ├── top-index  offset: 245  length: 48
+ ├── properties  offset: 298  length: 486
+ ├── meta-index  offset: 789  length: 79
+ └── footer  offset: 873  length: 53
 
 scan
 ----
@@ -106,18 +106,18 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (25)
-        30  data (25)
-        60  data (25)
-        90  fullfilter.rocksdb.BuiltinBloomFilter (69)
-       164  index (22)
-       191  index (22)
-       218  index (22)
-       245  top-index (48)
-       298  properties (486)
-       789  meta-index (79)
-       873  footer (53)
-       926  EOF
+sstable
+ ├── data  offset: 0  length: 25
+ ├── data  offset: 30  length: 25
+ ├── data  offset: 60  length: 25
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 90  length: 69
+ ├── index  offset: 164  length: 22
+ ├── index  offset: 191  length: 22
+ ├── index  offset: 218  length: 22
+ ├── top-index  offset: 245  length: 48
+ ├── properties  offset: 298  length: 486
+ ├── meta-index  offset: 789  length: 79
+ └── footer  offset: 873  length: 53
 
 scan
 ----
@@ -141,18 +141,18 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (25)
-        30  data (25)
-        60  data (25)
-        90  fullfilter.rocksdb.BuiltinBloomFilter (69)
-       164  index (22)
-       191  index (22)
-       218  index (22)
-       245  top-index (48)
-       298  properties (486)
-       789  meta-index (79)
-       873  footer (53)
-       926  EOF
+sstable
+ ├── data  offset: 0  length: 25
+ ├── data  offset: 30  length: 25
+ ├── data  offset: 60  length: 25
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 90  length: 69
+ ├── index  offset: 164  length: 22
+ ├── index  offset: 191  length: 22
+ ├── index  offset: 218  length: 22
+ ├── top-index  offset: 245  length: 48
+ ├── properties  offset: 298  length: 486
+ ├── meta-index  offset: 789  length: 79
+ └── footer  offset: 873  length: 53
 
 scan
 ----
@@ -177,18 +177,18 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (25)
-        30  data (25)
-        60  data (25)
-        90  fullfilter.rocksdb.BuiltinBloomFilter (69)
-       164  index (22)
-       191  index (22)
-       218  index (22)
-       245  top-index (48)
-       298  properties (486)
-       789  meta-index (79)
-       873  footer (53)
-       926  EOF
+sstable
+ ├── data  offset: 0  length: 25
+ ├── data  offset: 30  length: 25
+ ├── data  offset: 60  length: 25
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 90  length: 69
+ ├── index  offset: 164  length: 22
+ ├── index  offset: 191  length: 22
+ ├── index  offset: 218  length: 22
+ ├── top-index  offset: 245  length: 48
+ ├── properties  offset: 298  length: 486
+ ├── meta-index  offset: 789  length: 79
+ └── footer  offset: 873  length: 53
 
 scan
 ----

@@ -67,8 +67,7 @@ func TestColumnarWriter(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				l.Describe(&buf, true /* verbose */, r, nil)
-				return buf.String()
+				return l.Describe(true /* verbose */, r, nil /* fmtKV */)
 			case "props":
 				return r.Properties.String()
 			default:

@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,12 +79,13 @@ func TestPrefixBytes(t *testing.T) {
 			require.Equal(t, uint32(len(buf)-1), offset)
 
 			f := binfmt.New(buf)
-			prefixBytesToBinFormatter(f, rows, nil)
+			tp := treeprinter.New()
+			prefixBytesToBinFormatter(f, tp.Child("prefix-bytes"), rows, nil)
 			var endOffset uint32
 			pb, endOffset = DecodePrefixBytes(buf, 0, rows)
 			require.Equal(t, offset, endOffset)
 			require.Equal(t, rows, pb.Rows())
-			return f.String()
+			return tp.String()
 		case "get":
 			var indices []int
 			td.ScanArgs(t, "indices", &indices)
@@ -184,8 +186,9 @@ func TestPrefixBytesRandomized(t *testing.T) {
 		pb, endOffset := DecodePrefixBytes(buf, 0, n)
 		require.Equal(t, offset, endOffset)
 		f := binfmt.New(buf)
-		prefixBytesToBinFormatter(f, n, nil)
-		t.Logf("PrefixBytes:\n%s", f.String())
+		tp := treeprinter.New()
+		prefixBytesToBinFormatter(f, tp.Child("prefix-bytes"), n, nil)
+		t.Log(tp.String())
 
 		k := slices.Clone(pb.SharedPrefix())
 		l := len(k)

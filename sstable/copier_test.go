@@ -5,7 +5,6 @@
 package sstable
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -168,9 +167,7 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			var buf bytes.Buffer
-			l.Describe(&buf, true, r, nil)
-			return buf.String()
+			return l.Describe(true, r, nil)
 
 		default:
 			t.Fatalf("unknown command: %s", d.Cmd)

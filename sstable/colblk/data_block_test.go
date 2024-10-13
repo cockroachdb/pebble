@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -87,11 +88,12 @@ func TestDataBlock(t *testing.T) {
 				}
 				r.Init(testKeysSchema, rewrittenBlock)
 				f := binfmt.New(r.d.data).LineWidth(20)
-				r.Describe(f)
+				tp := treeprinter.New()
+				r.Describe(f, tp)
 				fmt.Fprintf(&buf, "Start: %s\nEnd: %s\n%s",
 					start.Pretty(testkeys.Comparer.FormatKey),
 					end.Pretty(testkeys.Comparer.FormatKey),
-					f.String())
+					tp.String())
 				return buf.String()
 			case "finish":
 				rows := w.Rows()
@@ -99,8 +101,9 @@ func TestDataBlock(t *testing.T) {
 				block, lastKey := w.Finish(rows, sizes[rows-1])
 				r.Init(testKeysSchema, block)
 				f := binfmt.New(r.d.data).LineWidth(20)
-				r.Describe(f)
-				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), f.String())
+				tp := treeprinter.New()
+				r.Describe(f, tp)
+				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), tp.String())
 				return buf.String()
 			case "iter":
 				var seqNum uint64

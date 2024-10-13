@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -154,13 +155,14 @@ func (r *IndexBlockDecoder) Init(data []byte) {
 // representation.
 func (r *IndexBlockDecoder) DebugString() string {
 	f := binfmt.New(r.bd.data).LineWidth(20)
-	r.Describe(f)
-	return f.String()
+	tp := treeprinter.New()
+	r.Describe(f, tp.Child("index-block-decoder"))
+	return tp.String()
 }
 
 // Describe describes the binary format of the index block, assuming f.Offset()
 // is positioned at the beginning of the same index block described by r.
-func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter) {
+func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -169,12 +171,13 @@ func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter) {
 	// aligned.
 	f.SetAnchorOffset()
 
-	f.CommentLine("index block header")
-	r.bd.headerToBinFormatter(f)
+	n := tp.Child("index block header")
+	r.bd.headerToBinFormatter(f, n)
 	for i := 0; i < indexBlockColumnCount; i++ {
-		r.bd.columnToBinFormatter(f, i, int(r.bd.header.Rows))
+		r.bd.columnToBinFormatter(f, n, i, int(r.bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
+	f.ToTreePrinter(n)
 }
 
 // IndexIter is an iterator over the block entries in an index block.

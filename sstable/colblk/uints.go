@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"golang.org/x/exp/constraints"
 )
 
@@ -398,7 +399,7 @@ func computeMinMax[I constraints.Unsigned](values []I) (I, I) {
 }
 
 func uintsToBinFormatter(
-	f *binfmt.Formatter, rows int, uintFormatter func(el, base uint64) string,
+	f *binfmt.Formatter, tp treeprinter.Node, rows int, uintFormatter func(el, base uint64) string,
 ) {
 	if rows == 0 {
 		return
@@ -426,6 +427,7 @@ func uintsToBinFormatter(
 	width := e.Width()
 	if width == 0 {
 		// The column is zero or constant.
+		f.ToTreePrinter(tp)
 		return
 	}
 
@@ -435,4 +437,5 @@ func uintsToBinFormatter(
 	for i := 0; i < rows; i++ {
 		f.HexBytesln(width, "data[%d] = %s", i, uintFormatter(f.PeekUint(width), base))
 	}
+	f.ToTreePrinter(tp)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,14 +48,17 @@ func TestRawBytes(t *testing.T) {
 			// Validate that builder.Size() was correct in its estimate.
 			require.Equal(t, size, endOffset)
 			f := binfmt.New(buf).LineWidth(20)
+			tp := treeprinter.New()
+			n := tp.Child("raw-bytes")
 			if startOffset > 0 {
 				f.HexBytesln(startOffset, "start offset")
+				f.ToTreePrinter(n)
 			}
-			rawBytesToBinFormatter(f, count, nil)
+			rawBytesToBinFormatter(f, n, count, nil)
 			var decodedEndOffset uint32
 			rawBytes, decodedEndOffset = DecodeRawBytes(buf[startOffset:], 0, count)
 			require.Equal(t, endOffset, decodedEndOffset+uint32(startOffset))
-			return f.String()
+			return tp.String()
 		case "at":
 			var indices []int
 			td.ScanArgs(t, "indices", &indices)

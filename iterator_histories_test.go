@@ -251,8 +251,7 @@ func TestIterHistories(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				l.Describe(&buf, verbose, r, nil)
-				return buf.String()
+				return l.Describe(verbose, r, nil)
 			case "lsm":
 				return runLSMCmd(td, d)
 			case "metrics":

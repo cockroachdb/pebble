@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"slices"
 	"sort"
@@ -1629,7 +1628,8 @@ type KVEncoding struct {
 
 // Describe describes the contents of a block, writing the description to w.
 // It invokes fmtKV to describe each key-value pair.
-func (i *Iter) Describe(w io.Writer, blkOffset uint64, fmtKV DescribeKV) {
+func (i *Iter) Describe(tp treeprinter.Node, fmtKV DescribeKV) {
+	var buf bytes.Buffer
 	for kv := i.First(); kv != nil; kv = i.Next() {
 		enc := KVEncoding{
 			IsRestart: i.isRestartPoint(),
@@ -1640,17 +1640,16 @@ func (i *Iter) Describe(w io.Writer, blkOffset uint64, fmtKV DescribeKV) {
 		enc.KeyShared, ptr = decodeVarint(ptr)
 		enc.KeyUnshared, ptr = decodeVarint(ptr)
 		enc.ValueLen, _ = decodeVarint(ptr)
-		fmtKV(w, &kv.K, kv.V.ValueOrHandle, enc)
+		buf.Reset()
+		fmtKV(&buf, &kv.K, kv.V.ValueOrHandle, enc)
+		tp.Child(buf.String())
 	}
+	// Format the restart points.
+	n := tp.Child("restart points")
 	// Format the restart points.
 	for j := 0; j < int(i.numRestarts); j++ {
 		offset := i.getRestart(j)
-		// TODO(jackson): This formatting seems bizarre. We're taking blkOffset
-		// which is an offset in the physical, compressed file, and adding the
-		// offset of the KV pair within the uncompressed block. We should just
-		// print offsets relative to the block start.
-		fmt.Fprintf(w, "%10d    [restart %d]\n",
-			blkOffset+uint64(i.restarts+4*int32(j)), blkOffset+uint64(offset))
+		n.Childf("%05d [restart %d]", uint64(i.restarts+4*int32(j)), offset)
 	}
 }
 
@@ -1905,7 +1904,8 @@ func (i *RawIter) isRestartPoint() bool {
 
 // Describe describes the contents of a block, writing the description to w.
 // It invokes fmtKV to describe each key-value pair.
-func (i *RawIter) Describe(w io.Writer, blkOffset uint64, fmtKV DescribeKV) {
+func (i *RawIter) Describe(tp treeprinter.Node, fmtKV DescribeKV) {
+	var buf bytes.Buffer
 	for valid := i.First(); valid; valid = i.Next() {
 		enc := KVEncoding{
 			IsRestart: i.isRestartPoint(),
@@ -1916,22 +1916,18 @@ func (i *RawIter) Describe(w io.Writer, blkOffset uint64, fmtKV DescribeKV) {
 		enc.KeyShared, ptr = decodeVarint(ptr)
 		enc.KeyUnshared, ptr = decodeVarint(ptr)
 		enc.ValueLen, _ = decodeVarint(ptr)
-		fmtKV(w, &i.ikey, i.val, enc)
+		buf.Reset()
+		fmtKV(&buf, &i.ikey, i.val, enc)
 		if i.isRestartPoint() {
-			fmt.Fprintf(w, " [restart]\n")
-		} else {
-			fmt.Fprintf(w, "\n")
+			buf.WriteString(" [restart]")
 		}
+		tp.Child(buf.String())
 	}
+	n := tp.Child("restart points")
 	// Format the restart points.
 	for j := 0; j < int(i.numRestarts); j++ {
 		offset := i.getRestart(j)
-		// TODO(jackson): This formatting seems bizarre. We're taking blkOffset
-		// which is an offset in the physical, compressed file, and adding the
-		// offset of the KV pair within the uncompressed block. We should just
-		// print offsets relative to the block start.
-		fmt.Fprintf(w, "%10d    [restart %d]\n",
-			blkOffset+uint64(i.restarts+4*int32(j)), blkOffset+uint64(offset))
+		n.Childf("%05d [restart %d]", uint64(i.restarts+4*int32(j)), offset)
 	}
 }
 
