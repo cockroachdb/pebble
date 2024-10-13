@@ -206,33 +206,33 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (22)
-        27  data (22)
-        54  data (22)
-        81  index (22)
-       108  index (22)
-       135  index (22)
-       162  top-index (49)
-       216  properties (451)
-       672  meta-index (33)
-       710  footer (53)
-       763  EOF
+sstable
+ ├── data  offset: 0  length: 22
+ ├── data  offset: 27  length: 22
+ ├── data  offset: 54  length: 22
+ ├── index  offset: 81  length: 22
+ ├── index  offset: 108  length: 22
+ ├── index  offset: 135  length: 22
+ ├── top-index  offset: 162  length: 49
+ ├── properties  offset: 216  length: 451
+ ├── meta-index  offset: 672  length: 33
+ └── footer  offset: 710  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
 decode-layout
 ----
-         0  data (22)
-        27  data (22)
-        54  data (22)
-        81  index (22)
-       108  index (22)
-       135  index (22)
-       162  top-index (49)
-       216  properties (451)
-       672  meta-index (33)
-       710  footer (53)
-       763  EOF
+sstable
+ ├── data  offset: 0  length: 22
+ ├── data  offset: 27  length: 22
+ ├── data  offset: 54  length: 22
+ ├── index  offset: 81  length: 22
+ ├── index  offset: 108  length: 22
+ ├── index  offset: 135  length: 22
+ ├── top-index  offset: 162  length: 49
+ ├── properties  offset: 216  length: 451
+ ├── meta-index  offset: 672  length: 33
+ └── footer  offset: 710  length: 53
 
 scan
 ----
@@ -253,14 +253,14 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (21)
-        26  data (21)
-        52  data (21)
-        78  index (45)
-       128  properties (549)
-       682  meta-index (33)
-       720  leveldb-footer (48)
-       768  EOF
+sstable
+ ├── data  offset: 0  length: 21
+ ├── data  offset: 26  length: 21
+ ├── data  offset: 52  length: 21
+ ├── index  offset: 78  length: 45
+ ├── properties  offset: 128  length: 549
+ ├── meta-index  offset: 682  length: 33
+ └── leveldb-footer  offset: 720  length: 48
 
 # Range keys, if present, are shown in the layout.
 
@@ -274,10 +274,10 @@ seqnums:  [1-3]
 
 layout
 ----
-         0  data (8)
-        13  index (21)
-        39  range-key (79)
-       123  properties (499)
-       627  meta-index (57)
-       689  footer (53)
-       742  EOF
+sstable
+ ├── data  offset: 0  length: 8
+ ├── index  offset: 13  length: 21
+ ├── range-key  offset: 39  length: 79
+ ├── properties  offset: 123  length: 499
+ ├── meta-index  offset: 627  length: 57
+ └── footer  offset: 689  length: 53

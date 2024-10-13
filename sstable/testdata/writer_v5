@@ -226,33 +226,33 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (74)
-        79  data (74)
-       158  data (74)
-       237  index (36)
-       278  index (44)
-       327  index (44)
-       376  top-index (53)
-       434  properties (480)
-       919  meta-index (33)
-       957  footer (53)
-      1010  EOF
+sstable
+ ├── data  offset: 0  length: 74
+ ├── data  offset: 79  length: 74
+ ├── data  offset: 158  length: 74
+ ├── index  offset: 237  length: 36
+ ├── index  offset: 278  length: 44
+ ├── index  offset: 327  length: 44
+ ├── top-index  offset: 376  length: 53
+ ├── properties  offset: 434  length: 480
+ ├── meta-index  offset: 919  length: 33
+ └── footer  offset: 957  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
 decode-layout
 ----
-         0  data (74)
-        79  data (74)
-       158  data (74)
-       237  index (36)
-       278  index (44)
-       327  index (44)
-       376  top-index (53)
-       434  properties (480)
-       919  meta-index (33)
-       957  footer (53)
-      1010  EOF
+sstable
+ ├── data  offset: 0  length: 74
+ ├── data  offset: 79  length: 74
+ ├── data  offset: 158  length: 74
+ ├── index  offset: 237  length: 36
+ ├── index  offset: 278  length: 44
+ ├── index  offset: 327  length: 44
+ ├── top-index  offset: 376  length: 53
+ ├── properties  offset: 434  length: 480
+ ├── meta-index  offset: 919  length: 33
+ └── footer  offset: 957  length: 53
 
 scan
 ----
@@ -273,14 +273,14 @@ seqnums:  [1-1]
 
 layout
 ----
-         0  data (21)
-        26  data (21)
-        52  data (21)
-        78  index (45)
-       128  properties (549)
-       682  meta-index (33)
-       720  leveldb-footer (48)
-       768  EOF
+sstable
+ ├── data  offset: 0  length: 21
+ ├── data  offset: 26  length: 21
+ ├── data  offset: 52  length: 21
+ ├── index  offset: 78  length: 45
+ ├── properties  offset: 128  length: 549
+ ├── meta-index  offset: 682  length: 33
+ └── leveldb-footer  offset: 720  length: 48
 
 # Range keys, if present, are shown in the layout.
 
@@ -294,12 +294,12 @@ seqnums:  [1-3]
 
 layout
 ----
-         0  index (28)
-        33  range-key (84)
-       122  properties (528)
-       655  meta-index (57)
-       717  footer (53)
-       770  EOF
+sstable
+ ├── index  offset: 0  length: 28
+ ├── range-key  offset: 33  length: 84
+ ├── properties  offset: 122  length: 528
+ ├── meta-index  offset: 655  length: 57
+ └── footer  offset: 717  length: 53
 
 props
 ----

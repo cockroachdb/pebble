@@ -793,7 +793,7 @@ func (d *DataBlockDecoder) Init(schema KeySchema, data []byte) {
 
 // Describe descirbes the binary format of the data block, assuming f.Offset()
 // is positioned at the beginning of the same data block described by r.
-func (d *DataBlockDecoder) Describe(f *binfmt.Formatter) {
+func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -802,13 +802,14 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter) {
 	// aligned.
 	f.SetAnchorOffset()
 
-	f.CommentLine("data block header")
+	n := tp.Child("data block header")
 	f.HexBytesln(4, "maximum key length: %d", d.maximumKeyLength)
-	d.d.headerToBinFormatter(f)
+	d.d.headerToBinFormatter(f, n)
 	for i := 0; i < int(d.d.header.Columns); i++ {
-		d.d.columnToBinFormatter(f, i, int(d.d.header.Rows))
+		d.d.columnToBinFormatter(f, n, i, int(d.d.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
+	f.ToTreePrinter(n)
 }
 
 // Assert that *DataBlockIter implements block.DataBlockIterator.

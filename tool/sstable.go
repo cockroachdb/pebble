@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/cockroachdb/pebble"
@@ -257,13 +258,16 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
-		fmtRecord := func(key *base.InternalKey, value []byte) {
-			formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+		var fmtRecord func(key *base.InternalKey, value []byte) string
+		if s.fmtKey.spec != "null" || s.fmtValue.spec != "null" {
+			var buf bytes.Buffer
+			fmtRecord = func(key *base.InternalKey, value []byte) string {
+				buf.Reset()
+				formatKeyValue(&buf, s.fmtKey, s.fmtValue, key, value)
+				return strings.TrimRight(buf.String(), "\n")
+			}
 		}
-		if s.fmtKey.spec == "null" && s.fmtValue.spec == "null" {
-			fmtRecord = nil
-		}
-		l.Describe(stdout, s.verbose, r, fmtRecord)
+		_, _ = stdout.Write([]byte(l.Describe(s.verbose, r, fmtRecord)))
 	})
 }
 

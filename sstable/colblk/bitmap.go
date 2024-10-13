@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // Bitmap is a bitmap structure built on a []uint64. A bitmap utilizes ~1
@@ -407,15 +408,17 @@ func (b *BitmapBuilder) WriteDebug(w io.Writer, rows int) {
 	fmt.Fprint(w, "bitmap")
 }
 
-func bitmapToBinFormatter(f *binfmt.Formatter, rows int) {
+func bitmapToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node, rows int) {
 	encoding := bitmapEncoding(f.PeekUint(1))
-	f.HexBytesln(1, "bitmap encoding")
 	if encoding == zeroBitmapEncoding {
+		f.HexBytesln(1, "zero bitmap encoding")
+		f.ToTreePrinter(tp)
 		return
 	}
 	if encoding != defaultBitmapEncoding {
 		panic(fmt.Sprintf("unknown bitmap encoding %d", encoding))
 	}
+	f.HexBytesln(1, "default bitmap encoding")
 	if aligned := align(f.RelativeOffset(), 8); aligned-f.RelativeOffset() != 0 {
 		f.HexBytesln(aligned-f.RelativeOffset(), "padding to align to 64-bit boundary")
 	}
@@ -427,6 +430,7 @@ func bitmapToBinFormatter(f *binfmt.Formatter, rows int) {
 	for i := 0; i < summaryWords; i++ {
 		f.Line(8).Append("b ").Binary(8).Done("bitmap summary word %d-%d", i*64, i*64+63)
 	}
+	f.ToTreePrinter(tp)
 }
 
 // nextBitInWord returns the index of the smallest set bit with an index ≥ bit

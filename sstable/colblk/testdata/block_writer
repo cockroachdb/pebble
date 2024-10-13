@@ -16,15 +16,16 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01       # version 1
-01-03: x 0100     # 1 columns
-03-07: x 0a000000 # 10 rows
-07-08: b 00000010 # col 0: uint
-08-12: x 0c000000 # col 0: page start 12
-# data for column 0
-12-13: x 00       # encoding: zero
-13-14: x 00       # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 0a000000 # 10 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    └── 12-13: x 00 # encoding: zero
+ └── 13-14: x 00 # block trailer padding
 
 # Test a uint column with all values equal but non-zero.
 
@@ -48,16 +49,17 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01               # version 1
-01-03: x 0100             # 1 columns
-03-07: x 0c000000         # 12 rows
-07-08: b 00000010         # col 0: uint
-08-12: x 0c000000         # col 0: page start 12
-# data for column 0
-12-13: x 80               # encoding: const
-13-21: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
-21-22: x 00               # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 0c000000 # 12 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    ├── 12-13: x 80               # encoding: const
+ │    └── 13-21: x ffffffffffffff7f # 64-bit constant: 9223372036854775807
+ └── 21-22: x 00 # block trailer padding
 
 # Test a uint column with a mix of values, but all values less than 256
 # greater than 4149660732785475243. It should use the delta8 encoding.
@@ -75,21 +77,22 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01               # version 1
-01-03: x 0100             # 1 columns
-03-07: x 05000000         # 5 rows
-07-08: b 00000010         # col 0: uint
-08-12: x 0c000000         # col 0: page start 12
-# data for column 0
-12-13: x 81               # encoding: 1b,delta
-13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
-21-22: x 01               # data[0] = 1 + 4149660732785475243 = 4149660732785475244
-22-23: x 00               # data[1] = 0 + 4149660732785475243 = 4149660732785475243
-23-24: x 33               # data[2] = 51 + 4149660732785475243 = 4149660732785475294
-24-25: x 51               # data[3] = 81 + 4149660732785475243 = 4149660732785475324
-25-26: x 93               # data[4] = 147 + 4149660732785475243 = 4149660732785475390
-26-27: x 00               # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 05000000 # 5 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    ├── 12-13: x 81               # encoding: 1b,delta
+ │    ├── 13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+ │    ├── 21-22: x 01               # data[0] = 1 + 4149660732785475243 = 4149660732785475244
+ │    ├── 22-23: x 00               # data[1] = 0 + 4149660732785475243 = 4149660732785475243
+ │    ├── 23-24: x 33               # data[2] = 51 + 4149660732785475243 = 4149660732785475294
+ │    ├── 24-25: x 51               # data[3] = 81 + 4149660732785475243 = 4149660732785475324
+ │    └── 25-26: x 93               # data[4] = 147 + 4149660732785475243 = 4149660732785475390
+ └── 26-27: x 00 # block trailer padding
 
 # Test the same case, but this time with a value that is exactly 256 greater
 # than the lowest value. The column should use the delta16 encoding.
@@ -108,23 +111,24 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01               # version 1
-01-03: x 0100             # 1 columns
-03-07: x 06000000         # 6 rows
-07-08: b 00000010         # col 0: uint
-08-12: x 0c000000         # col 0: page start 12
-# data for column 0
-12-13: x 82               # encoding: 2b,delta
-13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
-21-22: x 00               # padding (aligning to 16-bit boundary)
-22-24: x 0100             # data[0] = 1 + 4149660732785475243 = 4149660732785475244
-24-26: x 0000             # data[1] = 0 + 4149660732785475243 = 4149660732785475243
-26-28: x 3300             # data[2] = 51 + 4149660732785475243 = 4149660732785475294
-28-30: x 0001             # data[3] = 256 + 4149660732785475243 = 4149660732785475499
-30-32: x 5100             # data[4] = 81 + 4149660732785475243 = 4149660732785475324
-32-34: x 9300             # data[5] = 147 + 4149660732785475243 = 4149660732785475390
-34-35: x 00               # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 06000000 # 6 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    ├── 12-13: x 82               # encoding: 2b,delta
+ │    ├── 13-21: x abbe105c738e9639 # 64-bit constant: 4149660732785475243
+ │    ├── 21-22: x 00               # padding (aligning to 16-bit boundary)
+ │    ├── 22-24: x 0100             # data[0] = 1 + 4149660732785475243 = 4149660732785475244
+ │    ├── 24-26: x 0000             # data[1] = 0 + 4149660732785475243 = 4149660732785475243
+ │    ├── 26-28: x 3300             # data[2] = 51 + 4149660732785475243 = 4149660732785475294
+ │    ├── 28-30: x 0001             # data[3] = 256 + 4149660732785475243 = 4149660732785475499
+ │    ├── 30-32: x 5100             # data[4] = 81 + 4149660732785475243 = 4149660732785475324
+ │    └── 32-34: x 9300             # data[5] = 147 + 4149660732785475243 = 4149660732785475390
+ └── 34-35: x 00 # block trailer padding
 
 init schema=(uint)
 ----
@@ -143,25 +147,26 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01       # version 1
-01-03: x 0100     # 1 columns
-03-07: x 09000000 # 9 rows
-07-08: b 00000010 # col 0: uint
-08-12: x 0c000000 # col 0: page start 12
-# data for column 0
-12-13: x 04       # encoding: 4b
-13-16: x 000000   # padding (aligning to 32-bit boundary)
-16-20: x 00000000 # data[0] = 0
-20-24: x 01000000 # data[1] = 1
-24-28: x 02000000 # data[2] = 2
-28-32: x 03000000 # data[3] = 3
-32-36: x 04000000 # data[4] = 4
-36-40: x 05000000 # data[5] = 5
-40-44: x 06000000 # data[6] = 6
-44-48: x ffffff7f # data[7] = 2147483647
-48-52: x 00000100 # data[8] = 65536
-52-53: x 00       # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 09000000 # 9 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    ├── 12-13: x 04       # encoding: 4b
+ │    ├── 13-16: x 000000   # padding (aligning to 32-bit boundary)
+ │    ├── 16-20: x 00000000 # data[0] = 0
+ │    ├── 20-24: x 01000000 # data[1] = 1
+ │    ├── 24-28: x 02000000 # data[2] = 2
+ │    ├── 28-32: x 03000000 # data[3] = 3
+ │    ├── 32-36: x 04000000 # data[4] = 4
+ │    ├── 36-40: x 05000000 # data[5] = 5
+ │    ├── 40-44: x 06000000 # data[6] = 6
+ │    ├── 44-48: x ffffff7f # data[7] = 2147483647
+ │    └── 48-52: x 00000100 # data[8] = 65536
+ └── 52-53: x 00 # block trailer padding
 
 # Test two columns: a uint32 and a uint64.
 
@@ -183,25 +188,26 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01       # version 1
-01-03: x 0100     # 1 columns
-03-07: x 0a000000 # 10 rows
-07-08: b 00000010 # col 0: uint
-08-12: x 0c000000 # col 0: page start 12
-# data for column 0
-12-13: x 01       # encoding: 1b
-13-14: x 00       # data[0] = 0
-14-15: x 01       # data[1] = 1
-15-16: x 02       # data[2] = 2
-16-17: x 03       # data[3] = 3
-17-18: x 04       # data[4] = 4
-18-19: x 05       # data[5] = 5
-19-20: x 06       # data[6] = 6
-20-21: x 07       # data[7] = 7
-21-22: x 08       # data[8] = 8
-22-23: x 09       # data[9] = 9
-23-24: x 00       # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 0a000000 # 10 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    ├── 12-13: x 01 # encoding: 1b
+ │    ├── 13-14: x 00 # data[0] = 0
+ │    ├── 14-15: x 01 # data[1] = 1
+ │    ├── 15-16: x 02 # data[2] = 2
+ │    ├── 16-17: x 03 # data[3] = 3
+ │    ├── 17-18: x 04 # data[4] = 4
+ │    ├── 18-19: x 05 # data[5] = 5
+ │    ├── 19-20: x 06 # data[6] = 6
+ │    ├── 20-21: x 07 # data[7] = 7
+ │    ├── 21-22: x 08 # data[8] = 8
+ │    └── 22-23: x 09 # data[9] = 9
+ └── 23-24: x 00 # block trailer padding
 
 init schema=(uint)
 ----
@@ -213,18 +219,19 @@ write
 
 finish
 ----
-# columnar block header
-00-01: x 01       # version 1
-01-03: x 0100     # 1 columns
-03-07: x 02000000 # 2 rows
-07-08: b 00000010 # col 0: uint
-08-12: x 0c000000 # col 0: page start 12
-# data for column 0
-12-13: x 02       # encoding: 2b
-13-14: x 00       # padding (aligning to 16-bit boundary)
-14-16: x 0730     # data[0] = 12295
-16-18: x 0100     # data[1] = 1
-18-19: x 00       # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 02000000 # 2 rows
+ │    ├── 07-08: b 00000010 # col 0: uint
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (uint)
+ │    ├── 12-13: x 02   # encoding: 2b
+ │    ├── 13-14: x 00   # padding (aligning to 16-bit boundary)
+ │    ├── 14-16: x 0730 # data[0] = 12295
+ │    └── 16-18: x 0100 # data[1] = 1
+ └── 18-19: x 00 # block trailer padding
 
 init schema=(bool)
 ----
@@ -258,18 +265,19 @@ t
 
 finish
 ----
-# columnar block header
-00-01: x 01                                                               # version 1
-01-03: x 0100                                                             # 1 columns
-03-07: x 18000000                                                         # 24 rows
-07-08: b 00000001                                                         # col 0: bool
-08-12: x 0c000000                                                         # col 0: page start 12
-# data for column 0
-12-13: x 00                                                               # bitmap encoding
-13-16: x 000000                                                           # padding to align to 64-bit boundary
-16-24: b 1011011101111101110110110000000000000000000000000000000000000000 # bitmap word 0
-24-32: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
-32-33: x 00                                                               # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 18000000 # 24 rows
+ │    ├── 07-08: b 00000001 # col 0: bool
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (bool)
+ │    ├── 12-13: x 00                                                               # default bitmap encoding
+ │    ├── 13-16: x 000000                                                           # padding to align to 64-bit boundary
+ │    ├── 16-24: b 1011011101111101110110110000000000000000000000000000000000000000 # bitmap word 0
+ │    └── 24-32: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ └── 32-33: x 00 # block trailer padding
 
 init schema=(bytes,uint)
 ----
@@ -288,47 +296,47 @@ kiwi 100
 
 finish
 ----
-# columnar block header
-000-001: x 01                     # version 1
-001-003: x 0200                   # 2 columns
-003-007: x 09000000               # 9 rows
-007-008: b 00000011               # col 0: bytes
-008-012: x 11000000               # col 0: page start 17
-012-013: b 00000010               # col 1: uint
-013-017: x 5a000000               # col 1: page start 90
-# data for column 0
-# rawbytes
-# offsets table
-017-018: x 01                     # encoding: 1b
-018-019: x 00                     # data[0] = 0 [28 overall]
-019-020: x 05                     # data[1] = 5 [33 overall]
-020-021: x 0b                     # data[2] = 11 [39 overall]
-021-022: x 12                     # data[3] = 18 [46 overall]
-022-023: x 1d                     # data[4] = 29 [57 overall]
-023-024: x 27                     # data[5] = 39 [67 overall]
-024-025: x 2d                     # data[6] = 45 [73 overall]
-025-026: x 31                     # data[7] = 49 [77 overall]
-026-027: x 3a                     # data[8] = 58 [86 overall]
-027-028: x 3e                     # data[9] = 62 [90 overall]
-# data
-028-033: x 6170706c65             # data[0]: apple
-033-039: x 62616e616e61           # data[1]: banana
-039-046: x 636f636f6e7574         # data[2]: coconut
-046-057: x 647261676f6e6672756974 # data[3]: dragonfruit
-057-067: x 656c6465726265727279   # data[4]: elderberry
-067-073: x 667261697365           # data[5]: fraise
-073-077: x 676f6a69               # data[6]: goji
-077-086: x 6a61636b6672756974     # data[7]: jackfruit
-086-090: x 6b697769               # data[8]: kiwi
-# data for column 1
-090-091: x 01                     # encoding: 1b
-091-092: x 14                     # data[0] = 20
-092-093: x 1e                     # data[1] = 30
-093-094: x 0a                     # data[2] = 10
-094-095: x 46                     # data[3] = 70
-095-096: x 32                     # data[4] = 50
-096-097: x 3c                     # data[5] = 60
-097-098: x 50                     # data[6] = 80
-098-099: x 5a                     # data[7] = 90
-099-100: x 64                     # data[8] = 100
-100-101: x 00                     # block trailer padding
+block
+ ├── columnar block header
+ │    ├── 000-001: x 01       # version 1
+ │    ├── 001-003: x 0200     # 2 columns
+ │    ├── 003-007: x 09000000 # 9 rows
+ │    ├── 007-008: b 00000011 # col 0: bytes
+ │    ├── 008-012: x 11000000 # col 0: page start 17
+ │    ├── 012-013: b 00000010 # col 1: uint
+ │    └── 013-017: x 5a000000 # col 1: page start 90
+ ├── data for column 0 (bytes)
+ │    ├── offsets table
+ │    │    ├── 017-018: x 01 # encoding: 1b
+ │    │    ├── 018-019: x 00 # data[0] = 0 [28 overall]
+ │    │    ├── 019-020: x 05 # data[1] = 5 [33 overall]
+ │    │    ├── 020-021: x 0b # data[2] = 11 [39 overall]
+ │    │    ├── 021-022: x 12 # data[3] = 18 [46 overall]
+ │    │    ├── 022-023: x 1d # data[4] = 29 [57 overall]
+ │    │    ├── 023-024: x 27 # data[5] = 39 [67 overall]
+ │    │    ├── 024-025: x 2d # data[6] = 45 [73 overall]
+ │    │    ├── 025-026: x 31 # data[7] = 49 [77 overall]
+ │    │    ├── 026-027: x 3a # data[8] = 58 [86 overall]
+ │    │    └── 027-028: x 3e # data[9] = 62 [90 overall]
+ │    └── data
+ │         ├── 028-033: x 6170706c65             # data[0]: apple
+ │         ├── 033-039: x 62616e616e61           # data[1]: banana
+ │         ├── 039-046: x 636f636f6e7574         # data[2]: coconut
+ │         ├── 046-057: x 647261676f6e6672756974 # data[3]: dragonfruit
+ │         ├── 057-067: x 656c6465726265727279   # data[4]: elderberry
+ │         ├── 067-073: x 667261697365           # data[5]: fraise
+ │         ├── 073-077: x 676f6a69               # data[6]: goji
+ │         ├── 077-086: x 6a61636b6672756974     # data[7]: jackfruit
+ │         └── 086-090: x 6b697769               # data[8]: kiwi
+ ├── data for column 1 (uint)
+ │    ├── 090-091: x 01 # encoding: 1b
+ │    ├── 091-092: x 14 # data[0] = 20
+ │    ├── 092-093: x 1e # data[1] = 30
+ │    ├── 093-094: x 0a # data[2] = 10
+ │    ├── 094-095: x 46 # data[3] = 70
+ │    ├── 095-096: x 32 # data[4] = 50
+ │    ├── 096-097: x 3c # data[5] = 60
+ │    ├── 097-098: x 50 # data[6] = 80
+ │    ├── 098-099: x 5a # data[7] = 90
+ │    └── 099-100: x 64 # data[8] = 100
+ └── 100-101: x 00 # block trailer padding

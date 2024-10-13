@@ -249,9 +249,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 					return "unknown arg"
 				}
 			}
-			var buf bytes.Buffer
-			l.Describe(&buf, verbose, r, nil)
-			return buf.String()
+			return l.Describe(verbose, r, nil)
 
 		case "decode-layout":
 			l, err := decodeLayout(testkeys.Comparer, obj.Data())
@@ -266,9 +264,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 					return "unknown arg"
 				}
 			}
-			var buf bytes.Buffer
-			l.Describe(&buf, verbose, r, nil)
-			return buf.String()
+			return l.Describe(verbose, r, nil)
 
 		case "rewrite":
 			var meta *WriterMetadata
@@ -371,11 +367,9 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			var buf bytes.Buffer
-			l.Describe(&buf, true, r, func(key *base.InternalKey, value []byte) {
-				fmt.Fprintf(&buf, "  %s:%s\n", key.String(), string(value))
+			return l.Describe(true, r, func(key *base.InternalKey, value []byte) string {
+				return fmt.Sprintf("%s:%s", key.String(), string(value))
 			})
-			return buf.String()
 
 		case "scan-raw":
 			// Raw scan does not fetch from value blocks.

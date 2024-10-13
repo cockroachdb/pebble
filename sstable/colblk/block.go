@@ -141,6 +141,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 // Version indicates the version of the columnar block format encoded. The
@@ -380,16 +381,18 @@ func (d *BlockDecoder) pointer(offset uint32) unsafe.Pointer {
 // data.
 func (d *BlockDecoder) FormattedString() string {
 	f := binfmt.New(d.data)
-	d.headerToBinFormatter(f)
+	tp := treeprinter.New()
+	n := tp.Child("block")
+	d.headerToBinFormatter(f, n)
 	for i := 0; i < int(d.header.Columns); i++ {
-		d.columnToBinFormatter(f, i, int(d.header.Rows))
+		d.columnToBinFormatter(f, n, i, int(d.header.Rows))
 	}
 	f.HexBytesln(1, "block trailer padding")
-	return f.String()
+	f.ToTreePrinter(n)
+	return tp.String()
 }
 
-func (d *BlockDecoder) headerToBinFormatter(f *binfmt.Formatter) {
-	f.CommentLine("columnar block header")
+func (d *BlockDecoder) headerToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.HexBytesln(1, "version %v", Version(f.PeekUint(1)))
 	f.HexBytesln(2, "%d columns", d.header.Columns)
 	f.HexBytesln(4, "%d rows", d.header.Rows)
@@ -397,16 +400,19 @@ func (d *BlockDecoder) headerToBinFormatter(f *binfmt.Formatter) {
 		f.Byte("col %d: %s", i, d.DataType(i))
 		f.HexBytesln(4, "col %d: page start %d", i, d.pageStart(i))
 	}
+	f.ToTreePrinter(tp.Child("columnar block header"))
 }
 
 func (d *BlockDecoder) formatColumn(
-	f *binfmt.Formatter, col int, fn func(*binfmt.Formatter, DataType),
+	f *binfmt.Formatter,
+	tp treeprinter.Node,
+	col int,
+	fn func(*binfmt.Formatter, treeprinter.Node, DataType),
 ) {
-	f.CommentLine("data for column %d", col)
 	dataType := d.DataType(col)
 	colSize := d.pageStart(col+1) - d.pageStart(col)
 	endOff := f.Offset() + int(colSize)
-	fn(f, dataType)
+	fn(f, tp, dataType)
 
 	// We expect formatting the column data to have consumed all the bytes
 	// between the column's pageOffset and the next column's pageOffset.
@@ -419,17 +425,20 @@ func (d *BlockDecoder) formatColumn(
 	}
 }
 
-func (d *BlockDecoder) columnToBinFormatter(f *binfmt.Formatter, col, rows int) {
-	d.formatColumn(f, col, func(f *binfmt.Formatter, dataType DataType) {
+func (d *BlockDecoder) columnToBinFormatter(
+	f *binfmt.Formatter, tp treeprinter.Node, col, rows int,
+) {
+	d.formatColumn(f, tp, col, func(f *binfmt.Formatter, tp treeprinter.Node, dataType DataType) {
+		n := tp.Childf("data for column %d (%s)", col, dataType)
 		switch dataType {
 		case DataTypeBool:
-			bitmapToBinFormatter(f, rows)
+			bitmapToBinFormatter(f, n, rows)
 		case DataTypeUint:
-			uintsToBinFormatter(f, rows, nil)
+			uintsToBinFormatter(f, n, rows, nil)
 		case DataTypePrefixBytes:
-			prefixBytesToBinFormatter(f, rows, nil)
+			prefixBytesToBinFormatter(f, n, rows, nil)
 		case DataTypeBytes:
-			rawBytesToBinFormatter(f, rows, nil)
+			rawBytesToBinFormatter(f, n, rows, nil)
 		default:
 			panic("unimplemented")
 		}

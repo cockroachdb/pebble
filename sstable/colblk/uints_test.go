@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 func TestUintEncoding(t *testing.T) {
@@ -81,11 +82,14 @@ func TestUints(t *testing.T) {
 			buf := aligned.ByteSlice(int(sz))
 			_ = b.Finish(0, rows, offset, buf)
 			f := binfmt.New(buf).LineWidth(20)
+			tp := treeprinter.New()
+			n := tp.Child("uints")
 			if offset > 0 {
 				f.HexBytesln(int(offset), "artificial start offset")
+				f.ToTreePrinter(n)
 			}
-			uintsToBinFormatter(f, rows, nil)
-			return f.String()
+			uintsToBinFormatter(f, n, rows, nil)
+			return tp.String()
 		default:
 			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
 		}
