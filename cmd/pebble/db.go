@@ -76,6 +76,9 @@ func newPebbleDB(dir string) DB {
 			return 3
 		},
 	}
+	// In FormatColumnarBlocks (the value of FormatNewest at the time of
+	// writing), columnar blocks are only written if explicitly opted into.
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
