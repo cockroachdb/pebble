@@ -11,6 +11,7 @@ import (
 	"math"
 	"slices"
 	"sync"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -356,15 +357,24 @@ func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error
 	}
 	algo := block.CompressionIndicator(raw[bh.Length])
 	raw = raw[:bh.Length]
+
 	if algo == block.NoCompressionIndicator {
-		return raw, buf, nil
+		// Return the raw buffer if possible.
+		if uintptr(unsafe.Pointer(unsafe.SliceData(raw)))&7 == 0 {
+			return raw, buf, nil
+		}
 	}
+
 	decompressedLen, prefix, err := block.DecompressedLen(algo, raw)
 	if err != nil {
 		return nil, buf, err
 	}
 	if cap(buf) < decompressedLen {
-		buf = make([]byte, decompressedLen)
+		// We want the buffer to be 8 byte aligned.
+		buf = slices.Grow(buf[:0], decompressedLen+8)
+		if n := uintptr(unsafe.Pointer(unsafe.SliceData(buf))) & 7; n != 0 {
+			buf = buf[8-n:]
+		}
 	}
 	dst := buf[:decompressedLen]
 	err = block.DecompressInto(algo, raw[prefix:], dst)
