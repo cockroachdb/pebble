@@ -9,7 +9,7 @@
 init default-zero
 ----
 
-size rows=(100)
+size rows=100
 ----
 Size(100, 0) = 1
 
@@ -532,10 +532,44 @@ uints
 init
 ----
 
-size rows=(0) offset=0
+size rows=0 offset=0
 ----
 Size(0, 0) = 0
 
 finish rows=0 offset=0
 ----
 uints
+
+init default-zero
+----
+
+write
+0:1000000
+1:1000010
+2:1000020
+3:1000030
+4:1000040
+----
+
+size rows=4 offset=0
+----
+Size(4, 0) = 20
+
+# Write a row that changes the encoding.
+write
+5:44333222111
+----
+
+size rows=4 offset=0
+----
+Size(4, 0) = 13
+
+finish rows=4 offset=0
+----
+uints
+ ├── 00-01: x 81               # encoding: 1b,delta
+ ├── 01-09: x 40420f0000000000 # 64-bit constant: 1000000
+ ├── 09-10: x 00               # data[0] = 0 + 1000000 = 1000000
+ ├── 10-11: x 0a               # data[1] = 10 + 1000000 = 1000010
+ ├── 11-12: x 14               # data[2] = 20 + 1000000 = 1000020
+ └── 12-13: x 1e               # data[3] = 30 + 1000000 = 1000030
