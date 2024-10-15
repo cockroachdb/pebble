@@ -283,6 +283,12 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, minimum uint6
 
 	// We have to recalculate the minimum and maximum.
 	minimum, maximum := computeMinMax(b.array.elems.Slice(rows))
+	if b.useDefault {
+		// Mirror the pessimism of the fast path so that the result is consistent.
+		// Otherwise, adding a row can result in a different encoding even when not
+		// including that row.
+		minimum = 0
+	}
 	return DetermineUintEncoding(minimum, maximum), minimum
 }
 
