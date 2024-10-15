@@ -231,12 +231,12 @@ sstable
  ├── data  offset: 79  length: 74
  ├── data  offset: 158  length: 74
  ├── index  offset: 237  length: 36
- ├── index  offset: 278  length: 44
- ├── index  offset: 327  length: 44
- ├── top-index  offset: 376  length: 53
- ├── properties  offset: 434  length: 480
- ├── meta-index  offset: 919  length: 33
- └── footer  offset: 957  length: 53
+ ├── index  offset: 278  length: 37
+ ├── index  offset: 320  length: 37
+ ├── top-index  offset: 362  length: 48
+ ├── properties  offset: 415  length: 480
+ ├── meta-index  offset: 900  length: 33
+ └── footer  offset: 938  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
@@ -247,12 +247,12 @@ sstable
  ├── data  offset: 79  length: 74
  ├── data  offset: 158  length: 74
  ├── index  offset: 237  length: 36
- ├── index  offset: 278  length: 44
- ├── index  offset: 327  length: 44
- ├── top-index  offset: 376  length: 53
- ├── properties  offset: 434  length: 480
- ├── meta-index  offset: 919  length: 33
- └── footer  offset: 957  length: 53
+ ├── index  offset: 278  length: 37
+ ├── index  offset: 320  length: 37
+ ├── top-index  offset: 362  length: 48
+ ├── properties  offset: 415  length: 480
+ ├── meta-index  offset: 900  length: 33
+ └── footer  offset: 938  length: 53
 
 scan
 ----

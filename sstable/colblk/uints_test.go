@@ -7,6 +7,7 @@ package colblk
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,13 +18,79 @@ import (
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
+func TestByteWidth(t *testing.T) {
+	for _, tc := range []struct {
+		val      uint64
+		expected uint8
+	}{
+		{val: 0, expected: 0},
+		{val: 1, expected: 1},
+		{val: 100, expected: 1},
+		{val: 255, expected: 1},
+		{val: 256, expected: 2},
+		{val: 500, expected: 2},
+		{val: 511, expected: 2},
+		{val: 512, expected: 2},
+		{val: 60000, expected: 2},
+		{val: 65535, expected: 2},
+		{val: 65536, expected: 4},
+		{val: 1 << 30, expected: 4},
+		{val: 1<<32 - 1, expected: 4},
+		{val: 1 << 32, expected: 8},
+		{val: 1 << 50, expected: 8},
+		{val: math.MaxUint64, expected: 8},
+	} {
+		if w := byteWidth(tc.val); w != tc.expected {
+			t.Errorf("byteWidth(%d) = %d, want %d", tc.val, w, tc.expected)
+		}
+	}
+}
+
 func TestUintEncoding(t *testing.T) {
 	for _, r := range interestingIntRanges {
-		actual := DetermineUintEncoding(r.Min, r.Max)
+		actual := DetermineUintEncoding(r.Min, r.Max, UintEncodingRowThreshold)
 		if actual != r.ExpectedEncoding {
 			t.Errorf("%d/%d expected %s, but got %s", r.Min, r.Max, r.ExpectedEncoding, actual)
 		}
 	}
+	// Testcases around avoiding delta encodings for small number of rows.
+	for _, tc := range []struct {
+		min, max uint64
+		numRows  int
+		expected UintEncoding
+	}{
+		{min: 100, max: 300, numRows: 1, expected: makeUintEncoding(2, false)},
+		{min: 100, max: 300, numRows: 5, expected: makeUintEncoding(2, false)},
+		{min: 100, max: 300, numRows: 7, expected: makeUintEncoding(2, false)},
+		{min: 100, max: 300, numRows: 8, expected: makeUintEncoding(1, true)},
+		{min: 100, max: 300, numRows: 1000, expected: makeUintEncoding(1, true)},
+
+		{min: 65000, max: 65100, numRows: 1, expected: makeUintEncoding(2, false)},
+		{min: 65000, max: 65100, numRows: 3, expected: makeUintEncoding(2, false)},
+		{min: 65000, max: 65100, numRows: 7, expected: makeUintEncoding(2, false)},
+		{min: 65000, max: 65100, numRows: 8, expected: makeUintEncoding(1, true)},
+		{min: 65000, max: 65100, numRows: 10, expected: makeUintEncoding(1, true)},
+
+		{min: 80000, max: 100000, numRows: 1, expected: makeUintEncoding(4, false)},
+		{min: 80000, max: 100000, numRows: 2, expected: makeUintEncoding(4, false)},
+		{min: 80000, max: 100000, numRows: 3, expected: makeUintEncoding(4, false)},
+		{min: 80000, max: 100000, numRows: 4, expected: makeUintEncoding(2, true)},
+		{min: 80000, max: 100000, numRows: 10, expected: makeUintEncoding(2, true)},
+
+		{min: 1 << 40, max: 1<<40 + 100, numRows: 1, expected: makeUintEncoding(8, false)},
+		{min: 1 << 40, max: 1<<40 + 100, numRows: 2, expected: makeUintEncoding(1, true)},
+		{min: 1 << 40, max: 1<<40 + 100, numRows: 3, expected: makeUintEncoding(1, true)},
+
+		{min: 1 << 40, max: 1<<40 + 1000, numRows: 1, expected: makeUintEncoding(8, false)},
+		{min: 1 << 40, max: 1<<40 + 1000, numRows: 2, expected: makeUintEncoding(2, true)},
+		{min: 1 << 40, max: 1<<40 + 1000, numRows: 3, expected: makeUintEncoding(2, true)},
+	} {
+		actual := DetermineUintEncoding(tc.min, tc.max, tc.numRows)
+		if actual != tc.expected {
+			t.Errorf("%d/%d/%d expected %s, but got %s", tc.min, tc.max, tc.numRows, tc.expected, actual)
+		}
+	}
+
 }
 
 func TestUints(t *testing.T) {

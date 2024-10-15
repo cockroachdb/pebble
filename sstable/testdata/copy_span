@@ -53,7 +53,7 @@ d#0,SET: foobar
 
 copy-span test3 test4 b.SET.10 cc.SET.0
 ----
-copied 790 bytes
+copied 821 bytes
 
 iter test4
 ----
@@ -63,7 +63,7 @@ d#0,SET: foobar
 
 copy-span test3 test5 a.SET.10 bb.SET.0
 ----
-copied 787 bytes
+copied 829 bytes
 
 iter test5
 ----

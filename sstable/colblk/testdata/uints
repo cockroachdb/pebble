@@ -495,13 +495,18 @@ write
 
 size rows=(6)
 ----
-Size(6, 0) = 9
+Size(6, 0) = 7
 
 finish rows=6
 ----
 uints
- ├── 0-1: x 80               # encoding: const
- └── 1-9: x 0100000000000000 # 64-bit constant: 1
+ ├── 0-1: x 01 # encoding: 1b
+ ├── 1-2: x 01 # data[0] = 1
+ ├── 2-3: x 01 # data[1] = 1
+ ├── 3-4: x 01 # data[2] = 1
+ ├── 4-5: x 01 # data[3] = 1
+ ├── 5-6: x 01 # data[4] = 1
+ └── 6-7: x 01 # data[5] = 1
 
 # Test 32-bit delta encoding.
 
