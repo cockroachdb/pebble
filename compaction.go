@@ -2204,6 +2204,32 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			// as only the holder of the manifest lock will ever write to it.
 			if c.cancel.Load() {
 				err = firstError(err, ErrCancelledCompaction)
+				// This is the first time we've seen a cancellation during the
+				// life of this compaction (or the original condition on err == nil
+				// would not have been true). We should delete any tables already
+				// created, as d.runCompaction did not do that.
+				//
+				// We exclude Delete-only and move compaction(s) from these checks, as
+				// those compactions do not produce new files. The only new files produced
+				// by delete-only compactions are virtual sstables, which cannot be cleaned
+				// up here.
+				if c.kind != compactionKindDeleteOnly && c.kind != compactionKindMove {
+					obsoleteFiles := make([]*fileBacking, len(ve.NewFiles))
+					for i := range ve.NewFiles {
+						obsoleteFiles[i] = ve.NewFiles[i].Meta.PhysicalMeta().FileBacking
+						// Add this file to zombie tables as well, as the versionSet
+						// asserts on whether every obsolete file was at one point
+						// marked zombie.
+						d.mu.versions.zombieTables[obsoleteFiles[i].DiskFileNum] = tableInfo{
+							fileInfo: fileInfo{
+								FileNum:  obsoleteFiles[i].DiskFileNum,
+								FileSize: obsoleteFiles[i].Size,
+							},
+							isLocal: true,
+						}
+					}
+					d.mu.versions.addObsoleteLocked(obsoleteFiles)
+				}
 			}
 			if err != nil {
 				// logAndApply calls logUnlock. If we didn't call it, we need to call
@@ -2749,7 +2775,13 @@ func (d *DB) runCompaction(
 	if result.Err != nil {
 		// Delete any created tables.
 		for i := range result.Tables {
+			path := d.objProvider.Path(result.Tables[i].ObjMeta)
 			_ = d.objProvider.Remove(fileTypeTable, result.Tables[i].ObjMeta.DiskFileNum)
+			d.opts.EventListener.TableDeleted(TableDeleteInfo{
+				JobID:   int(jobID),
+				FileNum: result.Tables[i].ObjMeta.DiskFileNum,
+				Path:    path,
+			})
 		}
 	}
 	// Refresh the disk available statistic whenever a compaction/flush
