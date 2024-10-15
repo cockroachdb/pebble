@@ -10,7 +10,7 @@ size=37:
 add
 a-b:{(#0,RANGEDEL)}
 ----
-size=57:
+size=50:
 0: user keys:      bytes: 2 rows set; 2 bytes in data
 1: start indices:  uint: 2 rows
 2: trailers:       uint: 1 rows
@@ -232,7 +232,7 @@ size=37:
 add
 b-d:{(#4,RANGEKEYSET,@3,coconut)}
 ----
-size=70:
+size=64:
 0: user keys:      bytes: 2 rows set; 2 bytes in data
 1: start indices:  uint: 2 rows
 2: trailers:       uint: 1 rows
@@ -256,9 +256,9 @@ keyspan-decoder
       │    ├── 21-22: b 00000010 # col 2: uint
       │    ├── 22-26: x 2d000000 # col 2: page start 45
       │    ├── 26-27: b 00000011 # col 3: bytes
-      │    ├── 27-31: x 36000000 # col 3: page start 54
+      │    ├── 27-31: x 30000000 # col 3: page start 48
       │    ├── 31-32: b 00000011 # col 4: bytes
-      │    └── 32-36: x 3b000000 # col 4: page start 59
+      │    └── 32-36: x 35000000 # col 4: page start 53
       ├── data for column 0 (bytes)
       │    ├── offsets table
       │    │    ├── 36-37: x 01 # encoding: 1b
@@ -273,23 +273,23 @@ keyspan-decoder
       │    ├── 43-44: x 00 # data[0] = 0
       │    └── 44-45: x 01 # data[1] = 1
       ├── data for column 2 (uint)
-      │    ├── 45-46: x 80               # encoding: const
-      │    └── 46-54: x 1504000000000000 # 64-bit constant: 1045
+      │    ├── 45-46: x 02   # encoding: 2b
+      │    └── 46-48: x 1504 # data[0] = 1045
       ├── data for column 3 (bytes)
       │    ├── offsets table
-      │    │    ├── 54-55: x 01 # encoding: 1b
-      │    │    ├── 55-56: x 00 # data[0] = 0 [57 overall]
-      │    │    └── 56-57: x 02 # data[1] = 2 [59 overall]
+      │    │    ├── 48-49: x 01 # encoding: 1b
+      │    │    ├── 49-50: x 00 # data[0] = 0 [51 overall]
+      │    │    └── 50-51: x 02 # data[1] = 2 [53 overall]
       │    └── data
-      │         └── 57-59: x 4033 # data[0]: @3
+      │         └── 51-53: x 4033 # data[0]: @3
       ├── data for column 4 (bytes)
       │    ├── offsets table
-      │    │    ├── 59-60: x 01 # encoding: 1b
-      │    │    ├── 60-61: x 00 # data[0] = 0 [62 overall]
-      │    │    └── 61-62: x 07 # data[1] = 7 [69 overall]
+      │    │    ├── 53-54: x 01 # encoding: 1b
+      │    │    ├── 54-55: x 00 # data[0] = 0 [56 overall]
+      │    │    └── 55-56: x 07 # data[1] = 7 [63 overall]
       │    └── data
-      │         └── 62-69: x 636f636f6e7574 # data[0]: coconut
-      └── 69-70: x 00 # block padding byte
+      │         └── 56-63: x 636f636f6e7574 # data[0]: coconut
+      └── 63-64: x 00 # block padding byte
 
 iter
 seek-ge a

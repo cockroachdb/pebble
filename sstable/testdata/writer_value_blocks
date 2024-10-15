@@ -369,7 +369,7 @@ sstable
  │    │    │    ├── 21-22: b 00000010 # col 2: uint
  │    │    │    ├── 22-26: x 3d000000 # col 2: page start 61
  │    │    │    ├── 26-27: b 00000001 # col 3: bool
- │    │    │    ├── 27-31: x 46000000 # col 3: page start 70
+ │    │    │    ├── 27-31: x 40000000 # col 3: page start 64
  │    │    │    ├── 31-32: b 00000011 # col 4: bytes
  │    │    │    ├── 32-36: x 58000000 # col 4: page start 88
  │    │    │    ├── 36-37: b 00000001 # col 5: bool
@@ -395,11 +395,11 @@ sstable
  │    │    │    └── data
  │    │    │         └── 58-61: x 403130 # data[0]: @10
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 61-62: x 80               # encoding: const
- │    │    │    └── 62-70: x 0114000000000000 # 64-bit constant: 5121
+ │    │    │    ├── 61-62: x 02   # encoding: 2b
+ │    │    │    └── 62-64: x 0114 # data[0] = 5121
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 70-71: x 00                                                               # default bitmap encoding
- │    │    │    ├── 71-72: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 64-65: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 65-72: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 72-80: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 80-88: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -415,8 +415,8 @@ sstable
  │    │    │    └── 98-99: x 01 # zero bitmap encoding
  │    │    └── 99-100: x 00 # block padding byte
  │    ├── blue@10#20,SET:blue10
- │    └── trailer [compression=snappy checksum=0x3a342f9]
- ├── data  offset: 86  length: 85
+ │    └── trailer [compression=snappy checksum=0xbbb19ea6]
+ ├── data  offset: 86  length: 86
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 06000000 # maximum key length: 6
@@ -430,7 +430,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 3c000000 # col 2: page start 60
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 45000000 # col 3: page start 69
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -456,11 +456,12 @@ sstable
  │    │    │    └── data
  │    │    │         └── 058-060: x 4038 # data[0]: @8
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 060-061: x 80               # encoding: const
- │    │    │    └── 061-069: x 0112000000000000 # 64-bit constant: 4609
+ │    │    │    ├── 060-061: x 02   # encoding: 2b
+ │    │    │    ├── 061-062: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    └── 062-064: x 0112 # data[0] = 4609
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 069-070: x 00                                                               # default bitmap encoding
- │    │    │    ├── 070-072: x 0000                                                             # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -478,8 +479,8 @@ sstable
  │    │    │    └── 112-113: x 01 # zero bitmap encoding
  │    │    └── 113-114: x 00 # block padding byte
  │    ├── blue@8#18,SET:value handle {valueLen:5 blockNum:0 offsetInBlock:0}
- │    └── trailer [compression=snappy checksum=0x17efbf53]
- ├── data  offset: 176  length: 94
+ │    └── trailer [compression=snappy checksum=0xceb8415d]
+ ├── data  offset: 177  length: 95
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 06000000 # maximum key length: 6
@@ -493,7 +494,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 3c000000 # col 2: page start 60
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 45000000 # col 3: page start 69
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -519,11 +520,12 @@ sstable
  │    │    │    └── data
  │    │    │         └── 058-060: x 4038 # data[0]: @8
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 060-061: x 80               # encoding: const
- │    │    │    └── 061-069: x 0110000000000000 # 64-bit constant: 4097
+ │    │    │    ├── 060-061: x 02   # encoding: 2b
+ │    │    │    ├── 061-062: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    └── 062-064: x 0110 # data[0] = 4097
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 069-070: x 00                                                               # default bitmap encoding
- │    │    │    ├── 070-072: x 0000                                                             # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -544,8 +546,8 @@ sstable
  │    │    │    └── 128-136: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    └── 136-137: x 00 # block padding byte
  │    ├── blue@8#16,SET:value handle {valueLen:6 blockNum:0 offsetInBlock:5}
- │    └── trailer [compression=snappy checksum=0x9371e6fd]
- ├── data  offset: 275  length: 90
+ │    └── trailer [compression=snappy checksum=0xfb8462e1]
+ ├── data  offset: 277  length: 91
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 06000000 # maximum key length: 6
@@ -559,7 +561,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 3c000000 # col 2: page start 60
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 45000000 # col 3: page start 69
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -585,11 +587,12 @@ sstable
  │    │    │    └── data
  │    │    │         └── 058-060: x 4036 # data[0]: @6
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 060-061: x 80               # encoding: const
- │    │    │    └── 061-069: x 0110000000000000 # 64-bit constant: 4097
+ │    │    │    ├── 060-061: x 02   # encoding: 2b
+ │    │    │    ├── 061-062: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    └── 062-064: x 0110 # data[0] = 4097
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 069-070: x 00                                                               # default bitmap encoding
- │    │    │    ├── 070-072: x 0000                                                             # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000000000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -607,40 +610,40 @@ sstable
  │    │    │    └── 112-113: x 01 # zero bitmap encoding
  │    │    └── 113-114: x 00 # block padding byte
  │    ├── blue@6#16,SET:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
- │    └── trailer [compression=snappy checksum=0xcfdbcc3c]
- ├── index  offset: 370  length: 42
+ │    └── trailer [compression=snappy checksum=0xa053f3eb]
+ ├── index  offset: 373  length: 42
  │    ├── 00000    block:0/81
  │    │   
  │    └── trailer [compression=none checksum=0x80ae3e61]
- ├── index  offset: 417  length: 49
- │    ├── 00000    block:86/85
+ ├── index  offset: 420  length: 42
+ │    ├── 00000    block:86/86
  │    │   
- │    └── trailer [compression=none checksum=0xf2bc08f4]
- ├── index  offset: 471  length: 54
- │    ├── 00000    block:176/94
+ │    └── trailer [compression=none checksum=0xca4212f3]
+ ├── index  offset: 467  length: 47
+ │    ├── 00000    block:177/95
  │    │   
- │    └── trailer [compression=none checksum=0x4eed6c67]
- ├── index  offset: 530  length: 44
- │    ├── 00000    block:275/90
+ │    └── trailer [compression=none checksum=0xb10589b8]
+ ├── index  offset: 519  length: 38
+ │    ├── 00000    block:277/91
  │    │   
- │    └── trailer [compression=none checksum=0xbacbe8f5]
- ├── top-index  offset: 579  length: 81
- │    ├── 00000    block:370/42
+ │    └── trailer [compression=none checksum=0xb4e5aa79]
+ ├── top-index  offset: 562  length: 77
+ │    ├── 00000    block:373/42
  │    │   
- │    ├── 00001    block:417/49
+ │    ├── 00001    block:420/42
  │    │   
- │    ├── 00002    block:471/54
+ │    ├── 00002    block:467/47
  │    │   
- │    ├── 00003    block:530/44
+ │    ├── 00003    block:519/38
  │    │   
- │    └── trailer [compression=none checksum=0xdacecc3b]
- ├── value-block  offset: 665  length: 11
+ │    └── trailer [compression=none checksum=0x27e2999a]
+ ├── value-block  offset: 644  length: 11
  │    └── trailer [compression=none checksum=0x86dee352]
- ├── value-block  offset: 681  length: 15
+ ├── value-block  offset: 660  length: 15
  │    └── trailer [compression=none checksum=0x60e7fb82]
- ├── value-index  offset: 701  length: 8
- │    └── trailer [compression=none checksum=0xf15e602c]
- ├── properties  offset: 714  length: 549
+ ├── value-index  offset: 680  length: 8
+ │    └── trailer [compression=none checksum=0xb327e021]
+ ├── properties  offset: 693  length: 549
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.num.value-blocks (27)
  │    ├── 00043    pebble.num.values.in.value-blocks (21)
@@ -665,18 +668,18 @@ sstable
  │    ├── 00517    rocksdb.top-level.index.size (24)
  │    ├── restart points
  │    │    └── 00541 [restart 0]
- │    └── trailer [compression=none checksum=0x2e004e9b]
- ├── meta-index  offset: 1268  length: 64
- │    ├── 0000    pebble.value_index block:701/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
- │    ├── 0027    rocksdb.properties block:714/549 [restart]
+ │    └── trailer [compression=none checksum=0x74ea3d7a]
+ ├── meta-index  offset: 1247  length: 64
+ │    ├── 0000    pebble.value_index block:680/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
+ │    ├── 0027    rocksdb.properties block:693/549 [restart]
  │    ├── restart points
  │    │    ├── 00052 [restart 0]
  │    │    └── 00056 [restart 27]
- │    └── trailer [compression=none checksum=0x926e2244]
- └── footer  offset: 1337  length: 53
+ │    └── trailer [compression=none checksum=0x5a3ff93a]
+ └── footer  offset: 1316  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=1268, length=64
-      ├── 004  index: offset=579, length=81
+      ├── 001  meta: offset=1247, length=64
+      ├── 004  index: offset=562, length=77
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
 

@@ -12,7 +12,7 @@ ok
 layout
 ----
 sstable
- ├── data  offset: 0  length: 96
+ ├── data  offset: 0  length: 88
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 00-04: x 01000000 # maximum key length: 1
@@ -26,13 +26,13 @@ sstable
  │    │    │    ├── 21-22: b 00000010 # col 2: uint
  │    │    │    ├── 22-26: x 37000000 # col 2: page start 55
  │    │    │    ├── 26-27: b 00000001 # col 3: bool
- │    │    │    ├── 27-31: x 42000000 # col 3: page start 66
+ │    │    │    ├── 27-31: x 3c000000 # col 3: page start 60
  │    │    │    ├── 31-32: b 00000011 # col 4: bytes
- │    │    │    ├── 32-36: x 58000000 # col 4: page start 88
+ │    │    │    ├── 32-36: x 50000000 # col 4: page start 80
  │    │    │    ├── 36-37: b 00000001 # col 5: bool
- │    │    │    ├── 37-41: x 5d000000 # col 5: page start 93
+ │    │    │    ├── 37-41: x 55000000 # col 5: page start 85
  │    │    │    ├── 41-42: b 00000001 # col 6: bool
- │    │    │    └── 42-46: x 5e000000 # col 6: page start 94
+ │    │    │    └── 42-46: x 56000000 # col 6: page start 86
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 46-47: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -53,35 +53,34 @@ sstable
  │    │    │         ├── 55-55: x  # data[0]:
  │    │    │         └── 55-55: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 55-56: x 81               # encoding: 1b,delta
- │    │    │    ├── 56-64: x 0101000000000000 # 64-bit constant: 257
- │    │    │    ├── 64-65: x 00               # data[0] = 0 + 257 = 257
- │    │    │    └── 65-66: x ff               # data[1] = 255 + 257 = 512
+ │    │    │    ├── 55-56: x 02   # encoding: 2b
+ │    │    │    ├── 56-58: x 0101 # data[0] = 257
+ │    │    │    └── 58-60: x 0002 # data[1] = 512
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 66-67: x 00                                                               # default bitmap encoding
- │    │    │    ├── 67-72: x 0000000000                                                       # padding to align to 64-bit boundary
- │    │    │    ├── 72-80: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 80-88: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 60-61: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 61-64: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 64-72: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 72-80: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 88-89: x 01 # encoding: 1b
- │    │    │    │    ├── 89-90: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 90-91: x 01 # data[1] = 1 [93 overall]
- │    │    │    │    └── 91-92: x 01 # data[2] = 1 [93 overall]
+ │    │    │    │    ├── 80-81: x 01 # encoding: 1b
+ │    │    │    │    ├── 81-82: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 82-83: x 01 # data[1] = 1 [85 overall]
+ │    │    │    │    └── 83-84: x 01 # data[2] = 1 [85 overall]
  │    │    │    └── data
- │    │    │         ├── 92-93: x 61 # data[0]: a
- │    │    │         └── 93-93: x    # data[1]:
+ │    │    │         ├── 84-85: x 61 # data[0]: a
+ │    │    │         └── 85-85: x    # data[1]:
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 93-94: x 01 # zero bitmap encoding
+ │    │    │    └── 85-86: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 94-95: x 01 # zero bitmap encoding
- │    │    └── 95-96: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xa772640a]
- ├── index  offset: 101  length: 51
- │    ├── 00000    block:0/96
+ │    │    │    └── 86-87: x 01 # zero bitmap encoding
+ │    │    └── 87-88: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x4ea44054]
+ ├── index  offset: 93  length: 51
+ │    ├── 00000    block:0/88
  │    │   
- │    └── trailer [compression=none checksum=0x2bc8f1e1]
- ├── properties  offset: 157  length: 561
+ │    └── trailer [compression=none checksum=0x6147006e]
+ ├── properties  offset: 149  length: 561
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.internal.testkeys.suffixes (48)
  │    ├── 00064    pebble.raw.point-tombstone.key.size (32)
@@ -103,16 +102,16 @@ sstable
  │    ├── 00539    rocksdb.raw.value.size (14)
  │    ├── restart points
  │    │    └── 00553 [restart 0]
- │    └── trailer [compression=none checksum=0x8ab471b6]
- ├── meta-index  offset: 723  length: 33
- │    ├── 0000    rocksdb.properties block:157/561 [restart]
+ │    └── trailer [compression=none checksum=0xf181bf0d]
+ ├── meta-index  offset: 715  length: 33
+ │    ├── 0000    rocksdb.properties block:149/561 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0x5c950c07]
- └── footer  offset: 761  length: 53
+ │    └── trailer [compression=none checksum=0x742412ac]
+ └── footer  offset: 753  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=723, length=33
-      ├── 004  index: offset=101, length=51
+      ├── 001  meta: offset=715, length=33
+      ├── 004  index: offset=93, length=51
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
 
@@ -128,7 +127,7 @@ rocksdb.num.data.blocks: 1
 rocksdb.compression: NoCompression
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.comparator: pebble.internal.testkeys
-rocksdb.data.size: 101
+rocksdb.data.size: 93
 rocksdb.filter.size: 0
 rocksdb.index.size: 56
 rocksdb.block.based.table.index.type: 0
@@ -167,7 +166,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -197,11 +196,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -220,7 +221,7 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 114-115: x 01 # zero bitmap encoding
  │    │    └── 115-116: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xe7b15329]
+ │    └── trailer [compression=none checksum=0x3aec6bb5]
  ├── index  offset: 121  length: 51
  │    ├── 00000    block:0/116
  │    │   
@@ -306,7 +307,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -336,11 +337,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -359,8 +362,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 114-115: x 01 # zero bitmap encoding
  │    │    └── 115-116: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xe7b15329]
- ├── data  offset: 121  length: 116
+ │    └── trailer [compression=none checksum=0x3aec6bb5]
+ ├── data  offset: 121  length: 108
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -374,13 +377,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 71000000 # col 5: page start 113
+ │    │    │    ├── 037-041: x 69000000 # col 5: page start 105
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 72000000 # col 6: page start 114
+ │    │    │    └── 042-046: x 6a000000 # col 6: page start 106
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -401,29 +404,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 0b # data[1] = 11 [103 overall]
- │    │    │    │    └── 091-092: x 15 # data[2] = 21 [113 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 0b # data[1] = 11 [95 overall]
+ │    │    │    │    └── 083-084: x 15 # data[2] = 21 [105 overall]
  │    │    │    └── data
- │    │    │         ├── 092-103: x 647261676f6e6672756974 # data[0]: dragonfruit
- │    │    │         └── 103-113: x 656c6465726265727279   # data[1]: elderberry
+ │    │    │         ├── 084-095: x 647261676f6e6672756974 # data[0]: dragonfruit
+ │    │    │         └── 095-105: x 656c6465726265727279   # data[1]: elderberry
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 113-114: x 01 # zero bitmap encoding
+ │    │    │    └── 105-106: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 114-115: x 01 # zero bitmap encoding
- │    │    └── 115-116: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xd56f1e7d]
- ├── data  offset: 242  length: 117
+ │    │    │    └── 106-107: x 01 # zero bitmap encoding
+ │    │    └── 107-108: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x9b921b37]
+ ├── data  offset: 234  length: 117
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -437,7 +441,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -467,11 +471,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -490,8 +496,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 115-116: x 01 # zero bitmap encoding
  │    │    └── 116-117: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xf74eefc6]
- ├── data  offset: 364  length: 113
+ │    └── trailer [compression=none checksum=0xf7385208]
+ ├── data  offset: 356  length: 113
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -505,7 +511,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -535,11 +541,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -558,8 +566,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 111-112: x 01 # zero bitmap encoding
  │    │    └── 112-113: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x6cd1f806]
- ├── data  offset: 482  length: 115
+ │    └── trailer [compression=none checksum=0x5d2be678]
+ ├── data  offset: 474  length: 115
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -573,7 +581,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -603,11 +611,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -626,8 +636,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 113-114: x 01 # zero bitmap encoding
  │    │    └── 114-115: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x431d47b8]
- ├── data  offset: 602  length: 113
+ │    └── trailer [compression=none checksum=0x2f572ac1]
+ ├── data  offset: 594  length: 105
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -641,13 +651,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 6e000000 # col 5: page start 110
+ │    │    │    ├── 037-041: x 66000000 # col 5: page start 102
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 6f000000 # col 6: page start 111
+ │    │    │    └── 042-046: x 67000000 # col 6: page start 103
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -668,29 +678,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 06 # data[1] = 6 [98 overall]
- │    │    │    │    └── 091-092: x 12 # data[2] = 18 [110 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 06 # data[1] = 6 [90 overall]
+ │    │    │    │    └── 083-084: x 12 # data[2] = 18 [102 overall]
  │    │    │    └── data
- │    │    │         ├── 092-098: x 6f72616e6765             # data[0]: orange
- │    │    │         └── 098-110: x 70616d706c656d6f75737365 # data[1]: pamplemousse
+ │    │    │         ├── 084-090: x 6f72616e6765             # data[0]: orange
+ │    │    │         └── 090-102: x 70616d706c656d6f75737365 # data[1]: pamplemousse
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 110-111: x 01 # zero bitmap encoding
+ │    │    │    └── 102-103: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 111-112: x 01 # zero bitmap encoding
- │    │    └── 112-113: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xc9a1bc98]
- ├── data  offset: 720  length: 110
+ │    │    │    └── 103-104: x 01 # zero bitmap encoding
+ │    │    └── 104-105: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x712b9e3f]
+ ├── data  offset: 704  length: 102
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -704,13 +715,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 6b000000 # col 5: page start 107
+ │    │    │    ├── 037-041: x 63000000 # col 5: page start 99
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 6c000000 # col 6: page start 108
+ │    │    │    └── 042-046: x 64000000 # col 6: page start 100
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -731,29 +742,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 06 # data[1] = 6 [98 overall]
- │    │    │    │    └── 091-092: x 0f # data[2] = 15 [107 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 06 # data[1] = 6 [90 overall]
+ │    │    │    │    └── 083-084: x 0f # data[2] = 15 [99 overall]
  │    │    │    └── data
- │    │    │         ├── 092-098: x 7175696e6365       # data[0]: quince
- │    │    │         └── 098-107: x 726173706265727279 # data[1]: raspberry
+ │    │    │         ├── 084-090: x 7175696e6365       # data[0]: quince
+ │    │    │         └── 090-099: x 726173706265727279 # data[1]: raspberry
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 107-108: x 01 # zero bitmap encoding
+ │    │    │    └── 099-100: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 108-109: x 01 # zero bitmap encoding
- │    │    └── 109-110: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x9ed7918a]
- ├── data  offset: 835  length: 114
+ │    │    │    └── 100-101: x 01 # zero bitmap encoding
+ │    │    └── 101-102: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x60b8893d]
+ ├── data  offset: 811  length: 106
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -767,13 +779,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 6f000000 # col 5: page start 111
+ │    │    │    ├── 037-041: x 67000000 # col 5: page start 103
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 70000000 # col 6: page start 112
+ │    │    │    └── 042-046: x 68000000 # col 6: page start 104
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -794,29 +806,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 0a # data[1] = 10 [102 overall]
- │    │    │    │    └── 091-092: x 13 # data[2] = 19 [111 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 0a # data[1] = 10 [94 overall]
+ │    │    │    │    └── 083-084: x 13 # data[2] = 19 [103 overall]
  │    │    │    └── data
- │    │    │         ├── 092-102: x 73747261776265727279 # data[0]: strawberry
- │    │    │         └── 102-111: x 74616e676572696e65   # data[1]: tangerine
+ │    │    │         ├── 084-094: x 73747261776265727279 # data[0]: strawberry
+ │    │    │         └── 094-103: x 74616e676572696e65   # data[1]: tangerine
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 111-112: x 01 # zero bitmap encoding
+ │    │    │    └── 103-104: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 112-113: x 01 # zero bitmap encoding
- │    │    └── 113-114: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x6027b22b]
- ├── data  offset: 954  length: 89
+ │    │    │    └── 104-105: x 01 # zero bitmap encoding
+ │    │    └── 105-106: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0xe7abb862]
+ ├── data  offset: 922  length: 89
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 00-04: x 01000000 # maximum key length: 1
@@ -830,7 +843,7 @@ sstable
  │    │    │    ├── 21-22: b 00000010 # col 2: uint
  │    │    │    ├── 22-26: x 35000000 # col 2: page start 53
  │    │    │    ├── 26-27: b 00000001 # col 3: bool
- │    │    │    ├── 27-31: x 3e000000 # col 3: page start 62
+ │    │    │    ├── 27-31: x 38000000 # col 3: page start 56
  │    │    │    ├── 31-32: b 00000011 # col 4: bytes
  │    │    │    ├── 32-36: x 50000000 # col 4: page start 80
  │    │    │    ├── 36-37: b 00000001 # col 5: bool
@@ -854,11 +867,11 @@ sstable
  │    │    │    └── data
  │    │    │         └── 53-53: x  # data[0]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 53-54: x 80               # encoding: const
- │    │    │    └── 54-62: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 53-54: x 02   # encoding: 2b
+ │    │    │    └── 54-56: x 0101 # data[0] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 62-63: x 00                                                               # default bitmap encoding
- │    │    │    ├── 63-64: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 56-57: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 57-64: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 64-72: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 72-80: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -873,40 +886,40 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 87-88: x 01 # zero bitmap encoding
  │    │    └── 88-89: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x228c6ee8]
- ├── index  offset: 1048  length: 110
+ │    └── trailer [compression=none checksum=0x6047542f]
+ ├── index  offset: 1016  length: 110
  │    ├── 00000    block:0/116
  │    │   
- │    ├── 00001    block:121/116
+ │    ├── 00001    block:121/108
  │    │   
- │    ├── 00002    block:242/117
+ │    ├── 00002    block:234/117
  │    │   
- │    ├── 00003    block:364/113
+ │    ├── 00003    block:356/113
  │    │   
- │    └── trailer [compression=none checksum=0x3df89c5f]
- ├── index  offset: 1163  length: 110
- │    ├── 00000    block:482/115
+ │    └── trailer [compression=none checksum=0x5fe81472]
+ ├── index  offset: 1131  length: 110
+ │    ├── 00000    block:474/115
  │    │   
- │    ├── 00001    block:602/113
+ │    ├── 00001    block:594/105
  │    │   
- │    ├── 00002    block:720/110
+ │    ├── 00002    block:704/102
  │    │   
- │    ├── 00003    block:835/114
+ │    ├── 00003    block:811/106
  │    │   
- │    └── trailer [compression=none checksum=0x2b2e2864]
- ├── index  offset: 1278  length: 59
- │    ├── 00000    block:954/89
+ │    └── trailer [compression=none checksum=0xa3f84dc2]
+ ├── index  offset: 1246  length: 53
+ │    ├── 00000    block:922/89
  │    │   
- │    └── trailer [compression=none checksum=0x2d50fda3]
- ├── top-index  offset: 1342  length: 96
- │    ├── 00000    block:1048/110
+ │    └── trailer [compression=none checksum=0x52a073b5]
+ ├── top-index  offset: 1304  length: 91
+ │    ├── 00000    block:1016/110
  │    │   
- │    ├── 00001    block:1163/110
+ │    ├── 00001    block:1131/110
  │    │   
- │    ├── 00002    block:1278/59
+ │    ├── 00002    block:1246/53
  │    │   
- │    └── trailer [compression=none checksum=0x462d3144]
- ├── properties  offset: 1443  length: 571
+ │    └── trailer [compression=none checksum=0x70310e3a]
+ ├── properties  offset: 1400  length: 571
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.internal.testkeys.suffixes (48)
  │    ├── 00064    rocksdb.block.based.table.index.type (43)
@@ -929,16 +942,16 @@ sstable
  │    ├── 00539    rocksdb.top-level.index.size (24)
  │    ├── restart points
  │    │    └── 00563 [restart 0]
- │    └── trailer [compression=none checksum=0x3542de03]
- ├── meta-index  offset: 2019  length: 33
- │    ├── 0000    rocksdb.properties block:1443/571 [restart]
+ │    └── trailer [compression=none checksum=0x8bcc1b94]
+ ├── meta-index  offset: 1976  length: 33
+ │    ├── 0000    rocksdb.properties block:1400/571 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0x5e4da9f6]
- └── footer  offset: 2057  length: 53
+ │    └── trailer [compression=none checksum=0xdc5c5254]
+ └── footer  offset: 2014  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=2019, length=33
-      ├── 004  index: offset=1342, length=96
+      ├── 001  meta: offset=1976, length=33
+      ├── 004  index: offset=1304, length=91
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
 
@@ -957,10 +970,10 @@ rocksdb.num.data.blocks: 12
 rocksdb.compression: NoCompression
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.comparator: pebble.internal.testkeys
-rocksdb.data.size: 1048
+rocksdb.data.size: 1016
 rocksdb.filter.size: 0
 rocksdb.index.partitions: 3
-rocksdb.index.size: 395
+rocksdb.index.size: 384
 rocksdb.block.based.table.index.type: 2
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
@@ -986,7 +999,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -1016,11 +1029,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -1039,8 +1054,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 114-115: x 01 # zero bitmap encoding
  │    │    └── 115-116: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xe7b15329]
- ├── data  offset: 121  length: 116
+ │    └── trailer [compression=none checksum=0x3aec6bb5]
+ ├── data  offset: 121  length: 108
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1054,13 +1069,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 71000000 # col 5: page start 113
+ │    │    │    ├── 037-041: x 69000000 # col 5: page start 105
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 72000000 # col 6: page start 114
+ │    │    │    └── 042-046: x 6a000000 # col 6: page start 106
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -1081,29 +1096,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 0b # data[1] = 11 [103 overall]
- │    │    │    │    └── 091-092: x 15 # data[2] = 21 [113 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 0b # data[1] = 11 [95 overall]
+ │    │    │    │    └── 083-084: x 15 # data[2] = 21 [105 overall]
  │    │    │    └── data
- │    │    │         ├── 092-103: x 647261676f6e6672756974 # data[0]: dragonfruit
- │    │    │         └── 103-113: x 656c6465726265727279   # data[1]: elderberry
+ │    │    │         ├── 084-095: x 647261676f6e6672756974 # data[0]: dragonfruit
+ │    │    │         └── 095-105: x 656c6465726265727279   # data[1]: elderberry
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 113-114: x 01 # zero bitmap encoding
+ │    │    │    └── 105-106: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 114-115: x 01 # zero bitmap encoding
- │    │    └── 115-116: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xd56f1e7d]
- ├── data  offset: 242  length: 117
+ │    │    │    └── 106-107: x 01 # zero bitmap encoding
+ │    │    └── 107-108: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x9b921b37]
+ ├── data  offset: 234  length: 117
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1117,7 +1133,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -1147,11 +1163,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -1170,8 +1188,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 115-116: x 01 # zero bitmap encoding
  │    │    └── 116-117: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xf74eefc6]
- ├── data  offset: 364  length: 113
+ │    └── trailer [compression=none checksum=0xf7385208]
+ ├── data  offset: 356  length: 113
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1185,7 +1203,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -1215,11 +1233,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -1238,8 +1258,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 111-112: x 01 # zero bitmap encoding
  │    │    └── 112-113: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x6cd1f806]
- ├── data  offset: 482  length: 115
+ │    └── trailer [compression=none checksum=0x5d2be678]
+ ├── data  offset: 474  length: 115
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1253,7 +1273,7 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 39000000 # col 2: page start 57
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 42000000 # col 3: page start 66
+ │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
@@ -1283,11 +1303,13 @@ sstable
  │    │    │         ├── 057-057: x  # data[1]:
  │    │    │         └── 057-057: x  # data[2]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 057-058: x 80               # encoding: const
- │    │    │    └── 058-066: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 057-058: x 02   # encoding: 2b
+ │    │    │    ├── 058-060: x 0101 # data[0] = 257
+ │    │    │    ├── 060-062: x 0101 # data[1] = 257
+ │    │    │    └── 062-064: x 0101 # data[2] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 066-067: x 00                                                               # default bitmap encoding
- │    │    │    ├── 067-072: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 072-080: b 0000011100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -1306,8 +1328,8 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 113-114: x 01 # zero bitmap encoding
  │    │    └── 114-115: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x431d47b8]
- ├── data  offset: 602  length: 113
+ │    └── trailer [compression=none checksum=0x2f572ac1]
+ ├── data  offset: 594  length: 105
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1321,13 +1343,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 6e000000 # col 5: page start 110
+ │    │    │    ├── 037-041: x 66000000 # col 5: page start 102
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 6f000000 # col 6: page start 111
+ │    │    │    └── 042-046: x 67000000 # col 6: page start 103
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -1348,29 +1370,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 06 # data[1] = 6 [98 overall]
- │    │    │    │    └── 091-092: x 12 # data[2] = 18 [110 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 06 # data[1] = 6 [90 overall]
+ │    │    │    │    └── 083-084: x 12 # data[2] = 18 [102 overall]
  │    │    │    └── data
- │    │    │         ├── 092-098: x 6f72616e6765             # data[0]: orange
- │    │    │         └── 098-110: x 70616d706c656d6f75737365 # data[1]: pamplemousse
+ │    │    │         ├── 084-090: x 6f72616e6765             # data[0]: orange
+ │    │    │         └── 090-102: x 70616d706c656d6f75737365 # data[1]: pamplemousse
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 110-111: x 01 # zero bitmap encoding
+ │    │    │    └── 102-103: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 111-112: x 01 # zero bitmap encoding
- │    │    └── 112-113: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xc9a1bc98]
- ├── data  offset: 720  length: 110
+ │    │    │    └── 103-104: x 01 # zero bitmap encoding
+ │    │    └── 104-105: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x712b9e3f]
+ ├── data  offset: 704  length: 102
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1384,13 +1407,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 6b000000 # col 5: page start 107
+ │    │    │    ├── 037-041: x 63000000 # col 5: page start 99
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 6c000000 # col 6: page start 108
+ │    │    │    └── 042-046: x 64000000 # col 6: page start 100
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -1411,29 +1434,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 06 # data[1] = 6 [98 overall]
- │    │    │    │    └── 091-092: x 0f # data[2] = 15 [107 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 06 # data[1] = 6 [90 overall]
+ │    │    │    │    └── 083-084: x 0f # data[2] = 15 [99 overall]
  │    │    │    └── data
- │    │    │         ├── 092-098: x 7175696e6365       # data[0]: quince
- │    │    │         └── 098-107: x 726173706265727279 # data[1]: raspberry
+ │    │    │         ├── 084-090: x 7175696e6365       # data[0]: quince
+ │    │    │         └── 090-099: x 726173706265727279 # data[1]: raspberry
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 107-108: x 01 # zero bitmap encoding
+ │    │    │    └── 099-100: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 108-109: x 01 # zero bitmap encoding
- │    │    └── 109-110: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x9ed7918a]
- ├── data  offset: 835  length: 114
+ │    │    │    └── 100-101: x 01 # zero bitmap encoding
+ │    │    └── 101-102: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0x60b8893d]
+ ├── data  offset: 811  length: 106
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 01000000 # maximum key length: 1
@@ -1447,13 +1471,13 @@ sstable
  │    │    │    ├── 021-022: b 00000010 # col 2: uint
  │    │    │    ├── 022-026: x 37000000 # col 2: page start 55
  │    │    │    ├── 026-027: b 00000001 # col 3: bool
- │    │    │    ├── 027-031: x 40000000 # col 3: page start 64
+ │    │    │    ├── 027-031: x 3c000000 # col 3: page start 60
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
- │    │    │    ├── 032-036: x 58000000 # col 4: page start 88
+ │    │    │    ├── 032-036: x 50000000 # col 4: page start 80
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 6f000000 # col 5: page start 111
+ │    │    │    ├── 037-041: x 67000000 # col 5: page start 103
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 70000000 # col 6: page start 112
+ │    │    │    └── 042-046: x 68000000 # col 6: page start 104
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -1474,29 +1498,30 @@ sstable
  │    │    │         ├── 055-055: x  # data[0]:
  │    │    │         └── 055-055: x  # data[1]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 055-056: x 80               # encoding: const
- │    │    │    └── 056-064: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 055-056: x 02   # encoding: 2b
+ │    │    │    ├── 056-058: x 0101 # data[0] = 257
+ │    │    │    └── 058-060: x 0101 # data[1] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 064-065: x 00                                                               # default bitmap encoding
- │    │    │    ├── 065-072: x 00000000000000                                                   # padding to align to 64-bit boundary
- │    │    │    ├── 072-080: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
- │    │    │    └── 080-088: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    │    ├── 060-061: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 061-064: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 064-072: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 072-080: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    ├── 088-089: x 01 # encoding: 1b
- │    │    │    │    ├── 089-090: x 00 # data[0] = 0 [92 overall]
- │    │    │    │    ├── 090-091: x 0a # data[1] = 10 [102 overall]
- │    │    │    │    └── 091-092: x 13 # data[2] = 19 [111 overall]
+ │    │    │    │    ├── 080-081: x 01 # encoding: 1b
+ │    │    │    │    ├── 081-082: x 00 # data[0] = 0 [84 overall]
+ │    │    │    │    ├── 082-083: x 0a # data[1] = 10 [94 overall]
+ │    │    │    │    └── 083-084: x 13 # data[2] = 19 [103 overall]
  │    │    │    └── data
- │    │    │         ├── 092-102: x 73747261776265727279 # data[0]: strawberry
- │    │    │         └── 102-111: x 74616e676572696e65   # data[1]: tangerine
+ │    │    │         ├── 084-094: x 73747261776265727279 # data[0]: strawberry
+ │    │    │         └── 094-103: x 74616e676572696e65   # data[1]: tangerine
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 111-112: x 01 # zero bitmap encoding
+ │    │    │    └── 103-104: x 01 # zero bitmap encoding
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 112-113: x 01 # zero bitmap encoding
- │    │    └── 113-114: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x6027b22b]
- ├── data  offset: 954  length: 89
+ │    │    │    └── 104-105: x 01 # zero bitmap encoding
+ │    │    └── 105-106: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0xe7abb862]
+ ├── data  offset: 922  length: 89
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 00-04: x 01000000 # maximum key length: 1
@@ -1510,7 +1535,7 @@ sstable
  │    │    │    ├── 21-22: b 00000010 # col 2: uint
  │    │    │    ├── 22-26: x 35000000 # col 2: page start 53
  │    │    │    ├── 26-27: b 00000001 # col 3: bool
- │    │    │    ├── 27-31: x 3e000000 # col 3: page start 62
+ │    │    │    ├── 27-31: x 38000000 # col 3: page start 56
  │    │    │    ├── 31-32: b 00000011 # col 4: bytes
  │    │    │    ├── 32-36: x 50000000 # col 4: page start 80
  │    │    │    ├── 36-37: b 00000001 # col 5: bool
@@ -1534,11 +1559,11 @@ sstable
  │    │    │    └── data
  │    │    │         └── 53-53: x  # data[0]:
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 53-54: x 80               # encoding: const
- │    │    │    └── 54-62: x 0101000000000000 # 64-bit constant: 257
+ │    │    │    ├── 53-54: x 02   # encoding: 2b
+ │    │    │    └── 54-56: x 0101 # data[0] = 257
  │    │    ├── data for column 3 (bool)
- │    │    │    ├── 62-63: x 00                                                               # default bitmap encoding
- │    │    │    ├── 63-64: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 56-57: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 57-64: x 00000000000000                                                   # padding to align to 64-bit boundary
  │    │    │    ├── 64-72: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 72-80: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 4 (bytes)
@@ -1553,40 +1578,40 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 87-88: x 01 # zero bitmap encoding
  │    │    └── 88-89: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0x228c6ee8]
- ├── index  offset: 1048  length: 110
+ │    └── trailer [compression=none checksum=0x6047542f]
+ ├── index  offset: 1016  length: 110
  │    ├── 00000    block:0/116
  │    │   
- │    ├── 00001    block:121/116
+ │    ├── 00001    block:121/108
  │    │   
- │    ├── 00002    block:242/117
+ │    ├── 00002    block:234/117
  │    │   
- │    ├── 00003    block:364/113
+ │    ├── 00003    block:356/113
  │    │   
- │    └── trailer [compression=none checksum=0x3df89c5f]
- ├── index  offset: 1163  length: 110
- │    ├── 00000    block:482/115
+ │    └── trailer [compression=none checksum=0x5fe81472]
+ ├── index  offset: 1131  length: 110
+ │    ├── 00000    block:474/115
  │    │   
- │    ├── 00001    block:602/113
+ │    ├── 00001    block:594/105
  │    │   
- │    ├── 00002    block:720/110
+ │    ├── 00002    block:704/102
  │    │   
- │    ├── 00003    block:835/114
+ │    ├── 00003    block:811/106
  │    │   
- │    └── trailer [compression=none checksum=0x2b2e2864]
- ├── index  offset: 1278  length: 59
- │    ├── 00000    block:954/89
+ │    └── trailer [compression=none checksum=0xa3f84dc2]
+ ├── index  offset: 1246  length: 53
+ │    ├── 00000    block:922/89
  │    │   
- │    └── trailer [compression=none checksum=0x2d50fda3]
- ├── top-index  offset: 1342  length: 96
- │    ├── 00000    block:1048/110
+ │    └── trailer [compression=none checksum=0x52a073b5]
+ ├── top-index  offset: 1304  length: 91
+ │    ├── 00000    block:1016/110
  │    │   
- │    ├── 00001    block:1163/110
+ │    ├── 00001    block:1131/110
  │    │   
- │    ├── 00002    block:1278/59
+ │    ├── 00002    block:1246/53
  │    │   
- │    └── trailer [compression=none checksum=0x462d3144]
- ├── properties  offset: 1443  length: 571
+ │    └── trailer [compression=none checksum=0x70310e3a]
+ ├── properties  offset: 1400  length: 571
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.internal.testkeys.suffixes (48)
  │    ├── 00064    rocksdb.block.based.table.index.type (43)
@@ -1609,16 +1634,16 @@ sstable
  │    ├── 00539    rocksdb.top-level.index.size (24)
  │    ├── restart points
  │    │    └── 00563 [restart 0]
- │    └── trailer [compression=none checksum=0x3542de03]
- ├── meta-index  offset: 2019  length: 33
- │    ├── 0000    rocksdb.properties block:1443/571 [restart]
+ │    └── trailer [compression=none checksum=0x8bcc1b94]
+ ├── meta-index  offset: 1976  length: 33
+ │    ├── 0000    rocksdb.properties block:1400/571 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0x5e4da9f6]
- └── footer  offset: 2057  length: 53
+ │    └── trailer [compression=none checksum=0xdc5c5254]
+ └── footer  offset: 2014  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=2019, length=33
-      ├── 004  index: offset=1342, length=96
+      ├── 001  meta: offset=1976, length=33
+      ├── 004  index: offset=1304, length=91
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
 
@@ -1639,7 +1664,7 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  │    └── trailer [compression=none checksum=0xb97d72f2]
- ├── range-del  offset: 33  length: 57
+ ├── range-del  offset: 33  length: 51
  │    ├── keyspan block header
  │    │    ├── 00-04: x 02000000 # user key count: 2
  │    │    ├── columnar block header
@@ -1653,9 +1678,9 @@ sstable
  │    │    │    ├── 21-22: b 00000010 # col 2: uint
  │    │    │    ├── 22-26: x 2d000000 # col 2: page start 45
  │    │    │    ├── 26-27: b 00000011 # col 3: bytes
- │    │    │    ├── 27-31: x 36000000 # col 3: page start 54
+ │    │    │    ├── 27-31: x 30000000 # col 3: page start 48
  │    │    │    ├── 31-32: b 00000011 # col 4: bytes
- │    │    │    └── 32-36: x 37000000 # col 4: page start 55
+ │    │    │    └── 32-36: x 31000000 # col 4: page start 49
  │    │    ├── data for column 0 (bytes)
  │    │    │    ├── offsets table
  │    │    │    │    ├── 36-37: x 01 # encoding: 1b
@@ -1670,21 +1695,21 @@ sstable
  │    │    │    ├── 43-44: x 00 # data[0] = 0
  │    │    │    └── 44-45: x 01 # data[1] = 1
  │    │    ├── data for column 2 (uint)
- │    │    │    ├── 45-46: x 80               # encoding: const
- │    │    │    └── 46-54: x 0f0a000000000000 # 64-bit constant: 2575
+ │    │    │    ├── 45-46: x 02   # encoding: 2b
+ │    │    │    └── 46-48: x 0f0a # data[0] = 2575
  │    │    ├── data for column 3 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    └── 54-55: x 00 # encoding: zero
+ │    │    │    │    └── 48-49: x 00 # encoding: zero
  │    │    │    └── data
- │    │    │         └── 55-55: x  # data[0]:
+ │    │    │         └── 49-49: x  # data[0]:
  │    │    ├── data for column 4 (bytes)
  │    │    │    ├── offsets table
- │    │    │    │    └── 55-56: x 00 # encoding: zero
+ │    │    │    │    └── 49-50: x 00 # encoding: zero
  │    │    │    └── data
- │    │    │         └── 56-56: x  # data[0]:
- │    │    └── 56-57: x 00 # block padding byte
- │    └── trailer [compression=none checksum=0xdf6fef49]
- ├── properties  offset: 95  length: 519
+ │    │    │         └── 50-50: x  # data[0]:
+ │    │    └── 50-51: x 00 # block padding byte
+ │    └── trailer [compression=none checksum=0xb1e3982b]
+ ├── properties  offset: 89  length: 519
  │    ├── 00000    obsolete-key (17) [restart]
  │    ├── 00017    pebble.internal.testkeys.suffixes (37)
  │    ├── 00054    rocksdb.block.based.table.index.type (43)
@@ -1706,16 +1731,16 @@ sstable
  │    ├── restart points
  │    │    └── 00511 [restart 0]
  │    └── trailer [compression=none checksum=0x3c8fb979]
- ├── meta-index  offset: 619  length: 59
- │    ├── 0000    rocksdb.properties block:95/519 [restart]
- │    ├── 0024    rocksdb.range_del2 block:33/57 [restart]
+ ├── meta-index  offset: 613  length: 59
+ │    ├── 0000    rocksdb.properties block:89/519 [restart]
+ │    ├── 0024    rocksdb.range_del2 block:33/51 [restart]
  │    ├── restart points
  │    │    ├── 00047 [restart 0]
  │    │    └── 00051 [restart 24]
- │    └── trailer [compression=none checksum=0x6f10fc54]
- └── footer  offset: 683  length: 53
+ │    └── trailer [compression=none checksum=0xbabe7d85]
+ └── footer  offset: 677  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=619, length=59
+      ├── 001  meta: offset=613, length=59
       ├── 004  index: offset=0, length=28
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3

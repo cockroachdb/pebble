@@ -37,17 +37,17 @@ seqnums:  [1-1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 78
- ├── data  offset: 83  length: 78
- ├── data  offset: 166  length: 78
- ├── index  offset: 249  length: 38
- ├── index  offset: 292  length: 46
- ├── index  offset: 343  length: 44
- ├── top-index  offset: 392  length: 57
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 454  length: 69
- ├── properties  offset: 528  length: 515
- ├── meta-index  offset: 1048  length: 80
- └── footer  offset: 1133  length: 53
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 38
+ ├── index  offset: 319  length: 39
+ ├── index  offset: 363  length: 37
+ ├── top-index  offset: 405  length: 52
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 462  length: 69
+ ├── properties  offset: 536  length: 515
+ ├── meta-index  offset: 1056  length: 80
+ └── footer  offset: 1141  length: 53
 
 scan
 ----
@@ -72,17 +72,17 @@ seqnums:  [1-1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 80
- ├── data  offset: 85  length: 80
- ├── data  offset: 170  length: 80
- ├── index  offset: 255  length: 40
- ├── index  offset: 300  length: 48
- ├── index  offset: 353  length: 44
- ├── top-index  offset: 402  length: 61
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 468  length: 69
- ├── properties  offset: 542  length: 515
- ├── meta-index  offset: 1062  length: 80
- └── footer  offset: 1147  length: 53
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 40
+ ├── index  offset: 321  length: 41
+ ├── index  offset: 367  length: 37
+ ├── top-index  offset: 409  length: 56
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
+ ├── properties  offset: 544  length: 515
+ ├── meta-index  offset: 1064  length: 80
+ └── footer  offset: 1149  length: 53
 
 scan
 ----
@@ -107,17 +107,17 @@ seqnums:  [1-1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 80
- ├── data  offset: 85  length: 80
- ├── data  offset: 170  length: 80
- ├── index  offset: 255  length: 40
- ├── index  offset: 300  length: 48
- ├── index  offset: 353  length: 44
- ├── top-index  offset: 402  length: 61
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 468  length: 69
- ├── properties  offset: 542  length: 515
- ├── meta-index  offset: 1062  length: 80
- └── footer  offset: 1147  length: 53
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 40
+ ├── index  offset: 321  length: 41
+ ├── index  offset: 367  length: 37
+ ├── top-index  offset: 409  length: 56
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
+ ├── properties  offset: 544  length: 515
+ ├── meta-index  offset: 1064  length: 80
+ └── footer  offset: 1149  length: 53
 
 scan
 ----
@@ -142,17 +142,17 @@ seqnums:  [1-1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 80
- ├── data  offset: 85  length: 80
- ├── data  offset: 170  length: 80
- ├── index  offset: 255  length: 40
- ├── index  offset: 300  length: 48
- ├── index  offset: 353  length: 44
- ├── top-index  offset: 402  length: 61
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 468  length: 69
- ├── properties  offset: 542  length: 515
- ├── meta-index  offset: 1062  length: 80
- └── footer  offset: 1147  length: 53
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 40
+ ├── index  offset: 321  length: 41
+ ├── index  offset: 367  length: 37
+ ├── top-index  offset: 409  length: 56
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
+ ├── properties  offset: 544  length: 515
+ ├── meta-index  offset: 1064  length: 80
+ └── footer  offset: 1149  length: 53
 
 scan
 ----
@@ -178,17 +178,17 @@ seqnums:  [1-1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 78
- ├── data  offset: 83  length: 78
- ├── data  offset: 166  length: 78
- ├── index  offset: 249  length: 38
- ├── index  offset: 292  length: 46
- ├── index  offset: 343  length: 44
- ├── top-index  offset: 392  length: 57
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 454  length: 69
- ├── properties  offset: 528  length: 515
- ├── meta-index  offset: 1048  length: 80
- └── footer  offset: 1133  length: 53
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 38
+ ├── index  offset: 319  length: 39
+ ├── index  offset: 363  length: 37
+ ├── top-index  offset: 405  length: 52
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 462  length: 69
+ ├── properties  offset: 536  length: 515
+ ├── meta-index  offset: 1056  length: 80
+ └── footer  offset: 1141  length: 53
 
 scan
 ----

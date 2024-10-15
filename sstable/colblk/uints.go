@@ -81,24 +81,48 @@ func (e UintEncoding) String() string {
 	return fmt.Sprintf("%db%s", e.Width(), deltaString)
 }
 
+// UintEncodingRowThreshold is the threshold under which the number of rows can
+// affect the best encoding. This happens when the constant 8 bytes for the
+// delta base doesn't make up for saving a byte or two in the per-row encoding.
+const UintEncodingRowThreshold = 8
+
 // DetermineUintEncoding returns the best valid encoding that can be used to
-// represent integers in the range [minValue, maxValue].
-func DetermineUintEncoding(minValue, maxValue uint64) UintEncoding {
-	// Find the number of bytes-per-value necessary for a delta encoding.
-	b := (bits.Len64(maxValue-minValue) + 7) >> 3
-	// Round up to the nearest allowed value (0, 1, 2, 4, or 8).
-	if b > 4 {
+// represent numRows integers in the range [minValue, maxValue].
+//
+// DetermineUintEncoding returns the same result for any value of rows >=
+// UintEncodingRowThreshold.
+func DetermineUintEncoding(minValue, maxValue uint64, numRows int) UintEncoding {
+	b := byteWidth(maxValue - minValue)
+	if b == 8 {
 		return UintEncoding(8)
-	}
-	if b == 3 {
-		b = 4
 	}
 	// Check if we can use the same number of bytes without a delta encoding.
 	isDelta := maxValue >= (1 << (b << 3))
+	if isDelta && numRows < UintEncodingRowThreshold {
+		bNoDelta := byteWidth(maxValue)
+		// Check if saving (bNoDelta-b) bytes per row makes up for the 8 bytes
+		// required by the delta base.
+		if numRows*int(bNoDelta-b) < 8 {
+			b = bNoDelta
+			isDelta = false
+		}
+	}
 	return makeUintEncoding(b, isDelta)
 }
 
-func makeUintEncoding(width int, isDelta bool) UintEncoding {
+// byteWidth returns the number of bytes necessary to represent the given value,
+// either 0, 1, 2, 4, or 8.
+func byteWidth(maxValue uint64) uint8 {
+	// b the number of bytes necessary to represent maxValue.
+	b := (uint8(bits.Len64(maxValue)) + 7) >> 3
+	// Round up to the nearest power of 2 by subtracting one and filling out all bits.
+	b--
+	b |= b >> 1
+	b |= b >> 2
+	return b + 1
+}
+
+func makeUintEncoding(width uint8, isDelta bool) UintEncoding {
 	e := UintEncoding(width)
 	if isDelta {
 		e |= uintEncodingDeltaBit
@@ -241,12 +265,12 @@ func (b *UintBuilder) Set(row int, v uint64) {
 	}
 	// Maintain the running minimum and maximum for the purpose of maintaining
 	// knowledge of the delta encoding that would be used.
-	if b.stats.minimum > v || b.stats.maximum < v {
+	if b.stats.minimum > v || b.stats.maximum < v || row < UintEncodingRowThreshold {
 		b.stats.minimum = min(v, b.stats.minimum)
 		b.stats.maximum = max(v, b.stats.maximum)
 		// If updating the minimum and maximum means that we now much use a wider
 		// width integer, update the encoding and the index of the update to it.
-		if e := DetermineUintEncoding(b.stats.minimum, b.stats.maximum); e != b.stats.encoding {
+		if e := DetermineUintEncoding(b.stats.minimum, b.stats.maximum, row+1); e != b.stats.encoding {
 			b.stats.encoding = e
 			b.stats.encodingRow = row
 		}
@@ -265,9 +289,9 @@ func (b *UintBuilder) Size(rows int, offset uint32) uint32 {
 }
 
 // determineEncoding determines the best encoding for a column containing the
-// first [rows], along with the minimum value (used as the "base" value when we
-// use a stats encoding).
-func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, minimum uint64) {
+// first [rows], along with a lower bound on all the values which can be used as
+// a "base" if the encoding is a delta encoding.
+func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, deltaBase uint64) {
 	if b.stats.encodingRow < rows {
 		// b.delta.encoding became the current value within the first [rows], so we
 		// can use it.
@@ -278,18 +302,26 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, minimum uint6
 		// Note that b.stats.minimum includes all rows set so far so it might be
 		// strictly smaller than all values up to [rows]; but it is still a suitable
 		// base for b.stats.encoding.
+		if invariants.Sometimes(1) && rows > 0 {
+			if enc, _ := b.recalculateEncoding(rows); enc != b.stats.encoding {
+				panic(fmt.Sprintf("fast and slow paths don't agree: %s vs %s", b.stats.encoding, enc))
+			}
+		}
 		return b.stats.encoding, b.stats.minimum
 	}
+	return b.recalculateEncoding(rows)
+}
 
+func (b *UintBuilder) recalculateEncoding(rows int) (_ UintEncoding, deltaBase uint64) {
 	// We have to recalculate the minimum and maximum.
-	minimum, maximum := computeMinMax(b.array.elems.Slice(rows))
+	minimum, maximum := computeMinMax(b.array.elems.Slice(min(rows, b.array.n)))
 	if b.useDefault {
 		// Mirror the pessimism of the fast path so that the result is consistent.
 		// Otherwise, adding a row can result in a different encoding even when not
 		// including that row.
 		minimum = 0
 	}
-	return DetermineUintEncoding(minimum, maximum), minimum
+	return DetermineUintEncoding(minimum, maximum, rows), minimum
 }
 
 // uintColumnSize returns the size of a column of unsigned integers, encoded at
@@ -390,11 +422,19 @@ func (b *UintBuilder) WriteDebug(w io.Writer, rows int) {
 // reduceUints reduces the bit-width of a slice of unsigned by subtracting a
 // minimum value from each element and writing it to dst. For example,
 //
-//	reduceUints[uint64, uint8](10, []uint64{10, 11, 12}, dst)
+//	reduceUints[uint8](10, []uint64{10, 11, 12}, dst)
 //
 // could be used to reduce a slice of uint64 values to uint8 values {0, 1, 2}.
-func reduceUints[O constraints.Integer, N constraints.Integer](minimum O, values []O, dst []N) {
+func reduceUints[N constraints.Integer](minimum uint64, values []uint64, dst []N) {
 	for i := 0; i < len(values); i++ {
+		if invariants.Enabled {
+			if values[i] < minimum {
+				panic("incorrect minimum value")
+			}
+			if values[i]-minimum > uint64(N(0)-1) {
+				panic("incorrect target width")
+			}
+		}
 		dst[i] = N(values[i] - minimum)
 	}
 }
