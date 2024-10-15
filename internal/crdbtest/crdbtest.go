@@ -516,7 +516,7 @@ var KeySchema = colblk.KeySchema{
 		return kw
 	},
 	NewKeySeeker: func() colblk.KeySeeker {
-		return &cockroachKeySeeker{}
+		return cockroachKeySeekerPool.Get().(*cockroachKeySeeker)
 	},
 }
 
