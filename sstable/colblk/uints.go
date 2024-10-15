@@ -271,6 +271,13 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, minimum uint6
 	if b.stats.encodingRow < rows {
 		// b.delta.encoding became the current value within the first [rows], so we
 		// can use it.
+		//
+		// Note that if useDefault is set, this encoding assumes there is at least
+		// one element with the default (zero) value, which might be pessimistic.
+		//
+		// Note that b.stats.minimum includes all rows set so far so it might be
+		// strictly smaller than all values up to [rows]; but it is still a suitable
+		// base for b.stats.encoding.
 		return b.stats.encoding, b.stats.minimum
 	}
 
