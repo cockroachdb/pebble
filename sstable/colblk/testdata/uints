@@ -551,6 +551,7 @@ write
 4:1000040
 ----
 
+# The encoding pessimistically assumes that we may have a 0 value.
 size rows=4 offset=0
 ----
 Size(4, 0) = 20
@@ -560,16 +561,17 @@ write
 5:44333222111
 ----
 
+# Make sure the encoding hasn't changed.
 size rows=4 offset=0
 ----
-Size(4, 0) = 13
+Size(4, 0) = 20
 
 finish rows=4 offset=0
 ----
 uints
- ├── 00-01: x 81               # encoding: 1b,delta
- ├── 01-09: x 40420f0000000000 # 64-bit constant: 1000000
- ├── 09-10: x 00               # data[0] = 0 + 1000000 = 1000000
- ├── 10-11: x 0a               # data[1] = 10 + 1000000 = 1000010
- ├── 11-12: x 14               # data[2] = 20 + 1000000 = 1000020
- └── 12-13: x 1e               # data[3] = 30 + 1000000 = 1000030
+ ├── 00-01: x 04       # encoding: 4b
+ ├── 01-04: x 000000   # padding (aligning to 32-bit boundary)
+ ├── 04-08: x 40420f00 # data[0] = 1000000
+ ├── 08-12: x 4a420f00 # data[1] = 1000010
+ ├── 12-16: x 54420f00 # data[2] = 1000020
+ └── 16-20: x 5e420f00 # data[3] = 1000030
