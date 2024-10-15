@@ -99,7 +99,7 @@ type backingWithMetadata struct {
 }
 
 // AddAndRef adds a new backing to the set and takes a reference on it. Another
-// backing for the same DiskFilNum must not exist.
+// backing for the same DiskFileNum must not exist.
 //
 // The added backing is unused until it is associated with a table via AddTable
 // or protected via Protect.

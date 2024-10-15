@@ -460,6 +460,12 @@ func (b *FileBacking) Ref() {
 	b.refs.Add(1)
 }
 
+// IsUnused returns if the backing is not being used by any tables in a version
+// or btree.
+func (b *FileBacking) IsUnused() bool {
+	return b.refs.Load() == 0
+}
+
 // Unref decrements the backing's ref count (and returns the new count).
 func (b *FileBacking) Unref() int32 {
 	v := b.refs.Add(-1)
