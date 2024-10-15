@@ -255,7 +255,7 @@ L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
 close-snapshot
 10
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (749B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (656B), in 1.0s (2.0s total), output rate 656B/s
+[JOB 100] compacted(elision-only) L6 [000004] (743B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (662B), in 1.0s (2.0s total), output rate 662B/s
 
 # In previous versions of the code, the deletion hint was removed by the
 # elision-only compaction because it zeroed sequence numbers of keys with
@@ -542,7 +542,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000005] (657B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+  [JOB 100] compacted(delete-only) L6 [000005] (660B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 describe-lsm
 ----
@@ -608,7 +608,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000004] (851B) Score=0.00 -> L6 [000007 000008] (176B), in 1.0s (2.0s total), output rate 176B/s
+  [JOB 100] compacted(delete-only) L6 [000004] (849B) Score=0.00 -> L6 [000007 000008] (186B), in 1.0s (2.0s total), output rate 186B/s
 
 describe-lsm
 ----

@@ -57,7 +57,7 @@ const (
 func (w *IndexBlockWriter) Init() {
 	w.separators.Init()
 	w.offsets.Init()
-	w.lengths.InitWithDefault()
+	w.lengths.Init()
 	w.blockProperties.Init()
 	w.rows = 0
 }
