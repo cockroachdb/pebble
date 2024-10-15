@@ -657,6 +657,8 @@ func (assertNoExternalValues) GetLazyValueForPrefixAndValueHandle(value []byte) 
 // lifetimes. The returned rewritten block is owned by the DataBlockRewriter. If
 // it must be retained beyond the next call to RewriteSuffixes, the caller
 // should make a copy.
+//
+// Note that the input slice must be 8-byte aligned.
 func (rw *DataBlockRewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
@@ -782,6 +784,9 @@ func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 
 // Init initializes the data block reader with the given serialized data block.
 func (d *DataBlockDecoder) Init(schema KeySchema, data []byte) {
+	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
+		panic("data buffer not 8-byte aligned")
+	}
 	d.d.Init(data, dataBlockCustomHeaderSize)
 	d.trailers = d.d.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
 	d.prefixChanged = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)

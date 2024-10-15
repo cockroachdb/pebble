@@ -118,7 +118,7 @@ func DecompressedLen(
 ) (decompressedLen int, prefixLength int, err error) {
 	switch algo {
 	case NoCompressionIndicator:
-		return 0, 0, nil
+		return len(b), 0, nil
 	case SnappyCompressionIndicator:
 		l, err := snappy.DecodedLen(b)
 		return l, 0, err
@@ -142,6 +142,9 @@ func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) er
 	var result []byte
 	var err error
 	switch algo {
+	case NoCompressionIndicator:
+		result = buf[:len(compressed)]
+		copy(result, compressed)
 	case SnappyCompressionIndicator:
 		result, err = snappy.Decode(buf, compressed)
 	case ZstdCompressionIndicator:
