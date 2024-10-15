@@ -141,7 +141,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 6] MANIFEST created 000011
-[JOB 6] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (653B), in 1.0s (3.0s total), output rate 653B/s
+[JOB 6] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (659B), in 1.0s (3.0s total), output rate 659B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/000005.sst
@@ -186,11 +186,11 @@ remove: db/MANIFEST-000009
 ingest
 ----
 open: ext/0
-read-at(600, 53): ext/0
-read-at(563, 37): ext/0
-read-at(116, 447): ext/0
-read-at(75, 41): ext/0
-read-at(0, 75): ext/0
+read-at(606, 53): ext/0
+read-at(569, 37): ext/0
+read-at(122, 447): ext/0
+read-at(81, 41): ext/0
+read-at(0, 81): ext/0
 close: ext/0
 link: ext/0 -> db/000015.sst
 [JOB 10] ingesting: sstable created 000015
@@ -206,21 +206,21 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 10] MANIFEST deleted 000011
 remove: ext/0
-[JOB 10] ingested L0:000015 (653B)
+[JOB 10] ingested L0:000015 (659B)
 
 metrics
 ----
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     2  1.3KB     0B       0 |  0.40 |   81B |     1   653B |     0     0B |     3  1.9KB |    0B |   2 24.3
+    0 |     2  1.3KB     0B       0 |  0.40 |   81B |     1   659B |     0     0B |     3  1.9KB |    0B |   2 24.3
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   653B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   653B | 1.3KB |   1  0.5
-total |     3  1.9KB     0B       0 |     - |  734B |     1   653B |     0     0B |     4  3.3KB | 1.3KB |   3  4.6
+    6 |     1   659B     0B       0 |     - | 1.3KB |     0     0B |     0     0B |     1   659B | 1.3KB |   1  0.5
+total |     3  1.9KB     0B       0 |     - |  740B |     1   659B |     0     0B |     4  3.3KB | 1.3KB |   3  4.5
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 48B  written: 81B (69% overhead)
 Flushes: 3
@@ -232,7 +232,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 1.9KB
 Compression types: snappy: 3
-Block cache: 2 entries (120B)  hit rate: 0.0%
+Block cache: 2 entries (112B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -249,18 +249,18 @@ ingest-flushable
 ----
 sync-data: wal/000012.log
 open: ext/a
-read-at(600, 53): ext/a
-read-at(563, 37): ext/a
-read-at(116, 447): ext/a
-read-at(75, 41): ext/a
-read-at(0, 75): ext/a
+read-at(606, 53): ext/a
+read-at(569, 37): ext/a
+read-at(122, 447): ext/a
+read-at(81, 41): ext/a
+read-at(0, 81): ext/a
 close: ext/a
 open: ext/b
-read-at(600, 53): ext/b
-read-at(563, 37): ext/b
-read-at(116, 447): ext/b
-read-at(75, 41): ext/b
-read-at(0, 75): ext/b
+read-at(606, 53): ext/b
+read-at(569, 37): ext/b
+read-at(122, 447): ext/b
+read-at(81, 41): ext/b
+read-at(0, 81): ext/b
 close: ext/b
 link: ext/a -> db/000017.sst
 [JOB 11] ingesting: sstable created 000017
@@ -280,7 +280,7 @@ sync: wal
 [JOB 13] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 11] ingested as flushable 000017 (653B), 000018 (653B)
+[JOB 11] ingested as flushable 000017 (659B), 000018 (659B)
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -303,7 +303,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 16] MANIFEST created 000023
-[JOB 16] flushed 2 ingested flushables L0:000017 (653B) + L6:000018 (653B) in 1.0s (2.0s total), output rate 1.3KB/s
+[JOB 16] flushed 2 ingested flushables L0:000017 (659B) + L6:000018 (659B) in 1.0s (2.0s total), output rate 1.3KB/s
 remove: db/MANIFEST-000014
 [JOB 16] MANIFEST deleted 000014
 [JOB 17] flushing 1 memtable (100B) to L0
@@ -321,20 +321,20 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     2  1.3KB     0B       0 |     - | 1.3KB |     1   653B |     0     0B |     1   653B | 1.3KB |   1  0.5
-total |     6  3.8KB     0B       0 |     - | 2.0KB |     3  1.9KB |     0     0B |     5  5.2KB | 1.3KB |   5  2.6
+    6 |     2  1.3KB     0B       0 |     - | 1.3KB |     1   659B |     0     0B |     1   659B | 1.3KB |   1  0.5
+total |     6  3.9KB     0B       0 |     - | 2.0KB |     3  1.9KB |     0     0B |     5  5.2KB | 1.3KB |   5  2.6
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 82B  written: 108B (32% overhead)
 Flushes: 6
-Compactions: 1  estimated debt: 3.8KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 3.9KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (512KB)  zombie: 1 (512KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 3.8KB
+Local tables size: 3.9KB
 Compression types: snappy: 6
-Block cache: 6 entries (360B)  hit rate: 0.0%
+Block cache: 6 entries (336B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0

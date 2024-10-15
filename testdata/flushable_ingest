@@ -671,7 +671,7 @@ small-00001-does-not-exist: pebble: not found
 get with-fs-logging
 large-00001
 ----
-read-at(1161265, 69): 000005.sst
+read-at(1161265, 65): 000005.sst
 read-at(1155684, 2966): 000005.sst
 read-at(0, 2818): 000005.sst
 large-00001:val-00001
@@ -680,7 +680,7 @@ large-00001:val-00001
 get with-fs-logging
 large-00001-does-not-exist
 ----
-read-at(1161265, 69): 000005.sst
+read-at(1161265, 65): 000005.sst
 read-at(1155684, 2966): 000005.sst
 read-at(0, 2818): 000005.sst
 large-00001-does-not-exist: pebble: not found
