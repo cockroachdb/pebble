@@ -2113,9 +2113,9 @@ func checkDeleteCompactionHints(
 		}
 		if filesDeletedByCurrentHint < 0 {
 			// This hint does not delete a sufficient number of files to warrant
-			// a delete-only compaction at this stage. Add it to unresolvedHints
-			// so it can be re-evaluated later.
-			unresolvedHints = append(unresolvedHints, h)
+			// a delete-only compaction at this stage. Drop it so it doesn't
+			// stick around forever.
+			resolvedHints = append(resolvedHints, h)
 			continue
 		}
 		// This hint will be resolved and dropped.
