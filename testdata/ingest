@@ -53,7 +53,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 569B
 Compression types: snappy: 1
-Block cache: 3 entries (1.0KB)  hit rate: 18.2%
+Block cache: 3 entries (1.1KB)  hit rate: 18.2%
 Table cache: 1 entries (808B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -359,7 +359,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1299
+range-deletions-bytes-estimate: 1312
 
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.
