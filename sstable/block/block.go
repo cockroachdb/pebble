@@ -209,6 +209,17 @@ type IndexBlockIterator interface {
 	// guaranteed to be greater than or equal to every key contained within the
 	// referenced block(s).
 	Separator() []byte
+	// SeparatorLT returns true if the separator at the iterator's current
+	// position is strictly less than the provided key. For some
+	// implementations, it may be more performant to call SeparatorLT rather
+	// than explicitly performing Compare(Separator(), key) < 0.
+	SeparatorLT(key []byte) bool
+	// SeparatorGT returns true if the separator at the iterator's current
+	// position is strictly greater than (or equal, if orEqual=true) the
+	// provided key. For some implementations, it may be more performant to call
+	// SeparatorGT rather than explicitly performing a comparison using the key
+	// returned by Separator.
+	SeparatorGT(key []byte, orEqual bool) bool
 	// BlockHandleWithProperties decodes the block handle with any encoded
 	// properties at the iterator's current position.
 	BlockHandleWithProperties() (HandleWithProperties, error)

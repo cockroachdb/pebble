@@ -71,6 +71,19 @@ func (i *IndexIter) Separator() []byte {
 	return i.iter.ikv.K.UserKey
 }
 
+// SeparatorLT returns true if the separator at the iterator's current
+// position is strictly less than the provided key.
+func (i *IndexIter) SeparatorLT(key []byte) bool {
+	return i.iter.cmp(i.iter.ikv.K.UserKey, key) < 0
+}
+
+// SeparatorGT returns true if the separator at the iterator's current position
+// is strictly greater than (or equal, if orEqual=true) the provided key.
+func (i *IndexIter) SeparatorGT(key []byte, inclusively bool) bool {
+	cmp := i.iter.cmp(i.iter.ikv.K.UserKey, key)
+	return cmp > 0 || (cmp == 0 && inclusively)
+}
+
 // BlockHandleWithProperties decodes the block handle with any encoded
 // properties at the iterator's current position.
 func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, error) {
