@@ -103,6 +103,7 @@ rocksdb.data.size: 0
 rocksdb.filter.size: 0
 rocksdb.index.size: 33
 rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
@@ -234,9 +235,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 480
- ├── meta-index  offset: 900  length: 33
- └── footer  offset: 938  length: 53
+ ├── properties  offset: 415  length: 548
+ ├── meta-index  offset: 968  length: 33
+ └── footer  offset: 1006  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
@@ -250,9 +251,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 480
- ├── meta-index  offset: 900  length: 33
- └── footer  offset: 938  length: 53
+ ├── properties  offset: 415  length: 548
+ ├── meta-index  offset: 968  length: 33
+ └── footer  offset: 1006  length: 53
 
 scan
 ----
@@ -297,9 +298,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 528
- ├── meta-index  offset: 655  length: 57
- └── footer  offset: 717  length: 53
+ ├── properties  offset: 122  length: 589
+ ├── meta-index  offset: 716  length: 57
+ └── footer  offset: 778  length: 53
 
 props
 ----
@@ -318,6 +319,7 @@ rocksdb.data.size: 0
 rocksdb.filter.size: 0
 rocksdb.index.size: 33
 rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 pebble.num.range-key-unsets: 0

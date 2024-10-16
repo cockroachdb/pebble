@@ -90,6 +90,7 @@ func TestOptionsString(t *testing.T) {
   flush_delay_range_key=0s
   flush_split_bytes=4194304
   format_major_version=13
+  key_schema=DefaultKeySchema(leveldb.BytewiseComparator,16)
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500
   l0_compaction_threshold=4

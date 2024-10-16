@@ -273,6 +273,13 @@ func ingestLoad1(
 			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
+	if tf.BlockColumnar() {
+		if _, ok := opts.KeySchemas[r.Properties.KeySchemaName]; !ok {
+			return nil, errors.Newf(
+				"pebble: table uses key schema %q unknown to the database",
+				r.Properties.KeySchemaName)
+		}
+	}
 
 	meta := &fileMetadata{}
 	meta.FileNum = fileNum

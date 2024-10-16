@@ -24,6 +24,8 @@ func TestCopySpan(t *testing.T) {
 	fs := vfs.NewMem()
 	blockCache := cache.New(1 << 20 /* 1 MB */)
 	defer blockCache.Unref()
+
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 	datadriven.RunTest(t, "testdata/copy_span", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
@@ -48,7 +50,7 @@ func TestCopySpan(t *testing.T) {
 				BlockSize:   1,
 				TableFormat: tableFormat,
 				Comparer:    testkeys.Comparer,
-				KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				KeySchema:   keySchema,
 			})
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
@@ -75,8 +77,8 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			r, err := NewReader(context.TODO(), readable, ReaderOptions{
-				Comparer:  testkeys.Comparer,
-				KeySchema: colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				Comparer:   testkeys.Comparer,
+				KeySchemas: KeySchemas{keySchema.Name: keySchema},
 			})
 			defer r.Close()
 			if err != nil {
@@ -118,8 +120,8 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			rOpts := ReaderOptions{
-				Comparer:  testkeys.Comparer,
-				KeySchema: colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				Comparer:   testkeys.Comparer,
+				KeySchemas: KeySchemas{keySchema.Name: keySchema},
 			}
 			rOpts.internal.CacheOpts.Cache = blockCache
 			r, err := NewReader(context.TODO(), readable, rOpts)
@@ -156,8 +158,8 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			r, err := NewReader(context.TODO(), readable, ReaderOptions{
-				Comparer:  testkeys.Comparer,
-				KeySchema: colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				Comparer:   testkeys.Comparer,
+				KeySchemas: KeySchemas{keySchema.Name: keySchema},
 			})
 			if err != nil {
 				return err.Error()

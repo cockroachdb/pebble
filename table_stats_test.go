@@ -193,6 +193,7 @@ func TestTableStats(t *testing.T) {
 func TestTableRangeDeletionIter(t *testing.T) {
 	var m *fileMetadata
 	cmp := testkeys.Comparer
+	keySchema := colblk.DefaultKeySchema(cmp, 16)
 	fs := vfs.NewMem()
 	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch cmd := td.Cmd; cmd {
@@ -203,7 +204,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			}
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				Comparer:    cmp,
-				KeySchema:   colblk.DefaultKeySchema(cmp, 16),
+				KeySchema:   keySchema,
 				TableFormat: sstable.TableFormatMax,
 			})
 			m = &fileMetadata{}
@@ -241,8 +242,8 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return err.Error()
 			}
 			r, err = sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{
-				Comparer:  cmp,
-				KeySchema: colblk.DefaultKeySchema(cmp, 16),
+				Comparer:   cmp,
+				KeySchemas: sstable.KeySchemas{keySchema.Name: keySchema},
 			})
 			if err != nil {
 				return err.Error()

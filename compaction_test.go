@@ -33,7 +33,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -617,7 +616,6 @@ func TestCompaction(t *testing.T) {
 		Comparer:              testkeys.Comparer,
 		DebugCheck:            DebugCheckLevels,
 		FS:                    mem,
-		KeySchema:             colblk.DefaultKeySchema(testkeys.Comparer, 16),
 		L0CompactionThreshold: 8,
 		MemTableSize:          memTableSize,
 	}

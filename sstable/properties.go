@@ -156,6 +156,9 @@ type Properties struct {
 	// For formats >= TableFormatPebblev4, this is set to true if the obsolete
 	// bit is strict for all the point keys.
 	IsStrictObsolete bool `prop:"pebble.obsolete.is_strict"`
+	// The name of the key schema used in this table. Empty for formats <=
+	// TableFormatPebblev4.
+	KeySchemaName string `prop:"pebble.colblk.schema"`
 	// The name of the merger used in this table. Empty if no merger is used.
 	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of merge operands in the table.
@@ -365,6 +368,9 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	p.saveUint32(m, unsafe.Offsetof(p.IndexType), p.IndexType)
 	if p.IsStrictObsolete {
 		p.saveBool(m, unsafe.Offsetof(p.IsStrictObsolete), p.IsStrictObsolete)
+	}
+	if p.KeySchemaName != "" {
+		p.saveString(m, unsafe.Offsetof(p.KeySchemaName), p.KeySchemaName)
 	}
 	if p.MergerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.MergerName), p.MergerName)
