@@ -138,8 +138,8 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
@@ -219,7 +219,7 @@ func (e *blockEncoder) reset() {
 // header.
 func (e *blockEncoder) init(size int, h Header, customHeaderSize int) {
 	if cap(e.buf) < size {
-		e.buf = aligned.ByteSlice(size)
+		e.buf = crbytes.AllocAligned(size)
 	} else {
 		e.buf = e.buf[:size]
 	}
