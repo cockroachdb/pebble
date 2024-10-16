@@ -255,7 +255,7 @@ func intersectingIndexEntries(
 				}
 			}
 		}
-		if r.Compare(end.UserKey, top.Separator()) <= 0 {
+		if top.SeparatorGT(end.UserKey, true /* inclusively */) {
 			break
 		}
 	}
