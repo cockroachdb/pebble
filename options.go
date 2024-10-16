@@ -1446,6 +1446,9 @@ func (o *Options) String() string {
 	if o.Experimental.DisableIngestAsFlushable != nil && o.Experimental.DisableIngestAsFlushable() {
 		fmt.Fprintf(&buf, "  disable_ingest_as_flushable=%t\n", true)
 	}
+	if o.Experimental.EnableColumnarBlocks != nil && o.Experimental.EnableColumnarBlocks() {
+		fmt.Fprintf(&buf, "  enable_columnar_blocks=%t\n", true)
+	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
@@ -1685,6 +1688,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
+			case "enable_columnar_blocks":
+				var v bool
+				if v, err = strconv.ParseBool(value); err == nil {
+					o.Experimental.EnableColumnarBlocks = func() bool { return v }
+				}
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":
