@@ -209,6 +209,22 @@ type IndexBlockIterator interface {
 	// guaranteed to be greater than or equal to every key contained within the
 	// referenced block(s).
 	Separator() []byte
+	// UpperBoundAppliesToSeparator returns true if the separator at the
+	// iterator's current position is strictly less than the provided bounding
+	// key. For some implementations, it may be more performant to call
+	// UpperBoundAppliesToSeparator rather than explicitly performing
+	// Compare(Separator(), key) < 0.
+	UpperBoundAppliesToSeparator(key []byte) bool
+	// LowerBoundAppliesToSeparator returns true if the separator at the
+	// iterator's current position is strictly greater than the provided key. If
+	// the separator is equal to the provided key, LowerBoundAppliesToSeparator
+	// returns the value of the `inclusively` parameter. For some
+	// implementations, it may be more performant to call
+	// LowerBoundAppliesToSeparator rather than explicitly performing a
+	// comparison using the key returned by Separator.
+	//
+	// TODO(jackson): Consider taking UserKeyBoundary.
+	LowerBoundAppliesToSeparator(key []byte, inclusively bool) bool
 	// BlockHandleWithProperties decodes the block handle with any encoded
 	// properties at the iterator's current position.
 	BlockHandleWithProperties() (HandleWithProperties, error)

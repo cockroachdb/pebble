@@ -71,6 +71,21 @@ func (i *IndexIter) Separator() []byte {
 	return i.iter.ikv.K.UserKey
 }
 
+// UpperBoundAppliesToSeparator returns true if the separator at the iterator's
+// current position is strictly less than the provided key.
+func (i *IndexIter) UpperBoundAppliesToSeparator(key []byte) bool {
+	return i.iter.cmp(i.iter.ikv.K.UserKey, key) < 0
+}
+
+// LowerBoundAppliesToSeparator returns true if the separator at the iterator's
+// current position is strictly greater than the provided key. If the separator
+// is equal to the provided key, LowerBoundAppliesToSeparator returns the value
+// of the `inclusively` parameter.
+func (i *IndexIter) LowerBoundAppliesToSeparator(key []byte, inclusively bool) bool {
+	cmp := i.iter.cmp(i.iter.ikv.K.UserKey, key)
+	return cmp > 0 || (cmp == 0 && inclusively)
+}
+
 // BlockHandleWithProperties decodes the block handle with any encoded
 // properties at the iterator's current position.
 func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, error) {
