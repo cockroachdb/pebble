@@ -73,6 +73,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"MaxConcurrentCompactions:",
 		"MaxConcurrentDownloads:",
 		"Experimental.DisableIngestAsFlushable:",
+		"Experimental.EnableColumnarBlocks:",
 		"Experimental.EnableValueBlocks:",
 		"Experimental.IneffectualSingleDeleteCallback:",
 		"Experimental.IngestSplit:",
