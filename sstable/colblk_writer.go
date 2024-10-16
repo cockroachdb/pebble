@@ -693,6 +693,9 @@ func (w *RawColumnWriter) enqueuePhysicalBlock(cb *compressedBlock, separator []
 		// finishIndexBlock reset the index block builder, and we can
 		// add the block handle to this new index block.
 		_ = w.indexBlock.AddBlockHandle(separator, dataBlockHandle, dataBlockProps)
+		w.indexBlockSize = w.indexBlock.Size()
+	} else {
+		w.indexBlockSize = sizeWithEntry
 	}
 	// Incorporate the finished data block's property into the index block, now
 	// that we've flushed the index block without the new separator if
