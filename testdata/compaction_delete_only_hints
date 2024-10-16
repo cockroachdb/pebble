@@ -677,7 +677,7 @@ o: (o, .)
 maybe-compact
 ----
 Deletion hints:
-  L0.000005 l-m seqnums(tombstone=11-11, file-smallest=10, type=point-and-range-key)
+  (none)
 Compactions:
   (none)
 
@@ -701,4 +701,4 @@ o: (o, .)
 
 get-hints
 ----
-L0.000005 l-m seqnums(tombstone=11-11, file-smallest=10, type=point-and-range-key)
+(none)
