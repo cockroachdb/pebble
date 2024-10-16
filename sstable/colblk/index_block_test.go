@@ -29,7 +29,7 @@ func TestIndexBlock(t *testing.T) {
 		switch d.Cmd {
 		case "build":
 			var w IndexBlockWriter
-			w.Init()
+			w.Init(testkeys.Comparer.Split, 16)
 			for _, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
 				var err error
@@ -112,7 +112,7 @@ func TestIndexBlock(t *testing.T) {
 // InitHandle.
 func TestIndexIterInitHandle(t *testing.T) {
 	var w IndexBlockWriter
-	w.Init()
+	w.Init(testkeys.Comparer.Split, 16)
 	bh1 := block.Handle{Offset: 0, Length: 2000}
 	bh2 := block.Handle{Offset: 2008, Length: 1000}
 	w.AddBlockHandle([]byte("a"), bh1, nil)
