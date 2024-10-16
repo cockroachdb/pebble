@@ -57,8 +57,8 @@ func TestColumnarWriter(t *testing.T) {
 				}
 				var err error
 				r, err = NewReader(context.Background(), obj, ReaderOptions{
-					Comparer:  testkeys.Comparer,
-					KeySchema: keySchema,
+					Comparer:   testkeys.Comparer,
+					KeySchemas: KeySchemas{keySchema.Name: keySchema},
 				})
 				require.NoError(t, err)
 				return "ok"

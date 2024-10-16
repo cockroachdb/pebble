@@ -148,11 +148,11 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 		return nil, err
 	}
 	o := sstable.ReaderOptions{
-		Comparer:  s.opts.Comparer,
-		Comparers: s.comparers,
-		KeySchema: s.opts.KeySchema,
-		Filters:   s.opts.Filters,
-		Mergers:   s.mergers,
+		Comparer:   s.opts.Comparer,
+		Comparers:  s.comparers,
+		KeySchemas: s.opts.KeySchemas,
+		Filters:    s.opts.Filters,
+		Mergers:    s.mergers,
 	}
 	c := pebble.NewCache(128 << 20 /* 128 MB */)
 	defer c.Unref()
@@ -339,6 +339,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  key\t")
 		fmt.Fprintf(tw, "  value\t")
 		fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
+		fmt.Fprintf(tw, "key-schema\t%s\n", formatNull(r.Properties.KeySchemaName))
 		fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
 		fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))
 		fmt.Fprintf(tw, "compression\t%s\n", r.Properties.CompressionName)

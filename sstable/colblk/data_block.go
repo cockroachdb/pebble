@@ -34,6 +34,7 @@ import (
 // attributes inlined within the data block. For inlined-values, the
 // user-defined value columns would be implicitly null.
 type KeySchema struct {
+	Name         string
 	ColumnTypes  []DataType
 	NewKeyWriter func() KeyWriter
 	NewKeySeeker func() KeySeeker
@@ -161,6 +162,7 @@ var defaultKeySeekerPool = sync.Pool{
 // into its prefix and suffix. Prefixes are sorted in lexicographical order.
 func DefaultKeySchema(comparer *base.Comparer, prefixBundleSize int) KeySchema {
 	return KeySchema{
+		Name:        fmt.Sprintf("DefaultKeySchema(%s,%d)", comparer.Name, prefixBundleSize),
 		ColumnTypes: defaultSchemaColumnTypes,
 		NewKeyWriter: func() KeyWriter {
 			kw := &defaultKeyWriter{comparer: comparer}

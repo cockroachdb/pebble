@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"path/filepath"
 	"runtime"
@@ -927,7 +928,6 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r := &Reader{
 		readable:             f,
 		cacheOpts:            o.internal.CacheOpts,
-		keySchema:            o.KeySchema,
 		loadBlockSema:        o.LoadBlockSema,
 		deniedUserProperties: o.DeniedUserProperties,
 		filterMetricsTracker: o.FilterMetricsTracker,
@@ -963,13 +963,6 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		return nil, r.Close()
 	}
 
-	// If the table format indicates that blocks are encoded within the columnar
-	// format, we require a key schema to interpret it correctly.
-	if r.tableFormat.BlockColumnar() && len(r.keySchema.ColumnTypes) == 0 {
-		r.err = errors.Newf("pebble/table: key schema required for reading tables of format %s", r.tableFormat)
-		return nil, r.Close()
-	}
-
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Comparer = o.Comparer
 		r.Compare = o.Comparer.Compare
@@ -995,6 +988,22 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		} else {
 			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
 				errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.MergerName))
+		}
+	}
+
+	if r.tableFormat.BlockColumnar() {
+		if ks, ok := o.KeySchemas[r.Properties.KeySchemaName]; ok {
+			r.keySchema = ks
+		} else {
+			var known []string
+			for name := range o.KeySchemas {
+				known = append(known, fmt.Sprintf("%q", name))
+			}
+			slices.Sort(known)
+
+			r.err = errors.Newf("pebble/table: %d: unknown key schema %q; known key schemas: %s",
+				errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.KeySchemaName), errors.Safe(known))
+			panic(r.err)
 		}
 	}
 

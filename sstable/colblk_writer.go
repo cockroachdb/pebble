@@ -178,6 +178,7 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 
 	w.props.ComparerName = o.Comparer.Name
 	w.props.CompressionName = o.Compression.String()
+	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
 
 	w.writeQueue.ch = make(chan *compressedBlock)

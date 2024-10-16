@@ -80,6 +80,7 @@ var testProps = Properties{
 	IndexSize:              11,
 	IndexType:              12,
 	IsStrictObsolete:       true,
+	KeySchemaName:          "key schema name",
 	MergerName:             "merge operator name",
 	NumMergeOperands:       17,
 	NumRangeKeyUnsets:      21,

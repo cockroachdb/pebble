@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,16 @@ func Comparers(cmps ...*Comparer) Option {
 	return func(t *T) {
 		for _, c := range cmps {
 			t.comparers[c.Name] = c
+		}
+	}
+}
+
+// KeySchemas may be passed to New to register key schemas for use by the
+// introspection tools.
+func KeySchemas(schemas ...colblk.KeySchema) Option {
+	return func(t *T) {
+		for _, s := range schemas {
+			t.opts.KeySchemas[s.Name] = s
 		}
 	}
 }
