@@ -552,8 +552,7 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 		// The beginning of the zero-indexed i-th key of the bundle is at
 		// offset(j+i+1).
 		//
-		hStart := b.rawBytes.offsets.At(j + h + 1)
-		hEnd := b.rawBytes.offsets.At(j + h + 2)
+		hStart, hEnd := b.rawBytes.offsets.At2(j + h + 1)
 		// There's a complication with duplicate keys. When keys are repeated,
 		// the PrefixBytes encoding avoids re-encoding the duplicate key,
 		// instead encoding an empty slice. While binary searching, if we land
