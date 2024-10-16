@@ -295,6 +295,21 @@ func (i *IndexIter) Separator() []byte {
 	return i.applyTransforms(key)
 }
 
+// IsSeparatorLessThan returns true if the separator at the iterator's
+// current position is strictly less than the provided key.
+func (i *IndexIter) IsSeparatorLessThan(key []byte) bool {
+	return i.compare(i.Separator(), key) < 0
+}
+
+// IsSeparatorUpperBound returns true if the separator at the iterator's current
+// position is strictly greater than the provided key. If the separator is equal
+// to the provided key, IsSeparatorUpperBound returns the value of the
+// `inclusively` parameter.
+func (i *IndexIter) IsSeparatorUpperBound(key []byte, inclusively bool) bool {
+	cmp := i.compare(i.Separator(), key)
+	return cmp > 0 || (cmp == 0 && inclusively)
+}
+
 func (i *IndexIter) applyTransforms(key []byte) []byte {
 	if i.syntheticSuffix.IsSet() {
 		key = key[:i.split(key)]

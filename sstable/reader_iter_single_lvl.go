@@ -409,7 +409,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) initBounds() {
 	}
 	i.blockUpper = i.upper
 	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
-	if i.blockUpper != nil && i.cmp(i.blockUpper, PI(&i.index).Separator()) > 0 {
+	if i.blockUpper != nil && PI(&i.index).IsSeparatorLessThan(i.blockUpper) {
 		// The upper-bound is greater than the index key which itself is greater
 		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block. Even if blockUpper is inclusive
@@ -430,7 +430,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) initBoundsForAlreadyLoadedBlock() {
 	}
 	i.blockUpper = i.upper
 	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
-	if i.blockUpper != nil && i.cmp(i.blockUpper, PI(&i.index).Separator()) > 0 {
+	if i.blockUpper != nil && PI(&i.index).IsSeparatorLessThan(i.blockUpper) {
 		// The upper-bound is greater than the index key which itself is greater
 		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block.
@@ -758,17 +758,16 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 
 	var dontSeekWithinBlock bool
 	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && PI(&i.index).Valid() &&
-		boundsCmp > 0 && i.cmp(key, PI(&i.index).Separator()) <= 0 {
+		boundsCmp > 0 && PI(&i.index).IsSeparatorUpperBound(key, true /* inclusively */) {
 		// Fast-path: The bounds have moved forward and this SeekGE is
-		// respecting the lower bound (guaranteed by Iterator). We know that
-		// the iterator must already be positioned within or just outside the
-		// previous bounds. Therefore it cannot be positioned at a block (or
-		// the position within that block) that is ahead of the seek position.
+		// respecting the lower bound (guaranteed by Iterator). We know that the
+		// iterator must already be positioned within or just outside the
+		// previous bounds. Therefore it cannot be positioned at a block (or the
+		// position within that block) that is ahead of the seek position.
 		// However it can be positioned at an earlier block. This fast-path to
 		// use Next() on the block is only applied when we are already at the
-		// block that the slow-path (the else-clause) would load -- this is
-		// the motivation for the i.cmp(key, i.index.Key().UserKey) <= 0
-		// predicate.
+		// block that the slow-path (the else-clause) would load -- this is the
+		// motivation for the IsSeparatorUpperBound(key, true) predicate.
 		i.initBoundsForAlreadyLoadedBlock()
 		kv, done := i.trySeekGEUsingNextWithinBlock(key)
 		if done {
@@ -824,18 +823,16 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			return nil
 		}
 		if result == loadBlockIrrelevant {
-			// Enforce the upper bound here since don't want to bother moving
-			// to the next block if upper bound is already exceeded. Note that
-			// the next block starts with keys >= ikey.UserKey since even
+			// Enforce the upper bound here since don't want to bother moving to
+			// the next block if upper bound is already exceeded. Note that the
+			// next block may start with keys >= index.Separator() since even
 			// though this is the block separator, the same user key can span
-			// multiple blocks. If upper is exclusive we use >= below, else
-			// we use >.
-			if i.upper != nil {
-				cmp := i.cmp(PI(&i.index).Separator(), i.upper)
-				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-					i.exhaustedBounds = +1
-					return nil
-				}
+			// multiple blocks. If upper is exclusive we pass inclusively=true
+			// below, else we require the separator to be strictly greater than
+			// upper.
+			if i.upper != nil && PI(&i.index).IsSeparatorUpperBound(i.upper, !i.endKeyInclusive) {
+				i.exhaustedBounds = +1
+				return nil
 			}
 			// Want to skip to the next block.
 			dontSeekWithinBlock = true
@@ -1135,7 +1132,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 			// that the previous block starts with keys <= ikey.UserKey since
 			// even though this is the current block's separator, the same
 			// user key can span multiple blocks.
-			if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
+			if i.lower != nil && PI(&i.index).IsSeparatorLessThan(i.lower) {
 				i.exhaustedBounds = -1
 				return nil
 			}
@@ -1216,16 +1213,14 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 	} else {
 		// result == loadBlockIrrelevant. Enforce the upper bound here since
 		// don't want to bother moving to the next block if upper bound is
-		// already exceeded. Note that the next block starts with keys >=
-		// ikey.UserKey since even though this is the block separator, the
-		// same user key can span multiple blocks. If upper is exclusive we
-		// use >= below, else we use >.
-		if i.upper != nil {
-			cmp := i.cmp(PI(&i.index).Separator(), i.upper)
-			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-				i.exhaustedBounds = +1
-				return nil
-			}
+		// already exceeded. Note that the next block may start with keys >=
+		// index.Separator() since even though this is the block separator, the
+		// same user key can span multiple blocks. If upper is exclusive we pass
+		// inclusively=true below, else we require the separator to be strictly
+		// greater than upper.
+		if i.upper != nil && PI(&i.index).IsSeparatorUpperBound(i.upper, !i.endKeyInclusive) {
+			i.exhaustedBounds = +1
+			return nil
 		}
 		// Else fall through to skipForward.
 	}
@@ -1282,7 +1277,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 		// already exceeded. Note that the previous block starts with keys <=
 		// key.UserKey since even though this is the current block's
 		// separator, the same user key can span multiple blocks.
-		if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
+		if i.lower != nil && PI(&i.index).IsSeparatorLessThan(i.lower) {
 			i.exhaustedBounds = -1
 			return nil
 		}
@@ -1354,7 +1349,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Int
 		PD(&i.data).Invalidate()
 		return nil
 	}
-	if i.cmp(succKey, PI(&i.index).Separator()) > 0 {
+	if PI(&i.index).IsSeparatorLessThan(succKey) {
 		// Not in the next data block, so seek the index.
 		if !PI(&i.index).SeekGE(succKey) {
 			// The target key is greater than any key in the index block.
@@ -1369,18 +1364,15 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Int
 		return nil
 	}
 	if result == loadBlockIrrelevant {
-		// Enforce the upper bound here since don't want to bother moving
-		// to the next block if upper bound is already exceeded. Note that
-		// the next block starts with keys >= ikey.UserKey since even
-		// though this is the block separator, the same user key can span
-		// multiple blocks. If upper is exclusive we use >= below, else we use
-		// >.
-		if i.upper != nil {
-			cmp := i.cmp(PI(&i.index).Separator(), i.upper)
-			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-				i.exhaustedBounds = +1
-				return nil
-			}
+		// Enforce the upper bound here since don't want to bother moving to the
+		// next block if upper bound is already exceeded. Note that the next
+		// block may start with keys >= index.Separator() since even though this
+		// is the block separator, the same user key can span multiple blocks.
+		// If upper is exclusive we pass inclusively=true below, else we require
+		// the separator to be strictly greater than upper.
+		if i.upper != nil && PI(&i.index).IsSeparatorUpperBound(i.upper, !i.endKeyInclusive) {
+			i.exhaustedBounds = +1
+			return nil
 		}
 	} else if kv := PD(&i.data).SeekGE(succKey, base.SeekGEFlagsNone); kv != nil {
 		if i.blockUpper != nil {
@@ -1436,18 +1428,16 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 				// being exhausted, and must be due to an error.
 				panic("loadDataBlock should not have failed with no error")
 			}
-			// result == loadBlockIrrelevant. Enforce the upper bound here
-			// since don't want to bother moving to the next block if upper
-			// bound is already exceeded. Note that the next block starts with
-			// keys >= key.UserKey since even though this is the block
-			// separator, the same user key can span multiple blocks. If upper
-			// is exclusive we use >= below, else we use >.
-			if i.upper != nil {
-				cmp := i.cmp(PI(&i.index).Separator(), i.upper)
-				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-					i.exhaustedBounds = +1
-					return nil
-				}
+			// result == loadBlockIrrelevant. Enforce the upper bound here since
+			// don't want to bother moving to the next block if upper bound is
+			// already exceeded. Note that the next block may start with keys >=
+			// index.Separator() since even though this is the block separator,
+			// the same user key can span multiple blocks. If upper is exclusive
+			// we pass inclusively=true below, else we require the separator to
+			// be strictly greater than upper.
+			if i.upper != nil && PI(&i.index).IsSeparatorUpperBound(i.upper, !i.endKeyInclusive) {
+				i.exhaustedBounds = +1
+				return nil
 			}
 			continue
 		}
@@ -1521,7 +1511,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			// bound is already exceeded. Note that the previous block starts with
 			// keys <= key.UserKey since even though this is the current block's
 			// separator, the same user key can span multiple blocks.
-			if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
+			if i.lower != nil && PI(&i.index).IsSeparatorLessThan(i.lower) {
 				i.exhaustedBounds = -1
 				return nil
 			}
@@ -1533,7 +1523,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			// safe to assume that there are no keys if we keep skipping backwards.
 			// Check the previous block, but check the lower bound before doing
 			// that.
-			if i.lower != nil && i.cmp(PI(&i.index).Separator(), i.lower) < 0 {
+			if i.lower != nil && PI(&i.index).IsSeparatorLessThan(i.lower) {
 				i.exhaustedBounds = -1
 				return nil
 			}
