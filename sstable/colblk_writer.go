@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -32,15 +31,13 @@ type RawColumnWriter struct {
 	meta     WriterMetadata
 	opts     WriterOptions
 	err      error
-	// dataBlockOptions and indexBlockOptions are used to configure the sstable
-	// block flush heuristics.
-	dataBlockOptions     flushDecisionOptions
-	indexBlockOptions    flushDecisionOptions
-	allocatorSizeClasses []int
-	blockPropCollectors  []BlockPropertyCollector
-	blockPropsEncoder    blockPropertiesEncoder
-	obsoleteCollector    obsoleteKeyBlockPropertyCollector
-	props                Properties
+
+	dataFlush           block.FlushGovernor
+	indexFlush          block.FlushGovernor
+	blockPropCollectors []BlockPropertyCollector
+	blockPropsEncoder   blockPropertiesEncoder
+	obsoleteCollector   obsoleteKeyBlockPropertyCollector
+	props               Properties
 	// block writers buffering unflushed data.
 	dataBlock struct {
 		colblk.DataBlockEncoder
@@ -117,21 +114,12 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		dataBlockOptions: flushDecisionOptions{
-			blockSize:               o.BlockSize,
-			blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
-			sizeClassAwareThreshold: (o.BlockSize*o.SizeClassAwareThreshold + 99) / 100,
-		},
-		indexBlockOptions: flushDecisionOptions{
-			blockSize:               o.IndexBlockSize,
-			blockSizeThreshold:      (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
-			sizeClassAwareThreshold: (o.IndexBlockSize*o.SizeClassAwareThreshold + 99) / 100,
-		},
-		allocatorSizeClasses:  o.AllocatorSizeClasses,
 		opts:                  o,
 		layout:                makeLayoutWriter(writable, o),
 		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
 	}
+	w.dataFlush = block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
+	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.dataBlock.Init(o.KeySchema)
 	w.indexBlock.Init()
 	w.topLevelIndexBlock.Init()
@@ -139,7 +127,7 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	w.rangeKeyBlock.Init(w.comparer.Equal)
 	if !o.DisableValueBlocks {
 		w.valueBlock = newValueBlockWriter(
-			w.dataBlockOptions.blockSize, w.dataBlockOptions.blockSizeThreshold,
+			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
 			w.opts.Compression, w.opts.Checksum, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != nil {
@@ -400,8 +388,7 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 	// block with this key-value pair included. Check to see if we should flush
 	// the current block, either with or without the added key-value pair.
 	size := w.dataBlock.Size()
-	if shouldFlushWithoutLatestKV(size, w.pendingDataBlockSize,
-		entriesWithoutKV, w.dataBlockOptions, w.allocatorSizeClasses) {
+	if shouldFlushWithoutLatestKV(size, w.pendingDataBlockSize, entriesWithoutKV, &w.dataFlush) {
 		// Flush the data block excluding the key we just added.
 		w.flushDataBlockWithoutNextKey(key.UserKey)
 		// flushDataBlockWithoutNextKey reset the data block builder, and we can
@@ -682,7 +669,7 @@ func (w *RawColumnWriter) enqueuePhysicalBlock(cb *compressedBlock, separator []
 	// index block too.
 	i := w.indexBlock.AddBlockHandle(separator, dataBlockHandle, dataBlockProps)
 	sizeWithEntry := w.indexBlock.Size()
-	if shouldFlushWithoutLatestKV(sizeWithEntry, w.indexBlockSize, i, w.indexBlockOptions, w.allocatorSizeClasses) {
+	if shouldFlushWithoutLatestKV(sizeWithEntry, w.indexBlockSize, i, &w.indexFlush) {
 		// NB: finishIndexBlock will use blockPropsEncoder, so we must clone the
 		// data block's props first.
 		dataBlockProps = slices.Clone(dataBlockProps)
@@ -1061,45 +1048,16 @@ func (w *RawColumnWriter) rewriteSuffixes(
 }
 
 func shouldFlushWithoutLatestKV(
-	sizeWithKV int,
-	sizeWithoutKV int,
-	entryCountWithoutKV int,
-	flushOptions flushDecisionOptions,
-	sizeClassHints []int,
+	sizeWithKV int, sizeWithoutKV int, entryCountWithoutKV int, flushGovernor *block.FlushGovernor,
 ) bool {
 	if entryCountWithoutKV == 0 {
 		return false
 	}
-	// For size-class aware flushing we need to account for the metadata that is
-	// allocated when this block is loaded into the block cache. For instance, if
-	// a block has size 1020B it may fit within a 1024B class. However, when
-	// loaded into the block cache we also allocate space for the cache entry
-	// metadata. The new allocation of size ~1052B may now only fit within a
-	// 2048B class, which increases internal fragmentation.
-	sizeWithKV += cache.ValueMetadataSize
-	sizeWithoutKV += cache.ValueMetadataSize
-	if sizeWithKV < flushOptions.blockSize {
-		// Even with the new KV we still haven't exceeded the target block size.
-		// There's no harm to committing to flushing with the new KV (and
-		// possibly additional future KVs).
+	if sizeWithoutKV < flushGovernor.LowWatermark() {
+		// Fast path when the block is too small to flush.
 		return false
 	}
-
-	sizeClassWithKV, withOk := blockSizeClass(sizeWithKV, sizeClassHints)
-	sizeClassWithoutKV, withoutOk := blockSizeClass(sizeWithoutKV, sizeClassHints)
-	if !withOk || !withoutOk {
-		// If the block size could not be mapped to a size class, we fall back
-		// to flushing without the KV since we already know sizeWithKV >=
-		// blockSize.
-		return true
-	}
-	// Even though sizeWithKV >= blockSize, we may still want to defer flushing
-	// if the new size class results in less fragmentation than the block
-	// without the KV that does fit within the block size.
-	if sizeClassWithKV-sizeWithKV < sizeClassWithoutKV-sizeWithoutKV {
-		return false
-	}
-	return true
+	return flushGovernor.ShouldFlush(sizeWithoutKV, sizeWithKV)
 }
 
 // copyDataBlocks adds a range of blocks to the table as-is. These blocks could be

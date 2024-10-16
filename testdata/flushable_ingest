@@ -671,16 +671,16 @@ small-00001-does-not-exist: pebble: not found
 get with-fs-logging
 large-00001
 ----
-read-at(1161265, 65): 000005.sst
-read-at(1155684, 2966): 000005.sst
-read-at(0, 2818): 000005.sst
+read-at(1165164, 65): 000005.sst
+read-at(1159763, 3000): 000005.sst
+read-at(0, 3069): 000005.sst
 large-00001:val-00001
 
 # Same number of block reads for a key that doesn't exist.
 get with-fs-logging
 large-00001-does-not-exist
 ----
-read-at(1161265, 65): 000005.sst
-read-at(1155684, 2966): 000005.sst
-read-at(0, 2818): 000005.sst
+read-at(1165164, 65): 000005.sst
+read-at(1159763, 3000): 000005.sst
+read-at(0, 3069): 000005.sst
 large-00001-does-not-exist: pebble: not found
