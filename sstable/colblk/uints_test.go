@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
@@ -146,7 +146,7 @@ func TestUints(t *testing.T) {
 			td.MaybeScanArgs(t, "offset", &offset)
 
 			sz := b.Size(rows, offset)
-			buf := aligned.ByteSlice(int(sz))
+			buf := crbytes.AllocAligned(int(sz))
 			_ = b.Finish(0, rows, offset, buf)
 			f := binfmt.New(buf).LineWidth(20)
 			tp := treeprinter.New()

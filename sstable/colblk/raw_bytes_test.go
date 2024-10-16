@@ -11,9 +11,9 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/aligned"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestRawBytes(t *testing.T) {
 			size := builder.Size(count, uint32(startOffset))
 			fmt.Fprintf(&out, "Size: %d\n", size-uint32(startOffset))
 
-			buf := aligned.ByteSlice(startOffset + int(size))
+			buf := crbytes.AllocAligned(startOffset + int(size))
 			endOffset := builder.Finish(0, count, uint32(startOffset), buf)
 
 			// Validate that builder.Size() was correct in its estimate.

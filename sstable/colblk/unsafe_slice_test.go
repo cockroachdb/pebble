@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/aligned"
+	"github.com/cockroachdb/crlib/crbytes"
 )
 
 func TestUnsafeUints(t *testing.T) {
@@ -31,7 +31,7 @@ func TestUnsafeUints(t *testing.T) {
 						ub.Set(i, vals[i])
 					}
 					sz := ub.Size(rows, 0)
-					buf := aligned.ByteSlice(int(sz) + 1 /* trailing padding byte */)
+					buf := crbytes.AllocAligned(int(sz) + 1 /* trailing padding byte */)
 					_ = ub.Finish(0, rows, 0, buf)
 
 					uints, _ := DecodeUnsafeUints(buf, 0, rows)
@@ -94,7 +94,7 @@ func encodeRandUints(rng *rand.Rand, rows int, intRange intRange) []byte {
 	}
 
 	sz := ub.Size(rows, 0)
-	buf := aligned.ByteSlice(int(sz) + 1 /* trailing padding byte */)
+	buf := crbytes.AllocAligned(int(sz) + 1 /* trailing padding byte */)
 	_ = ub.Finish(0, rows, 0, buf)
 	return buf
 }
