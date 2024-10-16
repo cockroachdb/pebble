@@ -1,0 +1,86 @@
+# No size classes.
+init target-block-size=1000 block-size-threshold=90
+----
+low watermark: 900
+high watermark: 1000
+boundaries: []
+
+should-flush size-before=800 size-after=900
+----
+should not flush
+
+should-flush size-before=900 size-after=950
+----
+should not flush
+
+should-flush size-before=900 size-after=1000
+----
+should not flush
+
+should-flush size-before=900 size-after=1001
+----
+should flush
+
+should-flush size-before=899 size-after=10000
+----
+should not flush
+
+# Size classes. Note that the block allocation overhead is 32.
+init target-block-size=1000 size-class-aware-threshold=60 size-classes=(500, 700, 1000, 1500)
+----
+low watermark: 600
+high watermark: 1468
+boundaries: [668 968]
+
+# Should not flush at 600 if the after" block fits in the same size class
+should-flush size-before=600 size-after=650
+----
+should not flush
+
+# Should flush when the "after" block leads to more fragmentation in the next
+# size class.
+should-flush size-before=600 size-after=750
+----
+should flush
+
+# Should not flush when the "after" block leads to less fragmentation in another
+# size class.
+should-flush size-before=600 size-after=950
+----
+should not flush
+
+should-flush size-before=600 size-after=1450
+----
+should not flush
+
+# Should flush if the after size is above the high watermark.
+should-flush size-before=600 size-after=1500
+----
+should flush
+
+# Should not flush if the "before" size is below the low watermark (even when
+# the "after" size is greater than the high watermark).
+should-flush size-before=500 size-after=1500
+----
+should not flush
+
+# Size classes should be ignored when they're all above the target block size.
+init target-block-size=1000 size-class-aware-threshold=60 size-classes=(1500, 2000, 2500)
+----
+low watermark: 900
+high watermark: 1000
+boundaries: []
+
+# Size classes should be ignored when they're all below the target block size.
+init target-block-size=1000 size-class-aware-threshold=60 size-classes=(500, 800, 900)
+----
+low watermark: 900
+high watermark: 1000
+boundaries: []
+
+# Verify we limit the number of boundaries to 4.
+init target-block-size=1000 size-class-aware-threshold=60 size-classes=(500, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050)
+----
+low watermark: 600
+high watermark: 1018
+boundaries: [818 868 918 968]

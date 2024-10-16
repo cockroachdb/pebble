@@ -332,8 +332,7 @@ type valueBlocksAndIndexStats struct {
 // valueBlockWriter writes a sequence of value blocks, and the value blocks
 // index, for a sstable.
 type valueBlockWriter struct {
-	// The configured uncompressed block size and size threshold
-	blockSize, blockSizeThreshold int
+	flush block.FlushGovernor
 	// Configured compression.
 	compression block.Compression
 	// checksummer with configured checksum type.
@@ -405,8 +404,7 @@ var valueBlockWriterPool = sync.Pool{
 }
 
 func newValueBlockWriter(
-	blockSize int,
-	blockSizeThreshold int,
+	flushGovernor block.FlushGovernor,
 	compression block.Compression,
 	checksumType block.ChecksumType,
 	// compressedSize should exclude the block trailer.
@@ -414,9 +412,8 @@ func newValueBlockWriter(
 ) *valueBlockWriter {
 	w := valueBlockWriterPool.Get().(*valueBlockWriter)
 	*w = valueBlockWriter{
-		blockSize:          blockSize,
-		blockSizeThreshold: blockSizeThreshold,
-		compression:        compression,
+		flush:       flushGovernor,
+		compression: compression,
 		checksummer: block.Checksummer{
 			Type: checksumType,
 		},
@@ -458,8 +455,7 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 	w.numValues++
 	blockLen := len(w.buf.b)
 	valueLen := len(v)
-	if blockLen >= w.blockSize ||
-		(blockLen > w.blockSizeThreshold && blockLen+valueLen > w.blockSize) {
+	if w.flush.ShouldFlush(blockLen, blockLen+valueLen) {
 		// Block is not currently empty and adding this value will become too big,
 		// so finish this block.
 		w.compressAndFlush()
