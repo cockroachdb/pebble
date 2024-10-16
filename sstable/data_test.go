@@ -163,8 +163,8 @@ func runBuildCmd(
 
 func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int) (*Reader, error) {
 	readerOpts := ReaderOptions{
-		Comparer:  writerOpts.Comparer,
-		KeySchema: writerOpts.KeySchema,
+		Comparer:   writerOpts.Comparer,
+		KeySchemas: KeySchemas{writerOpts.KeySchema.Name: writerOpts.KeySchema},
 	}
 	if writerOpts.FilterPolicy != nil {
 		readerOpts.Filters = map[string]FilterPolicy{
@@ -240,8 +240,8 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 	r, err := NewReader(context.Background(), f1, ReaderOptions{
-		Comparer:  opts.Comparer,
-		KeySchema: opts.KeySchema,
+		Comparer:   opts.Comparer,
+		KeySchemas: KeySchemas{opts.KeySchema.Name: opts.KeySchema},
 	})
 	if err != nil {
 		return nil, nil, err
@@ -513,8 +513,8 @@ func runRewriteCmd(
 		return nil, r, errors.Wrap(err, "rewrite failed")
 	}
 	readerOpts := ReaderOptions{
-		Comparer:  opts.Comparer,
-		KeySchema: opts.KeySchema,
+		Comparer:   opts.Comparer,
+		KeySchemas: KeySchemas{opts.KeySchema.Name: opts.KeySchema},
 	}
 	if opts.FilterPolicy != nil {
 		readerOpts.Filters = map[string]FilterPolicy{

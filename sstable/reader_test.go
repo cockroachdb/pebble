@@ -1688,8 +1688,8 @@ func TestReader_TableFormat(t *testing.T) {
 		f, err = fs.Open("test")
 		require.NoError(t, err)
 		r, err := newReader(f, ReaderOptions{
-			Comparer:  opts.Comparer,
-			KeySchema: opts.KeySchema,
+			Comparer:   opts.Comparer,
+			KeySchemas: MakeKeySchemas(opts.KeySchema),
 		})
 		require.NoError(t, err)
 		defer r.Close()

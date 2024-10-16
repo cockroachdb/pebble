@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -61,7 +62,8 @@ func newPebbleDB(dir string) DB {
 		Comparer:                    &crdbtest.Comparer,
 		DisableWAL:                  disableWAL,
 		FormatMajorVersion:          pebble.FormatNewest,
-		KeySchema:                   crdbtest.KeySchema,
+		KeySchema:                   crdbtest.KeySchema.Name,
+		KeySchemas:                  sstable.MakeKeySchemas(crdbtest.KeySchema),
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
 		LBaseMaxBytes:               64 << 20, // 64 MB

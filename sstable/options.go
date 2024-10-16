@@ -5,6 +5,8 @@
 package sstable
 
 import (
+	"fmt"
+
 	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
@@ -61,6 +63,22 @@ type Comparers map[string]*base.Comparer
 // mergers.
 type Mergers map[string]*base.Merger
 
+// KeySchemas is a map from key schema name to key schema. A single database may
+// contain sstables with multiple key schemas.
+type KeySchemas map[string]colblk.KeySchema
+
+// MakeKeySchemas constructs a KeySchemas from a slice of key schemas.
+func MakeKeySchemas(keySchemas ...colblk.KeySchema) KeySchemas {
+	m := make(KeySchemas, len(keySchemas))
+	for _, keySchema := range keySchemas {
+		if _, ok := m[keySchema.Name]; ok {
+			panic(fmt.Sprintf("duplicate key schemas with name %q", keySchema.Name))
+		}
+		m[keySchema.Name] = keySchema
+	}
+	return m
+}
+
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
 	// LoadBlockSema, if set, is used to limit the number of blocks that can be
@@ -83,11 +101,10 @@ type ReaderOptions struct {
 
 	Comparers Comparers
 	Mergers   Mergers
-
-	// KeySchema describes the schema to use when interpreting columnar data
-	// blocks. Only used for sstables encoded in format TableFormatPebblev5 or
-	// higher.
-	KeySchema colblk.KeySchema
+	// KeySchemas contains the set of known key schemas to use when interpreting
+	// columnar data blocks. Only used for sstables encoded in format
+	// TableFormatPebblev5 or higher.
+	KeySchemas KeySchemas
 
 	// Filters is a map from filter policy name to filter policy. Filters with
 	// policies that are not in this map will be ignored.
@@ -130,8 +147,15 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	if o.DeniedUserProperties == nil {
 		o.DeniedUserProperties = ignoredInternalProperties
 	}
+	if o.KeySchemas == nil {
+		o.KeySchemas = defaultKeySchemas
+	}
 	return o
 }
+
+var defaultKeySchemas = MakeKeySchemas(
+	colblk.DefaultKeySchema(base.DefaultComparer, 16),
+)
 
 // WriterOptions holds the parameters used to control building an sstable.
 type WriterOptions struct {

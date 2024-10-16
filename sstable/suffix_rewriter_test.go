@@ -81,9 +81,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 
 			// Rewrite the SST using updated options and check the returned props.
 			readerOpts := ReaderOptions{
-				Comparer:  wOpts.Comparer,
-				KeySchema: wOpts.KeySchema,
-				Filters:   map[string]base.FilterPolicy{wOpts.FilterPolicy.Name(): wOpts.FilterPolicy},
+				Comparer:   wOpts.Comparer,
+				KeySchemas: KeySchemas{wOpts.KeySchema.Name: wOpts.KeySchema},
+				Filters:    map[string]base.FilterPolicy{wOpts.FilterPolicy.Name(): wOpts.FilterPolicy},
 			}
 			r, err := NewMemReader(sst, readerOpts)
 			require.NoError(t, err)

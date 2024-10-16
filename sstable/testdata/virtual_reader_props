@@ -44,7 +44,7 @@ bounds:  [b#1,SET-c#1,SET]
 filenum: 000002
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 5
+  rocksdb.raw.key.size: 4
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
 
@@ -300,6 +300,6 @@ bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000008
 props:
   rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 11
+  rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
   rocksdb.num.data.blocks: 1
