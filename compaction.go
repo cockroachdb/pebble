@@ -2081,7 +2081,6 @@ func checkDeleteCompactionHints(
 		// or if the number of files it creates (eg. through excision) is less than or
 		// equal to the number of files it deletes. First, determine how many files are
 		// affected by this hint.
-		filesDeletedByCurrentHint := 0
 		var filesDeletedByLevel [7][]*fileMetadata
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
 			overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end))
@@ -2091,32 +2090,8 @@ func checkDeleteCompactionHints(
 				if m.IsCompacting() || doesHintApply == hintDoesNotApply || files[m] {
 					continue
 				}
-				switch doesHintApply {
-				case hintDeletesFile:
-					filesDeletedByCurrentHint++
-				case hintExcisesFile:
-					// Account for the original file being deleted.
-					filesDeletedByCurrentHint++
-					// An excise could produce up to 2 new files. If the hint
-					// leaves a fragment of the file on the left, decrement
-					// the counter once. If the hint leaves a fragment of the
-					// file on the right, decrement the counter once.
-					if cmp(h.start, m.Smallest.UserKey) > 0 {
-						filesDeletedByCurrentHint--
-					}
-					if m.UserKeyBounds().End.IsUpperBoundFor(cmp, h.end) {
-						filesDeletedByCurrentHint--
-					}
-				}
 				filesDeletedByLevel[l] = append(filesDeletedByLevel[l], m)
 			}
-		}
-		if filesDeletedByCurrentHint < 0 {
-			// This hint does not delete a sufficient number of files to warrant
-			// a delete-only compaction at this stage. Add it to unresolvedHints
-			// so it can be re-evaluated later.
-			unresolvedHints = append(unresolvedHints, h)
-			continue
 		}
 		// This hint will be resolved and dropped.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
