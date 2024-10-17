@@ -1357,6 +1357,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			},
 			FormatMajorVersion: internalFormatNewest,
 		}).WithFSDefaults()
+		opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
 		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		return opts, nil
 	}
@@ -1617,6 +1618,7 @@ func TestCompactionTombstones(t *testing.T) {
 					},
 					FormatMajorVersion: internalFormatNewest,
 				}).WithFSDefaults()
+				opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
 				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 				var err error
 				d, err = runDBDefineCmd(td, opts)
