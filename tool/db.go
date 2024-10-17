@@ -615,7 +615,7 @@ func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
 		return
 	}
 	writable := objstorageprovider.NewFileWritable(f)
-	writerOpts := dbOpts.MakeWriterOptions(0, db.FormatMajorVersion().MaxTableFormat())
+	writerOpts := dbOpts.MakeWriterOptions(0, db.TableFormat())
 	w := sstable.NewWriter(writable, writerOpts)
 	err = w.DeleteRange(span.Start, span.End)
 	err = errors.CombineErrors(err, w.RangeKeyDelete(span.Start, span.End))

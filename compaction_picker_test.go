@@ -1355,6 +1355,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		FormatMajorVersion: FormatNewest,
 		FS:                 fs,
 	}
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1473,6 +1474,7 @@ func TestCompactionPickerScores(t *testing.T) {
 		FormatMajorVersion:          FormatNewest,
 		FS:                          fs,
 	}
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	d, err := Open("", opts)
 	require.NoError(t, err)

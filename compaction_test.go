@@ -2102,7 +2102,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+			TableFormat: d.TableFormat(),
 		})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
@@ -2797,7 +2797,7 @@ func TestCompactionErrorStats(t *testing.T) {
 		require.NoError(t, err)
 
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+			TableFormat: d.TableFormat(),
 		})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))

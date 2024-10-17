@@ -141,7 +141,7 @@ func TestEventListener(t *testing.T) {
 				return err.Error()
 			}
 			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+				TableFormat: d.TableFormat(),
 			})
 			if err := w.Set([]byte("a"), nil); err != nil {
 				return err.Error()
@@ -175,7 +175,7 @@ func TestEventListener(t *testing.T) {
 					return err
 				}
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
-					TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+					TableFormat: d.TableFormat(),
 				})
 				if err := w.Set([]byte{key}, nil); err != nil {
 					return err

@@ -612,6 +612,7 @@ func TestIteratorStats(t *testing.T) {
 		opts := &Options{Comparer: testkeys.Comparer, FS: mem, FormatMajorVersion: internalFormatNewest}
 		// Automatic compactions may make some testcases non-deterministic.
 		opts.DisableAutomaticCompactions = true
+		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		var err error
 		d, err = Open("", opts)
 		require.NoError(t, err)
@@ -2718,10 +2719,10 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 		Comparer:           testkeys.Comparer,
 		FormatMajorVersion: FormatNewest,
 	}).EnsureDefaults()
-	wOpts := o.MakeWriterOptions(numLevels-1, FormatNewest.MaxTableFormat())
 	d, err := Open("", o)
 	require.NoError(b, err)
 	defer func() { require.NoError(b, d.Close()) }()
+	wOpts := o.MakeWriterOptions(numLevels-1, d.TableFormat())
 
 	// Keep a snapshot open for the duration of the test to prevent elision-only
 	// compactions from removing the ingested files containing exclusively

@@ -543,7 +543,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	path := td.CmdArgs[0].String()
 
 	// Override table format, if provided.
-	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
+	tableFormat := d.TableFormat()
 	var blockSize int64
 	for _, cmdArg := range td.CmdArgs[1:] {
 		switch cmdArg.Key {
@@ -646,7 +646,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	path := td.CmdArgs[0].String()
 
 	// Override table format, if provided.
-	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
+	tableFormat := d.TableFormat()
 	for _, cmdArg := range td.CmdArgs[1:] {
 		switch cmdArg.Key {
 		case "format":
