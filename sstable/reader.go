@@ -282,7 +282,7 @@ func (r *Reader) NewRawRangeDelIter(
 		return nil, nil
 	}
 	// TODO(radu): plumb stats here.
-	h, err := r.readRangeDelBlock(ctx, noEnv)
+	h, err := r.readRangeDelBlock(ctx, noEnv, noReadHandle, r.rangeDelBH)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +307,7 @@ func (r *Reader) NewRawRangeKeyIter(
 		return nil, nil
 	}
 	// TODO(radu): plumb stats here.
-	h, err := r.readRangeKeyBlock(ctx, noEnv)
+	h, err := r.readRangeKeyBlock(ctx, noEnv, noReadHandle, r.rangeKeyBH)
 	if err != nil {
 		return nil, err
 	}
@@ -371,12 +371,14 @@ var noEnv = readBlockEnv{}
 // read block methods.
 var noReadHandle objstorage.ReadHandle = nil
 
+var noInitBlockMetadataFn = func(*block.Metadata, []byte) error { return nil }
+
 // readMetaindexBlock reads the metaindex block.
 func (r *Reader) readMetaindexBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, r.metaindexBH)
+	return r.readBlockInternal(ctx, env, readHandle, r.metaindexBH, noInitBlockMetadataFn)
 }
 
 // readTopLevelIndexBlock reads the top-level index block.
@@ -391,42 +393,51 @@ func (r *Reader) readIndexBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh)
+	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readDataBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.DataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh)
+	return r.readBlockInternal(ctx, env, readHandle, bh, r.initDataBlockMetadata)
+}
+
+// initDataBlockMetadata initializes the Metadata for a data block. This will
+// later be used (and reused) when reading from the block.
+func (r *Reader) initDataBlockMetadata(metadata *block.Metadata, data []byte) error {
+	if r.tableFormat.BlockColumnar() {
+		return colblk.InitDataBlockMetadata(r.keySchema, metadata, data)
+	}
+	return nil
 }
 
 func (r *Reader) readFilterBlock(
-	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle,
+	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
-	return r.readBlockInternal(ctx, env, readHandle, r.filterBH)
+	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readRangeDelBlock(
-	ctx context.Context, env readBlockEnv,
+	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, nil, r.rangeDelBH)
+	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readRangeKeyBlock(
-	ctx context.Context, env readBlockEnv,
+	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, nil, r.rangeKeyBH)
+	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readValueBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh)
+	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func checkChecksum(
@@ -467,9 +478,13 @@ var deterministicReadBlockDurationForTesting = false
 // readBlockInternal should not be used directly; one of the read*Block methods
 // should be used instead.
 func (r *Reader) readBlockInternal(
-	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
+	ctx context.Context,
+	env readBlockEnv,
+	readHandle objstorage.ReadHandle,
+	bh block.Handle,
+	initBlockMetadataFn func(*block.Metadata, []byte) error,
 ) (handle block.BufferHandle, _ error) {
-	if h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset); h.Get() != nil {
+	if h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset); h.Valid() {
 		// Cache hit.
 		if readHandle != nil {
 			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
@@ -540,6 +555,10 @@ func (r *Reader) readBlockInternal(
 			return block.BufferHandle{}, err
 		}
 	}
+	if err := initBlockMetadataFn(decompressed.GetMetadata(), decompressed.Get()); err != nil {
+		decompressed.Release()
+		return block.BufferHandle{}, err
+	}
 	h := decompressed.MakeHandle(r.cacheOpts.Cache, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
 	return h, nil
 }
@@ -567,7 +586,7 @@ func (r *Reader) readMetaindex(
 	if err != nil {
 		return err
 	}
-	data := b.Get()
+	data := b.BlockData()
 	defer b.Release()
 
 	if uint64(len(data)) != r.metaindexBH.Length {
@@ -582,12 +601,12 @@ func (r *Reader) readMetaindex(
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlockInternal(ctx, metaEnv, readHandle, bh)
+		b, err = r.readBlockInternal(ctx, metaEnv, readHandle, bh, noInitBlockMetadataFn)
 		if err != nil {
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.Get(), r.deniedUserProperties)
+		err := r.Properties.load(b.BlockData(), r.deniedUserProperties)
 		b.Release()
 		if err != nil {
 			return err
@@ -653,7 +672,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
 		iter := r.tableFormat.newIndexIter()
-		err := iter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms)
+		err := iter.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading index block")
 		}
@@ -670,7 +689,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	} else {
 		l.TopIndex = r.indexBH
 		topIter := r.tableFormat.newIndexIter()
-		err := topIter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms)
+		err := topIter.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading index block")
 		}
@@ -689,7 +708,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			err = func() error {
 				defer subIndex.Release()
 				// TODO(msbutler): figure out how to pass virtualState to layout call.
-				if err := iter.Init(r.Compare, r.Split, subIndex.Get(), NoTransforms); err != nil {
+				if err := iter.Init(r.Compare, r.Split, subIndex.BlockData(), NoTransforms); err != nil {
 					return err
 				}
 				for valid := iter.First(); valid; valid = iter.Next() {
@@ -715,7 +734,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			return nil, err
 		}
 		defer vbiH.Release()
-		l.ValueBlock, err = decodeValueBlockIndex(vbiH.Get(), r.valueBIH)
+		l.ValueBlock, err = decodeValueBlockIndex(vbiH.BlockData(), r.valueBIH)
 		if err != nil {
 			return nil, err
 		}
@@ -732,38 +751,68 @@ func (r *Reader) ValidateBlockChecksums() error {
 		return err
 	}
 
+	type blk struct {
+		bh     block.Handle
+		readFn func(context.Context, readBlockEnv, objstorage.ReadHandle, block.Handle) (block.BufferHandle, error)
+	}
 	// Construct the set of blocks to check. Note that the footer is not checked
 	// as it is not a block with a checksum.
-	blocks := make([]block.Handle, len(l.Data))
+	blocks := make([]blk, 0, len(l.Data)+6)
 	for i := range l.Data {
-		blocks[i] = l.Data[i].Handle
+		blocks = append(blocks, blk{
+			bh:     l.Data[i].Handle,
+			readFn: r.readDataBlock,
+		})
 	}
-	blocks = append(blocks, l.Index...)
-	blocks = append(blocks, l.TopIndex)
+	for _, h := range l.Index {
+		blocks = append(blocks, blk{
+			bh:     h,
+			readFn: r.readIndexBlock,
+		})
+	}
+	blocks = append(blocks, blk{
+		bh:     l.TopIndex,
+		readFn: r.readIndexBlock,
+	})
 	for _, bh := range l.Filter {
-		blocks = append(blocks, bh.Handle)
+		blocks = append(blocks, blk{
+			bh:     bh.Handle,
+			readFn: r.readFilterBlock,
+		})
 	}
-	blocks = append(blocks, l.RangeDel, l.RangeKey, l.Properties, l.MetaIndex)
+	blocks = append(blocks, blk{
+		bh:     l.RangeDel,
+		readFn: r.readRangeDelBlock,
+	})
+	blocks = append(blocks, blk{
+		bh:     l.RangeKey,
+		readFn: r.readRangeKeyBlock,
+	})
+	readNoInit := func(ctx context.Context, env readBlockEnv, rh objstorage.ReadHandle, bh block.Handle) (block.BufferHandle, error) {
+		return r.readBlockInternal(ctx, env, rh, bh, noInitBlockMetadataFn)
+	}
+	blocks = append(blocks, blk{
+		bh:     l.Properties,
+		readFn: readNoInit,
+	})
+	blocks = append(blocks, blk{
+		bh:     l.MetaIndex,
+		readFn: readNoInit,
+	})
 
 	// Sorting by offset ensures we are performing a sequential scan of the
 	// file.
-	slices.SortFunc(blocks, func(a, b block.Handle) int {
-		return cmp.Compare(a.Offset, b.Offset)
+	slices.SortFunc(blocks, func(a, b blk) int {
+		return cmp.Compare(a.bh.Offset, b.bh.Offset)
 	})
 
-	// Check all blocks sequentially. Make use of read-ahead, given we are
-	// scanning the entire file from start to end.
-	rh := r.readable.NewReadHandle(objstorage.NoReadBefore)
-	defer rh.Close()
-
-	for _, bh := range blocks {
+	ctx := context.Background()
+	for _, b := range blocks {
 		// Certain blocks may not be present, in which case we skip them.
-		if bh.Length == 0 {
+		if b.bh.Length == 0 {
 			continue
 		}
-
-		// Read the block, which validates the checksum.
-		h, err := r.readBlockInternal(context.Background(), noEnv, rh, bh)
+		h, err := b.readFn(ctx, noEnv, noReadHandle, b.bh)
 		if err != nil {
 			return err
 		}

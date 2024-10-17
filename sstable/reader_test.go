@@ -47,7 +47,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilterBlock(context.Background(), noEnv, noReadHandle)
+		dataH, err := r.readFilterBlock(context.Background(), noEnv, noReadHandle, r.filterBH)
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +57,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		} else {
 			lookupKey = key
 		}
-		mayContain := r.tableFilter.mayContain(dataH.Get(), lookupKey)
+		mayContain := r.tableFilter.mayContain(dataH.BlockData(), lookupKey)
 		dataH.Release()
 		if !mayContain {
 			return nil, base.ErrNotFound
@@ -636,7 +636,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
 	buf.WriteString("index entries:\n")
 	iter := r.tableFormat.newIndexIter()
-	require.NoError(t, iter.Init(r.Compare, r.Split, indexH.Get(), NoTransforms))
+	require.NoError(t, iter.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms))
 	defer func() {
 		require.NoError(t, iter.Close())
 	}()
@@ -650,7 +650,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 			require.NoError(t, err)
 			defer b.Release()
 			iter2 := r.tableFormat.newIndexIter()
-			require.NoError(t, iter2.Init(r.Compare, r.Split, b.Get(), NoTransforms))
+			require.NoError(t, iter2.Init(r.Compare, r.Split, b.BlockData(), NoTransforms))
 			defer func() {
 				require.NoError(t, iter2.Close())
 			}()
