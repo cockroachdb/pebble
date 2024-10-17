@@ -2048,7 +2048,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 		h.Recordf("%s // %v", r, err)
 		return
 	}
-	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), t.opts.MakeWriterOptions(0, dest.FormatMajorVersion().MaxTableFormat()))
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), t.opts.MakeWriterOptions(0, dest.TableFormat()))
 
 	// NB: In practice we'll either do shared replicate or external replicate,
 	// as ScanInternal does not support both. We arbitrarily choose to prioritize
