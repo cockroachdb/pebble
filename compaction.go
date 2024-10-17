@@ -257,6 +257,10 @@ type compaction struct {
 	// virtual sstables.
 	deletionHints []deleteCompactionHint
 
+	// exciseEnabled is set to true if this is a compactionKindDeleteOnly and
+	// this compaction is allowed to excise files.
+	exciseEnabled bool
+
 	metrics map[int]*LevelMetrics
 
 	pickerMetrics compactionPickerMetrics
@@ -401,6 +405,7 @@ func newDeleteOnlyCompaction(
 	inputs []compactionLevel,
 	beganAt time.Time,
 	hints []deleteCompactionHint,
+	exciseEnabled bool,
 ) *compaction {
 	c := &compaction{
 		kind:          compactionKindDeleteOnly,
@@ -413,6 +418,7 @@ func newDeleteOnlyCompaction(
 		beganAt:       beganAt,
 		inputs:        inputs,
 		deletionHints: hints,
+		exciseEnabled: exciseEnabled,
 	}
 
 	// Set c.smallest, c.largest.
@@ -1773,11 +1779,15 @@ func (d *DB) maybeScheduleCompactionPicker(
 func (d *DB) tryScheduleDeleteOnlyCompaction() {
 	v := d.mu.versions.currentVersion()
 	snapshots := d.mu.snapshots.toSlice()
-	inputs, resolvedHints, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots, d.FormatMajorVersion())
+	// We need to save the value of exciseEnabled in the compaction itself, as
+	// it can change dynamically between now and when the compaction runs.
+	exciseEnabled := d.FormatMajorVersion() >= FormatVirtualSSTables &&
+		d.opts.Experimental.EnableDeleteOnlyCompactionExcises != nil && d.opts.Experimental.EnableDeleteOnlyCompactionExcises()
+	inputs, resolvedHints, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots, exciseEnabled)
 	d.mu.compact.deletionHints = unresolvedHints
 
 	if len(inputs) > 0 {
-		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints)
+		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints, exciseEnabled)
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
@@ -1941,7 +1951,7 @@ func (h deleteCompactionHint) String() string {
 }
 
 func (h *deleteCompactionHint) canDeleteOrExcise(
-	cmp Compare, m *fileMetadata, snapshots compact.Snapshots, fmv FormatMajorVersion,
+	cmp Compare, m *fileMetadata, snapshots compact.Snapshots, exciseEnabled bool,
 ) deletionHintOverlap {
 	// The file can only be deleted if all of its keys are older than the
 	// earliest tombstone aggregated into the hint. Note that we use
@@ -1990,7 +2000,7 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 		base.UserKeyExclusive(h.end).CompareUpperBounds(cmp, m.UserKeyBounds().End) >= 0 {
 		return hintDeletesFile
 	}
-	if fmv < FormatVirtualSSTables {
+	if !exciseEnabled {
 		// The file's keys must be completely contained within the hint range; excises
 		// aren't allowed.
 		return hintDoesNotApply
@@ -2015,7 +2025,7 @@ func checkDeleteCompactionHints(
 	v *version,
 	hints []deleteCompactionHint,
 	snapshots compact.Snapshots,
-	fmv FormatMajorVersion,
+	exciseEnabled bool,
 ) (levels []compactionLevel, resolved, unresolved []deleteCompactionHint) {
 	var files map[*fileMetadata]bool
 	var byLevel [numLevels][]*fileMetadata
@@ -2086,8 +2096,9 @@ func checkDeleteCompactionHints(
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
 			overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end))
 			iter := overlaps.Iter()
+
 			for m := iter.First(); m != nil; m = iter.Next() {
-				doesHintApply := h.canDeleteOrExcise(cmp, m, snapshots, fmv)
+				doesHintApply := h.canDeleteOrExcise(cmp, m, snapshots, exciseEnabled)
 				if m.IsCompacting() || doesHintApply == hintDoesNotApply || files[m] {
 					continue
 				}
@@ -2546,6 +2557,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 	ve *versionEdit,
 	snapshots compact.Snapshots,
 	fragments []deleteCompactionHintFragment,
+	exciseEnabled bool,
 ) error {
 	curFragment := 0
 	iter := cl.files.Iter()
@@ -2582,7 +2594,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 					// above it.
 					continue
 				}
-				hintOverlap := h.canDeleteOrExcise(d.cmp, curFile, snapshots, d.FormatMajorVersion())
+				hintOverlap := h.canDeleteOrExcise(d.cmp, curFile, snapshots, exciseEnabled)
 				if hintOverlap == hintDoesNotApply {
 					continue
 				}
@@ -2669,7 +2681,7 @@ func (d *DB) runDeleteOnlyCompaction(
 	}
 	for _, cl := range c.inputs {
 		levelMetrics := &LevelMetrics{}
-		if err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments); err != nil {
+		if err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments, c.exciseEnabled); err != nil {
 			return nil, stats, err
 		}
 		c.metrics[cl.level] = levelMetrics

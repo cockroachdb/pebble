@@ -163,6 +163,12 @@ func parseOptions(
 			case "TestOptions.use_excise":
 				opts.useExcise = true
 				return true
+			case "TestOptions.use_delete_only_compaction_excises":
+				opts.useDeleteOnlyCompactionExcises = true
+				opts.Opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool {
+					return opts.useDeleteOnlyCompactionExcises
+				}
+				return true
 			case "TestOptions.use_jemalloc_size_classes":
 				opts.Opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 				return true
@@ -258,6 +264,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
+	}
+	if opts.useDeleteOnlyCompactionExcises {
+		fmt.Fprintf(&buf, "  use_delete_only_compaction_excises=%v\n", opts.useDeleteOnlyCompactionExcises)
 	}
 	if opts.Opts.AllocatorSizeClasses != nil {
 		if fmt.Sprint(opts.Opts.AllocatorSizeClasses) != fmt.Sprint(pebble.JemallocSizeClasses) {
@@ -401,6 +410,9 @@ type TestOptions struct {
 	// excises. However !useExcise && !useSharedReplicate can be used to guarantee
 	// lack of excises.
 	useExcise bool
+	// useDeleteOnlyCompactionExcises turns on the ability for delete-only compactions
+	// to do excises. Note that this can be true even when useExcise is false.
+	useDeleteOnlyCompactionExcises bool
 }
 
 // InitRemoteStorageFactory initializes Opts.Experimental.RemoteStorage.
@@ -836,6 +848,10 @@ func RandomOptions(
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatVirtualSSTables
 		}
+	}
+	testOpts.useDeleteOnlyCompactionExcises = rng.IntN(2) == 0
+	opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool {
+		return testOpts.useDeleteOnlyCompactionExcises
 	}
 	testOpts.InitRemoteStorageFactory()
 	testOpts.Opts.EnsureDefaults()
