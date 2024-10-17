@@ -71,7 +71,7 @@ func (w *Writer) encodeFragmentedRangeKeySpan(s keyspan.Span) {
 	//
 	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
 	// we may want to in the future.
-	keyspan.SortKeysBySuffix(w.comparer.CompareSuffixes, s.Keys)
+	keyspan.SortKeysBySuffix(w.comparer.CompareRangeSuffixes, s.Keys)
 
 	if w.Error() == nil {
 		w.rw.EncodeSpan(s)

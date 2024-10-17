@@ -57,11 +57,10 @@ type Reader struct {
 	filterMetricsTracker *FilterMetricsTracker
 	logger               base.LoggerAndTracer
 
-	Comparer  *base.Comparer
-	Compare   Compare
-	SuffixCmp CompareSuffixes
-	Equal     Equal
-	Split     Split
+	Comparer *base.Comparer
+	Compare  Compare
+	Equal    Equal
+	Split    Split
 
 	tableFilter *tableFilterReader
 
@@ -289,7 +288,7 @@ func (r *Reader) NewRawRangeDelIter(
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {
-		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareSuffixes, r.Split, h, transforms)
+		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareRangeSuffixes, r.Split, h, transforms)
 		if err != nil {
 			return nil, err
 		}
@@ -314,7 +313,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {
-		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareSuffixes, r.Split, h, transforms)
+		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareRangeSuffixes, r.Split, h, transforms)
 		if err != nil {
 			return nil, err
 		}
@@ -1015,13 +1014,11 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Comparer = o.Comparer
 		r.Compare = o.Comparer.Compare
-		r.SuffixCmp = o.Comparer.CompareSuffixes
 		r.Equal = o.Comparer.Equal
 		r.Split = o.Comparer.Split
 	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
 		r.Comparer = o.Comparer
 		r.Compare = comparer.Compare
-		r.SuffixCmp = comparer.CompareSuffixes
 		r.Equal = comparer.Equal
 		r.Split = comparer.Split
 	} else {
