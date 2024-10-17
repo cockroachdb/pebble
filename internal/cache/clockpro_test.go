@@ -40,13 +40,13 @@ func TestCache(t *testing.T) {
 
 		var hit bool
 		h := cache.Get(1, base.DiskFileNum(key), 0)
-		if v := h.Get(); v == nil {
+		if !h.Valid() {
 			value := Alloc(1)
 			value.Buf()[0] = fields[0][0]
 			cache.Set(1, base.DiskFileNum(key), 0, value).Release()
 		} else {
 			hit = true
-			if !bytes.Equal(v, fields[0][:1]) {
+			if v := h.RawBuffer(); !bytes.Equal(v, fields[0][:1]) {
 				t.Errorf("%d: cache returned bad data: got %s , want %s\n", line, v, fields[0][:1])
 			}
 		}
@@ -79,15 +79,13 @@ func TestCacheDelete(t *testing.T) {
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	if h := cache.Get(1, base.DiskFileNum(0), 0); h.Get() == nil {
+	if h := cache.Get(1, base.DiskFileNum(0), 0); !h.Valid() {
 		t.Fatalf("expected to find block 0/0")
 	} else {
 		h.Release()
 	}
-	if h := cache.Get(1, base.DiskFileNum(1), 0); h.Get() != nil {
+	if h := cache.Get(1, base.DiskFileNum(1), 0); h.Valid() {
 		t.Fatalf("expected to not find block 1/0")
-	} else {
-		h.Release()
 	}
 	// Deleting a non-existing block does nothing.
 	cache.Delete(1, base.DiskFileNum(1), 0)
@@ -146,15 +144,14 @@ func TestMultipleDBs(t *testing.T) {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
 	h := cache.Get(1, base.DiskFileNum(0), 0)
-	if v := h.Get(); v != nil {
-		t.Fatalf("expected not present, but found %s", v)
+	if h.Valid() {
+		t.Fatalf("expected not present, but found %#v", h)
 	}
 	h = cache.Get(2, base.DiskFileNum(0), 0)
-	if v := h.Get(); string(v) != "bbbbb" {
+	if v := h.RawBuffer(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %s", v)
-	} else {
-		h.Release()
 	}
+	h.Release()
 }
 
 func TestZeroSize(t *testing.T) {
@@ -242,7 +239,7 @@ func BenchmarkCacheGet(b *testing.B) {
 
 		for pb.Next() {
 			h := cache.Get(1, base.DiskFileNum(0), uint64(rng.IntN(size)))
-			if h.Get() == nil {
+			if !h.Valid() {
 				b.Fatal("failed to lookup value")
 			}
 			h.Release()

@@ -24,7 +24,7 @@ import (
 func TestBlockFragmentIterator(t *testing.T) {
 	comparer := testkeys.Comparer
 	var cacheVal *cache.Value
-	c := cache.New(1024)
+	c := cache.New(2048)
 	defer func() {
 		c.Unref()
 		if cacheVal != nil {
@@ -67,13 +67,14 @@ func TestBlockFragmentIterator(t *testing.T) {
 			}
 			blockData := w.Finish()
 
-			oldCacheVal := cacheVal
-			cacheVal = cache.Alloc(len(blockData))
-			copy(cacheVal.Buf(), blockData)
-			c.Set(1, 0, 0, cacheVal)
-			if oldCacheVal != nil {
-				cache.Free(oldCacheVal)
+			// Evict and free the previous block.
+			c.EvictFile(1, 0)
+			if cacheVal != nil {
+				cache.Free(cacheVal)
 			}
+			cacheVal = cache.Alloc(block.MetadataSize + len(blockData))
+			copy(cacheVal.Buf()[block.MetadataSize:], blockData)
+			c.Set(1, 0, 0, cacheVal)
 
 			for _, s := range spans {
 				buf.WriteString(s.String() + "\n")
@@ -95,6 +96,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 			}
 
 			blockHandle := block.CacheBufferHandle(c.Get(1, 0, 0))
+			require.True(t, blockHandle.Valid())
 			i, err := NewFragmentIter(0, comparer.Compare, comparer.CompareSuffixes, comparer.Split, blockHandle, transforms)
 			defer i.Close()
 			require.NoError(t, err)

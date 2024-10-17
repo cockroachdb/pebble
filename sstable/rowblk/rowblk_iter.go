@@ -261,7 +261,7 @@ func (i *Iter) InitHandle(
 ) error {
 	i.handle.Release()
 	i.handle = block
-	return i.Init(cmp, split, block.Get(), transforms)
+	return i.Init(cmp, split, block.BlockData(), transforms)
 }
 
 // SetHasValuePrefix sets whether or not the block iterator should expect values

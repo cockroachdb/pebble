@@ -190,10 +190,10 @@ func (l *Layout) Describe(
 					return err
 				}
 				if fmtKV == nil {
-					formatting.formatDataBlock(tpNode, r, *b, h.Get(), nil)
+					formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), nil)
 				} else {
 					var lastKey InternalKey
-					formatting.formatDataBlock(tpNode, r, *b, h.Get(), func(key *base.InternalKey, value []byte) string {
+					formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), func(key *base.InternalKey, value []byte) string {
 						v := fmtKV(key, value)
 						if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
 							v += " WARNING: OUT OF ORDER KEYS!"
@@ -205,42 +205,36 @@ func (l *Layout) Describe(
 				}
 
 			case "range-del":
-				if b.Handle != r.rangeDelBH {
-					return base.AssertionFailedf("range-del block handle does not match rangeDelBH")
-				}
-				h, err = r.readRangeDelBlock(ctx, noEnv)
+				h, err = r.readRangeDelBlock(ctx, noEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
 				// TODO(jackson): colblk ignores fmtKV, because it doesn't
 				// make sense in the context.
-				formatting.formatKeyspanBlock(tpNode, r, *b, h.Get(), fmtKV)
+				formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
 
 			case "range-key":
-				if b.Handle != r.rangeKeyBH {
-					return base.AssertionFailedf("range-del block handle does not match rangeDelBH")
-				}
-				h, err = r.readRangeKeyBlock(ctx, noEnv)
+				h, err = r.readRangeKeyBlock(ctx, noEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
 				// TODO(jackson): colblk ignores fmtKV, because it doesn't
 				// make sense in the context.
-				formatting.formatKeyspanBlock(tpNode, r, *b, h.Get(), fmtKV)
+				formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
 
 			case "index", "top-index":
 				h, err = r.readIndexBlock(ctx, noEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
-				formatting.formatIndexBlock(tpNode, r, *b, h.Get())
+				formatting.formatIndexBlock(tpNode, r, *b, h.BlockData())
 
 			case "properties":
-				h, err = r.readBlockInternal(ctx, noEnv, noReadHandle, b.Handle)
+				h, err = r.readBlockInternal(ctx, noEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
+				iter, _ := rowblk.NewRawIter(r.Compare, h.BlockData())
 				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					fmt.Fprintf(w, "%05d    %s (%d)", enc.Offset, key.UserKey, enc.Length)
 				})
@@ -253,7 +247,7 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Compare, h.Get())
+				iter, _ := rowblk.NewRawIter(r.Compare, h.BlockData())
 				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					var bh block.Handle
 					var n int
