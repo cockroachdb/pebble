@@ -99,11 +99,11 @@ func CopySpan(
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
 	if r.tableFilter != nil {
-		filterBlock, err := r.readFilterBlock(ctx, noEnv, rh)
+		filterBlock, err := r.readFilterBlock(ctx, noEnv, rh, r.filterBH)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
-		filterBytes := append([]byte{}, filterBlock.Get()...)
+		filterBytes := append([]byte{}, filterBlock.BlockData()...)
 		filterBlock.Release()
 		w.copyFilter(filterBytes, r.Properties.FilterPolicyName)
 	}
@@ -132,7 +132,7 @@ func CopySpan(
 
 	for i := range blocks {
 		h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, blocks[i].bh.Offset)
-		if h.Get() == nil {
+		if !h.Valid() {
 			// Cache miss. Add this block to the list of blocks that are not in cache.
 			blocksNotInCache = blocks[i-len(blocksNotInCache) : i+1]
 			continue
@@ -150,7 +150,7 @@ func CopySpan(
 			blocksNotInCache = nil
 		}
 
-		err := w.addDataBlock(h.Get(), blocks[i].sep, blocks[i].bh)
+		err := w.addDataBlock(block.CacheBufferHandle(h).BlockData(), blocks[i].sep, blocks[i].bh)
 		h.Release()
 		if err != nil {
 			return 0, err
@@ -209,7 +209,7 @@ func intersectingIndexEntries(
 	start, end InternalKey,
 ) ([]indexEntry, error) {
 	top := r.tableFormat.newIndexIter()
-	err := top.Init(r.Compare, r.Split, indexH.Get(), NoTransforms)
+	err := top.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func intersectingIndexEntries(
 			defer subBlk.Release() // in-loop, but it is a short loop.
 
 			sub := r.tableFormat.newIndexIter()
-			err = sub.Init(r.Compare, r.Split, subBlk.Get(), NoTransforms)
+			err = sub.Init(r.Compare, r.Split, subBlk.BlockData(), NoTransforms)
 			if err != nil {
 				return nil, err
 			}

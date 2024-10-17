@@ -59,14 +59,17 @@ type Handle struct {
 	value *Value
 }
 
-// Get returns the value stored in handle.
-func (h Handle) Get() []byte {
-	if h.value != nil {
-		// NB: We don't increment shard.hits in this code path because we only want
-		// to record a hit when the handle is retrieved from the cache.
-		return h.value.buf
-	}
-	return nil
+// Valid returns true if the handle holds a value.
+func (h Handle) Valid() bool {
+	return h.value != nil
+}
+
+// RawBuffer returns the value buffer. Note that this buffer holds the block
+// metadata and the data and should be used through a block.BufferHandle.
+func (h Handle) RawBuffer() []byte {
+	// NB: We don't increment shard.hits in this code path because we only want
+	// to record a hit when the handle is retrieved from the cache.
+	return h.value.buf
 }
 
 // Release releases the reference to the cache entry.

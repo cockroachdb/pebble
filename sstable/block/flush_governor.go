@@ -38,7 +38,7 @@ const maxFlushBoundaries = 4
 // within a 1024B class. However, when loaded into the block cache we also
 // allocate space for the cache entry metadata. The new allocation may now only
 // fit within a 2048B class, which increases internal fragmentation.
-const blockAllocationOverhead = cache.ValueMetadataSize
+const blockAllocationOverhead = cache.ValueMetadataSize + MetadataSize
 
 // MakeFlushGovernor initializes a flush controller.
 //

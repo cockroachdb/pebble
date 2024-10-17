@@ -840,7 +840,7 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 			return nil, err
 		}
 		r.vbiCache = ch
-		r.vbiBlock = ch.Get()
+		r.vbiBlock = ch.BlockData()
 	}
 	if r.valueBlock == nil || r.valueBlockNum != vh.blockNum {
 		vbh, err := r.getBlockHandle(vh.blockNum)
@@ -854,7 +854,7 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 		r.valueBlockNum = vh.blockNum
 		r.valueCache.Release()
 		r.valueCache = vbCacheHandle
-		r.valueBlock = vbCacheHandle.Get()
+		r.valueBlock = vbCacheHandle.BlockData()
 		r.valueBlockPtr = unsafe.Pointer(&r.valueBlock[0])
 	}
 	if r.stats != nil {
