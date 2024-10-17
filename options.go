@@ -840,6 +840,12 @@ type Options struct {
 		//   which will later be consumed by SingleDelete#3. The violation will
 		//   not be detected and the DB will be correct.
 		SingleDeleteInvariantViolationCallback func(userKey []byte)
+
+		// EnableDeleteOnlyCompactionExcises enables delete-only compactions to also
+		// apply delete-only compaction hints on sstables that partially overlap
+		// with it. This application happens through an excise, similar to
+		// the excise phase of IngestAndExcise.
+		EnableDeleteOnlyCompactionExcises func() bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
