@@ -36,7 +36,7 @@ func TestComparer(t *testing.T) {
 				// Append a suffix that encodes a zero logical value that should be
 				// ignored in key comparisons, but not suffix comparisons.
 				newSuffix := slices.Concat(suffix[:withWall-1], zeroLogical[:], []byte{withLogical})
-				if Comparer.CompareSuffixes(suffix, newSuffix) != 1 {
+				if Comparer.CompareRangeSuffixes(suffix, newSuffix) != 1 {
 					t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
 				}
 				if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
@@ -51,7 +51,7 @@ func TestComparer(t *testing.T) {
 			// Append a synthetic bit that should be ignored in key comparisons, but
 			// not suffix comparisons.
 			newSuffix := slices.Concat(suffix[:withLogical-1], []byte{1}, []byte{withSynthetic})
-			if Comparer.CompareSuffixes(suffix, newSuffix) != 1 {
+			if Comparer.CompareRangeSuffixes(suffix, newSuffix) != 1 {
 				t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
 			}
 			if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {

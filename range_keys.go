@@ -226,7 +226,7 @@ func containsAnyRangeKeys(iter manifest.LevelIterator) bool {
 
 type rangeKeyMasking struct {
 	cmp       base.Compare
-	suffixCmp base.CompareSuffixes
+	suffixCmp base.CompareRangeSuffixes
 	split     base.Split
 	filter    BlockPropertyFilterMask
 	// maskActiveSuffix holds the suffix of a range key currently acting as a
@@ -246,7 +246,7 @@ type rangeKeyMasking struct {
 
 func (m *rangeKeyMasking) init(parent *Iterator, c *base.Comparer) {
 	m.cmp = c.Compare
-	m.suffixCmp = c.CompareSuffixes
+	m.suffixCmp = c.CompareRangeSuffixes
 	m.split = c.Split
 	if parent.opts.RangeKeyMasking.Filter != nil {
 		m.filter = parent.opts.RangeKeyMasking.Filter()

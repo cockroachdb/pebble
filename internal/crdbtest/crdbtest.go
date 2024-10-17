@@ -36,10 +36,11 @@ const MaxSuffixLen = max(withLockTableLen, withSynthetic, withLogical, withWall)
 
 // Comparer is a base.Comparer for CockroachDB keys.
 var Comparer = base.Comparer{
-	Split:           Split,
-	CompareSuffixes: CompareSuffixes,
-	Compare:         Compare,
-	Equal:           Equal,
+	Split:                Split,
+	ComparePointSuffixes: CompareSuffixes,
+	CompareRangeSuffixes: CompareSuffixes,
+	Compare:              Compare,
+	Equal:                Equal,
 	AbbreviatedKey: func(k []byte) uint64 {
 		key, ok := getKeyPartFromEngineKey(k)
 		if !ok {

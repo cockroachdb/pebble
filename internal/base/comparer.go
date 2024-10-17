@@ -26,37 +26,51 @@ import (
 //
 // A key a is less than b if a's prefix is byte-wise less than b's prefix, or if
 // the prefixes are equal and a's suffix is less than b's suffix (according to
-// CompareSuffixes).
+// ComparePointSuffixes).
 //
 // In other words, if prefix(a) = a[:Split(a)] and suffix(a) = a[Split(a):]:
 //
 //	  Compare(a, b) = bytes.Compare(prefix(a), prefix(b)) if not 0,
-//		                otherwise either 0 or CompareSuffixes(suffix(a), suffix(b))
-//
-// The "either 0" part is because CompareSuffixes is allowed to be more strict;
-// see CompareSuffixes.
+//		                otherwise ComparePointSuffixes(suffix(a), suffix(b))
 //
 // Compare defaults to using the formula above but it can be customized if there
 // is a (potentially faster) specialization or it has to compare suffixes
 // differently.
 type Compare func(a, b []byte) int
 
-// CompareSuffixes compares two key suffixes and returns -1, 0, or +1.
+// CompareRangeSuffixes compares two suffixes where either or both suffix
+// originates from a range key and returns -1, 0, or +1.
 //
 // For historical reasons (see
 // https://github.com/cockroachdb/cockroach/issues/130533 for a summary), we
 // allow this function to be more strict than Compare. Specifically, Compare may
-// treat two suffixes as equal whereas CompareSuffixes might not.
+// treat two suffixes as equal whereas CompareRangeSuffixes might not.
+//
+// CompareRangeSuffixes is allowed to be more strict than see
+// ComparePointSuffixes, meaning it may return -1 or +1 when
+// ComparePointSuffixes would return 0.
+//
+// The empty slice suffix must be 'less than' any non-empty suffix.
+type CompareRangeSuffixes func(a, b []byte) int
+
+// ComparePointSuffixes compares two point key suffixes and returns -1, 0, or +1.
+//
+// For historical reasons (see
+// https://github.com/cockroachdb/cockroach/issues/130533 for a summary), this
+// function is distinct from CompareRangeSuffixes. Specifically,
+// ComparePointSuffixes may treat two suffixes as equal whereas
+// CompareRangeSuffixes might not. Unlike CompareRangeSuffixes, this function
+// must agree with Compare.
 //
 // The empty slice suffix must be 'less than' any non-empty suffix.
 //
 // A full key k is composed of a prefix k[:Split(k)] and suffix k[Split(k):].
 // Suffixes are compared to break ties between equal prefixes.
-type CompareSuffixes func(a, b []byte) int
+type ComparePointSuffixes func(a, b []byte) int
 
-// defaultCompare implements Compare in terms of Split and CompareSuffixes, as
+// defaultCompare implements Compare in terms of Split and ComparePointSuffixes, as
 // mentioned above.
-func defaultCompare(split Split, compareSuffixes CompareSuffixes, a, b []byte) int {
+func defaultCompare(split Split, compareSuffixes ComparePointSuffixes, a, b []byte) int {
 	an := split(a)
 	bn := split(b)
 	if prefixCmp := bytes.Compare(a[:an], b[:bn]); prefixCmp != 0 {
@@ -191,11 +205,13 @@ type Comparer struct {
 	// if it is not specified.
 	Split Split
 
-	// CompareSuffixes defaults to bytes.Compare if it is not specified.
-	CompareSuffixes CompareSuffixes
+	// CompareRangeSuffixes defaults to bytes.Compare if it is not specified.
+	CompareRangeSuffixes CompareRangeSuffixes
+	// ComparePointSuffixes defaults to bytes.Compare if it is not specified.
+	ComparePointSuffixes ComparePointSuffixes
 
 	// Compare defaults to a generic implementation that uses Split,
-	// bytes.Compare, and CompareSuffixes if it is not specified.
+	// bytes.Compare, and ComparePointSuffixes if it is not specified.
 	Compare Compare
 	// Equal defaults to using Compare() == 0 if it is not specified.
 	Equal Equal
@@ -225,7 +241,7 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	if c.AbbreviatedKey == nil || c.Separator == nil || c.Successor == nil || c.Name == "" {
 		panic("invalid Comparer: mandatory field not set")
 	}
-	if c.CompareSuffixes != nil && c.Compare != nil && c.Equal != nil && c.Split != nil && c.FormatKey != nil {
+	if c.CompareRangeSuffixes != nil && c.Compare != nil && c.Equal != nil && c.Split != nil && c.FormatKey != nil {
 		return c
 	}
 	n := &Comparer{}
@@ -234,17 +250,17 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	if n.Split == nil {
 		n.Split = DefaultSplit
 	}
-	if n.CompareSuffixes == nil && n.Compare == nil && n.Equal == nil {
-		n.CompareSuffixes = bytes.Compare
+	if n.CompareRangeSuffixes == nil && n.Compare == nil && n.Equal == nil {
+		n.CompareRangeSuffixes = bytes.Compare
 		n.Compare = bytes.Compare
 		n.Equal = bytes.Equal
 	} else {
-		if n.CompareSuffixes == nil {
-			n.CompareSuffixes = bytes.Compare
+		if n.CompareRangeSuffixes == nil {
+			n.CompareRangeSuffixes = bytes.Compare
 		}
 		if n.Compare == nil {
 			n.Compare = func(a, b []byte) int {
-				return defaultCompare(n.Split, n.CompareSuffixes, a, b)
+				return defaultCompare(n.Split, n.ComparePointSuffixes, a, b)
 			}
 		}
 		if n.Equal == nil {
@@ -262,9 +278,10 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 // DefaultComparer is the default implementation of the Comparer interface.
 // It uses the natural ordering, consistent with bytes.Compare.
 var DefaultComparer = &Comparer{
-	CompareSuffixes: bytes.Compare,
-	Compare:         bytes.Compare,
-	Equal:           bytes.Equal,
+	ComparePointSuffixes: bytes.Compare,
+	CompareRangeSuffixes: bytes.Compare,
+	Compare:              bytes.Compare,
+	Equal:                bytes.Equal,
 
 	AbbreviatedKey: func(key []byte) uint64 {
 		if len(key) >= 8 {
@@ -394,7 +411,7 @@ func MakeAssertComparer(c Comparer) Comparer {
 		Compare: func(a []byte, b []byte) int {
 			res := c.Compare(a, b)
 			// Verify that Compare is consistent with the default implementation.
-			if expected := defaultCompare(c.Split, c.CompareSuffixes, a, b); res != expected {
+			if expected := defaultCompare(c.Split, c.ComparePointSuffixes, a, b); res != expected {
 				panic(AssertionFailedf("%s: Compare(%s, %s)=%d, expected %d",
 					c.Name, c.FormatKey(a), c.FormatKey(b), res, expected))
 			}
@@ -411,15 +428,16 @@ func MakeAssertComparer(c Comparer) Comparer {
 		},
 
 		// TODO(radu): add more checks.
-		CompareSuffixes:    c.CompareSuffixes,
-		AbbreviatedKey:     c.AbbreviatedKey,
-		Separator:          c.Separator,
-		Successor:          c.Successor,
-		ImmediateSuccessor: c.ImmediateSuccessor,
-		FormatKey:          c.FormatKey,
-		Split:              c.Split,
-		FormatValue:        c.FormatValue,
-		Name:               c.Name,
+		ComparePointSuffixes: c.ComparePointSuffixes,
+		CompareRangeSuffixes: c.CompareRangeSuffixes,
+		AbbreviatedKey:       c.AbbreviatedKey,
+		Separator:            c.Separator,
+		Successor:            c.Successor,
+		ImmediateSuccessor:   c.ImmediateSuccessor,
+		FormatKey:            c.FormatKey,
+		Split:                c.Split,
+		FormatValue:          c.FormatValue,
+		Name:                 c.Name,
 	}
 }
 
@@ -432,9 +450,14 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 	suffixes = append(suffixes, nil)
 
 	// Verify the suffixes have a consistent ordering.
-	slices.SortFunc(suffixes, c.CompareSuffixes)
-	if !slices.IsSortedFunc(suffixes, c.CompareSuffixes) {
-		return errors.Errorf("CompareSuffixes is inconsistent")
+	slices.SortFunc(suffixes, c.CompareRangeSuffixes)
+	if !slices.IsSortedFunc(suffixes, c.CompareRangeSuffixes) {
+		return errors.Errorf("CompareRangeSuffixes is inconsistent")
+	}
+	// Verify the suffixes have a consistent ordering.
+	slices.SortFunc(suffixes, c.ComparePointSuffixes)
+	if !slices.IsSortedFunc(suffixes, c.ComparePointSuffixes) {
+		return errors.Errorf("ComparePointSuffixes is inconsistent")
 	}
 
 	n := len(prefixes)
@@ -456,7 +479,7 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 		for i := 1; i < len(suffixes); i++ {
 			a := slices.Concat(p, suffixes[i-1])
 			b := slices.Concat(p, suffixes[i])
-			// Make sure the Compare function agrees with CompareSuffixes, with the
+			// Make sure the Compare function agrees with ComparePointSuffixes, with the
 			// caveat that it can consider some consecutive suffixes to be equal.
 			if cmp := c.Compare(a, b); cmp > 0 {
 				return errors.Errorf("Compare(%s, %s)=%d, expected <= 0", c.FormatKey(a), c.FormatKey(b), cmp)
@@ -482,9 +505,9 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 						}
 					} else {
 						// We allow Compare to return equality for suffixes even when
-						// CompareSuffixes does not.
+						// CompareRangeSuffixes does not.
 						if result != 0 {
-							if suffixCmp := c.CompareSuffixes(as, bs); result != suffixCmp {
+							if suffixCmp := c.CompareRangeSuffixes(as, bs); result != suffixCmp {
 								return errors.Errorf("Compare(%s, %s)=%d, expected %d", c.FormatKey(a), c.FormatKey(b), result, suffixCmp)
 							}
 						}

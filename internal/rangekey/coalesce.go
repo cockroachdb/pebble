@@ -49,7 +49,7 @@ import (
 // set or unset but not both.
 //
 // The resulting dst Keys slice is sorted by InternalKeyTrailer.
-func Coalesce(suffixCmp base.CompareSuffixes, keys []keyspan.Key, dst *[]keyspan.Key) {
+func Coalesce(suffixCmp base.CompareRangeSuffixes, keys []keyspan.Key, dst *[]keyspan.Key) {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
 	*dst = CoalesceInto(suffixCmp, (*dst)[:0], math.MaxUint64, keys)
@@ -61,7 +61,7 @@ func Coalesce(suffixCmp base.CompareSuffixes, keys []keyspan.Key, dst *[]keyspan
 // CoalesceInto is a variant of Coalesce which outputs the results into dst
 // without sorting them.
 func CoalesceInto(
-	suffixCmp base.CompareSuffixes, dst []keyspan.Key, snapshot base.SeqNum, keys []keyspan.Key,
+	suffixCmp base.CompareRangeSuffixes, dst []keyspan.Key, snapshot base.SeqNum, keys []keyspan.Key,
 ) []keyspan.Key {
 	dst = dst[:0]
 	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
@@ -165,7 +165,7 @@ type ForeignSSTTransformer struct {
 
 // Transform implements the Transformer interface.
 func (f *ForeignSSTTransformer) Transform(
-	suffixCmp base.CompareSuffixes, s keyspan.Span, dst *keyspan.Span,
+	suffixCmp base.CompareRangeSuffixes, s keyspan.Span, dst *keyspan.Span,
 ) error {
 	// Apply shadowing of keys.
 	dst.Start = s.Start
