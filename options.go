@@ -1188,6 +1188,9 @@ type WALFailoverOptions struct {
 // ReadaheadConfig controls the use of read-ahead.
 type ReadaheadConfig = objstorageprovider.ReadaheadConfig
 
+// JemallocSizeClasses exports sstable.JemallocSizeClasses.
+var JemallocSizeClasses = sstable.JemallocSizeClasses
+
 // DebugCheckLevels calls CheckLevels on the provided database.
 // It may be set in the DebugCheck field of Options to check
 // level invariants whenever a new version is installed.
