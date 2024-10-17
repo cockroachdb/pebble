@@ -338,8 +338,11 @@ func (d *DB) FormatMajorVersion() FormatMajorVersion {
 	return FormatMajorVersion(d.mu.formatVers.vers.Load())
 }
 
-// tableFormat returns the TableFormat that new sstables should use.
-func (d *DB) tableFormat() sstable.TableFormat {
+// TableFormat returns the TableFormat that the database is currently using when
+// writing sstables. The table format is determined by the database's format
+// major version, as well as experimental settings like EnableValueBlocks and
+// EnableColumnarBlocks.
+func (d *DB) TableFormat() sstable.TableFormat {
 	// The table is typically written at the maximum allowable format implied by
 	// the current format major version of the DB.
 	f := d.FormatMajorVersion().MaxTableFormat()

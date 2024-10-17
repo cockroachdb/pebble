@@ -2390,7 +2390,7 @@ func (d *DB) runCopyCompaction(
 			var err error
 			wrote, err = sstable.CopySpan(ctx,
 				src, r.UnsafeReader(), d.opts.MakeReaderOptions(),
-				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.FormatMajorVersion().MaxTableFormat()),
+				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),
 				start, end,
 			)
 			return err
@@ -2735,7 +2735,7 @@ func (d *DB) runCompaction(
 	// The table is typically written at the maximum allowable format implied by
 	// the current format major version of the DB, but Options may define
 	// additional constraints.
-	tableFormat := d.tableFormat()
+	tableFormat := d.TableFormat()
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
