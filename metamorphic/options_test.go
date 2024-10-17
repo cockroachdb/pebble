@@ -79,6 +79,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.IngestSplit:",
 		"Experimental.RemoteStorage:",
 		"Experimental.SingleDeleteInvariantViolationCallback:",
+		"Experimental.EnableDeleteOnlyCompactionExcises:",
 		"Levels[0].Compression:",
 		"Levels[1].Compression:",
 		"Levels[2].Compression:",
