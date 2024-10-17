@@ -1667,7 +1667,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					}
 				}
 			case "comparer":
-				o.Comparer, err = parseComparer(value)
+				var comparer *Comparer
+				comparer, err = parseComparer(value)
+				if comparer != nil {
+					o.Comparer = comparer
+				}
 			case "compaction_debt_concurrency":
 				o.Experimental.CompactionDebtConcurrency, err = strconv.ParseUint(value, 10, 64)
 			case "delete_range_flush_delay":
