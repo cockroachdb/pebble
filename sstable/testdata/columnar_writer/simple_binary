@@ -139,7 +139,7 @@ rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
 obsolete-key: hex:01
 pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
 
-build block-size=150
+build block-size=310
 a.SET.1:apple
 b.SET.1:banana
 c.SET.1:cantelope

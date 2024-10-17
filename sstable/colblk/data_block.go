@@ -742,6 +742,27 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 // for the corresponding DataBlockDecoder.
 const DataBlockDecoderSize = unsafe.Sizeof(DataBlockDecoder{})
 
+// Assert that a DataBlockDecoder can fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(DataBlockDecoderSize)
+
+// InitDataBlockMetadata initializes the metadata for a data block.
+func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (err error) {
+	if uintptr(unsafe.Pointer(md))%8 != 0 {
+		return errors.AssertionFailedf("metadata is not 8-byte aligned")
+	}
+	d := (*DataBlockDecoder)(unsafe.Pointer(md))
+	// Initialization can panic; convert panics to corruption errors (so higher
+	// layers can add file number and offset information).
+	defer func() {
+		if r := recover(); r != nil {
+			err = base.CorruptionErrorf("error initializing data block metadata: %v", r)
+		}
+	}()
+	d.Init(schema, data)
+	// TODO(radu): Initialize the KeySeeker here as well.
+	return nil
+}
+
 // A DataBlockDecoder holds state for interpreting a columnar data block. It may
 // be shared among multiple DataBlockIters.
 type DataBlockDecoder struct {
@@ -799,7 +820,7 @@ func (d *DataBlockDecoder) Init(schema KeySchema, data []byte) {
 }
 
 // Describe descirbes the binary format of the data block, assuming f.Offset()
-// is positioned at the beginning of the same data block described by r.
+// is positioned at the beginning of the same data block described by d.
 func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
@@ -860,8 +881,6 @@ type DataBlockIter struct {
 	// It is used to optimize skipping of obsolete points during forward
 	// iteration.
 	nextObsoletePoint int
-
-	decoderAlloc DataBlockDecoder
 }
 
 // InitOnce configures the data block iterator's key schema and lazy value
@@ -881,13 +900,13 @@ func (i *DataBlockIter) InitOnce(
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided reader.
-func (i *DataBlockIter) Init(r *DataBlockDecoder, transforms block.IterTransforms) error {
-	i.d = r
+func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransforms) error {
+	i.d = d
 	// Leave i.h unchanged.
-	numRows := int(r.d.header.Rows)
+	numRows := int(d.d.header.Rows)
 	i.maxRow = numRows - 1
 	i.transforms = transforms
-	if i.transforms.HideObsoletePoints && r.isObsolete.SeekSetBitGE(0) == numRows {
+	if i.transforms.HideObsoletePoints && d.isObsolete.SeekSetBitGE(0) == numRows {
 		// There are no obsolete points in the block; don't bother checking.
 		i.transforms.HideObsoletePoints = false
 	}
@@ -898,27 +917,28 @@ func (i *DataBlockIter) Init(r *DataBlockDecoder, transforms block.IterTransform
 	}
 
 	// The worst case is when the largest key in the block has no suffix.
-	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(r.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
+	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(d.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
 	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
 	i.row = -1
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
 	i.nextObsoletePoint = 0
-	return i.keySeeker.Init(r)
+	return i.keySeeker.Init(d)
 }
 
-// InitHandle initializes the block from the provided buffer handle.
+// InitHandle initializes the block from the provided buffer handle. InitHandle
+// assumes that the block's metadata was initialized using
+// InitDataBlockMetadata().
 func (i *DataBlockIter) InitHandle(
 	cmp base.Compare, split base.Split, h block.BufferHandle, transforms block.IterTransforms,
 ) error {
 	i.cmp = cmp
 	i.split = split
-	i.d = &i.decoderAlloc
-	i.decoderAlloc.Init(i.keySchema, h.Get())
+	i.d = (*DataBlockDecoder)(unsafe.Pointer(h.BlockMetadata()))
 	i.h.Release()
 	i.h = h
 
-	numRows := int(i.decoderAlloc.d.header.Rows)
+	numRows := int(i.d.d.header.Rows)
 	i.maxRow = numRows - 1
 
 	i.transforms = transforms
@@ -1161,7 +1181,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 	}
-	// Inline i.r.values.At(row).
+	// Inline i.d.values.At(row).
 	v := i.d.values.slice(i.d.values.offsets.At2(i.row))
 	if i.d.isValueExternal.At(i.row) {
 		i.kv.V = i.getLazyValuer.GetLazyValueForPrefixAndValueHandle(v)
@@ -1327,7 +1347,7 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 				i.kv.K.SetSeqNum(base.SeqNum(n))
 			}
 		}
-		// Inline i.r.values.At(row).
+		// Inline i.d.values.At(row).
 		startOffset := i.d.values.offsets.At(i.row)
 		v := unsafe.Slice((*byte)(i.d.values.ptr(startOffset)), i.d.values.offsets.At(i.row+1)-startOffset)
 		if i.d.isValueExternal.At(i.row) {
@@ -1376,6 +1396,5 @@ func (i *DataBlockIter) Close() error {
 	i.h = block.BufferHandle{}
 	i.transforms = block.IterTransforms{}
 	i.kv = base.InternalKV{}
-	i.decoderAlloc = DataBlockDecoder{}
 	return nil
 }
