@@ -163,6 +163,9 @@ func parseOptions(
 			case "TestOptions.use_excise":
 				opts.useExcise = true
 				return true
+			case "TestOptions.use_jemalloc_size_classes":
+				opts.Opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -255,6 +258,12 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
+	}
+	if opts.Opts.AllocatorSizeClasses != nil {
+		if fmt.Sprint(opts.Opts.AllocatorSizeClasses) != fmt.Sprint(pebble.JemallocSizeClasses) {
+			panic(fmt.Sprintf("unexpected AllocatorSizeClasses %v", opts.Opts.AllocatorSizeClasses))
+		}
+		fmt.Fprint(&buf, "  use_jemalloc_size_classes=true\n")
 	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
@@ -445,6 +454,8 @@ func standardOptions() []*TestOptions {
 		2: `
 [Options]
   disable_wal=true
+[TestOptions]
+  use_jemalloc_size_classes=true
 `,
 		3: `
 [Options]
@@ -524,7 +535,8 @@ func standardOptions() []*TestOptions {
 `,
 		21: `
 [TestOptions]
- use_disk=true
+  use_disk=true
+  use_jemalloc_size_classes=true
 `,
 		22: `
 [Options]
@@ -542,6 +554,7 @@ func standardOptions() []*TestOptions {
 		25: `
 [TestOptions]
   enable_value_blocks=true
+  use_jemalloc_size_classes=true
 `,
 		26: fmt.Sprintf(`
 [Options]
@@ -704,6 +717,9 @@ func RandomOptions(
 			AddPropensity: rng.Float64() * float64(rng.IntN(3)), // [0,3.0)
 			AllowL0:       rng.IntN(4) == 1,                     // 25% of the time
 		}
+	}
+	if rng.IntN(2) == 0 {
+		opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 	}
 
 	var lopts pebble.LevelOptions

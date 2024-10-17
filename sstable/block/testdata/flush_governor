@@ -84,3 +84,26 @@ init target-block-size=1000 size-class-aware-threshold=60 size-classes=(500, 600
 low watermark: 600
 high watermark: 1018
 boundaries: [818 868 918 968]
+
+# Test with jemalloc boundaries.
+init target-block-size=32768 jemalloc-size-classes
+----
+low watermark: 19661
+high watermark: 40928
+boundaries: [20448 24544 28640 32736]
+
+# We should flush to avoid exceeding the boundary.
+should-flush size-before=32000 size-after=32766
+----
+should flush
+
+# We should not flush since we waste less space against the 40KiB boundary.
+should-flush size-before=30000 size-after=39000
+----
+should not flush
+
+# We should flush even if we would waste less space against the 48KiB boundary
+# (it's not the first boundary after the target size).
+should-flush size-before=39000 size-after=48500
+----
+should flush

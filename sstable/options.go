@@ -302,6 +302,23 @@ type WriterOptions struct {
 	disableObsoleteCollector bool
 }
 
+// JemallocSizeClasses are a subset of available size classes in jemalloc[1],
+// suitable for the AllocatorSizeClasses option.
+//
+// The size classes are used when writing sstables for determining target block
+// sizes for flushes, with the goal of reducing internal memory fragmentation
+// when the blocks are later loaded into the block cache. We only use the size
+// classes between 16KiB - 256KiB as block limits fall in that range.
+//
+// [1] https://jemalloc.net/jemalloc.3.html#size_classes
+var JemallocSizeClasses = []int{
+	16 * 1024,
+	20 * 1024, 24 * 1024, 28 * 1024, 32 * 1024, // 4KiB spacing
+	40 * 1024, 48 * 1024, 56 * 1024, 64 * 1024, // 8KiB spacing
+	80 * 1024, 96 * 1024, 112 * 1024, 128 * 1024, // 16KiB spacing.
+	160 * 1024, 192 * 1024, 224 * 1024, 256 * 1024, // 32KiB spacing.
+}
+
 // SetInternal sets the internal writer options. Note that even though this
 // method is public, a caller outside the pebble package can't construct a value
 // to pass to it.

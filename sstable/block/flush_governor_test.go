@@ -2,16 +2,18 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package block
+package block_test
 
 import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 func TestFlushGovernor(t *testing.T) {
-	var fg FlushGovernor
+	var fg block.FlushGovernor
 	datadriven.RunTest(t, "testdata/flush_governor", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "init":
@@ -23,7 +25,10 @@ func TestFlushGovernor(t *testing.T) {
 			td.MaybeScanArgs(t, "threshold", &blockSizeThreshold)
 			td.MaybeScanArgs(t, "size-class-aware-threshold", &sizeClassAwareThreshold)
 			td.MaybeScanArgs(t, "size-classes", &classes)
-			fg = MakeFlushGovernor(targetBlockSize, blockSizeThreshold, sizeClassAwareThreshold, classes)
+			if td.HasArg("jemalloc-size-classes") {
+				classes = sstable.JemallocSizeClasses
+			}
+			fg = block.MakeFlushGovernor(targetBlockSize, blockSizeThreshold, sizeClassAwareThreshold, classes)
 			return fg.String()
 
 		case "should-flush":
