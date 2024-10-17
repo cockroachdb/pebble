@@ -192,7 +192,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		transformIter := &keyspan.TransformerIter{
 			FragmentIterator: iter,
 			Transformer:      transform,
-			SuffixCmp:        v.reader.SuffixCmp,
+			SuffixCmp:        v.reader.Comparer.CompareRangeSuffixes,
 		}
 		iter = transformIter
 	}

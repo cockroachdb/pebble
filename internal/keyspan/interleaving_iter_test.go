@@ -30,7 +30,7 @@ func TestInterleavingIter_Masking(t *testing.T) {
 
 type maskingHooks struct {
 	log        io.Writer
-	suffixCmp  base.CompareSuffixes
+	suffixCmp  base.CompareRangeSuffixes
 	split      base.Split
 	threshold  []byte
 	maskSuffix []byte
@@ -77,7 +77,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 	var buf bytes.Buffer
 	hooks := maskingHooks{
 		log:       &buf,
-		suffixCmp: testkeys.Comparer.CompareSuffixes,
+		suffixCmp: testkeys.Comparer.CompareRangeSuffixes,
 		split:     testkeys.Comparer.Split,
 	}
 
