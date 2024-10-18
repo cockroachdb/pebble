@@ -393,7 +393,16 @@ func (r *Reader) readIndexBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
+	return r.readBlockInternal(ctx, env, readHandle, bh, r.initIndexBlockMetadata)
+}
+
+// initIndexBlockMetadata initializes the Metadata for a data block. This will
+// later be used (and reused) when reading from the block.
+func (r *Reader) initIndexBlockMetadata(metadata *block.Metadata, data []byte) error {
+	if r.tableFormat.BlockColumnar() {
+		return colblk.InitIndexBlockMetadata(metadata, data)
+	}
+	return nil
 }
 
 func (r *Reader) readDataBlock(
@@ -507,9 +516,9 @@ func (r *Reader) readBlockInternal(
 	readStopwatch := makeStopwatch()
 	var err error
 	if readHandle != nil {
-		err = readHandle.ReadAt(ctx, compressed.Get(), int64(bh.Offset))
+		err = readHandle.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
 	} else {
-		err = r.readable.ReadAt(ctx, compressed.Get(), int64(bh.Offset))
+		err = r.readable.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
 	}
 	readDuration := readStopwatch.stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
@@ -528,12 +537,12 @@ func (r *Reader) readBlockInternal(
 		return block.BufferHandle{}, err
 	}
 	env.BlockRead(bh.Length, readDuration)
-	if err := checkChecksum(r.checksumType, compressed.Get(), bh, r.cacheOpts.FileNum); err != nil {
+	if err := checkChecksum(r.checksumType, compressed.BlockData(), bh, r.cacheOpts.FileNum); err != nil {
 		compressed.Release()
 		return block.BufferHandle{}, err
 	}
 
-	typ := block.CompressionIndicator(compressed.Get()[bh.Length])
+	typ := block.CompressionIndicator(compressed.BlockData()[bh.Length])
 	compressed.Truncate(int(bh.Length))
 
 	var decompressed block.Value
@@ -541,21 +550,21 @@ func (r *Reader) readBlockInternal(
 		decompressed = compressed
 	} else {
 		// Decode the length of the decompressed value.
-		decodedLen, prefixLen, err := block.DecompressedLen(typ, compressed.Get())
+		decodedLen, prefixLen, err := block.DecompressedLen(typ, compressed.BlockData())
 		if err != nil {
 			compressed.Release()
 			return block.BufferHandle{}, err
 		}
 
 		decompressed = block.Alloc(decodedLen, env.BufferPool)
-		err = block.DecompressInto(typ, compressed.Get()[prefixLen:], decompressed.Get())
+		err = block.DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData())
 		compressed.Release()
 		if err != nil {
 			decompressed.Release()
 			return block.BufferHandle{}, err
 		}
 	}
-	if err := initBlockMetadataFn(decompressed.GetMetadata(), decompressed.Get()); err != nil {
+	if err := initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
 		decompressed.Release()
 		return block.BufferHandle{}, err
 	}

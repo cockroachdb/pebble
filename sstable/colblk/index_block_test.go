@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -115,12 +116,16 @@ func TestIndexIterInitHandle(t *testing.T) {
 	bh2 := block.Handle{Offset: 2008, Length: 1000}
 	w.AddBlockHandle([]byte("a"), bh1, nil)
 	w.AddBlockHandle([]byte("b"), bh2, nil)
-	b := w.Finish(w.Rows())
+	blockData := w.Finish(w.Rows())
 
 	c := cache.New(10 << 10)
 	defer c.Unref()
-	v := block.Alloc(len(b), nil)
-	copy(v.Get(), b)
+
+	v := block.Alloc(block.MetadataSize+len(blockData), nil)
+	copy(v.BlockData(), blockData)
+	d := (*IndexBlockDecoder)(unsafe.Pointer(v.BlockMetadata()))
+	d.Init(blockData)
+
 	v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
 
 	getBlockAndIterate := func(it *IndexIter) {
