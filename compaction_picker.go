@@ -586,7 +586,6 @@ func newCompactionPickerByScore(
 		virtualBackings: virtualBackings,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
-	p.initTombstoneDensityAnnotator(opts)
 	return p
 }
 
@@ -667,11 +666,6 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
-	// tombstoneDensityAnnotator holds the annotator for choosing tombstone
-	// density compactions.
-	// NB: This is declared here rather than globally because
-	// options.Experimental.MinTombstoneDenseRatio is not known until runtime.
-	tombstoneDensityAnnotator *manifest.Annotator[fileMetadata]
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -1506,25 +1500,6 @@ func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *
 	return nil
 }
 
-func (p *compactionPickerByScore) initTombstoneDensityAnnotator(opts *Options) {
-	p.tombstoneDensityAnnotator = &manifest.Annotator[fileMetadata]{
-		Aggregator: manifest.PickFileAggregator{
-			Filter: func(f *fileMetadata) (eligible bool, cacheOK bool) {
-				if f.IsCompacting() {
-					return false, true
-				}
-				if !f.StatsValid() {
-					return false, false
-				}
-				return f.Stats.TombstoneDenseBlocksRatio > opts.Experimental.TombstoneDenseCompactionThreshold, true
-			},
-			Compare: func(a, b *fileMetadata) bool {
-				return a.Stats.TombstoneDenseBlocksRatio > b.Stats.TombstoneDenseBlocksRatio
-			},
-		},
-	}
-}
-
 // pickTombstoneDensityCompaction looks for a compaction that eliminates
 // regions of extremely high point tombstone density. For each level, it picks
 // a file where the ratio of tombstone-dense blocks is at least
@@ -1540,14 +1515,36 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 
 	var candidate *fileMetadata
 	var level int
+	// If a candidate file has a very high overlapping ratio, point tombstones
+	// in it are likely sparse in keyspace even if the sstable itself is tombstone
+	// dense. These tombstones likely wouldn't be slow to iterate over, so we exclude
+	// these files from tombstone density compactions. The threshold of 40.0 is
+	// chosen somewhat arbitrarily, after some observations around excessively large
+	// tombstone density compactions.
+	const maxOverlappingRatio = 40.0
 	// NB: we don't consider the lowest level because elision-only compactions
 	// handle that case.
-	for l := 0; l < numLevels-1; l++ {
-		f := p.tombstoneDensityAnnotator.LevelAnnotation(p.vers.Levels[l])
-		newCandidate := p.tombstoneDensityAnnotator.Aggregator.Merge(f, candidate)
-		if newCandidate != candidate {
-			candidate = newCandidate
-			level = l
+	for l := numLevels - 2; l >= 0; l-- {
+		iter := p.vers.Levels[l].Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if f.IsCompacting() || !f.StatsValid() || f.Size == 0 {
+				continue
+			}
+			if f.Stats.TombstoneDenseBlocksRatio < p.opts.Experimental.TombstoneDenseCompactionThreshold {
+				continue
+			}
+			overlaps := p.vers.Overlaps(l+1, f.UserKeyBounds())
+			if float64(overlaps.SizeSum())/float64(f.Size) > maxOverlappingRatio {
+				continue
+			}
+			if candidate == nil || candidate.Stats.TombstoneDenseBlocksRatio < f.Stats.TombstoneDenseBlocksRatio {
+				candidate = f
+				level = l
+			}
+		}
+		// We prefer lower level (ie. L5) candidates over higher level (ie. L4) ones.
+		if candidate != nil {
+			break
 		}
 	}
 

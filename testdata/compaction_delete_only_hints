@@ -56,7 +56,7 @@ maybe-compact
 Deletion hints:
   L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  (none)
+  [JOB 100] compacted(tombstone-density) L0 [000004] (730B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000008] (730B), in 1.0s (2.0s total), output rate 730B/s
 
 # Adopt the same LSM but without snapshots 100, 180 and 210.
 
@@ -88,7 +88,7 @@ maybe-compact
 Deletion hints:
   L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel L2 [000005] (743B) Score=0.00 + L3 [000006] (743B) Score=0.00 + L4 [000007] (743B) Score=0.00 -> L6 [000008] (94B), in 1.0s (2.0s total), output rate 94B/s
+  [JOB 100] compacted(delete-only) multilevel L2 [000005] (743B) Score=0.00 + L3 [000006] (743B) Score=0.00 + L4 [000007] (743B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
 
 # Verify that compaction correctly handles the presence of multiple
 # overlapping hints which might delete a file multiple times. All of the
@@ -127,7 +127,7 @@ maybe-compact
 Deletion hints:
   L1.000005 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel L2 [000005] (743B) Score=0.00 + L3 [000006] (743B) Score=0.00 + L4 [000007] (743B) Score=0.00 -> L6 [000008] (94B), in 1.0s (2.0s total), output rate 94B/s
+  [JOB 100] compacted(delete-only) multilevel L2 [000005] (743B) Score=0.00 + L3 [000006] (743B) Score=0.00 + L4 [000007] (743B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -478,8 +478,6 @@ Compactions:
 
 describe-lsm
 ----
-L0.0:
-  000004:[a#300,RANGEDEL-k#inf,RANGEDEL]
 L1:
   000009(000005):[k#200,RANGEDEL-r#inf,RANGEDEL]
 L4:
@@ -546,10 +544,8 @@ Compactions:
 
 describe-lsm
 ----
-L0.0:
-  000006:[b#12,RANGEDEL-r#inf,RANGEDEL]
 L6:
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  000007:[k#10,RANGEKEYSET-o#inf,RANGEKEYSET]
 
 iter
 first
@@ -612,10 +608,8 @@ Compactions:
 
 describe-lsm
 ----
-L0.0:
-  000005:[b#11,RANGEKEYDEL-n#inf,RANGEDEL]
 L6:
-  000007(000004):[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
+  000009:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
   000008(000004):[n#10,RANGEKEYSET-o#10,SET]
 
 iter
@@ -679,14 +673,12 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  (none)
+  [JOB 100] compacted(tombstone-density) L0 [000005] (884B) Score=0.00 + L6 [000004] (912B) Score=0.00 -> L6 [000006] (931B), in 1.0s (2.0s total), output rate 931B/s
 
 describe-lsm
 ----
-L0.0:
-  000005:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
 L6:
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  000006:[k#10,RANGEKEYSET-o#0,SET]
 
 iter
 first

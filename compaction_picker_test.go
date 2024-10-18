@@ -518,7 +518,6 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 			vs.picker = picker
 			picker.initLevelMaxBytes(inProgressCompactions)
-			picker.initTombstoneDensityAnnotator(opts)
 
 			var buf bytes.Buffer
 			fmt.Fprint(&buf, version.String())
