@@ -6,6 +6,7 @@ package colblk
 
 import (
 	"slices"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -192,7 +193,9 @@ type IndexIter struct {
 	syntheticSuffix block.SyntheticSuffix
 	noTransforms    bool
 
-	h            block.BufferHandle
+	h block.BufferHandle
+	// TODO(radu): remove allocDecoder and require any Init callers to provide the
+	// decoder.
 	allocDecoder IndexBlockDecoder
 	keyBuf       []byte
 }
@@ -200,7 +203,7 @@ type IndexIter struct {
 // Assert that IndexIter satisfies the block.IndexBlockIterator interface.
 var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
-// InitWithDecoder initializes an index iterator from the provided reader.
+// InitWithDecoder initializes an index iterator from the provided decoder.
 func (i *IndexIter) InitWithDecoder(
 	compare base.Compare, split base.Split, d *IndexBlockDecoder, transforms block.IterTransforms,
 ) {
@@ -209,6 +212,7 @@ func (i *IndexIter) InitWithDecoder(
 		split:           split,
 		d:               d,
 		n:               int(d.bd.header.Rows),
+		row:             -1,
 		h:               i.h,
 		allocDecoder:    i.allocDecoder,
 		keyBuf:          i.keyBuf,
@@ -233,15 +237,10 @@ func (i *IndexIter) Init(
 func (i *IndexIter) InitHandle(
 	cmp base.Compare, split base.Split, blk block.BufferHandle, transforms block.IterTransforms,
 ) error {
-	// TODO(jackson): If block.h != nil, use a *IndexBlockDecoder that's allocated
-	// when the block is loaded into the block cache. On cache hits, this will
-	// reduce the amount of setup necessary to use an iterator. (It's relatively
-	// common to open an iterator and perform just a few seeks, so avoiding the
-	// overhead can be material.)
 	i.h.Release()
 	i.h = blk
-	i.allocDecoder.Init(i.h.BlockData())
-	i.InitWithDecoder(cmp, split, &i.allocDecoder, transforms)
+	d := (*IndexBlockDecoder)(unsafe.Pointer(blk.BlockMetadata()))
+	i.InitWithDecoder(cmp, split, d, transforms)
 	return nil
 }
 
