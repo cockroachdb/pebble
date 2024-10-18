@@ -83,14 +83,17 @@ func (c *RangeDelSpanCompactor) Compact(span, output *keyspan.Span) {
 // for at most one "compacted" span.
 type RangeKeySpanCompactor struct {
 	cmp       base.Compare
-	suffixCmp base.CompareSuffixes
+	suffixCmp base.CompareRangeSuffixes
 	snapshots Snapshots
 	elider    rangeTombstoneElider
 }
 
 // MakeRangeKeySpanCompactor creates a new compactor for range key spans.
 func MakeRangeKeySpanCompactor(
-	cmp base.Compare, suffixCmp base.CompareSuffixes, snapshots Snapshots, elision TombstoneElision,
+	cmp base.Compare,
+	suffixCmp base.CompareRangeSuffixes,
+	snapshots Snapshots,
+	elision TombstoneElision,
 ) RangeKeySpanCompactor {
 	c := RangeKeySpanCompactor{
 		cmp:       cmp,

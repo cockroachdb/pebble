@@ -43,7 +43,7 @@ type RawRowWriter struct {
 	indexFlush block.FlushGovernor
 	// The following fields are copied from Options.
 	compare              Compare
-	suffixCmp            CompareSuffixes
+	pointSuffixCmp       base.ComparePointSuffixes
 	split                Split
 	formatKey            base.FormatKey
 	compression          block.Compression
@@ -662,7 +662,7 @@ func (w *RawRowWriter) makeAddPointDecisionV3(
 		cmpUser = cmpPrefix
 		if cmpPrefix == 0 {
 			// Need to compare suffixes to compute cmpUser.
-			cmpUser = w.suffixCmp(prevPointUserKey[prevPointKeyInfo.prefixLen:],
+			cmpUser = w.pointSuffixCmp(prevPointUserKey[prevPointKeyInfo.prefixLen:],
 				key.UserKey[w.lastPointKeyInfo.prefixLen:])
 		}
 	} else {
@@ -1707,7 +1707,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 			SmallestSeqNum: math.MaxUint64,
 		},
 		compare:                    o.Comparer.Compare,
-		suffixCmp:                  o.Comparer.CompareSuffixes,
+		pointSuffixCmp:             o.Comparer.ComparePointSuffixes,
 		split:                      o.Comparer.Split,
 		formatKey:                  o.Comparer.FormatKey,
 		compression:                o.Compression,

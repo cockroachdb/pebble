@@ -39,7 +39,7 @@ import (
 // byte slices (start, end, suffix, value) as stable for the lifetime of the
 // iterator.
 type fragmentIter struct {
-	suffixCmp base.CompareSuffixes
+	suffixCmp base.CompareRangeSuffixes
 	blockIter Iter
 	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
@@ -76,7 +76,7 @@ var fragmentBlockIterPool = sync.Pool{
 func NewFragmentIter(
 	fileNum base.DiskFileNum,
 	cmp base.Compare,
-	suffixCmp base.CompareSuffixes,
+	suffixCmp base.CompareRangeSuffixes,
 	split base.Split,
 	blockHandle block.BufferHandle,
 	transforms block.FragmentIterTransforms,

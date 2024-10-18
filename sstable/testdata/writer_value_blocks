@@ -611,39 +611,39 @@ sstable
  │    │    └── 113-114: x 00 # block padding byte
  │    ├── blue@6#16,SET:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
  │    └── trailer [compression=snappy checksum=0xa053f3eb]
- ├── index  offset: 373  length: 42
+ ├── index  offset: 373  length: 56
  │    ├── 00000    block:0/81
  │    │   
- │    └── trailer [compression=none checksum=0x80ae3e61]
- ├── index  offset: 420  length: 42
+ │    └── trailer [compression=none checksum=0x26c95d93]
+ ├── index  offset: 434  length: 56
  │    ├── 00000    block:86/86
  │    │   
- │    └── trailer [compression=none checksum=0xca4212f3]
- ├── index  offset: 467  length: 47
+ │    └── trailer [compression=none checksum=0x171297fa]
+ ├── index  offset: 495  length: 61
  │    ├── 00000    block:177/95
  │    │   
- │    └── trailer [compression=none checksum=0xb10589b8]
- ├── index  offset: 519  length: 38
+ │    └── trailer [compression=none checksum=0x37156b6f]
+ ├── index  offset: 561  length: 50
  │    ├── 00000    block:277/91
  │    │   
- │    └── trailer [compression=none checksum=0xb4e5aa79]
- ├── top-index  offset: 562  length: 77
- │    ├── 00000    block:373/42
+ │    └── trailer [compression=none checksum=0x1f460bde]
+ ├── top-index  offset: 616  length: 87
+ │    ├── 00000    block:373/56
  │    │   
- │    ├── 00001    block:420/42
+ │    ├── 00001    block:434/56
  │    │   
- │    ├── 00002    block:467/47
+ │    ├── 00002    block:495/61
  │    │   
- │    ├── 00003    block:519/38
+ │    ├── 00003    block:561/50
  │    │   
- │    └── trailer [compression=none checksum=0x27e2999a]
- ├── value-block  offset: 644  length: 11
+ │    └── trailer [compression=none checksum=0xfc2e84e2]
+ ├── value-block  offset: 708  length: 11
  │    └── trailer [compression=none checksum=0x86dee352]
- ├── value-block  offset: 660  length: 15
+ ├── value-block  offset: 724  length: 15
  │    └── trailer [compression=none checksum=0x60e7fb82]
- ├── value-index  offset: 680  length: 8
- │    └── trailer [compression=none checksum=0xb327e021]
- ├── properties  offset: 693  length: 610
+ ├── value-index  offset: 744  length: 8
+ │    └── trailer [compression=none checksum=0xdb9280dc]
+ ├── properties  offset: 757  length: 610
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.num.value-blocks (20)
@@ -669,18 +669,18 @@ sstable
  │    ├── 00578    rocksdb.top-level.index.size (24)
  │    ├── restart points
  │    │    └── 00602 [restart 0]
- │    └── trailer [compression=none checksum=0x307b671a]
- ├── meta-index  offset: 1308  length: 64
- │    ├── 0000    pebble.value_index block:680/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
- │    ├── 0027    rocksdb.properties block:693/610 [restart]
+ │    └── trailer [compression=none checksum=0x73f05e4d]
+ ├── meta-index  offset: 1372  length: 64
+ │    ├── 0000    pebble.value_index block:744/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
+ │    ├── 0027    rocksdb.properties block:757/610 [restart]
  │    ├── restart points
  │    │    ├── 00052 [restart 0]
  │    │    └── 00056 [restart 27]
- │    └── trailer [compression=none checksum=0x28531dc]
- └── footer  offset: 1377  length: 53
+ │    └── trailer [compression=none checksum=0x6140db0d]
+ └── footer  offset: 1441  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=1308, length=64
-      ├── 004  index: offset=562, length=77
+      ├── 001  meta: offset=1372, length=64
+      ├── 004  index: offset=616, length=87
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
 
@@ -935,11 +935,11 @@ sstable
  │    ├── c@6#7,DEL:
  │    ├── c@5#6,DEL:
  │    └── trailer [compression=snappy checksum=0x73ac4dc7]
- ├── index  offset: 105  length: 36
+ ├── index  offset: 105  length: 48
  │    ├── 00000    block:0/100
  │    │   
- │    └── trailer [compression=none checksum=0x760132f1]
- ├── properties  offset: 146  length: 540
+ │    └── trailer [compression=none checksum=0xaaf5862e]
+ ├── properties  offset: 158  length: 540
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.raw.point-tombstone.key.size (32)
@@ -961,15 +961,15 @@ sstable
  │    ├── 00518    rocksdb.raw.value.size (14)
  │    ├── restart points
  │    │    └── 00532 [restart 0]
- │    └── trailer [compression=none checksum=0x62079e3b]
- ├── meta-index  offset: 691  length: 33
- │    ├── 0000    rocksdb.properties block:146/540 [restart]
+ │    └── trailer [compression=none checksum=0xcb22e826]
+ ├── meta-index  offset: 703  length: 33
+ │    ├── 0000    rocksdb.properties block:158/540 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0xda289a22]
- └── footer  offset: 729  length: 53
+ │    └── trailer [compression=none checksum=0x41c219f8]
+ └── footer  offset: 741  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=691, length=33
-      ├── 004  index: offset=105, length=36
+      ├── 001  meta: offset=703, length=33
+      ├── 004  index: offset=105, length=48
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3

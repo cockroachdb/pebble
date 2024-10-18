@@ -121,8 +121,8 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	w.dataFlush = block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.dataBlock.Init(o.KeySchema)
-	w.indexBlock.Init()
-	w.topLevelIndexBlock.Init()
+	w.indexBlock.Init(o.Comparer.Split, 16)
+	w.topLevelIndexBlock.Init(o.Comparer.Split, 16)
 	w.rangeDelBlock.Init(w.comparer.Equal)
 	w.rangeKeyBlock.Init(w.comparer.Equal)
 	if !o.DisableValueBlocks {

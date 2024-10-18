@@ -1047,7 +1047,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *keyspan.Span, error) {
 		Keys:      m.keys,
 		KeysOrder: keyspan.ByTrailerDesc,
 	}
-	if err := m.transformer.Transform(m.comparer.CompareSuffixes, m.span, &m.span); err != nil {
+	if err := m.transformer.Transform(m.comparer.CompareRangeSuffixes, m.span, &m.span); err != nil {
 		return false, nil, err
 	}
 	return found, &m.span, nil

@@ -144,7 +144,7 @@ func (ui *UserIteratorConfig) SetBounds(lower, upper []byte) {
 // sequence number, and hold their Keys sorted by Suffix (except if internalKeys
 // is true, then keys remain sorted by trailer.
 func (ui *UserIteratorConfig) Transform(
-	suffixCmp base.CompareSuffixes, s keyspan.Span, dst *keyspan.Span,
+	suffixCmp base.CompareRangeSuffixes, s keyspan.Span, dst *keyspan.Span,
 ) error {
 	// Apply shadowing of keys.
 	dst.Start = s.Start
@@ -196,7 +196,7 @@ func (ui *UserIteratorConfig) Transform(
 // sequence numbers). It's intended for use during user iteration, when the
 // wrapped keyspan iterator is merging spans across all levels of the LSM.
 func (ui *UserIteratorConfig) ShouldDefragment(
-	suffixCmp base.CompareSuffixes, a, b *keyspan.Span,
+	suffixCmp base.CompareRangeSuffixes, a, b *keyspan.Span,
 ) bool {
 	// This method is not called with internalKeys = true.
 	if ui.internalKeys {

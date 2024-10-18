@@ -651,8 +651,8 @@ allowFlush
 get with-fs-logging
 small-00001
 ----
-read-at(158, 41): 000004.sst
-read-at(199, 74): 000004.sst
+read-at(158, 53): 000004.sst
+read-at(211, 74): 000004.sst
 read-at(0, 158): 000004.sst
 small-00001:val-00001
 
@@ -661,8 +661,8 @@ small-00001:val-00001
 get with-fs-logging
 small-00001-does-not-exist
 ----
-read-at(158, 41): 000004.sst
-read-at(199, 74): 000004.sst
+read-at(158, 53): 000004.sst
+read-at(211, 74): 000004.sst
 small-00001-does-not-exist: pebble: not found
 
 # When looking inside the large table, we will not read the bloom filter which
@@ -671,8 +671,8 @@ small-00001-does-not-exist: pebble: not found
 get with-fs-logging
 large-00001
 ----
-read-at(1165164, 65): 000005.sst
-read-at(1159763, 3000): 000005.sst
+read-at(1164801, 77): 000005.sst
+read-at(1159763, 4099): 000005.sst
 read-at(0, 3069): 000005.sst
 large-00001:val-00001
 
@@ -680,7 +680,7 @@ large-00001:val-00001
 get with-fs-logging
 large-00001-does-not-exist
 ----
-read-at(1165164, 65): 000005.sst
-read-at(1159763, 3000): 000005.sst
+read-at(1164801, 77): 000005.sst
+read-at(1159763, 4099): 000005.sst
 read-at(0, 3069): 000005.sst
 large-00001-does-not-exist: pebble: not found

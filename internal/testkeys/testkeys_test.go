@@ -163,7 +163,7 @@ func TestSuffix(t *testing.T) {
 	for ts := int64(2); ts < 150; ts++ {
 		an := WriteSuffix(a, ts-1)
 		bn := WriteSuffix(b, ts)
-		got := Comparer.CompareSuffixes(a[:an], b[:bn])
+		got := Comparer.CompareRangeSuffixes(a[:an], b[:bn])
 		if want := +1; got != want {
 			t.Errorf("CompareSuffixes(%q, %q) = %d, want %d", a, b, got, want)
 		}
@@ -311,8 +311,8 @@ func TestIgnorableSuffix(t *testing.T) {
 	require.Equal(t, 0, Comparer.Compare([]byte("foo@1"), []byte("foo@1_synthetic")))
 	require.Equal(t, 1, Comparer.Compare([]byte("foo@1"), []byte("foo@2_synthetic")))
 	require.Equal(t, 1, Comparer.Compare([]byte("foo@1_synthetic"), []byte("foo@2")))
-	require.Equal(t, -1, Comparer.CompareSuffixes([]byte("@1"), []byte("@1_synthetic")))
-	require.Equal(t, 1, Comparer.CompareSuffixes([]byte("@1_synthetic"), []byte("@1")))
-	require.Equal(t, 0, Comparer.CompareSuffixes([]byte("@1_synthetic"), []byte("@1_synthetic")))
-	require.Equal(t, 0, Comparer.CompareSuffixes([]byte("@1"), []byte("@1")))
+	require.Equal(t, -1, Comparer.CompareRangeSuffixes([]byte("@1"), []byte("@1_synthetic")))
+	require.Equal(t, 1, Comparer.CompareRangeSuffixes([]byte("@1_synthetic"), []byte("@1")))
+	require.Equal(t, 0, Comparer.CompareRangeSuffixes([]byte("@1_synthetic"), []byte("@1_synthetic")))
+	require.Equal(t, 0, Comparer.CompareRangeSuffixes([]byte("@1"), []byte("@1")))
 }

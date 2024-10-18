@@ -26,20 +26,40 @@ import (
 	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
-const withWall = 9
-const withLogical = withWall + 4
-const withSynthetic = withLogical + 1
-const withLockTableLen = 18
+const (
+	engineKeyNoVersion                             = 0
+	engineKeyVersionWallTimeLen                    = 8
+	engineKeyVersionWallAndLogicalTimeLen          = 12
+	engineKeyVersionWallLogicalAndSyntheticTimeLen = 13
+	engineKeyVersionLockTableLen                   = 17
+
+	mvccEncodedTimeSentinelLen  = 1
+	mvccEncodedTimeWallLen      = 8
+	mvccEncodedTimeLogicalLen   = 4
+	mvccEncodedTimeSyntheticLen = 1
+	mvccEncodedTimeLengthLen    = 1
+
+	suffixLenWithWall      = engineKeyVersionWallTimeLen + 1
+	suffixLenWithLogical   = engineKeyVersionWallAndLogicalTimeLen + 1
+	suffixLenWithSynthetic = engineKeyVersionWallLogicalAndSyntheticTimeLen + 1
+	suffixLenWithLockTable = engineKeyVersionLockTableLen + 1
+)
 
 // MaxSuffixLen is the maximum length of the CockroachDB key suffix.
-const MaxSuffixLen = max(withLockTableLen, withSynthetic, withLogical, withWall)
+const MaxSuffixLen = 1 + max(
+	engineKeyVersionLockTableLen,
+	engineKeyVersionWallLogicalAndSyntheticTimeLen,
+	engineKeyVersionWallAndLogicalTimeLen,
+	engineKeyVersionWallTimeLen,
+)
 
 // Comparer is a base.Comparer for CockroachDB keys.
 var Comparer = base.Comparer{
-	Split:           Split,
-	CompareSuffixes: CompareSuffixes,
-	Compare:         Compare,
-	Equal:           Equal,
+	Split:                Split,
+	ComparePointSuffixes: ComparePointSuffixes,
+	CompareRangeSuffixes: CompareRangeSuffixes,
+	Compare:              Compare,
+	Equal:                Equal,
 	AbbreviatedKey: func(k []byte) uint64 {
 		key, ok := getKeyPartFromEngineKey(k)
 		if !ok {
@@ -103,8 +123,8 @@ var Comparer = base.Comparer{
 
 // EncodeMVCCKey encodes a MVCC key into dst, growing dst as necessary.
 func EncodeMVCCKey(dst []byte, key []byte, walltime uint64, logical uint32) []byte {
-	if cap(dst) < len(key)+withSynthetic {
-		dst = make([]byte, 0, len(key)+withSynthetic)
+	if cap(dst) < len(key)+suffixLenWithSynthetic {
+		dst = make([]byte, 0, len(key)+suffixLenWithSynthetic)
 	}
 	dst = append(dst[:0], key...)
 	return EncodeTimestamp(dst, walltime, logical)
@@ -237,44 +257,28 @@ func Compare(a, b []byte) int {
 	if len(a) == 0 || len(b) == 0 {
 		return cmp.Compare(len(a), len(b))
 	}
+	aSuffixLen := int(a[len(a)-1])
+	aSuffixStart := len(a) - aSuffixLen
+	bSuffixLen := int(b[len(b)-1])
+	bSuffixStart := len(b) - bSuffixLen
 
-	// NB: For performance, this routine manually splits the key into the
-	// user-key and version components rather than using DecodeEngineKey. In
-	// most situations, use DecodeEngineKey or GetKeyPartFromEngineKey or
-	// SplitMVCCKey instead of doing this.
-	aEnd := len(a) - 1
-	bEnd := len(b) - 1
-
-	// Compute the index of the separator between the key and the version. If the
-	// separator is found to be at -1 for both keys, then we are comparing bare
-	// suffixes without a user key part. Pebble requires bare suffixes to be
-	// comparable with the same ordering as if they had a common user key.
-	aSep := aEnd - int(a[aEnd])
-	bSep := bEnd - int(b[bEnd])
-	if aSep < 0 || bSep < 0 || a[aSep] != 0 || b[bSep] != 0 {
-		panic(errors.AssertionFailedf("malformed key: %x, %x", a, b))
-	}
 	// Compare the "user key" part of the key.
-	if c := bytes.Compare(a[:aSep], b[:bSep]); c != 0 {
+	if c := bytes.Compare(a[:aSuffixStart], b[:bSuffixStart]); c != 0 {
 		return c
 	}
-
-	// Compare the version part of the key. Note that when the version is a
-	// timestamp, the timestamp encoding causes byte comparison to be equivalent
-	// to timestamp comparison.
-	a, b = a[aSep+1:], b[bSep+1:]
-	if len(a) == 0 || len(b) == 0 {
+	if aSuffixLen == 0 || bSuffixLen == 0 {
 		// Empty suffixes come before non-empty suffixes.
-		return cmp.Compare(len(a), len(b))
+		return cmp.Compare(aSuffixLen, bSuffixLen)
 	}
+
 	return bytes.Compare(
-		normalizeEngineKeyVersionForCompare(b),
-		normalizeEngineKeyVersionForCompare(a),
+		normalizeEngineSuffixForCompare(b[bSuffixStart:]),
+		normalizeEngineSuffixForCompare(a[aSuffixStart:]),
 	)
 }
 
-// CompareSuffixes compares suffixes (normally timestamps).
-func CompareSuffixes(a, b []byte) int {
+// CompareRangeSuffixes compares range key suffixes (normally timestamps).
+func CompareRangeSuffixes(a, b []byte) int {
 	if len(a) == 0 || len(b) == 0 {
 		// Empty suffixes come before non-empty suffixes.
 		return cmp.Compare(len(a), len(b))
@@ -285,78 +289,91 @@ func CompareSuffixes(a, b []byte) int {
 	return bytes.Compare(b[:len(b)-1], a[:len(a)-1])
 }
 
+// ComparePointSuffixes compares point key suffixes (normally timestamps).
+func ComparePointSuffixes(a, b []byte) int {
+	if len(a) == 0 || len(b) == 0 {
+		// Empty suffixes sort before non-empty suffixes.
+		return cmp.Compare(len(a), len(b))
+	}
+	return bytes.Compare(normalizeEngineSuffixForCompare(b), normalizeEngineSuffixForCompare(a))
+}
+
 // Equal implements base.Equal for Cockroach keys.
 func Equal(a, b []byte) bool {
-	// TODO(radu): Pebble sometimes passes empty "keys" and we have to tolerate
-	// them until we fix that.
 	if len(a) == 0 || len(b) == 0 {
 		return len(a) == len(b)
 	}
-	aEnd := len(a) - 1
-	bEnd := len(b) - 1
+	aSuffixLen := int(a[len(a)-1])
+	aSuffixStart := len(a) - aSuffixLen
+	bSuffixLen := int(b[len(b)-1])
+	bSuffixStart := len(b) - bSuffixLen
 
-	// Last byte is the version length + 1 when there is a version,
-	// else it is 0.
-	aVerLen := int(a[aEnd])
-	bVerLen := int(b[bEnd])
-
-	// Fast-path. If the key version is empty or contains only a walltime
-	// component then normalizeEngineKeyVersionForCompare is a no-op, so we don't
-	// need to split the "user key" from the version suffix before comparing to
-	// compute equality. Instead, we can check for byte equality immediately.
-	if (aVerLen <= withWall && bVerLen <= withWall) || (aVerLen == withLockTableLen && bVerLen == withLockTableLen) {
+	// Fast-path: normalizeEngineSuffixForCompare doesn't strip off bytes when the
+	// length is withWall or withLockTableLen. In this case, as well as cases with
+	// no prefix, we can check for byte equality immediately.
+	const withWall = mvccEncodedTimeSentinelLen + mvccEncodedTimeWallLen
+	const withLockTableLen = mvccEncodedTimeSentinelLen + engineKeyVersionLockTableLen
+	if (aSuffixLen <= withWall && bSuffixLen <= withWall) ||
+		(aSuffixLen == withLockTableLen && bSuffixLen == withLockTableLen) ||
+		aSuffixLen == 0 || bSuffixLen == 0 {
 		return bytes.Equal(a, b)
 	}
 
-	// Compute the index of the separator between the key and the version. If the
-	// separator is found to be at -1 for both keys, then we are comparing bare
-	// suffixes without a user key part. Pebble requires bare suffixes to be
-	// comparable with the same ordering as if they had a common user key.
-	aSep := aEnd - aVerLen
-	bSep := bEnd - bVerLen
 	// Compare the "user key" part of the key.
-	if !bytes.Equal(a[:aSep], b[:bSep]) {
+	if !bytes.Equal(a[:aSuffixStart], b[:bSuffixStart]) {
 		return false
 	}
-	if aVerLen == 0 || bVerLen == 0 {
-		return aVerLen == bVerLen
-	}
 
-	// Compare the version part of the key.
-	aVer := a[aSep+1:]
-	bVer := b[bSep+1:]
-	aVer = normalizeEngineKeyVersionForCompare(aVer)
-	bVer = normalizeEngineKeyVersionForCompare(bVer)
-	return bytes.Equal(aVer, bVer)
+	return bytes.Equal(
+		normalizeEngineSuffixForCompare(a[aSuffixStart:]),
+		normalizeEngineSuffixForCompare(b[bSuffixStart:]),
+	)
 }
 
 var zeroLogical [4]byte
 
-func normalizeEngineKeyVersionForCompare(a []byte) []byte {
+// normalizeEngineSuffixForCompare takes a non-empty key suffix (including the
+// trailing sentinel byte) and returns a prefix of the buffer that should be
+// used for byte-wise comparison. It trims the trailing suffix length byte and
+// any other trailing bytes that need to be ignored (like a synthetic bit or
+// zero logical component).
+//
+//gcassert:inline
+func normalizeEngineSuffixForCompare(a []byte) []byte {
 	// Check sentinel byte.
-	if len(a) != int(a[len(a)-1]) {
+	if invariants.Enabled && len(a) != int(a[len(a)-1]) {
 		panic(errors.AssertionFailedf("malformed suffix: %x", a))
 	}
 	// Strip off sentinel byte.
 	a = a[:len(a)-1]
-	// In general, the version could also be a non-timestamp version, but we know
-	// that engineKeyVersionLockTableLen+mvccEncodedTimeSentinelLen is a different
-	// constant than the above, so there is no danger here of stripping parts from
-	// a non-timestamp version.
-	if len(a) == withSynthetic-1 {
+	switch len(a) {
+	case engineKeyVersionWallLogicalAndSyntheticTimeLen:
 		// Strip the synthetic bit component from the timestamp version. The
 		// presence of the synthetic bit does not affect key ordering or equality.
-		a = a[:withLogical-1]
-	}
-	if len(a) == withLogical-1 {
+		a = a[:engineKeyVersionWallAndLogicalTimeLen]
+		fallthrough
+	case engineKeyVersionWallAndLogicalTimeLen:
 		// If the timestamp version contains a logical timestamp component that is
 		// zero, strip the component. encodeMVCCTimestampToBuf will typically omit
 		// the entire logical component in these cases as an optimization, but it
 		// does not guarantee to never include a zero logical component.
 		// Additionally, we can fall into this case after stripping off other
 		// components of the key version earlier on in this function.
-		if bytes.Equal(a[withWall-1:], zeroLogical[:]) {
-			a = a[:withWall-1]
+		if bytes.Equal(a[engineKeyVersionWallTimeLen:], zeroLogical[:]) {
+			a = a[:engineKeyVersionWallTimeLen]
+		}
+		fallthrough
+	case engineKeyVersionWallTimeLen:
+		// Nothing to do.
+
+	case engineKeyVersionLockTableLen:
+		// We rely on engineKeyVersionLockTableLen being different from the other
+		// lengths above to ensure that we don't strip parts from a non-timestamp
+		// version.
+
+	default:
+		if invariants.Enabled {
+			panic(errors.AssertionFailedf("version with unexpected length: %x", a))
 		}
 	}
 	return a
@@ -541,7 +558,7 @@ func (kw *cockroachKeyWriter) ComparePrev(key []byte) colblk.KeyComparison {
 	if cmpv.CommonPrefixLen == cmpv.PrefixLen-1 {
 		// Adjust CommonPrefixLen to include the sentinel byte,
 		cmpv.CommonPrefixLen = cmpv.PrefixLen
-		cmpv.UserKeyComparison = int32(CompareSuffixes(key[cmpv.PrefixLen:], kw.prevSuffix))
+		cmpv.UserKeyComparison = int32(CompareRangeSuffixes(key[cmpv.PrefixLen:], kw.prevSuffix))
 		return cmpv
 	}
 	// The keys have different MVCC prefixes. We haven't determined which is
