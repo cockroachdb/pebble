@@ -1,4 +1,4 @@
-// TODO(travers): support multiple time-seriies on the summary chart, once we
+// TODO(travers): support multiple time-series on the summary chart, once we
 // have data available.
 const writeThroughputWorkload = "write/values=1024";
 

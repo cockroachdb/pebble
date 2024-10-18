@@ -179,7 +179,7 @@ The `blktrace` tool records similar info to `perf`, but is targeted to
 the block layer instead of being general purpose. The `blktrace`
 command records data, while the `blkparse` command parses and displays
 data. The `btrace` command is a shortcut for piping the output from
-`blktrace` directly into `blkparse.
+`blktrace` directly into `blkparse`.
 
 ### Installation
 
