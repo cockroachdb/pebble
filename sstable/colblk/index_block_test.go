@@ -83,6 +83,7 @@ func TestIndexBlock(t *testing.T) {
 				default:
 					panic(fmt.Sprintf("unknown command: %s", fields[0]))
 				}
+				fmt.Fprintf(&buf, "%s = ", line)
 				if valid {
 					var bp string
 					bhp, err := it.BlockHandleWithProperties()
