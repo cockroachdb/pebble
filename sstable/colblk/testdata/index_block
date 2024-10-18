@@ -83,12 +83,12 @@ seek-ge banana
 seek-ge babble
 seek-ge assumption
 ----
-.
-separator: bonifide  block 5: 963-1289 props="bp6"
-separator: apple  block 0: 24-48 props="bp1"
-separator: banana  block 4: 632-847 props="bp5"
-separator: bacitracin  block 3: 412-624
-separator: atone  block 2: 195-244 props="bp3"
+seek-ge zoo = .
+seek-ge bitter = separator: bonifide  block 5: 963-1289 props="bp6"
+seek-ge abbey = separator: apple  block 0: 24-48 props="bp1"
+seek-ge banana = separator: banana  block 4: 632-847 props="bp5"
+seek-ge babble = separator: bacitracin  block 3: 412-624
+seek-ge assumption = separator: atone  block 2: 195-244 props="bp3"
 
 iter
 first
@@ -99,13 +99,13 @@ next
 next
 next
 ----
-separator: apple  block 0: 24-48 props="bp1"
-separator: applied  block 1: 141-253 props="bp2"
-separator: atone  block 2: 195-244 props="bp3"
-separator: bacitracin  block 3: 412-624
-separator: banana  block 4: 632-847 props="bp5"
-separator: bonifide  block 5: 963-1289 props="bp6"
-.
+first = separator: apple  block 0: 24-48 props="bp1"
+next = separator: applied  block 1: 141-253 props="bp2"
+next = separator: atone  block 2: 195-244 props="bp3"
+next = separator: bacitracin  block 3: 412-624
+next = separator: banana  block 4: 632-847 props="bp5"
+next = separator: bonifide  block 5: 963-1289 props="bp6"
+next = .
 
 iter
 last
@@ -116,13 +116,13 @@ prev
 prev
 prev
 ----
-separator: bonifide  block 5: 963-1289 props="bp6"
-separator: banana  block 4: 632-847 props="bp5"
-separator: bacitracin  block 3: 412-624
-separator: atone  block 2: 195-244 props="bp3"
-separator: applied  block 1: 141-253 props="bp2"
-separator: apple  block 0: 24-48 props="bp1"
-.
+last = separator: bonifide  block 5: 963-1289 props="bp6"
+prev = separator: banana  block 4: 632-847 props="bp5"
+prev = separator: bacitracin  block 3: 412-624
+prev = separator: atone  block 2: 195-244 props="bp3"
+prev = separator: applied  block 1: 141-253 props="bp2"
+prev = separator: apple  block 0: 24-48 props="bp1"
+prev = .
 
 # Test Next-ing an index iterator that's already exhausted in the forward
 # direction. The sstable iterators do this in some circumstances. The Next
@@ -135,10 +135,10 @@ next
 next
 prev
 ----
-separator: bonifide  block 5: 963-1289 props="bp6"
-.
-.
-separator: bonifide  block 5: 963-1289 props="bp6"
+last = separator: bonifide  block 5: 963-1289 props="bp6"
+next = .
+next = .
+prev = separator: bonifide  block 5: 963-1289 props="bp6"
 
 # Test Prev-ing an index iterator that's already exhausted in the reverse
 # direction. The sstable iterators do this in some circumstances. The Prev
@@ -151,10 +151,10 @@ prev
 prev
 next
 ----
-separator: apple  block 0: 24-48 props="bp1"
-.
-.
-separator: apple  block 0: 24-48 props="bp1"
+first = separator: apple  block 0: 24-48 props="bp1"
+prev = .
+prev = .
+next = separator: apple  block 0: 24-48 props="bp1"
 
 # Test Invalidate() and ensure that Valid() and all positioning methods return
 # false after it.
@@ -169,14 +169,14 @@ first
 last
 seek-ge a
 ----
-separator: apple  block 0: 24-48 props="bp1"
-.
+first = separator: apple  block 0: 24-48 props="bp1"
+invalidate = .
 Valid()=false
-.
-.
-.
-.
-.
+next = .
+prev = .
+first = .
+last = .
+seek-ge a = .
 
 # Rebuild the same index block, but excluding the last row during the final Finish().
 
@@ -327,12 +327,12 @@ next
 next
 next
 ----
-separator: cat  block 0: 3021-5073 props="bp1"
-separator: catastrophe  block 1: 91251-93150
-separator: catatonic  block 2: 102422-122864
-separator: cephalopod  block 3: 122864-131968 props="bp4"
-separator: coat  block 4: 293128-325232
-.
+first = separator: cat  block 0: 3021-5073 props="bp1"
+next = separator: catastrophe  block 1: 91251-93150
+next = separator: catatonic  block 2: 102422-122864
+next = separator: cephalopod  block 3: 122864-131968 props="bp4"
+next = separator: coat  block 4: 293128-325232
+next = .
 
 iter
 last
@@ -342,12 +342,12 @@ prev
 prev
 prev
 ----
-separator: coat  block 4: 293128-325232
-separator: cephalopod  block 3: 122864-131968 props="bp4"
-separator: catatonic  block 2: 102422-122864
-separator: catastrophe  block 1: 91251-93150
-separator: cat  block 0: 3021-5073 props="bp1"
-.
+last = separator: coat  block 4: 293128-325232
+prev = separator: cephalopod  block 3: 122864-131968 props="bp4"
+prev = separator: catatonic  block 2: 102422-122864
+prev = separator: catastrophe  block 1: 91251-93150
+prev = separator: cat  block 0: 3021-5073 props="bp1"
+prev = .
 
 # Rebuild the same index block but excluding the final row during Finish().
 
@@ -482,14 +482,14 @@ seek-ge cat@9
 seek-ge cat@5
 seek-ge cat@2
 ----
-separator: cat@20  block 0: 3021-5073 props="bp1"
-separator: cat@20  block 0: 3021-5073 props="bp1"
-separator: cat@20  block 0: 3021-5073 props="bp1"
-separator: cat@10  block 1: 91251-93150
-separator: cat@10  block 1: 91251-93150
-separator: cat@5  block 2: 91251-93150
-separator: cat@5  block 2: 91251-93150
-.
+seek-ge cat = separator: cat@20  block 0: 3021-5073 props="bp1"
+seek-ge cat@21 = separator: cat@20  block 0: 3021-5073 props="bp1"
+seek-ge cat@20 = separator: cat@20  block 0: 3021-5073 props="bp1"
+seek-ge cat@19 = separator: cat@10  block 1: 91251-93150
+seek-ge cat@10 = separator: cat@10  block 1: 91251-93150
+seek-ge cat@9 = separator: cat@5  block 2: 91251-93150
+seek-ge cat@5 = separator: cat@5  block 2: 91251-93150
+seek-ge cat@2 = .
 
 build
 aa       1   1    bp1
@@ -557,9 +557,9 @@ first
 next
 next
 ----
-separator: foo-aa  block 0: 1-2 props="bp1"
-separator: foo-ab@10  block 1: 2-3 props="bp2"
-separator: foo-abc  block 2: 3-4 props="bp3"
+first = separator: foo-aa  block 0: 1-2 props="bp1"
+next = separator: foo-ab@10  block 1: 2-3 props="bp2"
+next = separator: foo-abc  block 2: 3-4 props="bp3"
 
 iter synthetic-prefix=foo-
 seek-ge aa
@@ -575,27 +575,27 @@ prev
 seek-ge z
 prev
 ----
-separator: foo-aa  block 0: 1-2 props="bp1"
-separator: foo-aa  block 0: 1-2 props="bp1"
-separator: foo-aa  block 0: 1-2 props="bp1"
-separator: foo-aa  block 0: 1-2 props="bp1"
-separator: foo-aa  block 0: 1-2 props="bp1"
-separator: foo-ab@10  block 1: 2-3 props="bp2"
-separator: foo-ab@10  block 1: 2-3 props="bp2"
-separator: foo-abc  block 2: 3-4 props="bp3"
-.
-separator: foo-ad@5  block 3: 4-5 props="bp4"
-.
-separator: foo-ad@5  block 3: 4-5 props="bp4"
+seek-ge aa = separator: foo-aa  block 0: 1-2 props="bp1"
+seek-ge foa = separator: foo-aa  block 0: 1-2 props="bp1"
+seek-ge foo- = separator: foo-aa  block 0: 1-2 props="bp1"
+seek-ge foo-a = separator: foo-aa  block 0: 1-2 props="bp1"
+seek-ge foo-aa = separator: foo-aa  block 0: 1-2 props="bp1"
+seek-ge foo-ab = separator: foo-ab@10  block 1: 2-3 props="bp2"
+seek-ge foo-ab@11 = separator: foo-ab@10  block 1: 2-3 props="bp2"
+seek-ge foo-ab@5 = separator: foo-abc  block 2: 3-4 props="bp3"
+seek-ge fop = .
+prev = separator: foo-ad@5  block 3: 4-5 props="bp4"
+seek-ge z = .
+prev = separator: foo-ad@5  block 3: 4-5 props="bp4"
 
 iter synthetic-suffix=@20
 first
 next
 next
 ----
-separator: aa@20  block 0: 1-2 props="bp1"
-separator: ab@20  block 1: 2-3 props="bp2"
-separator: abc@20  block 2: 3-4 props="bp3"
+first = separator: aa@20  block 0: 1-2 props="bp1"
+next = separator: ab@20  block 1: 2-3 props="bp2"
+next = separator: abc@20  block 2: 3-4 props="bp3"
 
 iter synthetic-suffix=@20
 seek-ge aa
@@ -604,20 +604,20 @@ seek-ge ab@21
 seek-ge ab@20
 seek-ge ab@19
 ----
-separator: aa@20  block 0: 1-2 props="bp1"
-separator: ab@20  block 1: 2-3 props="bp2"
-separator: ab@20  block 1: 2-3 props="bp2"
-separator: ab@20  block 1: 2-3 props="bp2"
-separator: abc@20  block 2: 3-4 props="bp3"
+seek-ge aa = separator: aa@20  block 0: 1-2 props="bp1"
+seek-ge ab = separator: ab@20  block 1: 2-3 props="bp2"
+seek-ge ab@21 = separator: ab@20  block 1: 2-3 props="bp2"
+seek-ge ab@20 = separator: ab@20  block 1: 2-3 props="bp2"
+seek-ge ab@19 = separator: abc@20  block 2: 3-4 props="bp3"
 
 iter synthetic-prefix=foo- synthetic-suffix=@20
 first
 next
 next
 ----
-separator: foo-aa@20  block 0: 1-2 props="bp1"
-separator: foo-ab@20  block 1: 2-3 props="bp2"
-separator: foo-abc@20  block 2: 3-4 props="bp3"
+first = separator: foo-aa@20  block 0: 1-2 props="bp1"
+next = separator: foo-ab@20  block 1: 2-3 props="bp2"
+next = separator: foo-abc@20  block 2: 3-4 props="bp3"
 
 iter synthetic-prefix=foo- synthetic-suffix=@20
 seek-ge foo-aa
@@ -625,7 +625,7 @@ seek-ge foo-ab@21
 seek-ge foo-ab@20
 seek-ge foo-ab@19
 ----
-separator: foo-aa@20  block 0: 1-2 props="bp1"
-separator: foo-ab@20  block 1: 2-3 props="bp2"
-separator: foo-ab@20  block 1: 2-3 props="bp2"
-separator: foo-abc@20  block 2: 3-4 props="bp3"
+seek-ge foo-aa = separator: foo-aa@20  block 0: 1-2 props="bp1"
+seek-ge foo-ab@21 = separator: foo-ab@20  block 1: 2-3 props="bp2"
+seek-ge foo-ab@20 = separator: foo-ab@20  block 1: 2-3 props="bp2"
+seek-ge foo-ab@19 = separator: foo-abc@20  block 2: 3-4 props="bp3"
