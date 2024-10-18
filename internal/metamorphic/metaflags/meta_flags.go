@@ -154,10 +154,15 @@ func initRunFlags(c *CommonFlags) *RunFlags {
 	flag.StringVar(&r.TraceFile, "trace-file", "",
 		"write an execution trace to `<run-dir>/file`")
 
-	if err := r.Ops.Set("uniform:5000-10000"); err != nil {
+	ops := "uniform:5000-10000"
+	if invariants.RaceEnabled {
+		// Reduce the size of the test under race (to avoid timeouts).
+		ops = "uniform:1000-2000"
+	}
+	if err := r.Ops.Set(ops); err != nil {
 		panic(err)
 	}
-	flag.Var(&r.Ops, "ops", "uniform:5000-10000")
+	flag.Var(&r.Ops, "ops", "uniform:min-max")
 
 	flag.StringVar(&r.InnerBinary, "inner-binary", "",
 		`binary to run for each instance of the test (this same binary by default); cannot be used
