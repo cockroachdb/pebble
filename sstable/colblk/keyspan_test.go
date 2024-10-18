@@ -85,7 +85,7 @@ func TestKeyspanBlockPooling(t *testing.T) {
 	c := cache.New(10 << 10)
 	defer c.Unref()
 	v := block.Alloc(len(b), nil)
-	copy(v.Get(), b)
+	copy(v.BlockData(), b)
 	v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
 
 	getBlockAndIterate := func() {

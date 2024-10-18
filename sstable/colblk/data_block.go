@@ -737,13 +737,11 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	return start, end, rewritten, nil
 }
 
-// DataBlockDecoderSize is the size of a DataBlockDecoder struct. If allocating
-// memory for a data block, the caller may want to additionally allocate memory
-// for the corresponding DataBlockDecoder.
-const DataBlockDecoderSize = unsafe.Sizeof(DataBlockDecoder{})
-
 // Assert that a DataBlockDecoder can fit inside block.Metadata.
-const _ uint = block.MetadataSize - uint(DataBlockDecoderSize)
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(DataBlockDecoder{}))
+
+// Assert that an IndexBlockDecoder can fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(IndexBlockDecoder{}))
 
 // InitDataBlockMetadata initializes the metadata for a data block.
 func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (err error) {
@@ -760,6 +758,23 @@ func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (e
 	}()
 	d.Init(schema, data)
 	// TODO(radu): Initialize the KeySeeker here as well.
+	return nil
+}
+
+// InitIndexBlockMetadata initializes the metadata for an index block.
+func InitIndexBlockMetadata(md *block.Metadata, data []byte) (err error) {
+	if uintptr(unsafe.Pointer(md))%8 != 0 {
+		return errors.AssertionFailedf("metadata is not 8-byte aligned")
+	}
+	d := (*IndexBlockDecoder)(unsafe.Pointer(md))
+	// Initialization can panic; convert panics to corruption errors (so higher
+	// layers can add file number and offset information).
+	defer func() {
+		if r := recover(); r != nil {
+			err = base.CorruptionErrorf("error initializing data block metadata: %v", r)
+		}
+	}()
+	d.Init(data)
 	return nil
 }
 
@@ -899,7 +914,7 @@ func (i *DataBlockIter) InitOnce(
 }
 
 // Init initializes the data block iterator, configuring it to read from the
-// provided reader.
+// provided decoder.
 func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransforms) error {
 	i.d = d
 	// Leave i.h unchanged.
