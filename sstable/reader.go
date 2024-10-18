@@ -861,6 +861,9 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 	if err != nil {
 		return 0, err
 	}
+	// We are using InitHandle below but we never Close those iterators, which
+	// allows us to release the index handle ourselves.
+	// TODO(radu): clean this up.
 	defer indexH.Release()
 
 	// Iterators over the bottom-level index blocks containing start and end.

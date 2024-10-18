@@ -164,13 +164,17 @@ const MetadataSize = 328
 const _ uint = -(MetadataSize % 8)
 
 // DataBlockIterator is a type constraint for implementations of block iterators
-// over data blocks.
+// over data blocks. It's implemented by *rowblk.Iter and *colblk.DataBlockIter.
 type DataBlockIterator interface {
 	base.InternalIterator
 
 	// Handle returns the handle to the block.
 	Handle() BufferHandle
 	// InitHandle initializes the block from the provided buffer handle.
+	//
+	// The iterator takes ownership of the BufferHandle and releases it when it is
+	// closed (or re-initialized with another handle). This happens even in error
+	// cases.
 	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
 	// Valid returns true if the iterator is currently positioned at a valid KV.
 	Valid() bool
@@ -198,13 +202,17 @@ type DataBlockIterator interface {
 	IsDataInvalidated() bool
 }
 
-// IndexBlockIterator is an interface for implementations of block
-// iterators over index blocks. It's currently satisifed by the
-// *rowblk.IndexIter type.
+// IndexBlockIterator is an interface for implementations of block iterators
+// over index blocks. It's implemented by *rowblk.IndexIter and
+// *colblk.IndexBlockIter.
 type IndexBlockIterator interface {
 	// Init initializes the block iterator from the provided block.
 	Init(base.Compare, base.Split, []byte, IterTransforms) error
 	// InitHandle initializes an iterator from the provided block handle.
+	//
+	// The iterator takes ownership of the BufferHandle and releases it when it is
+	// closed (or re-initialized with another handle). This happens even in error
+	// cases.
 	InitHandle(base.Compare, base.Split, BufferHandle, IterTransforms) error
 	// Valid returns true if the iterator is currently positioned at a valid
 	// block handle.

@@ -69,10 +69,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 		// blockIntersects
 	}
 	indexBlock, err := i.secondLevel.reader.readIndexBlock(i.secondLevel.ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH, bhp.Handle)
-	if err == nil {
-		err = PI(&i.secondLevel.index).InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, indexBlock, i.secondLevel.transforms)
-	}
 	if err != nil {
+		i.secondLevel.err = err
+		return loadBlockFailed
+	}
+	err = PI(&i.secondLevel.index).InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, indexBlock, i.secondLevel.transforms)
+	if err != nil {
+		PI(&i.secondLevel.index).Invalidate()
 		i.secondLevel.err = err
 		return loadBlockFailed
 	}
