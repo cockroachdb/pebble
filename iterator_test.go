@@ -24,7 +24,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -2964,7 +2963,6 @@ func runBenchmarkQueueWorkload(b *testing.B, deleteRatio float32, initOps int, v
 	}
 
 	o := (&Options{
-		Cache:              cache.New(0), // disable cache
 		DisableWAL:         true,
 		FS:                 vfs.NewMem(),
 		Comparer:           testkeys.Comparer,
@@ -3038,15 +3036,13 @@ func runBenchmarkQueueWorkload(b *testing.B, deleteRatio float32, initOps int, v
 
 	// Seek to the start of each queue.
 	b.Run("seek", func(b *testing.B) {
-		iter, _ := d.NewIter(nil)
-		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			for q := 0; q < queueCount; q++ {
+				iter, _ := d.NewIter(nil)
 				iter.SeekGE(getKey(q, 0))
+				require.NoError(b, iter.Close())
 			}
 		}
-		b.StopTimer()
-		require.NoError(b, iter.Close())
 	})
 
 	require.NoError(b, d.Close())
@@ -3068,7 +3064,7 @@ func BenchmarkQueueWorkload(b *testing.B) {
 	var deleteRatios = []float32{0.1, 0.3, 0.5}
 	// The number of times queues will be processed before running each
 	// subbenchmark.
-	var initOps = []int{400_000, 800_000, 1_200_000, 2_000_000, 3_500_000, 5_000_000, 7_500_000}
+	var initOps = []int{400_000, 800_000, 1_200_000, 2_000_000, 3_500_000, 5_000_000, 7_500_000, 10_000_000, 50_000_000}
 	// We vary the value size to identify how compaction behaves when the
 	// relative sizes of tombstones and the keys they delete are different.
 	var valueSizes = []int{128, 2048}
