@@ -11,13 +11,14 @@ import (
 )
 
 // Alloc allocates a new Value for a block of length n (excluding the block
-// trailer). If bufferPool is non-nil, Alloc allocates the buffer from the pool.
-// Otherwise it allocates it from the block cache.
+// trailer, but including an associated Metadata). If bufferPool is non-nil,
+// Alloc allocates the buffer from the pool. Otherwise it allocates it from the
+// block cache.
 func Alloc(n int, p *BufferPool) Value {
 	if p != nil {
-		return Value{buf: p.Alloc(int(n))}
+		return Value{buf: p.Alloc(MetadataSize + n)}
 	}
-	return Value{v: cache.Alloc(int(n))}
+	return Value{v: cache.Alloc(MetadataSize + n)}
 }
 
 // Value is a block buffer, either backed by the block cache or a BufferPool.
@@ -28,12 +29,23 @@ type Value struct {
 	v *cache.Value
 }
 
-// Get returns the underlying block's byte slice.
-func (b Value) Get() []byte {
+// getInternalBuf gets the underlying buffer which includes the Metadata and the
+// block.
+func (b Value) getInternalBuf() []byte {
 	if b.buf.Valid() {
 		return b.buf.p.pool[b.buf.i].b
 	}
 	return b.v.Buf()
+}
+
+// Get returns the byte slice for the block data.
+func (b Value) Get() []byte {
+	return b.getInternalBuf()[MetadataSize:]
+}
+
+// GetMetadata returns the block metadata.
+func (b Value) GetMetadata() *Metadata {
+	return (*Metadata)(b.getInternalBuf())
 }
 
 // MakeHandle constructs a BufferHandle from the Value. If the Value is not
@@ -59,6 +71,7 @@ func (b Value) Release() {
 
 // Truncate truncates the block to n bytes.
 func (b Value) Truncate(n int) {
+	n += MetadataSize
 	if b.buf.Valid() {
 		b.buf.p.pool[b.buf.i].b = b.buf.p.pool[b.buf.i].b[:n]
 	} else {
@@ -79,14 +92,26 @@ func CacheBufferHandle(h cache.Handle) BufferHandle {
 	return BufferHandle{h: h}
 }
 
-// Get retrieves the underlying buffer referenced by the handle.
-func (bh BufferHandle) Get() []byte {
-	if v := bh.h.Get(); v != nil {
-		return v
-	} else if bh.b.p != nil {
-		return bh.b.p.pool[bh.b.i].b
+// Valid returns true if the BufferHandle holds a value.
+func (bh BufferHandle) Valid() bool {
+	return bh.h.Valid() || bh.b.Valid()
+}
+
+func (bh BufferHandle) rawBuffer() []byte {
+	if bh.h.Valid() {
+		return bh.h.RawBuffer()
 	}
-	return nil
+	return bh.b.p.pool[bh.b.i].b
+}
+
+// BlockMetadata returns the buffer for the block metadata.
+func (bh BufferHandle) BlockMetadata() *Metadata {
+	return (*Metadata)(bh.rawBuffer())
+}
+
+// BlockData retrieves the buffer for the block data.
+func (bh BufferHandle) BlockData() []byte {
+	return (bh.rawBuffer())[MetadataSize:]
 }
 
 // Release releases the buffer, either back to the block cache or BufferPool. It

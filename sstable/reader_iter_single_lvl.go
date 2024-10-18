@@ -948,12 +948,12 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 		}
 	}
 
-	dataH, err := i.reader.readFilterBlock(i.ctx, i.readBlockEnv, i.indexFilterRH)
+	dataH, err := i.reader.readFilterBlock(i.ctx, i.readBlockEnv, i.indexFilterRH, i.reader.filterBH)
 	if err != nil {
 		return false, err
 	}
 	defer dataH.Release()
-	return i.reader.tableFilter.mayContain(dataH.Get(), prefixToCheck), nil
+	return i.reader.tableFilter.mayContain(dataH.BlockData(), prefixToCheck), nil
 }
 
 // virtualLast should only be called if i.vReader != nil.

@@ -90,7 +90,7 @@ func TestKeyspanBlockPooling(t *testing.T) {
 
 	getBlockAndIterate := func() {
 		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
-		require.NotNil(t, h.Get())
+		require.True(t, h.Valid())
 		it := NewKeyspanIter(testkeys.Comparer.Compare, block.CacheBufferHandle(h), block.NoFragmentTransforms)
 		defer it.Close()
 		s, err := it.First()

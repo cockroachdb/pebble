@@ -536,7 +536,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	require.NoError(t, err)
 	defer b.Release()
 
-	i, err := rowblk.NewRawIter(bytes.Compare, b.Get())
+	i, err := rowblk.NewRawIter(bytes.Compare, b.BlockData())
 	require.NoError(t, err)
 
 	var keys []string

@@ -331,7 +331,7 @@ func NewKeyspanIter(
 	// Then all iters would use the same decoder rather than needing to allocate
 	// their own KeyspanDecoder and parse the high-level block structure
 	// themselves.
-	i.allocDecoder.Init(h.Get())
+	i.allocDecoder.Init(h.BlockData())
 	i.init(cmp, &i.allocDecoder, transforms)
 	return i
 }
@@ -339,7 +339,12 @@ func NewKeyspanIter(
 var keyspanIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &KeyspanIter{}
-		invariants.SetFinalizer(i, checkKeyspanIter)
+		invariants.SetFinalizer(i, func(obj interface{}) {
+			if i := obj.(*KeyspanIter); i.handle.Valid() {
+				fmt.Fprintf(os.Stderr, "KeyspanIter.handle is not nil: %#v\n", i.handle)
+				os.Exit(1)
+			}
+		})
 		return i
 	},
 }
@@ -606,12 +611,4 @@ func (i *keyspanIter) WrapChildren(keyspan.WrapFn) {}
 // DebugTree is part of the FragmentIterator interface.
 func (i *keyspanIter) DebugTree(tp treeprinter.Node) {
 	tp.Childf("%T(%p)", i, i)
-}
-
-func checkKeyspanIter(obj interface{}) {
-	i := obj.(*KeyspanIter)
-	if p := i.handle.Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "KeyspanIter.handle is not nil: %p\n", p)
-		os.Exit(1)
-	}
 }

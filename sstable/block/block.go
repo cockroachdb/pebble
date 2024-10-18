@@ -144,8 +144,27 @@ func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32)
 	return checksum
 }
 
+// Metadata is an in-memory buffer that stores metadata for a block. It is
+// allocated together with the buffer storing the block and is initialized once
+// when the block is read from disk.
+//
+// Portions of this buffer can be cast to the structures we need (through
+// unsafe.Pointer), but note that any pointers in these structures will be
+// invisible to the GC. Pointers to the block's data buffer are ok, since the
+// metadata and the data have the same lifetime (sharing the underlying
+// allocation).
+type Metadata [MetadataSize]byte
+
+// MetadataSize is the size of the metadata. The value is chosen to fit a
+// colblk.DataBlockDecoder and a CockroachDB colblk.KeySeeker.
+const MetadataSize = 328
+
+// Assert that MetadataSize is a multiple of 8. This is necessary to keep the
+// block data buffer aligned.
+const _ uint = -(MetadataSize % 8)
+
 // DataBlockIterator is a type constraint for implementations of block iterators
-// over data blocks. It's currently satisifed by the *rowblk.Iter type.
+// over data blocks.
 type DataBlockIterator interface {
 	base.InternalIterator
 

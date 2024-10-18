@@ -240,7 +240,7 @@ func (i *IndexIter) InitHandle(
 	// overhead can be material.)
 	i.h.Release()
 	i.h = blk
-	i.allocDecoder.Init(i.h.Get())
+	i.allocDecoder.Init(i.h.BlockData())
 	i.InitWithDecoder(cmp, split, &i.allocDecoder, transforms)
 	return nil
 }

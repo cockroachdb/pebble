@@ -125,7 +125,7 @@ func TestIndexIterInitHandle(t *testing.T) {
 
 	getBlockAndIterate := func(it *IndexIter) {
 		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
-		require.NotNil(t, h.Get())
+		require.True(t, h.Valid())
 		require.NoError(t, it.InitHandle(
 			testkeys.Comparer.Compare,
 			testkeys.Comparer.Split,

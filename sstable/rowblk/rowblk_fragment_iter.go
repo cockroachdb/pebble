@@ -413,8 +413,8 @@ func (i *fragmentIter) DebugTree(tp treeprinter.Node) {
 
 func checkFragmentBlockIterator(obj interface{}) {
 	i := obj.(*fragmentIter)
-	if p := i.blockIter.Handle().Get(); p != nil {
-		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %p\n", p)
+	if h := i.blockIter.Handle(); h.Valid() {
+		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %#v\n", h)
 		os.Exit(1)
 	}
 }
