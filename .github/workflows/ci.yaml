@@ -10,29 +10,13 @@ on:
     - master
     - crl-release-*
 
-env:
-  GO_VERSION: "1.23"
-
 jobs:
 
   linux:
     name: go-linux
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: GOTRACEBACK=all make test testobjiotracing generate
-
-    - name: Assert workspace clean
-      run: scripts/check-workspace-clean.sh
-
-  linux-32bit:
-    name: go-linux-32bit
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -40,133 +24,43 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "${{ env.GO_VERSION }}"
+          go-version: ${{ matrix.go }}
+
+      - run: GOTRACEBACK=all make test testobjiotracing generate
+
+      - name: Assert workspace clean
+        run: scripts/check-workspace-clean.sh
+
+  # Summary job that is required to merge PRs.
+  go-linux:
+    needs: [linux]  # Waits for all matrix jobs to complete
+    runs-on: ubuntu-latest
+    if: ${{ success() }}  # Only runs if all dependent jobs succeed
+    steps:
+      - name: Summary
+        run: echo "All go-linux matrix jobs passed successfully."
+
+  linux-32bit:
+    name: go-linux-32bit
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
 
       - run: GOTRACEBACK=all GOARCH=386 make test
 
   linux-crossversion:
     name: go-linux-crossversion
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: make crossversion-meta
-
-  linux-race:
-    name: go-linux-race
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: GOTRACEBACK=all make testrace TAGS=
-
-  linux-no-invariants:
-    name: go-linux-no-invariants
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: GOTRACEBACK=all make test TAGS=
-
-  linux-no-cgo:
-    name: go-linux-no-cgo
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
-
-  darwin:
-    name: go-macos
-    runs-on: macos-12
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: GOTRACEBACK=all make test
-
-  windows:
-    name: go-windows
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: go test -tags invariants ./...
-
-  bsds:
-    name: go-bsds
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - name: FreeBSD build
-      env:
-        GOOS: freebsd
-      run: go build -v ./...
-
-    - name: NetBSD build
-      env:
-        GOOS: netbsd
-      run: go build -v ./...
-
-    - name: OpenBSD build
-      env:
-        GOOS: openbsd
-      run: go build -v ./...
-
-  go-lint-checks:
-    name: go-lint-checks
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - name: mod-tidy-check
-      run: make mod-tidy-check
-
-    - name: format-check
-      run: make format-check
-
-  go-build-other-archs:
-    name: go-build-other-archs
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -174,8 +68,137 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "${{ env.GO_VERSION }}"
+          go-version: ${{ matrix.go }}
+
+      - run: make crossversion-meta
+
+  linux-race:
+    name: go-linux-race
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - run: GOTRACEBACK=all make testrace TAGS=
+
+  linux-no-invariants:
+    name: go-linux-no-invariants
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - run: GOTRACEBACK=all make test TAGS=
+
+  linux-no-cgo:
+    name: go-linux-no-cgo
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
+
+  darwin:
+    name: go-macos
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v2
+  
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+  
+      - run: GOTRACEBACK=all make test
+
+  windows:
+    name: go-windows
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - run: go test -tags invariants ./...
+
+  lint-checks:
+    name: go-lint-checks
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: mod-tidy-check
+        run: make mod-tidy-check
+
+      - name: format-check
+        run: make format-check
+
+  # Summary job that is required to merge PRs.
+  go-lint-checks:
+    needs: [lint-checks]  # Waits for all matrix jobs to complete
+    runs-on: ubuntu-latest
+    if: ${{ success() }}  # Only runs if all dependent jobs succeed
+    steps:
+      - name: Summary
+        run: echo "All go-lint-checks matrix jobs passed successfully."
+
+  # Builds for other OSes and architectures.
+  go-build-other:
+    name: go-build-other
+    strategy:
+      matrix:
+        go: ['1.22', '1.23']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
 
       - run: GOARCH=mips go build ./...
       - run: GOARCH=mipsle go build ./...
       - run: GOARCH=mips64le go build ./...
+      - run: GOOS=freebsd go build -v ./...
+      - run: GOOS=netbsd go build -v ./...
+      - run: GOOS=openbsd go build -v ./...
