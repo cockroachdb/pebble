@@ -1351,7 +1351,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
 	}
 	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
-		o.Experimental.TombstoneDenseCompactionThreshold = 0.10
+		o.Experimental.TombstoneDenseCompactionThreshold = 0.05
 	}
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
