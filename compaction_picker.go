@@ -1290,7 +1290,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	// Check for files which contain excessive point tombstones that could slow
 	// down reads. Unlike elision-only compactions, these compactions may select
 	// a file at any level rather than only the lowest level.
-	if pc := p.pickTombstoneDensityCompaction(env); pc != nil {
+	if pc := p.pickTombstoneDensityCompaction(env, scores); pc != nil {
 		return pc
 	}
 
@@ -1531,7 +1531,7 @@ func (p *compactionPickerByScore) initTombstoneDensityAnnotator(opts *Options) {
 // options.Experimental.MinTombstoneDenseRatio, prioritizing compaction of
 // files with higher ratios of tombstone-dense blocks.
 func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
-	env compactionEnv,
+	env compactionEnv, scores [numLevels]candidateLevelInfo,
 ) (pc *pickedCompaction) {
 	if p.opts.Experimental.TombstoneDenseCompactionThreshold <= 0 {
 		// Tombstone density compactions are disabled.
@@ -1540,9 +1540,24 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 
 	var candidate *fileMetadata
 	var level int
+	// Skip any tombstone density compactions out of a level if the uncompensated
+	// score ratio is below this threshold. This prevents tombstone density compactions
+	// from continuously compacting a small level with high tombstone density, and inflating
+	// write-amp for a much larger level below it.
+	//
+	// We look at the uncompensated score here. This could lead to greater exclusion
+	// of levels from tombstone density compactions than if we had used the compensated
+	// score. However in the case of high compensated scores and low uncompensated scores,
+	// default compactions would be compacting out tombstones anyway, so the use of
+	// uncompensated score here prevents us from double-prioritizing tombstone-dense
+	// files from compactions.
+	const minUncompensatedScore = 0.20
 	// NB: we don't consider the lowest level because elision-only compactions
 	// handle that case.
 	for l := 0; l < numLevels-1; l++ {
+		if scores[l].uncompensatedScoreRatio < minUncompensatedScore {
+			continue
+		}
 		f := p.tombstoneDensityAnnotator.LevelAnnotation(p.vers.Levels[l])
 		newCandidate := p.tombstoneDensityAnnotator.Aggregator.Merge(f, candidate)
 		if newCandidate != candidate {
