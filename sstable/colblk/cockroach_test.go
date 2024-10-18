@@ -29,6 +29,7 @@ func TestCockroachDataBlock(t *testing.T) {
 	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, crdbtest.KeyConfig{
 		PrefixAlphabetLen: 26,
 		PrefixLen:         12,
+		PercentLogical:    rng.IntN(25),
 		AvgKeysPerPrefix:  2,
 		BaseWallTime:      seed,
 	}, valueLen)
