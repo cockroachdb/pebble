@@ -683,7 +683,9 @@ type Cache struct {
 	}
 }
 
-// TODO
+// ID is a namespace for file numbers. It allows a single Cache to be shared
+// among multiple Pebble instances. NewID can be used to generate a new ID that
+// is unique in the context of this cache.
 type ID uint64
 
 // New creates a new cache of the specified size. Memory for the cache is
