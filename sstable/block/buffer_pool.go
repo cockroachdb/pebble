@@ -38,13 +38,13 @@ func (b Value) getInternalBuf() []byte {
 	return b.v.Buf()
 }
 
-// Get returns the byte slice for the block data.
-func (b Value) Get() []byte {
+// BlockData returns the byte slice for the block data.
+func (b Value) BlockData() []byte {
 	return b.getInternalBuf()[MetadataSize:]
 }
 
 // GetMetadata returns the block metadata.
-func (b Value) GetMetadata() *Metadata {
+func (b Value) BlockMetadata() *Metadata {
 	return (*Metadata)(b.getInternalBuf())
 }
 

@@ -321,7 +321,7 @@ var (
 )
 
 func formatColblkIndexBlock(tp treeprinter.Node, r *Reader, b NamedBlockHandle, data []byte) error {
-	iter := new(colblk.IndexIter)
+	var iter colblk.IndexIter
 	if err := iter.Init(r.Compare, r.Split, data, NoTransforms); err != nil {
 		return err
 	}
