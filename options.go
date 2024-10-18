@@ -627,7 +627,7 @@ type Options struct {
 		// TombstoneDenseCompactionThreshold is the minimum percent of data
 		// blocks in a table that must be tombstone-dense for that table to be
 		// eligible for a tombstone density compaction. It should be defined as a
-		// ratio out of 1. The default value is 0.05.
+		// ratio out of 1. The default value is 0.10.
 		//
 		// If multiple tables are eligible for a tombstone density compaction, then
 		// tables with a higher percent of tombstone-dense blocks are still
@@ -1351,7 +1351,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
 	}
 	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
-		o.Experimental.TombstoneDenseCompactionThreshold = 0.05
+		o.Experimental.TombstoneDenseCompactionThreshold = 0.10
 	}
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)

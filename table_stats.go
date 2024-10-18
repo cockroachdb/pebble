@@ -312,7 +312,9 @@ func (d *DB) loadTableStats(
 			stats.NumRangeKeySets = props.NumRangeKeySets
 			stats.ValueBlocksSize = props.ValueBlocksSize
 			stats.CompressionType = block.CompressionFromString(props.CompressionName)
-			stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
+			if props.NumDataBlocks > 0 {
+				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
+			}
 
 			if props.NumPointDeletions() > 0 {
 				if err = d.loadTablePointKeyStats(props, v, level, meta, &stats); err != nil {
