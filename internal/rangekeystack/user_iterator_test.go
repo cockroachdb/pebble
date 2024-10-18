@@ -45,7 +45,7 @@ func TestIter(t *testing.T) {
 			for _, line := range lines {
 				spans = append(spans, keyspan.ParseSpan(line))
 			}
-			transform := keyspan.TransformerFunc(func(suffixCmp base.CompareSuffixes, s keyspan.Span, dst *keyspan.Span) error {
+			transform := keyspan.TransformerFunc(func(suffixCmp base.CompareRangeSuffixes, s keyspan.Span, dst *keyspan.Span) error {
 				dst.Keys = rangekey.CoalesceInto(suffixCmp, dst.Keys[:0], visibleSeqNum, s.Keys)
 				// Update the span with the (potentially reduced) keys slice.
 				// CoalesceInto() left the keys sorted by suffix. Re-sort them by
@@ -375,7 +375,7 @@ func BenchmarkTransform(b *testing.B) {
 					b.ResetTimer()
 
 					for i := 0; i < b.N; i++ {
-						err := ui.Transform(testkeys.Comparer.CompareSuffixes, keyspan.Span{Keys: keys}, &dst)
+						err := ui.Transform(testkeys.Comparer.CompareRangeSuffixes, keyspan.Span{Keys: keys}, &dst)
 						if err != nil {
 							b.Fatal(err)
 						}

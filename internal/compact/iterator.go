@@ -149,7 +149,7 @@ import (
 // and mutates the contents of the returned key and value.
 type Iter struct {
 	cmp       base.Compare
-	suffixCmp base.CompareSuffixes
+	suffixCmp base.CompareRangeSuffixes
 
 	cfg IterConfig
 
@@ -310,7 +310,7 @@ func NewIter(
 	cfg.ensureDefaults()
 	i := &Iter{
 		cmp:       cfg.Comparer.Compare,
-		suffixCmp: cfg.Comparer.CompareSuffixes,
+		suffixCmp: cfg.Comparer.CompareRangeSuffixes,
 		cfg:       cfg,
 		// We don't want a nil keyBuf because if the first key we encounter is
 		// empty, it would become nil.

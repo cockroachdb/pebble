@@ -295,7 +295,7 @@ func runIterCmd(
 		for kv != nil {
 			k := kv.K.UserKey
 			suffix := k[testkeys.Comparer.Split(k):]
-			if len(suffix) == 0 || testkeys.Comparer.CompareSuffixes(suffix, maskingSuffix) <= 0 {
+			if len(suffix) == 0 || testkeys.Comparer.CompareRangeSuffixes(suffix, maskingSuffix) <= 0 {
 				return kv
 			}
 			if direction > 0 {

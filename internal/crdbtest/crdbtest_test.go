@@ -38,11 +38,11 @@ func TestComparer(t *testing.T) {
 			suffix := key[Comparer.Split(key):]
 			suffixes = append(suffixes, suffix)
 
-			if len(suffix) == withWall {
+			if len(suffix) == suffixLenWithWall {
 				// Append a suffix that encodes a zero logical value that should be
 				// ignored in key comparisons, but not suffix comparisons.
-				newSuffix := slices.Concat(suffix[:withWall-1], zeroLogical[:], []byte{withLogical})
-				if Comparer.CompareSuffixes(suffix, newSuffix) != 1 {
+				newSuffix := slices.Concat(suffix[:suffixLenWithWall-1], zeroLogical[:], []byte{suffixLenWithLogical})
+				if Comparer.CompareRangeSuffixes(suffix, newSuffix) != 1 {
 					t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
 				}
 				if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
@@ -51,13 +51,13 @@ func TestComparer(t *testing.T) {
 				suffixes = append(suffixes, newSuffix)
 				suffix = newSuffix
 			}
-			if len(suffix) != withLogical {
+			if len(suffix) != suffixLenWithLogical {
 				t.Fatalf("unexpected suffix %x", suffix)
 			}
 			// Append a synthetic bit that should be ignored in key comparisons, but
 			// not suffix comparisons.
-			newSuffix := slices.Concat(suffix[:withLogical-1], []byte{1}, []byte{withSynthetic})
-			if Comparer.CompareSuffixes(suffix, newSuffix) != 1 {
+			newSuffix := slices.Concat(suffix[:suffixLenWithLogical-1], []byte{1}, []byte{suffixLenWithSynthetic})
+			if Comparer.CompareRangeSuffixes(suffix, newSuffix) != 1 {
 				t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
 			}
 			if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
@@ -67,8 +67,8 @@ func TestComparer(t *testing.T) {
 		}
 	}
 	// Add some lock table suffixes.
-	suffixes = append(suffixes, append(bytes.Repeat([]byte{1}, withLockTableLen-1), withLockTableLen))
-	suffixes = append(suffixes, append(bytes.Repeat([]byte{2}, withLockTableLen-1), withLockTableLen))
+	suffixes = append(suffixes, append(bytes.Repeat([]byte{1}, engineKeyVersionLockTableLen), suffixLenWithLockTable))
+	suffixes = append(suffixes, append(bytes.Repeat([]byte{2}, engineKeyVersionLockTableLen), suffixLenWithLockTable))
 	if err := base.CheckComparer(&Comparer, prefixes, suffixes); err != nil {
 		t.Error(err)
 	}

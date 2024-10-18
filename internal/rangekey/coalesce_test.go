@@ -22,7 +22,7 @@ func TestCoalesce(t *testing.T) {
 				Start: span.Start,
 				End:   span.End,
 			}
-			Coalesce(testkeys.Comparer.CompareSuffixes, span.Keys, &coalesced.Keys)
+			Coalesce(testkeys.Comparer.CompareRangeSuffixes, span.Keys, &coalesced.Keys)
 			return coalesced.String()
 
 		default:

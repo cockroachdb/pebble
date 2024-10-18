@@ -204,7 +204,7 @@ func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
 	// CommonPrefixLen, it would sort after [key].)
 	if cmpv.CommonPrefixLen == cmpv.PrefixLen {
 		// The keys share the same MVCC prefix. Compare the suffixes.
-		cmpv.UserKeyComparison = int32(w.comparer.CompareSuffixes(key[cmpv.PrefixLen:],
+		cmpv.UserKeyComparison = int32(w.comparer.CompareRangeSuffixes(key[cmpv.PrefixLen:],
 			w.suffixes.UnsafeGet(w.suffixes.rows-1)))
 		if invariants.Enabled {
 			if !w.comparer.Equal(lp, key[:cmpv.PrefixLen]) {
@@ -344,7 +344,7 @@ func (ks *defaultKeySeeker) SeekGE(
 func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
 	// The search key's prefix exactly matches the prefix of the row at index.
 	// If the row at index has a suffix >= [suffix], then return the row.
-	if ks.comparer.CompareSuffixes(ks.suffixes.At(index), suffix) >= 0 {
+	if ks.comparer.CompareRangeSuffixes(ks.suffixes.At(index), suffix) >= 0 {
 		return index
 	}
 	// Otherwise, the row at [index] sorts before the search key and we need to
@@ -357,7 +357,7 @@ func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
 		// l ≤ h < u
-		if ks.comparer.CompareSuffixes(ks.suffixes.At(h), suffix) >= 0 {
+		if ks.comparer.CompareRangeSuffixes(ks.suffixes.At(h), suffix) >= 0 {
 			u = h // preserves f(u) == true
 		} else {
 			l = h + 1 // preserves f(l-1) == false

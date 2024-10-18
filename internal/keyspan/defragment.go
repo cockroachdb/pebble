@@ -29,17 +29,17 @@ const keysReuseMaxCapacity = 100
 type DefragmentMethod interface {
 	// ShouldDefragment takes two abutting spans and returns whether the two
 	// spans should be combined into a single, defragmented Span.
-	ShouldDefragment(suffixCmp base.CompareSuffixes, left, right *Span) bool
+	ShouldDefragment(suffixCmp base.CompareRangeSuffixes, left, right *Span) bool
 }
 
 // The DefragmentMethodFunc type is an adapter to allow the use of ordinary
 // functions as DefragmentMethods. If f is a function with the appropriate
 // signature, DefragmentMethodFunc(f) is a DefragmentMethod that calls f.
-type DefragmentMethodFunc func(suffixCmp base.CompareSuffixes, left, right *Span) bool
+type DefragmentMethodFunc func(suffixCmp base.CompareRangeSuffixes, left, right *Span) bool
 
 // ShouldDefragment calls f(equal, left, right).
 func (f DefragmentMethodFunc) ShouldDefragment(
-	suffixCmp base.CompareSuffixes, left, right *Span,
+	suffixCmp base.CompareRangeSuffixes, left, right *Span,
 ) bool {
 	return f(suffixCmp, left, right)
 }
@@ -51,7 +51,7 @@ func (f DefragmentMethodFunc) ShouldDefragment(
 // This defragmenting method is intended for use in compactions that may see
 // internal range keys fragments that may now be joined, because the state that
 // required their fragmentation has been dropped.
-var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(suffixCmp base.CompareSuffixes, a, b *Span) bool {
+var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(suffixCmp base.CompareRangeSuffixes, a, b *Span) bool {
 	if a.KeysOrder != ByTrailerDesc || b.KeysOrder != ByTrailerDesc {
 		panic("pebble: span keys unexpectedly not in trailer descending order")
 	}
@@ -454,7 +454,7 @@ func (i *DefragmentingIter) Prev() (*Span, error) {
 // DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
 // spans is an optimization that lets us load fewer sstable blocks.
 func (i *DefragmentingIter) checkEqual(left, right *Span) bool {
-	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.comparer.CompareSuffixes, i.iterSpan, &i.curr)
+	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.comparer.CompareRangeSuffixes, i.iterSpan, &i.curr)
 }
 
 // defragmentForward defragments spans in the forward direction, starting from

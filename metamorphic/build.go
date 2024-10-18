@@ -150,7 +150,7 @@ func writeSSTForIngestion(
 					}
 				}
 			}
-			rangekey.Coalesce(t.opts.Comparer.CompareSuffixes, keys, &collapsed.Keys)
+			rangekey.Coalesce(t.opts.Comparer.CompareRangeSuffixes, keys, &collapsed.Keys)
 			for i := range collapsed.Keys {
 				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
 			}
