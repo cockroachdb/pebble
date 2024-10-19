@@ -246,7 +246,7 @@ func intersectingIndexEntries(
 				if err != nil {
 					return nil, err
 				}
-				entry := indexEntry{bh: bh, sep: top.Separator()}
+				entry := indexEntry{bh: bh, sep: sub.Separator()}
 				alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
 				alloc, entry.sep = alloc.Copy(entry.sep)
 				res = append(res, entry)
