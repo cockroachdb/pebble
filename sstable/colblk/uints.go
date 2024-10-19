@@ -361,15 +361,15 @@ func (b *UintBuilder) Finish(col, rows int, offset uint32, buf []byte) uint32 {
 	// values slice if there's actually a non-nil ptr.
 	var valuesSlice []uint64
 	if b.array.elems.ptr != nil {
-		valuesSlice = b.array.elems.Slice(rows)
+		valuesSlice = b.array.elems.Slice(min(rows, b.array.n))
 	}
-	return uintColumnFinish(minimum, valuesSlice, e, offset, buf)
+	return uintColumnFinish(rows, minimum, valuesSlice, e, offset, buf)
 }
 
 // uintColumnFinish finishes the column of unsigned integers of type T, applying
 // the given encoding.
 func uintColumnFinish(
-	minimum uint64, values []uint64, e UintEncoding, offset uint32, buf []byte,
+	rows int, minimum uint64, values []uint64, e UintEncoding, offset uint32, buf []byte,
 ) uint32 {
 	buf[offset] = byte(e)
 	offset++
@@ -390,28 +390,28 @@ func uintColumnFinish(
 
 	switch e.Width() {
 	case 1:
-		dest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		dest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset])).Slice(rows)
 		reduceUints(deltaBase, values, dest)
 
 	case 2:
-		dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset])).Slice(rows)
 		reduceUints(deltaBase, values, dest)
 
 	case 4:
-		dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset])).Slice(rows)
 		reduceUints(deltaBase, values, dest)
 
 	case 8:
 		if deltaBase != 0 {
 			panic("unreachable")
 		}
-		dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset])).Slice(len(values))
+		dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset])).Slice(rows)
 		copy(dest, values)
 
 	default:
 		panic("unreachable")
 	}
-	return offset + uint32(len(values))*width
+	return offset + uint32(rows)*width
 }
 
 // WriteDebug implements Encoder.
@@ -425,17 +425,28 @@ func (b *UintBuilder) WriteDebug(w io.Writer, rows int) {
 //	reduceUints[uint8](10, []uint64{10, 11, 12}, dst)
 //
 // could be used to reduce a slice of uint64 values to uint8 values {0, 1, 2}.
+//
+// The values slice can be smaller than dst; in that case, the values between
+// len(values) and len(dst) are assumed to be 0.
 func reduceUints[N constraints.Integer](minimum uint64, values []uint64, dst []N) {
-	for i := 0; i < len(values); i++ {
+	for i, v := range values {
 		if invariants.Enabled {
-			if values[i] < minimum {
+			if v < minimum {
 				panic("incorrect minimum value")
 			}
-			if values[i]-minimum > uint64(N(0)-1) {
+			if v-minimum > uint64(N(0)-1) {
 				panic("incorrect target width")
 			}
 		}
-		dst[i] = N(values[i] - minimum)
+		dst[i] = N(v - minimum)
+	}
+	if invariants.Enabled && len(values) < len(dst) {
+		if minimum != 0 {
+			panic("incorrect minimum value")
+		}
+	}
+	for i := len(values); i < len(dst); i++ {
+		dst[i] = 0
 	}
 }
 
