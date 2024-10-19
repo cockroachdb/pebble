@@ -740,9 +740,6 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 // Assert that a DataBlockDecoder can fit inside block.Metadata.
 const _ uint = block.MetadataSize - uint(unsafe.Sizeof(DataBlockDecoder{}))
 
-// Assert that an IndexBlockDecoder can fit inside block.Metadata.
-const _ uint = block.MetadataSize - uint(unsafe.Sizeof(IndexBlockDecoder{}))
-
 // InitDataBlockMetadata initializes the metadata for a data block.
 func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (err error) {
 	if uintptr(unsafe.Pointer(md))%8 != 0 {
@@ -761,12 +758,35 @@ func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (e
 	return nil
 }
 
+// Assert that an IndexBlockDecoder can fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(IndexBlockDecoder{}))
+
 // InitIndexBlockMetadata initializes the metadata for an index block.
 func InitIndexBlockMetadata(md *block.Metadata, data []byte) (err error) {
 	if uintptr(unsafe.Pointer(md))%8 != 0 {
 		return errors.AssertionFailedf("metadata is not 8-byte aligned")
 	}
 	d := (*IndexBlockDecoder)(unsafe.Pointer(md))
+	// Initialization can panic; convert panics to corruption errors (so higher
+	// layers can add file number and offset information).
+	defer func() {
+		if r := recover(); r != nil {
+			err = base.CorruptionErrorf("error initializing data block metadata: %v", r)
+		}
+	}()
+	d.Init(data)
+	return nil
+}
+
+// Assert that a IndexBlockDecoder can fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(KeyspanDecoder{}))
+
+// InitKeyspanBlockMetadata initializes the metadata for a rangedel or range key block.
+func InitKeyspanBlockMetadata(md *block.Metadata, data []byte) (err error) {
+	if uintptr(unsafe.Pointer(md))%8 != 0 {
+		return errors.AssertionFailedf("metadata is not 8-byte aligned")
+	}
+	d := (*KeyspanDecoder)(unsafe.Pointer(md))
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
 	defer func() {
