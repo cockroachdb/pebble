@@ -240,9 +240,13 @@ func benchmarkRandSeekInSST(
 		iter, err := reader.NewPointIter(
 			ctx, sstable.NoTransforms, nil, nil, nil, sstable.NeverUseFilterBlock,
 			&stats, sstable.CategoryAndQoS{}, nil, rp)
-		require.NoError(b, err)
+		if err != nil {
+			b.Fatal(err)
+		}
 		iter.SeekGE(key, base.SeekGEFlagsNone)
-		require.NoError(b, iter.Close())
+		if err := iter.Close(); err != nil {
+			b.Fatal(err)
+		}
 	}
 	// Stop the timer before any deferred cleanup.
 	b.StopTimer()
