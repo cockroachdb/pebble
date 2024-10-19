@@ -34,8 +34,8 @@ func (i *IndexIter) InitHandle(
 
 // ResetForReuse resets the index iterator for reuse, retaining buffers to avoid
 // future allocations.
-func (i *IndexIter) ResetForReuse() IndexIter {
-	return IndexIter{iter: i.iter.ResetForReuse()}
+func (i *IndexIter) ResetForReuse() {
+	i.iter.ResetForReuse()
 }
 
 // Valid returns true if the iterator is currently positioned at a valid block

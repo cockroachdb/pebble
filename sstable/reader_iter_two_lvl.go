@@ -1045,12 +1045,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) Close() error {
 	}
 	pool := i.pool
 	err := i.secondLevel.closeInternal()
+	i.secondLevel.resetForReuse()
 	err = firstError(err, PI(&i.topLevelIndex).Close())
-	*i = twoLevelIterator[I, PI, D, PD]{
-		secondLevel:   i.secondLevel.resetForReuse(),
-		topLevelIndex: PI(&i.topLevelIndex).ResetForReuse(),
-		pool:          pool,
-	}
+	PI(&i.topLevelIndex).ResetForReuse()
+	i.useFilterBlock = false
+	i.lastBloomFilterMatched = false
 	if pool != nil {
 		pool.Put(i)
 	}

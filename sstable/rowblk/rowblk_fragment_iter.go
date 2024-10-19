@@ -286,8 +286,9 @@ func (i *fragmentIter) Close() {
 		return
 	}
 
+	i.blockIter.ResetForReuse()
 	*i = fragmentIter{
-		blockIter:   i.blockIter.ResetForReuse(),
+		blockIter:   i.blockIter,
 		closeCheck:  i.closeCheck,
 		startKeyBuf: i.startKeyBuf[:0],
 		endKeyBuf:   i.endKeyBuf[:0],

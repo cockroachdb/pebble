@@ -56,10 +56,8 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	// endKeyInclusive is set to force the iterator to treat the upper field as
 	// inclusive while iterating instead of exclusive.
 	endKeyInclusive       bool
-	index                 I
 	indexFilterRH         objstorage.ReadHandle
 	indexFilterRHPrealloc objstorageprovider.PreallocatedReadHandle
-	data                  D
 	dataRH                objstorage.ReadHandle
 	dataRHPrealloc        objstorageprovider.PreallocatedReadHandle
 	// dataBH refers to the last data block that the iterator considered
@@ -172,6 +170,11 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 
 	transforms IterTransforms
 
+	// All fields above this field are cleared when resetting the iterator for reuse.
+	clearForResetBoundary struct{}
+
+	index I
+	data  D
 	// inPool is set to true before putting the iterator in the reusable pool;
 	// used to detect double-close.
 	inPool bool
@@ -183,6 +186,9 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	// If the iterator is embedded within a twoLevelIterator, pool is nil and
 	// the twoLevelIterator.pool field may be non-nil.
 	pool *sync.Pool
+
+	// NOTE: any new fields should be added above the clearForResetBoundary field,
+	// unless they need to be retained when resetting the iterator.
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -384,13 +390,18 @@ func (i *singleLevelIterator[I, PI, D, PD]) SetupForCompaction() {
 	}
 }
 
-func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() singleLevelIterator[I, PI, D, PD] {
-	return singleLevelIterator[I, PI, D, PD]{
-		index:  PI(&i.index).ResetForReuse(),
-		data:   PD(&i.data).ResetForReuse(),
-		pool:   i.pool,
-		inPool: true,
-	}
+const clearLen = unsafe.Offsetof(singleLevelIteratorRowBlocks{}.clearForResetBoundary)
+
+// Assert that clearLen is consistent betwen the row and columnar implementations.
+const clearLenColBlocks = unsafe.Offsetof(singleLevelIteratorColumnBlocks{}.clearForResetBoundary)
+const _ uintptr = clearLen - clearLenColBlocks
+const _ uintptr = clearLenColBlocks - clearLen
+
+func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() {
+	*(*[clearLen]byte)(unsafe.Pointer(i)) = [clearLen]byte{}
+	PI(&i.index).ResetForReuse()
+	PD(&i.data).ResetForReuse()
+	i.inPool = true
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) initBounds() {
@@ -1565,7 +1576,7 @@ func firstError(err0, err1 error) error {
 func (i *singleLevelIterator[I, PI, D, PD]) Close() error {
 	err := i.closeInternal()
 	pool := i.pool
-	*i = i.resetForReuse()
+	i.resetForReuse()
 	if pool != nil {
 		pool.Put(i)
 	}
