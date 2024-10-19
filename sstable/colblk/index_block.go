@@ -207,19 +207,15 @@ var _ block.IndexBlockIterator = (*IndexIter)(nil)
 func (i *IndexIter) InitWithDecoder(
 	compare base.Compare, split base.Split, d *IndexBlockDecoder, transforms block.IterTransforms,
 ) {
-	*i = IndexIter{
-		compare:         compare,
-		split:           split,
-		d:               d,
-		n:               int(d.bd.header.Rows),
-		row:             -1,
-		h:               i.h,
-		allocDecoder:    i.allocDecoder,
-		keyBuf:          i.keyBuf,
-		syntheticPrefix: transforms.SyntheticPrefix,
-		syntheticSuffix: transforms.SyntheticSuffix,
-		noTransforms:    !transforms.SyntheticPrefix.IsSet() && !transforms.SyntheticSuffix.IsSet(),
-	}
+	i.compare = compare
+	i.split = split
+	i.d = d
+	i.n = int(d.bd.header.Rows)
+	i.row = -1
+	i.syntheticPrefix = transforms.SyntheticPrefix
+	i.syntheticSuffix = transforms.SyntheticSuffix
+	i.noTransforms = !transforms.SyntheticPrefix.IsSet() && !transforms.SyntheticSuffix.IsSet()
+	// Leave h, allocDecoder, keyBuf unchanged.
 }
 
 // Init initializes an iterator from the provided block data slice.
@@ -252,11 +248,13 @@ func (i *IndexIter) RowIndex() int {
 
 // ResetForReuse resets the IndexIter for reuse, retaining buffers to avoid
 // future allocations.
-func (i *IndexIter) ResetForReuse() IndexIter {
+func (i *IndexIter) ResetForReuse() {
 	if invariants.Enabled && i.h != (block.BufferHandle{}) {
 		panic(errors.AssertionFailedf("IndexIter reset for reuse with non-empty handle"))
 	}
-	return IndexIter{ /* nothing to retain */ }
+	i.d = nil
+	i.syntheticPrefix = nil
+	i.syntheticSuffix = nil
 }
 
 // Valid returns true if the iterator is currently positioned at a valid block

@@ -89,6 +89,6 @@ func (r *Rewriter) RewriteSuffixes(
 	end.Trailer = r.scratchKey.Trailer
 	r.keyAlloc, end.UserKey = r.keyAlloc.Copy(r.scratchKey.UserKey)
 
-	r.iter = r.iter.ResetForReuse()
+	r.iter.ResetForReuse()
 	return start, end, r.writer.Finish(), nil
 }

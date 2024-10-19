@@ -303,13 +303,16 @@ func (i *Iter) IsDataInvalidated() bool {
 
 // ResetForReuse resets the blockIter for reuse, retaining buffers to avoid
 // future allocations.
-func (i *Iter) ResetForReuse() Iter {
-	return Iter{
-		fullKey:                   i.fullKey[:0],
-		cached:                    i.cached[:0],
-		cachedBuf:                 i.cachedBuf[:0],
-		firstUserKeyWithPrefixBuf: i.firstUserKeyWithPrefixBuf[:0],
-		data:                      nil,
+func (i *Iter) ResetForReuse() {
+	fullKey := i.fullKey[:0]
+	cached := i.cached[:0]
+	cachedBuf := i.cachedBuf[:0]
+	firstUserKeyWithPrefixBuf := i.firstUserKeyWithPrefixBuf[:0]
+	*i = Iter{
+		fullKey:                   fullKey,
+		cached:                    cached,
+		cachedBuf:                 cachedBuf,
+		firstUserKeyWithPrefixBuf: firstUserKeyWithPrefixBuf,
 	}
 }
 

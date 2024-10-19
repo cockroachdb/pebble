@@ -28,7 +28,7 @@ type dataBlockIterator[D any] interface {
 
 	// ResetForReuse resets the data block iterator for reuse, retaining buffers
 	// to avoid future allocations.
-	ResetForReuse() D
+	ResetForReuse()
 
 	*D // non-interface type constraint element
 }
@@ -45,7 +45,7 @@ type indexBlockIterator[I any] interface {
 
 	// ResetForReuse resets the index iterator for reuse, retaining buffers to
 	// avoid future allocations.
-	ResetForReuse() I
+	ResetForReuse()
 
 	*I // non-interface type constraint element
 }
