@@ -59,5 +59,20 @@ func (f *MemObj) Size() int64 {
 
 // NewReadHandle is part of the Readable interface.
 func (f *MemObj) NewReadHandle(readBeforeSize ReadBeforeSize) ReadHandle {
-	return &NoopReadHandle{readable: f}
+	return (*memObjReadHandle)(f)
 }
+
+// memObjReadHandle implements ReadHandle for MemObj.
+type memObjReadHandle MemObj
+
+var _ ReadHandle = (*memObjReadHandle)(nil)
+
+func (h *memObjReadHandle) ReadAt(ctx context.Context, p []byte, off int64) error {
+	return (*MemObj)(h).ReadAt(ctx, p, off)
+}
+
+func (h *memObjReadHandle) Close() error { return nil }
+
+func (h *memObjReadHandle) SetupForCompaction() {}
+
+func (h *memObjReadHandle) RecordCacheHit(ctx context.Context, offset, size int64) {}
