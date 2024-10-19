@@ -35,6 +35,54 @@ a#0,SET: foo
 b#0,SET: bar
 c#0,SET: baz
 
+
+# Try the above with small blocks.
+build test22 format=pebblev4 block_size=1 index_block_size=1
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+e.SET.5:foo
+f.SET.5:foo
+g.SET.5:foo
+h.SET.5:foo
+i.SET.5:foo
+j.SET.5:foo
+----
+
+iter test22
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+e#0,SET: foo
+f#0,SET: foo
+g#0,SET: foo
+h#0,SET: foo
+i#0,SET: foo
+j#0,SET: foo
+
+copy-span test22 test23 b.SET.10 cc.SET.0
+----
+copied 661 bytes
+
+iter test23
+----
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test22 test24 a.SET.10 bb.SET.0
+----
+copied 658 bytes
+
+iter test24
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+
 # Try the above with columnar blocks.
 
 build test3 format=pebblev5
@@ -66,6 +114,54 @@ copy-span test3 test5 a.SET.10 bb.SET.0
 copied 897 bytes
 
 iter test5
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+
+
+# Try the above with small blocks.
+build test32 format=pebblev5 block_size=1 index_block_size=1
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+e.SET.5:foo
+f.SET.5:foo
+g.SET.5:foo
+h.SET.5:foo
+i.SET.5:foo
+j.SET.5:foo
+----
+
+iter test32
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+e#0,SET: foo
+f#0,SET: foo
+g#0,SET: foo
+h#0,SET: foo
+i#0,SET: foo
+j#0,SET: foo
+
+copy-span test32 test33 b.SET.10 cc.SET.0
+----
+copied 889 bytes
+
+iter test33
+----
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test32 test34 a.SET.10 bb.SET.0
+----
+copied 897 bytes
+
+iter test34
 ----
 a#0,SET: foo
 b#0,SET: bar

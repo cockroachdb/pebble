@@ -7,6 +7,7 @@ package sstable
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,6 +36,8 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			tableFormat := TableFormatMax
+			blockSize := 1
+			var indexBlockSize int
 			for i := range d.CmdArgs[1:] {
 				switch d.CmdArgs[i+1].Key {
 				case "format":
@@ -44,13 +47,26 @@ func TestCopySpan(t *testing.T) {
 					case "pebblev5":
 						tableFormat = TableFormatPebblev5
 					}
+				case "block_size":
+					var err error
+					blockSize, err = strconv.Atoi(d.CmdArgs[i+1].FirstVal(t))
+					if err != nil {
+						return err.Error()
+					}
+				case "index_block_size":
+					var err error
+					indexBlockSize, err = strconv.Atoi(d.CmdArgs[i+1].FirstVal(t))
+					if err != nil {
+						return err.Error()
+					}
 				}
 			}
 			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
-				BlockSize:   1,
-				TableFormat: tableFormat,
-				Comparer:    testkeys.Comparer,
-				KeySchema:   keySchema,
+				BlockSize:      blockSize,
+				IndexBlockSize: indexBlockSize,
+				TableFormat:    tableFormat,
+				Comparer:       testkeys.Comparer,
+				KeySchema:      keySchema,
 			})
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
