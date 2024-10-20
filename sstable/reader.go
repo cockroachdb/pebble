@@ -431,14 +431,23 @@ func (r *Reader) readRangeDelBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
+	return r.readBlockInternal(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
 }
 
 func (r *Reader) readRangeKeyBlock(
 	ctx context.Context, env readBlockEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
+	return r.readBlockInternal(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
+}
+
+// initKeyspanBlockMetadata initializes the Metadata for a rangedel or range key
+// block. This will later be used (and reused) when reading from the block.
+func (r *Reader) initKeyspanBlockMetadata(metadata *block.Metadata, data []byte) error {
+	if r.tableFormat.BlockColumnar() {
+		return colblk.InitKeyspanBlockMetadata(metadata, data)
+	}
+	return nil
 }
 
 func (r *Reader) readValueBlock(

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -86,6 +87,8 @@ func TestKeyspanBlockPooling(t *testing.T) {
 	defer c.Unref()
 	v := block.Alloc(len(b), nil)
 	copy(v.BlockData(), b)
+	d := (*KeyspanDecoder)(unsafe.Pointer(v.BlockMetadata()))
+	d.Init(v.BlockData())
 	v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
 
 	getBlockAndIterate := func() {
