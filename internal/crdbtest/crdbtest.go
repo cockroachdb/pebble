@@ -14,7 +14,6 @@ import (
 	"io"
 	"math/rand/v2"
 	"slices"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -533,8 +532,12 @@ var KeySchema = colblk.KeySchema{
 		kw.untypedVersions.Init()
 		return kw
 	},
-	NewKeySeeker: func() colblk.KeySeeker {
-		return cockroachKeySeekerPool.Get().(*cockroachKeySeeker)
+	InitKeySeekerMetadata: func(meta *colblk.KeySeekerMetadata, d *colblk.DataBlockDecoder) {
+		ks := (*cockroachKeySeeker)(unsafe.Pointer(meta))
+		ks.init(d)
+	},
+	KeySeeker: func(meta *colblk.KeySeekerMetadata) colblk.KeySeeker {
+		return (*cockroachKeySeeker)(unsafe.Pointer(meta))
 	},
 }
 
@@ -662,10 +665,6 @@ func (kw *cockroachKeyWriter) Finish(
 	}
 }
 
-var cockroachKeySeekerPool = sync.Pool{
-	New: func() interface{} { return &cockroachKeySeeker{} },
-}
-
 type cockroachKeySeeker struct {
 	roachKeys       colblk.PrefixBytes
 	roachKeyChanged colblk.Bitmap
@@ -674,23 +673,21 @@ type cockroachKeySeeker struct {
 	untypedVersions colblk.RawBytes
 }
 
+// Assert that the cockroachKeySeeker fits inside KeySeekerMetadata.
+var _ uint = colblk.KeySeekerMetadataSize - uint(unsafe.Sizeof(cockroachKeySeeker{}))
+
 var _ colblk.KeySeeker = (*cockroachKeySeeker)(nil)
 
-// Init is part of the KeySeeker interface.
-func (ks *cockroachKeySeeker) Init(d *colblk.DataBlockDecoder) error {
+func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder) {
 	bd := d.BlockDecoder()
 	ks.roachKeys = bd.PrefixBytes(cockroachColRoachKey)
 	ks.roachKeyChanged = d.PrefixChanged()
 	ks.mvccWallTimes = bd.Uints(cockroachColMVCCWallTime)
 	ks.mvccLogical = bd.Uints(cockroachColMVCCLogical)
 	ks.untypedVersions = bd.RawBytes(cockroachColUntypedVersion)
-	return nil
 }
 
-// CompareFirstUserKey compares the provided key to the first user key
-// contained within the data block. It's equivalent to performing
-//
-//	Compare(firstUserKey, k)
+// IsLowerBound is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool {
 	roachKey, untypedVersion, wallTime, logicalTime := DecodeEngineKey(k)
 	if v := Compare(ks.roachKeys.UnsafeFirstSlice(), roachKey); v != 0 {
@@ -874,12 +871,6 @@ func (ks *cockroachKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 	*(*byte)(ptr) = 0
 	memmove(unsafe.Pointer(uintptr(ptr)+1), unsafe.Pointer(unsafe.SliceData(suffix)), uintptr(len(suffix)))
 	return res
-}
-
-// Release is part of the KeySeeker interface.
-func (ks *cockroachKeySeeker) Release() {
-	*ks = cockroachKeySeeker{}
-	cockroachKeySeekerPool.Put(ks)
 }
 
 //go:linkname memmove runtime.memmove
