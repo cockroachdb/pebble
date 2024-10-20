@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crbytes"
@@ -37,8 +36,34 @@ type KeySchema struct {
 	Name         string
 	ColumnTypes  []DataType
 	NewKeyWriter func() KeyWriter
-	NewKeySeeker func() KeySeeker
+
+	// InitKeySeekerMetadata initializes the provided KeySeekerMetadata. This
+	// happens once when a block enters the block cache and can be used to save
+	// computation in NewKeySeeker.
+	InitKeySeekerMetadata func(meta *KeySeekerMetadata, d *DataBlockDecoder)
+
+	// KeySeeker returns a KeySeeker using metadata that was previously
+	// initialized with InitKeySeekerMetadata. The returned key seeker can be an
+	// unsafe cast of the metadata itself.
+	KeySeeker func(meta *KeySeekerMetadata) KeySeeker
 }
+
+// KeySeekerMetadata is an in-memory buffer that stores metadata for a block. It
+// is allocated together with the buffer storing the block and is initialized
+// once when the block is read from disk. It is always 8-byte aligned.
+//
+// Portions of this buffer can be cast to the structures we need (through
+// unsafe.Pointer), but note that any pointers in these structures will be
+// invisible to the GC. Pointers to the block's data buffer are ok, since the
+// metadata and the data have the same lifetime (sharing the underlying
+// allocation).
+//
+// KeySeekerMetadata is stored inside block.Metadata.
+type KeySeekerMetadata [KeySeekerMetadataSize]byte
+
+// KeySeekerMetadataSize is chosen to fit the CockroachDB key seeker
+// implementation.
+const KeySeekerMetadataSize = 168
 
 // A KeyWriter maintains ColumnWriters for a data block for writing user keys
 // into the database-specific key schema. Users may define their own key schema
@@ -99,8 +124,6 @@ func (kcmp KeyComparison) PrefixEqual() bool { return kcmp.PrefixLen == kcmp.Com
 // goroutines. In practice, multiple DataBlockIterators may use the same
 // KeySeeker.
 type KeySeeker interface {
-	// Init initializes the iterator to read from the provided DataBlockDecoder.
-	Init(b *DataBlockDecoder) error
 	// IsLowerBound returns true if all keys in the data block (after suffix
 	// replacement if syntheticSuffix is not empty) are >= the given key. If the
 	// data block contains no keys, returns true.
@@ -137,9 +160,6 @@ type KeySeeker interface {
 	MaterializeUserKeyWithSyntheticSuffix(
 		keyIter *PrefixBytesIter, syntheticSuffix []byte, prevRow, row int,
 	) []byte
-	// Release releases the KeySeeker. It's called when the seeker is no longer
-	// in use. Implementations may pool KeySeeker objects.
-	Release()
 }
 
 const (
@@ -150,12 +170,6 @@ const (
 var defaultSchemaColumnTypes = []DataType{
 	defaultKeySchemaColumnPrefix: DataTypePrefixBytes,
 	defaultKeySchemaColumnSuffix: DataTypeBytes,
-}
-
-var defaultKeySeekerPool = sync.Pool{
-	New: func() interface{} {
-		return &defaultKeySeeker{}
-	},
 }
 
 // DefaultKeySchema returns the default key schema that decomposes a user key
@@ -170,9 +184,13 @@ func DefaultKeySchema(comparer *base.Comparer, prefixBundleSize int) KeySchema {
 			kw.suffixes.Init()
 			return kw
 		},
-		NewKeySeeker: func() KeySeeker {
-			ks := defaultKeySeekerPool.Get().(*defaultKeySeeker)
+		InitKeySeekerMetadata: func(meta *KeySeekerMetadata, d *DataBlockDecoder) {
+			ks := (*defaultKeySeeker)(unsafe.Pointer(&meta[0]))
 			ks.comparer = comparer
+			ks.init(d)
+		},
+		KeySeeker: func(meta *KeySeekerMetadata) KeySeeker {
+			ks := (*defaultKeySeeker)(unsafe.Pointer(&meta[0]))
 			return ks
 		},
 	}
@@ -296,6 +314,9 @@ func (w *defaultKeyWriter) Finish(col, rows int, offset uint32, buf []byte) (nex
 // Assert that *defaultKeySeeker implements KeySeeker.
 var _ KeySeeker = (*defaultKeySeeker)(nil)
 
+// Assert that the metadata fits the defalut key seeker.
+var _ uint = KeySeekerMetadataSize - uint(unsafe.Sizeof(defaultKeySeeker{}))
+
 type defaultKeySeeker struct {
 	comparer     *base.Comparer
 	decoder      *DataBlockDecoder
@@ -304,12 +325,11 @@ type defaultKeySeeker struct {
 	sharedPrefix []byte
 }
 
-func (ks *defaultKeySeeker) Init(d *DataBlockDecoder) error {
+func (ks *defaultKeySeeker) init(d *DataBlockDecoder) {
 	ks.decoder = d
 	ks.prefixes = d.d.PrefixBytes(defaultKeySchemaColumnPrefix)
 	ks.suffixes = d.d.RawBytes(defaultKeySchemaColumnSuffix)
 	ks.sharedPrefix = ks.prefixes.SharedPrefix()
-	return nil
 }
 
 // IsLowerBound is part of the KeySeeker interface.
@@ -399,11 +419,6 @@ func (ks *defaultKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 		uintptr(len(suffix)),
 	)
 	return res
-}
-
-func (ks *defaultKeySeeker) Release() {
-	*ks = defaultKeySeeker{}
-	defaultKeySeekerPool.Put(ks)
 }
 
 // DataBlockEncoder encodes columnar data blocks using a user-defined schema.
@@ -666,7 +681,6 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 ) (start, end base.InternalKey, rewritten []byte, err error) {
 	if !rw.initialized {
 		rw.iter.InitOnce(rw.KeySchema, rw.compare, rw.split, assertNoExternalValues{})
-		rw.keySeeker = rw.KeySchema.NewKeySeeker()
 		rw.encoder.Init(rw.KeySchema)
 		rw.initialized = true
 	}
@@ -693,7 +707,9 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	// we're performing here and instead use a read-time IterTransform.
 
 	rw.decoder.Init(rw.KeySchema, input)
-	rw.keySeeker.Init(&rw.decoder)
+	meta := &KeySeekerMetadata{}
+	rw.KeySchema.InitKeySeekerMetadata(meta, &rw.decoder)
+	rw.keySeeker = rw.KeySchema.KeySeeker(meta)
 	rw.encoder.Reset()
 	if err = rw.iter.Init(&rw.decoder, block.IterTransforms{}); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
@@ -737,8 +753,15 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	return start, end, rewritten, nil
 }
 
-// Assert that a DataBlockDecoder can fit inside block.Metadata.
-const _ uint = block.MetadataSize - uint(unsafe.Sizeof(DataBlockDecoder{}))
+// dataBlockDecoderSize is the size of DataBlockDecoder, round up to 8 bytes.
+const dataBlockDecoderSize = (unsafe.Sizeof(DataBlockDecoder{}) + 7) &^ 7
+
+// Assert that dataBlockDecoderSize is a multiple of 8 bytes (so that
+// KeySeekerMetadata is also aligned).
+const _ uint = uint(-(dataBlockDecoderSize % 8))
+
+// Assert that a DataBlockDecoder and a KeySeekerMetadata can fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(dataBlockDecoderSize) - KeySeekerMetadataSize
 
 // Assert that an IndexBlockDecoder can fit inside block.Metadata.
 const _ uint = block.MetadataSize - uint(unsafe.Sizeof(IndexBlockDecoder{}))
@@ -757,7 +780,8 @@ func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (e
 		}
 	}()
 	d.Init(schema, data)
-	// TODO(radu): Initialize the KeySeeker here as well.
+	keySchemaMeta := (*KeySeekerMetadata)(unsafe.Pointer(&md[dataBlockDecoderSize]))
+	schema.InitKeySeekerMetadata(keySchemaMeta, d)
 	return nil
 }
 
@@ -927,9 +951,10 @@ func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransform
 	}
 	i.noTransforms = i.transforms.NoTransforms()
 
-	if i.keySeeker == nil {
-		i.keySeeker = i.keySchema.NewKeySeeker()
-	}
+	// TODO(radu): see if this allocation can be a problem for the suffix rewriter.
+	meta := &KeySeekerMetadata{}
+	i.keySchema.InitKeySeekerMetadata(meta, d)
+	i.keySeeker = i.keySchema.KeySeeker(meta)
 
 	// The worst case is when the largest key in the block has no suffix.
 	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(d.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
@@ -938,7 +963,7 @@ func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransform
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
 	i.nextObsoletePoint = 0
-	return i.keySeeker.Init(d)
+	return nil
 }
 
 // InitHandle initializes the block from the provided buffer handle. InitHandle
@@ -949,7 +974,9 @@ func (i *DataBlockIter) InitHandle(
 ) error {
 	i.cmp = cmp
 	i.split = split
-	i.d = (*DataBlockDecoder)(unsafe.Pointer(h.BlockMetadata()))
+	blockMeta := h.BlockMetadata()
+	i.d = (*DataBlockDecoder)(unsafe.Pointer(blockMeta))
+	keySeekerMeta := (*KeySeekerMetadata)(blockMeta[unsafe.Sizeof(DataBlockDecoder{}):])
 	i.h.Release()
 	i.h = h
 
@@ -963,10 +990,6 @@ func (i *DataBlockIter) InitHandle(
 	}
 	i.noTransforms = i.transforms.NoTransforms()
 
-	if i.keySeeker == nil {
-		i.keySeeker = i.keySchema.NewKeySeeker()
-	}
-
 	// The worst case is when the largest key in the block has no suffix.
 	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(i.d.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
 	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
@@ -974,7 +997,8 @@ func (i *DataBlockIter) InitHandle(
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
 	i.nextObsoletePoint = 0
-	return i.keySeeker.Init(i.d)
+	i.keySeeker = i.keySchema.KeySeeker(keySeekerMeta)
+	return nil
 }
 
 // Handle returns the handle to the block.
@@ -1398,10 +1422,7 @@ var _ = (*DataBlockIter).decodeKey
 
 // Close implements the base.InternalIterator interface.
 func (i *DataBlockIter) Close() error {
-	if i.keySeeker != nil {
-		i.keySeeker.Release()
-		i.keySeeker = nil
-	}
+	i.keySeeker = nil
 	i.d = nil
 	i.h.Release()
 	i.h = block.BufferHandle{}
