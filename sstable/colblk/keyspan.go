@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -327,12 +328,8 @@ func NewKeyspanIter(
 	i := keyspanIterPool.Get().(*KeyspanIter)
 	i.closeCheck = invariants.CloseChecker{}
 	i.handle = h
-	// TODO(jackson): We can teach the block cache to stash a *KeyspanDecoder.
-	// Then all iters would use the same decoder rather than needing to allocate
-	// their own KeyspanDecoder and parse the high-level block structure
-	// themselves.
-	i.allocDecoder.Init(h.BlockData())
-	i.init(cmp, &i.allocDecoder, transforms)
+	d := (*KeyspanDecoder)(unsafe.Pointer(h.BlockMetadata()))
+	i.init(cmp, d, transforms)
 	return i
 }
 
@@ -353,8 +350,7 @@ var keyspanIterPool = sync.Pool{
 // keyspan.FragmentIterator interface.
 type KeyspanIter struct {
 	keyspanIter
-	handle       block.BufferHandle
-	allocDecoder KeyspanDecoder
+	handle block.BufferHandle
 
 	closeCheck invariants.CloseChecker
 }
@@ -372,7 +368,6 @@ func (i *KeyspanIter) Close() {
 	}
 
 	i.keyspanIter.Close()
-	i.allocDecoder = KeyspanDecoder{}
 	i.closeCheck.Close()
 	keyspanIterPool.Put(i)
 }
