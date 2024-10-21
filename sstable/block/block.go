@@ -119,16 +119,18 @@ func (t ChecksumType) String() string {
 
 // A Checksummer calculates checksums for blocks.
 type Checksummer struct {
-	Type     ChecksumType
-	xxHasher *xxhash.Digest
+	Type         ChecksumType
+	xxHasher     *xxhash.Digest
+	blockTypeBuf [1]byte
 }
 
 // Checksum computes a checksum over the provided block and block type.
-func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32) {
+func (c *Checksummer) Checksum(block []byte, blockType byte) (checksum uint32) {
 	// Calculate the checksum.
+	c.blockTypeBuf[0] = blockType
 	switch c.Type {
 	case ChecksumTypeCRC32c:
-		checksum = crc.New(block).Update(blockType).Value()
+		checksum = crc.New(block).Update(c.blockTypeBuf[:]).Value()
 	case ChecksumTypeXXHash64:
 		if c.xxHasher == nil {
 			c.xxHasher = xxhash.New()
@@ -136,7 +138,7 @@ func (c *Checksummer) Checksum(block []byte, blockType []byte) (checksum uint32)
 			c.xxHasher.Reset()
 		}
 		c.xxHasher.Write(block)
-		c.xxHasher.Write(blockType)
+		c.xxHasher.Write(c.blockTypeBuf[:])
 		checksum = uint32(c.xxHasher.Sum64())
 	default:
 		panic(errors.Newf("unsupported checksum type: %d", c.Type))
