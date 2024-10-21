@@ -14,6 +14,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -517,7 +518,8 @@ const (
 )
 
 var KeySchema = colblk.KeySchema{
-	Name: "crdb1",
+	Name:       "crdb1",
+	HeaderSize: 1,
 	ColumnTypes: []colblk.DataType{
 		cockroachColRoachKey:       colblk.DataTypePrefixBytes,
 		cockroachColMVCCWallTime:   colblk.DataTypeUint,
@@ -525,12 +527,7 @@ var KeySchema = colblk.KeySchema{
 		cockroachColUntypedVersion: colblk.DataTypeBytes,
 	},
 	NewKeyWriter: func() colblk.KeyWriter {
-		kw := &cockroachKeyWriter{}
-		kw.roachKeys.Init(16)
-		kw.wallTimes.Init()
-		kw.logicalTimes.InitWithDefault()
-		kw.untypedVersions.Init()
-		return kw
+		return makeCockroachKeyWriter()
 	},
 	InitKeySeekerMetadata: func(meta *colblk.KeySeekerMetadata, d *colblk.DataBlockDecoder) {
 		ks := (*cockroachKeySeeker)(unsafe.Pointer(meta))
@@ -541,12 +538,62 @@ var KeySchema = colblk.KeySchema{
 	},
 }
 
+// suffixTypes is a bitfield indicating what kind of suffixes are present in a
+// block.
+type suffixTypes uint8
+
+const (
+	// hasMVCCSuffixes is set if there is at least one key with an MVCC suffix in
+	// the block.
+	hasMVCCSuffixes suffixTypes = (1 << iota)
+	// hasEmptySuffixes is set if there is at least one key with no suffix in the block.
+	hasEmptySuffixes
+	// hasNonMVCCSuffixes is set if there is at least one key with a non-empty,
+	// non-MVCC sufffix.
+	hasNonMVCCSuffixes
+)
+
+func (s suffixTypes) String() string {
+	var suffixes []string
+	if s&hasMVCCSuffixes != 0 {
+		suffixes = append(suffixes, "mvcc")
+	}
+	if s&hasEmptySuffixes != 0 {
+		suffixes = append(suffixes, "empty")
+	}
+	if s&hasEmptySuffixes != 0 {
+		suffixes = append(suffixes, "non-mvcc")
+	}
+	if len(suffixes) == 0 {
+		return "none"
+	}
+	return strings.Join(suffixes, ",")
+}
+
 type cockroachKeyWriter struct {
 	roachKeys       colblk.PrefixBytesBuilder
 	wallTimes       colblk.UintBuilder
 	logicalTimes    colblk.UintBuilder
 	untypedVersions colblk.RawBytesBuilder
+	suffixTypes     suffixTypes
 	prevSuffix      []byte
+}
+
+func makeCockroachKeyWriter() *cockroachKeyWriter {
+	kw := &cockroachKeyWriter{}
+	kw.roachKeys.Init(16)
+	kw.wallTimes.Init()
+	kw.logicalTimes.InitWithDefault()
+	kw.untypedVersions.Init()
+	return kw
+}
+
+func (kw *cockroachKeyWriter) Reset() {
+	kw.roachKeys.Reset()
+	kw.wallTimes.Reset()
+	kw.logicalTimes.Reset()
+	kw.untypedVersions.Reset()
+	kw.suffixTypes = 0
 }
 
 func (kw *cockroachKeyWriter) ComparePrev(key []byte) colblk.KeyComparison {
@@ -596,6 +643,13 @@ func (kw *cockroachKeyWriter) WriteKey(
 		kw.logicalTimes.Set(row, uint64(logicalTime))
 	}
 	kw.untypedVersions.Put(untypedVersion)
+	if wallTime != 0 || logicalTime != 0 {
+		kw.suffixTypes |= hasMVCCSuffixes
+	} else if len(untypedVersion) == 0 {
+		kw.suffixTypes |= hasEmptySuffixes
+	} else {
+		kw.suffixTypes |= hasNonMVCCSuffixes
+	}
 }
 
 func (kw *cockroachKeyWriter) MaterializeKey(dst []byte, i int) []byte {
@@ -608,13 +662,6 @@ func (kw *cockroachKeyWriter) MaterializeKey(dst []byte, i int) []byte {
 		return dst
 	}
 	return AppendTimestamp(dst, kw.wallTimes.Get(i), uint32(kw.logicalTimes.Get(i)))
-}
-
-func (kw *cockroachKeyWriter) Reset() {
-	kw.roachKeys.Reset()
-	kw.wallTimes.Reset()
-	kw.logicalTimes.Reset()
-	kw.untypedVersions.Reset()
 }
 
 func (kw *cockroachKeyWriter) WriteDebug(dst io.Writer, rows int) {
@@ -630,6 +677,8 @@ func (kw *cockroachKeyWriter) WriteDebug(dst io.Writer, rows int) {
 	fmt.Fprint(dst, "untyped suffixes: ")
 	kw.untypedVersions.WriteDebug(dst, rows)
 	fmt.Fprintln(dst)
+	fmt.Fprint(dst, "suffix types: ")
+	fmt.Fprintln(dst, kw.suffixTypes.String())
 }
 
 func (kw *cockroachKeyWriter) NumColumns() int {
@@ -665,12 +714,17 @@ func (kw *cockroachKeyWriter) Finish(
 	}
 }
 
+func (kw *cockroachKeyWriter) FinishHeader(buf []byte) {
+	buf[0] = byte(kw.suffixTypes)
+}
+
 type cockroachKeySeeker struct {
 	roachKeys       colblk.PrefixBytes
 	roachKeyChanged colblk.Bitmap
 	mvccWallTimes   colblk.UnsafeUints
 	mvccLogical     colblk.UnsafeUints
 	untypedVersions colblk.RawBytes
+	suffixTypes     suffixTypes
 }
 
 // Assert that the cockroachKeySeeker fits inside KeySeekerMetadata.
@@ -685,6 +739,7 @@ func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder) {
 	ks.mvccWallTimes = bd.Uints(cockroachColMVCCWallTime)
 	ks.mvccLogical = bd.Uints(cockroachColMVCCLogical)
 	ks.untypedVersions = bd.RawBytes(cockroachColUntypedVersion)
+	ks.suffixTypes = suffixTypes(d.KeySchemaHeader(1)[0])
 }
 
 // IsLowerBound is part of the KeySeeker interface.
