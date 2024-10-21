@@ -519,7 +519,7 @@ func (w *valueBlockWriter) compressAndFlush() {
 
 func (w *valueBlockWriter) computeChecksum(blk []byte) {
 	n := len(blk) - block.TrailerLen
-	checksum := w.checksummer.Checksum(blk[:n], blk[n:n+1])
+	checksum := w.checksummer.Checksum(blk[:n], blk[n])
 	binary.LittleEndian.PutUint32(blk[n+1:], checksum)
 }
 

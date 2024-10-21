@@ -254,8 +254,7 @@ func CompressAndChecksum(
 
 	// Calculate the checksum.
 	pb := PhysicalBlock{data: block}
-	pb.trailer[0] = byte(algo)
-	checksum := checksummer.Checksum(block, pb.trailer[:1])
+	checksum := checksummer.Checksum(block, byte(algo))
 	pb.trailer = MakeTrailer(byte(algo), checksum)
 	return pb
 }

@@ -1106,7 +1106,7 @@ func BenchmarkWriter(b *testing.B) {
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev5} {
 		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
 			runWriterBench(b, keys, nil, format)
 		})
