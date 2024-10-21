@@ -180,39 +180,31 @@ func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
 	return key
 }
 
-// DecodeEngineKey decodes an Engine key (the key that gets stored in Pebble).
-// Returns:
-//
-//   - roachKey: key prefix without the separator byte; corresponds to
-//     MVCCKey.Key / EngineKey.Key (roachpb.Key type).
-//
-//   - untypedVersion: when the suffix does not correspond to a timestamp,
-//     untypedVersion is set to the suffix without the length
-//     byte; corresponds to EngineKey.Version.
-//
-//   - wallTime, logicalTime: timestamp for the key, or 0 if the key does not
-//     correspond to a timestamp.
-func DecodeEngineKey(
-	engineKey []byte,
-) (roachKey []byte, untypedVersion []byte, wallTime uint64, logicalTime uint32) {
-	tsLen := int(engineKey[len(engineKey)-1])
-	tsStart := len(engineKey) - tsLen
-	if tsStart < 0 {
-		if invariants.Enabled {
-			panic("invalid length byte")
-		}
-		return nil, nil, 0, 0
+// DecodeEngineKey decodes the given bytes as an EngineKey.
+func DecodeEngineKey(b []byte) (roachKey, version []byte, ok bool) {
+	if len(b) == 0 {
+		return nil, nil, false
 	}
-	roachKeyEnd := tsStart - 1
-	if roachKeyEnd < 0 {
-		roachKeyEnd = 0
-	} else if invariants.Enabled && engineKey[roachKeyEnd] != 0 {
-		panic("invalid separator byte")
+	// Last byte is the version length + 1 when there is a version,
+	// else it is 0.
+	versionLen := int(b[len(b)-1])
+	if versionLen == 1 {
+		// The key encodes an empty version, which is not valid.
+		return nil, nil, false
 	}
-
-	roachKey = engineKey[:roachKeyEnd]
-	untypedVersion, wallTime, logicalTime = DecodeSuffix(engineKey[tsStart:])
-	return roachKey, untypedVersion, wallTime, logicalTime
+	// keyPartEnd points to the sentinel byte.
+	keyPartEnd := len(b) - 1 - versionLen
+	if keyPartEnd < 0 || b[keyPartEnd] != 0x00 {
+		return nil, nil, false
+	}
+	// roachKey excludes the sentinel byte.
+	roachKey = b[:keyPartEnd]
+	if versionLen > 0 {
+		// version consists of the bytes after the sentinel and before the
+		// length.
+		version = b[keyPartEnd+1 : len(b)-1]
+	}
+	return roachKey, version, true
 }
 
 // DecodeSuffix decodes the suffix of a key. If the suffix is a timestamp,
@@ -606,9 +598,9 @@ func (kw *cockroachKeyWriter) ComparePrev(key []byte) colblk.KeyComparison {
 	lp := kw.roachKeys.UnsafeGet(kw.roachKeys.Rows() - 1)
 	cmpv.CommonPrefixLen = int32(crbytes.CommonPrefix(lp, key[:cmpv.PrefixLen-1]))
 	if cmpv.CommonPrefixLen == cmpv.PrefixLen-1 {
-		// Adjust CommonPrefixLen to include the sentinel byte,
+		// Adjust CommonPrefixLen to include the sentinel byte.
 		cmpv.CommonPrefixLen = cmpv.PrefixLen
-		cmpv.UserKeyComparison = int32(CompareRangeSuffixes(key[cmpv.PrefixLen:], kw.prevSuffix))
+		cmpv.UserKeyComparison = int32(ComparePointSuffixes(key[cmpv.PrefixLen:], kw.prevSuffix))
 		return cmpv
 	}
 	// The keys have different MVCC prefixes. We haven't determined which is
@@ -628,28 +620,48 @@ func (kw *cockroachKeyWriter) ComparePrev(key []byte) colblk.KeyComparison {
 func (kw *cockroachKeyWriter) WriteKey(
 	row int, key []byte, keyPrefixLen, keyPrefixLenSharedWithPrev int32,
 ) {
+	if len(key) == 0 {
+		panic(errors.AssertionFailedf("empty key"))
+	}
+	// Last byte is the version length + 1 when there is a version,
+	// else it is 0.
+	versionLen := int(key[len(key)-1])
+	if (len(key)-versionLen) != int(keyPrefixLen) || key[keyPrefixLen-1] != 0x00 {
+		panic(errors.AssertionFailedf("invalid %d-byte key with %d-byte prefix (%q)",
+			len(key), keyPrefixLen, key))
+	}
 	// TODO(jackson): Avoid copying the previous suffix.
-	// TODO(jackson): Use keyPrefixLen to speed up decoding.
-	roachKey, untypedVersion, wallTime, logicalTime := DecodeEngineKey(key)
 	kw.prevSuffix = append(kw.prevSuffix[:0], key[keyPrefixLen:]...)
+
 	// When the roach key is the same, keyPrefixLenSharedWithPrev includes the
 	// separator byte.
-	kw.roachKeys.Put(roachKey, min(int(keyPrefixLenSharedWithPrev), len(roachKey)))
-	kw.wallTimes.Set(row, wallTime)
-	// The w.logicalTimes builder was initialized with InitWithDefault, so if we
-	// don't set a value, the column value is implicitly zero. We only need to
-	// Set anything for non-zero values.
-	if logicalTime > 0 {
-		kw.logicalTimes.Set(row, uint64(logicalTime))
-	}
-	kw.untypedVersions.Put(untypedVersion)
-	if wallTime != 0 || logicalTime != 0 {
-		kw.suffixTypes |= hasMVCCSuffixes
-	} else if len(untypedVersion) == 0 {
-		kw.suffixTypes |= hasEmptySuffixes
-	} else {
+	kw.roachKeys.Put(key[:keyPrefixLen-1], min(int(keyPrefixLenSharedWithPrev), int(keyPrefixLen)-1))
+
+	// NB: The w.logicalTimes builder was initialized with InitWithDefault, so
+	// if we don't set a value, the column value is implicitly zero. We only
+	// need to Set anything for non-zero values.
+	var wallTime uint64
+	var untypedVersion []byte
+	switch versionLen {
+	case 0:
+		// No-op.
 		kw.suffixTypes |= hasNonMVCCSuffixes
+	case 9:
+		kw.suffixTypes |= hasMVCCSuffixes
+		wallTime = binary.BigEndian.Uint64(key[keyPrefixLen : keyPrefixLen+8])
+	case 13, 14:
+		kw.suffixTypes |= hasMVCCSuffixes
+		wallTime = binary.BigEndian.Uint64(key[keyPrefixLen : keyPrefixLen+8])
+		kw.logicalTimes.Set(row, uint64(binary.BigEndian.Uint32(key[keyPrefixLen+8:keyPrefixLen+12])))
+		// NOTE: byte 13 used to store the timestamp's synthetic bit, but this is no
+		// longer consulted and can be ignored during decoding.
+	default:
+		// Not a MVCC timestamp.
+		kw.suffixTypes |= hasEmptySuffixes
+		untypedVersion = key[keyPrefixLen:]
 	}
+	kw.wallTimes.Set(row, wallTime)
+	kw.untypedVersions.Put(untypedVersion)
 }
 
 func (kw *cockroachKeyWriter) MaterializeKey(dst []byte, i int) []byte {
@@ -744,23 +756,46 @@ func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder) {
 
 // IsLowerBound is part of the KeySeeker interface.
 func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool {
-	roachKey, untypedVersion, wallTime, logicalTime := DecodeEngineKey(k)
-	if v := Compare(ks.roachKeys.UnsafeFirstSlice(), roachKey); v != 0 {
+	roachKey, version, ok := DecodeEngineKey(k)
+	if !ok {
+		panic(errors.AssertionFailedf("invalid key %q", k))
+	}
+	if v := bytes.Compare(ks.roachKeys.UnsafeFirstSlice(), roachKey); v != 0 {
 		return v > 0
 	}
+	// If there's a synthetic suffix, we ignore the block's suffix columns and
+	// compare the key's suffix to the synthetic suffix.
 	if len(syntheticSuffix) > 0 {
-		return Compare(syntheticSuffix, k[len(roachKey)+1:]) >= 0
+		return ComparePointSuffixes(syntheticSuffix, k[len(roachKey)+1:]) >= 0
 	}
-	if len(untypedVersion) > 0 {
+	var wallTime uint64
+	var logicalTime uint32
+	switch len(version) {
+	case engineKeyNoVersion:
+	case engineKeyVersionWallTimeLen:
+		wallTime = binary.BigEndian.Uint64(version[:8])
+	case engineKeyVersionWallAndLogicalTimeLen, engineKeyVersionWallLogicalAndSyntheticTimeLen:
+		wallTime = binary.BigEndian.Uint64(version[:8])
+		logicalTime = binary.BigEndian.Uint32(version[8:12])
+	default:
+		// The provided key `k` is not a MVCC key. Assert that the first key in
+		// the block is also not an MVCC key. If it were, that would mean there
+		// exists both a MVCC key and a non-MVCC key with the same prefix.
+		//
+		// TODO(jackson): Double check that we'll never produce index separators
+		// that are invalid version lengths.
 		if invariants.Enabled && ks.mvccWallTimes.At(0) != 0 {
 			panic("comparing timestamp with untyped suffix")
 		}
-		return Compare(ks.untypedVersions.At(0), untypedVersion) >= 0
+		return ComparePointSuffixes(ks.untypedVersions.At(0), version) >= 0
 	}
+
+	// NB: The sign comparison is inverted because suffixes are sorted such that
+	// the largest timestamps are "smaller" in the lexicographical ordering.
 	if v := cmp.Compare(ks.mvccWallTimes.At(0), wallTime); v != 0 {
-		return v > 0
+		return v < 0
 	}
-	return cmp.Compare(uint32(ks.mvccLogical.At(0)), logicalTime) >= 0
+	return cmp.Compare(uint32(ks.mvccLogical.At(0)), logicalTime) <= 0
 }
 
 // SeekGE is part of the KeySeeker interface.
