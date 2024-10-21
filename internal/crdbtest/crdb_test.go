@@ -68,9 +68,9 @@ func TestComparer(t *testing.T) {
 	}
 }
 
-func TestDataDriven(t *testing.T) {
+func TestRandKeys(t *testing.T) {
 	var keys [][]byte
-	datadriven.RunTest(t, "testdata", func(t *testing.T, d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/rand_keys", func(t *testing.T, d *datadriven.TestData) string {
 		seed := uint64(1234)
 		count := 10
 		valueLen := 4
