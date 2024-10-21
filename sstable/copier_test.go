@@ -66,7 +66,7 @@ func TestCopySpan(t *testing.T) {
 				IndexBlockSize: indexBlockSize,
 				TableFormat:    tableFormat,
 				Comparer:       testkeys.Comparer,
-				KeySchema:      keySchema,
+				KeySchema:      &keySchema,
 			})
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
@@ -94,7 +94,7 @@ func TestCopySpan(t *testing.T) {
 			}
 			r, err := NewReader(context.TODO(), readable, ReaderOptions{
 				Comparer:   testkeys.Comparer,
-				KeySchemas: KeySchemas{keySchema.Name: keySchema},
+				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			})
 			defer r.Close()
 			if err != nil {
@@ -137,7 +137,7 @@ func TestCopySpan(t *testing.T) {
 			}
 			rOpts := ReaderOptions{
 				Comparer:   testkeys.Comparer,
-				KeySchemas: KeySchemas{keySchema.Name: keySchema},
+				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			}
 			rOpts.internal.CacheOpts.Cache = blockCache
 			r, err := NewReader(context.TODO(), readable, rOpts)
@@ -147,7 +147,7 @@ func TestCopySpan(t *testing.T) {
 			defer r.Close()
 			wOpts := WriterOptions{
 				Comparer:  testkeys.Comparer,
-				KeySchema: colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				KeySchema: &keySchema,
 			}
 			// CopySpan closes readable but not reader. We need to open a new readable for it.
 			f2, err := fs.Open(inputFile)
@@ -175,7 +175,7 @@ func TestCopySpan(t *testing.T) {
 			}
 			r, err := NewReader(context.TODO(), readable, ReaderOptions{
 				Comparer:   testkeys.Comparer,
-				KeySchemas: KeySchemas{keySchema.Name: keySchema},
+				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			})
 			if err != nil {
 				return err.Error()

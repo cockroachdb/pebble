@@ -423,7 +423,7 @@ func (ks *defaultKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 
 // DataBlockEncoder encodes columnar data blocks using a user-defined schema.
 type DataBlockEncoder struct {
-	Schema    KeySchema
+	Schema    *KeySchema
 	KeyWriter KeyWriter
 	// trailers is the column writer for InternalKey uint64 trailers.
 	trailers UintBuilder
@@ -467,7 +467,7 @@ const (
 const dataBlockCustomHeaderSize = 4
 
 // Init initializes the data block writer.
-func (w *DataBlockEncoder) Init(schema KeySchema) {
+func (w *DataBlockEncoder) Init(schema *KeySchema) {
 	w.Schema = schema
 	w.KeyWriter = schema.NewKeyWriter()
 	w.trailers.Init()
@@ -631,7 +631,7 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 
 // DataBlockRewriter rewrites data blocks. See RewriteSuffixes.
 type DataBlockRewriter struct {
-	KeySchema KeySchema
+	KeySchema *KeySchema
 
 	encoder   DataBlockEncoder
 	decoder   DataBlockDecoder
@@ -648,7 +648,7 @@ type DataBlockRewriter struct {
 
 // NewDataBlockRewriter creates a block rewriter.
 func NewDataBlockRewriter(
-	keySchema KeySchema, compare base.Compare, split base.Split,
+	keySchema *KeySchema, compare base.Compare, split base.Split,
 ) *DataBlockRewriter {
 	return &DataBlockRewriter{
 		KeySchema: keySchema,
@@ -767,7 +767,7 @@ const _ uint = block.MetadataSize - uint(dataBlockDecoderSize) - KeySeekerMetada
 const _ uint = block.MetadataSize - uint(unsafe.Sizeof(IndexBlockDecoder{}))
 
 // InitDataBlockMetadata initializes the metadata for a data block.
-func InitDataBlockMetadata(schema KeySchema, md *block.Metadata, data []byte) (err error) {
+func InitDataBlockMetadata(schema *KeySchema, md *block.Metadata, data []byte) (err error) {
 	if uintptr(unsafe.Pointer(md))%8 != 0 {
 		return errors.AssertionFailedf("metadata is not 8-byte aligned")
 	}
@@ -845,7 +845,7 @@ func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 }
 
 // Init initializes the data block reader with the given serialized data block.
-func (d *DataBlockDecoder) Init(schema KeySchema, data []byte) {
+func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) {
 	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
 		panic("data buffer not 8-byte aligned")
 	}
@@ -890,7 +890,7 @@ type DataBlockIter struct {
 	// keySchema configures the DataBlockIterConfig to use the provided
 	// KeySchema when initializing the DataBlockIter for iteration over a new
 	// block.
-	keySchema KeySchema
+	keySchema *KeySchema
 	cmp       base.Compare
 	split     base.Split
 	// getLazyValuer configures the DataBlockIterConfig to initialize the
@@ -926,7 +926,7 @@ type DataBlockIter struct {
 // handler. The iterator must be initialized with a block before it can be used.
 // It may be reinitialized with new blocks without calling InitOnce again.
 func (i *DataBlockIter) InitOnce(
-	keySchema KeySchema,
+	keySchema *KeySchema,
 	cmp base.Compare,
 	split base.Split,
 	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,

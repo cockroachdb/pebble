@@ -39,7 +39,7 @@ func TestColumnarWriter(t *testing.T) {
 				writerOpts.Comparer = testkeys.Comparer
 				writerOpts.Compression = block.NoCompression
 				writerOpts.TableFormat = TableFormatPebblev5
-				writerOpts.KeySchema = keySchema
+				writerOpts.KeySchema = &keySchema
 				writerOpts.BlockPropertyCollectors = []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector}
 				if err := optsFromArgs(td, &writerOpts); err != nil {
 					require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestColumnarWriter(t *testing.T) {
 				var err error
 				r, err = NewReader(context.Background(), obj, ReaderOptions{
 					Comparer:   testkeys.Comparer,
-					KeySchemas: KeySchemas{keySchema.Name: keySchema},
+					KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 				})
 				require.NoError(t, err)
 				return "ok"

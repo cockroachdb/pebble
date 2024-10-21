@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,7 +45,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 			wOpts := WriterOptions{
 				FilterPolicy:     bloom.FilterPolicy(10),
 				Comparer:         testkeys.Comparer,
-				KeySchema:        colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				KeySchema:        &testkeysSchema,
 				TableFormat:      format,
 				IsStrictObsolete: format >= TableFormatPebblev3,
 			}

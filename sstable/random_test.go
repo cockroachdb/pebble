@@ -276,7 +276,7 @@ type randomTableConfig struct {
 func (cfg *randomTableConfig) readerOpts() ReaderOptions {
 	rOpts := ReaderOptions{
 		Comparer:   testkeys.Comparer,
-		KeySchemas: map[string]colblk.KeySchema{cfg.wopts.KeySchema.Name: cfg.wopts.KeySchema},
+		KeySchemas: map[string]*colblk.KeySchema{cfg.wopts.KeySchema.Name: cfg.wopts.KeySchema},
 		Filters:    map[string]FilterPolicy{},
 	}
 	if cfg.wopts.FilterPolicy != nil {
@@ -284,6 +284,8 @@ func (cfg *randomTableConfig) readerOpts() ReaderOptions {
 	}
 	return rOpts
 }
+
+var testkeysSchema = colblk.DefaultKeySchema(testkeys.Comparer, 16 /* bundle size */)
 
 func (cfg *randomTableConfig) randomize() {
 	if cfg.wopts == nil {
@@ -296,7 +298,7 @@ func (cfg *randomTableConfig) randomize() {
 			BlockSize:               (1 << cfg.rng.IntN(18)),            // {1, 2, 4, ..., 128 KiB}
 			IndexBlockSize:          (1 << cfg.rng.IntN(20)),            // {1, 2, 4, ..., 512 KiB}
 			BlockPropertyCollectors: nil,
-			KeySchema:               colblk.DefaultKeySchema(testkeys.Comparer, 16 /* bundle size */),
+			KeySchema:               &testkeysSchema,
 			WritingToLowestLevel:    cfg.rng.IntN(2) == 1,
 			Parallelism:             cfg.rng.IntN(2) == 1,
 		}

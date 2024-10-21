@@ -69,8 +69,9 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 	if writerOpts.Comparer == nil {
 		writerOpts.Comparer = testkeys.Comparer
 	}
-	if len(writerOpts.KeySchema.ColumnTypes) == 0 {
-		writerOpts.KeySchema = colblk.DefaultKeySchema(writerOpts.Comparer, 16)
+	if writerOpts.KeySchema == nil {
+		s := colblk.DefaultKeySchema(writerOpts.Comparer, 16)
+		writerOpts.KeySchema = &s
 	}
 	return nil
 }

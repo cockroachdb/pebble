@@ -123,9 +123,10 @@ func TestSplitAndEncodeSpan(t *testing.T) {
 			}
 
 			obj := &objstorage.MemObj{}
+			keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 			wo := sstable.WriterOptions{
 				Comparer:    testkeys.Comparer,
-				KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+				KeySchema:   &keySchema,
 				TableFormat: sstable.TableFormatMax,
 			}
 			tw := sstable.NewRawWriter(obj, wo)
