@@ -101,7 +101,7 @@ rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
-rocksdb.index.size: 33
+rocksdb.index.size: 18
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
@@ -231,13 +231,13 @@ sstable
  ├── data  offset: 0  length: 74
  ├── data  offset: 79  length: 74
  ├── data  offset: 158  length: 74
- ├── index  offset: 237  length: 36
- ├── index  offset: 278  length: 37
- ├── index  offset: 320  length: 37
- ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 33
- └── footer  offset: 1006  length: 53
+ ├── index  offset: 237  length: 48
+ ├── index  offset: 290  length: 49
+ ├── index  offset: 344  length: 49
+ ├── top-index  offset: 398  length: 60
+ ├── properties  offset: 463  length: 548
+ ├── meta-index  offset: 1016  length: 33
+ └── footer  offset: 1054  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
@@ -247,13 +247,13 @@ sstable
  ├── data  offset: 0  length: 74
  ├── data  offset: 79  length: 74
  ├── data  offset: 158  length: 74
- ├── index  offset: 237  length: 36
- ├── index  offset: 278  length: 37
- ├── index  offset: 320  length: 37
- ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 33
- └── footer  offset: 1006  length: 53
+ ├── index  offset: 237  length: 48
+ ├── index  offset: 290  length: 49
+ ├── index  offset: 344  length: 49
+ ├── top-index  offset: 398  length: 60
+ ├── properties  offset: 463  length: 548
+ ├── meta-index  offset: 1016  length: 33
+ └── footer  offset: 1054  length: 53
 
 scan
 ----
@@ -296,11 +296,11 @@ seqnums:  [1-3]
 layout
 ----
 sstable
- ├── index  offset: 0  length: 28
- ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 589
- ├── meta-index  offset: 716  length: 57
- └── footer  offset: 778  length: 53
+ ├── index  offset: 0  length: 13
+ ├── range-key  offset: 18  length: 84
+ ├── properties  offset: 107  length: 589
+ ├── meta-index  offset: 701  length: 57
+ └── footer  offset: 763  length: 53
 
 props
 ----
@@ -317,7 +317,7 @@ rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
-rocksdb.index.size: 33
+rocksdb.index.size: 18
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
