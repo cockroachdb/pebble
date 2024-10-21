@@ -29,8 +29,8 @@ should not flush
 init target-block-size=1000 size-class-aware-threshold=60 size-classes=(820, 1020, 1320, 1820)
 ----
 low watermark: 600
-high watermark: 1460
-boundaries: [660 960]
+high watermark: 1452
+boundaries: [652 952]
 
 # Should not flush when the "after" block fits in the same size class.
 should-flush size-before=600 size-after=650
@@ -89,8 +89,8 @@ boundaries: []
 init target-block-size=32768 jemalloc-size-classes
 ----
 low watermark: 19661
-high watermark: 40600
-boundaries: [20120 24216 28312 32408]
+high watermark: 40592
+boundaries: [20112 24208 28304 32400]
 
 # We should flush to avoid exceeding the boundary.
 should-flush size-before=32000 size-after=32766
