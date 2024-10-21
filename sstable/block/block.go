@@ -270,7 +270,9 @@ type IndexBlockIterator interface {
 	// false if the index block is exhausted in the reverse direction. A call to
 	// Prev while already exhausted in the reverse direction is a no-op.
 	Prev() bool
-	// Close closes the iterator, releasing any resources it holds.
+	// Close closes the iterator, releasing any resources it holds. After Close,
+	// the iterator must be reset such that it could be reused after a call to
+	// Init or InitHandle.
 	Close() error
 }
 

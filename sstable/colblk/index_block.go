@@ -246,17 +246,6 @@ func (i *IndexIter) RowIndex() int {
 	return i.row
 }
 
-// ResetForReuse resets the IndexIter for reuse, retaining buffers to avoid
-// future allocations.
-func (i *IndexIter) ResetForReuse() {
-	if invariants.Enabled && i.h != (block.BufferHandle{}) {
-		panic(errors.AssertionFailedf("IndexIter reset for reuse with non-empty handle"))
-	}
-	i.d = nil
-	i.syntheticPrefix = nil
-	i.syntheticSuffix = nil
-}
-
 // Valid returns true if the iterator is currently positioned at a valid block
 // handle.
 func (i *IndexIter) Valid() bool {
@@ -393,6 +382,9 @@ func (i *IndexIter) Prev() bool {
 // Close closes the iterator, releasing any resources it holds.
 func (i *IndexIter) Close() error {
 	i.h.Release()
-	*i = IndexIter{}
+	i.h = block.BufferHandle{}
+	i.d = nil
+	i.syntheticPrefix = nil
+	i.syntheticSuffix = nil
 	return nil
 }

@@ -301,21 +301,6 @@ func (i *Iter) IsDataInvalidated() bool {
 	return i.data == nil
 }
 
-// ResetForReuse resets the blockIter for reuse, retaining buffers to avoid
-// future allocations.
-func (i *Iter) ResetForReuse() {
-	fullKey := i.fullKey[:0]
-	cached := i.cached[:0]
-	cachedBuf := i.cachedBuf[:0]
-	firstUserKeyWithPrefixBuf := i.firstUserKeyWithPrefixBuf[:0]
-	*i = Iter{
-		fullKey:                   fullKey,
-		cached:                    cached,
-		cachedBuf:                 cachedBuf,
-		firstUserKeyWithPrefixBuf: firstUserKeyWithPrefixBuf,
-	}
-}
-
 func (i *Iter) readEntry() {
 	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
 
@@ -1568,10 +1553,16 @@ func (i *Iter) Error() error {
 // package.
 func (i *Iter) Close() error {
 	i.handle.Release()
-	i.handle = block.BufferHandle{}
-	i.val = nil
-	i.ikv = base.InternalKV{}
-	i.lazyValueHandling.getValue = nil
+	fullKey := i.fullKey[:0]
+	cached := i.cached[:0]
+	cachedBuf := i.cachedBuf[:0]
+	firstUserKeyWithPrefixBuf := i.firstUserKeyWithPrefixBuf[:0]
+	*i = Iter{
+		fullKey:                   fullKey,
+		cached:                    cached,
+		cachedBuf:                 cachedBuf,
+		firstUserKeyWithPrefixBuf: firstUserKeyWithPrefixBuf,
+	}
 	return nil
 }
 

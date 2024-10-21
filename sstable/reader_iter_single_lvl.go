@@ -399,8 +399,6 @@ const _ uintptr = clearLenColBlocks - clearLen
 
 func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() {
 	*(*[clearLen]byte)(unsafe.Pointer(i)) = [clearLen]byte{}
-	PI(&i.index).ResetForReuse()
-	PD(&i.data).ResetForReuse()
 	i.inPool = true
 }
 
