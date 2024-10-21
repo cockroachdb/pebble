@@ -65,10 +65,10 @@ type Mergers map[string]*base.Merger
 
 // KeySchemas is a map from key schema name to key schema. A single database may
 // contain sstables with multiple key schemas.
-type KeySchemas map[string]colblk.KeySchema
+type KeySchemas map[string]*colblk.KeySchema
 
 // MakeKeySchemas constructs a KeySchemas from a slice of key schemas.
-func MakeKeySchemas(keySchemas ...colblk.KeySchema) KeySchemas {
+func MakeKeySchemas(keySchemas ...*colblk.KeySchema) KeySchemas {
 	m := make(KeySchemas, len(keySchemas))
 	for _, keySchema := range keySchemas {
 		if _, ok := m[keySchema.Name]; ok {
@@ -153,9 +153,8 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	return o
 }
 
-var defaultKeySchemas = MakeKeySchemas(
-	colblk.DefaultKeySchema(base.DefaultComparer, 16),
-)
+var defaultKeySchema = colblk.DefaultKeySchema(base.DefaultComparer, 16)
+var defaultKeySchemas = MakeKeySchemas(&defaultKeySchema)
 
 // WriterOptions holds the parameters used to control building an sstable.
 type WriterOptions struct {
@@ -227,7 +226,7 @@ type WriterOptions struct {
 	// KeySchema describes the schema to use for sstable formats that make use
 	// of columnar blocks, decomposing keys into their constituent components.
 	// Ignored if TableFormat <= TableFormatPebblev4.
-	KeySchema colblk.KeySchema
+	KeySchema *colblk.KeySchema
 
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
@@ -365,8 +364,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.DeletionSizeRatioThreshold == 0 {
 		o.DeletionSizeRatioThreshold = DefaultDeletionSizeRatioThreshold
 	}
-	if len(o.KeySchema.ColumnTypes) == 0 && o.TableFormat.BlockColumnar() {
-		o.KeySchema = colblk.DefaultKeySchema(o.Comparer, 16 /* bundle size */)
+	if o.KeySchema == nil && o.TableFormat.BlockColumnar() {
+		s := colblk.DefaultKeySchema(o.Comparer, 16 /* bundle size */)
+		o.KeySchema = &s
 	}
 	return o
 }

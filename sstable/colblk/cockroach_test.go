@@ -36,10 +36,10 @@ func TestCockroachDataBlock(t *testing.T) {
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
-	it.InitOnce(crdbtest.KeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
+	it.InitOnce(&crdbtest.KeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
-	decoder.Init(crdbtest.KeySchema, serializedBlock)
+	decoder.Init(&crdbtest.KeySchema, serializedBlock)
 	if err := it.Init(&decoder, block.IterTransforms{}); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func generateDataBlock(
 	keys, values = crdbtest.RandomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
 
 	var w colblk.DataBlockEncoder
-	w.Init(crdbtest.KeySchema)
+	w.Init(&crdbtest.KeySchema)
 	count := 0
 	for w.Size() < targetBlockSize {
 		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
@@ -124,7 +124,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig crdbtest.KeyConfi
 	_, keys, values := generateDataBlock(rng, targetBlockSize, keyConfig, valueLen)
 
 	var w colblk.DataBlockEncoder
-	w.Init(crdbtest.KeySchema)
+	w.Init(&crdbtest.KeySchema)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -262,10 +262,10 @@ func benchmarkCockroachDataBlockIter(
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
-	it.InitOnce(crdbtest.KeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
+	it.InitOnce(&crdbtest.KeySchema, crdbtest.Compare, crdbtest.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
-	decoder.Init(crdbtest.KeySchema, serializedBlock)
+	decoder.Init(&crdbtest.KeySchema, serializedBlock)
 	if err := it.Init(&decoder, transforms); err != nil {
 		b.Fatal(err)
 	}

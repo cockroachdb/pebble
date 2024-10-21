@@ -51,7 +51,7 @@ type Reader struct {
 
 	// The following fields are copied from the ReadOptions.
 	cacheOpts            sstableinternal.CacheOptions
-	keySchema            colblk.KeySchema
+	keySchema            *colblk.KeySchema
 	loadBlockSema        *fifo.Semaphore
 	deniedUserProperties map[string]struct{}
 	filterMetricsTracker *FilterMetricsTracker

@@ -1234,7 +1234,7 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
 		o.KeySchema = ks.Name
-		o.KeySchemas = sstable.MakeKeySchemas(ks)
+		o.KeySchemas = sstable.MakeKeySchemas(&ks)
 	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
@@ -1728,7 +1728,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "key_schema":
 				o.KeySchema = value
 				if o.KeySchemas == nil {
-					o.KeySchemas = make(map[string]KeySchema)
+					o.KeySchemas = make(map[string]*KeySchema)
 				}
 				if _, ok := o.KeySchemas[o.KeySchema]; !ok {
 					if strings.HasPrefix(value, "DefaultKeySchema(") && strings.HasSuffix(value, ")") {
@@ -1745,10 +1745,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						if err == nil {
 							schema := colblk.DefaultKeySchema(comparer, bundleSize)
 							o.KeySchema = schema.Name
-							o.KeySchemas[o.KeySchema] = schema
+							o.KeySchemas[o.KeySchema] = &schema
 						}
 					} else if hooks != nil && hooks.NewKeySchema != nil {
-						o.KeySchemas[value], err = hooks.NewKeySchema(value)
+						var schema KeySchema
+						schema, err = hooks.NewKeySchema(value)
+						if err == nil {
+							o.KeySchemas[value] = &schema
+						}
 					}
 				}
 			case "l0_compaction_concurrency":

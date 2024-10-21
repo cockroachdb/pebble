@@ -176,7 +176,7 @@ func BenchmarkRandSeekInSST(b *testing.B) {
 			AllocatorSizeClasses: sstable.JemallocSizeClasses,
 			TableFormat:          cfg.version,
 			Comparer:             &Comparer,
-			KeySchema:            KeySchema,
+			KeySchema:            &KeySchema,
 		}
 		b.Run(cfg.name, func(b *testing.B) {
 			benchmarkRandSeekInSST(b, rng, cfg.numKeys, keyCfg, cfg.valueLen, o)
@@ -207,7 +207,7 @@ func benchmarkRandSeekInSST(
 	ctx := context.Background()
 	readerOpts := sstable.ReaderOptions{
 		Comparer:   writerOpts.Comparer,
-		KeySchemas: sstable.MakeKeySchemas(KeySchema),
+		KeySchemas: sstable.MakeKeySchemas(&KeySchema),
 	}
 	readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{
 		Cache:   c,

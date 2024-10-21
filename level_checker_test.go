@@ -176,9 +176,10 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 						return fmt.Sprintf("unknown arg: %s", arg.Key)
 					}
 				}
+				keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 				writerOpts := sstable.WriterOptions{
 					Comparer:    testkeys.Comparer,
-					KeySchema:   colblk.DefaultKeySchema(testkeys.Comparer, 16),
+					KeySchema:   &keySchema,
 					TableFormat: FormatNewest.MaxTableFormat(),
 				}
 				writerOpts.SetInternal(sstableinternal.WriterOptions{

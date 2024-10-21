@@ -204,7 +204,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			}
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				Comparer:    cmp,
-				KeySchema:   keySchema,
+				KeySchema:   &keySchema,
 				TableFormat: sstable.TableFormatMax,
 			})
 			m = &fileMetadata{}
@@ -243,7 +243,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			}
 			r, err = sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{
 				Comparer:   cmp,
-				KeySchemas: sstable.KeySchemas{keySchema.Name: keySchema},
+				KeySchemas: sstable.KeySchemas{keySchema.Name: &keySchema},
 			})
 			if err != nil {
 				return err.Error()

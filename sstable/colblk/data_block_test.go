@@ -29,9 +29,9 @@ func TestDataBlock(t *testing.T) {
 	var w DataBlockEncoder
 	var r DataBlockDecoder
 	var it DataBlockIter
-	rw := NewDataBlockRewriter(testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split)
+	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split)
 	var sizes []int
-	it.InitOnce(testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split, getLazyValuer(func([]byte) base.LazyValue {
+	it.InitOnce(&testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
 
@@ -42,9 +42,10 @@ func TestDataBlock(t *testing.T) {
 			case "init":
 				var bundleSize int
 				if td.MaybeScanArgs(t, "bundle-size", &bundleSize) {
-					w.Init(DefaultKeySchema(testkeys.Comparer, bundleSize))
+					s := DefaultKeySchema(testkeys.Comparer, bundleSize)
+					w.Init(&s)
 				} else {
-					w.Init(testKeysSchema)
+					w.Init(&testKeysSchema)
 				}
 				fmt.Fprint(&buf, &w)
 				sizes = sizes[:0]
@@ -53,7 +54,7 @@ func TestDataBlock(t *testing.T) {
 				// write-block does init/write/finish in a single command, and doesn't
 				// print anything.
 				if td.Cmd == "write-block" {
-					w.Init(testKeysSchema)
+					w.Init(&testKeysSchema)
 				}
 				for _, line := range strings.Split(td.Input, "\n") {
 					line, isObsolete := strings.CutSuffix(line, "obsolete")
@@ -73,7 +74,7 @@ func TestDataBlock(t *testing.T) {
 				}
 				if td.Cmd == "write-block" {
 					block, _ := w.Finish(w.Rows(), w.Size())
-					r.Init(testKeysSchema, block)
+					r.Init(&testKeysSchema, block)
 					return ""
 				}
 				fmt.Fprint(&buf, &w)
@@ -86,7 +87,7 @@ func TestDataBlock(t *testing.T) {
 				if err != nil {
 					return fmt.Sprintf("error: %s", err)
 				}
-				r.Init(testKeysSchema, rewrittenBlock)
+				r.Init(&testKeysSchema, rewrittenBlock)
 				f := binfmt.New(r.d.data).LineWidth(20)
 				tp := treeprinter.New()
 				r.Describe(f, tp)
@@ -99,7 +100,7 @@ func TestDataBlock(t *testing.T) {
 				rows := w.Rows()
 				td.MaybeScanArgs(t, "rows", &rows)
 				block, lastKey := w.Finish(rows, sizes[rows-1])
-				r.Init(testKeysSchema, block)
+				r.Init(&testKeysSchema, block)
 				f := binfmt.New(r.d.data).LineWidth(20)
 				tp := treeprinter.New()
 				r.Describe(f, tp)
@@ -153,7 +154,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 	keys, values := makeTestKeyRandomKVs(rng, prefixSize, valueSize, targetBlockSize)
 
 	var w DataBlockEncoder
-	w.Init(testKeysSchema)
+	w.Init(&testKeysSchema)
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {

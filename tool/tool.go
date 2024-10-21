@@ -58,7 +58,7 @@ func Comparers(cmps ...*Comparer) Option {
 
 // KeySchemas may be passed to New to register key schemas for use by the
 // introspection tools.
-func KeySchemas(schemas ...colblk.KeySchema) Option {
+func KeySchemas(schemas ...*colblk.KeySchema) Option {
 	return func(t *T) {
 		for _, s := range schemas {
 			t.opts.KeySchemas[s.Name] = s
