@@ -285,14 +285,13 @@ func (i *fragmentIter) Close() {
 		// pool.
 		return
 	}
-
-	i.blockIter.ResetForReuse()
-	*i = fragmentIter{
-		blockIter:   i.blockIter,
-		closeCheck:  i.closeCheck,
-		startKeyBuf: i.startKeyBuf[:0],
-		endKeyBuf:   i.endKeyBuf[:0],
-	}
+	i.span = keyspan.Span{}
+	i.dir = 0
+	i.fileNum = 0
+	i.syntheticSuffix = nil
+	i.syntheticPrefix = nil
+	i.startKeyBuf = i.startKeyBuf[:0]
+	i.endKeyBuf = i.endKeyBuf[:0]
 	fragmentBlockIterPool.Put(i)
 }
 

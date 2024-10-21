@@ -26,10 +26,6 @@ import (
 type dataBlockIterator[D any] interface {
 	block.DataBlockIterator
 
-	// ResetForReuse resets the data block iterator for reuse, retaining buffers
-	// to avoid future allocations.
-	ResetForReuse()
-
 	*D // non-interface type constraint element
 }
 
@@ -42,10 +38,6 @@ type dataBlockIterator[D any] interface {
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 type indexBlockIterator[I any] interface {
 	block.IndexBlockIterator
-
-	// ResetForReuse resets the index iterator for reuse, retaining buffers to
-	// avoid future allocations.
-	ResetForReuse()
 
 	*I // non-interface type constraint element
 }

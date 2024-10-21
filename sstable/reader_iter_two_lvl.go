@@ -1047,7 +1047,6 @@ func (i *twoLevelIterator[I, PI, D, PD]) Close() error {
 	err := i.secondLevel.closeInternal()
 	i.secondLevel.resetForReuse()
 	err = firstError(err, PI(&i.topLevelIndex).Close())
-	PI(&i.topLevelIndex).ResetForReuse()
 	i.useFilterBlock = false
 	i.lastBloomFilterMatched = false
 	if pool != nil {

@@ -32,12 +32,6 @@ func (i *IndexIter) InitHandle(
 	return i.iter.InitHandle(cmp, split, block, transforms)
 }
 
-// ResetForReuse resets the index iterator for reuse, retaining buffers to avoid
-// future allocations.
-func (i *IndexIter) ResetForReuse() {
-	i.iter.ResetForReuse()
-}
-
 // Valid returns true if the iterator is currently positioned at a valid block
 // handle.
 func (i *IndexIter) Valid() bool {

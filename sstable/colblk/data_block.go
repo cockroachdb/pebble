@@ -1051,13 +1051,6 @@ func (i *DataBlockIter) IsDataInvalidated() bool {
 	return i.d == nil
 }
 
-// ResetForReuse resets the iterator for reuse, retaining buffers and
-// configuration supplied to InitOnce, to avoid future allocations.
-func (i *DataBlockIter) ResetForReuse() {
-	i.d = nil
-	i.kv = base.InternalKV{}
-}
-
 // IsLowerBound implements the block.DataBlockIterator interface.
 func (i *DataBlockIter) IsLowerBound(k []byte) bool {
 	if i.transforms.SyntheticPrefix.IsSet() {
