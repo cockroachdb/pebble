@@ -33,7 +33,10 @@ import (
 // attributes inlined within the data block. For inlined-values, the
 // user-defined value columns would be implicitly null.
 type KeySchema struct {
-	Name         string
+	Name string
+	// KeySchema implementations can optionally make use a fixed-sized custom
+	// header inside each block.
+	HeaderSize   uint32
 	ColumnTypes  []DataType
 	NewKeyWriter func() KeyWriter
 
@@ -63,7 +66,7 @@ type KeySeekerMetadata [KeySeekerMetadataSize]byte
 
 // KeySeekerMetadataSize is chosen to fit the CockroachDB key seeker
 // implementation.
-const KeySeekerMetadataSize = 168
+const KeySeekerMetadataSize = 176
 
 // A KeyWriter maintains ColumnWriters for a data block for writing user keys
 // into the database-specific key schema. Users may define their own key schema
@@ -90,6 +93,8 @@ type KeyWriter interface {
 	// MaterializeKey appends the zero-indexed row'th key written to dst,
 	// returning the result.
 	MaterializeKey(dst []byte, row int) []byte
+	// FinishHeader serializes an internal header of exactly KeySchema.HeaderSize bytes.
+	FinishHeader(dst []byte)
 }
 
 // KeyComparison holds information about a key and its comparison to another a
@@ -177,6 +182,7 @@ var defaultSchemaColumnTypes = []DataType{
 func DefaultKeySchema(comparer *base.Comparer, prefixBundleSize int) KeySchema {
 	return KeySchema{
 		Name:        fmt.Sprintf("DefaultKeySchema(%s,%d)", comparer.Name, prefixBundleSize),
+		HeaderSize:  0,
 		ColumnTypes: defaultSchemaColumnTypes,
 		NewKeyWriter: func() KeyWriter {
 			kw := &defaultKeyWriter{comparer: comparer}
@@ -299,6 +305,8 @@ func (w *defaultKeyWriter) Size(rows int, offset uint32) uint32 {
 	offset = w.suffixes.Size(rows, offset)
 	return offset
 }
+
+func (w *defaultKeyWriter) FinishHeader([]byte) {}
 
 func (w *defaultKeyWriter) Finish(col, rows int, offset uint32, buf []byte) (nextOffset uint32) {
 	switch col {
@@ -464,6 +472,7 @@ const (
 // contained within the block. This is used by iterators to avoid the need to
 // grow key buffers while iterating over the block, ensuring that the key buffer
 // is always sufficiently large.
+// This is serialized immediately after the KeySchema specific header.
 const dataBlockCustomHeaderSize = 4
 
 // Init initializes the data block writer.
@@ -571,7 +580,7 @@ func (w *DataBlockEncoder) Rows() int {
 
 // Size returns the size of the current pending data block.
 func (w *DataBlockEncoder) Size() int {
-	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize)
+	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.InvertedSize(w.rows, off)
@@ -607,11 +616,12 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 	// to represent when the prefix changes.
 	w.prefixSame.Invert(rows)
 
-	w.enc.init(size, h, dataBlockCustomHeaderSize)
+	w.enc.init(size, h, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 
-	// Write the max key length in the custom header.
-	binary.LittleEndian.PutUint32(w.enc.data()[:dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
-
+	// Write the key schema custom header.
+	w.KeyWriter.FinishHeader(w.enc.data()[:w.Schema.HeaderSize])
+	// Write the max key length in the data block custom header.
+	binary.LittleEndian.PutUint32(w.enc.data()[w.Schema.HeaderSize:w.Schema.HeaderSize+dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
 	w.enc.encode(rows, w.KeyWriter)
 	w.enc.encode(rows, &w.trailers)
 	w.enc.encode(rows, &w.prefixSame)
@@ -844,18 +854,23 @@ func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 	return d.prefixChanged
 }
 
+// KeySchemaHeader returns the KeySchema-specific header of fixed size.
+func (d *DataBlockDecoder) KeySchemaHeader(schemaHeaderSize uint32) []byte {
+	return d.d.data[:schemaHeaderSize]
+}
+
 // Init initializes the data block reader with the given serialized data block.
 func (d *DataBlockDecoder) Init(schema KeySchema, data []byte) {
 	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
 		panic("data buffer not 8-byte aligned")
 	}
-	d.d.Init(data, dataBlockCustomHeaderSize)
+	d.d.Init(data, dataBlockCustomHeaderSize+schema.HeaderSize)
 	d.trailers = d.d.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
 	d.prefixChanged = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
 	d.values = d.d.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
 	d.isValueExternal = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
 	d.isObsolete = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
-	d.maximumKeyLength = binary.LittleEndian.Uint32(data[:dataBlockCustomHeaderSize])
+	d.maximumKeyLength = binary.LittleEndian.Uint32(data[schema.HeaderSize:])
 }
 
 // Describe descirbes the binary format of the data block, assuming f.Offset()

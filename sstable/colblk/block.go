@@ -184,9 +184,9 @@ func (h Header) Encode(buf []byte) {
 // blockHeaderSize returns the size of the block header, including column
 // headers, for a block with the specified number of columns and optionally a
 // custom header size.
-func blockHeaderSize(cols int, customHeaderSize int) uint32 {
+func blockHeaderSize(cols int, customHeaderSize uint32) uint32 {
 	// Each column has a 1-byte DataType and a 4-byte offset into the block.
-	return uint32(blockHeaderBaseSize + cols*columnHeaderSize + customHeaderSize)
+	return uint32(blockHeaderBaseSize+cols*columnHeaderSize) + customHeaderSize
 }
 
 // DecodeHeader reads the block header from the provided serialized columnar
@@ -217,7 +217,7 @@ func (e *blockEncoder) reset() {
 
 // init initializes the block encoder with a buffer of the specified size and
 // header.
-func (e *blockEncoder) init(size int, h Header, customHeaderSize int) {
+func (e *blockEncoder) init(size int, h Header, customHeaderSize uint32) {
 	if cap(e.buf) < size {
 		e.buf = crbytes.AllocAligned(size)
 	} else {
