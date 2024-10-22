@@ -571,18 +571,17 @@ func (c *tableCacheShard) newPointIter(
 	}
 	transforms := file.IterTransforms()
 	transforms.HideObsoletePoints = hideObsoletePoints
-	var categoryAndQoS sstable.CategoryAndQoS
-	if opts != nil {
-		categoryAndQoS = opts.CategoryAndQoS
+	iterStatsAccum := internalOpts.iterStatsAccumulator
+	if iterStatsAccum == nil && opts != nil && dbOpts.sstStatsCollector != nil {
+		iterStatsAccum = dbOpts.sstStatsCollector.Accumulator(
+			uint64(uintptr(unsafe.Pointer(v.reader))), opts.CategoryAndQoS)
 	}
 	if internalOpts.compaction {
-		iter, err = cr.NewCompactionIter(
-			transforms, categoryAndQoS, dbOpts.sstStatsCollector, rp,
-			internalOpts.bufferPool)
+		iter, err = cr.NewCompactionIter(transforms, iterStatsAccum, rp, internalOpts.bufferPool)
 	} else {
 		iter, err = cr.NewPointIter(
 			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, filterBlockSizeLimit,
-			internalOpts.stats, categoryAndQoS, dbOpts.sstStatsCollector, rp)
+			internalOpts.stats, iterStatsAccum, rp)
 	}
 	if err != nil {
 		return nil, err

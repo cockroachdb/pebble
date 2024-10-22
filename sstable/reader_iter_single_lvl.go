@@ -210,8 +210,7 @@ func newColumnBlockSingleLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorColumnBlocks, error) {
@@ -225,7 +224,7 @@ func newColumnBlockSingleLevelIterator(
 	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
-		stats, categoryAndQoS, statsCollector, bufferPool,
+		stats, statsAccum, bufferPool,
 	)
 	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
@@ -275,8 +274,7 @@ func newRowBlockSingleLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorRowBlocks, error) {
@@ -290,7 +288,7 @@ func newRowBlockSingleLevelIterator(
 	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
-		stats, categoryAndQoS, statsCollector, bufferPool,
+		stats, statsAccum, bufferPool,
 	)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
@@ -336,8 +334,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	bufferPool *block.BufferPool,
 ) {
 	i.inPool = false
@@ -353,8 +350,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 		i.vState = v
 		i.endKeyInclusive, i.lower, i.upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
-
-	i.iterStats.init(categoryAndQoS, statsCollector)
+	i.iterStats.init(statsAccum)
 	i.readBlockEnv = readBlockEnv{
 		Stats:      stats,
 		IterStats:  &i.iterStats,

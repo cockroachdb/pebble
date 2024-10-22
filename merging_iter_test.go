@@ -179,7 +179,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					context.Background(),
 					sstable.NoTransforms,
 					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, iio.stats,
-					sstable.CategoryAndQoS{}, nil, sstable.MakeTrivialReaderProvider(r))
+					nil, sstable.MakeTrivialReaderProvider(r))
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}

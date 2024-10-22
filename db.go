@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
@@ -1037,20 +1038,20 @@ type newIterOpts struct {
 // newIter constructs a new iterator, merging in batch iterators as an extra
 // level.
 func (d *DB) newIter(
-	ctx context.Context, batch *Batch, internalOpts newIterOpts, o *IterOptions,
+	ctx context.Context, batch *Batch, newIterOpts newIterOpts, o *IterOptions,
 ) *Iterator {
-	if internalOpts.batch.batchOnly {
+	if newIterOpts.batch.batchOnly {
 		if batch == nil {
 			panic("batchOnly is true, but batch is nil")
 		}
-		if internalOpts.snapshot.vers != nil {
+		if newIterOpts.snapshot.vers != nil {
 			panic("batchOnly is true, but snapshotIterOpts is initialized")
 		}
 	}
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-	seqNum := internalOpts.snapshot.seqNum
+	seqNum := newIterOpts.snapshot.seqNum
 	if o != nil && o.RangeKeyMasking.Suffix != nil && o.KeyTypes != IterKeyTypePointsAndRanges {
 		panic("pebble: range key masking requires IterKeyTypePointsAndRanges")
 	}
@@ -1064,13 +1065,13 @@ func (d *DB) newIter(
 	var readState *readState
 	var newIters tableNewIters
 	var newIterRangeKey keyspanimpl.TableNewSpanIter
-	if !internalOpts.batch.batchOnly {
+	if !newIterOpts.batch.batchOnly {
 		// Grab and reference the current readState. This prevents the underlying
 		// files in the associated version from being deleted if there is a current
 		// compaction. The readState is unref'd by Iterator.Close().
-		if internalOpts.snapshot.vers == nil {
-			if internalOpts.snapshot.readState != nil {
-				readState = internalOpts.snapshot.readState
+		if newIterOpts.snapshot.vers == nil {
+			if newIterOpts.snapshot.readState != nil {
+				readState = newIterOpts.snapshot.readState
 				readState.ref()
 			} else {
 				// NB: loadReadState() calls readState.ref().
@@ -1078,7 +1079,7 @@ func (d *DB) newIter(
 			}
 		} else {
 			// vers != nil
-			internalOpts.snapshot.vers.Ref()
+			newIterOpts.snapshot.vers.Ref()
 		}
 
 		// Determine the seqnum to read at after grabbing the read state (current and
@@ -1100,15 +1101,16 @@ func (d *DB) newIter(
 		merge:               d.merge,
 		comparer:            *d.opts.Comparer,
 		readState:           readState,
-		version:             internalOpts.snapshot.vers,
+		version:             newIterOpts.snapshot.vers,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
+		tc:                  d.tableCache,
 		newIters:            newIters,
 		newIterRangeKey:     newIterRangeKey,
 		seqNum:              seqNum,
-		batchOnlyIter:       internalOpts.batch.batchOnly,
+		batchOnlyIter:       newIterOpts.batch.batchOnly,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -1399,7 +1401,19 @@ func (i *Iterator) constructPointIter(
 		// Already have one.
 		return
 	}
-	internalOpts := internalIterOpts{stats: &i.stats.InternalStats}
+	internalOpts := internalIterOpts{
+		stats: &i.stats.InternalStats,
+	}
+	// If the table cache has a sstable stats collector, ask it for an
+	// accumulator for this iterator's configured category and QoS. All SSTable
+	// iterators created by this Iterator will accumulate their stats to it as
+	// they Close during iteration.
+	if collector := i.tc.dbOpts.sstStatsCollector; collector != nil {
+		internalOpts.iterStatsAccumulator = collector.Accumulator(
+			uint64(uintptr(unsafe.Pointer(i))),
+			i.opts.CategoryAndQoS,
+		)
+	}
 	if i.opts.RangeKeyMasking.Filter != nil {
 		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
 	}
