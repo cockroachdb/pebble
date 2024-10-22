@@ -409,16 +409,15 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m := &FileMetadata{
-				FileNum:               fileNum,
-				Size:                  size,
-				CreationTime:          int64(creationTime),
-				SmallestSeqNum:        smallestSeqNum,
-				LargestSeqNum:         largestSeqNum,
-				LargestSeqNumAbsolute: largestSeqNum,
-				MarkedForCompaction:   markedForCompaction,
-				Virtual:               virtualState.virtual,
-				SyntheticPrefix:       syntheticPrefix,
-				SyntheticSuffix:       syntheticSuffix,
+				FileNum:                  fileNum,
+				Size:                     size,
+				CreationTime:             int64(creationTime),
+				SmallestSeqNum:           smallestSeqNum,
+				LargestSeqNum:            largestSeqNum,
+				LargestSeqNumAbsolute:    largestSeqNum,
+				MarkedForCompaction:      markedForCompaction,
+				Virtual:                  virtualState.virtual,
+				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -703,13 +702,13 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
 			}
-			if x.Meta.SyntheticPrefix != nil {
+			if x.Meta.SyntheticPrefixAndSuffix.HasPrefix() {
 				e.writeUvarint(customTagSyntheticPrefix)
-				e.writeBytes(x.Meta.SyntheticPrefix)
+				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Prefix())
 			}
-			if x.Meta.SyntheticSuffix != nil {
+			if x.Meta.SyntheticPrefixAndSuffix.HasSuffix() {
 				e.writeUvarint(customTagSyntheticSuffix)
-				e.writeBytes(x.Meta.SyntheticSuffix)
+				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Suffix())
 			}
 			e.writeUvarint(customTagTerminate)
 		}

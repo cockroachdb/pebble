@@ -221,13 +221,16 @@ func BenchmarkCockroachDataBlockIterTransforms(b *testing.B) {
 		{
 			description: "SyntheticPrefix",
 			transforms: block.IterTransforms{
-				SyntheticPrefix: []byte("prefix_"),
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte("prefix_"), nil),
 			},
 		},
 		{
 			description: "SyntheticSuffix",
 			transforms: block.IterTransforms{
-				SyntheticSuffix: crdbtest.EncodeTimestamp(make([]byte, 0, 20), 1_000_000_000_000, 0)[1:],
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(
+					nil,
+					crdbtest.EncodeTimestamp(make([]byte, 0, 20), 1_000_000_000_000, 0)[1:],
+				),
 			},
 		},
 	}
@@ -271,9 +274,9 @@ func benchmarkCockroachDataBlockIter(
 	}
 	avgRowSize := float64(len(serializedBlock)) / float64(len(keys))
 
-	if transforms.SyntheticPrefix.IsSet() {
+	if transforms.HasSyntheticPrefix() {
 		for i := range keys {
-			keys[i] = slices.Concat(transforms.SyntheticPrefix, keys[i])
+			keys[i] = slices.Concat(transforms.SyntheticPrefix(), keys[i])
 		}
 	}
 

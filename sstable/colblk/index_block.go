@@ -189,9 +189,7 @@ type IndexIter struct {
 	n       int
 	row     int
 
-	syntheticPrefix block.SyntheticPrefix
-	syntheticSuffix block.SyntheticSuffix
-	noTransforms    bool
+	syntheticPrefixAndSuffix block.SyntheticPrefixAndSuffix
 
 	h block.BufferHandle
 	// TODO(radu): remove allocDecoder and require any Init callers to provide the
@@ -212,9 +210,7 @@ func (i *IndexIter) InitWithDecoder(
 	i.d = d
 	i.n = int(d.bd.header.Rows)
 	i.row = -1
-	i.syntheticPrefix = transforms.SyntheticPrefix
-	i.syntheticSuffix = transforms.SyntheticSuffix
-	i.noTransforms = !transforms.SyntheticPrefix.IsSet() && !transforms.SyntheticSuffix.IsSet()
+	i.syntheticPrefixAndSuffix = transforms.SyntheticPrefixAndSuffix
 	// Leave h, allocDecoder, keyBuf unchanged.
 }
 
@@ -275,7 +271,7 @@ func (i *IndexIter) Handle() block.BufferHandle {
 // iterator must be positioned at a valid row.
 func (i *IndexIter) Separator() []byte {
 	key := i.d.separators.At(i.row)
-	if i.noTransforms {
+	if i.syntheticPrefixAndSuffix.IsUnset() {
 		return key
 	}
 	return i.applyTransforms(key)
@@ -295,13 +291,15 @@ func (i *IndexIter) SeparatorGT(key []byte, inclusively bool) bool {
 }
 
 func (i *IndexIter) applyTransforms(key []byte) []byte {
-	if i.syntheticSuffix.IsSet() {
+	syntheticPrefix := i.syntheticPrefixAndSuffix.Prefix()
+	syntheticSuffix := i.syntheticPrefixAndSuffix.Suffix()
+	if syntheticSuffix.IsSet() {
 		key = key[:i.split(key)]
 	}
-	i.keyBuf = slices.Grow(i.keyBuf[:0], len(i.syntheticPrefix)+len(key)+len(i.syntheticSuffix))
-	i.keyBuf = append(i.keyBuf, i.syntheticPrefix...)
+	i.keyBuf = slices.Grow(i.keyBuf[:0], len(syntheticPrefix)+len(key)+len(syntheticSuffix))
+	i.keyBuf = append(i.keyBuf, syntheticPrefix...)
 	i.keyBuf = append(i.keyBuf, key...)
-	i.keyBuf = append(i.keyBuf, i.syntheticSuffix...)
+	i.keyBuf = append(i.keyBuf, syntheticSuffix...)
 	return i.keyBuf
 }
 
@@ -331,7 +329,7 @@ func (i *IndexIter) SeekGE(key []byte) bool {
 		// TODO(jackson): Is Bytes.At or Bytes.Slice(Bytes.Offset(h),
 		// Bytes.Offset(h+1)) faster in this code?
 		separator := i.d.separators.At(h)
-		if !i.noTransforms {
+		if !i.syntheticPrefixAndSuffix.IsUnset() {
 			// TODO(radu): compare without materializing the transformed key.
 			separator = i.applyTransforms(separator)
 		}
@@ -384,7 +382,6 @@ func (i *IndexIter) Close() error {
 	i.h.Release()
 	i.h = block.BufferHandle{}
 	i.d = nil
-	i.syntheticPrefix = nil
-	i.syntheticSuffix = nil
+	i.syntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix{}
 	return nil
 }

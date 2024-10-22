@@ -60,9 +60,8 @@ func TestKeyspanBlock(t *testing.T) {
 			td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
 			transforms := block.FragmentIterTransforms{
-				SyntheticSeqNum: block.SyntheticSeqNum(syntheticSeqNum),
-				SyntheticPrefix: []byte(syntheticPrefix),
-				SyntheticSuffix: []byte(syntheticSuffix),
+				SyntheticSeqNum:          block.SyntheticSeqNum(syntheticSeqNum),
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 			}
 			iter.init(base.DefaultComparer.Compare, &kr, transforms)
 			return keyspan.RunFragmentIteratorCmd(&iter, td.Input, nil)

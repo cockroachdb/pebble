@@ -231,7 +231,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 
 			var rp ReaderProvider
-			transforms := IterTransforms{SyntheticSuffix: syntheticSuffix}
+			transforms := IterTransforms{
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+			}
 			iter, err := v.NewCompactionIter(transforms, CategoryAndQoS{}, nil, rp, &bp)
 			if err != nil {
 				return err.Error()
@@ -271,7 +273,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if v == nil {
 				return "virtualize must be called before scan-range-del"
 			}
-			transforms := FragmentIterTransforms{SyntheticSuffix: syntheticSuffix}
+			transforms := FragmentIterTransforms{
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+			}
 			iter, err := v.NewRawRangeDelIter(context.Background(), transforms)
 			if err != nil {
 				return err.Error()
@@ -295,7 +299,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if v == nil {
 				return "virtualize must be called before scan-range-key"
 			}
-			transforms := FragmentIterTransforms{SyntheticSuffix: syntheticSuffix}
+			transforms := FragmentIterTransforms{
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+			}
 			iter, err := v.NewRawRangeKeyIter(context.Background(), transforms)
 			if err != nil {
 				return err.Error()
@@ -350,7 +356,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				}
 			}
 
-			transforms := IterTransforms{SyntheticSuffix: syntheticSuffix}
+			transforms := IterTransforms{
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+			}
 			iter, err := v.NewPointIter(
 				context.Background(), transforms, lower, upper, filterer, NeverUseFilterBlock,
 				&stats, CategoryAndQoS{}, nil, MakeTrivialReaderProvider(r))
@@ -1242,7 +1250,9 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 		require.NoError(t, err)
 		iter, err := eReader.newPointIter(
 			context.Background(),
-			block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix},
+			block.IterTransforms{
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+			},
 			nil, nil, nil,
 			AlwaysUseFilterBlock, nil, CategoryAndQoS{}, nil,
 			MakeTrivialReaderProvider(eReader), &virtualState{

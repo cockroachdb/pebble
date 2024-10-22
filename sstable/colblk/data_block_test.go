@@ -113,10 +113,9 @@ func TestDataBlock(t *testing.T) {
 				td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 				td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
 				transforms := block.IterTransforms{
-					SyntheticSeqNum:    block.SyntheticSeqNum(seqNum),
-					HideObsoletePoints: td.HasArg("hide-obsolete-points"),
-					SyntheticPrefix:    []byte(syntheticPrefix),
-					SyntheticSuffix:    []byte(syntheticSuffix),
+					SyntheticSeqNum:          block.SyntheticSeqNum(seqNum),
+					HideObsoletePoints:       td.HasArg("hide-obsolete-points"),
+					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 				}
 				if err := it.Init(&r, transforms); err != nil {
 					return err.Error()

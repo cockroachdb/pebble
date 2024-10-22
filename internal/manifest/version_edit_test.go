@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,12 @@ func checkRoundTrip(e0 VersionEdit) error {
 	if err := e1.Decode(buf); err != nil {
 		return errors.Wrap(err, "decode")
 	}
-	if diff := pretty.Diff(e0, e1); diff != nil {
+	diff := pretty.Diff(e0, e1)
+	// SyntheticPrefixAndSuffix can't be correctly compared with pretty.Diff.
+	diff = slices.DeleteFunc(diff, func(s string) bool {
+		return strings.Contains(s, "SyntheticPrefixAndSuffix")
+	})
+	if len(diff) > 0 {
 		return errors.Errorf("%s", strings.Join(diff, "\n"))
 	}
 	return nil
@@ -44,14 +50,13 @@ func checkRoundTrip(e0 VersionEdit) error {
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&FileMetadata{
-		FileNum:               810,
-		Size:                  8090,
-		CreationTime:          809060,
-		SmallestSeqNum:        9,
-		LargestSeqNum:         11,
-		LargestSeqNumAbsolute: 11,
-		SyntheticPrefix:       []byte("after"),
-		SyntheticSuffix:       []byte("foo"),
+		FileNum:                  810,
+		Size:                     8090,
+		CreationTime:             809060,
+		SmallestSeqNum:           9,
+		LargestSeqNum:            11,
+		LargestSeqNumAbsolute:    11,
+		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix([]byte("after"), []byte("foo")),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -126,14 +131,14 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m1.InitPhysicalBacking()
 
 	m2 := (&FileMetadata{
-		FileNum:               806,
-		Size:                  8060,
-		CreationTime:          806040,
-		SmallestSeqNum:        3,
-		LargestSeqNum:         5,
-		LargestSeqNumAbsolute: 5,
-		MarkedForCompaction:   true,
-		SyntheticSuffix:       []byte("foo"),
+		FileNum:                  806,
+		Size:                     8060,
+		CreationTime:             806040,
+		SmallestSeqNum:           3,
+		LargestSeqNum:            5,
+		LargestSeqNumAbsolute:    5,
+		MarkedForCompaction:      true,
+		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(nil, []byte("foo")),
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),

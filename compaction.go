@@ -2362,15 +2362,14 @@ func (d *DB) runCopyCompaction(
 	// a new FileNum. This has the potential of making the block cache less
 	// effective, however.
 	newMeta := &fileMetadata{
-		Size:                  inputMeta.Size,
-		CreationTime:          inputMeta.CreationTime,
-		SmallestSeqNum:        inputMeta.SmallestSeqNum,
-		LargestSeqNum:         inputMeta.LargestSeqNum,
-		LargestSeqNumAbsolute: inputMeta.LargestSeqNumAbsolute,
-		Stats:                 inputMeta.Stats,
-		Virtual:               inputMeta.Virtual,
-		SyntheticPrefix:       inputMeta.SyntheticPrefix,
-		SyntheticSuffix:       inputMeta.SyntheticSuffix,
+		Size:                     inputMeta.Size,
+		CreationTime:             inputMeta.CreationTime,
+		SmallestSeqNum:           inputMeta.SmallestSeqNum,
+		LargestSeqNum:            inputMeta.LargestSeqNum,
+		LargestSeqNumAbsolute:    inputMeta.LargestSeqNumAbsolute,
+		Stats:                    inputMeta.Stats,
+		Virtual:                  inputMeta.Virtual,
+		SyntheticPrefixAndSuffix: inputMeta.SyntheticPrefixAndSuffix,
 	}
 	if inputMeta.HasPointKeys {
 		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.SmallestPointKey, inputMeta.LargestPointKey)
@@ -2434,11 +2433,12 @@ func (d *DB) runCopyCompaction(
 		deleteOnExit = true
 
 		start, end := newMeta.Smallest, newMeta.Largest
-		if newMeta.SyntheticPrefix.IsSet() {
-			start.UserKey = newMeta.SyntheticPrefix.Invert(start.UserKey)
-			end.UserKey = newMeta.SyntheticPrefix.Invert(end.UserKey)
+		if newMeta.SyntheticPrefixAndSuffix.HasPrefix() {
+			syntheticPrefix := newMeta.SyntheticPrefixAndSuffix.Prefix()
+			start.UserKey = syntheticPrefix.Invert(start.UserKey)
+			end.UserKey = syntheticPrefix.Invert(end.UserKey)
 		}
-		if newMeta.SyntheticSuffix.IsSet() {
+		if newMeta.SyntheticPrefixAndSuffix.HasSuffix() {
 			// Extend the bounds as necessary so that the keys don't include suffixes.
 			start.UserKey = start.UserKey[:c.comparer.Split(start.UserKey)]
 			if n := c.comparer.Split(end.UserKey); n < len(end.UserKey) {

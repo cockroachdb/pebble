@@ -90,7 +90,9 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 
 						keys, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix})
+						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
+							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+						})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -125,7 +127,9 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 
 						keys, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix})
+						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
+							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+						})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -167,7 +171,9 @@ func BenchmarkBlockIterNext(b *testing.B) {
 
 						_, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix})
+						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
+							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+						})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -197,7 +203,9 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 
 						_, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{SyntheticSuffix: syntheticSuffix, SyntheticPrefix: syntheticPrefix})
+						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
+							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+						})
 						if err != nil {
 							b.Fatal(err)
 						}

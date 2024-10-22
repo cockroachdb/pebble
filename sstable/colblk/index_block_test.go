@@ -57,8 +57,7 @@ func TestIndexBlock(t *testing.T) {
 			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
 			transforms := block.IterTransforms{
-				SyntheticPrefix: []byte(syntheticPrefix),
-				SyntheticSuffix: []byte(syntheticSuffix),
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 			}
 			var it IndexIter
 			it.InitWithDecoder(testkeys.Comparer.Compare, testkeys.Comparer.Split, &decoder, transforms)

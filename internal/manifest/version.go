@@ -292,12 +292,9 @@ type FileMetadata struct {
 	// Virtual is true if the FileMetadata belongs to a virtual sstable.
 	Virtual bool
 
-	// SyntheticPrefix is used to prepend a prefix to all keys; used for some virtual
-	// tables.
-	SyntheticPrefix sstable.SyntheticPrefix
-
-	// SyntheticSuffix overrides all suffixes in a table; used for some virtual tables.
-	SyntheticSuffix sstable.SyntheticSuffix
+	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
+	// suffixes in a table; used for some virtual tables.
+	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
 }
 
 // InternalKeyBounds returns the set of overall table bounds.
@@ -340,9 +337,8 @@ func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
 // file.
 func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
 	return sstable.IterTransforms{
-		SyntheticSeqNum: m.SyntheticSeqNum(),
-		SyntheticSuffix: m.SyntheticSuffix,
-		SyntheticPrefix: m.SyntheticPrefix,
+		SyntheticSeqNum:          m.SyntheticSeqNum(),
+		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 	}
 }
 
@@ -350,9 +346,8 @@ func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
 // according to the file.
 func (m *FileMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms {
 	return sstable.FragmentIterTransforms{
-		SyntheticSeqNum: m.SyntheticSeqNum(),
-		SyntheticSuffix: m.SyntheticSuffix,
-		SyntheticPrefix: m.SyntheticPrefix,
+		SyntheticSeqNum:          m.SyntheticSeqNum(),
+		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 	}
 }
 
@@ -943,19 +938,19 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		return base.CorruptionErrorf("file metadata FileBacking not set")
 	}
 
-	if m.SyntheticPrefix.IsSet() {
+	if m.SyntheticPrefixAndSuffix.HasPrefix() {
 		if !m.Virtual {
 			return base.CorruptionErrorf("non-virtual file with synthetic prefix")
 		}
-		if !bytes.HasPrefix(m.Smallest.UserKey, m.SyntheticPrefix) {
+		if !bytes.HasPrefix(m.Smallest.UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
 			return base.CorruptionErrorf("virtual file with synthetic prefix has smallest key with a different prefix: %s", m.Smallest.Pretty(formatKey))
 		}
-		if !bytes.HasPrefix(m.Largest.UserKey, m.SyntheticPrefix) {
+		if !bytes.HasPrefix(m.Largest.UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
 			return base.CorruptionErrorf("virtual file with synthetic prefix has largest key with a different prefix: %s", m.Largest.Pretty(formatKey))
 		}
 	}
 
-	if m.SyntheticSuffix != nil {
+	if m.SyntheticPrefixAndSuffix.HasSuffix() {
 		if !m.Virtual {
 			return base.CorruptionErrorf("non-virtual file with synthetic suffix")
 		}

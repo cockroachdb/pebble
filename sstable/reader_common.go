@@ -75,6 +75,8 @@ type (
 	SyntheticSuffix = block.SyntheticSuffix
 	// SyntheticPrefix re-exports block.SyntheticPrefix.
 	SyntheticPrefix = block.SyntheticPrefix
+	// SyntheticPrefixAndSuffix re-exports block.SyntheticPrefixAndSuffix.
+	SyntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix
 )
 
 // NoTransforms is the default value for IterTransforms.
@@ -82,6 +84,14 @@ var NoTransforms = block.NoTransforms
 
 // NoFragmentTransforms is the default value for FragmentIterTransforms.
 var NoFragmentTransforms = block.NoFragmentTransforms
+
+// MakeSyntheticPrefixAndSuffix returns a SyntheticPrefixAndSuffix with the
+// given prefix and suffix.
+func MakeSyntheticPrefixAndSuffix(
+	prefix SyntheticPrefix, suffix SyntheticSuffix,
+) SyntheticPrefixAndSuffix {
+	return block.MakeSyntheticPrefixAndSuffix(prefix, suffix)
+}
 
 // NoSyntheticSeqNum is the default zero value for SyntheticSeqNum, which
 // disables overriding the sequence number.
