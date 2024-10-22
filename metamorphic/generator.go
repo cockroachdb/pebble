@@ -1397,23 +1397,6 @@ func (g *generator) writerIngestExternalFiles() {
 				continue
 			}
 
-			// We can only use a synthetic suffix if we don't have multiple keys with
-			// the same prefix.
-			hasDuplicatePrefix := func() bool {
-				var prevPrefix []byte
-				for _, k := range g.keyManager.KeysForExternalIngest(objs[i]) {
-					prefix := g.prefix(k.key)
-					if g.cmp(prefix, prevPrefix) == 0 {
-						return true
-					}
-					prevPrefix = append(prevPrefix[:0], prefix...)
-				}
-				return false
-			}()
-			if hasDuplicatePrefix {
-				continue
-			}
-
 			// We can only use a synthetic suffix if we don't have overlapping range
 			// key sets (because they will become logically conflicting when we
 			// replace their suffixes with the synthetic one).
