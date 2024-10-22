@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -77,7 +78,7 @@ func TestRandKeys(t *testing.T) {
 		seed := uint64(1234)
 		count := 10
 		valueLen := 4
-		cfg := KeyConfig{
+		cfg := keyGenConfig{
 			PrefixAlphabetLen: 8,
 			PrefixLenShared:   4,
 			PrefixLen:         8,
@@ -102,7 +103,7 @@ func TestRandKeys(t *testing.T) {
 		switch d.Cmd {
 		case "rand-kvs":
 			var vals [][]byte
-			keys, vals = RandomKVs(rng, count, cfg, valueLen)
+			keys, vals = randomKVs(rng, count, cfg, valueLen)
 			for i, key := range keys {
 				n := Split(key)
 				prefix := key[:n-1]
@@ -111,7 +112,7 @@ func TestRandKeys(t *testing.T) {
 			}
 
 		case "rand-query-keys":
-			queryKeys := RandomQueryKeys(rng, count, keys, cfg.BaseWallTime)
+			queryKeys := randomQueryKeys(rng, count, keys, cfg.BaseWallTime)
 			for _, key := range queryKeys {
 				n := Split(key)
 				prefix := key[:n-1]
@@ -126,13 +127,13 @@ func TestRandKeys(t *testing.T) {
 	})
 }
 
-func TestCockroachDataBlock(t *testing.T) {
+func TestCockroachDataColBlock(t *testing.T) {
 	const targetBlockSize = 32 << 10
 	const valueLen = 100
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
-	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, KeyConfig{
+	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, keyGenConfig{
 		PrefixAlphabetLen: 26,
 		PrefixLen:         12,
 		PercentLogical:    rng.IntN(25),
@@ -183,9 +184,9 @@ func TestCockroachDataBlock(t *testing.T) {
 // parameters. Returns the serialized block data and the keys and values
 // written.
 func generateDataBlock(
-	rng *rand.Rand, targetBlockSize int, cfg KeyConfig, valueLen int,
+	rng *rand.Rand, targetBlockSize int, cfg keyGenConfig, valueLen int,
 ) (data []byte, keys [][]byte, values [][]byte) {
-	keys, values = RandomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
+	keys, values = randomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
 
 	var w colblk.DataBlockEncoder
 	w.Init(&KeySchema)
@@ -204,4 +205,118 @@ type getLazyValuer func([]byte) base.LazyValue
 
 func (g getLazyValuer) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
 	return g(handle)
+}
+
+// keyGenConfig configures the shape of the random keys generated.
+type keyGenConfig struct {
+	PrefixAlphabetLen int    // Number of bytes in the alphabet used for the prefix.
+	PrefixLenShared   int    // Number of bytes shared by all key prefixes.
+	PrefixLen         int    // Number of bytes in the prefix.
+	AvgKeysPerPrefix  int    // Average number of keys (with varying suffixes) per prefix.
+	BaseWallTime      uint64 // Smallest MVCC WallTime.
+	PercentLogical    int    // Percent of keys with non-zero MVCC logical time.
+}
+
+func (cfg keyGenConfig) String() string {
+	return fmt.Sprintf(
+		"AlphaLen=%d,Prefix=%d,Shared=%d,KeysPerPrefix=%d%s",
+		cfg.PrefixAlphabetLen, cfg.PrefixLen, cfg.PrefixLenShared,
+		cfg.AvgKeysPerPrefix,
+		crstrings.If(cfg.PercentLogical != 0, fmt.Sprintf(",Logical=%d", cfg.PercentLogical)),
+	)
+}
+
+// randomKVs constructs count random KVs with the provided parameters.
+func randomKVs(rng *rand.Rand, count int, cfg keyGenConfig, valueLen int) (keys, vals [][]byte) {
+	g := makeCockroachKeyGen(rng, cfg)
+	sharedPrefix := make([]byte, cfg.PrefixLenShared)
+	for i := 0; i < len(sharedPrefix); i++ {
+		sharedPrefix[i] = byte(rng.IntN(cfg.PrefixAlphabetLen) + 'a')
+	}
+
+	keys = make([][]byte, 0, count)
+	vals = make([][]byte, 0, count)
+	for len(keys) < count {
+		prefix := g.randPrefix(sharedPrefix)
+		// We use the exponential distribution so that we occasionally have many
+		// suffixes
+		n := int(rng.ExpFloat64() * float64(cfg.AvgKeysPerPrefix))
+		n = max(n, 1)
+		for i := 0; i < n && len(keys) < count; i++ {
+			wallTime, logicalTime := g.randTimestamp()
+			k := makeKey(prefix, wallTime, logicalTime)
+			v := make([]byte, valueLen)
+			for j := range v {
+				v[j] = byte(rng.Uint32())
+			}
+			keys = append(keys, k)
+			vals = append(vals, v)
+		}
+	}
+	slices.SortFunc(keys, Compare)
+	return keys, vals
+}
+
+func makeKey(prefix []byte, wallTime uint64, logicalTime uint32) []byte {
+	k := make([]byte, 0, len(prefix)+MaxSuffixLen)
+	k = append(k, prefix...)
+	return EncodeTimestamp(k, wallTime, logicalTime)
+}
+
+// randomQueryKeys returns a slice of count random query keys. Each key has a
+// random prefix uniformly chosen from  the distinct prefixes in writtenKeys and
+// a random timestamp.
+//
+// Note that by setting baseWallTime to be large enough, we can simulate a query
+// pattern that always retrieves the latest version of any prefix.
+func randomQueryKeys(
+	rng *rand.Rand, count int, writtenKeys [][]byte, baseWallTime uint64,
+) [][]byte {
+	// Gather prefixes.
+	prefixes := make([][]byte, len(writtenKeys))
+	for i, k := range writtenKeys {
+		prefixes[i] = k[:Split(k)-1]
+	}
+	slices.SortFunc(prefixes, bytes.Compare)
+	prefixes = slices.CompactFunc(prefixes, bytes.Equal)
+	result := make([][]byte, count)
+	for i := range result {
+		prefix := prefixes[rng.IntN(len(prefixes))]
+		wallTime := baseWallTime + rng.Uint64N(uint64(time.Hour))
+		var logicalTime uint32
+		if rng.IntN(10) == 0 {
+			logicalTime = rng.Uint32()
+		}
+		result[i] = makeKey(prefix, wallTime, logicalTime)
+	}
+	return result
+}
+
+type cockroachKeyGen struct {
+	rng *rand.Rand
+	cfg keyGenConfig
+}
+
+func makeCockroachKeyGen(rng *rand.Rand, cfg keyGenConfig) cockroachKeyGen {
+	return cockroachKeyGen{
+		rng: rng,
+		cfg: cfg,
+	}
+}
+
+func (g *cockroachKeyGen) randPrefix(blockPrefix []byte) []byte {
+	prefix := make([]byte, 0, g.cfg.PrefixLen+MaxSuffixLen)
+	prefix = append(prefix, blockPrefix...)
+	for len(prefix) < g.cfg.PrefixLen {
+		prefix = append(prefix, byte(g.rng.IntN(g.cfg.PrefixAlphabetLen)+'a'))
+	}
+	return prefix
+}
+
+func (g *cockroachKeyGen) randTimestamp() (wallTime uint64, logicalTime uint32) {
+	wallTime = g.cfg.BaseWallTime + g.rng.Uint64N(uint64(time.Hour))
+	if g.cfg.PercentLogical > 0 && g.rng.IntN(100) < g.cfg.PercentLogical {
+		logicalTime = g.rng.Uint32()
+	}
+	return wallTime, logicalTime
 }
