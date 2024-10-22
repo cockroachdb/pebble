@@ -16,6 +16,9 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/stretchr/testify/require"
 )
 
 func TestComparer(t *testing.T) {
@@ -121,4 +124,84 @@ func TestRandKeys(t *testing.T) {
 		}
 		return buf.String()
 	})
+}
+
+func TestCockroachDataBlock(t *testing.T) {
+	const targetBlockSize = 32 << 10
+	const valueLen = 100
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, seed))
+	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, KeyConfig{
+		PrefixAlphabetLen: 26,
+		PrefixLen:         12,
+		PercentLogical:    rng.IntN(25),
+		AvgKeysPerPrefix:  2,
+		BaseWallTime:      seed,
+	}, valueLen)
+
+	var decoder colblk.DataBlockDecoder
+	var it colblk.DataBlockIter
+	it.InitOnce(&KeySchema, Compare, Split, getLazyValuer(func([]byte) base.LazyValue {
+		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+	}))
+	decoder.Init(&KeySchema, serializedBlock)
+	if err := it.Init(&decoder, block.IterTransforms{}); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("Next", func(t *testing.T) {
+		// Scan the block using Next and ensure that all the keys values match.
+		i := 0
+		for kv := it.First(); kv != nil; i, kv = i+1, it.Next() {
+			if !bytes.Equal(kv.K.UserKey, keys[i]) {
+				t.Fatalf("expected %q, but found %q", keys[i], kv.K.UserKey)
+			}
+			if !bytes.Equal(kv.V.InPlaceValue(), values[i]) {
+				t.Fatalf("expected %x, but found %x", values[i], kv.V.InPlaceValue())
+			}
+		}
+		require.Equal(t, len(keys), i)
+	})
+	t.Run("SeekGE", func(t *testing.T) {
+		rng := rand.New(rand.NewPCG(0, seed))
+		for _, i := range rng.Perm(len(keys)) {
+			kv := it.SeekGE(keys[i], base.SeekGEFlagsNone)
+			if kv == nil {
+				t.Fatalf("%q not found", keys[i])
+			}
+			if !bytes.Equal(kv.V.InPlaceValue(), values[i]) {
+				t.Fatalf(
+					"expected:\n    %x\nfound:\n    %x\nquery key:\n    %x\nreturned key:\n    %x",
+					values[i], kv.V.InPlaceValue(), keys[i], kv.K.UserKey)
+			}
+		}
+	})
+}
+
+// generateDataBlock writes out a random cockroach data block using the given
+// parameters. Returns the serialized block data and the keys and values
+// written.
+func generateDataBlock(
+	rng *rand.Rand, targetBlockSize int, cfg KeyConfig, valueLen int,
+) (data []byte, keys [][]byte, values [][]byte) {
+	keys, values = RandomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
+
+	var w colblk.DataBlockEncoder
+	w.Init(&KeySchema)
+	count := 0
+	for w.Size() < targetBlockSize {
+		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
+		count++
+	}
+	data, _ = w.Finish(w.Rows(), w.Size())
+	return data, keys[:count], values[:count]
+}
+
+type getLazyValuer func([]byte) base.LazyValue
+
+func (g getLazyValuer) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+	return g(handle)
 }
