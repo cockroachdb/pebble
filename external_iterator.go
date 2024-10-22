@@ -134,6 +134,11 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 	}
 	mlevels := it.alloc.mlevels[:0]
 
+	// TODO(jackson): External iterators never provide categorized iterator
+	// stats today because they exist outside the context of a *DB. If the
+	// sstables being read are on the physical filesystem, we may still want to
+	// thread a CategoryStatsCollector through so that we collect their stats.
+
 	if len(it.externalReaders) > cap(mlevels) {
 		mlevels = make([]mergingIterLevel, 0, len(it.externalReaders))
 	}
@@ -159,7 +164,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 			pointIter, err = r.NewPointIter(
 				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
 				sstable.NeverUseFilterBlock,
-				&it.stats.InternalStats, it.opts.CategoryAndQoS, nil,
+				&it.stats.InternalStats, nil,
 				sstable.MakeTrivialReaderProvider(r))
 			if err != nil {
 				return nil, err

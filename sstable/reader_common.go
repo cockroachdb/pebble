@@ -32,15 +32,13 @@ type CommonReader interface {
 		filterer *BlockPropertiesFilterer,
 		filterBlockSizeLimit FilterBlockSizeLimit,
 		stats *base.InternalIteratorStats,
-		categoryAndQoS CategoryAndQoS,
-		statsCollector *CategoryStatsCollector,
+		statsAccum IterStatsAccumulator,
 		rp ReaderProvider,
 	) (Iterator, error)
 
 	NewCompactionIter(
 		transforms IterTransforms,
-		categoryAndQoS CategoryAndQoS,
-		statsCollector *CategoryStatsCollector,
+		statsAccum IterStatsAccumulator,
 		rp ReaderProvider,
 		bufferPool *block.BufferPool,
 	) (Iterator, error)

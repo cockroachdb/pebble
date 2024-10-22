@@ -22,10 +22,11 @@ type internalIterOpts struct {
 	// if compaction is set, sstable-level iterators will be created using
 	// NewCompactionIter; these iterators have a more constrained interface
 	// and are optimized for the sequential scan of a compaction.
-	compaction         bool
-	bufferPool         *sstable.BufferPool
-	stats              *base.InternalIteratorStats
-	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
+	compaction           bool
+	bufferPool           *sstable.BufferPool
+	stats                *base.InternalIteratorStats
+	iterStatsAccumulator sstable.IterStatsAccumulator
+	boundLimitedFilter   sstable.BoundLimitedBlockPropertyFilter
 }
 
 // levelIter provides a merged view of the sstables in a level.

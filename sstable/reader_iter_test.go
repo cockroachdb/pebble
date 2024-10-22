@@ -64,8 +64,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
 				&stats,
-				CategoryAndQoS{},
-				nil, /* statsCollector */
+				nil, /* statsAccum */
 				MakeTrivialReaderProvider(r),
 				&pool,
 			)
@@ -79,8 +78,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
 				&stats,
-				CategoryAndQoS{},
-				nil, /* statsCollector */
+				nil, /* statsAccum */
 				MakeTrivialReaderProvider(r),
 				&pool,
 			)

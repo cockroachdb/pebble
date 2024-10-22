@@ -120,13 +120,12 @@ func (r *Reader) NewPointIter(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 ) (Iterator, error) {
 	return r.newPointIter(
 		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,
-		stats, categoryAndQoS, statsCollector, rp, nil)
+		stats, statsAccum, rp, nil)
 }
 
 // TryAddBlockPropertyFilterForHideObsoletePoints is expected to be called
@@ -152,8 +151,7 @@ func (r *Reader) newPointIter(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	vState *virtualState,
 ) (Iterator, error) {
@@ -166,21 +164,21 @@ func (r *Reader) newPointIter(
 		if r.tableFormat.BlockColumnar() {
 			res, err = newColumnBlockTwoLevelIterator(
 				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
-				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+				stats, statsAccum, rp, nil /* bufferPool */)
 		} else {
 			res, err = newRowBlockTwoLevelIterator(
 				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
-				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+				stats, statsAccum, rp, nil /* bufferPool */)
 		}
 	} else {
 		if r.tableFormat.BlockColumnar() {
 			res, err = newColumnBlockSingleLevelIterator(
 				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
-				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+				stats, statsAccum, rp, nil /* bufferPool */)
 		} else {
 			res, err = newRowBlockSingleLevelIterator(
 				ctx, r, vState, transforms, lower, upper, filterer, filterBlockSizeLimit,
-				stats, categoryAndQoS, statsCollector, rp, nil /* bufferPool */)
+				stats, statsAccum, rp, nil /* bufferPool */)
 		}
 	}
 	if err != nil {
@@ -202,7 +200,7 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 	// likely isn't a cache set up.
 	return r.NewPointIter(
 		context.TODO(), transforms, lower, upper, nil, AlwaysUseFilterBlock,
-		nil /* stats */, CategoryAndQoS{}, nil /* statsCollector */, MakeTrivialReaderProvider(r))
+		nil /* stats */, nil /* statsAccum */, MakeTrivialReaderProvider(r))
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
@@ -210,18 +208,16 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 // after itself and returns a nil iterator.
 func (r *Reader) NewCompactionIter(
 	transforms IterTransforms,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (Iterator, error) {
-	return r.newCompactionIter(transforms, categoryAndQoS, statsCollector, rp, nil, bufferPool)
+	return r.newCompactionIter(transforms, statsAccum, rp, nil, bufferPool)
 }
 
 func (r *Reader) newCompactionIter(
 	transforms IterTransforms,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	vState *virtualState,
 	bufferPool *block.BufferPool,
@@ -234,7 +230,7 @@ func (r *Reader) newCompactionIter(
 			i, err := newRowBlockTwoLevelIterator(
 				context.Background(),
 				r, vState, transforms, nil /* lower */, nil /* upper */, nil,
-				NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
+				NeverUseFilterBlock, nil /* stats */, statsAccum, rp, bufferPool)
 			if err != nil {
 				return nil, err
 			}
@@ -244,7 +240,7 @@ func (r *Reader) newCompactionIter(
 		i, err := newColumnBlockTwoLevelIterator(
 			context.Background(),
 			r, vState, transforms, nil /* lower */, nil /* upper */, nil,
-			NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
+			NeverUseFilterBlock, nil /* stats */, statsAccum, rp, bufferPool)
 		if err != nil {
 			return nil, err
 		}
@@ -254,7 +250,7 @@ func (r *Reader) newCompactionIter(
 	if !r.tableFormat.BlockColumnar() {
 		i, err := newRowBlockSingleLevelIterator(
 			context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
-			nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
+			nil, NeverUseFilterBlock, nil /* stats */, statsAccum, rp, bufferPool)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +259,7 @@ func (r *Reader) newCompactionIter(
 	}
 	i, err := newColumnBlockSingleLevelIterator(
 		context.Background(), r, vState, transforms, nil /* lower */, nil, /* upper */
-		nil, NeverUseFilterBlock, nil /* stats */, categoryAndQoS, statsCollector, rp, bufferPool)
+		nil, NeverUseFilterBlock, nil /* stats */, statsAccum, rp, bufferPool)
 	if err != nil {
 		return nil, err
 	}

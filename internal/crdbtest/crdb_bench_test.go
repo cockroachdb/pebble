@@ -117,7 +117,7 @@ func benchmarkRandSeekInSST(
 	rp := sstable.MakeTrivialReaderProvider(reader)
 	iter, err := reader.NewPointIter(
 		ctx, sstable.NoTransforms, nil, nil, nil, sstable.NeverUseFilterBlock,
-		&stats, sstable.CategoryAndQoS{}, nil, rp)
+		&stats, nil, rp)
 	require.NoError(b, err)
 	n := 0
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
@@ -133,7 +133,7 @@ func benchmarkRandSeekInSST(
 		key := queryKeys[i%numQueryKeys]
 		iter, err := reader.NewPointIter(
 			ctx, sstable.NoTransforms, nil, nil, nil, sstable.NeverUseFilterBlock,
-			&stats, sstable.CategoryAndQoS{}, nil, rp)
+			&stats, nil, rp)
 		if err != nil {
 			b.Fatal(err)
 		}

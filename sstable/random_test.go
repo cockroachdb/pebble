@@ -111,8 +111,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		filterer,
 		filterBlockSizeLimit,
 		&stats,
-		CategoryAndQoS{},
-		nil, /* CategoryStatsCollector */
+		nil, /* IterStatsAccumulator */
 		MakeTrivialReaderProvider(r),
 	)
 	require.NoError(t, err)

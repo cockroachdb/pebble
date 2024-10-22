@@ -161,8 +161,7 @@ func newColumnBlockTwoLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorColumnBlocks, error) {
@@ -175,7 +174,7 @@ func newColumnBlockTwoLevelIterator(
 	i := twoLevelIterColumnBlockPool.Get().(*twoLevelIteratorColumnBlocks)
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
-		stats, categoryAndQoS, statsCollector, bufferPool)
+		stats, statsAccum, bufferPool)
 	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -225,8 +224,7 @@ func newRowBlockTwoLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	categoryAndQoS CategoryAndQoS,
-	statsCollector *CategoryStatsCollector,
+	statsAccum IterStatsAccumulator,
 	rp ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorRowBlocks, error) {
@@ -239,7 +237,7 @@ func newRowBlockTwoLevelIterator(
 	i := twoLevelIterRowBlockPool.Get().(*twoLevelIteratorRowBlocks)
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
-		stats, categoryAndQoS, statsCollector, bufferPool)
+		stats, statsAccum, bufferPool)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
