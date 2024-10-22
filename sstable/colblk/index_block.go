@@ -306,6 +306,9 @@ func (i *IndexIter) applyTransforms(key []byte) []byte {
 // BlockHandleWithProperties decodes the block handle with any encoded
 // properties at the iterator's current position.
 func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, error) {
+	if invariants.Enabled && !i.Valid() {
+		panic(errors.AssertionFailedf("invalid row %d (n=%d)", i.row, i.n))
+	}
 	return block.HandleWithProperties{
 		Handle: block.Handle{
 			Offset: i.d.offsets.At(i.row),
@@ -382,6 +385,7 @@ func (i *IndexIter) Close() error {
 	i.h.Release()
 	i.h = block.BufferHandle{}
 	i.d = nil
+	i.n = 0
 	i.syntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix{}
 	return nil
 }
