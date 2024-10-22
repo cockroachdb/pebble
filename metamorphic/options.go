@@ -651,9 +651,9 @@ func RandomOptions(
 	opts.Experimental.ValidateOnIngest = rng.IntN(2) != 0
 	opts.L0CompactionThreshold = 1 + rng.IntN(100)     // 1 - 100
 	opts.L0CompactionFileThreshold = 1 << rng.IntN(11) // 1 - 1024
-	opts.L0StopWritesThreshold = 1 + rng.IntN(100)     // 1 - 100
-	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
-		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
+	opts.L0StopWritesThreshold = 50 + rng.IntN(100)    // 50 - 150
+	if opts.L0StopWritesThreshold < 2*opts.L0CompactionThreshold {
+		opts.L0StopWritesThreshold = 2 * opts.L0CompactionThreshold
 	}
 	opts.LBaseMaxBytes = 1 << uint(rng.IntN(30)) // 1B - 1GB
 	maxConcurrentCompactions := rng.IntN(3) + 1  // 1-3
