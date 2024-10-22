@@ -307,6 +307,7 @@ func (k *keyManager) InRangeKeysForObj(o objID, lower, upper []byte) []keyMeta {
 // object (taking into consideration the bounds, synthetic suffix, etc).
 func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta {
 	var res []keyMeta
+	var lastPrefix []byte
 	for _, km := range k.SortedKeysForObj(obj.externalObjID) {
 		// Apply prefix and suffix changes, then check the bounds.
 		if obj.syntheticPrefix.IsSet() {
@@ -316,6 +317,12 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 			n := k.comparer.Split(km.key)
 			km.key = append(km.key[:n:n], obj.syntheticSuffix...)
 		}
+		if lastPrefix != nil && k.comparer.Equal(lastPrefix, km.key[:k.comparer.Split(km.key)]) {
+			// We only keep the first of every unique prefix for external ingests.
+			// See the use of uniquePrefixes in newExternalObjOp.
+			continue
+		}
+		lastPrefix = append(lastPrefix[:0], km.key[:k.comparer.Split(km.key)]...)
 		if k.comparer.Compare(km.key, obj.bounds.Start) >= 0 && k.comparer.Compare(km.key, obj.bounds.End) < 0 {
 			res = append(res, km)
 		}
