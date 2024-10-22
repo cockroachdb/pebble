@@ -874,9 +874,9 @@ func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 	return d.prefixChanged
 }
 
-// KeySchemaHeader returns the KeySchema-specific header of fixed size.
-func (d *DataBlockDecoder) KeySchemaHeader(schemaHeaderSize uint32) []byte {
-	return d.d.data[:schemaHeaderSize]
+// KeySchemaHeader returns the KeySchema-specific header.
+func (d *DataBlockDecoder) KeySchemaHeader() []byte {
+	return d.d.data[:d.d.customHeaderSize-dataBlockCustomHeaderSize]
 }
 
 // Init initializes the data block reader with the given serialized data block.

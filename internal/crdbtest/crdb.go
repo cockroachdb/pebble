@@ -633,7 +633,11 @@ func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder) {
 	ks.mvccWallTimes = bd.Uints(cockroachColMVCCWallTime)
 	ks.mvccLogical = bd.Uints(cockroachColMVCCLogical)
 	ks.untypedVersions = bd.RawBytes(cockroachColUntypedVersion)
-	ks.suffixTypes = suffixTypes(d.KeySchemaHeader(1)[0])
+	header := d.KeySchemaHeader()
+	if len(header) != 1 {
+		panic(errors.AssertionFailedf("invalid key schema-specific header %x", header))
+	}
+	ks.suffixTypes = suffixTypes(header[0])
 }
 
 // IsLowerBound is part of the KeySeeker interface.
