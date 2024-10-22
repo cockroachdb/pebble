@@ -233,8 +233,8 @@ func (i *Iter) Init(
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&blk[0])
 	i.data = blk
-	if i.transforms.SyntheticPrefix.IsSet() {
-		i.fullKey = append(i.fullKey[:0], i.transforms.SyntheticPrefix...)
+	if i.transforms.HasSyntheticPrefix() {
+		i.fullKey = append(i.fullKey[:0], i.transforms.SyntheticPrefix()...)
 	} else {
 		i.fullKey = i.fullKey[:0]
 	}
@@ -368,7 +368,7 @@ func (i *Iter) readEntry() {
 		value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
-	shared += uint32(len(i.transforms.SyntheticPrefix))
+	shared += i.transforms.SyntheticPrefixAndSuffix.PrefixLen()
 	unsharedKey := getBytes(ptr, int(unshared))
 	// TODO(sumeer): move this into the else block below.
 	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
@@ -445,9 +445,10 @@ func (i *Iter) readFirstKey() error {
 		i.firstUserKey = nil
 		return base.CorruptionErrorf("pebble/table: invalid firstKey in block")
 	}
-	if i.transforms.SyntheticPrefix != nil {
-		i.firstUserKeyWithPrefixBuf = slices.Grow(i.firstUserKeyWithPrefixBuf[:0], len(i.transforms.SyntheticPrefix)+len(i.firstUserKey))
-		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, i.transforms.SyntheticPrefix...)
+	if i.transforms.HasSyntheticPrefix() {
+		syntheticPrefix := i.transforms.SyntheticPrefix()
+		i.firstUserKeyWithPrefixBuf = slices.Grow(i.firstUserKeyWithPrefixBuf[:0], len(syntheticPrefix)+len(i.firstUserKey))
+		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, syntheticPrefix...)
 		i.firstUserKeyWithPrefixBuf = append(i.firstUserKeyWithPrefixBuf, i.firstUserKey...)
 		i.firstUserKey = i.firstUserKeyWithPrefixBuf
 	}
@@ -476,12 +477,12 @@ func (i *Iter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 // maybeReplaceSuffix replaces the suffix in i.ikey.UserKey with
 // i.transforms.syntheticSuffix.
 func (i *Iter) maybeReplaceSuffix() {
-	if i.transforms.SyntheticSuffix.IsSet() && i.ikv.K.UserKey != nil {
+	if i.transforms.HasSyntheticSuffix() && i.ikv.K.UserKey != nil {
 		prefixLen := i.split(i.ikv.K.UserKey)
 		// If ikey is cached or may get cached, we must copy
 		// UserKey to a new buffer before suffix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.K.UserKey[:prefixLen]...)
-		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix()...)
 		i.ikv.K.UserKey = i.synthSuffixBuf
 	}
 }
@@ -521,8 +522,9 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
 	searchKey := key
-	if i.transforms.SyntheticPrefix != nil {
-		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
+	if i.transforms.HasSyntheticPrefix() {
+		syntheticPrefix := i.transforms.SyntheticPrefix()
+		if !bytes.HasPrefix(key, syntheticPrefix) {
 			// The seek key is before or after the entire block of keys that start
 			// with SyntheticPrefix. To determine which, we need to compare against a
 			// valid key in the block. We use firstUserKey which has the synthetic
@@ -537,7 +539,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 			i.nextOffset = i.restarts
 			return nil
 		}
-		searchKey = key[len(i.transforms.SyntheticPrefix):]
+		searchKey = key[len(syntheticPrefix):]
 	}
 
 	i.clearCache()
@@ -702,8 +704,9 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
 	searchKey := key
-	if i.transforms.SyntheticPrefix != nil {
-		if !bytes.HasPrefix(key, i.transforms.SyntheticPrefix) {
+	if i.transforms.HasSyntheticPrefix() {
+		syntheticPrefix := i.transforms.SyntheticPrefix()
+		if !bytes.HasPrefix(key, syntheticPrefix) {
 			// The seek key is before or after the entire block of keys that start
 			// with SyntheticPrefix. To determine which, we need to compare against a
 			// valid key in the block. We use firstUserKey which has the synthetic
@@ -718,7 +721,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			i.nextOffset = 0
 			return nil
 		}
-		searchKey = key[len(i.transforms.SyntheticPrefix):]
+		searchKey = key[len(syntheticPrefix):]
 	}
 
 	i.clearCache()
@@ -800,7 +803,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	}
 
 	if index == 0 {
-		if i.transforms.SyntheticSuffix.IsSet() {
+		if i.transforms.HasSyntheticSuffix() {
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the first key in the block may be less than the search key. To
 			// double check, get the first key in the block with suffix replacement
@@ -841,7 +844,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if index < i.numRestarts {
 		targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
 
-		if i.transforms.SyntheticSuffix.IsSet() {
+		if i.transforms.HasSyntheticSuffix() {
 			// The binary search was conducted on keys without suffix replacement,
 			// implying the returned restart point (index) may be less than the search
 			// key, breaking the assumption described above.
@@ -1076,11 +1079,11 @@ start:
 		if hiddenPoint {
 			goto start
 		}
-		if i.transforms.SyntheticSuffix.IsSet() {
+		if i.transforms.HasSyntheticSuffix() {
 			// Inlined version of i.maybeReplaceSuffix()
 			prefixLen := i.split(i.ikv.K.UserKey)
 			i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.K.UserKey[:prefixLen]...)
-			i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+			i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix()...)
 			i.ikv.K.UserKey = i.synthSuffixBuf
 		}
 	} else {
@@ -1212,9 +1215,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 			ptr = unsafe.Pointer(uintptr(ptr) + 5)
 		}
-		if i.transforms.SyntheticPrefix != nil {
-			shared += uint32(len(i.transforms.SyntheticPrefix))
-		}
+		shared += i.transforms.SyntheticPrefixAndSuffix.PrefixLen()
 		// The starting position of the value.
 		valuePtr := unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 		i.nextOffset = int32(uintptr(valuePtr)-uintptr(i.ptr)) + int32(value)
@@ -1355,11 +1356,11 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.ikv.K.SetSeqNum(base.SeqNum(n))
 			}
-			if i.transforms.SyntheticSuffix.IsSet() {
+			if i.transforms.HasSyntheticSuffix() {
 				// Inlined version of i.maybeReplaceSuffix()
 				prefixLen := i.split(i.ikv.K.UserKey)
 				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.K.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix()...)
 				i.ikv.K.UserKey = i.synthSuffixBuf
 			}
 		} else {
@@ -1422,13 +1423,13 @@ start:
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.ikv.K.SetSeqNum(base.SeqNum(n))
 			}
-			if i.transforms.SyntheticSuffix.IsSet() {
+			if i.transforms.HasSyntheticSuffix() {
 				// Inlined version of i.maybeReplaceSuffix()
 				prefixLen := i.split(i.ikv.K.UserKey)
 				// If ikey is cached or may get cached, we must de-reference
 				// UserKey before suffix replacement.
 				i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.K.UserKey[:prefixLen]...)
-				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+				i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix()...)
 				i.ikv.K.UserKey = i.synthSuffixBuf
 			}
 		} else {
@@ -1508,13 +1509,13 @@ start:
 		// Use the cache.
 		goto start
 	}
-	if i.transforms.SyntheticSuffix.IsSet() {
+	if i.transforms.HasSyntheticSuffix() {
 		// Inlined version of i.maybeReplaceSuffix()
 		prefixLen := i.split(i.ikv.K.UserKey)
 		// If ikey is cached or may get cached, we must de-reference
 		// UserKey before suffix replacement.
 		i.synthSuffixBuf = append(i.synthSuffixBuf[:0], i.ikv.K.UserKey[:prefixLen]...)
-		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix...)
+		i.synthSuffixBuf = append(i.synthSuffixBuf, i.transforms.SyntheticSuffix()...)
 		i.ikv.K.UserKey = i.synthSuffixBuf
 	}
 	if !i.lazyValueHandling.hasValuePrefix ||

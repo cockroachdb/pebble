@@ -528,7 +528,7 @@ func (c *tableCacheShard) newPointIter(
 		var ok bool
 		var err error
 		ok, filterer, err = c.checkAndIntersectFilters(v, pointKeyFilters,
-			internalOpts.boundLimitedFilter, file.SyntheticSuffix)
+			internalOpts.boundLimitedFilter, file.SyntheticPrefixAndSuffix.Suffix())
 		if err != nil {
 			return nil, err
 		} else if !ok {
@@ -642,7 +642,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
 	if v.reader.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
-		ok, _, err := c.checkAndIntersectFilters(v, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix)
+		ok, _, err := c.checkAndIntersectFilters(v, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix())
 		if err != nil {
 			return nil, err
 		} else if !ok {

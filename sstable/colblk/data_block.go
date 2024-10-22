@@ -992,8 +992,8 @@ func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransform
 	i.keySeeker = i.keySchema.KeySeeker(meta)
 
 	// The worst case is when the largest key in the block has no suffix.
-	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(d.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
-	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
+	maxKeyLength := int(i.transforms.SyntheticPrefixAndSuffix.PrefixLen() + d.maximumKeyLength + i.transforms.SyntheticPrefixAndSuffix.SuffixLen())
+	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix())
 	i.row = -1
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
@@ -1026,8 +1026,8 @@ func (i *DataBlockIter) InitHandle(
 	i.noTransforms = i.transforms.NoTransforms()
 
 	// The worst case is when the largest key in the block has no suffix.
-	maxKeyLength := len(i.transforms.SyntheticPrefix) + int(i.d.maximumKeyLength) + len(i.transforms.SyntheticSuffix)
-	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix)
+	maxKeyLength := int(i.transforms.SyntheticPrefixAndSuffix.PrefixLen() + i.d.maximumKeyLength + i.transforms.SyntheticPrefixAndSuffix.SuffixLen())
+	i.keyIter.Init(maxKeyLength, i.transforms.SyntheticPrefix())
 	i.row = -1
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
@@ -1068,17 +1068,17 @@ func (i *DataBlockIter) IsDataInvalidated() bool {
 
 // IsLowerBound implements the block.DataBlockIterator interface.
 func (i *DataBlockIter) IsLowerBound(k []byte) bool {
-	if i.transforms.SyntheticPrefix.IsSet() {
+	if i.transforms.HasSyntheticPrefix() {
 		var keyPrefix []byte
-		keyPrefix, k = splitKey(k, len(i.transforms.SyntheticPrefix))
-		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix); cmp != 0 {
+		keyPrefix, k = splitKey(k, len(i.transforms.SyntheticPrefix()))
+		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix()); cmp != 0 {
 			return cmp < 0
 		}
 	}
 	// If we are hiding obsolete points, it is possible that all points < k are
 	// hidden.
 	// Note: we ignore HideObsoletePoints, but false negatives are allowed.
-	return i.keySeeker.IsLowerBound(k, i.transforms.SyntheticSuffix)
+	return i.keySeeker.IsLowerBound(k, i.transforms.SyntheticSuffix())
 }
 
 // splitKey splits a key into k[:at] and k[at:].
@@ -1092,20 +1092,20 @@ func splitKey(k []byte, at int) (before, after []byte) {
 // seekGEInternal is a wrapper around keySeeker.SeekGE which takes into account
 // the synthetic prefix and suffix.
 func (i *DataBlockIter) seekGEInternal(key []byte, boundRow int, searchDir int8) (row int) {
-	if i.transforms.SyntheticPrefix.IsSet() {
+	if i.transforms.HasSyntheticPrefix() {
 		var keyPrefix []byte
-		keyPrefix, key = splitKey(key, len(i.transforms.SyntheticPrefix))
-		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix); cmp != 0 {
+		keyPrefix, key = splitKey(key, len(i.transforms.SyntheticPrefix()))
+		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix()); cmp != 0 {
 			if cmp < 0 {
 				return 0
 			}
 			return i.maxRow + 1
 		}
 	}
-	if i.transforms.SyntheticSuffix.IsSet() {
+	if i.transforms.HasSyntheticSuffix() {
 		n := i.split(key)
 		row, eq := i.keySeeker.SeekGE(key[:n], boundRow, searchDir)
-		if eq && i.cmp(key[n:], i.transforms.SyntheticSuffix) > 0 {
+		if eq && i.cmp(key[n:], i.transforms.SyntheticSuffix()) > 0 {
 			row = i.d.prefixChanged.SeekSetBitGE(row + 1)
 		}
 		return row
@@ -1234,8 +1234,10 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 				return nil
 			}
 		}
-		if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
-			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(&i.keyIter, suffix, i.kvRow, i.row)
+		if i.transforms.HasSyntheticSuffix() {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(
+				&i.keyIter, i.transforms.SyntheticSuffix(), i.kvRow, i.row,
+			)
 		} else {
 			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
 		}
@@ -1400,8 +1402,10 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 				Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 			}
 		} else {
-			if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
-				i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(&i.keyIter, suffix, i.kvRow, i.row)
+			if i.transforms.HasSyntheticSuffix() {
+				i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(
+					&i.keyIter, i.transforms.SyntheticSuffix(), i.kvRow, i.row,
+				)
 			} else {
 				i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
 			}
@@ -1434,8 +1438,10 @@ func (i *DataBlockIter) decodeKey() {
 			Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 		}
 	} else {
-		if suffix := i.transforms.SyntheticSuffix; suffix.IsSet() {
-			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(&i.keyIter, suffix, i.kvRow, i.row)
+		if i.transforms.HasSyntheticSuffix() {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(
+				&i.keyIter, i.transforms.SyntheticSuffix(), i.kvRow, i.row,
+			)
 		} else {
 			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
 		}

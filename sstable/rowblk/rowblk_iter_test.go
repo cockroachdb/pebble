@@ -289,7 +289,9 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 				expect, err := NewIter(bytes.Compare, nil, includedPrefixBlock, block.IterTransforms{})
 				require.NoError(t, err)
 
-				got, err := NewIter(bytes.Compare, nil, elidedPrefixBlock, block.IterTransforms{SyntheticPrefix: []byte(prefix)})
+				got, err := NewIter(bytes.Compare, nil, elidedPrefixBlock, block.IterTransforms{
+					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(prefix), nil),
+				})
 				require.NoError(t, err)
 
 				c := checker{
@@ -374,7 +376,9 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 				expect, err := NewIter(cmp, split, expectedBlock, block.NoTransforms)
 				require.NoError(t, err)
 
-				got, err := NewIter(cmp, split, suffixReplacedBlock, block.IterTransforms{SyntheticSuffix: synthSuffix, SyntheticPrefix: synthPrefix})
+				got, err := NewIter(cmp, split, suffixReplacedBlock, block.IterTransforms{
+					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(synthPrefix, synthSuffix),
+				})
 				require.NoError(t, err)
 
 				c := checker{t: t,

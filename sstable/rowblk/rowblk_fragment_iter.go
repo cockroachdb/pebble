@@ -48,8 +48,7 @@ type fragmentIter struct {
 	// fileNum is used for logging/debugging.
 	fileNum base.DiskFileNum
 
-	syntheticSuffix block.SyntheticSuffix
-	syntheticPrefix block.SyntheticPrefix
+	syntheticPrefixAndSuffix block.SyntheticPrefixAndSuffix
 	// startKeyBuf is a buffer that is reused to store the start key of the span
 	// when a synthetic prefix is used.
 	startKeyBuf []byte
@@ -88,10 +87,9 @@ func NewFragmentIter(
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.fileNum = fileNum
-	i.syntheticSuffix = transforms.SyntheticSuffix
-	i.syntheticPrefix = transforms.SyntheticPrefix
-	if transforms.SyntheticPrefix.IsSet() {
-		i.endKeyBuf = append(i.endKeyBuf[:0], transforms.SyntheticPrefix...)
+	i.syntheticPrefixAndSuffix = transforms.SyntheticPrefixAndSuffix
+	if transforms.HasSyntheticPrefix() {
+		i.endKeyBuf = append(i.endKeyBuf[:0], transforms.SyntheticPrefix()...)
 	}
 	i.closeCheck = invariants.CloseChecker{}
 
@@ -101,7 +99,7 @@ func NewFragmentIter(
 		// iterator will prepend it for end keys. We could do everything in the
 		// fragment iterator, but we'd have to duplicate the logic for adjusting the
 		// seek key for SeekGE/SeekLT.
-		SyntheticPrefix: transforms.SyntheticPrefix,
+		SyntheticPrefixAndSuffix: transforms.SyntheticPrefixAndSuffix.RemoveSuffix(),
 		// It's okay for HideObsoletePoints to be false here, even for shared
 		// ingested sstables. This is because rangedels do not apply to points in
 		// the same sstable at the same sequence number anyway, so exposing obsolete
@@ -132,7 +130,7 @@ func (i *fragmentIter) initSpan(ik base.InternalKey, internalValue []byte) error
 	}
 	// When synthetic prefix is used in the blockIter, the keys cannot be used
 	// across multiple blockIter operations; we have to make a copy in this case.
-	if i.syntheticPrefix.IsSet() || invariants.Sometimes(10) {
+	if i.syntheticPrefixAndSuffix.HasPrefix() || invariants.Sometimes(10) {
 		i.startKeyBuf = append(i.startKeyBuf[:0], i.span.Start...)
 		i.span.Start = i.startKeyBuf
 	}
@@ -156,30 +154,32 @@ func (i *fragmentIter) addToSpan(
 // applySpanTransforms applies changes to the span that we decoded, if
 // appropriate.
 func (i *fragmentIter) applySpanTransforms() error {
-	if i.syntheticPrefix.IsSet() || invariants.Sometimes(10) {
+	if i.syntheticPrefixAndSuffix.HasPrefix() || invariants.Sometimes(10) {
+		syntheticPrefix := i.syntheticPrefixAndSuffix.Prefix()
 		// We have to make a copy of the start key because it will not stay valid
 		// across multiple blockIter operations.
 		i.startKeyBuf = append(i.startKeyBuf[:0], i.span.Start...)
 		i.span.Start = i.startKeyBuf
-		if invariants.Enabled && !bytes.Equal(i.syntheticPrefix, i.endKeyBuf[:len(i.syntheticPrefix)]) {
+		if invariants.Enabled && !bytes.Equal(syntheticPrefix, i.endKeyBuf[:len(syntheticPrefix)]) {
 			panic("pebble: invariant violation: synthetic prefix mismatch")
 		}
-		i.endKeyBuf = append(i.endKeyBuf[:len(i.syntheticPrefix)], i.span.End...)
+		i.endKeyBuf = append(i.endKeyBuf[:len(syntheticPrefix)], i.span.End...)
 		i.span.End = i.endKeyBuf
 	}
 
-	if i.syntheticSuffix.IsSet() {
+	if i.syntheticPrefixAndSuffix.HasSuffix() {
+		syntheticSuffix := i.syntheticPrefixAndSuffix.Suffix()
 		for keyIdx := range i.span.Keys {
 			k := &i.span.Keys[keyIdx]
 
 			switch k.Kind() {
 			case base.InternalKeyKindRangeKeySet:
 				if len(k.Suffix) > 0 {
-					if invariants.Enabled && i.suffixCmp(i.syntheticSuffix, k.Suffix) >= 0 {
+					if invariants.Enabled && i.suffixCmp(syntheticSuffix, k.Suffix) >= 0 {
 						return base.AssertionFailedf("synthetic suffix %q >= RangeKeySet suffix %q",
-							i.syntheticSuffix, k.Suffix)
+							syntheticSuffix, k.Suffix)
 					}
-					k.Suffix = i.syntheticSuffix
+					k.Suffix = syntheticSuffix
 				}
 			case base.InternalKeyKindRangeKeyDelete:
 				// Nothing to do.
@@ -288,8 +288,7 @@ func (i *fragmentIter) Close() {
 	i.span = keyspan.Span{}
 	i.dir = 0
 	i.fileNum = 0
-	i.syntheticSuffix = nil
-	i.syntheticPrefix = nil
+	i.syntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix{}
 	i.startKeyBuf = i.startKeyBuf[:0]
 	i.endKeyBuf = i.endKeyBuf[:0]
 	fragmentBlockIterPool.Put(i)

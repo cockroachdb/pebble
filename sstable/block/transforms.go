@@ -7,6 +7,7 @@ package block
 import (
 	"bytes"
 	"fmt"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -24,8 +25,8 @@ type IterTransforms struct {
 	// This is the norm when the sstable is foreign or the largest sequence number
 	// of the sstable is below the one we are reading.
 	HideObsoletePoints bool
-	SyntheticPrefix    SyntheticPrefix
-	SyntheticSuffix    SyntheticSuffix
+
+	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
 }
 
 // NoTransforms is the default value for IterTransforms.
@@ -35,24 +36,52 @@ var NoTransforms = IterTransforms{}
 func (t *IterTransforms) NoTransforms() bool {
 	return t.SyntheticSeqNum == 0 &&
 		!t.HideObsoletePoints &&
-		!t.SyntheticPrefix.IsSet() &&
-		!t.SyntheticSuffix.IsSet()
+		t.SyntheticPrefixAndSuffix.IsUnset()
+}
+
+func (t *IterTransforms) HasSyntheticPrefix() bool {
+	return t.SyntheticPrefixAndSuffix.HasPrefix()
+}
+
+func (t *IterTransforms) SyntheticPrefix() []byte {
+	return t.SyntheticPrefixAndSuffix.Prefix()
+}
+
+func (t *IterTransforms) HasSyntheticSuffix() bool {
+	return t.SyntheticPrefixAndSuffix.HasSuffix()
+}
+
+func (t *IterTransforms) SyntheticSuffix() []byte {
+	return t.SyntheticPrefixAndSuffix.Suffix()
 }
 
 // FragmentIterTransforms allow on-the-fly transformation of range deletion or
 // range key data at iteration time.
 type FragmentIterTransforms struct {
-	SyntheticSeqNum SyntheticSeqNum
-	SyntheticPrefix SyntheticPrefix
-	SyntheticSuffix SyntheticSuffix
+	SyntheticSeqNum          SyntheticSeqNum
+	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
 }
 
 // NoTransforms returns true if there are no transforms enabled.
 func (t *FragmentIterTransforms) NoTransforms() bool {
 	// NoTransforms returns true if there are no transforms enabled.
-	return t.SyntheticSeqNum == 0 &&
-		!t.SyntheticPrefix.IsSet() &&
-		!t.SyntheticSuffix.IsSet()
+	return t.SyntheticSeqNum == 0 && t.SyntheticPrefixAndSuffix.IsUnset()
+}
+
+func (t *FragmentIterTransforms) HasSyntheticPrefix() bool {
+	return t.SyntheticPrefixAndSuffix.HasPrefix()
+}
+
+func (t *FragmentIterTransforms) SyntheticPrefix() []byte {
+	return t.SyntheticPrefixAndSuffix.Prefix()
+}
+
+func (t *FragmentIterTransforms) HasSyntheticSuffix() bool {
+	return t.SyntheticPrefixAndSuffix.HasSuffix()
+}
+
+func (t *FragmentIterTransforms) SyntheticSuffix() []byte {
+	return t.SyntheticPrefixAndSuffix.Suffix()
 }
 
 // NoFragmentTransforms is the default value for IterTransforms.
@@ -131,4 +160,89 @@ func (sp SyntheticPrefix) Invert(key []byte) []byte {
 		panic(fmt.Sprintf("unexpected prefix: %s", key))
 	}
 	return res
+}
+
+// SyntheticPrefixAndSuffix is a more compact way of representing both a
+// synthetic prefix and a synthetic suffix. See SyntheticPrefix and
+// SyntheticSuffix.
+//
+// The zero value is valid, representing no synthetic prefix or suffix.
+type SyntheticPrefixAndSuffix struct {
+	prefixLen uint32
+	suffixLen uint32
+	// buf is either nil (iff prefixLen=suffixLen=0) or a pointer to a buffer
+	// containing the prefix followed by the suffix.
+	buf unsafe.Pointer
+}
+
+// MakeSyntheticPrefixAndSuffix returns a SyntheticPrefixAndSuffix with the
+// given prefix and suffix.
+func MakeSyntheticPrefixAndSuffix(
+	prefix SyntheticPrefix, suffix SyntheticSuffix,
+) SyntheticPrefixAndSuffix {
+	if !prefix.IsSet() && !suffix.IsSet() {
+		return SyntheticPrefixAndSuffix{}
+	}
+	buf := make([]byte, len(prefix)+len(suffix))
+	copy(buf, prefix)
+	copy(buf[len(prefix):], suffix)
+	return SyntheticPrefixAndSuffix{
+		prefixLen: uint32(len(prefix)),
+		suffixLen: uint32(len(suffix)),
+		buf:       unsafe.Pointer(&buf[0]),
+	}
+}
+
+// IsUnset returns true if HasPrefix() and HasSuffix() both return false.
+func (ps SyntheticPrefixAndSuffix) IsUnset() bool {
+	return ps.buf == nil
+}
+
+// HasPrefix returns true if ps contains a non-empty synthetic prefix.
+func (ps SyntheticPrefixAndSuffix) HasPrefix() bool {
+	return ps.prefixLen != 0
+}
+
+// PrefixLen returns the length of the synthetic prefix, or 0 if it is not set.
+func (ps SyntheticPrefixAndSuffix) PrefixLen() uint32 {
+	return ps.prefixLen
+}
+
+// Prefix returns the synthetic prefix.
+func (ps SyntheticPrefixAndSuffix) Prefix() SyntheticPrefix {
+	if ps.prefixLen == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(ps.buf), ps.prefixLen)
+}
+
+// HasSuffix returns true if ps contains a non-empty synthetic suffix.
+func (ps SyntheticPrefixAndSuffix) HasSuffix() bool {
+	return ps.suffixLen != 0
+}
+
+// SuffixLen returns the length of the synthetic prefix, or 0 if it is not set.
+func (ps SyntheticPrefixAndSuffix) SuffixLen() uint32 {
+	return ps.suffixLen
+}
+
+// Suffix returns the synthetic suffix.
+func (ps SyntheticPrefixAndSuffix) Suffix() SyntheticSuffix {
+	if ps.suffixLen == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ps.buf)+uintptr(ps.prefixLen))), ps.suffixLen)
+}
+
+// RemoveSuffix returns a SyntheticPrefixAndSuffix that has the same prefix as
+// the receiver but no suffix.
+func (ps SyntheticPrefixAndSuffix) RemoveSuffix() SyntheticPrefixAndSuffix {
+	if ps.prefixLen == 0 {
+		return SyntheticPrefixAndSuffix{}
+	}
+	return SyntheticPrefixAndSuffix{
+		prefixLen: ps.prefixLen,
+		suffixLen: 0,
+		buf:       ps.buf,
+	}
 }

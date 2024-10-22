@@ -947,10 +947,10 @@ func shouldUseFilterBlock(reader *Reader, filterBlockSizeLimit FilterBlockSizeLi
 func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte) (bool, error) {
 	// Check prefix bloom filter.
 	prefixToCheck := prefix
-	if i.transforms.SyntheticPrefix.IsSet() {
+	if i.transforms.HasSyntheticPrefix() {
 		// We have to remove the synthetic prefix.
 		var ok bool
-		prefixToCheck, ok = bytes.CutPrefix(prefix, i.transforms.SyntheticPrefix)
+		prefixToCheck, ok = bytes.CutPrefix(prefix, i.transforms.SyntheticPrefix())
 		if !ok {
 			// This prefix will not be found inside this table.
 			return false, nil

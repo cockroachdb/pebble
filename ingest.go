@@ -234,8 +234,7 @@ func ingestLoad1External(
 		)
 	}
 
-	meta.SyntheticPrefix = e.SyntheticPrefix
-	meta.SyntheticSuffix = e.SyntheticSuffix
+	meta.SyntheticPrefixAndSuffix = sstable.MakeSyntheticPrefixAndSuffix(e.SyntheticPrefix, e.SyntheticSuffix)
 
 	return meta, nil
 }
@@ -1793,11 +1792,10 @@ func (d *DB) excise(
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
-			SmallestSeqNum:        m.SmallestSeqNum,
-			LargestSeqNum:         m.LargestSeqNum,
-			LargestSeqNumAbsolute: m.LargestSeqNumAbsolute,
-			SyntheticPrefix:       m.SyntheticPrefix,
-			SyntheticSuffix:       m.SyntheticSuffix,
+			SmallestSeqNum:           m.SmallestSeqNum,
+			LargestSeqNum:            m.LargestSeqNum,
+			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
+			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 		}
 		if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestPointKey) {
 			// This file will probably contain point keys.
@@ -1890,11 +1888,10 @@ func (d *DB) excise(
 		FileNum:     d.mu.versions.getNextFileNum(),
 		// Note that these are loose bounds for smallest/largest seqnums, but they're
 		// sufficient for maintaining correctness.
-		SmallestSeqNum:        m.SmallestSeqNum,
-		LargestSeqNum:         m.LargestSeqNum,
-		LargestSeqNumAbsolute: m.LargestSeqNumAbsolute,
-		SyntheticPrefix:       m.SyntheticPrefix,
-		SyntheticSuffix:       m.SyntheticSuffix,
+		SmallestSeqNum:           m.SmallestSeqNum,
+		LargestSeqNum:            m.LargestSeqNum,
+		LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
+		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 	}
 	if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestPointKey) {
 		// This file will probably contain point keys

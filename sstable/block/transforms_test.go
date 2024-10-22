@@ -14,12 +14,9 @@ func TestIterTransforms(t *testing.T) {
 	require.True(t, NoTransforms.NoTransforms())
 	var transforms IterTransforms
 	require.True(t, transforms.NoTransforms())
-	require.False(t, transforms.SyntheticPrefix.IsSet())
-	require.False(t, transforms.SyntheticSuffix.IsSet())
-	transforms.SyntheticPrefix = []byte{}
-	require.False(t, transforms.SyntheticPrefix.IsSet())
-	transforms.SyntheticSuffix = []byte{}
-	require.False(t, transforms.SyntheticSuffix.IsSet())
+	require.True(t, transforms.SyntheticPrefixAndSuffix.IsUnset())
+	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{}, []byte{})
+	require.True(t, transforms.SyntheticPrefixAndSuffix.IsUnset())
 	require.True(t, transforms.NoTransforms())
 	transforms.HideObsoletePoints = true
 	require.False(t, transforms.NoTransforms())
@@ -29,11 +26,11 @@ func TestIterTransforms(t *testing.T) {
 	require.False(t, transforms.NoTransforms())
 
 	transforms = NoTransforms
-	transforms.SyntheticPrefix = []byte{1}
+	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{1}, []byte{})
 	require.False(t, transforms.NoTransforms())
 
 	transforms = NoTransforms
-	transforms.SyntheticSuffix = []byte{1}
+	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{}, []byte{1})
 	require.False(t, transforms.NoTransforms())
 }
 
@@ -41,22 +38,69 @@ func TestFragmentIterTransforms(t *testing.T) {
 	require.True(t, NoFragmentTransforms.NoTransforms())
 	var transforms FragmentIterTransforms
 	require.True(t, transforms.NoTransforms())
-	require.False(t, transforms.SyntheticPrefix.IsSet())
-	require.False(t, transforms.SyntheticSuffix.IsSet())
-	transforms.SyntheticPrefix = []byte{}
-	require.False(t, transforms.SyntheticPrefix.IsSet())
-	transforms.SyntheticSuffix = []byte{}
-	require.False(t, transforms.SyntheticSuffix.IsSet())
+	require.True(t, transforms.SyntheticPrefixAndSuffix.IsUnset())
+	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{}, []byte{})
+	require.True(t, transforms.SyntheticPrefixAndSuffix.IsUnset())
 	require.True(t, transforms.NoTransforms())
 
 	transforms.SyntheticSeqNum = 123
 	require.False(t, transforms.NoTransforms())
 
 	transforms = NoFragmentTransforms
-	transforms.SyntheticPrefix = []byte{1}
+	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{1}, []byte{})
 	require.False(t, transforms.NoTransforms())
 
 	transforms = NoFragmentTransforms
-	transforms.SyntheticSuffix = []byte{1}
+	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{}, []byte{1})
 	require.False(t, transforms.NoTransforms())
+}
+
+func TestSyntheticPrefixAndSuffix(t *testing.T) {
+	var ps SyntheticPrefixAndSuffix
+
+	require.True(t, ps.IsUnset())
+	require.False(t, ps.HasPrefix())
+	require.Nil(t, ps.Prefix())
+	require.Zero(t, ps.PrefixLen())
+	require.False(t, ps.HasSuffix())
+	require.Zero(t, ps.SuffixLen())
+	require.Nil(t, ps.Suffix())
+
+	ps = MakeSyntheticPrefixAndSuffix([]byte("some-prefix"), []byte("suffix"))
+	require.False(t, ps.IsUnset())
+	require.True(t, ps.HasPrefix())
+	require.Equal(t, uint32(11), ps.PrefixLen())
+	require.Equal(t, "some-prefix", string(ps.Prefix()))
+	require.True(t, ps.HasSuffix())
+	require.Equal(t, uint32(6), ps.SuffixLen())
+	require.Equal(t, "suffix", string(ps.Suffix()))
+
+	ps = MakeSyntheticPrefixAndSuffix([]byte("some-prefix"), []byte{})
+	require.False(t, ps.IsUnset())
+	require.True(t, ps.HasPrefix())
+	require.Equal(t, uint32(11), ps.PrefixLen())
+	require.Equal(t, "some-prefix", string(ps.Prefix()))
+	require.False(t, ps.HasSuffix())
+	require.Zero(t, ps.SuffixLen())
+	require.Nil(t, ps.Suffix())
+
+	ps = MakeSyntheticPrefixAndSuffix([]byte("some-prefix"), []byte("suffix"))
+	ps = ps.RemoveSuffix()
+	require.False(t, ps.IsUnset())
+	require.True(t, ps.HasPrefix())
+	require.Equal(t, "some-prefix", string(ps.Prefix()))
+	require.False(t, ps.HasSuffix())
+	require.Zero(t, ps.SuffixLen())
+	require.Nil(t, ps.Suffix())
+
+	ps = MakeSyntheticPrefixAndSuffix([]byte{}, []byte("suffix"))
+	require.False(t, ps.IsUnset())
+	require.False(t, ps.HasPrefix())
+	require.Zero(t, ps.PrefixLen())
+	require.Nil(t, ps.Prefix())
+	require.True(t, ps.HasSuffix())
+	require.Equal(t, uint32(6), ps.SuffixLen())
+	require.Equal(t, "suffix", string(ps.Suffix()))
+
+	require.True(t, ps.RemoveSuffix().IsUnset())
 }

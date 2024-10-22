@@ -411,9 +411,9 @@ func (i *keyspanIter) init(
 	}
 	i.startKeyBuf = i.startKeyBuf[:0]
 	i.endKeyBuf = i.endKeyBuf[:0]
-	if transforms.SyntheticPrefix.IsSet() {
-		i.startKeyBuf = append(i.startKeyBuf, transforms.SyntheticPrefix...)
-		i.endKeyBuf = append(i.endKeyBuf, transforms.SyntheticPrefix...)
+	if transforms.HasSyntheticPrefix() {
+		i.startKeyBuf = append(i.startKeyBuf, transforms.SyntheticPrefix()...)
+		i.endKeyBuf = append(i.endKeyBuf, transforms.SyntheticPrefix()...)
 	}
 }
 
@@ -422,7 +422,7 @@ func (i *keyspanIter) init(
 // span with an end key greater than the given key.
 func (i *keyspanIter) SeekGE(key []byte) (*keyspan.Span, error) {
 	// Seek among the boundary keys.
-	j, eq := i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix)
+	j, eq := i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix())
 	// If the found boundary key does not exactly equal the given key, it's
 	// strictly greater than key. We need to back up one to consider the span
 	// that ends at the this boundary key.
@@ -436,7 +436,7 @@ func (i *keyspanIter) SeekGE(key []byte) (*keyspan.Span, error) {
 // given key. This is equivalent to seeking to the last span with a start
 // key less than the given key.
 func (i *keyspanIter) SeekLT(key []byte) (*keyspan.Span, error) {
-	j, _ := i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix)
+	j, _ := i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix())
 	// searchBoundaryKeys seeks to the first boundary key greater than or equal
 	// to key. The span beginning at the boundary key j necessarily does NOT
 	// cover any key less < key (it only contains keys ≥ key). Back up one to
@@ -554,14 +554,14 @@ func (i *keyspanIter) materializeSpan() *keyspan.Span {
 				base.SeqNum(i.transforms.SyntheticSeqNum), i.span.Keys[j].Trailer.Kind())
 		}
 	}
-	if i.transforms.SyntheticSuffix.IsSet() {
+	if i.transforms.HasSyntheticSuffix() {
 		for j := range i.span.Keys {
 			k := &i.span.Keys[j]
 			switch k.Kind() {
 			case base.InternalKeyKindRangeKeySet:
 				if len(k.Suffix) > 0 {
 					// TODO(jackson): Assert synthetic suffix is >= k.Suffix.
-					k.Suffix = i.transforms.SyntheticSuffix
+					k.Suffix = i.transforms.SyntheticSuffix()
 				}
 			case base.InternalKeyKindRangeKeyDelete:
 				// Nothing to do.
@@ -570,17 +570,18 @@ func (i *keyspanIter) materializeSpan() *keyspan.Span {
 			}
 		}
 	}
-	if i.transforms.SyntheticPrefix.IsSet() || invariants.Sometimes(10) {
-		i.startKeyBuf = i.startKeyBuf[:len(i.transforms.SyntheticPrefix)]
-		i.endKeyBuf = i.endKeyBuf[:len(i.transforms.SyntheticPrefix)]
+	if i.transforms.HasSyntheticPrefix() || invariants.Sometimes(10) {
+		syntheticPrefix := i.transforms.SyntheticPrefix()
+		i.startKeyBuf = i.startKeyBuf[:len(syntheticPrefix)]
+		i.endKeyBuf = i.endKeyBuf[:len(syntheticPrefix)]
 		if invariants.Enabled {
-			if !bytes.Equal(i.startKeyBuf, i.transforms.SyntheticPrefix) {
+			if !bytes.Equal(i.startKeyBuf, syntheticPrefix) {
 				panic(errors.AssertionFailedf("keyspanIter: synthetic prefix mismatch %q, %q",
-					i.startKeyBuf, i.transforms.SyntheticPrefix))
+					i.startKeyBuf, syntheticPrefix))
 			}
-			if !bytes.Equal(i.endKeyBuf, i.transforms.SyntheticPrefix) {
+			if !bytes.Equal(i.endKeyBuf, syntheticPrefix) {
 				panic(errors.AssertionFailedf("keyspanIter: synthetic prefix mismatch %q, %q",
-					i.endKeyBuf, i.transforms.SyntheticPrefix))
+					i.endKeyBuf, syntheticPrefix))
 			}
 		}
 		i.startKeyBuf = append(i.startKeyBuf, i.span.Start...)
