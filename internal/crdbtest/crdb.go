@@ -731,7 +731,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		for l < u {
 			h := int(uint(l+u) >> 1) // avoid overflow when computing h
 			// l ≤ h < u
-			if bytes.Compare(ks.untypedVersions.At(h), seekSuffix) >= 0 {
+			if bytes.Compare(ks.untypedVersions.At(h), seekSuffix) <= 0 {
 				u = h // preserves f(u) == true
 			} else {
 				l = h + 1 // preserves f(l-1) == false
