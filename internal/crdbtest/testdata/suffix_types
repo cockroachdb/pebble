@@ -53,7 +53,7 @@ init
 foo #1,SET = bar
 foo @ 0102030405060708091011121314151617 #1,SET = bar
 ----
-2 rows, total size 133B
+2 rows, total size 125B
 
 suffix-types
 ----
@@ -64,7 +64,7 @@ foo #1,SET = bar
 foo @ 0102030405060708 #1,SET = bar
 foo @ 0102030405060708091011121314151617 #1,SET = bar
 ----
-3 rows, total size 169B
+3 rows, total size 161B
 
 suffix-types
 ----
