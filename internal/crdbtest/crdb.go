@@ -423,7 +423,7 @@ const (
 	// hasEmptySuffixes is set if there is at least one key with no suffix in the block.
 	hasEmptySuffixes
 	// hasNonMVCCSuffixes is set if there is at least one key with a non-empty,
-	// non-MVCC sufffix.
+	// non-MVCC suffix.
 	hasNonMVCCSuffixes
 )
 
@@ -435,7 +435,7 @@ func (s suffixTypes) String() string {
 	if s&hasEmptySuffixes != 0 {
 		suffixes = append(suffixes, "empty")
 	}
-	if s&hasEmptySuffixes != 0 {
+	if s&hasNonMVCCSuffixes != 0 {
 		suffixes = append(suffixes, "non-mvcc")
 	}
 	if len(suffixes) == 0 {
@@ -527,7 +527,7 @@ func (kw *cockroachKeyWriter) WriteKey(
 	switch versionLen {
 	case 0:
 		// No-op.
-		kw.suffixTypes |= hasNonMVCCSuffixes
+		kw.suffixTypes |= hasEmptySuffixes
 	case 9:
 		kw.suffixTypes |= hasMVCCSuffixes
 		wallTime = binary.BigEndian.Uint64(key[keyPrefixLen : keyPrefixLen+8])
@@ -539,7 +539,7 @@ func (kw *cockroachKeyWriter) WriteKey(
 		// longer consulted and can be ignored during decoding.
 	default:
 		// Not a MVCC timestamp.
-		kw.suffixTypes |= hasEmptySuffixes
+		kw.suffixTypes |= hasNonMVCCSuffixes
 		untypedVersion = key[keyPrefixLen:]
 	}
 	kw.wallTimes.Set(row, wallTime)
@@ -774,6 +774,9 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 func (ks *cockroachKeySeeker) MaterializeUserKey(
 	ki *colblk.PrefixBytesIter, prevRow, row int,
 ) []byte {
+	if invariants.Enabled && (row < 0 || row >= ks.roachKeys.Rows()) {
+		panic(errors.AssertionFailedf("invalid row number %d", row))
+	}
 	if prevRow+1 == row && prevRow >= 0 {
 		ks.roachKeys.SetNext(ki)
 	} else {

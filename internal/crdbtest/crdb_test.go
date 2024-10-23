@@ -320,3 +320,103 @@ func (g *cockroachKeyGen) randTimestamp() (wallTime uint64, logicalTime uint32) 
 	}
 	return wallTime, logicalTime
 }
+
+// formatUserKey formats a user key in the format:
+//
+//	<roach-key> [ @ <version-hex> ]
+func formatUserKey(key []byte) string {
+	n := Split(key)
+	if key[n-1] != 0 {
+		panic("expected sentinel byte")
+	}
+	prefix := key[:n-1]
+	if n == len(key) {
+		return string(prefix)
+	}
+	suffix := key[n : len(key)-1]
+	if key[len(key)-1] != byte(len(suffix)+1) {
+		panic("invalid suffix length byte")
+	}
+	return fmt.Sprintf("%s @ %X", prefix, suffix)
+}
+
+// formatKey formats an internal key in the format:
+//
+//	<roach-key> [ @ <version-hex> ] #<seq-num>,<kind>
+func formatKey(key base.InternalKey) string {
+	return fmt.Sprintf("%s #%d,%s", formatUserKey(key.UserKey), key.SeqNum(), key.Kind())
+}
+
+// formatKV formats an internal key in the format:
+//
+//	<roach-key> [ @ <version-hex> ] #<seq-num>,<kind> = value
+//
+// For example:
+//
+//	foo @ 0001020304050607 #1,SET
+func formatKV(kv base.InternalKV) string {
+	val, _, err := kv.V.Value(nil)
+	if err != nil {
+		panic(err)
+	}
+	if len(val) == 0 {
+		return formatKey(kv.K)
+	}
+	return fmt.Sprintf("%s = %s", formatKey(kv.K), val)
+}
+
+// parseKey parses a cockroach user key in the following format:
+//
+//	<roach-key> [@ <version-hex>]
+//
+// For example:
+//
+//	foo @ 0001020304050607
+func parseUserKey(userKeyStr string) []byte {
+	roachKey, versionStr := splitStringAt(userKeyStr, " @ ")
+	// Append sentinel byte.
+	userKey := append([]byte(roachKey), 0)
+	if versionStr != "" {
+		var version []byte
+		if _, err := fmt.Sscanf(versionStr, "%X", &version); err != nil {
+			panic(fmt.Sprintf("invalid user key string %q: cannot parse version %X", userKeyStr, version))
+		}
+		userKey = append(userKey, version...)
+		userKey = append(userKey, byte(len(version)+1))
+	}
+	return userKey
+}
+
+// parseKey parses a cockroach key in the following format:
+//
+//	<roach-key> [@ <version-hex>] #<seq-num>,<kind>
+//
+// For example:
+//
+//	foo @ 0001020304050607 #1,SET
+func parseKey(keyStr string) base.InternalKey {
+	userKeyStr, trailerStr := splitStringAt(keyStr, " #")
+	return base.InternalKey{
+		UserKey: parseUserKey(userKeyStr),
+		Trailer: base.ParseInternalKey(fmt.Sprintf("foo#%s", trailerStr)).Trailer,
+	}
+}
+
+// parseKey parses a cockroach KV in the following format:
+//
+//	<roach-key> [@ <version-hex>] #<seq-num>,<kind> = value
+//
+// For example:
+//
+//	foo @ 0001020304050607 #1,SET = bar
+func parseKV(input string) (key base.InternalKey, value []byte) {
+	keyStr, valStr := splitStringAt(input, " = ")
+	return parseKey(keyStr), []byte(valStr)
+}
+
+func splitStringAt(str string, sep string) (before, after string) {
+	if s := strings.SplitN(str, sep, 2); len(s) == 2 {
+		return s[0], s[1]
+	}
+	return str, ""
+}

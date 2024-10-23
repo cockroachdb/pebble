@@ -1,0 +1,71 @@
+# This file contains tests that verifies the suffixTypes indicator encoded in
+# the key schema prefix.
+
+init
+foo #1,SET = bar
+----
+1 rows, total size 105B
+
+suffix-types
+----
+suffix-types: empty
+
+init
+foo @ 0102030405060708 #1,SET = bar
+foo @ 010203040506070801020304 #1,SET = bar
+----
+2 rows, total size 125B
+
+suffix-types
+----
+suffix-types: mvcc
+
+init
+foo @ 0102030405060708091011121314151617 #1,SET = bar
+----
+1 rows, total size 121B
+
+suffix-types
+----
+suffix-types: non-mvcc
+
+init
+foo #1,SET = bar
+foo @ 0102030405060708 #1,SET = bar
+----
+2 rows, total size 133B
+
+suffix-types
+----
+suffix-types: mvcc,empty
+
+init
+foo @ 0102030405060708 #1,SET = bar
+foo @ 0102030405060708091011121314151617 #1,SET = bar
+----
+2 rows, total size 149B
+
+suffix-types
+----
+suffix-types: mvcc,non-mvcc
+
+init
+foo #1,SET = bar
+foo @ 0102030405060708091011121314151617 #1,SET = bar
+----
+2 rows, total size 133B
+
+suffix-types
+----
+suffix-types: empty,non-mvcc
+
+init
+foo #1,SET = bar
+foo @ 0102030405060708 #1,SET = bar
+foo @ 0102030405060708091011121314151617 #1,SET = bar
+----
+3 rows, total size 169B
+
+suffix-types
+----
+suffix-types: mvcc,empty,non-mvcc

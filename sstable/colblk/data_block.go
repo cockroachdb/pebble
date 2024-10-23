@@ -905,6 +905,9 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.SetAnchorOffset()
 
 	n := tp.Child("data block header")
+	if keySchemaHeaderSize := int(d.d.customHeaderSize - 4); keySchemaHeaderSize > 0 {
+		f.HexBytesln(keySchemaHeaderSize, "key schema header")
+	}
 	f.HexBytesln(4, "maximum key length: %d", d.maximumKeyLength)
 	d.d.headerToBinFormatter(f, n)
 	for i := 0; i < int(d.d.header.Columns); i++ {
