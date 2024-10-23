@@ -1,0 +1,208 @@
+# Note that these versions are the same MVCC timestamp:
+#   0102030405060708
+#   0102030405060708000000000 (zero logical)
+#   01020304050607080000000001 (zero logical, synthetic bit)
+init
+foo #3,SET = nosuffix3
+foo #2,SET = nosuffix2
+foo #1,SET = nosuffix1
+foo @ 0102030405060708091011121314151617 #1,SET = lockkey
+foo @ 010203040506070801020304 #2,SET = mvcclogical2
+foo @ 01020304050607080102030401 #1,SET = mvcclogical1
+foo @ 010203040506070800000000 #4,SET = mvcc4
+foo @ 0102030405060708 #3,SET = mvcc3
+foo @ 01020304050607080000000001 #2,SET = mvcc2
+foo @ 0102030405060708 #1,SET = mvcc1
+fop #1,SET = foo
+x #1,SET = x
+----
+12 rows, total size 411B
+
+keys
+----
+foo #3,SET = nosuffix3
+foo #2,SET = nosuffix2
+foo #1,SET = nosuffix1
+foo @ 0102030405060708091011121314151617 #1,SET = lockkey
+foo @ 010203040506070801020304 #2,SET = mvcclogical2
+foo @ 010203040506070801020304 #1,SET = mvcclogical1
+foo @ 0102030405060708 #4,SET = mvcc4
+foo @ 0102030405060708 #3,SET = mvcc3
+foo @ 0102030405060708 #2,SET = mvcc2
+foo @ 0102030405060708 #1,SET = mvcc1
+fop #1,SET = foo
+x #1,SET = x
+
+describe
+----
+data block header
+ ├── columnar block header
+ │    ├── 000-001: x 07       # key schema header
+ │    ├── 001-005: x 16000000 # maximum key length: 22
+ │    ├── 005-006: x 01       # version 1
+ │    ├── 006-008: x 0900     # 9 columns
+ │    ├── 008-012: x 0c000000 # 12 rows
+ │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    ├── 017-018: b 00000010 # col 1: uint
+ │    ├── 018-022: x 50000000 # col 1: page start 80
+ │    ├── 022-023: b 00000010 # col 2: uint
+ │    ├── 023-027: x b8000000 # col 2: page start 184
+ │    ├── 027-028: b 00000011 # col 3: bytes
+ │    ├── 028-032: x ec000000 # col 3: page start 236
+ │    ├── 032-033: b 00000010 # col 4: uint
+ │    ├── 033-037: x 0c010000 # col 4: page start 268
+ │    ├── 037-038: b 00000001 # col 5: bool
+ │    ├── 038-042: x 26010000 # col 5: page start 294
+ │    ├── 042-043: b 00000011 # col 6: bytes
+ │    ├── 043-047: x 38010000 # col 6: page start 312
+ │    ├── 047-048: b 00000001 # col 7: bool
+ │    ├── 048-052: x 98010000 # col 7: page start 408
+ │    ├── 052-053: b 00000001 # col 8: bool
+ │    └── 053-057: x 99010000 # col 8: page start 409
+ ├── data for column 0 (prefixbytes)
+ │    ├── 057-058: x 04 # bundle size: 16
+ │    ├── offsets table
+ │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    ├── 059-060: x 00 # data[0] = 0 [73 overall]
+ │    │    ├── 060-061: x 00 # data[1] = 0 [73 overall]
+ │    │    ├── 061-062: x 03 # data[2] = 3 [76 overall]
+ │    │    ├── 062-063: x 03 # data[3] = 3 [76 overall]
+ │    │    ├── 063-064: x 03 # data[4] = 3 [76 overall]
+ │    │    ├── 064-065: x 03 # data[5] = 3 [76 overall]
+ │    │    ├── 065-066: x 03 # data[6] = 3 [76 overall]
+ │    │    ├── 066-067: x 03 # data[7] = 3 [76 overall]
+ │    │    ├── 067-068: x 03 # data[8] = 3 [76 overall]
+ │    │    ├── 068-069: x 03 # data[9] = 3 [76 overall]
+ │    │    ├── 069-070: x 03 # data[10] = 3 [76 overall]
+ │    │    ├── 070-071: x 03 # data[11] = 3 [76 overall]
+ │    │    ├── 071-072: x 06 # data[12] = 6 [79 overall]
+ │    │    └── 072-073: x 07 # data[13] = 7 [80 overall]
+ │    └── data
+ │         ├── 073-073: x        # data[00]:  (block prefix)
+ │         ├── 073-073: x        # data[01]:  (bundle prefix)
+ │         ├── 073-076: x 666f6f # data[02]: foo
+ │         ├── 076-076: x        # data[03]: ...
+ │         ├── 076-076: x        # data[04]: ...
+ │         ├── 076-076: x        # data[05]: ...
+ │         ├── 076-076: x        # data[06]: ...
+ │         ├── 076-076: x        # data[07]: ...
+ │         ├── 076-076: x        # data[08]: ...
+ │         ├── 076-076: x        # data[09]: ...
+ │         ├── 076-076: x        # data[10]: ...
+ │         ├── 076-076: x        # data[11]: ...
+ │         ├── 076-079: x 666f70 # data[12]: fop
+ │         └── 079-080: x 78     # data[13]: x
+ ├── data for column 1 (uint)
+ │    ├── 080-081: x 08               # encoding: 8b
+ │    ├── 081-088: x 00000000000000   # padding (aligning to 64-bit boundary)
+ │    ├── 088-096: x 0000000000000000 # data[0] = 0
+ │    ├── 096-104: x 0000000000000000 # data[1] = 0
+ │    ├── 104-112: x 0000000000000000 # data[2] = 0
+ │    ├── 112-120: x 0000000000000000 # data[3] = 0
+ │    ├── 120-128: x 0807060504030201 # data[4] = 72623859790382856
+ │    ├── 128-136: x 0807060504030201 # data[5] = 72623859790382856
+ │    ├── 136-144: x 0807060504030201 # data[6] = 72623859790382856
+ │    ├── 144-152: x 0807060504030201 # data[7] = 72623859790382856
+ │    ├── 152-160: x 0807060504030201 # data[8] = 72623859790382856
+ │    ├── 160-168: x 0807060504030201 # data[9] = 72623859790382856
+ │    ├── 168-176: x 0000000000000000 # data[10] = 0
+ │    └── 176-184: x 0000000000000000 # data[11] = 0
+ ├── data for column 2 (uint)
+ │    ├── 184-185: x 04       # encoding: 4b
+ │    ├── 185-188: x 000000   # padding (aligning to 32-bit boundary)
+ │    ├── 188-192: x 00000000 # data[0] = 0
+ │    ├── 192-196: x 00000000 # data[1] = 0
+ │    ├── 196-200: x 00000000 # data[2] = 0
+ │    ├── 200-204: x 00000000 # data[3] = 0
+ │    ├── 204-208: x 04030201 # data[4] = 16909060
+ │    ├── 208-212: x 04030201 # data[5] = 16909060
+ │    ├── 212-216: x 00000000 # data[6] = 0
+ │    ├── 216-220: x 00000000 # data[7] = 0
+ │    ├── 220-224: x 00000000 # data[8] = 0
+ │    ├── 224-228: x 00000000 # data[9] = 0
+ │    ├── 228-232: x 00000000 # data[10] = 0
+ │    └── 232-236: x 00000000 # data[11] = 0
+ ├── data for column 3 (bytes)
+ │    ├── offsets table
+ │    │    ├── 236-237: x 01 # encoding: 1b
+ │    │    ├── 237-238: x 00 # data[0] = 0 [250 overall]
+ │    │    ├── 238-239: x 00 # data[1] = 0 [250 overall]
+ │    │    ├── 239-240: x 00 # data[2] = 0 [250 overall]
+ │    │    ├── 240-241: x 00 # data[3] = 0 [250 overall]
+ │    │    ├── 241-242: x 12 # data[4] = 18 [268 overall]
+ │    │    ├── 242-243: x 12 # data[5] = 18 [268 overall]
+ │    │    ├── 243-244: x 12 # data[6] = 18 [268 overall]
+ │    │    ├── 244-245: x 12 # data[7] = 18 [268 overall]
+ │    │    ├── 245-246: x 12 # data[8] = 18 [268 overall]
+ │    │    ├── 246-247: x 12 # data[9] = 18 [268 overall]
+ │    │    ├── 247-248: x 12 # data[10] = 18 [268 overall]
+ │    │    ├── 248-249: x 12 # data[11] = 18 [268 overall]
+ │    │    └── 249-250: x 12 # data[12] = 18 [268 overall]
+ │    └── data
+ │         ├── 250-250: x                                      # data[0]:
+ │         ├── 250-250: x                                      # data[1]:
+ │         ├── 250-250: x                                      # data[2]:
+ │         ├── 250-268: x 010203040506070809101112131415161712 # data[3]: "\x01\x02\x03\x04\x05\x06\a\b\t\x10\x11\x12\x13\x14\x15\x16\x17\x12"
+ │         ├── 268-268: x                                      # data[4]:
+ │         ├── 268-268: x                                      # data[5]:
+ │         ├── 268-268: x                                      # data[6]:
+ │         ├── 268-268: x                                      # data[7]:
+ │         ├── 268-268: x                                      # data[8]:
+ │         ├── 268-268: x                                      # data[9]:
+ │         ├── 268-268: x                                      # data[10]:
+ │         └── 268-268: x                                      # data[11]:
+ ├── data for column 4 (uint)
+ │    ├── 268-269: x 02   # encoding: 2b
+ │    ├── 269-270: x 00   # padding (aligning to 16-bit boundary)
+ │    ├── 270-272: x 0103 # data[0] = 769
+ │    ├── 272-274: x 0102 # data[1] = 513
+ │    ├── 274-276: x 0101 # data[2] = 257
+ │    ├── 276-278: x 0101 # data[3] = 257
+ │    ├── 278-280: x 0102 # data[4] = 513
+ │    ├── 280-282: x 0101 # data[5] = 257
+ │    ├── 282-284: x 0104 # data[6] = 1025
+ │    ├── 284-286: x 0103 # data[7] = 769
+ │    ├── 286-288: x 0102 # data[8] = 513
+ │    ├── 288-290: x 0101 # data[9] = 257
+ │    ├── 290-292: x 0101 # data[10] = 257
+ │    └── 292-294: x 0101 # data[11] = 257
+ ├── data for column 5 (bool)
+ │    ├── 294-295: x 00                                                               # default bitmap encoding
+ │    ├── 295-296: x 00                                                               # padding to align to 64-bit boundary
+ │    ├── 296-304: b 0000000100001100000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    └── 304-312: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ ├── data for column 6 (bytes)
+ │    ├── offsets table
+ │    │    ├── 312-313: x 01 # encoding: 1b
+ │    │    ├── 313-314: x 00 # data[0] = 0 [326 overall]
+ │    │    ├── 314-315: x 09 # data[1] = 9 [335 overall]
+ │    │    ├── 315-316: x 12 # data[2] = 18 [344 overall]
+ │    │    ├── 316-317: x 1b # data[3] = 27 [353 overall]
+ │    │    ├── 317-318: x 22 # data[4] = 34 [360 overall]
+ │    │    ├── 318-319: x 2e # data[5] = 46 [372 overall]
+ │    │    ├── 319-320: x 3a # data[6] = 58 [384 overall]
+ │    │    ├── 320-321: x 3f # data[7] = 63 [389 overall]
+ │    │    ├── 321-322: x 44 # data[8] = 68 [394 overall]
+ │    │    ├── 322-323: x 49 # data[9] = 73 [399 overall]
+ │    │    ├── 323-324: x 4e # data[10] = 78 [404 overall]
+ │    │    ├── 324-325: x 51 # data[11] = 81 [407 overall]
+ │    │    └── 325-326: x 52 # data[12] = 82 [408 overall]
+ │    └── data
+ │         ├── 326-335: x 6e6f73756666697833       # data[0]: nosuffix3
+ │         ├── 335-344: x 6e6f73756666697832       # data[1]: nosuffix2
+ │         ├── 344-353: x 6e6f73756666697831       # data[2]: nosuffix1
+ │         ├── 353-360: x 6c6f636b6b6579           # data[3]: lockkey
+ │         ├── 360-372: x 6d7663636c6f676963616c32 # data[4]: mvcclogical2
+ │         ├── 372-384: x 6d7663636c6f676963616c31 # data[5]: mvcclogical1
+ │         ├── 384-389: x 6d76636334               # data[6]: mvcc4
+ │         ├── 389-394: x 6d76636333               # data[7]: mvcc3
+ │         ├── 394-399: x 6d76636332               # data[8]: mvcc2
+ │         ├── 399-404: x 6d76636331               # data[9]: mvcc1
+ │         ├── 404-407: x 666f6f                   # data[10]: foo
+ │         └── 407-408: x 78                       # data[11]: x
+ ├── data for column 7 (bool)
+ │    └── 408-409: x 01 # zero bitmap encoding
+ ├── data for column 8 (bool)
+ │    └── 409-410: x 01 # zero bitmap encoding
+ └── 410-411: x 00 # block padding byte
