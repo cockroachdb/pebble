@@ -56,6 +56,7 @@ func TestDataBlock(t *testing.T) {
 				if td.Cmd == "write-block" {
 					w.Init(&testKeysSchema)
 				}
+				var prevKey base.InternalKey
 				for _, line := range strings.Split(td.Input, "\n") {
 					line, isObsolete := strings.CutSuffix(line, "obsolete")
 
@@ -68,8 +69,12 @@ func TestDataBlock(t *testing.T) {
 					if strings.HasPrefix(valueString, "valueHandle") {
 						vp = block.ValueHandlePrefix(kcmp.PrefixEqual(), 0)
 					}
+					if kcmp.UserKeyComparison == 0 && prevKey.Kind() != base.InternalKeyKindMerge {
+						isObsolete = true
+					}
 					v := []byte(line[j+1:])
 					w.Add(ik, v, vp, kcmp, isObsolete)
+					prevKey = ik
 					sizes = append(sizes, w.Size())
 				}
 				if td.Cmd == "write-block" {
@@ -105,6 +110,9 @@ func TestDataBlock(t *testing.T) {
 				tp := treeprinter.New()
 				r.Describe(f, tp)
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), tp.String())
+				if err := r.Validate(testkeys.Comparer, &testKeysSchema); err != nil {
+					fmt.Fprintln(&buf, err)
+				}
 				return buf.String()
 			case "iter":
 				var seqNum uint64

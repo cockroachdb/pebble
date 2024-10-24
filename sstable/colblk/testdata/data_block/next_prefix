@@ -31,7 +31,7 @@ blockprefix_kiwi@99#0,SET:kiwi99
 blockprefix_kiwi@98#0,SET:kiwi98
 blockprefix_lemon@92#0,DEL:
 ----
-size=417:
+size=433:
 0: prefixes:       prefixbytes(16): 20 keys
 1: suffixes:       bytes: 20 rows set; 54 bytes in data
 2: trailers:       uint: 20 rows
@@ -235,8 +235,10 @@ data block header
  ├── data for column 5 (bool)
  │    └── 414-415: x 01 # zero bitmap encoding
  ├── data for column 6 (bool)
- │    └── 415-416: x 01 # zero bitmap encoding
- └── 416-417: x 00 # block padding byte
+ │    ├── 415-416: x 00                                                               # default bitmap encoding
+ │    ├── 416-424: b 0100000000000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    └── 424-432: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ └── 432-433: x 00 # block padding byte
 
 # Scan across the block using next prefix.
 
