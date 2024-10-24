@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -95,6 +96,7 @@ type RawColumnWriter struct {
 
 	separatorBuf          []byte
 	tmp                   [blockHandleLikelyMaxLen]byte
+	previousUserKey       invariants.BytesBuffer
 	disableKeyOrderChecks bool
 }
 
@@ -469,6 +471,13 @@ func (w *RawColumnWriter) evaluatePoint(
 	key base.InternalKey, valueLen int,
 ) (eval pointKeyEvaluation, err error) {
 	eval.kcmp = w.dataBlock.KeyWriter.ComparePrev(key.UserKey)
+
+	// When invariants are enabled, validate kcmp.
+	if invariants.Enabled {
+		colblk.AssertKeyCompare(w.comparer, key.UserKey, w.previousUserKey.Get(), eval.kcmp)
+		w.previousUserKey.Save(key.UserKey)
+	}
+
 	if !w.meta.HasPointKeys {
 		return eval, nil
 	}

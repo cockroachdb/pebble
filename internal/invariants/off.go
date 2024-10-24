@@ -27,3 +27,15 @@ func (d *CloseChecker) AssertClosed() {}
 
 // AssertNotClosed panics in invariant builds if Close was called.
 func (d *CloseChecker) AssertNotClosed() {}
+
+// Buffer is a buffer that may be used to run invariant checks that require
+// preserving memory only when the invariants tag is enabled. The user calls
+// Save to preserve memory until the next call to Save. If the invariants tag is
+// not enabled, Save is a no-op and the buffer is an empty struct.
+type BytesBuffer struct{}
+
+// Get returns the current contents of the buffer.
+func (b *BytesBuffer) Get() []byte { return nil }
+
+// Save saves the bytes when run with the invariants build tag.
+func (b *BytesBuffer) Save(v []byte) {}

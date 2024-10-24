@@ -97,6 +97,24 @@ type KeyWriter interface {
 	FinishHeader(dst []byte)
 }
 
+// AssertKeyCompare compares two keys using the provided comparer, ensuring the
+// provided KeyComparison accurately describing the result. Panics if the
+// assertion does not hold.
+func AssertKeyCompare(comparer *base.Comparer, a, b []byte, kcmp KeyComparison) {
+	bi := comparer.Split(b)
+	var recomputed KeyComparison
+	recomputed.PrefixLen = int32(comparer.Split(a))
+	recomputed.CommonPrefixLen = int32(crbytes.CommonPrefix(a[:recomputed.PrefixLen], b[:bi]))
+	recomputed.UserKeyComparison = int32(comparer.Compare(a, b))
+	if recomputed.PrefixEqual() != bytes.Equal(a[:recomputed.PrefixLen], b[:bi]) {
+		panic(errors.AssertionFailedf("PrefixEqual()=%t doesn't hold: %q, %q", kcmp.PrefixEqual(), a, b))
+	}
+	if recomputed != kcmp {
+		panic(errors.AssertionFailedf("KeyComparison of (%q, %q) = %s, ComparePrev gave %s",
+			a, b, recomputed, kcmp))
+	}
+}
+
 // KeyComparison holds information about a key and its comparison to another a
 // key.
 type KeyComparison struct {
@@ -114,6 +132,12 @@ type KeyComparison struct {
 	//
 	//   Compare(key, otherKey)
 	UserKeyComparison int32
+}
+
+// String returns a string representation of the KeyComparison.
+func (kcmp KeyComparison) String() string {
+	return fmt.Sprintf("(prefix={%d,common=%d} cmp=%d)",
+		kcmp.PrefixLen, kcmp.CommonPrefixLen, kcmp.UserKeyComparison)
 }
 
 // PrefixEqual returns true if the key comparison determined that the keys have
