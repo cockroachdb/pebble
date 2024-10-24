@@ -519,6 +519,8 @@ func standardOptions() []*TestOptions {
   index_block_size=1
 `,
 		15: `
+[Options]
+  l0_stop_writes_threshold=100
 [Level "0"]
   target_file_size=12
 `,
@@ -740,6 +742,12 @@ func RandomOptions(
 	lopts.BlockSizeThreshold = 50 + rng.IntN(50)   // 50 - 100
 	lopts.IndexBlockSize = 1 << uint(rng.IntN(24)) // 1 - 16MB
 	lopts.TargetFileSize = 1 << uint(rng.IntN(28)) // 1 - 256MB
+	if lopts.TargetFileSize < 1<<12 {
+		// We will generate a lot of files, which will slow down compactions.
+		// Increase L0StopWritesThreshold to reduce the number of write stalls
+		// that could cause operation timeouts.
+		opts.L0StopWritesThreshold = 100
+	}
 	// The EstimatedSize of an empty table writer is 8 bytes. We want something a
 	// little bigger than that as the minimum target.
 	lopts.TargetFileSize = max(lopts.TargetFileSize, 12)
