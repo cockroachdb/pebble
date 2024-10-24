@@ -615,6 +615,11 @@ func (w *DataBlockEncoder) Size() int {
 	return int(off)
 }
 
+// MaterializeLastUserKey materializes the last added user key.
+func (w *DataBlockEncoder) MaterializeLastUserKey(appendTo []byte) []byte {
+	return w.KeyWriter.MaterializeKey(appendTo, w.rows-1)
+}
+
 // Finish serializes the pending data block, including the first [rows] rows.
 // The value of [rows] must be Rows() or Rows()-1. The provided size must be the
 // size of the data block with the provided row count (i.e., the return value of

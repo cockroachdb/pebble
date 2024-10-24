@@ -533,7 +533,7 @@ func (kw *cockroachKeyWriter) MaterializeKey(dst []byte, i int) []byte {
 	dst = append(dst, 0)
 	if untypedVersion := kw.untypedVersions.UnsafeGet(i); len(untypedVersion) > 0 {
 		dst = append(dst, untypedVersion...)
-		dst = append(dst, byte(len(untypedVersion)))
+		dst = append(dst, byte(len(untypedVersion)+1))
 		return dst
 	}
 	return AppendTimestamp(dst, kw.wallTimes.Get(i), uint32(kw.logicalTimes.Get(i)))
