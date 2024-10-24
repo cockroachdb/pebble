@@ -36,10 +36,15 @@ func runDataDrivenTest(t *testing.T, path string) {
 		switch td.Cmd {
 		case "init":
 			e.Reset()
+			var buf []byte
 			for _, l := range crstrings.Lines(td.Input) {
 				key, value := parseKV(l)
 				kcmp := e.KeyWriter.ComparePrev(key.UserKey)
 				e.Add(key, value, 0, kcmp, false /* isObsolete */)
+				buf = e.MaterializeLastUserKey(buf[:0])
+				if !Comparer.Equal(key.UserKey, buf) {
+					td.Fatalf(t, "incorect MaterializeLastKey: %s instead of %s", formatUserKey(buf), formatUserKey(key.UserKey))
+				}
 			}
 			numRows := e.Rows()
 			size := e.Size()
