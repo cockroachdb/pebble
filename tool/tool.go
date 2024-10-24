@@ -60,6 +60,9 @@ func Comparers(cmps ...*Comparer) Option {
 // introspection tools.
 func KeySchemas(schemas ...*colblk.KeySchema) Option {
 	return func(t *T) {
+		if t.opts.KeySchemas == nil {
+			t.opts.KeySchemas = make(map[string]*colblk.KeySchema)
+		}
 		for _, s := range schemas {
 			t.opts.KeySchemas[s.Name] = s
 		}
