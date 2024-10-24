@@ -40,3 +40,21 @@ func (d *CloseChecker) AssertNotClosed() {
 		panic("closed")
 	}
 }
+
+// Value is a generic container for a value that should only exist in invariant
+// builds. In non-invariant builds, storing a value is a no-op, retrieving a
+// value returns the type parameter's zero value, and the Value struct takes up
+// no space.
+type Value[V any] struct {
+	v V
+}
+
+// Get returns the current value, or the zero-value if invariants are disabled.
+func (v *Value[V]) Get() V {
+	return v.v
+}
+
+// Store stores the value.
+func (v *Value[V]) Store(inner V) {
+	v.v = inner
+}
