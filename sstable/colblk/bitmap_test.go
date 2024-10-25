@@ -233,7 +233,7 @@ func TestBitmapRandom(t *testing.T) {
 		}
 	}
 
-	fixedSizes := []int{1, 2, 3, 4, 16, 63, 64, 65, 128, 129, 256, 257, 1024, 1025, 4096}
+	fixedSizes := []int{1, 2, 3, 4, 16, 63, 64, 65, 128, 129, 256, 257, 1024, 1025, 4096, 4097, 8012, 8200}
 	fixedProbabilities := []float64{0.00001, 0.0001, 0.001, 0.1, 0.5, 0.9999}
 	for _, p := range fixedProbabilities {
 		t.Run(fmt.Sprintf("p=%05f", p), func(t *testing.T) {
@@ -252,7 +252,7 @@ func TestBitmapRandom(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		p := rng.ExpFloat64() * 0.1
 		t.Run(fmt.Sprintf("p=%05f", p), func(t *testing.T) {
-			testWithProbability(t, p, rng.IntN(4096)+1, rng.IntN(2) == 1)
+			testWithProbability(t, p, rng.IntN(8200)+1, rng.IntN(2) == 1)
 		})
 	}
 }
