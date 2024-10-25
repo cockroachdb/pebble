@@ -635,6 +635,14 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	// it's unnecessary.
 	w.meta.SetLargestPointKey(lastKey.Clone())
 
+	if invariants.Enabled {
+		var dec colblk.DataBlockDecoder
+		dec.Init(w.opts.KeySchema, serializedBlock)
+		if err := dec.Validate(w.comparer, w.opts.KeySchema); err != nil {
+			panic(err)
+		}
+	}
+
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum

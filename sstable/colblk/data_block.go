@@ -946,6 +946,53 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.ToTreePrinter(n)
 }
 
+// Validate validates invariants that should hold across all data blocks.
+func (d *DataBlockDecoder) Validate(comparer *base.Comparer, keySchema *KeySchema) error {
+	// TODO(jackson): Consider avoiding these allocations, even if this is only
+	// called in invariants builds.
+	n := d.d.header.Rows
+	meta := &KeySeekerMetadata{}
+	keySchema.InitKeySeekerMetadata(meta, d)
+	keySeeker := keySchema.KeySeeker(meta)
+	prevKey := base.InternalKey{UserKey: make([]byte, 0, d.maximumKeyLength+1)}
+	var curKey PrefixBytesIter
+	curKey.Init(int(d.maximumKeyLength), nil)
+
+	for i := 0; i < int(n); i++ {
+		k := base.InternalKey{
+			UserKey: keySeeker.MaterializeUserKey(&curKey, i-1, i),
+			Trailer: base.InternalKeyTrailer(d.trailers.At(i)),
+		}
+		// Ensure the keys are ordered.
+		ucmp := comparer.Compare(k.UserKey, prevKey.UserKey)
+		if ucmp < 0 || (ucmp == 0 && k.Trailer >= prevKey.Trailer) {
+			return errors.AssertionFailedf("key %s (row %d) and key %s (row %d) are out of order",
+				prevKey, i-1, k, i)
+		}
+		// Ensure the obsolete bit is set if the key is definitively obsolete.
+		// Not all sources of obsolescence are evident with only a data block
+		// available (range deletions or point keys in previous blocks may cause
+		// a key to be obsolete).
+		if ucmp == 0 && prevKey.Kind() != base.InternalKeyKindMerge && !d.isObsolete.At(i) {
+			return errors.AssertionFailedf("key %s (row %d) is shadowed by previous key %s but is not marked as obsolete",
+				k, i, prevKey)
+		}
+		// Ensure that the prefix-changed bit is set correctly.
+		if i > 0 {
+			currPrefix := comparer.Split.Prefix(k.UserKey)
+			prevPrefix := comparer.Split.Prefix(prevKey.UserKey)
+			prefixChanged := !bytes.Equal(prevPrefix, currPrefix)
+			if prefixChanged != d.prefixChanged.At(i) {
+				return errors.AssertionFailedf("prefix changed bit for key %q (row %d) is %t, expected %t [prev key was %q]",
+					k.UserKey, i, d.prefixChanged.At(i), prefixChanged, prevKey.UserKey)
+			}
+		}
+
+		prevKey.CopyFrom(k)
+	}
+	return nil
+}
+
 // Assert that *DataBlockIter implements block.DataBlockIterator.
 var _ block.DataBlockIterator = (*DataBlockIter)(nil)
 
