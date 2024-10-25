@@ -111,8 +111,9 @@ type generator struct {
 	// snapshotID -> bounds of the snapshot: only populated for snapshots that
 	// are constrained by bounds.
 	snapshotBounds map[objID][]pebble.KeyRange
-	// iterSequenceNumber is the metaTimestamp at which the iter was created.
-	iterCreationTimestamp map[objID]int
+	// iterVisibleKeys is the set of keys that should be visible to the
+	// iterator.
+	iterVisibleKeys map[objID][][]byte
 	// iterReaderID is a map from an iterID to a readerID.
 	iterReaderID map[objID]objID
 }
@@ -120,23 +121,23 @@ type generator struct {
 func newGenerator(rng *rand.Rand, cfg OpConfig, km *keyManager) *generator {
 	keyGenerator := newKeyGenerator(km, rng, cfg)
 	g := &generator{
-		cfg:                   cfg,
-		rng:                   rng,
-		init:                  &initOp{dbSlots: uint32(cfg.numInstances)},
-		keyManager:            km,
-		keyGenerator:          keyGenerator,
-		liveReaders:           objIDSlice{makeObjID(dbTag, 1)},
-		liveWriters:           objIDSlice{makeObjID(dbTag, 1)},
-		dbs:                   objIDSlice{makeObjID(dbTag, 1)},
-		objDB:                 make(map[objID]objID),
-		batches:               make(map[objID]objIDSet),
-		iters:                 make(map[objID]objIDSet),
-		readers:               make(map[objID]objIDSet),
-		snapshots:             make(map[objID]objIDSet),
-		snapshotBounds:        make(map[objID][]pebble.KeyRange),
-		itersLastOpts:         make(map[objID]iterOpts),
-		iterCreationTimestamp: make(map[objID]int),
-		iterReaderID:          make(map[objID]objID),
+		cfg:             cfg,
+		rng:             rng,
+		init:            &initOp{dbSlots: uint32(cfg.numInstances)},
+		keyManager:      km,
+		keyGenerator:    keyGenerator,
+		liveReaders:     objIDSlice{makeObjID(dbTag, 1)},
+		liveWriters:     objIDSlice{makeObjID(dbTag, 1)},
+		dbs:             objIDSlice{makeObjID(dbTag, 1)},
+		objDB:           make(map[objID]objID),
+		batches:         make(map[objID]objIDSet),
+		iters:           make(map[objID]objIDSet),
+		readers:         make(map[objID]objIDSet),
+		snapshots:       make(map[objID]objIDSet),
+		snapshotBounds:  make(map[objID][]pebble.KeyRange),
+		itersLastOpts:   make(map[objID]iterOpts),
+		iterVisibleKeys: make(map[objID][][]byte),
+		iterReaderID:    make(map[objID]objID),
 	}
 	for i := 1; i < cfg.numInstances; i++ {
 		g.liveReaders = append(g.liveReaders, makeObjID(dbTag, uint32(i+1)))
@@ -545,7 +546,7 @@ func (g *generator) newIter() {
 	}
 
 	g.itersLastOpts[iterID] = opts
-	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
+	g.iterVisibleKeys[iterID] = g.keyManager.getSetOfVisibleKeys(readerID)
 	g.iterReaderID[iterID] = readerID
 	g.add(&newIterOp{
 		readerID:    readerID,
@@ -613,8 +614,11 @@ func (g *generator) newIterUsingClone() {
 	g.deriveDB(iterID)
 
 	var refreshBatch bool
+	visibleKeys := g.iterVisibleKeys[existingIterID]
 	if readerID.tag() == batchTag {
-		refreshBatch = g.rng.IntN(2) == 1
+		if refreshBatch = g.rng.IntN(2) == 1; refreshBatch {
+			visibleKeys = g.keyManager.getSetOfVisibleKeys(readerID)
+		}
 	}
 
 	opts := g.itersLastOpts[existingIterID]
@@ -625,7 +629,8 @@ func (g *generator) newIterUsingClone() {
 	}
 	g.itersLastOpts[iterID] = opts
 
-	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
+	// Copy the visible keys from the existing iterator.
+	g.iterVisibleKeys[iterID] = visibleKeys
 	g.iterReaderID[iterID] = g.iterReaderID[existingIterID]
 	g.add(&newIterUsingCloneOp{
 		existingIterID:  existingIterID,
@@ -808,45 +813,34 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 }
 
 func (g *generator) iterSeekPrefixGE(iterID objID) {
+	// Purely random key selection is unlikely to pick a key with any visible
+	// versions, especially if we don't take iterator bounds into account. We
+	// try to err towards picking a key within bounds that contains a value
+	// visible to the iterator.
 	lower := g.itersLastOpts[iterID].lower
 	upper := g.itersLastOpts[iterID].upper
-	iterCreationTimestamp := g.iterCreationTimestamp[iterID]
 	var key []byte
-
-	// We try to make sure that the SeekPrefixGE key is within the iter bounds,
-	// and that the iter can read the key. If the key was created on a batch
-	// which deleted the key, then the key will still be considered visible
-	// by the current logic. We're also not accounting for keys written to
-	// batches which haven't been presisted to the DB. But we're only picking
-	// keys in a best effort manner, and the logic is better than picking a
-	// random key.
-	if g.rng.IntN(10) >= 1 {
-		possibleKeys := make([][]byte, 0, 100)
-		inRangeKeys := g.keyManager.InRangeKeysForObj(g.dbIDForObj(iterID), lower, upper)
-		for _, keyMeta := range inRangeKeys {
-			visibleHistory := keyMeta.history.before(iterCreationTimestamp)
-
-			// Check if the last op on this key set a value, (eg SETs, MERGEs).
-			// If the key should be visible to the iterator and it would make a
-			// good candidate for a SeekPrefixGE.
-			if visibleHistory.hasVisibleValue() {
-				possibleKeys = append(possibleKeys, keyMeta.key)
-			}
+	if g.rng.IntN(5) >= 1 {
+		visibleKeys := g.iterVisibleKeys[iterID]
+		if lower != nil {
+			i, _ := slices.BinarySearchFunc(visibleKeys, lower, g.cmp)
+			visibleKeys = visibleKeys[i:]
 		}
-
-		if len(possibleKeys) > 0 {
-			key = possibleKeys[g.rng.IntN(len(possibleKeys))]
+		if upper != nil {
+			i, _ := slices.BinarySearchFunc(visibleKeys, upper, g.cmp)
+			visibleKeys = visibleKeys[:i]
+		}
+		if len(visibleKeys) > 0 {
+			key = visibleKeys[g.rng.IntN(len(visibleKeys))]
 		}
 	}
-
 	if key == nil {
-		// TODO(bananabrick): We should try and use keys within the bounds,
-		// even if we couldn't find any keys visible to the iterator. However,
-		// doing this in experiments didn't really increase the valid
-		// SeekPrefixGE calls by much.
 		key = g.keyGenerator.RandKey(0) // 0% new keys
 	}
-
+	// Sometimes limit the key to just the prefix.
+	if g.rng.IntN(3) == 1 {
+		key = g.keyManager.comparer.Split.Prefix(key)
+	}
 	g.add(&iterSeekPrefixGEOp{
 		iterID:          iterID,
 		key:             key,

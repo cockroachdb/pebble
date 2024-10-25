@@ -5,10 +5,10 @@
 package metamorphic
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"strings"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -23,8 +23,7 @@ type keyMeta struct {
 	objID objID
 	key   []byte
 	// history provides the history of writer operations applied against this
-	// key on this object. history is always ordered by non-decreasing
-	// metaTimestamp.
+	// key on this object. history is always ordered in chronological order.
 	history keyHistory
 }
 
@@ -34,7 +33,7 @@ func (m *keyMeta) clear() {
 
 // mergeInto merges this metadata into the metadata for other, appending all of
 // its individual operations to dst at the provided timestamp.
-func (m *keyMeta) mergeInto(dst *keyMeta, ts int) {
+func (m *keyMeta) mergeInto(dst *keyMeta) {
 	for _, op := range m.history {
 		// If the key is being merged into a database object and the operation
 		// is a delete, we can clear the destination history. Database objects
@@ -54,8 +53,7 @@ func (m *keyMeta) mergeInto(dst *keyMeta, ts int) {
 			continue
 		}
 		dst.history = append(dst.history, keyHistoryItem{
-			opType:        op.opType,
-			metaTimestamp: ts,
+			opType: op.opType,
 		})
 	}
 }
@@ -185,12 +183,6 @@ func (b *bounds) Expand(cmp base.Compare, other bounds) {
 type keyManager struct {
 	comparer *base.Comparer
 
-	// metaTimestamp is used to provide a ordering over certain operations like
-	// iter creation, updates to keys. Keeping track of the timestamp allows us
-	// to make determinations such as whether a key will be visible to an
-	// iterator.
-	metaTimestamp int
-
 	byObj map[objID]*objKeyMeta
 	// globalKeys represents all the keys that have been generated so far. Not
 	// all these keys have been written to. globalKeys is sorted.
@@ -223,8 +215,8 @@ type objKeyMeta struct {
 	rangeKeySets []pebble.KeyRange
 }
 
-// MergeKey adds the given key at the given meta timestamp, merging the histories as needed.
-func (okm *objKeyMeta) MergeKey(k *keyMeta, ts int) {
+// MergeKey adds the given key, merging the histories as needed.
+func (okm *objKeyMeta) MergeKey(k *keyMeta) {
 	meta, ok := okm.keys[string(k.key)]
 	if !ok {
 		meta = &keyMeta{
@@ -233,7 +225,7 @@ func (okm *objKeyMeta) MergeKey(k *keyMeta, ts int) {
 		}
 		okm.keys[string(k.key)] = meta
 	}
-	k.mergeInto(meta, ts)
+	k.mergeInto(meta)
 }
 
 // CollapseKeys collapses the history of all keys. Used with ingestion operation
@@ -246,10 +238,10 @@ func (okm *objKeyMeta) CollapseKeys() {
 
 // MergeFrom merges the `from` metadata into this one, appending all of its
 // individual operations at the provided timestamp.
-func (okm *objKeyMeta) MergeFrom(from *objKeyMeta, metaTimestamp int, cmp base.Compare) {
+func (okm *objKeyMeta) MergeFrom(from *objKeyMeta, cmp base.Compare) {
 	// The result should be the same regardless of the ordering of the keys.
 	for _, k := range from.keys {
-		okm.MergeKey(k, metaTimestamp)
+		okm.MergeKey(k)
 	}
 	okm.bounds.Expand(cmp, from.bounds)
 	okm.hasRangeDels = okm.hasRangeDels || from.hasRangeDels
@@ -355,10 +347,18 @@ func (k *keyManager) ExternalObjectHasOverlappingRangeKeySets(externalObjID objI
 	return false
 }
 
-func (k *keyManager) nextMetaTimestamp() int {
-	ret := k.metaTimestamp
-	k.metaTimestamp++
-	return ret
+// getSetOfVisibleKeys returns a sorted slice of keys that are visible in the
+// provided reader object under the object's current history.
+func (k *keyManager) getSetOfVisibleKeys(readerID objID) [][]byte {
+	okm := k.objKeyMeta(readerID)
+	keys := make([][]byte, 0, len(okm.keys))
+	for k, km := range okm.keys {
+		if km.history.hasVisibleValue() {
+			keys = append(keys, unsafe.Slice(unsafe.StringData(k), len(k)))
+		}
+	}
+	slices.SortFunc(keys, testkeys.Comparer.Compare)
+	return keys
 }
 
 // newKeyManager returns a pointer to a new keyManager. Callers should
@@ -419,8 +419,7 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 // deletes the metadata for the source object (which must not be used again).
 func (k *keyManager) mergeObjectInto(from, to objID) {
 	toMeta := k.objKeyMeta(to)
-	ts := k.nextMetaTimestamp()
-	toMeta.MergeFrom(k.objKeyMeta(from), ts, k.comparer.Compare)
+	toMeta.MergeFrom(k.objKeyMeta(from), k.comparer.Compare)
 
 	delete(k.byObj, from)
 }
@@ -586,14 +585,12 @@ func (k *keyManager) update(o op) {
 	case *setOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
-			opType:        OpWriterSet,
-			metaTimestamp: k.nextMetaTimestamp(),
+			opType: OpWriterSet,
 		})
 	case *mergeOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
-			opType:        OpWriterMerge,
-			metaTimestamp: k.nextMetaTimestamp(),
+			opType: OpWriterMerge,
 		})
 	case *deleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
@@ -601,8 +598,7 @@ func (k *keyManager) update(o op) {
 			meta.clear()
 		} else {
 			meta.history = append(meta.history, keyHistoryItem{
-				opType:        OpWriterDelete,
-				metaTimestamp: k.nextMetaTimestamp(),
+				opType: OpWriterDelete,
 			})
 		}
 	case *deleteRangeOp:
@@ -611,7 +607,10 @@ func (k *keyManager) update(o op) {
 		// manager knows all keys that have been used in all operations, so we
 		// can discretize the range tombstone by adding it to every known key
 		// within the range.
-		ts := k.nextMetaTimestamp()
+		//
+		// TODO(jackson): If s.writerID is a batch, we may not know the set of
+		// all keys that WILL exist by the time the batch is committed. This
+		// means the delete range history is incomplete. Fix this.
 		keyRange := pebble.KeyRange{Start: s.start, End: s.end}
 		for _, key := range k.knownKeysInRange(keyRange) {
 			meta := k.getOrInit(s.writerID, key)
@@ -619,8 +618,7 @@ func (k *keyManager) update(o op) {
 				meta.clear()
 			} else {
 				meta.history = append(meta.history, keyHistoryItem{
-					opType:        OpWriterDeleteRange,
-					metaTimestamp: ts,
+					opType: OpWriterDeleteRange,
 				})
 			}
 		}
@@ -630,8 +628,7 @@ func (k *keyManager) update(o op) {
 	case *singleDeleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
-			opType:        OpWriterSingleDelete,
-			metaTimestamp: k.nextMetaTimestamp(),
+			opType: OpWriterSingleDelete,
 		})
 	case *rangeKeyDeleteOp:
 		// Range key operations on their own don't determine singledel eligibility,
@@ -697,11 +694,10 @@ func (k *keyManager) update(o op) {
 	case *ingestExternalFilesOp:
 		// Merge the keys from the external objects (within the restricted bounds)
 		// into the database.
-		ts := k.nextMetaTimestamp()
 		dbMeta := k.objKeyMeta(s.dbID)
 		for _, obj := range s.objs {
 			for _, keyMeta := range k.KeysForExternalIngest(obj) {
-				dbMeta.MergeKey(&keyMeta, ts)
+				dbMeta.MergeKey(&keyMeta)
 			}
 			dbMeta.bounds.Expand(k.comparer.Compare, k.makeEndExclusiveBounds(obj.bounds.Start, obj.bounds.End))
 		}
@@ -787,21 +783,11 @@ func (k *keyManager) makeEndExclusiveBounds(smallest, largest []byte) bounds {
 type keyHistoryItem struct {
 	// opType may be writerSet, writerDelete, writerSingleDelete,
 	// writerDeleteRange or writerMerge only. No other opTypes may appear here.
-	opType        OpType
-	metaTimestamp int
+	opType OpType
 }
 
 // keyHistory captures the history of mutations to a key in chronological order.
 type keyHistory []keyHistoryItem
-
-// before returns the subslice of the key history that happened strictly before
-// the provided meta timestamp.
-func (h keyHistory) before(metaTimestamp int) keyHistory {
-	i, _ := slices.BinarySearchFunc(h, metaTimestamp, func(a keyHistoryItem, ts int) int {
-		return cmp.Compare(a.metaTimestamp, ts)
-	})
-	return h[:i]
-}
 
 // canSingleDelete examines the tail of the history and returns true if a single
 // delete appended to this history would satisfy the single delete invariants.
@@ -842,7 +828,6 @@ func (h keyHistory) String() string {
 		default:
 			fmt.Fprintf(&sb, "optype[v=%d]", it.opType)
 		}
-		fmt.Fprintf(&sb, "(%d)", it.metaTimestamp)
 	}
 	return sb.String()
 }
