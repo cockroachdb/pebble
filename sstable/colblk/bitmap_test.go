@@ -147,17 +147,31 @@ func TestBitmapRandom(t *testing.T) {
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
-	size := rng.IntN(4096) + 1
 
-	testWithProbability := func(t *testing.T, p float64) {
-		var builder BitmapBuilder
-		v := make([]bool, size)
-		for i := 0; i < size; i++ {
+	var builder BitmapBuilder
+	testWithProbability := func(t *testing.T, p float64, size int, invert bool) {
+		defer builder.Reset()
+		rng := rand.New(rand.NewPCG(0, seed))
+
+		// Sometimes Set +1 bit to test the common pattern of excluding the last
+		// row from a data block.
+		buildSize := size + rng.IntN(5)
+		v := make([]bool, buildSize)
+		for i := 0; i < len(v); i++ {
 			v[i] = rng.Float64() < p
 			if v[i] {
 				builder.Set(i)
 			}
 		}
+
+		// Sometimes invert the bitmap.
+		if invert {
+			builder.Invert(size)
+			for i := 0; i < size; i++ {
+				v[i] = !v[i]
+			}
+		}
+
 		data := make([]byte, builder.Size(size, 0))
 		_ = builder.Finish(0, size, 0, data)
 		bitmap, endOffset := DecodeBitmap(data, 0, size)
@@ -219,16 +233,26 @@ func TestBitmapRandom(t *testing.T) {
 		}
 	}
 
+	fixedSizes := []int{1, 2, 3, 4, 16, 63, 64, 65, 128, 129, 256, 257, 1024, 1025, 4096}
 	fixedProbabilities := []float64{0.00001, 0.0001, 0.001, 0.1, 0.5, 0.9999}
 	for _, p := range fixedProbabilities {
 		t.Run(fmt.Sprintf("p=%05f", p), func(t *testing.T) {
-			testWithProbability(t, p)
+			for _, sz := range fixedSizes {
+				t.Run(fmt.Sprintf("size=%d", sz), func(t *testing.T) {
+					t.Run("invert", func(t *testing.T) {
+						testWithProbability(t, p, sz, true /* invert */)
+					})
+					t.Run("no-invert", func(t *testing.T) {
+						testWithProbability(t, p, sz, false /* invert */)
+					})
+				})
+			}
 		})
 	}
 	for i := 0; i < 10; i++ {
 		p := rng.ExpFloat64() * 0.1
 		t.Run(fmt.Sprintf("p=%05f", p), func(t *testing.T) {
-			testWithProbability(t, p)
+			testWithProbability(t, p, rng.IntN(4096)+1, rng.IntN(2) == 1)
 		})
 	}
 }
