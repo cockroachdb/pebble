@@ -9,12 +9,12 @@ import (
 	"io"
 	"math"
 	"math/bits"
-	"slices"
 	"strings"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -280,6 +280,8 @@ func (b *BitmapBuilder) Set(i int) {
 	}
 	w := i >> 6 // divide by 64
 	for len(b.words) <= w {
+		// We append zeros because if b.words has additional capacity, it has
+		// not been zeroed.
 		b.words = append(b.words, 0)
 	}
 	b.words[w] |= 1 << uint(i&63)
@@ -294,7 +296,16 @@ func (b *BitmapBuilder) isZero(rows int) bool {
 
 // Reset resets the bitmap to the empty state.
 func (b *BitmapBuilder) Reset() {
-	clear(b.words)
+	if invariants.Sometimes(50) {
+		// Sometimes trash the bitmap with all ones to catch bugs that assume
+		// b.words is zeroed.
+		for i := 0; i < len(b.words); i++ {
+			b.words[i] = ^uint64(0)
+		}
+	}
+
+	// NB: We don't zero the contents of b.words. When the BitmapBuilder reuses
+	// b.words, it must ensure it zeroes the contents as necessary.
 	b.words = b.words[:0]
 	b.minNonZeroRowCount = 0
 }
@@ -339,8 +350,10 @@ func (b *BitmapBuilder) Invert(nRows int) {
 	b.minNonZeroRowCount = 1
 	// If the tail of b is sparse, fill in zeroes before inverting.
 	nBitmapWords := (nRows + 63) >> 6
-	if len(b.words) < nBitmapWords {
-		b.words = slices.Grow(b.words, nBitmapWords-len(b.words))
+	for len(b.words) < nBitmapWords {
+		// We append zeros because if b.words has additional capacity, it has
+		// not been zeroed.
+		b.words = append(b.words, 0)
 	}
 	b.words = b.words[:nBitmapWords]
 	for i := range b.words {
