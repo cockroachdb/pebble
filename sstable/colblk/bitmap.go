@@ -226,9 +226,11 @@ func (b Bitmap) SeekUnsetBitLE(i int) int {
 	return (wordIdx << 6) + 63 - bits.LeadingZeros64(^word)
 }
 
+// summaryTableBounds returns the indexes of the bitmap words containing the
+// summary table. The summary table's words lie within [startOffset, endOffset).
 func (b Bitmap) summaryTableBounds() (startOffset, endOffset int) {
 	startOffset = (b.bitCount + 63) >> 6
-	endOffset = startOffset + startOffset>>6
+	endOffset = startOffset + (startOffset+63)>>6
 	return startOffset, endOffset
 }
 
