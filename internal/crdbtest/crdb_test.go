@@ -81,7 +81,7 @@ func TestRandKeys(t *testing.T) {
 		cfg := keyGenConfig{
 			PrefixAlphabetLen: 8,
 			PrefixLenShared:   4,
-			PrefixLen:         8,
+			RoachKeyLen:       8,
 			AvgKeysPerPrefix:  2,
 			PercentLogical:    10,
 		}
@@ -91,11 +91,14 @@ func TestRandKeys(t *testing.T) {
 		d.MaybeScanArgs(t, "count", &count)
 		d.MaybeScanArgs(t, "alpha-len", &cfg.PrefixAlphabetLen)
 		d.MaybeScanArgs(t, "prefix-len-shared", &cfg.PrefixLenShared)
-		d.MaybeScanArgs(t, "prefix-len", &cfg.PrefixLen)
+		d.MaybeScanArgs(t, "roach-key-len", &cfg.RoachKeyLen)
 		d.MaybeScanArgs(t, "avg-keys-pre-prefix", &cfg.AvgKeysPerPrefix)
 		d.MaybeScanArgs(t, "percent-logical", &cfg.PercentLogical)
 		d.MaybeScanArgs(t, "base-wall-time", &baseWallTime)
 		d.MaybeScanArgs(t, "value-len", &valueLen)
+		d.MaybeScanArgs(t, "percent-logical", &cfg.PercentLogical)
+		d.MaybeScanArgs(t, "percent-empty-suffix", &cfg.PercentEmptySuffix)
+		d.MaybeScanArgs(t, "percent-lock-suffix", &cfg.PercentLockSuffix)
 		cfg.BaseWallTime = uint64(testutils.CheckErr(time.Parse(layout, baseWallTime)).UnixNano())
 
 		rng := rand.New(rand.NewPCG(0, seed))
@@ -105,19 +108,13 @@ func TestRandKeys(t *testing.T) {
 			var vals [][]byte
 			keys, vals = randomKVs(rng, count, cfg, valueLen)
 			for i, key := range keys {
-				n := Split(key)
-				prefix := key[:n-1]
-				suffix := key[n : len(key)-1]
-				fmt.Fprintf(&buf, "%s @ %X = %X\n", prefix, suffix, vals[i])
+				fmt.Fprintf(&buf, "%s = %X\n", formatUserKey(key), vals[i])
 			}
 
 		case "rand-query-keys":
 			queryKeys := randomQueryKeys(rng, count, keys, cfg.BaseWallTime)
 			for _, key := range queryKeys {
-				n := Split(key)
-				prefix := key[:n-1]
-				suffix := key[n : len(key)-1]
-				fmt.Fprintf(&buf, "%s @ %X\n", prefix, suffix)
+				fmt.Fprintf(&buf, "%s\n", formatUserKey(key))
 			}
 
 		default:
@@ -128,18 +125,48 @@ func TestRandKeys(t *testing.T) {
 }
 
 func TestCockroachDataColBlock(t *testing.T) {
-	const targetBlockSize = 32 << 10
-	const valueLen = 100
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
+
 	rng := rand.New(rand.NewPCG(0, seed))
-	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, keyGenConfig{
-		PrefixAlphabetLen: 26,
-		PrefixLen:         12,
-		PercentLogical:    rng.IntN(25),
-		AvgKeysPerPrefix:  2,
-		BaseWallTime:      seed,
-	}, valueLen)
+
+	for i := 0; i < 100; i++ {
+		keyCfg := keyGenConfig{
+			PrefixAlphabetLen: 2 + rng.IntN(25),
+			RoachKeyLen:       10 + int(rng.ExpFloat64()*10),
+			AvgKeysPerPrefix:  1 + int(rng.ExpFloat64()*[]float64{1, 10, 100}[rng.IntN(3)]),
+			BaseWallTime:      seed,
+		}
+		keyCfg.PrefixLenShared = rand.IntN(keyCfg.RoachKeyLen / 2)
+		switch rng.IntN(4) {
+		case 0:
+			keyCfg.PercentLogical = 100
+		case 1:
+			keyCfg.PercentLogical = rng.IntN(25)
+		}
+
+		switch rng.IntN(10) {
+		case 0:
+			keyCfg.PercentEmptySuffix = 100
+		case 1:
+			keyCfg.PercentLockSuffix = 100
+		case 2:
+			p := 1 + rng.IntN(100)
+			keyCfg.PercentEmptySuffix = rng.IntN(p)
+			keyCfg.PercentLockSuffix = rng.IntN(p - keyCfg.PercentEmptySuffix)
+		}
+		testCockroachDataColBlock(t, rng.Uint64(), keyCfg)
+		if t.Failed() {
+			break
+		}
+	}
+}
+
+func testCockroachDataColBlock(t *testing.T, seed uint64, keyCfg keyGenConfig) {
+	const targetBlockSize = 32 << 10
+	rng := rand.New(rand.NewPCG(0, seed))
+	valueLen := 1 + rng.IntN(300)
+	serializedBlock, keys, values := generateDataBlock(rng, targetBlockSize, keyCfg, valueLen)
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
@@ -150,34 +177,38 @@ func TestCockroachDataColBlock(t *testing.T) {
 	if err := it.Init(&decoder, block.IterTransforms{}); err != nil {
 		t.Fatal(err)
 	}
+	// Scan the block using Next and ensure that all the keys values match.
+	i := 0
+	for kv := it.First(); kv != nil; i, kv = i+1, it.Next() {
+		if !bytes.Equal(kv.K.UserKey, keys[i]) {
+			t.Fatalf("expected %q, but found %q", keys[i], kv.K.UserKey)
+		}
+		if !bytes.Equal(kv.V.InPlaceValue(), values[i]) {
+			t.Fatalf("expected %x, but found %x", values[i], kv.V.InPlaceValue())
+		}
+	}
+	require.Equal(t, len(keys), i)
 
-	t.Run("Next", func(t *testing.T) {
-		// Scan the block using Next and ensure that all the keys values match.
-		i := 0
-		for kv := it.First(); kv != nil; i, kv = i+1, it.Next() {
-			if !bytes.Equal(kv.K.UserKey, keys[i]) {
-				t.Fatalf("expected %q, but found %q", keys[i], kv.K.UserKey)
-			}
-			if !bytes.Equal(kv.V.InPlaceValue(), values[i]) {
-				t.Fatalf("expected %x, but found %x", values[i], kv.V.InPlaceValue())
+	// Check that we can SeekGE to any key.
+	for _, i := range rng.Perm(len(keys)) {
+		kv := it.SeekGE(keys[i], base.SeekGEFlagsNone)
+		if kv == nil {
+			t.Fatalf("%q not found", keys[i])
+		}
+		if Compare(kv.K.UserKey, keys[i]) != 0 {
+			t.Fatalf(
+				"query key:\n    %s\nreturned key:\n    %s",
+				formatUserKey(keys[i]), formatUserKey(kv.K.UserKey),
+			)
+		}
+		// Search for the correct value among all keys that are equal.
+		for !bytes.Equal(kv.V.InPlaceValue(), values[i]) {
+			kv = it.Next()
+			if kv == nil || Compare(kv.K.UserKey, keys[i]) != 0 {
+				t.Fatalf("could not find correct value for %s", formatUserKey(keys[i]))
 			}
 		}
-		require.Equal(t, len(keys), i)
-	})
-	t.Run("SeekGE", func(t *testing.T) {
-		rng := rand.New(rand.NewPCG(0, seed))
-		for _, i := range rng.Perm(len(keys)) {
-			kv := it.SeekGE(keys[i], base.SeekGEFlagsNone)
-			if kv == nil {
-				t.Fatalf("%q not found", keys[i])
-			}
-			if !bytes.Equal(kv.V.InPlaceValue(), values[i]) {
-				t.Fatalf(
-					"expected:\n    %x\nfound:\n    %x\nquery key:\n    %x\nreturned key:\n    %x",
-					values[i], kv.V.InPlaceValue(), keys[i], kv.K.UserKey)
-			}
-		}
-	})
+	}
 }
 
 // generateDataBlock writes out a random cockroach data block using the given
@@ -209,18 +240,20 @@ func (g getLazyValuer) GetLazyValueForPrefixAndValueHandle(handle []byte) base.L
 
 // keyGenConfig configures the shape of the random keys generated.
 type keyGenConfig struct {
-	PrefixAlphabetLen int    // Number of bytes in the alphabet used for the prefix.
-	PrefixLenShared   int    // Number of bytes shared by all key prefixes.
-	PrefixLen         int    // Number of bytes in the prefix.
-	AvgKeysPerPrefix  int    // Average number of keys (with varying suffixes) per prefix.
-	BaseWallTime      uint64 // Smallest MVCC WallTime.
-	PercentLogical    int    // Percent of keys with non-zero MVCC logical time.
+	PrefixAlphabetLen  int    // Number of bytes in the alphabet used for the prefix.
+	PrefixLenShared    int    // Number of bytes shared by all key prefixes.
+	RoachKeyLen        int    // Number of bytes in the prefix (without the 0 sentinel byte).
+	AvgKeysPerPrefix   int    // Average number of keys (with varying suffixes) per prefix.
+	BaseWallTime       uint64 // Smallest MVCC WallTime.
+	PercentLogical     int    // Percent of MVCC keys with non-zero MVCC logical time.
+	PercentEmptySuffix int    // Percent of keys with empty suffix.
+	PercentLockSuffix  int    // Percent of keys with lock suffix.
 }
 
 func (cfg keyGenConfig) String() string {
 	return fmt.Sprintf(
 		"AlphaLen=%d,Prefix=%d,Shared=%d,KeysPerPrefix=%d%s",
-		cfg.PrefixAlphabetLen, cfg.PrefixLen, cfg.PrefixLenShared,
+		cfg.PrefixAlphabetLen, cfg.RoachKeyLen, cfg.PrefixLenShared,
 		cfg.AvgKeysPerPrefix,
 		crstrings.If(cfg.PercentLogical != 0, fmt.Sprintf(",Logical=%d", cfg.PercentLogical)),
 	)
@@ -235,36 +268,52 @@ func randomKVs(rng *rand.Rand, count int, cfg keyGenConfig, valueLen int) (keys,
 	}
 
 	keys = make([][]byte, 0, count)
-	vals = make([][]byte, 0, count)
 	for len(keys) < count {
-		prefix := g.randPrefix(sharedPrefix)
+		roachKey := g.randRoachKey(sharedPrefix)
 		// We use the exponential distribution so that we occasionally have many
 		// suffixes
 		n := int(rng.ExpFloat64() * float64(cfg.AvgKeysPerPrefix))
 		n = max(n, 1)
 		for i := 0; i < n && len(keys) < count; i++ {
-			wallTime, logicalTime := g.randTimestamp()
-			k := makeKey(prefix, wallTime, logicalTime)
-			v := make([]byte, valueLen)
-			for j := range v {
-				v[j] = byte(rng.Uint32())
+			if cfg.PercentEmptySuffix+cfg.PercentLockSuffix > 0 {
+				if r := rng.IntN(100); r < cfg.PercentEmptySuffix+cfg.PercentLockSuffix {
+					k := append(roachKey, 0)
+					if r < cfg.PercentLockSuffix {
+						// Generate a lock key suffix.
+						for j := 0; j < engineKeyVersionLockTableLen; j++ {
+							k = append(k, byte(g.rng.IntN(g.cfg.PrefixAlphabetLen)+'a'))
+						}
+						k = append(k, engineKeyVersionLockTableLen+1)
+					}
+					keys = append(keys, k)
+					continue
+				}
 			}
+
+			wallTime, logicalTime := g.randTimestamp()
+			k := makeMVCCKey(roachKey, wallTime, logicalTime)
 			keys = append(keys, k)
-			vals = append(vals, v)
 		}
 	}
 	slices.SortFunc(keys, Compare)
+	vals = make([][]byte, count)
+	for i := range vals {
+		v := make([]byte, valueLen)
+		for j := range v {
+			v[j] = byte(rng.Uint32())
+		}
+		vals[i] = v
+	}
 	return keys, vals
 }
 
-func makeKey(prefix []byte, wallTime uint64, logicalTime uint32) []byte {
-	k := make([]byte, 0, len(prefix)+MaxSuffixLen)
-	k = append(k, prefix...)
+func makeMVCCKey(roachKey []byte, wallTime uint64, logicalTime uint32) []byte {
+	k := slices.Grow(slices.Clip(roachKey), MaxSuffixLen)
 	return EncodeTimestamp(k, wallTime, logicalTime)
 }
 
 // randomQueryKeys returns a slice of count random query keys. Each key has a
-// random prefix uniformly chosen from  the distinct prefixes in writtenKeys and
+// random prefix uniformly chosen from the distinct prefixes in writtenKeys and
 // a random timestamp.
 //
 // Note that by setting baseWallTime to be large enough, we can simulate a query
@@ -287,7 +336,7 @@ func randomQueryKeys(
 		if rng.IntN(10) == 0 {
 			logicalTime = rng.Uint32()
 		}
-		result[i] = makeKey(prefix, wallTime, logicalTime)
+		result[i] = makeMVCCKey(prefix, wallTime, logicalTime)
 	}
 	return result
 }
@@ -304,13 +353,13 @@ func makeCockroachKeyGen(rng *rand.Rand, cfg keyGenConfig) cockroachKeyGen {
 	}
 }
 
-func (g *cockroachKeyGen) randPrefix(blockPrefix []byte) []byte {
-	prefix := make([]byte, 0, g.cfg.PrefixLen+MaxSuffixLen)
-	prefix = append(prefix, blockPrefix...)
-	for len(prefix) < g.cfg.PrefixLen {
-		prefix = append(prefix, byte(g.rng.IntN(g.cfg.PrefixAlphabetLen)+'a'))
+func (g *cockroachKeyGen) randRoachKey(blockPrefix []byte) []byte {
+	roachKey := make([]byte, 0, g.cfg.RoachKeyLen+MaxSuffixLen)
+	roachKey = append(roachKey, blockPrefix...)
+	for len(roachKey) < g.cfg.RoachKeyLen {
+		roachKey = append(roachKey, byte(g.rng.IntN(g.cfg.PrefixAlphabetLen)+'a'))
 	}
-	return prefix
+	return roachKey
 }
 
 func (g *cockroachKeyGen) randTimestamp() (wallTime uint64, logicalTime uint32) {
