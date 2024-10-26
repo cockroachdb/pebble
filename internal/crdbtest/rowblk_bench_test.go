@@ -19,12 +19,12 @@ import (
 func BenchmarkCockroachDataRowBlockWriter(b *testing.B) {
 	for _, alphaLen := range []int{4, 8, 26} {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, prefixLen := range []int{8, 32, 128} {
-				lenShared := int(float64(prefixLen) * lenSharedPct)
+			for _, roachKeyLen := range []int{8, 32, 128} {
+				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, valueLen := range []int{8, 128, 1024} {
 					keyConfig := keyGenConfig{
 						PrefixAlphabetLen: alphaLen,
-						PrefixLen:         prefixLen,
+						RoachKeyLen:       roachKeyLen,
 						PrefixLenShared:   lenShared,
 						AvgKeysPerPrefix:  2,
 						PercentLogical:    0,
@@ -70,13 +70,13 @@ func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig keyGenConfig, 
 func BenchmarkCockroachDataBlockIter(b *testing.B) {
 	for _, alphaLen := range []int{4, 8, 26} {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, prefixLen := range []int{8, 32, 128} {
-				lenShared := int(float64(prefixLen) * lenSharedPct)
+			for _, roachKeyLen := range []int{8, 32, 128} {
+				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, logical := range []int{0, 100} {
 					for _, valueLen := range []int{8, 128, 1024} {
 						keyConfig := keyGenConfig{
 							PrefixAlphabetLen: alphaLen,
-							PrefixLen:         prefixLen,
+							RoachKeyLen:       roachKeyLen,
 							PrefixLenShared:   lenShared,
 							PercentLogical:    logical,
 							BaseWallTime:      uint64(time.Now().UnixNano()),

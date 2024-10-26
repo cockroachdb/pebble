@@ -57,7 +57,7 @@ func BenchmarkRandSeekInSST(b *testing.B) {
 	}
 	keyCfg := keyGenConfig{
 		PrefixAlphabetLen: 26,
-		PrefixLen:         12,
+		RoachKeyLen:       12,
 		PrefixLenShared:   4,
 		AvgKeysPerPrefix:  1,
 		BaseWallTime:      uint64(time.Now().UnixNano()),
@@ -149,12 +149,12 @@ func benchmarkRandSeekInSST(
 func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 	for _, alphaLen := range []int{4, 8, 26} {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, prefixLen := range []int{8, 32, 128} {
-				lenShared := int(float64(prefixLen) * lenSharedPct)
+			for _, roachKeyLen := range []int{8, 32, 128} {
+				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, valueLen := range []int{8, 128, 1024} {
 					keyConfig := keyGenConfig{
 						PrefixAlphabetLen: alphaLen,
-						PrefixLen:         prefixLen,
+						RoachKeyLen:       roachKeyLen,
 						PrefixLenShared:   lenShared,
 						PercentLogical:    0,
 						AvgKeysPerPrefix:  2,
@@ -195,15 +195,15 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig keyGenConfig, val
 func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
 	for _, alphaLen := range []int{4, 8, 26} {
 		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, prefixLen := range []int{8, 32, 128} {
-				lenShared := int(float64(prefixLen) * lenSharedPct)
+			for _, roachKeyLen := range []int{8, 32, 128} {
+				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, avgKeysPerPrefix := range []int{1, 10, 100} {
 					for _, percentLogical := range []int{0, 50} {
 						for _, valueLen := range []int{8, 128, 1024} {
 							cfg := benchConfig{
 								keyGenConfig: keyGenConfig{
 									PrefixAlphabetLen: alphaLen,
-									PrefixLen:         prefixLen,
+									RoachKeyLen:       roachKeyLen,
 									PrefixLenShared:   lenShared,
 									AvgKeysPerPrefix:  avgKeysPerPrefix,
 									PercentLogical:    percentLogical,
@@ -225,7 +225,7 @@ var shortBenchConfigs = []benchConfig{
 	{
 		keyGenConfig: keyGenConfig{
 			PrefixAlphabetLen: 8,
-			PrefixLen:         8,
+			RoachKeyLen:       8,
 			PrefixLenShared:   4,
 			AvgKeysPerPrefix:  4,
 			PercentLogical:    10,
@@ -235,7 +235,7 @@ var shortBenchConfigs = []benchConfig{
 	{
 		keyGenConfig: keyGenConfig{
 			PrefixAlphabetLen: 8,
-			PrefixLen:         128,
+			RoachKeyLen:       128,
 			PrefixLenShared:   64,
 			AvgKeysPerPrefix:  4,
 			PercentLogical:    10,
