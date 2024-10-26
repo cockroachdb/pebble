@@ -2,10 +2,9 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-//go:build !race
-// +build !race
+//go:build race
 
-package invariants
+package buildtags
 
-// RaceEnabled is true if we were built with the "race" build tag.
-const RaceEnabled = false
+// Race is true if we were built with the "race" build tag.
+const Race = true
