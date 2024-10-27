@@ -62,7 +62,6 @@ func newValue(n int) *Value {
 		})
 		return v
 	}
-
 	// When we're not performing leak detection, the lifetime of the returned
 	// Value is exactly the lifetime of the backing buffer and we can manually
 	// allocate both.
