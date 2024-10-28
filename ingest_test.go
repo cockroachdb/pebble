@@ -1133,7 +1133,7 @@ func testIngestSharedImpl(
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
+			err = from.ScanInternal(context.TODO(), sstable.CategoryUnknown, startKey, endKey,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
@@ -1634,7 +1634,7 @@ func TestConcurrentExcise(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
+			err = from.ScanInternal(context.TODO(), sstable.CategoryUnknown, startKey, endKey,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
@@ -2071,7 +2071,7 @@ func TestIngestExternal(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var externalFiles []ExternalFile
-			err = from.ScanInternal(context.TODO(), sstable.CategoryAndQoS{}, startKey, endKey,
+			err = from.ScanInternal(context.TODO(), sstable.CategoryUnknown, startKey, endKey,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
@@ -2356,11 +2356,8 @@ func TestIngestTargetLevel(t *testing.T) {
 					comparer: d.opts.Comparer,
 					newIters: d.newIters,
 					opts: IterOptions{
-						logger: d.opts.Logger,
-						CategoryAndQoS: sstable.CategoryAndQoS{
-							Category: "pebble-ingest",
-							QoSLevel: sstable.LatencySensitiveQoSLevel,
-						},
+						logger:   d.opts.Logger,
+						Category: categoryIngest,
 					},
 					v: d.mu.versions.currentVersion(),
 				}

@@ -1752,11 +1752,8 @@ func (d *DB) excise(
 		}
 		var err error
 		iters, err = d.newIters(ctx, m, &IterOptions{
-			CategoryAndQoS: sstable.CategoryAndQoS{
-				Category: "pebble-ingest",
-				QoSLevel: sstable.LatencySensitiveQoSLevel,
-			},
-			layer: manifest.Level(level),
+			Category: categoryIngest,
+			layer:    manifest.Level(level),
 		}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
 		itersLoaded = true
 		return err
@@ -2154,11 +2151,8 @@ func (d *DB) ingestApply(
 		comparer: d.opts.Comparer,
 		newIters: d.newIters,
 		opts: IterOptions{
-			logger: d.opts.Logger,
-			CategoryAndQoS: sstable.CategoryAndQoS{
-				Category: "pebble-ingest",
-				QoSLevel: sstable.LatencySensitiveQoSLevel,
-			},
+			logger:   d.opts.Logger,
+			Category: categoryIngest,
 		},
 		v: current,
 	}

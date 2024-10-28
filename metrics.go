@@ -147,6 +147,10 @@ func (m *LevelMetrics) WriteAmp() float64 {
 	return float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
 }
 
+var categoryCompaction = sstable.RegisterCategory("pebble-compaction", sstable.NonLatencySensitiveQoSLevel)
+var categoryIngest = sstable.RegisterCategory("pebble-ingest", sstable.LatencySensitiveQoSLevel)
+var categoryGet = sstable.RegisterCategory("pebble-get", sstable.LatencySensitiveQoSLevel)
+
 // Metrics holds metrics for various subsystems of the DB such as the Cache,
 // Compactions, WAL, and per-Level metrics.
 //

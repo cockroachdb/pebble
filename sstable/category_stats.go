@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -21,13 +22,89 @@ import (
 //
 // Examples of categories that can be useful in the CockroachDB context are:
 // sql-user, sql-stats, raft, rangefeed, mvcc-gc, range-snapshot.
-type Category string
+type Category uint8
+
+// CategoryUnknown is the unknown category. It has the latency-sensitive QoS
+// level.
+const CategoryUnknown Category = 0
+
+// CategoryMax is the maximum value of a category, and is also the maximum
+// number of categories that can be registered.
+const CategoryMax = 30
+
+func (c Category) String() string {
+	return categories[c].name
+}
+
+// QoSLevel returns the QoSLevel associated with this Category.
+func (c Category) QoSLevel() QoSLevel {
+	return categories[c].qosLevel
+}
+
+// SafeFormat implements the redact.SafeFormatter interface.
+func (c Category) SafeFormat(p redact.SafePrinter, verb rune) {
+	p.SafeString(redact.SafeString(c.String()))
+}
+
+// RegisterCategory registers a new category. Each category has a name and an
+// associated QoS level. The category name must be unique.
+//
+// Only CategoryMax categories can be registered in total.
+func RegisterCategory(name string, qosLevel QoSLevel) Category {
+	if categoriesList != nil {
+		panic("ReigsterCategory called after Categories()")
+	}
+	c := Category(numRegisteredCategories.Add(1))
+	if c > CategoryMax {
+		panic("too many categories")
+	}
+	categories[c].name = name
+	categories[c].qosLevel = qosLevel
+	return c
+}
+
+// Categories returns all registered categories, including CategoryUnknown.
+//
+// Can only be called after all categories have been registered. Calling
+// RegisterCategory() after Categories() will result in a panic.
+func Categories() []Category {
+	categoriesListOnce.Do(func() {
+		categoriesList = make([]Category, numRegisteredCategories.Load()+1)
+		for i := range categoriesList {
+			categoriesList[i] = Category(i)
+		}
+	})
+	return categoriesList
+}
+
+var categories = [CategoryMax + 1]struct {
+	name     string
+	qosLevel QoSLevel
+}{
+	CategoryUnknown: {name: "unknown", qosLevel: LatencySensitiveQoSLevel},
+}
+
+var numRegisteredCategories atomic.Uint32
+
+var categoriesList []Category
+var categoriesListOnce sync.Once
+
+// StringToCategoryForTesting returns the Category for the string, or panics if
+// the string is not known.
+func StringToCategoryForTesting(s string) Category {
+	for i := range categories {
+		if categories[i].name == s {
+			return Category(i)
+		}
+	}
+	panic(errors.AssertionFailedf("unknown Category %s", s))
+}
 
 // QoSLevel describes whether the read is latency-sensitive or not. Each
 // category must map to a single QoSLevel. While category strings are opaque
 // to Pebble, the QoSLevel may be internally utilized in Pebble to better
 // optimize future reads.
-type QoSLevel int
+type QoSLevel uint8
 
 const (
 	// LatencySensitiveQoSLevel is the default when QoSLevel is not specified,
@@ -62,12 +139,6 @@ func StringToQoSForTesting(s string) QoSLevel {
 	panic(errors.AssertionFailedf("unknown QoS %s", s))
 }
 
-// CategoryAndQoS specifies both the Category and the QoSLevel.
-type CategoryAndQoS struct {
-	Category Category
-	QoSLevel QoSLevel
-}
-
 // CategoryStats provides stats about a category of reads.
 type CategoryStats struct {
 	// BlockBytes is the bytes in the loaded blocks. If the block was
@@ -93,7 +164,6 @@ func (s *CategoryStats) aggregate(a CategoryStats) {
 // CategoryStatsAggregate is the aggregate for the given category.
 type CategoryStatsAggregate struct {
 	Category      Category
-	QoSLevel      QoSLevel
 	CategoryStats CategoryStats
 }
 
@@ -125,7 +195,6 @@ type CategoryStatsCollector struct {
 // contention on the category stats mutex has been observed.
 type shardedCategoryStats struct {
 	Category Category
-	QoSLevel QoSLevel
 	shards   [numCategoryStatsShards]struct {
 		categoryStatsWithMu
 		// Pad each shard to 64 bytes so they don't share a cache line.
@@ -138,7 +207,6 @@ type shardedCategoryStats struct {
 func (s *shardedCategoryStats) getStats() CategoryStatsAggregate {
 	agg := CategoryStatsAggregate{
 		Category: s.Category,
-		QoSLevel: s.QoSLevel,
 	}
 	for i := range s.shards {
 		s.shards[i].mu.Lock()
@@ -150,13 +218,12 @@ func (s *shardedCategoryStats) getStats() CategoryStatsAggregate {
 
 // Accumulator returns a stats accumulator for the given category. The provided
 // p is used to detrmine which shard to write stats to.
-func (c *CategoryStatsCollector) Accumulator(p uint64, caq CategoryAndQoS) IterStatsAccumulator {
-	v, ok := c.statsMap.Load(caq.Category)
+func (c *CategoryStatsCollector) Accumulator(p uint64, category Category) IterStatsAccumulator {
+	v, ok := c.statsMap.Load(category)
 	if !ok {
 		c.mu.Lock()
-		v, _ = c.statsMap.LoadOrStore(caq.Category, &shardedCategoryStats{
-			Category: caq.Category,
-			QoSLevel: caq.QoSLevel,
+		v, _ = c.statsMap.LoadOrStore(category, &shardedCategoryStats{
+			Category: category,
 		})
 		c.mu.Unlock()
 	}
@@ -172,9 +239,6 @@ func (c *CategoryStatsCollector) GetStats() []CategoryStatsAggregate {
 	var stats []CategoryStatsAggregate
 	c.statsMap.Range(func(_, v any) bool {
 		s := v.(*shardedCategoryStats).getStats()
-		if len(s.Category) == 0 {
-			s.Category = "_unknown"
-		}
 		stats = append(stats, s)
 		return true
 	})

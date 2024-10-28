@@ -107,6 +107,13 @@ func exampleMetrics() Metrics {
 	return m
 }
 
+func init() {
+	// Register some categories for the purposes of the test.
+	sstable.RegisterCategory("a", sstable.NonLatencySensitiveQoSLevel)
+	sstable.RegisterCategory("b", sstable.LatencySensitiveQoSLevel)
+	sstable.RegisterCategory("c", sstable.NonLatencySensitiveQoSLevel)
+}
+
 func TestMetrics(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
@@ -306,18 +313,13 @@ func TestMetrics(t *testing.T) {
 					return err.Error()
 				}
 			}
-			var categoryAndQoS sstable.CategoryAndQoS
+			category := sstable.CategoryUnknown
 			if td.HasArg("category") {
 				var s string
 				td.ScanArgs(t, "category", &s)
-				categoryAndQoS.Category = sstable.Category(s)
+				category = sstable.StringToCategoryForTesting(s)
 			}
-			if td.HasArg("qos") {
-				var qos string
-				td.ScanArgs(t, "qos", &qos)
-				categoryAndQoS.QoSLevel = sstable.StringToQoSForTesting(qos)
-			}
-			iter, _ := d.NewIter(&IterOptions{CategoryAndQoS: categoryAndQoS})
+			iter, _ := d.NewIter(&IterOptions{Category: category})
 			// Some iterators (eg. levelIter) do not instantiate the underlying
 			// iterator until the first positioning call. Position the iterator
 			// so that levelIters will have loaded an sstable.
@@ -342,7 +344,7 @@ func TestMetrics(t *testing.T) {
 				m.TableCache = cache.Metrics{}
 				m.BlockCache = cache.Metrics{}
 				// Empirically, the unknown stats are also non-deterministic.
-				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == "_unknown" {
+				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == sstable.CategoryUnknown {
 					m.CategoryStats[0].CategoryStats = sstable.CategoryStats{}
 				}
 			}
@@ -352,7 +354,7 @@ func TestMetrics(t *testing.T) {
 				fmt.Fprintf(&buf, "Iter category stats:\n")
 				for _, stats := range m.CategoryStats {
 					fmt.Fprintf(&buf, "%20s, %11s: %+v\n", stats.Category,
-						redact.StringWithoutMarkers(stats.QoSLevel), stats.CategoryStats)
+						redact.StringWithoutMarkers(stats.Category.QoSLevel()), stats.CategoryStats)
 				}
 			}
 			return buf.String()

@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable"
 )
 
 func TestGetIter(t *testing.T) {
@@ -455,10 +454,7 @@ func TestGetIter(t *testing.T) {
 			get.version = v
 			get.snapshot = ikey.SeqNum() + 1
 			get.iterOpts = IterOptions{
-				CategoryAndQoS: sstable.CategoryAndQoS{
-					Category: "pebble-get",
-					QoSLevel: sstable.LatencySensitiveQoSLevel,
-				},
+				Category:                      categoryGet,
 				logger:                        testLogger{t},
 				snapshotForHideObsoletePoints: get.snapshot,
 			}

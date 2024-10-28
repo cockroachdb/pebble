@@ -574,7 +574,7 @@ func (c *tableCacheShard) newPointIter(
 	iterStatsAccum := internalOpts.iterStatsAccumulator
 	if iterStatsAccum == nil && opts != nil && dbOpts.sstStatsCollector != nil {
 		iterStatsAccum = dbOpts.sstStatsCollector.Accumulator(
-			uint64(uintptr(unsafe.Pointer(v.reader))), opts.CategoryAndQoS)
+			uint64(uintptr(unsafe.Pointer(v.reader))), opts.Category)
 	}
 	if internalOpts.compaction {
 		iter, err = cr.NewCompactionIter(transforms, iterStatsAccum, rp, internalOpts.bufferPool)
