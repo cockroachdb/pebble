@@ -733,11 +733,8 @@ func (c *compaction) newInputIters(
 		}
 	}()
 	iterOpts := IterOptions{
-		CategoryAndQoS: sstable.CategoryAndQoS{
-			Category: "pebble-compaction",
-			QoSLevel: sstable.NonLatencySensitiveQoSLevel,
-		},
-		logger: c.logger,
+		Category: categoryCompaction,
+		logger:   c.logger,
 	}
 
 	// Populate iters, rangeDelIters and rangeKeyIters with the appropriate
@@ -1246,11 +1243,8 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		comparer: d.opts.Comparer,
 		newIters: d.newIters,
 		opts: IterOptions{
-			logger: d.opts.Logger,
-			CategoryAndQoS: sstable.CategoryAndQoS{
-				Category: "pebble-ingest",
-				QoSLevel: sstable.LatencySensitiveQoSLevel,
-			},
+			logger:   d.opts.Logger,
+			Category: categoryIngest,
 		},
 		v: c.version,
 	}

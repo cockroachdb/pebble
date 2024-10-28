@@ -830,7 +830,7 @@ func (opts *scanInternalOptions) skipLevelForOpts() int {
 
 // constructPointIter constructs a merging iterator and sets i.iter to it.
 func (i *scanInternalIterator) constructPointIter(
-	categoryAndQoS sstable.CategoryAndQoS, memtables flushableList, buf *iterAlloc,
+	category sstable.Category, memtables flushableList, buf *iterAlloc,
 ) error {
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
@@ -897,7 +897,7 @@ func (i *scanInternalIterator) constructPointIter(
 	levels = levels[:numLevelIters]
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
 	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
-	i.opts.IterOptions.CategoryAndQoS = categoryAndQoS
+	i.opts.IterOptions.Category = category
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]

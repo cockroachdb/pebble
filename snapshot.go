@@ -75,7 +75,7 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) (*Ite
 // point keys deleted by range dels and keys masked by range keys.
 func (s *Snapshot) ScanInternal(
 	ctx context.Context,
-	categoryAndQoS sstable.CategoryAndQoS,
+	category sstable.Category,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
@@ -87,7 +87,7 @@ func (s *Snapshot) ScanInternal(
 		panic(ErrClosed)
 	}
 	scanInternalOpts := &scanInternalOptions{
-		CategoryAndQoS:    categoryAndQoS,
+		category:          category,
 		visitPointKey:     visitPointKey,
 		visitRangeDel:     visitRangeDel,
 		visitRangeKey:     visitRangeKey,
@@ -473,7 +473,7 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 // point keys deleted by range dels and keys masked by range keys.
 func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	ctx context.Context,
-	categoryAndQoS sstable.CategoryAndQoS,
+	category sstable.Category,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
@@ -486,7 +486,7 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	}
 	var sOpts snapshotIterOpts
 	opts := &scanInternalOptions{
-		CategoryAndQoS: categoryAndQoS,
+		category: category,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,

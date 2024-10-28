@@ -38,7 +38,7 @@ batch
 set a 1
 ----
 
-iter-new a category=a qos=non-latency
+iter-new a category=a
 ----
 
 flush
@@ -48,7 +48,7 @@ L0.0:
 
 # iter b references both a memtable and sstable 5.
 
-iter-new b category=b qos=latency
+iter-new b category=b
 ----
 
 metrics
@@ -103,7 +103,7 @@ L0.0:
 
 # iter c references both a memtable and sstables 5 and 7.
 
-iter-new c category=c qos=non-latency
+iter-new c category=c
 ----
 
 compact a-z
@@ -144,10 +144,10 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    c, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -191,10 +191,10 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    c, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 # Closing iter c will release one of the zombie sstables. The other
 # zombie sstable is still referenced by iter b.
@@ -235,10 +235,10 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -282,10 +282,10 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -355,10 +355,10 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
 
 additional-metrics
 ----
@@ -412,10 +412,10 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
 
 additional-metrics
 ----
@@ -518,11 +518,11 @@ Filter utility: 0.0%
 Ingestions: 2  as flushable: 2 (1.7KB in 3 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 batch
 set g g
@@ -583,11 +583,11 @@ Filter utility: 0.0%
 Ingestions: 2  as flushable: 2 (1.7KB in 3 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:64 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 build ext1
 set z z
@@ -662,11 +662,11 @@ Filter utility: 0.0%
 Ingestions: 3  as flushable: 2 (1.7KB in 3 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
+       pebble-ingest,     latency: {BlockBytes:200 BlockBytesInCache:0 BlockReadDuration:30ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:301 BlockBytesInCache:44 BlockReadDuration:60ms}
-       pebble-ingest,     latency: {BlockBytes:200 BlockBytesInCache:0 BlockReadDuration:30ms}
 
 # Virtualize a virtual sstable.
 build ext1
@@ -766,11 +766,11 @@ Filter utility: 0.0%
 Ingestions: 4  as flushable: 2 (1.7KB in 3 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:677 BlockBytesInCache:376 BlockReadDuration:70ms}
+       pebble-ingest,     latency: {BlockBytes:272 BlockBytesInCache:72 BlockReadDuration:30ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
-   pebble-compaction, non-latency: {BlockBytes:677 BlockBytesInCache:376 BlockReadDuration:70ms}
-       pebble-ingest,     latency: {BlockBytes:272 BlockBytesInCache:72 BlockReadDuration:30ms}
 
 # Create a DB where lower levels are written as shared tables. All ingests also
 # become shared tables.

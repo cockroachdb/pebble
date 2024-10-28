@@ -579,10 +579,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		snapshot: seqNum,
 		iterOpts: IterOptions{
 			// TODO(sumeer): replace with a parameter provided by the caller.
-			CategoryAndQoS: sstable.CategoryAndQoS{
-				Category: "pebble-get",
-				QoSLevel: sstable.LatencySensitiveQoSLevel,
-			},
+			Category:                      categoryGet,
 			logger:                        d.opts.Logger,
 			snapshotForHideObsoletePoints: seqNum,
 		},
@@ -1262,7 +1259,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // iteration is invalid in those cases.
 func (d *DB) ScanInternal(
 	ctx context.Context,
-	categoryAndQoS sstable.CategoryAndQoS,
+	category sstable.Category,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum SeqNum) error,
@@ -1271,7 +1268,7 @@ func (d *DB) ScanInternal(
 	visitExternalFile func(sst *ExternalFile) error,
 ) error {
 	scanInternalOpts := &scanInternalOptions{
-		CategoryAndQoS:    categoryAndQoS,
+		category:          category,
 		visitPointKey:     visitPointKey,
 		visitRangeDel:     visitRangeDel,
 		visitRangeKey:     visitRangeKey,
@@ -1369,7 +1366,7 @@ func finishInitializingInternalIter(
 	}
 	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
 
-	if err := i.constructPointIter(i.opts.CategoryAndQoS, memtables, buf); err != nil {
+	if err := i.constructPointIter(i.opts.category, memtables, buf); err != nil {
 		return nil, err
 	}
 
@@ -1411,7 +1408,7 @@ func (i *Iterator) constructPointIter(
 	if collector := i.tc.dbOpts.sstStatsCollector; collector != nil {
 		internalOpts.iterStatsAccumulator = collector.Accumulator(
 			uint64(uintptr(unsafe.Pointer(i))),
-			i.opts.CategoryAndQoS,
+			i.opts.Category,
 		)
 	}
 	if i.opts.RangeKeyMasking.Filter != nil {

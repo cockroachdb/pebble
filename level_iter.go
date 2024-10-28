@@ -169,7 +169,7 @@ func (l *levelIter) init(
 		l.tableOpts.PointKeyFilters = l.filtersBuf[:0:1]
 	}
 	l.tableOpts.UseL6Filters = opts.UseL6Filters
-	l.tableOpts.CategoryAndQoS = opts.CategoryAndQoS
+	l.tableOpts.Category = opts.Category
 	l.tableOpts.layer = l.layer
 	l.tableOpts.snapshotForHideObsoletePoints = opts.snapshotForHideObsoletePoints
 	l.comparer = comparer
