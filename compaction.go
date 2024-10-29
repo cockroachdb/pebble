@@ -472,6 +472,7 @@ type BlobFileDecisionForCompaction struct {
 type compactionBlobFileState struct {
 	inputBlobSize uint64
 	reusedBlobSize uint64
+	// Currently, notReusedDueToGarbageBlobSize is always 0.
 	notReusedDueToGarbageBlobSize uint64
 	notReusedDueToDepth uint64
 
@@ -2791,8 +2792,12 @@ func (d *DB) runCompaction(
 		if blobWriter != nil {
 			// Should roll-over?
 			//
-			// TODO(sumeer): eliminate this rollover of only the blob. We've
-			// effectively disabled it in our tests.
+
+			// TODO(sumeer): eliminate this rollover of only the blob file. We've
+			// effectively disabled it in our tests, and we never want to do it. We
+			// rollover when the sst + blob file size qualifies for size based
+			// rollover, or overlap rollover gets triggered, and then we close both
+			// the sst and blob file.
 			curSize := blobWriter.BlobValueSize()
 			if curSize > c.maxBlobFileSizeBasedOnBlobValueSize {
 				worstCaseFutureIncrease := int64(c.maxOutputFileSizeIncludingBlobValueSize) -

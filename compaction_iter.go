@@ -298,12 +298,13 @@ func (i *compactionIter) setIterValue(value LazyValue) {
 	i.iterValueBlobFileReference = value
 }
 
-// The only case where First/Nest return a value that is actually lazy is when
+// The only case where First/Next return a value that is actually lazy is when
 // the value is pointing to a blob file. The caller can check whether it wants
 // to keep it as a pointer or not. If yes, it needs to reconstruct the handle
-// since we have taken out the prefix, len and long attribute (or somehow peer
-// into the raw value, but that is very hard since need would need to punch
-// through the iterator tree).
+// since we have already parsed the the prefix, len and long attribute (or
+// somehow peer into the raw value, but that is very hard since need would
+// need to punch through the iterator tree). The reconstruction is done using
+// sstable.ConstructValueReferenceAndShortAttribute.
 
 func (i *compactionIter) First() (*InternalKey, base.LazyValue) {
 	if i.err != nil {
