@@ -64,7 +64,7 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
 	dataBH   block.Handle
-	vbReader *valueBlockReader
+	vbReader valueBlockReader
 	// vbRH is the read handle for value blocks, which are in a different
 	// part of the sstable than data blocks.
 	vbRH         objstorage.ReadHandle
@@ -228,22 +228,13 @@ func newColumnBlockSingleLevelIterator(
 	)
 	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
-		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
-		// can outlive the singleLevelIterator due to be being embedded in a
-		// LazyValue. This consumes ~2% in microbenchmark CPU profiles, but we
-		// should only optimize this if it shows up as significant in end-to-end
-		// CockroachDB benchmarks, since it is tricky to do so. One possibility
-		// is that if many sstable iterators only get positioned at latest
-		// versions of keys, and therefore never expose a LazyValue that is
-		// separated to their callers, they can put this valueBlockReader into a
-		// sync.Pool.
-		i.vbReader = &valueBlockReader{
+		i.vbReader = valueBlockReader{
 			bpOpen: i,
 			rp:     rp,
 			vbih:   r.valueBIH,
 			stats:  stats,
 		}
-		getLazyValuer = i.vbReader
+		getLazyValuer = &i.vbReader
 		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
 	i.data.InitOnce(r.keySchema, i.cmp, r.Split, getLazyValuer)
@@ -301,13 +292,13 @@ func newRowBlockSingleLevelIterator(
 			// versions of keys, and therefore never expose a LazyValue that is
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
-			i.vbReader = &valueBlockReader{
+			i.vbReader = valueBlockReader{
 				bpOpen: i,
 				rp:     rp,
 				vbih:   r.valueBIH,
 				stats:  stats,
 			}
-			(&i.data).SetGetLazyValuer(i.vbReader)
+			(&i.data).SetGetLazyValuer(&i.vbReader)
 			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
 		i.data.SetHasValuePrefix(true)
@@ -1600,9 +1591,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	if i.bpfs != nil {
 		releaseBlockPropertiesFilterer(i.bpfs)
 	}
-	if i.vbReader != nil {
-		i.vbReader.close()
-	}
+	i.vbReader.close()
 	if i.vbRH != nil {
 		err = firstError(err, i.vbRH.Close())
 		i.vbRH = nil
