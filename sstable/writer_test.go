@@ -378,7 +378,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				return err.Error()
 			}
 			forceRowIterIgnoreValueBlocks := func(i *singleLevelIteratorRowBlocks) {
-				i.vbReader = nil
+				i.vbReader = valueBlockReader{}
 				i.data.SetGetLazyValuer(nil)
 				i.data.SetHasValuePrefix(false)
 			}

@@ -186,13 +186,13 @@ func newColumnBlockTwoLevelIterator(
 		// versions of keys, and therefore never expose a LazyValue that is
 		// separated to their callers, they can put this valueBlockReader into a
 		// sync.Pool.
-		i.secondLevel.vbReader = &valueBlockReader{
+		i.secondLevel.vbReader = valueBlockReader{
 			bpOpen: &i.secondLevel,
 			rp:     rp,
 			vbih:   r.valueBIH,
 			stats:  stats,
 		}
-		getLazyValuer = i.secondLevel.vbReader
+		getLazyValuer = &i.secondLevel.vbReader
 		i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
 	i.secondLevel.data.InitOnce(r.keySchema, r.Compare, r.Split, getLazyValuer)
@@ -249,13 +249,13 @@ func newRowBlockTwoLevelIterator(
 			// versions of keys, and therefore never expose a LazyValue that is
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
-			i.secondLevel.vbReader = &valueBlockReader{
+			i.secondLevel.vbReader = valueBlockReader{
 				bpOpen: &i.secondLevel,
 				rp:     rp,
 				vbih:   r.valueBIH,
 				stats:  stats,
 			}
-			i.secondLevel.data.SetGetLazyValuer(i.secondLevel.vbReader)
+			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.vbReader)
 			i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 		}
 		i.secondLevel.data.SetHasValuePrefix(true)

@@ -72,5 +72,12 @@ func InPlaceValuePrefix(setHasSameKeyPrefix bool) ValuePrefix {
 // GetLazyValueForPrefixAndValueHandler is an interface for getting a LazyValue
 // from a value prefix and value.
 type GetLazyValueForPrefixAndValueHandler interface {
+	// GetLazyValueForPrefixAndValueHandle returns a LazyValue for the given value
+	// prefix and value.
+	//
+	// The result is only valid until the next call to
+	// GetLazyValueForPrefixAndValueHandle. Use LazyValue.Clone if the lifetime of
+	// the LazyValue needs to be extended. For more details, see the "memory
+	// management" comment where LazyValue is declared.
 	GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue
 }
