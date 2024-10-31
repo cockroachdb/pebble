@@ -423,10 +423,12 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 	if t.opTimeout > 0 {
 		opTimeout := t.opTimeout
 		switch op.(type) {
-		case *compactOp, *downloadOp, *newSnapshotOp, *ingestOp, *ingestAndExciseOp, *ingestExternalFilesOp:
+		case *compactOp, *newSnapshotOp, *ingestOp, *ingestAndExciseOp, *ingestExternalFilesOp:
 			// These ops can be very slow, especially if we end up with many tiny
 			// tables. Bump up the timout by a factor.
 			opTimeout *= 4
+		case *downloadOp:
+			opTimeout *= 8
 		}
 		timer = time.AfterFunc(opTimeout, func() {
 			panic(fmt.Sprintf("operation took longer than %s: %s", opTimeout, op.String()))

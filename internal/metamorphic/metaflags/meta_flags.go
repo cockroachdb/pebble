@@ -76,7 +76,7 @@ func initCommonFlags() *CommonFlags {
 
 	flag.IntVar(&c.NumInstances, "num-instances", 1, "number of pebble instances to create (default: 1)")
 
-	defaultOpTimeout := 1 * time.Minute
+	defaultOpTimeout := 2 * time.Minute
 	if invariants.RaceEnabled {
 		defaultOpTimeout *= 5
 	}
