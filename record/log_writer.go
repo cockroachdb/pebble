@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
@@ -570,12 +571,12 @@ func (w *LogWriter) flushLoop(context.Context) {
 	f.Lock()
 
 	// Initialize idleStartTime to when the loop starts.
-	idleStartTime := time.Now()
+	idleStartTime := crtime.NowMono()
 	var syncTimer syncTimer
 	defer func() {
 		// Capture the idle duration between the last piece of work and when the
 		// loop terminated.
-		f.metrics.WriteThroughput.IdleDuration += time.Since(idleStartTime)
+		f.metrics.WriteThroughput.IdleDuration += idleStartTime.Elapsed()
 		if syncTimer != nil {
 			syncTimer.Stop()
 		}
@@ -657,7 +658,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 		// 2. add block to pending
 		// 3. add to syncQ
 		//                         4. read syncQ
-		workStartTime := time.Now()
+		workStartTime := crtime.NowMono()
 		idleDuration := workStartTime.Sub(idleStartTime)
 		pending = append(pending[:0], f.pending...)
 		f.pending = f.pending[:0]
@@ -689,7 +690,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 			// Update the idleStartTime if work could not be done, so that we don't
 			// include the duration we tried to do work as idle. We don't bother
 			// with the rest of the accounting, which means we will undercount.
-			idleStartTime = time.Now()
+			idleStartTime = crtime.NowMono()
 			f.Lock()
 			continue
 		}
@@ -704,7 +705,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 			// Update the idleStartTime if work could not be done, so that we don't
 			// include the duration we tried to do work as idle. We don't bother
 			// with the rest of the accounting, which means we will undercount.
-			idleStartTime = time.Now()
+			idleStartTime = crtime.NowMono()
 			continue
 		}
 
@@ -724,7 +725,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 			}
 		}
 		// Finished work, and started idling.
-		idleStartTime = time.Now()
+		idleStartTime = crtime.NowMono()
 		workDuration := idleStartTime.Sub(workStartTime)
 		f.metrics.WriteThroughput.Bytes += bytesWritten
 		f.metrics.WriteThroughput.WorkDuration += workDuration
@@ -773,9 +774,9 @@ func (w *LogWriter) flushPending(
 }
 
 func (w *LogWriter) syncWithLatency() (time.Duration, error) {
-	start := time.Now()
+	start := crtime.NowMono()
 	err := w.s.Sync()
-	syncLatency := time.Since(start)
+	syncLatency := start.Elapsed()
 	return syncLatency, err
 }
 

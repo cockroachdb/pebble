@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -436,12 +437,12 @@ func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 	t.Run("too large delta leads to panic", func(t *testing.T) {
 		// Given the packing scheme, 35 years of process uptime will lead to a delta
 		// that is too large to fit in the packed int64.
-		tCreate := time.Now().Add(-35 * time.Hour * 24 * 365)
-		hcFile.createTimeNanos = tCreate.UnixNano()
+		tCreate := crtime.NowMono() - crtime.Mono(35*time.Hour*24*365)
+		hcFile.createTime = tCreate
 
 		// Assert that the time since tCreate (in milliseconds) is indeed greater
 		// than the max delta that can fit.
-		require.True(t, time.Since(tCreate).Milliseconds() > 1<<deltaBits-1)
+		require.True(t, tCreate.Elapsed().Milliseconds() > 1<<deltaBits-1)
 
 		// Attempting to start the clock for a new operation on the file should
 		// trigger a panic, as the calculated delta from the file creation time would
@@ -451,10 +452,10 @@ func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 	t.Run("pretty large delta but not too large leads to no panic", func(t *testing.T) {
 		// Given the packing scheme, 34 years of process uptime will lead to a delta
 		// that is just small enough to fit in the packed int64.
-		tCreate := time.Now().Add(-34 * time.Hour * 24 * 365)
-		hcFile.createTimeNanos = tCreate.UnixNano()
+		tCreate := crtime.NowMono() - crtime.Mono(34*time.Hour*24*365)
+		hcFile.createTime = tCreate
 
-		require.True(t, time.Since(tCreate).Milliseconds() < 1<<deltaBits-1)
+		require.True(t, tCreate.Elapsed().Milliseconds() < 1<<deltaBits-1)
 		require.NotPanics(t, func() { _, _ = hcFile.Write([]byte("should be fine")) })
 	})
 }

@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
@@ -1171,7 +1172,7 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 
 func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
-		flushingWorkStart := time.Now()
+		flushingWorkStart := crtime.NowMono()
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		idleDuration := flushingWorkStart.Sub(d.mu.compact.noOngoingFlushStartTime)
@@ -1182,7 +1183,7 @@ func (d *DB) flush() {
 			d.opts.EventListener.BackgroundError(err)
 		}
 		d.mu.compact.flushing = false
-		d.mu.compact.noOngoingFlushStartTime = time.Now()
+		d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
 		workDuration := d.mu.compact.noOngoingFlushStartTime.Sub(flushingWorkStart)
 		d.mu.compact.flushWriteThroughput.Bytes += int64(bytesFlushed)
 		d.mu.compact.flushWriteThroughput.WorkDuration += workDuration

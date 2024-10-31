@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
-	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
@@ -300,13 +300,13 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 		return nil
 	}
 
-	commitStartTime := time.Now()
+	commitStartTime := crtime.NowMono()
 	// Acquire semaphores.
 	p.commitQueueSem <- struct{}{}
 	if syncWAL {
 		p.logSyncQSem <- struct{}{}
 	}
-	b.commitStats.SemaphoreWaitDuration = time.Since(commitStartTime)
+	b.commitStats.SemaphoreWaitDuration = commitStartTime.Elapsed()
 
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
@@ -348,7 +348,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 	// b.commitErr. We will read b.commitErr in Batch.SyncWait after the
 	// LogWriter is done writing.
 
-	b.commitStats.TotalDuration = time.Since(commitStartTime)
+	b.commitStats.TotalDuration = commitStartTime.Elapsed()
 
 	return err
 }
@@ -488,9 +488,9 @@ func (p *commitPipeline) publish(b *Batch) {
 		if t == nil {
 			// Wait for another goroutine to publish us. We might also be waiting for
 			// the WAL sync to finish.
-			now := time.Now()
+			now := crtime.NowMono()
 			b.commit.Wait()
-			b.commitStats.CommitWaitDuration += time.Since(now)
+			b.commitStats.CommitWaitDuration += now.Elapsed()
 			break
 		}
 		if !t.applied.Load() {

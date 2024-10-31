@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/redact"
 )
 
@@ -197,7 +198,7 @@ type diskHealthCheckingFile struct {
 	// NB: this packing scheme is not persisted, and is therefore safe to adjust
 	// across process boundaries.
 	lastWritePacked atomic.Uint64
-	createTimeNanos int64
+	createTime      crtime.Mono
 
 	// aggBytesWritten points to an atomic that aggregates the bytes written for files
 	// that belong to a specific DiskWriteCategory. This pointer is also stored in the
@@ -230,8 +231,8 @@ func newDiskHealthCheckingFile(
 		diskSlowThreshold: diskSlowThreshold,
 		tickInterval:      defaultTickInterval,
 
-		stopper:         make(chan struct{}),
-		createTimeNanos: time.Now().UnixNano(),
+		stopper:    make(chan struct{}),
+		createTime: crtime.NowMono(),
 
 		aggBytesWritten: bytesWritten,
 		category:        category,
@@ -260,12 +261,13 @@ func (d *diskHealthCheckingFile) startTicker() {
 					continue
 				}
 				delta, writeSize, op := unpack(packed)
-				lastWrite := time.Unix(0, d.createTimeNanos+delta.Nanoseconds())
-				now := time.Now()
-				if lastWrite.Add(d.diskSlowThreshold).Before(now) {
+				now := crtime.NowMono()
+				// The last write started at d.createTime + delta and ended now.
+				lastWriteDuration := now.Sub(d.createTime) - delta
+				if lastWriteDuration > d.diskSlowThreshold {
 					// diskSlowThreshold was exceeded. Call the passed-in
 					// listener.
-					d.onSlowDisk(op, writeSize, now.Sub(lastWrite))
+					d.onSlowDisk(op, writeSize, lastWriteDuration)
 				}
 			}
 		}
@@ -296,7 +298,7 @@ func (d *diskHealthCheckingFile) ReadAt(p []byte, off int64) (int, error) {
 func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 	d.timeDiskOp(OpTypeWrite, int64(len(p)), func() {
 		n, err = d.file.Write(p)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	d.aggBytesWritten.Add(uint64(n))
 	return n, err
 }
@@ -305,7 +307,7 @@ func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 func (d *diskHealthCheckingFile) WriteAt(p []byte, ofs int64) (n int, err error) {
 	d.timeDiskOp(OpTypeWrite, int64(len(p)), func() {
 		n, err = d.file.WriteAt(p, ofs)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	d.aggBytesWritten.Add(uint64(n))
 	return n, err
 }
@@ -325,7 +327,7 @@ func (d *diskHealthCheckingFile) Prefetch(offset, length int64) error {
 func (d *diskHealthCheckingFile) Preallocate(off, n int64) (err error) {
 	d.timeDiskOp(OpTypePreallocate, n, func() {
 		err = d.file.Preallocate(off, n)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -338,7 +340,7 @@ func (d *diskHealthCheckingFile) Stat() (FileInfo, error) {
 func (d *diskHealthCheckingFile) Sync() (err error) {
 	d.timeDiskOp(OpTypeSync, 0, func() {
 		err = d.file.Sync()
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -346,7 +348,7 @@ func (d *diskHealthCheckingFile) Sync() (err error) {
 func (d *diskHealthCheckingFile) SyncData() (err error) {
 	d.timeDiskOp(OpTypeSyncData, 0, func() {
 		err = d.file.SyncData()
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -354,7 +356,7 @@ func (d *diskHealthCheckingFile) SyncData() (err error) {
 func (d *diskHealthCheckingFile) SyncTo(length int64) (fullSync bool, err error) {
 	d.timeDiskOp(OpTypeSyncTo, length, func() {
 		fullSync, err = d.file.SyncTo(length)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return fullSync, err
 }
 
@@ -367,14 +369,14 @@ func (d *diskHealthCheckingFile) SyncTo(length int64) (fullSync bool, err error)
 // unix epoch so that it appears in stack traces during crashes (if GOTRACEBACK
 // is set appropriately), aiding postmortem debugging.
 func (d *diskHealthCheckingFile) timeDiskOp(
-	opType OpType, writeSizeInBytes int64, op func(), startNanos int64,
+	opType OpType, writeSizeInBytes int64, op func(), start crtime.Mono,
 ) {
 	if d == nil || d.diskSlowThreshold == 0 {
 		op()
 		return
 	}
 
-	delta := time.Duration(startNanos - d.createTimeNanos)
+	delta := start.Sub(d.createTime)
 	packed := pack(delta, writeSizeInBytes, opType)
 	if d.lastWritePacked.Swap(packed) != 0 {
 		panic("concurrent write operations detected on file")
@@ -442,7 +444,7 @@ type diskHealthCheckingDir struct {
 func (d *diskHealthCheckingDir) Sync() (err error) {
 	d.fs.timeFilesystemOp(d.name, OpTypeSync, func() {
 		err = d.File.Sync()
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -539,9 +541,9 @@ type diskHealthCheckingFS struct {
 }
 
 type slot struct {
-	name       string
-	opType     OpType
-	startNanos atomic.Int64
+	name      string
+	opType    OpType
+	startTime crtime.AtomicMono
 }
 
 // diskHealthCheckingFS implements FS.
@@ -595,7 +597,7 @@ func (d *diskHealthCheckingFS) Unwrap() FS {
 // unix epoch so that it appears in stack traces during crashes (if GOTRACEBACK
 // is set appropriately), aiding postmortem debugging.
 func (d *diskHealthCheckingFS) timeFilesystemOp(
-	name string, opType OpType, op func(), startNanos int64,
+	name string, opType OpType, op func(), start crtime.Mono,
 ) {
 	if d == nil {
 		op()
@@ -626,12 +628,12 @@ func (d *diskHealthCheckingFS) timeFilesystemOp(
 		}
 
 		for i := 0; i < len(d.mu.inflight); i++ {
-			if d.mu.inflight[i].startNanos.Load() == 0 {
+			if d.mu.inflight[i].startTime.Load() == 0 {
 				// This slot is not in use. Claim it.
 				s = d.mu.inflight[i]
 				s.name = name
 				s.opType = opType
-				s.startNanos.Store(startNanos)
+				s.startTime.Store(start)
 				break
 			}
 		}
@@ -645,7 +647,7 @@ func (d *diskHealthCheckingFS) timeFilesystemOp(
 				name:   name,
 				opType: opType,
 			}
-			s.startNanos.Store(startNanos)
+			s.startTime.Store(start)
 			d.mu.inflight = append(d.mu.inflight, s)
 		}
 	}()
@@ -653,7 +655,7 @@ func (d *diskHealthCheckingFS) timeFilesystemOp(
 	op()
 
 	// Signal completion by zeroing the start time.
-	s.startNanos.Store(0)
+	s.startTime.Store(0)
 }
 
 // startTickerLocked starts a new goroutine with a ticker to monitor disk
@@ -665,9 +667,9 @@ func (d *diskHealthCheckingFS) startTickerLocked() {
 		ticker := time.NewTicker(d.tickInterval)
 		defer ticker.Stop()
 		type exceededSlot struct {
-			name       string
-			opType     OpType
-			startNanos int64
+			name      string
+			opType    OpType
+			startTime crtime.Mono
 		}
 		var exceededSlots []exceededSlot
 
@@ -678,16 +680,16 @@ func (d *diskHealthCheckingFS) startTickerLocked() {
 				// time older than the diskSlowThreshold.
 				exceededSlots = exceededSlots[:0]
 				d.mu.Lock()
-				now := time.Now()
+				now := crtime.NowMono()
 				for i := range d.mu.inflight {
-					nanos := d.mu.inflight[i].startNanos.Load()
-					if nanos != 0 && time.Unix(0, nanos).Add(d.diskSlowThreshold).Before(now) {
+					startTime := d.mu.inflight[i].startTime.Load()
+					if startTime != 0 && now.Sub(startTime) > d.diskSlowThreshold {
 						// diskSlowThreshold was exceeded. Copy this inflightOp into
 						// exceededSlots and call d.onSlowDisk after dropping the mutex.
 						inflightOp := exceededSlot{
-							name:       d.mu.inflight[i].name,
-							opType:     d.mu.inflight[i].opType,
-							startNanos: nanos,
+							name:      d.mu.inflight[i].name,
+							opType:    d.mu.inflight[i].opType,
+							startTime: startTime,
 						}
 						exceededSlots = append(exceededSlots, inflightOp)
 					}
@@ -699,7 +701,7 @@ func (d *diskHealthCheckingFS) startTickerLocked() {
 							Path:      exceededSlots[i].name,
 							OpType:    exceededSlots[i].opType,
 							WriteSize: 0, // writes at the fs level are not sized
-							Duration:  now.Sub(time.Unix(0, exceededSlots[i].startNanos)),
+							Duration:  now.Sub(exceededSlots[i].startTime),
 						})
 				}
 			case <-stopper:
@@ -744,7 +746,7 @@ func (d *diskHealthCheckingFS) Create(name string, category DiskWriteCategory) (
 	var err error
 	d.timeFilesystemOp(name, OpTypeCreate, func() {
 		f, err = d.fs.Create(name, category)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	if err != nil {
 		return f, err
 	}
@@ -775,7 +777,7 @@ func (d *diskHealthCheckingFS) Link(oldname, newname string) error {
 	var err error
 	d.timeFilesystemOp(newname, OpTypeLink, func() {
 		err = d.fs.Link(oldname, newname)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -794,7 +796,7 @@ func (d *diskHealthCheckingFS) MkdirAll(dir string, perm os.FileMode) error {
 	var err error
 	d.timeFilesystemOp(dir, OpTypeMkdirAll, func() {
 		err = d.fs.MkdirAll(dir, perm)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -849,7 +851,7 @@ func (d *diskHealthCheckingFS) Remove(name string) error {
 	var err error
 	d.timeFilesystemOp(name, OpTypeRemove, func() {
 		err = d.fs.Remove(name)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -858,7 +860,7 @@ func (d *diskHealthCheckingFS) RemoveAll(name string) error {
 	var err error
 	d.timeFilesystemOp(name, OpTypeRemoveAll, func() {
 		err = d.fs.RemoveAll(name)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -867,7 +869,7 @@ func (d *diskHealthCheckingFS) Rename(oldname, newname string) error {
 	var err error
 	d.timeFilesystemOp(newname, OpTypeRename, func() {
 		err = d.fs.Rename(oldname, newname)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	return err
 }
 
@@ -879,7 +881,7 @@ func (d *diskHealthCheckingFS) ReuseForWrite(
 	var err error
 	d.timeFilesystemOp(newname, OpTypeReuseForWrite, func() {
 		f, err = d.fs.ReuseForWrite(oldname, newname, category)
-	}, time.Now().UnixNano())
+	}, crtime.NowMono())
 	if err != nil {
 		return f, err
 	}

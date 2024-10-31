@@ -14,6 +14,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -456,7 +457,7 @@ type DB struct {
 			flushWriteThroughput ThroughputMetric
 			// The idle start time for the flush "loop", i.e., when the flushing
 			// bool above transitions to false.
-			noOngoingFlushStartTime time.Time
+			noOngoingFlushStartTime crtime.Mono
 		}
 
 		// Non-zero when file cleaning is disabled. The disabled count acts as a
@@ -2474,10 +2475,10 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 					Reason: "memtable count limit reached",
 				})
 			}
-			now := time.Now()
+			beforeWait := crtime.NowMono()
 			d.mu.compact.cond.Wait()
 			if b != nil {
-				b.commitStats.MemTableWriteStallDuration += time.Since(now)
+				b.commitStats.MemTableWriteStallDuration += beforeWait.Elapsed()
 			}
 			continue
 		}
@@ -2490,10 +2491,10 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 					Reason: "L0 file count limit exceeded",
 				})
 			}
-			now := time.Now()
+			beforeWait := crtime.NowMono()
 			d.mu.compact.cond.Wait()
 			if b != nil {
-				b.commitStats.L0ReadAmpWriteStallDuration += time.Since(now)
+				b.commitStats.L0ReadAmpWriteStallDuration += beforeWait.Elapsed()
 			}
 			continue
 		}
@@ -2527,10 +2528,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 	var newLogNum base.DiskFileNum
 	var prevLogSize uint64
 	if !d.opts.DisableWAL {
-		now := time.Now()
+		beforeRotate := crtime.NowMono()
 		newLogNum, prevLogSize = d.rotateWAL()
 		if b != nil {
-			b.commitStats.WALRotationDuration += time.Since(now)
+			b.commitStats.WALRotationDuration += beforeRotate.Elapsed()
 		}
 	}
 	immMem := d.mu.mem.mutable
