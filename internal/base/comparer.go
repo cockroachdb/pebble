@@ -186,6 +186,13 @@ func (s Split) Prefix(k []byte) []byte {
 	return k[:i:i]
 }
 
+// HasSuffix returns true if the key k has a suffix remaining after
+// Split is called on it. For keys where the entirety of the key is
+// returned by Split, HasSuffix will return false.
+func (s Split) HasSuffix(k []byte) bool {
+	return s(k) < len(k)
+}
+
 // DefaultSplit is a trivial implementation of Split which always returns the
 // full key.
 var DefaultSplit Split = func(key []byte) int { return len(key) }
