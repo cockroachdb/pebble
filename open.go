@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/constants"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -807,16 +808,22 @@ func (d *DB) replayIngestedFlushable(
 	}
 
 	meta := make([]*fileMetadata, len(fileNums))
+	var lastRangeKey keyspan.Span
 	for i, n := range fileNums {
 		readable, err := d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
 		}
 		// NB: ingestLoad1 will close readable.
-		meta[i], err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(), readable, d.cacheID, base.PhysicalTableFileNum(n))
+		meta[i], lastRangeKey, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
+			readable, d.cacheID, base.PhysicalTableFileNum(n), lastRangeKey, false /* disableRangeKeyChecks */)
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
 		}
+	}
+	if lastRangeKey.Valid() && d.opts.Comparer.Split.HasSuffix(lastRangeKey.End) {
+		return nil, errors.AssertionFailedf("pebble: last ingest sstable has suffixed range key end %s",
+			d.opts.Comparer.FormatKey(lastRangeKey.End))
 	}
 
 	numFiles := len(meta)
