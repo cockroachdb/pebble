@@ -140,8 +140,14 @@ ingest ext1
 range-key-set a c@8 @1 bar
 set c@9 c@9
 ----
+pebble: ingest sstable has suffixed largest range key that does not match the start key of the next sstable: c@8
 
-ingest ext2
+build ext1
+range-key-set a c@8 @1 bar
+set c@9 c@9
+----
+
+build ext2
 range-key-set c@8 e @1 bar
 set c@8 c@8
 set c@7 c@7
@@ -152,6 +158,9 @@ set c@3 c@3
 set c@2 c@2
 ----
 
+ingest-existing ext1 ext2
+----
+
 ingest ext2
 range-key-set y z @1 foo
 set z z
@@ -160,9 +169,9 @@ set z z
 lsm
 ----
 L6:
-  000004:[a#10,RANGEKEYSET-c@8#inf,RANGEKEYSET]
-  000005:[c@8#11,RANGEKEYSET-e#inf,RANGEKEYSET]
-  000006:[y#12,RANGEKEYSET-z#12,SET]
+  000005:[a#10,RANGEKEYSET-c@8#inf,RANGEKEYSET]
+  000006:[c@8#11,RANGEKEYSET-e#inf,RANGEKEYSET]
+  000007:[y#12,RANGEKEYSET-z#12,SET]
 
 
 # The first seek-prefix-ge y@1 converts the iterator from lazy combined iterator
