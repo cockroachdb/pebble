@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/batchrepr"
@@ -280,7 +281,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.inProgress = make(map[*compaction]struct{})
-	d.mu.compact.noOngoingFlushStartTime = time.Now()
+	d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
 	d.mu.snapshots.init()
 	// logSeqNum is the next sequence number that will be assigned.
 	// Start assigning sequence numbers from base.SeqNumStart to leave

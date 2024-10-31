@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -87,7 +88,7 @@ func openCleanupManager(
 		opts:            opts,
 		objProvider:     objProvider,
 		onTableDeleteFn: onTableDeleteFn,
-		deletePacer:     newDeletionPacer(time.Now(), int64(opts.TargetByteDeletionRate), getDeletePacerInfo),
+		deletePacer:     newDeletionPacer(crtime.NowMono(), int64(opts.TargetByteDeletionRate), getDeletePacerInfo),
 		jobsCh:          make(chan *cleanupJob, jobsQueueDepth),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
@@ -127,7 +128,7 @@ func (cm *cleanupManager) EnqueueJob(jobID JobID, obsoleteFiles []obsoleteFile) 
 		}
 	}
 	if pacingBytes > 0 {
-		cm.deletePacer.ReportDeletion(time.Now(), pacingBytes)
+		cm.deletePacer.ReportDeletion(crtime.NowMono(), pacingBytes)
 	}
 
 	cm.mu.Lock()
@@ -208,7 +209,7 @@ func (cm *cleanupManager) maybePace(
 		return
 	}
 
-	tokens := cm.deletePacer.PacingDelay(time.Now(), fileSize)
+	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), fileSize)
 	if tokens == 0.0 {
 		// The token bucket might be in debt; it could make us wait even for 0
 		// tokens. We don't want that if the pacer decided throttling should be

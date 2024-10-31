@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,11 +119,11 @@ func TestDeletionPacer(t *testing.T) {
 					obsoleteBytes: tc.obsoleteBytes,
 				}
 			}
-			start := time.Now()
+			start := crtime.NowMono()
 			last := start
 			pacer := newDeletionPacer(start, 100*MB, getInfo)
 			for _, h := range tc.history {
-				last = start.Add(time.Second * time.Duration(h[0]))
+				last = start + crtime.Mono(time.Second*time.Duration(h[0]))
 				pacer.ReportDeletion(last, uint64(h[1]))
 			}
 			result := 1.0 / pacer.PacingDelay(last, 1*MB)
@@ -134,23 +136,23 @@ func TestDeletionPacer(t *testing.T) {
 // against a naive implementation.
 func TestDeletionPacerHistory(t *testing.T) {
 	type event struct {
-		time time.Time
+		time crtime.Mono
 		// If report is 0, this event is a Sum(). Otherwise it is an Add().
 		report int64
 	}
 	numEvents := 1 + rand.IntN(200)
 	timeframe := time.Duration(1+rand.IntN(60*100)) * time.Second
 	events := make([]event, numEvents)
-	startTime := time.Now()
+	startTime := crtime.NowMono()
 	for i := range events {
-		events[i].time = startTime.Add(time.Duration(rand.Int64N(int64(timeframe))))
+		events[i].time = startTime + crtime.Mono(rand.Int64N(int64(timeframe)))
 		if rand.IntN(3) == 0 {
 			events[i].report = 0
 		} else {
 			events[i].report = int64(rand.IntN(100000))
 		}
 	}
-	slices.SortFunc(events, func(a, b event) int { return a.time.Compare(b.time) })
+	slices.SortFunc(events, func(a, b event) int { return cmp.Compare(a.time, b.time) })
 
 	var h history
 	h.Init(startTime, timeframe)
@@ -171,9 +173,9 @@ func TestDeletionPacerHistory(t *testing.T) {
 
 		// getIdx returns the largest event index <= i that is before the cutoff
 		// time.
-		getIdx := func(cutoff time.Time) int {
+		getIdx := func(cutoff crtime.Mono) int {
 			for j := i; j >= 0; j-- {
-				if events[j].time.Before(cutoff) {
+				if events[j].time < cutoff {
 					return j
 				}
 			}
@@ -182,8 +184,8 @@ func TestDeletionPacerHistory(t *testing.T) {
 
 		// Sum all report values in the last timeframe, and see if recent events
 		// (allowing 1% error in the cutoff time) match the result.
-		a := getIdx(e.time.Add(-timeframe * (historyEpochs + 1) / historyEpochs))
-		b := getIdx(e.time.Add(-timeframe * (historyEpochs - 1) / historyEpochs))
+		a := getIdx(e.time - crtime.Mono(timeframe*(historyEpochs+1)/historyEpochs))
+		b := getIdx(e.time - crtime.Mono(timeframe*(historyEpochs-1)/historyEpochs))
 		found := false
 		for j := a; j <= b; j++ {
 			if partialSums[i+1]-partialSums[j+1] == result {

@@ -59,7 +59,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -173,7 +172,7 @@ func (s *Skiplist) Init(storage *[]byte, cmp base.Compare, abbreviatedKey base.A
 		nodes:          s.nodes[:0],
 		height:         1,
 	}
-	s.rand.Seed(0, uint64(time.Now().UnixNano()))
+	s.rand.Seed(0, rand.Uint64())
 
 	const initBufSize = 256
 	if cap(s.nodes) < initBufSize {

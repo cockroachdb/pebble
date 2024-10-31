@@ -17,6 +17,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -1655,12 +1656,12 @@ func (b *Batch) Reader() batchrepr.Reader {
 
 // SyncWait is to be used in conjunction with DB.ApplyNoSyncWait.
 func (b *Batch) SyncWait() error {
-	now := time.Now()
+	now := crtime.NowMono()
 	b.fsyncWait.Wait()
 	if b.commitErr != nil {
 		b.db = nil // prevent batch reuse on error
 	}
-	waitDuration := time.Since(now)
+	waitDuration := now.Elapsed()
 	b.commitStats.CommitWaitDuration += waitDuration
 	b.commitStats.TotalDuration += waitDuration
 	return b.commitErr

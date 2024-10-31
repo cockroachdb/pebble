@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -1144,15 +1145,15 @@ func errCorruptIndexEntry(err error) error {
 }
 
 type deterministicStopwatchForTesting struct {
-	startTime time.Time
+	startTime crtime.Mono
 }
 
 func makeStopwatch() deterministicStopwatchForTesting {
-	return deterministicStopwatchForTesting{startTime: time.Now()}
+	return deterministicStopwatchForTesting{startTime: crtime.NowMono()}
 }
 
 func (w deterministicStopwatchForTesting) stop() time.Duration {
-	dur := time.Since(w.startTime)
+	dur := w.startTime.Elapsed()
 	if deterministicReadBlockDurationForTesting {
 		dur = slowReadTracingThreshold
 	}
