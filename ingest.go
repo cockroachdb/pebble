@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/overlap"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
@@ -239,8 +240,37 @@ func ingestLoad1External(
 	return meta, nil
 }
 
+type rangeKeyIngestValidator struct {
+	// lastRangeKey is the last range key seen in the previous file.
+	lastRangeKey keyspan.Span
+	// comparer, if unset, disables range key validation.
+	comparer *base.Comparer
+}
+
+func (r *rangeKeyIngestValidator) Validate(nextFileSmallestKey *keyspan.Span) error {
+	if r.comparer == nil {
+		return nil
+	}
+	if r.lastRangeKey.Valid() {
+		if r.comparer.Split.HasSuffix(r.lastRangeKey.End) && (!r.comparer.Equal(r.lastRangeKey.End, nextFileSmallestKey.Start) ||
+			!keyspan.DefragmentInternal.ShouldDefragment(r.comparer.CompareRangeSuffixes, &r.lastRangeKey, nextFileSmallestKey)) {
+			// The last range key has a suffix, and it doesn't defragment cleanly with this range key.
+			return errors.AssertionFailedf("pebble: ingest sstable has suffixed range key that won't defragment with previous sstable: %s",
+				r.comparer.FormatKey(r.lastRangeKey.End))
+		}
+	} else if r.comparer.Split.HasSuffix(nextFileSmallestKey.Start) {
+		return errors.Newf("pebble: ingest sstable has suffixed range key start that won't defragment: %s",
+			r.comparer.FormatKey(nextFileSmallestKey.Start))
+	}
+	return nil
+}
+
 // ingestLoad1 creates the FileMetadata for one file. This file will be owned
 // by this store.
+//
+// prevLastRangeKey is the last range key from the previous file. It is used to
+// ensure that the range keys defragment cleanly across files. These checks
+// are disabled if disableRangeKeyChecks is true.
 func ingestLoad1(
 	ctx context.Context,
 	opts *Options,
@@ -248,39 +278,48 @@ func ingestLoad1(
 	readable objstorage.Readable,
 	cacheID cache.ID,
 	fileNum base.FileNum,
-) (*fileMetadata, error) {
+	prevLastRangeKey keyspan.Span,
+	disableRangeKeyChecks bool,
+) (meta *fileMetadata, lastRangeKey keyspan.Span, err error) {
 	o := opts.MakeReaderOptions()
 	o.SetInternalCacheOpts(sstableinternal.CacheOptions{
 		Cache:   opts.Cache,
 		CacheID: cacheID,
 		FileNum: base.PhysicalTableDiskFileNum(fileNum),
 	})
+	rangeKeyValidator := rangeKeyIngestValidator{}
+	if !disableRangeKeyChecks {
+		rangeKeyValidator = rangeKeyIngestValidator{
+			lastRangeKey: prevLastRangeKey,
+			comparer:     opts.Comparer,
+		}
+	}
 	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
-		return nil, err
+		return nil, keyspan.Span{}, err
 	}
 	defer r.Close()
 
 	// Avoid ingesting tables with format versions this DB doesn't support.
 	tf, err := r.TableFormat()
 	if err != nil {
-		return nil, err
+		return nil, keyspan.Span{}, err
 	}
 	if tf < fmv.MinTableFormat() || tf > fmv.MaxTableFormat() {
-		return nil, errors.Newf(
+		return nil, keyspan.Span{}, errors.Newf(
 			"pebble: table format %s is not within range supported at DB format major version %d, (%s,%s)",
 			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
 	if tf.BlockColumnar() {
 		if _, ok := opts.KeySchemas[r.Properties.KeySchemaName]; !ok {
-			return nil, errors.Newf(
+			return nil, keyspan.Span{}, errors.Newf(
 				"pebble: table uses key schema %q unknown to the database",
 				r.Properties.KeySchemaName)
 		}
 	}
 
-	meta := &fileMetadata{}
+	meta = &fileMetadata{}
 	meta.FileNum = fileNum
 	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
@@ -300,52 +339,52 @@ func ingestLoad1(
 	{
 		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 		if err != nil {
-			return nil, err
+			return nil, keyspan.Span{}, err
 		}
 		defer iter.Close()
 		var smallest InternalKey
 		if kv := iter.First(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
-				return nil, err
+				return nil, keyspan.Span{}, err
 			}
 			smallest = kv.K.Clone()
 		}
 		if err := iter.Error(); err != nil {
-			return nil, err
+			return nil, keyspan.Span{}, err
 		}
 		if kv := iter.Last(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
-				return nil, err
+				return nil, keyspan.Span{}, err
 			}
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, kv.K.Clone())
 		}
 		if err := iter.Error(); err != nil {
-			return nil, err
+			return nil, keyspan.Span{}, err
 		}
 	}
 
 	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms)
 	if err != nil {
-		return nil, err
+		return nil, keyspan.Span{}, err
 	}
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
 		if s, err := iter.First(); err != nil {
-			return nil, err
+			return nil, keyspan.Span{}, err
 		} else if s != nil {
 			key := s.SmallestKey()
 			if err := ingestValidateKey(opts, &key); err != nil {
-				return nil, err
+				return nil, keyspan.Span{}, err
 			}
 			smallest = key.Clone()
 		}
 		if s, err := iter.Last(); err != nil {
-			return nil, err
+			return nil, keyspan.Span{}, err
 		} else if s != nil {
 			k := s.SmallestKey()
 			if err := ingestValidateKey(opts, &k); err != nil {
-				return nil, err
+				return nil, keyspan.Span{}, err
 			}
 			largest := s.LargestKey().Clone()
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
@@ -356,45 +395,54 @@ func ingestLoad1(
 	{
 		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms)
 		if err != nil {
-			return nil, err
+			return nil, keyspan.Span{}, err
 		}
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
 			if s, err := iter.First(); err != nil {
-				return nil, err
+				return nil, keyspan.Span{}, err
 			} else if s != nil {
 				key := s.SmallestKey()
 				if err := ingestValidateKey(opts, &key); err != nil {
-					return nil, err
+					return nil, keyspan.Span{}, err
 				}
 				smallest = key.Clone()
+				// Range keys need some additional validation as we need to ensure they
+				// defragment cleanly with the lastRangeKey from the previous file.
+				if err := rangeKeyValidator.Validate(s); err != nil {
+					return nil, keyspan.Span{}, err
+				}
 			}
+			lastRangeKey = keyspan.Span{}
 			if s, err := iter.Last(); err != nil {
-				return nil, err
+				return nil, keyspan.Span{}, err
 			} else if s != nil {
 				k := s.SmallestKey()
 				if err := ingestValidateKey(opts, &k); err != nil {
-					return nil, err
+					return nil, keyspan.Span{}, err
 				}
 				// As range keys are fragmented, the end key of the last range key in
 				// the table provides the upper bound for the table.
 				largest := s.LargestKey().Clone()
 				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
+				lastRangeKey = s.Clone()
 			}
+		} else {
+			lastRangeKey = keyspan.Span{}
 		}
 	}
 
 	if !meta.HasPointKeys && !meta.HasRangeKeys {
-		return nil, nil
+		return nil, keyspan.Span{}, nil
 	}
 
 	// Sanity check that the various bounds on the file were set consistently.
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
-		return nil, err
+		return nil, keyspan.Span{}, err
 	}
 
-	return meta, nil
+	return meta, lastRangeKey, nil
 }
 
 type ingestLoadResult struct {
@@ -445,6 +493,15 @@ func ingestLoad(
 
 	var result ingestLoadResult
 	result.local = make([]ingestLocalMeta, 0, len(paths))
+	var lastRangeKey keyspan.Span
+	// NB: we disable range key boundary assertions if we have shared or external files
+	// present in this ingestion. This is because a suffixed range key in a local file
+	// can possibly defragment with a suffixed range key in a shared or external file.
+	// We also disable range key boundary assertions if we have CreateOnShared set to
+	// true, as that means we could have suffixed RangeKeyDels or Unsets in the local
+	// files that won't ever be surfaced, even if there are no shared or external files
+	// in the ingestion.
+	disableRangeKeyChecks := len(shared) > 0 || len(external) > 0 || opts.Experimental.CreateOnShared != remote.CreateOnSharedNone
 	for i := range paths {
 		f, err := opts.FS.Open(paths[i])
 		if err != nil {
@@ -455,7 +512,8 @@ func ingestLoad(
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		m, err := ingestLoad1(ctx, opts, fmv, readable, cacheID, localFileNums[i])
+		var m *fileMetadata
+		m, lastRangeKey, err = ingestLoad1(ctx, opts, fmv, readable, cacheID, localFileNums[i], lastRangeKey, disableRangeKeyChecks)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -465,6 +523,10 @@ func ingestLoad(
 				path:         paths[i],
 			})
 		}
+	}
+	if !disableRangeKeyChecks && lastRangeKey.Valid() && opts.Comparer.Split.HasSuffix(lastRangeKey.End) {
+		return ingestLoadResult{}, errors.AssertionFailedf("pebble: last ingest sstable has suffixed range key end %s",
+			opts.Comparer.FormatKey(lastRangeKey.End))
 	}
 
 	// Sort the shared files according to level.

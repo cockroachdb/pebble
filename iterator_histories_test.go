@@ -221,6 +221,16 @@ func TestIterHistories(t *testing.T) {
 					}
 				}
 				return buf.String()
+			case "build":
+				if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				return ""
+			case "ingest-existing":
+				if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				return ""
 			case "ingest":
 				if err := runBuildCmd(td, d, d.opts.FS); err != nil {
 					return err.Error()
