@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -1473,6 +1474,8 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			default:
 				return errors.Newf("unrecognized Merger %q\n", cmdArg.Vals[0])
 			}
+		case "readonly":
+			opts.ReadOnly = true
 		case "target-file-sizes":
 			if len(opts.Levels) < len(cmdArg.Vals) {
 				opts.Levels = slices.Grow(opts.Levels, len(cmdArg.Vals)-len(opts.Levels))[0:len(cmdArg.Vals)]
@@ -1484,6 +1487,15 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				}
 				opts.Levels[i].TargetFileSize = size
 			}
+		case "wal-failover":
+			if v := cmdArg.Vals[0]; v == "off" || v == "disabled" {
+				opts.WALFailover = nil
+				continue
+			}
+			opts.WALFailover = &WALFailoverOptions{
+				Secondary: wal.Dir{FS: opts.FS, Dirname: cmdArg.Vals[0]},
+			}
+			opts.WALFailover.EnsureDefaults()
 		}
 	}
 	return nil

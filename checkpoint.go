@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"io"
 	"os"
 
@@ -239,10 +240,10 @@ func (d *DB) Checkpoint(
 	}
 
 	{
-		// Link or copy the OPTIONS.
+		// Copy the OPTIONS.
 		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeOptions, optionsFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-		ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
+		ckErr = copyCheckpointOptions(fs, srcPath, destPath)
 		if ckErr != nil {
 			return ckErr
 		}
@@ -371,6 +372,58 @@ func (d *DB) Checkpoint(
 	ckErr = dir.Close()
 	dir = nil
 	return ckErr
+}
+
+// copyCheckpointOptions copies an OPTIONS file, commenting out some options
+// that existed on the original database but no longer apply to the checkpointed
+// database. For example, the entire [WAL Failover] stanza is commented out
+// because Checkpoint will copy all WAL segment files from both the primary and
+// secondary WAL directories into the checkpoint.
+func copyCheckpointOptions(fs vfs.FS, srcPath, dstPath string) error {
+	var buf bytes.Buffer
+	f, err := fs.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	// Copy the OPTIONS file verbatim, but commenting out the [WAL Failover]
+	// section.
+	err = parseOptions(string(b), parseOptionsFuncs{
+		visitNewSection: func(startOff, endOff int, section string) error {
+			if section == "WAL Failover" {
+				buf.WriteString("# ")
+			}
+			buf.Write(b[startOff:endOff])
+			return nil
+		},
+		visitKeyValue: func(startOff, endOff int, section, key, value string) error {
+			if section == "WAL Failover" {
+				buf.WriteString("# ")
+			}
+			buf.Write(b[startOff:endOff])
+			return nil
+		},
+		visitCommentOrWhitespace: func(startOff, endOff int, line string) error {
+			buf.Write(b[startOff:endOff])
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	nf, err := fs.Create(dstPath, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(nf, &buf)
+	if err != nil {
+		return err
+	}
+	return errors.CombineErrors(nf.Sync(), nf.Close())
 }
 
 func (d *DB) writeCheckpointManifest(

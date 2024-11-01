@@ -103,7 +103,11 @@ open-dir: .
 sync: .
 close: .
 open-dir: checkpoints/checkpoint1
-link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint1/OPTIONS-000003
+sync-data: checkpoints/checkpoint1/OPTIONS-000003
+close: checkpoints/checkpoint1/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint1/marker.format-version.000001.019
@@ -143,7 +147,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint2
-link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint2/OPTIONS-000003
+sync-data: checkpoints/checkpoint2/OPTIONS-000003
+close: checkpoints/checkpoint2/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint2/marker.format-version.000001.019
@@ -178,7 +186,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint3
-link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint3/OPTIONS-000003
+sync-data: checkpoints/checkpoint3/OPTIONS-000003
+close: checkpoints/checkpoint3/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint3/marker.format-version.000001.019
@@ -498,7 +510,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint4
-link: db/OPTIONS-000003 -> checkpoints/checkpoint4/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint4/OPTIONS-000003
+sync-data: checkpoints/checkpoint4/OPTIONS-000003
+close: checkpoints/checkpoint4/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint4
 create: checkpoints/checkpoint4/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint4/marker.format-version.000001.019
@@ -603,7 +619,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint5
-link: db/OPTIONS-000003 -> checkpoints/checkpoint5/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint5/OPTIONS-000003
+sync-data: checkpoints/checkpoint5/OPTIONS-000003
+close: checkpoints/checkpoint5/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint5
 create: checkpoints/checkpoint5/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint5/marker.format-version.000001.019
@@ -701,7 +721,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint6
-link: db/OPTIONS-000003 -> checkpoints/checkpoint6/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint6/OPTIONS-000003
+sync-data: checkpoints/checkpoint6/OPTIONS-000003
+close: checkpoints/checkpoint6/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint6
 create: checkpoints/checkpoint6/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint6/marker.format-version.000001.019
@@ -779,6 +803,32 @@ lsm checkpoints/checkpoint6
 L0.0:
   000018:[h#18,SET-h#18,SET]
 L6:
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
+  000014:[z#22,SET-z#22,SET]
+
+# Close and re-open db, this time with WAL failover configured and the secondary
+# pointing to /failover-logs.
+
+open db wal-failover=/failover-logs nondeterministic
+----
+
+# Perform a checkpoint.
+checkpoint db checkpoints/checkpoint7 nondeterministic
+----
+
+# Validate that we can open the checkpoint.
+
+open checkpoints/checkpoint7 readonly nondeterministic
+----
+
+lsm checkpoints/checkpoint7
+----
+L0.0:
+  000018:[h#18,SET-h#18,SET]
+L6:
+  000012(000010):[a#0,SET-b#0,SET]
+  000013(000010):[d#0,SET-g#0,SET]
   000015(000011):[i#20,SET-i#20,SET]
   000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]
