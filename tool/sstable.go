@@ -310,6 +310,13 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		}
 
 		tw := tabwriter.NewWriter(stdout, 2, 1, 2, ' ', 0)
+		fmt.Fprintf(tw, "format\t\n")
+		format, err := r.TableFormat()
+		if err != nil {
+			fmt.Fprintf(tw, "  error when retrieving format\t%s\n", err)
+		} else {
+			fmt.Fprintf(tw, "  type\t%s\n", format.String())
+		}
 		fmt.Fprintf(tw, "size\t\n")
 		fmt.Fprintf(tw, "  file\t%s\n", humanize.Bytes.Int64(stat.Size()))
 		fmt.Fprintf(tw, "  data\t%s\n", humanize.Bytes.Uint64(r.Properties.DataSize))
