@@ -91,7 +91,11 @@ open-dir: .
 sync: .
 close: .
 open-dir: checkpoints/checkpoint1
-link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint1/OPTIONS-000003
+sync-data: checkpoints/checkpoint1/OPTIONS-000003
+close: checkpoints/checkpoint1/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint1/marker.format-version.000001.019
@@ -140,7 +144,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint2
-link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint2/OPTIONS-000003
+sync-data: checkpoints/checkpoint2/OPTIONS-000003
+close: checkpoints/checkpoint2/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint2/marker.format-version.000001.019
@@ -185,7 +193,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint3
-link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoints/checkpoint3/OPTIONS-000003
+sync-data: checkpoints/checkpoint3/OPTIONS-000003
+close: checkpoints/checkpoint3/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/marker.format-version.000001.019
 sync-data: checkpoints/checkpoint3/marker.format-version.000001.019

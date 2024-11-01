@@ -1546,24 +1546,56 @@ func (o *Options) String() string {
 	return buf.String()
 }
 
-// parseOptions takes options serialized by Options.String() and parses them into
-// keys and values, calling fn for each one.
-func parseOptions(s string, fn func(section, key, value string) error) error {
-	var section string
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if len(line) == 0 {
-			// Skip blank lines.
-			continue
+type parseOptionsFuncs struct {
+	visitNewSection          func(i, j int, section string) error
+	visitKeyValue            func(i, j int, section, key, value string) error
+	visitCommentOrWhitespace func(i, j int, whitespace string) error
+}
+
+// parseOptions takes options serialized by Options.String() and parses them
+// into keys and values. It calls fns.visitNewSection for the beginning of each
+// new section, fns.visitKeyValue for each key-value pair, and
+// visitCommentOrWhitespace for comments and whitespace between key-value pairs.
+func parseOptions(s string, fns parseOptionsFuncs) error {
+	var section, mappedSection string
+	i := 0
+	for i < len(s) {
+		rem := s[i:]
+		j := strings.IndexByte(rem, '\n')
+		if j < 0 {
+			j = len(rem)
+		} else {
+			j += 1 // Include the newline.
 		}
-		if line[0] == ';' || line[0] == '#' {
-			// Skip comments.
+		line := strings.TrimSpace(s[i : i+j])
+		startOff, endOff := i, i+j
+		i += j
+
+		if len(line) == 0 || line[0] == ';' || line[0] == '#' {
+			// Skip blank lines and comments.
+			if fns.visitCommentOrWhitespace != nil {
+				if err := fns.visitCommentOrWhitespace(startOff, endOff, line); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		n := len(line)
 		if line[0] == '[' && line[n-1] == ']' {
 			// Parse section.
 			section = line[1 : n-1]
+			// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
+			// different section names and keys. The "CFOptions ..." paths are the
+			// RocksDB versions which we map to the Pebble paths.
+			mappedSection = section
+			if section == `CFOptions "default"` {
+				mappedSection = "Options"
+			}
+			if fns.visitNewSection != nil {
+				if err := fns.visitNewSection(startOff, endOff, mappedSection); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 
@@ -1579,12 +1611,7 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 		key := strings.TrimSpace(line[:pos])
 		value := strings.TrimSpace(line[pos+1:])
 
-		// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
-		// different section names and keys. The "CFOptions ..." paths are the
-		// RocksDB versions which we map to the Pebble paths.
-		mappedSection := section
 		if section == `CFOptions "default"` {
-			mappedSection = "Options"
 			switch key {
 			case "comparator":
 				key = "comparer"
@@ -1592,9 +1619,10 @@ func parseOptions(s string, fn func(section, key, value string) error) error {
 				key = "merger"
 			}
 		}
-
-		if err := fn(mappedSection, key, value); err != nil {
-			return err
+		if fns.visitKeyValue != nil {
+			if err := fns.visitKeyValue(startOff, endOff, mappedSection, key, value); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1616,7 +1644,7 @@ type ParseHooks struct {
 // options cannot be parsed into populated fields. For example, comparer and
 // merger.
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
-	return parseOptions(s, func(section, key, value string) error {
+	visitKeyValue := func(i, j int, section, key, value string) error {
 		// WARNING: DO NOT remove entries from the switches below because doing so
 		// causes a key previously written to the OPTIONS file to be considered unknown,
 		// a backwards incompatible change. Instead, leave in support for parsing the
@@ -1994,6 +2022,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			return nil
 		}
 		return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
+	}
+	return parseOptions(s, parseOptionsFuncs{
+		visitKeyValue: visitKeyValue,
 	})
 }
 
@@ -2016,7 +2047,7 @@ func (e ErrMissingWALRecoveryDir) Error() string {
 // This function only looks at specific keys and does not error out if the
 // options are newer and contain unknown keys.
 func (o *Options) CheckCompatibility(previousOptions string) error {
-	return parseOptions(previousOptions, func(section, key, value string) error {
+	visitKeyValue := func(i, j int, section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
@@ -2046,7 +2077,8 @@ func (o *Options) CheckCompatibility(previousOptions string) error {
 			}
 		}
 		return nil
-	})
+	}
+	return parseOptions(previousOptions, parseOptionsFuncs{visitKeyValue: visitKeyValue})
 }
 
 // Validate verifies that the options are mutually consistent. For example,
