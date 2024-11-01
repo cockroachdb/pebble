@@ -742,17 +742,19 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			err = parseOptions(string(data), func(section, key, value string) error {
-				switch {
-				case section == "Version":
-					switch key {
-					case "pebble_version":
-						version = value
-					case "rocksdb_version":
-						version = fmt.Sprintf("rocksdb v%s", value)
+			err = parseOptions(string(data), parseOptionsFuncs{
+				visitKeyValue: func(i, j int, section, key, value string) error {
+					switch {
+					case section == "Version":
+						switch key {
+						case "pebble_version":
+							version = value
+						case "rocksdb_version":
+							version = fmt.Sprintf("rocksdb v%s", value)
+						}
 					}
-				}
-				return nil
+					return nil
+				},
 			})
 			if err != nil {
 				return "", err
