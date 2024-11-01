@@ -361,7 +361,11 @@ open-dir: .
 sync: .
 close: .
 open-dir: checkpoint
-link: db/OPTIONS-000003 -> checkpoint/OPTIONS-000003
+open: db/OPTIONS-000003
+create: checkpoint/OPTIONS-000003
+sync-data: checkpoint/OPTIONS-000003
+close: checkpoint/OPTIONS-000003
+close: db/OPTIONS-000003
 open-dir: checkpoint
 create: checkpoint/marker.format-version.000001.019
 sync-data: checkpoint/marker.format-version.000001.019

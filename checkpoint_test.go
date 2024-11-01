@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"runtime"
 	"sort"
@@ -35,22 +36,25 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 	mem := vfs.NewMem()
 	var memLog base.InMemLogger
 	remoteMem := remote.NewInMem()
-	opts := &Options{
-		FS:                          vfs.WithLogging(mem, memLog.Infof),
-		FormatMajorVersion:          internalFormatNewest,
-		L0CompactionThreshold:       10,
-		DisableAutomaticCompactions: true,
-		Logger:                      testLogger{t},
+	makeOptions := func() *Options {
+		opts := &Options{
+			FS:                          vfs.WithLogging(mem, memLog.Infof),
+			FormatMajorVersion:          internalFormatNewest,
+			L0CompactionThreshold:       10,
+			DisableAutomaticCompactions: true,
+			Logger:                      testLogger{t},
+		}
+		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			"": remoteMem,
+		})
+		if createOnShared {
+			opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+		}
+		opts.DisableTableStats = true
+		opts.private.testingAlwaysWaitForCleanup = true
+		return opts
 	}
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
-	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"": remoteMem,
-	})
-	if createOnShared {
-		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-	}
-	opts.DisableTableStats = true
-	opts.private.testingAlwaysWaitForCleanup = true
 
 	datadriven.RunTest(t, ddFile, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -70,7 +74,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			return memLog.String()
 
 		case "checkpoint":
-			if !(len(td.CmdArgs) == 2 || (len(td.CmdArgs) == 3 && td.CmdArgs[2].Key == "restrict")) {
+			if len(td.CmdArgs) < 2 {
 				return "checkpoint <db> <dir> [restrict=(start-end, ...)]"
 			}
 			var opts []CheckpointOption
@@ -92,6 +96,10 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Checkpoint(td.CmdArgs[1].String(), opts...); err != nil {
 				return err.Error()
+			}
+			if td.HasArg("nondeterministic") {
+				memLog.Reset()
+				return ""
 			}
 			return memLog.String()
 
@@ -184,19 +192,19 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			return fmt.Sprintf("%s\n", strings.Join(paths, "\n"))
 
 		case "open":
-			if len(td.CmdArgs) != 1 && len(td.CmdArgs) != 2 {
+			if len(td.CmdArgs) < 1 {
 				return "open <dir> [readonly]"
 			}
-			opts.ReadOnly = false
-			if len(td.CmdArgs) == 2 {
-				if td.CmdArgs[1].String() != "readonly" {
-					return "open <dir> [readonly]"
-				}
-				opts.ReadOnly = true
-			}
+			opts := makeOptions()
+			require.NoError(t, parseDBOptionsArgs(opts, td.CmdArgs[1:]))
 
 			memLog.Reset()
 			dir := td.CmdArgs[0].String()
+			if _, ok := dbs[dir]; ok {
+				require.NoError(t, dbs[dir].Close())
+				dbs[dir] = nil
+			}
+
 			d, err := Open(dir, opts)
 			if err != nil {
 				return err.Error()
@@ -207,6 +215,12 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 				if err := d.SetCreatorID(1); err != nil {
 					return err.Error()
 				}
+			}
+			waitForCompactionsAndTableStats(d)
+
+			if td.HasArg("nondeterministic") {
+				memLog.Reset()
+				return ""
 			}
 			return memLog.String()
 
@@ -228,6 +242,33 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+func TestCopyCheckpointOptions(t *testing.T) {
+	fs := vfs.NewMem()
+	datadriven.RunTest(t, "testdata/copy_checkpoint_options", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "copy":
+			f, err := fs.Create("old", vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			_, err = io.WriteString(f, td.Input)
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+
+			if err := copyCheckpointOptions(fs, "old", "new"); err != nil {
+				return err.Error()
+			}
+
+			f, err = fs.Open("new")
+			require.NoError(t, err)
+			newFile, err := io.ReadAll(f)
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			return string(newFile)
+		default:
+			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
 		}
 	})
 }
