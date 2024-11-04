@@ -2257,6 +2257,9 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			// the manifest lock, we don't expect this bool to change its value
 			// as only the holder of the manifest lock will ever write to it.
 			if c.cancel.Load() {
+				d.mu.versions.metrics.Compact.CancelledCount++
+				d.mu.versions.metrics.Compact.CancelledBytes += c.bytesWritten
+
 				err = firstError(err, ErrCancelledCompaction)
 				// This is the first time we've seen a cancellation during the
 				// life of this compaction (or the original condition on err == nil
@@ -2289,6 +2292,10 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
+	if err != nil && errors.Is(err, ErrCancelledCompaction) {
+		d.mu.versions.metrics.Compact.CancelledCount++
+		d.mu.versions.metrics.Compact.CancelledBytes += c.bytesWritten
+	}
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
