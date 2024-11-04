@@ -178,6 +178,11 @@ type Metrics struct {
 		InProgressBytes int64
 		// Number of compactions that are in-progress.
 		NumInProgress int64
+		// Number of compactions that were cancelled.
+		CancelledCount int64
+		// CancelledBytes the number of bytes written by compactions that were
+		// cancelled.
+		CancelledBytes int64
 		// MarkedFiles is a count of files that are marked for
 		// compaction. Such files are compacted in a rewrite compaction
 		// when no other compactions are picked.
