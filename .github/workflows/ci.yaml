@@ -125,7 +125,7 @@ jobs:
     strategy:
       matrix:
         go: ['1.22', '1.23']
-    runs-on: macos-12
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v2
   
