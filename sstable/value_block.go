@@ -731,13 +731,11 @@ type valueBlockReader struct {
 	rp     ReaderProvider
 	vbih   valueBlocksIndexHandle
 	stats  *base.InternalIteratorStats
+
 	// fetcher is allocated lazily the first time we create a LazyValue, in order
 	// to avoid the allocation if we never read a lazy value (which should be the
 	// case when we're reading the latest value of a key).
 	fetcher *valueBlockFetcher
-
-	// lazyFetcher is the LazyFetcher value embedded in any LazyValue that was returned.
-	lazyFetcher base.LazyFetcher
 }
 
 var _ block.GetLazyValueForPrefixAndValueHandler = (*valueBlockReader)(nil)
@@ -753,9 +751,9 @@ func (r *valueBlockReader) GetLazyValueForPrefixAndValueHandle(handle []byte) ba
 		// contain an array of instances, a subset of which have been given out).
 		r.fetcher = newValueBlockFetcher(r.bpOpen, r.rp, r.vbih, r.stats)
 	}
-	fetcher := &r.lazyFetcher
+	lazyFetcher := &r.fetcher.lazyFetcher
 	valLen, h := decodeLenFromValueHandle(handle[1:])
-	*fetcher = base.LazyFetcher{
+	*lazyFetcher = base.LazyFetcher{
 		Fetcher: r.fetcher,
 		Attribute: base.AttributeAndLen{
 			ValueLen:       int32(valLen),
@@ -768,7 +766,7 @@ func (r *valueBlockReader) GetLazyValueForPrefixAndValueHandle(handle []byte) ba
 	}
 	return base.LazyValue{
 		ValueOrHandle: h,
-		Fetcher:       fetcher,
+		Fetcher:       lazyFetcher,
 	}
 }
 
@@ -803,6 +801,10 @@ type valueBlockFetcher struct {
 	valueCache    block.BufferHandle
 	closed        bool
 	bufToMangle   []byte
+
+	// lazyFetcher is the LazyFetcher value embedded in any LazyValue that we
+	// return. It is used to avoid having a separate allocation for that.
+	lazyFetcher base.LazyFetcher
 }
 
 var _ base.ValueFetcher = (*valueBlockFetcher)(nil)

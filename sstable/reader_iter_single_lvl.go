@@ -283,15 +283,6 @@ func newRowBlockSingleLevelIterator(
 	)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
-			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
-			// can outlive the singleLevelIterator due to be being embedded in a
-			// LazyValue. This consumes ~2% in microbenchmark CPU profiles, but we
-			// should only optimize this if it shows up as significant in end-to-end
-			// CockroachDB benchmarks, since it is tricky to do so. One possibility
-			// is that if many sstable iterators only get positioned at latest
-			// versions of keys, and therefore never expose a LazyValue that is
-			// separated to their callers, they can put this valueBlockReader into a
-			// sync.Pool.
 			i.vbReader = valueBlockReader{
 				bpOpen: i,
 				rp:     rp,
