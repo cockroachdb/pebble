@@ -316,6 +316,7 @@ var JemallocSizeClasses = []int{
 	40 * 1024, 48 * 1024, 56 * 1024, 64 * 1024, // 8KiB spacing
 	80 * 1024, 96 * 1024, 112 * 1024, 128 * 1024, // 16KiB spacing.
 	160 * 1024, 192 * 1024, 224 * 1024, 256 * 1024, // 32KiB spacing.
+	320 * 1024,
 }
 
 // SetInternal sets the internal writer options. Note that even though this

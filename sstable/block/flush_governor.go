@@ -13,22 +13,26 @@ import (
 
 // FlushGovernor is used to decide when to flush a block. It takes into
 // consideration a target block size and (optionally) allocation size classes.
+//
+// When allocation size classes are used, we use the allocation class that is
+// closest to the target block size. We also take into account the next
+// allocation class and use it if it reduces internal fragmentation.
 type FlushGovernor struct {
-	// We always add another KV to a block if its resulting size does not exceed
-	// lowWatermark. The low watermark normally corresponds to an allocation size
-	// class boundary.
+	// We always add another KV to a block if its initial size is below
+	// lowWatermark (even if the block is very large after adding the KV). This is
+	// a safeguard to avoid very small blocks in the presence of large KVs.
 	lowWatermark int
 	// We never add another KV to a block if its existing size exceeds
-	// highWatermark. The high watermark normally corresponds to the smallest
-	// allocation size class that fits a block of the target size.
+	// highWatermark (unless its initial size is < lowWatermark).
+	//
+	// When using allocation classes, the high watermark corresponds to the
+	// allocation size class that follows the target class. Otherwise, it
+	// corresponds to the target block size.
 	highWatermark int
-	// We optionally have sorted list of boundaries between lowWatermark and
-	// highWatermark, corresponding to boundaries between allocation classes.
-	numBoundaries int
-	boundaries    [maxFlushBoundaries]int
+	// targetBoundary corresponds to the size class we are targeting; if we are
+	// not using allocation size classes, targetBoundary equals highWatermark.
+	targetBoundary int
 }
-
-const maxFlushBoundaries = 4
 
 // This value is the amount of extra bytes we allocate together with the block
 // data. This must be taken into account when taking allocator size classes into
@@ -63,31 +67,32 @@ func MakeFlushGovernor(
 	sizeClassAwareThreshold int,
 	allocatorSizeClasses []int,
 ) FlushGovernor {
-	var fg FlushGovernor
+	if len(allocatorSizeClasses) == 0 {
+		return makeFlushGovernorNoSizeClasses(targetBlockSize, blockSizeThreshold)
+	}
 	targetSizeWithOverhead := targetBlockSize + blockAllocationOverhead
-	// Find the smallest size class that is >= targetSizeWithOverhead.
-	upperClassIdx, _ := slices.BinarySearch(allocatorSizeClasses, targetSizeWithOverhead)
-	if upperClassIdx == 0 || upperClassIdx == len(allocatorSizeClasses) {
-		fg.lowWatermark = (targetBlockSize*blockSizeThreshold + 99) / 100
-		fg.highWatermark = targetBlockSize
-		return fg
+	classIdx := findClosestClass(allocatorSizeClasses, targetSizeWithOverhead)
+	if classIdx == 0 || classIdx == len(allocatorSizeClasses)-1 {
+		// Safeguard if our target isn't inside the known classes.
+		return makeFlushGovernorNoSizeClasses(targetBlockSize, blockSizeThreshold)
 	}
 
+	var fg FlushGovernor
 	fg.lowWatermark = (targetBlockSize*sizeClassAwareThreshold + 99) / 100
-	fg.highWatermark = allocatorSizeClasses[upperClassIdx] - blockAllocationOverhead
-	// Just in case the threshold is very close to 100.
-	fg.lowWatermark = min(fg.lowWatermark, fg.highWatermark)
+	fg.targetBoundary = allocatorSizeClasses[classIdx] - blockAllocationOverhead
+	fg.highWatermark = allocatorSizeClasses[classIdx+1] - blockAllocationOverhead
+	// Safeguard, in case the threshold is very close to 100.
+	fg.lowWatermark = min(fg.lowWatermark, fg.targetBoundary)
 
-	classes := allocatorSizeClasses[max(0, upperClassIdx-maxFlushBoundaries):upperClassIdx]
-	// Remove any classes that would result in blocks smaller than lowWatermark.
-	for len(classes) > 0 && classes[0]-blockAllocationOverhead < fg.lowWatermark {
-		classes = classes[1:]
-	}
-	fg.numBoundaries = len(classes)
-	for i := range classes {
-		fg.boundaries[i] = classes[i] - blockAllocationOverhead
-	}
 	return fg
+}
+
+func makeFlushGovernorNoSizeClasses(targetBlockSize int, blockSizeThreshold int) FlushGovernor {
+	return FlushGovernor{
+		lowWatermark:   (targetBlockSize*blockSizeThreshold + 99) / 100,
+		highWatermark:  targetBlockSize,
+		targetBoundary: targetBlockSize,
+	}
 }
 
 // LowWatermark returns the minimum size of a block that could be flushed.
@@ -103,8 +108,8 @@ func (fg *FlushGovernor) LowWatermark() int {
 // instead of adding another KV that would increase the block to sizeAfter.
 func (fg *FlushGovernor) ShouldFlush(sizeBefore int, sizeAfter int) bool {
 	// In rare cases it's possible for the size to stay the same (or even
-	// decrease) when we add an entry to the block; tolerate this by always
-	// accepting the new entry.
+	// decrease) when we add a KV to the block; tolerate this by always accepting
+	// the new KV.
 	if sizeBefore >= sizeAfter {
 		return false
 	}
@@ -114,24 +119,28 @@ func (fg *FlushGovernor) ShouldFlush(sizeBefore int, sizeAfter int) bool {
 	if sizeAfter > fg.highWatermark {
 		return true
 	}
-	// We have lowWatermark <= sizeBefore <= sizeAfter <= highWatermark.
-	// Note that this is always false when there are no boundaries.
-	return fg.wastedSpace(sizeBefore) < fg.wastedSpace(sizeAfter)
-}
-
-// wastedSpace returns how much memory is wasted by a block of the given size.
-// This is the amount of bytes remaining in the allocation class when loading
-// the block in the cache.
-func (fg *FlushGovernor) wastedSpace(size int) int {
-	for i := 0; i < fg.numBoundaries; i++ {
-		if fg.boundaries[i] >= size {
-			return fg.boundaries[i] - size
+	if sizeAfter > fg.targetBoundary {
+		// Flush, unless we're already past the boundary or the KV is large enough
+		// that we would waste less space in the next class.
+		if sizeBefore <= fg.targetBoundary && fg.highWatermark-sizeAfter > fg.targetBoundary-sizeBefore {
+			return true
 		}
 	}
-	return fg.highWatermark - size
+	return false
 }
 
 func (fg FlushGovernor) String() string {
-	return fmt.Sprintf("low watermark: %d\nhigh watermark: %d\nboundaries: %v\n",
-		fg.lowWatermark, fg.highWatermark, fg.boundaries[:fg.numBoundaries])
+	return fmt.Sprintf("low watermark: %d\nhigh watermark: %d\ntargetBoundary: %v\n",
+		fg.lowWatermark, fg.highWatermark, fg.targetBoundary)
+}
+
+// findClosestClass returns the index of the allocation class that is closest to
+// target. It can be either larger or smaller.
+func findClosestClass(allocatorSizeClasses []int, target int) int {
+	// Find the first class >= target.
+	i, _ := slices.BinarySearch(allocatorSizeClasses, target)
+	if i == len(allocatorSizeClasses) || (i > 0 && target-allocatorSizeClasses[i-1] < allocatorSizeClasses[i]-target) {
+		i--
+	}
+	return i
 }

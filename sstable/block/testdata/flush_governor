@@ -3,7 +3,7 @@ init target-block-size=1000 block-size-threshold=90
 ----
 low watermark: 900
 high watermark: 1000
-boundaries: []
+targetBoundary: 1000
 
 should-flush size-before=800 size-after=900
 ----
@@ -26,11 +26,11 @@ should-flush size-before=899 size-after=10000
 should not flush
 
 # Size classes. Note that the block allocation overhead is 360.
-init target-block-size=1000 size-class-aware-threshold=60 size-classes=(820, 1020, 1320, 1820)
+init target-block-size=800 size-class-aware-threshold=60 size-classes=(820, 1020, 1320, 1820)
 ----
-low watermark: 600
-high watermark: 1452
-boundaries: [652 952]
+low watermark: 480
+high watermark: 952
+targetBoundary: 652
 
 # Should not flush when the "after" block fits in the same size class.
 should-flush size-before=600 size-after=650
@@ -49,9 +49,9 @@ should-flush size-before=600 size-after=950
 ----
 should not flush
 
-should-flush size-before=600 size-after=1450
+should-flush size-before=600 size-after=960
 ----
-should not flush
+should flush
 
 # Should flush when the after size is above the high watermark.
 should-flush size-before=600 size-after=1500
@@ -60,7 +60,7 @@ should flush
 
 # Should not flush when the "before" size is below the low watermark (even when
 # the "after" size is greater than the high watermark).
-should-flush size-before=500 size-after=1500
+should-flush size-before=400 size-after=1500
 ----
 should not flush
 
@@ -69,28 +69,26 @@ init target-block-size=1000 size-class-aware-threshold=60 size-classes=(1500, 20
 ----
 low watermark: 900
 high watermark: 1000
-boundaries: []
+targetBoundary: 1000
 
 # Size classes should be ignored when they're all below the target block size.
 init target-block-size=1000 size-class-aware-threshold=60 size-classes=(500, 800, 900)
 ----
 low watermark: 900
 high watermark: 1000
-boundaries: []
-
-# Verify we limit the number of boundaries to 4.
-init target-block-size=1000 size-class-aware-threshold=60 size-classes=(500, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050)
-----
-low watermark: 900
-high watermark: 1000
-boundaries: []
+targetBoundary: 1000
 
 # Test with jemalloc boundaries.
 init target-block-size=32768 jemalloc-size-classes
 ----
 low watermark: 19661
 high watermark: 40592
-boundaries: [20112 24208 28304 32400]
+targetBoundary: 32400
+
+# We should not flush until exceeding the boundary.
+should-flush size-before=30000 size-after=31000
+----
+should not flush
 
 # We should flush to avoid exceeding the boundary.
 should-flush size-before=32000 size-after=32766
