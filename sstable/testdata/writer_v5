@@ -327,3 +327,18 @@ rocksdb.property.collectors: [obsolete-key]
 pebble.raw.range-key.key.size: 6
 pebble.raw.range-key.value.size: 9
 obsolete-key: hex:0074
+
+open-writer disable-value-blocks
+----
+
+write-kvs
+a@2.SET.1:a2
+a@1.SET.1:a1
+b@2.SET.1:b2
+----
+EstimatedSize()=53
+
+close
+----
+point:    [a@2#1,SET-b@2#1,SET]
+seqnums:  [1-1]
