@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/colblk"
@@ -32,15 +33,18 @@ var (
 	secondaryCacheSize int64
 )
 
-// Define the default testkeys key schema. Feeding this schema to the tool
-// ensures the cmd/pebble cli tool natively understands the sstables constructed
-// by our test cases.
+// Define a few default key schemas including the testkey schema. Feeding this
+// schema to the tool ensures the cmd/pebble cli tool natively understands the
+// sstables constructed by our test cases.
 //
 // TODO(jackson): Ideally when a sstable.Reader finds a key schema that's a
 // DefaultKeySchema not already in the KeySchemas constructed with a Comparer
 // that it knows of, it would automatically construct the appropriate KeySchema.
 // Or at least the cli tool should.
-var testKeysSchema = colblk.DefaultKeySchema(testkeys.Comparer, 16)
+var (
+	testKeysSchema = colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	defaultSchema  = colblk.DefaultKeySchema(base.DefaultComparer, 16)
+)
 
 func main() {
 	log.SetFlags(0)
@@ -72,7 +76,8 @@ func main() {
 	t := tool.New(
 		tool.Comparers(&crdbtest.Comparer, testkeys.Comparer),
 		tool.Mergers(fauxMVCCMerger),
-		tool.KeySchemas(&crdbtest.KeySchema, &testKeysSchema),
+		tool.KeySchema(defaultSchema.Name),
+		tool.KeySchemas(&crdbtest.KeySchema, &testKeysSchema, &defaultSchema),
 	)
 	rootCmd.AddCommand(t.Commands...)
 
