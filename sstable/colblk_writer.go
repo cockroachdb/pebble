@@ -534,8 +534,13 @@ func (w *RawColumnWriter) evaluatePoint(
 
 	if !w.disableKeyOrderChecks && (eval.kcmp.UserKeyComparison < 0 ||
 		(eval.kcmp.UserKeyComparison == 0 && w.prevPointKey.trailer <= key.Trailer)) {
+		previousKey := base.InternalKey{
+			UserKey: w.dataBlock.MaterializeLastUserKey(nil),
+			Trailer: w.prevPointKey.trailer,
+		}
 		return eval, errors.Errorf(
-			"pebble: keys must be added in strictly increasing order: %s",
+			"pebble: keys must be added in strictly increasing order: %s, %s",
+			previousKey.Pretty(w.comparer.FormatKey),
 			key.Pretty(w.comparer.FormatKey))
 	}
 
