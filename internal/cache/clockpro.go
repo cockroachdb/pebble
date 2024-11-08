@@ -160,7 +160,7 @@ func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value
 			e = nil
 		}
 
-	case e.peekValue() != nil:
+	case e.val != nil:
 		// cache entry was a hot or cold page
 		e.setValue(value)
 		e.referenced.Store(true)
@@ -179,7 +179,10 @@ func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value
 		// cache entry was a test page
 		c.sizeTest -= e.size
 		c.countTest--
-		c.metaDel(e).release()
+		v := c.metaDel(e)
+		if invariants.Enabled && v != nil {
+			panic("value should be nil")
+		}
 		c.metaCheck(e)
 
 		e.size = int64(len(value.buf))
@@ -402,7 +405,7 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 // the files map, and ensures that hand{Hot,Cold,Test} are not pointing at the
 // entry. Returns the deleted value that must be released, if any.
 func (c *shard) metaDel(e *entry) (deletedValue *Value) {
-	if value := e.peekValue(); value != nil {
+	if value := e.val; value != nil {
 		value.ref.trace("metaDel")
 	}
 	// Remove the pointer to the value.
@@ -708,10 +711,7 @@ func New(size int64) *Cache {
 	// We could consider growing the number of shards superlinearly, but
 	// increasing the shard count may reduce the effectiveness of the caching
 	// algorithm if frequently-accessed blocks are insufficiently distributed
-	// across shards. If a shard's size is smaller than a single frequently
-	// scanned sstable, then the shard will be unable to hold the entire
-	// frequently-scanned table in memory despite other shards still holding
-	// infrequently accessed blocks.
+	// across shards.
 	//
 	// Experimentally, we've observed contention contributing to tail latencies
 	// at 2 shards per processor. For now we use 4 shards per processor,
