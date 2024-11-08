@@ -43,7 +43,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 				e.Add(key, value, 0, kcmp, false /* isObsolete */)
 				buf = e.MaterializeLastUserKey(buf[:0])
 				if !Comparer.Equal(key.UserKey, buf) {
-					td.Fatalf(t, "incorect MaterializeLastKey: %s instead of %s", formatUserKey(buf), formatUserKey(key.UserKey))
+					td.Fatalf(t, "incorrect MaterializeLastKey: %s instead of %s", formatUserKey(buf), formatUserKey(key.UserKey))
 				}
 			}
 			numRows := e.Rows()

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -386,6 +387,9 @@ func formatUserKey(key []byte) string {
 	if key[len(key)-1] != byte(len(suffix)+1) {
 		panic("invalid suffix length byte")
 	}
+	if bytes.ContainsFunc(prefix, func(r rune) bool { return r < ' ' || r > '~' }) {
+		return fmt.Sprintf("%q @ %X", prefix, suffix)
+	}
 	return fmt.Sprintf("%s @ %X", prefix, suffix)
 }
 
@@ -423,6 +427,15 @@ func formatKV(kv base.InternalKV) string {
 //	foo @ 0001020304050607
 func parseUserKey(userKeyStr string) []byte {
 	roachKey, versionStr := splitStringAt(userKeyStr, " @ ")
+
+	if len(roachKey) >= 2 && roachKey[0] == '"' && roachKey[len(roachKey)-1] == '"' {
+		var err error
+		roachKey, err = strconv.Unquote(roachKey)
+		if err != nil {
+			panic(fmt.Sprintf("invalid user key string %s: %v", userKeyStr, err))
+		}
+	}
+
 	// Append sentinel byte.
 	userKey := append([]byte(roachKey), 0)
 	if versionStr != "" {
