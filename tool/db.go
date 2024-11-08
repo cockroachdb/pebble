@@ -884,19 +884,15 @@ func (d *dbT) addProps(
 	if err != nil {
 		return err
 	}
-	opts := sstable.ReaderOptions{
-		Mergers:   d.mergers,
-		Comparers: d.comparers,
-	}
+	opts := d.opts.MakeReaderOptions()
+	opts.Mergers = d.mergers
+	opts.Comparers = d.comparers
 	opts.SetInternal(sstableinternal.ReaderOptions{
 		CacheOpts: sstableinternal.CacheOptions{
 			FileNum: m.FileBacking.DiskFileNum,
 		},
 	})
-	r, err := sstable.NewReader(ctx, f, sstable.ReaderOptions{
-		Mergers:   d.mergers,
-		Comparers: d.comparers,
-	})
+	r, err := sstable.NewReader(ctx, f, opts)
 	if err != nil {
 		_ = f.Close()
 		return err
