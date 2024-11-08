@@ -56,6 +56,13 @@ func Comparers(cmps ...*Comparer) Option {
 	}
 }
 
+// KeySchema configures the name of the schema to use when writing sstables.
+func KeySchema(name string) Option {
+	return func(t *T) {
+		t.opts.KeySchema = name
+	}
+}
+
 // KeySchemas may be passed to New to register key schemas for use by the
 // introspection tools.
 func KeySchemas(schemas ...*colblk.KeySchema) Option {
