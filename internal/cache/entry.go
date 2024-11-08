@@ -29,18 +29,21 @@ func (p entryType) String() string {
 // entry holds the metadata for a cache entry. The memory for an entry is
 // allocated from manually managed memory.
 //
-// Using manual memory management for entries is technically a volation of the
-// Cgo pointer rules:
+// Using manual memory management for entries may seem to be a violation of
+// the Cgo pointer rules:
 //
 //	https://golang.org/cmd/cgo/#hdr-Passing_pointers
 //
 // Specifically, Go pointers should not be stored in C allocated memory. The
 // reason for this rule is that the Go GC will not look at C allocated memory
 // to find pointers to Go objects. If the only reference to a Go object is
-// stored in C allocated memory, the object will be reclaimed. The shard field
-// of the entry struct points to a Go allocated object, thus the
-// violation. What makes this "safe" is that the Cache guarantees that there
-// are other pointers to the shard which will keep it alive.
+// stored in C allocated memory, the object will be reclaimed. The entry
+// contains various pointers to other entries. This does not violate the Go
+// pointer rules because either all entries are manually allocated or none
+// are. Also, even if we had a mix of C and Go allocated memory, which would
+// violate the rule, we would not have this reclamation problem since the
+// lifetime of the entry is managed by the shard containing it, and not
+// reliant on the entry pointers.
 type entry struct {
 	key key
 	// The value associated with the entry. The entry holds a reference on the
@@ -133,10 +136,6 @@ func (e *entry) setValue(v *Value) {
 	old := e.val
 	e.val = v
 	old.release()
-}
-
-func (e *entry) peekValue() *Value {
-	return e.val
 }
 
 func (e *entry) acquireValue() *Value {
