@@ -120,20 +120,24 @@ func formatWriterMetadata(td *datadriven.TestData, m *WriterMetadata) string {
 
 func runDataDriven(t *testing.T, file string, tableFormat TableFormat, parallelism bool) {
 	var r *Reader
+	var w RawWriter
 	var obj *objstorage.MemObj
-	defer func() {
+	closeReaderAndWriter := func() {
 		if r != nil {
 			require.NoError(t, r.Close())
 		}
-	}()
+		if w != nil {
+			require.NoError(t, w.Close())
+		}
+		r = nil
+		w = nil
+	}
+	defer closeReaderAndWriter()
 
 	datadriven.RunTest(t, file, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
-			if r != nil {
-				_ = r.Close()
-				r = nil
-			}
+			closeReaderAndWriter()
 			var meta *WriterMetadata
 			var err error
 			wopts := &WriterOptions{
@@ -152,6 +156,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return formatWriterMetadata(td, meta)
 
 		case "build-raw":
+			closeReaderAndWriter()
 			if r != nil {
 				_ = r.Close()
 				r = nil
@@ -165,6 +170,41 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
+			return formatWriterMetadata(td, meta)
+
+		case "open-writer":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			wopts := &WriterOptions{
+				Comparer:           testkeys.Comparer,
+				DisableValueBlocks: td.HasArg("disable-value-blocks"),
+				TableFormat:        tableFormat,
+				Parallelism:        parallelism,
+			}
+			obj := &objstorage.MemObj{}
+			if err := optsFromArgs(td, wopts); err != nil {
+				return err.Error()
+			}
+			w = NewRawWriter(obj, *wopts)
+			return ""
+
+		case "write-kvs":
+			if err := writeKVs(w, td.Input); err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("EstimatedSize()=%d", w.EstimatedSize())
+
+		case "close":
+			if err := w.Close(); err != nil {
+				return err.Error()
+			}
+			meta, err := w.Metadata()
+			if err != nil {
+				return err.Error()
+			}
+			w = nil
 			return formatWriterMetadata(td, meta)
 
 		case "scan":
