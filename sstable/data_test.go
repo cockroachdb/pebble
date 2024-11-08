@@ -103,39 +103,8 @@ func runBuildMemObjCmd(
 			_ = w.Close()
 		}
 	}()
-	for _, data := range strings.Split(td.Input, "\n") {
-		err := func() (err error) {
-			defer func() {
-				if r := recover(); r != nil {
-					err = errors.Errorf("%v", r)
-				}
-			}()
-
-			switch {
-			case strings.HasPrefix(data, "EncodeSpan:"):
-				return w.EncodeSpan(keyspan.ParseSpan(strings.TrimPrefix(data, "EncodeSpan:")))
-			default:
-				forceObsolete := strings.HasPrefix(data, "force-obsolete:")
-				if forceObsolete {
-					data = strings.TrimSpace(strings.TrimPrefix(data, "force-obsolete:"))
-				}
-				j := strings.Index(data, ":")
-				key := base.ParseInternalKey(data[:j])
-				value := []byte(data[j+1:])
-				switch key.Kind() {
-				case InternalKeyKindRangeDelete:
-					if forceObsolete {
-						return errors.Errorf("force-obsolete is not allowed for RANGEDEL")
-					}
-					return w.AddWithForceObsolete(key, value, false /* forceObsolete */)
-				default:
-					return w.AddWithForceObsolete(key, value, forceObsolete)
-				}
-			}
-		}()
-		if err != nil {
-			return nil, nil, err
-		}
+	if err := writeKVs(w, td.Input); err != nil {
+		return nil, nil, err
 	}
 	if err := w.Close(); err != nil {
 		return nil, nil, err
@@ -146,6 +115,41 @@ func runBuildMemObjCmd(
 		return nil, nil, err
 	}
 	return meta, obj, nil
+}
+
+func writeKVs(w RawWriter, input string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.Errorf("%v", r)
+		}
+	}()
+	for _, data := range strings.Split(input, "\n") {
+		switch {
+		case strings.HasPrefix(data, "EncodeSpan:"):
+			err = w.EncodeSpan(keyspan.ParseSpan(strings.TrimPrefix(data, "EncodeSpan:")))
+		default:
+			forceObsolete := strings.HasPrefix(data, "force-obsolete:")
+			if forceObsolete {
+				data = strings.TrimSpace(strings.TrimPrefix(data, "force-obsolete:"))
+			}
+			j := strings.Index(data, ":")
+			key := base.ParseInternalKey(data[:j])
+			value := []byte(data[j+1:])
+			switch key.Kind() {
+			case InternalKeyKindRangeDelete:
+				if forceObsolete {
+					return errors.Errorf("force-obsolete is not allowed for RANGEDEL")
+				}
+				err = w.AddWithForceObsolete(key, value, false /* forceObsolete */)
+			default:
+				err = w.AddWithForceObsolete(key, value, forceObsolete)
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return err
 }
 
 func runBuildCmd(
