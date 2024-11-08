@@ -203,11 +203,13 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 	if w.rangeKeyBlock.KeyCount() > 0 {
 		sz += uint64(w.rangeKeyBlock.Size())
 	}
-	for _, blk := range w.valueBlock.blocks {
-		sz += uint64(blk.block.LengthWithTrailer())
-	}
-	if w.valueBlock.buf != nil {
-		sz += uint64(len(w.valueBlock.buf.b))
+	if w.valueBlock != nil {
+		for _, blk := range w.valueBlock.blocks {
+			sz += uint64(blk.block.LengthWithTrailer())
+		}
+		if w.valueBlock.buf != nil {
+			sz += uint64(len(w.valueBlock.buf.b))
+		}
 	}
 	// TODO(jackson): Include an estimate of the properties, filter and meta
 	// index blocks sizes.
