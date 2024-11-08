@@ -185,23 +185,3 @@ func (s UnsafeOffsets) At2(i int) (uint32, uint32) {
 	v := *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
 	return uint32(v), uint32(v >> 32)
 }
-
-// UnsafeBuf provides a buffer without bounds checking. Every buf has a len and
-// capacity.
-type UnsafeBuf struct {
-	ptr unsafe.Pointer
-	len int
-	cap int
-}
-
-// Alloc allocates a buffer of size n, without zeroing its contents or copying
-// previous buffer contents.
-func (b *UnsafeBuf) Alloc(n int) {
-	b.ptr = mallocgc(uintptr(n), nil, false)
-	b.cap = n
-}
-
-// UnsafeSlice returns the current contents of the buf.
-func (b *UnsafeBuf) UnsafeSlice() []byte {
-	return unsafe.Slice((*byte)(b.ptr), b.len)
-}
