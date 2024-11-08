@@ -438,12 +438,9 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				}
 			}()
 
-			opts := sstable.ReaderOptions{
-				Comparer:  f.opts.Comparer,
-				Filters:   f.opts.Filters,
-				Comparers: f.comparers,
-				Mergers:   f.mergers,
-			}
+			opts := f.opts.MakeReaderOptions()
+			opts.Comparers = f.comparers
+			opts.Mergers = f.mergers
 			opts.SetInternal(sstableinternal.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					Cache:   cache,
