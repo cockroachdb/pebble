@@ -8,14 +8,17 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/stretchr/testify/require"
 )
 
 func TestByteWidth(t *testing.T) {
@@ -101,6 +104,9 @@ func TestUints(t *testing.T) {
 		out.Reset()
 		switch td.Cmd {
 		case "init":
+			if td.HasArg("zero-struct") {
+				b = UintBuilder{}
+			}
 			defaultZero := td.HasArg("default-zero")
 			b.init(defaultZero)
 			return ""
@@ -161,4 +167,69 @@ func TestUints(t *testing.T) {
 			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
 		}
 	})
+}
+
+func TestUintsRandomized(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("Seed: %d", seed)
+
+	type config struct {
+		defaultZero bool
+		rowsSet     int
+		rowsFinish  int
+		maxValue    uint64
+		probNonZero float64
+	}
+
+	runTest := func(t *testing.T, cfg config) {
+		var b UintBuilder
+		b.init(cfg.defaultZero)
+		rng := rand.New(rand.NewPCG(0, seed))
+		vals := make([]uint64, max(cfg.rowsSet, cfg.rowsFinish))
+		for i := 0; i < cfg.rowsSet; i++ {
+			if rng.Float64() < cfg.probNonZero {
+				vals[i] = rng.Uint64N(cfg.maxValue)
+			}
+			if vals[i] != 0 || !cfg.defaultZero {
+				b.Set(i, vals[i])
+			}
+		}
+		sz := b.Size(cfg.rowsFinish, 0)
+		buf := crbytes.AllocAligned(int(sz) + 1 /* extra padding byte for pointer safety */)
+		off := b.Finish(0, cfg.rowsFinish, 0, buf)
+		require.Equal(t, sz, off)
+
+		uu, endOff := DecodeUnsafeUints(buf, 0, cfg.rowsFinish)
+		require.Equal(t, endOff, off)
+		for i := 0; i < cfg.rowsFinish; i++ {
+			if uu.At(i) != vals[i] {
+				t.Fatalf("At(%d) = %d, want %d", i, uu.At(i), vals[i])
+			}
+		}
+	}
+
+	rng := rand.New(rand.NewPCG(0, seed))
+	for i := 0; i < 20; i++ {
+		rowsSet := rng.IntN(10000)
+		cfg := config{
+			defaultZero: rng.Float64() < 0.5,
+			rowsSet:     rowsSet,
+			rowsFinish:  rowsSet,
+			maxValue:    math.MaxUint64 >> rng.Uint64N(63),
+			probNonZero: rng.Float64(),
+		}
+		if p := rng.Float64(); p < 0.1 && cfg.defaultZero {
+			cfg.rowsFinish = rng.IntN(10000)
+		} else if p < 0.2 && cfg.rowsSet > 0 {
+			cfg.rowsFinish = cfg.rowsSet - 1
+		} else if p < 0.3 && cfg.defaultZero {
+			cfg.rowsFinish = cfg.rowsSet + 1
+		}
+		t.Run(
+			fmt.Sprintf("defaultZero=%t,rows=%d,finish=%d,max=%d,probNonZero=%.2f",
+				cfg.defaultZero, cfg.rowsSet, cfg.rowsFinish, cfg.maxValue, cfg.probNonZero),
+			func(t *testing.T) { runTest(t, cfg) },
+		)
+	}
+
 }

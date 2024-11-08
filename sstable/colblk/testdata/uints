@@ -694,3 +694,63 @@ uints
  ├── 098-099: x 00 # data[97] = 0
  ├── 099-100: x 00 # data[98] = 0
  └── 100-101: x 00 # data[99] = 0
+
+# Test a case where we must grow the array backing the column by doubling its
+# size (its grown to at least 32 elements by default, so it's necessary to set
+# an index >= 32).
+
+init default-zero zero-struct
+----
+
+write
+43:1
+----
+
+finish rows=44
+----
+uints
+ ├── 00-01: x 01 # encoding: 1b
+ ├── 01-02: x 00 # data[0] = 0
+ ├── 02-03: x 00 # data[1] = 0
+ ├── 03-04: x 00 # data[2] = 0
+ ├── 04-05: x 00 # data[3] = 0
+ ├── 05-06: x 00 # data[4] = 0
+ ├── 06-07: x 00 # data[5] = 0
+ ├── 07-08: x 00 # data[6] = 0
+ ├── 08-09: x 00 # data[7] = 0
+ ├── 09-10: x 00 # data[8] = 0
+ ├── 10-11: x 00 # data[9] = 0
+ ├── 11-12: x 00 # data[10] = 0
+ ├── 12-13: x 00 # data[11] = 0
+ ├── 13-14: x 00 # data[12] = 0
+ ├── 14-15: x 00 # data[13] = 0
+ ├── 15-16: x 00 # data[14] = 0
+ ├── 16-17: x 00 # data[15] = 0
+ ├── 17-18: x 00 # data[16] = 0
+ ├── 18-19: x 00 # data[17] = 0
+ ├── 19-20: x 00 # data[18] = 0
+ ├── 20-21: x 00 # data[19] = 0
+ ├── 21-22: x 00 # data[20] = 0
+ ├── 22-23: x 00 # data[21] = 0
+ ├── 23-24: x 00 # data[22] = 0
+ ├── 24-25: x 00 # data[23] = 0
+ ├── 25-26: x 00 # data[24] = 0
+ ├── 26-27: x 00 # data[25] = 0
+ ├── 27-28: x 00 # data[26] = 0
+ ├── 28-29: x 00 # data[27] = 0
+ ├── 29-30: x 00 # data[28] = 0
+ ├── 30-31: x 00 # data[29] = 0
+ ├── 31-32: x 00 # data[30] = 0
+ ├── 32-33: x 00 # data[31] = 0
+ ├── 33-34: x 00 # data[32] = 0
+ ├── 34-35: x 00 # data[33] = 0
+ ├── 35-36: x 00 # data[34] = 0
+ ├── 36-37: x 00 # data[35] = 0
+ ├── 37-38: x 00 # data[36] = 0
+ ├── 38-39: x 00 # data[37] = 0
+ ├── 39-40: x 00 # data[38] = 0
+ ├── 40-41: x 00 # data[39] = 0
+ ├── 41-42: x 00 # data[40] = 0
+ ├── 42-43: x 00 # data[41] = 0
+ ├── 43-44: x 00 # data[42] = 0
+ └── 44-45: x 01 # data[43] = 1
