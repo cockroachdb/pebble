@@ -26,6 +26,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -114,9 +115,22 @@ type shard struct {
 	countHot  int64
 	countCold int64
 	countTest int64
+
+	// Some fields in readShard are protected by mu. See comments in declaration
+	// of readShard.
+	readShard readShard
 }
 
-func (c *shard) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
+// GetWithMaybeReadHandle is the internal helper for implementing
+// Cache.{Get,GetWithReadHandle}. loadBlockSema can be nil, and a non-nil
+// value is only relevant when desireReadHandle is true.
+func (c *shard) GetWithMaybeReadHandle(
+	id ID,
+	fileNum base.DiskFileNum,
+	offset uint64,
+	desireReadHandle bool,
+	loadBlockSema *fifo.Semaphore,
+) (Handle, ReadHandle) {
 	c.mu.RLock()
 	var value *Value
 	if e, _ := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
@@ -126,12 +140,30 @@ func (c *shard) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
 		}
 	}
 	c.mu.RUnlock()
+	var rh ReadHandle
+	if value == nil && desireReadHandle {
+		c.mu.Lock()
+		// After the c.mu.RUnlock(), someone could have inserted the value in the
+		// cache. We could tolerate the race and do a file read, or do another map
+		// lookup. We choose to do the latter, since the cost of a map lookup is
+		// insignificant compared to the cost of reading a block from a file.
+		if e, _ := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
+			value = e.acquireValue()
+			if value != nil {
+				e.referenced.Store(true)
+			}
+		}
+		if value == nil {
+			rh = c.readShard.getReadHandleLocked(id, fileNum, offset, loadBlockSema)
+		}
+		c.mu.Unlock()
+	}
 	if value == nil {
 		c.misses.Add(1)
-		return Handle{}
+	} else {
+		c.hits.Add(1)
 	}
-	c.hits.Add(1)
-	return Handle{value: value}
+	return Handle{value: value}, rh
 }
 
 func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
@@ -170,6 +202,11 @@ func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value
 			value.ref.trace("add-hot")
 			c.sizeHot += delta
 		} else {
+			// TODO(sumeer): unclear why we don't set e.ptype to etHot on this path.
+			// In the default case below, where the state is etTest we set it to
+			// etHot. But etTest is "colder" than etCold, since the only transition
+			// into etTest is etCold => etTest, so since etTest transitions to
+			// etHot, then etCold should also transition.
 			value.ref.trace("add-cold")
 			c.sizeCold += delta
 		}
@@ -746,6 +783,7 @@ func newShards(size int64, shards int) *Cache {
 		}
 		c.shards[i].blocks.Init(16)
 		c.shards[i].files.Init(16)
+		c.shards[i].readShard.Init(&c.shards[i])
 	}
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
@@ -822,7 +860,24 @@ func (c *Cache) Unref() {
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
 func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
-	return c.getShard(id, fileNum, offset).Get(id, fileNum, offset)
+	h, rh := c.getShard(id, fileNum, offset).GetWithMaybeReadHandle(
+		id, fileNum, offset, false, nil)
+	if invariants.Enabled && rh.Valid() {
+		panic("ReadHandle should not be valid")
+	}
+	return h
+}
+
+// GetWithReadHandle retrieves the cache value for the specified ID, fileNum
+// and offset. If found, a valid Handle is returned, else a valid ReadHandle
+// is returned. See the ReadHandle declaration for the contract must satisfy
+// when getting a valid ReadHandle. The loadBlockSema if non-nil, is used by
+// the ReadHandle -- see Options.LoadBlockSema for details.
+func (c *Cache) GetWithReadHandle(
+	id ID, fileNum base.DiskFileNum, offset uint64, loadBlockSema *fifo.Semaphore,
+) (Handle, ReadHandle) {
+	return c.getShard(id, fileNum, offset).GetWithMaybeReadHandle(
+		id, fileNum, offset, true, loadBlockSema)
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an
