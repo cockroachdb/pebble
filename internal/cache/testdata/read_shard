@@ -1,0 +1,163 @@
+# Cache cannot store anything.
+init max-size=0
+----
+
+# Get misses the cache and has turn to read.
+get name=s1_f2_off3 id=1 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+wait name=s1_f2_off3
+----
+turn to read
+map-len: 1
+
+# Sets the value read, but will be forgotten by the cache.
+set-read-value name=s1_f2_off3 val=potato
+----
+map-len: 0
+
+# Another get for the same block, which gets the turn to read.
+get name=s1_f2_off3 id=1 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+wait name=s1_f2_off3
+----
+turn to read
+map-len: 1
+
+# A concurrent get for the same block.
+get name=another_s1_f2_off3 id=1 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+# A get with a different id but the same file-num and offset. It is a
+# different block.
+get name=s2_f2_off3 id=2 file-num=2 offset=3
+----
+waiting
+map-len: 2
+
+# The get with id=2 also gets a turn to read, and sets an error.
+wait name=s2_f2_off3
+----
+turn to read
+map-len: 2
+
+set-error name=s2_f2_off3
+----
+map-len: 1
+
+# The first get reads and sets a value.
+set-read-value name=s1_f2_off3 val=eggplant
+----
+map-len: 0
+
+# The concurrent get sees this value, which was never successfully stored in
+# the cache.
+wait name=another_s1_f2_off3
+----
+val: eggplant
+map-len: 0
+
+# Get with id=2 gets a turn to read.
+get name=s2_f2_off3 id=2 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+wait name=s2_f2_off3
+----
+turn to read
+map-len: 1
+
+# Two more concurrent gets, one with a cancelled context.
+get name=s2_f2_off3_2 id=2 file-num=2 offset=3 cancelled-context
+----
+waiting
+map-len: 1
+
+get name=s2_f2_off3_3 id=2 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+wait name=s2_f2_off3_2
+----
+err: context canceled
+map-len: 1
+
+# The get with the read turn sets an error.
+set-error name=s2_f2_off3
+----
+map-len: 1
+
+# The waiting reader gets a turn.
+wait name=s2_f2_off3_3
+----
+turn to read
+map-len: 1
+
+# Two more concurrent gets.
+get name=s2_f2_off3_4 id=2 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+get name=s2_f2_off3_5 id=2 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+# The get with a read turn sets a value.
+set-read-value name=s2_f2_off3_3 val=aubergine
+----
+map-len: 0
+
+wait name=s2_f2_off3_4
+----
+val: aubergine
+map-len: 0
+
+wait name=s2_f2_off3_5
+----
+val: aubergine
+map-len: 0
+
+# Cache with some storage capacity
+init max-size=100
+----
+
+# Get misses the cache and has turn to read.
+get name=s1_f2_off3 id=1 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+wait name=s1_f2_off3
+----
+turn to read
+map-len: 1
+
+# Concurrent reader.
+get name=s1_f2_off3_2 id=1 file-num=2 offset=3
+----
+waiting
+map-len: 1
+
+set-read-value name=s1_f2_off3 val=brinjal
+----
+map-len: 0
+
+wait name=s1_f2_off3_2
+----
+val: brinjal
+map-len: 0
+
+get name=s1_f2_off3_3 id=1 file-num=2 offset=3
+----
+val: brinjal

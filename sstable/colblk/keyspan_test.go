@@ -88,7 +88,7 @@ func TestKeyspanBlockPooling(t *testing.T) {
 	copy(v.BlockData(), b)
 	d := (*KeyspanDecoder)(unsafe.Pointer(v.BlockMetadata()))
 	d.Init(v.BlockData())
-	v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
+	v.SetInCacheForTesting(c, cache.ID(1), base.DiskFileNum(1), 0).Release()
 
 	getBlockAndIterate := func() {
 		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
