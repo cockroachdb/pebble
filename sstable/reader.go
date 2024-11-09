@@ -499,17 +499,48 @@ func (r *Reader) readBlockInternal(
 	bh block.Handle,
 	initBlockMetadataFn func(*block.Metadata, []byte) error,
 ) (handle block.BufferHandle, _ error) {
-	if h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset); h.Valid() {
-		// Cache hit.
-		if readHandle != nil {
-			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
+	var ch cache.Handle
+	var crh cache.ReadHandle
+	hit := true
+	if env.BufferPool == nil {
+		var errorDuration time.Duration
+		var err error
+		ch, crh, errorDuration, hit, err = r.cacheOpts.Cache.GetWithReadHandle(
+			ctx, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+		if errorDuration > 5*time.Millisecond && r.logger.IsTracingEnabled(ctx) {
+			r.logger.Eventf(
+				ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
 		}
-		env.BlockServedFromCache(bh.Length)
-		return block.CacheBufferHandle(h), nil
+		// TODO(sumeer): consider tracing when waited longer than some duration
+		// for turn to do the read.
+		if err != nil {
+			return block.BufferHandle{}, err
+		}
+	} else {
+		// The compaction path uses env.BufferPool, and does not coordinate read
+		// using a cache.ReadHandle. This is ok since only a single compaction is
+		// reading a block.
+		ch = r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+		if ch.Valid() {
+			hit = true
+		}
+	}
+	// INVARIANT: hit => ch.Valid()
+	if ch.Valid() {
+		if hit {
+			// Cache hit.
+			if readHandle != nil {
+				readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
+			}
+			env.BlockServedFromCache(bh.Length)
+		}
+		if invariants.Enabled && crh.Valid() {
+			panic("cache.ReadHandle must not be valid")
+		}
+		return block.CacheBufferHandle(ch), nil
 	}
 
-	// Cache miss.
-
+	// Need to read. First acquire loadBlockSema, if needed.
 	if sema := r.loadBlockSema; sema != nil {
 		if err := sema.Acquire(ctx, 1); err != nil {
 			// An error here can only come from the context.
@@ -517,7 +548,26 @@ func (r *Reader) readBlockInternal(
 		}
 		defer sema.Release(1)
 	}
+	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
+	if err != nil {
+		if crh.Valid() {
+			crh.SetReadError(err)
+		}
+		return block.BufferHandle{}, err
+	}
+	h := value.MakeHandle(crh, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+	return h, nil
+}
 
+// doRead is a helper for readBlockInternal that does the read, checksum
+// check, decompression, and returns either a block.Value or an error.
+func (r *Reader) doRead(
+	ctx context.Context,
+	env readBlockEnv,
+	readHandle objstorage.ReadHandle,
+	bh block.Handle,
+	initBlockMetadataFn func(*block.Metadata, []byte) error,
+) (block.Value, error) {
 	compressed := block.Alloc(int(bh.Length+block.TrailerLen), env.BufferPool)
 	readStopwatch := makeStopwatch()
 	var err error
@@ -540,17 +590,15 @@ func (r *Reader) readBlockInternal(
 	}
 	if err != nil {
 		compressed.Release()
-		return block.BufferHandle{}, err
+		return block.Value{}, err
 	}
 	env.BlockRead(bh.Length, readDuration)
-	if err := checkChecksum(r.checksumType, compressed.BlockData(), bh, r.cacheOpts.FileNum); err != nil {
+	if err = checkChecksum(r.checksumType, compressed.BlockData(), bh, r.cacheOpts.FileNum); err != nil {
 		compressed.Release()
-		return block.BufferHandle{}, err
+		return block.Value{}, err
 	}
-
 	typ := block.CompressionIndicator(compressed.BlockData()[bh.Length])
 	compressed.Truncate(int(bh.Length))
-
 	var decompressed block.Value
 	if typ == block.NoCompressionIndicator {
 		decompressed = compressed
@@ -559,23 +607,21 @@ func (r *Reader) readBlockInternal(
 		decodedLen, prefixLen, err := block.DecompressedLen(typ, compressed.BlockData())
 		if err != nil {
 			compressed.Release()
-			return block.BufferHandle{}, err
+			return block.Value{}, err
 		}
-
 		decompressed = block.Alloc(decodedLen, env.BufferPool)
 		err = block.DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData())
 		compressed.Release()
 		if err != nil {
 			decompressed.Release()
-			return block.BufferHandle{}, err
+			return block.Value{}, err
 		}
 	}
-	if err := initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
+	if err = initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
 		decompressed.Release()
-		return block.BufferHandle{}, err
+		return block.Value{}, err
 	}
-	h := decompressed.MakeHandle(r.cacheOpts.Cache, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
-	return h, nil
+	return decompressed, nil
 }
 
 func (r *Reader) readMetaindex(
