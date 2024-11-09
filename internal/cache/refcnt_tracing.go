@@ -51,6 +51,10 @@ func (v *refcnt) release() bool {
 	return n == 0
 }
 
+func (v *refcnt) value() int32 {
+	return v.val.Load()
+}
+
 func (v *refcnt) trace(msg string) {
 	s := fmt.Sprintf("%s: refs=%d\n%s", msg, v.refs(), debug.Stack())
 	v.Lock()
