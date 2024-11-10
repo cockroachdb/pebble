@@ -202,7 +202,7 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 		m.Hits += s.hits.Load()
 		m.Misses += s.misses.Load()
 	}
-	m.Size = m.Count * int64(unsafe.Sizeof(sstable.Reader{}))
+	m.Size = m.Count * int64(unsafe.Sizeof(tableCacheNode{})+unsafe.Sizeof(tableCacheValue{})+unsafe.Sizeof(sstable.Reader{}))
 	f := c.dbOpts.readerOpts.FilterMetricsTracker.Load()
 	return m, f
 }
