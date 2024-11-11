@@ -596,20 +596,25 @@ func TestClearWriteTask(t *testing.T) {
 
 func TestDoubleClose(t *testing.T) {
 	defer leaktest.AfterTest(t)()
+
 	// There is code in Cockroach land which relies on Writer.Close being
 	// idempotent. We should test this in Pebble, so that we don't cause
 	// Cockroach test failures.
-	f := &discardFile{}
-	w := NewWriter(f, WriterOptions{
-		BlockSize:   1,
-		TableFormat: TableFormatPebblev1,
-	})
-	w.Set(ikey("a").UserKey, nil)
-	w.Set(ikey("b").UserKey, nil)
-	err := w.Close()
-	require.NoError(t, err)
-	err = w.Close()
-	require.Equal(t, err, errWriterClosed)
+	for format := TableFormatMinSupported; format <= TableFormatMax; format++ {
+		t.Run(format.String(), func(t *testing.T) {
+			f := &discardFile{}
+			w := NewWriter(f, WriterOptions{
+				BlockSize:   1,
+				TableFormat: format,
+			})
+			w.Set(ikey("a").UserKey, nil)
+			w.Set(ikey("b").UserKey, nil)
+			err := w.Close()
+			require.NoError(t, err)
+			err = w.Close()
+			require.Equal(t, err, errWriterClosed)
+		})
+	}
 }
 
 func TestParallelWriterErrorProp(t *testing.T) {

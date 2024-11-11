@@ -969,9 +969,7 @@ func (w *RawColumnWriter) Close() (err error) {
 	}
 	w.meta.Properties = w.props
 	// Release any held memory and make any future calls error.
-	// TODO(jackson): Ensure other calls error appropriately if the writer is
-	// cleared.
-	*w = RawColumnWriter{meta: w.meta}
+	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
 	return nil
 }
 
