@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,9 @@ func TestWriter_RangeKeys(t *testing.T) {
 		}
 	}()
 
-	buildFn := func(td *datadriven.TestData) (*Reader, error) {
+	cmp := testkeys.Comparer
+	keySchema := colblk.DefaultKeySchema(cmp, 16)
+	buildFn := func(td *datadriven.TestData, format TableFormat) (*Reader, error) {
 		mem := vfs.NewMem()
 		f, err := mem.Create("test", vfs.WriteCategoryUnspecified)
 		if err != nil {
@@ -35,10 +38,10 @@ func TestWriter_RangeKeys(t *testing.T) {
 
 		// Use a "suffix-aware" Comparer, that will sort suffix-values in
 		// descending order of timestamp, rather than in lexical order.
-		cmp := testkeys.Comparer
 		w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
 			Comparer:    cmp,
-			TableFormat: TableFormatPebblev2,
+			TableFormat: format,
+			KeySchema:   &keySchema,
 		})
 		defer func() {
 			if w != nil {
@@ -92,7 +95,10 @@ func TestWriter_RangeKeys(t *testing.T) {
 			return nil, err
 		}
 
-		r, err = newReader(f, ReaderOptions{Comparer: cmp})
+		r, err = newReader(f, ReaderOptions{
+			Comparer:   cmp,
+			KeySchemas: MakeKeySchemas(&keySchema),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -100,38 +106,41 @@ func TestWriter_RangeKeys(t *testing.T) {
 		return r, nil
 	}
 
-	datadriven.RunTest(t, "testdata/writer_range_keys", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "build":
-			if r != nil {
-				_ = r.Close()
-				r = nil
-			}
+	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
+		t.Run(format.String(), func(t *testing.T) {
+			datadriven.RunTest(t, "testdata/writer_range_keys", func(t *testing.T, td *datadriven.TestData) string {
+				switch td.Cmd {
+				case "build":
+					if r != nil {
+						_ = r.Close()
+						r = nil
+					}
+					var err error
+					r, err = buildFn(td, format)
+					if err != nil {
+						return err.Error()
+					}
 
-			var err error
-			r, err = buildFn(td)
-			if err != nil {
-				return err.Error()
-			}
+					iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms)
+					if err != nil {
+						return err.Error()
+					}
+					defer iter.Close()
 
-			iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms)
-			if err != nil {
-				return err.Error()
-			}
-			defer iter.Close()
+					var buf bytes.Buffer
+					s, err := iter.First()
+					for ; s != nil; s, err = iter.Next() {
+						_, _ = fmt.Fprintf(&buf, "%s\n", s)
+					}
+					if err != nil {
+						return err.Error()
+					}
+					return buf.String()
 
-			var buf bytes.Buffer
-			s, err := iter.First()
-			for ; s != nil; s, err = iter.Next() {
-				_, _ = fmt.Fprintf(&buf, "%s\n", s)
-			}
-			if err != nil {
-				return err.Error()
-			}
-			return buf.String()
-
-		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
-		}
-	})
+				default:
+					return fmt.Sprintf("unknown command: %s", td.Cmd)
+				}
+			})
+		})
+	}
 }
