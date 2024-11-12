@@ -69,10 +69,18 @@ func (w *Writer) encodeFragmentedRangeKeySpan(s keyspan.Span) {
 	// NB: The span should only contain range keys and be internally consistent
 	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
 	//
-	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
-	// we may want to in the future.
-	keyspan.SortKeysBySuffix(w.comparer.CompareRangeSuffixes, s.Keys)
-
+	// Sort the keys by trailer (descending).
+	//
+	// Note that sstables written in TableFormatPebblev4 and earlier (rowblk
+	// encoding) will always re-order the Keys in order to encode RANGEKEYSETs
+	// first, then RANGEKEYUNSETs and then RANGEKEYDELs. See rangekey.Encoder.
+	// SSTables written in TableFormatPebblev5 or later (colblk encoding) will
+	// encode the keys in this order.
+	//
+	// Iteration doesn't depend on this ordering, in particular because it's
+	// inconsistent between the two encodings, but we may want eventually begin
+	// to depend on this ordering for colblk-encoded sstables.
+	keyspan.SortKeysByTrailerAndSuffix(w.comparer.CompareRangeSuffixes, s.Keys)
 	if w.Error() == nil {
 		w.rw.EncodeSpan(s)
 	}

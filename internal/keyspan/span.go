@@ -470,9 +470,14 @@ func SortKeysByTrailer(keys []Key) {
 	})
 }
 
-// SortKeysBySuffix sorts a Keys slice by suffix.
-func SortKeysBySuffix(suffixCmp base.CompareRangeSuffixes, keys []Key) {
+// SortKeysByTrailerAndSuffix sorts a Keys slice by trailer, and among keys with
+// equal trailers, by suffix.
+func SortKeysByTrailerAndSuffix(suffixCmp base.CompareRangeSuffixes, keys []Key) {
 	slices.SortFunc(keys, func(a, b Key) int {
+		// Trailer are ordered in decreasing number order.
+		if v := -cmp.Compare(a.Trailer, b.Trailer); v != 0 {
+			return v
+		}
 		return suffixCmp(a.Suffix, b.Suffix)
 	})
 }
