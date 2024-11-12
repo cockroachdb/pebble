@@ -227,6 +227,10 @@ func (i *fragmentIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error)
 	if err := i.applySpanTransforms(); err != nil {
 		return nil, err
 	}
+
+	// Apply a consistent ordering.
+	keyspan.SortKeysByTrailer(i.span.Keys)
+
 	// i.blockIter is positioned over the first internal key for the next span.
 	return &i.span, nil
 }
@@ -264,7 +268,7 @@ func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error
 	// i.blockIter is positioned over the last internal key for the previous
 	// span.
 
-	// Backwards iteration encounters internal keys in the wrong order.
+	// Apply a consistent ordering.
 	keyspan.SortKeysByTrailer(i.span.Keys)
 
 	i.applySpanTransforms()
