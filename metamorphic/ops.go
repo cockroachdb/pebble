@@ -203,6 +203,10 @@ type downloadOp struct {
 }
 
 func (o *downloadOp) run(t *Test, h historyRecorder) {
+	if t.testOpts.disableDownloads {
+		h.Recordf("%s // %v", o, nil)
+		return
+	}
 	db := t.getDB(o.dbID)
 	err := t.withRetries(func() error {
 		return db.Download(context.Background(), o.spans)

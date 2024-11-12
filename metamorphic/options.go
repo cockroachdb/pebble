@@ -169,6 +169,9 @@ func parseOptions(
 					return opts.useDeleteOnlyCompactionExcises
 				}
 				return true
+			case "TestOptions.disable_downloads":
+				opts.disableDownloads = true
+				return true
 			case "TestOptions.use_jemalloc_size_classes":
 				opts.Opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 				return true
@@ -267,6 +270,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useDeleteOnlyCompactionExcises {
 		fmt.Fprintf(&buf, "  use_delete_only_compaction_excises=%v\n", opts.useDeleteOnlyCompactionExcises)
+	}
+	if opts.disableDownloads {
+		fmt.Fprintf(&buf, "  disable_downloads=%v\n", opts.disableDownloads)
 	}
 	if opts.Opts.AllocatorSizeClasses != nil {
 		if fmt.Sprint(opts.Opts.AllocatorSizeClasses) != fmt.Sprint(pebble.JemallocSizeClasses) {
@@ -413,6 +419,8 @@ type TestOptions struct {
 	// useDeleteOnlyCompactionExcises turns on the ability for delete-only compactions
 	// to do excises. Note that this can be true even when useExcise is false.
 	useDeleteOnlyCompactionExcises bool
+	// disableDownloads, if true, makes downloadOp a no-op.
+	disableDownloads bool
 }
 
 // InitRemoteStorageFactory initializes Opts.Experimental.RemoteStorage.
@@ -861,6 +869,7 @@ func RandomOptions(
 	opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool {
 		return testOpts.useDeleteOnlyCompactionExcises
 	}
+	testOpts.disableDownloads = rng.IntN(2) == 0
 	testOpts.InitRemoteStorageFactory()
 	testOpts.Opts.EnsureDefaults()
 	return testOpts
