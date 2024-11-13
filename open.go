@@ -1022,7 +1022,7 @@ func (d *DB) replayWAL(
 	}
 
 	d.opts.Logger.Infof("[JOB %d] WAL %s stopped reading at offset: %s; replayed %d keys in %d batches",
-		jobID, base.DiskFileNum(ll.Num).String(), offset, keysReplayed, batchesReplayed)
+		jobID, ll.String(), offset, keysReplayed, batchesReplayed)
 	if !d.opts.ReadOnly {
 		flushMem()
 	}
