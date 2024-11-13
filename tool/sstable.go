@@ -397,7 +397,12 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 		iterCloser := base.CloseHelper(iter)
 		defer iterCloser.Close()
-		kv := iter.SeekGE(s.start, base.SeekGEFlagsNone)
+		var kv *base.InternalKV
+		if s.start == nil {
+			kv = iter.First()
+		} else {
+			kv = iter.SeekGE(s.start, base.SeekGEFlagsNone)
+		}
 
 		// We configured sstable.Reader to return raw tombstones which requires a
 		// bit more work here to put them in a form that can be iterated in
@@ -419,7 +424,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					// The range tombstone lies after the scan range.
 					continue
 				}
-				if r.Compare(s.start, t.End) >= 0 {
+				if s.start != nil && r.Compare(s.start, t.End) >= 0 {
 					// The range tombstone lies before the scan range.
 					continue
 				}
@@ -512,7 +517,13 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 		if rkIter != nil {
 			defer rkIter.Close()
-			span, err := rkIter.SeekGE(s.start)
+			var span *keyspan.Span
+			var err error
+			if s.start == nil {
+				span, err = rkIter.First()
+			} else {
+				span, err = rkIter.SeekGE(s.start)
+			}
 			for ; span != nil; span, err = rkIter.Next() {
 				// By default, emit the key, unless there is a filter.
 				emit := s.filter == nil
