@@ -7,16 +7,15 @@ package wal
 import (
 	"bytes"
 	"cmp"
-	"fmt"
 	"io"
 	"slices"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 )
 
 // A LogicalLog identifies a logical WAL and its consituent segment files.
@@ -38,7 +37,12 @@ type segment struct {
 
 // String implements fmt.Stringer.
 func (s segment) String() string {
-	return fmt.Sprintf("(%s,%s)", s.dir.Dirname, s.logNameIndex)
+	return redact.StringWithoutMarkers(s)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (s segment) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("(%s,%s)", errors.Safe(s.dir.Dirname), s.logNameIndex)
 }
 
 // NumSegments returns the number of constituent physical log files that make up
@@ -73,17 +77,19 @@ func (ll LogicalLog) OpenForRead() Reader {
 
 // String implements fmt.Stringer.
 func (ll LogicalLog) String() string {
-	var sb strings.Builder
-	sb.WriteString(base.DiskFileNum(ll.Num).String())
-	sb.WriteString(": {")
+	return redact.StringWithoutMarkers(ll)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (ll LogicalLog) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("%s: {", base.DiskFileNum(ll.Num).String())
 	for i := range ll.segments {
 		if i > 0 {
-			sb.WriteString(", ")
+			w.SafeString(", ")
 		}
-		sb.WriteString(ll.segments[i].String())
+		w.Print(ll.segments[i])
 	}
-	sb.WriteString("}")
-	return sb.String()
+	w.SafeString("}")
 }
 
 // appendDeletableLogs appends all of the LogicalLog's constituent physical

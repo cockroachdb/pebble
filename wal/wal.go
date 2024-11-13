@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -434,8 +435,15 @@ type Offset struct {
 // String implements fmt.Stringer, returning a string representation of the
 // offset.
 func (o Offset) String() string {
+	return redact.StringWithoutMarkers(o)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (o Offset) SafeFormat(w redact.SafePrinter, _ rune) {
 	if o.PreviousFilesBytes > 0 {
-		return fmt.Sprintf("(%s: %d), %d from previous files", o.PhysicalFile, o.Physical, o.PreviousFilesBytes)
+		w.Printf("(%s: %d), %d from previous files", o.PhysicalFile, o.Physical, o.PreviousFilesBytes)
+		return
 	}
-	return fmt.Sprintf("(%s: %d)", o.PhysicalFile, o.Physical)
+	w.Printf("(%s: %d)", o.PhysicalFile, o.Physical)
+
 }
