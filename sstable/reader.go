@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -71,7 +72,7 @@ type Reader struct {
 	filterBH     block.Handle
 	rangeDelBH   block.Handle
 	rangeKeyBH   block.Handle
-	valueBIH     valueBlocksIndexHandle
+	valueBIH     valblk.IndexHandle
 	propertiesBH block.Handle
 	metaindexBH  block.Handle
 	footerBH     block.Handle
@@ -664,7 +665,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Data:       make([]block.HandleWithProperties, 0, r.Properties.NumDataBlocks),
 		RangeDel:   r.rangeDelBH,
 		RangeKey:   r.rangeKeyBH,
-		ValueIndex: r.valueBIH.h,
+		ValueIndex: r.valueBIH.Handle,
 		Properties: r.propertiesBH,
 		MetaIndex:  r.metaindexBH,
 		Footer:     r.footerBH,
@@ -742,8 +743,8 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 		}
 	}
-	if r.valueBIH.h.Length != 0 {
-		vbiH, err := r.readValueBlock(context.Background(), noEnv, noReadHandle, r.valueBIH.h)
+	if r.valueBIH.Handle.Length != 0 {
+		vbiH, err := r.readValueBlock(context.Background(), noEnv, noReadHandle, r.valueBIH.Handle)
 		if err != nil {
 			return nil, err
 		}

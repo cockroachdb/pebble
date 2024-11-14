@@ -235,19 +235,19 @@ sstable
  │    └── trailer [compression=none checksum=0x5fb0d551]
  ├── data  offset: 38  length: 29
  │    ├── 00000    record (21 = 3 [0] + 14 + 4) [restart]
- │    │            blue@8#18,SET:value handle {valueLen:5 blockNum:0 offsetInBlock:0}
+ │    │            blue@8#18,SET:value handle {ValueLen:5 BlockNum:0 OffsetInBlock:0}
  │    ├── restart points
  │    │    └── 00021 [restart 0]
  │    └── trailer [compression=none checksum=0x628e4a10]
  ├── data  offset: 72  length: 29
  │    ├── 00000    record (21 = 3 [0] + 14 + 4) [restart]
- │    │            blue@8#16,SET:value handle {valueLen:6 blockNum:0 offsetInBlock:5}
+ │    │            blue@8#16,SET:value handle {ValueLen:6 BlockNum:0 OffsetInBlock:5}
  │    ├── restart points
  │    │    └── 00021 [restart 0]
  │    └── trailer [compression=none checksum=0x4e65b9b6]
  ├── data  offset: 106  length: 29
  │    ├── 00000    record (21 = 3 [0] + 14 + 4) [restart]
- │    │            blue@6#16,SET:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
+ │    │            blue@6#16,SET:value handle {ValueLen:15 BlockNum:1 OffsetInBlock:0}
  │    ├── restart points
  │    │    └── 00021 [restart 0]
  │    └── trailer [compression=none checksum=0x9f60e629]
@@ -478,7 +478,7 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 112-113: x 01 # zero bitmap encoding
  │    │    └── 113-114: x 00 # block padding byte
- │    ├── blue@8#18,SET:value handle {valueLen:5 blockNum:0 offsetInBlock:0}
+ │    ├── blue@8#18,SET:value handle {ValueLen:5 BlockNum:0 OffsetInBlock:0}
  │    └── trailer [compression=snappy checksum=0xceb8415d]
  ├── data  offset: 177  length: 95
  │    ├── data block header
@@ -545,7 +545,7 @@ sstable
  │    │    │    ├── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap word 0
  │    │    │    └── 128-136: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    └── 136-137: x 00 # block padding byte
- │    ├── blue@8#16,SET:value handle {valueLen:6 blockNum:0 offsetInBlock:5}
+ │    ├── blue@8#16,SET:value handle {ValueLen:6 BlockNum:0 OffsetInBlock:5}
  │    └── trailer [compression=snappy checksum=0xfb8462e1]
  ├── data  offset: 277  length: 91
  │    ├── data block header
@@ -609,7 +609,7 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 112-113: x 01 # zero bitmap encoding
  │    │    └── 113-114: x 00 # block padding byte
- │    ├── blue@6#16,SET:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
+ │    ├── blue@6#16,SET:value handle {ValueLen:15 BlockNum:1 OffsetInBlock:0}
  │    └── trailer [compression=snappy checksum=0xa053f3eb]
  ├── index  offset: 373  length: 42
  │    ├── 00000    block:0/81

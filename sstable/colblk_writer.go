@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // RawColumnWriter is a sstable RawWriter that writes sstables with
@@ -55,7 +56,7 @@ type RawColumnWriter struct {
 	topLevelIndexBlock colblk.IndexBlockWriter
 	rangeDelBlock      colblk.KeyspanBlockWriter
 	rangeKeyBlock      colblk.KeyspanBlockWriter
-	valueBlock         *valueBlockWriter // nil iff WriterOptions.DisableValueBlocks=true
+	valueBlock         *valblk.Writer // nil iff WriterOptions.DisableValueBlocks=true
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
@@ -128,7 +129,7 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	w.rangeDelBlock.Init(w.comparer.Equal)
 	w.rangeKeyBlock.Init(w.comparer.Equal)
 	if !o.DisableValueBlocks {
-		w.valueBlock = newValueBlockWriter(
+		w.valueBlock = valblk.NewWriter(
 			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
 			w.opts.Compression, w.opts.Checksum, func(compressedSize int) {})
 	}
@@ -204,12 +205,7 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 		sz += uint64(w.rangeKeyBlock.Size())
 	}
 	if w.valueBlock != nil {
-		for _, blk := range w.valueBlock.blocks {
-			sz += uint64(blk.block.LengthWithTrailer())
-		}
-		if w.valueBlock.buf != nil {
-			sz += uint64(len(w.valueBlock.buf.b))
-		}
+		sz += w.valueBlock.Size()
 	}
 	// TODO(jackson): Include an estimate of the properties, filter and meta
 	// index blocks sizes.
@@ -357,11 +353,11 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 	var valuePrefix block.ValuePrefix
 	var valueStoredWithKey []byte
 	if eval.writeToValueBlock {
-		vh, err := w.valueBlock.addValue(value)
+		vh, err := w.valueBlock.AddValue(value)
 		if err != nil {
 			return err
 		}
-		n := encodeValueHandle(w.tmp[:], vh)
+		n := valblk.EncodeHandle(w.tmp[:], vh)
 		valueStoredWithKey = w.tmp[:n]
 		var attribute base.ShortAttribute
 		if w.opts.ShortAttributeExtractor != nil {
@@ -832,7 +828,7 @@ func (w *RawColumnWriter) drainWriteQueue() {
 func (w *RawColumnWriter) Close() (err error) {
 	defer func() {
 		if w.valueBlock != nil {
-			releaseValueBlockWriter(w.valueBlock)
+			w.valueBlock.Release()
 			// Defensive code in case Close gets called again. We don't want to put
 			// the same object to a sync.Pool.
 			w.valueBlock = nil
@@ -916,13 +912,13 @@ func (w *RawColumnWriter) Close() (err error) {
 
 	// Write out the value block.
 	if w.valueBlock != nil {
-		_, vbStats, err := w.valueBlock.finish(&w.layout, w.layout.offset)
+		_, vbStats, err := w.valueBlock.Finish(&w.layout, w.layout.offset)
 		if err != nil {
 			return err
 		}
-		w.props.NumValueBlocks = vbStats.numValueBlocks
-		w.props.NumValuesInValueBlocks = vbStats.numValuesInValueBlocks
-		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
+		w.props.NumValueBlocks = vbStats.NumValueBlocks
+		w.props.NumValuesInValueBlocks = vbStats.NumValuesInValueBlocks
+		w.props.ValueBlocksSize = vbStats.ValueBlocksAndIndexSize
 	}
 
 	// Write the properties block.
