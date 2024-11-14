@@ -78,7 +78,7 @@ func (m *StandaloneManager) init(o Options, initial Logs) error {
 }
 
 // List implements Manager.
-func (m *StandaloneManager) List() (Logs, error) {
+func (m *StandaloneManager) List() Logs {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	wals := make(Logs, len(m.mu.queue))
@@ -88,7 +88,7 @@ func (m *StandaloneManager) List() (Logs, error) {
 			segments: []segment{{dir: m.o.Primary}},
 		}
 	}
-	return wals, nil
+	return wals
 }
 
 // Obsolete implements Manager.

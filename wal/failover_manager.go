@@ -530,7 +530,7 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 }
 
 // List implements Manager.
-func (wm *failoverManager) List() (Logs, error) {
+func (wm *failoverManager) List() Logs {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 	n := len(wm.mu.closedWALs)
@@ -554,7 +554,7 @@ func (wm *failoverManager) List() (Logs, error) {
 	if wm.mu.ww != nil {
 		setLogicalLog(n-1, wm.mu.ww.getLog())
 	}
-	return wals, nil
+	return wals
 }
 
 // Obsolete implements Manager.

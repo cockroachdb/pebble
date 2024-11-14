@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
-	"github.com/cockroachdb/pebble/wal"
 )
 
 // checkpointOptions hold the optional parameters to construct checkpoint
@@ -186,9 +185,7 @@ func (d *DB) Checkpoint(
 	// we read, otherwise we might copy a versionEdit not reflected in the
 	// sstables we copy/link.
 	d.mu.versions.logLock()
-	// Get the unflushed log files, the current version, and the current manifest
-	// file number.
-	memQueue := d.mu.mem.queue
+	// Get the the current version and the current manifest file number.
 	current := d.mu.versions.currentVersion()
 	formatVers := d.FormatMajorVersion()
 	manifestFileNum := d.mu.versions.manifestFileNum
@@ -200,21 +197,15 @@ func (d *DB) Checkpoint(
 		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
 	})
 
-	queuedLogNums := make([]wal.NumWAL, 0, len(memQueue))
-	for i := range memQueue {
-		if logNum := memQueue[i].logNum; logNum != 0 {
-			queuedLogNums = append(queuedLogNums, wal.NumWAL(logNum))
-		}
-	}
+	// Acquire the logs while holding mutexes to ensure we don't race with a
+	// flush that might mark a log that's relevant to `current` as obsolete
+	// before our call to List.
+	allLogicalLogs := d.mu.log.manager.List()
+
 	// Release the manifest and DB.mu so we don't block other operations on
 	// the database.
 	d.mu.versions.logUnlock()
 	d.mu.Unlock()
-
-	allLogicalLogs, err := d.mu.log.manager.List()
-	if err != nil {
-		return err
-	}
 
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
@@ -348,12 +339,15 @@ func (d *DB) Checkpoint(
 
 	// Copy the WAL files. We copy rather than link because WAL file recycling
 	// will cause the WAL files to be reused which would invalidate the
-	// checkpoint.
-	for _, logNum := range queuedLogNums {
-		log, ok := allLogicalLogs.Get(logNum)
-		if !ok {
-			return errors.Newf("log %s not found", logNum)
-		}
+	// checkpoint. It's possible allLogicalLogs includes logs that are not
+	// relevant (beneath the version's MinUnflushedLogNum). These extra files
+	// are harmless. The earlier (wal.Manager).List call will not include
+	// obsolete logs that are sitting in the recycler or have already been
+	// passed off to the cleanup manager for deletion.
+	//
+	// TODO(jackson): It would be desirable to copy all recycling and obsolete
+	// WALs to aid corruption postmortem debugging should we need them.
+	for _, log := range allLogicalLogs {
 		for i := 0; i < log.NumSegments(); i++ {
 			srcFS, srcPath := log.SegmentLocation(i)
 			destPath := fs.PathJoin(destDir, srcFS.PathBase(srcPath))

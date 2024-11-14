@@ -424,10 +424,7 @@ func TestManagerFailover(t *testing.T) {
 				return b.String()
 
 			case "list-and-stats":
-				logs, err := fm.List()
-				if err != nil {
-					return err.Error()
-				}
+				logs := fm.List()
 				stats := fm.Stats()
 				var b strings.Builder
 				if len(logs) > 0 {

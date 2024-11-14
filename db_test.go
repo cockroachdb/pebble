@@ -383,8 +383,7 @@ func TestLargeBatch(t *testing.T) {
 	getLatestLog := func() wal.LogicalLog {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		logs, err := d.mu.log.manager.List()
-		require.NoError(t, err)
+		logs := d.mu.log.manager.List()
 		return logs[len(logs)-1]
 	}
 	memTableCreationSeqNum := func() base.SeqNum {
@@ -1996,15 +1995,13 @@ func TestRecycleLogs(t *testing.T) {
 	logNum := func() base.DiskFileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		walNums, err := d.mu.log.manager.List()
-		require.NoError(t, err)
+		walNums := d.mu.log.manager.List()
 		return base.DiskFileNum(walNums[len(walNums)-1].Num)
 	}
 	logCount := func() int {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		walNums, err := d.mu.log.manager.List()
-		require.NoError(t, err)
+		walNums := d.mu.log.manager.List()
 		return len(walNums)
 	}
 
