@@ -17,8 +17,8 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"

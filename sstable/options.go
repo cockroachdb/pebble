@@ -7,7 +7,7 @@ package sstable
 import (
 	"fmt"
 
-	"github.com/cockroachdb/fifo"
+	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable/block"
