@@ -477,7 +477,7 @@ func (w *RawColumnWriter) evaluatePoint(
 	// When invariants are enabled, validate kcmp.
 	if invariants.Enabled {
 		colblk.AssertKeyCompare(w.comparer, key.UserKey, w.previousUserKey.Get(), eval.kcmp)
-		w.previousUserKey.Store(append(w.previousUserKey.Get()[:0], key.UserKey...))
+		w.previousUserKey.Set(append(w.previousUserKey.Get()[:0], key.UserKey...))
 	}
 
 	if !w.meta.HasPointKeys {

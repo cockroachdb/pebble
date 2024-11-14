@@ -187,7 +187,7 @@ func TestLint(t *testing.T) {
 			stream.Sequence(
 				dirCmd(t, pkg.Dir, "git", "grep", "-B1", "runtime\\.SetFinalizer("),
 				lintIgnore("lint:ignore SetFinalizer"),
-				stream.GrepNot(`^internal/invariants/finalizer_on.go`),
+				stream.GrepNot(`^internal/invariants/invariants.go`),
 			), func(s string) {
 				t.Errorf("\n%s <- please use the \"invariants.SetFinalizer\" equivalent instead", s)
 			}); err != nil {
