@@ -322,8 +322,9 @@ type Manager interface {
 	// init initializes the Manager. init is called during DB initialization.
 	init(o Options, initial Logs) error
 
-	// List returns the virtual WALs in ascending order.
-	List() (Logs, error)
+	// List returns the virtual WALs in ascending order. List must not perform
+	// I/O.
+	List() Logs
 	// Obsolete informs the manager that all virtual WALs less than
 	// minUnflushedNum are obsolete. The callee can choose to recycle some
 	// underlying log files, if !noRecycle. The log files that are not recycled,
