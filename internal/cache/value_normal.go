@@ -2,9 +2,10 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-//go:build ((!invariants && !tracing) || race) && !cgo
+//go:build ((!invariants && !tracing) || race) && !cgo && fooooo
 // +build !invariants,!tracing race
 // +build !cgo
+// +build fooooo
 
 package cache
 
