@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -441,9 +442,9 @@ func TestWriterWithValueBlocks(t *testing.T) {
 					setWithSamePrefix := prefix.SetHasSamePrefix()
 					if prefix.IsValueHandle() {
 						attribute := prefix.ShortAttribute()
-						vh := decodeValueHandle(kv.V.ValueOrHandle[1:])
+						vh := valblk.DecodeHandle(kv.V.ValueOrHandle[1:])
 						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",
-							kv.K, vh.valueLen, vh.blockNum, vh.offsetInBlock, attribute, setWithSamePrefix)
+							kv.K, vh.ValueLen, vh.BlockNum, vh.OffsetInBlock, attribute, setWithSamePrefix)
 					} else {
 						fmt.Fprintf(&buf, "%s:in-place %s, same-pre %t\n", kv.K, kv.V.ValueOrHandle[1:], setWithSamePrefix)
 					}

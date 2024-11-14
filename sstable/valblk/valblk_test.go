@@ -1,8 +1,8 @@
-// Copyright 2022 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// Copyright 2024 The LevelDB-Go and Pebble Authors. All rights reserved. Use
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+package valblk
 
 import (
 	"fmt"
@@ -15,17 +15,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValueHandleEncodeDecode(t *testing.T) {
+func TestHandleEncodeDecode(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	testCases := []valueHandle{
-		{valueLen: 23, blockNum: 100003, offsetInBlock: 2300},
-		{valueLen: math.MaxUint32 - 1, blockNum: math.MaxUint32 / 2, offsetInBlock: math.MaxUint32 - 2},
+	testCases := []Handle{
+		{ValueLen: 23, BlockNum: 100003, OffsetInBlock: 2300},
+		{ValueLen: math.MaxUint32 - 1, BlockNum: math.MaxUint32 / 2, OffsetInBlock: math.MaxUint32 - 2},
 	}
-	var buf [valueHandleMaxLen]byte
+	var buf [HandleMaxLen]byte
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
-			n := encodeValueHandle(buf[:], tc)
-			vh := decodeValueHandle(buf[:n])
+			n := EncodeHandle(buf[:], tc)
+			vh := DecodeHandle(buf[:n])
 			require.Equal(t, tc, vh)
 		})
 	}
@@ -33,22 +33,22 @@ func TestValueHandleEncodeDecode(t *testing.T) {
 
 func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	testCases := []valueBlocksIndexHandle{
+	testCases := []IndexHandle{
 		{
-			h: block.Handle{
+			Handle: block.Handle{
 				Offset: math.MaxUint64 / 2,
 				Length: math.MaxUint64 / 4,
 			},
-			blockNumByteLength:    53,
-			blockOffsetByteLength: math.MaxUint8,
-			blockLengthByteLength: math.MaxUint8 / 2,
+			BlockNumByteLength:    53,
+			BlockOffsetByteLength: math.MaxUint8,
+			BlockLengthByteLength: math.MaxUint8 / 2,
 		},
 	}
-	var buf [valueBlocksIndexHandleMaxLen]byte
+	var buf [100]byte
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
-			n := encodeValueBlocksIndexHandle(buf[:], tc)
-			vbih, n2, err := decodeValueBlocksIndexHandle(buf[:n])
+			n := EncodeIndexHandle(buf[:], tc)
+			vbih, n2, err := DecodeIndexHandle(buf[:n])
 			require.NoError(t, err)
 			require.Equal(t, n, n2)
 			require.Equal(t, tc, vbih)

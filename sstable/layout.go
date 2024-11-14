@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // Layout describes the block organization of an sstable.
@@ -251,11 +252,11 @@ func (l *Layout) Describe(
 				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					var bh block.Handle
 					var n int
-					var vbih valueBlocksIndexHandle
+					var vbih valblk.IndexHandle
 					isValueBlocksIndexHandle := false
 					if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
-						vbih, n, err = decodeValueBlocksIndexHandle(value)
-						bh = vbih.h
+						vbih, n, err = valblk.DecodeIndexHandle(value)
+						bh = vbih.Handle
 						isValueBlocksIndexHandle = true
 					} else {
 						bh, n = block.DecodeHandle(value)
@@ -267,7 +268,7 @@ func (l *Layout) Describe(
 					var vbihStr string
 					if isValueBlocksIndexHandle {
 						vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
-							vbih.blockNumByteLength, vbih.blockOffsetByteLength, vbih.blockLengthByteLength)
+							vbih.BlockNumByteLength, vbih.BlockOffsetByteLength, vbih.BlockLengthByteLength)
 					}
 					fmt.Fprintf(w, "%04d    %s block:%d/%d%s",
 						uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
@@ -375,7 +376,7 @@ var _ block.GetLazyValueForPrefixAndValueHandler = describingLazyValueHandler{}
 func (describingLazyValueHandler) GetLazyValueForPrefixAndValueHandle(
 	handle []byte,
 ) base.LazyValue {
-	vh := decodeValueHandle(handle[1:])
+	vh := valblk.DecodeHandle(handle[1:])
 	return base.LazyValue{ValueOrHandle: []byte(fmt.Sprintf("value handle %+v", vh))}
 }
 
@@ -446,7 +447,7 @@ func formatRowblkDataBlock(
 			} else if !block.ValuePrefix(value[0]).IsValueHandle() {
 				fmt.Fprintf(w, "\n         %s", fmtRecord(key, value[1:]))
 			} else {
-				vh := decodeValueHandle(value[1:])
+				vh := valblk.DecodeHandle(value[1:])
 				fmt.Fprintf(w, "\n         %s", fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh))))
 			}
 		}
@@ -472,7 +473,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 		Properties: meta[metaPropertiesName],
 		RangeDel:   meta[metaRangeDelV2Name],
 		RangeKey:   meta[metaRangeKeyName],
-		ValueIndex: vbih.h,
+		ValueIndex: vbih.Handle,
 		Footer:     foot.footerBH,
 		Format:     foot.format,
 	}
@@ -586,10 +587,10 @@ func forEachIndexEntry(
 
 func decodeMetaindex(
 	data []byte,
-) (meta map[string]block.Handle, vbih valueBlocksIndexHandle, err error) {
+) (meta map[string]block.Handle, vbih valblk.IndexHandle, err error) {
 	i, err := rowblk.NewRawIter(bytes.Compare, data)
 	if err != nil {
-		return nil, valueBlocksIndexHandle{}, err
+		return nil, valblk.IndexHandle{}, err
 	}
 	defer func() { err = firstError(err, i.Close()) }()
 
@@ -598,7 +599,7 @@ func decodeMetaindex(
 		value := i.Value()
 		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
 			var n int
-			vbih, n, err = decodeValueBlocksIndexHandle(i.Value())
+			vbih, n, err = valblk.DecodeIndexHandle(i.Value())
 			if err != nil {
 				return nil, vbih, err
 			}
@@ -616,10 +617,10 @@ func decodeMetaindex(
 	return meta, vbih, nil
 }
 
-func decodeValueBlockIndex(data []byte, vbih valueBlocksIndexHandle) ([]block.Handle, error) {
+func decodeValueBlockIndex(data []byte, vbih valblk.IndexHandle) ([]block.Handle, error) {
 	var valueBlocks []block.Handle
-	indexEntryLen := int(vbih.blockNumByteLength + vbih.blockOffsetByteLength +
-		vbih.blockLengthByteLength)
+	indexEntryLen := int(vbih.BlockNumByteLength + vbih.BlockOffsetByteLength +
+		vbih.BlockLengthByteLength)
 	i := 0
 	for len(data) != 0 {
 		if len(data) < indexEntryLen {
@@ -627,7 +628,7 @@ func decodeValueBlockIndex(data []byte, vbih valueBlocksIndexHandle) ([]block.Ha
 				"remaining value index block %d does not contain a full entry of length %d",
 				len(data), indexEntryLen)
 		}
-		n := int(vbih.blockNumByteLength)
+		n := int(vbih.BlockNumByteLength)
 		bn := int(littleEndianGet(data, n))
 		if bn != i {
 			return nil, errors.Errorf("unexpected block num %d, expected %d",
@@ -635,10 +636,10 @@ func decodeValueBlockIndex(data []byte, vbih valueBlocksIndexHandle) ([]block.Ha
 		}
 		i++
 		data = data[n:]
-		n = int(vbih.blockOffsetByteLength)
+		n = int(vbih.BlockOffsetByteLength)
 		blockOffset := littleEndianGet(data, n)
 		data = data[n:]
-		n = int(vbih.blockLengthByteLength)
+		n = int(vbih.BlockLengthByteLength)
 		blockLen := littleEndianGet(data, n)
 		data = data[n:]
 		valueBlocks = append(valueBlocks, block.Handle{Offset: blockOffset, Length: blockLen})
@@ -774,7 +775,7 @@ func (w *layoutWriter) WriteValueBlock(blk block.PhysicalBlock) (block.Handle, e
 }
 
 func (w *layoutWriter) WriteValueIndexBlock(
-	blk []byte, vbih valueBlocksIndexHandle,
+	blk []byte, vbih valblk.IndexHandle,
 ) (block.Handle, error) {
 	// NB: value index blocks are already finished and contain the block
 	// trailer.
@@ -789,7 +790,7 @@ func (w *layoutWriter) WriteValueIndexBlock(
 	l := uint64(len(blk))
 	w.offset += l
 
-	n := encodeValueBlocksIndexHandle(w.tmp[:], vbih)
+	n := valblk.EncodeIndexHandle(w.tmp[:], vbih)
 	w.recordToMetaindexRaw(metaValueIndexName, w.tmp[:n])
 
 	return block.Handle{Offset: off, Length: l}, nil

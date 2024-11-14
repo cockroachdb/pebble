@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
@@ -114,7 +115,7 @@ type RawRowWriter struct {
 	requiredInPlaceValueBound UserKeyPrefixBound
 	// When w.tableFormat >= TableFormatPebblev3, valueBlockWriter is nil iff
 	// WriterOptions.DisableValueBlocks was true.
-	valueBlockWriter *valueBlockWriter
+	valueBlockWriter *valblk.Writer
 
 	allocatorSizeClasses []int
 
@@ -767,11 +768,11 @@ func (w *RawRowWriter) addPoint(key InternalKey, value []byte, forceObsolete boo
 	var prefix block.ValuePrefix
 	var valueStoredWithKeyLen int
 	if writeToValueBlock {
-		vh, err := w.valueBlockWriter.addValue(value)
+		vh, err := w.valueBlockWriter.AddValue(value)
 		if err != nil {
 			return err
 		}
-		n := encodeValueHandle(w.blockBuf.tmp[:], vh)
+		n := valblk.EncodeHandle(w.blockBuf.tmp[:], vh)
 		valueStoredWithKey = w.blockBuf.tmp[:n]
 		valueStoredWithKeyLen = len(valueStoredWithKey) + 1
 		var attribute base.ShortAttribute
@@ -1481,7 +1482,7 @@ func (w *RawRowWriter) Error() error {
 func (w *RawRowWriter) Close() (err error) {
 	defer func() {
 		if w.valueBlockWriter != nil {
-			releaseValueBlockWriter(w.valueBlockWriter)
+			w.valueBlockWriter.Release()
 			// Defensive code in case Close gets called again. We don't want to put
 			// the same object to a sync.Pool.
 			w.valueBlockWriter = nil
@@ -1601,13 +1602,13 @@ func (w *RawRowWriter) Close() (err error) {
 	}
 
 	if w.valueBlockWriter != nil {
-		_, vbStats, err := w.valueBlockWriter.finish(&w.layout, w.layout.offset)
+		_, vbStats, err := w.valueBlockWriter.Finish(&w.layout, w.layout.offset)
 		if err != nil {
 			return err
 		}
-		w.props.NumValueBlocks = vbStats.numValueBlocks
-		w.props.NumValuesInValueBlocks = vbStats.numValuesInValueBlocks
-		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
+		w.props.NumValueBlocks = vbStats.NumValueBlocks
+		w.props.NumValuesInValueBlocks = vbStats.NumValuesInValueBlocks
+		w.props.ValueBlocksSize = vbStats.ValueBlocksAndIndexSize
 	}
 
 	{
@@ -1733,7 +1734,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
 		if !o.DisableValueBlocks {
-			w.valueBlockWriter = newValueBlockWriter(
+			w.valueBlockWriter = valblk.NewWriter(
 				block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
 				w.compression, w.checksumType, func(compressedSize int) {
 					w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
