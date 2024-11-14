@@ -4,7 +4,18 @@
 
 package cache
 
-import "sync/atomic"
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/buildtags"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manual"
+)
 
 type entryType int8
 
@@ -144,4 +155,114 @@ func (e *entry) acquireValue() *Value {
 		v.acquire()
 	}
 	return v
+}
+
+// The entries are normally allocated using the manual package. We use a
+// sync.Pool with each item in the pool holding multiple entries that can be
+// reused.
+//
+// We cannot use manual memory when the Value is allocated using the Go
+// allocator: in this case, we use the Go allocator because we need the entry
+// pointers to the Values to be discoverable by the GC.
+//
+// We also use the Go allocator in race mode because the normal path relies on a
+// finalizer (and historically there have been some finalizer-related bugs in
+// the race detector, in go1.15 and earlier).
+const entriesGoAllocated = valueEntryGoAllocated || buildtags.Race
+
+const entrySize = int(unsafe.Sizeof(entry{}))
+
+func entryAllocNew() *entry {
+	if invariants.UseFinalizers {
+		// We want to allocate each entry independently to check that it has been
+		// properly cleaned up.
+		e := &entry{}
+		invariants.SetFinalizer(e, func(obj interface{}) {
+			e := obj.(*entry)
+			if *e != (entry{}) {
+				fmt.Fprintf(os.Stderr, "%p: entry was not freed", e)
+				os.Exit(1)
+			}
+		})
+		return e
+	}
+	a := entryAllocPool.Get().(*entryAllocCache)
+	e := a.alloc()
+	entryAllocPool.Put(a)
+	return e
+}
+
+func entryAllocFree(e *entry) {
+	if invariants.UseFinalizers {
+		*e = entry{}
+		return
+	}
+	a := entryAllocPool.Get().(*entryAllocCache)
+	*e = entry{}
+	a.free(e)
+	entryAllocPool.Put(a)
+}
+
+var entryAllocPool = sync.Pool{
+	New: func() interface{} {
+		return newEntryAllocCache()
+	},
+}
+
+// entryAllocCacheLimit is the maximum number of entries that are cached inside
+// a pooled object.
+const entryAllocCacheLimit = 128
+
+type entryAllocCache struct {
+	entries []*entry
+}
+
+func newEntryAllocCache() *entryAllocCache {
+	c := &entryAllocCache{}
+	if !entriesGoAllocated {
+		// Note the use of a "real" finalizer here (as opposed to a build tag-gated
+		// no-op finalizer). Without the finalizer, objects released from the pool
+		// and subsequently GC'd by the Go runtime would fail to have their manually
+		// allocated memory freed, which results in a memory leak.
+		// lint:ignore SetFinalizer
+		runtime.SetFinalizer(c, freeEntryAllocCache)
+	}
+	return c
+}
+
+func freeEntryAllocCache(obj interface{}) {
+	c := obj.(*entryAllocCache)
+	for i, e := range c.entries {
+		c.dealloc(e)
+		c.entries[i] = nil
+	}
+}
+
+func (c *entryAllocCache) alloc() *entry {
+	n := len(c.entries)
+	if n == 0 {
+		if entriesGoAllocated {
+			return &entry{}
+		}
+		b := manual.New(manual.BlockCacheEntry, entrySize)
+		return (*entry)(unsafe.Pointer(&b[0]))
+	}
+	e := c.entries[n-1]
+	c.entries = c.entries[:n-1]
+	return e
+}
+
+func (c *entryAllocCache) dealloc(e *entry) {
+	if !entriesGoAllocated {
+		buf := unsafe.Slice((*byte)(unsafe.Pointer(e)), entrySize)
+		manual.Free(manual.BlockCacheEntry, buf)
+	}
+}
+
+func (c *entryAllocCache) free(e *entry) {
+	if len(c.entries) == entryAllocCacheLimit {
+		c.dealloc(e)
+		return
+	}
+	c.entries = append(c.entries, e)
 }
