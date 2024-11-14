@@ -3,19 +3,15 @@
 // the LICENSE file.
 
 //go:build !invariants && !race
-// +build !invariants,!race
 
 package invariants
 
-// Enabled is true if we were built with the "invariants" or "race" build tags.
+// CloseChecker is used to check that objects are closed exactly once. It is
+// empty and does nothing in non-invariant builds.
 //
-// Enabled should be used to gate invariant checks that may be expensive. It
-// should not be used to unconditionally alter a code path significantly (e.g.
-// wrapping an iterator - see #3678); Sometimes() should be used instead so that
-// the production code path gets test coverage as well.
-const Enabled = false
-
-// CloseChecker is used to check that objects are closed exactly once.
+// Note that in non-invariant builds, the struct is zero-sized but it can still
+// increase the size of a parent struct if it is the last field (because Go must
+// allow getting a valid pointer address of the field).
 type CloseChecker struct{}
 
 // Close panics if called twice on the same object (if we were built with the
@@ -32,13 +28,17 @@ func (d *CloseChecker) AssertNotClosed() {}
 // builds. In non-invariant builds, storing a value is a no-op, retrieving a
 // value returns the type parameter's zero value, and the Value struct takes up
 // no space.
+//
+// Note that in non-invariant builds, the struct is zero-sized but it can still
+// increase the size of a parent struct if it is the last field (because Go must
+// allow getting a valid pointer address of the field).
 type Value[V any] struct{}
 
-// Get returns the current value, or the zero-value if invariants are disabled.
+// Get the current value, or the zero value if invariants are disabled.
 func (*Value[V]) Get() V {
 	var v V // zero value
 	return v
 }
 
-// Store stores the value.
-func (*Value[V]) Store(v V) {}
+// Set the value; no-op in non-invariant builds.
+func (*Value[V]) Set(v V) {}
