@@ -9,8 +9,8 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -59,11 +59,11 @@ func newPebbleDB(dir string) DB {
 	defer cache.Unref()
 	opts := &pebble.Options{
 		Cache:                       cache,
-		Comparer:                    &crdbtest.Comparer,
+		Comparer:                    &cockroachkvs.Comparer,
 		DisableWAL:                  disableWAL,
 		FormatMajorVersion:          pebble.FormatNewest,
-		KeySchema:                   crdbtest.KeySchema.Name,
-		KeySchemas:                  sstable.MakeKeySchemas(&crdbtest.KeySchema),
+		KeySchema:                   cockroachkvs.KeySchema.Name,
+		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
 		LBaseMaxBytes:               64 << 20, // 64 MB

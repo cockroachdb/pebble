@@ -2,9 +2,9 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// Package crdbtest provides facilities for representing keys, workloads, etc
-// representative of CockroachDB's use of Pebble.
-package crdbtest
+// Package cockroachkvs provides CockroachDB's key-value schema and comparer
+// implementation.
+package cockroachkvs
 
 import (
 	"bytes"

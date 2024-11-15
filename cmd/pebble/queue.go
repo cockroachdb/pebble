@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/spf13/cobra"
 )
@@ -48,7 +48,7 @@ func queueTest() (test, *atomic.Int64) {
 			)
 			for i := 0; i < queueConfig.size; i++ {
 				b := d.NewBatch()
-				queue[i] = crdbtest.EncodeMVCCKey(nil, encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
+				queue[i] = cockroachkvs.EncodeMVCCKey(nil, encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
 				value = queueConfig.values.Bytes(rng, value)
 				b.Set(queue[i], value, pebble.NoSync)
 				if err := b.Commit(pebble.NoSync); err != nil {
@@ -80,7 +80,7 @@ func queueTest() (test, *atomic.Int64) {
 
 					// Append to the tail.
 					b = d.NewBatch()
-					queue[idx] = crdbtest.EncodeMVCCKey(queue[idx][:0], encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
+					queue[idx] = cockroachkvs.EncodeMVCCKey(queue[idx][:0], encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
 					value = queueConfig.values.Bytes(rng, value)
 					b.Set(queue[idx], value, nil)
 					if err := b.Commit(pebble.Sync); err != nil {

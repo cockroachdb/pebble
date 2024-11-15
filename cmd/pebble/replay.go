@@ -22,9 +22,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/replay"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -372,7 +372,7 @@ func makeComparer(name string) (*pebble.Comparer, error) {
 	case base.DefaultComparer.Name:
 		return base.DefaultComparer, nil
 	case "cockroach_comparator":
-		return &crdbtest.Comparer, nil
+		return &cockroachkvs.Comparer, nil
 	default:
 		return nil, errors.Newf("unrecognized comparer %q", name)
 	}
