@@ -7,17 +7,24 @@ package cockroachkvs
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
+	"github.com/cockroachdb/crlib/testutils/require"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
-	"github.com/stretchr/testify/require"
 )
 
 // TestKeySchema tests the cockroachKeyWriter and cockroachKeySeeker.
@@ -111,4 +118,109 @@ func runDataDrivenTest(t *testing.T, path string) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestKeySchema_RandomKeys(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
+	maxUserKeyLen := testutils.RandIntInRange(rng, 2, 10)
+	keys := make([][]byte, testutils.RandIntInRange(rng, 1, 1000))
+	for i := range keys {
+		keys[i] = randomSerializedEngineKey(rng, maxUserKeyLen)
+	}
+	slices.SortFunc(keys, Compare)
+
+	var enc colblk.DataBlockEncoder
+	enc.Init(&KeySchema)
+	for i := range keys {
+		ikey := pebble.InternalKey{
+			UserKey: keys[i],
+			Trailer: pebble.MakeInternalKeyTrailer(0, pebble.InternalKeyKindSet),
+		}
+		enc.Add(ikey, keys[i], block.InPlaceValuePrefix(false), enc.KeyWriter.ComparePrev(keys[i]), false /* isObsolete */)
+	}
+	blk, _ := enc.Finish(len(keys), enc.Size())
+	blk = crbytes.CopyAligned(blk)
+
+	var dec colblk.DataBlockDecoder
+	dec.Init(&KeySchema, blk)
+	var it colblk.DataBlockIter
+	it.InitOnce(&KeySchema, Compare, Split, nil)
+	require.NoError(t, it.Init(&dec, block.NoTransforms))
+	// Ensure that a scan across the block finds all the relevant keys.
+	var valBuf []byte
+	for k, kv := 0, it.First(); kv != nil; k, kv = k+1, it.Next() {
+		require.True(t, Equal(keys[k], kv.K.UserKey))
+		require.Equal(t, 0, Compare(keys[k], kv.K.UserKey))
+		// Note we allow the key read from the block to be physically different,
+		// because the above randomization generates point keys with the
+		// synthetic bit encoding. However the materialized key should not be
+		// longer than the original key, because we depend on the max key length
+		// during writing bounding the key length during reading.
+		if n := len(kv.K.UserKey); n > len(keys[k]) {
+			t.Fatalf("key %q is longer than original key %q", kv.K.UserKey, keys[k])
+		}
+		checkEngineKey(kv.K.UserKey)
+
+		// We write keys[k] as the value too, so check that it's verbatim equal.
+		value, callerOwned, err := kv.V.Value(valBuf)
+		require.NoError(t, err)
+		require.Equal(t, keys[k], value)
+		if callerOwned {
+			valBuf = value
+		}
+	}
+	// Ensure that seeking to each key finds the key.
+	for i := range keys {
+		kv := it.SeekGE(keys[i], 0)
+		require.True(t, Equal(keys[i], kv.K.UserKey))
+		require.Equal(t, 0, Compare(keys[i], kv.K.UserKey))
+	}
+	// Ensure seeking to just the prefix of each key finds a key with the same
+	// prefix.
+	for i := range keys {
+		si := Split(keys[i])
+		kv := it.SeekGE(keys[i][:si], 0)
+		require.True(t, Equal(keys[i][:si], pebble.Split(Split).Prefix(kv.K.UserKey)))
+	}
+	// Ensure seeking to the key but in random order finds the key.
+	for _, i := range rng.Perm(len(keys)) {
+		kv := it.SeekGE(keys[i], 0)
+		require.True(t, Equal(keys[i], kv.K.UserKey))
+		require.Equal(t, 0, Compare(keys[i], kv.K.UserKey))
+
+		// We write keys[k] as the value too, so check that it's verbatim equal.
+		value, callerOwned, err := kv.V.Value(valBuf)
+		require.NoError(t, err)
+		require.Equal(t, keys[i], value)
+		if callerOwned {
+			valBuf = value
+		}
+	}
+
+	require.NoError(t, it.Close())
+}
+
+var possibleVersionLens = []int{
+	engineKeyNoVersion,
+	engineKeyVersionWallTimeLen,
+	engineKeyVersionWallAndLogicalTimeLen,
+	engineKeyVersionWallLogicalAndSyntheticTimeLen,
+	engineKeyVersionLockTableLen,
+}
+
+func randomSerializedEngineKey(r *rand.Rand, maxUserKeyLen int) []byte {
+	userKeyLen := testutils.RandIntInRange(r, 1, maxUserKeyLen)
+	versionLen := possibleVersionLens[r.IntN(len(possibleVersionLens))]
+	serializedLen := userKeyLen + versionLen + 1
+	if versionLen > 0 {
+		serializedLen++ // sentinel
+	}
+	k := testutils.RandBytes(r, serializedLen)
+	k[userKeyLen] = 0x00
+	if versionLen > 0 {
+		k[len(k)-1] = byte(versionLen + 1)
+	}
+	return k
 }

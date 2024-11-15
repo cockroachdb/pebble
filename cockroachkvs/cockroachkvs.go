@@ -374,6 +374,18 @@ func getKeyPartFromEngineKey(engineKey []byte) (key []byte, ok bool) {
 	return engineKey[:keyPartEnd], true
 }
 
+func checkEngineKey(k []byte) {
+	if len(k) == 0 {
+		panic(errors.AssertionFailedf("empty key"))
+	}
+	if int(k[len(k)-1]) >= len(k) {
+		panic(errors.AssertionFailedf("malformed key terminator byte: %x", k))
+	}
+	if k[len(k)-1] == 1 {
+		panic(errors.AssertionFailedf("invalid key terminator byte 1"))
+	}
+}
+
 const (
 	cockroachColRoachKey int = iota
 	cockroachColMVCCWallTime
