@@ -8,8 +8,8 @@ import (
 	"bytes"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
 )
 
 // MVCC routines adapted from CockroachDB sources. Used to perform
@@ -17,8 +17,8 @@ import (
 
 func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
-		LowerBound: crdbtest.EncodeMVCCKey(nil, start, 0, 0),
-		UpperBound: crdbtest.EncodeMVCCKey(nil, end, 0, 0),
+		LowerBound: cockroachkvs.EncodeMVCCKey(nil, start, 0, 0),
+		UpperBound: cockroachkvs.EncodeMVCCKey(nil, end, 0, 0),
 	})
 	defer it.Close()
 
@@ -28,7 +28,7 @@ func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 
 	for valid := it.First(); valid; valid = it.Next() {
 		k := it.Key()
-		si := crdbtest.Split(k)
+		si := cockroachkvs.Split(k)
 		if bytes.Compare(k[si:], ts) <= 0 {
 			data, _ = data.Copy(k[:si])
 			data, _ = data.Copy(it.Value())
@@ -41,8 +41,8 @@ func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 
 func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 	it := d.NewIter(&pebble.IterOptions{
-		LowerBound: crdbtest.EncodeMVCCKey(nil, start, 0, 0),
-		UpperBound: crdbtest.EncodeMVCCKey(nil, end, 0, 0),
+		LowerBound: cockroachkvs.EncodeMVCCKey(nil, start, 0, 0),
+		UpperBound: cockroachkvs.EncodeMVCCKey(nil, end, 0, 0),
 	})
 	defer it.Close()
 
@@ -52,7 +52,7 @@ func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 
 	for valid := it.Last(); valid; valid = it.Prev() {
 		k := it.Key()
-		si := crdbtest.Split(k)
+		si := cockroachkvs.Split(k)
 		if bytes.Compare(k[si:], ts) <= 0 {
 			data, _ = data.Copy(k[:si])
 			data, _ = data.Copy(it.Value())

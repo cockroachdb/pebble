@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/tool"
@@ -74,10 +74,10 @@ func main() {
 	rootCmd.AddCommand(benchCmd)
 
 	t := tool.New(
-		tool.Comparers(&crdbtest.Comparer, testkeys.Comparer),
+		tool.Comparers(&cockroachkvs.Comparer, testkeys.Comparer),
 		tool.Mergers(fauxMVCCMerger),
 		tool.KeySchema(defaultSchema.Name),
-		tool.KeySchemas(&crdbtest.KeySchema, &testKeysSchema, &defaultSchema),
+		tool.KeySchemas(&cockroachkvs.KeySchema, &testKeysSchema, &defaultSchema),
 	)
 	rootCmd.AddCommand(t.Commands...)
 
