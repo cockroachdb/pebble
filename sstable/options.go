@@ -301,6 +301,21 @@ type WriterOptions struct {
 	disableObsoleteCollector bool
 }
 
+// UserKeyPrefixBound represents a [Lower,Upper) bound of user key prefixes.
+// If both are nil, there is no bound specified. Else, Compare(Lower,Upper)
+// must be < 0.
+type UserKeyPrefixBound struct {
+	// Lower is a lower bound user key prefix.
+	Lower []byte
+	// Upper is an upper bound user key prefix.
+	Upper []byte
+}
+
+// IsEmpty returns true iff the bound is empty.
+func (ukb *UserKeyPrefixBound) IsEmpty() bool {
+	return len(ukb.Lower) == 0 && len(ukb.Upper) == 0
+}
+
 // JemallocSizeClasses are a subset of available size classes in jemalloc[1],
 // suitable for the AllocatorSizeClasses option.
 //

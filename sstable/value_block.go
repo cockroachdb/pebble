@@ -25,21 +25,6 @@ const _ = uint(blockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
 // Assert blockHandleLikelyMaxLen >= valblk.HandleMaxLen.
 const _ = uint(blockHandleLikelyMaxLen - valblk.HandleMaxLen)
 
-// UserKeyPrefixBound represents a [Lower,Upper) bound of user key prefixes.
-// If both are nil, there is no bound specified. Else, Compare(Lower,Upper)
-// must be < 0.
-type UserKeyPrefixBound struct {
-	// Lower is a lower bound user key prefix.
-	Lower []byte
-	// Upper is an upper bound user key prefix.
-	Upper []byte
-}
-
-// IsEmpty returns true iff the bound is empty.
-func (ukb *UserKeyPrefixBound) IsEmpty() bool {
-	return len(ukb.Lower) == 0 && len(ukb.Upper) == 0
-}
-
 type blockProviderWhenOpen interface {
 	readBlockForVBR(
 		h block.Handle, stats *base.InternalIteratorStats,
