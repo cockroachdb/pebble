@@ -123,7 +123,7 @@ func (r *Reader) NewPointIter(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 ) (Iterator, error) {
 	return r.newPointIter(
 		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,
@@ -154,7 +154,7 @@ func (r *Reader) newPointIter(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	vState *virtualState,
 ) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
@@ -211,7 +211,7 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 func (r *Reader) NewCompactionIter(
 	transforms IterTransforms,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (Iterator, error) {
 	return r.newCompactionIter(transforms, statsAccum, rp, nil, bufferPool)
@@ -220,7 +220,7 @@ func (r *Reader) NewCompactionIter(
 func (r *Reader) newCompactionIter(
 	transforms IterTransforms,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	vState *virtualState,
 	bufferPool *block.BufferPool,
 ) (Iterator, error) {
@@ -446,6 +446,14 @@ func (r *Reader) initKeyspanBlockMetadata(metadata *block.Metadata, data []byte)
 		return colblk.InitKeyspanBlockMetadata(metadata, data)
 	}
 	return nil
+}
+
+// ReadValueBlockExternal implements valblk.ExternalBlockReader, allowing a
+// base.LazyValue to read a value block.
+func (r *Reader) ReadValueBlockExternal(
+	ctx context.Context, bh block.Handle,
+) (block.BufferHandle, error) {
+	return r.readValueBlock(ctx, noEnv, noReadHandle, bh)
 }
 
 func (r *Reader) readValueBlock(
@@ -749,7 +757,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			return nil, err
 		}
 		defer vbiH.Release()
-		l.ValueBlock, err = decodeValueBlockIndex(vbiH.BlockData(), r.valueBIH)
+		l.ValueBlock, err = valblk.DecodeIndex(vbiH.BlockData(), r.valueBIH)
 		if err != nil {
 			return nil, err
 		}
@@ -1160,3 +1168,28 @@ func (w deterministicStopwatchForTesting) stop() time.Duration {
 	}
 	return dur
 }
+
+// MakeTrivialReaderProvider creates a valblk.ReaderProvider which always
+// returns the given reader. It should be used when the Reader will outlive the
+// iterator tree.
+func MakeTrivialReaderProvider(r *Reader) valblk.ReaderProvider {
+	return (*trivialReaderProvider)(r)
+}
+
+// trivialReaderProvider implements valblk.ReaderProvider for a Reader that will
+// outlive the top-level iterator in the iterator tree.
+//
+// Defining the type in this manner (as opposed to a struct) avoids allocation.
+type trivialReaderProvider Reader
+
+var _ valblk.ReaderProvider = (*trivialReaderProvider)(nil)
+
+// GetReader implements ReaderProvider.
+func (trp *trivialReaderProvider) GetReader(
+	ctx context.Context,
+) (valblk.ExternalBlockReader, error) {
+	return (*Reader)(trp), nil
+}
+
+// Close implements ReaderProvider.
+func (trp *trivialReaderProvider) Close() {}

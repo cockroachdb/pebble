@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
@@ -64,7 +65,7 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
 	dataBH   block.Handle
-	vbReader valueBlockReader
+	vbReader valblk.Reader
 	// vbRH is the read handle for value blocks, which are in a different
 	// part of the sstable than data blocks.
 	vbRH         objstorage.ReadHandle
@@ -211,7 +212,7 @@ func newColumnBlockSingleLevelIterator(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorColumnBlocks, error) {
 	if r.err != nil {
@@ -228,12 +229,7 @@ func newColumnBlockSingleLevelIterator(
 	)
 	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
-		i.vbReader = valueBlockReader{
-			bpOpen: i,
-			rp:     rp,
-			vbih:   r.valueBIH,
-			stats:  stats,
-		}
+		i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, stats)
 		getLazyValuer = &i.vbReader
 		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
@@ -266,7 +262,7 @@ func newRowBlockSingleLevelIterator(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorRowBlocks, error) {
 	if r.err != nil {
@@ -283,12 +279,7 @@ func newRowBlockSingleLevelIterator(
 	)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
-			i.vbReader = valueBlockReader{
-				bpOpen: i,
-				rp:     rp,
-				vbih:   r.valueBIH,
-				stats:  stats,
-			}
+			i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, stats)
 			(&i.data).SetGetLazyValuer(&i.vbReader)
 			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
@@ -561,9 +552,9 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockRes
 	return loadBlockOK
 }
 
-// readBlockForVBR implements the blockProviderWhenOpen interface for use by
-// the valueBlockReader.
-func (i *singleLevelIterator[I, PI, D, PD]) readBlockForVBR(
+// ReadValueBlock implements the valblk.BlockProviderWhenOpen interface for use
+// by the valblk.Reader.
+func (i *singleLevelIterator[I, PI, D, PD]) ReadValueBlock(
 	bh block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
 	env := i.readBlockEnv
@@ -1582,7 +1573,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	if i.bpfs != nil {
 		releaseBlockPropertiesFilterer(i.bpfs)
 	}
-	i.vbReader.close()
+	i.vbReader.Close()
 	if i.vbRH != nil {
 		err = firstError(err, i.vbRH.Close())
 		i.vbRH = nil

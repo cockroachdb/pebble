@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 var emptyIter = &errorIter{err: nil}
@@ -666,7 +667,7 @@ type tableCacheShardReaderProvider struct {
 	}
 }
 
-var _ sstable.ReaderProvider = &tableCacheShardReaderProvider{}
+var _ valblk.ReaderProvider = &tableCacheShardReaderProvider{}
 
 func (rp *tableCacheShardReaderProvider) init(
 	c *tableCacheShard, dbOpts *tableCacheOpts, backingFileNum base.DiskFileNum,
@@ -692,7 +693,9 @@ func (rp *tableCacheShardReaderProvider) init(
 //
 // TODO(bananabrick): We could return a wrapper over the Reader to ensure
 // that the reader isn't used for other purposes.
-func (rp *tableCacheShardReaderProvider) GetReader(ctx context.Context) (*sstable.Reader, error) {
+func (rp *tableCacheShardReaderProvider) GetReader(
+	ctx context.Context,
+) (valblk.ExternalBlockReader, error) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 
