@@ -527,7 +527,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 		if err != nil {
 			return Layout{}, errors.Wrap(err, "decompressing value index")
 		}
-		layout.ValueBlock, err = decodeValueBlockIndex(vbiBlock, vbih)
+		layout.ValueBlock, err = valblk.DecodeIndex(vbiBlock, vbih)
 		if err != nil {
 			return Layout{}, err
 		}
@@ -615,36 +615,6 @@ func decodeMetaindex(
 		}
 	}
 	return meta, vbih, nil
-}
-
-func decodeValueBlockIndex(data []byte, vbih valblk.IndexHandle) ([]block.Handle, error) {
-	var valueBlocks []block.Handle
-	indexEntryLen := int(vbih.BlockNumByteLength + vbih.BlockOffsetByteLength +
-		vbih.BlockLengthByteLength)
-	i := 0
-	for len(data) != 0 {
-		if len(data) < indexEntryLen {
-			return nil, errors.Errorf(
-				"remaining value index block %d does not contain a full entry of length %d",
-				len(data), indexEntryLen)
-		}
-		n := int(vbih.BlockNumByteLength)
-		bn := int(littleEndianGet(data, n))
-		if bn != i {
-			return nil, errors.Errorf("unexpected block num %d, expected %d",
-				bn, i)
-		}
-		i++
-		data = data[n:]
-		n = int(vbih.BlockOffsetByteLength)
-		blockOffset := littleEndianGet(data, n)
-		data = data[n:]
-		n = int(vbih.BlockLengthByteLength)
-		blockLen := littleEndianGet(data, n)
-		data = data[n:]
-		valueBlocks = append(valueBlocks, block.Handle{Offset: blockOffset, Length: blockLen})
-	}
-	return valueBlocks, nil
 }
 
 // layoutWriter writes the structure of an sstable to durable storage. It

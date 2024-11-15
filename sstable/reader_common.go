@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // CommonReader abstracts functionality over a Reader or a VirtualReader. This
@@ -33,13 +34,13 @@ type CommonReader interface {
 		filterBlockSizeLimit FilterBlockSizeLimit,
 		stats *base.InternalIteratorStats,
 		statsAccum IterStatsAccumulator,
-		rp ReaderProvider,
+		rp valblk.ReaderProvider,
 	) (Iterator, error)
 
 	NewCompactionIter(
 		transforms IterTransforms,
 		statsAccum IterStatsAccumulator,
-		rp ReaderProvider,
+		rp valblk.ReaderProvider,
 		bufferPool *block.BufferPool,
 	) (Iterator, error)
 

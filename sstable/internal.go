@@ -7,6 +7,7 @@ package sstable
 import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // These constants are part of the file format, and should not be changed.
@@ -28,3 +29,11 @@ type InternalKey = base.InternalKey
 
 // Span exports the keyspan.Span type.
 type Span = keyspan.Span
+
+const valueBlocksIndexHandleMaxLen = blockHandleMaxLenWithoutProperties + 3
+
+// Assert blockHandleLikelyMaxLen >= valueBlocksIndexHandleMaxLen.
+const _ = uint(blockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
+
+// Assert blockHandleLikelyMaxLen >= valblk.HandleMaxLen.
+const _ = uint(blockHandleLikelyMaxLen - valblk.HandleMaxLen)

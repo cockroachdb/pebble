@@ -322,6 +322,38 @@ func DecodeIndexHandle(src []byte) (IndexHandle, int, error) {
 	return vbih, n + 3, nil
 }
 
+// DecodeIndex decodes the entirety of a value block index, returning a slice of
+// the contained block handles.
+func DecodeIndex(data []byte, vbih IndexHandle) ([]block.Handle, error) {
+	var valueBlocks []block.Handle
+	indexEntryLen := int(vbih.BlockNumByteLength + vbih.BlockOffsetByteLength +
+		vbih.BlockLengthByteLength)
+	i := 0
+	for len(data) != 0 {
+		if len(data) < indexEntryLen {
+			return nil, errors.Errorf(
+				"remaining value index block %d does not contain a full entry of length %d",
+				len(data), indexEntryLen)
+		}
+		n := int(vbih.BlockNumByteLength)
+		bn := int(littleEndianGet(data, n))
+		if bn != i {
+			return nil, errors.Errorf("unexpected block num %d, expected %d",
+				bn, i)
+		}
+		i++
+		data = data[n:]
+		n = int(vbih.BlockOffsetByteLength)
+		blockOffset := littleEndianGet(data, n)
+		data = data[n:]
+		n = int(vbih.BlockLengthByteLength)
+		blockLen := littleEndianGet(data, n)
+		data = data[n:]
+		valueBlocks = append(valueBlocks, block.Handle{Offset: blockOffset, Length: blockLen})
+	}
+	return valueBlocks, nil
+}
+
 // littleEndianPut writes v to b using little endian encoding, under the
 // assumption that v can be represented using n bytes.
 func littleEndianPut(v uint64, b []byte, n int) {

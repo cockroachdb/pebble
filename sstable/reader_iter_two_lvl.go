@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]] struct {
@@ -162,7 +163,7 @@ func newColumnBlockTwoLevelIterator(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorColumnBlocks, error) {
 	if r.err != nil {
@@ -186,12 +187,7 @@ func newColumnBlockTwoLevelIterator(
 		// versions of keys, and therefore never expose a LazyValue that is
 		// separated to their callers, they can put this valueBlockReader into a
 		// sync.Pool.
-		i.secondLevel.vbReader = valueBlockReader{
-			bpOpen: &i.secondLevel,
-			rp:     rp,
-			vbih:   r.valueBIH,
-			stats:  stats,
-		}
+		i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, stats)
 		getLazyValuer = &i.secondLevel.vbReader
 		i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
@@ -225,7 +221,7 @@ func newRowBlockTwoLevelIterator(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorRowBlocks, error) {
 	if r.err != nil {
@@ -249,12 +245,7 @@ func newRowBlockTwoLevelIterator(
 			// versions of keys, and therefore never expose a LazyValue that is
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
-			i.secondLevel.vbReader = valueBlockReader{
-				bpOpen: &i.secondLevel,
-				rp:     rp,
-				vbih:   r.valueBIH,
-				stats:  stats,
-			}
+			i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, stats)
 			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.vbReader)
 			i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 		}

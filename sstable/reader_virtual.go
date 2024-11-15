@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 // VirtualReader wraps Reader. Its purpose is to restrict functionality of the
@@ -95,7 +96,7 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 func (v *VirtualReader) NewCompactionIter(
 	transforms IterTransforms,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (Iterator, error) {
 	return v.reader.newCompactionIter(
@@ -119,7 +120,7 @@ func (v *VirtualReader) NewPointIter(
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
 	statsAccum IterStatsAccumulator,
-	rp ReaderProvider,
+	rp valblk.ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newPointIter(
 		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,

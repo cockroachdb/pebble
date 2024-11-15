@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+package valblk
 
 import (
 	"context"
@@ -14,26 +14,29 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
-const valueBlocksIndexHandleMaxLen = blockHandleMaxLenWithoutProperties + 3
+// ReaderProvider supports the implementation of blockProviderWhenClosed.
+// GetReader and Close can be called multiple times in pairs.
+type ReaderProvider interface {
+	GetReader(context.Context) (ExternalBlockReader, error)
+	Close()
+}
 
-// Assert blockHandleLikelyMaxLen >= valueBlocksIndexHandleMaxLen.
-const _ = uint(blockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
+// ExternalBlockReader is used to read value blocks from a file outside the
+// context of a open sstable iterator reading the file.
+type ExternalBlockReader interface {
+	ReadValueBlockExternal(context.Context, block.Handle) (block.BufferHandle, error)
+}
 
-// Assert blockHandleLikelyMaxLen >= valblk.HandleMaxLen.
-const _ = uint(blockHandleLikelyMaxLen - valblk.HandleMaxLen)
-
-type blockProviderWhenOpen interface {
-	readBlockForVBR(
-		h block.Handle, stats *base.InternalIteratorStats,
-	) (block.BufferHandle, error)
+// IteratorBlockReader is used to read value blocks from within an open file.
+type IteratorBlockReader interface {
+	ReadValueBlock(block.Handle, *base.InternalIteratorStats) (block.BufferHandle, error)
 }
 
 type blockProviderWhenClosed struct {
 	rp ReaderProvider
-	r  *Reader
+	r  ExternalBlockReader
 }
 
 func (bpwc *blockProviderWhenClosed) open(ctx context.Context) error {
@@ -47,7 +50,7 @@ func (bpwc *blockProviderWhenClosed) close() {
 	bpwc.r = nil
 }
 
-func (bpwc blockProviderWhenClosed) readBlockForVBR(
+func (bpwc blockProviderWhenClosed) ReadValueBlock(
 	h block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
 	// This is rare, since most block reads happen when the corresponding
@@ -61,48 +64,18 @@ func (bpwc blockProviderWhenClosed) readBlockForVBR(
 	// TODO(jackson,sumeer): Consider whether to use a buffer pool in this case.
 	// The bpwc is not allowed to outlive the iterator tree, so it cannot
 	// outlive the buffer pool.
-	return bpwc.r.readValueBlock(ctx, noEnv, noReadHandle, h)
+	return bpwc.r.ReadValueBlockExternal(ctx, h)
 }
 
-// ReaderProvider supports the implementation of blockProviderWhenClosed.
-// GetReader and Close can be called multiple times in pairs.
-type ReaderProvider interface {
-	GetReader(ctx context.Context) (r *Reader, err error)
-	Close()
-}
-
-// MakeTrivialReaderProvider creates a ReaderProvider which always returns the
-// given reader. It should be used when the Reader will outlive the iterator
-// tree.
-func MakeTrivialReaderProvider(r *Reader) ReaderProvider {
-	return (*trivialReaderProvider)(r)
-}
-
-// trivialReaderProvider implements ReaderProvider for a Reader that will
-// outlive the top-level iterator in the iterator tree.
-//
-// Defining the type in this manner (as opposed to a struct) avoids allocation.
-type trivialReaderProvider Reader
-
-var _ ReaderProvider = (*trivialReaderProvider)(nil)
-
-// GetReader implements ReaderProvider.
-func (trp *trivialReaderProvider) GetReader(ctx context.Context) (*Reader, error) {
-	return (*Reader)(trp), nil
-}
-
-// Close implements ReaderProvider.
-func (trp *trivialReaderProvider) Close() {}
-
-// valueBlockReader implements GetLazyValueForPrefixAndValueHandler; it is used
-// to create LazyValues (each of which can can be used to retrieve a value in a
-// value block). It is used when the sstable was written with
+// Reader implements GetLazyValueForPrefixAndValueHandler; it is used to create
+// LazyValues (each of which can can be used to retrieve a value in a value
+// block). It is used when the sstable was written with
 // Properties.ValueBlocksAreEnabled. The lifetime of this object is tied to the
 // lifetime of the sstable iterator.
-type valueBlockReader struct {
-	bpOpen blockProviderWhenOpen
+type Reader struct {
+	bpOpen IteratorBlockReader
 	rp     ReaderProvider
-	vbih   valblk.IndexHandle
+	vbih   IndexHandle
 	stats  *base.InternalIteratorStats
 
 	// fetcher is allocated lazily the first time we create a LazyValue, in order
@@ -111,9 +84,28 @@ type valueBlockReader struct {
 	fetcher *valueBlockFetcher
 }
 
-var _ block.GetLazyValueForPrefixAndValueHandler = (*valueBlockReader)(nil)
+// MakeReader constructs a Reader.
+func MakeReader(
+	i IteratorBlockReader, rp ReaderProvider, vbih IndexHandle, stats *base.InternalIteratorStats,
+) Reader {
+	return Reader{
+		bpOpen: i,
+		rp:     rp,
+		vbih:   vbih,
+		stats:  stats,
+	}
+}
 
-func (r *valueBlockReader) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+var _ block.GetLazyValueForPrefixAndValueHandler = (*Reader)(nil)
+
+// GetLazyValueForPrefixAndValueHandle returns a LazyValue for the given value
+// prefix and value.
+//
+// The result is only valid until the next call to
+// GetLazyValueForPrefixAndValueHandle. Use LazyValue.Clone if the lifetime of
+// the LazyValue needs to be extended. For more details, see the "memory
+// management" comment where LazyValue is declared.
+func (r *Reader) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
 	if r.fetcher == nil {
 		// NB: we cannot avoid this allocation, since the valueBlockFetcher
 		// can outlive the singleLevelIterator due to be being embedded in a
@@ -125,7 +117,7 @@ func (r *valueBlockReader) GetLazyValueForPrefixAndValueHandle(handle []byte) ba
 		r.fetcher = newValueBlockFetcher(r.bpOpen, r.rp, r.vbih, r.stats)
 	}
 	lazyFetcher := &r.fetcher.lazyFetcher
-	valLen, h := valblk.DecodeLenFromHandle(handle[1:])
+	valLen, h := DecodeLenFromHandle(handle[1:])
 	*lazyFetcher = base.LazyFetcher{
 		Fetcher: r.fetcher,
 		Attribute: base.AttributeAndLen{
@@ -143,7 +135,8 @@ func (r *valueBlockReader) GetLazyValueForPrefixAndValueHandle(handle []byte) ba
 	}
 }
 
-func (r *valueBlockReader) close() {
+// Close closes the Reader.
+func (r *Reader) Close() {
 	r.bpOpen = nil
 	if r.fetcher != nil {
 		r.fetcher.close()
@@ -155,9 +148,9 @@ func (r *valueBlockReader) close() {
 // to fetch a value from a value block. The lifetime of this object is not tied
 // to the lifetime of the iterator - a LazyValue can be accessed later.
 type valueBlockFetcher struct {
-	bpOpen blockProviderWhenOpen
+	bpOpen IteratorBlockReader
 	rp     ReaderProvider
-	vbih   valblk.IndexHandle
+	vbih   IndexHandle
 	stats  *base.InternalIteratorStats
 	// The value blocks index is lazily retrieved the first time the reader
 	// needs to read a value that resides in a value block.
@@ -183,9 +176,9 @@ type valueBlockFetcher struct {
 var _ base.ValueFetcher = (*valueBlockFetcher)(nil)
 
 func newValueBlockFetcher(
-	bpOpen blockProviderWhenOpen,
+	bpOpen IteratorBlockReader,
 	rp ReaderProvider,
-	vbih valblk.IndexHandle,
+	vbih IndexHandle,
 	stats *base.InternalIteratorStats,
 ) *valueBlockFetcher {
 	return &valueBlockFetcher{
@@ -259,10 +252,10 @@ func (f *valueBlockFetcher) doValueMangling(v []byte) []byte {
 }
 
 func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val []byte, err error) {
-	vh := valblk.DecodeRemainingHandle(handle)
+	vh := DecodeRemainingHandle(handle)
 	vh.ValueLen = uint32(valLen)
 	if f.vbiBlock == nil {
-		ch, err := f.bpOpen.readBlockForVBR(f.vbih.Handle, f.stats)
+		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats)
 		if err != nil {
 			return nil, err
 		}
@@ -274,7 +267,7 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val [
 		if err != nil {
 			return nil, err
 		}
-		vbCacheHandle, err := f.bpOpen.readBlockForVBR(vbh, f.stats)
+		vbCacheHandle, err := f.bpOpen.ReadValueBlock(vbh, f.stats)
 		if err != nil {
 			return nil, err
 		}
@@ -313,13 +306,4 @@ func (f *valueBlockFetcher) getBlockHandle(blockNum uint32) (block.Handle, error
 	n = int(f.vbih.BlockLengthByteLength)
 	blockLen := littleEndianGet(b, n)
 	return block.Handle{Offset: blockOffset, Length: blockLen}, nil
-}
-
-func littleEndianGet(b []byte, n int) uint64 {
-	_ = b[n-1] // bounds check
-	v := uint64(b[0])
-	for i := 1; i < n; i++ {
-		v |= uint64(b[i]) << (8 * i)
-	}
-	return v
 }

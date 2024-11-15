@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -230,7 +231,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				return "virtualize must be called before creating compaction iters"
 			}
 
-			var rp ReaderProvider
+			var rp valblk.ReaderProvider
 			transforms := IterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
