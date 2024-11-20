@@ -203,6 +203,18 @@ func DecodeEngineKey(b []byte) (roachKey, version []byte, ok bool) {
 	return roachKey, version, true
 }
 
+// EncodeKey serializes an engine key from a raochpb.Key and a version,
+// appending the result to dst and returning the result.
+func EncodeKey(dst, roachKey, version []byte) []byte {
+	dst = append(dst, roachKey...)
+	dst = append(dst, 0)
+	if len(version) > 0 {
+		dst = append(dst, version...)
+		dst = append(dst, byte(len(version)+1))
+	}
+	return dst
+}
+
 // Split implements base.Split for CockroachDB keys.
 //
 //go:inline
@@ -372,18 +384,6 @@ func getKeyPartFromEngineKey(engineKey []byte) (key []byte, ok bool) {
 	}
 	// Key excludes the sentinel byte.
 	return engineKey[:keyPartEnd], true
-}
-
-func checkEngineKey(k []byte) {
-	if len(k) == 0 {
-		panic(errors.AssertionFailedf("empty key"))
-	}
-	if int(k[len(k)-1]) >= len(k) {
-		panic(errors.AssertionFailedf("malformed key terminator byte: %x", k))
-	}
-	if k[len(k)-1] == 1 {
-		panic(errors.AssertionFailedf("invalid key terminator byte 1"))
-	}
 }
 
 const (

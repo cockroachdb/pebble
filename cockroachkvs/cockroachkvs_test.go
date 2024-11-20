@@ -14,13 +14,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/crlib/testutils/require"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/olekukonko/tablewriter"
 )
 
 func TestComparer(t *testing.T) {
@@ -71,6 +74,91 @@ func TestComparer(t *testing.T) {
 	if err := base.CheckComparer(&Comparer, prefixes, suffixes); err != nil {
 		t.Error(err)
 	}
+}
+
+func TestKeySchema_KeyWriter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var kw colblk.KeyWriter
+	var row int
+	var buf bytes.Buffer
+	var keyBuf []byte
+	datadriven.RunTest(t, "testdata/key_schema_key_writer", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "init":
+			// Exercise both resetting and retrieving a new writer.
+			if kw != nil && rand.IntN(2) == 1 {
+				kw.Reset()
+			} else {
+				kw = KeySchema.NewKeyWriter()
+			}
+			row = 0
+			keyBuf = keyBuf[:0]
+			return ""
+		case "write":
+			for i, line := range crstrings.Lines(td.Input) {
+				k := parseUserKey(line)
+				fmt.Fprintf(&buf, "Parse(%s) = hex:%x\n", line, k)
+				kcmp := kw.ComparePrev(k)
+				if v := Compare(k, keyBuf); v < 0 {
+					t.Fatalf("line %d: Compare(%s, hex:%x) = %d", i, line, keyBuf, v)
+				} else if v != int(kcmp.UserKeyComparison) {
+					t.Fatalf("line %d: Compare(%s, hex:%x) = %d; kcmp.UserKeyComparison = %d",
+						i, line, keyBuf, v, kcmp.UserKeyComparison)
+				}
+
+				fmt.Fprintf(&buf, "%02d: ComparePrev(%s): PrefixLen=%d; CommonPrefixLen=%d; UserKeyComparison=%d\n",
+					i, line, kcmp.PrefixLen, kcmp.CommonPrefixLen, kcmp.UserKeyComparison)
+				kw.WriteKey(row, k, kcmp.PrefixLen, kcmp.CommonPrefixLen)
+				fmt.Fprintf(&buf, "%02d: WriteKey(%d, %s, PrefixLen=%d, CommonPrefixLen=%d)\n",
+					i, row, line, kcmp.PrefixLen, kcmp.CommonPrefixLen)
+
+				keyBuf = kw.MaterializeKey(keyBuf[:0], row)
+				if !Equal(k, keyBuf) {
+					t.Fatalf("line %d: Equal(hex:%x, hex:%x) == false", i, k, keyBuf)
+				}
+				if v := Compare(k, keyBuf); v != 0 {
+					t.Fatalf("line %d: Compare(hex:%x, hex:%x) = %d", i, k, keyBuf, v)
+				}
+
+				fmt.Fprintf(&buf, "%02d: MaterializeKey(_, %d) = hex:%x\n", i, row, keyBuf)
+				row++
+			}
+			return buf.String()
+		case "finish":
+			b := crbytes.AllocAligned(int(kw.Size(row, 0) + 1))
+			offs := make([]uint32, kw.NumColumns()+1)
+			for i := 0; i < kw.NumColumns(); i++ {
+				offs[i+1] = kw.Finish(i, row, offs[i], b)
+			}
+			roachKeys, _ := colblk.DecodePrefixBytes(b, offs[cockroachColRoachKey], row)
+			mvccWallTimes, _ := colblk.DecodeUnsafeUints(b, offs[cockroachColMVCCWallTime], row)
+			mvccLogicalTimes, _ := colblk.DecodeUnsafeUints(b, offs[cockroachColMVCCLogical], row)
+			untypedVersions, _ := colblk.DecodeRawBytes(b, offs[cockroachColUntypedVersion], row)
+			tbl := tablewriter.NewWriter(&buf)
+			tbl.SetHeader([]string{"Key", "Wall", "Logical", "Untyped"})
+			for i := 0; i < row; i++ {
+				tbl.Append([]string{
+					asciiOrHex(roachKeys.At(i)),
+					fmt.Sprintf("%d", mvccWallTimes.At(i)),
+					fmt.Sprintf("%d", mvccLogicalTimes.At(i)),
+					fmt.Sprintf("%x", untypedVersions.At(i)),
+				})
+			}
+			tbl.Render()
+			return buf.String()
+		default:
+			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+		}
+	})
+}
+
+func asciiOrHex(b []byte) string {
+	if bytes.ContainsFunc(b, func(r rune) bool { return r < ' ' || r > '~' }) {
+		return fmt.Sprintf("hex:%x", b)
+	}
+	return string(b)
 }
 
 func TestRandKeys(t *testing.T) {
@@ -393,29 +481,29 @@ func formatUserKey(key []byte) string {
 	return fmt.Sprintf("%s @ %X", prefix, suffix)
 }
 
-// formatKey formats an internal key in the format:
+// formatInternalKey formats an internal key in the format:
 //
 //	<roach-key> [ @ <version-hex> ] #<seq-num>,<kind>
-func formatKey(key base.InternalKey) string {
+func formatInternalKey(key base.InternalKey) string {
 	return fmt.Sprintf("%s #%d,%s", formatUserKey(key.UserKey), key.SeqNum(), key.Kind())
 }
 
-// formatKV formats an internal key in the format:
+// formatInternalKV formats an internal key in the format:
 //
 //	<roach-key> [ @ <version-hex> ] #<seq-num>,<kind> = value
 //
 // For example:
 //
 //	foo @ 0001020304050607 #1,SET
-func formatKV(kv base.InternalKV) string {
+func formatInternalKV(kv base.InternalKV) string {
 	val, _, err := kv.V.Value(nil)
 	if err != nil {
 		panic(err)
 	}
 	if len(val) == 0 {
-		return formatKey(kv.K)
+		return formatInternalKey(kv.K)
 	}
-	return fmt.Sprintf("%s = %s", formatKey(kv.K), val)
+	return fmt.Sprintf("%s = %s", formatInternalKey(kv.K), val)
 }
 
 // parseKey parses a cockroach user key in the following format:
@@ -449,14 +537,14 @@ func parseUserKey(userKeyStr string) []byte {
 	return userKey
 }
 
-// parseKey parses a cockroach key in the following format:
+// parseInternalKey parses a cockroach key in the following format:
 //
 //	<roach-key> [@ <version-hex>] #<seq-num>,<kind>
 //
 // For example:
 //
 //	foo @ 0001020304050607 #1,SET
-func parseKey(keyStr string) base.InternalKey {
+func parseInternalKey(keyStr string) base.InternalKey {
 	userKeyStr, trailerStr := splitStringAt(keyStr, " #")
 	return base.InternalKey{
 		UserKey: parseUserKey(userKeyStr),
@@ -471,9 +559,9 @@ func parseKey(keyStr string) base.InternalKey {
 // For example:
 //
 //	foo @ 0001020304050607 #1,SET = bar
-func parseKV(input string) (key base.InternalKey, value []byte) {
+func parseInternalKV(input string) (key base.InternalKey, value []byte) {
 	keyStr, valStr := splitStringAt(input, " = ")
-	return parseKey(keyStr), []byte(valStr)
+	return parseInternalKey(keyStr), []byte(valStr)
 }
 
 func splitStringAt(str string, sep string) (before, after string) {
