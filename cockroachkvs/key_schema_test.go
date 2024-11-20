@@ -49,7 +49,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 			e.Reset()
 			var buf []byte
 			for _, l := range crstrings.Lines(td.Input) {
-				key, value := parseKV(l)
+				key, value := parseInternalKV(l)
 				kcmp := e.KeyWriter.ComparePrev(key.UserKey)
 				e.Add(key, value, 0, kcmp, false /* isObsolete */)
 				buf = e.MaterializeLastUserKey(buf[:0])
@@ -86,7 +86,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 			var buf bytes.Buffer
 			var prevKey base.InternalKey
 			for kv := iter.First(); kv != nil; kv = iter.Next() {
-				fmt.Fprintf(&buf, "%s", formatKV(*kv))
+				fmt.Fprintf(&buf, "%s", formatInternalKV(*kv))
 				if prevKey.UserKey != nil && base.InternalCompare(Comparer.Compare, prevKey, kv.K) != -1 {
 					buf.WriteString(" !!! OUT OF ORDER KEY !!!")
 				}
@@ -109,7 +109,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 				if kv == nil {
 					buf.WriteString(".\n")
 				} else {
-					fmt.Fprintf(&buf, "%s\n", formatKV(*kv))
+					fmt.Fprintf(&buf, "%s\n", formatInternalKV(*kv))
 				}
 			}
 			return buf.String()
