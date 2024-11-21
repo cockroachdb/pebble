@@ -663,6 +663,9 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		if i > 0 && i%switchInterval == 0 {
 			dirIndex = (dirIndex + 1) % 2
 			ww.switchToNewDir(dirs[dirIndex])
+			// switchToNewDir does not synchronously create the new writer, so wait
+			// until the writer is created.
+			<-logWriterCreated
 		}
 	}
 	time.Sleep(5 * time.Millisecond)
