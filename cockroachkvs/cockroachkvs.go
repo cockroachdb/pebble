@@ -333,7 +333,7 @@ var zeroLogical [4]byte
 func normalizeEngineSuffixForCompare(a []byte) []byte {
 	// Check sentinel byte.
 	if invariants.Enabled && len(a) != int(a[len(a)-1]) {
-		panic(errors.AssertionFailedf("malformed suffix: %x", a))
+		panic(errors.AssertionFailedf("malformed suffix: %x (length byte is %d; but suffix is %d bytes)", a, a[len(a)-1], len(a)))
 	}
 	// Strip off sentinel byte.
 	a = a[:len(a)-1]
