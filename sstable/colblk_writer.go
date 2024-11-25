@@ -1090,7 +1090,7 @@ func shouldFlushWithoutLatestKV(
 func (w *RawColumnWriter) copyDataBlocks(
 	ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle,
 ) error {
-	buf := make([]byte, 0, 256<<10)
+	const readSizeTarget = 256 << 10
 	readAndFlushBlocks := func(firstBlockIdx, lastBlockIdx int) error {
 		if firstBlockIdx > lastBlockIdx {
 			panic("pebble: readAndFlushBlocks called with invalid block range")
@@ -1103,9 +1103,9 @@ func (w *RawColumnWriter) copyDataBlocks(
 		// blocks in one request.
 		lastBH := blocks[lastBlockIdx].bh
 		blocksToReadLen := lastBH.Offset + lastBH.Length + block.TrailerLen - blocks[firstBlockIdx].bh.Offset
-		if blocksToReadLen > uint64(cap(buf)) {
-			buf = make([]byte, 0, blocksToReadLen)
-		}
+		// We need to create a new buffer for each read, as w.enqueuePhysicalBlock passes
+		// a pointer to the buffer to the write queue.
+		buf := make([]byte, 0, blocksToReadLen)
 		if err := rh.ReadAt(ctx, buf[:blocksToReadLen], int64(blocks[firstBlockIdx].bh.Offset)); err != nil {
 			return err
 		}
@@ -1120,8 +1120,8 @@ func (w *RawColumnWriter) copyDataBlocks(
 		}
 		return nil
 	}
-	// Iterate through blocks until we have enough to fill cap(buf). When we have more than
-	// one block in blocksToRead and adding the next block would exceed the buffer capacity,
+	// Iterate through blocks until we have enough to fill readSizeTarget. When we have more than
+	// one block in blocksToRead and adding the next block would exceed the target buffer capacity,
 	// we read and flush existing blocks in blocksToRead. This allows us to read as many
 	// blocks in one IO request as possible, while still utilizing the write queue in this
 	// writer.
@@ -1133,7 +1133,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 		start := i
 		// Note the i++ in the initializing condition; this means we will always flush at least
 		// one block.
-		for i++; i < len(blocks) && (blocks[i].bh.Length+blocks[i].bh.Offset+block.TrailerLen-blocks[start].bh.Offset) <= uint64(cap(buf)); i++ {
+		for i++; i < len(blocks) && (blocks[i].bh.Length+blocks[i].bh.Offset+block.TrailerLen-blocks[start].bh.Offset) <= uint64(readSizeTarget); i++ {
 		}
 		// i points to one index past the last block we want to read.
 		if err := readAndFlushBlocks(start, i-1); err != nil {
