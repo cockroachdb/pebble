@@ -23,7 +23,10 @@ import (
 
 func TestCopySpan(t *testing.T) {
 	fs := vfs.NewMem()
-	blockCache := cache.New(1 << 20 /* 1 MB */)
+	blockCache := cache.New(2 << 20 /* 1 MB */)
+	cacheID := cache.ID(1)
+	fileNameToNum := make(map[string]base.FileNum)
+	nextFileNum := base.FileNum(1)
 	defer blockCache.Unref()
 
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
@@ -35,6 +38,8 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			fileNameToNum[d.CmdArgs[0].Key] = nextFileNum
+			nextFileNum++
 			tableFormat := TableFormatMax
 			blockSize := 1
 			var indexBlockSize int
@@ -92,15 +97,28 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			r, err := NewReader(context.TODO(), readable, ReaderOptions{
+			var start, end []byte
+			for _, arg := range d.CmdArgs[1:] {
+				switch arg.Key {
+				case "start":
+					start = []byte(arg.FirstVal(t))
+				case "end":
+					end = []byte(arg.FirstVal(t))
+				}
+			}
+			rOpts := ReaderOptions{
 				Comparer:   testkeys.Comparer,
 				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
-			})
+			}
+			rOpts.internal.CacheOpts.Cache = blockCache
+			rOpts.internal.CacheOpts.CacheID = cacheID
+			rOpts.internal.CacheOpts.FileNum = base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key])
+			r, err := NewReader(context.TODO(), readable, rOpts)
 			defer r.Close()
 			if err != nil {
 				return err.Error()
 			}
-			iter, err := r.NewIter(block.NoTransforms, nil, nil)
+			iter, err := r.NewIter(block.NoTransforms, start, end)
 			if err != nil {
 				return err.Error()
 			}
@@ -126,6 +144,8 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			writable := objstorageprovider.NewFileWritable(output)
+			fileNameToNum[outputFile] = nextFileNum
+			nextFileNum++
 
 			f, err := fs.Open(inputFile)
 			if err != nil {
@@ -140,6 +160,8 @@ func TestCopySpan(t *testing.T) {
 				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			}
 			rOpts.internal.CacheOpts.Cache = blockCache
+			rOpts.internal.CacheOpts.CacheID = cacheID
+			rOpts.internal.CacheOpts.FileNum = base.DiskFileNum(fileNameToNum[inputFile])
 			r, err := NewReader(context.TODO(), readable, rOpts)
 			if err != nil {
 				return err.Error()
