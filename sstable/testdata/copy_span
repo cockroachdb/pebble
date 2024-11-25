@@ -92,10 +92,8 @@ c.SET.4:baz
 d.SET.5:foobar
 ----
 
-iter test3
+iter test3 start=c
 ----
-a#0,SET: foo
-b#0,SET: bar
 c#0,SET: baz
 d#0,SET: foobar
 
@@ -134,18 +132,10 @@ i.SET.5:foo
 j.SET.5:foo
 ----
 
-iter test32
+iter test32 start=c end=e
 ----
-a#0,SET: foo
-b#0,SET: bar
 c#0,SET: baz
 d#0,SET: foobar
-e#0,SET: foo
-f#0,SET: foo
-g#0,SET: foo
-h#0,SET: foo
-i#0,SET: foo
-j#0,SET: foo
 
 copy-span test32 test33 b.SET.10 cc.SET.0
 ----
