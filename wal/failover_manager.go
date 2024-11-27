@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -261,11 +262,10 @@ func newFailoverMonitor(opts failoverMonitorOptions) *failoverMonitor {
 
 // Called when previous writer is closed
 func (m *failoverMonitor) noWriter() {
-	now := m.opts.timeSource.now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.mu.writer = nil
-	m.accumulateDurationLocked(now)
+	m.accumulateDurationLocked(m.opts.timeSource.now())
 }
 
 // writerCreateFunc is allowed to return nil, if there is an error. It is not
@@ -292,6 +292,10 @@ func (m *failoverMonitor) elevateWriteStallThresholdForFailover() bool {
 
 func (m *failoverMonitor) accumulateDurationLocked(now time.Time) {
 	dur := now.Sub(m.mu.lastAccumulateIntoDurations)
+	if invariants.Enabled && dur < 0 {
+		panic(errors.AssertionFailedf("time regressed: last accumulated %s; now is %s",
+			m.mu.lastAccumulateIntoDurations, now))
+	}
 	m.mu.lastAccumulateIntoDurations = now
 	if m.mu.dirIndex == primaryDirIndex {
 		m.mu.primaryWriteDuration += dur
@@ -301,10 +305,9 @@ func (m *failoverMonitor) accumulateDurationLocked(now time.Time) {
 }
 
 func (m *failoverMonitor) stats() FailoverStats {
-	now := m.opts.timeSource.now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.accumulateDurationLocked(now)
+	m.accumulateDurationLocked(m.opts.timeSource.now())
 	return FailoverStats{
 		DirSwitchCount:         m.mu.dirSwitchCount,
 		PrimaryWriteDuration:   m.mu.primaryWriteDuration,
@@ -401,8 +404,8 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 					dirIndex = secondaryDirIndex
 				}
 				dir := m.opts.dirs[dirIndex]
-				now := m.opts.timeSource.now()
 				m.mu.Lock()
+				now := m.opts.timeSource.now()
 				m.accumulateDurationLocked(now)
 				m.mu.dirIndex = dirIndex
 				m.mu.dirSwitchCount++
