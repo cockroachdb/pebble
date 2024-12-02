@@ -2431,14 +2431,29 @@ func (i *Iterator) Close() error {
 			}
 		}
 		mergingIterHeapItems = alloc.merging.heap.items
-		*alloc = iterAlloc{
-			keyBuf:              keyBuf,
-			boundsBuf:           boundsBuf,
-			prefixOrFullSeekKey: prefixOrFullSeekKey,
-			merging: mergingIter{
-				heap: mergingIterHeap{items: mergingIterHeapItems},
-			},
-		}
+
+		// Reset the alloc struct, re-assign the fields that are being recycled, and
+		// then return it to the pool. Splitting the first two steps performs better
+		// than doing them in a single step (e.g. *alloc = iterAlloc{...}) because
+		// the compiler can avoid the use of a stack allocated autotmp iterAlloc
+		// variable (~12KB, as of Dec 2024), which must first be zeroed out, then
+		// assigned into, then copied over into the heap-allocated alloc. Instead,
+		// the two-step process allows the compiler to quickly zero out the heap
+		// allocated object and then assign the few fields we want to preserve.
+		//
+		// TODO(nvanbenschoten): even with this optimization, zeroing out the alloc
+		// struct still shows up in profiles because it is such a large struct. Can
+		// we do something better here? We are hanging 22 separated iterators off of
+		// the alloc struct (or more, depending on how you count), many of which are
+		// only used in a few cases. Can those iterators be responsible for zeroing
+		// out their own memory on Close, allowing us to assume that most of the
+		// alloc struct is already zeroed out by this point?
+		*alloc = iterAlloc{}
+		alloc.keyBuf = keyBuf
+		alloc.boundsBuf = boundsBuf
+		alloc.prefixOrFullSeekKey = prefixOrFullSeekKey
+		alloc.merging.heap.items = mergingIterHeapItems
+
 		iterAllocPool.Put(alloc)
 	} else if alloc := i.getIterAlloc; alloc != nil {
 		if cap(i.keyBuf) >= maxKeyBufCacheSize {
