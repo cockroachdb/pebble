@@ -139,9 +139,9 @@ func (r *remoteReadable) NewReadHandle(
 // to preserve some read-before).
 //
 // Note that both use-cases can often occur near each other if there is enough
-// locality of access, in which case table cache and block cache misses are
+// locality of access, in which case file cache and block cache misses are
 // mainly happening for new sstables created by compactions -- in this case a
-// user-facing read will cause a table cache miss and a new sstable.Reader to
+// user-facing read will cause a file cache miss and a new sstable.Reader to
 // be created, followed by an iterator creation. We don't currently combine
 // the reads across the Reader and the iterator creation, since the code
 // structure is not simple enough, but we could consider that in the future.

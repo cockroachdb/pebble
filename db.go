@@ -38,12 +38,12 @@ import (
 )
 
 const (
-	// minTableCacheSize is the minimum size of the table cache, for a single db.
-	minTableCacheSize = 64
+	// minFileCacheSize is the minimum size of the file cache, for a single db.
+	minFileCacheSize = 64
 
-	// numNonTableCacheFiles is an approximation for the number of files
-	// that we don't use for table caches, for a given db.
-	numNonTableCacheFiles = 10
+	// numNonFileCacheFiles is an approximation for the number of files
+	// that we don't account for in the file cache, for a given db.
+	numNonFileCacheFiles = 10
 )
 
 var (
@@ -303,7 +303,7 @@ type DB struct {
 	fileLock *Lock
 	dataDir  vfs.File
 
-	tableCache           *tableCacheContainer
+	fileCache            *fileCacheContainer
 	newIters             tableNewIters
 	tableNewRangeKeyIter keyspanimpl.TableNewSpanIter
 
@@ -1104,7 +1104,7 @@ func (d *DB) newIter(
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
-		tc:                  d.tableCache,
+		fc:                  d.fileCache,
 		newIters:            newIters,
 		newIterRangeKey:     newIterRangeKey,
 		seqNum:              seqNum,
@@ -1402,11 +1402,11 @@ func (i *Iterator) constructPointIter(
 	internalOpts := internalIterOpts{
 		stats: &i.stats.InternalStats,
 	}
-	// If the table cache has a sstable stats collector, ask it for an
+	// If the file cache has a sstable stats collector, ask it for an
 	// accumulator for this iterator's configured category and QoS. All SSTable
 	// iterators created by this Iterator will accumulate their stats to it as
 	// they Close during iteration.
-	if collector := i.tc.dbOpts.sstStatsCollector; collector != nil {
+	if collector := i.fc.dbOpts.sstStatsCollector; collector != nil {
 		internalOpts.iterStatsAccumulator = collector.Accumulator(
 			uint64(uintptr(unsafe.Pointer(i))),
 			i.opts.Category,
@@ -1668,7 +1668,7 @@ func (d *DB) Close() error {
 		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
 	}
 	err = firstError(err, d.mu.formatVers.marker.Close())
-	err = firstError(err, d.tableCache.close())
+	err = firstError(err, d.fileCache.close())
 	if !d.opts.ReadOnly {
 		if d.mu.log.writer != nil {
 			_, err2 := d.mu.log.writer.Close()
@@ -2045,9 +2045,9 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
-	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
-	metrics.TableIters = int64(d.tableCache.iterCount())
-	metrics.CategoryStats = d.tableCache.dbOpts.sstStatsCollector.GetStats()
+	metrics.FileCache, metrics.Filter = d.fileCache.metrics()
+	metrics.TableIters = int64(d.fileCache.iterCount())
+	metrics.CategoryStats = d.fileCache.dbOpts.sstStatsCollector.GetStats()
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
 
@@ -2202,7 +2202,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
-				p, err := d.tableCache.getTableProperties(
+				p, err := d.fileCache.getTableProperties(
 					m,
 				)
 				if err != nil {
@@ -2235,7 +2235,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				if m.ContainedWithinSpan(d.opts.Comparer.Compare, opt.start, opt.end) {
 					destTables[j].ApproximateSpanBytes = m.Size
 				} else {
-					size, err := d.tableCache.estimateSize(m, opt.start, opt.end)
+					size, err := d.fileCache.estimateSize(m, opt.start, opt.end)
 					if err != nil {
 						return nil, err
 					}
@@ -2264,7 +2264,7 @@ func (d *DB) makeFileSizeAnnotator(filter func(f *fileMetadata) bool) *manifest.
 			},
 			AccumulatePartialOverlapFunc: func(f *fileMetadata, bounds base.UserKeyBounds) uint64 {
 				if filter(f) {
-					size, err := d.tableCache.estimateSize(f, bounds.Start, bounds.End.Key)
+					size, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
 					if err != nil {
 						return 0
 					}

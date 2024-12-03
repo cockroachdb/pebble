@@ -634,7 +634,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 								buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							// This newIters is cheaper than in practice since it does not do
-							// tableCacheShard.findNode.
+							// fileCacheShard.findNode.
 							newIters := func(
 								_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
@@ -681,7 +681,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 		buildLevelIterTables(b, blockSize, restartInterval, 5)
 	defer cleanup()
 	// This newIters is cheaper than in practice since it does not do
-	// tableCacheShard.findNode.
+	// fileCacheShard.findNode.
 	newIters := func(
 		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {

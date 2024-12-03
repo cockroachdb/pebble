@@ -62,16 +62,16 @@ const (
 	maxMemTableSize = constants.MaxUint32OrInt
 )
 
-// TableCacheSize can be used to determine the table
+// FileCacheSize can be used to determine the file
 // cache size for a single db, given the maximum open
-// files which can be used by a table cache which is
+// files which can be used by a file cache which is
 // only used by a single db.
-func TableCacheSize(maxOpenFiles int) int {
-	tableCacheSize := maxOpenFiles - numNonTableCacheFiles
-	if tableCacheSize < minTableCacheSize {
-		tableCacheSize = minTableCacheSize
+func FileCacheSize(maxOpenFiles int) int {
+	fileCacheSize := maxOpenFiles - numNonFileCacheFiles
+	if fileCacheSize < minFileCacheSize {
+		fileCacheSize = minFileCacheSize
 	}
-	return tableCacheSize
+	return fileCacheSize
 }
 
 // Open opens a DB whose files live in the given directory.
@@ -240,14 +240,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			}
 
 			// Release our references to the Cache. Note that both the DB, and
-			// tableCache have a reference. When we release the reference to
-			// the tableCache, and if there are no other references to
-			// the tableCache, then the tableCache will also release its
+			// fileCache have a reference. When we release the reference to
+			// the fileCache, and if there are no other references to
+			// the fileCache, then the fileCache will also release its
 			// reference to the cache.
 			opts.Cache.Unref()
 
-			if d.tableCache != nil {
-				_ = d.tableCache.close()
+			if d.fileCache != nil {
+				_ = d.fileCache.close()
 			}
 
 			for _, mem := range d.mu.mem.queue {
@@ -408,11 +408,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}
 
-	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
-	d.tableCache = newTableCacheContainer(
-		opts.TableCache, d.cacheID, d.objProvider, d.opts, tableCacheSize,
+	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
+	d.fileCache = newFileCacheContainer(
+		opts.FileCache, d.cacheID, d.objProvider, d.opts, fileCacheSize,
 		&sstable.CategoryStatsCollector{})
-	d.newIters = d.tableCache.newIters
+	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
 	d.mu.annotators.totalSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
@@ -634,7 +634,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	//   dependencies.
 	//
 	// DB has cycles with several of its internal structures: readState,
-	// newIters, tableCache, versions, etc. Each of this individually cause a
+	// newIters, fileCache, versions, etc. Each of this individually cause a
 	// cycle and prevent the finalizer from being run. But we can workaround this
 	// finializer limitation by setting a finalizer on another object that is
 	// tied to the lifetime of DB: the DB.closed atomic.Value.

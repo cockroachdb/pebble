@@ -29,13 +29,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type tableCacheTestFile struct {
+type fileCacheTestFile struct {
 	vfs.File
-	fs   *tableCacheTestFS
+	fs   *fileCacheTestFS
 	name string
 }
 
-func (f *tableCacheTestFile) Close() error {
+func (f *fileCacheTestFile) Close() error {
 	f.fs.mu.Lock()
 	if f.fs.closeCounts != nil {
 		f.fs.closeCounts[f.name]++
@@ -44,7 +44,7 @@ func (f *tableCacheTestFile) Close() error {
 	return f.File.Close()
 }
 
-type tableCacheTestFS struct {
+type fileCacheTestFS struct {
 	vfs.FS
 
 	mu               sync.Mutex
@@ -53,7 +53,7 @@ type tableCacheTestFS struct {
 	openErrorEnabled bool
 }
 
-func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+func (fs *fileCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	fs.mu.Lock()
 	if fs.openErrorEnabled {
 		fs.mu.Unlock()
@@ -70,11 +70,11 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	if err != nil {
 		return nil, err
 	}
-	return &tableCacheTestFile{f, fs, name}, nil
+	return &fileCacheTestFile{f, fs, name}, nil
 }
 
-func (fs *tableCacheTestFS) validate(
-	t *testing.T, c *tableCacheContainer, f func(i, gotO, gotC int) error,
+func (fs *fileCacheTestFS) validate(
+	t *testing.T, c *fileCacheContainer, f func(i, gotO, gotC int) error,
 ) {
 	if err := fs.validateOpenTables(f); err != nil {
 		t.Error(err)
@@ -87,22 +87,22 @@ func (fs *tableCacheTestFS) validate(
 	}
 }
 
-func (fs *tableCacheTestFS) setOpenError(enabled bool) {
+func (fs *fileCacheTestFS) setOpenError(enabled bool) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	fs.openErrorEnabled = enabled
 }
 
 // validateOpenTables validates that no tables in the cache are open twice, and
-// the number still open is no greater than tableCacheTestCacheSize.
-func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) error {
+// the number still open is no greater than fileCacheTestCacheSize.
+func (fs *fileCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) error {
 	// try backs off to let any clean-up goroutines do their work.
 	return try(100*time.Microsecond, 20*time.Second, func() error {
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
 
 		numStillOpen := 0
-		for i := 0; i < tableCacheTestNumTables; i++ {
+		for i := 0; i < fileCacheTestNumTables; i++ {
 			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
@@ -118,21 +118,21 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 				}
 			}
 		}
-		if numStillOpen > tableCacheTestCacheSize {
-			return errors.Errorf("numStillOpen is %d, want <= %d", numStillOpen, tableCacheTestCacheSize)
+		if numStillOpen > fileCacheTestCacheSize {
+			return errors.Errorf("numStillOpen is %d, want <= %d", numStillOpen, fileCacheTestCacheSize)
 		}
 		return nil
 	})
 }
 
 // validateNoneStillOpen validates that no tables in the cache are open.
-func (fs *tableCacheTestFS) validateNoneStillOpen() error {
+func (fs *fileCacheTestFS) validateNoneStillOpen() error {
 	// try backs off to let any clean-up goroutines do their work.
 	return try(100*time.Microsecond, 20*time.Second, func() error {
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
 
-		for i := 0; i < tableCacheTestNumTables; i++ {
+		for i := 0; i < fileCacheTestNumTables; i++ {
 			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
@@ -144,23 +144,23 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 }
 
 const (
-	tableCacheTestNumTables = 300
-	tableCacheTestCacheSize = 100
+	fileCacheTestNumTables = 300
+	fileCacheTestCacheSize = 100
 )
 
-// newTableCacheTest returns a shareable table cache to be used for tests.
-// It is the caller's responsibility to unref the table cache.
-func newTableCacheTest(size int64, tableCacheSize int, numShards int) *TableCache {
+// newFileCacheTest returns a shareable file cache to be used for tests.
+// It is the caller's responsibility to unref the file cache.
+func newFileCacheTest(size int64, fileCacheSize int, numShards int) *FileCache {
 	cache := NewCache(size)
 	defer cache.Unref()
-	return NewTableCache(cache, numShards, tableCacheSize)
+	return NewFileCache(cache, numShards, fileCacheSize)
 }
 
-func newTableCacheContainerTest(
-	tc *TableCache, dirname string,
-) (*tableCacheContainer, *tableCacheTestFS, error) {
-	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
-	fs := &tableCacheTestFS{
+func newFileCacheContainerTest(
+	tc *FileCache, dirname string,
+) (*fileCacheContainer, *fileCacheTestFS, error) {
+	xxx := bytes.Repeat([]byte("x"), fileCacheTestNumTables)
+	fs := &fileCacheTestFS{
 		FS: vfs.NewMem(),
 	}
 	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, dirname))
@@ -169,7 +169,7 @@ func newTableCacheContainerTest(
 	}
 	defer objProvider.Close()
 
-	for i := 0; i < tableCacheTestNumTables; i++ {
+	for i := 0; i < fileCacheTestNumTables; i++ {
 		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.DiskFileNum(i), objstorage.CreateOptions{})
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
@@ -201,34 +201,34 @@ func newTableCacheContainerTest(
 		opts.Cache = tc.cache
 	}
 
-	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize,
+	c := newFileCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, fileCacheTestCacheSize,
 		&sstable.CategoryStatsCollector{})
 	return c, fs, nil
 }
 
-// Test basic reference counting for the table cache.
-func TestTableCacheRefs(t *testing.T) {
-	tc := newTableCacheTest(8<<20, 10, 2)
+// Test basic reference counting for the file cache.
+func TestFileCacheRefs(t *testing.T) {
+	c := newFileCacheTest(8<<20, 10, 2)
 
-	v := tc.refs.Load()
+	v := c.refs.Load()
 	if v != 1 {
 		require.Equal(t, 1, v)
 	}
 
-	tc.Ref()
-	v = tc.refs.Load()
+	c.Ref()
+	v = c.refs.Load()
 	if v != 2 {
 		require.Equal(t, 2, v)
 	}
 
-	tc.Unref()
-	v = tc.refs.Load()
+	c.Unref()
+	v = c.refs.Load()
 	if v != 1 {
 		require.Equal(t, 1, v)
 	}
 
-	tc.Unref()
-	v = tc.refs.Load()
+	c.Unref()
+	v = c.refs.Load()
 	if v != 0 {
 		require.Equal(t, 0, v)
 	}
@@ -242,10 +242,10 @@ func TestTableCacheRefs(t *testing.T) {
 			t.Fatalf("expected panic")
 		}
 	}()
-	tc.Unref()
+	c.Unref()
 }
 
-// Basic test to determine if reads through the table cache are wired correctly.
+// Basic test to determine if reads through the file cache are wired correctly.
 func TestVirtualReadsWiring(t *testing.T) {
 	var d *DB
 	var err error
@@ -262,7 +262,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 	b := newBatch(d)
 	// Some combination of sets, range deletes, and range key sets/unsets, so
-	// all of the table cache iterator functions are utilized.
+	// all of the file cache iterator functions are utilized.
 	require.NoError(t, b.Set([]byte{'a'}, []byte{'a'}, nil))                           // SeqNum start.
 	require.NoError(t, b.Set([]byte{'d'}, []byte{'d'}, nil))                           // SeqNum: +1
 	require.NoError(t, b.DeleteRange([]byte{'c'}, []byte{'e'}, nil))                   // SeqNum: +2
@@ -391,7 +391,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	// Confirm that there were only 2 virtual sstables in L6.
 	require.Equal(t, 2, int(d.Metrics().Levels[6].NumFiles))
 
-	// These reads will go through the table cache.
+	// These reads will go through the file cache.
 	iter, _ := d.NewIter(nil)
 	expected := []byte{'a', 'f', 'z'}
 	for i, x := 0, iter.First(); x; i, x = i+1, iter.Next() {
@@ -403,32 +403,32 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.Close()
 }
 
-// The table cache shouldn't be usable after all the dbs close.
-func TestSharedTableCacheUseAfterAllFree(t *testing.T) {
-	tc := newTableCacheTest(8<<20, 10, 1)
+// The file cache shouldn't be usable after all the dbs close.
+func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
+	fc := newFileCacheTest(8<<20, 10, 1)
 	db1, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     fc.cache,
+			FileCache: fc,
 		})
 	require.NoError(t, err)
 
 	// Release our reference, now that the db has a reference.
-	tc.Unref()
+	fc.Unref()
 
 	db2, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     fc.cache,
+			FileCache: fc,
 		})
 	require.NoError(t, err)
 
 	require.NoError(t, db1.Close())
 	require.NoError(t, db2.Close())
 
-	v := tc.refs.Load()
+	v := fc.refs.Load()
 	if v != 0 {
 		t.Fatalf("expected reference count %d, got %d", 0, v)
 	}
@@ -436,7 +436,7 @@ func TestSharedTableCacheUseAfterAllFree(t *testing.T) {
 	defer func() {
 		// The cache ref gets incremented before the panic, so we should
 		// decrement it to prevent the finalizer from detecting a leak.
-		tc.cache.Unref()
+		fc.cache.Unref()
 
 		if r := recover(); r != nil {
 			if fmt.Sprint(r) != "pebble: inconsistent reference count: 1" {
@@ -449,22 +449,22 @@ func TestSharedTableCacheUseAfterAllFree(t *testing.T) {
 
 	db3, _ := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     fc.cache,
+			FileCache: fc,
 		})
 	_ = db3
 }
 
-// Test whether a shared table cache is usable by a db, after
-// one of the db's releases its reference.
-func TestSharedTableCacheUseAfterOneFree(t *testing.T) {
-	tc := newTableCacheTest(8<<20, 10, 1)
+// TestSharedFileCacheUseAfterOneFree tests whether a shared file cache is
+// usable by a db, after one of the db's releases its reference.
+func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
+	tc := newFileCacheTest(8<<20, 10, 1)
 	db1, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     tc.cache,
+			FileCache: tc,
 		})
 	require.NoError(t, err)
 
@@ -473,9 +473,9 @@ func TestSharedTableCacheUseAfterOneFree(t *testing.T) {
 
 	db2, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     tc.cache,
+			FileCache: tc,
 		})
 	require.NoError(t, err)
 	defer func() {
@@ -499,15 +499,15 @@ func TestSharedTableCacheUseAfterOneFree(t *testing.T) {
 	require.NoError(t, db2.Compact(start, end, false))
 }
 
-// A basic test which makes sure that a shared table cache is usable
-// by more than one database at once.
-func TestSharedTableCacheUsable(t *testing.T) {
-	tc := newTableCacheTest(8<<20, 10, 1)
+// TestSharedFileCacheUsable ensures that a shared file cache is usable by more
+// than one database at once.
+func TestSharedFileCacheUsable(t *testing.T) {
+	tc := newFileCacheTest(8<<20, 10, 1)
 	db1, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     tc.cache,
+			FileCache: tc,
 		})
 	require.NoError(t, err)
 
@@ -520,9 +520,9 @@ func TestSharedTableCacheUsable(t *testing.T) {
 
 	db2, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     tc.cache,
+			FileCache: tc,
 		})
 	require.NoError(t, err)
 	defer func() {
@@ -547,12 +547,12 @@ func TestSharedTableCacheUsable(t *testing.T) {
 }
 
 func TestSharedTableConcurrent(t *testing.T) {
-	tc := newTableCacheTest(8<<20, 10, 1)
+	tc := newFileCacheTest(8<<20, 10, 1)
 	db1, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     tc.cache,
+			FileCache: tc,
 		})
 	require.NoError(t, err)
 
@@ -565,9 +565,9 @@ func TestSharedTableConcurrent(t *testing.T) {
 
 	db2, err := Open("test",
 		&Options{
-			FS:         vfs.NewMem(),
-			Cache:      tc.cache,
-			TableCache: tc,
+			FS:        vfs.NewMem(),
+			Cache:     tc.cache,
+			FileCache: tc,
 		})
 	require.NoError(t, err)
 	defer func() {
@@ -577,7 +577,7 @@ func TestSharedTableConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Now that both dbs have a reference to the table cache,
+	// Now that both dbs have a reference to the file cache,
 	// we'll run go routines which will use the DBs concurrently.
 	concFunc := func(db *DB) {
 		for i := 0; i < 1000; i++ {
@@ -597,9 +597,9 @@ func TestSharedTableConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
+func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 	const N = 2000
-	c, fs, err := newTableCacheContainerTest(nil, "")
+	c, fs, err := newFileCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
 	rngMu := sync.Mutex{}
@@ -609,7 +609,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 	for i := 0; i < N; i++ {
 		go func(i int) {
 			rngMu.Lock()
-			fileNum, sleepTime := rng.IntN(tableCacheTestNumTables), rng.IntN(1000)
+			fileNum, sleepTime := rng.IntN(fileCacheTestNumTables), rng.IntN(1000)
 			rngMu.Unlock()
 			m := &fileMetadata{FileNum: FileNum(fileNum)}
 			m.InitPhysicalBacking()
@@ -659,20 +659,20 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 	fs.validate(t, c, nil)
 }
 
-func TestTableCacheRandomAccessSequential(t *testing.T) { testTableCacheRandomAccess(t, false) }
-func TestTableCacheRandomAccessConcurrent(t *testing.T) { testTableCacheRandomAccess(t, true) }
+func TestFileCacheRandomAccessSequential(t *testing.T) { testFileCacheRandomAccess(t, false) }
+func TestFileCacheRandomAccessConcurrent(t *testing.T) { testFileCacheRandomAccess(t, true) }
 
-func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
+func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 	const (
 		N       = 1000
 		pinned0 = 7
 		pinned1 = 11
 	)
-	c, fs, err := newTableCacheContainerTest(nil, "")
+	c, fs, err := newFileCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
 	for i := 0; i < N; i++ {
-		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
+		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
 			var iters iterSet
 			var err error
 			m := &fileMetadata{FileNum: FileNum(j)}
@@ -702,29 +702,29 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 	})
 }
 
-func TestTableCacheFrequentlyUsed(t *testing.T) {
+func TestFileCacheFrequentlyUsed(t *testing.T) {
 	for i, iterType := range []string{"point", "range"} {
 		t.Run(fmt.Sprintf("iter=%s", iterType), func(t *testing.T) {
-			testTableCacheFrequentlyUsedInternal(t, i == 1)
+			testFileCacheFrequentlyUsedInternal(t, i == 1)
 		})
 	}
 }
 
-func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
+func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 	const (
 		N       = 1000
 		pinned0 = 7
 		pinned1 = 11
 	)
-	tc := newTableCacheTest(8<<20, 2*tableCacheTestCacheSize, 16)
-	c1, fs1, err := newTableCacheContainerTest(tc, "")
+	tc := newFileCacheTest(8<<20, 2*fileCacheTestCacheSize, 16)
+	c1, fs1, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
-	c2, fs2, err := newTableCacheContainerTest(tc, "")
+	c2, fs2, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
 	tc.Unref()
 
 	for i := 0; i < N; i++ {
-		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
+		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
@@ -765,17 +765,17 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 	})
 }
 
-func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
+func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	const (
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	c, fs, err := newTableCacheContainerTest(nil, "")
+	c, fs, err := newFileCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
 	rng := rand.New(rand.NewPCG(2, 2))
 	for i := 0; i < N; i++ {
-		j := rng.IntN(tableCacheTestNumTables)
+		j := rng.IntN(fileCacheTestNumTables)
 		var iters iterSet
 		var err error
 		m := &fileMetadata{FileNum: FileNum(j)}
@@ -811,7 +811,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	fEvicted := float64(sumEvicted) / float64(nEvicted)
 	fSafe := float64(sumSafe) / float64(nSafe)
 	// The magic 1.25 number isn't derived from formal modeling. It's just a guess. For
-	// (lo, hi, tableCacheTestCacheSize, tableCacheTestNumTables) = (10, 20, 100, 300),
+	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumTables) = (10, 20, 100, 300),
 	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
 	// not evict any cache entries.
 	if ratio := fEvicted / fSafe; ratio < 1.25 {
@@ -820,30 +820,30 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	}
 }
 
-func TestTableCacheEvictions(t *testing.T) {
+func TestFileCacheEvictions(t *testing.T) {
 	for i, iterType := range []string{"point", "range"} {
 		t.Run(fmt.Sprintf("iter=%s", iterType), func(t *testing.T) {
-			testTableCacheEvictionsInternal(t, i == 1)
+			testFileCacheEvictionsInternal(t, i == 1)
 		})
 	}
 }
 
-func TestSharedTableCacheEvictions(t *testing.T) {
+func TestSharedFileCacheEvictions(t *testing.T) {
 	const (
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	tc := newTableCacheTest(8<<20, 2*tableCacheTestCacheSize, 16)
-	c1, fs1, err := newTableCacheContainerTest(tc, "")
+	tc := newFileCacheTest(8<<20, 2*fileCacheTestCacheSize, 16)
+	c1, fs1, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
-	c2, fs2, err := newTableCacheContainerTest(tc, "")
+	c2, fs2, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
 	tc.Unref()
 
 	// TODO(radu): this test fails on most seeds.
 	rng := rand.New(rand.NewPCG(0, 0))
 	for i := 0; i < N; i++ {
-		j := rng.IntN(tableCacheTestNumTables)
+		j := rng.IntN(fileCacheTestNumTables)
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
@@ -869,7 +869,7 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		c2.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
 	}
 
-	check := func(fs *tableCacheTestFS, c *tableCacheContainer) (float64, float64, float64) {
+	check := func(fs *fileCacheTestFS, c *fileCacheContainer) (float64, float64, float64) {
 		sumEvicted, nEvicted := 0, 0
 		sumSafe, nSafe := 0, 0
 		fs.validate(t, c, func(i, gotO, gotC int) error {
@@ -889,7 +889,7 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 	}
 
 	// The magic 1.25 number isn't derived from formal modeling. It's just a guess. For
-	// (lo, hi, tableCacheTestCacheSize, tableCacheTestNumTables) = (10, 20, 100, 300),
+	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumTables) = (10, 20, 100, 300),
 	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
 	// not evict any cache entries.
 	if fEvicted, fSafe, ratio := check(fs1, c1); ratio < 1.25 {
@@ -907,8 +907,8 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 	}
 }
 
-func TestTableCacheIterLeak(t *testing.T) {
-	c, _, err := newTableCacheContainerTest(nil, "")
+func TestFileCacheIterLeak(t *testing.T) {
+	c, _, err := newFileCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
 	m := &fileMetadata{FileNum: 0}
@@ -928,13 +928,13 @@ func TestTableCacheIterLeak(t *testing.T) {
 	require.NoError(t, iters.Point().Close())
 }
 
-func TestSharedTableCacheIterLeak(t *testing.T) {
-	tc := newTableCacheTest(8<<20, 2*tableCacheTestCacheSize, 16)
-	c1, _, err := newTableCacheContainerTest(tc, "")
+func TestSharedFileCacheIterLeak(t *testing.T) {
+	tc := newFileCacheTest(8<<20, 2*fileCacheTestCacheSize, 16)
+	c1, _, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
-	c2, _, err := newTableCacheContainerTest(tc, "")
+	c2, _, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
-	c3, _, err := newTableCacheContainerTest(tc, "")
+	c3, _, err := newFileCacheContainerTest(tc, "")
 	require.NoError(t, err)
 	tc.Unref()
 
@@ -956,9 +956,9 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	// Closing c2 shouldn't error out since c2 isn't leaking any iterators.
 	require.NoError(t, c2.close())
 
-	// Closing c3 should error out since c3 holds the last reference to
-	// the TableCache, and when the TableCache closes, it will detect
-	// that there was a leaked iterator.
+	// Closing c3 should error out since c3 holds the last reference to the
+	// FileCache, and when the FileCache closes, it will detect that there was a
+	// leaked iterator.
 	if err := c3.close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
@@ -970,9 +970,9 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	require.NoError(t, iters.Point().Close())
 }
 
-func TestTableCacheRetryAfterFailure(t *testing.T) {
+func TestFileCacheRetryAfterFailure(t *testing.T) {
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
-	c, fs, err := newTableCacheContainerTest(nil, "")
+	c, fs, err := newFileCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
 	fs.setOpenError(true /* enabled */)
@@ -992,7 +992,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	fs.validate(t, c, nil)
 }
 
-func TestTableCacheErrorBadMagicNumber(t *testing.T) {
+func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	obj := &objstorage.MemObj{}
 	tw := sstable.NewWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 	tw.Set([]byte("a"), nil)
@@ -1000,7 +1000,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 	buf := obj.Data()
 	// Bad magic number.
 	buf[len(buf)-1] = 0
-	fs := &tableCacheTestFS{
+	fs := &fileCacheTestFS{
 		FS: vfs.NewMem(),
 	}
 	const testFileNum = 3
@@ -1013,7 +1013,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 	opts.EnsureDefaults()
 	opts.Cache = NewCache(8 << 20) // 8 MB
 	defer opts.Cache.Unref()
-	c := newTableCacheContainer(nil, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize,
+	c := newFileCacheContainer(nil, opts.Cache.NewID(), objProvider, opts, fileCacheTestCacheSize,
 		&sstable.CategoryStatsCollector{})
 	require.NoError(t, err)
 	defer c.close()
@@ -1030,7 +1030,7 @@ func TestTableCacheErrorBadMagicNumber(t *testing.T) {
 		err.Error())
 }
 
-func TestTableCacheEvictClose(t *testing.T) {
+func TestFileCacheEvictClose(t *testing.T) {
 	errs := make(chan error, 10)
 	db, err := Open("test",
 		&Options{
@@ -1057,7 +1057,7 @@ func TestTableCacheEvictClose(t *testing.T) {
 	}
 }
 
-func TestTableCacheClockPro(t *testing.T) {
+func TestFileCacheClockPro(t *testing.T) {
 	// Test data was generated from the python code. See also
 	// internal/cache/clockpro_test.go:TestCache.
 	f, err := os.Open("internal/cache/testdata/cache")
@@ -1083,10 +1083,10 @@ func TestTableCacheClockPro(t *testing.T) {
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
 
-	cache := &tableCacheShard{}
-	// NB: The table cache size of 200 is required for the expected test values.
+	cache := &fileCacheShard{}
+	// NB: The file cache size of 200 is required for the expected test values.
 	cache.init(200)
-	dbOpts := &tableCacheOpts{}
+	dbOpts := &fileCacheOpts{}
 	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
 	dbOpts.objProvider = objProvider
@@ -1160,9 +1160,9 @@ func BenchmarkNewItersAlloc(b *testing.B) {
 	}
 }
 
-// TestTableCacheNoSuchFileError verifies that when the table cache hits a "no
+// TestFileCacheNoSuchFileError verifies that when the file cache hits a "no
 // such file" error, it generates a useful fatal message.
-func TestTableCacheNoSuchFileError(t *testing.T) {
+func TestFileCacheNoSuchFileError(t *testing.T) {
 	const dirname = "test"
 	mem := vfs.NewMem()
 	logger := &catchFatalLogger{}
@@ -1200,7 +1200,7 @@ func TestTableCacheNoSuchFileError(t *testing.T) {
 	require.Contains(t, logger.fatalMsgs[0], "directory contains 7 files, 2 unknown, 0 tables, 2 logs, 1 manifests")
 }
 
-func BenchmarkTableCacheHotPath(b *testing.B) {
+func BenchmarkFileCacheHotPath(b *testing.B) {
 	mem := vfs.NewMem()
 	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
 	require.NoError(b, err)
@@ -1221,9 +1221,9 @@ func BenchmarkTableCacheHotPath(b *testing.B) {
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
 
-	cache := &tableCacheShard{}
+	cache := &fileCacheShard{}
 	cache.init(2)
-	dbOpts := &tableCacheOpts{}
+	dbOpts := &fileCacheOpts{}
 	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
 	dbOpts.objProvider = objProvider

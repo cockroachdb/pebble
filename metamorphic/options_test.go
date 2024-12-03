@@ -66,7 +66,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Cache.",
 		"FS:",
 		"KeySchemas[",
-		"TableCache:",
+		"FileCache:",
 		// Function pointers
 		"BlockPropertyCollectors:",
 		"EventListener:",

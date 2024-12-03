@@ -304,7 +304,7 @@ func (d *DB) loadTableStats(
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.tableCache.withCommonReader(
+	err := d.fileCache.withCommonReader(
 		meta, func(r sstable.CommonReader) (err error) {
 			props := r.CommonProperties()
 			stats.NumEntries = props.NumEntries
@@ -508,9 +508,9 @@ func (d *DB) estimateSizesBeneath(
 		for file = iter.First(); file != nil; file = iter.Next() {
 			var err error
 			if file.Virtual {
-				err = d.tableCache.withVirtualReader(file.VirtualMeta(), addVirtualTableStats)
+				err = d.fileCache.withVirtualReader(file.VirtualMeta(), addVirtualTableStats)
 			} else {
-				err = d.tableCache.withReader(file.PhysicalMeta(), addPhysicalTableStats)
+				err = d.fileCache.withReader(file.PhysicalMeta(), addPhysicalTableStats)
 			}
 			if err != nil {
 				return 0, 0, err
@@ -615,13 +615,13 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				var size uint64
 				var err error
 				if file.Virtual {
-					err = d.tableCache.withVirtualReader(
+					err = d.fileCache.withVirtualReader(
 						file.VirtualMeta(), func(r sstable.VirtualReader) (err error) {
 							size, err = r.EstimateDiskUsage(start, end)
 							return err
 						})
 				} else {
-					err = d.tableCache.withReader(
+					err = d.fileCache.withReader(
 						file.PhysicalMeta(), func(r *sstable.Reader) (err error) {
 							size, err = r.EstimateDiskUsage(start, end)
 							return err

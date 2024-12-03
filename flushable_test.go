@@ -75,7 +75,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			// All of the sstables to be ingested were empty. Nothing to do.
 			panic("empty sstable")
 		}
-		// The table cache requires the *fileMetadata to have a positive
+		// The file cache requires the *fileMetadata to have a positive
 		// reference count. Fake a reference before we try to load the file.
 		for _, f := range meta {
 			f.FileBacking.Ref()

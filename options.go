@@ -637,15 +637,15 @@ type Options struct {
 		// A zero or negative value disables tombstone density compactions.
 		TombstoneDenseCompactionThreshold float64
 
-		// TableCacheShards is the number of shards per table cache.
+		// FileCacheShards is the number of shards per file cache.
 		// Reducing the value can reduce the number of idle goroutines per DB
 		// instance which can be useful in scenarios with a lot of DB instances
 		// and a large number of CPUs, but doing so can lead to higher contention
-		// in the table cache and reduced performance.
+		// in the file cache and reduced performance.
 		//
 		// The default value is the number of logical CPUs, which can be
 		// limited by runtime.GOMAXPROCS.
-		TableCacheShards int
+		FileCacheShards int
 
 		// KeyValidationFunc is a function to validate a user key in an SSTable.
 		//
@@ -1061,13 +1061,13 @@ type Options struct {
 	// disabled.
 	ReadOnly bool
 
-	// TableCache is an initialized TableCache which should be set as an
-	// option if the DB needs to be initialized with a pre-existing table cache.
-	// If TableCache is nil, then a table cache which is unique to the DB instance
-	// is created. TableCache can be shared between db instances by setting it here.
-	// The TableCache set here must use the same underlying cache as Options.Cache
+	// FileCache is an initialized FileCache which should be set as an
+	// option if the DB needs to be initialized with a pre-existing file cache.
+	// If FileCache is nil, then a file cache which is unique to the DB instance
+	// is created. FileCache can be shared between db instances by setting it here.
+	// The FileCache set here must use the same underlying cache as Options.Cache
 	// and pebble will panic otherwise.
-	TableCache *TableCache
+	FileCache *FileCache
 
 	// BlockPropertyCollectors is a list of BlockPropertyCollector creation
 	// functions. A new BlockPropertyCollector is created for each sstable
@@ -1354,8 +1354,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
 		o.Experimental.TombstoneDenseCompactionThreshold = 0.10
 	}
-	if o.Experimental.TableCacheShards <= 0 {
-		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
+	if o.Experimental.FileCacheShards <= 0 {
+		o.Experimental.FileCacheShards = runtime.GOMAXPROCS(0)
 	}
 	if o.Experimental.CPUWorkPermissionGranter == nil {
 		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
@@ -1491,7 +1491,7 @@ func (o *Options) String() string {
 	// We no longer care about strict_wal_tail, but set it to true in case an
 	// older version reads the options.
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
-	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.TableCacheShards)
+	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.FileCacheShards)
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
@@ -1888,7 +1888,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "tombstone_dense_compaction_threshold":
 				o.Experimental.TombstoneDenseCompactionThreshold, err = strconv.ParseFloat(value, 64)
 			case "table_cache_shards":
-				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
+				o.Experimental.FileCacheShards, err = strconv.Atoi(value)
 			case "table_format":
 				switch value {
 				case "leveldb":
@@ -2113,8 +2113,8 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "FormatMajorVersion (%d) when CreateOnShared is set must be at least %d\n",
 			o.FormatMajorVersion, FormatMinForSharedObjects)
 	}
-	if o.TableCache != nil && o.Cache != o.TableCache.cache {
-		fmt.Fprintf(&buf, "underlying cache in the TableCache and the Cache dont match\n")
+	if o.FileCache != nil && o.Cache != o.FileCache.cache {
+		fmt.Fprintf(&buf, "underlying cache in the FileCache and the Cache dont match\n")
 	}
 	if len(o.KeySchemas) > 0 {
 		if o.KeySchema == "" {
