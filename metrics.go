@@ -21,7 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// CacheMetrics holds metrics for the block and table cache.
+// CacheMetrics holds metrics for the block and file cache.
 type CacheMetrics = cache.Metrics
 
 // FilterMetrics holds metrics for the filter policy
@@ -302,7 +302,7 @@ type Metrics struct {
 		}
 	}
 
-	TableCache CacheMetrics
+	FileCache CacheMetrics
 
 	// Count of the number of open sstable iterators.
 	TableIters int64
@@ -649,7 +649,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			redact.Safe(hitRate(m.Hits, m.Misses)))
 	}
 	formatCacheMetrics(&m.BlockCache, "Block cache")
-	formatCacheMetrics(&m.TableCache, "Table cache")
+	formatCacheMetrics(&m.FileCache, "Table cache")
 
 	formatSharedCacheMetrics := func(w redact.SafePrinter, m *SecondaryCacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
@@ -708,7 +708,7 @@ func (m *Metrics) StringForTests() string {
 		// This is the difference in Sizeof(sstable.Reader{})) between 64 and 32 bit
 		// platforms.
 		const tableCacheSizeAdjustment = 212
-		mCopy.TableCache.Size += mCopy.TableCache.Count * tableCacheSizeAdjustment
+		mCopy.FileCache.Size += mCopy.FileCache.Count * tableCacheSizeAdjustment
 	}
 	// Don't show cgo memory statistics as they can vary based on architecture,
 	// invariants tag, etc.

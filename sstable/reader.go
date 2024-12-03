@@ -157,7 +157,7 @@ func (r *Reader) newPointIter(
 	rp valblk.ReaderProvider,
 	vState *virtualState,
 ) (Iterator, error) {
-	// NB: pebble.tableCache wraps the returned iterator with one which performs
+	// NB: pebble.fileCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	var res Iterator
@@ -329,7 +329,7 @@ type readBlockEnv struct {
 	// rooted at pebble.Iterator. iterStats contains an sstable iterator's
 	// private stats that are reported to a CategoryStatsCollector when this
 	// iterator is closed. In the important code paths, the CategoryStatsCollector
-	// is managed by the tableCacheContainer.
+	// is managed by the fileCacheContainer.
 	Stats     *base.InternalIteratorStats
 	IterStats *iterStatsAccumulator
 
@@ -596,7 +596,7 @@ func (r *Reader) readMetaindex(
 	// additional contention on the block cache mutexes (see #1997).
 	// Additionally, these blocks are exceedingly unlikely to be read again
 	// while they're still in the block cache except in misconfigurations with
-	// excessive sstables counts or a table cache that's far too small.
+	// excessive sstables counts or a file cache that's far too small.
 	r.metaBufferPool.InitPreallocated(r.metaBufferPoolAlloc[:0])
 	// When we're finished, release the buffers we've allocated back to memory
 	// allocator. We don't expect to use metaBufferPool again.

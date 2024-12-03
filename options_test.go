@@ -298,7 +298,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.NumDeletionsThreshold = 500
 			opts.Experimental.DeletionSizeRatioThreshold = 0.7
 			opts.Experimental.TombstoneDenseCompactionThreshold = 0.2
-			opts.Experimental.TableCacheShards = 500
+			opts.Experimental.FileCacheShards = 500
 			opts.Experimental.MaxWriterConcurrency = 1
 			opts.Experimental.ForceWriterParallelism = true
 			opts.Experimental.SecondaryCacheSizeBytes = 1024
@@ -384,13 +384,13 @@ func TestOptionsValidateCache(t *testing.T) {
 	opts.EnsureDefaults()
 	opts.Cache = NewCache(8 << 20)
 	defer opts.Cache.Unref()
-	opts.TableCache = NewTableCache(NewCache(8<<20), 10, 1)
-	defer opts.TableCache.cache.Unref()
-	defer opts.TableCache.Unref()
+	opts.FileCache = NewFileCache(NewCache(8<<20), 10, 1)
+	defer opts.FileCache.cache.Unref()
+	defer opts.FileCache.Unref()
 
 	err := opts.Validate()
 	require.Error(t, err)
-	if fmt.Sprint(err) != "underlying cache in the TableCache and the Cache dont match" {
+	if fmt.Sprint(err) != "underlying cache in the FileCache and the Cache dont match" {
 		t.Errorf("Unexpected error message")
 	}
 }

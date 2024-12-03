@@ -725,7 +725,7 @@ func TestIterLeak(t *testing.T) {
 }
 
 // Make sure that we detect an iter leak when only one DB closes
-// while the second db still holds a reference to the TableCache.
+// while the second db still holds a reference to the FileCache.
 func TestIterLeakSharedCache(t *testing.T) {
 	for _, leak := range []bool{true, false} {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
@@ -2418,7 +2418,7 @@ func TestLoadBlockSema(t *testing.T) {
 		require.NoError(t, db.Compact(key(i, 0), key(i, numKeys-1), false))
 	}
 
-	// Read all regions to warm up the table cache.
+	// Read all regions to warm up the file cache.
 	for i := 0; i < numRegions; i++ {
 		val, closer, err := db.Get(key(i, 1))
 		require.NoError(t, err)

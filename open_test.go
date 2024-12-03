@@ -48,16 +48,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpenSharedTableCache(t *testing.T) {
+func TestOpenSharedFileCache(t *testing.T) {
 	c := cache.New(cacheDefaultSize)
-	tc := NewTableCache(c, 16, 100)
+	tc := NewFileCache(c, 16, 100)
 	defer tc.Unref()
 	defer c.Unref()
 
 	d0, err := Open("", testingRandomized(t, &Options{
-		FS:         vfs.NewMem(),
-		Cache:      c,
-		TableCache: tc,
+		FS:        vfs.NewMem(),
+		Cache:     c,
+		FileCache: tc,
 	}))
 	if err != nil {
 		t.Errorf("d0 Open: %s", err.Error())
@@ -65,20 +65,20 @@ func TestOpenSharedTableCache(t *testing.T) {
 	defer d0.Close()
 
 	d1, err := Open("", testingRandomized(t, &Options{
-		FS:         vfs.NewMem(),
-		Cache:      c,
-		TableCache: tc,
+		FS:        vfs.NewMem(),
+		Cache:     c,
+		FileCache: tc,
 	}))
 	if err != nil {
 		t.Errorf("d1 Open: %s", err.Error())
 	}
 	defer d1.Close()
 
-	// Make sure that the Open function is using the passed in table cache
-	// when the TableCache option is set.
+	// Make sure that the Open function is using the passed in file cache
+	// when the FileCache option is set.
 	require.Equalf(
-		t, d0.tableCache.tableCache, d1.tableCache.tableCache,
-		"expected tableCache for both d0 and d1 to be the same",
+		t, d0.fileCache.fileCache, d1.fileCache.fileCache,
+		"expected fileCache for both d0 and d1 to be the same",
 	)
 }
 

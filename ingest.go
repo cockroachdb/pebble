@@ -340,14 +340,14 @@ func ingestLoad1(
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
 
-	// Avoid loading into the table cache for collecting stats if we
+	// Avoid loading into the file cache for collecting stats if we
 	// don't need to. If there are no range deletions, we have all the
 	// information to compute the stats here.
 	//
 	// This is helpful in tests for avoiding awkwardness around deletion of
 	// ingested files from MemFS. MemFS implements the Windows semantics of
 	// disallowing removal of an open file. Under MemFS, if we don't populate
-	// meta.Stats here, the file will be loaded into the table cache for
+	// meta.Stats here, the file will be loaded into the file cache for
 	// calculating stats before we can remove the original link.
 	maybeSetStatsFromProperties(meta.PhysicalMeta(), &r.Properties)
 
@@ -1931,7 +1931,7 @@ func (d *DB) excise(
 		}
 		if leftFile.HasRangeKeys || leftFile.HasPointKeys {
 			var err error
-			leftFile.Size, err = d.tableCache.estimateSize(m, leftFile.Smallest.UserKey, leftFile.Largest.UserKey)
+			leftFile.Size, err = d.fileCache.estimateSize(m, leftFile.Smallest.UserKey, leftFile.Largest.UserKey)
 			if err != nil {
 				return nil, err
 			}
@@ -2045,7 +2045,7 @@ func (d *DB) excise(
 	}
 	if rightFile.HasRangeKeys || rightFile.HasPointKeys {
 		var err error
-		rightFile.Size, err = d.tableCache.estimateSize(m, rightFile.Smallest.UserKey, rightFile.Largest.UserKey)
+		rightFile.Size, err = d.fileCache.estimateSize(m, rightFile.Smallest.UserKey, rightFile.Largest.UserKey)
 		if err != nil {
 			return nil, err
 		}
@@ -2589,12 +2589,12 @@ func (d *DB) validateSSTables() {
 
 		var err error
 		if f.Meta.Virtual {
-			err = d.tableCache.withVirtualReader(
+			err = d.fileCache.withVirtualReader(
 				f.Meta.VirtualMeta(), func(v sstable.VirtualReader) error {
 					return v.ValidateBlockChecksumsOnBacking()
 				})
 		} else {
-			err = d.tableCache.withReader(
+			err = d.fileCache.withReader(
 				f.Meta.PhysicalMeta(), func(r *sstable.Reader) error {
 					return r.ValidateBlockChecksums()
 				})

@@ -150,7 +150,7 @@ func runReplayTest(t *testing.T, path string) {
 }
 
 func setDefaultExperimentalOpts(opts *pebble.Options) {
-	opts.Experimental.TableCacheShards = 2
+	opts.Experimental.FileCacheShards = 2
 }
 
 func TestReplay(t *testing.T) {
