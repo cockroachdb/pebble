@@ -177,7 +177,8 @@ type ImmediateSuccessor func(dst, a []byte) []byte
 //  3. Suffixes themselves must be valid keys and comparable, respecting the same
 //     ordering as within a key:
 //
-//     If Compare(prefix(a), prefix(b)) = 0, then Compare(a, b) = Compare(suffix(a), suffix(b)).
+//     If Compare(prefix(a), prefix(b)) = 0, then
+//     Compare(a, b) = ComparePointSuffixes(suffix(a), suffix(b))
 type Split func(a []byte) int
 
 // Prefix returns the prefix of the key k, using s to split the key.
