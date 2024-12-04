@@ -48,9 +48,10 @@ type OutputTable struct {
 
 // Stats describes stats collected during the compaction.
 type Stats struct {
-	CumulativePinnedKeys uint64
-	CumulativePinnedSize uint64
-	CountMissizedDels    uint64
+	CumulativePinnedKeys  uint64
+	CumulativePinnedSize  uint64
+	CumulativeWrittenSize uint64
+	CountMissizedDels     uint64
 }
 
 // RunnerConfig contains the parameters needed for the Runner.
@@ -78,6 +79,13 @@ type RunnerConfig struct {
 	// during compaction. In practice, the sizes can vary between 50%-200% of this
 	// value.
 	TargetOutputFileSize uint64
+
+	// Slot is the compaction slot taken up by this compaction. Used to perform
+	// pacing or account for concurrency limits.
+	Slot base.CompactionSlot
+
+	// IteratorStats is the stats collected by the compaction iterator.
+	IteratorStats *base.InternalIteratorStats
 }
 
 // Runner is a helper for running the "data" part of a compaction (where we use
@@ -157,9 +165,11 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 		return
 	}
 	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
+	r.stats.CumulativeWrittenSize += writerMeta.Size
 }
 
 func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ error) {
+	const updateSlotEveryNKeys = 1024
 	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
 	if r.key != nil && firstKey == nil {
 		firstKey = r.key.UserKey
@@ -175,8 +185,13 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 		return tw.ComparePrev(k) == 0
 	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
+	var iteratedKeys uint64
 	key, value := r.key, r.value
 	for ; key != nil; key, value = r.iter.Next() {
+		iteratedKeys++
+		if iteratedKeys%updateSlotEveryNKeys == 0 {
+			r.cfg.Slot.UpdateMetrics(r.cfg.IteratorStats.BlockBytes, r.stats.CumulativeWrittenSize+tw.EstimatedSize())
+		}
 		if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), equalPrev) {
 			break
 		}
@@ -224,6 +239,7 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	tw.SetSnapshotPinnedProperties(pinnedCount, pinnedKeySize, pinnedValueSize)
 	r.stats.CumulativePinnedKeys += pinnedCount
 	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
+	r.cfg.Slot.UpdateMetrics(r.cfg.IteratorStats.BlockBytes, r.stats.CumulativeWrittenSize+tw.EstimatedSize())
 	return splitKey, nil
 }
 
@@ -234,6 +250,7 @@ func (r *Runner) Finish() Result {
 	// The compaction iterator keeps track of a count of the number of DELSIZED
 	// keys that encoded an incorrect size.
 	r.stats.CountMissizedDels = r.iter.Stats().CountMissizedDels
+	r.cfg.Slot.Release(r.stats.CumulativeWrittenSize)
 	return Result{
 		Err:    r.err,
 		Tables: r.tables,

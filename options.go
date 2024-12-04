@@ -847,6 +847,12 @@ type Options struct {
 		// with it. This application happens through an excise, similar to
 		// the excise phase of IngestAndExcise.
 		EnableDeleteOnlyCompactionExcises func() bool
+
+		// CompactionLimiter, if set, is used to limit concurrent compactions as well
+		// as to pace compactions and flushing compactions already chosen. If nil,
+		// no limiting or pacing happens other than that controlled by other options
+		// like L0CompactionConcurrency and CompactionDebtConcurrency.
+		CompactionLimiter base.CompactionLimiter
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1228,6 +1234,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Experimental.CompactionDebtConcurrency <= 0 {
 		o.Experimental.CompactionDebtConcurrency = 1 << 30 // 1 GB
+	}
+	if o.Experimental.CompactionLimiter == nil {
+		o.Experimental.CompactionLimiter = &base.DefaultCompactionLimiter{}
 	}
 	if o.Experimental.KeyValidationFunc == nil {
 		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
