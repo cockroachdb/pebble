@@ -203,10 +203,10 @@ var _ block.IndexBlockIterator = (*IndexIter)(nil)
 
 // InitWithDecoder initializes an index iterator from the provided decoder.
 func (i *IndexIter) InitWithDecoder(
-	compare base.Compare, split base.Split, d *IndexBlockDecoder, transforms block.IterTransforms,
+	comparer *base.Comparer, d *IndexBlockDecoder, transforms block.IterTransforms,
 ) {
-	i.compare = compare
-	i.split = split
+	i.compare = comparer.Compare
+	i.split = comparer.Split
 	i.d = d
 	i.n = int(d.bd.header.Rows)
 	i.row = -1
@@ -216,23 +216,23 @@ func (i *IndexIter) InitWithDecoder(
 
 // Init initializes an iterator from the provided block data slice.
 func (i *IndexIter) Init(
-	cmp base.Compare, split base.Split, blk []byte, transforms block.IterTransforms,
+	comparer *base.Comparer, blk []byte, transforms block.IterTransforms,
 ) error {
 	i.h.Release()
 	i.h = block.BufferHandle{}
 	i.allocDecoder.Init(blk)
-	i.InitWithDecoder(cmp, split, &i.allocDecoder, transforms)
+	i.InitWithDecoder(comparer, &i.allocDecoder, transforms)
 	return nil
 }
 
 // InitHandle initializes an iterator from the provided block handle.
 func (i *IndexIter) InitHandle(
-	cmp base.Compare, split base.Split, blk block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, blk block.BufferHandle, transforms block.IterTransforms,
 ) error {
 	i.h.Release()
 	i.h = blk
 	d := (*IndexBlockDecoder)(unsafe.Pointer(blk.BlockMetadata()))
-	i.InitWithDecoder(cmp, split, d, transforms)
+	i.InitWithDecoder(comparer, d, transforms)
 	return nil
 }
 

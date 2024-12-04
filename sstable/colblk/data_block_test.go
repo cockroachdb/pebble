@@ -29,11 +29,12 @@ func TestDataBlock(t *testing.T) {
 	var w DataBlockEncoder
 	var r DataBlockDecoder
 	var it DataBlockIter
-	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split)
+	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.EnsureDefaults())
 	var sizes []int
-	it.InitOnce(&testKeysSchema, testkeys.Comparer.Compare, testkeys.Comparer.Split, getLazyValuer(func([]byte) base.LazyValue {
-		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
-	}))
+	it.InitOnce(&testKeysSchema, testkeys.Comparer,
+		getLazyValuer(func([]byte) base.LazyValue {
+			return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+		}))
 
 	datadriven.Walk(t, "testdata/data_block", func(t *testing.T, path string) {
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {

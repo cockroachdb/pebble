@@ -22,8 +22,7 @@ var (
 
 	// Use testkeys.Comparer.Compare which approximates EngineCompare by ordering
 	// multiple keys with same prefix in descending suffix order.
-	benchCmp   = testkeys.Comparer.Compare
-	benchSplit = testkeys.Comparer.Split
+	benchComparer = testkeys.Comparer
 )
 
 // choosOrigSuffix randomly chooses a suffix that is either 1 or 2 bytes large.
@@ -89,9 +88,14 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 
 						keys, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
-							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
-						})
+						it, err := NewIter(
+							benchComparer.Compare,
+							benchComparer.ComparePointSuffixes,
+							benchComparer.Split,
+							w.Finish(),
+							block.IterTransforms{
+								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -126,9 +130,14 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 
 						keys, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
-							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
-						})
+						it, err := NewIter(
+							benchComparer.Compare,
+							benchComparer.ComparePointSuffixes,
+							benchComparer.Split,
+							w.Finish(),
+							block.IterTransforms{
+								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -170,9 +179,14 @@ func BenchmarkBlockIterNext(b *testing.B) {
 
 						_, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
-							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
-						})
+						it, err := NewIter(
+							benchComparer.Compare,
+							benchComparer.ComparePointSuffixes,
+							benchComparer.Split,
+							w.Finish(),
+							block.IterTransforms{
+								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							})
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -202,9 +216,14 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 
 						_, syntheticPrefix, syntheticSuffix := createBenchBlock(blockSize, w, rng, withSyntheticPrefix, withSyntheticSuffix)
 
-						it, err := NewIter(benchCmp, benchSplit, w.Finish(), block.IterTransforms{
-							SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
-						})
+						it, err := NewIter(
+							benchComparer.Compare,
+							benchComparer.ComparePointSuffixes,
+							benchComparer.Split,
+							w.Finish(),
+							block.IterTransforms{
+								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							})
 						if err != nil {
 							b.Fatal(err)
 						}

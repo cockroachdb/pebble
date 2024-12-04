@@ -246,10 +246,10 @@ func newColumnBlockSingleLevelIterator(
 		getLazyValuer = i.vbReader
 		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, i.cmp, r.Split, getLazyValuer)
+	i.data.InitOnce(r.keySchema, r.Comparer, getLazyValuer)
 	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
 	if err == nil {
-		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
+		err = i.index.InitHandle(r.Comparer, indexH, transforms)
 	}
 	if err != nil {
 		_ = i.Close()
@@ -315,7 +315,7 @@ func newRowBlockSingleLevelIterator(
 
 	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
 	if err == nil {
-		err = i.index.InitHandle(i.cmp, r.Split, indexH, transforms)
+		err = i.index.InitHandle(r.Comparer, indexH, transforms)
 	}
 	if err != nil {
 		_ = i.Close()
@@ -569,7 +569,7 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockRes
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = PD(&i.data).InitHandle(i.cmp, i.reader.Split, block, i.transforms)
+	i.err = PD(&i.data).InitHandle(i.reader.Comparer, block, i.transforms)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		PD(&i.data).Invalidate()
