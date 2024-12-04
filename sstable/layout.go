@@ -322,7 +322,7 @@ var (
 
 func formatColblkIndexBlock(tp treeprinter.Node, r *Reader, b NamedBlockHandle, data []byte) error {
 	var iter colblk.IndexIter
-	if err := iter.Init(r.Compare, r.Split, data, NoTransforms); err != nil {
+	if err := iter.Init(r.Comparer, data, NoTransforms); err != nil {
 		return err
 	}
 	defer iter.Close()
@@ -352,7 +352,7 @@ func formatColblkDataBlock(
 
 	if fmtKV != nil {
 		var iter colblk.DataBlockIter
-		iter.InitOnce(r.keySchema, r.Compare, r.Split, describingLazyValueHandler{})
+		iter.InitOnce(r.keySchema, r.Comparer, describingLazyValueHandler{})
 		if err := iter.Init(&decoder, block.IterTransforms{}); err != nil {
 			return err
 		}
@@ -394,7 +394,7 @@ func formatColblkKeyspanBlock(
 }
 
 func formatRowblkIndexBlock(tp treeprinter.Node, r *Reader, b NamedBlockHandle, data []byte) error {
-	iter, err := rowblk.NewIter(r.Compare, r.Split, data, NoTransforms)
+	iter, err := rowblk.NewIter(r.Compare, r.Comparer.ComparePointSuffixes, r.Split, data, NoTransforms)
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func formatRowblkDataBlock(
 	data []byte,
 	fmtRecord func(key *base.InternalKey, value []byte) string,
 ) error {
-	iter, err := rowblk.NewIter(r.Compare, r.Split, data, NoTransforms)
+	iter, err := rowblk.NewIter(r.Compare, r.Comparer.ComparePointSuffixes, r.Split, data, NoTransforms)
 	if err != nil {
 		return err
 	}
@@ -560,10 +560,10 @@ func newIndexIter(
 	var err error
 	if tableFormat <= TableFormatPebblev4 {
 		iter = new(rowblk.IndexIter)
-		err = iter.Init(comparer.Compare, comparer.Split, data, block.NoTransforms)
+		err = iter.Init(comparer, data, block.NoTransforms)
 	} else {
 		iter = new(colblk.IndexIter)
-		err = iter.Init(comparer.Compare, comparer.Split, data, block.NoTransforms)
+		err = iter.Init(comparer, data, block.NoTransforms)
 	}
 	if err != nil {
 		return nil, err

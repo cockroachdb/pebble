@@ -994,7 +994,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
 	blocks, err := rewriteDataBlocksInParallel(r, wo, l.Data, from, to, concurrency, func() blockRewriter {
-		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer.Compare, w.comparer.Split)
+		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
 	})
 	if err != nil {
 		return errors.Wrap(err, "rewriting data blocks")

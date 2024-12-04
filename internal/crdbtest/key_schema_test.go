@@ -30,7 +30,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 	var e colblk.DataBlockEncoder
 	e.Init(&KeySchema)
 	var iter colblk.DataBlockIter
-	iter.InitOnce(&KeySchema, Comparer.Compare, Comparer.Split, nil)
+	iter.InitOnce(&KeySchema, &Comparer, nil)
 
 	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {

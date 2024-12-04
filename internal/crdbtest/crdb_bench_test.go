@@ -317,7 +317,7 @@ func benchmarkCockroachDataBlockIter(
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
-	it.InitOnce(&KeySchema, Compare, Split, getLazyValuer(func([]byte) base.LazyValue {
+	it.InitOnce(&KeySchema, &Comparer, getLazyValuer(func([]byte) base.LazyValue {
 		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
 	}))
 	decoder.Init(&KeySchema, serializedBlock)
