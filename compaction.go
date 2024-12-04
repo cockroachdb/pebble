@@ -265,6 +265,8 @@ type compaction struct {
 	metrics map[int]*LevelMetrics
 
 	pickerMetrics compactionPickerMetrics
+
+	slot base.CompactionSlot
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -346,12 +348,17 @@ func newCompaction(
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
 		pickerMetrics:     pc.pickerMetrics,
+		slot:              pc.slot,
 	}
 	c.startLevel = &c.inputs[0]
 	if pc.startLevel.l0SublevelInfo != nil {
 		c.startLevel.l0SublevelInfo = pc.startLevel.l0SublevelInfo
 	}
 	c.outputLevel = &c.inputs[1]
+	if c.slot == nil {
+		c.slot = opts.Experimental.CompactionLimiter.TookWithoutPermission(context.TODO())
+		c.slot.CompactionSelected(c.startLevel.level, c.outputLevel.level, c.startLevel.files.SizeSum())
+	}
 
 	if len(pc.extraLevels) > 0 {
 		c.extraLevels = pc.extraLevels
@@ -517,6 +524,15 @@ func newFlush(
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
+
+	// Flush slots are always taken without permission.
+	slot := opts.Experimental.CompactionLimiter.TookWithoutPermission(context.TODO())
+	var flushingSize uint64
+	for i := range flushing {
+		flushingSize += flushing[i].totalBytes()
+	}
+	slot.CompactionSelected(-1, 0, flushingSize)
+	c.slot = slot
 
 	if len(flushing) > 0 {
 		if _, ok := flushing[0].flushable.(*ingestedFlushable); ok {
@@ -765,6 +781,7 @@ func (c *compaction) newInputIters(
 				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
 					compaction: true,
 					bufferPool: &c.bufferPool,
+					stats:      &c.stats,
 				}))
 			// TODO(jackson): Use keyspanimpl.LevelIter to avoid loading all the range
 			// deletions into memory upfront. (See #2015, which reverted this.) There
@@ -2900,6 +2917,8 @@ func (d *DB) compactAndWrite(
 		Grandparents:               c.grandparents,
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
+		Slot:                       c.slot,
+		IteratorStats:              &c.stats,
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 	for runner.MoreDataToWrite() {

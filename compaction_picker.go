@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -220,6 +221,10 @@ type pickedCompaction struct {
 	// overlap in its output level with. If the overlap is greater than
 	// maxReadCompaction bytes, then we don't proceed with the compaction.
 	maxReadCompactionBytes uint64
+
+	// slot is the compaction slot used up by this compaction. Encapsulates any
+	// limiting/pacing logic.
+	slot base.CompactionSlot
 	// The boundaries of the input data.
 	smallest      InternalKey
 	largest       InternalKey
@@ -1177,6 +1182,35 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			return nil
 		}
 	}
+
+	limiter := p.opts.Experimental.CompactionLimiter
+	var slot base.CompactionSlot
+	if n := len(env.inProgressCompactions); n == 0 {
+		// We are not running a compaction at the moment. We should take a compaction slot
+		// without permission.
+		slot = limiter.TookWithoutPermission(context.TODO())
+	} else {
+		var err error
+		slot, err = limiter.RequestSlot(context.TODO())
+		if err != nil {
+			p.opts.EventListener.BackgroundError(err)
+			return nil
+		}
+		if slot == nil {
+			// The limiter is denying us a compaction slot. Yield to other work.
+			return nil
+		}
+	}
+	defer func() {
+		if pc != nil {
+			var inputSize uint64
+			for i := range pc.inputs {
+				inputSize += pc.inputs[i].files.SizeSum()
+			}
+			slot.CompactionSelected(pc.startLevel.level, pc.outputLevel.level, inputSize)
+			pc.slot = slot
+		}
+	}()
 
 	scores := p.calculateLevelScores(env.inProgressCompactions)
 
