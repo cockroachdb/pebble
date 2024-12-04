@@ -286,7 +286,7 @@ func (r *Reader) NewRawRangeDelIter(
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {
-		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareRangeSuffixes, r.Split, h, transforms)
+		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Comparer, h, transforms)
 		if err != nil {
 			return nil, err
 		}
@@ -311,7 +311,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {
-		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Compare, r.Comparer.CompareRangeSuffixes, r.Split, h, transforms)
+		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Comparer, h, transforms)
 		if err != nil {
 			return nil, err
 		}
@@ -695,7 +695,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
 		iter := r.tableFormat.newIndexIter()
-		err := iter.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms)
+		err := iter.Init(r.Comparer, indexH.BlockData(), NoTransforms)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading index block")
 		}
@@ -712,7 +712,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	} else {
 		l.TopIndex = r.indexBH
 		topIter := r.tableFormat.newIndexIter()
-		err := topIter.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms)
+		err := topIter.Init(r.Comparer, indexH.BlockData(), NoTransforms)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading index block")
 		}
@@ -731,7 +731,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			err = func() error {
 				defer subIndex.Release()
 				// TODO(msbutler): figure out how to pass virtualState to layout call.
-				if err := iter.Init(r.Compare, r.Split, subIndex.BlockData(), NoTransforms); err != nil {
+				if err := iter.Init(r.Comparer, subIndex.BlockData(), NoTransforms); err != nil {
 					return err
 				}
 				for valid := iter.First(); valid; valid = iter.Next() {
@@ -895,13 +895,13 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 	var startIdxIter, endIdxIter PI
 	if r.Properties.IndexPartitions == 0 {
 		startIdxIter = new(I)
-		if err := startIdxIter.InitHandle(r.Compare, r.Split, indexH, NoTransforms); err != nil {
+		if err := startIdxIter.InitHandle(r.Comparer, indexH, NoTransforms); err != nil {
 			return 0, err
 		}
 		endIdxIter = startIdxIter
 	} else {
 		var topIter PI = new(I)
-		if err := topIter.InitHandle(r.Compare, r.Split, indexH, NoTransforms); err != nil {
+		if err := topIter.InitHandle(r.Comparer, indexH, NoTransforms); err != nil {
 			return 0, err
 		}
 		if !topIter.SeekGE(start) {
@@ -918,7 +918,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 		}
 		defer startIdxBlock.Release()
 		startIdxIter = new(I)
-		err = startIdxIter.InitHandle(r.Compare, r.Split, startIdxBlock, NoTransforms)
+		err = startIdxIter.InitHandle(r.Comparer, startIdxBlock, NoTransforms)
 		if err != nil {
 			return 0, err
 		}
@@ -934,7 +934,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 			}
 			defer endIdxBlock.Release()
 			endIdxIter = new(I)
-			err = endIdxIter.InitHandle(r.Compare, r.Split, endIdxBlock, NoTransforms)
+			err = endIdxIter.InitHandle(r.Comparer, endIdxBlock, NoTransforms)
 			if err != nil {
 				return 0, err
 			}

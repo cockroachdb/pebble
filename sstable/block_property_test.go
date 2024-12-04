@@ -913,7 +913,7 @@ func TestBlockProperties(t *testing.T) {
 					var blocks []int
 					var i int
 					iter := r.tableFormat.newIndexIter()
-					if err := iter.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms); err != nil {
+					if err := iter.Init(r.Comparer, indexH.BlockData(), NoTransforms); err != nil {
 						return err.Error()
 					}
 					for valid := iter.First(); valid; valid = iter.Next() {
@@ -1278,7 +1278,7 @@ func runBlockPropsCmd(r *Reader) string {
 	defer bh.Release()
 	twoLevelIndex := r.Properties.IndexPartitions > 0
 	i := r.tableFormat.newIndexIter()
-	if err := i.Init(r.Compare, r.Split, bh.BlockData(), NoTransforms); err != nil {
+	if err := i.Init(r.Comparer, bh.BlockData(), NoTransforms); err != nil {
 		return err.Error()
 	}
 	var sb strings.Builder
@@ -1327,7 +1327,7 @@ func runBlockPropsCmd(r *Reader) string {
 			err = func() error {
 				defer subIndex.Release()
 				subiter := r.tableFormat.newIndexIter()
-				if err := subiter.Init(r.Compare, r.Split, subIndex.BlockData(), NoTransforms); err != nil {
+				if err := subiter.Init(r.Comparer, subIndex.BlockData(), NoTransforms); err != nil {
 					return err
 				}
 				for valid := subiter.First(); valid; valid = subiter.Next() {

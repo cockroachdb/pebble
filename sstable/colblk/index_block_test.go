@@ -60,7 +60,7 @@ func TestIndexBlock(t *testing.T) {
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 			}
 			var it IndexIter
-			it.InitWithDecoder(testkeys.Comparer.Compare, testkeys.Comparer.Split, &decoder, transforms)
+			it.InitWithDecoder(testkeys.Comparer, &decoder, transforms)
 			for _, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
 				var valid bool
@@ -131,11 +131,7 @@ func TestIndexIterInitHandle(t *testing.T) {
 	getBlockAndIterate := func(it *IndexIter) {
 		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
 		require.True(t, h.Valid())
-		require.NoError(t, it.InitHandle(
-			testkeys.Comparer.Compare,
-			testkeys.Comparer.Split,
-			block.CacheBufferHandle(h),
-			block.NoTransforms))
+		require.NoError(t, it.InitHandle(testkeys.Comparer, block.CacheBufferHandle(h), block.NoTransforms))
 		defer it.Close()
 		require.True(t, it.First())
 		bh, err := it.BlockHandleWithProperties()

@@ -74,15 +74,13 @@ var fragmentBlockIterPool = sync.Pool{
 // spans.
 func NewFragmentIter(
 	fileNum base.DiskFileNum,
-	cmp base.Compare,
-	suffixCmp base.CompareRangeSuffixes,
-	split base.Split,
+	comparer *base.Comparer,
 	blockHandle block.BufferHandle,
 	transforms block.FragmentIterTransforms,
 ) (keyspan.FragmentIterator, error) {
 	i := fragmentBlockIterPool.Get().(*fragmentIter)
 
-	i.suffixCmp = suffixCmp
+	i.suffixCmp = comparer.CompareRangeSuffixes
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
@@ -93,7 +91,7 @@ func NewFragmentIter(
 	}
 	i.closeCheck = invariants.CloseChecker{}
 
-	if err := i.blockIter.InitHandle(cmp, split, blockHandle, block.IterTransforms{
+	if err := i.blockIter.InitHandle(comparer, blockHandle, block.IterTransforms{
 		SyntheticSeqNum: transforms.SyntheticSeqNum,
 		// We let the blockIter prepend the prefix to span start keys; the fragment
 		// iterator will prepend it for end keys. We could do everything in the
