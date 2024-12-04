@@ -128,7 +128,7 @@ func TestBlockIter2(t *testing.T) {
 					var globalSeqNum uint64
 					d.MaybeScanArgs(t, "globalSeqNum", &globalSeqNum)
 					transforms := block.IterTransforms{SyntheticSeqNum: block.SyntheticSeqNum(globalSeqNum)}
-					iter, err := NewIter(bytes.Compare, nil, blk, transforms)
+					iter, err := NewIter(bytes.Compare, nil, nil, blk, transforms)
 					if err != nil {
 						return err.Error()
 					}
@@ -155,7 +155,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	}
 	blk := w.Finish()
 
-	i, err := NewIter(bytes.Compare, nil, blk, block.NoTransforms)
+	i, err := NewIter(bytes.Compare, nil, nil, blk, block.NoTransforms)
 	require.NoError(t, err)
 
 	// Check that the supplied slice resides within the bounds of the block.
@@ -215,7 +215,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 
 	for targetPos := 0; targetPos < w.RestartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
-			i, err := NewIter(bytes.Compare, nil, blk, block.NoTransforms)
+			i, err := NewIter(bytes.Compare, nil, nil, blk, block.NoTransforms)
 			require.NoError(t, err)
 
 			pos := 3
@@ -286,10 +286,10 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 
 				elidedPrefixBlock, includedPrefixBlock := elidedPrefixWriter.Finish(), includedPrefixWriter.Finish()
 
-				expect, err := NewIter(bytes.Compare, nil, includedPrefixBlock, block.IterTransforms{})
+				expect, err := NewIter(bytes.Compare, nil, nil, includedPrefixBlock, block.IterTransforms{})
 				require.NoError(t, err)
 
-				got, err := NewIter(bytes.Compare, nil, elidedPrefixBlock, block.IterTransforms{
+				got, err := NewIter(bytes.Compare, nil, nil, elidedPrefixBlock, block.IterTransforms{
 					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(prefix), nil),
 				})
 				require.NoError(t, err)
@@ -344,6 +344,7 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 	// Use testkeys.Comparer.Compare which approximates EngineCompare by ordering
 	// multiple keys with same prefix in descending suffix order.
 	cmp := testkeys.Comparer.Compare
+	suffixCmp := testkeys.Comparer.ComparePointSuffixes
 	split := testkeys.Comparer.Split
 
 	for _, restarts := range []int{1, 2, 3, 4, 10} {
@@ -373,10 +374,10 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 				suffixReplacedBlock := suffixWriter.Finish()
 				expectedBlock := expectedSuffixWriter.Finish()
 
-				expect, err := NewIter(cmp, split, expectedBlock, block.NoTransforms)
+				expect, err := NewIter(cmp, suffixCmp, split, expectedBlock, block.NoTransforms)
 				require.NoError(t, err)
 
-				got, err := NewIter(cmp, split, suffixReplacedBlock, block.IterTransforms{
+				got, err := NewIter(cmp, suffixCmp, split, suffixReplacedBlock, block.IterTransforms{
 					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(synthPrefix, synthSuffix),
 				})
 				require.NoError(t, err)

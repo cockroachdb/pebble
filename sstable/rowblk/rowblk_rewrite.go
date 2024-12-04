@@ -40,7 +40,7 @@ type Rewriter struct {
 func (r *Rewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
-	if err := r.iter.Init(r.comparer.Compare, r.comparer.Split, input, block.NoTransforms); err != nil {
+	if err := r.iter.Init(r.comparer.Compare, r.comparer.ComparePointSuffixes, r.comparer.Split, input, block.NoTransforms); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
 	if cap(r.writer.restarts) < int(r.iter.restarts) {

@@ -115,7 +115,7 @@ func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig keyGenConfig, va
 	}
 	serializedBlock := w.Finish()
 	var it rowblk.Iter
-	it.Init(Compare, Split, serializedBlock, block.NoTransforms)
+	it.Init(Compare, ComparePointSuffixes, Split, serializedBlock, block.NoTransforms)
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {

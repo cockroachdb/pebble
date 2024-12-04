@@ -676,8 +676,7 @@ type DataBlockRewriter struct {
 	decoder   DataBlockDecoder
 	iter      DataBlockIter
 	keySeeker KeySeeker
-	compare   base.Compare
-	split     base.Split
+	comparer  *base.Comparer
 	keyBuf    []byte
 	// keyAlloc grown throughout the lifetime of the rewriter.
 	keyAlloc        bytealloc.A
@@ -686,13 +685,10 @@ type DataBlockRewriter struct {
 }
 
 // NewDataBlockRewriter creates a block rewriter.
-func NewDataBlockRewriter(
-	keySchema *KeySchema, compare base.Compare, split base.Split,
-) *DataBlockRewriter {
+func NewDataBlockRewriter(keySchema *KeySchema, comparer *base.Comparer) *DataBlockRewriter {
 	return &DataBlockRewriter{
 		KeySchema: keySchema,
-		compare:   compare,
-		split:     split,
+		comparer:  comparer,
 	}
 }
 
@@ -719,7 +715,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
 	if !rw.initialized {
-		rw.iter.InitOnce(rw.KeySchema, rw.compare, rw.split, assertNoExternalValues{})
+		rw.iter.InitOnce(rw.KeySchema, rw.comparer, assertNoExternalValues{})
 		rw.encoder.Init(rw.KeySchema)
 		rw.initialized = true
 	}
@@ -1005,7 +1001,7 @@ type DataBlockIter struct {
 	// KeySchema when initializing the DataBlockIter for iteration over a new
 	// block.
 	keySchema *KeySchema
-	cmp       base.Compare
+	suffixCmp base.ComparePointSuffixes
 	split     base.Split
 	// getLazyValuer configures the DataBlockIterConfig to initialize the
 	// DataBlockIter to use the provided handler for retrieving lazy values.
@@ -1041,13 +1037,12 @@ type DataBlockIter struct {
 // It may be reinitialized with new blocks without calling InitOnce again.
 func (i *DataBlockIter) InitOnce(
 	keySchema *KeySchema,
-	cmp base.Compare,
-	split base.Split,
+	comparer *base.Comparer,
 	getLazyValuer block.GetLazyValueForPrefixAndValueHandler,
 ) {
 	i.keySchema = keySchema
-	i.cmp = cmp
-	i.split = split
+	i.suffixCmp = comparer.ComparePointSuffixes
+	i.split = comparer.Split
 	i.getLazyValuer = getLazyValuer
 }
 
@@ -1084,10 +1079,10 @@ func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransform
 // assumes that the block's metadata was initialized using
 // InitDataBlockMetadata().
 func (i *DataBlockIter) InitHandle(
-	cmp base.Compare, split base.Split, h block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, h block.BufferHandle, transforms block.IterTransforms,
 ) error {
-	i.cmp = cmp
-	i.split = split
+	i.suffixCmp = comparer.ComparePointSuffixes
+	i.split = comparer.Split
 	blockMeta := h.BlockMetadata()
 	i.d = (*DataBlockDecoder)(unsafe.Pointer(blockMeta))
 	keySeekerMeta := (*KeySeekerMetadata)(blockMeta[unsafe.Sizeof(DataBlockDecoder{}):])
@@ -1184,7 +1179,7 @@ func (i *DataBlockIter) seekGEInternal(key []byte, boundRow int, searchDir int8)
 	if i.transforms.HasSyntheticSuffix() {
 		n := i.split(key)
 		row, eq := i.keySeeker.SeekGE(key[:n], boundRow, searchDir)
-		if eq && i.cmp(key[n:], i.transforms.SyntheticSuffix()) > 0 {
+		if eq && i.suffixCmp(key[n:], i.transforms.SyntheticSuffix()) > 0 {
 			row = i.d.prefixChanged.SeekSetBitGE(row + 1)
 		}
 		return row

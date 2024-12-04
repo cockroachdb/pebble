@@ -209,7 +209,7 @@ func intersectingIndexEntries(
 	start, end InternalKey,
 ) ([]indexEntry, error) {
 	top := r.tableFormat.newIndexIter()
-	err := top.Init(r.Compare, r.Split, indexH.BlockData(), NoTransforms)
+	err := top.Init(r.Comparer, indexH.BlockData(), NoTransforms)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func intersectingIndexEntries(
 			defer subBlk.Release() // in-loop, but it is a short loop.
 
 			sub := r.tableFormat.newIndexIter()
-			err = sub.Init(r.Compare, r.Split, subBlk.BlockData(), NoTransforms)
+			err = sub.Init(r.Comparer, subBlk.BlockData(), NoTransforms)
 			if err != nil {
 				return nil, err
 			}

@@ -74,7 +74,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 		i.secondLevel.err = err
 		return loadBlockFailed
 	}
-	err = PI(&i.secondLevel.index).InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, indexBlock, i.secondLevel.transforms)
+	err = PI(&i.secondLevel.index).InitHandle(i.secondLevel.reader.Comparer, indexBlock, i.secondLevel.transforms)
 	if err != nil {
 		PI(&i.secondLevel.index).Invalidate()
 		i.secondLevel.err = err
@@ -191,11 +191,11 @@ func newColumnBlockTwoLevelIterator(
 		getLazyValuer = &i.secondLevel.vbReader
 		i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, r.Compare, r.Split, getLazyValuer)
+	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, getLazyValuer)
 	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
 	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH)
 	if err == nil {
-		err = i.topLevelIndex.InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, topLevelIndexH, transforms)
+		err = i.topLevelIndex.InitHandle(r.Comparer, topLevelIndexH, transforms)
 	}
 	if err != nil {
 		_ = i.Close()
@@ -256,7 +256,7 @@ func newRowBlockTwoLevelIterator(
 
 	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH)
 	if err == nil {
-		err = i.topLevelIndex.InitHandle(i.secondLevel.cmp, i.secondLevel.reader.Split, topLevelIndexH, transforms)
+		err = i.topLevelIndex.InitHandle(r.Comparer, topLevelIndexH, transforms)
 	}
 	if err != nil {
 		_ = i.Close()

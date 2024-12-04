@@ -206,10 +206,14 @@ var _ block.DataBlockIterator = (*Iter)(nil)
 
 // NewIter constructs a new row-oriented block iterator over the provided serialized block.
 func NewIter(
-	cmp base.Compare, split base.Split, block []byte, transforms block.IterTransforms,
+	cmp base.Compare,
+	suffixCmp base.ComparePointSuffixes,
+	split base.Split,
+	block []byte,
+	transforms block.IterTransforms,
 ) (*Iter, error) {
 	i := &Iter{}
-	return i, i.Init(cmp, split, block, transforms)
+	return i, i.Init(cmp, suffixCmp, split, block, transforms)
 }
 
 // String implements fmt.Stringer.
@@ -219,7 +223,11 @@ func (i *Iter) String() string {
 
 // Init initializes the block iterator from the provided block.
 func (i *Iter) Init(
-	cmp base.Compare, split base.Split, blk []byte, transforms block.IterTransforms,
+	cmp base.Compare,
+	suffixCmp base.ComparePointSuffixes,
+	split base.Split,
+	blk []byte,
+	transforms block.IterTransforms,
 ) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(blk[len(blk)-4:]))
 	if numRestarts == 0 {
@@ -257,11 +265,16 @@ func (i *Iter) Init(
 //     ingested.
 //   - Foreign sstable iteration: syntheticSeqNum is always set.
 func (i *Iter) InitHandle(
-	cmp base.Compare, split base.Split, block block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, block block.BufferHandle, transforms block.IterTransforms,
 ) error {
 	i.handle.Release()
 	i.handle = block
-	return i.Init(cmp, split, block.BlockData(), transforms)
+	return i.Init(
+		comparer.Compare,
+		comparer.ComparePointSuffixes,
+		comparer.Split,
+		block.BlockData(),
+		transforms)
 }
 
 // SetHasValuePrefix sets whether or not the block iterator should expect values
