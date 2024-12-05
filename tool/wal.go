@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -107,7 +108,8 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 			// necessary in case WAL recycling was used (which it is usually is). If
 			// we can't parse the filename or it isn't a log file, we'll plow ahead
 			// anyways (which will likely fail when we try to read the file).
-			fileNum, _, ok := wal.ParseLogFilename(arg)
+			fileName := path.Base(arg)
+			fileNum, _, ok := wal.ParseLogFilename(fileName)
 			if !ok {
 				fileNum = 0
 			}
