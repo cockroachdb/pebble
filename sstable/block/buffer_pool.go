@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // Alloc allocates a new Value for a block of length n (excluding the block
@@ -52,12 +53,21 @@ func (b Value) BlockMetadata() *Metadata {
 // backed by a buffer pool, MakeHandle inserts the value into the block cache,
 // returning a handle to the now resident value.
 func (b Value) MakeHandle(
-	c *cache.Cache, cacheID cache.ID, fileNum base.DiskFileNum, offset uint64,
+	crh cache.ReadHandle, cacheID cache.ID, fileNum base.DiskFileNum, offset uint64,
 ) BufferHandle {
 	if b.buf.Valid() {
+		if invariants.Enabled && crh.Valid() {
+			panic("cache.ReadHandle was valid")
+		}
 		return BufferHandle{b: b.buf}
 	}
-	return BufferHandle{h: c.Set(cacheID, fileNum, offset, b.v)}
+	return BufferHandle{h: crh.SetReadValue(b.v)}
+}
+
+func (b Value) SetInCacheForTesting(
+	c *cache.Cache, cacheID cache.ID, fileNum base.DiskFileNum, offset uint64,
+) cache.Handle {
+	return c.Set(cacheID, fileNum, offset, b.v)
 }
 
 // Release releases the handle.
