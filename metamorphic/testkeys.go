@@ -12,35 +12,55 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
-type keyGenerator struct {
+var TestkeysKeyFormat = KeyFormat{
+	Comparer: testkeys.Comparer,
+	NewGenerator: func(km *keyManager, rng *rand.Rand, cfg OpConfig) KeyGenerator {
+		return &testkeyKeyGenerator{
+			keyManager: km,
+			rng:        rng,
+			cfg:        cfg,
+		}
+	},
+	NewSuffixFilterMask: func() pebble.BlockPropertyFilterMask {
+		return sstable.NewTestKeysMaskingFilter()
+	},
+	NewSuffixBlockPropertyFilter: func(filterMin, filterMax []byte) sstable.BlockPropertyFilter {
+		low, err := testkeys.ParseSuffix(filterMin)
+		if err != nil {
+			panic(err)
+		}
+		high, err := testkeys.ParseSuffix(filterMax)
+		if err != nil {
+			panic(err)
+		}
+		return sstable.NewTestKeysBlockPropertyFilter(uint64(low), uint64(high))
+	},
+}
+
+type testkeyKeyGenerator struct {
 	keyManager *keyManager
 	rng        *rand.Rand
 	cfg        OpConfig
 }
 
-func newKeyGenerator(km *keyManager, rng *rand.Rand, cfg OpConfig) *keyGenerator {
-	return &keyGenerator{
-		keyManager: km,
-		rng:        rng,
-		cfg:        cfg,
-	}
-}
-
 // RandKey returns a random key (either a previously known key, or a new key).
-func (kg *keyGenerator) RandKey(newKeyProbability float64) []byte {
+func (kg *testkeyKeyGenerator) RandKey(newKeyProbability float64) []byte {
 	return kg.randKey(newKeyProbability, nil /* bounds */)
 }
 
 // RandKeyInRange returns a random key (either a previously known key, or a new
 // key) in the given key range.
-func (kg *keyGenerator) RandKeyInRange(newKeyProbability float64, kr pebble.KeyRange) []byte {
+func (kg *testkeyKeyGenerator) RandKeyInRange(
+	newKeyProbability float64, kr pebble.KeyRange,
+) []byte {
 	return kg.randKey(newKeyProbability, &kr)
 }
 
 // RandPrefix returns a random prefix key (a key with no suffix).
-func (kg *keyGenerator) RandPrefix(newPrefix float64) []byte {
+func (kg *testkeyKeyGenerator) RandPrefix(newPrefix float64) []byte {
 	prefixes := kg.keyManager.prefixes()
 	if len(prefixes) > 0 && kg.rng.Float64() > newPrefix {
 		return pickOneUniform(kg.rng, prefixes)
@@ -60,7 +80,7 @@ func (kg *keyGenerator) RandPrefix(newPrefix float64) []byte {
 
 // UniqueKeys takes a key-generating function and uses it to generate n unique
 // keys, returning them in sorted order.
-func (kg *keyGenerator) UniqueKeys(n int, genFn func() []byte) [][]byte {
+func (kg *testkeyKeyGenerator) UniqueKeys(n int, genFn func() []byte) [][]byte {
 	keys := make([][]byte, n)
 	used := make(map[string]struct{}, n)
 	for i := range keys {
@@ -86,16 +106,16 @@ func (kg *keyGenerator) UniqueKeys(n int, genFn func() []byte) [][]byte {
 //
 // May return a nil suffix, with the probability the configuration's suffix
 // distribution assigns to the zero suffix.
-func (kg *keyGenerator) SkewedSuffix(incMaxProb float64) []byte {
-	if suffix := kg.SkewedSuffixInt(incMaxProb); suffix != 0 {
+func (kg *testkeyKeyGenerator) SkewedSuffix(incMaxProb float64) []byte {
+	if suffix := kg.skewedSuffixInt(incMaxProb); suffix != 0 {
 		return testkeys.Suffix(suffix)
 	}
 	return nil
 }
 
-// SkewedSuffixInt is a variant of SkewedSuffix which returns the unencoded
+// skewedSuffixInt is a helper of SkewedSuffix which returns the unencoded
 // suffix as an integer.
-func (kg *keyGenerator) SkewedSuffixInt(incMaxProb float64) int64 {
+func (kg *testkeyKeyGenerator) skewedSuffixInt(incMaxProb float64) int64 {
 	if kg.rng.Float64() < incMaxProb {
 		kg.cfg.writeSuffixDist.IncMax(1)
 	}
@@ -105,9 +125,20 @@ func (kg *keyGenerator) SkewedSuffixInt(incMaxProb float64) int64 {
 // IncMaxSuffix increases the max suffix range and returns the new maximum
 // suffix (which is guaranteed to be larger than any previously generated
 // suffix).
-func (kg *keyGenerator) IncMaxSuffix() []byte {
+func (kg *testkeyKeyGenerator) IncMaxSuffix() []byte {
 	kg.cfg.writeSuffixDist.IncMax(1)
 	return testkeys.Suffix(int64(kg.cfg.writeSuffixDist.Max()))
+}
+
+func (kg *testkeyKeyGenerator) SuffixRange() (low, high []byte) {
+	a := kg.uniformSuffixInt()
+	b := kg.uniformSuffixInt()
+	if a > b {
+		a, b = b, a
+	} else if a == b {
+		b++
+	}
+	return testkeys.Suffix(a), testkeys.Suffix(b)
 }
 
 // UniformSuffix returns a suffix in the same range as SkewedSuffix but with a
@@ -115,16 +146,16 @@ func (kg *keyGenerator) IncMaxSuffix() []byte {
 // mix of older and newer keys. The suffix can be empty.
 //
 // May return a nil suffix.
-func (kg *keyGenerator) UniformSuffix() []byte {
-	if suffix := kg.UniformSuffixInt(); suffix != 0 {
+func (kg *testkeyKeyGenerator) UniformSuffix() []byte {
+	if suffix := kg.uniformSuffixInt(); suffix != 0 {
 		return testkeys.Suffix(suffix)
 	}
 	return nil
 }
 
-// UniformSuffixInt is a variant of UniformSuffix which returns the unencoded
+// uniformSuffixInt is a helper of UniformSuffix which returns the unencoded
 // suffix as an integer.
-func (kg *keyGenerator) UniformSuffixInt() int64 {
+func (kg *testkeyKeyGenerator) uniformSuffixInt() int64 {
 	maxVal := kg.cfg.writeSuffixDist.Max()
 	return kg.rng.Int64N(int64(maxVal))
 }
@@ -132,7 +163,7 @@ func (kg *keyGenerator) UniformSuffixInt() int64 {
 // randKey returns a random key (either a previously known key or a new key).
 //
 // If bounds is not nil, the key will be inside the bounds.
-func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRange) []byte {
+func (kg *testkeyKeyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRange) []byte {
 	var knownKeys [][]byte
 	if bounds == nil {
 		knownKeys = kg.keyManager.knownKeys()
@@ -192,7 +223,7 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 	}
 
 	if bounds == nil {
-		suffix := kg.SkewedSuffixInt(0.01)
+		suffix := kg.skewedSuffixInt(0.01)
 		for {
 			key := kg.generateKeyWithSuffix(4, 12, suffix)
 			if !kg.keyManager.prefixExists(kg.prefix(key)) {
@@ -214,7 +245,7 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 		if cmpSuffix(startSuffix, endSuffix) >= 0 {
 			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
 		}
-		suffix = kg.SkewedSuffixInt(0.01)
+		suffix = kg.skewedSuffixInt(0.01)
 		for i := 0; !(cmpSuffix(startSuffix, suffix) <= 0 && cmpSuffix(suffix, endSuffix) < 0); i++ {
 			if i > 10 {
 				// This value is always >= startSuffix and < endSuffix.
@@ -223,11 +254,11 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 			}
 			// The suffix we want must exist in the current suffix range, we don't
 			// want to keep increasing it here.
-			suffix = kg.SkewedSuffixInt(0)
+			suffix = kg.skewedSuffixInt(0)
 		}
 	} else {
 		prefix = testkeys.RandomPrefixInRange(startPrefix, endPrefix, kg.rng)
-		suffix = kg.SkewedSuffixInt(0.01)
+		suffix = kg.skewedSuffixInt(0.01)
 		if kg.equal(prefix, startPrefix) {
 			// We can't use a suffix which sorts before startSuffix.
 			for i := 0; cmpSuffix(suffix, startSuffix) < 0; i++ {
@@ -235,7 +266,7 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 					suffix = startSuffix
 					break
 				}
-				suffix = kg.SkewedSuffixInt(0)
+				suffix = kg.skewedSuffixInt(0)
 			}
 		}
 	}
@@ -244,7 +275,8 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 		key = append(key, testkeys.Suffix(suffix)...)
 	}
 	if kg.cmp(key, bounds.Start) < 0 || kg.cmp(key, bounds.End) >= 0 {
-		panic(fmt.Sprintf("invalid randKey %q; bounds: [%q, %q) %v %v", key, bounds.Start, bounds.End, kg.cmp(key, bounds.Start), kg.cmp(key, bounds.End)))
+		panic(fmt.Sprintf("invalid randKey %q; bounds: [%q, %q) %v %v",
+			key, bounds.Start, bounds.End, kg.cmp(key, bounds.Start), kg.cmp(key, bounds.End)))
 	}
 	// We might (rarely) produce an existing key here, that's ok.
 	kg.keyManager.addNewKey(key)
@@ -253,7 +285,9 @@ func (kg *keyGenerator) randKey(newKeyProbability float64, bounds *pebble.KeyRan
 
 // generateKeyWithSuffix generates a key with a random prefix and the given
 // suffix. If the given suffix is 0, the key will not have a suffix.
-func (kg *keyGenerator) generateKeyWithSuffix(minPrefixLen, maxPrefixLen int, suffix int64) []byte {
+func (kg *testkeyKeyGenerator) generateKeyWithSuffix(
+	minPrefixLen, maxPrefixLen int, suffix int64,
+) []byte {
 	prefix := randBytes(kg.rng, minPrefixLen, maxPrefixLen)
 	if suffix == 0 {
 		return prefix
@@ -275,24 +309,24 @@ func cmpSuffix(s1, s2 int64) int {
 	}
 }
 
-func (kg *keyGenerator) cmp(a, b []byte) int {
-	return kg.keyManager.comparer.Compare(a, b)
+func (kg *testkeyKeyGenerator) cmp(a, b []byte) int {
+	return kg.keyManager.kf.Comparer.Compare(a, b)
 }
 
-func (kg *keyGenerator) equal(a, b []byte) bool {
-	return kg.keyManager.comparer.Equal(a, b)
+func (kg *testkeyKeyGenerator) equal(a, b []byte) bool {
+	return kg.keyManager.kf.Comparer.Equal(a, b)
 }
 
-func (kg *keyGenerator) split(a []byte) int {
-	return kg.keyManager.comparer.Split(a)
+func (kg *testkeyKeyGenerator) split(a []byte) int {
+	return kg.keyManager.kf.Comparer.Split(a)
 }
 
-func (kg *keyGenerator) prefix(a []byte) []byte {
+func (kg *testkeyKeyGenerator) prefix(a []byte) []byte {
 	n := kg.split(a)
 	return a[:n:n]
 }
 
-func (kg *keyGenerator) parseKey(k []byte) (prefix []byte, suffix int64) {
+func (kg *testkeyKeyGenerator) parseKey(k []byte) (prefix []byte, suffix int64) {
 	n := kg.split(k)
 	if n == len(k) {
 		return k, 0

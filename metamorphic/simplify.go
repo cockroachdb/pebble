@@ -7,7 +7,7 @@ package metamorphic
 import (
 	"sort"
 
-	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // TryToSimplifyKeys parses the operations data and tries to reassign keys to
@@ -17,54 +17,53 @@ import (
 // On success it returns the new operations data.
 //
 // If there are too many distinct keys, returns nil.
-func TryToSimplifyKeys(opsData []byte, retainSuffixes bool) []byte {
+func TryToSimplifyKeys(comparer *base.Comparer, opsData []byte, retainSuffixes bool) []byte {
 	ops, err := parse(opsData, parserOpts{})
 	if err != nil {
 		panic(err)
 	}
 	keys := make(map[string]struct{})
 	for i := range ops {
-		for _, k := range ops[i].keys() {
-			key := *k
+		ops[i].rewriteKeys(func(k UserKey) UserKey {
 			if retainSuffixes {
-				key = key[:testkeys.Comparer.Split(key)]
+				keys[string(k[:comparer.Split(k)])] = struct{}{}
+			} else {
+				keys[string(k)] = struct{}{}
 			}
-			keys[string(key)] = struct{}{}
-		}
+			return k
+		})
 	}
 	if len(keys) > ('z' - 'a' + 1) {
 		return nil
 	}
-	sorted := sortedKeys(keys)
+	sorted := sortedKeys(comparer.Compare, keys)
 	ordinals := make(map[string]int, len(sorted))
 	for i, k := range sorted {
 		ordinals[k] = i
 	}
 	for i := range ops {
-		for _, k := range ops[i].keys() {
-			key := *k
+		ops[i].rewriteKeys(func(k UserKey) UserKey {
 			var suffix []byte
 			if retainSuffixes {
-				n := testkeys.Comparer.Split(key)
-				suffix = key[n:]
-				key = key[:n]
+				n := comparer.Split(k)
+				suffix = k[n:]
+				k = k[:n]
 			}
-			idx := ordinals[string(key)]
+			idx := ordinals[string(k)]
 			newKey := []byte{'a' + byte(idx)}
-			newKey = append(newKey, suffix...)
-			*k = newKey
-		}
+			return append(newKey, suffix...)
+		})
 	}
 	return []byte(formatOps(ops))
 }
 
-func sortedKeys(in map[string]struct{}) []string {
+func sortedKeys(cmp base.Compare, in map[string]struct{}) []string {
 	var sorted []string
 	for k := range in {
 		sorted = append(sorted, k)
 	}
 	sort.Slice(sorted, func(i, j int) bool {
-		return testkeys.Comparer.Compare([]byte(sorted[i]), []byte(sorted[j])) < 0
+		return cmp([]byte(sorted[i]), []byte(sorted[j])) < 0
 	})
 	return sorted
 }

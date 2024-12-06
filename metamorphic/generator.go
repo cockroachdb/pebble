@@ -27,7 +27,7 @@ type iterOpts struct {
 	// configure IterOptions.RangeKeyMasking.Suffix.
 	maskSuffix []byte
 
-	// If filterMax is >0, this iterator will filter out any keys that have
+	// If filterMax is != nil, this iterator will filter out any keys that have
 	// suffixes that don't fall within the range [filterMin,filterMax).
 	// Additionally, the iterator will be constructed with a block-property
 	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
@@ -35,8 +35,8 @@ type iterOpts struct {
 	// effectively disabled in some runs. The iterator operations themselves
 	// however will always skip past any points that should be filtered to
 	// ensure determinism.
-	filterMin uint64
-	filterMax uint64
+	filterMin []byte
+	filterMax []byte
 
 	// see IterOptions.UseL6Filters.
 	useL6Filters bool
@@ -46,7 +46,7 @@ type iterOpts struct {
 
 func (o iterOpts) IsZero() bool {
 	return o.lower == nil && o.upper == nil && o.keyTypes == 0 &&
-		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0 && !o.useL6Filters
+		o.maskSuffix == nil && o.filterMin == nil && o.filterMax == nil && !o.useL6Filters
 }
 
 // GenerateOps generates n random operations, drawing randomness from the
@@ -67,7 +67,7 @@ type generator struct {
 
 	// keyManager tracks the state of keys a operation generation time.
 	keyManager   *keyManager
-	keyGenerator *keyGenerator
+	keyGenerator KeyGenerator
 	dbs          objIDSlice
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
@@ -119,7 +119,7 @@ type generator struct {
 }
 
 func newGenerator(rng *rand.Rand, cfg OpConfig, km *keyManager) *generator {
-	keyGenerator := newKeyGenerator(km, rng, cfg)
+	keyGenerator := km.kf.NewGenerator(km, rng, cfg)
 	g := &generator{
 		cfg:             cfg,
 		rng:             rng,
@@ -531,13 +531,7 @@ func (g *generator) newIter() {
 	// block-property filtering and explicitly within the iterator operations to
 	// ensure determinism.
 	if g.rng.Float64() <= 0.1 {
-		opts.filterMin = uint64(g.keyGenerator.UniformSuffixInt() + 1)
-		opts.filterMax = uint64(g.keyGenerator.UniformSuffixInt() + 1)
-		if opts.filterMin > opts.filterMax {
-			opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
-		} else if opts.filterMin == opts.filterMax {
-			opts.filterMax++
-		}
+		opts.filterMin, opts.filterMax = g.keyGenerator.SuffixRange()
 	}
 
 	// Enable L6 filters with a 10% probability.
@@ -839,7 +833,7 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	}
 	// Sometimes limit the key to just the prefix.
 	if g.rng.IntN(3) == 1 {
-		key = g.keyManager.comparer.Split.Prefix(key)
+		key = g.keyManager.kf.Comparer.Split.Prefix(key)
 	}
 	g.add(&iterSeekPrefixGEOp{
 		iterID:          iterID,
@@ -1527,18 +1521,12 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 		}
 
 		// With 1/3 probability, clear existing filter.
-		if opts.filterMax > 0 && g.rng.IntN(3) == 0 {
-			opts.filterMax, opts.filterMin = 0, 0
+		if opts.filterMax != nil && g.rng.IntN(3) == 0 {
+			opts.filterMax, opts.filterMin = nil, nil
 		}
 		// With 10% probability, set a filter range.
 		if g.rng.IntN(10) == 1 {
-			opts.filterMin = uint64(g.keyGenerator.UniformSuffixInt() + 1)
-			opts.filterMax = uint64(g.keyGenerator.UniformSuffixInt() + 1)
-			if opts.filterMin > opts.filterMax {
-				opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
-			} else if opts.filterMin == opts.filterMax {
-				opts.filterMax = opts.filterMin + 1
-			}
+			opts.filterMin, opts.filterMax = g.keyGenerator.SuffixRange()
 		}
 		// With 10% probability, flip enablement of L6 filters.
 		if g.rng.Float64() <= 0.1 {
@@ -1548,11 +1536,11 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 }
 
 func (g *generator) cmp(a, b []byte) int {
-	return g.keyManager.comparer.Compare(a, b)
+	return g.keyManager.kf.Comparer.Compare(a, b)
 }
 
 func (g *generator) prefix(a []byte) []byte {
-	n := g.keyManager.comparer.Split(a)
+	n := g.keyManager.kf.Comparer.Split(a)
 	return a[:n:n]
 }
 

@@ -181,7 +181,7 @@ func (b *bounds) Expand(cmp base.Compare, other bounds) {
 // that we know at generation-time whether or not an ingestion operation will
 // fail and can avoid updating key state.
 type keyManager struct {
-	comparer *base.Comparer
+	kf KeyFormat
 
 	byObj map[objID]*objKeyMeta
 	// globalKeys represents all the keys that have been generated so far. Not
@@ -272,7 +272,7 @@ func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
 		res = append(res, *m)
 	}
 	slices.SortFunc(res, func(a, b keyMeta) int {
-		cmp := k.comparer.Compare(a.key, b.key)
+		cmp := k.kf.Comparer.Compare(a.key, b.key)
 		if cmp == 0 {
 			panic(fmt.Sprintf("distinct keys %q and %q compared as equal", a.key, b.key))
 		}
@@ -286,8 +286,8 @@ func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
 func (k *keyManager) InRangeKeysForObj(o objID, lower, upper []byte) []keyMeta {
 	var inRangeKeys []keyMeta
 	for _, km := range k.SortedKeysForObj(o) {
-		if (lower == nil || k.comparer.Compare(km.key, lower) >= 0) &&
-			(upper == nil || k.comparer.Compare(km.key, upper) < 0) {
+		if (lower == nil || k.kf.Comparer.Compare(km.key, lower) >= 0) &&
+			(upper == nil || k.kf.Comparer.Compare(km.key, upper) < 0) {
 			inRangeKeys = append(inRangeKeys, km)
 		}
 	}
@@ -306,22 +306,23 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 			km.key = obj.syntheticPrefix.Apply(km.key)
 		}
 		if obj.syntheticSuffix.IsSet() {
-			n := k.comparer.Split(km.key)
+			n := k.kf.Comparer.Split(km.key)
 			km.key = append(km.key[:n:n], obj.syntheticSuffix...)
 		}
-		if lastPrefix != nil && k.comparer.Equal(lastPrefix, km.key[:k.comparer.Split(km.key)]) {
+		if lastPrefix != nil && k.kf.Comparer.Equal(lastPrefix, km.key[:k.kf.Comparer.Split(km.key)]) {
 			// We only keep the first of every unique prefix for external ingests.
 			// See the use of uniquePrefixes in newExternalObjOp.
 			continue
 		}
-		lastPrefix = append(lastPrefix[:0], km.key[:k.comparer.Split(km.key)]...)
-		if k.comparer.Compare(km.key, obj.bounds.Start) >= 0 && k.comparer.Compare(km.key, obj.bounds.End) < 0 {
+		lastPrefix = append(lastPrefix[:0], km.key[:k.kf.Comparer.Split(km.key)]...)
+		if k.kf.Comparer.Compare(km.key, obj.bounds.Start) >= 0 &&
+			k.kf.Comparer.Compare(km.key, obj.bounds.End) < 0 {
 			res = append(res, km)
 		}
 	}
 	// Check for duplicate resulting keys.
 	for i := 1; i < len(res); i++ {
-		if k.comparer.Compare(res[i].key, res[i-1].key) == 0 {
+		if k.kf.Comparer.Compare(res[i].key, res[i-1].key) == 0 {
 			panic(fmt.Sprintf("duplicate external ingest key %q", res[i].key))
 		}
 	}
@@ -336,11 +337,11 @@ func (k *keyManager) ExternalObjectHasOverlappingRangeKeySets(externalObjID objI
 	ranges := meta.rangeKeySets
 	// Sort by start key.
 	slices.SortFunc(ranges, func(a, b pebble.KeyRange) int {
-		return k.comparer.Compare(a.Start, b.Start)
+		return k.kf.Comparer.Compare(a.Start, b.Start)
 	})
 	// Check overlap between adjacent ranges.
 	for i := 0; i < len(ranges)-1; i++ {
-		if ranges[i].OverlapsKeyRange(k.comparer.Compare, ranges[i+1]) {
+		if ranges[i].OverlapsKeyRange(k.kf.Comparer.Compare, ranges[i+1]) {
 			return true
 		}
 	}
@@ -365,7 +366,7 @@ func (k *keyManager) getSetOfVisibleKeys(readerID objID) [][]byte {
 // interact with this using addNewKey, knownKeys, update methods only.
 func newKeyManager(numInstances int) *keyManager {
 	m := &keyManager{
-		comparer:             testkeys.Comparer,
+		kf:                   TestkeysKeyFormat,
 		byObj:                make(map[objID]*objKeyMeta),
 		globalKeysMap:        make(map[string]bool),
 		globalKeyPrefixesMap: make(map[string]struct{}),
@@ -382,15 +383,15 @@ func (k *keyManager) addNewKey(key []byte) bool {
 	if k.globalKeysMap[string(key)] {
 		return false
 	}
-	insertSorted(k.comparer.Compare, &k.globalKeys, key)
+	insertSorted(k.kf.Comparer.Compare, &k.globalKeys, key)
 	k.globalKeysMap[string(key)] = true
 
-	prefixLen := k.comparer.Split(key)
+	prefixLen := k.kf.Comparer.Split(key)
 	if prefixLen == 0 {
 		panic(fmt.Sprintf("key %q has zero length prefix", key))
 	}
 	if _, ok := k.globalKeyPrefixesMap[string(key[:prefixLen])]; !ok {
-		insertSorted(k.comparer.Compare, &k.globalKeyPrefixes, key[:prefixLen])
+		insertSorted(k.kf.Comparer.Compare, &k.globalKeyPrefixes, key[:prefixLen])
 		k.globalKeyPrefixesMap[string(key[:prefixLen])] = struct{}{}
 	}
 	return true
@@ -411,7 +412,7 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 	// Initialize the key-to-meta index.
 	objKeys.keys[string(key)] = m
 	// Expand the object's bounds to contain this key if they don't already.
-	objKeys.bounds.Expand(k.comparer.Compare, k.makeSingleKeyBounds(key))
+	objKeys.bounds.Expand(k.kf.Comparer.Compare, k.makeSingleKeyBounds(key))
 	return m
 }
 
@@ -419,7 +420,7 @@ func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 // deletes the metadata for the source object (which must not be used again).
 func (k *keyManager) mergeObjectInto(from, to objID) {
 	toMeta := k.objKeyMeta(to)
-	toMeta.MergeFrom(k.objKeyMeta(from), k.comparer.Compare)
+	toMeta.MergeFrom(k.objKeyMeta(from), k.kf.Comparer.Compare)
 
 	delete(k.byObj, from)
 }
@@ -427,7 +428,7 @@ func (k *keyManager) mergeObjectInto(from, to objID) {
 // expandBounds expands the incrementally maintained bounds of o to be at least
 // as wide as `b`.
 func (k *keyManager) expandBounds(o objID, b bounds) {
-	k.objKeyMeta(o).bounds.Expand(k.comparer.Compare, b)
+	k.objKeyMeta(o).bounds.Expand(k.kf.Comparer.Compare, b)
 }
 
 // doObjectBoundsOverlap returns true iff any of the named objects have key
@@ -443,7 +444,7 @@ func (k *keyManager) doObjectBoundsOverlap(objIDs []objID) bool {
 			if !jok {
 				continue
 			}
-			if ib.bounds.Overlaps(k.comparer.Compare, jb.bounds) {
+			if ib.bounds.Overlaps(k.kf.Comparer.Compare, jb.bounds) {
 				return true
 			}
 		}
@@ -699,7 +700,7 @@ func (k *keyManager) update(o op) {
 			for _, keyMeta := range k.KeysForExternalIngest(obj) {
 				dbMeta.MergeKey(&keyMeta)
 			}
-			dbMeta.bounds.Expand(k.comparer.Compare, k.makeEndExclusiveBounds(obj.bounds.Start, obj.bounds.End))
+			dbMeta.bounds.Expand(k.kf.Comparer.Compare, k.makeEndExclusiveBounds(obj.bounds.Start, obj.bounds.End))
 		}
 	case *applyOp:
 		// Merge the keys from this batch into the parent writer.
@@ -718,8 +719,8 @@ func (k *keyManager) knownKeys() (keys [][]byte) {
 // [start,end). The returned slice is owned by the keyManager and must not be
 // retained.
 func (k *keyManager) knownKeysInRange(kr pebble.KeyRange) (keys [][]byte) {
-	s, _ := slices.BinarySearchFunc(k.globalKeys, kr.Start, k.comparer.Compare)
-	e, _ := slices.BinarySearchFunc(k.globalKeys, kr.End, k.comparer.Compare)
+	s, _ := slices.BinarySearchFunc(k.globalKeys, kr.Start, k.kf.Comparer.Compare)
+	e, _ := slices.BinarySearchFunc(k.globalKeys, kr.End, k.kf.Comparer.Compare)
 	if s >= e {
 		return nil
 	}
@@ -775,7 +776,7 @@ func (k *keyManager) makeEndExclusiveBounds(smallest, largest []byte) bounds {
 		largest:     largest,
 		largestExcl: true,
 	}
-	b.checkValid(k.comparer.Compare)
+	b.checkValid(k.kf.Comparer.Compare)
 	return b
 }
 
@@ -919,7 +920,7 @@ func loadPrecedingKeys(t TestingT, ops []op, cfg *OpConfig, m *keyManager) {
 
 			// If the key has a suffix, ratchet up the suffix distribution if
 			// necessary.
-			if s := m.comparer.Split(k); s < len(k) {
+			if s := m.kf.Comparer.Split(k); s < len(k) {
 				suffix, err := testkeys.ParseSuffix(k[s:])
 				require.NoError(t, err)
 				if uint64(suffix) > cfg.writeSuffixDist.Max() {
