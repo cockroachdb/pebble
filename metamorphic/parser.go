@@ -331,6 +331,14 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			}
 			*t = val
 
+		case *UserKey:
+			elem.expectToken(p, token.STRING)
+			*t = unquoteBytes(elem.lit)
+
+		case *UserKeySuffix:
+			elem.expectToken(p, token.STRING)
+			*t = unquoteBytes(elem.lit)
+
 		case *[]byte:
 			elem.expectToken(p, token.STRING)
 			*t = unquoteBytes(elem.lit)
