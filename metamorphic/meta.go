@@ -470,9 +470,6 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	opsData, err := os.ReadFile(opsPath)
 	require.NoError(t, err)
 
-	ops, err := parse(opsData, parserOpts{})
-	require.NoError(t, err)
-
 	optionsPath := filepath.Join(runDir, "OPTIONS")
 	optionsData, err := os.ReadFile(optionsPath)
 	require.NoError(t, err)
@@ -483,6 +480,12 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	testOpts := defaultTestOptions()
 	opts := testOpts.Opts
 	require.NoError(t, parseOptions(testOpts, string(optionsData), runOpts.customOptionParsers))
+
+	ops, err := parse(opsData, parserOpts{
+		parseFormattedUserKey:       testOpts.KeyFormat.ParseFormattedKey,
+		parseFormattedUserKeySuffix: testOpts.KeyFormat.ParseFormattedKeySuffix,
+	})
+	require.NoError(t, err)
 
 	// Set up the filesystem to use for the test. Note that by default we use an
 	// in-memory FS.

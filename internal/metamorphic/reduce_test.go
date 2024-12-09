@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/metamorphic"
 	"github.com/stretchr/testify/require"
 )
@@ -177,7 +176,10 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 	t.Logf("  Log: %v", logFile)
 
 	// Try to generate a diagram.
-	diagram, err := metamorphic.TryToGenerateDiagram(testkeys.Comparer, []byte(strings.Join(ops, "\n")))
+	diagram, err := metamorphic.TryToGenerateDiagram(
+		metamorphic.TestkeysKeyFormat,
+		[]byte(strings.Join(ops, "\n")),
+	)
 	require.NoError(t, err)
 	if diagram != "" {
 		diagramPath := filepath.Join(testRootDir, "diagram")
@@ -211,7 +213,7 @@ func (r *reducer) Run(t *testing.T) {
 	// Try to simplify the keys.
 	opsData := []byte(strings.Join(ops, "\n"))
 	for _, retainSuffixes := range []bool{false, true} {
-		newOpsData := metamorphic.TryToSimplifyKeys(testkeys.Comparer, opsData, retainSuffixes)
+		newOpsData := metamorphic.TryToSimplifyKeys(metamorphic.TestkeysKeyFormat, opsData, retainSuffixes)
 		o := strings.Split(strings.TrimSpace(string(newOpsData)), "\n")
 		if r.try(t, o) {
 			return

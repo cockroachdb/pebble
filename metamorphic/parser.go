@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 type methodInfo struct {
@@ -185,7 +186,9 @@ type parser struct {
 }
 
 type parserOpts struct {
-	allowUndefinedObjs bool
+	allowUndefinedObjs          bool
+	parseFormattedUserKey       func(string) (UserKey, error)
+	parseFormattedUserKeySuffix func(string) (UserKeySuffix, error)
 }
 
 func parse(src []byte, opts parserOpts) (_ []op, err error) {
@@ -280,6 +283,42 @@ func (p *parser) parseObjID(pos token.Pos, str string) objID {
 	return id
 }
 
+func (p *parser) parseUserKey(pos token.Pos, lit string) UserKey {
+	s, err := strconv.Unquote(lit)
+	if err != nil {
+		panic(p.errorf(pos, "%s", err))
+	}
+	if len(s) == 0 {
+		return nil
+	}
+	if p.opts.parseFormattedUserKey == nil {
+		return []byte(s)
+	}
+	key, err := p.opts.parseFormattedUserKey(s)
+	if err != nil {
+		panic(p.errorf(pos, "%s", err))
+	}
+	return key
+}
+
+func (p *parser) parseUserKeySuffix(pos token.Pos, lit string) UserKeySuffix {
+	s, err := strconv.Unquote(lit)
+	if err != nil {
+		panic(p.errorf(pos, "%s", err))
+	}
+	if len(s) == 0 {
+		return nil
+	}
+	if p.opts.parseFormattedUserKeySuffix == nil {
+		return []byte(s)
+	}
+	suffix, err := p.opts.parseFormattedUserKeySuffix(s)
+	if err != nil {
+		panic(p.errorf(pos, "%s", err))
+	}
+	return suffix
+}
+
 func unquoteBytes(lit string) []byte {
 	s, err := strconv.Unquote(lit)
 	if err != nil {
@@ -333,11 +372,11 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 
 		case *UserKey:
 			elem.expectToken(p, token.STRING)
-			*t = unquoteBytes(elem.lit)
+			*t = p.parseUserKey(elem.pos, elem.lit)
 
 		case *UserKeySuffix:
 			elem.expectToken(p, token.STRING)
-			*t = unquoteBytes(elem.lit)
+			*t = p.parseUserKeySuffix(elem.pos, elem.lit)
 
 		case *[]byte:
 			elem.expectToken(p, token.STRING)
@@ -401,8 +440,18 @@ func (e listElem) expectToken(p *parser, expTok token.Token) {
 }
 
 // pop checks that the first element of the list matches the expected token,
-// removes it from the list and returns the literal.
-func (p *parser) pop(list *[]listElem, expTok token.Token) string {
+// removes it from the list and returns the pos and literal.
+func (p *parser) pop(list *[]listElem, expTok token.Token) (token.Pos, string) {
+	(*list)[0].expectToken(p, expTok)
+	pos := (*list)[0].pos
+	lit := (*list)[0].lit
+	(*list) = (*list)[1:]
+	return pos, lit
+}
+
+// popLit checks that the first element of the list matches the expected token,
+// removes it from the list and returns the pos and literal.
+func (p *parser) popLit(list *[]listElem, expTok token.Token) string {
 	(*list)[0].expectToken(p, expTok)
 	lit := (*list)[0].lit
 	(*list) = (*list)[1:]
@@ -447,10 +496,10 @@ func (p *parser) parseObjIDs(list []listElem) []objID {
 	return res
 }
 
-func (p *parser) parseKeys(list []listElem) [][]byte {
-	res := make([][]byte, len(list))
+func (p *parser) parseKeys(list []listElem) []UserKey {
+	res := make([]UserKey, len(list))
 	for i := range res {
-		res[i] = unquoteBytes(p.pop(&list, token.STRING))
+		res[i] = p.parseUserKey(p.pop(&list, token.STRING))
 	}
 	return res
 }
@@ -494,9 +543,9 @@ func (p *parser) parseDownloadSpans(list []listElem) []pebble.DownloadSpan {
 	res := make([]pebble.DownloadSpan, len(list)/3)
 	for i := range res {
 		res[i] = pebble.DownloadSpan{
-			StartKey:               unquoteBytes(p.pop(&list, token.STRING)),
-			EndKey:                 unquoteBytes(p.pop(&list, token.STRING)),
-			ViaBackingFileDownload: p.pop(&list, token.IDENT) == "true",
+			StartKey:               p.parseUserKey(p.pop(&list, token.STRING)),
+			EndKey:                 p.parseUserKey(p.pop(&list, token.STRING)),
+			ViaBackingFileDownload: p.popLit(&list, token.IDENT) == "true",
 		}
 	}
 	return res
@@ -509,19 +558,18 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 	}
 	objs := make([]externalObjWithBounds, len(list)/numArgs)
 	for i := range objs {
-		pos := list[0].pos
 		objs[i] = externalObjWithBounds{
-			externalObjID: p.parseObjID(pos, p.pop(&list, token.IDENT)),
+			externalObjID: p.parseObjID(p.pop(&list, token.IDENT)),
 			bounds: pebble.KeyRange{
-				Start: unquoteBytes(p.pop(&list, token.STRING)),
-				End:   unquoteBytes(p.pop(&list, token.STRING)),
+				Start: p.parseUserKey(p.pop(&list, token.STRING)),
+				End:   p.parseUserKey(p.pop(&list, token.STRING)),
 			},
 		}
-		if syntheticSuffix := unquoteBytes(p.pop(&list, token.STRING)); len(syntheticSuffix) > 0 {
-			objs[i].syntheticSuffix = syntheticSuffix
+		if syntheticSuffix := p.parseUserKeySuffix(p.pop(&list, token.STRING)); len(syntheticSuffix) > 0 {
+			objs[i].syntheticSuffix = block.SyntheticSuffix(syntheticSuffix)
 		}
 
-		syntheticPrefix := unquoteBytes(p.pop(&list, token.STRING))
+		syntheticPrefix := p.parseUserKey(p.pop(&list, token.STRING))
 		if len(syntheticPrefix) > 0 {
 			if !bytes.HasPrefix(objs[i].bounds.Start, syntheticPrefix) {
 				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.Start, syntheticPrefix))
@@ -529,7 +577,7 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 			if !bytes.HasPrefix(objs[i].bounds.End, syntheticPrefix) {
 				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.End, syntheticPrefix))
 			}
-			objs[i].syntheticPrefix = syntheticPrefix
+			objs[i].syntheticPrefix = block.SyntheticPrefix(syntheticPrefix)
 		}
 	}
 	return objs

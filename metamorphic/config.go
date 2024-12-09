@@ -356,6 +356,8 @@ var keyFormatsByName = func() map[string]KeyFormat {
 type KeyFormat struct {
 	Name                         string
 	Comparer                     *base.Comparer
+	ParseFormattedKey            func(string) (UserKey, error)
+	ParseFormattedKeySuffix      func(string) (UserKeySuffix, error)
 	NewGenerator                 func(*keyManager, *rand.Rand, OpConfig) KeyGenerator
 	NewSuffixFilterMask          func() pebble.BlockPropertyFilterMask
 	NewSuffixBlockPropertyFilter func(min []byte, max []byte) sstable.BlockPropertyFilter

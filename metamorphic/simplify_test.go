@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
 func TestSimplifyKeys(t *testing.T) {
@@ -17,7 +16,7 @@ func TestSimplifyKeys(t *testing.T) {
 		switch d.Cmd {
 		case "simplify-keys":
 			retainSuffixes := d.HasArg("retain-suffixes")
-			res := TryToSimplifyKeys(testkeys.Comparer, []byte(d.Input), retainSuffixes)
+			res := TryToSimplifyKeys(TestkeysKeyFormat, []byte(d.Input), retainSuffixes)
 			return string(res)
 
 		default:
