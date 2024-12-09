@@ -4,19 +4,18 @@
 
 package metamorphic
 
-import (
-	"strings"
-
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "strings"
 
 // TryToGenerateDiagram attempts to generate a user-readable ASCII diagram of
 // the keys involved in the operations.
 //
 // If the diagram would be too large to be practical, returns the empty string
 // (with no error).
-func TryToGenerateDiagram(comparer *base.Comparer, opsData []byte) (string, error) {
-	ops, err := parse(opsData, parserOpts{})
+func TryToGenerateDiagram(keyFormat KeyFormat, opsData []byte) (string, error) {
+	ops, err := parse(opsData, parserOpts{
+		parseFormattedUserKey:       keyFormat.ParseFormattedKey,
+		parseFormattedUserKeySuffix: keyFormat.ParseFormattedKeySuffix,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -33,7 +32,7 @@ func TryToGenerateDiagram(comparer *base.Comparer, opsData []byte) (string, erro
 	if len(keySet) == 0 {
 		return "", nil
 	}
-	keys := sortedKeys(comparer.Compare, keySet)
+	keys := sortedKeys(keyFormat.Comparer.Compare, keySet)
 	axis1, axis2, pos := genAxis(keys)
 	if len(axis1) > 200 {
 		return "", nil

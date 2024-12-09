@@ -17,8 +17,11 @@ import (
 // On success it returns the new operations data.
 //
 // If there are too many distinct keys, returns nil.
-func TryToSimplifyKeys(comparer *base.Comparer, opsData []byte, retainSuffixes bool) []byte {
-	ops, err := parse(opsData, parserOpts{})
+func TryToSimplifyKeys(keyFormat KeyFormat, opsData []byte, retainSuffixes bool) []byte {
+	ops, err := parse(opsData, parserOpts{
+		parseFormattedUserKey:       keyFormat.ParseFormattedKey,
+		parseFormattedUserKeySuffix: keyFormat.ParseFormattedKeySuffix,
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -26,7 +29,7 @@ func TryToSimplifyKeys(comparer *base.Comparer, opsData []byte, retainSuffixes b
 	for i := range ops {
 		ops[i].rewriteKeys(func(k UserKey) UserKey {
 			if retainSuffixes {
-				keys[string(k[:comparer.Split(k)])] = struct{}{}
+				keys[string(k[:keyFormat.Comparer.Split(k)])] = struct{}{}
 			} else {
 				keys[string(k)] = struct{}{}
 			}
@@ -36,7 +39,7 @@ func TryToSimplifyKeys(comparer *base.Comparer, opsData []byte, retainSuffixes b
 	if len(keys) > ('z' - 'a' + 1) {
 		return nil
 	}
-	sorted := sortedKeys(comparer.Compare, keys)
+	sorted := sortedKeys(keyFormat.Comparer.Compare, keys)
 	ordinals := make(map[string]int, len(sorted))
 	for i, k := range sorted {
 		ordinals[k] = i
@@ -45,7 +48,7 @@ func TryToSimplifyKeys(comparer *base.Comparer, opsData []byte, retainSuffixes b
 		ops[i].rewriteKeys(func(k UserKey) UserKey {
 			var suffix []byte
 			if retainSuffixes {
-				n := comparer.Split(k)
+				n := keyFormat.Comparer.Split(k)
 				suffix = k[n:]
 				k = k[:n]
 			}
