@@ -49,7 +49,12 @@ type node struct {
 	keySize    uint32
 	keyTrailer base.InternalKeyTrailer
 	valueSize  uint32
-	allocSize  uint32
+
+	// Padding to align tower on an 8-byte boundary, so that 32-bit and 64-bit
+	// architectures use the same memory layout for node. Needed for tests which
+	// expect a certain struct size. The padding can be removed if we add or
+	// remove a field from the node.
+	_ [4]byte
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -95,7 +100,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	unusedSize := uint32((maxHeight - int(height)) * linksSize)
 	nodeSize := uint32(maxNodeSize) - unusedSize
 
-	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, nodeAlignment, unusedSize)
+	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, nodeAlignment, unusedSize)
 	if err != nil {
 		return
 	}
@@ -104,7 +109,6 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	nd.keyOffset = nodeOffset + nodeSize
 	nd.keySize = keySize
 	nd.valueSize = valueSize
-	nd.allocSize = allocSize
 	return
 }
 
