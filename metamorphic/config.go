@@ -356,6 +356,8 @@ var keyFormatsByName = func() map[string]KeyFormat {
 type KeyFormat struct {
 	Name                         string
 	Comparer                     *base.Comparer
+	FormatKey                    func(UserKey) string
+	FormatKeySuffix              func(UserKeySuffix) string
 	ParseFormattedKey            func(string) (UserKey, error)
 	ParseFormattedKeySuffix      func(string) (UserKeySuffix, error)
 	NewGenerator                 func(*keyManager, *rand.Rand, OpConfig) KeyGenerator

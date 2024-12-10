@@ -78,6 +78,7 @@ func printKeys(w io.Writer, keys [][]byte) {
 func TestKeyManager(t *testing.T) {
 	var buf bytes.Buffer
 	km := newKeyManager(1 /* numInstances */)
+	kf := TestkeysKeyFormat
 	datadriven.RunTest(t, "testdata/key_manager", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
@@ -131,7 +132,7 @@ func TestKeyManager(t *testing.T) {
 						t.Fatalf("expected 1 op but found %d", len(ops))
 					}
 					km.update(ops[0])
-					fmt.Fprintf(&buf, "[%s]\n", ops[0])
+					fmt.Fprintf(&buf, "[%s]\n", ops[0].formattedString(kf))
 				default:
 					return fmt.Sprintf("unrecognized subcommand %q", fields[0])
 				}

@@ -14,14 +14,18 @@ import (
 )
 
 func TestParser(t *testing.T) {
+	kf := TestkeysKeyFormat
 	datadriven.RunTest(t, "testdata/parser", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "parse":
-			ops, err := parse([]byte(d.Input), parserOpts{})
+			ops, err := parse([]byte(d.Input), parserOpts{
+				parseFormattedUserKey:       kf.ParseFormattedKey,
+				parseFormattedUserKeySuffix: kf.ParseFormattedKeySuffix,
+			})
 			if err != nil {
 				return err.Error()
 			}
-			return formatOps(ops)
+			return formatOps(kf, ops)
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
@@ -37,8 +41,9 @@ func TestParserRandom(t *testing.T) {
 				cfg = multiInstanceConfig()
 				cfg.numInstances = 2
 			}
-			ops := generate(randvar.NewRand(), 10000, cfg, newKeyManager(cfg.numInstances))
-			src := formatOps(ops)
+			km := newKeyManager(cfg.numInstances)
+			ops := generate(randvar.NewRand(), 10000, cfg, km)
+			src := formatOps(km.kf, ops)
 
 			parsedOps, err := parse([]byte(src), parserOpts{})
 			if err != nil {
@@ -50,14 +55,18 @@ func TestParserRandom(t *testing.T) {
 }
 
 func TestParserNilBounds(t *testing.T) {
-	formatted := formatOps([]op{
+	kf := TestkeysKeyFormat
+	formatted := formatOps(kf, []op{
 		&newIterOp{
 			readerID: makeObjID(dbTag, 1),
 			iterID:   makeObjID(iterTag, 1),
 			iterOpts: iterOpts{},
 		},
 	})
-	parsedOps, err := parse([]byte(formatted), parserOpts{})
+	parsedOps, err := parse([]byte(formatted), parserOpts{
+		parseFormattedUserKey:       kf.ParseFormattedKey,
+		parseFormattedUserKeySuffix: kf.ParseFormattedKeySuffix,
+	})
 	require.NoError(t, err)
 	require.Equal(t, 1, len(parsedOps))
 	v := parsedOps[0].(*newIterOp)

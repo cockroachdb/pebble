@@ -207,7 +207,7 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintln(os.Stderr, formatOps(g.ops))
+			fmt.Fprintln(os.Stderr, formatOps(km.kf, g.ops))
 			panic(r)
 		}
 	}()
