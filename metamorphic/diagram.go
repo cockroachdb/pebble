@@ -11,8 +11,11 @@ import "strings"
 //
 // If the diagram would be too large to be practical, returns the empty string
 // (with no error).
-func TryToGenerateDiagram(opsData []byte) (string, error) {
-	ops, err := parse(opsData, parserOpts{})
+func TryToGenerateDiagram(keyFormat KeyFormat, opsData []byte) (string, error) {
+	ops, err := parse(opsData, parserOpts{
+		parseFormattedUserKey:       keyFormat.ParseFormattedKey,
+		parseFormattedUserKeySuffix: keyFormat.ParseFormattedKeySuffix,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +32,7 @@ func TryToGenerateDiagram(opsData []byte) (string, error) {
 	if len(keySet) == 0 {
 		return "", nil
 	}
-	keys := sortedKeys(keySet)
+	keys := sortedKeys(keyFormat.Comparer.Compare, keySet)
 	axis1, axis2, pos := genAxis(keys)
 	if len(axis1) > 200 {
 		return "", nil
@@ -56,7 +59,7 @@ func TryToGenerateDiagram(opsData []byte) (string, error) {
 		for row.Len() <= len(axis1) {
 			row.WriteByte(' ')
 		}
-		row.WriteString(o.String())
+		row.WriteString(o.formattedString(keyFormat))
 
 		rows = append(rows, row.String())
 	}

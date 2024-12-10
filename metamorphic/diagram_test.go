@@ -15,7 +15,7 @@ func TestDiagram(t *testing.T) {
 	datadriven.RunTest(t, "testdata/diagram", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "diagram":
-			res, err := TryToGenerateDiagram([]byte(d.Input))
+			res, err := TryToGenerateDiagram(TestkeysKeyFormat, []byte(d.Input))
 			if err != nil {
 				return err.Error()
 			}

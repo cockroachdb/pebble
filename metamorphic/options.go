@@ -59,6 +59,9 @@ func parseOptions(
 				opts.strictFS = true
 				opts.Opts.FS = vfs.NewCrashableMem()
 				return true
+			case "TestOptions.key_format":
+				opts.KeyFormat = keyFormatsByName[value]
+				return true
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
 				return true
@@ -203,6 +206,7 @@ func parseOptions(
 
 func optionsToString(opts *TestOptions) string {
 	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "  key_format=%s\n", opts.KeyFormat.Name)
 	if opts.strictFS {
 		fmt.Fprint(&buf, "  strictfs=true\n")
 	}
@@ -296,6 +300,7 @@ func defaultTestOptions() *TestOptions {
 		Opts:        defaultOptions(),
 		Threads:     16,
 		RetryPolicy: NeverRetry,
+		KeyFormat:   TestkeysKeyFormat,
 	}
 }
 
@@ -354,6 +359,8 @@ type TestOptions struct {
 	Threads int
 	// RetryPolicy configures which errors should be retried.
 	RetryPolicy RetryPolicy
+	// KeyFormat defines the format of keys used within the test.
+	KeyFormat KeyFormat
 	// CustomOptions holds custom test options that are defined outside of this
 	// package.
 	CustomOpts []CustomOption

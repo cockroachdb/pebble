@@ -16,7 +16,7 @@ func TestSimplifyKeys(t *testing.T) {
 		switch d.Cmd {
 		case "simplify-keys":
 			retainSuffixes := d.HasArg("retain-suffixes")
-			res := TryToSimplifyKeys([]byte(d.Input), retainSuffixes)
+			res := TryToSimplifyKeys(TestkeysKeyFormat, []byte(d.Input), retainSuffixes)
 			return string(res)
 
 		default:

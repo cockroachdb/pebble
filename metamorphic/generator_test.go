@@ -132,7 +132,8 @@ func TestGeneratorRandom(t *testing.T) {
 	generateFromSeed := func(cfg OpConfig) string {
 		rng := rand.New(rand.NewPCG(0, seed))
 		count := ops.Uint64(rng)
-		return formatOps(generate(rng, count, cfg, newKeyManager(cfg.numInstances)))
+		km := newKeyManager(cfg.numInstances)
+		return formatOps(km.kf, generate(rng, count, cfg, km))
 	}
 
 	for i := range cfgs {

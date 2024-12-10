@@ -431,7 +431,8 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 			opTimeout *= 8
 		}
 		timer = time.AfterFunc(opTimeout, func() {
-			panic(fmt.Sprintf("operation took longer than %s: %s", opTimeout, op.String()))
+			panic(fmt.Sprintf("operation took longer than %s: %s",
+				opTimeout, op.formattedString(t.testOpts.KeyFormat)))
 		})
 	}
 	op.run(t, h)
@@ -586,7 +587,8 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 			// have been referenced by some other operation before it's used as
 			// a receiver.
 			if i != 0 && receiver.tag() != dbTag {
-				panic(fmt.Sprintf("op %s on receiver %s; first reference of %s", ops[i].String(), receiver, receiver))
+				panic(fmt.Sprintf("op %T on receiver %s; first reference of %s",
+					ops[i], receiver, receiver))
 			}
 			// The initOp is a little special. We do want to store the objects it's
 			// syncing on, in `lastOpReference`.
@@ -611,7 +613,7 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 		for _, syncObjID := range o.syncObjs() {
 			if vi, vok := lastOpReference[syncObjID]; vok {
 				if vi == i {
-					panic(fmt.Sprintf("%s has %s as syncObj multiple times", ops[i].String(), syncObjID))
+					panic(fmt.Sprintf("%T has %s as syncObj multiple times", ops[i], syncObjID))
 				}
 				opsWaitOn[i] = append(opsWaitOn[i], vi)
 			}

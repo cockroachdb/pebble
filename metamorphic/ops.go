@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangekey"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -35,7 +34,7 @@ type Ops []op
 // op defines the interface for a single operation, such as creating a batch,
 // or advancing an iterator.
 type op interface {
-	String() string
+	formattedString(KeyFormat) string
 
 	run(t *Test, h historyRecorder)
 
@@ -51,16 +50,24 @@ type op interface {
 	// that return these objects from their own syncObjs or receiver methods.
 	syncObjs() objIDSlice
 
-	// keys returns all user keys used by the operation, as pointers to slices.
-	// The caller can then modify these slices to rewrite the keys.
+	// rewriteKeys invokes fn for every user key used by the operation. The key
+	// is updated to be the result of fn(key).
 	//
 	// Used for simplification of operations for easier investigations.
-	keys() []*[]byte
+	rewriteKeys(fn func(UserKey) UserKey)
 
 	// diagramKeyRanges() returns key spans associated with this operation, to be
 	// shown on an ASCII diagram of operations.
 	diagramKeyRanges() []pebble.KeyRange
 }
+
+// A UserKey is a user key used by the metamorphic test. The format is
+// determined by the KeyFormat used by the test.
+type UserKey []byte
+
+// A UserKeySuffix is the suffix of a user key used by the metamorphic test. The
+// format is determined by the KeyFormat used by the test.
+type UserKeySuffix []byte
 
 // initOp performs test initialization
 type initOp struct {
@@ -76,10 +83,10 @@ func (o *initOp) run(t *Test, h historyRecorder) {
 	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]readerCloser, o.snapshotSlots)
 	t.externalObjs = make([]externalObjMeta, o.externalObjSlots)
-	h.Recordf("%s", o)
+	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 }
 
-func (o *initOp) String() string {
+func (o *initOp) formattedString(kf KeyFormat) string {
 	return fmt.Sprintf("Init(%d /* dbs */, %d /* batches */, %d /* iters */, %d /* snapshots */, %d /* externalObjs */)",
 		o.dbSlots, o.batchSlots, o.iterSlots, o.snapshotSlots, o.externalObjSlots)
 }
@@ -94,7 +101,7 @@ func (o *initOp) syncObjs() objIDSlice {
 	return syncObjs
 }
 
-func (o *initOp) keys() []*[]byte                     { return nil }
+func (o *initOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *initOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // applyOp models a Writer.Apply operation.
@@ -115,11 +122,13 @@ func (o *applyOp) run(t *Test, h historyRecorder) {
 	} else {
 		err = w.Apply(b, t.writeOpts)
 	}
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 	// batch will be closed by a closeOp which is guaranteed to be generated
 }
 
-func (o *applyOp) String() string  { return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID) }
+func (o *applyOp) formattedString(KeyFormat) string {
+	return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID)
+}
 func (o *applyOp) receiver() objID { return o.writerID }
 func (o *applyOp) syncObjs() objIDSlice {
 	// Apply should not be concurrent with operations that are mutating the
@@ -127,7 +136,7 @@ func (o *applyOp) syncObjs() objIDSlice {
 	return []objID{o.batchID}
 }
 
-func (o *applyOp) keys() []*[]byte                     { return nil }
+func (o *applyOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *applyOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // checkpointOp models a DB.Checkpoint operation.
@@ -145,7 +154,7 @@ func (o *checkpointOp) run(t *Test, h historyRecorder) {
 	// not sure how to do that easily:
 	// https://github.com/cockroachdb/pebble/blob/master/metamorphic/meta.go#L177
 	if t.testOpts.sharedStorageEnabled || t.testOpts.externalStorageEnabled {
-		h.Recordf("%s // %v", o, nil)
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), nil)
 		return
 	}
 	var opts []pebble.CheckpointOption
@@ -156,33 +165,31 @@ func (o *checkpointOp) run(t *Test, h historyRecorder) {
 	err := t.withRetries(func() error {
 		return db.Checkpoint(o.dir(t.dir, h.op), opts...)
 	})
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func (o *checkpointOp) dir(dataDir string, idx int) string {
 	return filepath.Join(dataDir, "checkpoints", fmt.Sprintf("op-%06d", idx))
 }
 
-func (o *checkpointOp) String() string {
+func (o *checkpointOp) formattedString(kf KeyFormat) string {
 	var spanStr bytes.Buffer
 	for i, span := range o.spans {
 		if i > 0 {
 			spanStr.WriteString(",")
 		}
-		fmt.Fprintf(&spanStr, "%q,%q", span.Start, span.End)
+		fmt.Fprintf(&spanStr, "%q,%q", kf.FormatKey(span.Start), kf.FormatKey(span.End))
 	}
 	return fmt.Sprintf("%s.Checkpoint(%s)", o.dbID, spanStr.String())
 }
 
 func (o *checkpointOp) receiver() objID      { return o.dbID }
 func (o *checkpointOp) syncObjs() objIDSlice { return nil }
-
-func (o *checkpointOp) keys() []*[]byte {
-	var res []*[]byte
+func (o *checkpointOp) rewriteKeys(fn func(UserKey) UserKey) {
 	for i := range o.spans {
-		res = append(res, &o.spans[i].Start, &o.spans[i].End)
+		o.spans[i].Start = fn(o.spans[i].Start)
+		o.spans[i].End = fn(o.spans[i].End)
 	}
-	return res
 }
 
 func (o *checkpointOp) diagramKeyRanges() []pebble.KeyRange {
@@ -204,24 +211,26 @@ type downloadOp struct {
 
 func (o *downloadOp) run(t *Test, h historyRecorder) {
 	if t.testOpts.disableDownloads {
-		h.Recordf("%s // %v", o, nil)
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), nil)
 		return
 	}
 	db := t.getDB(o.dbID)
 	err := t.withRetries(func() error {
 		return db.Download(context.Background(), o.spans)
 	})
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *downloadOp) String() string {
+func (o *downloadOp) formattedString(kf KeyFormat) string {
 	var spanStr bytes.Buffer
 	for i, span := range o.spans {
 		if i > 0 {
 			spanStr.WriteString(", ")
 		}
 		fmt.Fprintf(&spanStr, "%q /* start */, %q /* end */, %v /* viaBackingFileDownload */",
-			span.StartKey, span.EndKey, span.ViaBackingFileDownload)
+			kf.FormatKey(span.StartKey),
+			kf.FormatKey(span.EndKey),
+			span.ViaBackingFileDownload)
 	}
 	return fmt.Sprintf("%s.Download(%s)", o.dbID, spanStr.String())
 }
@@ -229,12 +238,11 @@ func (o *downloadOp) String() string {
 func (o *downloadOp) receiver() objID     { return o.dbID }
 func (o downloadOp) syncObjs() objIDSlice { return nil }
 
-func (o *downloadOp) keys() []*[]byte {
-	var res []*[]byte
+func (o *downloadOp) rewriteKeys(fn func(UserKey) UserKey) {
 	for i := range o.spans {
-		res = append(res, &o.spans[i].StartKey, &o.spans[i].EndKey)
+		o.spans[i].StartKey = fn(o.spans[i].StartKey)
+		o.spans[i].EndKey = fn(o.spans[i].EndKey)
 	}
-	return res
 }
 
 func (o *downloadOp) diagramKeyRanges() []pebble.KeyRange {
@@ -268,23 +276,23 @@ func (o *closeOp) run(t *Test, h historyRecorder) {
 	}
 	t.clearObj(o.objID)
 	err := c.Close()
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *closeOp) String() string  { return fmt.Sprintf("%s.Close()", o.objID) }
-func (o *closeOp) receiver() objID { return o.objID }
+func (o *closeOp) formattedString(KeyFormat) string { return fmt.Sprintf("%s.Close()", o.objID) }
+func (o *closeOp) receiver() objID                  { return o.objID }
 func (o *closeOp) syncObjs() objIDSlice {
 	return o.affectedObjects
 }
 
-func (o *closeOp) keys() []*[]byte                     { return nil }
+func (o *closeOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *closeOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // compactOp models a DB.Compact operation.
 type compactOp struct {
 	dbID        objID
-	start       []byte
-	end         []byte
+	start       UserKey
+	end         UserKey
 	parallelize bool
 }
 
@@ -292,18 +300,20 @@ func (o *compactOp) run(t *Test, h historyRecorder) {
 	err := t.withRetries(func() error {
 		return t.getDB(o.dbID).Compact(o.start, o.end, o.parallelize)
 	})
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *compactOp) String() string {
-	return fmt.Sprintf("%s.Compact(%q, %q, %t /* parallelize */)", o.dbID, o.start, o.end, o.parallelize)
+func (o *compactOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Compact(%q, %q, %t /* parallelize */)",
+		o.dbID, kf.FormatKey(o.start), kf.FormatKey(o.end), o.parallelize)
 }
 
 func (o *compactOp) receiver() objID      { return o.dbID }
 func (o *compactOp) syncObjs() objIDSlice { return nil }
 
-func (o *compactOp) keys() []*[]byte {
-	return []*[]byte{&o.start, &o.end}
+func (o *compactOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
 }
 
 func (o *compactOp) diagramKeyRanges() []pebble.KeyRange {
@@ -313,7 +323,7 @@ func (o *compactOp) diagramKeyRanges() []pebble.KeyRange {
 // deleteOp models a Write.Delete operation.
 type deleteOp struct {
 	writerID objID
-	key      []byte
+	key      UserKey
 
 	derivedDBID objID
 }
@@ -328,7 +338,7 @@ func (o *deleteOp) run(t *Test, h historyRecorder) {
 	} else {
 		err = w.Delete(o.key, t.writeOpts)
 	}
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func hashSize(index int) uint32 {
@@ -336,14 +346,14 @@ func hashSize(index int) uint32 {
 	return uint32((11400714819323198485 * uint64(index)) % maxValueSize)
 }
 
-func (o *deleteOp) String() string {
-	return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key)
+func (o *deleteOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Delete(%q)", o.writerID, kf.FormatKey(o.key))
 }
 func (o *deleteOp) receiver() objID      { return o.writerID }
 func (o *deleteOp) syncObjs() objIDSlice { return nil }
 
-func (o *deleteOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *deleteOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *deleteOp) diagramKeyRanges() []pebble.KeyRange {
@@ -353,7 +363,7 @@ func (o *deleteOp) diagramKeyRanges() []pebble.KeyRange {
 // singleDeleteOp models a Write.SingleDelete operation.
 type singleDeleteOp struct {
 	writerID           objID
-	key                []byte
+	key                UserKey
 	maybeReplaceDelete bool
 }
 
@@ -370,18 +380,19 @@ func (o *singleDeleteOp) run(t *Test, h historyRecorder) {
 	// or not the delete *could* have been replaced. The OPTIONS file should
 	// also be consulted to determine what happened at runtime (i.e. by taking
 	// the logical AND).
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *singleDeleteOp) String() string {
-	return fmt.Sprintf("%s.SingleDelete(%q, %v /* maybeReplaceDelete */)", o.writerID, o.key, o.maybeReplaceDelete)
+func (o *singleDeleteOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.SingleDelete(%q, %v /* maybeReplaceDelete */)",
+		o.writerID, kf.FormatKey(o.key), o.maybeReplaceDelete)
 }
 
 func (o *singleDeleteOp) receiver() objID      { return o.writerID }
 func (o *singleDeleteOp) syncObjs() objIDSlice { return nil }
 
-func (o *singleDeleteOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *singleDeleteOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *singleDeleteOp) diagramKeyRanges() []pebble.KeyRange {
@@ -391,25 +402,27 @@ func (o *singleDeleteOp) diagramKeyRanges() []pebble.KeyRange {
 // deleteRangeOp models a Write.DeleteRange operation.
 type deleteRangeOp struct {
 	writerID objID
-	start    []byte
-	end      []byte
+	start    UserKey
+	end      UserKey
 }
 
 func (o *deleteRangeOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.DeleteRange(o.start, o.end, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *deleteRangeOp) String() string {
-	return fmt.Sprintf("%s.DeleteRange(%q, %q)", o.writerID, o.start, o.end)
+func (o *deleteRangeOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.DeleteRange(%q, %q)",
+		o.writerID, kf.FormatKey(o.start), kf.FormatKey(o.end))
 }
 
 func (o *deleteRangeOp) receiver() objID      { return o.writerID }
 func (o *deleteRangeOp) syncObjs() objIDSlice { return nil }
 
-func (o *deleteRangeOp) keys() []*[]byte {
-	return []*[]byte{&o.start, &o.end}
+func (o *deleteRangeOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
 }
 
 func (o *deleteRangeOp) diagramKeyRanges() []pebble.KeyRange {
@@ -424,34 +437,36 @@ type flushOp struct {
 func (o *flushOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.db)
 	err := db.Flush()
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *flushOp) String() string                      { return fmt.Sprintf("%s.Flush()", o.db) }
+func (o *flushOp) formattedString(KeyFormat) string    { return fmt.Sprintf("%s.Flush()", o.db) }
 func (o *flushOp) receiver() objID                     { return o.db }
 func (o *flushOp) syncObjs() objIDSlice                { return nil }
-func (o *flushOp) keys() []*[]byte                     { return nil }
+func (o *flushOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *flushOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // mergeOp models a Write.Merge operation.
 type mergeOp struct {
 	writerID objID
-	key      []byte
+	key      UserKey
 	value    []byte
 }
 
 func (o *mergeOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Merge(o.key, o.value, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *mergeOp) String() string       { return fmt.Sprintf("%s.Merge(%q, %q)", o.writerID, o.key, o.value) }
+func (o *mergeOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Merge(%q, %q)", o.writerID, kf.FormatKey(o.key), o.value)
+}
 func (o *mergeOp) receiver() objID      { return o.writerID }
 func (o *mergeOp) syncObjs() objIDSlice { return nil }
 
-func (o *mergeOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *mergeOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *mergeOp) diagramKeyRanges() []pebble.KeyRange {
@@ -461,22 +476,24 @@ func (o *mergeOp) diagramKeyRanges() []pebble.KeyRange {
 // setOp models a Write.Set operation.
 type setOp struct {
 	writerID objID
-	key      []byte
+	key      UserKey
 	value    []byte
 }
 
 func (o *setOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Set(o.key, o.value, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *setOp) String() string       { return fmt.Sprintf("%s.Set(%q, %q)", o.writerID, o.key, o.value) }
+func (o *setOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Set(%q, %q)", o.writerID, kf.FormatKey(o.key), o.value)
+}
 func (o *setOp) receiver() objID      { return o.writerID }
 func (o *setOp) syncObjs() objIDSlice { return nil }
 
-func (o *setOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *setOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *setOp) diagramKeyRanges() []pebble.KeyRange {
@@ -493,18 +510,20 @@ type rangeKeyDeleteOp struct {
 func (o *rangeKeyDeleteOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeyDelete(o.start, o.end, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *rangeKeyDeleteOp) String() string {
-	return fmt.Sprintf("%s.RangeKeyDelete(%q, %q)", o.writerID, o.start, o.end)
+func (o *rangeKeyDeleteOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.RangeKeyDelete(%q, %q)",
+		o.writerID, kf.FormatKey(o.start), kf.FormatKey(o.end))
 }
 
 func (o *rangeKeyDeleteOp) receiver() objID      { return o.writerID }
 func (o *rangeKeyDeleteOp) syncObjs() objIDSlice { return nil }
 
-func (o *rangeKeyDeleteOp) keys() []*[]byte {
-	return []*[]byte{&o.start, &o.end}
+func (o *rangeKeyDeleteOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
 }
 
 func (o *rangeKeyDeleteOp) diagramKeyRanges() []pebble.KeyRange {
@@ -523,19 +542,21 @@ type rangeKeySetOp struct {
 func (o *rangeKeySetOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeySet(o.start, o.end, o.suffix, o.value, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *rangeKeySetOp) String() string {
+func (o *rangeKeySetOp) formattedString(kf KeyFormat) string {
 	return fmt.Sprintf("%s.RangeKeySet(%q, %q, %q, %q)",
-		o.writerID, o.start, o.end, o.suffix, o.value)
+		o.writerID, kf.FormatKey(o.start), kf.FormatKey(o.end),
+		kf.FormatKeySuffix(o.suffix), o.value)
 }
 
 func (o *rangeKeySetOp) receiver() objID      { return o.writerID }
 func (o *rangeKeySetOp) syncObjs() objIDSlice { return nil }
 
-func (o *rangeKeySetOp) keys() []*[]byte {
-	return []*[]byte{&o.start, &o.end}
+func (o *rangeKeySetOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
 }
 
 func (o *rangeKeySetOp) diagramKeyRanges() []pebble.KeyRange {
@@ -545,27 +566,29 @@ func (o *rangeKeySetOp) diagramKeyRanges() []pebble.KeyRange {
 // rangeKeyUnsetOp models a Write.RangeKeyUnset operation.
 type rangeKeyUnsetOp struct {
 	writerID objID
-	start    []byte
-	end      []byte
-	suffix   []byte
+	start    UserKey
+	end      UserKey
+	suffix   UserKeySuffix
 }
 
 func (o *rangeKeyUnsetOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeyUnset(o.start, o.end, o.suffix, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *rangeKeyUnsetOp) String() string {
+func (o *rangeKeyUnsetOp) formattedString(kf KeyFormat) string {
 	return fmt.Sprintf("%s.RangeKeyUnset(%q, %q, %q)",
-		o.writerID, o.start, o.end, o.suffix)
+		o.writerID, kf.FormatKey(o.start), kf.FormatKey(o.end),
+		kf.FormatKeySuffix(o.suffix))
 }
 
 func (o *rangeKeyUnsetOp) receiver() objID      { return o.writerID }
 func (o *rangeKeyUnsetOp) syncObjs() objIDSlice { return nil }
 
-func (o *rangeKeyUnsetOp) keys() []*[]byte {
-	return []*[]byte{&o.start, &o.end}
+func (o *rangeKeyUnsetOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
 }
 
 func (o *rangeKeyUnsetOp) diagramKeyRanges() []pebble.KeyRange {
@@ -581,16 +604,16 @@ type logDataOp struct {
 func (o *logDataOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.LogData(o.data, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *logDataOp) String() string {
+func (o *logDataOp) formattedString(KeyFormat) string {
 	return fmt.Sprintf("%s.LogData(%q)", o.writerID, o.data)
 }
 
 func (o *logDataOp) receiver() objID                     { return o.writerID }
 func (o *logDataOp) syncObjs() objIDSlice                { return nil }
-func (o *logDataOp) keys() []*[]byte                     { return []*[]byte{} }
+func (o *logDataOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *logDataOp) diagramKeyRanges() []pebble.KeyRange { return []pebble.KeyRange{} }
 
 // newBatchOp models a Write.NewBatch operation.
@@ -602,10 +625,12 @@ type newBatchOp struct {
 func (o *newBatchOp) run(t *Test, h historyRecorder) {
 	b := t.getDB(o.dbID).NewBatch()
 	t.setBatch(o.batchID, b)
-	h.Recordf("%s", o)
+	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 }
 
-func (o *newBatchOp) String() string  { return fmt.Sprintf("%s = %s.NewBatch()", o.batchID, o.dbID) }
+func (o *newBatchOp) formattedString(KeyFormat) string {
+	return fmt.Sprintf("%s = %s.NewBatch()", o.batchID, o.dbID)
+}
 func (o *newBatchOp) receiver() objID { return o.dbID }
 func (o *newBatchOp) syncObjs() objIDSlice {
 	// NewBatch should not be concurrent with operations that interact with that
@@ -613,8 +638,8 @@ func (o *newBatchOp) syncObjs() objIDSlice {
 	return []objID{o.batchID}
 }
 
-func (o *newBatchOp) keys() []*[]byte                     { return nil }
-func (o *newBatchOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *newBatchOp) rewriteKeys(fn func(UserKey) UserKey) {}
+func (o *newBatchOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // newIndexedBatchOp models a Write.NewIndexedBatch operation.
 type newIndexedBatchOp struct {
@@ -625,10 +650,10 @@ type newIndexedBatchOp struct {
 func (o *newIndexedBatchOp) run(t *Test, h historyRecorder) {
 	b := t.getDB(o.dbID).NewIndexedBatch()
 	t.setBatch(o.batchID, b)
-	h.Recordf("%s", o)
+	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 }
 
-func (o *newIndexedBatchOp) String() string {
+func (o *newIndexedBatchOp) formattedString(KeyFormat) string {
 	return fmt.Sprintf("%s = %s.NewIndexedBatch()", o.batchID, o.dbID)
 }
 func (o *newIndexedBatchOp) receiver() objID { return o.dbID }
@@ -638,7 +663,7 @@ func (o *newIndexedBatchOp) syncObjs() objIDSlice {
 	return []objID{o.batchID}
 }
 
-func (o *newIndexedBatchOp) keys() []*[]byte                     { return nil }
+func (o *newIndexedBatchOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *newIndexedBatchOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // batchCommitOp models a Batch.Commit operation.
@@ -650,17 +675,19 @@ type batchCommitOp struct {
 func (o *batchCommitOp) run(t *Test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	err := b.Commit(t.writeOpts)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *batchCommitOp) String() string  { return fmt.Sprintf("%s.Commit()", o.batchID) }
+func (o *batchCommitOp) formattedString(KeyFormat) string {
+	return fmt.Sprintf("%s.Commit()", o.batchID)
+}
 func (o *batchCommitOp) receiver() objID { return o.batchID }
 func (o *batchCommitOp) syncObjs() objIDSlice {
 	// Synchronize on the database so that NewIters wait for the commit.
 	return []objID{o.dbID}
 }
 
-func (o *batchCommitOp) keys() []*[]byte                     { return nil }
+func (o *batchCommitOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *batchCommitOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // ingestOp models a DB.Ingest operation.
@@ -687,7 +714,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 		_ = b.Close()
 		_ = c.Close()
 		t.clearObj(id)
-		h.Recordf("%s // %v", o, err)
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
@@ -711,7 +738,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 		return t.getDB(o.dbID).Ingest(context.Background(), paths)
 	}))
 
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func (o *ingestOp) receiver() objID { return o.dbID }
@@ -865,7 +892,7 @@ func (o *ingestOp) collapseBatch(
 	return collapsed, nil
 }
 
-func (o *ingestOp) String() string {
+func (o *ingestOp) formattedString(KeyFormat) string {
 	var buf strings.Builder
 	buf.WriteString(o.dbID.String())
 	buf.WriteString(".Ingest(")
@@ -879,14 +906,14 @@ func (o *ingestOp) String() string {
 	return buf.String()
 }
 
-func (o *ingestOp) keys() []*[]byte                     { return nil }
+func (o *ingestOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *ingestOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 type ingestAndExciseOp struct {
 	dbID                   objID
 	batchID                objID
 	derivedDBID            objID
-	exciseStart, exciseEnd []byte
+	exciseStart, exciseEnd UserKey
 }
 
 func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
@@ -898,7 +925,8 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	}
 	db := t.getDB(o.dbID)
 	if b.Empty() {
-		h.Recordf("%s // %v", o, o.simulateExcise(db, t))
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat),
+			o.simulateExcise(db, t))
 		return
 	}
 
@@ -910,7 +938,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	err = firstError(err, b.Close())
 
 	if writerMeta.Properties.NumEntries == 0 && writerMeta.Properties.NumRangeKeys() == 0 {
-		h.Recordf("%s // %v", o, o.simulateExcise(db, t))
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), o.simulateExcise(db, t))
 		return
 	}
 
@@ -929,7 +957,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		}))
 	}
 
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func (o *ingestAndExciseOp) simulateExcise(db *pebble.DB, t *Test) error {
@@ -951,12 +979,14 @@ func (o *ingestAndExciseOp) syncObjs() objIDSlice {
 	return objs
 }
 
-func (o *ingestAndExciseOp) String() string {
-	return fmt.Sprintf("%s.IngestAndExcise(%s, %q, %q)", o.dbID, o.batchID, o.exciseStart, o.exciseEnd)
+func (o *ingestAndExciseOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.IngestAndExcise(%s, %q, %q)",
+		o.dbID, o.batchID, kf.FormatKey(o.exciseStart), kf.FormatKey(o.exciseEnd))
 }
 
-func (o *ingestAndExciseOp) keys() []*[]byte {
-	return []*[]byte{&o.exciseStart, &o.exciseEnd}
+func (o *ingestAndExciseOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.exciseStart = fn(o.exciseStart)
+	o.exciseEnd = fn(o.exciseEnd)
 }
 
 func (o *ingestAndExciseOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1033,7 +1063,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 		_, err = db.IngestExternalFiles(context.Background(), external)
 	}
 
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func (o *ingestExternalFilesOp) receiver() objID { return o.dbID }
@@ -1047,30 +1077,32 @@ func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
 	return slices.Compact(res)
 }
 
-func (o *ingestExternalFilesOp) String() string {
+func (o *ingestExternalFilesOp) formattedString(kf KeyFormat) string {
 	strs := make([]string, len(o.objs))
 	for i, obj := range o.objs {
 		strs[i] = fmt.Sprintf("%s, %q /* start */, %q /* end */, %q /* syntheticSuffix */, %q /* syntheticPrefix */",
-			obj.externalObjID, obj.bounds.Start, obj.bounds.End, obj.syntheticSuffix, obj.syntheticPrefix,
+			obj.externalObjID, kf.FormatKey(obj.bounds.Start), kf.FormatKey(obj.bounds.End),
+			kf.FormatKeySuffix(UserKeySuffix(obj.syntheticSuffix)), kf.FormatKey(UserKey(obj.syntheticPrefix)),
 		)
 	}
 	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
 }
 
-func (o *ingestExternalFilesOp) keys() []*[]byte {
-	// If any of the objects have synthetic prefixes, we can't allow modification
-	// of external object bounds.
+func (o *ingestExternalFilesOp) rewriteKeys(fn func(UserKey) UserKey) {
+	// If any of the objects have synthetic prefixes, we can't allow
+	// modification of external object bounds.
+	allowModification := true
 	for i := range o.objs {
-		if o.objs[i].syntheticPrefix.IsSet() {
-			return nil
-		}
+		allowModification = allowModification && !o.objs[i].syntheticPrefix.IsSet()
 	}
 
-	var res []*[]byte
 	for i := range o.objs {
-		res = append(res, &o.objs[i].bounds.Start, &o.objs[i].bounds.End)
+		s, e := fn(o.objs[i].bounds.Start), fn(o.objs[i].bounds.End)
+		if allowModification {
+			o.objs[i].bounds.Start = s
+			o.objs[i].bounds.End = e
+		}
 	}
-	return res
 }
 
 func (o *ingestExternalFilesOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1084,7 +1116,7 @@ func (o *ingestExternalFilesOp) diagramKeyRanges() []pebble.KeyRange {
 // getOp models a Reader.Get operation.
 type getOp struct {
 	readerID    objID
-	key         []byte
+	key         UserKey
 	derivedDBID objID
 }
 
@@ -1096,13 +1128,15 @@ func (o *getOp) run(t *Test, h historyRecorder) {
 		val, closer, err = r.Get(o.key)
 		return err
 	})
-	h.Recordf("%s // [%q] %v", o, val, err)
+	h.Recordf("%s // [%q] %v", o.formattedString(t.testOpts.KeyFormat), val, err)
 	if closer != nil {
 		closer.Close()
 	}
 }
 
-func (o *getOp) String() string  { return fmt.Sprintf("%s.Get(%q)", o.readerID, o.key) }
+func (o *getOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Get(%q)", o.readerID, kf.FormatKey(o.key))
+}
 func (o *getOp) receiver() objID { return o.readerID }
 func (o *getOp) syncObjs() objIDSlice {
 	if o.readerID.tag() == dbTag {
@@ -1115,8 +1149,8 @@ func (o *getOp) syncObjs() objIDSlice {
 	return nil
 }
 
-func (o *getOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *getOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *getOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1136,7 +1170,7 @@ const debugIterators = false
 
 func (o *newIterOp) run(t *Test, h historyRecorder) {
 	r := t.getReader(o.readerID)
-	opts := iterOptions(o.iterOpts)
+	opts := iterOptions(t.testOpts.KeyFormat, o.iterOpts)
 	if debugIterators {
 		opts.DebugRangeKeyStack = true
 	}
@@ -1158,12 +1192,14 @@ func (o *newIterOp) run(t *Test, h historyRecorder) {
 		rand.Read(opts.LowerBound[:])
 		rand.Read(opts.UpperBound[:])
 	}
-	h.Recordf("%s // %v", o, i.Error())
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
 
-func (o *newIterOp) String() string {
-	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
-		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
+func (o *newIterOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, o.readerID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
+		o.keyTypes, kf.FormatKeySuffix(o.filterMin), kf.FormatKeySuffix(o.filterMax),
+		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
 }
 
 func (o *newIterOp) receiver() objID { return o.readerID }
@@ -1179,15 +1215,13 @@ func (o *newIterOp) syncObjs() objIDSlice {
 	return objs
 }
 
-func (o *newIterOp) keys() []*[]byte {
-	var res []*[]byte
+func (o *newIterOp) rewriteKeys(fn func(UserKey) UserKey) {
 	if o.lower != nil {
-		res = append(res, &o.lower)
+		o.lower = fn(o.lower)
 	}
 	if o.upper != nil {
-		res = append(res, &o.upper)
+		o.upper = fn(o.upper)
 	}
-	return res
 }
 
 func (o *newIterOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1217,7 +1251,7 @@ type newIterUsingCloneOp struct {
 func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 	iter := t.getIter(o.existingIterID)
 	cloneOpts := pebble.CloneOptions{
-		IterOptions:      iterOptions(o.iterOpts),
+		IterOptions:      iterOptions(t.testOpts.KeyFormat, o.iterOpts),
 		RefreshBatchView: o.refreshBatch,
 	}
 	i, err := iter.iter.Clone(cloneOpts)
@@ -1225,13 +1259,14 @@ func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 		panic(err)
 	}
 	t.setIter(o.iterID, i)
-	h.Recordf("%s // %v", o, i.Error())
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
 
-func (o *newIterUsingCloneOp) String() string {
-	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
-		o.iterID, o.existingIterID, o.refreshBatch, o.lower, o.upper,
-		o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
+func (o *newIterUsingCloneOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, o.existingIterID, o.refreshBatch, kf.FormatKey(o.lower),
+		kf.FormatKey(o.upper), o.keyTypes, kf.FormatKeySuffix(o.filterMin),
+		kf.FormatKeySuffix(o.filterMax), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
 }
 
 func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
@@ -1250,14 +1285,14 @@ func (o *newIterUsingCloneOp) syncObjs() objIDSlice {
 	return objIDs
 }
 
-func (o *newIterUsingCloneOp) keys() []*[]byte                     { return nil }
-func (o *newIterUsingCloneOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *newIterUsingCloneOp) rewriteKeys(fn func(UserKey) UserKey) {}
+func (o *newIterUsingCloneOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // iterSetBoundsOp models an Iterator.SetBounds operation.
 type iterSetBoundsOp struct {
 	iterID objID
-	lower  []byte
-	upper  []byte
+	lower  UserKey
+	upper  UserKey
 }
 
 func (o *iterSetBoundsOp) run(t *Test, h historyRecorder) {
@@ -1276,18 +1311,20 @@ func (o *iterSetBoundsOp) run(t *Test, h historyRecorder) {
 	rand.Read(lower[:])
 	rand.Read(upper[:])
 
-	h.Recordf("%s // %v", o, i.Error())
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
 
-func (o *iterSetBoundsOp) String() string {
-	return fmt.Sprintf("%s.SetBounds(%q, %q)", o.iterID, o.lower, o.upper)
+func (o *iterSetBoundsOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.SetBounds(%q, %q)", o.iterID,
+		kf.FormatKey(o.lower), kf.FormatKey(o.upper))
 }
 
 func (o *iterSetBoundsOp) receiver() objID      { return o.iterID }
 func (o *iterSetBoundsOp) syncObjs() objIDSlice { return nil }
 
-func (o *iterSetBoundsOp) keys() []*[]byte {
-	return []*[]byte{&o.lower, &o.upper}
+func (o *iterSetBoundsOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.lower = fn(o.lower)
+	o.upper = fn(o.upper)
 }
 
 func (o *iterSetBoundsOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1308,7 +1345,7 @@ type iterSetOptionsOp struct {
 func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 
-	opts := iterOptions(o.iterOpts)
+	opts := iterOptions(t.testOpts.KeyFormat, o.iterOpts)
 	if opts == nil {
 		opts = &pebble.IterOptions{}
 	}
@@ -1319,15 +1356,17 @@ func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 	rand.Read(opts.LowerBound[:])
 	rand.Read(opts.UpperBound[:])
 
-	h.Recordf("%s // %v", o, i.Error())
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
 
-func (o *iterSetOptionsOp) String() string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
-		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
+func (o *iterSetOptionsOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
+		o.keyTypes, kf.FormatKeySuffix(o.filterMin), kf.FormatKeySuffix(o.filterMax),
+		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
 }
 
-func iterOptions(o iterOpts) *pebble.IterOptions {
+func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 	if o.IsZero() && !debugIterators {
 		return nil
 	}
@@ -1349,29 +1388,28 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 		DebugRangeKeyStack: debugIterators,
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
-		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
-			return sstable.NewTestKeysMaskingFilter()
-		}
+		opts.RangeKeyMasking.Filter = kf.NewSuffixFilterMask
 	}
-	if o.filterMax > 0 {
+	if o.filterMax != nil {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
-			sstable.NewTestKeysBlockPropertyFilter(o.filterMin, o.filterMax),
+			kf.NewSuffixBlockPropertyFilter(o.filterMin, o.filterMax),
 		}
 		// Enforce the timestamp bounds in SkipPoint, so that the iterator never
 		// returns a key outside the filterMin, filterMax bounds. This provides
 		// deterministic iteration.
 		opts.SkipPoint = func(k []byte) (skip bool) {
-			n := testkeys.Comparer.Split(k)
+			n := kf.Comparer.Split(k)
 			if n == len(k) {
 				// No suffix, don't skip it.
 				return false
 			}
-			v, err := testkeys.ParseSuffix(k[n:])
-			if err != nil {
-				panic(err)
+			if kf.Comparer.ComparePointSuffixes(k[n:], o.filterMin) < 0 {
+				return true
 			}
-			ts := uint64(v)
-			return ts < o.filterMin || ts >= o.filterMax
+			if kf.Comparer.ComparePointSuffixes(k[n:], o.filterMax) >= 0 {
+				return true
+			}
+			return false
 		}
 	}
 	return opts
@@ -1389,14 +1427,14 @@ func (o *iterSetOptionsOp) syncObjs() objIDSlice {
 	return nil
 }
 
-func (o *iterSetOptionsOp) keys() []*[]byte                     { return nil }
-func (o *iterSetOptionsOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *iterSetOptionsOp) rewriteKeys(fn func(UserKey) UserKey) {}
+func (o *iterSetOptionsOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.
 type iterSeekGEOp struct {
 	iterID objID
-	key    []byte
-	limit  []byte
+	key    UserKey
+	limit  UserKey
 
 	derivedReaderID objID
 }
@@ -1457,20 +1495,23 @@ func (o *iterSeekGEOp) run(t *Test, h historyRecorder) {
 		valid, validStr = validityStateToStr(i.SeekGEWithLimit(o.key, o.limit))
 	}
 	if valid {
-		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+		h.Recordf("%s // [%s] %v",
+			o.formattedString(t.testOpts.KeyFormat), validStr, i.Error())
 	}
 }
 
-func (o *iterSeekGEOp) String() string {
-	return fmt.Sprintf("%s.SeekGE(%q, %q)", o.iterID, o.key, o.limit)
+func (o *iterSeekGEOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.SeekGE(%q, %q)",
+		o.iterID, kf.FormatKey(o.key), kf.FormatKey(o.limit))
 }
 func (o *iterSeekGEOp) receiver() objID      { return o.iterID }
 func (o *iterSeekGEOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterSeekGEOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *iterSeekGEOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *iterSeekGEOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1490,7 +1531,7 @@ func onlyBatchIDs(ids ...objID) objIDSlice {
 // iterSeekPrefixGEOp models an Iterator.SeekPrefixGE operation.
 type iterSeekPrefixGEOp struct {
 	iterID objID
-	key    []byte
+	key    UserKey
 
 	derivedReaderID objID
 }
@@ -1499,20 +1540,21 @@ func (o *iterSeekPrefixGEOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.SeekPrefixGE(o.key)
 	if valid {
-		h.Recordf("%s // [%t,%s] %v", o, valid, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%t,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			valid, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		h.Recordf("%s // [%t] %v", o.formattedString(t.testOpts.KeyFormat), valid, i.Error())
 	}
 }
 
-func (o *iterSeekPrefixGEOp) String() string {
-	return fmt.Sprintf("%s.SeekPrefixGE(%q)", o.iterID, o.key)
+func (o *iterSeekPrefixGEOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.SeekPrefixGE(%q)", o.iterID, kf.FormatKey(o.key))
 }
 func (o *iterSeekPrefixGEOp) receiver() objID      { return o.iterID }
 func (o *iterSeekPrefixGEOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterSeekPrefixGEOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *iterSeekPrefixGEOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *iterSeekPrefixGEOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1522,8 +1564,8 @@ func (o *iterSeekPrefixGEOp) diagramKeyRanges() []pebble.KeyRange {
 // iterSeekLTOp models an Iterator.SeekLT[WithLimit] operation.
 type iterSeekLTOp struct {
 	iterID objID
-	key    []byte
-	limit  []byte
+	key    UserKey
+	limit  UserKey
 
 	derivedReaderID objID
 }
@@ -1539,21 +1581,24 @@ func (o *iterSeekLTOp) run(t *Test, h historyRecorder) {
 		valid, validStr = validityStateToStr(i.SeekLTWithLimit(o.key, o.limit))
 	}
 	if valid {
-		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, i.Error())
 	}
 }
 
-func (o *iterSeekLTOp) String() string {
-	return fmt.Sprintf("%s.SeekLT(%q, %q)", o.iterID, o.key, o.limit)
+func (o *iterSeekLTOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.SeekLT(%q, %q)", o.iterID,
+		kf.FormatKey(o.key), kf.FormatKey(o.limit))
 }
 
 func (o *iterSeekLTOp) receiver() objID      { return o.iterID }
 func (o *iterSeekLTOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterSeekLTOp) keys() []*[]byte {
-	return []*[]byte{&o.key}
+func (o *iterSeekLTOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.key = fn(o.key)
 }
 
 func (o *iterSeekLTOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1571,17 +1616,19 @@ func (o *iterFirstOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.First()
 	if valid {
-		h.Recordf("%s // [%t,%s] %v", o, valid, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%t,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			valid, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		h.Recordf("%s // [%t] %v", o.formattedString(t.testOpts.KeyFormat),
+			valid, i.Error())
 	}
 }
 
-func (o *iterFirstOp) String() string       { return fmt.Sprintf("%s.First()", o.iterID) }
-func (o *iterFirstOp) receiver() objID      { return o.iterID }
-func (o *iterFirstOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
+func (o *iterFirstOp) formattedString(KeyFormat) string { return fmt.Sprintf("%s.First()", o.iterID) }
+func (o *iterFirstOp) receiver() objID                  { return o.iterID }
+func (o *iterFirstOp) syncObjs() objIDSlice             { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterFirstOp) keys() []*[]byte                     { return nil }
+func (o *iterFirstOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *iterFirstOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // iterLastOp models an Iterator.Last operation.
@@ -1595,23 +1642,25 @@ func (o *iterLastOp) run(t *Test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.Last()
 	if valid {
-		h.Recordf("%s // [%t,%s] %v", o, valid, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%t,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			valid, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		h.Recordf("%s // [%t] %v", o.formattedString(t.testOpts.KeyFormat),
+			valid, i.Error())
 	}
 }
 
-func (o *iterLastOp) String() string       { return fmt.Sprintf("%s.Last()", o.iterID) }
-func (o *iterLastOp) receiver() objID      { return o.iterID }
-func (o *iterLastOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
+func (o *iterLastOp) formattedString(KeyFormat) string { return fmt.Sprintf("%s.Last()", o.iterID) }
+func (o *iterLastOp) receiver() objID                  { return o.iterID }
+func (o *iterLastOp) syncObjs() objIDSlice             { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterLastOp) keys() []*[]byte                     { return nil }
+func (o *iterLastOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *iterLastOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // iterNextOp models an Iterator.Next[WithLimit] operation.
 type iterNextOp struct {
 	iterID objID
-	limit  []byte
+	limit  UserKey
 
 	derivedReaderID objID
 }
@@ -1627,17 +1676,21 @@ func (o *iterNextOp) run(t *Test, h historyRecorder) {
 		valid, validStr = validityStateToStr(i.NextWithLimit(o.limit))
 	}
 	if valid {
-		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, i.Error())
 	}
 }
 
-func (o *iterNextOp) String() string       { return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit) }
+func (o *iterNextOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Next(%q)", o.iterID, kf.FormatKey(o.limit))
+}
 func (o *iterNextOp) receiver() objID      { return o.iterID }
 func (o *iterNextOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterNextOp) keys() []*[]byte                     { return nil }
+func (o *iterNextOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *iterNextOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // iterNextPrefixOp models an Iterator.NextPrefix operation.
@@ -1652,17 +1705,21 @@ func (o *iterNextPrefixOp) run(t *Test, h historyRecorder) {
 	valid := i.NextPrefix()
 	validStr := validBoolToStr(valid)
 	if valid {
-		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, i.Error())
 	}
 }
 
-func (o *iterNextPrefixOp) String() string       { return fmt.Sprintf("%s.NextPrefix()", o.iterID) }
+func (o *iterNextPrefixOp) formattedString(KeyFormat) string {
+	return fmt.Sprintf("%s.NextPrefix()", o.iterID)
+}
 func (o *iterNextPrefixOp) receiver() objID      { return o.iterID }
 func (o *iterNextPrefixOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterNextPrefixOp) keys() []*[]byte                     { return nil }
+func (o *iterNextPrefixOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *iterNextPrefixOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // iterCanSingleDelOp models a call to CanDeterministicallySingleDelete with an
@@ -1688,14 +1745,16 @@ func (o *iterCanSingleDelOp) run(t *Test, h historyRecorder) {
 	//  - The iterator was already in an error state when the operation ran.
 	//  - The operation is deterministically invalid (like using an InternalNext
 	//    to change directions.)
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *iterCanSingleDelOp) String() string       { return fmt.Sprintf("%s.InternalNext()", o.iterID) }
+func (o *iterCanSingleDelOp) formattedString(KeyFormat) string {
+	return fmt.Sprintf("%s.InternalNext()", o.iterID)
+}
 func (o *iterCanSingleDelOp) receiver() objID      { return o.iterID }
 func (o *iterCanSingleDelOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterCanSingleDelOp) keys() []*[]byte                     { return nil }
+func (o *iterCanSingleDelOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *iterCanSingleDelOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
@@ -1717,17 +1776,21 @@ func (o *iterPrevOp) run(t *Test, h historyRecorder) {
 		valid, validStr = validityStateToStr(i.PrevWithLimit(o.limit))
 	}
 	if valid {
-		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, iteratorPos(i), i.Error())
 	} else {
-		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
+			validStr, i.Error())
 	}
 }
 
-func (o *iterPrevOp) String() string       { return fmt.Sprintf("%s.Prev(%q)", o.iterID, o.limit) }
+func (o *iterPrevOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Prev(%q)", o.iterID, kf.FormatKey(o.limit))
+}
 func (o *iterPrevOp) receiver() objID      { return o.iterID }
 func (o *iterPrevOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
-func (o *iterPrevOp) keys() []*[]byte                     { return nil }
+func (o *iterPrevOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *iterPrevOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 // newSnapshotOp models a DB.NewSnapshot operation.
@@ -1757,17 +1820,17 @@ func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 		s := t.getDB(o.dbID).NewSnapshot()
 		t.setSnapshot(o.snapID, s)
 	}
-	h.Recordf("%s", o)
+	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 }
 
-func (o *newSnapshotOp) String() string {
+func (o *newSnapshotOp) formattedString(kf KeyFormat) string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%s = %s.NewSnapshot(", o.snapID, o.dbID)
 	for i := range o.bounds {
 		if i > 0 {
 			fmt.Fprint(&buf, ", ")
 		}
-		fmt.Fprintf(&buf, "%q, %q", o.bounds[i].Start, o.bounds[i].End)
+		fmt.Fprintf(&buf, "%q, %q", kf.FormatKey(o.bounds[i].Start), kf.FormatKey(o.bounds[i].End))
 	}
 	fmt.Fprint(&buf, ")")
 	return buf.String()
@@ -1775,12 +1838,11 @@ func (o *newSnapshotOp) String() string {
 func (o *newSnapshotOp) receiver() objID      { return o.dbID }
 func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
 
-func (o *newSnapshotOp) keys() []*[]byte {
-	var res []*[]byte
+func (o *newSnapshotOp) rewriteKeys(fn func(UserKey) UserKey) {
 	for i := range o.bounds {
-		res = append(res, &o.bounds[i].Start, &o.bounds[i].End)
+		o.bounds[i].Start = fn(o.bounds[i].Start)
+		o.bounds[i].End = fn(o.bounds[i].End)
 	}
-	return res
 }
 
 func (o *newSnapshotOp) diagramKeyRanges() []pebble.KeyRange {
@@ -1831,16 +1893,16 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	t.setExternalObj(o.externalObjID, externalObjMeta{
 		sstMeta: sstMeta,
 	})
-	h.Recordf("%s", o)
+	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 }
 
-func (o *newExternalObjOp) String() string {
+func (o *newExternalObjOp) formattedString(KeyFormat) string {
 	return fmt.Sprintf("%s = %s.NewExternalObj()", o.externalObjID, o.batchID)
 }
 func (o *newExternalObjOp) receiver() objID      { return o.batchID }
 func (o *newExternalObjOp) syncObjs() objIDSlice { return []objID{o.externalObjID} }
 
-func (o *newExternalObjOp) keys() []*[]byte                     { return nil }
+func (o *newExternalObjOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *newExternalObjOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 type dbRatchetFormatMajorVersionOp struct {
@@ -1861,16 +1923,16 @@ func (o *dbRatchetFormatMajorVersionOp) run(t *Test, h historyRecorder) {
 	if t.getDB(o.dbID).FormatMajorVersion() < o.vers {
 		err = t.getDB(o.dbID).RatchetFormatMajorVersion(o.vers)
 	}
-	h.Recordf("%s // %v", o, err)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (o *dbRatchetFormatMajorVersionOp) String() string {
+func (o *dbRatchetFormatMajorVersionOp) formattedString(KeyFormat) string {
 	return fmt.Sprintf("%s.RatchetFormatMajorVersion(%s)", o.dbID, o.vers)
 }
 func (o *dbRatchetFormatMajorVersionOp) receiver() objID      { return o.dbID }
 func (o *dbRatchetFormatMajorVersionOp) syncObjs() objIDSlice { return nil }
 
-func (o *dbRatchetFormatMajorVersionOp) keys() []*[]byte                     { return nil }
+func (o *dbRatchetFormatMajorVersionOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *dbRatchetFormatMajorVersionOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 type dbRestartOp struct {
@@ -1884,24 +1946,24 @@ type dbRestartOp struct {
 
 func (o *dbRestartOp) run(t *Test, h historyRecorder) {
 	if err := t.restartDB(o.dbID); err != nil {
-		h.Recordf("%s // %v", o, err)
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 		h.history.err.Store(errors.Wrap(err, "dbRestartOp"))
 	} else {
-		h.Recordf("%s", o)
+		h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 	}
 }
 
-func (o *dbRestartOp) String() string       { return fmt.Sprintf("%s.Restart()", o.dbID) }
-func (o *dbRestartOp) receiver() objID      { return o.dbID }
-func (o *dbRestartOp) syncObjs() objIDSlice { return o.affectedObjects }
+func (o *dbRestartOp) formattedString(KeyFormat) string { return fmt.Sprintf("%s.Restart()", o.dbID) }
+func (o *dbRestartOp) receiver() objID                  { return o.dbID }
+func (o *dbRestartOp) syncObjs() objIDSlice             { return o.affectedObjects }
 
-func (o *dbRestartOp) keys() []*[]byte                     { return nil }
+func (o *dbRestartOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *dbRestartOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
-func formatOps(ops []op) string {
+func formatOps(kf KeyFormat, ops []op) string {
 	var buf strings.Builder
 	for _, op := range ops {
-		fmt.Fprintf(&buf, "%s\n", op)
+		fmt.Fprintf(&buf, "%s\n", op.formattedString(kf))
 	}
 	return buf.String()
 }
@@ -1910,7 +1972,7 @@ func formatOps(ops []op) string {
 // another through either an IngestAndExcise, or an Ingest.
 type replicateOp struct {
 	source, dest objID
-	start, end   []byte
+	start, end   UserKey
 }
 
 func (r *replicateOp) runSharedReplicate(
@@ -1943,18 +2005,18 @@ func (r *replicateOp) runSharedReplicate(
 		nil,
 	)
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
 	err = w.Close()
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	meta, err := w.Raw().Metadata()
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	if len(sharedSSTs) == 0 && meta.Properties.NumEntries == 0 && meta.Properties.NumRangeKeys() == 0 {
@@ -1964,16 +2026,16 @@ func (r *replicateOp) runSharedReplicate(
 		//
 		// TODO(bilal): Remove this when we support excises with no matching ingests.
 		if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
-			h.Recordf("%s // %v", r, err)
+			h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 			return
 		}
 		err := dest.DeleteRange(r.start, r.end, t.writeOpts)
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
 	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, sharedSSTs, nil /* external */, pebble.KeyRange{Start: r.start, End: r.end})
-	h.Recordf("%s // %v", r, err)
+	h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func (r *replicateOp) runExternalReplicate(
@@ -2006,18 +2068,18 @@ func (r *replicateOp) runExternalReplicate(
 		},
 	)
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
 	err = w.Close()
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	meta, err := w.Raw().Metadata()
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	if len(externalSSTs) == 0 && meta.Properties.NumEntries == 0 && meta.Properties.NumRangeKeys() == 0 {
@@ -2027,16 +2089,16 @@ func (r *replicateOp) runExternalReplicate(
 		//
 		// TODO(bilal): Remove this when we support excises with no matching ingests.
 		if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
-			h.Recordf("%s // %v", r, err)
+			h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 			return
 		}
 		err := dest.DeleteRange(r.start, r.end, t.writeOpts)
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
 	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end})
-	h.Recordf("%s // %v", r, err)
+	h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 }
 
 func (r *replicateOp) run(t *Test, h historyRecorder) {
@@ -2049,7 +2111,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	sstPath := path.Join(t.tmpDir, fmt.Sprintf("ext-replicate%d.sst", t.idx))
 	f, err := t.opts.FS.Create(sstPath, vfs.WriteCategoryUnspecified)
 	if err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), t.opts.MakeWriterOptions(0, dest.TableFormat()))
@@ -2069,11 +2131,11 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 
 	// First, do a RangeKeyDelete and DeleteRange on the whole span.
 	if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	if err := dest.DeleteRange(r.start, r.end, t.writeOpts); err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	iter, err := source.NewIter(&pebble.IterOptions{
@@ -2116,7 +2178,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 		}
 	}
 	if err := iter.Error(); err != nil {
-		h.Recordf("%s // %v", r, err)
+		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	if err := w.Close(); err != nil {
@@ -2124,18 +2186,20 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	}
 
 	err = dest.Ingest(context.Background(), []string{sstPath})
-	h.Recordf("%s // %v", r, err)
+	h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 }
 
-func (r *replicateOp) String() string {
-	return fmt.Sprintf("%s.Replicate(%s, %q, %q)", r.source, r.dest, r.start, r.end)
+func (r *replicateOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.Replicate(%s, %q, %q)", r.source, r.dest,
+		kf.FormatKey(r.start), kf.FormatKey(r.end))
 }
 
 func (r *replicateOp) receiver() objID      { return r.source }
 func (r *replicateOp) syncObjs() objIDSlice { return objIDSlice{r.dest} }
 
-func (r *replicateOp) keys() []*[]byte {
-	return []*[]byte{&r.start, &r.end}
+func (r *replicateOp) rewriteKeys(fn func(UserKey) UserKey) {
+	r.start = fn(r.start)
+	r.end = fn(r.end)
 }
 
 func (r *replicateOp) diagramKeyRanges() []pebble.KeyRange {

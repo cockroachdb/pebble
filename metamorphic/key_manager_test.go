@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/stretchr/testify/require"
 )
@@ -77,6 +78,7 @@ func printKeys(w io.Writer, keys [][]byte) {
 func TestKeyManager(t *testing.T) {
 	var buf bytes.Buffer
 	km := newKeyManager(1 /* numInstances */)
+	kf := TestkeysKeyFormat
 	datadriven.RunTest(t, "testdata/key_manager", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
@@ -130,7 +132,7 @@ func TestKeyManager(t *testing.T) {
 						t.Fatalf("expected 1 op but found %d", len(ops))
 					}
 					km.update(ops[0])
-					fmt.Fprintf(&buf, "[%s]\n", ops[0])
+					fmt.Fprintf(&buf, "[%s]\n", ops[0].formattedString(kf))
 				default:
 					return fmt.Sprintf("unrecognized subcommand %q", fields[0])
 				}
@@ -170,4 +172,39 @@ func TestLoadPrecedingKeys(t *testing.T) {
 	// keys that it didn't end up using in operations.
 	require.Subset(t, km.globalKeys, km2.globalKeys)
 	require.Subset(t, km.globalKeyPrefixes, km2.globalKeyPrefixes)
+}
+
+func TestGenerateRandKeyInRange(t *testing.T) {
+	rng := randvar.NewRand()
+
+	for _, kf := range knownKeyFormats {
+		t.Run(kf.Name, func(t *testing.T) {
+			km := newKeyManager(1 /* numInstances */)
+			g := kf.NewGenerator(km, rng, DefaultOpConfig())
+			// Seed 100 initial keys.
+			for i := 0; i < 100; i++ {
+				_ = g.RandKey(1.0)
+			}
+			for i := 0; i < 100; i++ {
+				a := g.RandKey(0.01)
+				b := g.RandKey(0.01)
+				// Ensure unique prefixes; required by RandKeyInRange.
+				for kf.Comparer.Equal(kf.Comparer.Split.Prefix(a), kf.Comparer.Split.Prefix(b)) {
+					b = g.RandKey(0.01)
+				}
+				if v := kf.Comparer.Compare(a, b); v > 0 {
+					a, b = b, a
+				}
+				kr := pebble.KeyRange{Start: a, End: b}
+				for j := 0; j < 10; j++ {
+					k := g.RandKeyInRange(0.05, kr)
+					if kf.Comparer.Compare(k, a) < 0 {
+						t.Errorf("generated random key %q outside range %s", k, kr)
+					} else if kf.Comparer.Compare(k, b) >= 0 {
+						t.Errorf("generated random key %q outside range %s", k, kr)
+					}
+				}
+			}
+		})
+	}
 }
