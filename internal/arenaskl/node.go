@@ -49,7 +49,6 @@ type node struct {
 	keySize    uint32
 	keyTrailer base.InternalKeyTrailer
 	valueSize  uint32
-	allocSize  uint32
 
 	// Most nodes do not need to use the full height of the tower, since the
 	// probability of each successive level decreases exponentially. Because
@@ -95,7 +94,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	unusedSize := uint32((maxHeight - int(height)) * linksSize)
 	nodeSize := uint32(maxNodeSize) - unusedSize
 
-	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, nodeAlignment, unusedSize)
+	nodeOffset, err := arena.alloc(nodeSize+keySize+valueSize, nodeAlignment, unusedSize)
 	if err != nil {
 		return
 	}
@@ -104,7 +103,6 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	nd.keyOffset = nodeOffset + nodeSize
 	nd.keySize = keySize
 	nd.valueSize = valueSize
-	nd.allocSize = allocSize
 	return
 }
 
