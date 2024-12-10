@@ -125,7 +125,7 @@ func TestIndexIterInitHandle(t *testing.T) {
 	d := (*IndexBlockDecoder)(unsafe.Pointer(v.BlockMetadata()))
 	d.Init(blockData)
 
-	h := v.MakeHandle(c, cache.ID(1), base.DiskFileNum(1), 0)
+	h := v.SetInCacheForTesting(c, cache.ID(1), base.DiskFileNum(1), 0)
 	defer h.Release()
 
 	getBlockAndIterate := func(it *IndexIter) {
