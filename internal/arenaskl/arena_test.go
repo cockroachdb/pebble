@@ -35,19 +35,19 @@ func TestArenaSizeOverflow(t *testing.T) {
 	a := newArena(constants.MaxUint32OrInt)
 
 	// Allocating under the limit throws no error.
-	offset, _, err := a.alloc(math.MaxUint16, 1, 0)
+	offset, err := a.alloc(math.MaxUint16, 1, 0)
 	require.Nil(t, err)
 	require.Equal(t, uint32(1), offset)
 	require.Equal(t, uint32(math.MaxUint16)+1, a.Size())
 
 	// Allocating over the limit could cause an accounting
 	// overflow if 32-bit arithmetic was used. It shouldn't.
-	_, _, err = a.alloc(math.MaxUint32, 1, 0)
+	_, err = a.alloc(math.MaxUint32, 1, 0)
 	require.Equal(t, ErrArenaFull, err)
 	require.Equal(t, uint32(constants.MaxUint32OrInt), a.Size())
 
 	// Continuing to allocate continues to throw an error.
-	_, _, err = a.alloc(math.MaxUint16, 1, 0)
+	_, err = a.alloc(math.MaxUint16, 1, 0)
 	require.Equal(t, ErrArenaFull, err)
 	require.Equal(t, uint32(constants.MaxUint32OrInt), a.Size())
 }

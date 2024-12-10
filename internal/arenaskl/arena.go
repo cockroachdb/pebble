@@ -80,14 +80,14 @@ func (a *Arena) Capacity() uint32 {
 // If overflow is not 0, it also ensures that many bytes after the buffer are
 // inside the arena (this is used for structures that are larger than the
 // requested size but don't use those extra bytes).
-func (a *Arena) alloc(size, alignment, overflow uint32) (uint32, uint32, error) {
+func (a *Arena) alloc(size, alignment, overflow uint32) (uint32, error) {
 	if invariants.Enabled && (alignment&(alignment-1)) != 0 {
 		panic(errors.AssertionFailedf("invalid alignment %d", alignment))
 	}
 	// Verify that the arena isn't already full.
 	origSize := a.n.Load()
 	if int(origSize) > len(a.buf) {
-		return 0, 0, ErrArenaFull
+		return 0, ErrArenaFull
 	}
 
 	// Pad the allocation with enough bytes to ensure the requested alignment.
@@ -95,12 +95,12 @@ func (a *Arena) alloc(size, alignment, overflow uint32) (uint32, uint32, error) 
 
 	newSize := a.n.Add(padded)
 	if newSize+uint64(overflow) > uint64(len(a.buf)) {
-		return 0, 0, ErrArenaFull
+		return 0, ErrArenaFull
 	}
 
 	// Return the aligned offset.
 	offset := (uint32(newSize) - size) & ^(alignment - 1)
-	return offset, uint32(padded), nil
+	return offset, nil
 }
 
 func (a *Arena) getBytes(offset uint32, size uint32) []byte {
