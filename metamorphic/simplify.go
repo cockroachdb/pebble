@@ -57,7 +57,7 @@ func TryToSimplifyKeys(keyFormat KeyFormat, opsData []byte, retainSuffixes bool)
 			return append(newKey, suffix...)
 		})
 	}
-	return []byte(formatOps(ops))
+	return []byte(formatOps(keyFormat, ops))
 }
 
 func sortedKeys(cmp base.Compare, in map[string]struct{}) []string {

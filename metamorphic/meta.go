@@ -198,7 +198,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 	}
 	ops := generate(rng, opCount, cfg, km)
 	opsPath := filepath.Join(metaDir, "ops")
-	formattedOps := formatOps(ops)
+	formattedOps := formatOps(km.kf, ops)
 	require.NoError(t, os.WriteFile(opsPath, []byte(formattedOps), 0644))
 
 	// runOptions performs a particular test run with the specified options. The

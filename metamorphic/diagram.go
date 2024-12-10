@@ -59,7 +59,7 @@ func TryToGenerateDiagram(keyFormat KeyFormat, opsData []byte) (string, error) {
 		for row.Len() <= len(axis1) {
 			row.WriteByte(' ')
 		}
-		row.WriteString(o.String())
+		row.WriteString(o.formattedString(keyFormat))
 
 		rows = append(rows, row.String())
 	}

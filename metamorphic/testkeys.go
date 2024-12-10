@@ -16,7 +16,9 @@ import (
 )
 
 var TestkeysKeyFormat = KeyFormat{
-	Comparer: testkeys.Comparer,
+	Comparer:        testkeys.Comparer,
+	FormatKey:       func(k UserKey) string { return string(k) },
+	FormatKeySuffix: func(s UserKeySuffix) string { return string(s) },
 	NewGenerator: func(km *keyManager, rng *rand.Rand, cfg OpConfig) KeyGenerator {
 		return &testkeyKeyGenerator{
 			keyManager: km,
