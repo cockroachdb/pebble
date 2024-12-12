@@ -180,7 +180,9 @@ func entryAllocNew() *entry {
 		invariants.SetFinalizer(e, func(obj interface{}) {
 			e := obj.(*entry)
 			if *e != (entry{}) {
-				fmt.Fprintf(os.Stderr, "%p: entry was not freed", e)
+				buf := make([]byte, 256<<10)
+				n := runtime.Stack(buf, true)
+				fmt.Fprintf(os.Stderr, "%p: entry was not freed\n%s", e, string(buf[:n]))
 				os.Exit(1)
 			}
 		})
