@@ -208,6 +208,13 @@ func (b PhysicalBlock) Clone() PhysicalBlock {
 	return PhysicalBlock{data: data, trailer: b.trailer}
 }
 
+// CloneUsingBuf makes a copy of the block data, using the given slice if it has
+// enough capacity.
+func (b PhysicalBlock) CloneUsingBuf(buf []byte) (_ PhysicalBlock, newBuf []byte) {
+	newBuf = append(buf[:0], b.data...)
+	return PhysicalBlock{data: newBuf, trailer: b.trailer}, newBuf
+}
+
 // IsCompressed returns true if the block is compressed.
 func (b *PhysicalBlock) IsCompressed() bool {
 	return CompressionIndicator(b.trailer[0]) != NoCompressionIndicator
@@ -260,14 +267,18 @@ func CompressAndChecksum(
 }
 
 // compress compresses a sstable block, using dstBuf as the desired destination.
+//
+// The result is aliased to dstBuf if that buffer had enough capacity, otherwise
+// it is a newly-allocated buffer.
 func compress(
 	compression Compression, b []byte, dstBuf []byte,
 ) (indicator CompressionIndicator, compressed []byte) {
 	switch compression {
 	case SnappyCompression:
+		// snappy relies on the length of the buffer, and not the capacity to
+		// determine if it needs to make an allocation.
+		dstBuf = dstBuf[:cap(dstBuf):cap(dstBuf)]
 		return SnappyCompressionIndicator, snappy.Encode(dstBuf, b)
-	case NoCompression:
-		return NoCompressionIndicator, b
 	case ZstdCompression:
 		if len(dstBuf) < binary.MaxVarintLen64 {
 			dstBuf = append(dstBuf, make([]byte, binary.MaxVarintLen64-len(dstBuf))...)

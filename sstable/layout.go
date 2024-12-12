@@ -770,7 +770,7 @@ func (w *layoutWriter) writeBlock(
 	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
 	return w.writePrecompressedBlock(block.CompressAndChecksum(
-		&buf.compressedBuf, b, compression, &buf.checksummer))
+		&buf.dataBuf, b, compression, &buf.checksummer))
 }
 
 // writePrecompressedBlock writes a pre-compressed block and its

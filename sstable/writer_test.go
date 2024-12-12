@@ -531,7 +531,7 @@ func TestBlockBufClear(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	b1 := &blockBuf{}
 	b1.tmp[0] = 1
-	b1.compressedBuf = make([]byte, 1)
+	b1.dataBuf = make([]byte, 1)
 	b1.clear()
 	testBlockBufClear(t, b1, &blockBuf{})
 }
@@ -539,7 +539,7 @@ func TestBlockBufClear(t *testing.T) {
 func TestClearDataBlockBuf(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	d := newDataBlockBuf(1, block.ChecksumTypeCRC32c)
-	d.blockBuf.compressedBuf = make([]byte, 1)
+	d.blockBuf.dataBuf = make([]byte, 1)
 	d.dataBlock.Add(ikey("apple"), nil)
 	d.dataBlock.Add(ikey("banana"), nil)
 
