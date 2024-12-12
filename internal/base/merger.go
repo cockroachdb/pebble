@@ -7,7 +7,7 @@ package base
 import "io"
 
 // Merge creates a ValueMerger for the specified key initialized with the value
-// of one merge operand.
+// of one merge operand. The caller retains ownership of key and value.
 type Merge func(key, value []byte) (ValueMerger, error)
 
 // ValueMerger receives merge operands one by one. The operand received is either
