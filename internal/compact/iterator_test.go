@@ -192,15 +192,18 @@ func TestCompactionIter(t *testing.T) {
 						continue
 					}
 					var key *base.InternalKey
-					var value []byte
+					var lv base.LazyValue
 					switch parts[0] {
 					case "first":
-						key, value = iter.First()
+						key, lv = iter.First()
 					case "next":
-						key, value = iter.Next()
+						key, lv = iter.Next()
 					default:
 						d.Fatalf(t, "unknown iter command: %s", parts[0])
 					}
+					value, _, err := lv.Value(nil)
+					require.NoError(t, err)
+
 					if key != nil {
 						snapshotPinned := ""
 						if printSnapshotPinned {
