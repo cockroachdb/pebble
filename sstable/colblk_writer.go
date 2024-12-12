@@ -95,6 +95,7 @@ type RawColumnWriter struct {
 	}
 	layout layoutWriter
 
+	lastKeyBuf            []byte
 	separatorBuf          []byte
 	tmp                   [blockHandleLikelyMaxLen]byte
 	previousUserKey       invariants.Value[[]byte]
@@ -633,10 +634,11 @@ func (w *RawColumnWriter) maybeIncrementTombstoneDenseBlocks(uncompressedLen int
 func (w *RawColumnWriter) enqueueDataBlock(
 	serializedBlock []byte, lastKey base.InternalKey, separator []byte,
 ) error {
-	// TODO(jackson): Avoid allocating the largest point user key every time we
-	// set the largest point key. This is what the rowblk writer does too, but
-	// it's unnecessary.
-	w.meta.SetLargestPointKey(lastKey.Clone())
+	w.lastKeyBuf = append(w.lastKeyBuf[:0], lastKey.UserKey...)
+	w.meta.SetLargestPointKey(base.InternalKey{
+		UserKey: w.lastKeyBuf,
+		Trailer: lastKey.Trailer,
+	})
 
 	if invariants.Enabled {
 		var dec colblk.DataBlockDecoder
