@@ -109,7 +109,7 @@ type Runner struct {
 	err error
 	// Last key/value returned by the compaction iterator.
 	key   *base.InternalKey
-	value []byte
+	value base.LazyValue
 	// Last RANGEDEL span (or portion of it) that was not yet written to a table.
 	lastRangeDelSpan keyspan.Span
 	// Last range key span (or portion of it) that was not yet written to a table.
@@ -152,7 +152,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 	err = errors.CombineErrors(err, tw.Close())
 	if err != nil {
 		r.err = err
-		r.key, r.value = nil, nil
+		r.key, r.value = nil, base.LazyValue{}
 		return
 	}
 	writerMeta, err := tw.Metadata()
@@ -215,7 +215,11 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 			r.lastRangeKeySpan.CopyFrom(r.iter.Span())
 			continue
 		}
-		if err := tw.AddWithForceObsolete(*key, value, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+		v, _, err := value.Value(nil)
+		if err != nil {
+			return nil, err
+		}
+		if err := tw.AddWithForceObsolete(*key, v, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
 			return nil, err
 		}
 		if r.iter.SnapshotPinned() {
@@ -224,7 +228,7 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 			// its elision. Increment the stats.
 			pinnedCount++
 			pinnedKeySize += uint64(len(key.UserKey)) + base.InternalTrailerLen
-			pinnedValueSize += uint64(len(value))
+			pinnedValueSize += uint64(len(v))
 		}
 	}
 	r.key, r.value = key, value

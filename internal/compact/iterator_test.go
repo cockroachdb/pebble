@@ -192,15 +192,17 @@ func TestCompactionIter(t *testing.T) {
 						continue
 					}
 					var key *base.InternalKey
-					var value []byte
+					var lv base.LazyValue
 					switch parts[0] {
 					case "first":
-						key, value = iter.First()
+						key, lv = iter.First()
 					case "next":
-						key, value = iter.Next()
+						key, lv = iter.Next()
 					default:
 						d.Fatalf(t, "unknown iter command: %s", parts[0])
 					}
+					value := lv.InPlaceValue()
+
 					if key != nil {
 						snapshotPinned := ""
 						if printSnapshotPinned {
@@ -216,7 +218,7 @@ func TestCompactionIter(t *testing.T) {
 								forceObsolete = " (force obsolete)"
 							}
 						}
-						v := string(value)
+						v := string(lv.InPlaceValue())
 						if key.Kind() == base.InternalKeyKindDeleteSized && len(value) > 0 {
 							vn, n := binary.Uvarint(value)
 							if n != len(value) {

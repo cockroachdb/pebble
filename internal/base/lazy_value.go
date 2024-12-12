@@ -222,6 +222,12 @@ func (lv *LazyValue) fetchValue(
 	return f.value, f.callerOwned, f.err
 }
 
+// IsInPlaceValue returns true iff the value was stored in-place and does not
+// need to be fetched externally.
+func (lv *LazyValue) IsInPlaceValue() bool {
+	return lv.Fetcher == nil
+}
+
 // InPlaceValue returns the value under the assumption that it is in-place.
 // This is for Pebble-internal code.
 func (lv *LazyValue) InPlaceValue() []byte {
