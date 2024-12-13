@@ -745,25 +745,15 @@ func (w *layoutWriter) WriteValueBlock(blk block.PhysicalBlock) (block.Handle, e
 }
 
 func (w *layoutWriter) WriteValueIndexBlock(
-	blk []byte, vbih valblk.IndexHandle,
+	blk block.PhysicalBlock, vbih valblk.IndexHandle,
 ) (block.Handle, error) {
-	// NB: value index blocks are already finished and contain the block
-	// trailer.
-	// TODO(jackson): can this be refactored to make value blocks less
-	// of a snowflake?
-	off := w.offset
-	w.clearFromCache(off)
-	// Write the bytes to the file.
-	if err := w.writable.Write(blk); err != nil {
+	h, err := w.writePrecompressedBlock(blk)
+	if err != nil {
 		return block.Handle{}, err
 	}
-	l := uint64(len(blk))
-	w.offset += l
-
 	n := valblk.EncodeIndexHandle(w.tmp[:], vbih)
 	w.recordToMetaindexRaw(metaValueIndexName, w.tmp[:n])
-
-	return block.Handle{Offset: off, Length: l}, nil
+	return h, nil
 }
 
 func (w *layoutWriter) writeBlock(
