@@ -391,7 +391,10 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 	size := w.dataBlock.Size()
 	if shouldFlushWithoutLatestKV(size, w.pendingDataBlockSize, entriesWithoutKV, &w.dataFlush) {
 		// Flush the data block excluding the key we just added.
-		w.flushDataBlockWithoutNextKey(key.UserKey)
+		if err := w.flushDataBlockWithoutNextKey(key.UserKey); err != nil {
+			w.err = err
+			return err
+		}
 		// flushDataBlockWithoutNextKey reset the data block builder, and we can
 		// add the key to this next block now.
 		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete)
@@ -601,16 +604,19 @@ type compressedBlock struct {
 	blockBuf blockBuf
 }
 
-func (w *RawColumnWriter) flushDataBlockWithoutNextKey(nextKey []byte) {
+func (w *RawColumnWriter) flushDataBlockWithoutNextKey(nextKey []byte) error {
 	serializedBlock, lastKey := w.dataBlock.Finish(w.dataBlock.Rows()-1, w.pendingDataBlockSize)
 	w.maybeIncrementTombstoneDenseBlocks(len(serializedBlock))
 	// Compute the separator that will be written to the index block alongside
 	// this data block's end offset. It is the separator between the last key in
 	// the finished block and the [nextKey] that was excluded from the block.
 	w.separatorBuf = w.comparer.Separator(w.separatorBuf[:0], lastKey.UserKey, nextKey)
-	w.enqueueDataBlock(serializedBlock, lastKey, w.separatorBuf)
+	if err := w.enqueueDataBlock(serializedBlock, lastKey, w.separatorBuf); err != nil {
+		return err
+	}
 	w.dataBlock.Reset()
 	w.pendingDataBlockSize = 0
+	return nil
 }
 
 // maybeIncrementTombstoneDenseBlocks increments the number of tombstone dense
@@ -652,7 +658,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum
 	cb.physical = block.CompressAndChecksum(
-		&cb.blockBuf.compressedBuf,
+		&cb.blockBuf.dataBuf,
 		serializedBlock,
 		w.opts.Compression,
 		&cb.blockBuf.checksummer,
@@ -663,7 +669,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 		// it to the write queue to be asynchronously written to disk.
 		// TODO(jackson): Should we try to avoid this clone by tracking the
 		// lifetime of the DataBlockWriters?
-		cb.physical = cb.physical.Clone()
+		cb.physical, cb.blockBuf.dataBuf = cb.physical.CloneUsingBuf(cb.blockBuf.dataBuf)
 	}
 	return w.enqueuePhysicalBlock(cb, separator)
 }
@@ -1147,7 +1153,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum
 	cb.physical = block.CompressAndChecksum(
-		&cb.blockBuf.compressedBuf,
+		&cb.blockBuf.dataBuf,
 		b,
 		w.opts.Compression,
 		&cb.blockBuf.checksummer,
@@ -1158,7 +1164,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 		// it to the write queue to be asynchronously written to disk.
 		// TODO(jackson): Should we try to avoid this clone by tracking the
 		// lifetime of the DataBlockWriters?
-		cb.physical = cb.physical.Clone()
+		cb.physical, cb.blockBuf.dataBuf = cb.physical.CloneUsingBuf(cb.blockBuf.dataBuf)
 	}
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
 		return err
