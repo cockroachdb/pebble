@@ -461,19 +461,17 @@ type blockBuf struct {
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
 	// likely large enough for a block handle with properties.
 	tmp [blockHandleLikelyMaxLen]byte
-	// compressedBuf is the destination buffer for compression. It is re-used over the
-	// lifetime of the blockBuf, avoiding the allocation of a temporary buffer for each block.
-	compressedBuf []byte
-	checksummer   block.Checksummer
+	// dataBuf is the destination buffer for compression, or (in some cases where
+	// compression is not used) for storing a copy of the data. It is re-used over
+	// the lifetime of the blockBuf, avoiding the allocation of a temporary buffer
+	// for each block.
+	dataBuf     []byte
+	checksummer block.Checksummer
 }
 
 func (b *blockBuf) clear() {
-	// We can't assign b.compressedBuf[:0] to compressedBuf because snappy relies
-	// on the length of the buffer, and not the capacity to determine if it needs
-	// to make an allocation.
-	*b = blockBuf{
-		compressedBuf: b.compressedBuf, checksummer: b.checksummer,
-	}
+	b.tmp = [blockHandleLikelyMaxLen]byte{}
+	b.dataBuf = b.dataBuf[:0]
 }
 
 // A dataBlockBuf holds all the state required to compress and write a data block to disk.
@@ -545,7 +543,7 @@ func (d *dataBlockBuf) finish() {
 }
 
 func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
-	d.physical = block.CompressAndChecksum(&d.compressedBuf, d.uncompressed, c, &d.checksummer)
+	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, c, &d.checksummer)
 }
 
 func (d *dataBlockBuf) shouldFlush(

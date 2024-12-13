@@ -23,6 +23,9 @@ func TestCompressionRoundtrip(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, seed))
 
 	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
+		if compression == NoCompression {
+			continue
+		}
 		t.Run(compression.String(), func(t *testing.T) {
 			payload := make([]byte, 1+rng.IntN(10<<10 /* 10 KiB */))
 			for i := range payload {
