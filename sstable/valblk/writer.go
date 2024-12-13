@@ -5,8 +5,6 @@
 package valblk
 
 import (
-	"encoding/binary"
-	"math/rand/v2"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -18,17 +16,11 @@ import (
 // sstable.
 type Writer struct {
 	flush block.FlushGovernor
-	// Configured compression.
-	compression block.Compression
-	// checksummer with configured checksum type.
-	checksummer block.Checksummer
 	// Block finished callback.
 	blockFinishedFunc func(compressedSize int)
 
 	// buf is the current block being written to (uncompressed).
-	buf *blockBuffer
-	// compressedBuf is used for compressing the block.
-	compressedBuf *blockBuffer
+	buf block.Buffer
 	// Sequence of blocks that are finished.
 	blocks []bufferedValueBlock
 	// Cumulative value block bytes written so far.
@@ -37,49 +29,9 @@ type Writer struct {
 }
 
 type bufferedValueBlock struct {
-	block  block.PhysicalBlock
-	buffer *blockBuffer
-	handle block.Handle
-}
-
-type blockBuffer struct {
-	b []byte
-}
-
-// Pool of block buffers that should be roughly the blockSize.
-var uncompressedValueBlockBufPool = sync.Pool{
-	New: func() interface{} {
-		return &blockBuffer{}
-	},
-}
-
-// Pool of block buffers for compressed value blocks. These may widely vary in
-// size based on compression ratios.
-var compressedValueBlockBufPool = sync.Pool{
-	New: func() interface{} {
-		return &blockBuffer{}
-	},
-}
-
-func releaseToValueBlockBufPool(pool *sync.Pool, b *blockBuffer) {
-	// Don't pool buffers larger than 128KB, in case we had some rare large
-	// values.
-	if len(b.b) > 128*1024 {
-		return
-	}
-	if invariants.Enabled {
-		// Set the bytes to a random value. Cap the number of bytes being
-		// randomized to prevent test timeouts.
-		length := cap(b.b)
-		if length > 1000 {
-			length = 1000
-		}
-		b.b = b.b[:length:length]
-		for j := range b.b {
-			b.b[j] = byte(rand.Uint32())
-		}
-	}
-	pool.Put(b)
+	block     block.PhysicalBlock
+	bufHandle *block.BufHandle
+	handle    block.Handle
 }
 
 var valueBlockWriterPool = sync.Pool{
@@ -98,18 +50,11 @@ func NewWriter(
 ) *Writer {
 	w := valueBlockWriterPool.Get().(*Writer)
 	*w = Writer{
-		flush:       flushGovernor,
-		compression: compression,
-		checksummer: block.Checksummer{
-			Type: checksumType,
-		},
+		flush:             flushGovernor,
 		blockFinishedFunc: blockFinishedFunc,
-		buf:               uncompressedValueBlockBufPool.Get().(*blockBuffer),
-		compressedBuf:     compressedValueBlockBufPool.Get().(*blockBuffer),
 		blocks:            w.blocks[:0],
 	}
-	w.buf.b = w.buf.b[:0]
-	w.compressedBuf.b = w.compressedBuf.b[:0]
+	w.buf.Init(compression, checksumType)
 	return w
 }
 
@@ -120,89 +65,44 @@ func (w *Writer) AddValue(v []byte) (Handle, error) {
 		return Handle{}, errors.Errorf("cannot write empty value to value block")
 	}
 	w.numValues++
-	blockLen := len(w.buf.b)
-	valueLen := len(v)
-	if w.flush.ShouldFlush(blockLen, blockLen+valueLen) {
-		// Block is not currently empty and adding this value will become too big,
-		// so finish this block.
+	if blockLen := w.buf.Size(); w.flush.ShouldFlush(blockLen, blockLen+len(v)) {
+		// Block is not currently empty and adding this value will become too
+		// big, so finish this block.
 		w.compressAndFlush()
-		blockLen = len(w.buf.b)
-		if invariants.Enabled && blockLen != 0 {
-			panic("blockLen of new block should be 0")
+		if invariants.Enabled && w.buf.Size() != 0 {
+			panic("buffer should be empty when starting new block")
 		}
 	}
 	vh := Handle{
-		ValueLen:      uint32(valueLen),
-		BlockNum:      uint32(len(w.blocks)),
-		OffsetInBlock: uint32(blockLen),
+		ValueLen: uint32(len(v)),
+		BlockNum: uint32(len(w.blocks)),
 	}
-	blockLen = int(vh.OffsetInBlock + vh.ValueLen)
-	if cap(w.buf.b) < blockLen {
-		size := 2 * cap(w.buf.b)
-		if size < 1024 {
-			size = 1024
-		}
-		for size < blockLen {
-			size *= 2
-		}
-		buf := make([]byte, blockLen, size)
-		_ = copy(buf, w.buf.b)
-		w.buf.b = buf
-	} else {
-		w.buf.b = w.buf.b[:blockLen]
-	}
-	buf := w.buf.b[vh.OffsetInBlock:]
-	n := copy(buf, v)
-	if n != len(buf) {
-		panic("incorrect length computation")
-	}
+	vh.OffsetInBlock = uint32(w.buf.Append(v))
 	return vh, nil
 }
 
 // Size returns the total size of currently buffered value blocks.
 func (w *Writer) Size() uint64 {
-	sz := w.totalBlockBytes
-	if w.buf != nil {
-		sz += uint64(len(w.buf.b))
-	}
-	return sz
+	return w.totalBlockBytes + uint64(w.buf.Size())
 }
 
 func (w *Writer) compressAndFlush() {
-	w.compressedBuf.b = w.compressedBuf.b[:cap(w.compressedBuf.b)]
-	physicalBlock := block.CompressAndChecksum(&w.compressedBuf.b, w.buf.b, w.compression, &w.checksummer)
+	physicalBlock, bufHandle := w.buf.CompressAndChecksum()
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
 	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
 	// blockFinishedFunc length excludes the block trailer.
 	w.blockFinishedFunc(physicalBlock.LengthWithoutTrailer())
-	b := bufferedValueBlock{
-		block:  physicalBlock,
-		handle: bh,
-	}
-
-	// We'll hand off a buffer to w.blocks and get a new one. Which buffer we're
-	// handing off depends on the outcome of compression.
-	if physicalBlock.IsCompressed() {
-		b.buffer = w.compressedBuf
-		w.compressedBuf = compressedValueBlockBufPool.Get().(*blockBuffer)
-	} else {
-		b.buffer = w.buf
-		w.buf = uncompressedValueBlockBufPool.Get().(*blockBuffer)
-	}
-	w.blocks = append(w.blocks, b)
-	w.buf.b = w.buf.b[:0]
-}
-
-func (w *Writer) computeChecksum(blk []byte) {
-	n := len(blk) - block.TrailerLen
-	checksum := w.checksummer.Checksum(blk[:n], blk[n])
-	binary.LittleEndian.PutUint32(blk[n+1:], checksum)
+	w.blocks = append(w.blocks, bufferedValueBlock{
+		block:     physicalBlock,
+		bufHandle: bufHandle,
+		handle:    bh,
+	})
 }
 
 // Finish finishes writing the value blocks and value blocks index, writing the
 // buffered blocks out to the provider layout writer.
 func (w *Writer) Finish(layout LayoutWriter, fileOffset uint64) (IndexHandle, WriterStats, error) {
-	if len(w.buf.b) > 0 {
+	if w.buf.Size() > 0 {
 		w.compressAndFlush()
 	}
 	n := len(w.blocks)
@@ -247,18 +147,12 @@ func (w *Writer) Finish(layout LayoutWriter, fileOffset uint64) (IndexHandle, Wr
 }
 
 func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (IndexHandle, error) {
-	blockLen :=
-		int(h.BlockNumByteLength+h.BlockOffsetByteLength+h.BlockLengthByteLength) * len(w.blocks)
+	w.buf.SetCompression(block.NoCompression)
+	rowWidth := int(h.BlockNumByteLength + h.BlockOffsetByteLength + h.BlockLengthByteLength)
+	blockLen := rowWidth * len(w.blocks)
 	h.Handle.Length = uint64(blockLen)
-	blockLen += block.TrailerLen
-	var buf []byte
-	if cap(w.buf.b) < blockLen {
-		buf = make([]byte, blockLen)
-		w.buf.b = buf
-	} else {
-		buf = w.buf.b[:blockLen]
-	}
-	b := buf
+	w.buf.Resize(blockLen)
+	b := w.buf.Get()
 	for i := range w.blocks {
 		littleEndianPut(uint64(i), b, int(h.BlockNumByteLength))
 		b = b[int(h.BlockNumByteLength):]
@@ -267,14 +161,14 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 		littleEndianPut(w.blocks[i].handle.Length, b, int(h.BlockLengthByteLength))
 		b = b[int(h.BlockLengthByteLength):]
 	}
-	if len(b) != block.TrailerLen {
+	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	b[0] = byte(block.NoCompressionIndicator)
-	w.computeChecksum(buf)
-	if _, err := layout.WriteValueIndexBlock(buf, h); err != nil {
+	pb, bufHandle := w.buf.CompressAndChecksum()
+	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}
+	bufHandle.Release()
 	return h, nil
 }
 
@@ -282,22 +176,12 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 // to a pool.
 func (w *Writer) Release() {
 	for i := range w.blocks {
-		if w.blocks[i].block.IsCompressed() {
-			releaseToValueBlockBufPool(&compressedValueBlockBufPool, w.blocks[i].buffer)
-		} else {
-			releaseToValueBlockBufPool(&uncompressedValueBlockBufPool, w.blocks[i].buffer)
-		}
-		w.blocks[i].buffer = nil
+		w.blocks[i].bufHandle.Release()
+		w.blocks[i] = bufferedValueBlock{}
 	}
-	if w.buf != nil {
-		releaseToValueBlockBufPool(&uncompressedValueBlockBufPool, w.buf)
-	}
-	if w.compressedBuf != nil {
-		releaseToValueBlockBufPool(&compressedValueBlockBufPool, w.compressedBuf)
-	}
-	*w = Writer{
-		blocks: w.blocks[:0],
-	}
+	w.buf.Release()
+	w.buf = block.Buffer{}
+	*w = Writer{blocks: w.blocks[:0]}
 	valueBlockWriterPool.Put(w)
 }
 
@@ -321,5 +205,5 @@ type LayoutWriter interface {
 	WriteValueBlock(blk block.PhysicalBlock) (block.Handle, error)
 	// WriteValueBlockIndex writes a pre-finished value block index to the
 	// writer.
-	WriteValueIndexBlock(blk []byte, vbih IndexHandle) (block.Handle, error)
+	WriteValueIndexBlock(blk block.PhysicalBlock, vbih IndexHandle) (block.Handle, error)
 }
