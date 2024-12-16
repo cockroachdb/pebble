@@ -251,8 +251,8 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 		e.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			e.mu.Lock()
-			errorDuration = unlockAndUnrefAndTryRemoveFromMap(false)
+			e.mu.RLock()
+			errorDuration = unlockAndUnrefAndTryRemoveFromMap(true)
 			return Handle{}, errorDuration, ctx.Err()
 		case _, ok := <-ch:
 			if !ok {
@@ -344,6 +344,9 @@ func (e *readEntry) setReadValue(v *Value) Handle {
 	e.mu.Lock()
 	// Acquire a ref for readEntry, since we are going to remember it in e.mu.v.
 	v.acquire()
+	if e.mu.v != nil {
+		panic("value already set")
+	}
 	e.mu.v = v
 	if !e.mu.isReading {
 		panic("isReading is false")
