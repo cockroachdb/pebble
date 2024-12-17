@@ -109,11 +109,18 @@ func TestReadShard(t *testing.T) {
 	var c *shard
 	var readers map[string]*testReader
 	var mu sync.Mutex
-
+	freeShard := func() {
+		if c != nil {
+			c.Free()
+			c = nil
+		}
+	}
+	defer freeShard()
 	datadriven.RunTest(t, "testdata/read_shard",
 		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "init":
+				freeShard()
 				var maxSize int64
 				td.ScanArgs(t, "max-size", &maxSize)
 				c = &shard{}
