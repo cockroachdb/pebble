@@ -53,11 +53,11 @@ func newValue(n int) *Value {
 		v.ref.init(1)
 		// Note: this is a no-op if invariants and tracing are disabled or race is
 		// enabled.
-		invariants.SetFinalizer(v, func(obj interface{}) {
+		invariants.SetFinalizerWithStack(v, func(obj interface{}, stack []byte) {
 			v := obj.(*Value)
 			if v.buf != nil {
-				fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
-					v, v.refs(), v.ref.traces())
+				fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s\n%s",
+					v, v.refs(), v.ref.traces(), stack)
 				os.Exit(1)
 			}
 		})
