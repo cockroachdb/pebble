@@ -2866,6 +2866,13 @@ func (d *DB) runCompaction(
 func (d *DB) compactAndWrite(
 	jobID JobID, c *compaction, snapshots compact.Snapshots, tableFormat sstable.TableFormat,
 ) (result compact.Result) {
+
+	labels := pprof.Labels("output_level", fmt.Sprint(c.outputLevel.level))
+	ctx := context.Background()
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, labels)
+	pprof.SetGoroutineLabels(ctx)
+
 	// Compactions use a pool of buffers to read blocks, avoiding polluting the
 	// block cache with blocks that will not be read again. We initialize the
 	// buffer pool with a size 12. This initial size does not need to be
