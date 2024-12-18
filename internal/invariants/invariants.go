@@ -7,6 +7,7 @@ package invariants
 import (
 	"math/rand/v2"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/cockroachdb/pebble/internal/buildtags"
 )
@@ -47,5 +48,17 @@ const UseFinalizers = !buildtags.Race && (buildtags.Invariants || buildtags.Trac
 func SetFinalizer(obj, finalizer interface{}) {
 	if UseFinalizers {
 		runtime.SetFinalizer(obj, finalizer)
+	}
+}
+
+// SetFinalizerWithStack is like SetFinalizer, and additionally passes the
+// stack trace to the finalizer so that it can be printed in an assertion
+// failure.
+func SetFinalizerWithStack(obj interface{}, f func(obj interface{}, stack []byte)) {
+	if UseFinalizers {
+		stack := debug.Stack()
+		runtime.SetFinalizer(obj, func(obj interface{}) {
+			f(obj, stack)
+		})
 	}
 }

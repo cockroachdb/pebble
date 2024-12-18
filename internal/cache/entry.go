@@ -177,10 +177,10 @@ func entryAllocNew() *entry {
 		// We want to allocate each entry independently to check that it has been
 		// properly cleaned up.
 		e := &entry{}
-		invariants.SetFinalizer(e, func(obj interface{}) {
+		invariants.SetFinalizerWithStack(e, func(obj interface{}, stack []byte) {
 			e := obj.(*entry)
 			if *e != (entry{}) {
-				fmt.Fprintf(os.Stderr, "%p: entry was not freed", e)
+				fmt.Fprintf(os.Stderr, "%p: entry was not freed\n%s", e, stack)
 				os.Exit(1)
 			}
 		})
