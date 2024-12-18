@@ -161,10 +161,7 @@ func (w *Writer) AddValue(v []byte) (Handle, error) {
 
 // Size returns the total size of currently buffered value blocks.
 func (w *Writer) Size() uint64 {
-	var sz uint64
-	for _, blk := range w.blocks {
-		sz += uint64(blk.block.LengthWithTrailer())
-	}
+	sz := w.totalBlockBytes
 	if w.buf != nil {
 		sz += uint64(len(w.buf.b))
 	}
