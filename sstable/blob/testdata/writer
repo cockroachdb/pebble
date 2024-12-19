@@ -1,0 +1,66 @@
+build target-block-size=64 block-size-threshold=90
+canteloupe
+apple
+orange
+blueberry
+kiwi
+tangerine
+pear
+pomegranate
+guava
+watermelon
+fig
+plum
+raspberry
+strawberry
+durian
+honeydew
+starfruit
+mango
+grape
+papaya
+lychee
+persimmon
+mandarin
+peach
+apricot
+nectarine
+----
+(000001,blk0[0:10])
+(000001,blk0[10:15])
+(000001,blk0[15:21])
+(000001,blk0[21:30])
+(000001,blk0[30:34])
+(000001,blk0[34:43])
+(000001,blk0[43:47])
+(000001,blk0[47:58])
+(000001,blk0[58:63])
+(000001,blk1[0:10])
+(000001,blk1[10:13])
+(000001,blk1[13:17])
+(000001,blk1[17:26])
+(000001,blk1[26:36])
+(000001,blk1[36:42])
+(000001,blk1[42:50])
+(000001,blk1[50:59])
+(000001,blk1[59:64])
+(000001,blk2[0:5])
+(000001,blk2[5:11])
+(000001,blk2[11:17])
+(000001,blk2[17:26])
+(000001,blk2[26:34])
+(000001,blk2[34:39])
+(000001,blk2[39:46])
+(000001,blk2[46:55])
+Stats:
+  BlockCount: 3
+  ValueCount: 26
+  BlockLenLongest: 69
+  UncompressedValueBytes: 182
+  FileLen: 240
+
+open
+----
+TableFormat: blobV1
+ChecksumType: crc32c
+IndexHandle: {Handle: {197,14}, DataLens:(1,1,1)}
