@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
-	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -84,8 +83,6 @@ func tableNewRangeKeyIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
 		return iters.RangeKey(), nil
 	}
 }
-
-var fileCacheLabels = pprof.Labels("pebble", "table-cache")
 
 // fileCacheOpts contains the db specific fields of a file cache. This is stored
 // in the fileCacheContainer along with the file cache.
@@ -396,12 +393,10 @@ func (c *fileCacheShard) init(size int) {
 }
 
 func (c *fileCacheShard) releaseLoop() {
-	pprof.Do(context.Background(), fileCacheLabels, func(context.Context) {
-		defer c.releaseLoopExit.Done()
-		for v := range c.releasingCh {
-			v.release(c)
-		}
-	})
+	defer c.releaseLoopExit.Done()
+	for v := range c.releasingCh {
+		v.release(c)
+	}
 }
 
 // checkAndIntersectFilters checks the specific table and block property filters
@@ -915,9 +910,7 @@ func (c *fileCacheShard) findNodeInternal(
 
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
-	pprof.Do(context.Background(), fileCacheLabels, func(context.Context) {
-		v.load(ctx, backingFileNum, c, dbOpts)
-	})
+	v.load(ctx, backingFileNum, c, dbOpts)
 	return v
 }
 
