@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -1154,31 +1155,30 @@ func BenchmarkWriter(b *testing.B) {
 }
 
 func BenchmarkWriterWithVersions(b *testing.B) {
-	keys := make([][]byte, 1e6)
-	const keyLen = 26
-	keySlab := make([]byte, keyLen*len(keys))
-	for i := range keys {
-		key := keySlab[i*keyLen : i*keyLen+keyLen]
-		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
-		binary.BigEndian.PutUint64(key[8:16], 456)
-		// @ is ascii value 64. Placing any byte with value 64 in these 8 bytes
-		// will confuse testkeys.Comparer, when we pass it a key after splitting
-		// of the suffix, since Comparer thinks this prefix is also a key with a
-		// suffix. Hence, we print as a base 10 string.
-		require.Equal(b, 8, copy(key[16:], fmt.Sprintf("%8d", i/2)))
-		key[24] = '@'
-		// Ascii representation of single digit integer 2-(i%2).
-		key[25] = byte(48 + 2 - (i % 2))
-		keys[i] = key
-	}
-	// TableFormatPebblev3 can sometimes be ~50% slower than
-	// TableFormatPebblev2, since testkeys.Compare is expensive (mainly due to
-	// split) and with v3 we have to call it twice for 50% of the Set calls,
-	// since they have the same prefix as the preceding key.
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
-		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
-			runWriterBench(b, keys, testkeys.Comparer, format)
-		})
+	for _, valsPerKey := range []int{1, 10, 10000} {
+		keys := make([][]byte, 1e6)
+		const slabSize = 1e6
+		var keySlab []byte
+		for i := range keys {
+			// Use a 16-byte common prefix.
+			keyStr := fmt.Sprintf("0123456789abcd-%08d@%d", i/valsPerKey, valsPerKey+1-i%valsPerKey)
+			if len(keySlab) < len(keyStr) {
+				keySlab = make([]byte, slabSize)
+			}
+			key := keySlab[:len(keyStr)]
+			keySlab = keySlab[len(keyStr):]
+			copy(key, keyStr)
+			keys[i] = key
+		}
+		// TableFormatPebblev3 can sometimes be ~50% slower than
+		// TableFormatPebblev2, since testkeys.Compare is expensive (mainly due to
+		// split) and with v3 we have to call it twice for 50% of the Set calls,
+		// since they have the same prefix as the preceding key.
+		for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev5} {
+			b.Run(fmt.Sprintf("vals-per-key=%d/format=%s", valsPerKey, format.String()), func(b *testing.B) {
+				runWriterBench(b, keys, testkeys.Comparer, format)
+			})
+		}
 	}
 }
 
@@ -1205,11 +1205,17 @@ func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format
 								f.wrote = 0
 								w := NewWriter(f, opts)
 
+								var sum uint64
 								for j := range keys {
+									// In a compaction, we also call EstimatedSize before writing
+									// each key (to decide when to split output tables). Do it
+									// here as well.
+									sum += w.rw.EstimatedSize()
 									if err := w.Set(keys[j], keys[j]); err != nil {
 										b.Fatal(err)
 									}
 								}
+								fmt.Fprint(io.Discard, sum)
 								if err := w.Close(); err != nil {
 									b.Fatal(err)
 								}

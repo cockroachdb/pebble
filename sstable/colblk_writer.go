@@ -204,9 +204,7 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 		sz += uint64(w.rangeKeyBlock.Size())
 	}
 	if w.valueBlock != nil {
-		for _, blk := range w.valueBlock.blocks {
-			sz += uint64(blk.block.LengthWithTrailer())
-		}
+		sz += w.valueBlock.totalBlockBytes
 		if w.valueBlock.buf != nil {
 			sz += uint64(len(w.valueBlock.buf.b))
 		}
