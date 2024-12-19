@@ -148,8 +148,7 @@ func (w *Writer) Finish(layout LayoutWriter, fileOffset uint64) (IndexHandle, Wr
 
 func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (IndexHandle, error) {
 	w.buf.SetCompression(block.NoCompression)
-	rowWidth := int(h.BlockNumByteLength + h.BlockOffsetByteLength + h.BlockLengthByteLength)
-	blockLen := rowWidth * len(w.blocks)
+	blockLen := h.RowWidth() * len(w.blocks)
 	h.Handle.Length = uint64(blockLen)
 	w.buf.Resize(blockLen)
 	b := w.buf.Get()
