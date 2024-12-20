@@ -36,14 +36,6 @@ var errEmptyTable = errors.New("pebble: empty table")
 // concurrent excise or ingest-split operation.
 var ErrCancelledCompaction = errors.New("pebble: compaction cancelled by a concurrent operation, will retry compaction")
 
-var compactLabelsNoLevel = pprof.Labels("pebble", "compact")
-var compactLabelsPerLevel = func() [manifest.NumLevels]pprof.LabelSet {
-	var labels [manifest.NumLevels]pprof.LabelSet
-	for i := 0; i < manifest.NumLevels; i++ {
-		labels[i] = pprof.Labels("pebble", "compact", "output-level", fmt.Sprintf("L%d", i))
-	}
-	return labels
-}()
 var flushLabels = pprof.Labels("pebble", "flush", "output-level", "L0")
 var gcLabels = pprof.Labels("pebble", "gc")
 
@@ -2180,16 +2172,26 @@ func checkDeleteCompactionHints(
 	return compactLevels, resolvedHints, unresolvedHints
 }
 
+func (d *DB) compactionPprofLabels(c *compaction) pprof.LabelSet {
+	activity := "compact"
+	if len(c.flushing) != 0 {
+		activity = "flush"
+	}
+	level := "L?"
+	// Delete-only compactions don't have an output level.
+	if c.outputLevel != nil {
+		level = fmt.Sprintf("L%d", c.outputLevel.level)
+	}
+	if kc := d.opts.Experimental.UserKeyCategories; kc.Len() > 0 {
+		cat := kc.CategorizeKeyRange(c.smallest.UserKey, c.largest.UserKey)
+		return pprof.Labels("pebble", activity, "output-level", level, "key-type", cat)
+	}
+	return pprof.Labels("pebble", activity, "output-level", level)
+}
+
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c *compaction, errChannel chan error) {
-	var labels pprof.LabelSet
-	if c.outputLevel == nil {
-		// Delete-only compactions don't have an output level.
-		labels = compactLabelsNoLevel
-	} else {
-		labels = compactLabelsPerLevel[c.outputLevel.level]
-	}
-	pprof.Do(context.Background(), labels, func(context.Context) {
+	pprof.Do(context.Background(), d.compactionPprofLabels(c), func(context.Context) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if err := d.compact1(c, errChannel); err != nil {

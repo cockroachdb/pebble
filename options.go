@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -859,6 +860,8 @@ type Options struct {
 		// no limiting or pacing happens other than that controlled by other options
 		// like L0CompactionConcurrency and CompactionDebtConcurrency.
 		CompactionLimiter CompactionLimiter
+
+		UserKeyCategories UserKeyCategories
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -2199,4 +2202,99 @@ func resolveDefaultCompression(c Compression) Compression {
 		c = SnappyCompression
 	}
 	return c
+}
+
+// UserKeyCategories describes a partitioning of the user key space. Each
+// partition is a category with a name, which is used for informative purposes
+// (like pprof labels).
+//
+// The partitions are defined by their upper bounds. The last partition is
+// assumed to go until the end of keyspace; its UpperBound is ignored. The rest
+// of the partitions are ordered by their UpperBound.
+type UserKeyCategories struct {
+	categories []UserKeyCategory
+	cmp        base.Compare
+	// rangeNames[i][j] contains the string referring to the categories in the
+	// range [i, j], with j > i.
+	rangeNames [][]string
+}
+
+// UserKeyCategory describes a partition of the user key space.
+//
+// User keys >= the previous category's UpperBound and < this category's
+// UpperBound are part of this category.
+type UserKeyCategory struct {
+	Name string
+	// UpperBound is the exclusive upper bound of the category. All user keys >= the
+	// previous category's UpperBound and < this UpperBound are part of this
+	// category.
+	UpperBound []byte
+}
+
+// MakeUserKeyCategories creates a UserKeyCategories object with the given
+// categories. The object is immutable and can be reused across different
+// stores.
+func MakeUserKeyCategories(cmp base.Compare, categories ...UserKeyCategory) UserKeyCategories {
+	n := len(categories)
+	if n == 0 {
+		return UserKeyCategories{}
+	}
+	if categories[n-1].UpperBound != nil {
+		panic("last category UperBound must be nil")
+	}
+	// Verify that the partitions are ordered as expected.
+	for i := 1; i < n-1; i++ {
+		if cmp(categories[i-1].UpperBound, categories[i].UpperBound) >= 0 {
+			panic("invalid UserKeyCategories: key prefixes must be sorted")
+		}
+	}
+
+	// Precalculate a table of range names to avoid allocations in the
+	// categorization path.
+	rangeNamesBuf := make([]string, n*n)
+	rangeNames := make([][]string, n)
+	for i := range rangeNames {
+		rangeNames[i] = rangeNamesBuf[:n]
+		rangeNamesBuf = rangeNamesBuf[n:]
+		for j := i + 1; j < n; j++ {
+			rangeNames[i][j] = categories[i].Name + "-" + categories[j].Name
+		}
+	}
+	return UserKeyCategories{
+		categories: categories,
+		cmp:        cmp,
+		rangeNames: rangeNames,
+	}
+}
+
+// Len returns the number of categories defined.
+func (kc *UserKeyCategories) Len() int {
+	return len(kc.categories)
+}
+
+// CategorizeKey returns the name of the category containing the key.
+func (kc *UserKeyCategories) CategorizeKey(userKey []byte) string {
+	idx := sort.Search(len(kc.categories)-1, func(i int) bool {
+		return kc.cmp(userKey, kc.categories[i].UpperBound) < 0
+	})
+	return kc.categories[idx].Name
+}
+
+// CategorizeKeyRange returns the name of the category containing the key range.
+// If the key range spans multiple categories, the result shows the first and
+// last category separated by a dash, e.g. `cat1-cat5`.
+func (kc *UserKeyCategories) CategorizeKeyRange(startUserKey, endUserKey []byte) string {
+	n := len(kc.categories)
+	p := sort.Search(n-1, func(i int) bool {
+		return kc.cmp(startUserKey, kc.categories[i].UpperBound) < 0
+	})
+	if p == n-1 || kc.cmp(endUserKey, kc.categories[p].UpperBound) < 0 {
+		// Fast path for a single category.
+		return kc.categories[p].Name
+	}
+	// Binary search among the remaining categories.
+	q := p + 1 + sort.Search(n-2-p, func(i int) bool {
+		return kc.cmp(endUserKey, kc.categories[p+1+i].UpperBound) < 0
+	})
+	return kc.rangeNames[p][q]
 }
