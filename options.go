@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -859,6 +860,8 @@ type Options struct {
 		// no limiting or pacing happens other than that controlled by other options
 		// like L0CompactionConcurrency and CompactionDebtConcurrency.
 		CompactionLimiter CompactionLimiter
+
+		UserKeyCategories UserKeyCategories
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1247,6 +1250,7 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.KeyValidationFunc == nil {
 		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
 	}
+	o.Experimental.UserKeyCategories.Check()
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
 		o.KeySchema = ks.Name
@@ -2199,4 +2203,41 @@ func resolveDefaultCompression(c Compression) Compression {
 		c = SnappyCompression
 	}
 	return c
+}
+
+type UserKeyCategories []UserKeyCategory
+
+type UserKeyCategory struct {
+	Name       string
+	UpperBound []byte
+}
+
+func (kc UserKeyCategories) Check() {
+	for i := 1; i < len(kc)-1; i++ {
+		if bytes.Compare(kc[i-1].UpperBound, kc[i].UpperBound) >= 0 {
+			panic("invalid UserKeyCategories: key prefixes must be sorted")
+		}
+	}
+}
+
+func (kc UserKeyCategories) CategorizeKey(cmp base.Compare, userKey []byte) string {
+	return kc[kc.categoryIdx(cmp, userKey)].Name
+}
+
+func (kc UserKeyCategories) CategorizeKeyRange(
+	cmp base.Compare, startUserKey, endUserKey []byte,
+) string {
+	p := kc.categoryIdx(cmp, startUserKey)
+	q := kc.categoryIdx(cmp, endUserKey)
+	if p == q {
+		// Fast path.
+		return kc[p].Name
+	}
+	return strings.Join([]string{kc[p].Name, kc[q].Name}, "-")
+}
+
+func (kc UserKeyCategories) categoryIdx(cmp base.Compare, userKey []byte) int {
+	return sort.Search(len(kc)-1, func(i int) bool {
+		return cmp(userKey, kc[i].UpperBound) < 0
+	})
 }
