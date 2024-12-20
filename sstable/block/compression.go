@@ -6,10 +6,14 @@ package block
 
 import (
 	"encoding/binary"
+	"math/rand/v2"
+	"slices"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/golang/snappy"
 )
@@ -288,4 +292,160 @@ func compress(
 	default:
 		panic("unreachable")
 	}
+}
+
+// A Buffer is a buffer for encoding a block. The caller mutates the buffer to
+// construct the uncompressed block, and calls CompressAndChecksum to produce
+// the physical, possibly-compressed PhysicalBlock. A Buffer recycles byte
+// slices used in construction of the uncompressed block and the compressed
+// physical block.
+type Buffer struct {
+	h           *BufHandle
+	compression Compression
+	checksummer Checksummer
+}
+
+// Init configures the BlockBuffer with the specified compression and checksum
+// type.
+func (b *Buffer) Init(compression Compression, checksumType ChecksumType) {
+	b.h = uncompressedBuffers.Get()
+	b.h.b = b.h.b[:0]
+	b.compression = compression
+	b.checksummer.Type = checksumType
+}
+
+// Get returns the byte slice currently backing the Buffer.
+func (b *Buffer) Get() []byte {
+	return b.h.b
+}
+
+// Size returns the current size of the buffer.
+func (b *Buffer) Size() int {
+	return len(b.h.b)
+}
+
+// Append appends the contents of v to the buffer, returning the offset at which
+// it was appended, growing the buffer if necessary.
+func (b *Buffer) Append(v []byte) int {
+	// We may need to grow b.Buffer to accommodate the new value. If necessary,
+	// double the size of the buffer until it's sufficiently large.
+	off := len(b.h.b)
+	newLen := off + len(v)
+	if cap(b.h.b) < newLen {
+		size := max(2*cap(b.h.b), 1024)
+		for size < newLen {
+			size *= 2
+		}
+		b.h.b = slices.Grow(b.h.b, size-cap(b.h.b))
+	}
+	b.h.b = b.h.b[:newLen]
+	if n := copy(b.h.b[off:], v); n != len(v) {
+		panic("incorrect length computation")
+	}
+	return off
+}
+
+// Resize resizes the buffer to the specified length, allocating if necessary.
+func (b *Buffer) Resize(length int) {
+	if length > cap(b.h.b) {
+		b.h.b = slices.Grow(b.h.b, length-len(b.h.b))
+	}
+	b.h.b = b.h.b[:length]
+}
+
+// CompressAndChecksum compresses and checksums the block data, returning a
+// PhysicalBuffer that is owned by the caller.  If non-nil, the returned
+// BufHandle may be Released once the caller is done with the physical block to
+// allow reuse of the block's underlying memory.
+//
+// When CompressAndChecksum returns, the callee has been reset and is ready to
+// be reused.
+func (b *Buffer) CompressAndChecksum() (PhysicalBlock, *BufHandle) {
+	// Grab a buffer to use as the destination for compression.
+	compressedBuf := compressedBuffers.Get()
+	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer)
+	if pb.IsCompressed() {
+		// Compression was fruitful, and pb's data points into compressedBuf. We
+		// can reuse b.Buffer because we've copied the compressed data.
+		b.h.b = b.h.b[:0]
+		return pb, compressedBuf
+	}
+	// Compression was not fruitful, and pb's data points into b.h. The
+	// compressedBuf we retrieved from the pool isn't needed, but our b.h is.
+	// Use the compressedBuf as the new b.h.
+	pbHandle := b.h
+	b.h = compressedBuf
+	b.h.b = b.h.b[:0]
+	return pb, pbHandle
+}
+
+// SetCompression changes the compression algorithm used by CompressAndChecksum.
+func (b *Buffer) SetCompression(compression Compression) {
+	b.compression = compression
+}
+
+// Release may be called when a buffer will no longer be used. It releases to
+// pools any memory held by the Buffer so that it may be reused.
+func (b *Buffer) Release() {
+	if b.h != nil {
+		b.h.Release()
+		b.h = nil
+	}
+}
+
+// BufHandle is a handle to a buffer that can be released to a pool for reuse.
+type BufHandle struct {
+	pool *bufferSyncPool
+	b    []byte
+}
+
+// Release releases the buffer back to the pool for reuse.
+func (h *BufHandle) Release() {
+	if invariants.Enabled && (h.pool == nil) != (h.b == nil) {
+		panic(errors.AssertionFailedf("pool (%t) and buffer (%t) nilness disagree", h.pool == nil, h.b == nil))
+	}
+	// Note we avoid releasing buffers that are larger than the configured
+	// maximum to the pool. This avoids holding on to occassional large buffers
+	// necesary for, for example, single large values.
+	if h != nil && h.b != nil && (h.pool.Max == 0 || len(h.b) < h.pool.Max) {
+		if invariants.Enabled {
+			// Set the bytes to a random value. Cap the number of bytes being
+			// randomized to prevent test timeouts.
+			l := min(cap(h.b), 1000)
+			h.b = h.b[:l:l]
+			for j := range h.b {
+				h.b[j] = byte(rand.Uint32())
+			}
+		}
+		h.pool.pool.Put(h)
+	}
+}
+
+var (
+	// uncompressedBuffers is a pool of buffers that were used to store
+	// uncompressed block data. These buffers should be sized right around the
+	// configured block size. If multiple Pebble engines are running in the same
+	// process, they all share a pool and the size of the buffers may vary.
+	uncompressedBuffers = bufferSyncPool{Max: 256 << 10, Default: 4 << 10}
+	// compressedBuffers is a pool of buffers that were used to store compressed
+	// block data. These buffers will vary significantly in size depending on
+	// the compressibility of the data.
+	compressedBuffers = bufferSyncPool{Max: 128 << 10, Default: 4 << 10}
+)
+
+// bufferSyncPool is a pool of block buffers for memory re-use.
+type bufferSyncPool struct {
+	Max     int
+	Default int
+	pool    sync.Pool
+}
+
+// Get retrieves a new buf from the pool, or allocates one of the configured
+// default size if the pool is empty.
+func (p *bufferSyncPool) Get() *BufHandle {
+	v := p.pool.Get()
+	if v != nil {
+		return v.(*BufHandle)
+	}
+	return &BufHandle{b: make([]byte, 0, max(p.Default, 1024)), pool: p}
 }
