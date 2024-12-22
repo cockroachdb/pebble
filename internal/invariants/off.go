@@ -6,6 +6,13 @@
 
 package invariants
 
+// Sometimes returns true percent% of the time if invariants are Enabled (i.e.
+// we were built with the "invariants" or "race" build tags). Otherwise, always
+// returns false.
+func Sometimes(percent int) bool {
+	return false
+}
+
 // CloseChecker is used to check that objects are closed exactly once. It is
 // empty and does nothing in non-invariant builds.
 //

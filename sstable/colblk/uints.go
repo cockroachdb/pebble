@@ -221,7 +221,7 @@ func (b *UintBuilder) Reset() {
 		b.stats.maximum = 0
 		// We could reset all values as a precaution, but it has a visible cost
 		// in benchmarks.
-		if invariants.Sometimes(50) {
+		if invariants.Enabled && invariants.Sometimes(50) {
 			for i := 0; i < b.array.n; i++ {
 				b.array.elems.set(i, math.MaxUint64)
 			}
@@ -302,7 +302,7 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, deltaBase uin
 		// Note that b.stats.minimum includes all rows set so far so it might be
 		// strictly smaller than all values up to [rows]; but it is still a suitable
 		// base for b.stats.encoding.
-		if invariants.Sometimes(1) && rows > 0 {
+		if invariants.Enabled && invariants.Sometimes(1) && rows > 0 {
 			if enc, _ := b.recalculateEncoding(rows); enc != b.stats.encoding {
 				panic(fmt.Sprintf("fast and slow paths don't agree: %s vs %s", b.stats.encoding, enc))
 			}
