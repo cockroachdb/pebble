@@ -6,6 +6,15 @@
 
 package invariants
 
+import "math/rand/v2"
+
+// Sometimes returns true percent% of the time if invariants are Enabled (i.e.
+// we were built with the "invariants" or "race" build tags). Otherwise, always
+// returns false.
+func Sometimes(percent int) bool {
+	return rand.Uint32N(100) < uint32(percent)
+}
+
 // CloseChecker is used to check that objects are closed exactly once. It is
 // empty and does nothing in non-invariant builds.
 //

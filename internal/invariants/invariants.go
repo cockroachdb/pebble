@@ -5,7 +5,6 @@
 package invariants
 
 import (
-	"math/rand/v2"
 	"runtime"
 
 	"github.com/cockroachdb/pebble/internal/buildtags"
@@ -22,13 +21,6 @@ const Enabled = buildtags.Race || buildtags.Invariants
 // RaceEnabled is true if we were built with the "race" build tag.
 const RaceEnabled = buildtags.Race
 
-// Sometimes returns true percent% of the time if invariants are Enabled (i.e.
-// we were built with the "invariants" or "race" build tags). Otherwise, always
-// returns false.
-func Sometimes(percent int) bool {
-	return Enabled && rand.Uint32N(100) < uint32(percent)
-}
-
 // UseFinalizers is true if we want to use finalizers for assertions around
 // object lifetime and cleanup. This happens when the invariants or tracing tags
 // are set, but we exclude race builds because we historically ran into some
@@ -43,7 +35,8 @@ const UseFinalizers = !buildtags.Race && (buildtags.Invariants || buildtags.Trac
 // bugs related to finalizers.
 //
 // This function is a no-op if UseFinalizers is false and it should inline to
-// nothing.
+// nothing. However, note that it might not inline so in very hot paths it's
+// best to check UseFinalizers first.
 func SetFinalizer(obj, finalizer interface{}) {
 	if UseFinalizers {
 		runtime.SetFinalizer(obj, finalizer)

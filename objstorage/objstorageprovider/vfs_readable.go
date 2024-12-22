@@ -49,12 +49,14 @@ func newFileReadable(
 		fs:              fs,
 		readaheadConfig: readaheadConfig,
 	}
-	invariants.SetFinalizer(r, func(obj interface{}) {
-		if obj.(*fileReadable).file != nil {
-			fmt.Fprintf(os.Stderr, "Readable was not closed")
-			os.Exit(1)
-		}
-	})
+	if invariants.UseFinalizers {
+		invariants.SetFinalizer(r, func(obj interface{}) {
+			if obj.(*fileReadable).file != nil {
+				fmt.Fprintf(os.Stderr, "Readable was not closed")
+				os.Exit(1)
+			}
+		})
+	}
 	return r, nil
 }
 
@@ -104,13 +106,14 @@ var _ objstorage.ReadHandle = (*vfsReadHandle)(nil)
 var readHandlePool = sync.Pool{
 	New: func() interface{} {
 		i := &vfsReadHandle{}
-		// Note: this is a no-op if invariants are disabled or race is enabled.
-		invariants.SetFinalizer(i, func(obj interface{}) {
-			if obj.(*vfsReadHandle).r != nil {
-				fmt.Fprintf(os.Stderr, "ReadHandle was not closed")
-				os.Exit(1)
-			}
-		})
+		if invariants.UseFinalizers {
+			invariants.SetFinalizer(i, func(obj interface{}) {
+				if obj.(*vfsReadHandle).r != nil {
+					fmt.Fprintf(os.Stderr, "ReadHandle was not closed")
+					os.Exit(1)
+				}
+			})
+		}
 		return i
 	},
 }

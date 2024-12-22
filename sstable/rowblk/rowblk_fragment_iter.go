@@ -64,8 +64,9 @@ var _ keyspan.FragmentIterator = (*fragmentIter)(nil)
 var fragmentBlockIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &fragmentIter{}
-		// Note: this is a no-op if invariants are disabled or race is enabled.
-		invariants.SetFinalizer(i, checkFragmentBlockIterator)
+		if invariants.UseFinalizers {
+			invariants.SetFinalizer(i, checkFragmentBlockIterator)
+		}
 		return i
 	},
 }

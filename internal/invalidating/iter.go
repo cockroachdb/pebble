@@ -15,7 +15,7 @@ import (
 // MaybeWrapIfInvariants wraps some iterators with an invalidating iterator.
 // MaybeWrapIfInvariants does nothing in non-invariant builds.
 func MaybeWrapIfInvariants(iter base.InternalIterator) base.InternalIterator {
-	if invariants.Sometimes(10) {
+	if invariants.Enabled && invariants.Sometimes(10) {
 		return NewIter(iter)
 	}
 	return iter
