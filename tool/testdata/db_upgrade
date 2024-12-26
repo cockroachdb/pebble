@@ -1,0 +1,49 @@
+create foo
+----
+
+db set foo blue blue-val
+----
+
+db set foo orange orange-val
+----
+
+db set foo green green-val
+----
+
+db set foo red red-val
+----
+
+db set foo yellow yellow-val
+----
+
+db get foo blue
+----
+[626c75652d76616c]
+
+db get foo yellow
+----
+[79656c6c6f772d76616c]
+
+db upgrade foo
+----
+Upgrading DB from internal version 16 to 19.
+WARNING!!!
+This DB will not be usable with older versions of Pebble!
+Continue? [Y/N] Error: EOF
+
+db upgrade foo --yes
+----
+Upgrading DB from internal version 16 to 19.
+Upgrade complete.
+
+db get foo blue
+----
+[626c75652d76616c]
+
+db get foo yellow
+----
+[79656c6c6f772d76616c]
+
+db upgrade foo
+----
+DB is already at internal version 19.

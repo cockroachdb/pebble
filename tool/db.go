@@ -34,6 +34,7 @@ import (
 type dbT struct {
 	Root       *cobra.Command
 	Check      *cobra.Command
+	Upgrade    *cobra.Command
 	Checkpoint *cobra.Command
 	Get        *cobra.Command
 	Logs       *cobra.Command
@@ -102,6 +103,17 @@ database not be in use by another process.
 `,
 		Args: cobra.ExactArgs(1),
 		Run:  d.runCheck,
+	}
+	d.Upgrade = &cobra.Command{
+		Use:   "upgrade <dir>",
+		Short: "upgrade the DB internal format version",
+		Long: `
+Upgrades the DB internal format version to the latest version.
+It is recommended to make a backup copy of the DB directory before upgrading.
+Requires that the specified database not be in use by another process.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runUpgrade,
 	}
 	d.Checkpoint = &cobra.Command{
 		Use:   "checkpoint <src-dir> <dest-dir>",
@@ -197,10 +209,10 @@ specified database.
 		Run:  d.runIOBench,
 	}
 
-	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench)
+	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise} {
+	for _, cmd := range []*cobra.Command{d.Check, d.Upgrade, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
@@ -210,6 +222,10 @@ specified database.
 	for _, cmd := range []*cobra.Command{d.Scan, d.Get} {
 		cmd.Flags().Var(
 			&d.fmtValue, "value", "value formatter")
+	}
+	for _, cmd := range []*cobra.Command{d.Upgrade, d.Excise} {
+		cmd.Flags().BoolVarP(
+			&d.bypassPrompt, "yes", "y", false, "bypass prompt")
 	}
 
 	d.LSM.Flags().BoolVar(
@@ -233,8 +249,6 @@ specified database.
 		&d.start, "start", "start key for the excised range")
 	d.Excise.Flags().Var(
 		&d.end, "end", "exclusive end key for the excised range")
-	d.Excise.Flags().BoolVar(
-		&d.bypassPrompt, "yes", false, "bypass prompt")
 
 	d.IOBench.Flags().BoolVar(
 		&d.allLevels, "all-levels", false, "if set, benchmark all levels (default is only L5/L6)")
@@ -387,13 +401,32 @@ func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
 		stats.NumPoints, makePlural("point", stats.NumPoints), stats.NumTombstones, makePlural("tombstone", int64(stats.NumTombstones)))
 }
 
-type nonReadOnly struct{}
+func (d *dbT) runUpgrade(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	db, err := d.openDB(args[0], nonReadOnly{})
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return
+	}
+	defer d.closeDB(stderr, db)
 
-func (n nonReadOnly) Apply(dirname string, opts *pebble.Options) {
-	opts.ReadOnly = false
-	// Increase the L0 compaction threshold to reduce the likelihood of an
-	// unintended compaction changing test output.
-	opts.L0CompactionThreshold = 10
+	targetVersion := pebble.FormatNewest
+	current := db.FormatMajorVersion()
+	if current >= targetVersion {
+		fmt.Fprintf(stdout, "DB is already at internal version %d.\n", current)
+		return
+	}
+	fmt.Fprintf(stdout, "Upgrading DB from internal version %d to %d.\n", current, targetVersion)
+
+	prompt := `WARNING!!!
+This DB will not be usable with older versions of Pebble!`
+	if !d.promptForConfirmation(prompt, cmd.InOrStdin(), stdout, stderr) {
+		return
+	}
+	if err := db.RatchetFormatMajorVersion(targetVersion); err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", err)
+	}
+	fmt.Fprintf(stdout, "Upgrade complete.\n")
 }
 
 func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
@@ -585,23 +618,10 @@ func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
 	fmt.Fprintf(stdout, "  start: %s\n", d.fmtKey.fn(span.Start))
 	fmt.Fprintf(stdout, "  end:   %s\n", d.fmtKey.fn(span.End))
 
-	if !d.bypassPrompt {
-		fmt.Fprintf(stdout, "WARNING!!!\n")
-		fmt.Fprintf(stdout, "This command will remove all keys in this range!\n")
-		reader := bufio.NewReader(cmd.InOrStdin())
-		for {
-			fmt.Fprintf(stdout, "Continue? [Y/N] ")
-			answer, _ := reader.ReadString('\n')
-			answer = strings.ToLower(strings.TrimSpace(answer))
-			if answer == "y" || answer == "yes" {
-				break
-			}
-
-			if answer == "n" || answer == "no" {
-				fmt.Fprintf(stderr, "Aborting\n")
-				return
-			}
-		}
+	prompt := `WARNING!!!
+This command will remove all keys in this range!`
+	if !d.promptForConfirmation(prompt, cmd.InOrStdin(), stdout, stderr) {
+		return
 	}
 
 	// Write a temporary sst that only has excise tombstones. We write it inside
@@ -808,6 +828,46 @@ func (d *dbT) runSet(cmd *cobra.Command, args []string) {
 	if err := db.Set(k, v, nil); err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
 	}
+}
+
+func (d *dbT) promptForConfirmation(prompt string, stdin io.Reader, stdout, stderr io.Writer) bool {
+	if d.bypassPrompt {
+		return true
+	}
+	if _, err := fmt.Fprintf(stdout, "%s\n", prompt); err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return false
+	}
+	reader := bufio.NewReader(stdin)
+	for {
+		if _, err := fmt.Fprintf(stdout, "Continue? [Y/N] "); err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return false
+		}
+		answer, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Fprintf(stderr, "Error: %v\n", err)
+			return false
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer == "y" || answer == "yes" {
+			return true
+		}
+
+		if answer == "n" || answer == "no" {
+			_, _ = fmt.Fprintf(stderr, "Aborting\n")
+			return false
+		}
+	}
+}
+
+type nonReadOnly struct{}
+
+func (n nonReadOnly) Apply(dirname string, opts *pebble.Options) {
+	opts.ReadOnly = false
+	// Increase the L0 compaction threshold to reduce the likelihood of an
+	// unintended compaction changing test output.
+	opts.L0CompactionThreshold = 10
 }
 
 func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
