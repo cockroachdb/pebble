@@ -5,10 +5,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/tool"
 	"github.com/spf13/cobra"
@@ -52,9 +54,13 @@ func main() {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "pebble [command] (flags)",
-		Short: "pebble benchmarking/introspection tool",
+		Use:     "pebble [command] (flags)",
+		Short:   "pebble benchmarking/introspection tool",
+		Version: fmt.Sprintf("supported Pebble format versions: %d-%d", pebble.FormatMostCompatible, pebble.FormatNewest),
 	}
+	rootCmd.SetVersionTemplate(`{{printf "%s" .Short}}
+{{printf "%s" .Version}}
+`)
 	rootCmd.AddCommand(benchCmd)
 
 	t := tool.New(tool.Comparers(mvccComparer, testkeys.Comparer), tool.Mergers(fauxMVCCMerger))

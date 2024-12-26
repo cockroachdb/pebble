@@ -76,9 +76,13 @@ func newDB(
 	d.fmtValue.mustSet("[%x]")
 
 	d.Root = &cobra.Command{
-		Use:   "db",
-		Short: "DB introspection tools",
+		Use:     "db",
+		Short:   "DB introspection tools",
+		Version: fmt.Sprintf("supported Pebble format versions: %d-%d", pebble.FormatMostCompatible, pebble.FormatNewest),
 	}
+	d.Root.SetVersionTemplate(`{{printf "%s" .Short}}
+{{printf "%s" .Version}}
+`)
 	d.Check = &cobra.Command{
 		Use:   "check <dir>",
 		Short: "verify checksums and metadata",
