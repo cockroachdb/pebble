@@ -356,6 +356,7 @@ var keyFormatsByName = func() map[string]KeyFormat {
 type KeyFormat struct {
 	Name                         string
 	Comparer                     *base.Comparer
+	KeySchema                    *pebble.KeySchema
 	FormatKey                    func(UserKey) string
 	FormatKeySuffix              func(UserKeySuffix) string
 	ParseFormattedKey            func(string) (UserKey, error)

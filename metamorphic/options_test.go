@@ -48,7 +48,7 @@ func TestSetupInitialState(t *testing.T) {
 	// setupInitialState with an initial state path set to the test's TempDir
 	// should populate opts.opts.FS with the directory's contents.
 	opts := &TestOptions{
-		Opts:             defaultOptions(),
+		Opts:             defaultOptions(TestkeysKeyFormat),
 		initialStatePath: initialStatePath,
 		initialStateDesc: "test",
 	}
