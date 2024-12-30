@@ -358,7 +358,7 @@ func (k *keyManager) getSetOfVisibleKeys(readerID objID) [][]byte {
 			keys = append(keys, unsafe.Slice(unsafe.StringData(k), len(k)))
 		}
 	}
-	slices.SortFunc(keys, testkeys.Comparer.Compare)
+	slices.SortFunc(keys, k.kf.Comparer.Compare)
 	return keys
 }
 

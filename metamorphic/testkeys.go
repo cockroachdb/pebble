@@ -13,10 +13,15 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
 var TestkeysKeyFormat = KeyFormat{
-	Comparer:        testkeys.Comparer,
+	Comparer: testkeys.Comparer,
+	KeySchema: func() *colblk.KeySchema {
+		kf := colblk.DefaultKeySchema(testkeys.Comparer, 16 /* bundle size */)
+		return &kf
+	}(),
 	FormatKey:       func(k UserKey) string { return string(k) },
 	FormatKeySuffix: func(s UserKeySuffix) string { return string(s) },
 	NewGenerator: func(km *keyManager, rng *rand.Rand, cfg OpConfig) KeyGenerator {

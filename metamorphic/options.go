@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -296,21 +295,24 @@ func optionsToString(opts *TestOptions) string {
 }
 
 func defaultTestOptions() *TestOptions {
+	kf := TestkeysKeyFormat
 	return &TestOptions{
-		Opts:        defaultOptions(),
+		Opts:        defaultOptions(kf),
 		Threads:     16,
 		RetryPolicy: NeverRetry,
-		KeyFormat:   TestkeysKeyFormat,
+		KeyFormat:   kf,
 	}
 }
 
-func defaultOptions() *pebble.Options {
+func defaultOptions(kf KeyFormat) *pebble.Options {
 	opts := &pebble.Options{
 		// Use an archive cleaner to ease post-mortem debugging.
 		Cleaner: base.ArchiveCleaner{},
 		// Always use our custom comparer which provides a Split method,
 		// splitting keys at the trailing '@'.
-		Comparer:           testkeys.Comparer,
+		Comparer:           kf.Comparer,
+		KeySchema:          kf.KeySchema.Name,
+		KeySchemas:         sstable.MakeKeySchemas(kf.KeySchema),
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: defaultFormatMajorVersion,
 		Levels: []pebble.LevelOptions{{
