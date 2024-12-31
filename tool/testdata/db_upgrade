@@ -1,0 +1,59 @@
+create foo
+----
+
+db set foo blue blue-val
+----
+
+db set foo orange orange-val
+----
+
+db set foo green green-val
+----
+
+db set foo red red-val
+----
+
+db set foo yellow yellow-val
+----
+
+db get foo blue
+----
+[626c75652d76616c]
+
+db get foo yellow
+----
+[79656c6c6f772d76616c]
+
+db upgrade foo
+----
+----
+Upgrading DB from internal version 1 to 16.
+WARNING!!!
+This DB will not be usable with older versions of Pebble!
+
+It is strongly recommended to back up the data before upgrading.
+
+If this DB uses custom block property collectors, the upgrade should be invoked
+through a custom binary that configures them. Otherwise, any new tables created
+during upgrade will not have the relevant block properties.
+
+Continue? [Y/N] Error: EOF
+----
+----
+
+db upgrade foo --yes
+----
+Upgrading DB from internal version 1 to 16.
+Upgrade complete.
+
+db get foo blue
+----
+[626c75652d76616c]
+
+db get foo yellow
+----
+[79656c6c6f772d76616c]
+
+db upgrade foo
+----
+DB is already at internal version 16.

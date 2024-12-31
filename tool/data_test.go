@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -49,34 +50,6 @@ func runTests(t *testing.T, path string) {
 		fs := vfs.NewMem()
 		t.Run(name, func(t *testing.T) {
 			datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
-				args := []string{d.Cmd}
-				for _, arg := range d.CmdArgs {
-					args = append(args, arg.String())
-				}
-				args = append(args, strings.Fields(d.Input)...)
-
-				// The testdata files contain paths with "/" path separators, but we
-				// might be running on a system with a different path separator
-				// (e.g. Windows). Copy the input data into a mem filesystem which
-				// always uses "/" for the path separator.
-				for i := range args {
-					src := normalize(args[i])
-					dest := vfs.Default.PathBase(src)
-					if ok, err := vfs.Clone(vfs.Default, fs, src, dest); err != nil {
-						return err.Error()
-					} else if ok {
-						args[i] = fs.PathBase(args[i])
-					}
-				}
-
-				var buf bytes.Buffer
-				var secs int64
-				timeNow = func() time.Time { secs++; return time.Unix(secs, 0) }
-
-				defer func() {
-					timeNow = time.Now
-				}()
-
 				// Register a test comparer and merger so that we can check the
 				// behavior of tools when the comparer and merger do not match.
 				comparer := func() *Comparer {
@@ -106,6 +79,51 @@ func runTests(t *testing.T, path string) {
 					m.Name = "test-merger"
 					return &m
 				}()
+
+				if d.Cmd == "create" {
+					dbDir := d.CmdArgs[0].String()
+					opts := &pebble.Options{
+						Comparer:           comparer,
+						Merger:             merger,
+						FS:                 fs,
+						FormatMajorVersion: pebble.FormatMostCompatible,
+					}
+					db, err := pebble.Open(dbDir, opts)
+					if err != nil {
+						d.Fatalf(t, "%v", err)
+					}
+					db.Close()
+					return ""
+				}
+
+				args := []string{d.Cmd}
+				for _, arg := range d.CmdArgs {
+					args = append(args, arg.String())
+				}
+				args = append(args, strings.Fields(d.Input)...)
+
+				// The testdata files contain paths with "/" path separators, but we
+				// might be running on a system with a different path separator
+				// (e.g. Windows). Copy the input data into a mem filesystem which
+				// always uses "/" for the path separator.
+				for i := range args {
+					src := normalize(args[i])
+					dest := vfs.Default.PathBase(src)
+					if ok, err := vfs.Clone(vfs.Default, fs, src, dest); err != nil {
+						return err.Error()
+					} else if ok {
+						args[i] = fs.PathBase(args[i])
+					}
+				}
+
+				var buf bytes.Buffer
+				var secs int64
+				timeNow = func() time.Time { secs++; return time.Unix(secs, 0) }
+
+				defer func() {
+					timeNow = time.Now
+				}()
+
 				openErrEnhancer := func(err error) error {
 					if errors.Is(err, base.ErrCorruption) {
 						return base.CorruptionErrorf("%v\nCustom message in case of corruption error.", err)
