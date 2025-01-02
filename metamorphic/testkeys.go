@@ -53,6 +53,24 @@ type testkeyKeyGenerator struct {
 	cfg        OpConfig
 }
 
+// RecordPrecedingKey may be invoked before generating keys to inform the key
+// generator of a key that was previously generated and used within a related
+// test context.
+func (kg *testkeyKeyGenerator) RecordPrecedingKey(key []byte) {
+	// If the key has a suffix that's larger than the current max suffix,
+	// ratchet up the maximum of the distribution of suffixes.
+	if i := testkeys.Comparer.Split(key); i < len(key) {
+		s, err := testkeys.ParseSuffix(key[i:])
+		if err != nil {
+			panic(err)
+		}
+		if uint64(s) > kg.cfg.writeSuffixDist.Max() {
+			diff := int(uint64(s) - kg.cfg.writeSuffixDist.Max())
+			kg.cfg.writeSuffixDist.IncMax(diff)
+		}
+	}
+}
+
 // RandKey returns a random key (either a previously known key, or a new key).
 func (kg *testkeyKeyGenerator) RandKey(newKeyProbability float64) []byte {
 	return kg.randKey(newKeyProbability, nil /* bounds */)

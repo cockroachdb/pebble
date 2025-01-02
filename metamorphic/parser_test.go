@@ -42,7 +42,8 @@ func TestParserRandom(t *testing.T) {
 				cfg.numInstances = 2
 			}
 			km := newKeyManager(cfg.numInstances)
-			ops := generate(randvar.NewRand(), 10000, cfg, km)
+			g := newGenerator(randvar.NewRand(), cfg, km)
+			ops := g.generate(10000)
 			src := formatOps(km.kf, ops)
 
 			parsedOps, err := parse([]byte(src), parserOpts{})

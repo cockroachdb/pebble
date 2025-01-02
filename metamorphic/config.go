@@ -86,6 +86,10 @@ type OpConfig struct {
 	// writeSuffixDist defines the distribution of key suffixes during writing.
 	// It's a dynamic randvar to roughly emulate workloads with MVCC timestamps,
 	// skewing towards most recent timestamps.
+	//
+	// Some KeyFormats may map the uint64 produced by this distribution into a
+	// multi-dimensional keyspace (for example CockroachDB's MVCC timestamps
+	// consist of separate WallTime and Logical compopnents).
 	writeSuffixDist randvar.Dynamic
 
 	// numInstances defines the number of pebble instances created for this
@@ -368,6 +372,26 @@ type KeyFormat struct {
 
 // KeyGenerator is an interface for generating keys, prefixes and suffixes.
 type KeyGenerator interface {
+	// Configuration methods
+
+	// RecordPrecedingKey may be invoked before generating keys to inform the
+	// key generator of a key that was previously generated and used within a
+	// related test context.
+	//
+	// When metamorphic tests are run as a part of cross-version metamorphic
+	// tests, a database maintains state between individual runs of the
+	// metamorphic test. RecordPrecedingKey is invoked to inform the key
+	// generator of the keys used in the previous metamorphic test run's
+	// operations.
+	//
+	// Implementations may use this information differently, but one expected
+	// use is to update the key generator's record of the maximum suffix, so
+	// that the key generator can continue to generate keys with growing
+	// suffixes, modelling the typical MVCC use case.
+	RecordPrecedingKey(key []byte)
+
+	// Generation methods
+
 	// IncMaxSuffix increases the max suffix range and returns the new maximum
 	// suffix (which is guaranteed to be larger than any previously generated
 	// suffix).
