@@ -218,10 +218,11 @@ func (c *fileCacheContainer) estimateSize(
 // createCommonReader creates a Reader for this file.
 func createCommonReader(v *fileCacheValue, file *fileMetadata) sstable.CommonReader {
 	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
-	var cr sstable.CommonReader = v.reader
+	r := v.mustSSTableReader()
+	var cr sstable.CommonReader = r
 	if file.Virtual {
 		virtualReader := sstable.MakeVirtualReader(
-			v.reader, file.VirtualMeta().VirtualReaderParams(v.isShared),
+			r, file.VirtualMeta().VirtualReaderParams(v.isShared),
 		)
 		cr = &virtualReader
 	}
@@ -247,7 +248,7 @@ func (c *fileCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Read
 	if v.err != nil {
 		return v.err
 	}
-	return fn(v.reader)
+	return fn(v.reader.(*sstable.Reader))
 }
 
 // withVirtualReader fetches a VirtualReader associated with a virtual sstable.
@@ -265,7 +266,7 @@ func (c *fileCacheContainer) withVirtualReader(
 	if err != nil {
 		return err
 	}
-	return fn(sstable.MakeVirtualReader(v.reader, meta.VirtualReaderParams(objMeta.IsShared())))
+	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(objMeta.IsShared())))
 }
 
 func (c *fileCacheContainer) iterCount() int64 {
@@ -402,8 +403,8 @@ func (c *fileCacheShard) releaseLoop() {
 // checkAndIntersectFilters checks the specific table and block property filters
 // for intersection with any available table and block-level properties. Returns
 // true for ok if this table should be read by this iterator.
-func (c *fileCacheShard) checkAndIntersectFilters(
-	v *fileCacheValue,
+func checkAndIntersectFilters(
+	r *sstable.Reader,
 	blockPropertyFilters []BlockPropertyFilter,
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter,
 	syntheticSuffix sstable.SyntheticSuffix,
@@ -412,7 +413,7 @@ func (c *fileCacheShard) checkAndIntersectFilters(
 		filterer, err = sstable.IntersectsTable(
 			blockPropertyFilters,
 			boundLimitedFilter,
-			v.reader.Properties.UserProperties,
+			r.Properties.UserProperties,
 			syntheticSuffix,
 		)
 		// NB: IntersectsTable will return a nil filterer if the table-level
@@ -446,15 +447,16 @@ func (c *fileCacheShard) newIters(
 		return iterSet{}, v.err
 	}
 
+	r := v.mustSSTableReader()
 	// Note: This suffers an allocation for virtual sstables.
 	cr := createCommonReader(v, file)
 	var iters iterSet
 	var err error
 	if kinds.RangeKey() && file.HasRangeKeys {
-		iters.rangeKey, err = c.newRangeKeyIter(ctx, v, file, cr, opts.SpanIterOptions())
+		iters.rangeKey, err = newRangeKeyIter(ctx, r, file, cr, opts.SpanIterOptions())
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
-		iters.rangeDeletion, err = c.newRangeDelIter(ctx, file, cr, dbOpts)
+		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, dbOpts)
 	}
 	if kinds.Point() && err == nil {
 		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, dbOpts)
@@ -498,6 +500,7 @@ func (c *fileCacheShard) newPointIter(
 		pointKeyFilters    []BlockPropertyFilter
 		filterer           *sstable.BlockPropertiesFilterer
 	)
+	r := v.mustSSTableReader()
 	if opts != nil {
 		// This code is appending (at most one filter) in-place to
 		// opts.PointKeyFilters even though the slice is shared for iterators in
@@ -519,12 +522,12 @@ func (c *fileCacheShard) newPointIter(
 		// apply the obsolete block property filter. We could optimize this by
 		// applying the filter.
 		hideObsoletePoints, pointKeyFilters =
-			v.reader.TryAddBlockPropertyFilterForHideObsoletePoints(
+			r.TryAddBlockPropertyFilterForHideObsoletePoints(
 				opts.snapshotForHideObsoletePoints, file.LargestSeqNum, opts.PointKeyFilters)
 
 		var ok bool
 		var err error
-		ok, filterer, err = c.checkAndIntersectFilters(v, pointKeyFilters,
+		ok, filterer, err = checkAndIntersectFilters(r, pointKeyFilters,
 			internalOpts.boundLimitedFilter, file.SyntheticPrefixAndSuffix.Suffix())
 		if err != nil {
 			return nil, err
@@ -550,7 +553,7 @@ func (c *fileCacheShard) newPointIter(
 			ctx = objiotracing.WithLevel(ctx, opts.layer.Level())
 		}
 	}
-	tableFormat, err := v.reader.TableFormat()
+	tableFormat, err := r.TableFormat()
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +570,7 @@ func (c *fileCacheShard) newPointIter(
 	iterStatsAccum := internalOpts.iterStatsAccumulator
 	if iterStatsAccum == nil && opts != nil && dbOpts.sstStatsCollector != nil {
 		iterStatsAccum = dbOpts.sstStatsCollector.Accumulator(
-			uint64(uintptr(unsafe.Pointer(v.reader))), opts.Category)
+			uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
 	if internalOpts.compaction {
 		iter, err = cr.NewCompactionIter(transforms, iterStatsAccum, &v.readerProvider, internalOpts.bufferPool)
@@ -595,7 +598,7 @@ func (c *fileCacheShard) newPointIter(
 // newRangeDelIter is an internal helper that constructs an iterator over a
 // sstable's range deletions. This function is for table-cache internal use
 // only, and callers should use newIters instead.
-func (c *fileCacheShard) newRangeDelIter(
+func newRangeDelIter(
 	ctx context.Context, file *manifest.FileMetadata, cr sstable.CommonReader, dbOpts *fileCacheOpts,
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
@@ -620,9 +623,9 @@ func (c *fileCacheShard) newRangeDelIter(
 // newRangeKeyIter is an internal helper that constructs an iterator over a
 // sstable's range keys. This function is for table-cache internal use only, and
 // callers should use newIters instead.
-func (c *fileCacheShard) newRangeKeyIter(
+func newRangeKeyIter(
 	ctx context.Context,
-	v *fileCacheValue,
+	r *sstable.Reader,
 	file *fileMetadata,
 	cr sstable.CommonReader,
 	opts keyspan.SpanIterOptions,
@@ -633,8 +636,8 @@ func (c *fileCacheShard) newRangeKeyIter(
 	// file's range key blocks may surface deleted range keys below. This is
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
-	if v.reader.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
-		ok, _, err := c.checkAndIntersectFilters(v, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix())
+	if r.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
+		ok, _, err := checkAndIntersectFilters(r, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix())
 		if err != nil {
 			return nil, err
 		} else if !ok {
@@ -697,7 +700,7 @@ func (rp *tableCacheShardReaderProvider) GetReader(
 
 	if rp.mu.v != nil {
 		rp.mu.refCount++
-		return rp.mu.v.reader, nil
+		return rp.mu.v.mustSSTableReader(), nil
 	}
 
 	// Calling findNodeInternal gives us the responsibility of decrementing v's
@@ -712,7 +715,7 @@ func (rp *tableCacheShardReaderProvider) GetReader(
 	}
 	rp.mu.v = v
 	rp.mu.refCount = 1
-	return v.reader, nil
+	return v.mustSSTableReader(), nil
 }
 
 // Close implements sstable.ReaderProvider.
@@ -729,7 +732,7 @@ func (rp *tableCacheShardReaderProvider) Close() {
 	}
 }
 
-// getTableProperties return sst table properties for target file
+// getTableProperties return sst table properties for target file.
 func (c *fileCacheShard) getTableProperties(
 	file *fileMetadata, dbOpts *fileCacheOpts,
 ) (*sstable.Properties, error) {
@@ -740,7 +743,8 @@ func (c *fileCacheShard) getTableProperties(
 	if v.err != nil {
 		return nil, v.err
 	}
-	return &v.reader.Properties, nil
+	r := v.mustSSTableReader()
+	return &r.Properties, nil
 }
 
 // releaseNode releases a node from the fileCacheShard.
@@ -813,13 +817,14 @@ func (c *fileCacheShard) unrefValue(v *fileCacheValue) {
 func (c *fileCacheShard) findNode(
 	ctx context.Context, b *fileBacking, dbOpts *fileCacheOpts,
 ) *fileCacheValue {
-	// The backing must have a positive refcount (otherwise it could be deleted at any time).
+	// The backing must have a positive refcount (otherwise it could be deleted
+	// at any time).
 	b.MustHaveRefs()
-	// Caution! Here fileMetadata can be a physical or virtual table. File cache
-	// sstable  readers are associated with the physical backings. All virtual
-	// tables with the same backing will use the same reader from the cache; so
-	// no information that can differ among these virtual tables can be passed
-	// to findNodeInternal.
+	// Caution! Here b can be a physical or virtual sstable, or a blob file.
+	// File cache sstable readers are associated with the physical backings. All
+	// virtual tables with the same backing will use the same reader from the
+	// cache; so no information that can differ among these virtual tables can
+	// be passed to findNodeInternal.
 	backingFileNum := b.DiskFileNum
 
 	return c.findNodeInternal(ctx, backingFileNum, dbOpts)
@@ -1126,7 +1131,7 @@ func (c *fileCacheShard) Close() error {
 
 type fileCacheValue struct {
 	closeHook func(i sstable.Iterator) error
-	reader    *sstable.Reader
+	reader    io.Closer // *sstable.Reader
 	err       error
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
@@ -1142,11 +1147,22 @@ type fileCacheValue struct {
 	readerProvider tableCacheShardReaderProvider
 }
 
+// mustSSTable retrieves the value's *sstable.Reader. It panics if the cached
+// file is not a sstable (i.e., it is a blob file).
+func (v *fileCacheValue) mustSSTableReader() *sstable.Reader {
+	r, ok := v.reader.(*sstable.Reader)
+	if !ok {
+		panic(errors.AssertionFailedf("%s is not a sstable", v.reader))
+	}
+	return r
+}
+
 func (v *fileCacheValue) load(
 	ctx context.Context, backingFileNum base.DiskFileNum, c *fileCacheShard, dbOpts *fileCacheOpts,
 ) {
 	// Try opening the file first.
 	var f objstorage.Readable
+	var r *sstable.Reader
 	var err error
 	f, err = dbOpts.objProvider.OpenForReading(
 		ctx, fileTypeTable, backingFileNum, objstorage.OpenOptions{MustExist: true},
@@ -1158,9 +1174,10 @@ func (v *fileCacheValue) load(
 			CacheID: dbOpts.cacheID,
 			FileNum: backingFileNum,
 		})
-		v.reader, err = sstable.NewReader(ctx, f, o)
+		r, err = sstable.NewReader(ctx, f, o)
 	}
 	if err == nil {
+		v.reader = r
 		var objMeta objstorage.ObjectMetadata
 		objMeta, err = dbOpts.objProvider.Lookup(fileTypeTable, backingFileNum)
 		v.isShared = objMeta.IsShared()
