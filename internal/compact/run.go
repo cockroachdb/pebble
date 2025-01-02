@@ -254,7 +254,6 @@ func (r *Runner) Finish() Result {
 	// The compaction iterator keeps track of a count of the number of DELSIZED
 	// keys that encoded an incorrect size.
 	r.stats.CountMissizedDels = r.iter.Stats().CountMissizedDels
-	r.cfg.Slot.Release(r.stats.CumulativeWrittenSize)
 	return Result{
 		Err:    r.err,
 		Tables: r.tables,

@@ -330,7 +330,11 @@ func (c *compaction) userKeyBounds() base.UserKeyBounds {
 }
 
 func newCompaction(
-	pc *pickedCompaction, opts *Options, beganAt time.Time, provider objstorage.Provider,
+	pc *pickedCompaction,
+	opts *Options,
+	beganAt time.Time,
+	provider objstorage.Provider,
+	slot base.CompactionSlot,
 ) *compaction {
 	c := &compaction{
 		kind:              compactionKindDefault,
@@ -347,7 +351,7 @@ func newCompaction(
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
 		pickerMetrics:     pc.pickerMetrics,
-		slot:              pc.slot,
+		slot:              slot,
 	}
 	c.startLevel = &c.inputs[0]
 	if pc.startLevel.l0SublevelInfo != nil {
@@ -607,11 +611,15 @@ func newFlush(
 		updatePointBounds(f.newIter(nil))
 		if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 			if err := updateRangeBounds(rangeDelIter); err != nil {
+				c.slot.Release(0)
+				c.slot = nil
 				return nil, err
 			}
 		}
 		if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
 			if err := updateRangeBounds(rangeKeyIter); err != nil {
+				c.slot.Release(0)
+				c.slot = nil
 				return nil, err
 			}
 		}
@@ -1040,6 +1048,9 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 // have completed by this point.
 func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 	c.versionEditApplied = true
+	if c.slot != nil {
+		panic("pebble: compaction slot should have been released before clearing compacting state")
+	}
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
@@ -1224,6 +1235,10 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	if len(c.flushing) != 1 {
 		panic("pebble: ingestedFlushable must be flushed one at a time.")
 	}
+	defer func() {
+		c.slot.Release(0 /* totalBytesWritten */)
+		c.slot = nil
+	}()
 
 	// Construct the VersionEdit, levelMetrics etc.
 	c.metrics = make(map[int]*LevelMetrics, numLevels)
@@ -1797,14 +1812,38 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() {
 	// it can change dynamically between now and when the compaction runs.
 	exciseEnabled := d.FormatMajorVersion() >= FormatVirtualSSTables &&
 		d.opts.Experimental.EnableDeleteOnlyCompactionExcises != nil && d.opts.Experimental.EnableDeleteOnlyCompactionExcises()
+	// NB: CompactionLimiter defaults to a no-op limiter unless one is implemented
+	// and passed-in as an option during Open.
+	limiter := d.opts.Experimental.CompactionLimiter
+	var slot base.CompactionSlot
+	// TODO(bilal): Should we always take a slot without permission?
+	if n := len(d.getInProgressCompactionInfoLocked(nil)); n == 0 {
+		// We are not running a compaction at the moment. We should take a compaction slot
+		// without permission.
+		slot = limiter.TookWithoutPermission(context.TODO())
+	} else {
+		var err error
+		slot, err = limiter.RequestSlot(context.TODO())
+		if err != nil {
+			d.opts.EventListener.BackgroundError(err)
+			return
+		}
+		if slot == nil {
+			// The limiter is denying us a compaction slot. Yield to other work.
+			return
+		}
+	}
 	inputs, resolvedHints, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots, exciseEnabled)
 	d.mu.compact.deletionHints = unresolvedHints
 
 	if len(inputs) > 0 {
 		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints, exciseEnabled)
+		c.slot = slot
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
+	} else {
+		slot.Release(0 /* totalBytesWritten */)
 	}
 }
 
@@ -1827,7 +1866,7 @@ func (d *DB) tryScheduleManualCompaction(env compactionEnv, manual *manualCompac
 		return false
 	}
 
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), nil /* compactionSlot */)
 	d.mu.compact.compactingCount++
 	d.addInProgressCompaction(c)
 	go d.compact(c, manual.done)
@@ -1849,11 +1888,39 @@ func (d *DB) tryScheduleAutoCompaction(
 		flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
 		rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
 	}
+	// NB: CompactionLimiter defaults to a no-op limiter unless one is implemented
+	// and passed-in as an option during Open.
+	limiter := d.opts.Experimental.CompactionLimiter
+	var slot base.CompactionSlot
+	if n := len(env.inProgressCompactions); n == 0 {
+		// We are not running a compaction at the moment. We should take a compaction slot
+		// without permission.
+		slot = limiter.TookWithoutPermission(context.TODO())
+	} else {
+		var err error
+		slot, err = limiter.RequestSlot(context.TODO())
+		if err != nil {
+			d.opts.EventListener.BackgroundError(err)
+			return false
+		}
+		if slot == nil {
+			// The limiter is denying us a compaction slot. Yield to other work.
+			return false
+		}
+	}
 	pc := pickFunc(d.mu.versions.picker, env)
 	if pc == nil {
+		slot.Release(0 /* bytesWritten */)
 		return false
 	}
-	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider())
+	var inputSize uint64
+	for i := range pc.inputs {
+		inputSize += pc.inputs[i].files.SizeSum()
+	}
+	slot.CompactionSelected(pc.startLevel.level, pc.outputLevel.level, inputSize)
+
+	// Responsibility for releasing slot passes over to the compaction.
+	c := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), slot)
 	d.mu.compact.compactingCount++
 	d.addInProgressCompaction(c)
 	go d.compact(c, nil)
@@ -2791,6 +2858,10 @@ func (d *DB) runMoveCompaction(
 func (d *DB) runCompaction(
 	jobID JobID, c *compaction,
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
+	defer func() {
+		c.slot.Release(stats.CumulativeWrittenSize)
+		c.slot = nil
+	}()
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
 	}
