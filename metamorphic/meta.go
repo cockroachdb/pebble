@@ -177,6 +177,14 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 	// read by the child processes when performing a test run.
 	km := newKeyManager(runOpts.numInstances)
 	cfg := presetConfigs[rng.IntN(len(presetConfigs))]
+	if runOpts.numInstances > 1 {
+		// The multi-instance variant does not support all operations yet.
+		//
+		// TODO(bilal): Address this and use the default configs.
+		cfg = multiInstancePresetConfig
+		cfg.numInstances = runOpts.numInstances
+	}
+	g := newGenerator(rng, cfg, km)
 	if runOpts.previousOpsPath != "" {
 		// During cross-version testing, we load keys from an `ops` file
 		// produced by a metamorphic test run of an earlier Pebble version.
@@ -187,16 +195,10 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		require.NoError(t, err)
 		ops, err := parse(opsData, parserOpts{})
 		require.NoError(t, err)
-		loadPrecedingKeys(t, ops, &cfg, km)
+		loadPrecedingKeys(ops, g.keyGenerator, km)
 	}
-	if runOpts.numInstances > 1 {
-		// The multi-instance variant does not support all operations yet.
-		//
-		// TODO(bilal): Address this and use the default configs.
-		cfg = multiInstancePresetConfig
-		cfg.numInstances = runOpts.numInstances
-	}
-	ops := generate(rng, opCount, cfg, km)
+
+	ops := g.generate(opCount)
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(km.kf, ops)
 	require.NoError(t, os.WriteFile(opsPath, []byte(formattedOps), 0644))

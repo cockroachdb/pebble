@@ -55,7 +55,7 @@ func (o iterOpts) IsZero() bool {
 func GenerateOps(rng *rand.Rand, n uint64, cfg OpConfig) Ops {
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	return generate(rng, n, cfg, newKeyManager(1 /* num instances */))
+	return newGenerator(rng, cfg, newKeyManager(1 /* num instances */)).generate(n)
 }
 
 type generator struct {
@@ -149,9 +149,9 @@ func newGenerator(rng *rand.Rand, cfg OpConfig, km *keyManager) *generator {
 	return g
 }
 
-func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
-	g := newGenerator(rng, cfg, km)
-
+// generate generates [count] operations according to the generator's configured
+// distributions.
+func (g *generator) generate(count uint64) []op {
 	opGenerators := []func(){
 		OpBatchAbort:                  g.batchAbort,
 		OpBatchCommit:                 g.batchCommit,
@@ -203,11 +203,11 @@ func generate(rng *rand.Rand, count uint64, cfg OpConfig, km *keyManager) []op {
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
 	// reached, we shuffle the deck.
-	deck := randvar.NewDeck(g.rng, cfg.ops[:]...)
+	deck := randvar.NewDeck(g.rng, g.cfg.ops[:]...)
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintln(os.Stderr, formatOps(km.kf, g.ops))
+			fmt.Fprintln(os.Stderr, formatOps(g.keyManager.kf, g.ops))
 			panic(r)
 		}
 	}()

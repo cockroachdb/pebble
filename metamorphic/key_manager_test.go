@@ -158,11 +158,13 @@ func TestLoadPrecedingKeys(t *testing.T) {
 	rng := randvar.NewRand()
 	cfg := DefaultOpConfig()
 	km := newKeyManager(1 /* numInstances */)
-	ops := generate(rng, 1000, cfg, km)
+	g := newGenerator(rng, cfg, km)
+	ops := g.generate(1000)
 
 	cfg2 := DefaultOpConfig()
 	km2 := newKeyManager(1 /* numInstances */)
-	loadPrecedingKeys(t, ops, &cfg2, km2)
+	g2 := newGenerator(rng, cfg2, km2)
+	loadPrecedingKeys(ops, g2.keyGenerator, km2)
 
 	// NB: We can't assert equality, because the original run may not have
 	// ever used the max of the distribution.

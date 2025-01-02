@@ -133,7 +133,8 @@ func TestGeneratorRandom(t *testing.T) {
 		rng := rand.New(rand.NewPCG(0, seed))
 		count := ops.Uint64(rng)
 		km := newKeyManager(cfg.numInstances)
-		return formatOps(km.kf, generate(rng, count, cfg, km))
+		g := newGenerator(rng, cfg, km)
+		return formatOps(km.kf, g.generate(count))
 	}
 
 	for i := range cfgs {

@@ -13,8 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/stretchr/testify/require"
 )
 
 // keyMeta is metadata associated with an (objID, key) pair, where objID is
@@ -911,25 +909,16 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	return nil
 }
 
-func loadPrecedingKeys(t TestingT, ops []op, cfg *OpConfig, m *keyManager) {
+func loadPrecedingKeys(ops []op, kg KeyGenerator, m *keyManager) {
 	for _, op := range ops {
 		// Pretend we're generating all the operation's keys as potential new
 		// key, so that we update the key manager's keys and prefix sets.
 		for _, k := range opWrittenKeys(op) {
 			m.addNewKey(k)
-
-			// If the key has a suffix, ratchet up the suffix distribution if
-			// necessary.
-			if s := m.kf.Comparer.Split(k); s < len(k) {
-				suffix, err := testkeys.ParseSuffix(k[s:])
-				require.NoError(t, err)
-				if uint64(suffix) > cfg.writeSuffixDist.Max() {
-					diff := int(uint64(suffix) - cfg.writeSuffixDist.Max())
-					cfg.writeSuffixDist.IncMax(diff)
-				}
-			}
+			// Inform the key generator of the key, so it can update the
+			// distribution of key suffixes it generates.
+			kg.RecordPrecedingKey(k)
 		}
-
 		// Update key tracking state.
 		m.update(op)
 	}
