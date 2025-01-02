@@ -1211,6 +1211,8 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			}
 			slot.CompactionSelected(pc.startLevel.level, pc.outputLevel.level, inputSize)
 			pc.slot = slot
+		} else {
+			slot.Release(0 /* bytesWritten */)
 		}
 	}()
 

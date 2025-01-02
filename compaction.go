@@ -608,11 +608,13 @@ func newFlush(
 		updatePointBounds(f.newIter(nil))
 		if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 			if err := updateRangeBounds(rangeDelIter); err != nil {
+				slot.Release(0)
 				return nil, err
 			}
 		}
 		if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
 			if err := updateRangeBounds(rangeKeyIter); err != nil {
+				slot.Release(0)
 				return nil, err
 			}
 		}
@@ -1225,6 +1227,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	if len(c.flushing) != 1 {
 		panic("pebble: ingestedFlushable must be flushed one at a time.")
 	}
+	defer c.slot.Release(0 /* totalBytesWritten */)
 
 	// Construct the VersionEdit, levelMetrics etc.
 	c.metrics = make(map[int]*LevelMetrics, numLevels)
@@ -1798,14 +1801,38 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() {
 	// it can change dynamically between now and when the compaction runs.
 	exciseEnabled := d.FormatMajorVersion() >= FormatVirtualSSTables &&
 		d.opts.Experimental.EnableDeleteOnlyCompactionExcises != nil && d.opts.Experimental.EnableDeleteOnlyCompactionExcises()
+	// NB: CompactionLimiter defaults to a no-op limiter unless one is implemented
+	// and passed-in as an option during Open.
+	limiter := d.opts.Experimental.CompactionLimiter
+	var slot base.CompactionSlot
+	// TODO(bilal): Should we always take a slot without permission?
+	if n := len(d.getInProgressCompactionInfoLocked(nil)); n == 0 {
+		// We are not running a compaction at the moment. We should take a compaction slot
+		// without permission.
+		slot = limiter.TookWithoutPermission(context.TODO())
+	} else {
+		var err error
+		slot, err = limiter.RequestSlot(context.TODO())
+		if err != nil {
+			d.opts.EventListener.BackgroundError(err)
+			return
+		}
+		if slot == nil {
+			// The limiter is denying us a compaction slot. Yield to other work.
+			return
+		}
+	}
 	inputs, resolvedHints, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots, exciseEnabled)
 	d.mu.compact.deletionHints = unresolvedHints
 
 	if len(inputs) > 0 {
 		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints, exciseEnabled)
+		c.slot = slot
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
+	} else {
+		slot.Release(0 /* totalBytesWritten */)
 	}
 }
 
@@ -2775,6 +2802,9 @@ func (d *DB) runMoveCompaction(
 func (d *DB) runCompaction(
 	jobID JobID, c *compaction,
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
+	defer func() {
+		c.slot.Release(stats.CumulativeWrittenSize)
+	}()
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
 	}
