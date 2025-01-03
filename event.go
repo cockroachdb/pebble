@@ -530,6 +530,119 @@ func (i WriteStallBeginInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("write stall beginning: %s", redact.Safe(i.Reason))
 }
 
+// PossibleAPIMisuseInfo contains the information for a PossibleAPIMisuse event.
+type PossibleAPIMisuseInfo struct {
+	Kind APIMisuseKind
+
+	// UserKey is set for the following kinds:
+	//  - IneffectualSingleDelete,
+	//  - NondeterministicSingleDelete.
+	UserKey []byte
+}
+
+func (i PossibleAPIMisuseInfo) String() string {
+	switch i.Kind {
+	case IneffectualSingleDelete, NondeterministicSingleDelete:
+		return fmt.Sprintf("%s (key=%q)", i.Kind, i.UserKey)
+	default:
+		return "invalid"
+	}
+}
+
+// APIMisuseKind identifies the type of API misuse represented by a
+// PossibleAPIMisuse event.
+type APIMisuseKind int8
+
+const (
+	// IneffectualSingleDelete is emitted in compactions/flushes if any
+	// single delete is being elided without deleting a point set/merge.
+	//
+	// This event can sometimes be a false positive because of delete-only
+	// compactions which can cause a recent RANGEDEL to peek below an older
+	// SINGLEDEL and delete an arbitrary subset of data below that SINGLEDEL.
+	//
+	// Example:
+	//   RANGEDEL [a, c)#10 in L0
+	//   SINGLEDEL b#5 in L1
+	//   SET b#3 in L6
+	//
+	// If the L6 file containing the SET is narrow and the L1 file containing
+	// the SINGLEDEL is wide, a delete-only compaction can remove the file in
+	// L2 before the SINGLEDEL is compacted down. Then when the SINGLEDEL is
+	// compacted down, it will not find any SET to delete, resulting in the
+	// ineffectual callback.
+	IneffectualSingleDelete APIMisuseKind = iota
+
+	// NondeterministicSingleDelete is emitted in compactions/flushes if any
+	// single delete has consumed a Set/Merge, and there is another immediately
+	// older Set/SetWithDelete/Merge. The user of Pebble has violated the
+	// invariant under which SingleDelete can be used correctly.
+	//
+	// Consider the sequence SingleDelete#3, Set#2, Set#1. There are three
+	// ways some of these keys can first meet in a compaction.
+	//
+	// - All 3 keys in the same compaction: this callback will detect the
+	//   violation.
+	//
+	// - SingleDelete#3, Set#2 meet in a compaction first: Both keys will
+	//   disappear. The violation will not be detected, and the DB will have
+	//   Set#1 which is likely incorrect (from the user's perspective).
+	//
+	// - Set#2, Set#1 meet in a compaction first: The output will be Set#2,
+	//   which will later be consumed by SingleDelete#3. The violation will
+	//   not be detected and the DB will be correct.
+	//
+	// This event can sometimes be a false positive because of delete-only
+	// compactions which can cause a recent RANGEDEL to peek below an older
+	// SINGLEDEL and delete an arbitrary subset of data below that SINGLEDEL.
+	//
+	// Example:
+	//   RANGEDEL [a, z)#60 in L0
+	//   SINGLEDEL g#50 in L1
+	//   SET g#40 in L2
+	//   RANGEDEL [g,h)#30 in L3
+	//   SET g#20 in L6
+	//
+	// In this example, the two SETs represent the same user write, and the
+	// RANGEDELs are caused by the CockroachDB range being dropped. That is,
+	// the user wrote to g once, range was dropped, then added back, which
+	// caused the SET again, then at some point g was validly deleted using a
+	// SINGLEDEL, and then the range was dropped again. The older RANGEDEL can
+	// get fragmented due to compactions it has been part of. Say this L3 file
+	// containing the RANGEDEL is very narrow, while the L1, L2, L6 files are
+	// wider than the RANGEDEL in L0. Then the RANGEDEL in L3 can be dropped
+	// using a delete-only compaction, resulting in an LSM with state:
+	//
+	//   RANGEDEL [a, z)#60 in L0
+	//   SINGLEDEL g#50 in L1
+	//   SET g#40 in L2
+	//   SET g#20 in L6
+	//
+	// A multi-level compaction involving L1, L2, L6 will cause the invariant
+	// violation callback. This example doesn't need multi-level compactions:
+	// say there was a Pebble snapshot at g#21 preventing g#20 from being
+	// dropped when it meets g#40 in a compaction. That snapshot will not save
+	// RANGEDEL [g,h)#30, so we can have:
+	//
+	//   SINGLEDEL g#50 in L1
+	//   SET g#40, SET g#20 in L6
+	//
+	// And say the snapshot is removed and then the L1 and L6 compaction
+	// happens, resulting in the invariant violation callback.
+	NondeterministicSingleDelete
+)
+
+func (k APIMisuseKind) String() string {
+	switch k {
+	case IneffectualSingleDelete:
+		return "ineffectual SINGLEDEL"
+	case NondeterministicSingleDelete:
+		return "nondeterministicv SINGLEDEL"
+	default:
+		return "unknown"
+	}
+}
+
 // EventListener contains a set of functions that will be invoked when various
 // significant DB events occur. Note that the functions should not run for an
 // excessive amount of time as they are invoked synchronously by the DB and may
@@ -612,6 +725,9 @@ type EventListener struct {
 
 	// WriteStallEnd is invoked when delayed writes are released.
 	WriteStallEnd func()
+
+	// PossibleAPIMisuse is invoked when a possible API misuse is detected.
+	PossibleAPIMisuse func(PossibleAPIMisuseInfo)
 }
 
 // EnsureDefaults ensures that background error events are logged to the
@@ -685,6 +801,9 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.WriteStallEnd == nil {
 		l.WriteStallEnd = func() {}
 	}
+	if l.PossibleAPIMisuse == nil {
+		l.PossibleAPIMisuse = func(info PossibleAPIMisuseInfo) {}
+	}
 }
 
 // MakeLoggingEventListener creates an EventListener that logs all events to the
@@ -754,6 +873,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		},
 		WriteStallEnd: func() {
 			logger.Infof("write stall ending")
+		},
+		PossibleAPIMisuse: func(info PossibleAPIMisuseInfo) {
+			logger.Infof("API misuse: %s", info)
 		},
 	}
 }
@@ -842,6 +964,10 @@ func TeeEventListener(a, b EventListener) EventListener {
 		WriteStallEnd: func() {
 			a.WriteStallEnd()
 			b.WriteStallEnd()
+		},
+		PossibleAPIMisuse: func(info PossibleAPIMisuseInfo) {
+			a.PossibleAPIMisuse(info)
+			b.PossibleAPIMisuse(info)
 		},
 	}
 }
