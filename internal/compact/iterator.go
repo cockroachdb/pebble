@@ -269,19 +269,23 @@ type IterConfig struct {
 	AllowZeroSeqNum bool
 
 	// IneffectualPointDeleteCallback is called if a SINGLEDEL is being elided
-	// without deleting a point set/merge.
+	// without deleting a point set/merge. False positives are rare but possible
+	// (because of delete-only compactions).
 	IneffectualSingleDeleteCallback func(userKey []byte)
 
-	// SingleDeleteInvariantViolationCallback is called in compactions/flushes if any
+	// NondeterministicSingleDeleteCallback is called in compactions/flushes if any
 	// single delete has consumed a Set/Merge, and there is another immediately older
-	// Set/SetWithDelete/Merge. The user of Pebble has violated the invariant under
-	// which SingleDelete can be used correctly.
-	SingleDeleteInvariantViolationCallback func(userKey []byte)
+	// Set/SetWithDelete/Merge. False positives are rare but possible (because of
+	// delete-only compactions).
+	NondeterministicSingleDeleteCallback func(userKey []byte)
 }
 
 func (c *IterConfig) ensureDefaults() {
 	if c.IneffectualSingleDeleteCallback == nil {
 		c.IneffectualSingleDeleteCallback = func(userKey []byte) {}
+	}
+	if c.NondeterministicSingleDeleteCallback == nil {
+		c.NondeterministicSingleDeleteCallback = func(userKey []byte) {}
 	}
 }
 
@@ -965,15 +969,13 @@ func (i *Iter) singleDeleteNext() bool {
 				nextKind := i.iterKV.Kind()
 				switch nextKind {
 				case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete, base.InternalKeyKindMerge:
-					if i.cfg.SingleDeleteInvariantViolationCallback != nil {
-						// sameStripe keys returned by nextInStripe() are already
-						// known to not be covered by a RANGEDEL, so it is an invariant
-						// violation. The rare case is newStripeSameKey, where it is a
-						// violation if not covered by a RANGEDEL.
-						if change == sameStripe ||
-							i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == noCover {
-							i.cfg.SingleDeleteInvariantViolationCallback(i.key.UserKey)
-						}
+					// sameStripe keys returned by nextInStripe() are already
+					// known to not be covered by a RANGEDEL, so it is an invariant
+					// violation. The rare case is newStripeSameKey, where it is a
+					// violation if not covered by a RANGEDEL.
+					if change == sameStripe ||
+						i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == noCover {
+						i.cfg.NondeterministicSingleDeleteCallback(i.key.UserKey)
 					}
 				case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
 				default:
@@ -1075,9 +1077,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 					nextKind := i.iterKV.Kind()
 					switch nextKind {
 					case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete, base.InternalKeyKindMerge:
-						if i.cfg.SingleDeleteInvariantViolationCallback != nil {
-							i.cfg.SingleDeleteInvariantViolationCallback(i.key.UserKey)
-						}
+						i.cfg.NondeterministicSingleDeleteCallback(i.key.UserKey)
 					case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
 					default:
 						panic(errors.AssertionFailedf(
