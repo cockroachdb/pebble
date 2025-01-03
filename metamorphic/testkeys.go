@@ -65,7 +65,7 @@ func (kg *testkeyKeyGenerator) RecordPrecedingKey(key []byte) {
 			panic(err)
 		}
 		if uint64(s) > kg.cfg.writeSuffixDist.Max() {
-			diff := int(uint64(s) - kg.cfg.writeSuffixDist.Max())
+			diff := uint64(s) - kg.cfg.writeSuffixDist.Max()
 			kg.cfg.writeSuffixDist.IncMax(diff)
 		}
 	}
