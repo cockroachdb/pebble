@@ -168,6 +168,7 @@ package valblk
 
 import (
 	"encoding/binary"
+	"fmt"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -289,6 +290,18 @@ type IndexHandle struct {
 	BlockNumByteLength    uint8
 	BlockOffsetByteLength uint8
 	BlockLengthByteLength uint8
+}
+
+// String returns a string representation of the IndexHandle.
+func (h IndexHandle) String() string {
+	return fmt.Sprintf("{Handle: {%d,%d}, DataLens:(%d,%d,%d)}",
+		h.Handle.Offset, h.Handle.Length, h.BlockNumByteLength, h.BlockOffsetByteLength, h.BlockLengthByteLength)
+}
+
+// RowWidth returns the number of bytes that the referenced index block uses per
+// value block.
+func (h IndexHandle) RowWidth() int {
+	return int(h.BlockNumByteLength + h.BlockOffsetByteLength + h.BlockLengthByteLength)
 }
 
 // EncodeIndexHandle encodes the IndexHandle into dst and returns the number of
