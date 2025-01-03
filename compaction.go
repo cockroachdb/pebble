@@ -2919,14 +2919,24 @@ func (d *DB) compactAndWrite(
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	cfg := compact.IterConfig{
-		Comparer:                               c.comparer,
-		Merge:                                  d.merge,
-		TombstoneElision:                       c.delElision,
-		RangeKeyElision:                        c.rangeKeyElision,
-		Snapshots:                              snapshots,
-		AllowZeroSeqNum:                        c.allowedZeroSeqNum,
-		IneffectualSingleDeleteCallback:        d.opts.Experimental.IneffectualSingleDeleteCallback,
-		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
+		Comparer:         c.comparer,
+		Merge:            d.merge,
+		TombstoneElision: c.delElision,
+		RangeKeyElision:  c.rangeKeyElision,
+		Snapshots:        snapshots,
+		AllowZeroSeqNum:  c.allowedZeroSeqNum,
+		IneffectualSingleDeleteCallback: func(userKey []byte) {
+			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
+				Kind:    IneffectualSingleDelete,
+				UserKey: slices.Clone(userKey),
+			})
+		},
+		NondeterministicSingleDeleteCallback: func(userKey []byte) {
+			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
+				Kind:    NondeterministicSingleDelete,
+				UserKey: slices.Clone(userKey),
+			})
+		},
 	}
 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
 

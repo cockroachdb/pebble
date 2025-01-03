@@ -84,7 +84,7 @@ func TestCompactionIter(t *testing.T) {
 			IneffectualSingleDeleteCallback: func(userKey []byte) {
 				ineffectualSingleDeleteKeys = append(ineffectualSingleDeleteKeys, string(userKey))
 			},
-			SingleDeleteInvariantViolationCallback: func(userKey []byte) {
+			NondeterministicSingleDeleteCallback: func(userKey []byte) {
 				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
 			},
 		}
