@@ -37,8 +37,8 @@ func NewUniform(min, max uint64) *Uniform {
 }
 
 // IncMax increments max.
-func (g *Uniform) IncMax(delta int) {
-	g.max.Add(uint64(delta))
+func (g *Uniform) IncMax(delta uint64) {
+	g.max.Add(delta)
 }
 
 // Max returns the max value of the distribution.

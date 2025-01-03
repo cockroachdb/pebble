@@ -482,7 +482,7 @@ func (y *ycsb) insert(db DB, buf *ycsbBuf) {
 			log.Fatal(err)
 		}
 		if delta > 0 {
-			y.keyDist.IncMax(delta)
+			y.keyDist.IncMax(uint64(delta))
 		}
 	}
 }

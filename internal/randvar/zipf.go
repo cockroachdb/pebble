@@ -111,10 +111,10 @@ func computeZetaFromScratch(n uint64, theta float64) float64 {
 
 // IncMax increments max and recomputes the internal values that depend on
 // it. Returns an error if the recomputation failed.
-func (z *Zipf) IncMax(delta int) {
+func (z *Zipf) IncMax(delta uint64) {
 	z.mu.Lock()
 	oldMax := z.mu.max
-	z.mu.max += uint64(delta)
+	z.mu.max += delta
 	z.mu.zetaN = computeZetaIncrementally(oldMax+1-z.min, z.mu.max+1-z.min, z.theta, z.mu.zetaN)
 	z.mu.eta = (1 - math.Pow(2.0/float64(z.mu.max+1-z.min), 1.0-z.theta)) / (1.0 - z.zeta2/z.mu.zetaN)
 	z.mu.Unlock()
