@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -392,5 +393,67 @@ func TestOptionsValidateCache(t *testing.T) {
 	require.Error(t, err)
 	if fmt.Sprint(err) != "underlying cache in the FileCache and the Cache dont match" {
 		t.Errorf("Unexpected error message")
+	}
+}
+
+func TestKeyCategories(t *testing.T) {
+	kc := MakeUserKeyCategories(base.DefaultComparer.Compare, []UserKeyCategory{
+		{Name: "b", UpperBound: []byte("b")},
+		{Name: "dd", UpperBound: []byte("dd")},
+		{Name: "e", UpperBound: []byte("e")},
+		{Name: "h", UpperBound: []byte("h")},
+		{Name: "o", UpperBound: nil},
+	}...)
+
+	for _, tc := range []struct {
+		key      string
+		expected string
+	}{
+		{key: "a", expected: "b"},
+		{key: "a123", expected: "b"},
+		{key: "az", expected: "b"},
+		{key: "b", expected: "dd"},
+		{key: "b123", expected: "dd"},
+		{key: "c", expected: "dd"},
+		{key: "d", expected: "dd"},
+		{key: "dd", expected: "e"},
+		{key: "dd0", expected: "e"},
+		{key: "de", expected: "e"},
+		{key: "e", expected: "h"},
+		{key: "e1", expected: "h"},
+		{key: "f", expected: "h"},
+		{key: "h", expected: "o"},
+		{key: "h1", expected: "o"},
+		{key: "z", expected: "o"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			res := kc.CategorizeKey([]byte(tc.key))
+			require.Equal(t, tc.expected, res)
+		})
+	}
+
+	for _, tc := range []struct {
+		rng      string
+		expected string
+	}{
+		{rng: "a-a", expected: "b"},
+		{rng: "a-a1", expected: "b"},
+		{rng: "a-b", expected: "b-dd"},
+		{rng: "b1-b5", expected: "dd"},
+		{rng: "b1-dd0", expected: "dd-e"},
+		{rng: "b1-g", expected: "dd-h"},
+		{rng: "b1-j", expected: "dd-o"},
+		{rng: "b1-z", expected: "dd-o"},
+		{rng: "dd-e", expected: "e-h"},
+		{rng: "h-i", expected: "o"},
+		{rng: "i-i", expected: "o"},
+		{rng: "i-j", expected: "o"},
+		{rng: "a-z", expected: "b-o"},
+	} {
+		t.Run(tc.rng, func(t *testing.T) {
+			keys := strings.SplitN(tc.rng, "-", 2)
+			res := kc.CategorizeKeyRange([]byte(keys[0]), []byte(keys[1]))
+			require.Equal(t, tc.expected, res)
+		})
 	}
 }
