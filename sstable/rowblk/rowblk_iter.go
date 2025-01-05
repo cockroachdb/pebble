@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
@@ -382,7 +381,7 @@ func (i *Iter) readEntry() {
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
 	shared += i.transforms.SyntheticPrefixAndSuffix.PrefixLen()
-	unsharedKey := getBytes(ptr, int(unshared))
+	unsharedKey := unsafe.Slice((*byte)(ptr), int(unshared))
 	// TODO(sumeer): move this into the else block below.
 	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
 	if shared == 0 {
@@ -395,7 +394,7 @@ func (i *Iter) readEntry() {
 		i.key = i.fullKey
 	}
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
-	i.val = getBytes(ptr, int(value))
+	i.val = unsafe.Slice((*byte)(ptr), int(value))
 	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
 }
 
@@ -449,7 +448,7 @@ func (i *Iter) readFirstKey() error {
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
 
-	firstKey := getBytes(ptr, int(unshared))
+	firstKey := unsafe.Slice((*byte)(ptr), int(unshared))
 	// Manually inlining base.DecodeInternalKey provides a 5-10% speedup on
 	// BlockIter benchmarks.
 	if n := len(firstKey) - 8; n >= 0 {
@@ -611,7 +610,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 
 			// Manually inlining part of base.DecodeInternalKey provides a 5-10%
 			// speedup on BlockIter benchmarks.
-			s := getBytes(ptr, int(v1))
+			s := unsafe.Slice((*byte)(ptr), int(v1))
 			var k []byte
 			if n := len(s) - 8; n >= 0 {
 				k = s[:n:n]
@@ -793,7 +792,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 
 			// Manually inlining part of base.DecodeInternalKey provides a 5-10%
 			// speedup on BlockIter benchmarks.
-			s := getBytes(ptr, int(v1))
+			s := unsafe.Slice((*byte)(ptr), int(v1))
 			var k []byte
 			if n := len(s) - 8; n >= 0 {
 				k = s[:n:n]
@@ -1240,7 +1239,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		}
 		// The trailer is written in little endian, so the key kind is the first
 		// byte in the trailer that is encoded in the slice [unshared-8:unshared].
-		keyKind := base.InternalKeyKind((*[manual.MaxArrayLen]byte)(ptr)[unshared-8])
+		keyKind := base.InternalKeyKind(*(*byte)(unsafe.Pointer(uintptr(ptr) + uintptr(unshared) - 8)))
 		keyKind = keyKind & base.InternalKeyKindSSTableInternalObsoleteMask
 		prefixChanged := false
 		if keyKind == base.InternalKeyKindSet {
@@ -1334,7 +1333,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		// - (Unlikely) The prefix has not changed.
 		// We assemble the key etc. under the assumption that it is the likely
 		// case.
-		unsharedKey := getBytes(ptr, int(unshared))
+		unsharedKey := unsafe.Slice((*byte)(ptr), int(unshared))
 		// TODO(sumeer): move this into the else block below. This is a bit tricky
 		// since the current logic assumes we have always copied the latest key
 		// into fullKey, which is why when we get to the next key we can (a)
@@ -1346,7 +1345,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 		// too. This same comment applies to the other place where we can do this
 		// optimization, in readEntry().
 		i.fullKey = append(i.fullKey[:shared], unsharedKey...)
-		i.val = getBytes(valuePtr, int(value))
+		i.val = unsafe.Slice((*byte)(valuePtr), int(value))
 		if shared == 0 {
 			// Provide stability for the key across positioning calls if the key
 			// doesn't share a prefix with the previous key. This removes requiring the
@@ -1419,7 +1418,7 @@ start:
 		i.nextOffset = i.offset
 		e := &i.cached[n]
 		i.offset = e.offset
-		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
+		i.val = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart))), int(e.valSize))
 		// Manually inlined version of i.decodeInternalKey(i.key).
 		i.key = i.cachedBuf[e.keyStart:e.keyEnd]
 		if n := len(i.key) - 8; n >= 0 {
@@ -1713,10 +1712,10 @@ func (i *RawIter) readEntry() {
 	shared, ptr := decodeVarint(ptr)
 	unshared, ptr := decodeVarint(ptr)
 	value, ptr := decodeVarint(ptr)
-	i.key = append(i.key[:shared], getBytes(ptr, int(unshared))...)
+	i.key = append(i.key[:shared], unsafe.Slice((*byte)(ptr), int(unshared))...)
 	i.key = i.key[:len(i.key):len(i.key)]
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
-	i.val = getBytes(ptr, int(value))
+	i.val = unsafe.Slice((*byte)(ptr), int(value))
 	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
 }
 
@@ -1761,7 +1760,7 @@ func (i *RawIter) SeekGE(key []byte) bool {
 		// Decode the key at that restart point, and compare it to the key sought.
 		v1, ptr := decodeVarint(ptr)
 		_, ptr = decodeVarint(ptr)
-		s := getBytes(ptr, int(v1))
+		s := unsafe.Slice((*byte)(ptr), int(v1))
 		return i.cmp(key, s) < 0
 	})
 
@@ -1828,7 +1827,7 @@ func (i *RawIter) Prev() bool {
 		i.nextOffset = i.offset
 		e := &i.cached[n-1]
 		i.offset = e.offset
-		i.val = getBytes(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart)), int(e.valSize))
+		i.val = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(i.ptr)+uintptr(e.valStart))), int(e.valSize))
 		i.ikey.UserKey = i.cachedBuf[e.keyStart:e.keyEnd]
 		i.cached = i.cached[:n]
 		return true
@@ -1937,10 +1936,6 @@ func (i *RawIter) Describe(tp treeprinter.Node, fmtKV DescribeKV) {
 		offset := i.getRestart(j)
 		n.Childf("%05d [restart %d]", uint64(i.restarts+4*int32(j)), offset)
 	}
-}
-
-func getBytes(ptr unsafe.Pointer, length int) []byte {
-	return (*[manual.MaxArrayLen]byte)(ptr)[:length:length]
 }
 
 func decodeVarint(ptr unsafe.Pointer) (uint32, unsafe.Pointer) {
