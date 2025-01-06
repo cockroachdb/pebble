@@ -170,7 +170,7 @@ func (e *entry) acquireValue() *Value {
 // the race detector, in go1.15 and earlier).
 const entriesGoAllocated = valueEntryGoAllocated || buildtags.Race
 
-const entrySize = int(unsafe.Sizeof(entry{}))
+const entrySize = unsafe.Sizeof(entry{})
 
 func entryAllocNew() *entry {
 	if invariants.UseFinalizers {
@@ -245,7 +245,7 @@ func (c *entryAllocCache) alloc() *entry {
 			return &entry{}
 		}
 		b := manual.New(manual.BlockCacheEntry, entrySize)
-		return (*entry)(unsafe.Pointer(&b[0]))
+		return (*entry)(b.Data())
 	}
 	e := c.entries[n-1]
 	c.entries = c.entries[:n-1]
@@ -254,7 +254,7 @@ func (c *entryAllocCache) alloc() *entry {
 
 func (c *entryAllocCache) dealloc(e *entry) {
 	if !entriesGoAllocated {
-		buf := unsafe.Slice((*byte)(unsafe.Pointer(e)), entrySize)
+		buf := manual.MakeBufUnsafe(unsafe.Pointer(e), entrySize)
 		manual.Free(manual.BlockCacheEntry, buf)
 	}
 }
