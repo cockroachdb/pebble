@@ -2369,7 +2369,7 @@ func (d *DB) newMemTable(
 	// existing memory.
 	var mem *memTable
 	mem = d.memTableRecycle.Swap(nil)
-	if mem != nil && uint64(len(mem.arenaBuf)) != size {
+	if mem != nil && uint64(mem.arenaBuf.Len()) != size {
 		d.freeMemTable(mem)
 		mem = nil
 	}
@@ -2379,7 +2379,7 @@ func (d *DB) newMemTable(
 		memtblOpts.releaseAccountingReservation = mem.releaseAccountingReservation
 	} else {
 		mem = new(memTable)
-		memtblOpts.arenaBuf = manual.New(manual.MemTable, int(size))
+		memtblOpts.arenaBuf = manual.New(manual.MemTable, uintptr(size))
 		memtblOpts.releaseAccountingReservation = d.opts.Cache.Reserve(int(size))
 		d.memTableCount.Add(1)
 		d.memTableReserved.Add(int64(size))
@@ -2412,7 +2412,7 @@ func (d *DB) newMemTable(
 
 func (d *DB) freeMemTable(m *memTable) {
 	d.memTableCount.Add(-1)
-	d.memTableReserved.Add(-int64(len(m.arenaBuf)))
+	d.memTableReserved.Add(-int64(m.arenaBuf.Len()))
 	m.free()
 }
 

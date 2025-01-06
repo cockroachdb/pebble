@@ -6,7 +6,6 @@ package manual
 
 // #include <stdlib.h>
 import "C"
-import "unsafe"
 
 // The go:linkname directives provides backdoor access to private functions in
 // the runtime. Below we're accessing the throw function.
@@ -21,9 +20,9 @@ func throw(s string)
 // New allocates a slice of size n. The returned slice is from manually managed
 // memory and MUST be released by calling Free. Failure to do so will result in
 // a memory leak.
-func New(purpose Purpose, n int) []byte {
+func New(purpose Purpose, n uintptr) Buf {
 	if n == 0 {
-		return make([]byte, 0)
+		return Buf{}
 	}
 	recordAlloc(purpose, n)
 	// We need to be conscious of the Cgo pointer passing rules:
@@ -45,18 +44,14 @@ func New(purpose Purpose, n int) []byte {
 		// it cannot allocate memory.
 		throw("out of memory")
 	}
-	return unsafe.Slice((*byte)(ptr), n)
+	return Buf{data: ptr, n: n}
 }
 
 // Free frees the specified slice. It has to be exactly the slice that was
 // returned by New.
-func Free(purpose Purpose, b []byte) {
-	if cap(b) != 0 {
-		recordFree(purpose, cap(b))
-		if len(b) == 0 {
-			b = b[:cap(b)]
-		}
-		ptr := unsafe.Pointer(&b[0])
-		C.free(ptr)
+func Free(purpose Purpose, b Buf) {
+	if b.n != 0 {
+		recordFree(purpose, b.n)
+		C.free(b.data)
 	}
 }

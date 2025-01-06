@@ -254,7 +254,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 				switch t := mem.flushable.(type) {
 				case *memTable:
 					manual.Free(manual.MemTable, t.arenaBuf)
-					t.arenaBuf = nil
+					t.arenaBuf = manual.Buf{}
 				}
 			}
 			if d.cleanupManager != nil {

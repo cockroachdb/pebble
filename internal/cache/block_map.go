@@ -27,13 +27,13 @@ type blockMapAllocator struct{}
 
 func (blockMapAllocator) Alloc(n int) []swiss.Group[key, *entry] {
 	size := uintptr(n) * unsafe.Sizeof(swiss.Group[key, *entry]{})
-	buf := manual.New(manual.BlockCacheMap, int(size))
-	return unsafe.Slice((*swiss.Group[key, *entry])(unsafe.Pointer(unsafe.SliceData(buf))), n)
+	buf := manual.New(manual.BlockCacheMap, size)
+	return unsafe.Slice((*swiss.Group[key, *entry])(buf.Data()), n)
 }
 
 func (blockMapAllocator) Free(v []swiss.Group[key, *entry]) {
 	size := uintptr(len(v)) * unsafe.Sizeof(swiss.Group[key, *entry]{})
-	buf := unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(v))), size)
+	buf := manual.MakeBufUnsafe(unsafe.Pointer(unsafe.SliceData(v)), size)
 	manual.Free(manual.BlockCacheMap, buf)
 }
 

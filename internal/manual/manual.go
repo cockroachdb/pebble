@@ -7,9 +7,39 @@ package manual
 import (
 	"fmt"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
+
+// Buf is a buffer allocated using this package.
+type Buf struct {
+	data unsafe.Pointer
+	n    uintptr
+}
+
+// MakeBufUnsafe should be used with caution: the given data and n must match
+// exactly the data and length of a Buf obtained from New. It is useful when
+// these are stored implicitly in another type (like a []byte) and we want to
+// reconstruct the Buf.
+func MakeBufUnsafe(data unsafe.Pointer, n uintptr) Buf {
+	return Buf{data: data, n: n}
+}
+
+// Data returns a pointer to the buffer data. If the buffer is not initialized
+// (or is the result of calling New with a zero length), returns nil.
+func (b Buf) Data() unsafe.Pointer {
+	return b.data
+}
+
+func (b Buf) Len() uintptr {
+	return b.n
+}
+
+// Slice converts the buffer to a byte slice.
+func (b Buf) Slice() []byte {
+	return unsafe.Slice((*byte)(b.data), b.n)
+}
 
 // Purpose identifies the use-case for an allocation.
 type Purpose uint8
@@ -41,11 +71,11 @@ var counters [NumPurposes]struct {
 	_ [7]uint64
 }
 
-func recordAlloc(purpose Purpose, n int) {
+func recordAlloc(purpose Purpose, n uintptr) {
 	counters[purpose].InUseBytes.Add(int64(n))
 }
 
-func recordFree(purpose Purpose, n int) {
+func recordFree(purpose Purpose, n uintptr) {
 	newVal := counters[purpose].InUseBytes.Add(-int64(n))
 	if invariants.Enabled && newVal < 0 {
 		panic(fmt.Sprintf("negative counter value %d", newVal))

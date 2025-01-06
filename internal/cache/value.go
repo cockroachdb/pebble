@@ -26,7 +26,7 @@ var _ uint = ValueMetadataSize - uint(unsafe.Sizeof(Value{}))
 
 // Value holds a reference counted immutable value.
 type Value struct {
-	// buf is allocated using the manual package.
+	// buf is part of the slice allocated using the manual package.
 	buf []byte
 	// Reference count for the value. The value is freed when the reference count
 	// drops to zero.
@@ -48,8 +48,8 @@ func newValue(n int) *Value {
 
 	if valueEntryGoAllocated {
 		// Note: if cgo is not enabled, manual.New will do a regular Go allocation.
-		b := manual.New(manual.BlockCacheData, n)
-		v := &Value{buf: b}
+		b := manual.New(manual.BlockCacheData, uintptr(n))
+		v := &Value{buf: b.Slice()}
 		v.ref.init(1)
 		// Note: this is a no-op if invariants and tracing are disabled or race is
 		// enabled.
@@ -66,9 +66,9 @@ func newValue(n int) *Value {
 	// When we're not performing leak detection, the lifetime of the returned
 	// Value is exactly the lifetime of the backing buffer and we can manually
 	// allocate both.
-	b := manual.New(manual.BlockCacheData, ValueMetadataSize+n)
-	v := (*Value)(unsafe.Pointer(&b[0]))
-	v.buf = b[ValueMetadataSize:]
+	b := manual.New(manual.BlockCacheData, ValueMetadataSize+uintptr(n))
+	v := (*Value)(b.Data())
+	v.buf = b.Slice()[ValueMetadataSize:]
 	v.ref.init(1)
 	return v
 }
@@ -81,12 +81,13 @@ func (v *Value) free() {
 		}
 	}
 	if valueEntryGoAllocated {
-		manual.Free(manual.BlockCacheData, v.buf)
+		buf := manual.MakeBufUnsafe(unsafe.Pointer(unsafe.SliceData(v.buf)), uintptr(cap(v.buf)))
+		manual.Free(manual.BlockCacheData, buf)
 		v.buf = nil
 		return
 	}
-	n := ValueMetadataSize + cap(v.buf)
-	buf := unsafe.Slice((*byte)(unsafe.Pointer(v)), n)
+	n := ValueMetadataSize + uintptr(cap(v.buf))
+	buf := manual.MakeBufUnsafe(unsafe.Pointer(v), n)
 	v.buf = nil
 	manual.Free(manual.BlockCacheData, buf)
 }
