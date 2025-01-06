@@ -10,8 +10,10 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -63,7 +65,7 @@ var Comparer = base.Comparer{
 		}
 		return base.DefaultComparer.AbbreviatedKey(key)
 	},
-	FormatKey: base.DefaultFormatter,
+	FormatKey: FormatKey,
 	Separator: func(dst, a, b []byte) []byte {
 		aKey, ok := getKeyPartFromEngineKey(a)
 		if !ok {
@@ -931,4 +933,165 @@ func checkEngineKey(k []byte) {
 	if k[len(k)-1] == 1 {
 		panic(errors.AssertionFailedf("invalid key terminator byte 1"))
 	}
+}
+
+// FormatKey returns a formatter for the user key.
+func FormatKey(key []byte) fmt.Formatter {
+	return formatKey(key)
+}
+
+type formatKey []byte
+
+func (fk formatKey) Format(f fmt.State, c rune) {
+	i := Split(fk)
+	fmt.Fprintf(f, "%s", []byte(fk)[:i-1])
+	if i == len(fk) {
+		// Suffix-less
+		return
+	}
+	fmt.Fprint(f, "@")
+	formatKeySuffix(fk[i:]).Format(f, c)
+}
+
+type formatKeySuffix []byte
+
+func (fk formatKeySuffix) Format(f fmt.State, c rune) {
+	switch len(fk) {
+	case suffixLenWithLockTable:
+		// Format as a UUID.
+		s := []byte(fk)
+		fmt.Fprintf(f, "%02x,%x-%x-%x-%x-%x", s[0], s[1:5], s[5:7], s[7:9], s[9:11], s[11:17])
+	case suffixLenWithSynthetic, suffixLenWithWall, suffixLenWithLogical:
+		// Format as a timestamp.
+		wallTime := binary.BigEndian.Uint64(fk)
+		logical := 0
+		if len(fk) >= suffixLenWithLogical {
+			logical = int(binary.BigEndian.Uint32(fk[8:]))
+		}
+		if wallTime%1e9 == 0 {
+			fmt.Fprintf(f, "%d,%d", wallTime/1e9, logical)
+		} else {
+			fmt.Fprintf(f, "%d.%09d,%d", wallTime/1e9, wallTime%1e9, logical)
+		}
+	default:
+		panic(errors.AssertionFailedf("invalid suffix length: %d", len(fk)))
+	}
+}
+
+// ParseFormattedKey parses a human-readable representation of a Cockroach key.
+//
+// ParseFormattedKey expects the roach key and version to be delimited by a '@'
+// character. The '@' may be omitted for version-less keys. Roach keys may be
+// quoted using Go syntax. The version may be:
+//
+//  1. A MVCC timestamp in one of the formats (these are cribbed from the
+//     Cockroach repository's hlc timestamp formatting):
+//     a. <WALLTIME-SECONDS>
+//     b. <WALLTIME-SECONDS>.<WALLTIME-NANOS>
+//     c. <WALLTIME-SECONDS>,<LOGICAL>
+//     d. <WALLTIME-SECONDS>.<WALLTIME-NANOS>,<LOGICAL>
+//  2. A lock table key in the format: <STRENGTH-BYTE>,<TXNUUID>
+func ParseFormattedKey(formattedKey string) []byte {
+	i := strings.IndexByte(formattedKey, '@')
+	if i == -1 {
+		// Suffix-less.
+		return append([]byte(formattedKey), 0x00)
+	}
+	return append(append([]byte(formattedKey[:i]), 0x00), ParseFormattedKeySuffix(formattedKey[i+1:])...)
+}
+
+// ParseFormattedKeySuffix parses a human-readable representation of a Cockroach
+// key's version. The formatted suffix may be:
+//
+//  1. A MVCC timestamp in one of the formats (these are cribbed from the
+//     Cockroach repository's hlc timestamp formatting):
+//     a. <WALLTIME-SECONDS>
+//     b. <WALLTIME-SECONDS>.<WALLTIME-NANOS>
+//     c. <WALLTIME-SECONDS>,<LOGICAL>
+//     d. <WALLTIME-SECONDS>.<WALLTIME-NANOS>,<LOGICAL>
+//  2. A lock table key in the format: <STRENGTH-BYTE>,<TXN-UUID>
+func ParseFormattedKeySuffix(formattedSuffix string) []byte {
+	switch len(formattedSuffix) {
+	case 0:
+		return nil
+	case 39:
+		// A lock-table key.
+		k := make([]byte, suffixLenWithLockTable)
+		// The lock strength is encoded as a hexadecimal digit (2 chars),
+		// followed by a comma.
+		hex.Decode(k, unsafe.Slice(unsafe.StringData(formattedSuffix), 2))
+		if err := decodeUUID(k[1:], unsafe.Slice(unsafe.StringData(formattedSuffix[3:]), len(formattedSuffix)-3)); err != nil {
+			panic(errors.Newf("invalid lock table suffix: %w", err))
+		}
+		k[len(k)-1] = suffixLenWithLockTable
+		return k
+	default:
+		nano, logical, err := parseFormattedMVCCtimestamp(formattedSuffix)
+		if err != nil {
+			panic(err)
+		}
+		if logical == 0 {
+			k := make([]byte, suffixLenWithWall)
+			binary.BigEndian.PutUint64(k, nano)
+			k[len(k)-1] = suffixLenWithWall
+			return k
+		}
+		k := make([]byte, suffixLenWithLogical)
+		binary.BigEndian.PutUint64(k, nano)
+		binary.BigEndian.PutUint32(k[8:], uint32(logical))
+		k[len(k)-1] = suffixLenWithLogical
+		return k
+	}
+}
+
+func parseFormattedMVCCtimestamp(formattedSuffix string) (nanos, logical uint64, err error) {
+	// Try to decode as a MVCC timestamp.
+	i := strings.IndexByte(formattedSuffix, ',')
+	if i == -1 {
+		return 0, 0, errors.Newf("invalid MVCC timestamp suffix: %q", formattedSuffix)
+	}
+	j := strings.IndexByte(formattedSuffix[:i], '.')
+	if j >= 0 {
+		nanos, err = strconv.ParseUint(formattedSuffix[j+1:i], 10, 32)
+		if err != nil {
+			return 0, 0, errors.Newf("invalid MVCC timestamp suffix: %q", formattedSuffix)
+		}
+	} else {
+		j = i
+	}
+	var secs uint64
+	secs, err = strconv.ParseUint(formattedSuffix[:j], 10, 64)
+	if err != nil {
+		return 0, 0, errors.Newf("invalid MVCC timestamp suffix: %q", formattedSuffix)
+	}
+	nanos += secs * 1e9
+	logical, err = strconv.ParseUint(formattedSuffix[i+1:], 10, 32)
+	if err != nil {
+		return 0, 0, errors.Newf("invalid MVCC timestamp suffix: %q", formattedSuffix)
+	}
+	return nanos, logical, nil
+}
+
+var uuidGroupIndices = [][2]int{
+	{0, 4},
+	{4, 6},
+	{6, 8},
+	{8, 10},
+	{10, 16},
+}
+
+func decodeUUID(dst []byte, s []byte) error {
+	for g, indices := range uuidGroupIndices {
+		if len(s) < indices[1] {
+			return errors.Errorf("invalid UUID string: %q", s)
+		}
+		i := g + 2*indices[0]
+		j := g + 2*indices[1]
+		m, err := hex.Decode(dst, s[i:j])
+		if err != nil {
+			return errors.Errorf("invalid UUID string: %q: %w", s, err)
+		}
+		dst = dst[m:]
+	}
+	return nil
 }
