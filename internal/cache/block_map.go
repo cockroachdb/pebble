@@ -15,6 +15,7 @@ import (
 )
 
 func fibonacciHash(k *key, seed uintptr) uintptr {
+	// See https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
 	const m = 11400714819323198485
 	h := uint64(seed)
 	h ^= uint64(k.id) * m

@@ -20,12 +20,10 @@ import (
 )
 
 type testReader struct {
-	ctx     context.Context
-	id      ID
-	fileNum base.DiskFileNum
-	offset  uint64
-	re      *readEntry
-	mu      struct {
+	ctx context.Context
+	key key
+	re  *readEntry
+	mu  struct {
 		*sync.Mutex
 		finishedWait     bool
 		waitedNeedToRead bool
@@ -40,10 +38,8 @@ func newTestReader(
 	ctx context.Context, id ID, fileNum base.DiskFileNum, offset uint64, mu *sync.Mutex,
 ) *testReader {
 	r := &testReader{
-		ctx:     ctx,
-		id:      id,
-		fileNum: fileNum,
-		offset:  offset,
+		ctx: ctx,
+		key: makeKey(id, fileNum, offset),
 	}
 	r.mu.Mutex = mu
 	r.mu.cond = sync.NewCond(mu)
@@ -51,7 +47,7 @@ func newTestReader(
 }
 
 func (r *testReader) getAsync(shard *shard) *string {
-	h, re := shard.getWithMaybeReadEntry(r.id, r.fileNum, r.offset, true)
+	h, re := shard.getWithMaybeReadEntry(r.key, true /* desireReadEntry */)
 	if h.Valid() {
 		v := string(h.RawBuffer())
 		h.Release()
