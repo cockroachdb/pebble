@@ -703,3 +703,21 @@ func splitStringAt(str string, sep string) (before, after string) {
 	}
 	return str, ""
 }
+
+func TestFormatKey(t *testing.T) {
+	formattedKeys := []string{
+		"foo",                     // Bare key
+		"bar",                     // Bare key
+		"foo@1000000,0",           // MVCC key, only wall time in seconds
+		"foo@1000000.000051212,0", // MVCC key, wall time with subsecond nanos
+		"foo@1000000,8",           // MVCC key, with logical time
+		"foo@1000000.000051212,7", // MVCC key, wall time with subsecond nanos and logical time
+		"foo@01,cf379e85-6371-42e6-acc8-ed5259fa177a", // Lock table key
+	}
+	for _, formattedKey := range formattedKeys {
+		k := ParseFormattedKey(formattedKey)
+		t.Logf("ParseFormattedKey(%s) = %x", formattedKey, k)
+		reformatted := fmt.Sprint(FormatKey(k))
+		require.Equal(t, formattedKey, reformatted)
+	}
+}
