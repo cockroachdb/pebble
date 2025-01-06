@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/swiss"
 )
 
@@ -89,11 +88,10 @@ func (rs *readShard) Init(shard *shard) *readShard {
 
 // getReadEntryLocked gets a *readEntry for (id, fileNum, offset). shard.mu is
 // already write locked.
-func (rs *readShard) getReadEntryLocked(id ID, fileNum base.DiskFileNum, offset uint64) *readEntry {
-	k := key{fileKey{id, fileNum}, offset}
+func (rs *readShard) getReadEntryLocked(k key) *readEntry {
 	e, ok := rs.shardMu.readMap.Get(k)
 	if !ok {
-		e = newReadEntry(rs, id, fileNum, offset)
+		e = newReadEntry(rs, k)
 		rs.shardMu.readMap.Put(k, e)
 	} else {
 		e.refCount.acquireAllowZero()
@@ -111,9 +109,7 @@ func (rs *readShard) lenForTesting() int {
 // same block.
 type readEntry struct {
 	readShard *readShard
-	id        ID
-	fileNum   base.DiskFileNum
-	offset    uint64
+	key       key
 	mu        struct {
 		sync.RWMutex
 		// v, when non-nil, has a ref from readEntry, which is unreffed when
@@ -162,13 +158,11 @@ var readEntryPool = sync.Pool{
 	},
 }
 
-func newReadEntry(rs *readShard, id ID, fileNum base.DiskFileNum, offset uint64) *readEntry {
+func newReadEntry(rs *readShard, k key) *readEntry {
 	e := readEntryPool.Get().(*readEntry)
 	*e = readEntry{
 		readShard: rs,
-		id:        id,
-		fileNum:   fileNum,
-		offset:    offset,
+		key:       k,
 	}
 	e.refCount.init(1)
 	return e
@@ -287,7 +281,7 @@ type tryRemoveState struct {
 func (e *readEntry) makeTryRemoveStateLocked() tryRemoveState {
 	return tryRemoveState{
 		rs: e.readShard,
-		k:  key{fileKey{e.id, e.fileNum}, e.offset},
+		k:  e.key,
 		e:  e,
 	}
 }
@@ -340,7 +334,7 @@ func (e *readEntry) setReadValue(v *Value) Handle {
 	// don't want to acquire e.mu twice, so one way to do this would be relax
 	// the invariant in shard.Set that requires Value.refs() == 1. Then we can
 	// do the work under e.mu before calling shard.Set.
-	h := e.readShard.shard.Set(e.id, e.fileNum, e.offset, v)
+	h := e.readShard.shard.set(e.key, v)
 	e.mu.Lock()
 	// Acquire a ref for readEntry, since we are going to remember it in e.mu.v.
 	v.acquire()

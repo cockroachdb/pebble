@@ -32,15 +32,34 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
-type fileKey struct {
+// key is associated with a specific block.
+type key struct {
 	// id is the namespace for fileNums.
 	id      ID
 	fileNum base.DiskFileNum
+	offset  uint64
 }
 
-type key struct {
-	fileKey
-	offset uint64
+func makeKey(id ID, fileNum base.DiskFileNum, offset uint64) key {
+	return key{
+		id:      id,
+		fileNum: fileNum,
+		offset:  offset,
+	}
+}
+
+// shardIdx determines the shard index for the given key.
+func (k *key) shardIdx(numShards int) int {
+	if k.id == 0 {
+		panic("pebble: 0 cache ID is invalid")
+	}
+	// Same as fibonacciHash() but without the cast to uintptr.
+	const m = 11400714819323198485
+	h := uint64(k.id) * m
+	h ^= uint64(k.fileNum) * m
+	h ^= k.offset * m
+	// See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+	return int((h >> 32) * uint64(numShards) >> 32)
 }
 
 // file returns the "file key" for the receiver. This is the key used for the
@@ -138,12 +157,10 @@ func (c *shard) init(maxSize int64) {
 // getWithMaybeReadEntry is the internal helper for implementing
 // Cache.{Get,GetWithReadHandle}. When desireReadEntry is true, and the block
 // is not in the cache (!Handle.Valid()), a non-nil readEntry is returned.
-func (c *shard) getWithMaybeReadEntry(
-	id ID, fileNum base.DiskFileNum, offset uint64, desireReadEntry bool,
-) (Handle, *readEntry) {
+func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (Handle, *readEntry) {
 	c.mu.RLock()
 	var value *Value
-	if e, _ := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
+	if e, _ := c.blocks.Get(k); e != nil {
 		value = e.acquireValue()
 		if value != nil {
 			e.referenced.Store(true)
@@ -157,14 +174,14 @@ func (c *shard) getWithMaybeReadEntry(
 		// cache. We could tolerate the race and do a file read, or do another map
 		// lookup. We choose to do the latter, since the cost of a map lookup is
 		// insignificant compared to the cost of reading a block from a file.
-		if e, _ := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
+		if e, _ := c.blocks.Get(k); e != nil {
 			value = e.acquireValue()
 			if value != nil {
 				e.referenced.Store(true)
 			}
 		}
 		if value == nil {
-			re = c.readShard.getReadEntryLocked(id, fileNum, offset)
+			re = c.readShard.getReadEntryLocked(k)
 		}
 		c.mu.Unlock()
 	}
@@ -176,7 +193,7 @@ func (c *shard) getWithMaybeReadEntry(
 	return Handle{value: value}, re
 }
 
-func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
+func (c *shard) set(k key, value *Value) Handle {
 	if n := value.refs(); n != 1 {
 		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
@@ -184,7 +201,6 @@ func (c *shard) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	k := key{fileKey{id, fileNum}, offset}
 	e, _ := c.blocks.Get(k)
 
 	switch {
@@ -275,10 +291,9 @@ func (c *shard) checkConsistency() {
 }
 
 // Delete deletes the cached value for the specified file and offset.
-func (c *shard) Delete(id ID, fileNum base.DiskFileNum, offset uint64) {
+func (c *shard) delete(k key) {
 	// The common case is there is nothing to delete, so do a quick check with
 	// shared lock.
-	k := key{fileKey{id, fileNum}, offset}
 	c.mu.RLock()
 	_, exists := c.blocks.Get(k)
 	c.mu.RUnlock()
@@ -304,8 +319,8 @@ func (c *shard) Delete(id ID, fileNum base.DiskFileNum, offset uint64) {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *shard) EvictFile(id ID, fileNum base.DiskFileNum) {
-	fkey := key{fileKey{id, fileNum}, 0}
+func (c *shard) evictFile(id ID, fileNum base.DiskFileNum) {
+	fkey := makeKey(id, fileNum, 0)
 	for c.evictFileRun(fkey) {
 		// Sched switch to give another goroutine an opportunity to acquire the
 		// shard mutex.
@@ -752,7 +767,7 @@ func New(size int64) *Cache {
 	//
 	// Note that the probability two processors will try to access the same
 	// shard at the same time increases superlinearly with the number of
-	// processors (Eg, consider the brithday problem where each CPU is a person,
+	// processors (consider the birthday problem where each CPU is a person,
 	// and each shard is a possible birthday).
 	//
 	// We could consider growing the number of shards superlinearly, but
@@ -788,8 +803,7 @@ func newShards(size int64, shards int) *Cache {
 	}
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
-	invariants.SetFinalizer(c, func(obj interface{}) {
-		c := obj.(*Cache)
+	invariants.SetFinalizer(c, func(c *Cache) {
 		if v := c.refs.Load(); v != 0 {
 			c.tr.Lock()
 			fmt.Fprintf(os.Stderr,
@@ -804,34 +818,9 @@ func newShards(size int64, shards int) *Cache {
 	return c
 }
 
-func (c *Cache) getShard(id ID, fileNum base.DiskFileNum, offset uint64) *shard {
-	if id == 0 {
-		panic("pebble: 0 cache ID is invalid")
-	}
-
-	// Inlined version of fnv.New64 + Write.
-	const offset64 = 14695981039346656037
-	const prime64 = 1099511628211
-
-	h := uint64(offset64)
-	for i := 0; i < 8; i++ {
-		h *= prime64
-		h ^= uint64(id & 0xff)
-		id >>= 8
-	}
-	fileNumVal := uint64(fileNum)
-	for i := 0; i < 8; i++ {
-		h *= prime64
-		h ^= uint64(fileNumVal) & 0xff
-		fileNumVal >>= 8
-	}
-	for i := 0; i < 8; i++ {
-		h *= prime64
-		h ^= uint64(offset & 0xff)
-		offset >>= 8
-	}
-
-	return &c.shards[h%uint64(len(c.shards))]
+func (c *Cache) getShard(k key) *shard {
+	idx := k.shardIdx(len(c.shards))
+	return &c.shards[idx]
 }
 
 // Ref adds a reference to the cache. The cache only remains valid as long a
@@ -861,8 +850,8 @@ func (c *Cache) Unref() {
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
 func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
-	h, re := c.getShard(id, fileNum, offset).getWithMaybeReadEntry(
-		id, fileNum, offset, false)
+	k := makeKey(id, fileNum, offset)
+	h, re := c.getShard(k).getWithMaybeReadEntry(k, false /* desireReadEntry */)
 	if invariants.Enabled && re != nil {
 		panic("readEntry should be nil")
 	}
@@ -894,8 +883,8 @@ func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
 func (c *Cache) GetWithReadHandle(
 	ctx context.Context, id ID, fileNum base.DiskFileNum, offset uint64,
 ) (h Handle, rh ReadHandle, errorDuration time.Duration, cacheHit bool, err error) {
-	h, re := c.getShard(id, fileNum, offset).getWithMaybeReadEntry(
-		id, fileNum, offset, true)
+	k := makeKey(id, fileNum, offset)
+	h, re := c.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
 	if h.Valid() {
 		return h, ReadHandle{}, 0, true, nil
 	}
@@ -911,12 +900,14 @@ func (c *Cache) GetWithReadHandle(
 // retrieval of the cached value than Get (lock-free and avoidance of the map
 // lookup). The value must have been allocated by Cache.Alloc.
 func (c *Cache) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
-	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
+	k := makeKey(id, fileNum, offset)
+	return c.getShard(k).set(k, value)
 }
 
 // Delete deletes the cached value for the specified file and offset.
 func (c *Cache) Delete(id ID, fileNum base.DiskFileNum, offset uint64) {
-	c.getShard(id, fileNum, offset).Delete(id, fileNum, offset)
+	k := makeKey(id, fileNum, offset)
+	c.getShard(k).delete(k)
 }
 
 // EvictFile evicts all of the cache values for the specified file.
@@ -925,7 +916,7 @@ func (c *Cache) EvictFile(id ID, fileNum base.DiskFileNum) {
 		panic("pebble: 0 cache ID is invalid")
 	}
 	for i := range c.shards {
-		c.shards[i].EvictFile(id, fileNum)
+		c.shards[i].evictFile(id, fileNum)
 	}
 }
 
