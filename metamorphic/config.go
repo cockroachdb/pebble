@@ -361,6 +361,7 @@ type KeyFormat struct {
 	Name                         string
 	Comparer                     *base.Comparer
 	KeySchema                    *pebble.KeySchema
+	BlockPropertyCollectors      []func() pebble.BlockPropertyCollector
 	FormatKey                    func(UserKey) string
 	FormatKeySuffix              func(UserKeySuffix) string
 	ParseFormattedKey            func(string) (UserKey, error)

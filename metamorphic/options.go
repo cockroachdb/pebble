@@ -318,7 +318,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
-		BlockPropertyCollectors: blockPropertyCollectorConstructors,
+		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
@@ -938,10 +938,6 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 		})
 	}
 	return nil
-}
-
-var blockPropertyCollectorConstructors = []func() pebble.BlockPropertyCollector{
-	sstable.NewTestKeysBlockPropertyCollector,
 }
 
 // testingFilterPolicy is used to allow bloom filter policies with non-default
