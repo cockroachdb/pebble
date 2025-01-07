@@ -127,6 +127,12 @@ func (w *Writer) storeWithOptionalValuePrefix(
 	valuePrefix block.ValuePrefix,
 	setHasSameKeyPrefix bool,
 ) {
+	// Ensure that the block size does not exceed rowblk.MaximumSize before writing more data
+	if len(w.buf) >= MaximumSize {
+		panic(errors.AssertionFailedf("rowblk: adding KV to %d-block; already exceeds %d-byte maximum",
+			len(w.buf), MaximumSize))
+	}
+
 	shared := 0
 	if !setHasSameKeyPrefix {
 		w.setHasSameKeyPrefixSinceLastRestart = false
