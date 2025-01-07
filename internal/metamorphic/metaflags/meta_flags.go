@@ -44,6 +44,23 @@ type CommonFlags struct {
 	NumInstances int
 	// OpTimeout is a per-operation timeout.
 	OpTimeout time.Duration
+	// KeyFormatName is the name of the KeyFormat to use. Defaults to "testkeys".
+	// Acceptable values are "testkeys" and "cockroachkvs".
+	KeyFormatName string
+}
+
+// KeyFormat returns the KeyFormat indicated by the flags KeyFormatName.
+func (c *CommonFlags) KeyFormat() metamorphic.KeyFormat {
+	keyFormat, ok := KeyFormats[c.KeyFormatName]
+	if !ok {
+		panic(fmt.Sprintf("unknown key format: %q", c.KeyFormatName))
+	}
+	return keyFormat
+}
+
+// KeyFormats is a map of available key formats.
+var KeyFormats = map[string]metamorphic.KeyFormat{
+	"testkeys": metamorphic.TestkeysKeyFormat,
 }
 
 func initCommonFlags() *CommonFlags {
@@ -81,6 +98,9 @@ func initCommonFlags() *CommonFlags {
 		defaultOpTimeout *= 5
 	}
 	flag.DurationVar(&c.OpTimeout, "op-timeout", defaultOpTimeout, "per-op timeout")
+
+	flag.StringVar(&c.KeyFormatName, "key-format", "testkeys",
+		"name of the key format to use")
 
 	return c
 }
@@ -259,6 +279,7 @@ func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
 		metamorphic.OpCount(r.Ops.Static),
 		metamorphic.MaxThreads(r.MaxThreads),
 		metamorphic.OpTimeout(r.OpTimeout),
+		r.KeyFormat(),
 	}
 	if r.Keep {
 		opts = append(opts, metamorphic.KeepData{})

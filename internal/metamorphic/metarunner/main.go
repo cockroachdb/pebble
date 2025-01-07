@@ -27,13 +27,16 @@ func main() {
 	switch {
 	case runOnceFlags.Compare != "":
 		testRootDir, runSubdirs := runOnceFlags.ParseCompare()
-		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs, onceOpts...)
+		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs,
+			runOnceFlags.KeyFormat(), onceOpts...)
 
 	case runOnceFlags.RunDir != "":
 		// The --run-dir flag is specified either in the child process (see
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
-		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
+		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed,
+			filepath.Join(runOnceFlags.RunDir, "history"),
+			runOnceFlags.KeyFormat(), onceOpts...)
 
 	default:
 		t.Errorf("--compare or --run-dir must be used")

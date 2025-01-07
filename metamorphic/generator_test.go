@@ -17,7 +17,7 @@ import (
 
 func TestGenerator(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */, TestkeysKeyFormat))
 
 	g.newBatch()
 	g.newBatch()
@@ -62,7 +62,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
+	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */, TestkeysKeyFormat))
 
 	g.newSnapshot()
 	g.newSnapshot()
@@ -95,7 +95,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
+	g = newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */, TestkeysKeyFormat))
 
 	g.newIndexedBatch()
 	g.newIndexedBatch()
@@ -132,7 +132,7 @@ func TestGeneratorRandom(t *testing.T) {
 	generateFromSeed := func(cfg OpConfig) string {
 		rng := rand.New(rand.NewPCG(0, seed))
 		count := ops.Uint64(rng)
-		km := newKeyManager(cfg.numInstances)
+		km := newKeyManager(cfg.numInstances, TestkeysKeyFormat)
 		g := newGenerator(rng, cfg, km)
 		return formatOps(km.kf, g.generate(count))
 	}
@@ -171,7 +171,7 @@ func TestGeneratorRandom(t *testing.T) {
 
 func TestGenerateDisjointKeyRanges(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */))
+	g := newGenerator(rng, DefaultOpConfig(), newKeyManager(1 /* numInstances */, TestkeysKeyFormat))
 
 	for i := 0; i < 10; i++ {
 		keyRanges := g.generateDisjointKeyRanges(5)

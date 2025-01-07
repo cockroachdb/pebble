@@ -13,6 +13,7 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -20,12 +21,12 @@ import (
 const maxValueSize = 20
 
 type iterOpts struct {
-	lower    []byte
-	upper    []byte
+	lower    UserKey
+	upper    UserKey
 	keyTypes uint32 // pebble.IterKeyType
 	// maskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges to
 	// configure IterOptions.RangeKeyMasking.Suffix.
-	maskSuffix []byte
+	maskSuffix UserKeySuffix
 
 	// If filterMax is != nil, this iterator will filter out any keys that have
 	// suffixes that don't fall within the range [filterMin,filterMax).
@@ -35,8 +36,8 @@ type iterOpts struct {
 	// effectively disabled in some runs. The iterator operations themselves
 	// however will always skip past any points that should be filtered to
 	// ensure determinism.
-	filterMin []byte
-	filterMax []byte
+	filterMin UserKeySuffix
+	filterMax UserKeySuffix
 
 	// see IterOptions.UseL6Filters.
 	useL6Filters bool
@@ -52,10 +53,10 @@ func (o iterOpts) IsZero() bool {
 // GenerateOps generates n random operations, drawing randomness from the
 // provided pseudorandom generator and using cfg to determine the distribution
 // of op types.
-func GenerateOps(rng *rand.Rand, n uint64, cfg OpConfig) Ops {
+func GenerateOps(rng *rand.Rand, n uint64, kf KeyFormat, cfg OpConfig) Ops {
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	return newGenerator(rng, cfg, newKeyManager(1 /* num instances */)).generate(n)
+	return newGenerator(rng, cfg, newKeyManager(1 /* num instances */, kf)).generate(n)
 }
 
 type generator struct {
@@ -228,7 +229,9 @@ func (g *generator) add(op op) {
 
 // prefixKeyRange generates a [start, end) pair consisting of two prefix keys.
 func (g *generator) prefixKeyRange() ([]byte, []byte) {
-	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandPrefix(0.01) })
+	keys := uniqueKeys(g.keyManager.kf.Comparer.Compare, 2, func() []byte {
+		return g.keyGenerator.RandPrefix(0.01)
+	})
 	return keys[0], keys[1]
 }
 
@@ -409,7 +412,9 @@ func (g *generator) dbDownload() {
 	numSpans := 1 + g.expRandInt(1)
 	spans := make([]pebble.DownloadSpan, numSpans)
 	for i := range spans {
-		keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandKey(0.001) })
+		keys := uniqueKeys(g.keyManager.kf.Comparer.Compare, 2, func() []byte {
+			return g.keyGenerator.RandKey(0.001)
+		})
 		start, end := keys[0], keys[1]
 		spans[i].StartKey = start
 		spans[i].EndKey = end
@@ -811,8 +816,8 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	// versions, especially if we don't take iterator bounds into account. We
 	// try to err towards picking a key within bounds that contains a value
 	// visible to the iterator.
-	lower := g.itersLastOpts[iterID].lower
-	upper := g.itersLastOpts[iterID].upper
+	lower := []byte(g.itersLastOpts[iterID].lower)
+	upper := []byte(g.itersLastOpts[iterID].upper)
 	var key []byte
 	if g.rng.IntN(5) >= 1 {
 		visibleKeys := g.iterVisibleKeys[iterID]
@@ -978,7 +983,9 @@ func (g *generator) replicate() {
 
 // generateDisjointKeyRanges generates n disjoint key ranges.
 func (g *generator) generateDisjointKeyRanges(n int) []pebble.KeyRange {
-	keys := g.keyGenerator.UniqueKeys(2*n, func() []byte { return g.keyGenerator.RandPrefix(0.1) })
+	keys := uniqueKeys(g.keyManager.kf.Comparer.Compare, 2*n, func() []byte {
+		return g.keyGenerator.RandPrefix(0.1)
+	})
 	keyRanges := make([]pebble.KeyRange, n)
 	for i := range keyRanges {
 		keyRanges[i] = pebble.KeyRange{
@@ -1139,7 +1146,9 @@ func (g *generator) writerDeleteRange() {
 		return
 	}
 
-	keys := g.keyGenerator.UniqueKeys(2, func() []byte { return g.keyGenerator.RandKey(0.001) })
+	keys := uniqueKeys(g.keyManager.kf.Comparer.Compare, 2, func() []byte {
+		return g.keyGenerator.RandKey(0.001)
+	})
 	start, end := keys[0], keys[1]
 
 	writerID := g.liveWriters.rand(g.rng)
@@ -1318,8 +1327,7 @@ func (g *generator) writerIngestExternalFiles() {
 		objStart := g.prefix(b.smallest)
 		objEnd := g.prefix(b.largest)
 		if !b.largestExcl || len(objEnd) != len(b.largest) {
-			// Move up the end key a bit by appending a few letters to the prefix.
-			objEnd = append(objEnd, randBytes(g.rng, 1, 3)...)
+			objEnd = g.keyGenerator.ExtendPrefix(objEnd)
 		}
 		if g.cmp(objStart, objEnd) >= 0 {
 			panic("bug in generating obj bounds")
@@ -1561,4 +1569,25 @@ func (g *generator) String() string {
 // values.
 func (g *generator) expRandInt(mean int) int {
 	return int(math.Round(g.rng.ExpFloat64() * float64(mean)))
+}
+
+// uniqueKeys takes a key-generating function and uses it to generate n unique
+// keys, returning them in sorted order.
+func uniqueKeys(cmp base.Compare, n int, genFn func() []byte) [][]byte {
+	keys := make([][]byte, n)
+	used := make(map[string]struct{}, n)
+	for i := range keys {
+		for attempts := 0; ; attempts++ {
+			keys[i] = genFn()
+			if _, exists := used[string(keys[i])]; !exists {
+				break
+			}
+			if attempts > 100000 {
+				panic("could not generate unique key")
+			}
+		}
+		used[string(keys[i])] = struct{}{}
+	}
+	slices.SortFunc(keys, cmp)
+	return keys
 }

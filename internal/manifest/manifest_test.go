@@ -31,7 +31,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, seed))
 
 	// Generate a random database by running the metamorphic test.
-	testOpts := metamorphic.RandomOptions(rng, nil /* custom opt parsers */)
+	testOpts := metamorphic.RandomOptions(rng, metamorphic.TestkeysKeyFormat, nil /* custom opt parsers */)
 	testOpts.Opts.Cache.Ref()
 	defer testOpts.Opts.Cache.Unref()
 	{
@@ -41,7 +41,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 			// we are unlucky).
 			nOps = 2000
 		}
-		ops := metamorphic.GenerateOps(rng, uint64(nOps), metamorphic.WriteOpConfig())
+		ops := metamorphic.GenerateOps(rng, uint64(nOps), metamorphic.TestkeysKeyFormat, metamorphic.WriteOpConfig())
 		test, err := metamorphic.New(ops, testOpts, "" /* dir */, io.Discard)
 		require.NoError(t, err)
 		require.NoError(t, metamorphic.Execute(test))

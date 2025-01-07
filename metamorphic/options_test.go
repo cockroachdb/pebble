@@ -105,7 +105,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		s := optionsToString(o)
 		t.Logf("Serialized options:\n%s\n", s)
 
-		parsed := defaultTestOptions()
+		parsed := defaultTestOptions(TestkeysKeyFormat)
 		require.NoError(t, parseOptions(parsed, s, nil))
 		maybeUnref(parsed)
 		got := optionsToString(parsed)
@@ -146,7 +146,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		require.Equal(t, diff[:0], cleaned)
 	}
 
-	standard := standardOptions()
+	standard := standardOptions(TestkeysKeyFormat)
 	for i := range standard {
 		t.Run(fmt.Sprintf("standard-%03d", i), func(t *testing.T) {
 			defer maybeUnref(standard[i])
@@ -156,7 +156,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
-			o := RandomOptions(rng, nil)
+			o := RandomOptions(rng, TestkeysKeyFormat, nil)
 			defer maybeUnref(o)
 			checkOptions(t, o)
 		})
@@ -174,7 +174,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 	metaDir := t.TempDir()
 
 	rng := rand.New(rand.NewPCG(0, fixedSeed))
-	km := newKeyManager(1 /* numInstances */)
+	km := newKeyManager(1 /* numInstances */, TestkeysKeyFormat)
 	g := newGenerator(rng, presetConfigs[0], km)
 	ops := g.generate(numOps)
 	opsPath := filepath.Join(metaDir, "ops")
@@ -184,13 +184,13 @@ func TestBlockPropertiesParse(t *testing.T) {
 	runDir := filepath.Join(metaDir, "run")
 	require.NoError(t, os.MkdirAll(runDir, os.ModePerm))
 	optionsPath := filepath.Join(runDir, "OPTIONS")
-	opts := defaultTestOptions()
+	opts := defaultTestOptions(TestkeysKeyFormat)
 	opts.Opts.EnsureDefaults()
 	opts.Opts.Cleaner = pebble.ArchiveCleaner{}
 	optionsStr := optionsToString(opts)
 	require.NoError(t, os.WriteFile(optionsPath, []byte(optionsStr), 0644))
 
-	RunOnce(t, runDir, fixedSeed, filepath.Join(runDir, "history"), KeepData{})
+	RunOnce(t, runDir, fixedSeed, filepath.Join(runDir, "history"), TestkeysKeyFormat, KeepData{})
 	var foundTableBlockProperty bool
 	require.NoError(t, filepath.Walk(filepath.Join(runDir, "data"),
 		func(path string, info fs.FileInfo, err error) error {
@@ -226,8 +226,8 @@ func TestCustomOptionParser(t *testing.T) {
 		},
 	}
 
-	o1 := defaultTestOptions()
-	o2 := defaultTestOptions()
+	o1 := defaultTestOptions(TestkeysKeyFormat)
+	o2 := defaultTestOptions(TestkeysKeyFormat)
 
 	require.NoError(t, parseOptions(o1, `
 [TestOptions]
