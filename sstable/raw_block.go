@@ -38,9 +38,9 @@ func (w *rawBlockWriter) add(key InternalKey, value []byte) {
 // stored together with the key.
 type rawBlockIter struct {
 	cmp         Compare
-	offset      int32
-	nextOffset  int32
-	restarts    int32
+	offset      offsetInBlock
+	nextOffset  offsetInBlock
+	restarts    offsetInBlock
 	numRestarts int32
 	ptr         unsafe.Pointer
 	data        []byte
@@ -61,7 +61,7 @@ func (i *rawBlockIter) init(cmp Compare, block block) error {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
-	i.restarts = int32(len(block)) - 4*(1+numRestarts)
+	i.restarts = offsetInBlock(len(block)) - 4*offsetInBlock(1+numRestarts)
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
@@ -84,7 +84,7 @@ func (i *rawBlockIter) readEntry() {
 	i.key = i.key[:len(i.key):len(i.key)]
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
-	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
+	i.nextOffset = offsetInBlock(uintptr(ptr)-uintptr(i.ptr)) + offsetInBlock(value)
 }
 
 func (i *rawBlockIter) loadEntry() {
@@ -98,16 +98,16 @@ func (i *rawBlockIter) clearCache() {
 }
 
 func (i *rawBlockIter) cacheEntry() {
-	var valStart int32
-	valSize := int32(len(i.val))
+	var valStart offsetInBlock
+	valSize := uint32(len(i.val))
 	if valSize > 0 {
-		valStart = int32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
+		valStart = offsetInBlock(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
 	}
 
 	i.cached = append(i.cached, blockEntry{
 		offset:   i.offset,
-		keyStart: int32(len(i.cachedBuf)),
-		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
+		keyStart: offsetInBlock(len(i.cachedBuf)),
+		keyEnd:   offsetInBlock(len(i.cachedBuf) + len(i.key)),
 		valStart: valStart,
 		valSize:  valSize,
 	})
@@ -121,7 +121,7 @@ func (i *rawBlockIter) SeekGE(key []byte) bool {
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
 	index := sort.Search(int(i.numRestarts), func(j int) bool {
-		offset := int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*j:]))
+		offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*offsetInBlock(j):]))
 		// For a restart point, there are 0 bytes shared with the previous key.
 		// The varint encoding of 0 occupies 1 byte.
 		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -137,7 +137,7 @@ func (i *rawBlockIter) SeekGE(key []byte) bool {
 	// 0, then all keys in this block are larger than the key sought, and offset
 	// remains at zero.
 	if index > 0 {
-		i.offset = int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*(index-1):]))
+		i.offset = offsetInBlock(binary.LittleEndian.Uint32(i.data[i.restarts+4*offsetInBlock(index-1):]))
 	}
 	i.loadEntry()
 
@@ -161,7 +161,7 @@ func (i *rawBlockIter) First() bool {
 // Last implements internalIterator.Last, as documented in the pebble package.
 func (i *rawBlockIter) Last() bool {
 	// Seek forward from the last restart point.
-	i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
+	i.offset = offsetInBlock(binary.LittleEndian.Uint32(i.data[i.restarts+4*offsetInBlock(i.numRestarts-1):]))
 
 	i.readEntry()
 	i.clearCache()
@@ -209,12 +209,12 @@ func (i *rawBlockIter) Prev() bool {
 
 	targetOffset := i.offset
 	index := sort.Search(int(i.numRestarts), func(j int) bool {
-		offset := int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*j:]))
+		offset := offsetInBlock(binary.LittleEndian.Uint32(i.data[i.restarts+offsetInBlock(4*j):]))
 		return offset >= targetOffset
 	})
 	i.offset = 0
 	if index > 0 {
-		i.offset = int32(binary.LittleEndian.Uint32(i.data[int(i.restarts)+4*(index-1):]))
+		i.offset = offsetInBlock(binary.LittleEndian.Uint32(i.data[i.restarts+4*offsetInBlock(index-1):]))
 	}
 
 	i.readEntry()
