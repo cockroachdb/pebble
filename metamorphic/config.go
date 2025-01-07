@@ -345,6 +345,7 @@ func mustDynamic(dyn randvar.Dynamic, err error) randvar.Dynamic {
 
 var knownKeyFormats = []KeyFormat{
 	TestkeysKeyFormat,
+	CockroachKeyFormat,
 }
 
 var keyFormatsByName = func() map[string]KeyFormat {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
@@ -192,5 +193,90 @@ func TestGenerateDisjointKeyRanges(t *testing.T) {
 				t.Fatalf("generated key ranges %q and %q overlap", keyRanges[j], keyRanges[k])
 			}
 		}
+	}
+}
+
+func TestCockroachSuffixKeyspace(t *testing.T) {
+	testCasesByMaxLogical := [][]string{
+		0: {
+			"",
+			"0.000000001,0",
+			"0.000000002,0",
+			"0.000000003,0",
+			"0.000000004,0",
+			"0.000000005,0",
+			"0.000000006,0",
+			"0.000000007,0",
+		},
+		1: {
+			"",
+			"0,1",
+			"0.000000001,0",
+			"0.000000001,1",
+			"0.000000002,0",
+			"0.000000002,1",
+			"0.000000003,0",
+			"0.000000003,1",
+			"0.000000004,0",
+			"0.000000004,1",
+		},
+		2: {
+			"",
+			"0,1",
+			"0,2",
+			"0.000000001,0",
+			"0.000000001,1",
+			"0.000000001,2",
+			"0.000000002,0",
+			"0.000000002,1",
+			"0.000000002,2",
+			"0.000000003,0",
+			"0.000000003,1",
+			"0.000000003,2",
+			"0.000000004,0",
+			"0.000000004,1",
+			"0.000000004,2",
+		},
+		3: {
+			"",
+			"0,1",
+			"0,2",
+			"0,3",
+			"0.000000001,0",
+			"0.000000001,1",
+			"0.000000001,2",
+			"0.000000001,3",
+			"0.000000002,0",
+			"0.000000002,1",
+			"0.000000002,2",
+			"0.000000002,3",
+			"0.000000003,0",
+			"0.000000003,1",
+			"0.000000003,2",
+			"0.000000003,3",
+			"0.000000004,0",
+			"0.000000004,1",
+			"0.000000004,2",
+			"0.000000004,3",
+		},
+	}
+	for maxLogical, testCases := range testCasesByMaxLogical {
+		t.Run(fmt.Sprintf("maxLogical=%d", maxLogical), func(t *testing.T) {
+			ks := cockroachSuffixKeyspace{maxLogical: int64(maxLogical)}
+
+			for si, expect := range testCases {
+				suffix := ks.ToMaterializedSuffix(suffixIndex(si))
+				var prettyPrinted string
+				if len(suffix) > 0 {
+					prettyPrinted = fmt.Sprint(cockroachkvs.FormatKeySuffix(suffix))
+				}
+				if expect != prettyPrinted {
+					t.Errorf("ToMaterializedSuffix(%d) = %q, want %q", si, prettyPrinted, expect)
+				}
+				if got := ks.ToSuffixIndex(suffix); got != suffixIndex(si) {
+					t.Errorf("ToSuffixIndex(%q) = %d, want %d", prettyPrinted, got, si)
+				}
+			}
+		})
 	}
 }
