@@ -196,6 +196,26 @@ func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
 	return key
 }
 
+// NewTimestampSuffix allocates and encodes a new suffix byte slice encoding the
+// provided timestamp.
+func NewTimestampSuffix(wallTime uint64, logical uint32) []byte {
+	switch {
+	case wallTime == 0 && logical == 0:
+		return nil
+	case logical == 0:
+		v := make([]byte, suffixLenWithWall)
+		binary.BigEndian.PutUint64(v, wallTime)
+		v[suffixLenWithWall-1] = suffixLenWithWall
+		return v
+	default:
+		v := make([]byte, suffixLenWithLogical)
+		binary.BigEndian.PutUint64(v, wallTime)
+		binary.BigEndian.PutUint32(v[8:], logical)
+		v[suffixLenWithLogical-1] = suffixLenWithLogical
+		return v
+	}
+}
+
 // DecodeMVCCTimestampSuffix decodes an MVCC timestamp from its Pebble representation,
 // including the length suffix.
 func DecodeMVCCTimestampSuffix(encodedTS []byte) (wallTime uint64, logical uint32, err error) {
@@ -1057,6 +1077,11 @@ func (fk formatKey) Format(f fmt.State, c rune) {
 	}
 	fmt.Fprint(f, "@")
 	formatKeySuffix(fk[i:]).Format(f, c)
+}
+
+// FormatKeySuffix returns a formatter for the user key suffix.
+func FormatKeySuffix(suffix []byte) fmt.Formatter {
+	return formatKeySuffix(suffix)
 }
 
 type formatKeySuffix []byte
