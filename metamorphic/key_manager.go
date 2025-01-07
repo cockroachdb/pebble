@@ -373,9 +373,9 @@ func (k *keyManager) getSetOfVisibleKeys(readerID objID) [][]byte {
 
 // newKeyManager returns a pointer to a new keyManager. Callers should
 // interact with this using addNewKey, knownKeys, update methods only.
-func newKeyManager(numInstances int) *keyManager {
+func newKeyManager(numInstances int, kf KeyFormat) *keyManager {
 	m := &keyManager{
-		kf:                   TestkeysKeyFormat,
+		kf:                   kf,
 		byObj:                make(map[objID]*objKeyMeta),
 		globalKeysMap:        make(map[string]bool),
 		globalKeyPrefixesMap: make(map[string]struct{}),

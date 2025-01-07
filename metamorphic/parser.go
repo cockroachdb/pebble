@@ -187,8 +187,8 @@ type parser struct {
 
 type parserOpts struct {
 	allowUndefinedObjs          bool
-	parseFormattedUserKey       func(string) (UserKey, error)
-	parseFormattedUserKeySuffix func(string) (UserKeySuffix, error)
+	parseFormattedUserKey       func(string) UserKey
+	parseFormattedUserKeySuffix func(string) UserKeySuffix
 }
 
 func parse(src []byte, opts parserOpts) (_ []op, err error) {
@@ -294,11 +294,7 @@ func (p *parser) parseUserKey(pos token.Pos, lit string) UserKey {
 	if p.opts.parseFormattedUserKey == nil {
 		return []byte(s)
 	}
-	key, err := p.opts.parseFormattedUserKey(s)
-	if err != nil {
-		panic(p.errorf(pos, "%s", err))
-	}
-	return key
+	return p.opts.parseFormattedUserKey(s)
 }
 
 func (p *parser) parseUserKeySuffix(pos token.Pos, lit string) UserKeySuffix {
@@ -312,11 +308,7 @@ func (p *parser) parseUserKeySuffix(pos token.Pos, lit string) UserKeySuffix {
 	if p.opts.parseFormattedUserKeySuffix == nil {
 		return []byte(s)
 	}
-	suffix, err := p.opts.parseFormattedUserKeySuffix(s)
-	if err != nil {
-		panic(p.errorf(pos, "%s", err))
-	}
-	return suffix
+	return p.opts.parseFormattedUserKeySuffix(s)
 }
 
 func unquoteBytes(lit string) []byte {
@@ -450,7 +442,7 @@ func (p *parser) pop(list *[]listElem, expTok token.Token) (token.Pos, string) {
 }
 
 // popLit checks that the first element of the list matches the expected token,
-// removes it from the list and returns the pos and literal.
+// removes it from the list and returns the literal.
 func (p *parser) popLit(list *[]listElem, expTok token.Token) string {
 	(*list)[0].expectToken(p, expTok)
 	lit := (*list)[0].lit
@@ -569,13 +561,21 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 			objs[i].syntheticSuffix = block.SyntheticSuffix(syntheticSuffix)
 		}
 
-		syntheticPrefix := p.parseUserKey(p.pop(&list, token.STRING))
+		// NB: We cannot use p.parseUserKey for the syntheticPrefix because it
+		// is not guaranteed to be a valid key itself. For example, when using
+		// the cockroachkvs KeyFormat, it may not have a 0x00 delimiter/sentinel
+		// byte.
+		syntheticPrefix, err := strconv.Unquote(p.popLit(&list, token.STRING))
+		if err != nil {
+			panic(p.errorf(list[0].pos, "error parsing synthetic prefix: %s", err))
+		}
 		if len(syntheticPrefix) > 0 {
-			if !bytes.HasPrefix(objs[i].bounds.Start, syntheticPrefix) {
-				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.Start, syntheticPrefix))
+			if !bytes.HasPrefix(objs[i].bounds.Start, []byte(syntheticPrefix)) {
+				panic(fmt.Sprintf("invalid synthetic prefix %q [%x] %s [%x]",
+					objs[i].bounds.Start, []byte(objs[i].bounds.Start), syntheticPrefix, []byte(syntheticPrefix)))
 			}
-			if !bytes.HasPrefix(objs[i].bounds.End, syntheticPrefix) {
-				panic(fmt.Sprintf("invalid synthetic prefix %q %q", objs[i].bounds.End, syntheticPrefix))
+			if !bytes.HasPrefix(objs[i].bounds.End, []byte(syntheticPrefix)) {
+				panic(fmt.Sprintf("invalid synthetic prefix %q %s", objs[i].bounds.End, syntheticPrefix))
 			}
 			objs[i].syntheticPrefix = block.SyntheticPrefix(syntheticPrefix)
 		}

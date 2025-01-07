@@ -504,8 +504,8 @@ func (o *setOp) diagramKeyRanges() []pebble.KeyRange {
 // rangeKeyDeleteOp models a Write.RangeKeyDelete operation.
 type rangeKeyDeleteOp struct {
 	writerID objID
-	start    []byte
-	end      []byte
+	start    UserKey
+	end      UserKey
 }
 
 func (o *rangeKeyDeleteOp) run(t *Test, h historyRecorder) {
@@ -534,9 +534,9 @@ func (o *rangeKeyDeleteOp) diagramKeyRanges() []pebble.KeyRange {
 // rangeKeySetOp models a Write.RangeKeySet operation.
 type rangeKeySetOp struct {
 	writerID objID
-	start    []byte
-	end      []byte
-	suffix   []byte
+	start    UserKey
+	end      UserKey
+	suffix   UserKeySuffix
 	value    []byte
 }
 
@@ -1081,9 +1081,11 @@ func (o *ingestExternalFilesOp) syncObjs() objIDSlice {
 func (o *ingestExternalFilesOp) formattedString(kf KeyFormat) string {
 	strs := make([]string, len(o.objs))
 	for i, obj := range o.objs {
+		// NB: The syntheticPrefix is intentionally not formatted, because it's
+		// not a valid key itself. It is printed as a simple quoted Go string.
 		strs[i] = fmt.Sprintf("%s, %q /* start */, %q /* end */, %q /* syntheticSuffix */, %q /* syntheticPrefix */",
 			obj.externalObjID, kf.FormatKey(obj.bounds.Start), kf.FormatKey(obj.bounds.End),
-			kf.FormatKeySuffix(UserKeySuffix(obj.syntheticSuffix)), kf.FormatKey(UserKey(obj.syntheticPrefix)),
+			kf.FormatKeySuffix(UserKeySuffix(obj.syntheticSuffix)), obj.syntheticPrefix,
 		)
 	}
 	return fmt.Sprintf("%s.IngestExternalFiles(%s)", o.dbID, strings.Join(strs, ", "))
@@ -1765,7 +1767,7 @@ func (o *iterCanSingleDelOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID
-	limit  []byte
+	limit  UserKey
 
 	derivedReaderID objID
 }

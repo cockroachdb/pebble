@@ -16,9 +16,10 @@ func ExampleExecute() {
 	const seed = 1698702489658104000
 	rng := rand.New(rand.NewPCG(0, seed))
 
+	kf := metamorphic.TestkeysKeyFormat
 	// Generate a random database by running the metamorphic test.
-	testOpts := metamorphic.RandomOptions(rng, nil /* custom opt parsers */)
-	ops := metamorphic.GenerateOps(rng, 10000, metamorphic.DefaultOpConfig())
+	testOpts := metamorphic.RandomOptions(rng, kf, nil /* custom opt parsers */)
+	ops := metamorphic.GenerateOps(rng, 10000, kf, metamorphic.DefaultOpConfig())
 	test, err := metamorphic.New(ops, testOpts, "" /* dir */, io.Discard)
 	if err != nil {
 		panic(err)

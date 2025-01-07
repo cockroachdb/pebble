@@ -34,7 +34,8 @@ func TestIteratorErrors(t *testing.T) {
 	// Generate a random database by running the metamorphic test with the
 	// WriteOpConfig. We'll perform ~10,000 random operations that mutate the
 	// state of the database.
-	testOpts := metamorphic.RandomOptions(rng, nil /* custom opt parsers */)
+	kf := metamorphic.TestkeysKeyFormat
+	testOpts := metamorphic.RandomOptions(rng, kf, nil /* custom opt parsers */)
 	// With even a very small injection probability, it's relatively
 	// unlikely that pebble.DebugCheckLevels will successfully complete
 	// without being interrupted by an ErrInjected. Omit these checks.
@@ -50,8 +51,8 @@ func TestIteratorErrors(t *testing.T) {
 
 	testOpts.Opts.Cache.Ref()
 	{
-		test, err := metamorphic.New(
-			metamorphic.GenerateOps(rng, 10000, metamorphic.WriteOpConfig()),
+		test, err := metamorphic.New(metamorphic.GenerateOps(
+			rng, 10000, kf, metamorphic.WriteOpConfig()),
 			testOpts, "" /* dir */, io.Discard)
 		require.NoError(t, err)
 		require.NoError(t, metamorphic.Execute(test))
@@ -72,7 +73,7 @@ func TestIteratorErrors(t *testing.T) {
 		testOpts.Opts.ReadOnly = true
 
 		test, err := metamorphic.New(
-			metamorphic.GenerateOps(rng, 5000, metamorphic.ReadOpConfig()),
+			metamorphic.GenerateOps(rng, 5000, metamorphic.TestkeysKeyFormat, metamorphic.ReadOpConfig()),
 			testOpts, "" /* dir */, &testWriter{t: t})
 		require.NoError(t, err)
 
