@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/rangekey"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.
@@ -75,7 +75,7 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) (*Ite
 // point keys deleted by range dels and keys masked by range keys.
 func (s *Snapshot) ScanInternal(
 	ctx context.Context,
-	category sstable.Category,
+	category block.Category,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
@@ -473,7 +473,7 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 // point keys deleted by range dels and keys masked by range keys.
 func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	ctx context.Context,
-	category sstable.Category,
+	category block.Category,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,

@@ -162,7 +162,7 @@ func newColumnBlockTwoLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	statsAccum IterStatsAccumulator,
+	statsAccum block.IterStatsAccumulator,
 	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorColumnBlocks, error) {
@@ -220,7 +220,7 @@ func newRowBlockTwoLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	statsAccum IterStatsAccumulator,
+	statsAccum block.IterStatsAccumulator,
 	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorRowBlocks, error) {

@@ -33,13 +33,13 @@ type CommonReader interface {
 		filterer *BlockPropertiesFilterer,
 		filterBlockSizeLimit FilterBlockSizeLimit,
 		stats *base.InternalIteratorStats,
-		statsAccum IterStatsAccumulator,
+		statsAccum block.IterStatsAccumulator,
 		rp valblk.ReaderProvider,
 	) (Iterator, error)
 
 	NewCompactionIter(
 		transforms IterTransforms,
-		statsAccum IterStatsAccumulator,
+		statsAccum block.IterStatsAccumulator,
 		rp valblk.ReaderProvider,
 		bufferPool *block.BufferPool,
 	) (Iterator, error)

@@ -47,7 +47,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilterBlock(context.Background(), noEnv, noReadHandle, r.filterBH)
+		dataH, err := r.readFilterBlock(context.Background(), block.NoReadEnv, noReadHandle, r.filterBH)
 		if err != nil {
 			return nil, err
 		}
@@ -637,7 +637,7 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func indexLayoutString(t *testing.T, r *Reader) string {
-	indexH, err := r.readTopLevelIndexBlock(context.Background(), noEnv, noReadHandle)
+	indexH, err := r.readTopLevelIndexBlock(context.Background(), block.NoReadEnv, noReadHandle)
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder
@@ -654,7 +654,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(iter.Separator()), bh.Length)
 		if twoLevelIndex {
-			b, err := r.readIndexBlock(context.Background(), noEnv, noReadHandle, bh.Handle)
+			b, err := r.readIndexBlock(context.Background(), block.NoReadEnv, noReadHandle, bh.Handle)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2 := r.tableFormat.newIndexIter()

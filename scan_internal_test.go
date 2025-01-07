@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -213,7 +214,7 @@ func TestScanInternal(t *testing.T) {
 	type scanInternalReader interface {
 		ScanInternal(
 			ctx context.Context,
-			category sstable.Category,
+			category block.Category,
 			lower, upper []byte,
 			visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 			visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
@@ -561,7 +562,7 @@ func TestScanInternal(t *testing.T) {
 					}
 				}
 			}
-			err := reader.ScanInternal(context.TODO(), sstable.CategoryUnknown, lower, upper,
+			err := reader.ScanInternal(context.TODO(), block.CategoryUnknown, lower, upper,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					v := value.InPlaceValue()
 					fmt.Fprintf(&b, "%s (%s)\n", key, v)

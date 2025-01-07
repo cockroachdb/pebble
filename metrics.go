@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
@@ -147,9 +148,9 @@ func (m *LevelMetrics) WriteAmp() float64 {
 	return float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
 }
 
-var categoryCompaction = sstable.RegisterCategory("pebble-compaction", sstable.NonLatencySensitiveQoSLevel)
-var categoryIngest = sstable.RegisterCategory("pebble-ingest", sstable.LatencySensitiveQoSLevel)
-var categoryGet = sstable.RegisterCategory("pebble-get", sstable.LatencySensitiveQoSLevel)
+var categoryCompaction = block.RegisterCategory("pebble-compaction", block.NonLatencySensitiveQoSLevel)
+var categoryIngest = block.RegisterCategory("pebble-ingest", block.LatencySensitiveQoSLevel)
+var categoryGet = block.RegisterCategory("pebble-get", block.LatencySensitiveQoSLevel)
 
 // Metrics holds metrics for various subsystems of the DB such as the Cache,
 // Compactions, WAL, and per-Level metrics.
@@ -338,7 +339,7 @@ type Metrics struct {
 		record.LogWriterMetrics
 	}
 
-	CategoryStats []sstable.CategoryStatsAggregate
+	CategoryStats []block.CategoryStatsAggregate
 
 	SecondaryCacheMetrics SecondaryCacheMetrics
 

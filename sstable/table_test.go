@@ -532,7 +532,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, err := r.readMetaindexBlock(context.Background(), noEnv, noReadHandle)
+	b, err := r.readMetaindexBlock(context.Background(), block.NoReadEnv, noReadHandle)
 	require.NoError(t, err)
 	defer b.Release()
 

@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/redact"
@@ -109,9 +110,9 @@ func exampleMetrics() Metrics {
 
 func init() {
 	// Register some categories for the purposes of the test.
-	sstable.RegisterCategory("a", sstable.NonLatencySensitiveQoSLevel)
-	sstable.RegisterCategory("b", sstable.LatencySensitiveQoSLevel)
-	sstable.RegisterCategory("c", sstable.NonLatencySensitiveQoSLevel)
+	block.RegisterCategory("a", block.NonLatencySensitiveQoSLevel)
+	block.RegisterCategory("b", block.LatencySensitiveQoSLevel)
+	block.RegisterCategory("c", block.NonLatencySensitiveQoSLevel)
 }
 
 func TestMetrics(t *testing.T) {
@@ -313,11 +314,11 @@ func TestMetrics(t *testing.T) {
 					return err.Error()
 				}
 			}
-			category := sstable.CategoryUnknown
+			category := block.CategoryUnknown
 			if td.HasArg("category") {
 				var s string
 				td.ScanArgs(t, "category", &s)
-				category = sstable.StringToCategoryForTesting(s)
+				category = block.StringToCategoryForTesting(s)
 			}
 			iter, _ := d.NewIter(&IterOptions{Category: category})
 			// Some iterators (eg. levelIter) do not instantiate the underlying
@@ -344,8 +345,8 @@ func TestMetrics(t *testing.T) {
 				m.FileCache = cache.Metrics{}
 				m.BlockCache = cache.Metrics{}
 				// Empirically, the unknown stats are also non-deterministic.
-				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == sstable.CategoryUnknown {
-					m.CategoryStats[0].CategoryStats = sstable.CategoryStats{}
+				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == block.CategoryUnknown {
+					m.CategoryStats[0].CategoryStats = block.CategoryStats{}
 				}
 			}
 			var buf strings.Builder

@@ -73,8 +73,8 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	err          error
 	closeHook    func(i Iterator) error
 
-	iterStats    iterStatsAccumulator
-	readBlockEnv readBlockEnv
+	iterStats    block.ChildIterStatsAccumulator
+	readBlockEnv block.ReadEnv
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -211,7 +211,7 @@ func newColumnBlockSingleLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	statsAccum IterStatsAccumulator,
+	statsAccum block.IterStatsAccumulator,
 	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorColumnBlocks, error) {
@@ -261,7 +261,7 @@ func newRowBlockSingleLevelIterator(
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
 	stats *base.InternalIteratorStats,
-	statsAccum IterStatsAccumulator,
+	statsAccum block.IterStatsAccumulator,
 	rp valblk.ReaderProvider,
 	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorRowBlocks, error) {
@@ -307,7 +307,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
-	statsAccum IterStatsAccumulator,
+	statsAccum block.IterStatsAccumulator,
 	bufferPool *block.BufferPool,
 ) {
 	i.inPool = false
@@ -323,8 +323,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 		i.vState = v
 		i.endKeyInclusive, i.lower, i.upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
-	i.iterStats.init(statsAccum)
-	i.readBlockEnv = readBlockEnv{
+	i.iterStats.Init(statsAccum)
+	i.readBlockEnv = block.ReadEnv{
 		Stats:      stats,
 		IterStats:  &i.iterStats,
 		BufferPool: bufferPool,
@@ -1554,7 +1554,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	if invariants.Enabled && i.inPool {
 		panic("Close called on interator in pool")
 	}
-	i.iterStats.close()
+	i.iterStats.Close()
 	var err error
 	if i.closeHook != nil {
 		err = firstError(err, i.closeHook(i))

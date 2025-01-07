@@ -6,6 +6,7 @@ package block
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -274,4 +275,49 @@ type IndexBlockIterator interface {
 	// the iterator must be reset such that it could be reused after a call to
 	// Init or InitHandle.
 	Close() error
+}
+
+// NoReadEnv is the empty ReadEnv which reports no stats and does not use a
+// buffer pool.
+var NoReadEnv = ReadEnv{}
+
+// ReadEnv contains arguments used when reading a block which apply to all
+// the block reads performed by a higher-level operation.
+type ReadEnv struct {
+	// stats and iterStats are slightly different. stats is a shared struct
+	// supplied from the outside, and represents stats for the whole iterator
+	// tree and can be reset from the outside (e.g. when the pebble.Iterator is
+	// being reused). It is currently only provided when the iterator tree is
+	// rooted at pebble.Iterator. iterStats contains an sstable iterator's
+	// private stats that are reported to a CategoryStatsCollector when this
+	// iterator is closed. In the important code paths, the CategoryStatsCollector
+	// is managed by the fileCacheContainer.
+	Stats     *base.InternalIteratorStats
+	IterStats *ChildIterStatsAccumulator
+
+	// BufferPool is not-nil if we read blocks into a buffer pool and not into the
+	// cache. This is used during compactions.
+	BufferPool *BufferPool
+}
+
+// BlockServedFromCache updates the stats when a block was found in the cache.
+func (env *ReadEnv) BlockServedFromCache(blockLength uint64) {
+	if env.Stats != nil {
+		env.Stats.BlockBytes += blockLength
+		env.Stats.BlockBytesInCache += blockLength
+	}
+	if env.IterStats != nil {
+		env.IterStats.Accumulate(blockLength, blockLength, 0)
+	}
+}
+
+// BlockRead updates the stats when a block had to be read.
+func (env *ReadEnv) BlockRead(blockLength uint64, readDuration time.Duration) {
+	if env.Stats != nil {
+		env.Stats.BlockBytes += blockLength
+		env.Stats.BlockReadDuration += readDuration
+	}
+	if env.IterStats != nil {
+		env.IterStats.Accumulate(blockLength, 0, readDuration)
+	}
 }

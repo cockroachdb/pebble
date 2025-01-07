@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+package block
 
 import (
 	"cmp"
@@ -253,19 +253,21 @@ type IterStatsAccumulator interface {
 	Accumulate(cas CategoryStats)
 }
 
-// iterStatsAccumulator is a helper for a sstable iterator to accumulate stats,
-// which are reported to the CategoryStatsCollector when the accumulator is
-// closed.
-type iterStatsAccumulator struct {
+// ChildIterStatsAccumulator is a helper for a sstable iterator to accumulate
+// stats, which are reported to the CategoryStatsCollector when the accumulator
+// is closed.
+type ChildIterStatsAccumulator struct {
 	stats  CategoryStats
 	parent IterStatsAccumulator
 }
 
-func (a *iterStatsAccumulator) init(parent IterStatsAccumulator) {
+// Init initializes the accumulator with the parent accumulator.
+func (a *ChildIterStatsAccumulator) Init(parent IterStatsAccumulator) {
 	a.parent = parent
 }
 
-func (a *iterStatsAccumulator) reportStats(
+// Accumulate accumulates the provided stats.
+func (a *ChildIterStatsAccumulator) Accumulate(
 	blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration,
 ) {
 	a.stats.BlockBytes += blockBytes
@@ -273,7 +275,8 @@ func (a *iterStatsAccumulator) reportStats(
 	a.stats.BlockReadDuration += blockReadDuration
 }
 
-func (a *iterStatsAccumulator) close() {
+// Close closes the accumulator, accumulating the stats to the parent.
+func (a *ChildIterStatsAccumulator) Close() {
 	if a.parent != nil {
 		a.parent.Accumulate(a.stats)
 	}

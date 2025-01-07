@@ -186,7 +186,7 @@ func (l *Layout) Describe(
 
 			switch b.Name {
 			case "data":
-				h, err = r.readDataBlock(ctx, noEnv, noReadHandle, b.Handle)
+				h, err = r.readDataBlock(ctx, block.NoReadEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
@@ -206,7 +206,7 @@ func (l *Layout) Describe(
 				}
 
 			case "range-del":
-				h, err = r.readRangeDelBlock(ctx, noEnv, noReadHandle, b.Handle)
+				h, err = r.readRangeDelBlock(ctx, block.NoReadEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
@@ -215,7 +215,7 @@ func (l *Layout) Describe(
 				formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
 
 			case "range-key":
-				h, err = r.readRangeKeyBlock(ctx, noEnv, noReadHandle, b.Handle)
+				h, err = r.readRangeKeyBlock(ctx, block.NoReadEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
@@ -224,14 +224,14 @@ func (l *Layout) Describe(
 				formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
 
 			case "index", "top-index":
-				h, err = r.readIndexBlock(ctx, noEnv, noReadHandle, b.Handle)
+				h, err = r.readIndexBlock(ctx, block.NoReadEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
 				formatting.formatIndexBlock(tpNode, r, *b, h.BlockData())
 
 			case "properties":
-				h, err = r.readBlockInternal(ctx, noEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
+				h, err = r.readBlockInternal(ctx, block.NoReadEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
 				if err != nil {
 					return err
 				}
@@ -244,7 +244,7 @@ func (l *Layout) Describe(
 				if b.Handle != r.metaindexBH {
 					return base.AssertionFailedf("range-del block handle does not match rangeDelBH")
 				}
-				h, err = r.readMetaindexBlock(ctx, noEnv, noReadHandle)
+				h, err = r.readMetaindexBlock(ctx, block.NoReadEnv, noReadHandle)
 				if err != nil {
 					return err
 				}

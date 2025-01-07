@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -1260,7 +1261,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // iteration is invalid in those cases.
 func (d *DB) ScanInternal(
 	ctx context.Context,
-	category sstable.Category,
+	category block.Category,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
 	visitRangeDel func(start, end []byte, seqNum SeqNum) error,

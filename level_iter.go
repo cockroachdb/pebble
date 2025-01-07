@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 type internalIterOpts struct {
@@ -23,9 +24,9 @@ type internalIterOpts struct {
 	// NewCompactionIter; these iterators have a more constrained interface
 	// and are optimized for the sequential scan of a compaction.
 	compaction           bool
-	bufferPool           *sstable.BufferPool
+	bufferPool           *block.BufferPool
 	stats                *base.InternalIteratorStats
-	iterStatsAccumulator sstable.IterStatsAccumulator
+	iterStatsAccumulator block.IterStatsAccumulator
 	boundLimitedFilter   sstable.BoundLimitedBlockPropertyFilter
 }
 

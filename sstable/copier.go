@@ -89,7 +89,7 @@ func CopySpan(
 		r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
 	defer rh.Close()
 	rh.SetupForCompaction()
-	indexH, err := r.readTopLevelIndexBlock(ctx, noEnv, rh)
+	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)
 	if err != nil {
 		return 0, err
 	}
@@ -99,7 +99,7 @@ func CopySpan(
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
 	if r.tableFilter != nil {
-		filterBlock, err := r.readFilterBlock(ctx, noEnv, rh, r.filterBH)
+		filterBlock, err := r.readFilterBlock(ctx, block.NoReadEnv, rh, r.filterBH)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
@@ -228,7 +228,7 @@ func intersectingIndexEntries(
 			alloc, entry.sep = alloc.Copy(entry.sep)
 			res = append(res, entry)
 		} else {
-			subBlk, err := r.readIndexBlock(ctx, noEnv, rh, bh.Handle)
+			subBlk, err := r.readIndexBlock(ctx, block.NoReadEnv, rh, bh.Handle)
 			if err != nil {
 				return nil, err
 			}
