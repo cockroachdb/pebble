@@ -48,8 +48,25 @@ func parseOptions(
 	opts *TestOptions, data string, customOptionParsers map[string]func(string) (CustomOption, bool),
 ) error {
 	hooks := &pebble.ParseHooks{
-		NewCache:        pebble.NewCache,
+		NewCache: pebble.NewCache,
+		NewComparer: func(name string) (*pebble.Comparer, error) {
+			for _, kf := range knownKeyFormats {
+				if kf.Comparer.Name == name {
+					return kf.Comparer, nil
+				}
+			}
+			return nil, errors.Newf("unknown comparer %q", name)
+
+		},
 		NewFilterPolicy: filterPolicyFromName,
+		NewKeySchema: func(name string) (pebble.KeySchema, error) {
+			for _, kf := range knownKeyFormats {
+				if kf.KeySchema.Name == name {
+					return *kf.KeySchema, nil
+				}
+			}
+			return pebble.KeySchema{}, errors.Newf("unknown key schema %q", name)
+		},
 		SkipUnknown: func(name, value string) bool {
 			switch name {
 			case "TestOptions":
@@ -294,8 +311,7 @@ func optionsToString(opts *TestOptions) string {
 	return s + "\n[TestOptions]\n" + buf.String()
 }
 
-func defaultTestOptions() *TestOptions {
-	kf := TestkeysKeyFormat
+func defaultTestOptions(kf KeyFormat) *TestOptions {
 	return &TestOptions{
 		Opts:        defaultOptions(kf),
 		Threads:     16,
@@ -471,7 +487,7 @@ type CustomOption interface {
 	// behavior of a run.
 }
 
-func standardOptions() []*TestOptions {
+func standardOptions(kf KeyFormat) []*TestOptions {
 	// The index labels are not strictly necessary, but they make it easier to
 	// find which options correspond to a failure.
 	stdOpts := []string{
@@ -617,7 +633,7 @@ func standardOptions() []*TestOptions {
 
 	opts := make([]*TestOptions, len(stdOpts))
 	for i := range opts {
-		opts[i] = defaultTestOptions()
+		opts[i] = defaultTestOptions(kf)
 		// NB: The standard options by definition can never include custom
 		// options, so no need to propagate custom option parsers.
 		if err := parseOptions(opts[i], stdOpts[i], nil /* custom option parsers */); err != nil {
@@ -630,9 +646,9 @@ func standardOptions() []*TestOptions {
 // RandomOptions generates a random set of operations, drawing randomness from
 // rng.
 func RandomOptions(
-	rng *rand.Rand, customOptionParsers map[string]func(string) (CustomOption, bool),
+	rng *rand.Rand, kf KeyFormat, customOptionParsers map[string]func(string) (CustomOption, bool),
 ) *TestOptions {
-	testOpts := defaultTestOptions()
+	testOpts := defaultTestOptions(kf)
 	opts := testOpts.Opts
 
 	// There are some private options, which we don't want users to fiddle with.

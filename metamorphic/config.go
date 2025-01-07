@@ -364,12 +364,15 @@ type KeyFormat struct {
 	BlockPropertyCollectors      []func() pebble.BlockPropertyCollector
 	FormatKey                    func(UserKey) string
 	FormatKeySuffix              func(UserKeySuffix) string
-	ParseFormattedKey            func(string) (UserKey, error)
-	ParseFormattedKeySuffix      func(string) (UserKeySuffix, error)
+	ParseFormattedKey            func(string) UserKey
+	ParseFormattedKeySuffix      func(string) UserKeySuffix
 	NewGenerator                 func(*keyManager, *rand.Rand, OpConfig) KeyGenerator
 	NewSuffixFilterMask          func() pebble.BlockPropertyFilterMask
 	NewSuffixBlockPropertyFilter func(min []byte, max []byte) sstable.BlockPropertyFilter
 }
+
+func (kf KeyFormat) apply(ro *runAndCompareOptions) { ro.keyFormat = kf }
+func (kf KeyFormat) applyOnce(ro *runOnceOptions)   { ro.keyFormat = kf }
 
 // KeyGenerator is an interface for generating keys, prefixes and suffixes.
 type KeyGenerator interface {
@@ -397,6 +400,9 @@ type KeyGenerator interface {
 	// suffix (which is guaranteed to be larger than any previously generated
 	// suffix).
 	IncMaxSuffix() []byte
+	// ExtendPrefix extends the given prefix key with additional bytes,
+	// returning a new prefix that sorts after the given prefix.
+	ExtendPrefix(prefix []byte) []byte
 	// RandKey returns a random key (either a previously known key, or a new
 	// key). The provided probability determines the likelihood of generating a
 	// new key.
@@ -425,7 +431,4 @@ type KeyGenerator interface {
 	//
 	// May return a nil suffix.
 	UniformSuffix() []byte
-	// UniqueKeys takes a key-generating function and uses it to generate n
-	// unique keys, returning them in sorted order.
-	UniqueKeys(n int, genFn func() []byte) [][]byte
 }

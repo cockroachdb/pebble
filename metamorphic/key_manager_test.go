@@ -14,7 +14,7 @@ import (
 )
 
 func TestKeyManager_AddKey(t *testing.T) {
-	m := newKeyManager(1 /* numInstances */)
+	m := newKeyManager(1 /* numInstances */, TestkeysKeyFormat)
 	require.Empty(t, m.globalKeys)
 
 	k1 := []byte("foo")
@@ -77,12 +77,12 @@ func printKeys(w io.Writer, keys [][]byte) {
 
 func TestKeyManager(t *testing.T) {
 	var buf bytes.Buffer
-	km := newKeyManager(1 /* numInstances */)
+	km := newKeyManager(1 /* numInstances */, TestkeysKeyFormat)
 	kf := TestkeysKeyFormat
 	datadriven.RunTest(t, "testdata/key_manager", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			km = newKeyManager(1 /* numInstances */)
+			km = newKeyManager(1 /* numInstances */, TestkeysKeyFormat)
 			return ""
 		case "run":
 			buf.Reset()
@@ -157,12 +157,12 @@ func TestOpWrittenKeys(t *testing.T) {
 func TestLoadPrecedingKeys(t *testing.T) {
 	rng := randvar.NewRand()
 	cfg := DefaultOpConfig()
-	km := newKeyManager(1 /* numInstances */)
+	km := newKeyManager(1 /* numInstances */, TestkeysKeyFormat)
 	g := newGenerator(rng, cfg, km)
 	ops := g.generate(1000)
 
 	cfg2 := DefaultOpConfig()
-	km2 := newKeyManager(1 /* numInstances */)
+	km2 := newKeyManager(1 /* numInstances */, TestkeysKeyFormat)
 	g2 := newGenerator(rng, cfg2, km2)
 	loadPrecedingKeys(ops, g2.keyGenerator, km2)
 
@@ -181,7 +181,7 @@ func TestGenerateRandKeyInRange(t *testing.T) {
 
 	for _, kf := range knownKeyFormats {
 		t.Run(kf.Name, func(t *testing.T) {
-			km := newKeyManager(1 /* numInstances */)
+			km := newKeyManager(1 /* numInstances */, kf)
 			g := kf.NewGenerator(km, rng, DefaultOpConfig())
 			// Seed 100 initial keys.
 			for i := 0; i < 100; i++ {

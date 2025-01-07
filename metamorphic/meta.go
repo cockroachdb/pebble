@@ -175,7 +175,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	km := newKeyManager(runOpts.numInstances)
+	km := newKeyManager(runOpts.numInstances, runOpts.keyFormat)
 	cfg := presetConfigs[rng.IntN(len(presetConfigs))]
 	if runOpts.numInstances > 1 {
 		// The multi-instance variant does not support all operations yet.
@@ -225,6 +225,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 			"-run-dir=" + runDir,
 			"-test.run=" + topLevelTestName + "$",
 			"--op-timeout=" + runOpts.opTimeout.String(),
+			"--key-format=" + runOpts.keyFormat.Name,
 		}
 		if runOpts.numInstances > 1 {
 			args = append(args, "--num-instances="+strconv.Itoa(runOpts.numInstances))
@@ -349,7 +350,7 @@ func buildOptions(
 	options = map[string]*TestOptions{}
 
 	// Create the standard options.
-	for i, opts := range standardOptions() {
+	for i, opts := range standardOptions(runOpts.keyFormat) {
 		name := fmt.Sprintf("standard-%03d", i)
 		names = append(names, name)
 		options[name] = opts
@@ -357,7 +358,7 @@ func buildOptions(
 
 	// Create the custom option runs, if any.
 	for name, customOptsStr := range runOpts.customRuns {
-		options[name] = defaultTestOptions()
+		options[name] = defaultTestOptions(runOpts.keyFormat)
 		if err = parseOptions(options[name], customOptsStr, runOpts.customOptionParsers); err != nil {
 			return nil, nil, errors.Wrapf(err, "custom opts %q: %s", name, err)
 		}
@@ -372,7 +373,7 @@ func buildOptions(
 	for i := 0; i < nOpts; i++ {
 		name := fmt.Sprintf("random-%03d", i)
 		names = append(names, name)
-		opts := RandomOptions(rng, runOpts.customOptionParsers)
+		opts := RandomOptions(rng, runOpts.keyFormat, runOpts.customOptionParsers)
 		options[name] = opts
 	}
 
@@ -401,6 +402,7 @@ type runOnceOptions struct {
 	errorRate           float64
 	failRegexp          *regexp.Regexp
 	numInstances        int
+	keyFormat           KeyFormat
 	customOptionParsers map[string]func(string) (CustomOption, bool)
 }
 
@@ -460,7 +462,9 @@ func (m MultiInstance) applyOnce(ro *runOnceOptions)   { ro.numInstances = int(m
 // to a file at the path `historyPath`.
 //
 // The `seed` parameter is not functional; it's used for context in logging.
-func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts ...RunOnceOption) {
+func RunOnce(
+	t TestingT, runDir string, seed uint64, historyPath string, kf KeyFormat, rOpts ...RunOnceOption,
+) {
 	runOpts := runOnceOptions{
 		customOptionParsers: map[string]func(string) (CustomOption, bool){},
 	}
@@ -479,7 +483,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	// NB: It's important to use defaultTestOptions() here as the base into
 	// which we parse the serialized options. It contains the relevant defaults,
 	// like the appropriate block-property collectors.
-	testOpts := defaultTestOptions()
+	testOpts := defaultTestOptions(kf)
 	opts := testOpts.Opts
 	require.NoError(t, parseOptions(testOpts, string(optionsData), runOpts.customOptionParsers))
 
@@ -658,7 +662,9 @@ func hashThread(objID objID, numThreads int) int {
 
 // Compare runs the metamorphic tests in the provided runDirs and compares their
 // histories.
-func Compare(t TestingT, rootDir string, seed uint64, runDirs []string, rOpts ...RunOnceOption) {
+func Compare(
+	t TestingT, rootDir string, seed uint64, runDirs []string, kf KeyFormat, rOpts ...RunOnceOption,
+) {
 	historyPaths := make([]string, len(runDirs))
 	for i := 0; i < len(runDirs); i++ {
 		historyPath := filepath.Join(rootDir, runDirs[i]+"-"+time.Now().Format("060102-150405.000"))
@@ -673,7 +679,7 @@ func Compare(t TestingT, rootDir string, seed uint64, runDirs []string, rOpts ..
 	}()
 
 	for i, runDir := range runDirs {
-		RunOnce(t, runDir, seed, historyPaths[i], rOpts...)
+		RunOnce(t, runDir, seed, historyPaths[i], kf, rOpts...)
 	}
 
 	if t.Failed() {

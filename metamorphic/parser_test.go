@@ -41,7 +41,7 @@ func TestParserRandom(t *testing.T) {
 				cfg = multiInstanceConfig()
 				cfg.numInstances = 2
 			}
-			km := newKeyManager(cfg.numInstances)
+			km := newKeyManager(cfg.numInstances, TestkeysKeyFormat)
 			g := newGenerator(randvar.NewRand(), cfg, km)
 			ops := g.generate(10000)
 			src := formatOps(km.kf, ops)

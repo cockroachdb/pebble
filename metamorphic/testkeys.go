@@ -17,6 +17,7 @@ import (
 )
 
 var TestkeysKeyFormat = KeyFormat{
+	Name:     "testkeys",
 	Comparer: testkeys.Comparer,
 	KeySchema: func() *colblk.KeySchema {
 		kf := colblk.DefaultKeySchema(testkeys.Comparer, 16 /* bundle size */)
@@ -74,6 +75,12 @@ func (kg *testkeyKeyGenerator) RecordPrecedingKey(key []byte) {
 	}
 }
 
+// ExtendPrefix extends the given prefix key with additional bytes,
+// returning a new prefix that sorts after the given prefix.
+func (kg *testkeyKeyGenerator) ExtendPrefix(prefix []byte) []byte {
+	return append(slices.Clip(prefix), randBytes(kg.rng, 1, 3)...)
+}
+
 // RandKey returns a random key (either a previously known key, or a new key).
 func (kg *testkeyKeyGenerator) RandKey(newKeyProbability float64) []byte {
 	return kg.randKey(newKeyProbability, nil /* bounds */)
@@ -104,27 +111,6 @@ func (kg *testkeyKeyGenerator) RandPrefix(newPrefix float64) []byte {
 			return prefix
 		}
 	}
-}
-
-// UniqueKeys takes a key-generating function and uses it to generate n unique
-// keys, returning them in sorted order.
-func (kg *testkeyKeyGenerator) UniqueKeys(n int, genFn func() []byte) [][]byte {
-	keys := make([][]byte, n)
-	used := make(map[string]struct{}, n)
-	for i := range keys {
-		for attempts := 0; ; attempts++ {
-			keys[i] = genFn()
-			if _, exists := used[string(keys[i])]; !exists {
-				break
-			}
-			if attempts > 100000 {
-				panic("could not generate unique key")
-			}
-		}
-		used[string(keys[i])] = struct{}{}
-	}
-	slices.SortFunc(keys, kg.cmp)
-	return keys
 }
 
 // SkewedSuffix generates a random suffix according to the configuration's
