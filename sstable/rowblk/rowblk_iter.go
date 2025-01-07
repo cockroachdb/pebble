@@ -129,7 +129,10 @@ type Iter struct {
 	// 4 bytes of the block as a uint32 (i.ptr[len(block)-4:]). i.restarts can
 	// therefore be seen as the point where data in the block ends, and a list
 	// of offsets of all restart points begins.
-	restarts int64
+	//
+	// int64 is used to prevent overflow and preserve signedness for binary
+	// search invariants. 
+	restarts int64 
 	// Number of restart points in this block. Encoded at the end of the block
 	// as a uint32.
 	numRestarts int32
