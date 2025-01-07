@@ -131,8 +131,8 @@ type Iter struct {
 	// of offsets of all restart points begins.
 	//
 	// int64 is used to prevent overflow and preserve signedness for binary
-	// search invariants. 
-	restarts int64 
+	// search invariants.
+	restarts int64
 	// Number of restart points in this block. Encoded at the end of the block
 	// as a uint32.
 	numRestarts int32
@@ -197,10 +197,10 @@ type Iter struct {
 
 type blockEntry struct {
 	offset   int64
-	keyStart int32
-	keyEnd   int32
-	valStart int32
-	valSize  int32
+	keyStart uint32
+	keyEnd   uint32
+	valStart uint32
+	valSize  uint32
 }
 
 // *Iter implements the block.DataBlockIterator interface.
@@ -508,16 +508,16 @@ func (i *Iter) clearCache() {
 }
 
 func (i *Iter) cacheEntry() {
-	var valStart int32
-	valSize := int32(len(i.val))
+	var valStart uint32
+	valSize := uint32(len(i.val))
 	if valSize > 0 {
-		valStart = int32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
+		valStart = uint32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
 	}
 
 	i.cached = append(i.cached, blockEntry{
 		offset:   i.offset,
-		keyStart: int32(len(i.cachedBuf)),
-		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
+		keyStart: uint32(len(i.cachedBuf)),
+		keyEnd:   uint32(len(i.cachedBuf) + len(i.key)),
 		valStart: valStart,
 		valSize:  valSize,
 	})
@@ -570,7 +570,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int32(index + ((upper - index) >> 1)) // avoid overflow when computing h
+			h := index + ((upper - index) >> 1) // avoid overflow when computing h
 
 			// index ≤ h < upper
 			offset := decodeRestart(i.data[i.restarts+4*int64(h):])
@@ -753,7 +753,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int32(index + ((upper - index) >> 1)) // avoid overflow when computing h
+			h := index + ((upper - index) >> 1) // avoid overflow when computing h
 
 			// index ≤ h < upper
 			offset := decodeRestart(i.data[i.restarts+4*int64(h):])
@@ -1280,8 +1280,8 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 						// Invariant: f(index-1) == false, f(upper) == true.
 						upper := i.numRestarts
 						for index < upper {
-							h := int32(index + ((upper - index) >> 1)) // avoid overflow when computing h
-							
+							h := index + ((upper - index) >> 1) // avoid overflow when computing h
+
 							// index ≤ h < upper
 							offset := decodeRestart(i.data[i.restarts+4*int64(h):])
 							if offset < targetOffset {
@@ -1483,7 +1483,7 @@ start:
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := int32(index + ((upper - index) >> 1)) // avoid overflow when computing h
+			h := index + ((upper - index) >> 1) // avoid overflow when computing h
 
 			// index ≤ h < upper
 			offset := decodeRestart(i.data[i.restarts+4*int64(h):])
@@ -1737,16 +1737,16 @@ func (i *RawIter) clearCache() {
 }
 
 func (i *RawIter) cacheEntry() {
-	var valStart int32
-	valSize := int32(len(i.val))
+	var valStart uint32
+	valSize := uint32(len(i.val))
 	if valSize > 0 {
-		valStart = int32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
+		valStart = uint32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
 	}
 
 	i.cached = append(i.cached, blockEntry{
 		offset:   i.offset,
-		keyStart: int32(len(i.cachedBuf)),
-		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
+		keyStart: uint32(len(i.cachedBuf)),
+		keyEnd:   uint32(len(i.cachedBuf) + len(i.key)),
 		valStart: valStart,
 		valSize:  valSize,
 	})
