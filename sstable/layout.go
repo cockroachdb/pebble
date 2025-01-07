@@ -150,11 +150,11 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		getRestart := func(data []byte, restarts, i int32) int32 {
-			return decodeRestart(data[restarts+4*i:])
+		getRestart := func(data []byte, restarts offsetInBlock, i int32) offsetInBlock {
+			return decodeRestart(data[restarts+4*offsetInBlock(i):])
 		}
 
-		formatIsRestart := func(data []byte, restarts, numRestarts, offset int32) {
+		formatIsRestart := func(data []byte, restarts offsetInBlock, numRestarts int32, offset offsetInBlock) {
 			i := sort.Search(int(numRestarts), func(i int) bool {
 				return getRestart(data, restarts, int32(i)) >= offset
 			})
@@ -165,11 +165,11 @@ func (l *Layout) Describe(
 			}
 		}
 
-		formatRestarts := func(data []byte, restarts, numRestarts int32) {
+		formatRestarts := func(data []byte, restarts offsetInBlock, numRestarts int32) {
 			for i := int32(0); i < numRestarts; i++ {
 				offset := getRestart(data, restarts, i)
 				fmt.Fprintf(w, "%10d    [restart %d]\n",
-					b.Offset+uint64(restarts+4*i), b.Offset+uint64(offset))
+					b.Offset+uint64(restarts+4*offsetInBlock(i)), b.Offset+uint64(offset))
 			}
 		}
 
@@ -205,7 +205,7 @@ func (l *Layout) Describe(
 				// <value>    is the number of value bytes.
 				fmt.Fprintf(w, "%10d    record (%d = %d [%d] + %d + %d)",
 					b.Offset+uint64(iter.offset), total,
-					total-int32(unshared+value2), shared, unshared, value2)
+					total-offsetInBlock(unshared+value2), shared, unshared, value2)
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
 				if fmtRecord != nil {
 					fmt.Fprintf(w, "              ")
