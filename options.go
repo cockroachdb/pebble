@@ -197,7 +197,7 @@ type IterOptions struct {
 	UseL6Filters bool
 	// Category is used for categorized iterator stats. This should not be
 	// changed by calling SetOptions.
-	Category sstable.Category
+	Category block.Category
 
 	DebugRangeKeyStack bool
 
@@ -270,7 +270,7 @@ func (o *IterOptions) SpanIterOptions() keyspan.SpanIterOptions {
 type scanInternalOptions struct {
 	IterOptions
 
-	category sstable.Category
+	category block.Category
 
 	visitPointKey     func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
 	visitRangeDel     func(start, end []byte, seqNum SeqNum) error

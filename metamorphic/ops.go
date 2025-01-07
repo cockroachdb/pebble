@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
@@ -1980,7 +1981,7 @@ func (r *replicateOp) runSharedReplicate(
 ) {
 	var sharedSSTs []pebble.SharedSSTMeta
 	var err error
-	err = source.ScanInternal(context.TODO(), sstable.CategoryUnknown, r.start, r.end,
+	err = source.ScanInternal(context.TODO(), block.CategoryUnknown, r.start, r.end,
 		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
 			val, _, err := value.Value(nil)
 			if err != nil {
@@ -2043,7 +2044,7 @@ func (r *replicateOp) runExternalReplicate(
 ) {
 	var externalSSTs []pebble.ExternalFile
 	var err error
-	err = source.ScanInternal(context.TODO(), sstable.CategoryUnknown, r.start, r.end,
+	err = source.ScanInternal(context.TODO(), block.CategoryUnknown, r.start, r.end,
 		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
 			val, _, err := value.Value(nil)
 			if err != nil {

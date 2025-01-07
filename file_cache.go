@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -101,7 +102,7 @@ type fileCacheOpts struct {
 	cacheID           cache.ID
 	objProvider       objstorage.Provider
 	readerOpts        sstable.ReaderOptions
-	sstStatsCollector *sstable.CategoryStatsCollector
+	sstStatsCollector *block.CategoryStatsCollector
 }
 
 // fileCacheContainer contains the file cache and fields which are unique to the
@@ -122,7 +123,7 @@ func newFileCacheContainer(
 	objProvider objstorage.Provider,
 	opts *Options,
 	size int,
-	sstStatsCollector *sstable.CategoryStatsCollector,
+	sstStatsCollector *block.CategoryStatsCollector,
 ) *fileCacheContainer {
 	// We will release a ref to the file cache acquired here when
 	// fileCacheContainer.close is called.

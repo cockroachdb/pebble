@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -202,7 +203,7 @@ func newFileCacheContainerTest(
 	}
 
 	c := newFileCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, fileCacheTestCacheSize,
-		&sstable.CategoryStatsCollector{})
+		&block.CategoryStatsCollector{})
 	return c, fs, nil
 }
 
@@ -1014,7 +1015,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	opts.Cache = NewCache(8 << 20) // 8 MB
 	defer opts.Cache.Unref()
 	c := newFileCacheContainer(nil, opts.Cache.NewID(), objProvider, opts, fileCacheTestCacheSize,
-		&sstable.CategoryStatsCollector{})
+		&block.CategoryStatsCollector{})
 	require.NoError(t, err)
 	defer c.close()
 

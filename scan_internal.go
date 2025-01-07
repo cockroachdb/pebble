@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 const (
@@ -830,7 +830,7 @@ func (opts *scanInternalOptions) skipLevelForOpts() int {
 
 // constructPointIter constructs a merging iterator and sets i.iter to it.
 func (i *scanInternalIterator) constructPointIter(
-	category sstable.Category, memtables flushableList, buf *iterAlloc,
+	category block.Category, memtables flushableList, buf *iterAlloc,
 ) error {
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]

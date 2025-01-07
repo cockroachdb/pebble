@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -902,7 +903,7 @@ func TestBlockProperties(t *testing.T) {
 
 				// Enumerate point key data blocks encoded into the index.
 				if f != nil {
-					indexH, err := r.readTopLevelIndexBlock(context.Background(), noEnv, noReadHandle)
+					indexH, err := r.readTopLevelIndexBlock(context.Background(), block.NoReadEnv, noReadHandle)
 					if err != nil {
 						return err.Error()
 					}
@@ -1271,7 +1272,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 }
 
 func runBlockPropsCmd(r *Reader) string {
-	bh, err := r.readTopLevelIndexBlock(context.Background(), noEnv, noReadHandle)
+	bh, err := r.readTopLevelIndexBlock(context.Background(), block.NoReadEnv, noReadHandle)
 	if err != nil {
 		return err.Error()
 	}
@@ -1320,7 +1321,7 @@ func runBlockPropsCmd(r *Reader) string {
 		// If the table has a two-level index, also decode the index
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
-			subIndex, err := r.readIndexBlock(context.Background(), noEnv, noReadHandle, bhp.Handle)
+			subIndex, err := r.readIndexBlock(context.Background(), block.NoReadEnv, noReadHandle, bhp.Handle)
 			if err != nil {
 				return err.Error()
 			}
