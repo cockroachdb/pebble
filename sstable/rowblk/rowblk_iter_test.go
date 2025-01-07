@@ -7,6 +7,10 @@ package rowblk
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -454,6 +458,169 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 				c.check(expect.SeekLT([]byte(prefixStr+"cantaloupe16"), base.SeekLTFlagsNone))(got.SeekLT([]byte(prefixStr+"cantaloupe16"), base.SeekLTFlagsNone))
 			})
 		}
+	}
+}
+
+func TestSingularKVBlockRestartsOverflow(t *testing.T) {
+
+	_, isCI := os.LookupEnv("CI")
+	if isCI {
+		t.Skip("Skipping test: requires too much memory for CI now.")
+	}
+
+	// Test that SeekGE() and SeekLT() function correctly
+	// with a singular large KV > 2GB.
+
+	// Skip this test on 32-bit architectures because they may not
+	// have sufficient memory to reliably execute this test.
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
+		t.Skip("Skipping test: not supported on 32-bit architecture")
+	}
+
+	var largeKeySize int64 = 2 << 30   // 2GB key size
+	var largeValueSize int64 = 2 << 30 // 2GB value size
+
+	largeKey := bytes.Repeat([]byte("k"), int(largeKeySize))
+	largeValue := bytes.Repeat([]byte("v"), int(largeValueSize))
+
+	writer := &Writer{RestartInterval: 1}
+	writer.Add(base.InternalKey{UserKey: largeKey}, largeValue)
+	blockData := writer.Finish()
+	iter, err := NewIter(bytes.Compare, nil, blockData, block.NoTransforms)
+	require.NoError(t, err, "failed to create iterator for block")
+
+	// Ensure that SeekGE() does not raise panic due to integer overflow
+	// indexing problems.
+	kv := iter.SeekGE(largeKey, base.SeekGEFlagsNone)
+
+	// Ensure that SeekGE() finds the correct KV
+	require.NotNil(t, kv, "failed to find the key")
+	require.Equal(t, largeKey, kv.K.UserKey, "unexpected key")
+	require.Equal(t, largeValue, kv.V.ValueOrHandle, "unexpected value")
+
+	// Ensure that SeekGE() does not raise panic due to integer overflow
+	// indexing problems.
+	kv = iter.SeekLT([]byte("z"), base.SeekLTFlagsNone)
+
+	// Ensure that SeekLT() finds the correct KV
+	require.NotNil(t, kv, "failed to find the key")
+	require.Equal(t, largeKey, kv.K.UserKey, "unexpected key")
+	require.Equal(t, largeValue, kv.V.ValueOrHandle, "unexpected value")
+}
+
+func TestBufferExceeding256MBShouldPanic(t *testing.T) {
+
+	_, isCI := os.LookupEnv("CI")
+	if isCI {
+		t.Skip("Skipping test: requires too much memory for CI now.")
+	}
+
+	// Test that writing to a block that is already >= 256MiB
+	// causes a panic to occur.
+
+	// Skip this test on 32-bit architectures because they may not
+	// have sufficient memory to reliably execute this test.
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
+		t.Skip("Skipping test: not supported on 32-bit architecture")
+	}
+
+	// Adding 64 KVs each with size 4MiB will create a block
+	// size of >= ~256MiB
+	const numKVs = 64
+	const valueSize = (1 << 20) * 4
+
+	type KVTestPair struct {
+		key   []byte
+		value []byte
+	}
+
+	KVTestPairs := make([]KVTestPair, numKVs)
+	value4MB := bytes.Repeat([]byte("a"), valueSize)
+	for i := 0; i < numKVs; i++ {
+		key := fmt.Sprintf("key-%04d", i)
+		KVTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
+	}
+
+	writer := &Writer{RestartInterval: 1}
+	for _, KVPair := range KVTestPairs {
+		writer.Add(base.InternalKey{UserKey: KVPair.key}, KVPair.value)
+	}
+
+	// Check that buffer is larger than 256MiB
+	require.Greater(t, len(writer.buf), MaximumSize)
+
+	// Check that a panic has occurred after the final write after the 256MiB
+	// threshold has been crossed
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic on the last write, but none occurred")
+		}
+	}()
+	writer.Add(base.InternalKey{UserKey: []byte("arbitrary-last-key")}, []byte("arbitrary-last-value"))
+}
+
+func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
+
+	_, isCI := os.LookupEnv("CI")
+	if isCI {
+		t.Skip("Skipping test: requires too much memory for CI now.")
+	}
+
+	// Tests that SeekGE() works when iter.restarts is
+	// greater than math.MaxUint32 for multiple KVs.
+	// Test writes < 256MiB to the block and then 4GiB
+	// causing iter.restarts will be an int > math.MaxUint32.
+	// Reaching just shy of 256MiB before adding 4GiB allows
+	// the final write to succeed without surpassing 256MiB
+	// limit.  Then test whether SeekGE() will return valid
+	// output without integer overflow.
+
+	// Skip this test on 32-bit architectures because they may not
+	// have sufficient memory to reliably execute this test.
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
+		t.Skip("Skipping test: not supported on 32-bit architecture")
+	}
+
+	// Write just shy of 256MiB to the block 63 * 4MiB < 256MiB
+	const numKVs = 63
+	const valueSize = 4 * (1 << 20)
+	var FourGB int64 = 4 * (1 << 30)
+
+	type KVTestPair struct {
+		key   []byte
+		value []byte
+	}
+
+	KVTestPairs := make([]KVTestPair, numKVs)
+	value4MB := bytes.Repeat([]byte("a"), valueSize)
+	for i := 0; i < numKVs; i++ {
+		key := fmt.Sprintf("key-%04d", i)
+		KVTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
+	}
+
+	writer := &Writer{RestartInterval: 1}
+	for _, KVPair := range KVTestPairs {
+		writer.Add(base.InternalKey{UserKey: KVPair.key}, KVPair.value)
+	}
+
+	// Add the 4GiB KV, causing iter.restarts >= math.MaxUint32.
+	// Ensure that SeekGE() works thereafter without integer
+	// overflows.
+	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", int(FourGB))))
+
+	blockData := writer.Finish()
+	iter, err := NewIter(bytes.Compare, nil, blockData, block.NoTransforms)
+	require.NoError(t, err, "failed to create iterator for block")
+	require.Greater(t, int64(iter.restarts), int64(MaximumSize), "check iter.restarts > 256MiB")
+	require.Greater(t, int64(iter.restarts), int64(math.MaxUint32), "check iter.restarts > 2^32-1")
+
+	for i := 0; i < numKVs; i++ {
+		key := []byte(fmt.Sprintf("key-%04d", i))
+		value := []byte(strings.Repeat("a", valueSize))
+		kv := iter.SeekGE(key, base.SeekGEFlagsNone)
+		require.NotNil(t, kv, "failed to find the large key")
+		require.Equal(t, key, kv.K.UserKey, "unexpected key")
+		require.Equal(t, value, kv.V.ValueOrHandle, "unexpected value")
 	}
 }
 
