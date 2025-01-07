@@ -22,6 +22,9 @@ var TestkeysKeyFormat = KeyFormat{
 		kf := colblk.DefaultKeySchema(testkeys.Comparer, 16 /* bundle size */)
 		return &kf
 	}(),
+	BlockPropertyCollectors: []func() pebble.BlockPropertyCollector{
+		sstable.NewTestKeysBlockPropertyCollector,
+	},
 	FormatKey:       func(k UserKey) string { return string(k) },
 	FormatKeySuffix: func(s UserKeySuffix) string { return string(s) },
 	NewGenerator: func(km *keyManager, rng *rand.Rand, cfg OpConfig) KeyGenerator {
