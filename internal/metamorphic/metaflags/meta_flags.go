@@ -60,7 +60,8 @@ func (c *CommonFlags) KeyFormat() metamorphic.KeyFormat {
 
 // KeyFormats is a map of available key formats.
 var KeyFormats = map[string]metamorphic.KeyFormat{
-	"testkeys": metamorphic.TestkeysKeyFormat,
+	"testkeys":     metamorphic.TestkeysKeyFormat,
+	"cockroachkvs": metamorphic.CockroachKeyFormat,
 }
 
 func initCommonFlags() *CommonFlags {

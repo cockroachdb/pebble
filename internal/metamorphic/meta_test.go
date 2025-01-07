@@ -51,19 +51,28 @@ var runOnceFlags, runFlags = metaflags.InitAllFlags()
 // be customized via the --inner-binary flag (used for code coverage
 // instrumentation).
 func TestMeta(t *testing.T) {
-	runTestMeta(t, false /* multiInstance */)
+	runTestMeta(t)
 }
 
 func TestMetaTwoInstance(t *testing.T) {
-	runTestMeta(t, true /* multiInstance */)
+	runTestMeta(t, metamorphic.MultiInstance(2))
 }
 
-func runTestMeta(t *testing.T, multiInstance bool) {
+func TestMetaCockroachKVs(t *testing.T) {
+	runTestMeta(t, metamorphic.CockroachKeyFormat)
+}
+
+type option interface {
+	metamorphic.RunOnceOption
+	metamorphic.RunOption
+}
+
+func runTestMeta(t *testing.T, addtlOptions ...option) {
 	switch {
 	case runOnceFlags.Compare != "":
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		if multiInstance {
-			onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		for _, opt := range addtlOptions {
+			onceOpts = append(onceOpts, opt)
 		}
 		testRootDir, runSubdirs := runOnceFlags.ParseCompare()
 		if runOnceFlags.TryToReduce {
@@ -78,8 +87,8 @@ func runTestMeta(t *testing.T, multiInstance bool) {
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
-		if multiInstance {
-			onceOpts = append(onceOpts, metamorphic.MultiInstance(2))
+		for _, opt := range addtlOptions {
+			onceOpts = append(onceOpts, opt)
 		}
 		if runOnceFlags.TryToReduce {
 			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir, runOnceFlags.ReduceAttempts)
@@ -90,8 +99,8 @@ func runTestMeta(t *testing.T, multiInstance bool) {
 
 	default:
 		opts := runFlags.MakeRunOptions()
-		if multiInstance {
-			opts = append(opts, metamorphic.MultiInstance(2))
+		for _, opt := range addtlOptions {
+			opts = append(opts, opt)
 		}
 		metamorphic.RunAndCompare(t, runFlags.Dir, opts...)
 	}
