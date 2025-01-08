@@ -674,13 +674,15 @@ func (w *layoutWriter) Abort() {
 }
 
 // WriteDataBlock constructs a trailer for the provided data block and writes
-// the block and trailer to the writer. It returns the block's handle.
+// the block and trailer to the writer. It returns the block's handle. It can
+// mangle b.
 func (w *layoutWriter) WriteDataBlock(b []byte, buf *blockBuf) (block.Handle, error) {
 	return w.writeBlock(b, w.compression, buf)
 }
 
 // WritePrecompressedDataBlock writes a pre-compressed data block and its
-// pre-computed trailer to the writer, returning it's block handle.
+// pre-computed trailer to the writer, returning its block handle. It can mangle
+// the block data.
 func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (block.Handle, error) {
 	return w.writePrecompressedBlock(blk)
 }
@@ -689,6 +691,8 @@ func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (blo
 // second-level) and writes the block and trailer to the writer. It remembers
 // the last-written index block's handle and adds it to the file's meta index
 // when the writer is finished.
+//
+// WriteIndexBlock can mangle b.
 func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
 	h, err := w.writeBlock(b, w.compression, &w.buf)
 	if err == nil {
@@ -711,6 +715,8 @@ func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err er
 // WritePropertiesBlock constructs a trailer for the provided properties block
 // and writes the block and trailer to the writer. It automatically adds the
 // properties block to the file's meta index when the writer is finished.
+//
+// WritePropertiesBlock can mangle b.
 func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, metaPropertiesName)
 }
@@ -718,6 +724,8 @@ func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
 // WriteRangeKeyBlock constructs a trailer for the provided range key block and
 // writes the block and trailer to the writer. It automatically adds the range
 // key block to the file's meta index when the writer is finished.
+//
+// WriteRangeKeyBlock can mangle the block data.
 func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, metaRangeKeyName)
 }
@@ -726,10 +734,13 @@ func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 // block and writes the block and trailer to the writer. It automatically adds
 // the range deletion block to the file's meta index when the writer is
 // finished.
+//
+// WriteRangeDeletionBlock can mangle the block data.
 func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, metaRangeDelV2Name)
 }
 
+// writeNamedBlock can mangle the block data.
 func (w *layoutWriter) writeNamedBlock(b []byte, name string) (bh block.Handle, err error) {
 	bh, err = w.writeBlock(b, block.NoCompression, &w.buf)
 	if err == nil {
@@ -739,11 +750,13 @@ func (w *layoutWriter) writeNamedBlock(b []byte, name string) (bh block.Handle, 
 }
 
 // WriteValueBlock writes a pre-finished value block (with the trailer) to the
-// writer.
+// writer. It can mangle the block data.
 func (w *layoutWriter) WriteValueBlock(blk block.PhysicalBlock) (block.Handle, error) {
 	return w.writePrecompressedBlock(blk)
 }
 
+// WriteValueIndexBlock writes a value index block and adds it to the meta
+// index. It can mangle the block data.
 func (w *layoutWriter) WriteValueIndexBlock(
 	blk block.PhysicalBlock, vbih valblk.IndexHandle,
 ) (block.Handle, error) {
@@ -756,6 +769,7 @@ func (w *layoutWriter) WriteValueIndexBlock(
 	return h, nil
 }
 
+// writeBlock checksums, compresses, and writes out a block. It can mangle b.
 func (w *layoutWriter) writeBlock(
 	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
@@ -765,9 +779,11 @@ func (w *layoutWriter) writeBlock(
 
 // writePrecompressedBlock writes a pre-compressed block and its
 // pre-computed trailer to the writer, returning it's block handle.
+//
+// writePrecompressedBlock might mangle the block data.
 func (w *layoutWriter) writePrecompressedBlock(blk block.PhysicalBlock) (block.Handle, error) {
 	w.clearFromCache(w.offset)
-	// Write the bytes to the file.
+	// Write the bytes to the file. This call can mangle the block data.
 	n, err := blk.WriteTo(w.writable)
 	if err != nil {
 		return block.Handle{}, err
@@ -777,13 +793,14 @@ func (w *layoutWriter) writePrecompressedBlock(blk block.PhysicalBlock) (block.H
 	return bh, nil
 }
 
-// Write implements io.Writer. This is analogous to writePrecompressedBlock for
-// blocks that already incorporate the trailer, and don't need the callee to
-// return a BlockHandle.
+// Write implements io.Writer (with the caveat that it can mangle the block
+// data). This is analogous to writePrecompressedBlock for blocks that already
+// incorporate the trailer, and don't need the callee to return a BlockHandle.
 func (w *layoutWriter) Write(blockWithTrailer []byte) (n int, err error) {
 	offset := w.offset
 	w.clearFromCache(offset)
 	w.offset += uint64(len(blockWithTrailer))
+	// This call can mangle blockWithTrailer.
 	if err := w.writable.Write(blockWithTrailer); err != nil {
 		return 0, err
 	}
