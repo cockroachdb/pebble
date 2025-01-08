@@ -226,6 +226,8 @@ func (b *PhysicalBlock) IsCompressed() bool {
 
 // WriteTo writes the block (including its trailer) to the provided Writable. If
 // err == nil, n is the number of bytes successfully written to the Writable.
+//
+// WriteTo might mangle the block data.
 func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 	if err := w.Write(b.data); err != nil {
 		return 0, err
