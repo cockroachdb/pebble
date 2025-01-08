@@ -131,8 +131,8 @@ func CopySpan(
 	var blocksNotInCache []indexEntry
 
 	for i := range blocks {
-		h := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, blocks[i].bh.Offset)
-		if !h.Valid() {
+		cv := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, blocks[i].bh.Offset)
+		if cv == nil {
 			// Cache miss. Add this block to the list of blocks that are not in cache.
 			blocksNotInCache = blocks[i-len(blocksNotInCache) : i+1]
 			continue
@@ -144,14 +144,14 @@ func CopySpan(
 			// We have some blocks that were not in cache preceding this block.
 			// Copy them using objstorage.Copy.
 			if err := w.copyDataBlocks(ctx, blocksNotInCache, rh); err != nil {
-				h.Release()
+				cv.Release()
 				return 0, err
 			}
 			blocksNotInCache = nil
 		}
 
-		err := w.addDataBlock(block.CacheBufferHandle(h).BlockData(), blocks[i].sep, blocks[i].bh)
-		h.Release()
+		err := w.addDataBlock(block.CacheBufferHandle(cv).BlockData(), blocks[i].sep, blocks[i].bh)
+		cv.Release()
 		if err != nil {
 			return 0, err
 		}

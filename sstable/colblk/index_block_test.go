@@ -125,13 +125,12 @@ func TestIndexIterInitHandle(t *testing.T) {
 	d := (*IndexBlockDecoder)(unsafe.Pointer(v.BlockMetadata()))
 	d.Init(blockData)
 
-	h := v.SetInCacheForTesting(c, cache.ID(1), base.DiskFileNum(1), 0)
-	defer h.Release()
+	v.SetInCacheForTesting(c, cache.ID(1), base.DiskFileNum(1), 0)
 
 	getBlockAndIterate := func(it *IndexIter) {
-		h := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
-		require.True(t, h.Valid())
-		require.NoError(t, it.InitHandle(testkeys.Comparer, block.CacheBufferHandle(h), block.NoTransforms))
+		cv := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
+		require.NotNil(t, cv)
+		require.NoError(t, it.InitHandle(testkeys.Comparer, block.CacheBufferHandle(cv), block.NoTransforms))
 		defer it.Close()
 		require.True(t, it.First())
 		bh, err := it.BlockHandleWithProperties()

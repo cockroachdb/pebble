@@ -22,7 +22,7 @@ func writeBufferPool(w io.Writer, bp *BufferPool) {
 			fmt.Fprint(w, "[    ]")
 			continue
 		}
-		sz := len(bp.pool[i].v.Buf())
+		sz := len(bp.pool[i].v.RawBuffer())
 		if bp.pool[i].b == nil {
 			fmt.Fprintf(w, "[%4d]", sz)
 		} else {

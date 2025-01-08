@@ -47,22 +47,22 @@ func newTestReader(
 }
 
 func (r *testReader) getAsync(shard *shard) *string {
-	h, re := shard.getWithMaybeReadEntry(r.key, true /* desireReadEntry */)
-	if h.Valid() {
-		v := string(h.RawBuffer())
-		h.Release()
-		return &v
+	v, re := shard.getWithMaybeReadEntry(r.key, true /* desireReadEntry */)
+	if v != nil {
+		str := string(v.RawBuffer())
+		v.Release()
+		return &str
 	}
 	r.re = re
 	go func() {
-		h, _, err := re.waitForReadPermissionOrHandle(r.ctx)
+		v, _, err := re.waitForReadPermissionOrHandle(r.ctx)
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.mu.finishedWait = true
 		r.mu.cond.Signal()
-		if h.Valid() {
-			r.mu.waitedValue = string(h.RawBuffer())
-			h.Release()
+		if v != nil {
+			r.mu.waitedValue = string(v.RawBuffer())
+			v.Release()
 			return
 		}
 		if err != nil {
@@ -91,10 +91,9 @@ func (r *testReader) waitUntilFinishedWait() (*string, error) {
 
 func (r *testReader) setReadValue(t *testing.T, v string) {
 	val := Alloc(len(v))
-	copy(val.Buf(), []byte(v))
-	h := ReadHandle{entry: r.re}.SetReadValue(val)
-	require.Equal(t, v, string(h.RawBuffer()))
-	h.Release()
+	copy(val.RawBuffer(), v)
+	ReadHandle{entry: r.re}.SetReadValue(val)
+	val.Release()
 }
 
 func (r *testReader) setError(err error) {
@@ -237,11 +236,11 @@ func TestReadShardConcurrent(t *testing.T) {
 	for _, r := range differentReaders {
 		for j := 0; j < r.numReaders; j++ {
 			go func(r *testSyncReaders, index int) {
-				h, rh, _, _, err := cache.GetWithReadHandle(context.Background(), r.id, r.fileNum, r.offset)
+				v, rh, _, _, err := cache.GetWithReadHandle(context.Background(), r.id, r.fileNum, r.offset)
 				require.NoError(t, err)
-				if h.Valid() {
-					require.Equal(t, r.val, h.RawBuffer())
-					h.Release()
+				if v != nil {
+					require.Equal(t, r.val, v.RawBuffer())
+					v.Release()
 					r.wg.Done()
 					return
 				}
@@ -253,10 +252,10 @@ func TestReadShardConcurrent(t *testing.T) {
 					r.wg.Done()
 					return
 				}
-				v := Alloc(len(r.val))
-				copy(v.Buf(), r.val)
-				h = rh.SetReadValue(v)
-				h.Release()
+				v = Alloc(len(r.val))
+				copy(v.RawBuffer(), r.val)
+				rh.SetReadValue(v)
+				v.Release()
 				r.wg.Done()
 			}(r, j)
 		}

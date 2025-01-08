@@ -812,8 +812,9 @@ func TestMemTableReservation(t *testing.T) {
 	tmpID := opts.Cache.NewID()
 	helloWorld := []byte("hello world")
 	value := cache.Alloc(len(helloWorld))
-	copy(value.Buf(), helloWorld)
-	opts.Cache.Set(tmpID, base.DiskFileNum(0), 0, value).Release()
+	copy(value.RawBuffer(), helloWorld)
+	opts.Cache.Set(tmpID, base.DiskFileNum(0), 0, value)
+	value.Release()
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -830,8 +831,8 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
-	if h := opts.Cache.Get(tmpID, base.DiskFileNum(0), 0); h.Valid() {
-		t.Fatalf("expected failure, but found success: %#v", h)
+	if cv := opts.Cache.Get(tmpID, base.DiskFileNum(0), 0); cv != nil {
+		t.Fatalf("expected failure, but found success: %#v", cv)
 	}
 
 	// Flush the memtable. The memtable reservation should double because old
