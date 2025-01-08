@@ -231,7 +231,7 @@ func newColumnBlockSingleLevelIterator(
 	if r.Properties.NumValueBlocks > 0 {
 		i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, stats)
 		getLazyValuer = &i.vbReader
-		i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
+		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
 	i.data.InitOnce(r.keySchema, r.Comparer, getLazyValuer)
 	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
@@ -281,7 +281,7 @@ func newRowBlockSingleLevelIterator(
 		if r.Properties.NumValueBlocks > 0 {
 			i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, stats)
 			(&i.data).SetGetLazyValuer(&i.vbReader)
-			i.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.vbRHPrealloc)
+			i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
 		i.data.SetHasValuePrefix(true)
 	}
@@ -330,10 +330,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 		BufferPool: bufferPool,
 	}
 
-	i.indexFilterRH = objstorageprovider.UsePreallocatedReadHandle(
-		r.readable, objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
-	i.dataRH = objstorageprovider.UsePreallocatedReadHandle(
-		r.readable, objstorage.NoReadBefore, &i.dataRHPrealloc)
+	i.indexFilterRH = r.blockReader.UsePreallocatedReadHandle(
+		objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
+	i.dataRH = r.blockReader.UsePreallocatedReadHandle(
+		objstorage.NoReadBefore, &i.dataRHPrealloc)
 }
 
 // Helper function to check if keys returned from iterator are within virtual bounds.
@@ -1585,7 +1585,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) String() string {
 	if i.vState != nil {
 		return i.vState.fileNum.String()
 	}
-	return i.reader.cacheOpts.FileNum.String()
+	return i.reader.blockReader.FileNum().String()
 }
 
 // DebugTree is part of the InternalIterator interface.

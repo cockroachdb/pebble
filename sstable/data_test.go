@@ -492,7 +492,7 @@ func runIterCmd(
 }
 
 func runRewriteCmd(
-	td *datadriven.TestData, r *Reader, writerOpts WriterOptions,
+	td *datadriven.TestData, r *Reader, sst []byte, writerOpts WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
 	var from, to []byte
 	for _, arg := range td.CmdArgs {
@@ -513,7 +513,6 @@ func runRewriteCmd(
 	}
 
 	f := &objstorage.MemObj{}
-	sst := r.readable.(*memReader).b
 	meta, _, err := rewriteKeySuffixesInBlocks(r, sst, f, opts, from, to, 2)
 	if err != nil {
 		return nil, r, errors.Wrap(err, "rewrite failed")

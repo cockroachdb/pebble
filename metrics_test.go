@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -119,7 +118,7 @@ func TestMetrics(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
-	defer sstable.DeterministicReadBlockDurationForTesting()()
+	defer block.DeterministicReadBlockDurationForTesting()()
 
 	var d *DB
 	var iters map[string]*Iterator

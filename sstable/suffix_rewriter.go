@@ -168,7 +168,7 @@ func rewriteDataBlocksInParallel(
 				for i := worker; i < len(input); i += concurrency {
 					bh := input[i]
 					var err error
-					inputBlock, inputBlockBuf, err = readBlockBuf(sstBytes, bh.Handle, r.checksumType, inputBlockBuf)
+					inputBlock, inputBlockBuf, err = readBlockBuf(sstBytes, bh.Handle, r.blockReader.ChecksumType(), inputBlockBuf)
 					if err != nil {
 						return err
 					}
@@ -355,7 +355,7 @@ func readBlockBuf(
 	sstBytes []byte, bh block.Handle, checksumType block.ChecksumType, buf []byte,
 ) ([]byte, []byte, error) {
 	raw := sstBytes[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
-	if err := checkChecksum(checksumType, raw, bh, 0); err != nil {
+	if err := block.ValidateChecksum(checksumType, raw, bh); err != nil {
 		return nil, buf, err
 	}
 	algo := block.CompressionIndicator(raw[bh.Length])

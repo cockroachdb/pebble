@@ -311,7 +311,8 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 		case "rewrite":
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runRewriteCmd(td, r, WriterOptions{
+			sst := r.blockReader.Readable().(*memReader).b
+			meta, r, err = runRewriteCmd(td, r, sst, WriterOptions{
 				TableFormat: tableFormat,
 			})
 			if err != nil {

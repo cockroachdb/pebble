@@ -138,7 +138,7 @@ func (l *Layout) Describe(
 
 		if b.Name == "footer" || b.Name == "leveldb-footer" {
 			trailer, offset := make([]byte, b.Length), 0
-			_ = r.readable.ReadAt(ctx, trailer, int64(b.Offset))
+			_ = r.blockReader.Readable().ReadAt(ctx, trailer, int64(b.Offset))
 
 			if b.Name == "footer" {
 				checksumType := block.ChecksumType(trailer[0])
@@ -231,7 +231,7 @@ func (l *Layout) Describe(
 				formatting.formatIndexBlock(tpNode, r, *b, h.BlockData())
 
 			case "properties":
-				h, err = r.readBlockInternal(ctx, block.NoReadEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
+				h, err = r.blockReader.Read(ctx, block.NoReadEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
 				if err != nil {
 					return err
 				}
@@ -284,7 +284,7 @@ func (l *Layout) Describe(
 
 			// Format the trailer.
 			trailer := make([]byte, block.TrailerLen)
-			_ = r.readable.ReadAt(ctx, trailer, int64(b.Offset+b.Length))
+			_ = r.blockReader.Readable().ReadAt(ctx, trailer, int64(b.Offset+b.Length))
 			algo := block.CompressionIndicator(trailer[0])
 			checksum := binary.LittleEndian.Uint32(trailer[1:])
 			tpNode.Childf("trailer [compression=%s checksum=0x%04x]", algo, checksum)

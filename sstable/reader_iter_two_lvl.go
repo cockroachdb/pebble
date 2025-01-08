@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
@@ -189,7 +188,8 @@ func newColumnBlockTwoLevelIterator(
 		// sync.Pool.
 		i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, stats)
 		getLazyValuer = &i.secondLevel.vbReader
-		i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
+		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
+			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
 	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, getLazyValuer)
 	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
@@ -247,7 +247,8 @@ func newRowBlockTwoLevelIterator(
 			// sync.Pool.
 			i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, stats)
 			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.vbReader)
-			i.secondLevel.vbRH = objstorageprovider.UsePreallocatedReadHandle(r.readable, objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
+			i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
+				objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 		}
 		i.secondLevel.data.SetHasValuePrefix(true)
 	}

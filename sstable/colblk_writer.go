@@ -1059,7 +1059,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	// Copy over the filter block if it exists.
 	if w.filterBlock != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filterBlock.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(sstBytes, filterBlockBH, r.checksumType, nil)
+			filterBlock, _, err := readBlockBuf(sstBytes, filterBlockBH, r.blockReader.ChecksumType(), nil)
 			if err != nil {
 				return errors.Wrap(err, "reading filter")
 			}
