@@ -94,7 +94,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 					rewrittenSST := &objstorage.MemObj{}
 					if byBlocks {
 						_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
-							r, rewrittenSST, rwOpts, from, to, 8)
+							r, sst, rewrittenSST, rwOpts, from, to, 8)
 						require.NoError(t, err)
 						// rewriteFormat is equal to the original format, since
 						// rwOpts.TableFormat is ignored.
@@ -219,14 +219,15 @@ func BenchmarkRewriteSST(b *testing.B) {
 	compressions := []block.Compression{block.NoCompression, block.SnappyCompression}
 
 	files := make([][]*Reader, len(compressions))
+	sstBytes := make([][][]byte, len(compressions))
 
 	for comp := range compressions {
 		files[comp] = make([]*Reader, len(sizes))
 
 		for size := range sizes {
 			writerOpts.Compression = compressions[comp]
-			sst := makeTestkeySSTable(b, writerOpts, from, sizes[size], 0 /* rangeKeys */)
-			r, err := NewMemReader(sst, ReaderOptions{
+			sstBytes[comp][size] = makeTestkeySSTable(b, writerOpts, from, sizes[size], 0 /* rangeKeys */)
+			r, err := NewMemReader(sstBytes[comp][size], ReaderOptions{
 				Comparer: test4bSuffixComparer,
 				Filters:  map[string]base.FilterPolicy{writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy},
 			})
@@ -242,6 +243,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 		b.Run(compressions[comp].String(), func(b *testing.B) {
 			for sz := range sizes {
 				r := files[comp][sz]
+				sst := sstBytes[comp][sz]
 				b.Run(fmt.Sprintf("keys=%d", sizes[sz]), func(b *testing.B) {
 					b.Run("ReaderWriterLoop", func(b *testing.B) {
 						b.SetBytes(r.readable.Size())
@@ -255,7 +257,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 						b.Run(fmt.Sprintf("RewriteKeySuffixes,concurrency=%d", concurrency), func(b *testing.B) {
 							b.SetBytes(r.readable.Size())
 							for i := 0; i < b.N; i++ {
-								if _, _, err := rewriteKeySuffixesInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
+								if _, _, err := rewriteKeySuffixesInBlocks(r, sst, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
 									b.Fatal(err)
 								}
 							}

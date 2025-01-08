@@ -1813,7 +1813,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 
 // rewriteSuffixes implements RawWriter.
 func (w *RawRowWriter) rewriteSuffixes(
-	r *Reader, wo WriterOptions, from, to []byte, concurrency int,
+	r *Reader, sst []byte, wo WriterOptions, from, to []byte, concurrency int,
 ) error {
 	for _, c := range w.blockPropCollectors {
 		if !c.SupportsSuffixReplacement() {
@@ -1826,7 +1826,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	}
 
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, wo, l.Data, from, to, concurrency, func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sst, wo, l.Data, from, to, concurrency, func() blockRewriter {
 		return rowblk.NewRewriter(r.Comparer, wo.BlockRestartInterval)
 	})
 	if err != nil {
@@ -1898,7 +1898,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	// already have ensured this is valid if it exists).
 	if w.filter != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filter.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(r, filterBlockBH, nil)
+			filterBlock, _, err := readBlockBuf(sst, filterBlockBH, r.checksumType, nil)
 			if err != nil {
 				return errors.Wrap(err, "reading filter")
 			}
