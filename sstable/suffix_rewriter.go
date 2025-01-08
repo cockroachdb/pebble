@@ -77,11 +77,11 @@ func RewriteKeySuffixesAndReturnFormat(
 		return nil, TableFormatUnspecified, err
 	}
 	defer r.Close()
-	return rewriteKeySuffixesInBlocks(r, out, o, from, to, concurrency)
+	return rewriteKeySuffixesInBlocks(r, sst, out, o, from, to, concurrency)
 }
 
 func rewriteKeySuffixesInBlocks(
-	r *Reader, out objstorage.Writable, o WriterOptions, from, to []byte, concurrency int,
+	r *Reader, sst []byte, out objstorage.Writable, o WriterOptions, from, to []byte, concurrency int,
 ) (*WriterMetadata, TableFormat, error) {
 	o = o.ensureDefaults()
 	switch {
@@ -105,7 +105,7 @@ func rewriteKeySuffixesInBlocks(
 		}
 	}()
 
-	if err := w.rewriteSuffixes(r, o, from, to, concurrency); err != nil {
+	if err := w.rewriteSuffixes(r, sst, o, from, to, concurrency); err != nil {
 		return nil, TableFormatUnspecified, err
 	}
 
@@ -133,6 +133,7 @@ type blockRewriter interface {
 
 func rewriteDataBlocksInParallel(
 	r *Reader,
+	sstBytes []byte,
 	opts WriterOptions,
 	input []block.HandleWithProperties,
 	from, to []byte,
@@ -167,7 +168,7 @@ func rewriteDataBlocksInParallel(
 				for i := worker; i < len(input); i += concurrency {
 					bh := input[i]
 					var err error
-					inputBlock, inputBlockBuf, err = readBlockBuf(r, bh.Handle, inputBlockBuf)
+					inputBlock, inputBlockBuf, err = readBlockBuf(sstBytes, bh.Handle, r.checksumType, inputBlockBuf)
 					if err != nil {
 						return err
 					}
@@ -350,9 +351,11 @@ func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
 	return NewReader(context.Background(), newMemReader(sst), o)
 }
 
-func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error) {
-	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
-	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
+func readBlockBuf(
+	sstBytes []byte, bh block.Handle, checksumType block.ChecksumType, buf []byte,
+) ([]byte, []byte, error) {
+	raw := sstBytes[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
+	if err := checkChecksum(checksumType, raw, bh, 0); err != nil {
 		return nil, buf, err
 	}
 	algo := block.CompressionIndicator(raw[bh.Length])

@@ -342,7 +342,7 @@ type RawWriter interface {
 	// provided suffix. It's specifically used for the implementation of
 	// RewriteKeySuffixesAndReturnFormat. See that function's documentation for
 	// more details.
-	rewriteSuffixes(r *Reader, wo WriterOptions, from, to []byte, concurrency int) error
+	rewriteSuffixes(r *Reader, sst []byte, wo WriterOptions, from, to []byte, concurrency int) error
 
 	// copyDataBlocks copies data blocks to the table from the specified ReadHandle.
 	// It's specifically used by the sstable copier that can copy parts of an sstable

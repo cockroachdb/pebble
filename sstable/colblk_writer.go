@@ -983,7 +983,7 @@ func (w *RawColumnWriter) Close() (err error) {
 
 // rewriteSuffixes implements RawWriter.
 func (w *RawColumnWriter) rewriteSuffixes(
-	r *Reader, wo WriterOptions, from, to []byte, concurrency int,
+	r *Reader, sstBytes []byte, wo WriterOptions, from, to []byte, concurrency int,
 ) error {
 	for _, c := range w.blockPropCollectors {
 		if !c.SupportsSuffixReplacement() {
@@ -995,7 +995,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "reading layout")
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, wo, l.Data, from, to, concurrency, func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, func() blockRewriter {
 		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
 	})
 	if err != nil {
@@ -1059,7 +1059,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	// Copy over the filter block if it exists.
 	if w.filterBlock != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filterBlock.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(r, filterBlockBH, nil)
+			filterBlock, _, err := readBlockBuf(sstBytes, filterBlockBH, r.checksumType, nil)
 			if err != nil {
 				return errors.Wrap(err, "reading filter")
 			}
