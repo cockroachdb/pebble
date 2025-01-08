@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/swiss"
 )
 
@@ -55,6 +56,9 @@ import (
 //     compactions and there is at most one compaction reader of a block. There
 //     is the possibility that the compaction reader and a user-facing iterator
 //     reader will do duplicate reads, but we accept that deficiency.
+//     TODO(radu): consider using a separate mutex for the readShard; we are
+//     locking the entire shard exclusively every time we need to read a block.
+//     This could be disruptive if there is a large volume of cache hits.
 //
 //   - readMap is separate from shard.blocks map: One could have a design which
 //     extends the cache entry and unifies the two maps. However, we never want
@@ -94,7 +98,9 @@ func (rs *readShard) getReadEntryLocked(k key) *readEntry {
 		e = newReadEntry(rs, k)
 		rs.shardMu.readMap.Put(k, e)
 	} else {
-		e.refCount.acquireAllowZero()
+		// An entry we found in the map while holding the shard mutex must have a
+		// non-zero reference count.
+		e.refCount.acquire()
 	}
 	return e
 }
@@ -146,9 +152,8 @@ type readEntry struct {
 		errorDuration time.Duration
 		readStart     time.Time
 	}
-	// Count of ReadHandles that refer to this readEntry. Increments always hold
-	// shard.mu. So if this is found to be 0 while holding shard.mu, it is safe
-	// to delete readEntry from readShard.shardMu.readMap.
+	// Count of ReadHandles that refer to this readEntry. Increments and
+	// transitions to 0 always hold shard.mu.
 	refCount refcnt
 }
 
@@ -268,39 +273,30 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 
 // unrefAndTryRemoveFromMap reduces the reference count of e and removes e.key
 // => e from the readMap if necessary.
-//
-// It is possible that after unreffing that s.e has already been removed, and
-// is now back in the sync.Pool, or being reused (for the same or different
-// key). This is because after unreffing, which caused the s.e.refCount to
-// become zero, but before acquiring shard.mu, it could have been incremented
-// and decremented concurrently, and some other goroutine could have observed
-// a different decrement to 0, and raced ahead and deleted s.e from the
-// readMap.
 func (e *readEntry) unrefAndTryRemoveFromMap() {
-	// Save the fields we need from entry; once we release the last refcount, it
-	// is possible that the entry is found and reused and then freed.
+	if e.refCount.releaseIfNotLast() {
+		// Fast path when there are multiple waiters.
+		//
+		// TODO(radu): Is this case worth using an atomic? We could make the ref
+		// count always be protected by the shard mutex and always acquire the lock
+		// here, since the case of many readers for the same block shouldn't be
+		// frequent.
+		return
+	}
 	rs := e.readShard
-	k := e.key
-	if !e.refCount.release() {
-		return
-	}
-	// Once we release the refcount, it is possible that it the entry is reused
-	// again and freed before we get the lock.
 	rs.shard.mu.Lock()
-	e2, ok := rs.shardMu.readMap.Get(k)
-	if !ok || e2 != e {
-		// Already removed.
+	if !e.refCount.release() {
+		// Refcount is not 0: we raced with getReadEntryLocked.
 		rs.shard.mu.Unlock()
 		return
 	}
-	if e.refCount.value() != 0 {
-		// The entry was reused.
-		rs.shard.mu.Unlock()
-		return
+	// The refcount is now 0; remove from the map.
+	if invariants.Enabled {
+		if e2, ok := rs.shardMu.readMap.Get(e.key); !ok || e2 != e {
+			panic("entry not in readMap")
+		}
 	}
-	// e.refCount == 0. And it cannot be incremented since
-	// shard.mu.Lock() is held. So remove from map.
-	rs.shardMu.readMap.Delete(k)
+	rs.shardMu.readMap.Delete(e.key)
 	rs.shard.mu.Unlock()
 
 	// Free s.e.

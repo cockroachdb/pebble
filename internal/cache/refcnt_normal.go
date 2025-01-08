@@ -9,6 +9,7 @@ package cache
 
 import (
 	"fmt"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/cockroachdb/redact"
@@ -37,15 +38,8 @@ func (v *refcnt) acquire() {
 	}
 }
 
-// acquireAllowZero is the same as acquire, but allows acquireAllowZero to be
-// called with a zero refcnt. This is useful for cases where the entry which
-// is being reference counted is inside a container and the container does not
-// hold a reference. The container uses release() returning true to attempt to
-// do a cleanup from the container.
-func (v *refcnt) acquireAllowZero() {
-	v.val.Add(1)
-}
-
+// release decrements the reference count and returns true when the reference
+// count becomes 0.
 func (v *refcnt) release() bool {
 	switch v := v.val.Add(-1); {
 	case v < 0:
@@ -57,8 +51,25 @@ func (v *refcnt) release() bool {
 	}
 }
 
-func (v *refcnt) value() int32 {
-	return v.val.Load()
+// releaseIfNotLast decrements the reference count (and returns true) if the new
+// count is not zero. If a reference count of 1 is observed, returns false and
+// the count is not modified.
+func (v *refcnt) releaseIfNotLast() bool {
+	for {
+		cnt := v.val.Load()
+		switch {
+		case cnt < 0:
+			panic(redact.Safe(fmt.Sprintf("pebble: inconsistent reference count: %d", v)))
+		case cnt == 1:
+			return false
+		default:
+			if v.val.CompareAndSwap(cnt, cnt-1) {
+				return true
+			}
+			// Try again.
+			runtime.Gosched()
+		}
+	}
 }
 
 func (v *refcnt) trace(msg string) {
