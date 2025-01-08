@@ -85,8 +85,8 @@ func CopySpan(
 	var preallocRH objstorageprovider.PreallocatedReadHandle
 	// ReadBeforeForIndexAndFilter attempts to read the top-level index, filter
 	// and lower-level index blocks with one read.
-	rh := objstorageprovider.UsePreallocatedReadHandle(
-		r.readable, objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
+	rh := r.blockReader.UsePreallocatedReadHandle(
+		objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
 	defer rh.Close()
 	rh.SetupForCompaction()
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)
@@ -131,7 +131,7 @@ func CopySpan(
 	var blocksNotInCache []indexEntry
 
 	for i := range blocks {
-		cv := r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, blocks[i].bh.Offset)
+		cv := r.blockReader.GetFromCache(blocks[i].bh.Handle)
 		if cv == nil {
 			// Cache miss. Add this block to the list of blocks that are not in cache.
 			blocksNotInCache = blocks[i-len(blocksNotInCache) : i+1]

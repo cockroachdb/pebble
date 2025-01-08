@@ -5,13 +5,23 @@
 package block
 
 import (
+	"context"
 	"encoding/binary"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 )
 
 // Handle is the file offset and length of a block.
@@ -143,6 +153,26 @@ func (c *Checksummer) Checksum(block []byte, blockType byte) (checksum uint32) {
 		panic(errors.Newf("unsupported checksum type: %d", c.Type))
 	}
 	return checksum
+}
+
+// ValidateChecksum validates the checksum of a block.
+func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
+	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
+	var computedChecksum uint32
+	switch checksumType {
+	case ChecksumTypeCRC32c:
+		computedChecksum = crc.New(b[:bh.Length+1]).Value()
+	case ChecksumTypeXXHash64:
+		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
+	default:
+		return errors.Errorf("unsupported checksum type: %d", checksumType)
+	}
+	if expectedChecksum != computedChecksum {
+		return base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
+			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
+			expectedChecksum, computedChecksum)
+	}
+	return nil
 }
 
 // Metadata is an in-memory buffer that stores metadata for a block. It is
@@ -320,4 +350,285 @@ func (env *ReadEnv) BlockRead(blockLength uint64, readDuration time.Duration) {
 	if env.IterStats != nil {
 		env.IterStats.Accumulate(blockLength, 0, readDuration)
 	}
+}
+
+// A Reader reads blocks from a single file, handling caching, checksum
+// validation and decompression.
+type Reader struct {
+	readable      objstorage.Readable
+	cacheOpts     sstableinternal.CacheOptions
+	loadBlockSema *fifo.Semaphore
+	logger        base.LoggerAndTracer
+	checksumType  ChecksumType
+}
+
+// Init initializes the Reader to read blocks from the provided Readable.
+func (r *Reader) Init(
+	readable objstorage.Readable,
+	cacheOpts sstableinternal.CacheOptions,
+	sema *fifo.Semaphore,
+	logger base.LoggerAndTracer,
+	checksumType ChecksumType,
+) {
+	r.readable = readable
+	r.cacheOpts = cacheOpts
+	r.loadBlockSema = sema
+	r.logger = logger
+	r.checksumType = checksumType
+	if r.cacheOpts.Cache == nil {
+		r.cacheOpts.Cache = cache.New(0)
+	} else {
+		r.cacheOpts.Cache.Ref()
+	}
+	if r.cacheOpts.CacheID == 0 {
+		r.cacheOpts.CacheID = r.cacheOpts.Cache.NewID()
+	}
+}
+
+// FileNum returns the file number of the file being read.
+func (r *Reader) FileNum() base.DiskFileNum {
+	return r.cacheOpts.FileNum
+}
+
+// ChecksumType returns the checksum type used by the reader.
+func (r *Reader) ChecksumType() ChecksumType {
+	return r.checksumType
+}
+
+// Read reads the block referenced by the provided handle. The readHandle is
+// optional.
+func (r *Reader) Read(
+	ctx context.Context,
+	env ReadEnv,
+	readHandle objstorage.ReadHandle,
+	bh Handle,
+	initBlockMetadataFn func(*Metadata, []byte) error,
+) (handle BufferHandle, _ error) {
+	var cv *cache.Value
+	var crh cache.ReadHandle
+	hit := true
+	if env.BufferPool == nil {
+		var errorDuration time.Duration
+		var err error
+		cv, crh, errorDuration, hit, err = r.cacheOpts.Cache.GetWithReadHandle(
+			ctx, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+		if errorDuration > 5*time.Millisecond && r.logger.IsTracingEnabled(ctx) {
+			r.logger.Eventf(
+				ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
+		}
+		// TODO(sumeer): consider tracing when waited longer than some duration
+		// for turn to do the read.
+		if err != nil {
+			return BufferHandle{}, err
+		}
+	} else {
+		// The compaction path uses env.BufferPool, and does not coordinate read
+		// using a cache.ReadHandle. This is ok since only a single compaction is
+		// reading a block.
+		cv = r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+		if cv != nil {
+			hit = true
+		}
+	}
+	// INVARIANT: hit => cv != nil
+	if cv != nil {
+		if hit {
+			// Cache hit.
+			if readHandle != nil {
+				readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+TrailerLen))
+			}
+			env.BlockServedFromCache(bh.Length)
+		}
+		if invariants.Enabled && crh.Valid() {
+			panic("cache.ReadHandle must not be valid")
+		}
+		return CacheBufferHandle(cv), nil
+	}
+
+	// Need to read. First acquire loadBlockSema, if needed.
+	if sema := r.loadBlockSema; sema != nil {
+		if err := sema.Acquire(ctx, 1); err != nil {
+			// An error here can only come from the context.
+			return BufferHandle{}, err
+		}
+		defer sema.Release(1)
+	}
+	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
+	if err != nil {
+		if crh.Valid() {
+			crh.SetReadError(err)
+		}
+		return BufferHandle{}, err
+	}
+	h := value.MakeHandle(crh, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+	return h, nil
+}
+
+// TODO(sumeer): should the threshold be configurable.
+const slowReadTracingThreshold = 5 * time.Millisecond
+
+// doRead is a helper for Read that does the read, checksum check,
+// decompression, and returns either a Value or an error.
+func (r *Reader) doRead(
+	ctx context.Context,
+	env ReadEnv,
+	readHandle objstorage.ReadHandle,
+	bh Handle,
+	initBlockMetadataFn func(*Metadata, []byte) error,
+) (Value, error) {
+	compressed := Alloc(int(bh.Length+TrailerLen), env.BufferPool)
+	readStopwatch := makeStopwatch()
+	var err error
+	if readHandle != nil {
+		err = readHandle.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
+	} else {
+		err = r.readable.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
+	}
+	readDuration := readStopwatch.stop()
+	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
+	// interface{}, unless necessary.
+	if readDuration >= slowReadTracingThreshold && r.logger.IsTracingEnabled(ctx) {
+		_, file1, line1, _ := runtime.Caller(1)
+		_, file2, line2, _ := runtime.Caller(2)
+		r.logger.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
+			int(bh.Length+TrailerLen), readDuration.String(),
+			r.cacheOpts.FileNum,
+			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
+			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
+	}
+	if err != nil {
+		compressed.Release()
+		return Value{}, err
+	}
+	env.BlockRead(bh.Length, readDuration)
+	if err = ValidateChecksum(r.checksumType, compressed.BlockData(), bh); err != nil {
+		compressed.Release()
+		err = errors.Wrapf(err, "pebble/table: table %s", r.cacheOpts.FileNum)
+		return Value{}, err
+	}
+	typ := CompressionIndicator(compressed.BlockData()[bh.Length])
+	compressed.Truncate(int(bh.Length))
+	var decompressed Value
+	if typ == NoCompressionIndicator {
+		decompressed = compressed
+	} else {
+		// Decode the length of the decompressed value.
+		decodedLen, prefixLen, err := DecompressedLen(typ, compressed.BlockData())
+		if err != nil {
+			compressed.Release()
+			return Value{}, err
+		}
+		decompressed = Alloc(decodedLen, env.BufferPool)
+		err = DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData())
+		compressed.Release()
+		if err != nil {
+			decompressed.Release()
+			return Value{}, err
+		}
+	}
+	if err = initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
+		decompressed.Release()
+		return Value{}, err
+	}
+	return decompressed, nil
+}
+
+// Readable returns the underlying objstorage.Readable.
+//
+// Users should avoid accessing the underlying Readable if it can be avoided.
+func (r *Reader) Readable() objstorage.Readable {
+	return r.readable
+}
+
+// GetFromCache retrieves the block from the cache, if it is present.
+//
+// Users should prefer using Read, which handles reading from object storage on
+// a cache miss.
+func (r *Reader) GetFromCache(bh Handle) *cache.Value {
+	return r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+}
+
+// UsePreallocatedReadHandle returns a ReadHandle that reads from the reader and
+// uses the provided preallocated read handle to back the read handle, avoiding
+// an unnecessary allocation.
+func (r *Reader) UsePreallocatedReadHandle(
+	readBeforeSize objstorage.ReadBeforeSize, rh *objstorageprovider.PreallocatedReadHandle,
+) objstorage.ReadHandle {
+	return objstorageprovider.UsePreallocatedReadHandle(r.readable, readBeforeSize, rh)
+}
+
+// Close releases resources associated with the Reader.
+func (r *Reader) Close() error {
+	r.cacheOpts.Cache.Unref()
+	var err error
+	if r.readable != nil {
+		err = r.readable.Close()
+		r.readable = nil
+	}
+	return err
+}
+
+// ReadRaw reads len(buf) bytes from the provided Readable at the given offset
+// into buf. It's used to read the footer of a table.
+func ReadRaw(
+	ctx context.Context,
+	f objstorage.Readable,
+	readHandle objstorage.ReadHandle,
+	logger base.LoggerAndTracer,
+	fileNum base.DiskFileNum,
+	buf []byte,
+	off int64,
+) ([]byte, error) {
+	size := f.Size()
+	if size < int64(len(buf)) {
+		return nil, base.CorruptionErrorf("pebble/table: invalid table %s (file size is too small)", errors.Safe(fileNum))
+	}
+
+	readStopwatch := makeStopwatch()
+	var err error
+	if readHandle != nil {
+		err = readHandle.ReadAt(ctx, buf, off)
+	} else {
+		err = f.ReadAt(ctx, buf, off)
+	}
+	readDuration := readStopwatch.stop()
+	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
+	// interface{}, unless necessary.
+	if readDuration >= slowReadTracingThreshold && logger.IsTracingEnabled(ctx) {
+		logger.Eventf(ctx, "reading footer of %d bytes took %s",
+			len(buf), readDuration.String())
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
+	}
+	return buf, nil
+}
+
+// DeterministicReadBlockDurationForTesting is for tests that want a
+// deterministic value of the time to read a block (that is not in the cache).
+// The return value is a function that must be called before the test exits.
+func DeterministicReadBlockDurationForTesting() func() {
+	drbdForTesting := deterministicReadBlockDurationForTesting
+	deterministicReadBlockDurationForTesting = true
+	return func() {
+		deterministicReadBlockDurationForTesting = drbdForTesting
+	}
+}
+
+var deterministicReadBlockDurationForTesting = false
+
+type deterministicStopwatchForTesting struct {
+	startTime crtime.Mono
+}
+
+func makeStopwatch() deterministicStopwatchForTesting {
+	return deterministicStopwatchForTesting{startTime: crtime.NowMono()}
+}
+
+func (w deterministicStopwatchForTesting) stop() time.Duration {
+	dur := w.startTime.Elapsed()
+	if deterministicReadBlockDurationForTesting {
+		dur = slowReadTracingThreshold
+	}
+	return dur
 }

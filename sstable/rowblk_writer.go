@@ -1898,7 +1898,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	// already have ensured this is valid if it exists).
 	if w.filter != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filter.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(sst, filterBlockBH, r.checksumType, nil)
+			filterBlock, _, err := readBlockBuf(sst, filterBlockBH, r.blockReader.ChecksumType(), nil)
 			if err != nil {
 				return errors.Wrap(err, "reading filter")
 			}

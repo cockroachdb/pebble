@@ -70,7 +70,6 @@ package sstable // import "github.com/cockroachdb/pebble/sstable"
 import (
 	"context"
 	"encoding/binary"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -255,9 +254,8 @@ type footer struct {
 	footerBH    block.Handle
 }
 
-// TODO(sumeer): should the threshold be configurable.
-const slowReadTracingThreshold = 5 * time.Millisecond
-
+// readFooter reads the footer from the end of the file.
+//
 // readHandle is optional.
 func readFooter(
 	ctx context.Context,
@@ -266,33 +264,21 @@ func readFooter(
 	logger base.LoggerAndTracer,
 	fileNum base.DiskFileNum,
 ) (footer, error) {
+	var err error
 	size := f.Size()
 	if size < minFooterLen {
-		return footer{}, base.CorruptionErrorf("pebble/table: invalid table %s (file size is too small)", errors.Safe(fileNum))
+		return footer{}, base.CorruptionErrorf("pebble/table: invalid table %s (file size is too small)",
+			errors.Safe(fileNum))
 	}
-
 	buf := make([]byte, maxFooterLen)
 	off := size - maxFooterLen
 	if off < 0 {
 		off = 0
 		buf = buf[:size]
 	}
-	readStopwatch := makeStopwatch()
-	var err error
-	if readHandle != nil {
-		err = readHandle.ReadAt(ctx, buf, off)
-	} else {
-		err = f.ReadAt(ctx, buf, off)
-	}
-	readDuration := readStopwatch.stop()
-	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
-	// interface{}, unless necessary.
-	if readDuration >= slowReadTracingThreshold && logger.IsTracingEnabled(ctx) {
-		logger.Eventf(ctx, "reading footer of %d bytes took %s",
-			len(buf), readDuration.String())
-	}
+	buf, err = block.ReadRaw(ctx, f, readHandle, logger, fileNum, buf, off)
 	if err != nil {
-		return footer{}, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
+		return footer{}, err
 	}
 	foot, err := parseFooter(buf, off, size)
 	if err != nil {

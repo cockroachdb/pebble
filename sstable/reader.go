@@ -7,25 +7,15 @@ package sstable
 import (
 	"cmp"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
-	"path/filepath"
-	"runtime"
 	"slices"
-	"time"
 
-	"github.com/cespare/xxhash/v2"
-	"github.com/cockroachdb/crlib/crtime"
-	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -49,15 +39,12 @@ const (
 
 // Reader is a table reader.
 type Reader struct {
-	readable objstorage.Readable
+	blockReader block.Reader
 
 	// The following fields are copied from the ReadOptions.
-	cacheOpts            sstableinternal.CacheOptions
 	keySchema            *colblk.KeySchema
-	loadBlockSema        *fifo.Semaphore
 	deniedUserProperties map[string]struct{}
 	filterMetricsTracker *FilterMetricsTracker
-	logger               base.LoggerAndTracer
 
 	Comparer *base.Comparer
 	Compare  Compare
@@ -77,9 +64,8 @@ type Reader struct {
 	metaindexBH  block.Handle
 	footerBH     block.Handle
 
-	Properties   Properties
-	tableFormat  TableFormat
-	checksumType block.ChecksumType
+	Properties  Properties
+	tableFormat TableFormat
 
 	// metaBufferPool is a buffer pool used exclusively when opening a table and
 	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
@@ -95,13 +81,7 @@ var _ CommonReader = (*Reader)(nil)
 
 // Close the reader and the underlying objstorage.Readable.
 func (r *Reader) Close() error {
-	r.cacheOpts.Cache.Unref()
-
-	if r.readable != nil {
-		r.err = firstError(r.err, r.readable.Close())
-		r.readable = nil
-	}
-
+	r.err = firstError(r.err, r.blockReader.Close())
 	if r.err != nil {
 		return r.err
 	}
@@ -286,7 +266,7 @@ func (r *Reader) NewRawRangeDelIter(
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {
-		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Comparer, h, transforms)
+		iter, err = rowblk.NewFragmentIter(r.blockReader.FileNum(), r.Comparer, h, transforms)
 		if err != nil {
 			return nil, err
 		}
@@ -311,7 +291,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	if r.tableFormat.BlockColumnar() {
 		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
 	} else {
-		iter, err = rowblk.NewFragmentIter(r.cacheOpts.FileNum, r.Comparer, h, transforms)
+		iter, err = rowblk.NewFragmentIter(r.blockReader.FileNum(), r.Comparer, h, transforms)
 		if err != nil {
 			return nil, err
 		}
@@ -330,7 +310,7 @@ func (r *Reader) readMetaindexBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, r.metaindexBH, noInitBlockMetadataFn)
+	return r.blockReader.Read(ctx, env, readHandle, r.metaindexBH, noInitBlockMetadataFn)
 }
 
 // readTopLevelIndexBlock reads the top-level index block.
@@ -345,7 +325,7 @@ func (r *Reader) readIndexBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, r.initIndexBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, r.initIndexBlockMetadata)
 }
 
 // initIndexBlockMetadata initializes the Metadata for a data block. This will
@@ -361,7 +341,7 @@ func (r *Reader) readDataBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.DataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, r.initDataBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, r.initDataBlockMetadata)
 }
 
 // initDataBlockMetadata initializes the Metadata for a data block. This will
@@ -377,21 +357,21 @@ func (r *Reader) readFilterBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
+	return r.blockReader.Read(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readRangeDelBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
 }
 
 func (r *Reader) readRangeKeyBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
 }
 
 // initKeyspanBlockMetadata initializes the Metadata for a rangedel or range key
@@ -415,176 +395,7 @@ func (r *Reader) readValueBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
 	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
-	return r.readBlockInternal(ctx, env, readHandle, bh, noInitBlockMetadataFn)
-}
-
-func checkChecksum(
-	checksumType block.ChecksumType, b []byte, bh block.Handle, fileNum base.DiskFileNum,
-) error {
-	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
-	var computedChecksum uint32
-	switch checksumType {
-	case block.ChecksumTypeCRC32c:
-		computedChecksum = crc.New(b[:bh.Length+1]).Value()
-	case block.ChecksumTypeXXHash64:
-		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
-	default:
-		return errors.Errorf("unsupported checksum type: %d", checksumType)
-	}
-
-	if expectedChecksum != computedChecksum {
-		return base.CorruptionErrorf(
-			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
-			fileNum, errors.Safe(bh.Offset), errors.Safe(bh.Length))
-	}
-	return nil
-}
-
-// DeterministicReadBlockDurationForTesting is for tests that want a
-// deterministic value of the time to read a block (that is not in the cache).
-// The return value is a function that must be called before the test exits.
-func DeterministicReadBlockDurationForTesting() func() {
-	drbdForTesting := deterministicReadBlockDurationForTesting
-	deterministicReadBlockDurationForTesting = true
-	return func() {
-		deterministicReadBlockDurationForTesting = drbdForTesting
-	}
-}
-
-var deterministicReadBlockDurationForTesting = false
-
-// readBlockInternal should not be used directly; one of the read*Block methods
-// should be used instead.
-func (r *Reader) readBlockInternal(
-	ctx context.Context,
-	env block.ReadEnv,
-	readHandle objstorage.ReadHandle,
-	bh block.Handle,
-	initBlockMetadataFn func(*block.Metadata, []byte) error,
-) (handle block.BufferHandle, _ error) {
-	var cv *cache.Value
-	var crh cache.ReadHandle
-	hit := true
-	if env.BufferPool == nil {
-		var errorDuration time.Duration
-		var err error
-		cv, crh, errorDuration, hit, err = r.cacheOpts.Cache.GetWithReadHandle(
-			ctx, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
-		if errorDuration > 5*time.Millisecond && r.logger.IsTracingEnabled(ctx) {
-			r.logger.Eventf(
-				ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
-		}
-		// TODO(sumeer): consider tracing when waited longer than some duration
-		// for turn to do the read.
-		if err != nil {
-			return block.BufferHandle{}, err
-		}
-	} else {
-		// The compaction path uses env.BufferPool, and does not coordinate read
-		// using a cache.ReadHandle. This is ok since only a single compaction is
-		// reading a block.
-		cv = r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
-		if cv != nil {
-			hit = true
-		}
-	}
-	// INVARIANT: hit => ch.Valid()
-	if cv != nil {
-		if hit {
-			// Cache hit.
-			if readHandle != nil {
-				readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+block.TrailerLen))
-			}
-			env.BlockServedFromCache(bh.Length)
-		}
-		if invariants.Enabled && crh.Valid() {
-			panic("cache.ReadHandle must not be valid")
-		}
-		return block.CacheBufferHandle(cv), nil
-	}
-
-	// Need to read. First acquire loadBlockSema, if needed.
-	if sema := r.loadBlockSema; sema != nil {
-		if err := sema.Acquire(ctx, 1); err != nil {
-			// An error here can only come from the context.
-			return block.BufferHandle{}, err
-		}
-		defer sema.Release(1)
-	}
-	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
-	if err != nil {
-		if crh.Valid() {
-			crh.SetReadError(err)
-		}
-		return block.BufferHandle{}, err
-	}
-	h := value.MakeHandle(crh, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
-	return h, nil
-}
-
-// doRead is a helper for readBlockInternal that does the read, checksum
-// check, decompression, and returns either a block.Value or an error.
-func (r *Reader) doRead(
-	ctx context.Context,
-	env block.ReadEnv,
-	readHandle objstorage.ReadHandle,
-	bh block.Handle,
-	initBlockMetadataFn func(*block.Metadata, []byte) error,
-) (block.Value, error) {
-	compressed := block.Alloc(int(bh.Length+block.TrailerLen), env.BufferPool)
-	readStopwatch := makeStopwatch()
-	var err error
-	if readHandle != nil {
-		err = readHandle.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
-	} else {
-		err = r.readable.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
-	}
-	readDuration := readStopwatch.stop()
-	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
-	// interface{}, unless necessary.
-	if readDuration >= slowReadTracingThreshold && r.logger.IsTracingEnabled(ctx) {
-		_, file1, line1, _ := runtime.Caller(1)
-		_, file2, line2, _ := runtime.Caller(2)
-		r.logger.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
-			int(bh.Length+block.TrailerLen), readDuration.String(),
-			r.cacheOpts.FileNum,
-			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
-			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
-	}
-	if err != nil {
-		compressed.Release()
-		return block.Value{}, err
-	}
-	env.BlockRead(bh.Length, readDuration)
-	if err = checkChecksum(r.checksumType, compressed.BlockData(), bh, r.cacheOpts.FileNum); err != nil {
-		compressed.Release()
-		return block.Value{}, err
-	}
-	typ := block.CompressionIndicator(compressed.BlockData()[bh.Length])
-	compressed.Truncate(int(bh.Length))
-	var decompressed block.Value
-	if typ == block.NoCompressionIndicator {
-		decompressed = compressed
-	} else {
-		// Decode the length of the decompressed value.
-		decodedLen, prefixLen, err := block.DecompressedLen(typ, compressed.BlockData())
-		if err != nil {
-			compressed.Release()
-			return block.Value{}, err
-		}
-		decompressed = block.Alloc(decodedLen, env.BufferPool)
-		err = block.DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData())
-		compressed.Release()
-		if err != nil {
-			decompressed.Release()
-			return block.Value{}, err
-		}
-	}
-	if err = initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
-		decompressed.Release()
-		return block.Value{}, err
-	}
-	return decompressed, nil
+	return r.blockReader.Read(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readMetaindex(
@@ -625,7 +436,7 @@ func (r *Reader) readMetaindex(
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlockInternal(ctx, metaEnv, readHandle, bh, noInitBlockMetadataFn)
+		b, err = r.blockReader.Read(ctx, metaEnv, readHandle, bh, noInitBlockMetadataFn)
 		if err != nil {
 			return err
 		}
@@ -813,7 +624,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		readFn: r.readRangeKeyBlock,
 	})
 	readNoInit := func(ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle, bh block.Handle) (block.BufferHandle, error) {
-		return r.readBlockInternal(ctx, env, rh, bh, noInitBlockMetadataFn)
+		return r.blockReader.Read(ctx, env, rh, bh, noInitBlockMetadataFn)
 	}
 	blocks = append(blocks, blk{
 		bh:     l.Properties,
@@ -1001,38 +812,27 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		return nil, errors.New("pebble/table: nil file")
 	}
 	o = o.ensureDefaults()
+
 	r := &Reader{
-		readable:             f,
-		cacheOpts:            o.internal.CacheOpts,
-		loadBlockSema:        o.LoadBlockSema,
 		deniedUserProperties: o.DeniedUserProperties,
 		filterMetricsTracker: o.FilterMetricsTracker,
-		logger:               o.LoggerAndTracer,
-	}
-	if r.cacheOpts.Cache == nil {
-		r.cacheOpts.Cache = cache.New(0)
-	} else {
-		r.cacheOpts.Cache.Ref()
-	}
-	if r.cacheOpts.CacheID == 0 {
-		r.cacheOpts.CacheID = r.cacheOpts.Cache.NewID()
 	}
 
 	var preallocRH objstorageprovider.PreallocatedReadHandle
 	rh := objstorageprovider.UsePreallocatedReadHandle(
-		r.readable, objstorage.ReadBeforeForNewReader, &preallocRH)
+		f, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
 
-	footer, err := readFooter(ctx, f, rh, r.logger, r.cacheOpts.FileNum)
+	footer, err := readFooter(ctx, f, rh, o.LoggerAndTracer, o.internal.CacheOpts.FileNum)
 	if err != nil {
-		r.err = err
-		return nil, r.Close()
+		return nil, errors.CombineErrors(err, f.Close())
 	}
-	r.checksumType = footer.checksum
+	r.blockReader.Init(f, o.internal.CacheOpts, o.LoadBlockSema, o.LoggerAndTracer, footer.checksum)
 	r.tableFormat = footer.format
 	r.indexBH = footer.indexBH
 	r.metaindexBH = footer.metaindexBH
 	r.footerBH = footer.footerBH
+
 	// Read the metaindex and properties blocks.
 	if err := r.readMetaindex(ctx, rh, o.Filters); err != nil {
 		r.err = err
@@ -1051,7 +851,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		r.Split = comparer.Split
 	} else {
 		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
-			errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.ComparerName))
+			errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.ComparerName))
 	}
 
 	if mergerName := r.Properties.MergerName; mergerName != "" && mergerName != "nullptr" {
@@ -1061,7 +861,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 			// Known merger.
 		} else {
 			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
-				errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.MergerName))
+				errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.MergerName))
 		}
 	}
 
@@ -1076,7 +876,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 			slices.Sort(known)
 
 			r.err = errors.Newf("pebble/table: %d: unknown key schema %q; known key schemas: %s",
-				errors.Safe(r.cacheOpts.FileNum), errors.Safe(r.Properties.KeySchemaName), errors.Safe(known))
+				errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.KeySchemaName), errors.Safe(known))
 			panic(r.err)
 		}
 	}
@@ -1152,22 +952,6 @@ func errCorruptIndexEntry(err error) error {
 		panic(err)
 	}
 	return err
-}
-
-type deterministicStopwatchForTesting struct {
-	startTime crtime.Mono
-}
-
-func makeStopwatch() deterministicStopwatchForTesting {
-	return deterministicStopwatchForTesting{startTime: crtime.NowMono()}
-}
-
-func (w deterministicStopwatchForTesting) stop() time.Duration {
-	dur := w.startTime.Elapsed()
-	if deterministicReadBlockDurationForTesting {
-		dur = slowReadTracingThreshold
-	}
-	return dur
 }
 
 // MakeTrivialReaderProvider creates a valblk.ReaderProvider which always

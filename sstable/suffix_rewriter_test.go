@@ -246,7 +246,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 				sst := sstBytes[comp][sz]
 				b.Run(fmt.Sprintf("keys=%d", sizes[sz]), func(b *testing.B) {
 					b.Run("ReaderWriterLoop", func(b *testing.B) {
-						b.SetBytes(r.readable.Size())
+						b.SetBytes(int64(len(sst)))
 						for i := 0; i < b.N; i++ {
 							if _, err := RewriteKeySuffixesViaWriter(r, &discardFile{}, writerOpts, from, to); err != nil {
 								b.Fatal(err)
@@ -255,7 +255,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 					})
 					for _, concurrency := range []int{1, 2, 4, 8, 16} {
 						b.Run(fmt.Sprintf("RewriteKeySuffixes,concurrency=%d", concurrency), func(b *testing.B) {
-							b.SetBytes(r.readable.Size())
+							b.SetBytes(int64(len(sst)))
 							for i := 0; i < b.N; i++ {
 								if _, _, err := rewriteKeySuffixesInBlocks(r, sst, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
 									b.Fatal(err)
