@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +35,9 @@ func TestIteratorErrorOnInit(t *testing.T) {
 	require.NoError(t, w.Set([]byte("test"), nil))
 	require.NoError(t, w.Close())
 
-	f1 := testutils.CheckErr(mem.Open("test.sst"))
+	toggle := errorfs.Toggle{Injector: errorfs.ErrInjected}
+	f1 := errorfs.WrapFile(testutils.CheckErr(mem.Open("test.sst")), &toggle)
+
 	r, err := newReader(f1, ReaderOptions{
 		Comparer: base.DefaultComparer,
 		Merger:   base.DefaultMerger,
@@ -42,16 +45,12 @@ func TestIteratorErrorOnInit(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	// Swap the readable in the reader.
-	bad := testutils.CheckErr(mem.Create("bad.sst", vfs.WriteCategoryUnspecified))
-	require.NoError(t, bad.Close())
-	bad = testutils.CheckErr(mem.Open("bad.sst"))
-	saveReadable := r.readable
-	r.readable = testutils.CheckErr(NewSimpleReadable(bad))
-
 	var pool block.BufferPool
 	pool.Init(5)
 	defer pool.Release()
+
+	toggle.On()
+	defer toggle.Off()
 
 	var stats base.InternalIteratorStats
 	for k := 0; k < 20; k++ {
@@ -85,6 +84,4 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			require.Error(t, err)
 		}
 	}
-	require.NoError(t, r.readable.Close())
-	r.readable = saveReadable
 }
