@@ -208,14 +208,13 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 		e.mu.readStart = time.Now()
 	}
 	unlockAndUnrefAndTryRemoveFromMap := func(readLock bool) (errorDuration time.Duration) {
-		removeState := e.makeTryRemoveStateLocked()
 		errorDuration = e.mu.errorDuration
 		if readLock {
 			e.mu.RUnlock()
 		} else {
 			e.mu.Unlock()
 		}
-		unrefAndTryRemoveFromMap(removeState)
+		e.unrefAndTryRemoveFromMap()
 		return errorDuration
 	}
 
@@ -267,26 +266,9 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 	}
 }
 
-// tryRemoveState captures the state needed by tryRemoveFromMap. The caller
-// constructs it before calling unrefAndTryRemoveFromMap since it typically
-// held readEntry.mu, which avoids acquiring it again in
-// unrefAndTryRemoveFromMap.
-type tryRemoveState struct {
-	rs *readShard
-	k  key
-	e  *readEntry
-}
-
-// makeTryRemoveStateLocked initializes tryRemoveState.
-func (e *readEntry) makeTryRemoveStateLocked() tryRemoveState {
-	return tryRemoveState{
-		rs: e.readShard,
-		k:  e.key,
-		e:  e,
-	}
-}
-
-// unrefAndTryRemoveFromMap tries to remove s.k => s.e from the map in s.rs.
+// unrefAndTryRemoveFromMap reduces the reference count of e and removes e.key
+// => e from the readMap if necessary.
+//
 // It is possible that after unreffing that s.e has already been removed, and
 // is now back in the sync.Pool, or being reused (for the same or different
 // key). This is because after unreffing, which caused the s.e.refCount to
@@ -294,35 +276,37 @@ func (e *readEntry) makeTryRemoveStateLocked() tryRemoveState {
 // and decremented concurrently, and some other goroutine could have observed
 // a different decrement to 0, and raced ahead and deleted s.e from the
 // readMap.
-func unrefAndTryRemoveFromMap(s tryRemoveState) {
-	if !s.e.refCount.release() {
+func (e *readEntry) unrefAndTryRemoveFromMap() {
+	// Save the fields we need from entry; once we release the last refcount, it
+	// is possible that the entry is found and reused and then freed.
+	rs := e.readShard
+	k := e.key
+	if !e.refCount.release() {
 		return
 	}
-	s.rs.shard.mu.Lock()
-	e2, ok := s.rs.shardMu.readMap.Get(s.k)
-	if !ok || e2 != s.e {
+	// Once we release the refcount, it is possible that it the entry is reused
+	// again and freed before we get the lock.
+	rs.shard.mu.Lock()
+	e2, ok := rs.shardMu.readMap.Get(k)
+	if !ok || e2 != e {
 		// Already removed.
-		s.rs.shard.mu.Unlock()
+		rs.shard.mu.Unlock()
 		return
 	}
-	if s.e.refCount.value() != 0 {
-		s.rs.shard.mu.Unlock()
+	if e.refCount.value() != 0 {
+		// The entry was reused.
+		rs.shard.mu.Unlock()
 		return
 	}
-	// k => e and e.refCount == 0. And it cannot be incremented since
+	// e.refCount == 0. And it cannot be incremented since
 	// shard.mu.Lock() is held. So remove from map.
-	s.rs.shardMu.readMap.Delete(s.k)
-	s.rs.shard.mu.Unlock()
+	rs.shardMu.readMap.Delete(k)
+	rs.shard.mu.Unlock()
 
 	// Free s.e.
-	s.e.mu.Lock()
-	if s.e.mu.v != nil {
-		s.e.mu.v.release()
-		s.e.mu.v = nil
-	}
-	s.e.mu.Unlock()
-	*s.e = readEntry{}
-	readEntryPool.Put(s.e)
+	e.mu.v.release()
+	*e = readEntry{}
+	readEntryPool.Put(e)
 }
 
 func (e *readEntry) setReadValue(v *Value) Handle {
@@ -352,9 +336,8 @@ func (e *readEntry) setReadValue(v *Value) Handle {
 		// e.mu.v.
 		close(e.mu.ch)
 	}
-	removeState := e.makeTryRemoveStateLocked()
 	e.mu.Unlock()
-	unrefAndTryRemoveFromMap(removeState)
+	e.unrefAndTryRemoveFromMap()
 	return h
 }
 
@@ -372,9 +355,8 @@ func (e *readEntry) setReadError(err error) {
 		}
 	}
 	e.mu.errorDuration += time.Since(e.mu.readStart)
-	removeState := e.makeTryRemoveStateLocked()
 	e.mu.Unlock()
-	unrefAndTryRemoveFromMap(removeState)
+	e.unrefAndTryRemoveFromMap()
 }
 
 // ReadHandle represents a contract with a caller that had a miss when doing a
