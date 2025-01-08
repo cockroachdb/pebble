@@ -73,7 +73,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 				cache.Free(cacheVal)
 			}
 			cacheVal = cache.Alloc(block.MetadataSize + len(blockData))
-			copy(cacheVal.Buf()[block.MetadataSize:], blockData)
+			copy(cacheVal.RawBuffer()[block.MetadataSize:], blockData)
 			c.Set(1, 0, 0, cacheVal)
 
 			for _, s := range spans {

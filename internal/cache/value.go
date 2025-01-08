@@ -92,11 +92,11 @@ func (v *Value) free() {
 	manual.Free(manual.BlockCacheData, buf)
 }
 
-// Buf returns the buffer associated with the value. The contents of the buffer
+// RawBuffer returns the buffer associated with the value. The contents of the buffer
 // should not be changed once the value has been added to the cache. Instead, a
 // new Value should be created and added to the cache to replace the existing
 // value.
-func (v *Value) Buf() []byte {
+func (v *Value) RawBuffer() []byte {
 	if v == nil {
 		return nil
 	}
@@ -119,7 +119,9 @@ func (v *Value) acquire() {
 	v.ref.acquire()
 }
 
-func (v *Value) release() {
+// Release a ref count on the buffer. It is a no-op to call Release on a nil
+// Value.
+func (v *Value) Release() {
 	if v != nil && v.ref.release() {
 		v.free()
 	}

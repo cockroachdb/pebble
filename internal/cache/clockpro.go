@@ -79,33 +79,6 @@ func (k key) String() string {
 	return fmt.Sprintf("%d/%d/%d", k.id, k.fileNum, k.offset)
 }
 
-// Handle provides a strong reference to a value in the cache. The reference
-// does not pin the value in the cache, but it does prevent the underlying byte
-// slice from being reused.
-type Handle struct {
-	value *Value
-}
-
-// Valid returns true if the handle holds a value.
-func (h Handle) Valid() bool {
-	return h.value != nil
-}
-
-// RawBuffer returns the value buffer. Note that this buffer holds the block
-// metadata and the data and should be used through a block.BufferHandle.
-//
-// RawBuffer can only be called if the handle is Valid().
-func (h Handle) RawBuffer() []byte {
-	// NB: We don't increment shard.hits in this code path because we only want
-	// to record a hit when the handle is retrieved from the cache.
-	return h.value.buf
-}
-
-// Release releases the reference to the cache entry.
-func (h Handle) Release() {
-	h.value.release()
-}
-
 type shard struct {
 	hits   atomic.Int64
 	misses atomic.Int64
@@ -162,8 +135,8 @@ func (c *shard) init(maxSize int64) {
 
 // getWithMaybeReadEntry is the internal helper for implementing
 // Cache.{Get,GetWithReadHandle}. When desireReadEntry is true, and the block
-// is not in the cache (!Handle.Valid()), a non-nil readEntry is returned.
-func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (Handle, *readEntry) {
+// is not in the cache (nil Value), a non-nil readEntry is returned.
+func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *readEntry) {
 	c.mu.RLock()
 	var value *Value
 	if e, _ := c.blocks.Get(k); e != nil {
@@ -196,10 +169,10 @@ func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (Handle, *rea
 	} else {
 		c.hits.Add(1)
 	}
-	return Handle{value: value}, re
+	return value, re
 }
 
-func (c *shard) set(k key, value *Value) Handle {
+func (c *shard) set(k key, value *Value) {
 	if n := value.refs(); n != 1 {
 		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
@@ -275,10 +248,6 @@ func (c *shard) set(k key, value *Value) Handle {
 	}
 
 	c.checkConsistency()
-
-	// Values are initialized with a reference count of 1. That reference count
-	// is being transferred to the returned Handle.
-	return Handle{value: value}
 }
 
 func (c *shard) checkConsistency() {
@@ -321,7 +290,7 @@ func (c *shard) delete(k key) {
 	}()
 	// Now that the mutex has been dropped, release the reference which will
 	// potentially free the memory associated with the previous cached value.
-	deletedValue.release()
+	deletedValue.Release()
 }
 
 // EvictFile evicts all of the cache values for the specified file.
@@ -352,7 +321,7 @@ func (c *shard) evictFileRun(fkey key) (moreRemaining bool) {
 	defer func() {
 		c.mu.Unlock()
 		for _, v := range obsoleteValues {
-			v.release()
+			v.Release()
 		}
 	}()
 
@@ -386,7 +355,7 @@ func (c *shard) Free() {
 	// metaCheck call when the "invariants" build tag is specified.
 	for c.handHot != nil {
 		e := c.handHot
-		c.metaDel(c.handHot).release()
+		c.metaDel(c.handHot).Release()
 		e.free()
 	}
 
@@ -680,7 +649,7 @@ func (c *shard) runHandTest() {
 		if c.coldTarget < 0 {
 			c.coldTarget = 0
 		}
-		c.metaDel(e).release()
+		c.metaDel(e).Release()
 		c.metaCheck(e)
 		e.free()
 	}
@@ -855,13 +824,13 @@ func (c *Cache) Unref() {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
+func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) *Value {
 	k := makeKey(id, fileNum, offset)
-	h, re := c.getShard(k).getWithMaybeReadEntry(k, false /* desireReadEntry */)
+	cv, re := c.getShard(k).getWithMaybeReadEntry(k, false /* desireReadEntry */)
 	if invariants.Enabled && re != nil {
 		panic("readEntry should be nil")
 	}
-	return h
+	return cv
 }
 
 // GetWithReadHandle retrieves the cache value for the specified ID, fileNum
@@ -888,26 +857,26 @@ func (c *Cache) Get(id ID, fileNum base.DiskFileNum, offset uint64) Handle {
 // in a valid Handle being returned. This is a case where cacheHit=false.
 func (c *Cache) GetWithReadHandle(
 	ctx context.Context, id ID, fileNum base.DiskFileNum, offset uint64,
-) (h Handle, rh ReadHandle, errorDuration time.Duration, cacheHit bool, err error) {
+) (cv *Value, rh ReadHandle, errorDuration time.Duration, cacheHit bool, err error) {
 	k := makeKey(id, fileNum, offset)
-	h, re := c.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
-	if h.Valid() {
-		return h, ReadHandle{}, 0, true, nil
+	cv, re := c.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
+	if cv != nil {
+		return cv, ReadHandle{}, 0, true, nil
 	}
-	h, errorDuration, err = re.waitForReadPermissionOrHandle(ctx)
-	if err != nil || h.Valid() {
-		return h, ReadHandle{}, errorDuration, false, err
+	cv, errorDuration, err = re.waitForReadPermissionOrHandle(ctx)
+	if err != nil || cv != nil {
+		return cv, ReadHandle{}, errorDuration, false, err
 	}
-	return Handle{}, ReadHandle{entry: re}, errorDuration, false, nil
+	return nil, ReadHandle{entry: re}, errorDuration, false, nil
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an
-// existing value if present. A Handle is returned which provides faster
-// retrieval of the cached value than Get (lock-free and avoidance of the map
-// lookup). The value must have been allocated by Cache.Alloc.
-func (c *Cache) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) Handle {
+// existing value if present. The value must have been allocated by Cache.Alloc.
+//
+// The cache takes a reference on the Value and holds it until it gets evicted.
+func (c *Cache) Set(id ID, fileNum base.DiskFileNum, offset uint64, value *Value) {
 	k := makeKey(id, fileNum, offset)
-	return c.getShard(k).set(k, value)
+	c.getShard(k).set(k, value)
 }
 
 // Delete deletes the cached value for the specified file and offset.
@@ -956,7 +925,7 @@ func Free(v *Value) {
 	if n := v.refs(); n > 1 {
 		panic(fmt.Sprintf("pebble: Value has been added to the cache: refs=%d", n))
 	}
-	v.release()
+	v.Release()
 }
 
 // Reserve N bytes in the cache. This effectively shrinks the size of the cache
