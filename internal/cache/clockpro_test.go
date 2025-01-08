@@ -39,18 +39,18 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		h := cache.Get(1, base.DiskFileNum(key), 0)
-		if !h.Valid() {
-			value := Alloc(1)
-			value.Buf()[0] = fields[0][0]
-			cache.Set(1, base.DiskFileNum(key), 0, value).Release()
+		cv := cache.Get(1, base.DiskFileNum(key), 0)
+		if cv == nil {
+			cv = Alloc(1)
+			cv.RawBuffer()[0] = fields[0][0]
+			cache.Set(1, base.DiskFileNum(key), 0, cv)
 		} else {
 			hit = true
-			if v := h.RawBuffer(); !bytes.Equal(v, fields[0][:1]) {
+			if v := cv.RawBuffer(); !bytes.Equal(v, fields[0][:1]) {
 				t.Errorf("%d: cache returned bad data: got %s , want %s\n", line, v, fields[0][:1])
 			}
 		}
-		h.Release()
+		cv.Release()
 		if hit != wantHit {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
 		}
@@ -58,20 +58,23 @@ func TestCache(t *testing.T) {
 	}
 }
 
-func testValue(cache *Cache, s string, repeat int) *Value {
+func setTestValue(
+	cache *Cache, id ID, fileNum base.DiskFileNum, offset uint64, s string, repeat int,
+) {
 	b := bytes.Repeat([]byte(s), repeat)
 	v := Alloc(len(b))
-	copy(v.Buf(), b)
-	return v
+	copy(v.RawBuffer(), b)
+	cache.Set(id, fileNum, offset, v)
+	v.Release()
 }
 
 func TestCacheDelete(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 5)).Release()
-	cache.Set(1, base.DiskFileNum(1), 0, testValue(cache, "a", 5)).Release()
-	cache.Set(1, base.DiskFileNum(2), 0, testValue(cache, "a", 5)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 5)
+	setTestValue(cache, 1, 1, 0, "a", 5)
+	setTestValue(cache, 1, 2, 0, "a", 5)
 	if expected, size := int64(15), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -79,12 +82,12 @@ func TestCacheDelete(t *testing.T) {
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	if h := cache.Get(1, base.DiskFileNum(0), 0); !h.Valid() {
+	if v := cache.Get(1, base.DiskFileNum(0), 0); v == nil {
 		t.Fatalf("expected to find block 0/0")
 	} else {
-		h.Release()
+		v.Release()
 	}
-	if h := cache.Get(1, base.DiskFileNum(1), 0); h.Valid() {
+	if v := cache.Get(1, base.DiskFileNum(1), 0); v != nil {
 		t.Fatalf("expected to not find block 1/0")
 	}
 	// Deleting a non-existing block does nothing.
@@ -98,11 +101,11 @@ func TestEvictFile(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 5)).Release()
-	cache.Set(1, base.DiskFileNum(1), 0, testValue(cache, "a", 5)).Release()
-	cache.Set(1, base.DiskFileNum(2), 0, testValue(cache, "a", 5)).Release()
-	cache.Set(1, base.DiskFileNum(2), 1, testValue(cache, "a", 5)).Release()
-	cache.Set(1, base.DiskFileNum(2), 2, testValue(cache, "a", 5)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 5)
+	setTestValue(cache, 1, 1, 0, "a", 5)
+	setTestValue(cache, 1, 2, 0, "a", 5)
+	setTestValue(cache, 1, 2, 1, "a", 5)
+	setTestValue(cache, 1, 2, 2, "a", 5)
 	if expected, size := int64(25), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -126,16 +129,16 @@ func TestEvictAll(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 101)).Release()
-	cache.Set(1, base.DiskFileNum(1), 0, testValue(cache, "a", 101)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 101)
+	setTestValue(cache, 1, 1, 0, "a", 101)
 }
 
 func TestMultipleDBs(t *testing.T) {
 	cache := newShards(100, 1)
 	defer cache.Unref()
 
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 5)).Release()
-	cache.Set(2, base.DiskFileNum(0), 0, testValue(cache, "b", 5)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 5)
+	setTestValue(cache, 2, 0, 0, "b", 5)
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -143,42 +146,43 @@ func TestMultipleDBs(t *testing.T) {
 	if expected, size := int64(5), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	h := cache.Get(1, base.DiskFileNum(0), 0)
-	if h.Valid() {
-		t.Fatalf("expected not present, but found %#v", h)
+	v := cache.Get(1, base.DiskFileNum(0), 0)
+	if v != nil {
+		t.Fatalf("expected not present, but found %#v", v)
 	}
-	h = cache.Get(2, base.DiskFileNum(0), 0)
-	if v := h.RawBuffer(); string(v) != "bbbbb" {
+	v = cache.Get(2, base.DiskFileNum(0), 0)
+	if v := v.RawBuffer(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %s", v)
 	}
-	h.Release()
+	v.Release()
 }
 
 func TestZeroSize(t *testing.T) {
 	cache := newShards(0, 1)
 	defer cache.Unref()
 
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 5)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 5)
 }
 
 func TestReserve(t *testing.T) {
 	cache := newShards(4, 2)
 	defer cache.Unref()
 
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
-	cache.Set(2, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 1)
+	setTestValue(cache, 2, 0, 0, "a", 1)
 	require.EqualValues(t, 2, cache.Size())
 	r := cache.Reserve(1)
 	require.EqualValues(t, 0, cache.Size())
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
-	cache.Set(2, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
-	cache.Set(3, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
-	cache.Set(4, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
+
+	setTestValue(cache, 1, 0, 0, "a", 1)
+	setTestValue(cache, 2, 0, 0, "a", 1)
+	setTestValue(cache, 3, 0, 0, "a", 1)
+	setTestValue(cache, 4, 0, 0, "a", 1)
 	require.EqualValues(t, 2, cache.Size())
 	r()
 	require.EqualValues(t, 2, cache.Size())
-	cache.Set(1, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
-	cache.Set(2, base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
+	setTestValue(cache, 1, 0, 0, "a", 1)
+	setTestValue(cache, 2, 0, 0, "a", 1)
 	require.EqualValues(t, 4, cache.Size())
 }
 
@@ -214,7 +218,7 @@ func TestCacheStressSetExisting(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			for j := 0; j < 10000; j++ {
-				cache.Set(1, base.DiskFileNum(0), uint64(i), testValue(cache, "a", 1)).Release()
+				setTestValue(cache, 1, 0, uint64(i), "a", 1)
 				runtime.Gosched()
 			}
 		}(i)
@@ -229,8 +233,7 @@ func BenchmarkCacheGet(b *testing.B) {
 	defer cache.Unref()
 
 	for i := 0; i < size; i++ {
-		v := testValue(cache, "a", 1)
-		cache.Set(1, base.DiskFileNum(0), uint64(i), v).Release()
+		setTestValue(cache, 1, 0, 0, "a", 1)
 	}
 
 	b.ResetTimer()
@@ -238,11 +241,11 @@ func BenchmarkCacheGet(b *testing.B) {
 		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 		for pb.Next() {
-			h := cache.Get(1, base.DiskFileNum(0), uint64(rng.IntN(size)))
-			if !h.Valid() {
+			v := cache.Get(1, base.DiskFileNum(0), uint64(rng.IntN(size)))
+			if v == nil {
 				b.Fatal("failed to lookup value")
 			}
-			h.Release()
+			v.Release()
 		}
 	})
 }
@@ -256,7 +259,7 @@ func TestReserveColdTarget(t *testing.T) {
 	defer cache.Unref()
 
 	for i := 0; i < 50; i++ {
-		cache.Set(ID(i+1), base.DiskFileNum(0), 0, testValue(cache, "a", 1)).Release()
+		setTestValue(cache, ID(i+1), 0, 0, "a", 1)
 	}
 
 	if cache.Size() != 50 {

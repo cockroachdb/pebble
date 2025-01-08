@@ -40,7 +40,7 @@ func TestCompressionRoundtrip(t *testing.T) {
 			require.NoError(t, err)
 			got := payload
 			if v != nil {
-				got = v.Buf()
+				got = v.RawBuffer()
 				require.Equal(t, payload, got)
 				cache.Free(v)
 			}
@@ -85,7 +85,7 @@ func decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
 	b = b[prefixLen:]
 	// Allocate sufficient space from the cache.
 	decoded := cache.Alloc(decodedLen)
-	decodedBuf := decoded.Buf()
+	decodedBuf := decoded.RawBuffer()
 	if err := DecompressInto(algo, b, decodedBuf); err != nil {
 		cache.Free(decoded)
 		return nil, err

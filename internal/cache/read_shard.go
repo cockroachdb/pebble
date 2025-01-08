@@ -181,13 +181,13 @@ func newReadEntry(rs *readShard, k key) *readEntry {
 // latency due to context cancellation.
 func (e *readEntry) waitForReadPermissionOrHandle(
 	ctx context.Context,
-) (h Handle, errorDuration time.Duration, err error) {
-	constructHandleLocked := func() Handle {
+) (cv *Value, errorDuration time.Duration, err error) {
+	constructValueLocked := func() *Value {
 		if e.mu.v == nil {
 			panic("value is nil")
 		}
 		e.mu.v.acquire()
-		return Handle{value: e.mu.v}
+		return e.mu.v
 	}
 	becomeReaderLocked := func() {
 		if e.mu.v != nil {
@@ -222,9 +222,9 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 		e.mu.Lock()
 		if e.mu.v != nil {
 			// Value has already been read.
-			h := constructHandleLocked()
+			cv := constructValueLocked()
 			errorDuration = unlockAndUnrefAndTryRemoveFromMap(false)
-			return h, errorDuration, nil
+			return cv, errorDuration, nil
 		}
 		// Not already read. Wait for turn to do the read or for someone else to do
 		// the read.
@@ -233,7 +233,7 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 			becomeReaderLocked()
 			errorDuration = e.mu.errorDuration
 			e.mu.Unlock()
-			return Handle{}, errorDuration, nil
+			return nil, errorDuration, nil
 		}
 		if e.mu.ch == nil {
 			// Rare case when multiple readers are concurrently trying to read. If
@@ -246,7 +246,7 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 		case <-ctx.Done():
 			e.mu.RLock()
 			errorDuration = unlockAndUnrefAndTryRemoveFromMap(true)
-			return Handle{}, errorDuration, ctx.Err()
+			return nil, errorDuration, ctx.Err()
 		case _, ok := <-ch:
 			if !ok {
 				// Channel closed, so value was read.
@@ -254,7 +254,7 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 				if e.mu.v == nil {
 					panic("value is nil")
 				}
-				h := constructHandleLocked()
+				h := constructValueLocked()
 				errorDuration = unlockAndUnrefAndTryRemoveFromMap(true)
 				return h, errorDuration, nil
 			}
@@ -304,12 +304,12 @@ func (e *readEntry) unrefAndTryRemoveFromMap() {
 	rs.shard.mu.Unlock()
 
 	// Free s.e.
-	e.mu.v.release()
+	e.mu.v.Release()
 	*e = readEntry{}
 	readEntryPool.Put(e)
 }
 
-func (e *readEntry) setReadValue(v *Value) Handle {
+func (e *readEntry) setReadValue(v *Value) {
 	// Add to the cache before taking another ref for readEntry, since the cache
 	// expects ref=1 when it is called.
 	//
@@ -318,7 +318,7 @@ func (e *readEntry) setReadValue(v *Value) Handle {
 	// don't want to acquire e.mu twice, so one way to do this would be relax
 	// the invariant in shard.Set that requires Value.refs() == 1. Then we can
 	// do the work under e.mu before calling shard.Set.
-	h := e.readShard.shard.set(e.key, v)
+	e.readShard.shard.set(e.key, v)
 	e.mu.Lock()
 	// Acquire a ref for readEntry, since we are going to remember it in e.mu.v.
 	v.acquire()
@@ -338,7 +338,6 @@ func (e *readEntry) setReadValue(v *Value) Handle {
 	}
 	e.mu.Unlock()
 	e.unrefAndTryRemoveFromMap()
-	return h
 }
 
 func (e *readEntry) setReadError(err error) {
@@ -383,8 +382,8 @@ func (rh ReadHandle) Valid() bool {
 
 // SetReadValue provides the Value that the caller has read. The caller is
 // responsible for releasing the returned Handle when it is no longer needed.
-func (rh ReadHandle) SetReadValue(v *Value) Handle {
-	return rh.entry.setReadValue(v)
+func (rh ReadHandle) SetReadValue(v *Value) {
+	rh.entry.setReadValue(v)
 }
 
 // SetReadError specifies that the caller has encountered a read error.

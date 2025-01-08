@@ -146,7 +146,7 @@ func (e *entry) setValue(v *Value) {
 	}
 	old := e.val
 	e.val = v
-	old.release()
+	old.Release()
 }
 
 func (e *entry) acquireValue() *Value {

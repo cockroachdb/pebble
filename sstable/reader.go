@@ -507,13 +507,13 @@ func (r *Reader) readBlockInternal(
 	bh block.Handle,
 	initBlockMetadataFn func(*block.Metadata, []byte) error,
 ) (handle block.BufferHandle, _ error) {
-	var ch cache.Handle
+	var cv *cache.Value
 	var crh cache.ReadHandle
 	hit := true
 	if env.BufferPool == nil {
 		var errorDuration time.Duration
 		var err error
-		ch, crh, errorDuration, hit, err = r.cacheOpts.Cache.GetWithReadHandle(
+		cv, crh, errorDuration, hit, err = r.cacheOpts.Cache.GetWithReadHandle(
 			ctx, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
 		if errorDuration > 5*time.Millisecond && r.logger.IsTracingEnabled(ctx) {
 			r.logger.Eventf(
@@ -528,13 +528,13 @@ func (r *Reader) readBlockInternal(
 		// The compaction path uses env.BufferPool, and does not coordinate read
 		// using a cache.ReadHandle. This is ok since only a single compaction is
 		// reading a block.
-		ch = r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
-		if ch.Valid() {
+		cv = r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+		if cv != nil {
 			hit = true
 		}
 	}
 	// INVARIANT: hit => ch.Valid()
-	if ch.Valid() {
+	if cv != nil {
 		if hit {
 			// Cache hit.
 			if readHandle != nil {
@@ -545,7 +545,7 @@ func (r *Reader) readBlockInternal(
 		if invariants.Enabled && crh.Valid() {
 			panic("cache.ReadHandle must not be valid")
 		}
-		return block.CacheBufferHandle(ch), nil
+		return block.CacheBufferHandle(cv), nil
 	}
 
 	// Need to read. First acquire loadBlockSema, if needed.
