@@ -24,7 +24,6 @@ Local tables size: 28B
 Compression types:
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 4  earliest seq num: 1024
 Table iters: 21
 Filter utility: 47.4%
@@ -77,7 +76,6 @@ Local tables size: 589B
 Compression types: snappy: 1
 Block cache: 2 entries (716B)  hit rate: 0.0%
 Table cache: 1 entries (912B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -137,7 +135,6 @@ Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 2 entries (1.8KB)  hit rate: 66.7%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
 Filter utility: 0.0%
@@ -184,7 +181,6 @@ Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 2 entries (1.8KB)  hit rate: 66.7%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
 Filter utility: 0.0%
@@ -228,7 +224,6 @@ Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 1 entries (912B)  hit rate: 66.7%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -275,7 +270,6 @@ Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -348,7 +342,6 @@ Local tables size: 2.6KB
 Compression types: snappy: 4
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -405,7 +398,6 @@ Local tables size: 2.0KB
 Compression types: snappy: 3
 Block cache: 0 entries (0B)  hit rate: 14.3%
 Table cache: 0 entries (0B)  hit rate: 58.3%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -511,7 +503,6 @@ Local tables size: 4.3KB
 Compression types: snappy: 7
 Block cache: 8 entries (2.8KB)  hit rate: 9.1%
 Table cache: 1 entries (912B)  hit rate: 53.8%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -576,7 +567,6 @@ Local tables size: 6.1KB
 Compression types: snappy: 10
 Block cache: 8 entries (2.8KB)  hit rate: 9.1%
 Table cache: 1 entries (912B)  hit rate: 53.8%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -655,7 +645,6 @@ Local tables size: 6.7KB
 Compression types: snappy: 9 unknown: 2
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -759,7 +748,6 @@ Local tables size: 3.8KB
 Compression types: snappy: 6
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -815,7 +803,6 @@ Local tables size: 604B
 Compression types: snappy: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -854,7 +841,6 @@ Local tables size: 0B
 Compression types: snappy: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 1 entries (912B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -902,7 +888,6 @@ Local tables size: 0B
 Compression types: snappy: 2
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
 Table cache: 1 entries (912B)  hit rate: 50.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -951,7 +936,6 @@ Local tables size: 589B
 Compression types: snappy: 3
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
 Table cache: 1 entries (912B)  hit rate: 50.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -991,7 +975,6 @@ Local tables size: 589B
 Compression types: snappy: 3
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -1030,7 +1013,6 @@ Local tables size: 603B
 Compression types: snappy: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
-Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%

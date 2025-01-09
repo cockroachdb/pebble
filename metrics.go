@@ -658,7 +658,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			humanize.Bytes.Int64(m.Size),
 			redact.Safe(hitRate(m.ReadsWithFullHit, m.ReadsWithPartialHit+m.ReadsWithNoHit)))
 	}
-	formatSharedCacheMetrics(w, &m.SecondaryCacheMetrics, "Secondary cache")
+	if m.SecondaryCacheMetrics.Size > 0 || m.SecondaryCacheMetrics.ReadsWithFullHit > 0 {
+		formatSharedCacheMetrics(w, &m.SecondaryCacheMetrics, "Secondary cache")
+	}
 
 	w.Printf("Snapshots: %d  earliest seq num: %d\n",
 		redact.Safe(m.Snapshots.Count),
