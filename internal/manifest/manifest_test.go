@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/metamorphic"
@@ -34,7 +35,13 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	testOpts.Opts.Cache.Ref()
 	defer testOpts.Opts.Cache.Unref()
 	{
-		ops := metamorphic.GenerateOps(rng, 10000, metamorphic.WriteOpConfig())
+		nOps := 10000
+		if buildtags.Race {
+			// Reduce the number of operations in race mode (the test can time out if
+			// we are unlucky).
+			nOps = 2000
+		}
+		ops := metamorphic.GenerateOps(rng, uint64(nOps), metamorphic.WriteOpConfig())
 		test, err := metamorphic.New(ops, testOpts, "" /* dir */, io.Discard)
 		require.NoError(t, err)
 		require.NoError(t, metamorphic.Execute(test))
