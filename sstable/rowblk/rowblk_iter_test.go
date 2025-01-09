@@ -478,8 +478,8 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	const largeKeySize int64 = 2 << 30   // 2GB key size
-	const largeValueSize int64 = 2 << 30 // 2GB value size
+	var largeKeySize int64 = 2 << 30   // 2GB key size
+	var largeValueSize int64 = 2 << 30 // 2GB value size
 
 	largeKey := bytes.Repeat([]byte("k"), int(largeKeySize))
 	largeValue := bytes.Repeat([]byte("v"), int(largeValueSize))
@@ -579,7 +579,7 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	// Write just shy of 256MiB to the block 63 * 4MiB < 256MiB
 	const numKVs = 63
 	const valueSize = 4 * (1 << 20)
-	const FourGB int64 = 4 * (1 << 30)
+	var FourGB int64 = 4 * (1 << 30)
 
 	type KVTestPair struct {
 		key   []byte
