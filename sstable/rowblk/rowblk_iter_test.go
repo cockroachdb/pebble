@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -473,15 +474,15 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
-	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" {
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	var largeKeySize int64 = 2 << 30   // 2GB key size
-	var largeValueSize int64 = 2 << 30 // 2GB value size
+	const largeKeySize = 2 << 30   // 2GB key size
+	const largeValueSize = 2 << 30 // 2GB value size
 
-	largeKey := bytes.Repeat([]byte("k"), int(largeKeySize))
-	largeValue := bytes.Repeat([]byte("v"), int(largeValueSize))
+	largeKey := bytes.Repeat([]byte("k"), largeKeySize)
+	largeValue := bytes.Repeat([]byte("v"), largeValueSize)
 
 	writer := &Writer{RestartInterval: 1}
 	writer.Add(base.InternalKey{UserKey: largeKey}, largeValue)
@@ -517,29 +518,26 @@ func TestBufferExceeding256MBShouldPanic(t *testing.T) {
 
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
-	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" {
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
 	// Adding 64 KVs each with size 4MiB will create a block
 	// size of >= ~256MiB
-	numKVs := 64
-	valueSize := (1 << 20) * 4
+	const numKVs = 64
+	const valueSize = (1 << 20) * 4
 
 	type KVTestPair struct {
 		key   []byte
 		value []byte
 	}
 
-	KVTestPairs := func() []KVTestPair {
-		list := make([]KVTestPair, numKVs)
-		for i := 0; i < numKVs; i++ {
-			key := fmt.Sprintf("key-%04d", i)
-			value := strings.Repeat("a", valueSize)
-			list[i] = KVTestPair{key: []byte(key), value: []byte(value)}
-		}
-		return list
-	}()
+	KVTestPairs := make([]KVTestPair, numKVs)
+	value4MB := bytes.Repeat([]byte("a"), valueSize)
+	for i := 0; i < numKVs; i++ {
+		key := fmt.Sprintf("key-%04d", i)
+		KVTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
+	}
 
 	writer := &Writer{RestartInterval: 1}
 	for _, KVPair := range KVTestPairs {
@@ -574,29 +572,26 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
-	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" {
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
 	// Write just shy of 256MiB to the block 63 * 4MiB < 256MiB
-	numKVs := 63
-	valueSize := 4 * (1 << 20)
-	var FourGB int64 = 4 * (1 << 30)
+	const numKVs = 63
+	const valueSize = 4 * (1 << 20)
+	const FourGB = 4 * (1 << 30)
 
 	type KVTestPair struct {
 		key   []byte
 		value []byte
 	}
 
-	KVTestPairs := func() []KVTestPair {
-		list := make([]KVTestPair, numKVs)
-		for i := 0; i < numKVs; i++ {
-			key := fmt.Sprintf("key-%04d", i)
-			value := strings.Repeat("a", valueSize)
-			list[i] = KVTestPair{key: []byte(key), value: []byte(value)}
-		}
-		return list
-	}()
+	KVTestPairs := make([]KVTestPair, numKVs)
+	value4MB := bytes.Repeat([]byte("a"), valueSize)
+	for i := 0; i < numKVs; i++ {
+		key := fmt.Sprintf("key-%04d", i)
+		KVTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
+	}
 
 	writer := &Writer{RestartInterval: 1}
 	for _, KVPair := range KVTestPairs {
@@ -606,7 +601,7 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	// Add the 4GiB KV, causing iter.restarts >= math.MaxUint32.
 	// Ensure that SeekGE() works thereafter without integer
 	// overflows.
-	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", int(FourGB))))
+	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", FourGB)))
 
 	blockData := writer.Finish()
 	iter, err := NewIter(bytes.Compare, nil, nil, blockData, block.NoTransforms)

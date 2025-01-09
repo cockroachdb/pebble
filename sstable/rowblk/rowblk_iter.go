@@ -195,7 +195,7 @@ type Iter struct {
 	firstUserKeyWithPrefixBuf []byte
 }
 
-// Type representing an offset in a block
+// offsetInBlock represents an offset in a block
 //
 // While restart points are serialized as uint32's, it is possible for offsets to
 // be greater than math.MaxUint32 since they may point to an offset after the KVs.
