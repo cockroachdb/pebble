@@ -478,11 +478,11 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	const largeKeySize = 2 << 30   // 2GB key size
-	const largeValueSize = 2 << 30 // 2GB value size
+	const largeKeySize int64 = 2 << 30   // 2GB key size
+	const largeValueSize int64 = 2 << 30 // 2GB value size
 
-	largeKey := bytes.Repeat([]byte("k"), largeKeySize)
-	largeValue := bytes.Repeat([]byte("v"), largeValueSize)
+	largeKey := bytes.Repeat([]byte("k"), int(largeKeySize))
+	largeValue := bytes.Repeat([]byte("v"), int(largeValueSize))
 
 	writer := &Writer{RestartInterval: 1}
 	writer.Add(base.InternalKey{UserKey: largeKey}, largeValue)
@@ -579,7 +579,7 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	// Write just shy of 256MiB to the block 63 * 4MiB < 256MiB
 	const numKVs = 63
 	const valueSize = 4 * (1 << 20)
-	const FourGB = 4 * (1 << 30)
+	const FourGB int64 = 4 * (1 << 30)
 
 	type KVTestPair struct {
 		key   []byte
@@ -601,7 +601,7 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	// Add the 4GiB KV, causing iter.restarts >= math.MaxUint32.
 	// Ensure that SeekGE() works thereafter without integer
 	// overflows.
-	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", FourGB)))
+	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", int(FourGB))))
 
 	blockData := writer.Finish()
 	iter, err := NewIter(bytes.Compare, nil, nil, blockData, block.NoTransforms)
