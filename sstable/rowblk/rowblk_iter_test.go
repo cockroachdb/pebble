@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -467,7 +468,10 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 
-	t.Skip("Skipping test: requires too much memory for CI now.")
+	_, isCI := os.LookupEnv("CI")
+	if isCI {
+		t.Skip("Skipping test: requires too much memory for CI now.")
+	}
 
 	// Test that SeekGE() and SeekLT() function correctly
 	// with a singular large KV > 2GB.
@@ -511,7 +515,10 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 
 func TestBufferExceeding256MBShouldPanic(t *testing.T) {
 
-	t.Skip("Skipping test: requires too much memory for CI now.")
+	_, isCI := os.LookupEnv("CI")
+	if isCI {
+		t.Skip("Skipping test: requires too much memory for CI now.")
+	}
 
 	// Test that writing to a block that is already >= 256MiB
 	// causes a panic to occur.
@@ -559,7 +566,10 @@ func TestBufferExceeding256MBShouldPanic(t *testing.T) {
 
 func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 
-	t.Skip("Skipping test: requires too much memory for CI now.")
+	_, isCI := os.LookupEnv("CI")
+	if isCI {
+		t.Skip("Skipping test: requires too much memory for CI now.")
+	}
 
 	// Tests that SeekGE() works when iter.restarts is
 	// greater than math.MaxUint32 for multiple KVs.
