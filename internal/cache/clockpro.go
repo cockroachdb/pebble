@@ -135,7 +135,9 @@ func (c *shard) init(maxSize int64) {
 
 // getWithMaybeReadEntry is the internal helper for implementing
 // Cache.{Get,GetWithReadHandle}. When desireReadEntry is true, and the block
-// is not in the cache (nil Value), a non-nil readEntry is returned.
+// is not in the cache (nil Value), a non-nil readEntry is returned (in which
+// case the caller is responsible to dereference the entry, via one of
+// unrefAndTryRemoveFromMap(), setReadValue(), setReadError()).
 func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *readEntry) {
 	c.mu.RLock()
 	var value *Value
@@ -160,7 +162,7 @@ func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *rea
 			}
 		}
 		if value == nil {
-			re = c.readShard.getReadEntryLocked(k)
+			re = c.readShard.acquireReadEntryLocked(k)
 		}
 		c.mu.Unlock()
 	}
@@ -865,6 +867,7 @@ func (c *Cache) GetWithReadHandle(
 	}
 	cv, errorDuration, err = re.waitForReadPermissionOrHandle(ctx)
 	if err != nil || cv != nil {
+		re.unrefAndTryRemoveFromMap()
 		return cv, ReadHandle{}, errorDuration, false, err
 	}
 	return nil, ReadHandle{entry: re}, errorDuration, false, nil
