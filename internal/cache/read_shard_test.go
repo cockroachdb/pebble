@@ -56,20 +56,26 @@ func (r *testReader) getAsync(shard *shard) *string {
 	r.re = re
 	go func() {
 		v, _, err := re.waitForReadPermissionOrHandle(r.ctx)
+
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		r.mu.finishedWait = true
-		r.mu.cond.Signal()
-		if v != nil {
+
+		switch {
+		case v != nil:
+			re.unrefAndTryRemoveFromMap()
 			r.mu.waitedValue = string(v.RawBuffer())
 			v.Release()
-			return
-		}
-		if err != nil {
+
+		case err != nil:
+			re.unrefAndTryRemoveFromMap()
 			r.mu.waitedErr = err
-			return
+
+		default:
+			r.mu.waitedNeedToRead = true
 		}
-		r.mu.waitedNeedToRead = true
+
+		r.mu.finishedWait = true
+		r.mu.cond.Signal()
 	}()
 	return nil
 }

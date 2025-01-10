@@ -86,9 +86,9 @@ func (rs *readShard) Init(shard *shard) *readShard {
 	return rs
 }
 
-// getReadEntryLocked gets a *readEntry for (id, fileNum, offset). shard.mu is
+// acquireReadEntryLocked gets a *readEntry for (id, fileNum, offset). shard.mu is
 // already write locked.
-func (rs *readShard) getReadEntryLocked(k key) *readEntry {
+func (rs *readShard) acquireReadEntryLocked(k key) *readEntry {
 	e, ok := rs.shardMu.readMap.Get(k)
 	if !ok {
 		e = newReadEntry(rs, k)
@@ -207,23 +207,14 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 		}
 		e.mu.readStart = time.Now()
 	}
-	unlockAndUnrefAndTryRemoveFromMap := func(readLock bool) (errorDuration time.Duration) {
-		errorDuration = e.mu.errorDuration
-		if readLock {
-			e.mu.RUnlock()
-		} else {
-			e.mu.Unlock()
-		}
-		e.unrefAndTryRemoveFromMap()
-		return errorDuration
-	}
 
 	for {
 		e.mu.Lock()
 		if e.mu.v != nil {
 			// Value has already been read.
-			cv := constructValueLocked()
-			errorDuration = unlockAndUnrefAndTryRemoveFromMap(false)
+			cv = constructValueLocked()
+			errorDuration = e.mu.errorDuration
+			e.mu.Unlock()
 			return cv, errorDuration, nil
 		}
 		// Not already read. Wait for turn to do the read or for someone else to do
@@ -245,7 +236,8 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 		select {
 		case <-ctx.Done():
 			e.mu.RLock()
-			errorDuration = unlockAndUnrefAndTryRemoveFromMap(true)
+			errorDuration = e.mu.errorDuration
+			e.mu.RUnlock()
 			return nil, errorDuration, ctx.Err()
 		case _, ok := <-ch:
 			if !ok {
@@ -255,7 +247,8 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 					panic("value is nil")
 				}
 				h := constructValueLocked()
-				errorDuration = unlockAndUnrefAndTryRemoveFromMap(true)
+				errorDuration = e.mu.errorDuration
+				e.mu.RUnlock()
 				return h, errorDuration, nil
 			}
 			// Else, probably granted permission to do the read. NB: since isReading
