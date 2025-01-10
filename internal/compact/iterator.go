@@ -1294,7 +1294,8 @@ func (i *Iter) saveValue() {
 		i.err = err
 		i.value = base.LazyValue{}
 	} else if !callerOwned {
-		i.value = base.MakeInPlaceValue(append(i.valueBuf[:0], v...))
+		i.valueBuf = append(i.valueBuf[:0], v...)
+		i.value = base.MakeInPlaceValue(i.valueBuf)
 	} else {
 		i.value = base.MakeInPlaceValue(v)
 	}
