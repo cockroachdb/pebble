@@ -338,7 +338,7 @@ func (b *Buffer) Append(v []byte) int {
 		for size < newLen {
 			size *= 2
 		}
-		b.h.b = slices.Grow(b.h.b, size-cap(b.h.b))
+		b.h.b = slices.Grow(b.h.b, size-len(b.h.b))
 	}
 	b.h.b = b.h.b[:newLen]
 	if n := copy(b.h.b[off:], v); n != len(v) {
@@ -411,10 +411,10 @@ func (h *BufHandle) Release() {
 		panic(errors.AssertionFailedf("pool has no maximum size"))
 	}
 	// Note we avoid releasing buffers that are larger than the configured
-	// maximum to the pool. This avoids holding on to occassional large buffers
-	// necesary for, for example, single large values.
+	// maximum to the pool. This avoids holding on to occasional large buffers
+	// necessary for, for example, singlular large values.
 	if h.b != nil && len(h.b) < h.pool.Max {
-		if invariants.Enabled {
+		if invariants.Sometimes(50) {
 			// Set the bytes to a random value. Cap the number of bytes being
 			// randomized to prevent test timeouts.
 			l := min(cap(h.b), 1000)
@@ -423,7 +423,7 @@ func (h *BufHandle) Release() {
 				h.b[j] = byte(rand.Uint32())
 			}
 		}
-		h.pool.pool.Put(h)
+		h.pool.Put(h)
 	}
 }
 
@@ -446,12 +446,29 @@ type bufferSyncPool struct {
 	pool    sync.Pool
 }
 
+// Put returns a buffer to the pool. While the buffer is in the pool, its pool
+// member is zeroed. This is used to validate invariants around double use of a
+// buffer.
+func (p *bufferSyncPool) Put(bh *BufHandle) {
+	if bh.pool == nil {
+		panic(errors.AssertionFailedf("buffer has no pool; was it already released?"))
+	}
+	bh.pool = nil
+	p.pool.Put(bh)
+}
+
 // Get retrieves a new buf from the pool, or allocates one of the configured
 // default size if the pool is empty.
 func (p *bufferSyncPool) Get() *BufHandle {
 	v := p.pool.Get()
 	if v != nil {
-		return v.(*BufHandle)
+		bh := v.(*BufHandle)
+		if bh.pool != nil {
+			panic(errors.AssertionFailedf("buffer has a pool; was it inserted into a pool twice?"))
+		}
+		// Set the pool so we know where to return the buffer to.
+		bh.pool = p
+		return bh
 	}
 	if invariants.Enabled && p.Default == 0 {
 		// Guard against accidentally forgetting to initialize a buffer sync pool.
