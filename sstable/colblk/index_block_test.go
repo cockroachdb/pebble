@@ -120,12 +120,13 @@ func TestIndexIterInitHandle(t *testing.T) {
 	c := cache.New(10 << 10)
 	defer c.Unref()
 
-	v := block.Alloc(block.MetadataSize+len(blockData), nil)
-	copy(v.BlockData(), blockData)
-	d := (*IndexBlockDecoder)(unsafe.Pointer(v.BlockMetadata()))
-	d.Init(blockData)
-
-	v.SetInCacheForTesting(c, cache.ID(1), base.DiskFileNum(1), 0)
+	{
+		v := block.Alloc(len(blockData), nil)
+		copy(v.BlockData(), blockData)
+		d := (*IndexBlockDecoder)(unsafe.Pointer(v.BlockMetadata()))
+		d.Init(v.BlockData())
+		v.SetInCacheForTesting(c, cache.ID(1), base.DiskFileNum(1), 0)
+	}
 
 	getBlockAndIterate := func(it *IndexIter) {
 		cv := c.Get(cache.ID(1), base.DiskFileNum(1), 0)
