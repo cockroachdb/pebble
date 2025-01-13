@@ -169,7 +169,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 			var err error
 			r := readers[file.FileNum]
 			if kinds.RangeDeletion() {
-				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
+				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.stats, nil)
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
@@ -671,14 +671,14 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		levelIndex := i
 		level := len(readers) - 1 - i
 		newIters := func(
-			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
 				sstable.NoTransforms, opts.LowerBound, opts.UpperBound)
 			if err != nil {
 				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.stats, nil)
 			if err != nil {
 				iter.Close()
 				return iterSet{}, err

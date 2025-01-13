@@ -26,12 +26,15 @@ type ReaderProvider interface {
 // ExternalBlockReader is used to read value blocks from a file outside the
 // context of a open sstable iterator reading the file.
 type ExternalBlockReader interface {
-	ReadValueBlockExternal(context.Context, block.Handle) (block.BufferHandle, error)
+	ReadValueBlockExternal(context.Context,
+		block.Handle,
+		*base.InternalIteratorStats,
+		block.IterStatsAccumulator) (block.BufferHandle, error)
 }
 
 // IteratorBlockReader is used to read value blocks from within an open file.
 type IteratorBlockReader interface {
-	ReadValueBlock(block.Handle, *base.InternalIteratorStats) (block.BufferHandle, error)
+	ReadValueBlock(block.Handle, *base.InternalIteratorStats, block.IterStatsAccumulator) (block.BufferHandle, error)
 }
 
 type blockProviderWhenClosed struct {
@@ -51,7 +54,7 @@ func (bpwc *blockProviderWhenClosed) close() {
 }
 
 func (bpwc blockProviderWhenClosed) ReadValueBlock(
-	h block.Handle, stats *base.InternalIteratorStats,
+	h block.Handle, stats *base.InternalIteratorStats, statsAccum block.IterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	// This is rare, since most block reads happen when the corresponding
 	// sstable iterator is open. So we are willing to sacrifice a proper context
@@ -64,7 +67,7 @@ func (bpwc blockProviderWhenClosed) ReadValueBlock(
 	// TODO(jackson,sumeer): Consider whether to use a buffer pool in this case.
 	// The bpwc is not allowed to outlive the iterator tree, so it cannot
 	// outlive the buffer pool.
-	return bpwc.r.ReadValueBlockExternal(ctx, h)
+	return bpwc.r.ReadValueBlockExternal(ctx, h, stats, statsAccum)
 }
 
 // Reader implements GetLazyValueForPrefixAndValueHandler; it is used to create
@@ -255,7 +258,7 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val [
 	vh := DecodeRemainingHandle(handle)
 	vh.ValueLen = uint32(valLen)
 	if f.vbiBlock == nil {
-		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats)
+		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -267,7 +270,7 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val [
 		if err != nil {
 			return nil, err
 		}
-		vbCacheHandle, err := f.bpOpen.ReadValueBlock(vbh, f.stats)
+		vbCacheHandle, err := f.bpOpen.ReadValueBlock(vbh, f.stats, nil)
 		if err != nil {
 			return nil, err
 		}

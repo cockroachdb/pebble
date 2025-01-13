@@ -103,9 +103,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 
 	var fileNum FileNum
 	newIters :=
-		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds) (iterSet, error) {
+		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, iio internalIterOpts, _ iterKinds) (iterSet, error) {
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
+			rangeDelIter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.stats, nil)
 			if err != nil {
 				return iterSet{}, err
 			}

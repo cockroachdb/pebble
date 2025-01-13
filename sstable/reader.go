@@ -253,13 +253,25 @@ func (r *Reader) newCompactionIter(
 // range-del block for the table. Returns nil if the table does not contain
 // any range deletions.
 func (r *Reader) NewRawRangeDelIter(
-	ctx context.Context, transforms FragmentIterTransforms,
+	ctx context.Context,
+	transforms FragmentIterTransforms,
+	stats *base.InternalIteratorStats,
+	statsAccum block.IterStatsAccumulator,
 ) (iter keyspan.FragmentIterator, err error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
-	// TODO(radu): plumb stats here.
-	h, err := r.readRangeDelBlock(ctx, block.NoReadEnv, noReadHandle, r.rangeDelBH)
+
+	childIterStatsAccumulator := block.ChildIterStatsAccumulator{}
+	childIterStatsAccumulator.Init(statsAccum)
+	readBlockEnv := block.ReadEnv{
+		Stats:      stats,
+		IterStats:  &childIterStatsAccumulator,
+		BufferPool: nil,
+	}
+
+	h, err := r.readRangeDelBlock(ctx, readBlockEnv, noReadHandle, r.rangeDelBH)
+
 	if err != nil {
 		return nil, err
 	}
@@ -278,13 +290,25 @@ func (r *Reader) NewRawRangeDelIter(
 // range-key block for the table. Returns nil if the table does not contain any
 // range keys.
 func (r *Reader) NewRawRangeKeyIter(
-	ctx context.Context, transforms FragmentIterTransforms,
+	ctx context.Context,
+	transforms FragmentIterTransforms,
+	stats *base.InternalIteratorStats,
+	statsAccum block.IterStatsAccumulator,
 ) (iter keyspan.FragmentIterator, err error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
-	// TODO(radu): plumb stats here.
-	h, err := r.readRangeKeyBlock(ctx, block.NoReadEnv, noReadHandle, r.rangeKeyBH)
+
+	childIterStatsAccumulator := block.ChildIterStatsAccumulator{}
+	childIterStatsAccumulator.Init(statsAccum)
+	readBlockEnv := block.ReadEnv{
+		Stats:      stats,
+		IterStats:  &childIterStatsAccumulator,
+		BufferPool: nil,
+	}
+
+	h, err := r.readRangeDelBlock(ctx, readBlockEnv, noReadHandle, r.rangeKeyBH)
+
 	if err != nil {
 		return nil, err
 	}
@@ -386,9 +410,19 @@ func (r *Reader) initKeyspanBlockMetadata(metadata *block.Metadata, data []byte)
 // ReadValueBlockExternal implements valblk.ExternalBlockReader, allowing a
 // base.LazyValue to read a value block.
 func (r *Reader) ReadValueBlockExternal(
-	ctx context.Context, bh block.Handle,
+	ctx context.Context,
+	bh block.Handle,
+	stats *base.InternalIteratorStats,
+	statsAccum block.IterStatsAccumulator,
 ) (block.BufferHandle, error) {
-	return r.readValueBlock(ctx, block.NoReadEnv, noReadHandle, bh)
+	childIterStatsAccumulator := block.ChildIterStatsAccumulator{}
+	childIterStatsAccumulator.Init(statsAccum)
+	readBlockEnv := block.ReadEnv{
+		Stats:      stats,
+		IterStats:  &childIterStatsAccumulator,
+		BufferPool: nil,
+	}
+	return r.readValueBlock(ctx, readBlockEnv, noReadHandle, bh)
 }
 
 func (r *Reader) readValueBlock(

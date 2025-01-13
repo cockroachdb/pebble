@@ -19,11 +19,17 @@ import (
 // virtual reader.
 type CommonReader interface {
 	NewRawRangeKeyIter(
-		ctx context.Context, transforms FragmentIterTransforms,
+		ctx context.Context,
+		transforms FragmentIterTransforms,
+		stats *base.InternalIteratorStats,
+		statsAccum block.IterStatsAccumulator,
 	) (keyspan.FragmentIterator, error)
 
 	NewRawRangeDelIter(
-		ctx context.Context, transforms FragmentIterTransforms,
+		ctx context.Context,
+		transforms FragmentIterTransforms,
+		stats *base.InternalIteratorStats,
+		statsAccum block.IterStatsAccumulator,
 	) (keyspan.FragmentIterator, error)
 
 	NewPointIter(

@@ -121,7 +121,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 						return err.Error()
 					}
 
-					iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms)
+					iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms, nil, nil)
 					if err != nil {
 						return err.Error()
 					}

@@ -378,7 +378,7 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms)
+	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, nil, nil)
 	if err != nil {
 		return nil, keyspan.Span{}, err
 	}
@@ -408,7 +408,7 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms)
+		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, nil, nil)
 		if err != nil {
 			return nil, keyspan.Span{}, err
 		}

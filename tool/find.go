@@ -478,7 +478,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			// bit more work here to put them in a form that can be iterated in
 			// parallel with the point records.
 			rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-				iter, err := r.NewRawRangeDelIter(context.Background(), fragTransforms)
+				iter, err := r.NewRawRangeDelIter(context.Background(), fragTransforms, nil, nil)
 				if err != nil {
 					return nil, err
 				}

@@ -555,7 +555,7 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockRes
 // ReadValueBlock implements the valblk.BlockProviderWhenOpen interface for use
 // by the valblk.Reader.
 func (i *singleLevelIterator[I, PI, D, PD]) ReadValueBlock(
-	bh block.Handle, stats *base.InternalIteratorStats,
+	bh block.Handle, stats *base.InternalIteratorStats, statsAccum block.IterStatsAccumulator,
 ) (block.BufferHandle, error) {
 	env := i.readBlockEnv
 	env.Stats = stats

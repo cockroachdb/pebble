@@ -277,7 +277,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := FragmentIterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewRawRangeDelIter(context.Background(), transforms)
+			iter, err := v.NewRawRangeDelIter(context.Background(), transforms, nil, nil)
 			if err != nil {
 				return err.Error()
 			}
@@ -303,7 +303,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := FragmentIterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewRawRangeKeyIter(context.Background(), transforms)
+			iter, err := v.NewRawRangeKeyIter(context.Background(), transforms, nil, nil)
 			if err != nil {
 				return err.Error()
 			}
