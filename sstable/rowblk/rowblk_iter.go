@@ -584,7 +584,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := index + ((upper - index) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 
 			// index ≤ h < upper
 			offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
@@ -767,7 +767,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := index + ((upper - index) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 
 			// index ≤ h < upper
 			offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
@@ -1294,7 +1294,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 						// Invariant: f(index-1) == false, f(upper) == true.
 						upper := i.numRestarts
 						for index < upper {
-							h := index + ((upper - index) >> 1) // avoid overflow when computing h
+							h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 
 							// index ≤ h < upper
 							offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
@@ -1497,7 +1497,7 @@ start:
 		// Invariant: f(index-1) == false, f(upper) == true.
 		upper := i.numRestarts
 		for index < upper {
-			h := index + ((upper - index) >> 1) // avoid overflow when computing h
+			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 
 			// index ≤ h < upper
 			offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
