@@ -111,10 +111,10 @@ type blockIter struct {
 
 	// offset is the byte index that marks where the current key/value is
 	// encoded in the block.
-	offset int32
+	offset offsetInBlock
 	// nextOffset is the byte index where the next key/value is encoded in the
 	// block.
-	nextOffset int32
+	nextOffset offsetInBlock
 	// A "restart point" in a block is a point where the full key is encoded,
 	// instead of just having a suffix of the key encoded. See readEntry() for
 	// how prefix compression of keys works. Keys in between two restart points
@@ -127,7 +127,10 @@ type blockIter struct {
 	// 4 bytes of the block as a uint32 (i.ptr[len(block)-4:]). i.restarts can
 	// therefore be seen as the point where data in the block ends, and a list
 	// of offsets of all restart points begins.
-	restarts int32
+	//
+	// int64 is used to prevent overflow and preserve signedness for binary
+	// search invariants.
+	restarts offsetInBlock
 	// Number of restart points in this block. Encoded at the end of the block
 	// as a uint32.
 	numRestarts int32
@@ -187,12 +190,25 @@ type blockIter struct {
 	firstUserKeyWithPrefixBuf []byte
 }
 
+// offsetInBlock represents an offset in a block
+//
+// While restart points are serialized as uint32's, it is possible for offsets to
+// be greater than math.MaxUint32 since they may point to an offset after the KVs.
+//
+// Previously, offsets were represented as int32, which causes problems with
+// integer overflows while indexing into blocks (i.data) with large KVs in SeekGE()
+// and SeekLT(). Using an int64 solves the problem of overflows as wraparounds will
+// be prevented. Additionally, the signedness of int64 allows repsentation of
+// iterators that have conducted backward interation and allows for binary search
+// invariants in SeekGE() and SeekLT() to be preserved.
+type offsetInBlock int64
+
 type blockEntry struct {
-	offset   int32
-	keyStart int32
-	keyEnd   int32
-	valStart int32
-	valSize  int32
+	offset   offsetInBlock
+	keyStart offsetInBlock
+	keyEnd   offsetInBlock
+	valStart offsetInBlock
+	valSize  uint32
 }
 
 // blockIter implements the base.InternalIterator interface.
@@ -218,7 +234,7 @@ func (i *blockIter) init(cmp Compare, split Split, block block, transforms IterT
 	i.synthSuffixBuf = i.synthSuffixBuf[:0]
 	i.split = split
 	i.cmp = cmp
-	i.restarts = int32(len(block)) - 4*(1+numRestarts)
+	i.restarts = offsetInBlock(len(block)) - 4*(1+offsetInBlock(numRestarts))
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&block[0])
 	i.data = block
@@ -360,7 +376,7 @@ func (i *blockIter) readEntry() {
 	}
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
-	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
+	i.nextOffset = offsetInBlock(uintptr(ptr)-uintptr(i.ptr)) + offsetInBlock(value)
 }
 
 func (i *blockIter) readFirstKey() error {
@@ -474,16 +490,16 @@ func (i *blockIter) clearCache() {
 }
 
 func (i *blockIter) cacheEntry() {
-	var valStart int32
-	valSize := int32(len(i.val))
+	var valStart offsetInBlock
+	valSize := uint32(len(i.val))
 	if valSize > 0 {
-		valStart = int32(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
+		valStart = offsetInBlock(uintptr(unsafe.Pointer(&i.val[0])) - uintptr(i.ptr))
 	}
 
 	i.cached = append(i.cached, blockEntry{
 		offset:   i.offset,
-		keyStart: int32(len(i.cachedBuf)),
-		keyEnd:   int32(len(i.cachedBuf) + len(i.key)),
+		keyStart: offsetInBlock(len(i.cachedBuf)),
+		keyEnd:   offsetInBlock(len(i.cachedBuf) + len(i.key)),
 		valStart: valStart,
 		valSize:  valSize,
 	})
@@ -533,8 +549,9 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		upper := i.numRestarts
 		for index < upper {
 			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+
 			// index ≤ h < upper
-			offset := decodeRestart(i.data[i.restarts+4*h:])
+			offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -606,7 +623,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 	// could be equal to the search key.  If index == 0, then all keys in this
 	// block are larger than the key sought, and offset remains at zero.
 	if index > 0 {
-		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
+		i.offset = decodeRestart(i.data[i.restarts+4*offsetInBlock(index-1):])
 	}
 	i.readEntry()
 	hiddenPoint := i.decodeInternalKey(i.key)
@@ -715,8 +732,9 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		upper := i.numRestarts
 		for index < upper {
 			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+
 			// index ≤ h < upper
-			offset := decodeRestart(i.data[i.restarts+4*h:])
+			offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -817,9 +835,9 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	// i.Prev(). We need to know when we have hit the offset for index, since then
 	// we can stop searching. targetOffset encodes that offset for index.
 	targetOffset := i.restarts
-	i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
+	i.offset = decodeRestart(i.data[i.restarts+4*offsetInBlock(index-1):])
 	if index < i.numRestarts {
-		targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
+		targetOffset = decodeRestart(i.data[i.restarts+4*offsetInBlock(index):])
 
 		if i.transforms.SyntheticSuffix.IsSet() {
 			// The binary search was conducted on keys without suffix replacement,
@@ -873,7 +891,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 				if index+1 < i.numRestarts {
 					// if index+1 is within the i.data bounds, use it to find the target
 					// offset.
-					targetOffset = decodeRestart(i.data[i.restarts+4*(index+1):])
+					targetOffset = decodeRestart(i.data[i.restarts+4*offsetInBlock(index+1):])
 				} else {
 					targetOffset = i.restarts
 				}
@@ -973,9 +991,9 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	return &i.ikey, i.lazyValue
 }
 
-func decodeRestart(b []byte) int32 {
+func decodeRestart(b []byte) offsetInBlock {
 	_ = b[3] // bounds check hint to compiler; see golang.org/issue/14808
-	return int32(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 |
+	return offsetInBlock(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 |
 		uint32(b[3]&restartMaskLittleEndianHighByteWithoutSetHasSamePrefix)<<24)
 }
 
@@ -986,7 +1004,7 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	}
 
 	// Seek forward from the last restart point.
-	i.offset = decodeRestart(i.data[i.restarts+4*(i.numRestarts-1):])
+	i.offset = decodeRestart(i.data[i.restarts+4*offsetInBlock(i.numRestarts-1):])
 	if !i.valid() {
 		return nil, base.LazyValue{}
 	}
@@ -1194,7 +1212,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 		}
 		// The starting position of the value.
 		valuePtr := unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
-		i.nextOffset = int32(uintptr(valuePtr)-uintptr(i.ptr)) + int32(value)
+		i.nextOffset = offsetInBlock(uintptr(valuePtr)-uintptr(i.ptr)) + offsetInBlock(value)
 		if invariants.Enabled && unshared < 8 {
 			// This should not happen since only the key prefix is shared, so even
 			// if the prefix length is the same as the user key length, the unshared
@@ -1240,8 +1258,9 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 						upper := i.numRestarts
 						for index < upper {
 							h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+
 							// index ≤ h < upper
-							offset := decodeRestart(i.data[i.restarts+4*h:])
+							offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
 							if offset < targetOffset {
 								index = h + 1 // preserves f(index-1) == false
 							} else {
@@ -1268,7 +1287,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 						// most significant bit of the 3rd byte is what we use for
 						// encoding the set-has-same-prefix information, the indexing
 						// below has +3.
-						i.data[i.restarts+4*index+3]&restartMaskLittleEndianHighByteOnlySetHasSamePrefix != 0 {
+						i.data[i.restarts+4*offsetInBlock(index)+3]&restartMaskLittleEndianHighByteOnlySetHasSamePrefix != 0 {
 						// We still have the same prefix, so move to the next restart.
 						index++
 					}
@@ -1277,7 +1296,7 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 						// Managed to skip past at least one restart. Resume iteration
 						// from index-1. Since nextFastCount has been reset to 0, we
 						// should be able to iterate to the next prefix.
-						i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
+						i.offset = decodeRestart(i.data[i.restarts+4*offsetInBlock(index-1):])
 						i.readEntry()
 					}
 					// Else, unable to skip past any restart. Resume iteration. Since
@@ -1438,8 +1457,9 @@ start:
 		upper := i.numRestarts
 		for index < upper {
 			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
+
 			// index ≤ h < upper
-			offset := decodeRestart(i.data[i.restarts+4*h:])
+			offset := decodeRestart(i.data[i.restarts+4*offsetInBlock(h):])
 			if offset < targetOffset {
 				// Looking for the first restart that has offset >= targetOffset, so
 				// ignore h and earlier.
@@ -1460,7 +1480,7 @@ start:
 	// as the index).
 	i.offset = 0
 	if index > 0 {
-		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
+		i.offset = decodeRestart(i.data[i.restarts+4*offsetInBlock(index-1):])
 	}
 	// TODO(sumeer): why is the else case not an error given targetOffset is a
 	// valid offset.
