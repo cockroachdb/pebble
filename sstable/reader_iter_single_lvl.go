@@ -73,7 +73,6 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	err          error
 	closeHook    func(i Iterator) error
 
-	iterStats    block.ChildIterStatsAccumulator
 	readBlockEnv block.ReadEnv
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
@@ -210,10 +209,8 @@ func newColumnBlockSingleLevelIterator(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
-	stats *base.InternalIteratorStats,
-	statsAccum block.IterStatsAccumulator,
+	env block.ReadEnv,
 	rp valblk.ReaderProvider,
-	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorColumnBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -225,11 +222,11 @@ func newColumnBlockSingleLevelIterator(
 	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
-		stats, statsAccum, bufferPool,
+		env,
 	)
 	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
-		i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, stats)
+		i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, env.Stats)
 		getLazyValuer = &i.vbReader
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
@@ -260,10 +257,8 @@ func newRowBlockSingleLevelIterator(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
-	stats *base.InternalIteratorStats,
-	statsAccum block.IterStatsAccumulator,
+	env block.ReadEnv,
 	rp valblk.ReaderProvider,
-	bufferPool *block.BufferPool,
 ) (*singleLevelIteratorRowBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -275,11 +270,11 @@ func newRowBlockSingleLevelIterator(
 	useFilterBlock := shouldUseFilterBlock(r, filterBlockSizeLimit)
 	i.init(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
-		stats, statsAccum, bufferPool,
+		env,
 	)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
-			i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, stats)
+			i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, env.Stats)
 			(&i.data).SetGetLazyValuer(&i.vbReader)
 			i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 		}
@@ -306,9 +301,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
-	stats *base.InternalIteratorStats,
-	statsAccum block.IterStatsAccumulator,
-	bufferPool *block.BufferPool,
+	env block.ReadEnv,
 ) {
 	i.inPool = false
 	i.ctx = ctx
@@ -323,12 +316,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 		i.vState = v
 		i.endKeyInclusive, i.lower, i.upper = v.constrainBounds(lower, upper, false /* endInclusive */)
 	}
-	i.iterStats.Init(statsAccum)
-	i.readBlockEnv = block.ReadEnv{
-		Stats:      stats,
-		IterStats:  &i.iterStats,
-		BufferPool: bufferPool,
-	}
+	i.readBlockEnv = env
 
 	i.indexFilterRH = r.blockReader.UsePreallocatedReadHandle(
 		objstorage.ReadBeforeForIndexAndFilter, &i.indexFilterRHPrealloc)
@@ -1554,7 +1542,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	if invariants.Enabled && i.inPool {
 		panic("Close called on interator in pool")
 	}
-	i.iterStats.Close()
+
 	var err error
 	if i.closeHook != nil {
 		err = firstError(err, i.closeHook(i))

@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // ReadAll returns all point keys, range del spans, and range key spans from an
@@ -32,14 +33,14 @@ func ReadAll(
 	}
 
 	ctx := context.Background()
-	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(ctx, NoFragmentTransforms)); rangeDelIter != nil {
+	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(ctx, NoFragmentTransforms, block.NoReadEnv)); rangeDelIter != nil {
 		defer rangeDelIter.Close()
 		for s := testutils.CheckErr(rangeDelIter.First()); s != nil; s = testutils.CheckErr(rangeDelIter.Next()) {
 			rangeDels = append(rangeDels, s.Clone())
 		}
 	}
 
-	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms)); rangeKeyIter != nil {
+	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms, block.NoReadEnv)); rangeKeyIter != nil {
 		defer rangeKeyIter.Close()
 		for s := testutils.CheckErr(rangeKeyIter.First()); s != nil; s = testutils.CheckErr(rangeKeyIter.Next()) {
 			rangeKeys = append(rangeKeys, s.Clone())

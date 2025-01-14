@@ -155,10 +155,12 @@ type CategoryStats struct {
 	BlockReadDuration time.Duration
 }
 
-func (s *CategoryStats) aggregate(a CategoryStats) {
-	s.BlockBytes += a.BlockBytes
-	s.BlockBytesInCache += a.BlockBytesInCache
-	s.BlockReadDuration += a.BlockReadDuration
+func (s *CategoryStats) aggregate(
+	blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration,
+) {
+	s.BlockBytes += blockBytes
+	s.BlockBytesInCache += blockBytesInCache
+	s.BlockReadDuration += blockReadDuration
 }
 
 // CategoryStatsAggregate is the aggregate for the given category.
@@ -176,9 +178,11 @@ type categoryStatsWithMu struct {
 }
 
 // Accumulate implements the IterStatsAccumulator interface.
-func (c *categoryStatsWithMu) Accumulate(stats CategoryStats) {
+func (c *categoryStatsWithMu) Accumulate(
+	blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration,
+) {
 	c.mu.Lock()
-	c.stats.aggregate(stats)
+	c.stats.aggregate(blockBytes, blockBytesInCache, blockReadDuration)
 	c.mu.Unlock()
 }
 
@@ -210,7 +214,7 @@ func (s *shardedCategoryStats) getStats() CategoryStatsAggregate {
 	}
 	for i := range s.shards {
 		s.shards[i].mu.Lock()
-		agg.CategoryStats.aggregate(s.shards[i].stats)
+		agg.CategoryStats.aggregate(s.shards[i].stats.BlockBytes, s.shards[i].stats.BlockBytesInCache, s.shards[i].stats.BlockReadDuration)
 		s.shards[i].mu.Unlock()
 	}
 	return agg
@@ -250,34 +254,5 @@ func (c *CategoryStatsCollector) GetStats() []CategoryStatsAggregate {
 
 type IterStatsAccumulator interface {
 	// Accumulate accumulates the provided stats.
-	Accumulate(cas CategoryStats)
-}
-
-// ChildIterStatsAccumulator is a helper for a sstable iterator to accumulate
-// stats, which are reported to the CategoryStatsCollector when the accumulator
-// is closed.
-type ChildIterStatsAccumulator struct {
-	stats  CategoryStats
-	parent IterStatsAccumulator
-}
-
-// Init initializes the accumulator with the parent accumulator.
-func (a *ChildIterStatsAccumulator) Init(parent IterStatsAccumulator) {
-	a.parent = parent
-}
-
-// Accumulate accumulates the provided stats.
-func (a *ChildIterStatsAccumulator) Accumulate(
-	blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration,
-) {
-	a.stats.BlockBytes += blockBytes
-	a.stats.BlockBytesInCache += blockBytesInCache
-	a.stats.BlockReadDuration += blockReadDuration
-}
-
-// Close closes the accumulator, accumulating the stats to the parent.
-func (a *ChildIterStatsAccumulator) Close() {
-	if a.parent != nil {
-		a.parent.Accumulate(a.stats)
-	}
+	Accumulate(blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration)
 }

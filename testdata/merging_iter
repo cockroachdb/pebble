@@ -50,7 +50,7 @@ c#27,SET:27
 e#10,SET:10
 g#20,SET:20
 .
-{BlockBytes:116 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:4 ValueBytes:8 PointCount:4 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:200 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:4 ValueBytes:8 PointCount:4 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 
 # seekGE() should not allow the rangedel to act on points in the lower sstable that are after it.
@@ -651,7 +651,7 @@ next
 stats
 ----
 a#30,SET:30
-{BlockBytes:97 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:1 ValueBytes:2 PointCount:1 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:139 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:1 ValueBytes:2 PointCount:1 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
 f#21,SET:21
 {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:5 ValueBytes:10 PointCount:5 PointsCoveredByRangeTombstones:4 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}

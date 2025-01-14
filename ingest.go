@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -378,7 +379,7 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms)
+	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, block.NoReadEnv)
 	if err != nil {
 		return nil, keyspan.Span{}, err
 	}
@@ -408,7 +409,7 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms)
+		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, block.NoReadEnv)
 		if err != nil {
 			return nil, keyspan.Span{}, err
 		}

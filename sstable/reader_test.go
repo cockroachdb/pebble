@@ -235,7 +235,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := IterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewCompactionIter(transforms, nil, rp, &bp)
+			iter, err := v.NewCompactionIter(transforms, block.ReadEnv{BufferPool: &bp}, rp)
 			if err != nil {
 				return err.Error()
 			}
@@ -277,7 +277,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := FragmentIterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewRawRangeDelIter(context.Background(), transforms)
+			iter, err := v.NewRawRangeDelIter(context.Background(), transforms, block.NoReadEnv)
 			if err != nil {
 				return err.Error()
 			}
@@ -303,7 +303,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := FragmentIterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewRawRangeKeyIter(context.Background(), transforms)
+			iter, err := v.NewRawRangeKeyIter(context.Background(), transforms, block.NoReadEnv)
 			if err != nil {
 				return err.Error()
 			}
@@ -362,7 +362,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 			iter, err := v.NewPointIter(
 				context.Background(), transforms, lower, upper, filterer, NeverUseFilterBlock,
-				&stats, nil, MakeTrivialReaderProvider(r))
+				block.ReadEnv{Stats: &stats, IterStats: nil}, MakeTrivialReaderProvider(r))
 			if err != nil {
 				return err.Error()
 			}
@@ -755,8 +755,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					nil, /* upper */
 					filterer,
 					AlwaysUseFilterBlock,
-					&stats,
-					nil,
+					block.ReadEnv{Stats: &stats, IterStats: nil},
 					MakeTrivialReaderProvider(r),
 				)
 				if err != nil {
@@ -899,7 +898,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				var pool block.BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					NoTransforms, nil, MakeTrivialReaderProvider(r), &pool)
+					NoTransforms, block.ReadEnv{BufferPool: &pool}, MakeTrivialReaderProvider(r))
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *singleLevelIteratorRowBlocks:
@@ -957,7 +956,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		pool.Init(5)
 		defer pool.Release()
 		citer, err := r.NewCompactionIter(
-			NoTransforms, nil, MakeTrivialReaderProvider(r), &pool)
+			NoTransforms, block.ReadEnv{BufferPool: &pool}, MakeTrivialReaderProvider(r))
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*singleLevelIteratorRowBlocks)
@@ -1254,7 +1253,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			},
 			nil, nil, nil,
-			AlwaysUseFilterBlock, nil, nil,
+			AlwaysUseFilterBlock, block.NoReadEnv,
 			MakeTrivialReaderProvider(eReader), &virtualState{
 				lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
 				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
@@ -2401,7 +2400,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								transforms := IterTransforms{HideObsoletePoints: hideObsoletePoints}
 								iter, err := r.NewPointIter(
 									context.Background(), transforms, nil, nil, filterer,
-									AlwaysUseFilterBlock, nil, nil,
+									AlwaysUseFilterBlock, block.NoReadEnv,
 									MakeTrivialReaderProvider(r))
 								require.NoError(b, err)
 								b.ResetTimer()
