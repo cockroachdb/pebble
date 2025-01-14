@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/perf/benchfmt"
 	"golang.org/x/sync/errgroup"
@@ -1022,7 +1023,7 @@ func loadFlushedSSTableKeys(
 			}
 
 			// Load all the range tombstones.
-			if iter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms); err != nil {
+			if iter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.NoReadEnv); err != nil {
 				return err
 			} else if iter != nil {
 				defer iter.Close()
@@ -1045,7 +1046,7 @@ func loadFlushedSSTableKeys(
 			}
 
 			// Load all the range keys.
-			if iter, err := r.NewRawRangeKeyIter(context.Background(), sstable.NoFragmentTransforms); err != nil {
+			if iter, err := r.NewRawRangeKeyIter(context.Background(), sstable.NoFragmentTransforms, block.NoReadEnv); err != nil {
 				return err
 			} else if iter != nil {
 				defer iter.Close()

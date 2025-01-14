@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testutils/indenttree"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -169,7 +170,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 			var err error
 			r := readers[file.FileNum]
 			if kinds.RangeDeletion() {
-				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
+				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.ReadEnv{Stats: iio.stats})
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
@@ -178,8 +179,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 				set.point, err = r.NewPointIter(
 					context.Background(),
 					sstable.NoTransforms,
-					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, iio.stats,
-					nil, sstable.MakeTrivialReaderProvider(r))
+					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, block.ReadEnv{Stats: iio.stats, IterStats: nil}, sstable.MakeTrivialReaderProvider(r))
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
@@ -671,14 +671,14 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		levelIndex := i
 		level := len(readers) - 1 - i
 		newIters := func(
-			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+			_ context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
 				sstable.NoTransforms, opts.LowerBound, opts.UpperBound)
 			if err != nil {
 				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms)
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.ReadEnv{Stats: iio.stats})
 			if err != nil {
 				iter.Close()
 				return iterSet{}, err

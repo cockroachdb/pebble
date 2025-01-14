@@ -454,10 +454,10 @@ func (c *fileCacheShard) newIters(
 	var iters iterSet
 	var err error
 	if kinds.RangeKey() && file.HasRangeKeys {
-		iters.rangeKey, err = newRangeKeyIter(ctx, r, file, cr, opts.SpanIterOptions())
+		iters.rangeKey, err = newRangeKeyIter(ctx, r, file, cr, opts.SpanIterOptions(), internalOpts)
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
-		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, dbOpts)
+		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, dbOpts, internalOpts)
 	}
 	if kinds.Point() && err == nil {
 		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, dbOpts)
@@ -574,11 +574,11 @@ func (c *fileCacheShard) newPointIter(
 			uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
 	if internalOpts.compaction {
-		iter, err = cr.NewCompactionIter(transforms, iterStatsAccum, &v.readerProvider, internalOpts.bufferPool)
+		iter, err = cr.NewCompactionIter(transforms, block.ReadEnv{IterStats: iterStatsAccum, BufferPool: internalOpts.bufferPool}, &v.readerProvider)
 	} else {
 		iter, err = cr.NewPointIter(
 			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, filterBlockSizeLimit,
-			internalOpts.stats, iterStatsAccum, &v.readerProvider)
+			block.ReadEnv{Stats: internalOpts.stats, IterStats: iterStatsAccum}, &v.readerProvider)
 	}
 	if err != nil {
 		return nil, err
@@ -600,11 +600,20 @@ func (c *fileCacheShard) newPointIter(
 // sstable's range deletions. This function is for table-cache internal use
 // only, and callers should use newIters instead.
 func newRangeDelIter(
-	ctx context.Context, file *manifest.FileMetadata, cr sstable.CommonReader, dbOpts *fileCacheOpts,
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	cr sstable.CommonReader,
+	dbOpts *fileCacheOpts,
+	internalOpts internalIterOpts,
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := cr.NewRawRangeDelIter(ctx, file.FragmentIterTransforms())
+	readBlockEnv := block.ReadEnv{
+		Stats:      internalOpts.stats,
+		IterStats:  internalOpts.iterStatsAccumulator,
+		BufferPool: nil,
+	}
+	rangeDelIter, err := cr.NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), readBlockEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -630,6 +639,7 @@ func newRangeKeyIter(
 	file *fileMetadata,
 	cr sstable.CommonReader,
 	opts keyspan.SpanIterOptions,
+	internalOpts internalIterOpts,
 ) (keyspan.FragmentIterator, error) {
 	transforms := file.FragmentIterTransforms()
 	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
@@ -646,7 +656,12 @@ func newRangeKeyIter(
 		}
 	}
 	// TODO(radu): wrap in an AssertBounds.
-	return cr.NewRawRangeKeyIter(ctx, transforms)
+	readBlockEnv := block.ReadEnv{
+		Stats:      internalOpts.stats,
+		IterStats:  internalOpts.iterStatsAccumulator,
+		BufferPool: nil,
+	}
+	return cr.NewRawRangeKeyIter(ctx, transforms, readBlockEnv)
 }
 
 // tableCacheShardReaderProvider implements sstable.ReaderProvider for a

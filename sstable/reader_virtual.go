@@ -94,13 +94,10 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 
 // NewCompactionIter is the compaction iterator function for virtual readers.
 func (v *VirtualReader) NewCompactionIter(
-	transforms IterTransforms,
-	statsAccum block.IterStatsAccumulator,
-	rp valblk.ReaderProvider,
-	bufferPool *block.BufferPool,
+	transforms IterTransforms, env block.ReadEnv, rp valblk.ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newCompactionIter(
-		transforms, statsAccum, rp, &v.vState, bufferPool)
+		transforms, env, rp, &v.vState)
 }
 
 // NewPointIter returns an iterator for the point keys in the table.
@@ -118,13 +115,12 @@ func (v *VirtualReader) NewPointIter(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
-	stats *base.InternalIteratorStats,
-	statsAccum block.IterStatsAccumulator,
+	env block.ReadEnv,
 	rp valblk.ReaderProvider,
 ) (Iterator, error) {
 	return v.reader.newPointIter(
 		ctx, transforms, lower, upper, filterer, filterBlockSizeLimit,
-		stats, statsAccum, rp, &v.vState)
+		env, rp, &v.vState)
 }
 
 // ValidateBlockChecksumsOnBacking will call ValidateBlockChecksumsOnBacking on the underlying reader.
@@ -135,9 +131,9 @@ func (v *VirtualReader) ValidateBlockChecksumsOnBacking() error {
 
 // NewRawRangeDelIter wraps Reader.NewRawRangeDelIter.
 func (v *VirtualReader) NewRawRangeDelIter(
-	ctx context.Context, transforms FragmentIterTransforms,
+	ctx context.Context, transforms FragmentIterTransforms, env block.ReadEnv,
 ) (keyspan.FragmentIterator, error) {
-	iter, err := v.reader.NewRawRangeDelIter(ctx, transforms)
+	iter, err := v.reader.NewRawRangeDelIter(ctx, transforms, env)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +157,7 @@ func (v *VirtualReader) NewRawRangeDelIter(
 
 // NewRawRangeKeyIter wraps Reader.NewRawRangeKeyIter.
 func (v *VirtualReader) NewRawRangeKeyIter(
-	ctx context.Context, transforms FragmentIterTransforms,
+	ctx context.Context, transforms FragmentIterTransforms, env block.ReadEnv,
 ) (keyspan.FragmentIterator, error) {
 	syntheticSeqNum := transforms.SyntheticSeqNum
 	if v.vState.isSharedIngested {
@@ -170,7 +166,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		// appropriate sequence number substitution below.
 		transforms.SyntheticSeqNum = 0
 	}
-	iter, err := v.reader.NewRawRangeKeyIter(ctx, transforms)
+	iter, err := v.reader.NewRawRangeKeyIter(ctx, transforms, env)
 	if err != nil {
 		return nil, err
 	}
