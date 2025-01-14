@@ -96,6 +96,7 @@ type MemFS struct {
 	// open files. In tests meant to exercise this behavior, this flag can be
 	// set to error if removing an open file.
 	windowsSemantics bool
+	usage            DiskUsage
 }
 
 var _ FS = &MemFS{}
@@ -596,8 +597,23 @@ func (*MemFS) PathDir(p string) string {
 	return path.Dir(p)
 }
 
+// TestingSetDiskUsage sets the disk usage that will be reported on subsequent
+// GetDiskUsage calls; used for testing. If usage is empty, GetDiskUsage will
+// return ErrUnsupported (which is also the default when TestingSetDiskUsage is
+// not called).
+func (y *MemFS) TestingSetDiskUsage(usage DiskUsage) {
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	y.usage = usage
+}
+
 // GetDiskUsage implements FS.GetDiskUsage.
-func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
+func (y *MemFS) GetDiskUsage(string) (DiskUsage, error) {
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	if y.usage != (DiskUsage{}) {
+		return y.usage, nil
+	}
 	return DiskUsage{}, ErrUnsupported
 }
 
