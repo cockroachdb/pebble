@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -773,17 +774,26 @@ func (w *layoutWriter) WriteValueIndexBlock(
 func (w *layoutWriter) writeBlock(
 	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
-	return w.writePrecompressedBlock(block.CompressAndChecksum(
-		&buf.dataBuf, b, compression, &buf.checksummer))
+	pb := block.CompressAndChecksum(&buf.dataBuf, b, compression, &buf.checksummer)
+	h, err := w.writePrecompressedBlock(pb)
+	// This method is allowed to mangle b, but that only happens when the block
+	// data is not compressible. Mangle it anyway in invariant builds to catch
+	// callers that don't handle this.
+	if invariants.Enabled && invariants.Sometimes(1) {
+		for i := range b {
+			b[i] = 0xFF
+		}
+	}
+	return h, err
 }
 
 // writePrecompressedBlock writes a pre-compressed block and its
-// pre-computed trailer to the writer, returning it's block handle.
+// pre-computed trailer to the writer, returning its block handle.
 //
 // writePrecompressedBlock might mangle the block data.
 func (w *layoutWriter) writePrecompressedBlock(blk block.PhysicalBlock) (block.Handle, error) {
 	w.clearFromCache(w.offset)
-	// Write the bytes to the file. This call can mangle the block data.
+	// Write the bytes to the file.
 	n, err := blk.WriteTo(w.writable)
 	if err != nil {
 		return block.Handle{}, err
