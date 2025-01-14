@@ -7,8 +7,10 @@ package pebble
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -530,6 +532,33 @@ func (i WriteStallBeginInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("write stall beginning: %s", redact.Safe(i.Reason))
 }
 
+// LowDiskSpaceInfo contains the information for a LowDiskSpace
+// event.
+type LowDiskSpaceInfo struct {
+	// AvailBytes is the disk space available to the current process in bytes.
+	AvailBytes uint64
+	// TotalBytes is the total disk space in bytes.
+	TotalBytes uint64
+	// PercentThreshold is one of a set of fixed percentages in the
+	// lowDiskSpaceThresholds below. This event was issued because the disk
+	// space went below this threshold.
+	PercentThreshold int
+}
+
+func (i LowDiskSpaceInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i LowDiskSpaceInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf(
+		"available disk space under %d%% (%s of %s)",
+		redact.Safe(i.PercentThreshold),
+		redact.Safe(humanize.Bytes.Uint64(i.AvailBytes)),
+		redact.Safe(humanize.Bytes.Uint64(i.TotalBytes)),
+	)
+}
+
 // PossibleAPIMisuseInfo contains the information for a PossibleAPIMisuse event.
 type PossibleAPIMisuseInfo struct {
 	Kind APIMisuseKind
@@ -541,11 +570,19 @@ type PossibleAPIMisuseInfo struct {
 }
 
 func (i PossibleAPIMisuseInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i PossibleAPIMisuseInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	switch i.Kind {
 	case IneffectualSingleDelete, NondeterministicSingleDelete:
-		return fmt.Sprintf("%s (key=%q)", i.Kind, i.UserKey)
+		w.Printf("possible API misuse: %s (key=%q)", redact.Safe(i.Kind), i.UserKey)
 	default:
-		return "invalid"
+		if invariants.Enabled {
+			panic("invalid API misuse event")
+		}
+		w.Printf("invalid API misuse event")
 	}
 }
 
@@ -637,7 +674,7 @@ func (k APIMisuseKind) String() string {
 	case IneffectualSingleDelete:
 		return "ineffectual SINGLEDEL"
 	case NondeterministicSingleDelete:
-		return "nondeterministicv SINGLEDEL"
+		return "nondeterministic SINGLEDEL"
 	default:
 		return "unknown"
 	}
@@ -726,6 +763,10 @@ type EventListener struct {
 	// WriteStallEnd is invoked when delayed writes are released.
 	WriteStallEnd func()
 
+	// LowDiskSpace is invoked periodically when the disk space is running
+	// low.
+	LowDiskSpace func(LowDiskSpaceInfo)
+
 	// PossibleAPIMisuse is invoked when a possible API misuse is detected.
 	PossibleAPIMisuse func(PossibleAPIMisuseInfo)
 }
@@ -801,6 +842,9 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.WriteStallEnd == nil {
 		l.WriteStallEnd = func() {}
 	}
+	if l.LowDiskSpace == nil {
+		l.LowDiskSpace = func(info LowDiskSpaceInfo) {}
+	}
 	if l.PossibleAPIMisuse == nil {
 		l.PossibleAPIMisuse = func(info PossibleAPIMisuseInfo) {}
 	}
@@ -874,8 +918,11 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		WriteStallEnd: func() {
 			logger.Infof("write stall ending")
 		},
+		LowDiskSpace: func(info LowDiskSpaceInfo) {
+			logger.Infof("%s", info)
+		},
 		PossibleAPIMisuse: func(info PossibleAPIMisuseInfo) {
-			logger.Infof("API misuse: %s", info)
+			logger.Infof("%s", info)
 		},
 	}
 }
@@ -965,9 +1012,77 @@ func TeeEventListener(a, b EventListener) EventListener {
 			a.WriteStallEnd()
 			b.WriteStallEnd()
 		},
+		LowDiskSpace: func(info LowDiskSpaceInfo) {
+			a.LowDiskSpace(info)
+			b.LowDiskSpace(info)
+		},
 		PossibleAPIMisuse: func(info PossibleAPIMisuseInfo) {
 			a.PossibleAPIMisuse(info)
 			b.PossibleAPIMisuse(info)
 		},
 	}
+}
+
+// lowDiskSpaceReporter contains the logic to report low disk space events.
+// Report is called whenever we get the disk usage statistics.
+//
+// We define a few thresholds (10%, 5%, 3%, 2%, 1%) and we post an event
+// whenever we reach a new threshold. We periodically repost the event every 30
+// minutes until we are above all thresholds.
+type lowDiskSpaceReporter struct {
+	mu struct {
+		sync.Mutex
+		lastNoticeThreshold int
+		lastNoticeTime      crtime.Mono
+	}
+}
+
+var lowDiskSpaceThresholds = []int{10, 5, 3, 2, 1}
+
+const lowDiskSpaceFrequency = 30 * time.Minute
+
+func (r *lowDiskSpaceReporter) Report(availBytes, totalBytes uint64, el *EventListener) {
+	threshold, ok := r.findThreshold(availBytes, totalBytes)
+	if !ok {
+		// Normal path.
+		return
+	}
+	if r.shouldReport(threshold, crtime.NowMono()) {
+		el.LowDiskSpace(LowDiskSpaceInfo{
+			AvailBytes:       availBytes,
+			TotalBytes:       totalBytes,
+			PercentThreshold: threshold,
+		})
+	}
+}
+
+// shouldReport returns true if we should report an event. Updates
+// lastNoticeTime/lastNoticeThreshold appropriately.
+func (r *lowDiskSpaceReporter) shouldReport(threshold int, now crtime.Mono) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if threshold < r.mu.lastNoticeThreshold || r.mu.lastNoticeTime == 0 ||
+		now.Sub(r.mu.lastNoticeTime) >= lowDiskSpaceFrequency {
+		r.mu.lastNoticeThreshold = threshold
+		r.mu.lastNoticeTime = now
+		return true
+	}
+	return false
+}
+
+// findThreshold returns the largest threshold in lowDiskSpaceThresholds which
+// is >= the percentage ratio between availBytes and totalBytes (or ok=false if
+// there is more free space than the highest threshold).
+func (r *lowDiskSpaceReporter) findThreshold(
+	availBytes, totalBytes uint64,
+) (threshold int, ok bool) {
+	// Note: in the normal path, we exit the loop during the first iteration.
+	for i, t := range lowDiskSpaceThresholds {
+		if availBytes*100 > totalBytes*uint64(lowDiskSpaceThresholds[i]) {
+			break
+		}
+		threshold = t
+		ok = true
+	}
+	return threshold, ok
 }
