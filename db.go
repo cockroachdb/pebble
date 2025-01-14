@@ -280,7 +280,8 @@ type DB struct {
 	logBytesIn atomic.Uint64
 
 	// The number of bytes available on disk.
-	diskAvailBytes atomic.Uint64
+	diskAvailBytes       atomic.Uint64
+	lowDiskSpaceReporter lowDiskSpaceReporter
 
 	cacheID        cache.ID
 	dirname        string

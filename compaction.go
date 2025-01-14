@@ -1092,13 +1092,18 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 }
 
 func (d *DB) calculateDiskAvailableBytes() uint64 {
-	if space, err := d.opts.FS.GetDiskUsage(d.dirname); err == nil {
-		d.diskAvailBytes.Store(space.AvailBytes)
-		return space.AvailBytes
-	} else if !errors.Is(err, vfs.ErrUnsupported) {
-		d.opts.EventListener.BackgroundError(err)
+	space, err := d.opts.FS.GetDiskUsage(d.dirname)
+	if err != nil {
+		if !errors.Is(err, vfs.ErrUnsupported) {
+			d.opts.EventListener.BackgroundError(err)
+		}
+		// Return the last value we managed to obtain.
+		return d.diskAvailBytes.Load()
 	}
-	return d.diskAvailBytes.Load()
+
+	d.lowDiskSpaceReporter.Report(space.AvailBytes, space.TotalBytes, d.opts.EventListener)
+	d.diskAvailBytes.Store(space.AvailBytes)
+	return space.AvailBytes
 }
 
 // maybeScheduleFlush schedules a flush if necessary.

@@ -12,9 +12,11 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -379,4 +381,103 @@ func testAllCallbacksSetInEventListener(t *testing.T, e EventListener) {
 		require.Equal(t, reflect.Func, fType.Type.Kind(), "unexpected non-func field: %s", fType.Name)
 		require.False(t, fVal.IsNil(), "unexpected nil field: %s", fType.Name)
 	}
+}
+
+func TestLowDiskReporter(t *testing.T) {
+	const totalBytes = 1000
+	testCases := []struct {
+		// time, as a fraction of lowDiskSpaceFrequency.
+		time       float64
+		availBytes uint64
+		expected   bool
+	}{
+		{time: 1, availBytes: 900, expected: false},
+		{time: 1.1, availBytes: 101, expected: false},
+		// We reached the 10% threshold.
+		{time: 1.2, availBytes: 100, expected: true},
+		{time: 1.5, availBytes: 100, expected: false},
+		{time: 1.9, availBytes: 100, expected: false},
+		// Enough time has passed.
+		{time: 2.3, availBytes: 100, expected: true},
+		{time: 2.4, availBytes: 80, expected: false},
+		// We reached the 5% threshold.
+		{time: 2.5, availBytes: 50, expected: true},
+		{time: 2.6, availBytes: 500, expected: false},
+		{time: 2.7, availBytes: 50, expected: false},
+		{time: 2.8, availBytes: 31, expected: false},
+		// We reached the 3% threshold.
+		{time: 2.9, availBytes: 29, expected: true},
+		// We reached the 2% threshold.
+		{time: 3.0, availBytes: 20, expected: true},
+		// We reached the 1% threshold.
+		{time: 3.1, availBytes: 10, expected: true},
+		{time: 3.2, availBytes: 1, expected: false},
+		// We don't post another event for a higher threshold until enough time has
+		// passed.
+		{time: 3.3, availBytes: 50, expected: false},
+		{time: 4.2, availBytes: 50, expected: true},
+	}
+	var r lowDiskSpaceReporter
+	for _, tc := range testCases {
+		threshold, ok := r.findThreshold(tc.availBytes, totalBytes)
+		result := ok && r.shouldReport(threshold, 123456789+crtime.Mono(tc.time*float64(lowDiskSpaceFrequency)))
+		if result != tc.expected {
+			t.Errorf("time: %v  expected: %t, got %t (threshold=%d,ok=%t)", tc.time, tc.expected, result, threshold, ok)
+		}
+	}
+}
+
+func TestLowDiskSpaceEvent(t *testing.T) {
+	var lastInfo atomic.Value
+
+	listener := &EventListener{
+		LowDiskSpace: func(info LowDiskSpaceInfo) {
+			lastInfo.Store(info)
+		},
+	}
+	fs := &mockDiskUsageFS{
+		FS: vfs.NewMem(),
+	}
+	fs.usage.Store(vfs.DiskUsage{
+		AvailBytes: 1000,
+		TotalBytes: 1000,
+		UsedBytes:  0,
+	})
+
+	opts := &Options{
+		FS:            fs,
+		EventListener: listener,
+	}
+
+	d, err := Open("db", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	require.NoError(t, d.Set([]byte("a"), []byte("avalue"), nil))
+	require.NoError(t, d.Flush())
+	require.Nil(t, lastInfo.Load())
+
+	fs.usage.Store(vfs.DiskUsage{
+		AvailBytes: 50,
+		TotalBytes: 1000,
+		UsedBytes:  950,
+	})
+
+	require.NoError(t, d.Set([]byte("b"), []byte("bvalue"), nil))
+	require.NoError(t, d.Flush())
+	require.Equal(t, LowDiskSpaceInfo{
+		AvailBytes:       50,
+		TotalBytes:       1000,
+		PercentThreshold: 5,
+	}, lastInfo.Load())
+}
+
+type mockDiskUsageFS struct {
+	vfs.FS
+
+	usage atomic.Value // vfs.DiskUsage
+}
+
+func (fs *mockDiskUsageFS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
+	return fs.usage.Load().(vfs.DiskUsage), nil
 }
