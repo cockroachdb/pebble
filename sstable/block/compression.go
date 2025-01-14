@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/golang/snappy"
 )
@@ -221,6 +222,14 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 	}
 	if err := w.Write(b.trailer[:]); err != nil {
 		return 0, err
+	}
+
+	// WriteTo is allowed to mangle the data. Mangle it ourselves some of the time
+	// in invariant builds to catch callers that don't handle this.
+	if invariants.Enabled && invariants.Sometimes(1) {
+		for i := range b.data {
+			b.data[i] = 0xFF
+		}
 	}
 	return len(b.data) + len(b.trailer), nil
 }
