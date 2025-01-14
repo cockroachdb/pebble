@@ -7,6 +7,7 @@ package objstorageprovider
 import (
 	"bufio"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -35,6 +36,14 @@ func (w *fileBufferedWritable) Write(p []byte) error {
 	// Ignoring the length written since bufio.Writer.Write is guaranteed to
 	// return an error if the length written is < len(p).
 	_, err := w.bw.Write(p)
+
+	// Write is allowed to mangle the buffer. Do it sometimes in invariant builds
+	// to catch callers that don't handle this.
+	if invariants.Enabled && invariants.Sometimes(1) {
+		for i := range p {
+			p[i] = 0xFF
+		}
+	}
 	return err
 }
 
