@@ -1942,8 +1942,21 @@ func (w *RawRowWriter) copyDataBlocks(
 
 // addDataBlock implements RawWriter.
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
+	blockBuf := &w.dataBlockBuf.blockBuf
+	pb := block.CompressAndChecksum(
+		&blockBuf.compressedBuf,
+		b,
+		w.layout.compression,
+		&blockBuf.checksummer,
+	)
+	if !pb.IsCompressed() {
+		// If the block isn't compressed, pb's underlying data points
+		// directly b. Clone it before writing it, as writing can mangle the buffer.
+		pb = pb.Clone()
+	}
+
 	// layout.WriteDataBlock keeps layout.offset up-to-date for us.
-	bh, err := w.layout.WriteDataBlock(b, &w.dataBlockBuf.blockBuf)
+	bh, err := w.layout.writePrecompressedBlock(pb)
 	if err != nil {
 		return err
 	}
