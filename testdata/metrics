@@ -83,7 +83,7 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 disk-usage
 ----
@@ -143,8 +143,8 @@ Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtabl
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   c, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
 
 disk-usage
 ----
@@ -189,8 +189,8 @@ Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtabl
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   c, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
 
 # Closing iter c will release one of the zombie sstables. The other
 # zombie sstable is still referenced by iter b.
@@ -232,7 +232,7 @@ Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtabl
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:88 BlockBytesInCache:44 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
+                   b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
                    c, non-latency: {BlockBytes:44 BlockBytesInCache:44 BlockReadDuration:0s}
 
 disk-usage

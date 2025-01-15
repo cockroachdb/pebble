@@ -8,7 +8,6 @@ import (
 	"context"
 	"math"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
@@ -19,11 +18,11 @@ import (
 // virtual reader.
 type CommonReader interface {
 	NewRawRangeKeyIter(
-		ctx context.Context, transforms FragmentIterTransforms,
+		ctx context.Context, transforms FragmentIterTransforms, env block.ReadEnv,
 	) (keyspan.FragmentIterator, error)
 
 	NewRawRangeDelIter(
-		ctx context.Context, transforms FragmentIterTransforms,
+		ctx context.Context, transforms FragmentIterTransforms, env block.ReadEnv,
 	) (keyspan.FragmentIterator, error)
 
 	NewPointIter(
@@ -32,16 +31,14 @@ type CommonReader interface {
 		lower, upper []byte,
 		filterer *BlockPropertiesFilterer,
 		filterBlockSizeLimit FilterBlockSizeLimit,
-		stats *base.InternalIteratorStats,
-		statsAccum block.IterStatsAccumulator,
+		env block.ReadEnv,
 		rp valblk.ReaderProvider,
 	) (Iterator, error)
 
 	NewCompactionIter(
 		transforms IterTransforms,
-		statsAccum block.IterStatsAccumulator,
+		env block.ReadEnv,
 		rp valblk.ReaderProvider,
-		bufferPool *block.BufferPool,
 	) (Iterator, error)
 
 	EstimateDiskUsage(start, end []byte) (uint64, error)

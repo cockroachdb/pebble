@@ -239,7 +239,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return buf.String()
 
 		case "scan-range-del":
-			iter, err := r.NewRawRangeDelIter(context.Background(), NoFragmentTransforms)
+			iter, err := r.NewRawRangeDelIter(context.Background(), NoFragmentTransforms, block.NoReadEnv)
 			if err != nil {
 				return err.Error()
 			}
@@ -259,7 +259,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return buf.String()
 
 		case "scan-range-key":
-			iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms)
+			iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms, block.NoReadEnv)
 			if err != nil {
 				return err.Error()
 			}

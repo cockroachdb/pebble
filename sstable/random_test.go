@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -110,8 +111,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		nil /* lower TODO */, nil, /* upper TODO */
 		filterer,
 		filterBlockSizeLimit,
-		&stats,
-		nil, /* IterStatsAccumulator */
+		block.ReadEnv{Stats: &stats, IterStats: nil},
 		MakeTrivialReaderProvider(r),
 	)
 	require.NoError(t, err)

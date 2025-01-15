@@ -160,10 +160,8 @@ func newColumnBlockTwoLevelIterator(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
-	stats *base.InternalIteratorStats,
-	statsAccum block.IterStatsAccumulator,
+	env block.ReadEnv,
 	rp valblk.ReaderProvider,
-	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorColumnBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -174,7 +172,7 @@ func newColumnBlockTwoLevelIterator(
 	i := twoLevelIterColumnBlockPool.Get().(*twoLevelIteratorColumnBlocks)
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
-		stats, statsAccum, bufferPool)
+		env)
 	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -186,7 +184,7 @@ func newColumnBlockTwoLevelIterator(
 		// versions of keys, and therefore never expose a LazyValue that is
 		// separated to their callers, they can put this valueBlockReader into a
 		// sync.Pool.
-		i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, stats)
+		i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, env.Stats)
 		getLazyValuer = &i.secondLevel.vbReader
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
@@ -219,10 +217,8 @@ func newRowBlockTwoLevelIterator(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	filterBlockSizeLimit FilterBlockSizeLimit,
-	stats *base.InternalIteratorStats,
-	statsAccum block.IterStatsAccumulator,
+	env block.ReadEnv,
 	rp valblk.ReaderProvider,
-	bufferPool *block.BufferPool,
 ) (*twoLevelIteratorRowBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -233,7 +229,7 @@ func newRowBlockTwoLevelIterator(
 	i := twoLevelIterRowBlockPool.Get().(*twoLevelIteratorRowBlocks)
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
-		stats, statsAccum, bufferPool)
+		env)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -245,7 +241,7 @@ func newRowBlockTwoLevelIterator(
 			// versions of keys, and therefore never expose a LazyValue that is
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
-			i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, stats)
+			i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, env.Stats)
 			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.vbReader)
 			i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 				objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)

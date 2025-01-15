@@ -204,7 +204,7 @@ func rewriteDataBlocksInParallel(
 }
 
 func rewriteRangeKeyBlockToWriter(r *Reader, w RawWriter, from, to []byte) error {
-	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms)
+	iter, err := r.NewRawRangeKeyIter(context.TODO(), NoFragmentTransforms, block.NoReadEnv)
 	if err != nil {
 		return err
 	}

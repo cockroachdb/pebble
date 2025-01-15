@@ -62,10 +62,8 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
-				&stats,
-				nil, /* statsAccum */
+				block.ReadEnv{Stats: &stats, BufferPool: &pool},
 				MakeTrivialReaderProvider(r),
-				&pool,
 			)
 			require.Error(t, err)
 		} else {
@@ -76,10 +74,8 @@ func TestIteratorErrorOnInit(t *testing.T) {
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
-				&stats,
-				nil, /* statsAccum */
+				block.ReadEnv{Stats: &stats, BufferPool: &pool},
 				MakeTrivialReaderProvider(r),
-				&pool,
 			)
 			require.Error(t, err)
 		}

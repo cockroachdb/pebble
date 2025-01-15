@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // NewExternalIter takes an input 2d array of sstable files which may overlap
@@ -164,14 +165,14 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 			pointIter, err = r.NewPointIter(
 				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
 				sstable.NeverUseFilterBlock,
-				&it.stats.InternalStats, nil,
+				block.ReadEnv{Stats: &it.stats.InternalStats, IterStats: nil},
 				sstable.MakeTrivialReaderProvider(r))
 			if err != nil {
 				return nil, err
 			}
 			rangeDelIter, err = r.NewRawRangeDelIter(ctx, sstable.FragmentIterTransforms{
 				SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),
-			})
+			}, block.ReadEnv{Stats: &it.stats.InternalStats, IterStats: nil})
 			if err != nil {
 				return nil, err
 			}
@@ -220,7 +221,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 				for _, r := range readers {
 					transforms := sstable.FragmentIterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
 					seqNum--
-					if rki, err := r.NewRawRangeKeyIter(ctx, transforms); err != nil {
+					if rki, err := r.NewRawRangeKeyIter(ctx, transforms, block.ReadEnv{Stats: &it.stats.InternalStats, IterStats: nil}); err != nil {
 						return err
 					} else if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)

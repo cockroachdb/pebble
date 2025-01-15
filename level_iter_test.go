@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -184,15 +185,14 @@ func (lt *levelIterTest) newIters(
 	if kinds.Point() {
 		iter, err := lt.readers[file.FileNum].NewPointIter(
 			ctx, transforms,
-			opts.LowerBound, opts.UpperBound, nil, sstable.AlwaysUseFilterBlock, iio.stats,
-			nil, sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]))
+			opts.LowerBound, opts.UpperBound, nil, sstable.AlwaysUseFilterBlock, block.ReadEnv{Stats: iio.stats, IterStats: nil}, sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]))
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
 		set.point = iter
 	}
 	if kinds.RangeDeletion() {
-		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(context.Background(), file.FragmentIterTransforms())
+		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(context.Background(), file.FragmentIterTransforms(), block.NoReadEnv)
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
