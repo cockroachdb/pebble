@@ -58,6 +58,7 @@ var Comparer = base.Comparer{
 	CompareRangeSuffixes: CompareRangeSuffixes,
 	Compare:              Compare,
 	Equal:                Equal,
+
 	AbbreviatedKey: func(k []byte) uint64 {
 		key, ok := getKeyPartFromEngineKey(k)
 		if !ok {
@@ -65,7 +66,9 @@ var Comparer = base.Comparer{
 		}
 		return base.DefaultComparer.AbbreviatedKey(key)
 	},
+
 	FormatKey: FormatKey,
+
 	Separator: func(dst, a, b []byte) []byte {
 		aKey, ok := getKeyPartFromEngineKey(a)
 		if !ok {
@@ -89,6 +92,7 @@ var Comparer = base.Comparer{
 		// The separator is > aKey, so we only need to add the sentinel.
 		return append(dst, 0)
 	},
+
 	Successor: func(dst, a []byte) []byte {
 		aKey, ok := getKeyPartFromEngineKey(a)
 		if !ok {
@@ -106,6 +110,7 @@ var Comparer = base.Comparer{
 		// The successor is > aKey, so we only need to add the sentinel.
 		return append(dst, 0)
 	},
+
 	ImmediateSuccessor: func(dst, a []byte) []byte {
 		// The key `a` is guaranteed to be a bare prefix: It's a
 		// `engineKeyNoVersion` key without a version—just a trailing 0-byte to
@@ -116,6 +121,7 @@ var Comparer = base.Comparer{
 		// zero-length version.
 		return append(append(dst, a...), 0)
 	},
+
 	Name: "cockroach_comparator",
 }
 
@@ -230,9 +236,6 @@ func Split(key []byte) int {
 	// Last byte is the version length + 1 when there is a version, else it is
 	// 0.
 	versionLen := int(key[len(key)-1])
-	if versionLen > len(key) {
-		panic(errors.AssertionFailedf("invalid version length"))
-	}
 	return len(key) - versionLen
 }
 
@@ -266,7 +269,11 @@ func Compare(a, b []byte) int {
 	)
 }
 
-// CompareRangeSuffixes compares range key suffixes (normally timestamps).
+// CompareRangeSuffixes implements Comparer.CompareRangeSuffixes. It compares
+// cockroach suffixes (which are composed of the version and a trailing sentinel
+// byte); the version can be an MVCC timestamp or a lock key. It is stricter
+// than ComparePointSuffixes due to historical reasons; see
+// https://github.com/cockroachdb/cockroach/issues/130533
 func CompareRangeSuffixes(a, b []byte) int {
 	if len(a) == 0 || len(b) == 0 {
 		// Empty suffixes come before non-empty suffixes.
@@ -278,7 +285,15 @@ func CompareRangeSuffixes(a, b []byte) int {
 	return bytes.Compare(b[:len(b)-1], a[:len(a)-1])
 }
 
-// ComparePointSuffixes compares point key suffixes (normally timestamps).
+// ComparePointSuffixes compares suffixes of Cockroach point keys (which are
+// composed of the version and a trailing version-length byte); the version can
+// be an MVCC timestamp or a lock key. ComparePointSuffixes differs from
+// CompareRangeSuffixes in that the ComparePointSuffixes normalizes the
+// suffixes. Ideally we'd have one function that implemented the semantics of
+// EnginePointSuffixCompare, but due to historical reasons, range key suffix
+// comparisons must not perform normalization.
+//
+// See https://github.com/cockroachdb/cockroach/issues/130533
 func ComparePointSuffixes(a, b []byte) int {
 	if len(a) == 0 || len(b) == 0 {
 		// Empty suffixes sort before non-empty suffixes.
@@ -390,8 +405,16 @@ func getKeyPartFromEngineKey(engineKey []byte) (key []byte, ok bool) {
 
 const (
 	cockroachColRoachKey int = iota
+	// cockroachColMVCCWallTime is the wall time component of a MVCC timestamp,
+	// or zero if not an MVCC key.
 	cockroachColMVCCWallTime
+	// cockroachColMVCCLogical is the logical time component of a MVCC
+	// timestamp, or zero if not an MVCC key.
 	cockroachColMVCCLogical
+	// cockroachColUntypedVersion holds any non-empty, non-MVCC version. It does
+	// NOT include the 0x00 separator byte that delimits the prefix and suffix
+	// in a serialized engine key. In practice, this column is used to store the
+	// version of lock-table keys.
 	cockroachColUntypedVersion
 	cockroachColCount
 )
@@ -458,6 +481,8 @@ type cockroachKeyWriter struct {
 	prevRoachKeyLen int32
 	prevSuffix      []byte
 }
+
+var _ colblk.KeyWriter = (*cockroachKeyWriter)(nil)
 
 func makeCockroachKeyWriter() *cockroachKeyWriter {
 	kw := &cockroachKeyWriter{}
