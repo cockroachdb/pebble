@@ -1062,7 +1062,9 @@ func (w *RawColumnWriter) rewriteSuffixes(
 			w.filterBlock = copyFilterWriter{
 				origPolicyName: w.filterBlock.policyName(),
 				origMetaName:   w.filterBlock.metaName(),
-				data:           filterBlock,
+				// Clone the filter block, because readBlockBuf allows the
+				// returned byte slice to point directly into sst.
+				data: slices.Clone(filterBlock),
 			}
 		}
 	}
