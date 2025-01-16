@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/pkg/errors"
 )
 
@@ -32,6 +33,13 @@ func (f *MemObj) Abort() { f.buf.Reset() }
 // Write is part of the Writable interface.
 func (f *MemObj) Write(p []byte) error {
 	_, err := f.buf.Write(p)
+	// Write is allowed to mangle the buffer. Do it sometimes in invariant
+	// builds to catch callers that don't handle this.
+	if invariants.Enabled && invariants.Sometimes(1) {
+		for i := range p {
+			p[i] = 0xFF
+		}
+	}
 	return err
 }
 
