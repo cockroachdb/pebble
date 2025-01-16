@@ -91,71 +91,81 @@ func TestRewriteSuffixProps(t *testing.T) {
 			var sstBytes [2][]byte
 			for i, byBlocks := range []bool{false, true} {
 				t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
-					rewrittenSST := &objstorage.MemObj{}
-					if byBlocks {
-						_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
-							r, sst, rewrittenSST, rwOpts, from, to, 8)
-						require.NoError(t, err)
-						// rewriteFormat is equal to the original format, since
-						// rwOpts.TableFormat is ignored.
-						require.Equal(t, wOpts.TableFormat, rewriteFormat)
-					} else {
-						_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
-						require.NoError(t, err)
-					}
-
-					sstBytes[i] = rewrittenSST.Data()
-					// Check that a reader on the rewritten STT has the expected props.
-					rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
-					require.NoError(t, err)
-					defer rRewritten.Close()
-
-					foundValues := make(map[string][]byte)
-					for k, v := range rRewritten.Properties.UserProperties {
-						if k == "obsolete-key" {
-							continue
-						}
-						require.Contains(t, newCollectors, k)
-						require.Equal(t, uint8(slices.Index(newCollectors, k)), v[0], "shortID should match")
-						foundValue := []byte(v[1:])
-						foundValues[k] = foundValue
-						t.Logf("%q => %q", k, foundValues[k])
-					}
-					require.Equal(t, expectedProps, foundValues)
-					require.False(t, rRewritten.Properties.IsStrictObsolete)
-
-					// Compare the block level props from the data blocks in the layout,
-					// only if we did not do a rewrite from one format to another. If the
-					// format changes, the block boundaries change slightly.
-					if !byBlocks && wOpts.TableFormat != rwOpts.TableFormat {
-						return
-					}
-					layout, err := r.Layout()
-					require.NoError(t, err)
-					newLayout, err := rRewritten.Layout()
-					require.NoError(t, err)
-
-					for i := range layout.Data {
-						oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
-						oldDecoder := makeBlockPropertiesDecoder(len(oldProps), layout.Data[i].Props)
-						for !oldDecoder.Done() {
-							id, val, err := oldDecoder.Next()
+					fn := func() {
+						rewrittenSST := &objstorage.MemObj{}
+						if byBlocks {
+							_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
+								r, sst, rewrittenSST, rwOpts, from, to, 8)
 							require.NoError(t, err)
-							oldProps[id] = val
-						}
-						newProps := make([][]byte, len(newCollectors))
-						newDecoder := makeBlockPropertiesDecoder(len(newProps), newLayout.Data[i].Props)
-						for !newDecoder.Done() {
-							id, val, err := newDecoder.Next()
+							// rewriteFormat is equal to the original format, since
+							// rwOpts.TableFormat is ignored.
+							require.Equal(t, wOpts.TableFormat, rewriteFormat)
+						} else {
+							_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
 							require.NoError(t, err)
-							newProps[id] = val
-							switch newCollectors[id] {
-							case "count":
-								require.Equal(t, oldProps[slices.Index(originalCollectors, "count")], val)
-							default:
-								require.Equal(t, allExpectedProps[newCollectors[id]], val)
+						}
+
+						sstBytes[i] = rewrittenSST.Data()
+						// Check that a reader on the rewritten STT has the expected props.
+						rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
+						require.NoError(t, err)
+						defer rRewritten.Close()
+
+						foundValues := make(map[string][]byte)
+						for k, v := range rRewritten.Properties.UserProperties {
+							if k == "obsolete-key" {
+								continue
+							}
+							require.Contains(t, newCollectors, k)
+							require.Equal(t, uint8(slices.Index(newCollectors, k)), v[0], "shortID should match")
+							foundValue := []byte(v[1:])
+							foundValues[k] = foundValue
+							t.Logf("%q => %q", k, foundValues[k])
+						}
+						require.Equal(t, expectedProps, foundValues)
+						require.False(t, rRewritten.Properties.IsStrictObsolete)
+
+						// Compare the block level props from the data blocks in the layout,
+						// only if we did not do a rewrite from one format to another. If the
+						// format changes, the block boundaries change slightly.
+						if !byBlocks && wOpts.TableFormat != rwOpts.TableFormat {
+							return
+						}
+						layout, err := r.Layout()
+						require.NoError(t, err)
+						newLayout, err := rRewritten.Layout()
+						require.NoError(t, err)
+
+						for i := range layout.Data {
+							oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
+							oldDecoder := makeBlockPropertiesDecoder(len(oldProps), layout.Data[i].Props)
+							for !oldDecoder.Done() {
+								id, val, err := oldDecoder.Next()
+								require.NoError(t, err)
+								oldProps[id] = val
+							}
+							newProps := make([][]byte, len(newCollectors))
+							newDecoder := makeBlockPropertiesDecoder(len(newProps), newLayout.Data[i].Props)
+							for !newDecoder.Done() {
+								id, val, err := newDecoder.Next()
+								require.NoError(t, err)
+								newProps[id] = val
+								switch newCollectors[id] {
+								case "count":
+									require.Equal(t, oldProps[slices.Index(originalCollectors, "count")], val)
+								default:
+									require.Equal(t, allExpectedProps[newCollectors[id]], val)
+								}
 							}
 						}
+					}
+					// Perform the rewrite multiple times. This helps ensure
+					// idempotence. This helps catch bugs in suffix rewriting
+					// that might mangle the in-memory source sstable's buffer
+					// by improperly assuming that Write/WriteTo leaves the
+					// input buffer unmodified.
+					for j := 0; j < 5; j++ {
+						fn()
 					}
 				})
 			}
