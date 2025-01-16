@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -1904,7 +1905,11 @@ func (w *RawRowWriter) rewriteSuffixes(
 				return errors.Wrap(err, "reading filter")
 			}
 			w.filter = copyFilterWriter{
-				origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
+				origPolicyName: w.filter.policyName(),
+				origMetaName:   w.filter.metaName(),
+				// Clone the filter block, because readBlockBuf allows the
+				// returned byte slice to point directly into sst.
+				data: slices.Clone(filterBlock),
 			}
 		}
 	}

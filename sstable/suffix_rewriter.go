@@ -350,6 +350,10 @@ func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
 	return NewReader(context.Background(), newMemReader(sst), o)
 }
 
+// readBlockBuf may return a byte slice that points directly into sstBytes. If
+// the caller is going to expect that sstBytes remain stable, it should copy the
+// returned slice before writing it out to a objstorage.Writable which may
+// mangle it.
 func readBlockBuf(r *Reader, bh block.Handle, buf []byte) ([]byte, []byte, error) {
 	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
 	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
