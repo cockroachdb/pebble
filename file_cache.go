@@ -1181,11 +1181,11 @@ func (v *fileCacheValue) load(
 	)
 	if err == nil {
 		o := dbOpts.readerOpts
-		o.SetInternalCacheOpts(sstableinternal.CacheOptions{
+		o.CacheOpts = sstableinternal.CacheOptions{
 			Cache:   dbOpts.cache,
 			CacheID: dbOpts.cacheID,
 			FileNum: backingFileNum,
-		})
+		}
 		r, err = sstable.NewReader(ctx, f, o)
 	}
 	if err == nil {

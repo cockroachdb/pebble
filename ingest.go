@@ -305,11 +305,11 @@ func ingestLoad1(
 	rangeKeyValidator rangeKeyIngestValidator,
 ) (meta *fileMetadata, lastRangeKey keyspan.Span, err error) {
 	o := opts.MakeReaderOptions()
-	o.SetInternalCacheOpts(sstableinternal.CacheOptions{
+	o.CacheOpts = sstableinternal.CacheOptions{
 		Cache:   opts.Cache,
 		CacheID: cacheID,
 		FileNum: base.PhysicalTableDiskFileNum(fileNum),
-	})
+	}
 	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
 		return nil, keyspan.Span{}, err

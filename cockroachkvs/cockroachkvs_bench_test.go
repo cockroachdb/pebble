@@ -100,14 +100,16 @@ func benchmarkRandSeekInSST(
 	defer c.Unref()
 	ctx := context.Background()
 	readerOpts := sstable.ReaderOptions{
+		ReaderOptions: block.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				Cache:   c,
+				CacheID: c.NewID(),
+				FileNum: 1,
+			},
+		},
 		Comparer:   writerOpts.Comparer,
 		KeySchemas: sstable.MakeKeySchemas(&KeySchema),
 	}
-	readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{
-		Cache:   c,
-		CacheID: c.NewID(),
-		FileNum: 1,
-	})
 	reader, err := sstable.NewReader(ctx, obj, readerOpts)
 	require.NoError(b, err)
 	defer reader.Close()

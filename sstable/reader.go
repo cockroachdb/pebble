@@ -815,11 +815,11 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		f, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer rh.Close()
 
-	footer, err := readFooter(ctx, f, rh, o.LoggerAndTracer, o.internal.CacheOpts.FileNum)
+	footer, err := readFooter(ctx, f, rh, o.LoggerAndTracer, o.CacheOpts.FileNum)
 	if err != nil {
 		return nil, errors.CombineErrors(err, f.Close())
 	}
-	r.blockReader.Init(f, o.internal.CacheOpts, o.LoadBlockSema, o.LoggerAndTracer, footer.checksum)
+	r.blockReader.Init(f, o.ReaderOptions, footer.checksum)
 	r.tableFormat = footer.format
 	r.indexBH = footer.indexBH
 	r.metaindexBH = footer.metaindexBH

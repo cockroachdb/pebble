@@ -241,7 +241,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					Comparer:   testkeys.Comparer,
 					KeySchemas: sstable.KeySchemas{writerOpts.KeySchema.Name: writerOpts.KeySchema},
 				}
-				readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)})
+				readerOpts.CacheOpts = sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)}
 				r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 				if err != nil {
 					return err.Error()
