@@ -1751,7 +1751,7 @@ func buildTestTableWithProvider(
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := NewReader(context.Background(), f1, ReaderOptions{
-		internal: sstableinternal.ReaderOptions{
+		ReaderOptions: block.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
 				Cache: c,
 			},
@@ -1794,7 +1794,7 @@ func buildBenchmarkTable(
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := newReader(f1, ReaderOptions{
-		internal: sstableinternal.ReaderOptions{
+		ReaderOptions: block.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
 				Cache: c,
 			},
@@ -2081,7 +2081,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		require.NoError(b, err)
 		r, err := newReader(f0, ReaderOptions{
 			Comparer: testkeys.Comparer,
-			internal: sstableinternal.ReaderOptions{
+			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					Cache: c,
 				},
@@ -2201,7 +2201,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		require.NoError(b, err)
 		r, err = newReader(f0, ReaderOptions{
 			Comparer: testkeys.Comparer,
-			internal: sstableinternal.ReaderOptions{
+			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					Cache: c,
 				},
@@ -2363,7 +2363,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		require.NoError(b, err)
 		r, err := newReader(f0, ReaderOptions{
 			Comparer: testkeys.Comparer,
-			internal: sstableinternal.ReaderOptions{
+			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					Cache: c,
 				},

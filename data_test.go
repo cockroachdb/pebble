@@ -1177,11 +1177,11 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	// TODO(bananabrick): cacheOpts is used to set the file number on a Reader,
 	// and virtual sstables expect this file number to be set. Split out the
 	// opts into fileNum opts, and cache opts.
-	readerOpts.SetInternalCacheOpts(sstableinternal.CacheOptions{
+	readerOpts.CacheOpts = sstableinternal.CacheOptions{
 		Cache:   d.opts.Cache,
 		CacheID: 0,
 		FileNum: backingFileNum,
-	})
+	}
 	r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 	if err != nil {
 		return err.Error()
