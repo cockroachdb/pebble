@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -107,12 +108,17 @@ func TestCopySpan(t *testing.T) {
 				}
 			}
 			rOpts := ReaderOptions{
+				ReaderOptions: block.ReaderOptions{
+					CacheOpts: sstableinternal.CacheOptions{
+						Cache:   blockCache,
+						CacheID: cacheID,
+						FileNum: base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+					},
+				},
 				Comparer:   testkeys.Comparer,
 				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			}
-			rOpts.internal.CacheOpts.Cache = blockCache
-			rOpts.internal.CacheOpts.CacheID = cacheID
-			rOpts.internal.CacheOpts.FileNum = base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key])
+
 			r, err := NewReader(context.TODO(), readable, rOpts)
 			defer r.Close()
 			if err != nil {
@@ -156,12 +162,16 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			rOpts := ReaderOptions{
+				ReaderOptions: block.ReaderOptions{
+					CacheOpts: sstableinternal.CacheOptions{
+						Cache:   blockCache,
+						CacheID: cacheID,
+						FileNum: base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+					},
+				},
 				Comparer:   testkeys.Comparer,
 				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			}
-			rOpts.internal.CacheOpts.Cache = blockCache
-			rOpts.internal.CacheOpts.CacheID = cacheID
-			rOpts.internal.CacheOpts.FileNum = base.DiskFileNum(fileNameToNum[inputFile])
 			r, err := NewReader(context.TODO(), readable, rOpts)
 			if err != nil {
 				return err.Error()

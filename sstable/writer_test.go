@@ -708,10 +708,8 @@ func TestWriterClearCache(t *testing.T) {
 	defer cacheOpts.Cache.Unref()
 
 	readerOpts := ReaderOptions{
-		Comparer: testkeys.Comparer,
-		internal: sstableinternal.ReaderOptions{
-			CacheOpts: cacheOpts,
-		},
+		ReaderOptions: block.ReaderOptions{CacheOpts: cacheOpts},
+		Comparer:      testkeys.Comparer,
 	}
 
 	writerOpts := WriterOptions{

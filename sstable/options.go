@@ -7,7 +7,6 @@ package sstable
 import (
 	"fmt"
 
-	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -81,10 +80,7 @@ func MakeKeySchemas(keySchemas ...*colblk.KeySchema) KeySchemas {
 
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
-	// LoadBlockSema, if set, is used to limit the number of blocks that can be
-	// loaded (i.e. read from the filesystem) in parallel. Each load acquires one
-	// unit from the semaphore for the duration of the read.
-	LoadBlockSema *fifo.Semaphore
+	block.ReaderOptions
 
 	// User properties specified in this map will not be added to sst.Properties.UserProperties.
 	DeniedUserProperties map[string]struct{}
@@ -110,28 +106,15 @@ type ReaderOptions struct {
 	// policies that are not in this map will be ignored.
 	Filters map[string]FilterPolicy
 
-	// Logger is an optional logger and tracer.
-	LoggerAndTracer base.LoggerAndTracer
-
 	// FilterMetricsTracker is optionally used to track filter metrics.
 	FilterMetricsTracker *FilterMetricsTracker
-
-	// internal options can only be used from within the pebble package.
-	internal sstableinternal.ReaderOptions
-}
-
-// SetInternal sets the internal reader options. Note that even though this
-// method is public, a caller outside the pebble package can't construct a value
-// to pass to it.
-func (o *ReaderOptions) SetInternal(internalOpts sstableinternal.ReaderOptions) {
-	o.internal = internalOpts
 }
 
 // SetInternalCacheOpts sets the internal cache options. Note that even though
 // this method is public, a caller outside the pebble package can't construct a
 // value to pass to it.
 func (o *ReaderOptions) SetInternalCacheOpts(cacheOpts sstableinternal.CacheOptions) {
-	o.internal.CacheOpts = cacheOpts
+	o.CacheOpts = cacheOpts
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {

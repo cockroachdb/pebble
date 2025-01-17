@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/redact"
@@ -323,21 +324,58 @@ func (f *fileFooter) encode(b []byte) {
 
 // FileReader reads a blob file.
 type FileReader struct {
-	r      objstorage.Readable
+	r      block.Reader
 	footer fileFooter
 }
 
+// FileReaderOptions configures a reader of a blob file.
+type FileReaderOptions struct {
+	block.ReaderOptions
+}
+
+func (o FileReaderOptions) ensureDefaults() FileReaderOptions {
+	if o.LoggerAndTracer == nil {
+		o.LoggerAndTracer = base.NoopLoggerAndTracer{}
+	}
+	return o
+}
+
 // NewFileReader opens a blob file for reading.
-func NewFileReader(ctx context.Context, r objstorage.Readable) (*FileReader, error) {
+func NewFileReader(
+	ctx context.Context, r objstorage.Readable, ro FileReaderOptions,
+) (*FileReader, error) {
+	ro = ro.ensureDefaults()
+
+	fileNum := ro.CacheOpts.FileNum
+
 	var footerBuf [fileFooterLength]byte
-	if err := r.ReadAt(ctx, footerBuf[:], r.Size()-fileFooterLength); err != nil {
+	size := r.Size()
+	off := size - fileFooterLength
+	if size < fileFooterLength {
+		return nil, base.CorruptionErrorf("pebble: invalid blob file %s (file size is too small)",
+			errors.Safe(fileNum))
+	}
+	var preallocRH objstorageprovider.PreallocatedReadHandle
+	rh := objstorageprovider.UsePreallocatedReadHandle(
+		r, objstorage.ReadBeforeForNewReader, &preallocRH)
+	defer rh.Close()
+
+	encodedFooter, err := block.ReadRaw(ctx, r, rh, ro.LoggerAndTracer, fileNum, footerBuf[:], off)
+	if err != nil {
 		return nil, err
 	}
-	fr := &FileReader{r: r}
-	if err := fr.footer.decode(footerBuf[:]); err != nil {
+
+	fr := &FileReader{}
+	if err := fr.footer.decode(encodedFooter); err != nil {
 		return nil, err
 	}
+	fr.r.Init(r, ro.ReaderOptions, fr.footer.checksum)
 	return fr, nil
+}
+
+// Close implements io.Closer, closing the underlying Readable.
+func (r *FileReader) Close() error {
+	return r.r.Close()
 }
 
 // lenLittleEndian returns the minimum number of bytes needed to encode v

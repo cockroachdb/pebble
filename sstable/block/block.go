@@ -355,39 +355,42 @@ func (env *ReadEnv) BlockRead(blockLength uint64, readDuration time.Duration) {
 // A Reader reads blocks from a single file, handling caching, checksum
 // validation and decompression.
 type Reader struct {
-	readable      objstorage.Readable
-	cacheOpts     sstableinternal.CacheOptions
-	loadBlockSema *fifo.Semaphore
-	logger        base.LoggerAndTracer
-	checksumType  ChecksumType
+	readable     objstorage.Readable
+	opts         ReaderOptions
+	checksumType ChecksumType
+}
+
+// ReaderOptions configures a block reader.
+type ReaderOptions struct {
+	// CacheOpts contains the information needed to interact with the block
+	// cache.
+	CacheOpts sstableinternal.CacheOptions
+	// LoadBlockSema, if set, is used to limit the number of blocks that can be
+	// loaded (i.e. read from the filesystem) in parallel. Each load acquires
+	// one unit from the semaphore for the duration of the read.
+	LoadBlockSema *fifo.Semaphore
+	// LoggerAndTracer is an optional logger and tracer.
+	LoggerAndTracer base.LoggerAndTracer
 }
 
 // Init initializes the Reader to read blocks from the provided Readable.
-func (r *Reader) Init(
-	readable objstorage.Readable,
-	cacheOpts sstableinternal.CacheOptions,
-	sema *fifo.Semaphore,
-	logger base.LoggerAndTracer,
-	checksumType ChecksumType,
-) {
+func (r *Reader) Init(readable objstorage.Readable, ro ReaderOptions, checksumType ChecksumType) {
 	r.readable = readable
-	r.cacheOpts = cacheOpts
-	r.loadBlockSema = sema
-	r.logger = logger
+	r.opts = ro
 	r.checksumType = checksumType
-	if r.cacheOpts.Cache == nil {
-		r.cacheOpts.Cache = cache.New(0)
+	if r.opts.CacheOpts.Cache == nil {
+		r.opts.CacheOpts.Cache = cache.New(0)
 	} else {
-		r.cacheOpts.Cache.Ref()
+		r.opts.CacheOpts.Cache.Ref()
 	}
-	if r.cacheOpts.CacheID == 0 {
-		r.cacheOpts.CacheID = r.cacheOpts.Cache.NewID()
+	if r.opts.CacheOpts.CacheID == 0 {
+		r.opts.CacheOpts.CacheID = r.opts.CacheOpts.Cache.NewID()
 	}
 }
 
 // FileNum returns the file number of the file being read.
 func (r *Reader) FileNum() base.DiskFileNum {
-	return r.cacheOpts.FileNum
+	return r.opts.CacheOpts.FileNum
 }
 
 // ChecksumType returns the checksum type used by the reader.
@@ -410,10 +413,10 @@ func (r *Reader) Read(
 	if env.BufferPool == nil {
 		var errorDuration time.Duration
 		var err error
-		cv, crh, errorDuration, hit, err = r.cacheOpts.Cache.GetWithReadHandle(
-			ctx, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
-		if errorDuration > 5*time.Millisecond && r.logger.IsTracingEnabled(ctx) {
-			r.logger.Eventf(
+		cv, crh, errorDuration, hit, err = r.opts.CacheOpts.Cache.GetWithReadHandle(
+			ctx, r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
+		if errorDuration > 5*time.Millisecond && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
+			r.opts.LoggerAndTracer.Eventf(
 				ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
 		}
 		// TODO(sumeer): consider tracing when waited longer than some duration
@@ -425,7 +428,7 @@ func (r *Reader) Read(
 		// The compaction path uses env.BufferPool, and does not coordinate read
 		// using a cache.ReadHandle. This is ok since only a single compaction is
 		// reading a block.
-		cv = r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+		cv = r.opts.CacheOpts.Cache.Get(r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
 		if cv != nil {
 			hit = true
 		}
@@ -446,7 +449,7 @@ func (r *Reader) Read(
 	}
 
 	// Need to read. First acquire loadBlockSema, if needed.
-	if sema := r.loadBlockSema; sema != nil {
+	if sema := r.opts.LoadBlockSema; sema != nil {
 		if err := sema.Acquire(ctx, 1); err != nil {
 			// An error here can only come from the context.
 			return BufferHandle{}, err
@@ -460,7 +463,7 @@ func (r *Reader) Read(
 		}
 		return BufferHandle{}, err
 	}
-	h := value.MakeHandle(crh, r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+	h := value.MakeHandle(crh, r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
 	return h, nil
 }
 
@@ -487,12 +490,12 @@ func (r *Reader) doRead(
 	readDuration := readStopwatch.stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
-	if readDuration >= slowReadTracingThreshold && r.logger.IsTracingEnabled(ctx) {
+	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		_, file1, line1, _ := runtime.Caller(1)
 		_, file2, line2, _ := runtime.Caller(2)
-		r.logger.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
+		r.opts.LoggerAndTracer.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
 			int(bh.Length+TrailerLen), readDuration.String(),
-			r.cacheOpts.FileNum,
+			r.opts.CacheOpts.FileNum,
 			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
 			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
 	}
@@ -503,7 +506,7 @@ func (r *Reader) doRead(
 	env.BlockRead(bh.Length, readDuration)
 	if err = ValidateChecksum(r.checksumType, compressed.BlockData(), bh); err != nil {
 		compressed.Release()
-		err = errors.Wrapf(err, "pebble/table: table %s", r.cacheOpts.FileNum)
+		err = errors.Wrapf(err, "pebble/table: table %s", r.opts.CacheOpts.FileNum)
 		return Value{}, err
 	}
 	typ := CompressionIndicator(compressed.BlockData()[bh.Length])
@@ -545,7 +548,7 @@ func (r *Reader) Readable() objstorage.Readable {
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
 func (r *Reader) GetFromCache(bh Handle) *cache.Value {
-	return r.cacheOpts.Cache.Get(r.cacheOpts.CacheID, r.cacheOpts.FileNum, bh.Offset)
+	return r.opts.CacheOpts.Cache.Get(r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
 }
 
 // UsePreallocatedReadHandle returns a ReadHandle that reads from the reader and
@@ -559,7 +562,7 @@ func (r *Reader) UsePreallocatedReadHandle(
 
 // Close releases resources associated with the Reader.
 func (r *Reader) Close() error {
-	r.cacheOpts.Cache.Unref()
+	r.opts.CacheOpts.Cache.Unref()
 	var err error
 	if r.readable != nil {
 		err = r.readable.Close()

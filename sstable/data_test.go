@@ -179,9 +179,7 @@ func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int
 	if cacheSize > 0 {
 		c := cache.New(int64(cacheSize))
 		defer c.Unref()
-		readerOpts.SetInternal(sstableinternal.ReaderOptions{
-			CacheOpts: sstableinternal.CacheOptions{Cache: c},
-		})
+		readerOpts.CacheOpts = sstableinternal.CacheOptions{Cache: c}
 	}
 	r, err := NewMemReader(obj.Data(), readerOpts)
 	if err != nil {

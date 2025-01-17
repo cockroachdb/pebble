@@ -58,10 +58,11 @@ func TestBlobWriter(t *testing.T) {
 			fmt.Fprintf(&buf, "  FileLen: %d\n", stats.FileLen)
 			return buf.String()
 		case "open":
-			r, err := NewFileReader(context.Background(), obj)
+			r, err := NewFileReader(context.Background(), obj, FileReaderOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer r.Close()
 			fmt.Fprintf(&buf, "TableFormat: %s\n", r.footer.format)
 			fmt.Fprintf(&buf, "ChecksumType: %s\n", r.footer.checksum)
 			fmt.Fprintf(&buf, "IndexHandle: %s\n", r.footer.indexHandle.String())
