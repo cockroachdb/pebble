@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/swiss"
 )
 
@@ -55,6 +56,9 @@ import (
 //     compactions and there is at most one compaction reader of a block. There
 //     is the possibility that the compaction reader and a user-facing iterator
 //     reader will do duplicate reads, but we accept that deficiency.
+//     TODO(radu): consider using a separate mutex for the readShard; we are
+//     locking the entire shard exclusively every time we need to read a block.
+//     This could be disruptive if there is a large volume of cache hits.
 //
 //   - readMap is separate from shard.blocks map: One could have a design which
 //     extends the cache entry and unifies the two maps. However, we never want
@@ -69,10 +73,8 @@ type readShard struct {
 	// shard is only used for locking, and calling shard.Set.
 	shard *shard
 	// Protected by shard.mu.
-	//
-	// shard.mu is never held when acquiring readEntry.mu. shard.mu is a shared
-	// resource and must be released quickly.
-	shardMu struct {
+	mu struct {
+		sync.Mutex
 		readMap swiss.Map[key, *readEntry]
 	}
 }
@@ -82,27 +84,35 @@ func (rs *readShard) Init(shard *shard) *readShard {
 		shard: shard,
 	}
 	// Choice of 16 is arbitrary.
-	rs.shardMu.readMap.Init(16)
+	rs.mu.readMap.Init(16)
 	return rs
 }
 
-// acquireReadEntryLocked gets a *readEntry for (id, fileNum, offset). shard.mu is
-// already write locked.
-func (rs *readShard) acquireReadEntryLocked(k key) *readEntry {
-	e, ok := rs.shardMu.readMap.Get(k)
-	if !ok {
-		e = newReadEntry(rs, k)
-		rs.shardMu.readMap.Put(k, e)
-	} else {
-		e.refCount.acquireAllowZero()
+// acquireReadEntry acquires a *readEntry for (id, fileNum, offset), creating
+// one if necessary.
+func (rs *readShard) acquireReadEntry(k key) *readEntry {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	if e, ok := rs.mu.readMap.Get(k); ok {
+		// An entry we found in the map while holding the mutex must have a non-zero
+		// reference count.
+		if e.refCount < 1 {
+			panic("invalid reference count")
+		}
+		e.refCount++
+		return e
 	}
+
+	e := newReadEntry(rs, k)
+	rs.mu.readMap.Put(k, e)
 	return e
 }
 
 func (rs *readShard) lenForTesting() int {
-	rs.shard.mu.Lock()
-	defer rs.shard.mu.Unlock()
-	return rs.shardMu.readMap.Len()
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return rs.mu.readMap.Len()
 }
 
 // readEntry is used to coordinate between concurrent attempted readers of the
@@ -146,10 +156,8 @@ type readEntry struct {
 		errorDuration time.Duration
 		readStart     time.Time
 	}
-	// Count of ReadHandles that refer to this readEntry. Increments always hold
-	// shard.mu. So if this is found to be 0 while holding shard.mu, it is safe
-	// to delete readEntry from readShard.shardMu.readMap.
-	refCount refcnt
+	// Count of ReadHandles that refer to this readEntry. Protected by readShard.mu.
+	refCount int32
 }
 
 var readEntryPool = sync.Pool{
@@ -163,8 +171,8 @@ func newReadEntry(rs *readShard, k key) *readEntry {
 	*e = readEntry{
 		readShard: rs,
 		key:       k,
+		refCount:  1,
 	}
-	e.refCount.init(1)
 	return e
 }
 
@@ -261,40 +269,26 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 
 // unrefAndTryRemoveFromMap reduces the reference count of e and removes e.key
 // => e from the readMap if necessary.
-//
-// It is possible that after unreffing that s.e has already been removed, and
-// is now back in the sync.Pool, or being reused (for the same or different
-// key). This is because after unreffing, which caused the s.e.refCount to
-// become zero, but before acquiring shard.mu, it could have been incremented
-// and decremented concurrently, and some other goroutine could have observed
-// a different decrement to 0, and raced ahead and deleted s.e from the
-// readMap.
 func (e *readEntry) unrefAndTryRemoveFromMap() {
-	// Save the fields we need from entry; once we release the last refcount, it
-	// is possible that the entry is found and reused and then freed.
 	rs := e.readShard
-	k := e.key
-	if !e.refCount.release() {
+	rs.mu.Lock()
+	e.refCount--
+	if e.refCount > 0 {
+		// Entry still in use.
+		rs.mu.Unlock()
 		return
 	}
-	// Once we release the refcount, it is possible that it the entry is reused
-	// again and freed before we get the lock.
-	rs.shard.mu.Lock()
-	e2, ok := rs.shardMu.readMap.Get(k)
-	if !ok || e2 != e {
-		// Already removed.
-		rs.shard.mu.Unlock()
-		return
+	if e.refCount < 0 {
+		panic("invalid reference count")
 	}
-	if e.refCount.value() != 0 {
-		// The entry was reused.
-		rs.shard.mu.Unlock()
-		return
+	// The refcount is now 0; remove from the map.
+	if invariants.Enabled {
+		if e2, ok := rs.mu.readMap.Get(e.key); !ok || e2 != e {
+			panic("entry not in readMap")
+		}
 	}
-	// e.refCount == 0. And it cannot be incremented since
-	// shard.mu.Lock() is held. So remove from map.
-	rs.shardMu.readMap.Delete(k)
-	rs.shard.mu.Unlock()
+	rs.mu.readMap.Delete(e.key)
+	rs.mu.Unlock()
 
 	// Free s.e.
 	e.mu.v.Release()

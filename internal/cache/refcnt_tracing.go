@@ -41,16 +41,6 @@ func (v *refcnt) acquire() {
 	v.trace("acquire")
 }
 
-// acquireAllowZero is the same as acquire, but allows acquireAllowZero to be
-// called with a zero refcnt. This is useful for cases where the entry which
-// is being reference counted is inside a container and the container does not
-// hold a reference. The container uses release() returning true to attempt to
-// do a cleanup from the container.
-func (v *refcnt) acquireAllowZero() {
-	v.val.Add(1)
-	v.trace("acquire")
-}
-
 func (v *refcnt) release() bool {
 	n := v.val.Add(-1)
 	switch {
