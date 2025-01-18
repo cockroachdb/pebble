@@ -6,6 +6,7 @@ package block
 
 import (
 	"cmp"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,15 @@ const CategoryUnknown Category = 0
 // CategoryMax is the maximum value of a category, and is also the maximum
 // number of categories that can be registered.
 const CategoryMax = 30
+
+// ShardPadding pads each shard to 64 bytes so they don't share a cache line.
+const ShardPadding = 64 - unsafe.Sizeof(CategoryStatsWithMu{})
+
+// CategoryShard is a single shard of a category's statistics.
+type CategoryShard struct {
+	CategoryStatsWithMu
+	_ [ShardPadding]byte
+}
 
 func (c Category) String() string {
 	return categories[c].name
@@ -169,16 +179,25 @@ type CategoryStatsAggregate struct {
 	CategoryStats CategoryStats
 }
 
-const numCategoryStatsShards = 16
+// numCategoryStatsShards should be a power of 2 to compute shard indices
+// it is assigned the max between 16 and the power of 2 greater than GOMAXPROCS
+var numCategoryStatsShards = func() int {
+	p := runtime.GOMAXPROCS(0)
+	n := 16
+	for n < p {
+		n *= 2
+	}
+	return n
+}()
 
-type categoryStatsWithMu struct {
+type CategoryStatsWithMu struct {
 	mu sync.Mutex
 	// Protected by mu.
 	stats CategoryStats
 }
 
 // Accumulate implements the IterStatsAccumulator interface.
-func (c *categoryStatsWithMu) Accumulate(
+func (c *CategoryStatsWithMu) Accumulate(
 	blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration,
 ) {
 	c.mu.Lock()
@@ -199,11 +218,7 @@ type CategoryStatsCollector struct {
 // contention on the category stats mutex has been observed.
 type shardedCategoryStats struct {
 	Category Category
-	shards   [numCategoryStatsShards]struct {
-		categoryStatsWithMu
-		// Pad each shard to 64 bytes so they don't share a cache line.
-		_ [64 - unsafe.Sizeof(categoryStatsWithMu{})]byte
-	}
+	shards   []CategoryShard
 }
 
 // getStats retrieves the aggregated stats for the category, summing across all
@@ -222,20 +237,21 @@ func (s *shardedCategoryStats) getStats() CategoryStatsAggregate {
 
 // Accumulator returns a stats accumulator for the given category. The provided
 // p is used to detrmine which shard to write stats to.
-func (c *CategoryStatsCollector) Accumulator(p uint64, category Category) IterStatsAccumulator {
+func (c *CategoryStatsCollector) Accumulator(p uint64, category Category) *CategoryStatsWithMu {
 	v, ok := c.statsMap.Load(category)
 	if !ok {
 		c.mu.Lock()
 		v, _ = c.statsMap.LoadOrStore(category, &shardedCategoryStats{
 			Category: category,
+			shards:   make([]CategoryShard, numCategoryStatsShards),
 		})
 		c.mu.Unlock()
 	}
 	s := v.(*shardedCategoryStats)
 	// This equation is taken from:
 	// https://en.wikipedia.org/wiki/Linear_congruential_generator#Parameters_in_common_use
-	shard := ((p * 25214903917) >> 32) & (numCategoryStatsShards - 1)
-	return &s.shards[shard].categoryStatsWithMu
+	shard := ((p * 25214903917) >> 32) & uint64(numCategoryStatsShards-1)
+	return &s.shards[shard].CategoryStatsWithMu
 }
 
 // GetStats returns the aggregated stats.
@@ -250,9 +266,4 @@ func (c *CategoryStatsCollector) GetStats() []CategoryStatsAggregate {
 		return cmp.Compare(a.Category, b.Category)
 	})
 	return stats
-}
-
-type IterStatsAccumulator interface {
-	// Accumulate accumulates the provided stats.
-	Accumulate(blockBytes, blockBytesInCache uint64, blockReadDuration time.Duration)
 }
