@@ -323,7 +323,7 @@ type ReadEnv struct {
 	// iterator is closed. In the important code paths, the CategoryStatsCollector
 	// is managed by the fileCacheContainer.
 	Stats     *base.InternalIteratorStats
-	IterStats IterStatsAccumulator
+	IterStats *CategoryStatsShard
 
 	// BufferPool is not-nil if we read blocks into a buffer pool and not into the
 	// cache. This is used during compactions.
