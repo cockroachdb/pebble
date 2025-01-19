@@ -1456,9 +1456,9 @@ type iterSeekGEOp struct {
 	derivedReaderID objID
 }
 
-func iteratorPos(i *retryableIter) string {
+func iteratorPos(kf KeyFormat, i *retryableIter) string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%q", i.Key())
+	fmt.Fprintf(&buf, "%q", kf.FormatKey(i.Key()))
 	hasPoint, hasRange := i.HasPointAndRange()
 	if hasPoint {
 		fmt.Fprintf(&buf, ",%q", i.Value())
@@ -1467,12 +1467,12 @@ func iteratorPos(i *retryableIter) string {
 	}
 	if hasRange {
 		start, end := i.RangeBounds()
-		fmt.Fprintf(&buf, ",[%q,%q)=>{", start, end)
+		fmt.Fprintf(&buf, ",[%q,%q)=>{", kf.FormatKey(start), kf.FormatKey(end))
 		for i, rk := range i.RangeKeys() {
 			if i > 0 {
 				fmt.Fprint(&buf, ",")
 			}
-			fmt.Fprintf(&buf, "%q=%q", rk.Suffix, rk.Value)
+			fmt.Fprintf(&buf, "%q=%q", kf.FormatKeySuffix(rk.Suffix), rk.Value)
 		}
 		fmt.Fprint(&buf, "}")
 	} else {
@@ -1513,7 +1513,7 @@ func (o *iterSeekGEOp) run(t *Test, h historyRecorder) {
 	}
 	if valid {
 		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			validStr, iteratorPos(i), i.Error())
+			validStr, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%s] %v",
 			o.formattedString(t.testOpts.KeyFormat), validStr, i.Error())
@@ -1558,7 +1558,7 @@ func (o *iterSeekPrefixGEOp) run(t *Test, h historyRecorder) {
 	valid := i.SeekPrefixGE(o.key)
 	if valid {
 		h.Recordf("%s // [%t,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			valid, iteratorPos(i), i.Error())
+			valid, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%t] %v", o.formattedString(t.testOpts.KeyFormat), valid, i.Error())
 	}
@@ -1599,7 +1599,7 @@ func (o *iterSeekLTOp) run(t *Test, h historyRecorder) {
 	}
 	if valid {
 		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			validStr, iteratorPos(i), i.Error())
+			validStr, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
 			validStr, i.Error())
@@ -1634,7 +1634,7 @@ func (o *iterFirstOp) run(t *Test, h historyRecorder) {
 	valid := i.First()
 	if valid {
 		h.Recordf("%s // [%t,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			valid, iteratorPos(i), i.Error())
+			valid, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%t] %v", o.formattedString(t.testOpts.KeyFormat),
 			valid, i.Error())
@@ -1660,7 +1660,7 @@ func (o *iterLastOp) run(t *Test, h historyRecorder) {
 	valid := i.Last()
 	if valid {
 		h.Recordf("%s // [%t,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			valid, iteratorPos(i), i.Error())
+			valid, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%t] %v", o.formattedString(t.testOpts.KeyFormat),
 			valid, i.Error())
@@ -1694,7 +1694,7 @@ func (o *iterNextOp) run(t *Test, h historyRecorder) {
 	}
 	if valid {
 		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			validStr, iteratorPos(i), i.Error())
+			validStr, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
 			validStr, i.Error())
@@ -1723,7 +1723,7 @@ func (o *iterNextPrefixOp) run(t *Test, h historyRecorder) {
 	validStr := validBoolToStr(valid)
 	if valid {
 		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			validStr, iteratorPos(i), i.Error())
+			validStr, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
 			validStr, i.Error())
@@ -1794,7 +1794,7 @@ func (o *iterPrevOp) run(t *Test, h historyRecorder) {
 	}
 	if valid {
 		h.Recordf("%s // [%s,%s] %v", o.formattedString(t.testOpts.KeyFormat),
-			validStr, iteratorPos(i), i.Error())
+			validStr, iteratorPos(t.testOpts.KeyFormat, i), i.Error())
 	} else {
 		h.Recordf("%s // [%s] %v", o.formattedString(t.testOpts.KeyFormat),
 			validStr, i.Error())
