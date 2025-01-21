@@ -7,10 +7,10 @@ package sstable
 import (
 	"context"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/rangekey"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/rangekey"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // VirtualReader wraps Reader. Its purpose is to restrict functionality of the

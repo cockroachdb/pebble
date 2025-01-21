@@ -22,8 +22,8 @@ import (
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
 

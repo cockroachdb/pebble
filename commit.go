@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cockroachdb/pebble/batchrepr"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/v2/batchrepr"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/record"
 )
 
 // commitQueue is a lock-free fixed-size single-producer, multi-consumer

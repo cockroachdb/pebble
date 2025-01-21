@@ -15,10 +15,10 @@ import (
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/binfmt"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // PrefixBytes holds an array of lexicographically ordered byte slices. It

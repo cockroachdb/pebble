@@ -9,8 +9,8 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/objstorage"
 	"github.com/stretchr/testify/require"
 )
 

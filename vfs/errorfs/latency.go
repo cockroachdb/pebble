@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/dsl"
+	"github.com/cockroachdb/pebble/v2/internal/dsl"
 )
 
 // RandomLatency constructs an Injector that does not inject errors but instead

@@ -7,7 +7,7 @@ package sstable
 import (
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/v2/internal/manual"
 )
 
 func getBytes(ptr unsafe.Pointer, length int) []byte {

@@ -4,7 +4,7 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 type fileType = base.FileType
 

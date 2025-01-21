@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 const alpha = "abcdefghijklmnopqrstuvwxyz"

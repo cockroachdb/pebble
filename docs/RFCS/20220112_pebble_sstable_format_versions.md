@@ -2,10 +2,10 @@
 - Status: completed
 - Start Date: 2022-01-12
 - Authors: Nick Travers
-- RFC PR: https://github.com/cockroachdb/pebble/pull/1450
+- RFC PR: https://github.com/cockroachdb/pebble/v2/pull/1450
 - Pebble Issues:
-  https://github.com/cockroachdb/pebble/issues/1409
-  https://github.com/cockroachdb/pebble/issues/1339
+  https://github.com/cockroachdb/pebble/v2/issues/1409
+  https://github.com/cockroachdb/pebble/v2/issues/1339
 - Cockroach Issues:
 
 # Summary
@@ -25,7 +25,7 @@ opened, before any SSTables are opened. The versions indicate points of
 backwards incompatibility for a store. For example, the introduction of the
 `SetWithDelete` key kind is gated behind a version, as is block property
 collection. This format major version scheme was introduced in
-[#1227](https://github.com/cockroachdb/pebble/issues/1227).
+[#1227](https://github.com/cockroachdb/pebble/v2/issues/1227).
 
 While Pebble can use the format major version to infer how to load and
 interpret data in the LSM, the SSTables that make up the store itself have
@@ -83,7 +83,7 @@ supported table format.
 The remainder of this document outlines a new table format for Pebble. This new
 table format will be used for new table-level features such as block properties
 and range keys (see
-[#1339](https://github.com/cockroachdb/pebble/issues/1339)), but also for
+[#1339](https://github.com/cockroachdb/pebble/v2/issues/1339)), but also for
 backporting table-level features from RocksDB that would be useful to Pebble
 (e.g. version 3 avoids encoding sequence numbers in the index, and version 4
 uses delta encoding for the block offsets in the index, both of which are

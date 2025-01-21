@@ -4,7 +4,7 @@
 
 package metamorphic
 
-import "github.com/cockroachdb/pebble/internal/randvar"
+import "github.com/cockroachdb/pebble/v2/internal/randvar"
 
 // OpType is an enum of possible operation types.
 type OpType int

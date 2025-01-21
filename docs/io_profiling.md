@@ -88,14 +88,14 @@ As an example, `perf report --stdio` from perf data gathered using
                     |
                     ---runtime.goexit
                        |
-                       |--85.58%-- github.com/cockroachdb/pebble/internal/record.NewLogWriter.func2
+                       |--85.58%-- github.com/cockroachdb/pebble/v2/internal/record.NewLogWriter.func2
                        |          runtime/pprof.Do
-                       |          github.com/cockroachdb/pebble/internal/record.(*LogWriter).flushLoop-fm
-                       |          github.com/cockroachdb/pebble/internal/record.(*LogWriter).flushLoop
-                       |          github.com/cockroachdb/pebble/internal/record.(*LogWriter).flushPending
-                       |          github.com/cockroachdb/pebble/vfs.(*syncingFile).Sync
-                       |          github.com/cockroachdb/pebble/vfs.(*syncingFile).syncFdatasync-fm
-                       |          github.com/cockroachdb/pebble/vfs.(*syncingFile).syncFdatasync
+                       |          github.com/cockroachdb/pebble/v2/internal/record.(*LogWriter).flushLoop-fm
+                       |          github.com/cockroachdb/pebble/v2/internal/record.(*LogWriter).flushLoop
+                       |          github.com/cockroachdb/pebble/v2/internal/record.(*LogWriter).flushPending
+                       |          github.com/cockroachdb/pebble/v2/vfs.(*syncingFile).Sync
+                       |          github.com/cockroachdb/pebble/v2/vfs.(*syncingFile).syncFdatasync-fm
+                       |          github.com/cockroachdb/pebble/v2/vfs.(*syncingFile).syncFdatasync
                        |          syscall.Syscall
                        |          entry_SYSCALL_64_fastpath
                        |          sys_fdatasync
@@ -142,14 +142,14 @@ pebble  6019/6019  [008] 16492.555957: block:block_rq_insert: 259,0 WS 0 () 3970
             7fff81245243 sys_fdatasync
             7fff8181ae6d entry_SYSCALL_64_fastpath
                   3145e0 syscall.Syscall
-                  6eddf3 github.com/cockroachdb/pebble/vfs.(*syncingFile).syncFdatasync
-                  6f069a github.com/cockroachdb/pebble/vfs.(*syncingFile).syncFdatasync-fm
-                  6ed8d2 github.com/cockroachdb/pebble/vfs.(*syncingFile).Sync
-                  72542f github.com/cockroachdb/pebble/internal/record.(*LogWriter).flushPending
-                  724f5c github.com/cockroachdb/pebble/internal/record.(*LogWriter).flushLoop
-                  72855e github.com/cockroachdb/pebble/internal/record.(*LogWriter).flushLoop-fm
+                  6eddf3 github.com/cockroachdb/pebble/v2/vfs.(*syncingFile).syncFdatasync
+                  6f069a github.com/cockroachdb/pebble/v2/vfs.(*syncingFile).syncFdatasync-fm
+                  6ed8d2 github.com/cockroachdb/pebble/v2/vfs.(*syncingFile).Sync
+                  72542f github.com/cockroachdb/pebble/v2/internal/record.(*LogWriter).flushPending
+                  724f5c github.com/cockroachdb/pebble/v2/internal/record.(*LogWriter).flushLoop
+                  72855e github.com/cockroachdb/pebble/v2/internal/record.(*LogWriter).flushLoop-fm
                   7231d8 runtime/pprof.Do
-                  727b09 github.com/cockroachdb/pebble/internal/record.NewLogWriter.func2
+                  727b09 github.com/cockroachdb/pebble/v2/internal/record.NewLogWriter.func2
                   2c0281 runtime.goexit
 ```
 

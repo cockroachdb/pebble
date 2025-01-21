@@ -1251,7 +1251,7 @@ dd: (., [dd-e) @7=foo UPDATED)
 .
 .
 
-# Regression test for https://github.com/cockroachdb/pebble/issues/3225
+# Regression test for https://github.com/cockroachdb/pebble/v2/issues/3225
 # Handle cases where an sstable starts and ends at the same user key but different
 # internal key, and the ordering of internal key kinds changes due to seqnum
 # substitution.

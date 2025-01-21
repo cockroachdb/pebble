@@ -7,7 +7,7 @@ package metamorphic
 import (
 	"sort"
 
-	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
 )
 
 // TryToSimplifyKeys parses the operations data and tries to reassign keys to

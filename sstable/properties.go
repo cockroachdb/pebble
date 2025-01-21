@@ -14,8 +14,8 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/intern"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/v2/internal/intern"
+	"github.com/cockroachdb/pebble/v2/sstable/rowblk"
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32

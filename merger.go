@@ -7,7 +7,7 @@ package pebble
 import (
 	"io"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // Merge exports the base.Merge type.

@@ -1,4 +1,4 @@
-# Pebble [![Build Status](https://github.com/cockroachdb/pebble/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/cockroachdb/pebble/actions/workflows/ci.yaml) [![GoDoc](https://godoc.org/github.com/cockroachdb/pebble?status.svg)](https://godoc.org/github.com/cockroachdb/pebble) <sup><sub><sub>[Coverage](https://storage.googleapis.com/crl-codecover-public/pebble/index.html)</sub></sub></sup>
+# Pebble [![Build Status](https://github.com/cockroachdb/pebble/v2/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/cockroachdb/pebble/v2/actions/workflows/ci.yaml) [![GoDoc](https://godoc.org/github.com/cockroachdb/pebble/v2?status.svg)](https://godoc.org/github.com/cockroachdb/pebble/v2) <sup><sub><sub>[Coverage](https://storage.googleapis.com/crl-codecover-public/pebble/index.html)</sub></sub></sup>
 
 #### [Nightly benchmarks](https://cockroachdb.github.io/pebble/)
 
@@ -118,7 +118,7 @@ incompatibilities.
 * SSTable format version 3 and 4. Pebble does not support version 3
   and version 4 format sstables. The sstable format version is
   controlled by the `BlockBasedTableOptions::format_version` option.
-  See [#97](https://github.com/cockroachdb/pebble/issues/97).
+  See [#97](https://github.com/cockroachdb/pebble/v2/issues/97).
 
 ## Format major versions
 
@@ -134,11 +134,11 @@ to a compatible format major version before running newer Pebble versions. Newer
 Pebble versions will refuse to open databases in no longer supported formats.
 
 To opt into new formats, a user may set `FormatMajorVersion` on the
-[`Options`](https://pkg.go.dev/github.com/cockroachdb/pebble#Options)
+[`Options`](https://pkg.go.dev/github.com/cockroachdb/pebble/v2#Options)
 supplied to
-[`Open`](https://pkg.go.dev/github.com/cockroachdb/pebble#Open), or
+[`Open`](https://pkg.go.dev/github.com/cockroachdb/pebble/v2#Open), or
 upgrade the format major version at runtime using
-[`DB.RatchetFormatMajorVersion`](https://pkg.go.dev/github.com/cockroachdb/pebble#DB.RatchetFormatMajorVersion).
+[`DB.RatchetFormatMajorVersion`](https://pkg.go.dev/github.com/cockroachdb/pebble/v2#DB.RatchetFormatMajorVersion).
 Format major version upgrades are permanent; There is no option to
 return to an earlier format.
 
@@ -180,7 +180,7 @@ property collectors, the `pebble` tool can also be used, at the latest version
 that supports the format. For example:
 ```
 # WARNING: only use if no custom comparer/merger/property collector are necessary.
-go run github.com/cockroachdb/pebble/cmd/pebble@v1.1.3 db upgrade <db-dir>
+go run github.com/cockroachdb/pebble/v2/cmd/pebble@v1.1.3 db upgrade <db-dir>
 ```
 
 For reference, the table below lists the range of supported Pebble format major
@@ -224,7 +224,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 func main() {

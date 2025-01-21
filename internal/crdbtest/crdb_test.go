@@ -16,10 +16,10 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/testutils"
-	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/testutils"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/cockroachdb/pebble/v2/sstable/colblk"
 	"github.com/stretchr/testify/require"
 )
 

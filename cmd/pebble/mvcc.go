@@ -7,9 +7,9 @@ package main
 import (
 	"bytes"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/bytealloc"
+	"github.com/cockroachdb/pebble/v2/internal/crdbtest"
 )
 
 // MVCC routines adapted from CockroachDB sources. Used to perform

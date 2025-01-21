@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 

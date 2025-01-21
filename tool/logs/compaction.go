@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/humanize"
-	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/internal/humanize"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +31,7 @@ var (
 	// Captures a common logging prefix that can be used as the context for the
 	// surrounding information captured by other expressions. Example:
 	//
-	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [T1,n5,pebble,s5] ...
+	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/v2/compaction.go:1845 ⋮ [T1,n5,pebble,s5] ...
 	//
 	logContextPattern = regexp.MustCompile(
 		`^.*` +
@@ -58,11 +58,11 @@ var (
 
 	// Example compaction start and end log lines:
 	// 23.1 and older:
-	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s5] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)
-	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s
+	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/v2/compaction.go:1845 ⋮ [n5,pebble,s5] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)
+	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/v2/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s
 	// current:
-	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s5] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
-	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
+	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/v2/compaction.go:1845 ⋮ [n5,pebble,s5] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB)
+	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/v2/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) + L3 [445853] (8.4MB) -> L3 [445883 445887] (13MB), in 0.3s, output rate 42MB/s
 	//
 	// NOTE: we use the log timestamp to compute the compaction duration rather
 	// than the Pebble log output.
@@ -92,13 +92,13 @@ var (
 
 	// Example memtable flush log lines:
 	// 23.1 and older:
-	//   I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables to L0
-	//   I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3 M), in 0.2s, output rate 5.8 M/s
+	//   I211213 16:23:48.903751 21136 3@vendor/github.com/cockroachdb/pebble/v2/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables to L0
+	//   I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/v2/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables to L0 [1535806] (1.3 M), in 0.2s, output rate 5.8 M/s
 	// current:
 	//   I211213 16:23:48.903751 21136
-	//   3@vendor/github.com/cockroachdb/pebble/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables (1.4MB)  to L0
+	//   3@vendor/github.com/cockroachdb/pebble/v2/event.go:599 ⋮ [n9,pebble,s9] 24 [JOB 10] flushing 2 memtables (1.4MB)  to L0
 	//   I211213 16:23:49.134464 21136
-	//   3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables (1.4MB) to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
+	//   3@vendor/github.com/cockroachdb/pebble/v2/event.go:603 ⋮ [n9,pebble,s9] 26 [JOB 10] flushed 2 memtables (1.4MB) to L0 [1535806] (1.3MB), in 0.2s, output rate 5.8MB/s
 	//
 	// NOTE: we use the log timestamp to compute the flush duration rather than
 	// the Pebble log output.
@@ -115,9 +115,9 @@ var (
 
 	// Example ingested log lines:
 	// 23.1 and older:
-	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8 K), L0:21818683 (1.2 K), L0:21818679 (1.6 K), L0:21818680 (1.1 K), L0:21818681 (1.1 K), L0:21818682 (160 M)
+	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/v2/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8 K), L0:21818683 (1.2 K), L0:21818679 (1.6 K), L0:21818680 (1.1 K), L0:21818681 (1.1 K), L0:21818682 (160 M)
 	// current:
-	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8KB), L0:21818683 (1.2KB), L0:21818679 (1.6KB), L0:21818680 (1.1KB), L0:21818681 (1.1KB), L0:21818682 (160MB)
+	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/v2/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8KB), L0:21818683 (1.2KB), L0:21818679 (1.6KB), L0:21818680 (1.1KB), L0:21818681 (1.1KB), L0:21818682 (160MB)
 	//
 	ingestedPattern = regexp.MustCompile(
 		`^.*` +

@@ -109,8 +109,8 @@ import (
 	"io"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/crc"
 )
 
 // These constants are part of the wire format and should not be changed.

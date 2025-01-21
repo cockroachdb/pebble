@@ -14,8 +14,8 @@ import (
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/binfmt"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 	"github.com/stretchr/testify/require"
 )
 

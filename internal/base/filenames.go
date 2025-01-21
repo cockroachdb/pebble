@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors/oserror"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/redact"
 )
 

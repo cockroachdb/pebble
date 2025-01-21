@@ -1,4 +1,4 @@
-# Test case for bug https://github.com/cockroachdb/pebble/issues/2036 Build
+# Test case for bug https://github.com/cockroachdb/pebble/v2/issues/2036 Build
 # sstable with two-level index, with two data blocks in each lower-level index
 # block.
 build block-size=1 index-block-size=40 print-layout=true
@@ -94,7 +94,7 @@ next
 ----
 set-bounds lower=v upper=v: .
               seek-ge wz@8: .
-| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
+| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "x"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 193, Length: 26, Props: 00020801)
 |  topLevelIndex.isDataInvalidated()=false
@@ -107,7 +107,7 @@ set-bounds lower=v upper=v: .
 |  (boundsCmp,positionedUsingLatestBounds) = (0,true)
 |  exhaustedBounds = 1
               seek-ge wb@2: .
-| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
+| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "wc"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 161, Length: 27, Props: 00020201)
 |  topLevelIndex.isDataInvalidated()=false
@@ -119,7 +119,7 @@ set-bounds lower=v upper=v: .
 |  (boundsCmp,positionedUsingLatestBounds) = (0,true)
 |  exhaustedBounds = 1
 set-bounds lower=v upper=z: .
-| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
+| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "wc"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 161, Length: 27, Props: 00020201)
 |  topLevelIndex.isDataInvalidated()=false
@@ -131,7 +131,7 @@ set-bounds lower=v upper=z: .
 |  (boundsCmp,positionedUsingLatestBounds) = (1,false)
 |  exhaustedBounds = 1
                 seek-ge wc: <wz@8:8>
-| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/sstable/rowblk.Iter]:
+| *sstable.twoLevelIterator[github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.IndexIter,github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter,*github.com/cockroachdb/pebble/v2/sstable/rowblk.Iter]:
 |  topLevelIndex.Key() = "x"
 |  topLevelIndex.BlockHandleWithProperties() = (Offset: 193, Length: 26, Props: 00020801)
 |  topLevelIndex.isDataInvalidated()=false

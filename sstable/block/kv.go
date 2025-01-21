@@ -4,7 +4,7 @@
 
 package block
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // ValuePrefix is the single byte prefix in values indicating either an in-place
 // value or a value encoding a valueHandle. It encodes multiple kinds of

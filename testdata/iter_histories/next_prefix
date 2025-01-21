@@ -250,7 +250,7 @@ lsm
 L0.0:
   000005:[a@100#12,SET-z@1#85,SET]
 
-# Test for https://github.com/cockroachdb/pebble/issues/2260. Triggered the
+# Test for https://github.com/cockroachdb/pebble/v2/issues/2260. Triggered the
 # bug. The second call to first would return c@100 instead of the correct key,
 # b@1.
 combined-iter upper=b@1
@@ -270,7 +270,7 @@ b@1: (b@1, .)
 c@100: (c@100, .)
 b@1: (b@1, .)
 
-# Did not trigger https://github.com/cockroachdb/pebble/issues/2260 since
+# Did not trigger https://github.com/cockroachdb/pebble/v2/issues/2260 since
 # Iterator.NextPrefix first does a Next. So the second call to NextPrefix
 # returned after the Next, since the upper bound was reached, which left the
 # Iterator positioned at b@1.

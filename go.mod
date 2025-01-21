@@ -1,4 +1,4 @@
-module github.com/cockroachdb/pebble
+module github.com/cockroachdb/pebble/v2
 
 require (
 	github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e

@@ -32,15 +32,15 @@ go tool covdata textfmt -i "${tmpdir}/metacover" -o artifacts/profile-meta.gocov
 # TODO(radu): make the crossversion metamorphic test work.
 
 go run github.com/cockroachdb/code-cov-utils/convert@v1.1.0 -out artifacts/profile-tests.lcov \
-  -trim-prefix github.com/cockroachdb/pebble/ \
+  -trim-prefix github.com/cockroachdb/pebble/v2/ \
   artifacts/profile-tests.gocov
 
 go run github.com/cockroachdb/code-cov-utils/convert@v1.1.0 -out artifacts/profile-meta.lcov \
-  -trim-prefix github.com/cockroachdb/pebble/ \
+  -trim-prefix github.com/cockroachdb/pebble/v2/ \
   artifacts/profile-meta.gocov
 
 go run github.com/cockroachdb/code-cov-utils/convert@v1.1.0 -out artifacts/profile-tests-and-meta.lcov \
-  -trim-prefix github.com/cockroachdb/pebble/ \
+  -trim-prefix github.com/cockroachdb/pebble/v2/ \
   artifacts/profile-tests.gocov artifacts/profile-meta.gocov
 
 if [ $test_failed -eq 1 ]; then

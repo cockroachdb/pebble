@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // Purpose identifies the use-case for an allocation.

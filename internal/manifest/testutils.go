@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // debugParser is a helper used to implement parsing of debug strings, like

@@ -9,9 +9,9 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/dsl"
-	"github.com/cockroachdb/pebble/vfs/errorfs"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/dsl"
+	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 )
 
 // Predicate encodes conditional logic that yields a boolean.

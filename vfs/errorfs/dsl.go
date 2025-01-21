@@ -12,7 +12,7 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/dsl"
+	"github.com/cockroachdb/pebble/v2/internal/dsl"
 )
 
 // Predicate encodes conditional logic that determines whether to inject an

@@ -9,11 +9,11 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/colblk"
-	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/cockroachdb/pebble/v2/sstable/colblk"
+	"github.com/cockroachdb/pebble/v2/sstable/rowblk"
 )
 
 // dataBlockIterator extends the block.IndexBlockIterator interface with a

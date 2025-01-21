@@ -52,9 +52,9 @@ package rangekey
 import (
 	"encoding/binary"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
 )
 
 // Encode takes a Span containing only range keys. It invokes the provided
