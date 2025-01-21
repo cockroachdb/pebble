@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -122,13 +123,17 @@ func (t *Test) init(
 	// the on-disk FS isn't desirable because there is a large performance
 	// difference between in-memory and on-disk which causes different code paths
 	// and timings to be exercised.
+	tearDown := func(err error) {
+		t.saveInMemoryData()
+		fmt.Fprintln(os.Stderr, err)
+		debug.PrintStack()
+		os.Exit(1)
+	}
 	maybeExit := func(err error) {
 		if err == nil || errors.Is(err, errorfs.ErrInjected) || errors.Is(err, pebble.ErrCancelledCompaction) {
 			return
 		}
-		t.saveInMemoryData()
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		tearDown(err)
 	}
 
 	// Exit early on any error from a background operation.
@@ -173,6 +178,17 @@ func (t *Test) init(
 	t.opts.EventListener.WALDeleted = func(info pebble.WALDeleteInfo) {
 		t.opts.Logger.Infof("%s", info)
 		maybeExit(info.Err)
+	}
+	t.opts.EventListener.PossibleAPIMisuse = func(info pebble.PossibleAPIMisuseInfo) {
+		t.opts.Logger.Infof("%s", info)
+		// The metamorphic test may generate ineffectual single-delete
+		// operations, but it must not generate nondeterministic ones.
+		switch info.Kind {
+		case pebble.NondeterministicSingleDelete:
+			err := errors.AssertionFailedf("non-deterministic single delete on key %q", info.UserKey)
+			tearDown(err)
+		default:
+		}
 	}
 
 	for i := range t.testOpts.CustomOpts {
