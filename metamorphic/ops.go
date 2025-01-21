@@ -1401,8 +1401,12 @@ func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 		opts.SkipPoint = func(k []byte) (skip bool) {
 			n := kf.Comparer.Split(k)
 			if n == len(k) {
-				// No suffix, don't skip it.
-				return false
+				// No suffix, skip it. We adopt these semantics because the MVCC
+				// timestamp block-property collector used by CockroachDB just
+				// ignores keys without suffixes, meaning that filtering on the
+				// property results in nondeterministic presence of
+				// non-timestamped keys.
+				return true
 			}
 			if kf.Comparer.ComparePointSuffixes(k[n:], o.filterMin) < 0 {
 				return true
