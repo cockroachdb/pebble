@@ -4,7 +4,7 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // SeekLE seeks to the span that contains or is before the target key. If an
 // error occurs while seeking iter, a nil span and non-nil error is returned.

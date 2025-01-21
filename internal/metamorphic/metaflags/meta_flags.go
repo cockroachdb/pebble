@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/cockroachdb/pebble/metamorphic"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/randvar"
+	"github.com/cockroachdb/pebble/v2/metamorphic"
 )
 
 // CommonFlags contains flags that apply to both metamorphic.Run and

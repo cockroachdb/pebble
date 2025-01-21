@@ -7,10 +7,10 @@ package sstable
 import (
 	"context"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/testutils"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/testutils"
+	"github.com/cockroachdb/pebble/v2/objstorage"
 )
 
 // ReadAll returns all point keys, range del spans, and range key spans from an

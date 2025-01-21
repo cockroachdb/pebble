@@ -9,11 +9,11 @@ import (
 	"io"
 	"slices"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
-	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider/remoteobjcat"
+	"github.com/cockroachdb/pebble/v2/record"
 	"github.com/spf13/cobra"
 )
 

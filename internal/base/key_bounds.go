@@ -7,7 +7,7 @@ package base
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // BoundaryKind indicates if a boundary is exclusive or inclusive.

@@ -65,7 +65,7 @@
 //		return err
 //	}
 //	return w.Close()
-package sstable // import "github.com/cockroachdb/pebble/sstable"
+package sstable // import "github.com/cockroachdb/pebble/v2/sstable"
 
 import (
 	"context"
@@ -73,9 +73,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 /*

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // NewDeletableSumValueMerger return a ValueMerger which computes the sum of its

@@ -11,12 +11,12 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]] struct {
@@ -408,7 +408,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 		}
 		// Else flags.TrySeekUsingNext(). The i.exhaustedBounds is important to
 		// preserve for singleLevelIterator, and twoLevelIterator.skipForward. See
-		// bug https://github.com/cockroachdb/pebble/issues/2036.
+		// bug https://github.com/cockroachdb/pebble/v2/issues/2036.
 	}
 
 	if !dontSeekWithinSingleLevelIter {
@@ -575,7 +575,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 		}
 		// Else flags.TrySeekUsingNext(). The i.exhaustedBounds is important to
 		// preserve for singleLevelIterator, and twoLevelIterator.skipForward. See
-		// bug https://github.com/cockroachdb/pebble/issues/2036.
+		// bug https://github.com/cockroachdb/pebble/v2/issues/2036.
 	}
 
 	if !dontSeekWithinSingleLevelIter {

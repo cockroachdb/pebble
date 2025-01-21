@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/objstorage/remote"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -568,7 +568,7 @@ func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 		// than blob storage read latency) that miss on the same logical block ID will not necessarily
 		// be rare. We may want to do only one read, with the later readers blocking on the first read
 		// completing. This could be implemented either here or in the primary block cache. See
-		// https://github.com/cockroachdb/pebble/pull/2586 for additional discussion.
+		// https://github.com/cockroachdb/pebble/v2/pull/2586 for additional discussion.
 		if !ok {
 			s.mu.Unlock()
 			return n, nil

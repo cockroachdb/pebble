@@ -9,9 +9,9 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // A SpanMask may be used to configure an interleaving iterator to skip point

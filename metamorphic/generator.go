@@ -12,9 +12,9 @@ import (
 	"os"
 	"slices"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/randvar"
+	"github.com/cockroachdb/pebble/v2/sstable"
 )
 
 const maxValueSize = 20

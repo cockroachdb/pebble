@@ -6,7 +6,7 @@ package base
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // ErrNotFound means that a get or delete call did not find the requested key.

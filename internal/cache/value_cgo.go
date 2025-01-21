@@ -11,7 +11,7 @@ package cache
 import (
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/v2/internal/manual"
 )
 
 func newValue(n int) *Value {

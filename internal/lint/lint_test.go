@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +67,7 @@ func TestLint(t *testing.T) {
 		t.Skip("lint checks skipped on race builds")
 	}
 
-	const root = "github.com/cockroachdb/pebble"
+	const root = "github.com/cockroachdb/pebble/v2"
 
 	pkg, err := build.Import(root, "../..", 0)
 	require.NoError(t, err)

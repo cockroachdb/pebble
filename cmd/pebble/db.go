@@ -7,13 +7,13 @@ package main
 import (
 	"log"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
-	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/internal/bytealloc"
+	"github.com/cockroachdb/pebble/v2/internal/crdbtest"
+	"github.com/cockroachdb/pebble/v2/objstorage/remote"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // DB specifies the minimal interfaces that need to be implemented to support

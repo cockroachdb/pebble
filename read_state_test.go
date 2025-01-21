@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 func BenchmarkReadState(b *testing.B) {

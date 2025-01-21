@@ -7,7 +7,7 @@ package base
 import (
 	"context"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // A value can have user-defined attributes that are a function of the value

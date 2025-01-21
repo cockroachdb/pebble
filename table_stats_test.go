@@ -12,12 +12,12 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/colblk"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/sstable/colblk"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
 

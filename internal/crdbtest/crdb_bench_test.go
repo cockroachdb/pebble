@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/sstableinternal"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/cache"
+	"github.com/cockroachdb/pebble/v2/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/cockroachdb/pebble/v2/sstable/colblk"
 	"github.com/stretchr/testify/require"
 )
 

@@ -3,7 +3,7 @@
 - Start Date: 2024-06-28
 - Authors: Anish Shanbhag
 - RFC PR: cockroachdb#3719
-- Pebble Issues: https://github.com/cockroachdb/pebble/issues/918
+- Pebble Issues: https://github.com/cockroachdb/pebble/v2/issues/918
 
 # Summary
 
@@ -15,14 +15,14 @@ The new heuristic was introduced in cockroachdb#3790.
 
 Pebble currently contains a variety of compaction heuristics which are mostly based on SSTable file size. One weak point in the compaction heuristics involves the case where we have a large buildup of close-together point tombstones, which causes reads for keys after the tombstone cluster to become extremely slow.
 
-As identified [here](https://github.com/cockroachdb/pebble/issues/918#issuecomment-1564714073), uncompacted point tombstones reduce read performance in two ways: the extra CPU cycles needed to iterate over them during a seek, and the extra I/O needed to load more blocks which contain live keys.
+As identified [here](https://github.com/cockroachdb/pebble/v2/issues/918#issuecomment-1564714073), uncompacted point tombstones reduce read performance in two ways: the extra CPU cycles needed to iterate over them during a seek, and the extra I/O needed to load more blocks which contain live keys.
 
 It's important that we reduce tombstone density before the tombstones are read because there are many cases where tombstones are written for very long periods before any reads are triggered. 
 
 Even though our current heuristics take the potential amount of reclaimed space from compacting point tombstones into account, there are specific situations where this is not sufficient to prevent point tombstone buildup. Specifically, these are some of the factors that lead to this issue:
 
 1. Tombstone buildup usually only happens in large stores (> 10 GB) once multiple levels of the LSM start to be populated.
-2. The LSM is "too well shaped" in that the size ratio between levels is at the proper value, so [compaction scores](https://github.com/cockroachdb/pebble/blob/3ef2e5b1f693dfbf78785e14f603a443af3c674b/compaction_picker.go#L919) for each level are all calculated to be <1 and thus no compactions are scheduled.
+2. The LSM is "too well shaped" in that the size ratio between levels is at the proper value, so [compaction scores](https://github.com/cockroachdb/pebble/v2/blob/3ef2e5b1f693dfbf78785e14f603a443af3c674b/compaction_picker.go#L919) for each level are all calculated to be <1 and thus no compactions are scheduled.
 	- Observed in [this escalation](https://github.com/cockroachlabs/support/issues/2628) (internal only)
 3. Read performance becomes especially bad when we have a high density of point tombstones in higher levels (L0-3) which span many SSTables in the bottommost levels (L4-6).
 4. The problem is especially apparent when there's one key range which we write to/delete from frequently and an adjacent key range which we read frequently.
@@ -91,7 +91,7 @@ In this case, we want the ability to query if a certain key range `a->b` is "tom
 Given this method to query tombstone stats for arbitrary key ranges, here's a sketch of how the overall compaction process could look:
 - After writing an SSTable, add this SSTable and all SSTables which overlap with its key range (using `version.Overlaps`) to a global set `needsTombstoneCheck` which marks them as possibly eligible for a tombstone density compaction
 	- If the logic below ends up being fast enough, we could avoid having `needsTombstoneCheck` entirely and check whether compaction is needed during a write itself. But if not, we should defer the check in order to keep writes fast
-- Inside [`pickAuto`](https://github.com/cockroachdb/pebble/blob/4981bd0e5e9538a032a4caf3a12d4571abb8c206/compaction_picker.go#L1324), we'll check whether any SSTable in `needsTombstoneCheck` should be compacted
+- Inside [`pickAuto`](https://github.com/cockroachdb/pebble/v2/blob/4981bd0e5e9538a032a4caf3a12d4571abb8c206/compaction_picker.go#L1324), we'll check whether any SSTable in `needsTombstoneCheck` should be compacted
 	- For each SSTable `T` in `needsTombstoneCheck`, we can get the following info using the `Annotator` and the table statistics we already have (assuming this SSTable spans the key range `a->b`:
 		- This SSTable
 			- number of tombstones in `T`
@@ -107,13 +107,13 @@ Given this method to query tombstone stats for arbitrary key ranges, here's a sk
 
 ### 4. Maximum Granularity
 
-If we find that the key range statistics method above works well but we want even more granularity for key ranges, i.e. because the overestimate of whole-LSM stats above becomes an issue, then we could include per-block tombstone/key counts in the index block of each SSTable, which would allow us to get a more precise count of tombstones for a given key range. This would look pretty similar to the logic separating partial vs. full overlaps in [`estimateReclaimedSizesBeneath`](https://github.com/cockroachdb/pebble/blob/master/table_stats.go#L606), except we'd be checking tombstone/key count instead of disk usage.
+If we find that the key range statistics method above works well but we want even more granularity for key ranges, i.e. because the overestimate of whole-LSM stats above becomes an issue, then we could include per-block tombstone/key counts in the index block of each SSTable, which would allow us to get a more precise count of tombstones for a given key range. This would look pretty similar to the logic separating partial vs. full overlaps in [`estimateReclaimedSizesBeneath`](https://github.com/cockroachdb/pebble/v2/blob/master/table_stats.go#L606), except we'd be checking tombstone/key count instead of disk usage.
 - If we store a running total of the tombstones for each block in the index entry, making this query would be O(log n) or faster, not including the I/O overhead of reading the index block
 </details>
 
 # Testing
 
-Testing methodology and results can be found [here](https://github.com/cockroachdb/pebble/pull/3790#issuecomment-2251439492). Tombstone buildup has been frequently observed in queue-based workloads and the benchmark introduced in cockroachdb#3744 is meant to capture this case. Below are some further ideas for testing in case they're needed:
-- Idea from [here](https://github.com/cockroachdb/pebble/issues/918#issuecomment-1599478862) - seed a new node with a replication snapshot, which has the tendency for tomstone buildup
+Testing methodology and results can be found [here](https://github.com/cockroachdb/pebble/v2/pull/3790#issuecomment-2251439492). Tombstone buildup has been frequently observed in queue-based workloads and the benchmark introduced in cockroachdb#3744 is meant to capture this case. Below are some further ideas for testing in case they're needed:
+- Idea from [here](https://github.com/cockroachdb/pebble/v2/issues/918#issuecomment-1599478862) - seed a new node with a replication snapshot, which has the tendency for tomstone buildup
 - cockroachdb/cockroach#113069 measures performance of liveness range scans since those were often slowed down by tombstones. Even though it looks like liveness logic has changed since then to avoid this, we could adapt the test to induce slow reads.
 - Create reproduction roachtests for past slowdown scenarios we've observed

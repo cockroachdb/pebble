@@ -10,7 +10,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // NewLocalFS returns a vfs-backed implementation of the remote.Storage
@@ -89,7 +89,7 @@ func (s *localFSStore) List(prefix, delimiter string) ([]string, error) {
 	// TODO(josh): For the intended use case of localfs.go of running 'pebble bench',
 	// List can always return <nil, nil>, since this indicates a file has only one ref,
 	// and since `pebble bench` implies running in a single-pebble-instance context.
-	// https://github.com/cockroachdb/pebble/blob/a9a079d4fb6bf4a9ebc52e4d83a76ad4cbf676cb/objstorage/objstorageprovider/shared.go#L292
+	// https://github.com/cockroachdb/pebble/v2/blob/a9a079d4fb6bf4a9ebc52e4d83a76ad4cbf676cb/objstorage/objstorageprovider/shared.go#L292
 	return nil, nil
 }
 

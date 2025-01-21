@@ -12,10 +12,10 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // Value blocks are supported in TableFormatPebblev3.
@@ -49,7 +49,7 @@ import (
 // which makes stepping from one key prefix to the next prefix (i.e., skipping
 // over older versions of a MVCC key) more efficient by avoiding key
 // comparisons and key decoding. See the results in
-// https://github.com/cockroachdb/pebble/pull/2149 and more details in the
+// https://github.com/cockroachdb/pebble/v2/pull/2149 and more details in the
 // comment inside BenchmarkIteratorScanNextPrefix. These improvements are also
 // visible in end-to-end CockroachDB tests, as outlined in
 // https://github.com/cockroachdb/cockroach/pull/96652.
@@ -83,8 +83,8 @@ import (
 // including the memory lifetime management.
 //
 // For historical discussions about this feature, see the issue
-// https://github.com/cockroachdb/pebble/issues/1170 and the prototype in
-// https://github.com/cockroachdb/pebble/pull/1443.
+// https://github.com/cockroachdb/pebble/v2/issues/1170 and the prototype in
+// https://github.com/cockroachdb/pebble/v2/pull/1443.
 //
 // The code in this file mainly covers value block and related encodings. We
 // discuss these in the next section.
@@ -129,7 +129,7 @@ import (
 // there are multiple use cases in CockroachDB that need the value length but
 // not the value, for which we can avoid reading the value in the value block
 // (see
-// https://github.com/cockroachdb/pebble/issues/1170#issuecomment-958203245).
+// https://github.com/cockroachdb/pebble/v2/issues/1170#issuecomment-958203245).
 //
 // A value block has a checksum like other blocks, and is optionally
 // compressed. An uncompressed value block is a sequence of values with no
@@ -191,7 +191,7 @@ type valueHandle struct {
 // valueHandle fields are varint encoded, so maximum 5 bytes each, plus 1 byte
 // for the valuePrefix. This could alternatively be group varint encoded, but
 // experiments were inconclusive
-// (https://github.com/cockroachdb/pebble/pull/1443#issuecomment-1270298802).
+// (https://github.com/cockroachdb/pebble/v2/pull/1443#issuecomment-1270298802).
 const valueHandleMaxLen = 5*3 + 1
 
 // Assert blockHandleLikelyMaxLen >= valueHandleMaxLen.
@@ -682,7 +682,7 @@ func (bpwc blockProviderWhenClosed) readBlockForVBR(
 	// for tracing.
 	//
 	// TODO(sumeer): consider fixing this. See
-	// https://github.com/cockroachdb/pebble/pull/3065#issue-1991175365 for an
+	// https://github.com/cockroachdb/pebble/v2/pull/3065#issue-1991175365 for an
 	// alternative.
 	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.ValueBlock)
 	// TODO(jackson,sumeer): Consider whether to use a buffer pool in this case.

@@ -7,7 +7,7 @@ package compact
 import (
 	"sort"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // Snapshots stores a list of snapshot sequence numbers, in ascending order.

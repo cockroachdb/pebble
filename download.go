@@ -11,9 +11,9 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/objstorage"
 )
 
 // DownloadSpan is a key range passed to the Download method.

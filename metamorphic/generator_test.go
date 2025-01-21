@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/v2/internal/randvar"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
 )

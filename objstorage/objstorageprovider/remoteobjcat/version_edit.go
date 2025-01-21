@@ -10,10 +10,10 @@ import (
 	"io"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/objstorage/remote"
 )
 
 // VersionEdit is a modification to the remote object state which can be encoded

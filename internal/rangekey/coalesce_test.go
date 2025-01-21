@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
 )
 
 func TestCoalesce(t *testing.T) {

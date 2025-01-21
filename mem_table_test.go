@@ -17,10 +17,10 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/arenaskl"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/itertest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/v2/internal/arenaskl"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/itertest"
+	"github.com/cockroachdb/pebble/v2/internal/rangekey"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )

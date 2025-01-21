@@ -10,12 +10,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/crdbtest"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable/colblk"
-	"github.com/cockroachdb/pebble/tool"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/crdbtest"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/sstable/colblk"
+	"github.com/cockroachdb/pebble/v2/tool"
 	"github.com/spf13/cobra"
 )
 

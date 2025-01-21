@@ -4,7 +4,7 @@
 
 package keyspan
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // Transformer defines a transformation to be applied to a Span.
 type Transformer interface {

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // When the "invariants" or "tracing" build tags are enabled, we need to

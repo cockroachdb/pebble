@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
-	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/v2/internal/cache"
 	"github.com/stretchr/testify/require"
 )
 

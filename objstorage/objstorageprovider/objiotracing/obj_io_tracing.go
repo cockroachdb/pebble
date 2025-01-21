@@ -4,7 +4,7 @@
 
 package objiotracing
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // OpType indicates the type of operation.
 type OpType uint8

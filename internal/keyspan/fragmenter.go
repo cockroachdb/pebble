@@ -7,8 +7,8 @@ package keyspan
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // Fragmenter fragments a set of spans such that overlapping spans are

@@ -14,7 +14,7 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 type methodInfo struct {

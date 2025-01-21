@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // StartRecording starts a new recording that captures step-by-step propagation

@@ -8,9 +8,9 @@ import (
 	"context"
 	"math"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // CommonReader abstracts functionality over a Reader or a VirtualReader. This

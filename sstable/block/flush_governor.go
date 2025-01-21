@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/v2/internal/cache"
 )
 
 // FlushGovernor is used to decide when to flush a block. It takes into

@@ -17,9 +17,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // Enabled is used to short circuit tracing-related code in regular builds.

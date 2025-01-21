@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // TODO(sumeer): hide LogRecycler once rest of Pebble is using wal.Manager.
