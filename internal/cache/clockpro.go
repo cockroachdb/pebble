@@ -486,7 +486,7 @@ func (c *shard) metaDel(e *entry) (deletedValue *Value) {
 
 // Check that the specified entry is not referenced by the cache.
 func (c *shard) metaCheck(e *entry) {
-	if invariants.Enabled {
+	if invariants.Enabled && invariants.Sometimes(1) {
 		if _, ok := c.entries[e]; ok {
 			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in entries map\n%s",
 				e, e.key, debug.Stack())
