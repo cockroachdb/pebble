@@ -942,22 +942,36 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.ToTreePrinter(n)
 }
 
-// Validate validates invariants that should hold across all data blocks.
-func (d *DataBlockDecoder) Validate(comparer *base.Comparer, keySchema *KeySchema) error {
-	// TODO(jackson): Consider avoiding these allocations, even if this is only
-	// called in invariants builds.
-	n := d.d.header.Rows
-	meta := &KeySeekerMetadata{}
-	keySchema.InitKeySeekerMetadata(meta, d)
-	keySeeker := keySchema.KeySeeker(meta)
-	prevKey := base.InternalKey{UserKey: make([]byte, 0, d.maximumKeyLength+1)}
-	var curKey PrefixBytesIter
-	curKey.Init(int(d.maximumKeyLength), nil)
+// A DataBlockValidator validates invariants that should hold across all data
+// blocks. It may be used multiple times and will reuse allocations across
+// Validate invocations when possible.
+type DataBlockValidator struct {
+	dec            DataBlockDecoder
+	keySeekerMeta  KeySeekerMetadata
+	curKeyIter     PrefixBytesIter
+	prevUserKeyBuf []byte
+}
+
+// Validate validates the provided block. It returns an error if the block is
+// invalid.
+func (v *DataBlockValidator) Validate(
+	data []byte, comparer *base.Comparer, keySchema *KeySchema,
+) error {
+	v.dec.Init(keySchema, data)
+	n := v.dec.d.header.Rows
+	keySchema.InitKeySeekerMetadata(&v.keySeekerMeta, &v.dec)
+	keySeeker := keySchema.KeySeeker(&v.keySeekerMeta)
+
+	if cap(v.prevUserKeyBuf) < int(v.dec.maximumKeyLength)+1 {
+		v.prevUserKeyBuf = make([]byte, 0, v.dec.maximumKeyLength+1)
+	}
+	prevKey := base.InternalKey{UserKey: v.prevUserKeyBuf[:0]}
+	v.curKeyIter.Init(int(v.dec.maximumKeyLength), nil)
 
 	for i := 0; i < int(n); i++ {
 		k := base.InternalKey{
-			UserKey: keySeeker.MaterializeUserKey(&curKey, i-1, i),
-			Trailer: base.InternalKeyTrailer(d.trailers.At(i)),
+			UserKey: keySeeker.MaterializeUserKey(&v.curKeyIter, i-1, i),
+			Trailer: base.InternalKeyTrailer(v.dec.trailers.At(i)),
 		}
 		// Ensure the keys are ordered.
 		ucmp := comparer.Compare(k.UserKey, prevKey.UserKey)
@@ -969,7 +983,7 @@ func (d *DataBlockDecoder) Validate(comparer *base.Comparer, keySchema *KeySchem
 		// Not all sources of obsolescence are evident with only a data block
 		// available (range deletions or point keys in previous blocks may cause
 		// a key to be obsolete).
-		if ucmp == 0 && prevKey.Kind() != base.InternalKeyKindMerge && !d.isObsolete.At(i) {
+		if ucmp == 0 && prevKey.Kind() != base.InternalKeyKindMerge && !v.dec.isObsolete.At(i) {
 			return errors.AssertionFailedf("key %s (row %d) is shadowed by previous key %s but is not marked as obsolete",
 				k, i, prevKey)
 		}
@@ -978,9 +992,9 @@ func (d *DataBlockDecoder) Validate(comparer *base.Comparer, keySchema *KeySchem
 			currPrefix := comparer.Split.Prefix(k.UserKey)
 			prevPrefix := comparer.Split.Prefix(prevKey.UserKey)
 			prefixChanged := !bytes.Equal(prevPrefix, currPrefix)
-			if prefixChanged != d.prefixChanged.At(i) {
+			if prefixChanged != v.dec.prefixChanged.At(i) {
 				return errors.AssertionFailedf("prefix changed bit for key %q (row %d) is %t, expected %t [prev key was %q]",
-					k.UserKey, i, d.prefixChanged.At(i), prefixChanged, prevKey.UserKey)
+					k.UserKey, i, v.dec.prefixChanged.At(i), prefixChanged, prevKey.UserKey)
 			}
 		}
 
