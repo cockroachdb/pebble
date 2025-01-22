@@ -48,6 +48,7 @@ compactions
 
 pick-auto l0_compaction_threshold=10
 ----
+picker.getCompactionConcurrency: 4
 nil
 
 # Test that lowering L0CompactionConcurrency opens up more compaction slots.
@@ -93,10 +94,12 @@ compactions
 
 pick-auto l0_compaction_concurrency=10
 ----
+picker.getCompactionConcurrency: 1
 nil
 
 pick-auto l0_compaction_concurrency=5
 ----
+picker.getCompactionConcurrency: 2
 L0 -> L1
 L0: 000301,000302,000303,000304,000305
 L1: 000201
@@ -104,6 +107,7 @@ grandparents: 000101
 
 pick-auto l0_compaction_concurrency=1
 ----
+picker.getCompactionConcurrency: 4
 L0 -> L1
 L0: 000301,000302,000303,000304,000305
 L1: 000201
@@ -155,10 +159,12 @@ compactions
 
 pick-auto l0_compaction_concurrency=10 compaction_debt_concurrency=5120000
 ----
+picker.getCompactionConcurrency: 1
 nil
 
 pick-auto l0_compaction_concurrency=10 compaction_debt_concurrency=512000
 ----
+picker.getCompactionConcurrency: 4
 L0 -> L1
 L0: 000301,000302,000303,000304,000305
 L1: 000201
@@ -166,6 +172,7 @@ grandparents: 000101
 
 pick-auto l0_compaction_concurrency=5 compaction_debt_concurrency=5120000
 ----
+picker.getCompactionConcurrency: 2
 L0 -> L1
 L0: 000301,000302,000303,000304,000305
 L1: 000201
