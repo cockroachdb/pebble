@@ -453,7 +453,10 @@ type DB struct {
 			deletionHints []deleteCompactionHint
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
-			manual []*manualCompaction
+			manual    []*manualCompaction
+			manualLen atomic.Int32
+			// manualID is used to identify manualCompactions in the manual slice.
+			manualID uint64
 			// downloads is the list of pending download tasks. The next download to
 			// perform is at the start of the list. New entries are added to the end.
 			downloads []*downloadSpanTask
@@ -1666,6 +1669,14 @@ func (d *DB) NewEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFile
 // or to call Close concurrently with any other DB method. It is not valid
 // to call any of a DB's methods after the DB has been closed.
 func (d *DB) Close() error {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	// Compactions can be asynchronously started by the CompactionScheduler
+	// calling d.Schedule. When this Unregister returns, we know that the
+	// CompactionScheduler will never again call a method on the DB. Note that
+	// this must be called without holding d.mu.
+	d.opts.Experimental.CompactionScheduler.Unregister()
 	// Lock the commit pipeline for the duration of Close. This prevents a race
 	// with makeRoomForWrite. Rotating the WAL in makeRoomForWrite requires
 	// dropping d.mu several times for I/O. If Close only holds d.mu, an
@@ -1680,10 +1691,14 @@ func (d *DB) Close() error {
 	defer d.commit.mu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	// Check that the DB is not closed again. If there are two concurrent calls
+	// to DB.Close, the best-effort check at the top of DB.Close may not fire.
+	// But since this second check happens after mutex acquisition, the two
+	// concurrent calls will get serialized and the second one will see the
+	// effect of the d.closed.Store below.
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-
 	// Clear the finalizer that is used to check that an unreferenced DB has been
 	// closed. We're closing the DB here, so the check performed by that
 	// finalizer isn't necessary.
@@ -1916,7 +1931,12 @@ func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error
 			end:   end,
 		})
 	}
+	for i := range compactions {
+		d.mu.compact.manualID++
+		compactions[i].id = d.mu.compact.manualID
+	}
 	d.mu.compact.manual = append(d.mu.compact.manual, compactions...)
+	d.mu.compact.manualLen.Store(int32(len(d.mu.compact.manual)))
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
 

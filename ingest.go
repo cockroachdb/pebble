@@ -2038,6 +2038,8 @@ func (d *DB) ingestApply(
 			}
 		}
 		if err != nil {
+			// No need to invalidate the pickedCompactionCache since the latest
+			// version has not changed.
 			d.mu.versions.logUnlock()
 			return nil, err
 		}
