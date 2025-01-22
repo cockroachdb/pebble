@@ -1922,9 +1922,9 @@ func (o *dbRatchetFormatMajorVersionOp) run(t *Test, h historyRecorder) {
 	// versions, making the presence of an error and the error message itself
 	// non-deterministic if we attempt to upgrade to an older version.
 	//
-	//Regardless, subsequent operations should behave identically, which is what
-	//we're really aiming to test by including this format major version ratchet
-	//operation.
+	// Regardless, subsequent operations should behave identically, which is
+	// what we're really aiming to test by including this format major version
+	// ratchet operation.
 	if t.getDB(o.dbID).FormatMajorVersion() < o.vers {
 		err = t.getDB(o.dbID).RatchetFormatMajorVersion(o.vers)
 	}

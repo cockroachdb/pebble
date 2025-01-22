@@ -25,6 +25,16 @@ type keyMeta struct {
 	history keyHistory
 }
 
+// all returns true if all the operations in the history are of the provided op
+// types.
+func (m *keyMeta) all(typs ...OpType) bool {
+	containsOtherTypes := slices.ContainsFunc(m.history, func(i keyHistoryItem) bool {
+		notOfProvidedType := !slices.Contains(typs, i.opType)
+		return notOfProvidedType
+	})
+	return !containsOtherTypes
+}
+
 func (m *keyMeta) clear() {
 	m.history = m.history[:0]
 }
@@ -170,14 +180,9 @@ func (b *bounds) Expand(cmp base.Compare, other bounds) {
 // infallible, because a runtime failure would cause the key manager's state to
 // diverge from the runtime object state. Ingestion operations pose an obstacle,
 // because the generator may generate ingestions that fail due to overlapping
-// sstables. Today, this complication is sidestepped by avoiding ingestion of
-// multiple batches containing deletes or single deletes since loss of those
-// specific operations on a key are what we cannot tolerate (doing SingleDelete
-// on a key that has not been written to because the Set was lost is harmless).
-//
-// TODO(jackson): Instead, compute smallest and largest bounds of batches so
-// that we know at generation-time whether or not an ingestion operation will
-// fail and can avoid updating key state.
+// sstables. The key manager tracks the bounds of keys written to each object,
+// and uses this to infer at generation time which ingestions will fail,
+// maintaining key histories accordingly.
 type keyManager struct {
 	kf KeyFormat
 
@@ -307,12 +312,18 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 			n := k.kf.Comparer.Split(km.key)
 			km.key = append(km.key[:n:n], obj.syntheticSuffix...)
 		}
+		// We only keep the first of every unique prefix for external ingests.
+		// See the use of uniquePrefixes in newExternalObjOp. However, we must
+		// ignore keys that only exist as a discretized range deletion for this
+		// purpose, so we only update the lastPrefix if the key contains any
+		// non-range delete keys.
+		// TODO(jackson): Track range deletions separately.
 		if lastPrefix != nil && k.kf.Comparer.Equal(lastPrefix, km.key[:k.kf.Comparer.Split(km.key)]) {
-			// We only keep the first of every unique prefix for external ingests.
-			// See the use of uniquePrefixes in newExternalObjOp.
 			continue
 		}
-		lastPrefix = append(lastPrefix[:0], km.key[:k.kf.Comparer.Split(km.key)]...)
+		if !km.all(OpWriterDeleteRange) {
+			lastPrefix = append(lastPrefix[:0], km.key[:k.kf.Comparer.Split(km.key)]...)
+		}
 		if k.kf.Comparer.Compare(km.key, obj.bounds.Start) >= 0 &&
 			k.kf.Comparer.Compare(km.key, obj.bounds.End) < 0 {
 			res = append(res, km)
