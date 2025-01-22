@@ -99,6 +99,7 @@ type RawColumnWriter struct {
 	separatorBuf          []byte
 	tmp                   [blockHandleLikelyMaxLen]byte
 	previousUserKey       invariants.Value[[]byte]
+	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
 }
 
@@ -647,9 +648,12 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	})
 
 	if invariants.Enabled {
-		var dec colblk.DataBlockDecoder
-		dec.Init(w.opts.KeySchema, serializedBlock)
-		if err := dec.Validate(w.comparer, w.opts.KeySchema); err != nil {
+		v := w.validator.Get()
+		if v == nil {
+			v = &colblk.DataBlockValidator{}
+			w.validator.Set(v)
+		}
+		if err := v.Validate(serializedBlock, w.comparer, w.opts.KeySchema); err != nil {
 			panic(err)
 		}
 	}

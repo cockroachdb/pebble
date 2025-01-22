@@ -28,6 +28,7 @@ func TestDataBlock(t *testing.T) {
 	var buf bytes.Buffer
 	var w DataBlockEncoder
 	var r DataBlockDecoder
+	var v DataBlockValidator
 	var it DataBlockIter
 	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.EnsureDefaults())
 	var sizes []int
@@ -111,7 +112,7 @@ func TestDataBlock(t *testing.T) {
 				tp := treeprinter.New()
 				r.Describe(f, tp)
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), tp.String())
-				if err := r.Validate(testkeys.Comparer, &testKeysSchema); err != nil {
+				if err := v.Validate(block, testkeys.Comparer, &testKeysSchema); err != nil {
 					fmt.Fprintln(&buf, err)
 				}
 				return buf.String()
