@@ -78,12 +78,6 @@ type ShortAttributeExtractor = base.ShortAttributeExtractor
 // UserKeyPrefixBound exports the sstable.UserKeyPrefixBound type.
 type UserKeyPrefixBound = sstable.UserKeyPrefixBound
 
-// CompactionLimiter exports the base.CompactionLimiter type.
-type CompactionLimiter = base.CompactionLimiter
-
-// CompactionSlot exports the base.CompactionSlot type.
-type CompactionSlot = base.CompactionSlot
-
 // IterKeyType configures which types of keys an iterator should surface.
 type IterKeyType int8
 
@@ -757,11 +751,10 @@ type Options struct {
 		// the excise phase of IngestAndExcise.
 		EnableDeleteOnlyCompactionExcises func() bool
 
-		// CompactionLimiter, if set, is used to limit concurrent compactions as well
-		// as to pace compactions and flushing compactions already chosen. If nil,
-		// no limiting or pacing happens other than that controlled by other options
-		// like L0CompactionConcurrency and CompactionDebtConcurrency.
-		CompactionLimiter CompactionLimiter
+		// CompactionScheduler, if set, is used to limit concurrent compactions as
+		// well as to pace compactions already chosen. If nil, a default scheduler
+		// is created and used.
+		CompactionScheduler CompactionScheduler
 
 		UserKeyCategories UserKeyCategories
 	}
@@ -916,13 +909,36 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// MaxConcurrentCompactions specifies the maximum number of concurrent
-	// compactions (not including download compactions).
+	// MaxConcurrentCompactions is the upper bound on the value returned by
+	// DB.GetAllowedWithoutPermission (reported to the CompactionScheduler).
+	// More abstractly, it is a rough upper bound on the number of concurrent
+	// compactions, not including download compactions (which have a separate
+	// limit specified by MaxConcurrentDownloads).
 	//
-	// Concurrent compactions are performed:
+	// This is a rough upper bound since delete-only compactions (a) do not use
+	// the CompactionScheduler, and (b) the CompactionScheduler may use other
+	// criteria to decide on how many compactions to permit.
+	//
+	// Elaborating on (b), when the ConcurrencyLimitScheduler is being used, the
+	// value returned by DB.GetAllowedWithoutPermission fully controls how many
+	// compactions get to run. Other CompactionSchedulers may use additional
+	// criteria, like resource availability.
+	//
+	// Elaborating on (a), we don't use the CompactionScheduler to schedule
+	// delete-only compactions since they are expected to be almost free from a
+	// CPU and disk usage perspective. Since the CompactionScheduler does not
+	// know about their existence, the total running count can exceed this
+	// value. For example, consider MaxConcurrentCompactions returns 3, and the
+	// current value returned from DB.GetAllowedWithoutPermission is also 3. Say
+	// 3 delete-only compactions are also running. Then the
+	// ConcurrencyLimitScheduler can also start 3 other compactions, for a total
+	// of 6.
+	//
+	// DB.GetAllowedWithoutPermission returns a value in the interval [1,
+	// MaxConcurrentCompactions]. A value > 1 is returned:
 	//  - when L0 read-amplification passes the L0CompactionConcurrency threshold;
-	//  - for automatic background compactions;
-	//  - when a manual compaction for a level is split and parallelized.
+	//  - when compaction debt passes the CompactionDebtConcurrency threshold;
+	//  - when there are multiple manual compactions waiting to run.
 	//
 	// MaxConcurrentCompactions() must be greater than 0.
 	//
@@ -1146,9 +1162,6 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.CompactionDebtConcurrency <= 0 {
 		o.Experimental.CompactionDebtConcurrency = 1 << 30 // 1 GB
 	}
-	if o.Experimental.CompactionLimiter == nil {
-		o.Experimental.CompactionLimiter = &base.DefaultCompactionLimiter{}
-	}
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
 		o.KeySchema = ks.Name
@@ -1279,6 +1292,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
+	}
+	if o.Experimental.CompactionScheduler == nil {
+		o.Experimental.CompactionScheduler = newConcurrencyLimitScheduler()
 	}
 
 	o.initMaps()

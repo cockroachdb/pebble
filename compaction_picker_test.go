@@ -188,6 +188,15 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		}
 	}
 
+	pickAuto := func(env compactionEnv, pickerByScore *compactionPickerByScore) *pickedCompaction {
+		inProgressCompactions := len(env.inProgressCompactions)
+		allowedCompactions := pickerByScore.getCompactionConcurrency()
+		if inProgressCompactions >= allowedCompactions {
+			return nil
+		}
+		return pickerByScore.pickAuto(env)
+	}
+
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -203,6 +212,14 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// <level>: <size> [compensation]
 				var errMsg string
 				vers, opts, errMsg = loadVersion(t, d)
+				opts.MaxConcurrentCompactions = func() int {
+					// This test only limits the count based on the L0 read amp and
+					// compaction debt, so we would like to return math.MaxInt. But we
+					// don't since it is also used in expandedCompactionByteSizeLimit,
+					// and causes the expanded bytes to reduce. The test cases never
+					// pick more than 4 compactions, so we use 4.
+					return 4
+				}
 				if errMsg != "" {
 					return errMsg
 				}
@@ -231,7 +248,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						earliestUnflushedSeqNum: base.SeqNumMax,
 						inProgressCompactions:   inProgress,
 					}
-					pc := pickerByScore.pickAuto(env)
+					pc := pickAuto(env, pickerByScore)
 					if pc == nil {
 						break
 					}
@@ -299,10 +316,10 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 
 				var b strings.Builder
 				fmt.Fprintf(&b, "Initial state before pick:\n%s", runVersionFileSizes(vers))
-				pc := pickerByScore.pickAuto(compactionEnv{
+				pc := pickAuto(compactionEnv{
 					earliestUnflushedSeqNum: base.SeqNumMax,
 					inProgressCompactions:   inProgress,
-				})
+				}, pickerByScore)
 				if pc != nil {
 					fmt.Fprintf(&b, "Picked: L%d->L%d: %0.1f\n", pc.startLevel.level, pc.outputLevel.level, pc.score)
 				}
@@ -326,7 +343,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					end:   iEnd.UserKey,
 				}
 
-				pc, retryLater := pickManualCompaction(
+				pc, retryLater := newPickedManualCompaction(
 					pickerByScore.vers,
 					opts,
 					compactionEnv{
@@ -540,7 +557,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			var result strings.Builder
 			if pc != nil {
 				checkClone(t, pc)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, nil /* slot */)
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
 				if !pc.outputLevel.files.Empty() {
@@ -587,6 +604,7 @@ func TestCompactionPickerL0(t *testing.T) {
 func TestCompactionPickerConcurrency(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
+	opts.MaxConcurrentCompactions = func() int { return 4 }
 
 	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -755,13 +773,20 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.Experimental.L0CompactionConcurrency)
 			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.Experimental.CompactionDebtConcurrency)
 
-			pc := picker.pickAuto(compactionEnv{
+			env := compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
-			})
+			}
+			inProgressCount := len(env.inProgressCompactions)
+			allowedCompactions := picker.getCompactionConcurrency()
+			var pc *pickedCompaction
+			if inProgressCount < allowedCompactions {
+				pc = picker.pickAuto(env)
+			}
 			var result strings.Builder
+			fmt.Fprintf(&result, "picker.getCompactionConcurrency: %d\n", allowedCompactions)
 			if pc != nil {
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, nil /* slot */)
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
 				if !pc.outputLevel.files.Empty() {
@@ -771,7 +796,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 					fmt.Fprintf(&result, "grandparents: %s\n", fileNums(c.grandparents))
 				}
 			} else {
-				return "nil"
+				fmt.Fprintf(&result, "nil")
 			}
 			return result.String()
 		}
@@ -1353,6 +1378,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		FS:                 fs,
 	}
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1415,11 +1441,16 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			// level.
 			var lf manifest.LevelFile
 			var ok bool
-			d.maybeScheduleCompactionPicker(func(untypedPicker compactionPicker, env compactionEnv) *pickedCompaction {
-				p := untypedPicker.(*compactionPickerByScore)
+			func() {
+				d.mu.versions.logLock()
+				defer d.mu.versions.logUnlock()
+				env := d.makeCompactionEnvLocked()
+				if env == nil {
+					return
+				}
+				p := d.mu.versions.picker.(*compactionPickerByScore)
 				lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum)
-				return nil
-			})
+			}()
 			if !ok {
 				return "(none)"
 			}
@@ -1472,6 +1503,7 @@ func TestCompactionPickerScores(t *testing.T) {
 		FS:                          fs,
 	}
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1493,7 +1525,7 @@ func TestCompactionPickerScores(t *testing.T) {
 			if td.HasArg("pause-cleaning") {
 				cleaner.pause()
 			}
-
+			opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 			d, err = runDBDefineCmd(td, opts)
 			if err != nil {
 				return err.Error()

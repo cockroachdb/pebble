@@ -371,9 +371,12 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 8380
 
+# With multiple compactions, there is non-determinism in the output table
+# numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000008] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 101] compacted(default) L5 [000004] (770B) Score=24.33 + L6 [000006] (13KB) Score=0.52 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
 # 2x, the table with the point tombstone (000004) will be selected as the
@@ -414,6 +417,9 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 8380
 
+# With multiple compactions, there is non-determinism in the output table
+# numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000008] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 101] compacted(default) L5 [000004] (770B) Score=24.33 + L6 [000006] (13KB) Score=0.52 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
