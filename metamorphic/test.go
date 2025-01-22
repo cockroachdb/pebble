@@ -191,7 +191,11 @@ func (t *Test) init(
 			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
 		}
 		err = t.withRetries(func() error {
-			db, err = pebble.Open(dir, t.opts)
+			// Give each DB its own CompactionScheduler.
+			o := *t.opts
+			o.Experimental.CompactionScheduler =
+				pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+			db, err = pebble.Open(dir, &o)
 			return err
 		})
 		if err != nil {
@@ -321,7 +325,11 @@ func (t *Test) restartDB(dbID objID) error {
 		if len(t.dbs) > 1 {
 			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
 		}
-		t.dbs[dbID.slot()-1], err = pebble.Open(dir, t.opts)
+		// Give each DB its own CompactionScheduler.
+		o := *t.opts
+		o.Experimental.CompactionScheduler =
+			pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+		t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
 		if err != nil {
 			return err
 		}

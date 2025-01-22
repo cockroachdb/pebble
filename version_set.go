@@ -71,6 +71,9 @@ type versionSet struct {
 	// Mutable fields.
 	versions versionList
 	picker   compactionPicker
+	// curCompactionConcurrency is updated whenever picker is updated.
+	// INVARIANT: >= 1.
+	curCompactionConcurrency atomic.Int32
 
 	// Not all metrics are kept here. See DB.Metrics().
 	metrics Metrics
@@ -128,6 +131,8 @@ type versionSet struct {
 	writerCond sync.Cond
 	// State for deciding when to write a snapshot. Protected by mu.
 	rotationHelper record.RotationHelper
+
+	pickedCompactionCache pickedCompactionCache
 }
 
 // objectInfo describes an object in object storage (either a sstable or a blob
@@ -180,7 +185,8 @@ func (vs *versionSet) create(
 	}
 	vs.append(newVersion)
 
-	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
+	vs.setCompactionPicker(
+		newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil))
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
@@ -364,7 +370,8 @@ func (vs *versionSet) load(
 		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 	})
 
-	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil)
+	vs.setCompactionPicker(
+		newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil))
 	return nil
 }
 
@@ -388,12 +395,14 @@ func (vs *versionSet) close() error {
 // DB.mu must be held when calling this method, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (vs *versionSet) logLock() {
+	// vs.opts.Logger.Infof("logLock: %s", debug.Stack())
 	// Wait for any existing writing to the manifest to complete, then mark the
 	// manifest as busy.
 	for vs.writing {
 		// Note: writerCond.L is DB.mu, so we unlock it while we wait.
 		vs.writerCond.Wait()
 	}
+	// vs.opts.Logger.Infof("logLocked: %s", debug.Stack())
 	vs.writing = true
 }
 
@@ -401,11 +410,18 @@ func (vs *versionSet) logLock() {
 //
 // DB.mu must be held when calling this method.
 func (vs *versionSet) logUnlock() {
+	// vs.opts.Logger.Infof("logUnlock: %s", debug.Stack())
 	if !vs.writing {
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
 	vs.writing = false
 	vs.writerCond.Signal()
+}
+
+func (vs *versionSet) logUnlockAndInvalidatePickedCompactionCache() {
+	// vs.opts.Logger.Infof("logUnlockAnd")
+	vs.pickedCompactionCache.invalidate()
+	vs.logUnlock()
 }
 
 // logAndApply logs the version edit to the manifest, applies the version edit
@@ -440,7 +456,7 @@ func (vs *versionSet) logAndApply(
 	if !vs.writing {
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
-	defer vs.logUnlock()
+	defer vs.logUnlockAndInvalidatePickedCompactionCache()
 
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
@@ -711,11 +727,17 @@ func (vs *versionSet) logAndApply(
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localLiveSizeDelta)
 
-	vs.picker = newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, inProgress)
+	vs.setCompactionPicker(
+		newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
 	return nil
+}
+
+func (vs *versionSet) setCompactionPicker(picker *compactionPickerByScore) {
+	vs.picker = picker
+	vs.curCompactionConcurrency.Store(int32(picker.getCompactionConcurrency()))
 }
 
 type fileBackingInfo struct {
