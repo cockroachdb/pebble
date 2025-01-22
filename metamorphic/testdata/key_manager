@@ -475,3 +475,31 @@ conflicts merging batch1 into db1: "foo"
 conflicts merging batch1 (collapsed) into db1: (none)
 [db1.Merge("foo", "foo")]
 can singledel on db1: (none)
+
+# Regression test for #4267. In the below example, foo@3 must not be eligible
+# for single delete on db1 at the end of the test. The external object will end
+# up containing the point key foo@3 (NOT foo@5).
+
+reset
+----
+
+run
+add-new-key foo@5
+op db1.Set("foo@5", "foo5")
+add-new-key foo@3
+op db1.Set("foo@3", "foo3")
+op batch1.DeleteRange("a", "foo@3")
+op batch1.Set("foo@3", "foo3batch1")
+op external1 = batch1.NewExternalObj()
+op db1.IngestExternalFiles(external1, "a", "z", "", "")
+singledel-keys db1
+----
+"foo@5" is new
+[db1.Set("foo@5", "foo5")]
+"foo@3" is new
+[db1.Set("foo@3", "foo3")]
+[batch1.DeleteRange("a", "foo@3")]
+[batch1.Set("foo@3", "foo3batch1")]
+[external1 = batch1.NewExternalObj()]
+[db1.IngestExternalFiles(external1, "a" /* start */, "z" /* end */, "" /* syntheticSuffix */, "" /* syntheticPrefix */)]
+can singledel on db1: "foo@5"
