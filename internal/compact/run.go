@@ -80,12 +80,9 @@ type RunnerConfig struct {
 	// value.
 	TargetOutputFileSize uint64
 
-	// Slot is the compaction slot taken up by this compaction. Used to perform
-	// pacing or account for concurrency limits.
-	Slot base.CompactionSlot
-
-	// IteratorStats is the stats collected by the compaction iterator.
-	IteratorStats *base.InternalIteratorStats
+	// GrantHandle is used to perform accounting of resource consumption by the
+	// CompactionScheduler.
+	GrantHandle base.CompactionGrantHandle
 }
 
 // Runner is a helper for running the "data" part of a compaction (where we use
@@ -168,7 +165,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 }
 
 func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ error) {
-	const updateSlotEveryNKeys = 1024
+	const updateGrantHandleEveryNKeys = 128
 	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
 	if r.kv != nil && firstKey == nil {
 		firstKey = r.kv.K.UserKey
@@ -188,8 +185,13 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	kv := r.kv
 	for ; kv != nil; kv = r.iter.Next() {
 		iteratedKeys++
-		if iteratedKeys%updateSlotEveryNKeys == 0 {
-			r.cfg.Slot.UpdateMetrics(r.cfg.IteratorStats.BlockBytes, r.stats.CumulativeWrittenSize+tw.EstimatedSize())
+		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
+			r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
+				CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize(),
+			})
+			// TODO(sumeer): give the GrantHandle to the writer so it can account on
+			// all its goroutines.
+			r.cfg.GrantHandle.MeasureCPU(0)
 		}
 		if splitter.ShouldSplitBefore(kv.K.UserKey, tw.EstimatedSize(), equalPrev) {
 			break
@@ -242,7 +244,10 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	tw.SetSnapshotPinnedProperties(pinnedCount, pinnedKeySize, pinnedValueSize)
 	r.stats.CumulativePinnedKeys += pinnedCount
 	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
-	r.cfg.Slot.UpdateMetrics(r.cfg.IteratorStats.BlockBytes, r.stats.CumulativeWrittenSize+tw.EstimatedSize())
+	r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
+		CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize(),
+	})
+	r.cfg.GrantHandle.MeasureCPU(0)
 	return splitKey, nil
 }
 
