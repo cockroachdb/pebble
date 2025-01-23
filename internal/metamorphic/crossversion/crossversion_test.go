@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,18 +131,6 @@ type pebbleVersion struct {
 	TestBinaryPath string
 }
 
-type initialState struct {
-	desc string
-	path string
-}
-
-func (s initialState) String() string {
-	if s.desc == "" {
-		return "<empty>"
-	}
-	return s.desc
-}
-
 func runCrossVersion(
 	ctx context.Context,
 	t *testing.T,
@@ -179,22 +168,22 @@ func runCrossVersion(
 	initialStates := []initialState{{}}
 	for i := range versions {
 		t.Logf("Running tests with version %s with %d initial state(s).", versions[i].SHA, len(initialStates))
-		histories, nextInitialStates, err := runVersion(ctx, t, &fatalOnce, rootDir, versions[i], versionSeeds[i], initialStates)
-		if err != nil {
-			return err
-		}
+		subrunResults := runVersion(ctx, t, &fatalOnce, rootDir, versions[i], versionSeeds[i], initialStates)
 
 		// All the initial states described the same state and all of this
 		// version's metamorphic runs used the same seed, so all of the
 		// resulting histories should be identical.
+		histories := subrunResults.historyPaths()
 		if h, diff := metamorphic.CompareHistories(t, histories); h > 0 {
-			fatalf(t, &fatalOnce, rootDir, "Metamorphic test divergence between %q and %q:\nDiff:\n%s",
-				nextInitialStates[0].desc, nextInitialStates[h].desc, diff)
+			fatalf(t, &fatalOnce, []string{subrunResults[0].runDir, subrunResults[h].runDir},
+				"Metamorphic test divergence between %q and %q:\nDiff:\n%s",
+				subrunResults[0].initialState.desc, subrunResults[h].initialState.desc, diff)
 		}
 
 		// Prune the set of initial states we collected for this version, using
 		// the deterministic randomness of prng to pick which states we keep.
-		if len(nextInitialStates) > factor {
+		nextInitialStates := subrunResults.initialStates()
+		if len(subrunResults) > factor {
 			prng.Shuffle(len(nextInitialStates), func(i, j int) {
 				nextInitialStates[i], nextInitialStates[j] = nextInitialStates[j], nextInitialStates[i]
 			})
@@ -209,6 +198,52 @@ func runCrossVersion(
 	return nil
 }
 
+// subrunResult describes the output of a single run of the metamorphic test
+// against a particular version.
+type subrunResult struct {
+	// runDir is the path to the directory containing the output of this
+	// TestMeta run.
+	runDir string
+	// historyPath is the path to the history file recording the output of this
+	// run. All the histories produced by a single call to runVersion should be
+	// semantically equivalent.
+	historyPath string
+	// initialState describes the location of the database on disk after the run
+	// completed. It can be used to seed a new run of the metamorphic test in a
+	// later Pebble version.
+	initialState initialState
+}
+
+type initialState struct {
+	desc string
+	path string
+}
+
+func (s initialState) String() string {
+	if s.desc == "" {
+		return "<empty>"
+	}
+	return s.desc
+}
+
+type subrunResults []subrunResult
+
+func (r subrunResults) historyPaths() []string {
+	paths := make([]string, len(r))
+	for i := range r {
+		paths[i] = r[i].historyPath
+	}
+	return paths
+}
+
+func (r subrunResults) initialStates() []initialState {
+	states := make([]initialState, len(r))
+	for i := range r {
+		states[i] = r[i].initialState
+	}
+	return states
+}
+
 func runVersion(
 	ctx context.Context,
 	t *testing.T,
@@ -217,7 +252,7 @@ func runVersion(
 	vers pebbleVersion,
 	seed uint64,
 	initialStates []initialState,
-) (histories []string, nextInitialStates []initialState, err error) {
+) (results subrunResults) {
 	// mu guards histories and nextInitialStates. The subtests may be run in
 	// parallel (via t.Parallel()).
 	var mu sync.Mutex
@@ -248,7 +283,8 @@ func runVersion(
 				t.Logf("  Running test with version %s with initial state %s.",
 					vers.SHA, s)
 				if err := r.run(ctx, out); err != nil {
-					fatalf(t, fatalOnce, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
+					fatalf(t, fatalOnce, []string{r.dir},
+						"Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
 				}
 
 				// dir is a directory containing the ops file and subdirectories for
@@ -269,37 +305,46 @@ func runVersion(
 				mu.Lock()
 				defer mu.Unlock()
 				for _, subrunDir := range subrunDirs {
-					// Record the subrun as an initial state for the next version.
-					nextInitialStates = append(nextInitialStates, initialState{
-						path: filepath.Join(dir, subrunDir),
-						desc: fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+					results = append(results, subrunResult{
+						runDir:      dir,
+						historyPath: filepath.Join(dir, subrunDir, "history"),
+						initialState: initialState{
+							path: filepath.Join(dir, subrunDir),
+							desc: fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+						},
 					})
-					histories = append(histories, filepath.Join(dir, subrunDir, "history"))
 				}
 			})
 		}
 	})
-	return histories, nextInitialStates, err
+	return results
 }
 
-func fatalf(t testing.TB, fatalOnce *sync.Once, dir string, msg string, args ...interface{}) {
+func fatalf(t testing.TB, fatalOnce *sync.Once, dirs []string, msg string, args ...interface{}) {
 	fatalOnce.Do(func() {
 		if artifactsDir == "" {
 			var err error
 			artifactsDir, err = os.Getwd()
 			require.NoError(t, err)
 		}
-		// When run with test parallelism, other subtests may still be running
-		// within subdirectories of `dir`. We copy instead of rename so that those
-		// substests don't also fail when we remove their files out from under them.
-		// Those additional failures would confuse the test output.
-		dst := filepath.Join(artifactsDir, filepath.Base(dir))
-		t.Logf("Copying test dir %q to %q.", dir, dst)
-		_, err := vfs.Clone(vfs.Default, vfs.Default, dir, dst, vfs.CloneTryLink)
-		if err != nil {
-			t.Error(err)
+		// De-duplicate the directories.
+		slices.Sort(dirs)
+		dirs = slices.Compact(dirs)
+
+		for _, dir := range dirs {
+			// When run with test parallelism, other subtests may still be
+			// running within subdirectories of `dir`. We copy instead of rename
+			// so that those substests don't also fail when we remove their
+			// files out from under them.  Those additional failures would
+			// confuse the test output.
+			dst := filepath.Join(artifactsDir, filepath.Base(dir))
+			t.Logf("Copying test dir %q to %q.", dir, dst)
+			_, err := vfs.Clone(vfs.Default, vfs.Default, dir, dst, vfs.CloneTryLink)
+			if err != nil {
+				t.Error(err)
+			}
+			t.Fatalf(msg, args...)
 		}
-		t.Fatalf(msg, args...)
 	})
 }
 
