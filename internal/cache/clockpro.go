@@ -147,25 +147,11 @@ func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *rea
 			e.referenced.Store(true)
 		}
 	}
-	c.mu.RUnlock()
 	var re *readEntry
 	if value == nil && desireReadEntry {
-		c.mu.Lock()
-		// After the c.mu.RUnlock(), someone could have inserted the value in the
-		// cache. We could tolerate the race and do a file read, or do another map
-		// lookup. We choose to do the latter, since the cost of a map lookup is
-		// insignificant compared to the cost of reading a block from a file.
-		if e, _ := c.blocks.Get(k); e != nil {
-			value = e.acquireValue()
-			if value != nil {
-				e.referenced.Store(true)
-			}
-		}
-		if value == nil {
-			re = c.readShard.acquireReadEntryLocked(k)
-		}
-		c.mu.Unlock()
+		re = c.readShard.acquireReadEntry(k)
 	}
+	c.mu.RUnlock()
 	if value == nil {
 		c.misses.Add(1)
 	} else {
