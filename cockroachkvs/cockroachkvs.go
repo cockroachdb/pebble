@@ -184,6 +184,41 @@ func EncodeTimestamp(key []byte, walltime uint64, logical uint32) []byte {
 	return key
 }
 
+// DecodeMVCCTimestampSuffix decodes an MVCC timestamp from its Pebble representation,
+// including the length suffix.
+func DecodeMVCCTimestampSuffix(encodedTS []byte) (wallTime uint64, logical uint32, err error) {
+	if len(encodedTS) == 0 {
+		return 0, 0, nil
+	}
+	encodedLen := len(encodedTS)
+	if suffixLen := int(encodedTS[encodedLen-1]); suffixLen != encodedLen {
+		return 0, 0, errors.Errorf(
+			"bad timestamp: found length suffix %d, actual length %d", suffixLen, encodedLen)
+	}
+	return decodeMVCCTimestamp(encodedTS[:encodedLen-1])
+}
+
+// decodeMVCCTimestamp decodes an MVCC timestamp from its Pebble representation,
+// excluding the length suffix.
+func decodeMVCCTimestamp(encodedTS []byte) (wallTime uint64, logical uint32, err error) {
+	// NB: This logic is duplicated in enginepb.DecodeKey() to avoid the
+	// overhead of an additional function call there (~13%).
+	switch len(encodedTS) {
+	case 0:
+		// No-op.
+	case 8:
+		wallTime = binary.BigEndian.Uint64(encodedTS[0:8])
+	case 12, 13:
+		wallTime = binary.BigEndian.Uint64(encodedTS[0:8])
+		logical = binary.BigEndian.Uint32(encodedTS[8:12])
+		// NOTE: byte 13 used to store the timestamp's synthetic bit, but this is no
+		// longer consulted and can be ignored during decoding.
+	default:
+		return 0, 0, errors.Errorf("bad timestamp %x", encodedTS)
+	}
+	return wallTime, logical, nil
+}
+
 // DecodeEngineKey decodes the given bytes as an EngineKey.
 func DecodeEngineKey(b []byte) (roachKey, version []byte, ok bool) {
 	if len(b) == 0 {
