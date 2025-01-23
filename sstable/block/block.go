@@ -365,10 +365,11 @@ type ReaderOptions struct {
 	// CacheOpts contains the information needed to interact with the block
 	// cache.
 	CacheOpts sstableinternal.CacheOptions
-	// LoadBlockSema, if set, is used to limit the number of blocks that can be
-	// loaded (i.e. read from the filesystem) in parallel. Each load acquires
-	// one unit from the semaphore for the duration of the read.
-	LoadBlockSema *fifo.Semaphore
+	// LoadBlockBytesSema, if set, is used to limit the number of bytes that can
+	// be loaded (i.e. read from the filesystem) in parallel. Each block load
+	// acquires X units from the semaphore, where X is the on-disk size of the
+	// block.
+	LoadBlockBytesSema *fifo.Semaphore
 	// LoggerAndTracer is an optional logger and tracer.
 	LoggerAndTracer base.LoggerAndTracer
 }
@@ -448,13 +449,13 @@ func (r *Reader) Read(
 		return CacheBufferHandle(cv), nil
 	}
 
-	// Need to read. First acquire loadBlockSema, if needed.
-	if sema := r.opts.LoadBlockSema; sema != nil {
-		if err := sema.Acquire(ctx, 1); err != nil {
+	// Need to read. First acquire LoadBlockBytesSema, if needed.
+	if sema := r.opts.LoadBlockBytesSema; sema != nil {
+		if err := sema.Acquire(ctx, int64(bh.Length)); err != nil {
 			// An error here can only come from the context.
 			return BufferHandle{}, err
 		}
-		defer sema.Release(1)
+		defer sema.Release(int64(bh.Length))
 	}
 	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 	if err != nil {

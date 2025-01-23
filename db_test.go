@@ -2364,8 +2364,8 @@ func parseOrderingTokens(tokens []string) (orderingNode, int) {
 type readTrackFS struct {
 	vfs.FS
 
-	currReadCount atomic.Int32
-	maxReadCount  atomic.Int32
+	currReadBytes atomic.Int32
+	maxReadBytes  atomic.Int32
 }
 
 type readTrackFile struct {
@@ -2385,37 +2385,49 @@ func (fs *readTrackFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, erro
 }
 
 func (f *readTrackFile) ReadAt(p []byte, off int64) (n int, err error) {
-	val := f.fs.currReadCount.Add(1)
-	defer f.fs.currReadCount.Add(-1)
-	for maxVal := f.fs.maxReadCount.Load(); val > maxVal; maxVal = f.fs.maxReadCount.Load() {
-		if f.fs.maxReadCount.CompareAndSwap(maxVal, val) {
+	val := f.fs.currReadBytes.Add(int32(len(p)))
+	defer f.fs.currReadBytes.Add(-int32(len(p)))
+	for maxVal := f.fs.maxReadBytes.Load(); val > maxVal; maxVal = f.fs.maxReadBytes.Load() {
+		if f.fs.maxReadBytes.CompareAndSwap(maxVal, val) {
 			break
 		}
 	}
 	return f.File.ReadAt(p, off)
 }
 
-func TestLoadBlockSema(t *testing.T) {
+func TestLoadBlockBytesSema(t *testing.T) {
 	fs := &readTrackFS{FS: vfs.NewMem()}
 	sema := fifo.NewSemaphore(100)
 	db, err := Open("", testingRandomized(t, &Options{
-		Cache:         cache.New(1),
-		FS:            fs,
-		LoadBlockSema: sema,
+		Cache:              cache.New(1),
+		FS:                 fs,
+		LoadBlockBytesSema: sema,
 	}))
 	require.NoError(t, err)
+
+	// Create 20 regions and compact them separately, so we end up with 20
+	// disjoint tables. Each table has 20 KVs, so the block would be in the 3KB
+	// range.
+	const numRegions = 20
+	const numKeys = 20
+	const valSize = 128
 
 	key := func(i, j int) []byte {
 		return []byte(fmt.Sprintf("%02d/%02d", i, j))
 	}
 
-	// Create 20 regions and compact them separately, so we end up with 20
-	// disjoint tables.
-	const numRegions = 20
-	const numKeys = 20
+	value := func(i, j int) []byte {
+		var val [valSize]byte
+		r := rand.NewPCG(uint64(i), uint64(j))
+		for i := range val {
+			val[i] = byte(r.Uint64())
+		}
+		return val[:]
+	}
+
 	for i := 0; i < numRegions; i++ {
 		for j := 0; j < numKeys; j++ {
-			require.NoError(t, db.Set(key(i, j), []byte("value"), nil))
+			require.NoError(t, db.Set(key(i, j), value(i, j), nil))
 		}
 		require.NoError(t, db.Compact(key(i, 0), key(i, numKeys-1), false))
 	}
@@ -2424,16 +2436,16 @@ func TestLoadBlockSema(t *testing.T) {
 	for i := 0; i < numRegions; i++ {
 		val, closer, err := db.Get(key(i, 1))
 		require.NoError(t, err)
-		require.Equal(t, []byte("value"), val)
+		require.Equal(t, value(i, 1), val)
 		if closer != nil {
 			closer.Close()
 		}
 	}
 
-	for _, n := range []int64{1, 2, 4} {
+	for _, n := range []int64{3000, 5000, 10000} {
 		t.Run(fmt.Sprintf("%d", n), func(t *testing.T) {
 			sema.UpdateCapacity(n)
-			fs.maxReadCount.Store(0)
+			fs.maxReadBytes.Store(0)
 			var wg sync.WaitGroup
 			// Spin up workers that perform random reads.
 			const numWorkers = 20
@@ -2443,9 +2455,10 @@ func TestLoadBlockSema(t *testing.T) {
 					defer wg.Done()
 					const numQueries = 100
 					for i := 0; i < numQueries; i++ {
-						val, closer, err := db.Get(key(rand.IntN(numRegions), rand.IntN(numKeys)))
+						r, k := rand.IntN(numRegions), rand.IntN(numKeys)
+						val, closer, err := db.Get(key(r, k))
 						require.NoError(t, err)
-						require.Equal(t, []byte("value"), val)
+						require.Equal(t, value(r, k), val)
 						if closer != nil {
 							closer.Close()
 						}
@@ -2455,7 +2468,7 @@ func TestLoadBlockSema(t *testing.T) {
 			}
 			wg.Wait()
 			// Verify the maximum read count did not exceed the limit.
-			maxReadCount := fs.maxReadCount.Load()
+			maxReadCount := fs.maxReadBytes.Load()
 			require.Greater(t, maxReadCount, int32(0))
 			require.LessOrEqual(t, maxReadCount, int32(n))
 		})
