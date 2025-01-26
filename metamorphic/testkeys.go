@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
@@ -39,15 +40,26 @@ var TestkeysKeyFormat = KeyFormat{
 		return sstable.NewTestKeysMaskingFilter()
 	},
 	NewSuffixBlockPropertyFilter: func(filterMin, filterMax []byte) sstable.BlockPropertyFilter {
-		low, err := testkeys.ParseSuffix(filterMin)
-		if err != nil {
-			panic(err)
+		var low, high int64
+		var err error
+		if filterMin != nil {
+			low, err = testkeys.ParseSuffix(filterMin)
+			if err != nil {
+				panic(err)
+			}
 		}
-		high, err := testkeys.ParseSuffix(filterMax)
-		if err != nil {
-			panic(err)
+		if filterMax != nil {
+			high, err = testkeys.ParseSuffix(filterMax)
+			if err != nil {
+				panic(err)
+			}
 		}
-		return sstable.NewTestKeysBlockPropertyFilter(uint64(low), uint64(high))
+		// The suffixes were encoded in descending order, so low should be the
+		// max timestamp and high should be the min timestamp.
+		if low <= high {
+			panic(errors.AssertionFailedf("low <= high: %d <= %d", low, high))
+		}
+		return sstable.NewTestKeysBlockPropertyFilter(uint64(high), uint64(low))
 	},
 }
 
@@ -144,15 +156,28 @@ func (kg *testkeyKeyGenerator) IncMaxSuffix() []byte {
 	return testkeys.Suffix(int64(kg.cfg.writeSuffixDist.Max()))
 }
 
+// SuffixRange generates a new uniformly random range of suffixes (low, high]
+// such that high is guaranteed to be strictly greater (as defined by
+// ComparePointSuffixes) than low.
+//
+// The high suffix may be nil, in which case the suffix range represents all
+// suffixes ≥ low.
 func (kg *testkeyKeyGenerator) SuffixRange() (low, high []byte) {
 	a := kg.uniformSuffixInt()
 	b := kg.uniformSuffixInt()
-	if a > b {
+	// NB: Suffixes are sorted in descending order, so we need to generate the
+	// timestamps such that a > b. This ensures that the returned suffixes sort
+	// such that low < high.
+	if a < b {
 		a, b = b, a
 	} else if a == b {
-		b++
+		a++
 	}
-	return testkeys.Suffix(a), testkeys.Suffix(b)
+	low = testkeys.Suffix(a) // NB: a > 0
+	if b > 0 {
+		high = testkeys.Suffix(b)
+	}
+	return low, high
 }
 
 // UniformSuffix returns a suffix in the same range as SkewedSuffix but with a
