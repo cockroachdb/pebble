@@ -1201,7 +1201,7 @@ func (o *newIterOp) run(t *Test, h historyRecorder) {
 func (o *newIterOp) formattedString(kf KeyFormat) string {
 	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
 		o.iterID, o.readerID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
-		o.keyTypes, kf.FormatKeySuffix(o.filterMin), kf.FormatKeySuffix(o.filterMax),
+		o.keyTypes, kf.FormatKeySuffix(o.filterMax), kf.FormatKeySuffix(o.filterMin),
 		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
 }
 
@@ -1268,8 +1268,8 @@ func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 func (o *newIterUsingCloneOp) formattedString(kf KeyFormat) string {
 	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
 		o.iterID, o.existingIterID, o.refreshBatch, kf.FormatKey(o.lower),
-		kf.FormatKey(o.upper), o.keyTypes, kf.FormatKeySuffix(o.filterMin),
-		kf.FormatKeySuffix(o.filterMax), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		kf.FormatKey(o.upper), o.keyTypes, kf.FormatKeySuffix(o.filterMax),
+		kf.FormatKeySuffix(o.filterMin), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
 }
 
 func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
@@ -1365,7 +1365,7 @@ func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 func (o *iterSetOptionsOp) formattedString(kf KeyFormat) string {
 	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
 		o.iterID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
-		o.keyTypes, kf.FormatKeySuffix(o.filterMin), kf.FormatKeySuffix(o.filterMax),
+		o.keyTypes, kf.FormatKeySuffix(o.filterMax), kf.FormatKeySuffix(o.filterMin),
 		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
 }
 
@@ -1393,9 +1393,12 @@ func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = kf.NewSuffixFilterMask
 	}
-	if o.filterMax != nil {
+	if o.filterMin != nil {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
 			kf.NewSuffixBlockPropertyFilter(o.filterMin, o.filterMax),
+		}
+		if o.filterMax != nil && kf.Comparer.ComparePointSuffixes(o.filterMin, o.filterMax) >= 0 {
+			panic(errors.AssertionFailedf("filterMin >= filterMax: %q >= %q", o.filterMin, o.filterMax))
 		}
 		// Enforce the timestamp bounds in SkipPoint, so that the iterator never
 		// returns a key outside the filterMin, filterMax bounds. This provides
@@ -1410,10 +1413,10 @@ func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 				// non-timestamped keys.
 				return true
 			}
-			if kf.Comparer.ComparePointSuffixes(k[n:], o.filterMin) < 0 {
+			if kf.Comparer.ComparePointSuffixes(k[n:], o.filterMin) <= 0 {
 				return true
 			}
-			if kf.Comparer.ComparePointSuffixes(k[n:], o.filterMax) >= 0 {
+			if o.filterMax != nil && kf.Comparer.ComparePointSuffixes(k[n:], o.filterMax) > 0 {
 				return true
 			}
 			return false
