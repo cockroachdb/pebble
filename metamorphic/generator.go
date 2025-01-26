@@ -29,7 +29,12 @@ type iterOpts struct {
 	maskSuffix UserKeySuffix
 
 	// If filterMax is != nil, this iterator will filter out any keys that have
-	// suffixes that don't fall within the range [filterMin,filterMax).
+	// suffixes that don't fall within the range (filterMin,filterMax]
+	// [according to the ordering defined by ComparePointSuffixes]. Note that
+	// suffixes are used to represent MVCC timestamps, and because MVCC
+	// timestamps are ordered in descending order, the timestamp associated with
+	// filterMin > filterMax.
+	//
 	// Additionally, the iterator will be constructed with a block-property
 	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
 	// corresponding block property collector, so block-filtering may still be
@@ -1529,7 +1534,7 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 		}
 
 		// With 1/3 probability, clear existing filter.
-		if opts.filterMax != nil && g.rng.IntN(3) == 0 {
+		if opts.filterMin != nil && g.rng.IntN(3) == 0 {
 			opts.filterMax, opts.filterMin = nil, nil
 		}
 		// With 10% probability, set a filter range.
