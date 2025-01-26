@@ -422,8 +422,12 @@ type KeyGenerator interface {
 	// May return a nil suffix, with the probability the configuration's suffix
 	// distribution assigns to the zero suffix.
 	SkewedSuffix(incMaxProb float64) []byte
-	// SuffixRange generates a new uniformly random range of suffixes [low,
-	// high) such that high is guaranteed to be strictly greater than low.
+	// SuffixRange generates a new uniformly random range of suffixes (low, high]
+	// such that high is guaranteed to be strictly greater (as defined by
+	// ComparePointSuffixes) than low.
+	//
+	// The high suffix may be nil, in which case the suffix range represents all
+	// suffixes ≥ low.
 	SuffixRange() (low, high []byte)
 	// UniformSuffix returns a suffix in the same range as SkewedSuffix but with
 	// a uniform distribution. This is used during reads to better exercise
