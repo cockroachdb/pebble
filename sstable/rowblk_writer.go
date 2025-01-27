@@ -1953,13 +1953,9 @@ func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithPropertie
 		w.layout.compression,
 		&blockBuf.checksummer,
 	)
-	if !pb.IsCompressed() {
-		// If the block isn't compressed, pb's underlying data points
-		// directly b. Clone it before writing it, as writing can mangle the buffer.
-		pb, blockBuf.dataBuf = pb.CloneUsingBuf(blockBuf.dataBuf)
-	}
 
 	// layout.WriteDataBlock keeps layout.offset up-to-date for us.
+	// Note that this can mangle the pb data.
 	bh, err := w.layout.writePrecompressedBlock(pb)
 	if err != nil {
 		return err

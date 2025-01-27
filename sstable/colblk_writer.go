@@ -667,14 +667,6 @@ func (w *RawColumnWriter) enqueueDataBlock(
 		w.opts.Compression,
 		&cb.blockBuf.checksummer,
 	)
-	if !cb.physical.IsCompressed() {
-		// If the block isn't compressed, cb.physical's underlying data points
-		// directly into a buffer owned by w.dataBlock. Clone it before passing
-		// it to the write queue to be asynchronously written to disk.
-		// TODO(jackson): Should we try to avoid this clone by tracking the
-		// lifetime of the DataBlockWriters?
-		cb.physical, cb.blockBuf.dataBuf = cb.physical.CloneUsingBuf(cb.blockBuf.dataBuf)
-	}
 	return w.enqueuePhysicalBlock(cb, separator)
 }
 
@@ -1164,14 +1156,6 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 		w.opts.Compression,
 		&cb.blockBuf.checksummer,
 	)
-	if !cb.physical.IsCompressed() {
-		// If the block isn't compressed, cb.physical's underlying data points
-		// directly into a buffer owned by w.dataBlock. Clone it before passing
-		// it to the write queue to be asynchronously written to disk.
-		// TODO(jackson): Should we try to avoid this clone by tracking the
-		// lifetime of the DataBlockWriters?
-		cb.physical, cb.blockBuf.dataBuf = cb.physical.CloneUsingBuf(cb.blockBuf.dataBuf)
-	}
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
 		return err
 	}
