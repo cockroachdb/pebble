@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -78,6 +79,9 @@ func (r *Rewriter) RewriteSuffixes(
 		// in the block, which includes the 1-byte prefix. This is fine since bw
 		// also does not know about the prefix and will preserve it in bw.add.
 		v := kv.InPlaceValue()
+		if invariants.Enabled && invariants.Sometimes(10) {
+			r.comparer.ValidateKey.MustValidate(r.scratchKey.UserKey)
+		}
 		r.writer.Add(r.scratchKey, v)
 		if start.UserKey == nil {
 			// Copy the first key.

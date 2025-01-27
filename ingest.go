@@ -98,6 +98,10 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 		return base.CorruptionErrorf("pebble: external sstable has non-zero seqnum: %s",
 			key.Pretty(opts.Comparer.FormatKey))
 	}
+	if err := opts.Comparer.ValidateKey.Validate(key.UserKey); err != nil {
+		return base.CorruptionErrorf("pebble: external sstable has corrupted key: %s, %w",
+			key.Pretty(opts.Comparer.FormatKey), err)
+	}
 	return nil
 }
 

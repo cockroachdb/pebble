@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -106,7 +107,20 @@ var Comparer = &base.Comparer{
 		return append(append(dst, a...), 0x00)
 	},
 	Split: split,
-	Name:  "pebble.internal.testkeys",
+	ValidateKey: func(k []byte) error {
+		// Ensure that if the key has a suffix, it's a valid integer
+		// (potentially modulo a faux synthetic bit suffix).
+		k = bytes.TrimSuffix(k, ignoreTimestampSuffix)
+		i := split(k)
+		if i == len(k) {
+			return nil
+		}
+		if _, err := parseUintBytes(k[i+1:], 10, 64); err != nil {
+			return errors.Wrapf(err, "invalid key %q", k)
+		}
+		return nil
+	},
+	Name: "pebble.internal.testkeys",
 }
 
 // The comparator is similar to the one in Cockroach; when the prefixes are

@@ -122,6 +122,8 @@ var Comparer = base.Comparer{
 		return append(append(dst, a...), 0)
 	},
 
+	ValidateKey: validateEngineKey,
+
 	Name: "cockroach_comparator",
 }
 
@@ -266,7 +268,7 @@ func Split(key []byte) int {
 		return 0
 	}
 	if invariants.Enabled {
-		checkEngineKey(key)
+		validateEngineKey.MustValidate(key)
 	}
 	// Last byte is the version length + 1 when there is a version, else it is
 	// 0.
@@ -281,8 +283,8 @@ func Compare(a, b []byte) int {
 		return cmp.Compare(len(a), len(b))
 	}
 	if invariants.Enabled {
-		checkEngineKey(a)
-		checkEngineKey(b)
+		validateEngineKey.MustValidate(a)
+		validateEngineKey.MustValidate(b)
 	}
 	aSuffixLen := int(a[len(a)-1])
 	aSuffixStart := len(a) - aSuffixLen
@@ -343,8 +345,8 @@ func Equal(a, b []byte) bool {
 		return len(a) == len(b)
 	}
 	if invariants.Enabled {
-		checkEngineKey(a)
-		checkEngineKey(b)
+		validateEngineKey.MustValidate(a)
+		validateEngineKey.MustValidate(b)
 	}
 	aSuffixLen := int(a[len(a)-1])
 	aSuffixStart := len(a) - aSuffixLen
@@ -983,16 +985,17 @@ func (ks *cockroachKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 //go:linkname memmove runtime.memmove
 func memmove(to, from unsafe.Pointer, n uintptr)
 
-func checkEngineKey(k []byte) {
+var validateEngineKey base.ValidateKey = func(k []byte) error {
 	if len(k) == 0 {
-		panic(errors.AssertionFailedf("empty key"))
+		return errors.AssertionFailedf("empty key")
 	}
 	if int(k[len(k)-1]) >= len(k) {
-		panic(errors.AssertionFailedf("malformed key terminator byte: %x", k))
+		return errors.AssertionFailedf("malformed key terminator byte: %x", k)
 	}
 	if k[len(k)-1] == 1 {
-		panic(errors.AssertionFailedf("invalid key terminator byte 1"))
+		return errors.AssertionFailedf("invalid key terminator byte 1 in key: %x", k)
 	}
+	return nil
 }
 
 // FormatKey returns a formatter for the user key.
