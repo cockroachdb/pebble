@@ -229,6 +229,10 @@ type Comparer struct {
 	// FormatValue is optional.
 	FormatValue FormatValue
 
+	// ValidateKey is an optional function that determines whether a key is
+	// valid according to this Comparer's key encoding.
+	ValidateKey ValidateKey
+
 	// Name is the name of the comparer.
 	//
 	// The on-disk format stores the comparer name, and opening a database with a
@@ -439,13 +443,51 @@ func MakeAssertComparer(c Comparer) Comparer {
 		ComparePointSuffixes: c.ComparePointSuffixes,
 		CompareRangeSuffixes: c.CompareRangeSuffixes,
 		AbbreviatedKey:       c.AbbreviatedKey,
-		Separator:            c.Separator,
-		Successor:            c.Successor,
-		ImmediateSuccessor:   c.ImmediateSuccessor,
-		FormatKey:            c.FormatKey,
-		Split:                c.Split,
-		FormatValue:          c.FormatValue,
-		Name:                 c.Name,
+		Separator: func(dst, a, b []byte) []byte {
+			ret := c.Separator(dst, a, b)
+			// The Separator func must return a valid key.
+			c.ValidateKey.MustValidate(ret)
+			return ret
+		},
+		Successor: func(dst, a []byte) []byte {
+			ret := c.Successor(dst, a)
+			// The Successor func must return a valid key.
+			c.ValidateKey.MustValidate(ret)
+			return ret
+		},
+		ImmediateSuccessor: func(dst, a []byte) []byte {
+			ret := c.ImmediateSuccessor(dst, a)
+			// The ImmediateSuccessor func must return a valid key.
+			c.ValidateKey.MustValidate(ret)
+			return ret
+		},
+		FormatKey:   c.FormatKey,
+		Split:       c.Split,
+		FormatValue: c.FormatValue,
+		ValidateKey: c.ValidateKey,
+		Name:        c.Name,
+	}
+}
+
+// ValidateKey is a func that determines whether a key is valid according to a
+// particular key encoding. Returns nil if the provided key is a valid, full
+// user key. Implementations must be careful to not mutate the provided key.
+type ValidateKey func([]byte) error
+
+// Validate validates the provided user key. If the func is nil, Validate
+// returns nil.
+func (v ValidateKey) Validate(key []byte) error {
+	if v == nil {
+		return nil
+	}
+	return v(key)
+}
+
+// MustValidate validates the provided user key, panicking if the key is
+// invalid.
+func (v ValidateKey) MustValidate(key []byte) {
+	if err := v.Validate(key); err != nil {
+		panic(err)
 	}
 }
 
@@ -489,6 +531,13 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 		for i := 1; i < len(suffixes); i++ {
 			a := slices.Concat(p, suffixes[i-1])
 			b := slices.Concat(p, suffixes[i])
+			if err := c.ValidateKey.Validate(a); err != nil {
+				return err
+			}
+			if err := c.ValidateKey.Validate(b); err != nil {
+				return err
+			}
+
 			// Make sure the Compare function agrees with ComparePointSuffixes.
 			if cmp := c.Compare(a, b); cmp > 0 {
 				return errors.Errorf("Compare(%s, %s)=%d, expected <= 0", c.FormatKey(a), c.FormatKey(b), cmp)
@@ -500,9 +549,15 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 	for _, ap := range prefixes {
 		for _, as := range suffixes {
 			a := slices.Concat(ap, as)
+			if err := c.ValidateKey.Validate(a); err != nil {
+				return err
+			}
 			for _, bp := range prefixes {
 				for _, bs := range suffixes {
 					b := slices.Concat(bp, bs)
+					if err := c.ValidateKey.Validate(b); err != nil {
+						return err
+					}
 					result := c.Compare(a, b)
 					if (result == 0) != c.Equal(a, b) {
 						return errors.Errorf("Equal(%s, %s) doesn't agree with Compare", c.FormatKey(a), c.FormatKey(b))
