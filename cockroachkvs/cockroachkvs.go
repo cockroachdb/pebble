@@ -764,11 +764,14 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) boo
 		}
 		return ComparePointSuffixes(ks.untypedVersions.At(0), version) >= 0
 	}
-
+	firstRowWall := ks.mvccWallTimes.At(0)
 	// NB: The sign comparison is inverted because suffixes are sorted such that
 	// the largest timestamps are "smaller" in the lexicographical ordering.
-	if v := cmp.Compare(ks.mvccWallTimes.At(0), wallTime); v != 0 {
-		return v < 0
+	if v := cmp.Compare(firstRowWall, wallTime); v != 0 {
+		// The empty-suffixed zero-timestamped key sorts first. If the first
+		// row's wall time is zero, it sorts before k and k is not a lower
+		// bound.
+		return v < 0 && firstRowWall > 0
 	}
 	return cmp.Compare(uint32(ks.mvccLogical.At(0)), logicalTime) <= 0
 }
