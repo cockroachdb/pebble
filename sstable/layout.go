@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -675,8 +674,7 @@ func (w *layoutWriter) Abort() {
 }
 
 // WriteDataBlock constructs a trailer for the provided data block and writes
-// the block and trailer to the writer. It returns the block's handle. It can
-// mangle b.
+// the block and trailer to the writer. It returns the block's handle.
 func (w *layoutWriter) WriteDataBlock(b []byte, buf *blockBuf) (block.Handle, error) {
 	return w.writeBlock(b, w.compression, buf)
 }
@@ -692,8 +690,6 @@ func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (blo
 // second-level) and writes the block and trailer to the writer. It remembers
 // the last-written index block's handle and adds it to the file's meta index
 // when the writer is finished.
-//
-// WriteIndexBlock can mangle b.
 func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
 	h, err := w.writeBlock(b, w.compression, &w.buf)
 	if err == nil {
@@ -716,8 +712,6 @@ func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err er
 // WritePropertiesBlock constructs a trailer for the provided properties block
 // and writes the block and trailer to the writer. It automatically adds the
 // properties block to the file's meta index when the writer is finished.
-//
-// WritePropertiesBlock can mangle b.
 func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, metaPropertiesName)
 }
@@ -725,8 +719,6 @@ func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
 // WriteRangeKeyBlock constructs a trailer for the provided range key block and
 // writes the block and trailer to the writer. It automatically adds the range
 // key block to the file's meta index when the writer is finished.
-//
-// WriteRangeKeyBlock can mangle the block data.
 func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, metaRangeKeyName)
 }
@@ -735,13 +727,10 @@ func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 // block and writes the block and trailer to the writer. It automatically adds
 // the range deletion block to the file's meta index when the writer is
 // finished.
-//
-// WriteRangeDeletionBlock can mangle the block data.
 func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, metaRangeDelV2Name)
 }
 
-// writeNamedBlock can mangle the block data.
 func (w *layoutWriter) writeNamedBlock(b []byte, name string) (bh block.Handle, err error) {
 	bh, err = w.writeBlock(b, block.NoCompression, &w.buf)
 	if err == nil {
@@ -770,20 +759,12 @@ func (w *layoutWriter) WriteValueIndexBlock(
 	return h, nil
 }
 
-// writeBlock checksums, compresses, and writes out a block. It can mangle b.
+// writeBlock checksums, compresses, and writes out a block.
 func (w *layoutWriter) writeBlock(
 	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
 	pb := block.CompressAndChecksum(&buf.dataBuf, b, compression, &buf.checksummer)
 	h, err := w.writePrecompressedBlock(pb)
-	// This method is allowed to mangle b, but that only happens when the block
-	// data is not compressible. Mangle it anyway in invariant builds to catch
-	// callers that don't handle this.
-	if invariants.Enabled && invariants.Sometimes(1) {
-		for i := range b {
-			b[i] = 0xFF
-		}
-	}
 	return h, err
 }
 

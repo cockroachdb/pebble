@@ -212,18 +212,6 @@ func (b PhysicalBlock) Clone() PhysicalBlock {
 	return PhysicalBlock{data: data, trailer: b.trailer}
 }
 
-// CloneUsingBuf makes a copy of the block data, using the given slice if it has
-// enough capacity.
-func (b PhysicalBlock) CloneUsingBuf(buf []byte) (_ PhysicalBlock, newBuf []byte) {
-	newBuf = append(buf[:0], b.data...)
-	return PhysicalBlock{data: newBuf, trailer: b.trailer}, newBuf
-}
-
-// IsCompressed returns true if the block is compressed.
-func (b *PhysicalBlock) IsCompressed() bool {
-	return CompressionIndicator(b.trailer[0]) != NoCompressionIndicator
-}
-
 // WriteTo writes the block (including its trailer) to the provided Writable. If
 // err == nil, n is the number of bytes successfully written to the Writable.
 //
@@ -247,35 +235,37 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 }
 
 // CompressAndChecksum compresses and checksums the provided block, returning
-// the compressed block and its trailer. The dst argument is used for the
-// compressed payload if it's sufficiently large. If it's not, a new buffer is
-// allocated and *dst is updated to point to it.
+// the compressed block and its trailer. The result is appended to the dst
+// argument.
 //
 // If the compressed block is not sufficiently smaller than the original block,
-// the compressed payload is discarded and the original, uncompressed block is
-// used to avoid unnecessary decompression overhead at read time.
+// the compressed payload is discarded and the original, uncompressed block data
+// is used to avoid unnecessary decompression overhead at read time.
 func CompressAndChecksum(
-	dst *[]byte, block []byte, compression Compression, checksummer *Checksummer,
+	dst *[]byte, blockData []byte, compression Compression, checksummer *Checksummer,
 ) PhysicalBlock {
+	buf := (*dst)[:0]
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	algo := NoCompressionIndicator
 	if compression != NoCompression {
-		var compressed []byte
-		algo, compressed = compress(compression, block, *dst)
-		if algo != NoCompressionIndicator && cap(compressed) > cap(*dst) {
-			*dst = compressed[:cap(compressed)]
-		}
-		if len(compressed) < len(block)-len(block)/8 {
-			block = compressed
-		} else {
+		algo, buf = compress(compression, blockData, buf)
+		if len(buf) >= len(blockData)-len(blockData)/8 {
 			algo = NoCompressionIndicator
 		}
 	}
+	if algo == NoCompressionIndicator {
+		// We don't want to use the given blockData buffer directly: typically the
+		// result will be written to disk and that can mangle the buffer, leading to
+		// fragile code.
+		buf = append(buf[:0], blockData...)
+	}
+
+	*dst = buf
 
 	// Calculate the checksum.
-	pb := PhysicalBlock{data: block}
-	checksum := checksummer.Checksum(block, byte(algo))
+	pb := PhysicalBlock{data: buf}
+	checksum := checksummer.Checksum(buf, byte(algo))
 	pb.trailer = MakeTrailer(byte(algo), checksum)
 	return pb
 }
@@ -375,19 +365,8 @@ func (b *Buffer) CompressAndChecksum() (PhysicalBlock, *BufHandle) {
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := compressedBuffers.Get()
 	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer)
-	if pb.IsCompressed() {
-		// Compression was fruitful, and pb's data points into compressedBuf. We
-		// can reuse b.Buffer because we've copied the compressed data.
-		b.h.b = b.h.b[:0]
-		return pb, compressedBuf
-	}
-	// Compression was not fruitful, and pb's data points into b.h. The
-	// compressedBuf we retrieved from the pool isn't needed, but our b.h is.
-	// Use the compressedBuf as the new b.h.
-	pbHandle := b.h
-	b.h = compressedBuf
 	b.h.b = b.h.b[:0]
-	return pb, pbHandle
+	return pb, compressedBuf
 }
 
 // SetCompression changes the compression algorithm used by CompressAndChecksum.
