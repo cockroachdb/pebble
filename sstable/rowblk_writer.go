@@ -1186,6 +1186,12 @@ func (w *RawRowWriter) indexEntrySep(
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, dataBlockBuf.sepScratch[:0], key)
 	}
+	if invariants.Enabled && invariants.Sometimes(25) {
+		if w.compare(prevKey.UserKey, sep.UserKey) > 0 {
+			panic(errors.AssertionFailedf("prevKey.UserKey > sep.UserKey: %s > %s",
+				prevKey.UserKey, sep.UserKey))
+		}
+	}
 	return sep
 }
 

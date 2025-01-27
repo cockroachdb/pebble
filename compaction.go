@@ -1500,7 +1500,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		Err:        err,
 	}
 	if err == nil {
-		validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey, d.opts.Logger)
+		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
 			info.Output = append(info.Output, e.Meta.TableInfo())
@@ -2356,7 +2356,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
-		validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey, d.opts.Logger)
+		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
 		err = func() error {
 			var err error
 			d.mu.versions.logLock()
@@ -3241,10 +3241,10 @@ func (d *DB) newCompactionOutput(
 // validateVersionEdit validates that start and end keys across new and deleted
 // files in a versionEdit pass the given validation function.
 func validateVersionEdit(
-	ve *versionEdit, validateFn func([]byte) error, format base.FormatKey, logger Logger,
+	ve *versionEdit, vk base.ValidateKey, format base.FormatKey, logger Logger,
 ) {
 	validateKey := func(f *manifest.FileMetadata, key []byte) {
-		if err := validateFn(key); err != nil {
+		if err := vk.Validate(key); err != nil {
 			logger.Fatalf("pebble: version edit validation failed (key=%s file=%s): %v", format(key), f, err)
 		}
 	}

@@ -654,19 +654,6 @@ type Options struct {
 		// limited by runtime.GOMAXPROCS.
 		FileCacheShards int
 
-		// KeyValidationFunc is a function to validate a user key in an SSTable.
-		//
-		// Currently, this function is used to validate the smallest and largest
-		// keys in an SSTable undergoing compaction. In this case, returning an
-		// error from the validation function will result in a panic at runtime,
-		// given that there is rarely any way of recovering from malformed keys
-		// present in compacted files. By default, validation is not performed.
-		//
-		// Additional use-cases may be added in the future.
-		//
-		// NOTE: callers should take care to not mutate the key being validated.
-		KeyValidationFunc func(userKey []byte) error
-
 		// ValidateOnIngest schedules validation of sstables after they have
 		// been ingested.
 		//
@@ -1164,9 +1151,6 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Experimental.CompactionLimiter == nil {
 		o.Experimental.CompactionLimiter = &base.DefaultCompactionLimiter{}
-	}
-	if o.Experimental.KeyValidationFunc == nil {
-		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
 	}
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
