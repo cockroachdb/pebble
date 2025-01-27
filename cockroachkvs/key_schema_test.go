@@ -161,7 +161,7 @@ func TestKeySchema_RandomKeys(t *testing.T) {
 		if n := len(kv.K.UserKey); n > len(keys[k]) {
 			t.Fatalf("key %q is longer than original key %q", kv.K.UserKey, keys[k])
 		}
-		checkEngineKey(kv.K.UserKey)
+		validateEngineKey.MustValidate(kv.K.UserKey)
 
 		// We write keys[k] as the value too, so check that it's verbatim equal.
 		value, callerOwned, err := kv.V.Value(valBuf)

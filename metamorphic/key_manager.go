@@ -389,6 +389,7 @@ func newKeyManager(numInstances int, kf KeyFormat) *keyManager {
 // addNewKey adds the given key to the key manager for global key tracking.
 // Returns false iff this is not a new key.
 func (k *keyManager) addNewKey(key []byte) bool {
+	k.kf.Comparer.ValidateKey.MustValidate(key)
 	if k.globalKeysMap[string(key)] {
 		return false
 	}
@@ -409,6 +410,7 @@ func (k *keyManager) addNewKey(key []byte) bool {
 // getOrInit returns the keyMeta for the (objID, key) pair, if it exists, else
 // allocates, initializes and returns a new value.
 func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
+	k.kf.Comparer.ValidateKey.MustValidate(key)
 	objKeys := k.objKeyMeta(id)
 	m, ok := objKeys.keys[string(key)]
 	if ok {
