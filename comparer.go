@@ -30,9 +30,5 @@ type Comparer = base.Comparer
 // DefaultComparer exports the base.DefaultComparer variable.
 var DefaultComparer = base.DefaultComparer
 
-// CheckComparer is a mini test suite that verifies a comparer implementation.
-//
-// It takes strictly ordered (according to the comparator) lists of prefixes and
-// suffixes. Both lists must contain the empty slice. It is recommended that
-// both lists have at least three elements.
+// CheckComparer exports the base.CheckComparer type.
 var CheckComparer = base.CheckComparer
