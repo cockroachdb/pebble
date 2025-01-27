@@ -633,7 +633,7 @@ func parseUserKey(userKeyStr string) []byte {
 		}
 	}
 	k := append(append([]byte(roachKey), 0), parseVersion(versionStr)...)
-	checkEngineKey(k)
+	validateEngineKey.MustValidate(k)
 	return k
 }
 
@@ -657,7 +657,7 @@ func parseVersion(versionStr string) []byte {
 		if len(ret) != 14 && len(ret) != 10 {
 			panic(fmt.Sprintf("expected 10 or 14-length ret got %d", len(ret)))
 		}
-		checkEngineKey(ret)
+		validateEngineKey.MustValidate(ret)
 		// TODO(jackson): Refactor to allow us to generate a suffix without a
 		// sentinel byte rather than stripping it like this.
 		return ret[1:]

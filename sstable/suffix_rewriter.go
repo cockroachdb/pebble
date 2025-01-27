@@ -178,6 +178,12 @@ func rewriteDataBlocksInParallel(
 					if err != nil {
 						return err
 					}
+					if err := r.Comparer.ValidateKey.Validate(output[i].start.UserKey); err != nil {
+						return err
+					}
+					if err := r.Comparer.ValidateKey.Validate(output[i].end.UserKey); err != nil {
+						return err
+					}
 					compressedBuf = compressedBuf[:cap(compressedBuf)]
 					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, opts.Compression, &checksummer)
 					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
@@ -218,6 +224,12 @@ func rewriteRangeKeyBlockToWriter(r *Reader, w RawWriter, from, to []byte) error
 	for ; s != nil; s, err = iter.Next() {
 		if !s.Valid() {
 			break
+		}
+		if err := r.Comparer.ValidateKey.Validate(s.Start); err != nil {
+			return err
+		}
+		if err := r.Comparer.ValidateKey.Validate(s.End); err != nil {
+			return err
 		}
 		for i := range s.Keys {
 			if s.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
@@ -327,6 +339,9 @@ func RewriteKeySuffixesViaWriter(
 		val, _, err := kv.Value(nil)
 		if err != nil {
 			return nil, err
+		}
+		if invariants.Enabled && invariants.Sometimes(10) {
+			r.Comparer.ValidateKey.MustValidate(scratch.UserKey)
 		}
 		if err := w.AddWithForceObsolete(scratch, val, false); err != nil {
 			return nil, err
