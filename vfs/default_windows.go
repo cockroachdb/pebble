@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build windows
-// +build windows
 
 package vfs
 

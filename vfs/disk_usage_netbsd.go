@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build netbsd
-// +build netbsd
 
 package vfs
 

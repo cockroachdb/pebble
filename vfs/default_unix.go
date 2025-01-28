@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build darwin || dragonfly || freebsd || netbsd || openbsd || solaris
-// +build darwin dragonfly freebsd netbsd openbsd solaris
 
 package vfs
 

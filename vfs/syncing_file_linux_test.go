@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build linux && !arm
-// +build linux,!arm
 
 package vfs
 

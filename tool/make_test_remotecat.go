@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build make_test_remotecat
-// +build make_test_remotecat
 
 // Run using: go run -tags make_test_remotecat ./tool/make_test_remotecat.go
 package main

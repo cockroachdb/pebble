@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build make_incorrect_manifests
-// +build make_incorrect_manifests
 
 // Run using: go run -tags make_incorrect_manifests ./tool/make_incorrect_manifests.go
 package main
