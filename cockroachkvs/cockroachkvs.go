@@ -1013,7 +1013,10 @@ func memmove(to, from unsafe.Pointer, n uintptr)
 
 var validateEngineKey base.ValidateKey = func(k []byte) error {
 	if len(k) == 0 {
-		return errors.AssertionFailedf("empty key")
+		// It would be nice to assert that the key is not empty, but
+		// unfortunately separator keys within index blocks may be empty in the
+		// case that a sstable (and its single data block) has no keys.
+		return nil
 	}
 	if int(k[len(k)-1]) >= len(k) {
 		return errors.AssertionFailedf("malformed key terminator byte: %x", k)
