@@ -97,6 +97,7 @@ func writeSSTForIngestion(
 		if err != nil {
 			return nil, err
 		}
+		t.opts.Comparer.ValidateKey.MustValidate(k.K.UserKey)
 		if err := w.Raw().AddWithForceObsolete(k.K, valBytes, false); err != nil {
 			return nil, err
 		}
@@ -111,7 +112,11 @@ func writeSSTForIngestion(
 			if syntheticSuffix.IsSet() {
 				panic("synthetic suffix with RangeDel")
 			}
-			if err := w.DeleteRange(outputKey(span.Start, nil), outputKey(span.End, nil)); err != nil {
+			start := outputKey(span.Start, nil)
+			end := outputKey(span.End, nil)
+			t.opts.Comparer.ValidateKey.MustValidate(start)
+			t.opts.Comparer.ValidateKey.MustValidate(end)
+			if err := w.DeleteRange(start, end); err != nil {
 				return nil, err
 			}
 		}
@@ -139,6 +144,8 @@ func writeSSTForIngestion(
 				End:   outputKey(span.End, nil),
 				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
 			}
+			t.opts.Comparer.ValidateKey.MustValidate(collapsed.Start)
+			t.opts.Comparer.ValidateKey.MustValidate(collapsed.End)
 			keys := span.Keys
 			if syntheticSuffix.IsSet() {
 				keys = slices.Clone(span.Keys)
