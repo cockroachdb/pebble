@@ -811,6 +811,7 @@ func (o *ingestOp) collapseBatch(
 	if pointIter != nil {
 		var lastUserKey []byte
 		for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
+			t.opts.Comparer.ValidateKey.MustValidate(kv.K.UserKey)
 			// Ignore duplicate keys.
 			//
 			// Note: this is necessary due to MERGE keys, otherwise it would be
@@ -882,6 +883,7 @@ func (o *ingestOp) collapseBatch(
 				continue
 			}
 			ik := base.MakeInternalKey(key, 0, kind)
+			t.opts.Comparer.ValidateKey.MustValidate(ik.UserKey)
 			if err := collapsed.AddInternalKey(&ik, value, nil); err != nil {
 				return nil, err
 			}
@@ -943,6 +945,8 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		return
 	}
 
+	t.opts.Comparer.ValidateKey.MustValidate(o.exciseStart)
+	t.opts.Comparer.ValidateKey.MustValidate(o.exciseEnd)
 	if t.testOpts.useExcise {
 		err = firstError(err, t.withRetries(func() error {
 			_, err := db.IngestAndExcise(context.Background(), []string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
@@ -1043,6 +1047,9 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 	} else {
 		external := make([]pebble.ExternalFile, len(o.objs))
 		for i, obj := range o.objs {
+			t.opts.Comparer.ValidateKey.MustValidate(obj.bounds.Start)
+			t.opts.Comparer.ValidateKey.MustValidate(obj.bounds.End)
+
 			meta := t.getExternalObj(obj.externalObjID)
 			external[i] = pebble.ExternalFile{
 				Locator:           "external",
@@ -2059,12 +2066,17 @@ func (r *replicateOp) runExternalReplicate(
 			if err != nil {
 				panic(err)
 			}
+			t.opts.Comparer.ValidateKey.MustValidate(key.UserKey)
 			return w.Raw().AddWithForceObsolete(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
 		},
 		func(start, end []byte, seqNum base.SeqNum) error {
+			t.opts.Comparer.ValidateKey.MustValidate(start)
+			t.opts.Comparer.ValidateKey.MustValidate(end)
 			return w.DeleteRange(start, end)
 		},
 		func(start, end []byte, keys []keyspan.Key) error {
+			t.opts.Comparer.ValidateKey.MustValidate(start)
+			t.opts.Comparer.ValidateKey.MustValidate(end)
 			return w.Raw().EncodeSpan(keyspan.Span{
 				Start: start,
 				End:   end,
@@ -2107,6 +2119,9 @@ func (r *replicateOp) runExternalReplicate(
 		return
 	}
 
+	t.opts.Comparer.ValidateKey.MustValidate(r.start)
+	t.opts.Comparer.ValidateKey.MustValidate(r.end)
+
 	_, err = dest.IngestAndExcise(context.Background(), []string{sstPath}, nil, externalSSTs /* external */, pebble.KeyRange{Start: r.start, End: r.end})
 	h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 }
@@ -2139,6 +2154,8 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 		return
 	}
 
+	t.opts.Comparer.ValidateKey.MustValidate(r.start)
+	t.opts.Comparer.ValidateKey.MustValidate(r.end)
 	// First, do a RangeKeyDelete and DeleteRange on the whole span.
 	if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
@@ -2173,6 +2190,8 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 			rangeKeys := iter.RangeKeys()
 			rkStart, rkEnd := iter.RangeBounds()
 
+			t.opts.Comparer.ValidateKey.MustValidate(rkStart)
+			t.opts.Comparer.ValidateKey.MustValidate(rkEnd)
 			span := keyspan.Span{Start: rkStart, End: rkEnd, Keys: make([]keyspan.Key, len(rangeKeys))}
 			for i := range rangeKeys {
 				span.Keys[i] = keyspan.Key{
