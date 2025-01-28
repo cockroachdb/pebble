@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build !darwin && !dragonfly && !freebsd && !linux && !netbsd && !openbsd && !solaris && !windows
-// +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd,!solaris,!windows
 
 package vfs
 

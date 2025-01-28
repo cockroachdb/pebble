@@ -13,7 +13,6 @@
 // permissions and limitations under the License.
 
 //go:build 386 || amd64p32 || arm || armbe || ppc || sparc
-// +build 386 amd64p32 arm armbe ppc sparc
 
 package rawalloc
 

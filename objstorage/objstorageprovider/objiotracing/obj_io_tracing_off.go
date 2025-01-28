@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build !pebble_obj_io_tracing
-// +build !pebble_obj_io_tracing
 
 package objiotracing
 

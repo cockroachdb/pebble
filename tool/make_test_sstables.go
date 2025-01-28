@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build make_test_sstables
-// +build make_test_sstables
 
 // Run using: go run -tags make_test_sstables ./tool/make_test_sstables.go
 package main

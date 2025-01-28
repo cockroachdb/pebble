@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build make_test_find_db
-// +build make_test_find_db
 
 // Run using: go run -tags make_test_find_db ./tool/make_test_find_db.go
 package main

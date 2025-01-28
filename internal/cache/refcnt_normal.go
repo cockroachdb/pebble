@@ -3,7 +3,6 @@
 // the LICENSE file.
 
 //go:build !tracing
-// +build !tracing
 
 package cache
 
