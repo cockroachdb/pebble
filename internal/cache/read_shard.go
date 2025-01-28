@@ -34,7 +34,7 @@ import (
 // filesystem reads, where context cancellation is not respected. We do
 // introduce an error duration metric emitted in traces that can be used to
 // quantify such wasteful waiting. Note that this same risk extends to waiting
-// on the Options.LoadBlockSema, so the error duration metric includes the
+// on the Options.LoadBlockBytesSema, so the error duration metric includes the
 // case of an error when waiting on the semaphore (as a side effect of that
 // waiting happening in the caller, sstable.Reader).
 //
@@ -351,7 +351,7 @@ func (e *readEntry) setReadError(err error) {
 //
 // The caller must immediately start doing a read, or can first wait on a
 // shared resource that would also block a different reader if it was assigned
-// the turn instead (specifically, this refers to Options.LoadBlockSema).
+// the turn instead (specifically, this refers to Options.LoadBlockBytesSema).
 // After the read, it must either call SetReadValue or SetReadError depending
 // on whether the read succeeded or failed.
 type ReadHandle struct {

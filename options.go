@@ -494,10 +494,11 @@ type Options struct {
 	// The default cache size is 8 MB.
 	Cache *cache.Cache
 
-	// LoadBlockSema, if set, is used to limit the number of blocks that can be
-	// loaded (i.e. read from the filesystem) in parallel. Each load acquires one
-	// unit from the semaphore for the duration of the read.
-	LoadBlockSema *fifo.Semaphore
+	// LoadBlockBytesSema, if set, is used to limit the number of bytes that can
+	// be loaded (i.e. read from the filesystem) in parallel. Each block load
+	// acquires X units from the semaphore, where X is the on-disk size of the
+	// block.
+	LoadBlockBytesSema *fifo.Semaphore
 
 	// Cleaner cleans obsolete files.
 	//
@@ -510,7 +511,7 @@ type Options struct {
 		// consulted whenever a read handle is initialized.
 		ReadaheadConfig *ReadaheadConfig
 
-		// TODO(radu): move BytesPerSync, LoadBlockSema, Cleaner here.
+		// TODO(radu): move BytesPerSync, LoadBlockBytesSema, Cleaner here.
 	}
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
@@ -2058,7 +2059,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
 		readerOpts.KeySchemas = o.KeySchemas
-		readerOpts.LoadBlockSema = o.LoadBlockSema
+		readerOpts.LoadBlockBytesSema = o.LoadBlockBytesSema
 		readerOpts.LoggerAndTracer = o.LoggerAndTracer
 		readerOpts.Merger = o.Merger
 	}
