@@ -51,6 +51,7 @@ type RawRowWriter struct {
 	compression          block.Compression
 	separator            Separator
 	successor            Successor
+	validateKey          base.ValidateKey
 	tableFormat          TableFormat
 	isStrictObsolete     bool
 	writingToLowestLevel bool
@@ -1220,6 +1221,11 @@ func (w *RawRowWriter) addIndexEntry(
 		// In particular, it must have a non-zero length.
 		return nil
 	}
+	if invariants.Enabled {
+		if err := w.validateKey.Validate(sep.UserKey); err != nil {
+			return err
+		}
+	}
 
 	encoded := bhp.EncodeVarints(tmp)
 	if flushIndexBuf != nil {
@@ -1538,6 +1544,8 @@ func (w *RawRowWriter) Close() (err error) {
 			return err
 		}
 		prevKey := w.dataBlockBuf.dataBlock.CurKey()
+		// NB: prevKey.UserKey may be nil if there are no keys and we're forcing
+		// the creation of an empty data block.
 		if err := w.addIndexEntrySync(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
@@ -1719,6 +1727,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		compression:                o.Compression,
 		separator:                  o.Comparer.Separator,
 		successor:                  o.Comparer.Successor,
+		validateKey:                o.Comparer.ValidateKey,
 		tableFormat:                o.TableFormat,
 		isStrictObsolete:           o.IsStrictObsolete,
 		writingToLowestLevel:       o.WritingToLowestLevel,
