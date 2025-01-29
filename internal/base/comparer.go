@@ -315,11 +315,8 @@ var DefaultComparer = &Comparer{
 		i, n := SharedPrefixLen(a, b), len(dst)
 		dst = append(dst, a...)
 
-		min := len(a)
-		if min > len(b) {
-			min = len(b)
-		}
-		if i >= min {
+		minLen := min(len(a), len(b))
+		if i >= minLen {
 			// Do not shorten if one string is a prefix of the other.
 			return dst
 		}
