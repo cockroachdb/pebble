@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"unicode/utf8"
 
+	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
 )
 
@@ -312,14 +313,11 @@ var DefaultComparer = &Comparer{
 	FormatKey: DefaultFormatter,
 
 	Separator: func(dst, a, b []byte) []byte {
-		i, n := SharedPrefixLen(a, b), len(dst)
+		i := crbytes.CommonPrefix(a, b)
+		n := len(dst)
 		dst = append(dst, a...)
 
-		min := len(a)
-		if min > len(b) {
-			min = len(b)
-		}
-		if i >= min {
+		if i == len(a) || i == len(b) {
 			// Do not shorten if one string is a prefix of the other.
 			return dst
 		}
@@ -364,25 +362,6 @@ var DefaultComparer = &Comparer{
 	// This name is part of the C++ Level-DB implementation's default file
 	// format, and should not be changed.
 	Name: "leveldb.BytewiseComparator",
-}
-
-// SharedPrefixLen returns the largest i such that a[:i] equals b[:i].
-// This function can be useful in implementing the Comparer interface.
-func SharedPrefixLen(a, b []byte) int {
-	i, n := 0, len(a)
-	if n > len(b) {
-		n = len(b)
-	}
-	asUint64 := func(c []byte, i int) uint64 {
-		return binary.LittleEndian.Uint64(c[i:])
-	}
-	for i < n-7 && asUint64(a, i) == asUint64(b, i) {
-		i += 8
-	}
-	for i < n && a[i] == b[i] {
-		i++
-	}
-	return i
 }
 
 // MinUserKey returns the smaller of two user keys. If one of the keys is nil,
