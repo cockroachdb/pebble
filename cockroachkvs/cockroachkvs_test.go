@@ -79,6 +79,46 @@ func TestComparer(t *testing.T) {
 	}
 }
 
+func TestComparerFuncs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/comparer_funcs",
+		func(t *testing.T, td *datadriven.TestData) string {
+			buf.Reset()
+			switch td.Cmd {
+			case "separator":
+				var keys [][]byte
+				var dst []byte
+				for _, line := range crstrings.Lines(td.Input) {
+					keys = keys[:0]
+					for _, formattedKey := range strings.Fields(line) {
+						k := ParseFormattedKey(formattedKey)
+						keys = append(keys, k)
+					}
+					if len(keys) != 2 {
+						t.Fatalf("expected two keys, but found %d", len(keys))
+					}
+					dst = Comparer.Separator(dst[:0], keys[0], keys[1])
+					fmt.Fprintf(&buf, "Separator(%q [%x], %q [%x]) = %q [%x]\n",
+						FormatKey(keys[0]), keys[0], FormatKey(keys[1]), keys[1], FormatKey(dst), dst)
+				}
+				return buf.String()
+			case "successor":
+				var dst []byte
+				for _, line := range crstrings.Lines(td.Input) {
+					k := ParseFormattedKey(line)
+					dst = Comparer.Successor(dst[:0], k)
+					fmt.Fprintf(&buf, "Successor(%q [%x]) = %q [%x]\n",
+						FormatKey(k), k, FormatKey(dst), dst)
+				}
+				return buf.String()
+			default:
+				panic(fmt.Sprintf("unknown command: %s", td.Cmd))
+			}
+		})
+}
+
 func TestKeySchema_KeyWriter(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
