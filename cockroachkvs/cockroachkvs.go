@@ -70,6 +70,9 @@ var Comparer = base.Comparer{
 	FormatKey: FormatKey,
 
 	Separator: func(dst, a, b []byte) []byte {
+		if len(a) == 0 || len(b) == 0 {
+			panic(errors.AssertionFailedf("cannot separate empty keys"))
+		}
 		aKey, ok := getKeyPartFromEngineKey(a)
 		if !ok {
 			return append(dst, a...)
@@ -94,6 +97,13 @@ var Comparer = base.Comparer{
 	},
 
 	Successor: func(dst, a []byte) []byte {
+		// If a is empty, the key consisting of just a single 0x00 byte is the
+		// smallest non-empty key ≥ a. We don't return an empty key because
+		// empty keys are problematic when combined with a synthetic prefix
+		// (they form a key that has no trailing sentinel byte).
+		if len(a) == 0 {
+			return append(dst, 0x00)
+		}
 		aKey, ok := getKeyPartFromEngineKey(a)
 		if !ok {
 			return append(dst, a...)
@@ -1035,6 +1045,10 @@ func FormatKey(key []byte) fmt.Formatter {
 type formatKey []byte
 
 func (fk formatKey) Format(f fmt.State, c rune) {
+	if len(fk) == 0 {
+		fmt.Fprint(f, "<empty>")
+		return
+	}
 	i := Split(fk)
 	fmt.Fprintf(f, "%s", []byte(fk)[:i-1])
 	if i == len(fk) {
@@ -1083,7 +1097,15 @@ func (fk formatKeySuffix) Format(f fmt.State, c rune) {
 //     c. <WALLTIME-SECONDS>,<LOGICAL>
 //     d. <WALLTIME-SECONDS>.<WALLTIME-NANOS>,<LOGICAL>
 //  2. A lock table key in the format: <STRENGTH-BYTE>,<TXNUUID>
+//  3. A raw hex-encoded string prefixed with "hex:".
 func ParseFormattedKey(formattedKey string) []byte {
+	if strings.HasPrefix(formattedKey, "hex:") {
+		decoded, err := hex.DecodeString(formattedKey[4:])
+		if err != nil {
+			panic(errors.Newf("invalid hex-encoded key: %w", err))
+		}
+		return decoded
+	}
 	i := strings.IndexByte(formattedKey, '@')
 	if i == -1 {
 		// Suffix-less.
