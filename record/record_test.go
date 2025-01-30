@@ -828,8 +828,8 @@ func TestInvalidLogNum(t *testing.T) {
 
 	{
 		r := NewReader(bytes.NewReader(buf.Bytes()), 2)
-		if _, err := r.Next(); err != io.EOF {
-			t.Fatalf("expected %s, but found %s\n", io.EOF, err)
+		if _, err := r.Next(); err != ErrInvalidChunk {
+			t.Fatalf("expected %s, but found %s\n", ErrInvalidChunk, err)
 		}
 	}
 }
