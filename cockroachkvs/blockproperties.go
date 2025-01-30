@@ -45,6 +45,14 @@ type MVCCWallTimeIntervalRangeKeyMask struct {
 	sstable.BlockIntervalFilter
 }
 
+// Init initializees the mask and its block interval filter.
+func (m *MVCCWallTimeIntervalRangeKeyMask) Init() {
+	m.BlockIntervalFilter.Init(
+		mvccWallTimeIntervalCollector,
+		0, math.MaxUint64,
+		MVCCBlockIntervalSuffixReplacer{})
+}
+
 // SetSuffix implements the pebble.BlockPropertyFilterMask interface.
 func (m *MVCCWallTimeIntervalRangeKeyMask) SetSuffix(suffix []byte) error {
 	if len(suffix) == 0 {
