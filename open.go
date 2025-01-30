@@ -941,8 +941,11 @@ func (d *DB) replayWAL(
 			// to otherwise treat them like EOF.
 			if err == io.EOF {
 				break
-			} else if record.IsInvalidRecord(err) && !strictWALTail {
-				break
+			} else if record.IsInvalidRecord(err) {
+				if !strictWALTail {
+					break
+				}
+				err = errors.Mark(err, ErrCorruption)
 			}
 			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}

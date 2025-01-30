@@ -961,7 +961,7 @@ func (w *LogWriter) emitEOFTrailer() {
 	i := b.written.Load()
 	binary.LittleEndian.PutUint32(b.buf[i+0:i+4], 0) // CRC
 	binary.LittleEndian.PutUint16(b.buf[i+4:i+6], 0) // Size
-	b.buf[i+6] = recyclableFullChunkType
+	b.buf[i+6] = recyclableFullChunkEncoding
 	binary.LittleEndian.PutUint32(b.buf[i+7:i+11], w.logNum+1) // Log number
 	b.written.Store(i + int32(recyclableHeaderSize))
 }
@@ -974,15 +974,15 @@ func (w *LogWriter) emitFragment(n int, p []byte) (remainingP []byte) {
 
 	if last {
 		if first {
-			b.buf[i+6] = recyclableFullChunkType
+			b.buf[i+6] = recyclableFullChunkEncoding
 		} else {
-			b.buf[i+6] = recyclableLastChunkType
+			b.buf[i+6] = recyclableLastChunkEncoding
 		}
 	} else {
 		if first {
-			b.buf[i+6] = recyclableFirstChunkType
+			b.buf[i+6] = recyclableFirstChunkEncoding
 		} else {
-			b.buf[i+6] = recyclableMiddleChunkType
+			b.buf[i+6] = recyclableMiddleChunkEncoding
 		}
 	}
 
