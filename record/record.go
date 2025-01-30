@@ -115,15 +115,17 @@ import (
 
 // These constants are part of the wire format and should not be changed.
 const (
-	fullChunkType   = 1
-	firstChunkType  = 2
-	middleChunkType = 3
-	lastChunkType   = 4
+	invalidChunkEncoding = 0
 
-	recyclableFullChunkType   = 5
-	recyclableFirstChunkType  = 6
-	recyclableMiddleChunkType = 7
-	recyclableLastChunkType   = 8
+	fullChunkEncoding   = 1
+	firstChunkEncoding  = 2
+	middleChunkEncoding = 3
+	lastChunkEncoding   = 4
+
+	recyclableFullChunkEncoding   = 5
+	recyclableFirstChunkEncoding  = 6
+	recyclableMiddleChunkEncoding = 7
+	recyclableLastChunkEncoding   = 8
 )
 
 const (
@@ -132,6 +134,57 @@ const (
 	legacyHeaderSize     = 7
 	recyclableHeaderSize = legacyHeaderSize + 4
 )
+
+// chunkPosition represents the type of a chunk in the WAL.
+// Records can be split into multiple chunks and marked
+// by the following position types:
+// - invalidChunkPosition: an invalid chunk
+// - fullChunkPosition: a complete record stored in a single chunk
+// - firstChunkPosition: first chunk of a multi-chunk record
+// - middleChunkPosition: intermediate chunk in a multi-chunk record
+// - lastChunkPosition: final chunk of a multi-chunk record
+type chunkPosition int
+
+const (
+	invalidChunkPosition chunkPosition = iota
+	fullChunkPosition
+	firstChunkPosition
+	middleChunkPosition
+	lastChunkPosition
+)
+
+// wireFormat specifies the encoding format used for chunks.
+// wireFormat is used for backwards compatibility and new
+// wire formats may be introduced to support additional
+// WAL chunks.
+type wireFormat int
+
+const (
+	invalidWireFormat wireFormat = iota
+	legacyWireFormat
+	recyclableWireFormat
+)
+
+// headerFormat represents the format of a chunk which has
+// a chunkPosition, wireFormat, and a headerSize.
+type headerFormat struct {
+	chunkPosition
+	wireFormat
+	headerSize int
+}
+
+// headerFormatMappings translates encodings to headerFormats
+var headerFormatMappings = [...]headerFormat{
+	invalidChunkEncoding:          {chunkPosition: invalidChunkPosition, wireFormat: invalidWireFormat, headerSize: 0},
+	fullChunkEncoding:             {chunkPosition: fullChunkPosition, wireFormat: legacyWireFormat, headerSize: legacyHeaderSize},
+	firstChunkEncoding:            {chunkPosition: firstChunkPosition, wireFormat: legacyWireFormat, headerSize: legacyHeaderSize},
+	middleChunkEncoding:           {chunkPosition: middleChunkPosition, wireFormat: legacyWireFormat, headerSize: legacyHeaderSize},
+	lastChunkEncoding:             {chunkPosition: lastChunkPosition, wireFormat: legacyWireFormat, headerSize: legacyHeaderSize},
+	recyclableFullChunkEncoding:   {chunkPosition: fullChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
+	recyclableFirstChunkEncoding:  {chunkPosition: firstChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
+	recyclableMiddleChunkEncoding: {chunkPosition: middleChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
+	recyclableLastChunkEncoding:   {chunkPosition: lastChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
+}
 
 var (
 	// ErrNotAnIOSeeker is returned if the io.Reader underlying a Reader does not implement io.Seeker.
@@ -142,12 +195,12 @@ var (
 
 	// ErrZeroedChunk is returned if a chunk is encountered that is zeroed. This
 	// usually occurs due to log file preallocation.
-	ErrZeroedChunk = base.CorruptionErrorf("pebble/record: zeroed chunk")
+	ErrZeroedChunk = errors.New("pebble/record: zeroed chunk")
 
 	// ErrInvalidChunk is returned if a chunk is encountered with an invalid
 	// header, length, or checksum. This usually occurs when a log is recycled,
 	// but can also occur due to corruption.
-	ErrInvalidChunk = base.CorruptionErrorf("pebble/record: invalid chunk")
+	ErrInvalidChunk = errors.New("pebble/record: invalid chunk")
 )
 
 // IsInvalidRecord returns true if the error matches one of the error types
@@ -202,9 +255,15 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		if r.end+legacyHeaderSize <= r.n {
 			checksum := binary.LittleEndian.Uint32(r.buf[r.end+0 : r.end+4])
 			length := binary.LittleEndian.Uint16(r.buf[r.end+4 : r.end+6])
-			chunkType := r.buf[r.end+6]
+			chunkEncoding := r.buf[r.end+6]
 
-			if checksum == 0 && length == 0 && chunkType == 0 {
+			if int(chunkEncoding) >= len(headerFormatMappings) {
+				return ErrInvalidChunk
+			}
+			headerFormat := headerFormatMappings[chunkEncoding]
+			chunkPosition, wireFormat, headerSize := headerFormat.chunkPosition, headerFormat.wireFormat, headerFormat.headerSize
+
+			if checksum == 0 && length == 0 && chunkPosition == invalidChunkPosition {
 				if r.end+recyclableHeaderSize > r.n {
 					// Skip the rest of the block if the recyclable header size does not
 					// fit within it.
@@ -223,26 +282,25 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				return ErrZeroedChunk
 			}
 
-			headerSize := legacyHeaderSize
-			if chunkType >= recyclableFullChunkType && chunkType <= recyclableLastChunkType {
-				headerSize = recyclableHeaderSize
+			if wireFormat == invalidWireFormat {
+				return ErrInvalidChunk
+			}
+			if wireFormat == recyclableWireFormat {
 				if r.end+headerSize > r.n {
 					return ErrInvalidChunk
 				}
 
 				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
 				if logNum != r.logNum {
-					if wantFirst {
-						// If we're looking for the first chunk of a record, we can treat a
-						// previous instance of the log as EOF.
+					// An EOF trailer encodes a log number that is 1 more than the
+					// current log number.
+					if logNum == 1+r.logNum && wantFirst {
 						return io.EOF
 					}
 					// Otherwise, treat this chunk as invalid in order to prevent reading
 					// of a partial record.
 					return ErrInvalidChunk
 				}
-
-				chunkType -= (recyclableFullChunkType - 1)
 			}
 
 			r.begin = r.end + headerSize
@@ -263,11 +321,11 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				return ErrInvalidChunk
 			}
 			if wantFirst {
-				if chunkType != fullChunkType && chunkType != firstChunkType {
+				if chunkPosition != fullChunkPosition && chunkPosition != firstChunkPosition {
 					continue
 				}
 			}
-			r.last = chunkType == fullChunkType || chunkType == lastChunkType
+			r.last = chunkPosition == fullChunkPosition || chunkPosition == lastChunkPosition
 			r.recovering = false
 			return nil
 		}
@@ -469,15 +527,15 @@ func (w *Writer) fillHeader(last bool) {
 	}
 	if last {
 		if w.first {
-			w.buf[w.i+6] = fullChunkType
+			w.buf[w.i+6] = fullChunkEncoding
 		} else {
-			w.buf[w.i+6] = lastChunkType
+			w.buf[w.i+6] = lastChunkEncoding
 		}
 	} else {
 		if w.first {
-			w.buf[w.i+6] = firstChunkType
+			w.buf[w.i+6] = firstChunkEncoding
 		} else {
-			w.buf[w.i+6] = middleChunkType
+			w.buf[w.i+6] = middleChunkEncoding
 		}
 	}
 	binary.LittleEndian.PutUint32(w.buf[w.i+0:w.i+4], crc.New(w.buf[w.i+6:w.j]).Value())
