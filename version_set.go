@@ -78,13 +78,14 @@ type versionSet struct {
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
 	obsoleteFn        func(obsolete []*fileBacking)
-	obsoleteTables    []tableInfo
+	obsoleteTables    []objectInfo
+	obsoleteBlobs     []objectInfo
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
-	zombieTables map[base.DiskFileNum]tableInfo
+	zombieTables map[base.DiskFileNum]objectInfo
 
 	// virtualBackings contains information about the FileBackings which support
 	// virtual sstables in the latest version. It is mainly used to determine when
@@ -129,7 +130,9 @@ type versionSet struct {
 	rotationHelper record.RotationHelper
 }
 
-type tableInfo struct {
+// objectInfo describes an object in object storage (either a sstable or a blob
+// file).
+type objectInfo struct {
 	fileInfo
 	isLocal bool
 }
@@ -152,7 +155,7 @@ func (vs *versionSet) init(
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	vs.zombieTables = make(map[base.DiskFileNum]tableInfo)
+	vs.zombieTables = make(map[base.DiskFileNum]objectInfo)
 	vs.virtualBackings = manifest.MakeVirtualBackings()
 	vs.nextFileNum.Store(1)
 	vs.manifestMarker = marker
@@ -635,7 +638,7 @@ func (vs *versionSet) logAndApply(
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
 	for _, b := range zombieBackings {
-		vs.zombieTables[b.backing.DiskFileNum] = tableInfo{
+		vs.zombieTables[b.backing.DiskFileNum] = objectInfo{
 			fileInfo: fileInfo{
 				FileNum:  b.backing.DiskFileNum,
 				FileSize: b.backing.Size,
@@ -1035,7 +1038,7 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 		return
 	}
 
-	obsoleteFileInfo := make([]tableInfo, len(obsolete))
+	obsoleteFileInfo := make([]objectInfo, len(obsolete))
 	for i, bs := range obsolete {
 		obsoleteFileInfo[i].FileNum = bs.DiskFileNum
 		obsoleteFileInfo[i].FileSize = bs.Size

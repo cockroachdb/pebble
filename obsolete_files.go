@@ -164,17 +164,20 @@ func (cm *cleanupManager) mainLoop() {
 	for job := range cm.jobsCh {
 		for _, of := range job.obsoleteFiles {
 			switch of.fileType {
-			case fileTypeTable:
+			case base.FileTypeTable:
 				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
 				cm.onTableDeleteFn(of.nonLogFile.fileSize, of.nonLogFile.isLocal)
-				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.nonLogFile.fileNum)
-			case fileTypeLog:
+				cm.deleteObsoleteObject(of.fileType, job.jobID, of.nonLogFile.fileNum)
+			case base.FileTypeBlob:
+				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
+				cm.deleteObsoleteObject(of.fileType, job.jobID, of.nonLogFile.fileNum)
+			case base.FileTypeLog:
 				cm.deleteObsoleteFile(of.logFile.FS, fileTypeLog, job.jobID, of.logFile.Path,
-					base.DiskFileNum(of.logFile.NumWAL), of.logFile.ApproxFileSize)
+					base.DiskFileNum(of.logFile.NumWAL))
 			default:
 				path := base.MakeFilepath(cm.opts.FS, of.nonLogFile.dir, of.fileType, of.nonLogFile.fileNum)
 				cm.deleteObsoleteFile(
-					cm.opts.FS, of.fileType, job.jobID, path, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
+					cm.opts.FS, of.fileType, job.jobID, path, of.nonLogFile.fileNum)
 			}
 		}
 		cm.mu.Lock()
@@ -187,7 +190,7 @@ func (cm *cleanupManager) mainLoop() {
 
 // fileNumIfSST is read iff fileType is fileTypeTable.
 func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNumIfSST base.DiskFileNum) bool {
-	if fileType != fileTypeTable {
+	if fileType != base.FileTypeTable && fileType != base.FileTypeBlob {
 		return false
 	}
 	meta, err := cm.objProvider.Lookup(fileType, fileNumIfSST)
@@ -229,7 +232,7 @@ func (cm *cleanupManager) maybePace(
 
 // deleteObsoleteFile deletes a (non-object) file that is no longer needed.
 func (cm *cleanupManager) deleteObsoleteFile(
-	fs vfs.FS, fileType fileType, jobID JobID, path string, fileNum base.DiskFileNum, fileSize uint64,
+	fs vfs.FS, fileType fileType, jobID JobID, path string, fileNum base.DiskFileNum,
 ) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
@@ -239,21 +242,21 @@ func (cm *cleanupManager) deleteObsoleteFile(
 	}
 
 	switch fileType {
-	case fileTypeLog:
+	case base.FileTypeLog:
 		cm.opts.EventListener.WALDeleted(WALDeleteInfo{
 			JobID:   int(jobID),
 			Path:    path,
 			FileNum: fileNum,
 			Err:     err,
 		})
-	case fileTypeManifest:
+	case base.FileTypeManifest:
 		cm.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
 			JobID:   int(jobID),
 			Path:    path,
 			FileNum: fileNum,
 			Err:     err,
 		})
-	case fileTypeTable:
+	case base.FileTypeTable, base.FileTypeBlob:
 		panic("invalid deletion of object file")
 	}
 }
@@ -261,7 +264,7 @@ func (cm *cleanupManager) deleteObsoleteFile(
 func (cm *cleanupManager) deleteObsoleteObject(
 	fileType fileType, jobID JobID, fileNum base.DiskFileNum,
 ) {
-	if fileType != fileTypeTable {
+	if fileType != base.FileTypeTable && fileType != base.FileTypeBlob {
 		panic("not an object")
 	}
 
@@ -278,13 +281,14 @@ func (cm *cleanupManager) deleteObsoleteObject(
 	}
 
 	switch fileType {
-	case fileTypeTable:
+	case base.FileTypeTable:
 		cm.opts.EventListener.TableDeleted(TableDeleteInfo{
 			JobID:   int(jobID),
 			Path:    path,
 			FileNum: fileNum,
 			Err:     err,
 		})
+		// TODO(jackson): Add BlobFileDeleted event.
 	}
 }
 
@@ -367,7 +371,8 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteTables []tableInfo
+	var obsoleteTables []objectInfo
+	var obsoleteBlobs []objectInfo
 	var obsoleteManifests []fileInfo
 	var obsoleteOptions []fileInfo
 
@@ -377,7 +382,7 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 			continue
 		}
 		switch fileType {
-		case fileTypeManifest:
+		case base.FileTypeManifest:
 			if diskFileNum >= manifestFileNum {
 				continue
 			}
@@ -386,7 +391,7 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 				fi.FileSize = uint64(stat.Size())
 			}
 			obsoleteManifests = append(obsoleteManifests, fi)
-		case fileTypeOptions:
+		case base.FileTypeOptions:
 			if diskFileNum >= d.optionsFileNum {
 				continue
 			}
@@ -395,7 +400,7 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 				fi.FileSize = uint64(stat.Size())
 			}
 			obsoleteOptions = append(obsoleteOptions, fi)
-		case fileTypeTable:
+		case base.FileTypeTable, base.FileTypeBlob:
 			// Objects are handled through the objstorage provider below.
 		default:
 			// Don't delete files we don't know about.
@@ -404,28 +409,32 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 
 	objects := d.objProvider.List()
 	for _, obj := range objects {
-		switch obj.FileType {
-		case fileTypeTable:
-			if _, ok := liveFileNums[obj.DiskFileNum]; ok {
-				continue
-			}
-			fileInfo := fileInfo{
-				FileNum: obj.DiskFileNum,
-			}
+		if _, ok := liveFileNums[obj.DiskFileNum]; ok {
+			continue
+		}
+		makeObjectInfo := func() objectInfo {
+			fileInfo := fileInfo{FileNum: obj.DiskFileNum}
 			if size, err := d.objProvider.Size(obj); err == nil {
 				fileInfo.FileSize = uint64(size)
 			}
-			obsoleteTables = append(obsoleteTables, tableInfo{
+			return objectInfo{
 				fileInfo: fileInfo,
 				isLocal:  !obj.IsRemote(),
-			})
+			}
+		}
 
+		switch obj.FileType {
+		case base.FileTypeTable:
+			obsoleteTables = append(obsoleteTables, makeObjectInfo())
+		case base.FileTypeBlob:
+			obsoleteBlobs = append(obsoleteBlobs, makeObjectInfo())
 		default:
 			// Ignore object types we don't know about.
 		}
 	}
 
-	d.mu.versions.obsoleteTables = mergeTableInfos(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteTables = mergeObjectInfos(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteBlobs = mergeObjectInfos(d.mu.versions.obsoleteBlobs, obsoleteBlobs)
 	d.mu.versions.updateObsoleteTableMetricsLocked()
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
@@ -482,8 +491,10 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 		panic(err)
 	}
 
-	obsoleteTables := append([]tableInfo(nil), d.mu.versions.obsoleteTables...)
-	d.mu.versions.obsoleteTables = nil
+	obsoleteTables := slices.Clone(d.mu.versions.obsoleteTables)
+	d.mu.versions.obsoleteTables = d.mu.versions.obsoleteTables[:0]
+	obsoleteBlobs := slices.Clone(d.mu.versions.obsoleteBlobs)
+	d.mu.versions.obsoleteBlobs = d.mu.versions.obsoleteBlobs[:0]
 
 	for _, tbl := range obsoleteTables {
 		delete(d.mu.versions.zombieTables, tbl.FileNum)
@@ -519,7 +530,10 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	}
 	// We sort to make the order of deletions deterministic, which is nice for
 	// tests.
-	slices.SortFunc(obsoleteTables, func(a, b tableInfo) int {
+	slices.SortFunc(obsoleteTables, func(a, b objectInfo) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	slices.SortFunc(obsoleteBlobs, func(a, b objectInfo) int {
 		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	for _, f := range obsoleteTables {
@@ -534,6 +548,19 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 			},
 		})
 	}
+	for _, f := range obsoleteBlobs {
+		d.fileCache.evict(f.FileNum)
+		filesToDelete = append(filesToDelete, obsoleteFile{
+			fileType: base.FileTypeBlob,
+			nonLogFile: deletableFile{
+				dir:      d.dirname,
+				fileNum:  f.FileNum,
+				fileSize: f.FileSize,
+				isLocal:  f.isLocal,
+			},
+		})
+	}
+
 	files := [2]struct {
 		fileType fileType
 		obsolete []fileInfo
@@ -594,16 +621,16 @@ func merge(a, b []fileInfo) []fileInfo {
 	})
 }
 
-func mergeTableInfos(a, b []tableInfo) []tableInfo {
+func mergeObjectInfos(a, b []objectInfo) []objectInfo {
 	if len(b) == 0 {
 		return a
 	}
 
 	a = append(a, b...)
-	slices.SortFunc(a, func(a, b tableInfo) int {
+	slices.SortFunc(a, func(a, b objectInfo) int {
 		return cmp.Compare(a.FileNum, b.FileNum)
 	})
-	return slices.CompactFunc(a, func(a, b tableInfo) bool {
+	return slices.CompactFunc(a, func(a, b objectInfo) bool {
 		return a.FileNum == b.FileNum
 	})
 }

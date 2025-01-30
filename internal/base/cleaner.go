@@ -40,7 +40,7 @@ var _ NeedsFileContents = ArchiveCleaner{}
 // also write to the secondary. We should consider archiving to the primary.
 func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
 	switch fileType {
-	case FileTypeLog, FileTypeManifest, FileTypeTable:
+	case FileTypeLog, FileTypeManifest, FileTypeTable, FileTypeBlob:
 		destDir := fs.PathJoin(fs.PathDir(path), "archive")
 
 		if err := fs.MkdirAll(destDir, 0755); err != nil {

@@ -2320,7 +2320,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 		// Add this file to zombie tables as well, as the versionSet
 		// asserts on whether every obsolete file was at one point
 		// marked zombie.
-		d.mu.versions.zombieTables[obsoleteFiles[i].DiskFileNum] = tableInfo{
+		d.mu.versions.zombieTables[obsoleteFiles[i].DiskFileNum] = objectInfo{
 			fileInfo: fileInfo{
 				FileNum:  obsoleteFiles[i].DiskFileNum,
 				FileSize: obsoleteFiles[i].Size,
@@ -2936,7 +2936,7 @@ func (d *DB) runCompaction(
 			// Add this file to zombie tables as well, as the versionSet
 			// asserts on whether every obsolete file was at one point
 			// marked zombie.
-			d.mu.versions.zombieTables[backing.DiskFileNum] = tableInfo{
+			d.mu.versions.zombieTables[backing.DiskFileNum] = objectInfo{
 				fileInfo: fileInfo{
 					FileNum:  backing.DiskFileNum,
 					FileSize: backing.Size,

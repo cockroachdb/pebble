@@ -73,12 +73,15 @@ func (p *provider) vfsInit() error {
 
 	for _, filename := range listing {
 		fileType, fileNum, ok := base.ParseFilename(p.st.FS, filename)
-		if ok && fileType == base.FileTypeTable {
-			o := objstorage.ObjectMetadata{
-				FileType:    fileType,
-				DiskFileNum: fileNum,
+		if ok {
+			switch fileType {
+			case base.FileTypeTable, base.FileTypeBlob:
+				o := objstorage.ObjectMetadata{
+					FileType:    fileType,
+					DiskFileNum: fileNum,
+				}
+				p.mu.knownObjects[o.DiskFileNum] = o
 			}
-			p.mu.knownObjects[o.DiskFileNum] = o
 		}
 	}
 	return nil

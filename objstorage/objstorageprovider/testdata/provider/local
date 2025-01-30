@@ -62,7 +62,7 @@ list
 
 read 1
 ----
-file 000001 (type 2) unknown to the objstorage provider: file does not exist
+file 000001 (type sstable) unknown to the objstorage provider: file does not exist
 
 link-or-copy 3 local 3 100
 ----
@@ -93,6 +93,38 @@ size: 1234
 <local fs> read-at(0, 1234): p0/000004.sst
 0 1234: ok (salt 4)
 <local fs> close: p0/000004.sst
+
+create file-type=blob 000005 local 1 4096
+----
+<local fs> create: p0/000005.blob
+<local fs> sync-data: p0/000005.blob
+<local fs> close: p0/000005.blob
+
+read file-type=blob 000005
+0 1024
+2048 1024
+----
+<local fs> open: p0/000005.blob (options: *vfs.randomReadsOption)
+size: 4096
+<local fs> read-at(0, 1024): p0/000005.blob
+0 1024: ok (salt 1)
+<local fs> read-at(2048, 1024): p0/000005.blob
+2048 1024: ok (salt 1)
+<local fs> close: p0/000005.blob
+
+link-or-copy file-type=blob 000006 shared 6 1234
+----
+<local fs> create: temp-file-3
+<local fs> close: temp-file-3
+<local fs> link: temp-file-3 -> p0/000006.blob
+
+list
+----
+000002 -> p0/000002.sst
+000003 -> p0/000003.sst
+000004 -> p0/000004.sst
+000005 -> p0/000005.blob
+000006 -> p0/000006.blob
 
 close
 ----

@@ -403,7 +403,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	if manifestExists && !opts.DisableConsistencyCheck {
 		curVersion := d.mu.versions.currentVersion()
-		if err := checkConsistency(curVersion, dirname, d.objProvider); err != nil {
+		if err := checkConsistency(curVersion, d.objProvider); err != nil {
 			return nil, err
 		}
 	}
@@ -1241,7 +1241,7 @@ func IsCorruptionError(err error) bool {
 	return errors.Is(err, base.ErrCorruption)
 }
 
-func checkConsistency(v *manifest.Version, dirname string, objProvider objstorage.Provider) error {
+func checkConsistency(v *manifest.Version, objProvider objstorage.Provider) error {
 	var errs []error
 	dedup := make(map[base.DiskFileNum]struct{})
 	for level, files := range v.Levels {
