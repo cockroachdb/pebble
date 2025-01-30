@@ -45,6 +45,10 @@ func TestParseFilename(t *testing.T) {
 		"CURRENT.dbtmp":          false,
 		"CURRENT.123456.dbtmp":   true,
 		"temporary.123456.dbtmp": true,
+		"foo.blob":               false,
+		"000000.blob":            true,
+		"000001.blob":            true,
+		"935203523.blob":         true,
 	}
 	fs := vfs.NewMem()
 	for tc, want := range testCases {
@@ -65,6 +69,7 @@ func TestFilenameRoundTrip(t *testing.T) {
 		FileTypeOptions:  true,
 		FileTypeOldTemp:  true,
 		FileTypeTemp:     true,
+		FileTypeBlob:     true,
 		// NB: Log filenames are created and parsed elsewhere in the wal/
 		// package.
 		// FileTypeLog:      true,

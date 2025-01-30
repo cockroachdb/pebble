@@ -61,7 +61,43 @@ const (
 	FileTypeOptions
 	FileTypeOldTemp
 	FileTypeTemp
+	FileTypeBlob
 )
+
+var fileTypeStrings = [...]string{
+	FileTypeLog:      "log",
+	FileTypeLock:     "lock",
+	FileTypeTable:    "sstable",
+	FileTypeManifest: "manifest",
+	FileTypeOptions:  "options",
+	FileTypeOldTemp:  "old-temp",
+	FileTypeTemp:     "temp",
+	FileTypeBlob:     "blob",
+}
+
+// FileTypeFromName parses a FileType from its string representation.
+func FileTypeFromName(name string) FileType {
+	for i, s := range fileTypeStrings {
+		if s == name {
+			return FileType(i)
+		}
+	}
+	panic(fmt.Sprintf("unknown file type: %q", name))
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (ft FileType) SafeFormat(w redact.SafePrinter, _ rune) {
+	if ft < 0 || int(ft) >= len(fileTypeStrings) {
+		w.Print("unknown")
+		return
+	}
+	w.Print(fileTypeStrings[ft])
+}
+
+// String implements fmt.Stringer.
+func (ft FileType) String() string {
+	return redact.StringWithoutMarkers(ft)
+}
 
 // MakeFilename builds a filename from components.
 func MakeFilename(fileType FileType, dfn DiskFileNum) string {
@@ -80,6 +116,8 @@ func MakeFilename(fileType FileType, dfn DiskFileNum) string {
 		return fmt.Sprintf("CURRENT.%s.dbtmp", dfn)
 	case FileTypeTemp:
 		return fmt.Sprintf("temporary.%s.dbtmp", dfn)
+	case FileTypeBlob:
+		return fmt.Sprintf("%s.blob", dfn)
 	}
 	panic("unreachable")
 }
@@ -130,10 +168,11 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 		if !ok {
 			break
 		}
-		// TODO(sumeer): stop handling FileTypeLog in this function.
 		switch filename[i+1:] {
 		case "sst":
 			return FileTypeTable, dfn, true
+		case "blob":
+			return FileTypeBlob, dfn, true
 		}
 	}
 	return 0, dfn, false

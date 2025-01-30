@@ -110,6 +110,11 @@ func TestProvider(t *testing.T) {
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
+				ft := base.FileTypeTable
+				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
+					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
+					d.CmdArgs = d.CmdArgs[1:]
+				}
 				if len(d.CmdArgs) == 5 && d.CmdArgs[4].Key == "no-ref-tracking" {
 					d.CmdArgs = d.CmdArgs[:4]
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
@@ -117,7 +122,7 @@ func TestProvider(t *testing.T) {
 				var fileNum base.DiskFileNum
 				var typ string
 				var salt, size int
-				scanArgs("<file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
+				scanArgs("[file-type=sstable|blob] <file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
 				switch typ {
 				case "local":
 				case "shared":
@@ -125,7 +130,7 @@ func TestProvider(t *testing.T) {
 				default:
 					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
 				}
-				w, _, err := curProvider.Create(ctx, base.FileTypeTable, fileNum, opts)
+				w, _, err := curProvider.Create(ctx, ft, fileNum, opts)
 				if err != nil {
 					return err.Error()
 				}
@@ -141,6 +146,11 @@ func TestProvider(t *testing.T) {
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
+				ft := base.FileTypeTable
+				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
+					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
+					d.CmdArgs = d.CmdArgs[1:]
+				}
 				if len(d.CmdArgs) == 5 && d.CmdArgs[4].Key == "no-ref-tracking" {
 					d.CmdArgs = d.CmdArgs[:4]
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
@@ -148,7 +158,7 @@ func TestProvider(t *testing.T) {
 				var fileNum base.DiskFileNum
 				var typ string
 				var salt, size int
-				scanArgs("<file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
+				scanArgs("[file-type=sstable|blob] <file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
 				switch typ {
 				case "local":
 				case "shared":
@@ -168,9 +178,7 @@ func TestProvider(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 
-				_, err = curProvider.LinkOrCopyFromLocal(
-					ctx, fs, tmpFilename, base.FileTypeTable, fileNum, opts,
-				)
+				_, err = curProvider.LinkOrCopyFromLocal(ctx, fs, tmpFilename, ft, fileNum, opts)
 				require.NoError(t, err)
 				return log.String()
 
@@ -195,10 +203,15 @@ func TestProvider(t *testing.T) {
 					}
 				}
 
+				ft := base.FileTypeTable
+				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
+					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
+					d.CmdArgs = d.CmdArgs[1:]
+				}
 				d.CmdArgs = d.CmdArgs[:1]
 				var fileNum base.DiskFileNum
-				scanArgs("<file-num> [for-compaction] [readahead|speculative-overhead=off|sys-readahead|fadvise-sequential]", &fileNum)
-				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{})
+				scanArgs("[file-type=sstable|blob] <file-num> [for-compaction] [readahead|speculative-overhead=off|sys-readahead|fadvise-sequential]", &fileNum)
+				r, err := curProvider.OpenForReading(ctx, ft, fileNum, objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -231,9 +244,14 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "remove":
+				ft := base.FileTypeTable
+				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
+					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
+					d.CmdArgs = d.CmdArgs[1:]
+				}
 				var fileNum base.DiskFileNum
-				scanArgs("<file-num>", &fileNum)
-				if err := curProvider.Remove(base.FileTypeTable, fileNum); err != nil {
+				scanArgs("[file-type=sstable|blob] <file-num>", &fileNum)
+				if err := curProvider.Remove(ft, fileNum); err != nil {
 					return err.Error()
 				}
 				return log.String()
