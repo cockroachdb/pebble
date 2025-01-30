@@ -52,7 +52,7 @@ scanned 2 records in 1.0s
 
 db scan testdata/broken-external-db
 ----
-L0: 000008: file 000008 (type 2) unknown to the objstorage provider: file does not exist
+L0: 000008: file 000008 (type sstable) unknown to the objstorage provider: file does not exist
 
 # The database LSM is as follows:
 #   L0.0:

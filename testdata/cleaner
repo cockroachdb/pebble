@@ -206,6 +206,19 @@ create: db1/000456.sst
 sync: db1/000456.sst
 close: db1/000456.sst
 
+create-bogus-file db1/000234.blob
+----
+create: db1/000234.blob
+sync: db1/000234.blob
+close: db1/000234.blob
+
+create-bogus-file db1/000345.blob
+----
+create: db1/000345.blob
+sync: db1/000345.blob
+close: db1/000345.blob
+
+
 open db1
 ----
 mkdir-all: db1 0755
@@ -249,6 +262,8 @@ rename: db1/temporary.000460.dbtmp -> db1/OPTIONS-000460
 sync: db1
 remove: db1/000123.sst
 remove: db1/000456.sst
+remove: db1/000234.blob
+remove: db1/000345.blob
 remove: db1/OPTIONS-000003
 
 list db1

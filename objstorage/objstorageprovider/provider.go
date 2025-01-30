@@ -488,13 +488,13 @@ func (p *provider) Lookup(
 	if !ok {
 		return objstorage.ObjectMetadata{}, errors.Wrapf(
 			os.ErrNotExist,
-			"file %s (type %d) unknown to the objstorage provider",
-			fileNum, errors.Safe(fileType),
+			"file %s (type %s) unknown to the objstorage provider",
+			fileNum, fileType,
 		)
 	}
 	if meta.FileType != fileType {
 		return objstorage.ObjectMetadata{}, base.AssertionFailedf(
-			"file %s type mismatch (known type %d, expected type %d)",
+			"file %s type mismatch (known type %s, expected type %s)",
 			fileNum, errors.Safe(meta.FileType), errors.Safe(fileType),
 		)
 	}
@@ -549,8 +549,8 @@ func (p *provider) CheckpointState(
 		if _, ok := p.mu.knownObjects[fileNums[i]]; !ok {
 			return errors.Wrapf(
 				os.ErrNotExist,
-				"file %s (type %d) unknown to the objstorage provider",
-				fileNums[i], errors.Safe(fileType),
+				"file %s (type %s) unknown to the objstorage provider",
+				fileNums[i], fileType,
 			)
 		}
 		// Prevent this object from deletion, at least for the life of this instance.
