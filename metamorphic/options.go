@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -48,7 +47,6 @@ func parseOptions(
 	opts *TestOptions, data string, customOptionParsers map[string]func(string) (CustomOption, bool),
 ) error {
 	hooks := &pebble.ParseHooks{
-		NewCache: pebble.NewCache,
 		NewComparer: func(name string) (*pebble.Comparer, error) {
 			for _, kf := range knownKeyFormats {
 				if kf.Comparer.Name == name {
@@ -671,8 +669,8 @@ func RandomOptions(
 		}
 	}
 
-	opts.BytesPerSync = 1 << uint(rng.IntN(28))     // 1B - 256MB
-	opts.Cache = cache.New(1 << uint(rng.IntN(30))) // 1B - 1GB
+	opts.BytesPerSync = 1 << uint(rng.IntN(28)) // 1B - 256MB
+	opts.CacheSize = 1 << uint(rng.IntN(30))    // 1B - 1GB
 	opts.DisableWAL = rng.IntN(2) == 0
 	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.IntN(245)) // 5-250ms
 	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.IntN(245))    // 5-250ms

@@ -115,7 +115,9 @@ func (t *Test) init(
 
 	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
 
-	defer t.opts.Cache.Unref()
+	if t.opts.Cache != nil {
+		defer t.opts.Cache.Unref()
+	}
 
 	// If an error occurs and we were using an in-memory FS, attempt to clone to
 	// on-disk in order to allow post-mortem debugging. Note that always using
@@ -285,7 +287,6 @@ func (t *Test) restartDB(dbID objID) error {
 	if len(t.dbs) > 1 {
 		return nil
 	}
-	t.opts.Cache.Ref()
 	fs := vfs.Root(t.opts.FS).(*vfs.MemFS)
 	crashFS := fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 	if err := db.Close(); err != nil {
@@ -326,7 +327,6 @@ func (t *Test) restartDB(dbID objID) error {
 		}
 		return err
 	})
-	t.opts.Cache.Unref()
 	return err
 }
 

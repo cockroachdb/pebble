@@ -49,7 +49,6 @@ func TestIteratorErrors(t *testing.T) {
 		testOpts.Opts.FS = vfs.NewMem()
 	}
 
-	testOpts.Opts.Cache.Ref()
 	{
 		test, err := metamorphic.New(metamorphic.GenerateOps(
 			rng, 10000, kf, metamorphic.WriteOpConfig()),
