@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,14 +29,14 @@ func TestParseOptionsStr(t *testing.T) {
 		},
 		{
 			c:       replayConfig{optionsString: fmt.Sprintf(`[Options] cache_size=%d`, 16<<20 /* 16MB */)},
-			options: &pebble.Options{Cache: cache.New(16 << 20 /* 16 MB */)},
+			options: &pebble.Options{CacheSize: 16 * 1024 * 1024},
 		},
 		{
 			c: replayConfig{
 				maxCacheSize:  16 << 20, /* 16 MB */
 				optionsString: fmt.Sprintf(`[Options] cache_size=%d`, int64(10<<30 /* 10 GB */)),
 			},
-			options: &pebble.Options{Cache: cache.New(16 << 20 /* 16 MB */)},
+			options: &pebble.Options{CacheSize: 16 * 1024 * 1024},
 		},
 		{
 			c: replayConfig{optionsString: `[Options] [Level "0"] target_file_size=222`},
@@ -59,19 +58,18 @@ func TestParseOptionsStr(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		o := new(pebble.Options)
-		require.NoError(t, tc.c.parseCustomOptions(tc.c.optionsString, o))
-		o.EnsureDefaults()
-		got := o.String()
+		t.Run("", func(t *testing.T) {
+			o := new(pebble.Options)
+			require.NoError(t, tc.c.parseCustomOptions(tc.c.optionsString, o))
+			o.EnsureDefaults()
+			got := o.String()
 
-		tc.options.EnsureDefaults()
-		want := tc.options.String()
-		require.Equal(t, want, got)
-		if o.Cache != nil {
-			o.Cache.Unref()
-		}
-		if tc.options.Cache != nil {
-			tc.options.Cache.Unref()
-		}
+			tc.options.EnsureDefaults()
+			want := tc.options.String()
+			require.Equal(t, want, got)
+			if o.Cache != nil {
+				o.Cache.Unref()
+			}
+		})
 	}
 }

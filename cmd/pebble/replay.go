@@ -24,7 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/replay"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -297,12 +296,6 @@ func (c *replayConfig) getCheckpointDir(r *replay.Runner) string {
 
 func (c *replayConfig) parseHooks() *pebble.ParseHooks {
 	return &pebble.ParseHooks{
-		NewCache: func(size int64) *cache.Cache {
-			if c.maxCacheSize != 0 && size > c.maxCacheSize {
-				size = c.maxCacheSize
-			}
-			return cache.New(size)
-		},
 		NewComparer: makeComparer,
 		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
 			switch name {
@@ -355,7 +348,13 @@ func (c *replayConfig) parseCustomOptions(optsStr string, opts *pebble.Options) 
 			value = strings.TrimSpace(value[i+1:])
 		}
 	}
-	return opts.Parse(buf.String(), c.parseHooks())
+	if err := opts.Parse(buf.String(), c.parseHooks()); err != nil {
+		return err
+	}
+	if c.maxCacheSize != 0 && opts.CacheSize > c.maxCacheSize {
+		opts.CacheSize = c.maxCacheSize
+	}
+	return nil
 }
 
 func (c *replayConfig) cleanUp() error {

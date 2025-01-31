@@ -206,7 +206,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	if opts.Cache == nil {
-		opts.Cache = cache.New(cacheDefaultSize)
+		opts.Cache = cache.New(opts.CacheSize)
 	} else {
 		opts.Cache.Ref()
 	}

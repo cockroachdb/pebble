@@ -489,10 +489,11 @@ type Options struct {
 	// The default value is 512KB.
 	BytesPerSync int
 
-	// Cache is used to cache uncompressed blocks from sstables.
-	//
-	// The default cache size is 8 MB.
+	// Cache is used to cache uncompressed blocks from sstables. If it is nil,
+	// a block cache of CacheSize will be created for each DB.
 	Cache *cache.Cache
+	// CacheSize is used when Cache is not set. The default value is 8 MB.
+	CacheSize int64
 
 	// LoadBlockSema, if set, is used to limit the number of blocks that can be
 	// loaded (i.e. read from the filesystem) in parallel. Each load acquires one
@@ -1131,6 +1132,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o == nil {
 		o = &Options{}
 	}
+	if o.Cache == nil && o.CacheSize == 0 {
+		o.CacheSize = cacheDefaultSize
+	}
 	o.Comparer = o.Comparer.EnsureDefaults()
 
 	if o.BytesPerSync <= 0 {
@@ -1358,7 +1362,7 @@ func filterPolicyName(p FilterPolicy) string {
 func (o *Options) String() string {
 	var buf bytes.Buffer
 
-	cacheSize := int64(cacheDefaultSize)
+	cacheSize := o.CacheSize
 	if o.Cache != nil {
 		cacheSize = o.Cache.MaxSize()
 	}
@@ -1551,7 +1555,6 @@ func parseOptions(s string, fns parseOptionsFuncs) error {
 // ParseHooks contains callbacks to create options fields which can have
 // user-defined implementations.
 type ParseHooks struct {
-	NewCache        func(size int64) *Cache
 	NewCleaner      func(name string) (Cleaner, error)
 	NewComparer     func(name string) (*Comparer, error)
 	NewFilterPolicy func(name string) (FilterPolicy, error)
@@ -1603,16 +1606,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "bytes_per_sync":
 				o.BytesPerSync, err = strconv.Atoi(value)
 			case "cache_size":
-				var n int64
-				n, err = strconv.ParseInt(value, 10, 64)
-				if err == nil && hooks != nil && hooks.NewCache != nil {
-					if o.Cache != nil {
-						o.Cache.Unref()
-					}
-					o.Cache = hooks.NewCache(n)
-				}
-				// We avoid calling cache.New in parsing because it makes it
-				// too easy to leak a cache.
+				o.CacheSize, err = strconv.ParseInt(value, 10, 64)
 			case "cleaner":
 				switch value {
 				case "archive":

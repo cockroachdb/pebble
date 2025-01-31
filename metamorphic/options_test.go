@@ -93,21 +93,12 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
 	}
 
-	// Ensure that we unref any caches created, so invariants builds don't
-	// complain about the leaked ref counts.
-	maybeUnref := func(o *TestOptions) {
-		if o.Opts.Cache != nil {
-			o.Opts.Cache.Unref()
-		}
-	}
-
 	checkOptions := func(t *testing.T, o *TestOptions) {
 		s := optionsToString(o)
 		t.Logf("Serialized options:\n%s\n", s)
 
 		parsed := defaultTestOptions(TestkeysKeyFormat)
 		require.NoError(t, parseOptions(parsed, s, nil))
-		maybeUnref(parsed)
 		got := optionsToString(parsed)
 		require.Equal(t, s, got)
 		t.Logf("Re-serialized options:\n%s\n", got)
@@ -143,13 +134,12 @@ func TestOptionsRoundtrip(t *testing.T) {
 				cleaned = append(cleaned, d)
 			}
 		}
-		require.Equal(t, diff[:0], cleaned)
+		require.Equal(t, diff[:0], cleaned, "before:\n%#v\nafter:\n%#v\n", o.Opts, parsed.Opts)
 	}
 
 	standard := standardOptions(TestkeysKeyFormat)
 	for i := range standard {
 		t.Run(fmt.Sprintf("standard-%03d", i), func(t *testing.T) {
-			defer maybeUnref(standard[i])
 			checkOptions(t, standard[i])
 		})
 	}
@@ -157,7 +147,6 @@ func TestOptionsRoundtrip(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
 			o := RandomOptions(rng, TestkeysKeyFormat, nil)
-			defer maybeUnref(o)
 			checkOptions(t, o)
 		})
 	}
@@ -234,7 +223,6 @@ func TestCustomOptionParser(t *testing.T) {
   foo=bar
 `, customOptionParsers))
 	require.NoError(t, parseOptions(o2, optionsToString(o1), customOptionParsers))
-	defer o2.Opts.Cache.Unref()
 
 	for _, o := range []*TestOptions{o1, o2} {
 		require.Equal(t, 1, len(o.CustomOpts))
