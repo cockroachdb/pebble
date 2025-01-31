@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func TestExternalIterator(t *testing.T) {
@@ -76,14 +77,18 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 		KeyTypes: IterKeyTypePointsAndRanges,
 	}
 	writeOpts := opts.MakeWriterOptions(6, sstable.TableFormatPebblev2)
+	var valBuf [512]byte
 
 	for _, keyCount := range []int{100, 10_000, 100_000} {
 		b.Run(fmt.Sprintf("keys=%d", keyCount), func(b *testing.B) {
 			for _, fileCount := range []int{1, 10, 100} {
 				b.Run(fmt.Sprintf("files=%d", fileCount), func(b *testing.B) {
+					prng := rand.New(rand.NewSource(0))
+
 					var fs vfs.FS = vfs.NewMem()
 					filenames := make([]string, fileCount)
 					var keys [][]byte
+
 					for i := 0; i < fileCount; i++ {
 						filename := fmt.Sprintf("%03d.sst", i)
 						wf, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
@@ -92,7 +97,9 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 						for j := 0; j < keyCount/fileCount; j++ {
 							key := testkeys.Key(ks, int64(len(keys)))
 							keys = append(keys, key)
-							require.NoError(b, w.Set(key, key))
+							_, err = prng.Read(valBuf[:])
+							require.NoError(b, err)
+							require.NoError(b, w.Set(key, valBuf[:]))
 						}
 						require.NoError(b, w.Close())
 						filenames[i] = filename
