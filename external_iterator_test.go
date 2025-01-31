@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -15,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestExternalIterator(t *testing.T) {
@@ -83,7 +83,7 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 		b.Run(fmt.Sprintf("keys=%d", keyCount), func(b *testing.B) {
 			for _, fileCount := range []int{1, 10, 100} {
 				b.Run(fmt.Sprintf("files=%d", fileCount), func(b *testing.B) {
-					prng := rand.New(rand.NewSource(0))
+					prng := rand.New(rand.NewPCG(0, 0))
 
 					var fs vfs.FS = vfs.NewMem()
 					filenames := make([]string, fileCount)
@@ -97,7 +97,9 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 						for j := 0; j < keyCount/fileCount; j++ {
 							key := testkeys.Key(ks, int64(len(keys)))
 							keys = append(keys, key)
-							_, err = prng.Read(valBuf[:])
+							for i := range valBuf {
+								valBuf[i] = byte(prng.Uint32())
+							}
 							require.NoError(b, err)
 							require.NoError(b, w.Set(key, valBuf[:]))
 						}

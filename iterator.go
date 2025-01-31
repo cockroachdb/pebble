@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekeystack"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
 )
 
@@ -239,8 +238,7 @@ type Iterator struct {
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
-	externalReaders     [][]*sstable.Reader
-
+	externalIter        *externalIterState
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
@@ -2387,11 +2385,8 @@ func (i *Iterator) Close() error {
 	if i.version != nil {
 		i.version.Unref()
 	}
-
-	for _, readers := range i.externalReaders {
-		for _, r := range readers {
-			err = firstError(err, r.Close())
-		}
+	if i.externalIter != nil {
+		err = firstError(err, i.externalIter.Close())
 	}
 
 	// Close the closer for the current value if one was open.
@@ -2401,7 +2396,6 @@ func (i *Iterator) Close() error {
 	}
 
 	if i.rangeKey != nil {
-
 		i.rangeKey.rangeKeyBuffers.PrepareForReuse()
 		*i.rangeKey = iteratorRangeKeyState{
 			rangeKeyBuffers: i.rangeKey.rangeKeyBuffers,
@@ -2581,7 +2575,7 @@ func (i *Iterator) processBounds(lower, upper []byte) {
 //
 // If only lower and upper bounds need to be modified, prefer SetBounds.
 func (i *Iterator) SetOptions(o *IterOptions) {
-	if i.externalReaders != nil {
+	if i.externalIter != nil {
 		if err := validateExternalIterOpts(o); err != nil {
 			panic(err)
 		}
@@ -2753,7 +2747,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 
 	// Iterators created through NewExternalIter have a different iterator
 	// initialization process.
-	if i.externalReaders != nil {
+	if i.externalIter != nil {
 		finishInitializingExternal(i.ctx, i)
 		return
 	}
