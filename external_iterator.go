@@ -49,14 +49,8 @@ func NewExternalIterWithContext(
 	}
 
 	var readers [][]*sstable.Reader
-
-	seqNumOffset := 0
 	for _, levelFiles := range files {
-		seqNumOffset += len(levelFiles)
-	}
-	for _, levelFiles := range files {
-		seqNumOffset -= len(levelFiles)
-		subReaders, err := openExternalTables(ctx, o, levelFiles, seqNumOffset, o.MakeReaderOptions())
+		subReaders, err := openExternalTables(ctx, levelFiles, o.MakeReaderOptions())
 		readers = append(readers, subReaders)
 		if err != nil {
 			// Close all the opened readers.
@@ -258,9 +252,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 
 func openExternalTables(
 	ctx context.Context,
-	o *Options,
 	files []sstable.ReadableFile,
-	seqNumOffset int,
 	readerOpts sstable.ReaderOptions,
 ) (readers []*sstable.Reader, err error) {
 	readers = make([]*sstable.Reader, 0, len(files))
