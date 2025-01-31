@@ -48,9 +48,10 @@ func NewExternalIterWithContext(
 		}
 	}
 
+	ro := o.MakeReaderOptions()
 	var readers [][]*sstable.Reader
 	for _, levelFiles := range files {
-		subReaders, err := openExternalTables(ctx, levelFiles, o.MakeReaderOptions())
+		subReaders, err := openExternalTables(ctx, levelFiles, ro)
 		readers = append(readers, subReaders)
 		if err != nil {
 			// Close all the opened readers.
@@ -75,9 +76,9 @@ func NewExternalIterWithContext(
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
 		batch:               nil,
-		// Add the readers to the Iterator so that Close closes them, and
-		// SetOptions can re-construct iterators from them.
-		externalReaders: readers,
+		// Add the external iter state to the Iterator so that Close closes it,
+		// and SetOptions can re-construct iterators using its state.
+		externalIter: &externalIterState{readers: readers},
 		newIters: func(context.Context, *manifest.FileMetadata, *IterOptions,
 			internalIterOpts, iterKinds) (iterSet, error) {
 			// NB: External iterators are currently constructed without any
@@ -90,6 +91,8 @@ func NewExternalIterWithContext(
 		},
 		seqNum: base.SeqNumMax,
 	}
+	dbi.externalIter.bufferPool.Init(2)
+
 	if iterOpts != nil {
 		dbi.opts = *iterOpts
 		dbi.processBounds(iterOpts.LowerBound, iterOpts.UpperBound)
@@ -99,6 +102,25 @@ func NewExternalIterWithContext(
 		return nil, err
 	}
 	return dbi, nil
+}
+
+// externalIterState encapsulates state that is specific to external iterators.
+// An external *pebble.Iterator maintains a pointer to the externalIterState and
+// calls Close when the Iterator is Closed, providing an opportuntity for the
+// external iterator to release resources particular to external iterators.
+type externalIterState struct {
+	bufferPool block.BufferPool
+	readers    [][]*sstable.Reader
+}
+
+func (e *externalIterState) Close() (err error) {
+	for _, readers := range e.readers {
+		for _, r := range readers {
+			err = firstError(err, r.Close())
+		}
+	}
+	e.bufferPool.Release()
+	return err
 }
 
 func validateExternalIterOpts(iterOpts *IterOptions) error {
@@ -115,7 +137,9 @@ func validateExternalIterOpts(iterOpts *IterOptions) error {
 	return nil
 }
 
-func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterator, error) {
+func createExternalPointIter(
+	ctx context.Context, it *Iterator, readEnv block.ReadEnv,
+) (topLevelIterator, error) {
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
 	// This would allow us to use levelIters and keep a smaller set of data and
@@ -129,20 +153,15 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 	}
 	mlevels := it.alloc.mlevels[:0]
 
-	// TODO(jackson): External iterators never provide categorized iterator
-	// stats today because they exist outside the context of a *DB. If the
-	// sstables being read are on the physical filesystem, we may still want to
-	// thread a CategoryStatsCollector through so that we collect their stats.
-
-	if len(it.externalReaders) > cap(mlevels) {
-		mlevels = make([]mergingIterLevel, 0, len(it.externalReaders))
+	if len(it.externalIter.readers) > cap(mlevels) {
+		mlevels = make([]mergingIterLevel, 0, len(it.externalIter.readers))
 	}
 	// We set a synthetic sequence number, with lower levels having higer numbers.
 	seqNum := 0
-	for _, readers := range it.externalReaders {
+	for _, readers := range it.externalIter.readers {
 		seqNum += len(readers)
 	}
-	for _, readers := range it.externalReaders {
+	for _, readers := range it.externalIter.readers {
 		for _, r := range readers {
 			var (
 				rangeDelIter keyspan.FragmentIterator
@@ -158,15 +177,13 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 			seqNum--
 			pointIter, err = r.NewPointIter(
 				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
-				sstable.NeverUseFilterBlock,
-				block.ReadEnv{Stats: &it.stats.InternalStats, IterStats: nil},
-				sstable.MakeTrivialReaderProvider(r))
+				sstable.NeverUseFilterBlock, readEnv, sstable.MakeTrivialReaderProvider(r))
 			if err != nil {
 				return nil, err
 			}
 			rangeDelIter, err = r.NewRawRangeDelIter(ctx, sstable.FragmentIterTransforms{
 				SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),
-			}, block.ReadEnv{Stats: &it.stats.InternalStats, IterStats: nil})
+			}, readEnv)
 			if err != nil {
 				return nil, err
 			}
@@ -186,7 +203,16 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 }
 
 func finishInitializingExternal(ctx context.Context, it *Iterator) error {
-	pointIter, err := createExternalPointIter(ctx, it)
+	readEnv := block.ReadEnv{
+		Stats: &it.stats.InternalStats,
+		// TODO(jackson): External iterators never provide categorized iterator
+		// stats today because they exist outside the context of a *DB. If the
+		// sstables being read are on the physical filesystem, we may still want to
+		// thread a CategoryStatsCollector through so that we collect their stats.
+		IterStats:  nil,
+		BufferPool: &it.externalIter.bufferPool,
+	}
+	pointIter, err := createExternalPointIter(ctx, it, readEnv)
 	if err != nil {
 		return err
 	}
@@ -208,14 +234,14 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			// this optimization.
 			// We set a synthetic sequence number, with lower levels having higer numbers.
 			seqNum := 0
-			for _, readers := range it.externalReaders {
+			for _, readers := range it.externalIter.readers {
 				seqNum += len(readers)
 			}
-			for _, readers := range it.externalReaders {
+			for _, readers := range it.externalIter.readers {
 				for _, r := range readers {
 					transforms := sstable.FragmentIterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
 					seqNum--
-					if rki, err := r.NewRawRangeKeyIter(ctx, transforms, block.ReadEnv{Stats: &it.stats.InternalStats, IterStats: nil}); err != nil {
+					if rki, err := r.NewRawRangeKeyIter(ctx, transforms, readEnv); err != nil {
 						return err
 					} else if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)
@@ -251,9 +277,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 }
 
 func openExternalTables(
-	ctx context.Context,
-	files []sstable.ReadableFile,
-	readerOpts sstable.ReaderOptions,
+	ctx context.Context, files []sstable.ReadableFile, readerOpts sstable.ReaderOptions,
 ) (readers []*sstable.Reader, err error) {
 	readers = make([]*sstable.Reader, 0, len(files))
 	for i := range files {
