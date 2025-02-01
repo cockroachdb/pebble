@@ -378,13 +378,11 @@ func (r *Reader) Init(readable objstorage.Readable, ro ReaderOptions, checksumTy
 	r.readable = readable
 	r.opts = ro
 	r.checksumType = checksumType
-	if r.opts.CacheOpts.Cache == nil {
-		r.opts.CacheOpts.Cache = cache.New(0)
-	} else {
+	if r.opts.CacheOpts.Cache != nil {
 		r.opts.CacheOpts.Cache.Ref()
-	}
-	if r.opts.CacheOpts.CacheID == 0 {
-		r.opts.CacheOpts.CacheID = r.opts.CacheOpts.Cache.NewID()
+		if r.opts.CacheOpts.CacheID == 0 {
+			r.opts.CacheOpts.CacheID = r.opts.CacheOpts.Cache.NewID()
+		}
 	}
 }
 
@@ -407,64 +405,60 @@ func (r *Reader) Read(
 	bh Handle,
 	initBlockMetadataFn func(*Metadata, []byte) error,
 ) (handle BufferHandle, _ error) {
-	var cv *cache.Value
-	var crh cache.ReadHandle
-	hit := true
-	if env.BufferPool == nil {
-		var errorDuration time.Duration
-		var err error
-		cv, crh, errorDuration, hit, err = r.opts.CacheOpts.Cache.GetWithReadHandle(
-			ctx, r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
-		if errorDuration > 5*time.Millisecond && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
-			r.opts.LoggerAndTracer.Eventf(
-				ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
+	// The compaction path uses env.BufferPool, and does not coordinate read
+	// using a cache.ReadHandle. This is ok since only a single compaction is
+	// reading a block.
+	if r.opts.CacheOpts.Cache == nil || env.BufferPool != nil {
+		if r.opts.CacheOpts.Cache != nil {
+			if cv := r.opts.CacheOpts.Cache.Get(r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
+				recordCacheHit(ctx, env, readHandle, bh)
+				return CacheBufferHandle(cv), nil
+			}
 		}
-		// TODO(sumeer): consider tracing when waited longer than some duration
-		// for turn to do the read.
+		value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 		if err != nil {
 			return BufferHandle{}, err
 		}
-	} else {
-		// The compaction path uses env.BufferPool, and does not coordinate read
-		// using a cache.ReadHandle. This is ok since only a single compaction is
-		// reading a block.
-		cv = r.opts.CacheOpts.Cache.Get(r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
-		if cv != nil {
-			hit = true
-		}
+		return value.MakeHandle(), err
 	}
-	// INVARIANT: hit => cv != nil
+
+	cv, crh, errorDuration, hit, err := r.opts.CacheOpts.Cache.GetWithReadHandle(
+		ctx, r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
+	if errorDuration > 5*time.Millisecond && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
+		r.opts.LoggerAndTracer.Eventf(
+			ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
+	}
+	// TODO(sumeer): consider tracing when waited longer than some duration
+	// for turn to do the read.
+	if err != nil {
+		return BufferHandle{}, err
+	}
+
 	if cv != nil {
-		if hit {
-			// Cache hit.
-			if readHandle != nil {
-				readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+TrailerLen))
-			}
-			env.BlockServedFromCache(bh.Length)
-		}
 		if invariants.Enabled && crh.Valid() {
 			panic("cache.ReadHandle must not be valid")
+		}
+		if hit {
+			recordCacheHit(ctx, env, readHandle, bh)
 		}
 		return CacheBufferHandle(cv), nil
 	}
 
-	// Need to read. First acquire loadBlockSema, if needed.
-	if sema := r.opts.LoadBlockSema; sema != nil {
-		if err := sema.Acquire(ctx, 1); err != nil {
-			// An error here can only come from the context.
-			return BufferHandle{}, err
-		}
-		defer sema.Release(1)
-	}
 	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 	if err != nil {
-		if crh.Valid() {
-			crh.SetReadError(err)
-		}
+		crh.SetReadError(err)
 		return BufferHandle{}, err
 	}
-	h := value.MakeHandle(crh, r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
-	return h, nil
+	crh.SetReadValue(value.v)
+	return value.MakeHandle(), nil
+}
+
+func recordCacheHit(ctx context.Context, env ReadEnv, readHandle objstorage.ReadHandle, bh Handle) {
+	// Cache hit.
+	if readHandle != nil {
+		readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+TrailerLen))
+	}
+	env.BlockServedFromCache(bh.Length)
 }
 
 // TODO(sumeer): should the threshold be configurable.
@@ -479,6 +473,15 @@ func (r *Reader) doRead(
 	bh Handle,
 	initBlockMetadataFn func(*Metadata, []byte) error,
 ) (Value, error) {
+	// First acquire loadBlockSema, if needed.
+	if sema := r.opts.LoadBlockSema; sema != nil {
+		if err := sema.Acquire(ctx, 1); err != nil {
+			// An error here can only come from the context.
+			return Value{}, err
+		}
+		defer sema.Release(1)
+	}
+
 	compressed := Alloc(int(bh.Length+TrailerLen), env.BufferPool)
 	readStopwatch := makeStopwatch()
 	var err error
@@ -562,7 +565,9 @@ func (r *Reader) UsePreallocatedReadHandle(
 
 // Close releases resources associated with the Reader.
 func (r *Reader) Close() error {
-	r.opts.CacheOpts.Cache.Unref()
+	if r.opts.CacheOpts.Cache != nil {
+		r.opts.CacheOpts.Cache.Unref()
+	}
 	var err error
 	if r.readable != nil {
 		err = r.readable.Close()
