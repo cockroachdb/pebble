@@ -8,7 +8,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // Alloc allocates a new Value for a block of length n (excluding the block
@@ -44,24 +43,16 @@ func (b Value) BlockData() []byte {
 	return b.getInternalBuf()[MetadataSize:]
 }
 
-// GetMetadata returns the block metadata.
+// BlockMetadata returns the block metadata.
 func (b Value) BlockMetadata() *Metadata {
 	return (*Metadata)(b.getInternalBuf())
 }
 
-// MakeHandle constructs a BufferHandle from the Value. If the Value is not
-// backed by a buffer pool, MakeHandle inserts the value into the block cache,
-// returning a handle to the now resident value.
-func (b Value) MakeHandle(
-	crh cache.ReadHandle, cacheID cache.ID, fileNum base.DiskFileNum, offset uint64,
-) BufferHandle {
+// MakeHandle constructs a BufferHandle from the Value.
+func (b Value) MakeHandle() BufferHandle {
 	if b.buf.Valid() {
-		if invariants.Enabled && crh.Valid() {
-			panic("cache.ReadHandle was valid")
-		}
 		return BufferHandle{b: b.buf}
 	}
-	crh.SetReadValue(b.v)
 	return BufferHandle{cv: b.v}
 }
 
