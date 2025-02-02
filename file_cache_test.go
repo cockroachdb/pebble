@@ -80,7 +80,7 @@ func (fs *fileCacheTestFS) validate(
 		t.Error(err)
 		return
 	}
-	c.close()
+	c.Close()
 	if err := fs.validateNoneStillOpen(); err != nil {
 		t.Error(err)
 		return
@@ -919,7 +919,7 @@ func TestFileCacheIterLeak(t *testing.T) {
 	iters, err := c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 	require.NoError(t, err)
 
-	if err := c.close(); err == nil {
+	if err := c.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -946,7 +946,7 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 	iters, err := c1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 	require.NoError(t, err)
 
-	if err := c1.close(); err == nil {
+	if err := c1.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -955,12 +955,12 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 	}
 
 	// Closing c2 shouldn't error out since c2 isn't leaking any iterators.
-	require.NoError(t, c2.close())
+	require.NoError(t, c2.Close())
 
 	// Closing c3 should error out since c3 holds the last reference to the
 	// FileCache, and when the FileCache closes, it will detect that there was a
 	// leaked iterator.
-	if err := c3.close(); err == nil {
+	if err := c3.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -1018,7 +1018,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	defer opts.FileCache.Unref()
 	c := opts.FileCache.newHandle(opts.Cache.NewID(), objProvider, opts)
 	require.NoError(t, err)
-	defer c.close()
+	defer c.Close()
 
 	m := &fileMetadata{FileNum: testFileNum}
 	m.InitPhysicalBacking()

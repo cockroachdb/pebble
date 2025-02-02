@@ -145,9 +145,9 @@ func (c *FileCache) newHandle(
 	return t
 }
 
-// Before calling close, make sure that there will be no further need
-// to access any of the files associated with the store.
-func (c *fileCacheHandle) close() error {
+// Close the handle. Before calling, make sure that there will be no further
+// need to access any of the files associated with the store.
+func (c *fileCacheHandle) Close() error {
 	// We want to do some cleanup work here. Check for leaked iterators
 	// by the DB using this container. Note that we'll still perform cleanup
 	// below in the case that there are leaked iterators.
@@ -162,7 +162,9 @@ func (c *fileCacheHandle) close() error {
 			shard.removeDB(&c.dbOpts)
 		}
 	}
-	return firstError(err, c.fileCache.Unref())
+	err = firstError(err, c.fileCache.Unref())
+	*c = fileCacheHandle{}
+	return err
 }
 
 func (c *fileCacheHandle) newIters(
@@ -916,7 +918,9 @@ func (c *fileCacheShard) findNodeInternal(
 		}
 		c.unrefValue(v)
 		c.iterCount.Add(-1)
-		dbOpts.iterCount.Add(-1)
+		if dbOpts.iterCount != nil {
+			dbOpts.iterCount.Add(-1)
+		}
 		return nil
 	}
 	n.value = v
