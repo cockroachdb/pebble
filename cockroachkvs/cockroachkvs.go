@@ -81,8 +81,8 @@ var Comparer = base.Comparer{
 		if !ok {
 			return append(dst, a...)
 		}
-		// If the keys are the same just return a.
-		if bytes.Equal(aKey, bKey) {
+		// If the keys are the same or one is empty, just return a.
+		if bytes.Equal(aKey, bKey) || len(aKey) == 0 || len(bKey) == 0 {
 			return append(dst, a...)
 		}
 		n := len(dst)
