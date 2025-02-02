@@ -12,6 +12,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,14 +74,17 @@ func (fs *fileCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, 
 	return &fileCacheTestFile{f, fs, name}, nil
 }
 
-func (fs *fileCacheTestFS) validate(
-	t *testing.T, c *fileCacheHandle, f func(i, gotO, gotC int) error,
+func (fs *fileCacheTestFS) validateAndCloseHandle(
+	t *testing.T, h *fileCacheHandle, f func(i, gotO, gotC int) error,
 ) {
 	if err := fs.validateOpenTables(f); err != nil {
 		t.Error(err)
 		return
 	}
-	c.Close()
+	if err := h.Close(); err != nil {
+		t.Error(err)
+		return
+	}
 	if err := fs.validateNoneStillOpen(); err != nil {
 		t.Error(err)
 		return
@@ -148,42 +152,61 @@ const (
 	fileCacheTestCacheSize = 100
 )
 
-// newFileCacheTest returns a shareable file cache to be used for tests.
-// It is the caller's responsibility to unref the file cache.
-func newFileCacheTest(size int64, fileCacheSize int, numShards int) *FileCache {
-	cache := NewCache(size)
-	defer cache.Unref()
-	return NewFileCache(cache, numShards, fileCacheSize)
+type fileCacheTest struct {
+	*testing.T
+	blockCache *Cache
+	fileCache  *FileCache
 }
 
-func newFileCacheContainerTest(
-	fc *FileCache, dirname string,
-) (*fileCacheHandle, *fileCacheTestFS, error) {
+// newFileCacheTest returns a shareable file cache to be used for tests.
+// It is the caller's responsibility to unref the file cache.
+func newFileCacheTest(
+	t *testing.T, blockCacheSize int64, fileCacheSize int, fileCacheNumShards int,
+) *fileCacheTest {
+	blockCache := NewCache(blockCacheSize)
+	fileCache := NewFileCache(blockCache, fileCacheNumShards, fileCacheSize)
+	return &fileCacheTest{
+		T:          t,
+		blockCache: blockCache,
+		fileCache:  fileCache,
+	}
+}
+
+func (t *fileCacheTest) cleanup() {
+	if err := t.fileCache.Unref(); err != nil {
+		t.Error(err)
+	}
+	t.blockCache.Unref()
+}
+
+// newTestHandle creates a filesystem with a set of test tables and an
+// associated file cache handle. The caller must close the handle.
+func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 	xxx := bytes.Repeat([]byte("x"), fileCacheTestNumTables)
 	fs := &fileCacheTestFS{
 		FS: vfs.NewMem(),
 	}
-	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, dirname))
+	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 	if err != nil {
-		return nil, nil, err
+		t.Fatal(err)
 	}
 	defer objProvider.Close()
 
 	for i := 0; i < fileCacheTestNumTables; i++ {
 		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.DiskFileNum(i), objstorage.CreateOptions{})
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "fs.Create")
+			t.Fatal(err)
 		}
 		tw := sstable.NewWriter(w, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Raw().AddWithForceObsolete(ik, xxx[:i], false); err != nil {
-			return nil, nil, errors.Wrap(err, "tw.Set")
+			t.Fatal(err)
 		}
 		if err := tw.RangeKeySet([]byte("k"), []byte("l"), nil, xxx[:i]); err != nil {
-			return nil, nil, errors.Wrap(err, "tw.Set")
+			t.Fatal(err)
 		}
 		if err := tw.Close(); err != nil {
-			return nil, nil, errors.Wrap(err, "tw.Close")
+			t.Fatal(err)
 		}
 	}
 
@@ -192,65 +215,65 @@ func newFileCacheContainerTest(
 	fs.closeCounts = map[string]int{}
 	fs.mu.Unlock()
 
-	opts := &Options{}
-	opts.EnsureDefaults()
-	if fc == nil {
-		opts.Cache = NewCache(8 << 20) // 8 MB
-		defer opts.Cache.Unref()
-		fc = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, fileCacheTestCacheSize)
-		defer fc.Unref()
-	} else {
-		opts.Cache = fc.cache
+	opts := &Options{
+		Cache:     t.blockCache,
+		FileCache: t.fileCache,
 	}
+	opts.EnsureDefaults()
 
-	c := fc.newHandle(opts.Cache.NewID(), objProvider, opts)
-	return c, fs, nil
+	h := t.fileCache.newHandle(t.blockCache.NewID(), objProvider, opts)
+	return h, fs
 }
 
 // Test basic reference counting for the file cache.
 func TestFileCacheRefs(t *testing.T) {
-	c := newFileCacheTest(8<<20, 10, 2)
+	fct := newFileCacheTest(t, 8<<20, 10, 2)
+	// We don't call the full fct.cleanup() method because we will unref the
+	// fileCache in the test.
+	defer fct.blockCache.Unref()
+	fc := fct.fileCache
 
-	v := c.refs.Load()
+	v := fc.refs.Load()
 	if v != 1 {
 		require.Equal(t, 1, v)
 	}
 
-	c.Ref()
-	v = c.refs.Load()
+	fc.Ref()
+	v = fc.refs.Load()
 	if v != 2 {
 		require.Equal(t, 2, v)
 	}
 
-	c.Unref()
-	v = c.refs.Load()
+	fc.Unref()
+	v = fc.refs.Load()
 	if v != 1 {
 		require.Equal(t, 1, v)
 	}
 
-	c.Unref()
-	v = c.refs.Load()
+	fc.Unref()
+	v = fc.refs.Load()
 	if v != 0 {
 		require.Equal(t, 0, v)
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			if fmt.Sprint(r) != "pebble: inconsistent reference count: -1" {
-				t.Fatalf("unexpected panic message")
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if fmt.Sprint(r) != "pebble: inconsistent reference count: -1" {
+					t.Fatalf("unexpected panic message")
+				}
+			} else if r == nil {
+				t.Fatalf("expected panic")
 			}
-		} else if r == nil {
-			t.Fatalf("expected panic")
-		}
+		}()
+		fc.Unref()
 	}()
-	c.Unref()
+
 }
 
 // Basic test to determine if reads through the file cache are wired correctly.
 func TestVirtualReadsWiring(t *testing.T) {
-	var d *DB
-	var err error
-	d, err = Open("",
+	d, err := Open("",
 		&Options{
 			FS:                 vfs.NewMem(),
 			FormatMajorVersion: internalFormatNewest,
@@ -406,11 +429,16 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 // The file cache shouldn't be usable after all the dbs close.
 func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
-	fc := newFileCacheTest(8<<20, 10, 1)
+	fct := newFileCacheTest(t, 8<<20, 10, 1)
+	// We don't call the full fct.cleanup() method because we will unref the
+	// fileCache in the test.
+	defer fct.blockCache.Unref()
+	fc := fct.fileCache
+
 	db1, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     fc.cache,
+			Cache:     fct.blockCache,
 			FileCache: fc,
 		})
 	require.NoError(t, err)
@@ -421,7 +449,7 @@ func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
 	db2, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     fc.cache,
+			Cache:     fct.blockCache,
 			FileCache: fc,
 		})
 	require.NoError(t, err)
@@ -435,13 +463,9 @@ func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
 	}
 
 	defer func() {
-		// The cache ref gets incremented before the panic, so we should
-		// decrement it to prevent the finalizer from detecting a leak.
-		fc.cache.Unref()
-
 		if r := recover(); r != nil {
 			if fmt.Sprint(r) != "pebble: inconsistent reference count: 1" {
-				t.Fatalf("unexpected panic message")
+				t.Fatalf("unexpected panic message: %v", r)
 			}
 		} else if r == nil {
 			t.Fatalf("expected panic")
@@ -451,7 +475,7 @@ func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
 	db3, _ := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     fc.cache,
+			Cache:     fct.blockCache,
 			FileCache: fc,
 		})
 	_ = db3
@@ -460,23 +484,26 @@ func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
 // TestSharedFileCacheUseAfterOneFree tests whether a shared file cache is
 // usable by a db, after one of the db's releases its reference.
 func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
-	tc := newFileCacheTest(8<<20, 10, 1)
+	fct := newFileCacheTest(t, 8<<20, 10, 1)
+	defer fct.cleanup()
+
+	if v := fct.fileCache.refs.Load(); v != 1 {
+		t.Fatalf("expected reference count %d, got %d", 1, v)
+	}
+
 	db1, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     tc.cache,
-			FileCache: tc,
+			Cache:     fct.blockCache,
+			FileCache: fct.fileCache,
 		})
 	require.NoError(t, err)
-
-	// Release our reference, now that the db has a reference.
-	tc.Unref()
 
 	db2, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     tc.cache,
-			FileCache: tc,
+			Cache:     fct.blockCache,
+			FileCache: fct.fileCache,
 		})
 	require.NoError(t, err)
 	defer func() {
@@ -486,8 +513,7 @@ func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
 	// Make db1 release a reference to the cache. It should
 	// still be usable by db2.
 	require.NoError(t, db1.Close())
-	v := tc.refs.Load()
-	if v != 1 {
+	if v := fct.fileCache.refs.Load(); v != 2 {
 		t.Fatalf("expected reference count %d, got %d", 1, v)
 	}
 
@@ -503,17 +529,16 @@ func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
 // TestSharedFileCacheUsable ensures that a shared file cache is usable by more
 // than one database at once.
 func TestSharedFileCacheUsable(t *testing.T) {
-	tc := newFileCacheTest(8<<20, 10, 1)
+	fct := newFileCacheTest(t, 8<<20, 10, 1)
+	defer fct.cleanup()
+
 	db1, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     tc.cache,
-			FileCache: tc,
+			Cache:     fct.blockCache,
+			FileCache: fct.fileCache,
 		})
 	require.NoError(t, err)
-
-	// Release our reference, now that the db has a reference.
-	tc.Unref()
 
 	defer func() {
 		require.NoError(t, db1.Close())
@@ -522,8 +547,8 @@ func TestSharedFileCacheUsable(t *testing.T) {
 	db2, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     tc.cache,
-			FileCache: tc,
+			Cache:     fct.blockCache,
+			FileCache: fct.fileCache,
 		})
 	require.NoError(t, err)
 	defer func() {
@@ -548,17 +573,16 @@ func TestSharedFileCacheUsable(t *testing.T) {
 }
 
 func TestSharedTableConcurrent(t *testing.T) {
-	tc := newFileCacheTest(8<<20, 10, 1)
+	fct := newFileCacheTest(t, 8<<20, 10, 1)
+	defer fct.cleanup()
+
 	db1, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     tc.cache,
-			FileCache: tc,
+			Cache:     fct.blockCache,
+			FileCache: fct.fileCache,
 		})
 	require.NoError(t, err)
-
-	// Release our reference, now that the db has a reference.
-	tc.Unref()
 
 	defer func() {
 		require.NoError(t, db1.Close())
@@ -567,8 +591,8 @@ func TestSharedTableConcurrent(t *testing.T) {
 	db2, err := Open("test",
 		&Options{
 			FS:        vfs.NewMem(),
-			Cache:     tc.cache,
-			FileCache: tc,
+			Cache:     fct.blockCache,
+			FileCache: fct.fileCache,
 		})
 	require.NoError(t, err)
 	defer func() {
@@ -600,8 +624,9 @@ func TestSharedTableConcurrent(t *testing.T) {
 
 func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 	const N = 2000
-	c, fs, err := newFileCacheContainerTest(nil, "")
-	require.NoError(t, err)
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	defer fct.cleanup()
+	h, fs := fct.newTestHandle()
 
 	rngMu := sync.Mutex{}
 	rng := rand.New(rand.NewPCG(1, 1))
@@ -616,7 +641,7 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			defer m.FileBacking.Unref()
-			iters, err := c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			iters, err := h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -657,7 +682,7 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 			require.NoError(t, <-errc)
 		}
 	}
-	fs.validate(t, c, nil)
+	fs.validateAndCloseHandle(t, h, nil)
 }
 
 func TestFileCacheRandomAccessSequential(t *testing.T) { testFileCacheRandomAccess(t, false) }
@@ -669,8 +694,9 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 		pinned0 = 7
 		pinned1 = 11
 	)
-	c, fs, err := newFileCacheContainerTest(nil, "")
-	require.NoError(t, err)
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	defer fct.cleanup()
+	h, fs := fct.newTestHandle()
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
@@ -680,9 +706,9 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			if rangeIter {
-				iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
+				iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
 			} else {
-				iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+				iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -693,7 +719,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 		}
 	}
 
-	fs.validate(t, c, func(i, gotO, gotC int) error {
+	fs.validateAndCloseHandle(t, h, func(i, gotO, gotC int) error {
 		if i == pinned0 || i == pinned1 {
 			if gotO != 1 || gotC != 0 {
 				return errors.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
@@ -717,23 +743,22 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 		pinned0 = 7
 		pinned1 = 11
 	)
-	tc := newFileCacheTest(8<<20, 2*fileCacheTestCacheSize, 16)
-	c1, fs1, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	c2, fs2, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	tc.Unref()
+	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, 16)
+	defer fct.cleanup()
+
+	h1, fs1 := fct.newTestHandle()
+	h2, fs2 := fct.newTestHandle()
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
 			m := &fileMetadata{FileNum: FileNum(j)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
-			iters1, err := c1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			iters2, err := c2.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			iters2, err := h2.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -747,7 +772,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 		}
 	}
 
-	fs1.validate(t, c1, func(i, gotO, gotC int) error {
+	fs1.validateAndCloseHandle(t, h1, func(i, gotO, gotC int) error {
 		if i == pinned0 || i == pinned1 {
 			if gotO != 1 || gotC != 0 {
 				return errors.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
@@ -756,7 +781,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 		return nil
 	})
 
-	fs2.validate(t, c2, func(i, gotO, gotC int) error {
+	fs2.validateAndCloseHandle(t, h2, func(i, gotO, gotC int) error {
 		if i == pinned0 || i == pinned1 {
 			if gotO != 1 || gotC != 0 {
 				return errors.Errorf("i=%d: pinned table: got %d, %d, want %d, %d", i, gotO, gotC, 1, 0)
@@ -771,8 +796,9 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	c, fs, err := newFileCacheContainerTest(nil, "")
-	require.NoError(t, err)
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	defer fct.cleanup()
+	h, fs := fct.newTestHandle()
 
 	rng := rand.New(rand.NewPCG(2, 2))
 	for i := 0; i < N; i++ {
@@ -783,9 +809,9 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		if rangeIter {
-			iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
+			iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
 		} else {
-			iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -794,12 +820,12 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
 	}
 
 	sumEvicted, nEvicted := 0, 0
 	sumSafe, nSafe := 0, 0
-	fs.validate(t, c, func(i, gotO, gotC int) error {
+	fs.validateAndCloseHandle(t, h, func(i, gotO, gotC int) error {
 		if lo <= i && i < hi {
 			sumEvicted += gotO
 			nEvicted++
@@ -834,12 +860,11 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	tc := newFileCacheTest(8<<20, 2*fileCacheTestCacheSize, 16)
-	c1, fs1, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	c2, fs2, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	tc.Unref()
+	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, 16)
+	defer fct.cleanup()
+
+	h1, fs1 := fct.newTestHandle()
+	h2, fs2 := fct.newTestHandle()
 
 	// TODO(radu): this test fails on most seeds.
 	rng := rand.New(rand.NewPCG(0, 0))
@@ -848,12 +873,12 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 		m := &fileMetadata{FileNum: FileNum(j)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		iters1, err := c1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+		iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
 
-		iters2, err := c2.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+		iters2, err := h2.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -866,14 +891,14 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		c1.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
-		c2.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h1.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h2.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
 	}
 
-	check := func(fs *fileCacheTestFS, c *fileCacheHandle) (float64, float64, float64) {
+	check := func(fs *fileCacheTestFS, h *fileCacheHandle) (float64, float64, float64) {
 		sumEvicted, nEvicted := 0, 0
 		sumSafe, nSafe := 0, 0
-		fs.validate(t, c, func(i, gotO, gotC int) error {
+		fs.validateAndCloseHandle(t, h, func(i, gotO, gotC int) error {
 			if lo <= i && i < hi {
 				sumEvicted += gotO
 				nEvicted++
@@ -893,14 +918,14 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumTables) = (10, 20, 100, 300),
 	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
 	// not evict any cache entries.
-	if fEvicted, fSafe, ratio := check(fs1, c1); ratio < 1.25 {
+	if fEvicted, fSafe, ratio := check(fs1, h1); ratio < 1.25 {
 		t.Errorf(
 			"evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
 			fEvicted, fSafe, ratio,
 		)
 	}
 
-	if fEvicted, fSafe, ratio := check(fs2, c2); ratio < 1.25 {
+	if fEvicted, fSafe, ratio := check(fs2, h2); ratio < 1.25 {
 		t.Errorf(
 			"evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
 			fEvicted, fSafe, ratio,
@@ -909,17 +934,18 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 }
 
 func TestFileCacheIterLeak(t *testing.T) {
-	c, _, err := newFileCacheContainerTest(nil, "")
-	require.NoError(t, err)
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	defer fct.cleanup()
+	h, _ := fct.newTestHandle()
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
-	iters, err := c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+	iters, err := h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 	require.NoError(t, err)
 
-	if err := c.Close(); err == nil {
+	if err := h.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -930,23 +956,23 @@ func TestFileCacheIterLeak(t *testing.T) {
 }
 
 func TestSharedFileCacheIterLeak(t *testing.T) {
-	tc := newFileCacheTest(8<<20, 2*fileCacheTestCacheSize, 16)
-	c1, _, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	c2, _, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	c3, _, err := newFileCacheContainerTest(tc, "")
-	require.NoError(t, err)
-	tc.Unref()
+	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	// We don't call the full fct.cleanup() method because we will unref the
+	// fileCache in the test.
+	defer fct.blockCache.Unref()
+
+	h1, _ := fct.newTestHandle()
+	h2, _ := fct.newTestHandle()
+	h3, _ := fct.newTestHandle()
 
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
-	iters, err := c1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+	iters, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 	require.NoError(t, err)
 
-	if err := c1.Close(); err == nil {
+	if err := h1.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -955,12 +981,14 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 	}
 
 	// Closing c2 shouldn't error out since c2 isn't leaking any iterators.
-	require.NoError(t, c2.Close())
+	require.NoError(t, h2.Close())
+
+	fct.fileCache.Unref()
 
 	// Closing c3 should error out since c3 holds the last reference to the
 	// FileCache, and when the FileCache closes, it will detect that there was a
 	// leaked iterator.
-	if err := c3.Close(); err == nil {
+	if err := h3.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -973,24 +1001,26 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 
 func TestFileCacheRetryAfterFailure(t *testing.T) {
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
-	c, fs, err := newFileCacheContainerTest(nil, "")
-	require.NoError(t, err)
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	defer fct.cleanup()
+	h, fs := fct.newTestHandle()
 
 	fs.setOpenError(true /* enabled */)
 	m := &fileMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
-	if _, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys); err == nil {
+	_, err := h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+	if err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	require.Equal(t, "pebble: backing file 000000 error: injected error", err.Error())
 	fs.setOpenError(false /* enabled */)
 	var iters iterSet
-	iters, err = c.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+	iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 	require.NoError(t, err)
 	require.NoError(t, iters.Point().Close())
-	fs.validate(t, c, nil)
+	fs.validateAndCloseHandle(t, h, nil)
 }
 
 func TestFileCacheErrorBadMagicNumber(t *testing.T) {
