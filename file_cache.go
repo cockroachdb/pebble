@@ -52,7 +52,7 @@ var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 // On error, all iterators are nil.
 //
 // The only (non-test) implementation of tableNewIters is
-// fileCacheContainer.newIters().
+// fileCacheHandle.newIters().
 type tableNewIters func(
 	ctx context.Context,
 	file *manifest.FileMetadata,
@@ -86,7 +86,7 @@ func tableNewRangeKeyIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
 }
 
 // fileCacheOpts contains the db specific fields of a file cache. This is stored
-// in the fileCacheContainer along with the file cache.
+// in the fileCacheHandle along with the file cache.
 //
 // NB: It is important to make sure that the fields in this struct are
 // read-only. Since the fields here are shared by every single fileCacheShard,
@@ -105,9 +105,8 @@ type fileCacheOpts struct {
 	sstStatsCollector *block.CategoryStatsCollector
 }
 
-// fileCacheContainer contains the file cache and fields which are unique to the
-// DB.
-type fileCacheContainer struct {
+// fileCacheHandle is used to access the file cache. Each DB has its own handle.
+type fileCacheHandle struct {
 	fileCache *FileCache
 
 	// dbOpts contains fields relevant to the file cache which are unique to
@@ -115,31 +114,26 @@ type fileCacheContainer struct {
 	dbOpts fileCacheOpts
 }
 
-// newFileCacheContainer will panic if the underlying block cache in the file
-// cache doesn't match Options.Cache.
-func newFileCacheContainer(
-	fc *FileCache,
-	cacheID cache.ID,
-	objProvider objstorage.Provider,
-	opts *Options,
-	size int,
-	sstStatsCollector *block.CategoryStatsCollector,
-) *fileCacheContainer {
+// newHandle creates a handle for the FileCache which has its own options. Each
+// handle has its own set of files in the cache, separate from those of other
+// handles.
+//
+// Each handle's cacheID must be unique.
+//
+// newHandle will panic if the underlying block cache in the file cache doesn't
+// match Options.Cache.
+func (c *FileCache) newHandle(
+	cacheID cache.ID, objProvider objstorage.Provider, opts *Options,
+) *fileCacheHandle {
 	// We will release a ref to the file cache acquired here when
-	// fileCacheContainer.close is called.
-	if fc != nil {
-		if fc.cache != opts.Cache {
-			panic("pebble: underlying cache for the file cache and db are different")
-		}
-		fc.Ref()
-	} else {
-		// NewFileCache should create a ref to fc which the container should
-		// drop whenever it is closed.
-		fc = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, size)
+	// fileCacheHandle.close is called.
+	if c.cache != opts.Cache {
+		panic("pebble: underlying cache for the file cache and db are different")
 	}
+	c.Ref()
 
-	t := &fileCacheContainer{}
-	t.fileCache = fc
+	t := &fileCacheHandle{}
+	t.fileCache = c
 	t.dbOpts.loggerAndTracer = opts.LoggerAndTracer
 	t.dbOpts.cache = opts.Cache
 	t.dbOpts.cacheID = cacheID
@@ -147,13 +141,13 @@ func newFileCacheContainer(
 	t.dbOpts.readerOpts = opts.MakeReaderOptions()
 	t.dbOpts.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
 	t.dbOpts.iterCount = new(atomic.Int32)
-	t.dbOpts.sstStatsCollector = sstStatsCollector
+	t.dbOpts.sstStatsCollector = &block.CategoryStatsCollector{}
 	return t
 }
 
 // Before calling close, make sure that there will be no further need
 // to access any of the files associated with the store.
-func (c *fileCacheContainer) close() error {
+func (c *fileCacheHandle) close() error {
 	// We want to do some cleanup work here. Check for leaked iterators
 	// by the DB using this container. Note that we'll still perform cleanup
 	// below in the case that there are leaked iterators.
@@ -171,7 +165,7 @@ func (c *fileCacheContainer) close() error {
 	return firstError(err, c.fileCache.Unref())
 }
 
-func (c *fileCacheContainer) newIters(
+func (c *fileCacheHandle) newIters(
 	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
@@ -183,15 +177,15 @@ func (c *fileCacheContainer) newIters(
 
 // getTableProperties returns the properties associated with the backing physical
 // table if the input metadata belongs to a virtual sstable.
-func (c *fileCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+func (c *fileCacheHandle) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
 	return c.fileCache.getShard(file.FileBacking.DiskFileNum).getTableProperties(file, &c.dbOpts)
 }
 
-func (c *fileCacheContainer) evict(fileNum base.DiskFileNum) {
+func (c *fileCacheHandle) evict(fileNum base.DiskFileNum) {
 	c.fileCache.getShard(fileNum).evict(fileNum, &c.dbOpts, false)
 }
 
-func (c *fileCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
+func (c *fileCacheHandle) metrics() (CacheMetrics, FilterMetrics) {
 	var m CacheMetrics
 	for i := range c.fileCache.shards {
 		s := c.fileCache.shards[i]
@@ -206,7 +200,7 @@ func (c *fileCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
-func (c *fileCacheContainer) estimateSize(
+func (c *fileCacheHandle) estimateSize(
 	meta *fileMetadata, lower, upper []byte,
 ) (size uint64, err error) {
 	c.withCommonReader(meta, func(cr sstable.CommonReader) error {
@@ -230,7 +224,7 @@ func createCommonReader(v *fileCacheValue, file *fileMetadata) sstable.CommonRea
 	return cr
 }
 
-func (c *fileCacheContainer) withCommonReader(
+func (c *fileCacheHandle) withCommonReader(
 	meta *fileMetadata, fn func(sstable.CommonReader) error,
 ) error {
 	s := c.fileCache.getShard(meta.FileBacking.DiskFileNum)
@@ -242,7 +236,7 @@ func (c *fileCacheContainer) withCommonReader(
 	return fn(createCommonReader(v, meta))
 }
 
-func (c *fileCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
+func (c *fileCacheHandle) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.fileCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(context.TODO(), meta.FileBacking, &c.dbOpts)
 	defer s.unrefValue(v)
@@ -253,7 +247,7 @@ func (c *fileCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Read
 }
 
 // withVirtualReader fetches a VirtualReader associated with a virtual sstable.
-func (c *fileCacheContainer) withVirtualReader(
+func (c *fileCacheHandle) withVirtualReader(
 	meta virtualMeta, fn func(sstable.VirtualReader) error,
 ) error {
 	s := c.fileCache.getShard(meta.FileBacking.DiskFileNum)
@@ -270,7 +264,7 @@ func (c *fileCacheContainer) withVirtualReader(
 	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(objMeta.IsShared())))
 }
 
-func (c *fileCacheContainer) iterCount() int64 {
+func (c *fileCacheHandle) iterCount() int64 {
 	return int64(c.dbOpts.iterCount.Load())
 }
 

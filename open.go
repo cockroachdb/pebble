@@ -32,7 +32,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/prometheus/client_golang/prometheus"
@@ -409,9 +408,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
-	d.fileCache = newFileCacheContainer(
-		opts.FileCache, d.cacheID, d.objProvider, d.opts, fileCacheSize,
-		&block.CategoryStatsCollector{})
+	if opts.FileCache == nil {
+		opts.FileCache = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, fileCacheSize)
+		defer opts.FileCache.Unref()
+	}
+	d.fileCache = opts.FileCache.newHandle(d.cacheID, d.objProvider, d.opts)
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 

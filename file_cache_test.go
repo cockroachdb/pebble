@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +74,7 @@ func (fs *fileCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, 
 }
 
 func (fs *fileCacheTestFS) validate(
-	t *testing.T, c *fileCacheContainer, f func(i, gotO, gotC int) error,
+	t *testing.T, c *fileCacheHandle, f func(i, gotO, gotC int) error,
 ) {
 	if err := fs.validateOpenTables(f); err != nil {
 		t.Error(err)
@@ -158,8 +157,8 @@ func newFileCacheTest(size int64, fileCacheSize int, numShards int) *FileCache {
 }
 
 func newFileCacheContainerTest(
-	tc *FileCache, dirname string,
-) (*fileCacheContainer, *fileCacheTestFS, error) {
+	fc *FileCache, dirname string,
+) (*fileCacheHandle, *fileCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), fileCacheTestNumTables)
 	fs := &fileCacheTestFS{
 		FS: vfs.NewMem(),
@@ -195,15 +194,16 @@ func newFileCacheContainerTest(
 
 	opts := &Options{}
 	opts.EnsureDefaults()
-	if tc == nil {
+	if fc == nil {
 		opts.Cache = NewCache(8 << 20) // 8 MB
 		defer opts.Cache.Unref()
+		fc = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, fileCacheTestCacheSize)
+		defer fc.Unref()
 	} else {
-		opts.Cache = tc.cache
+		opts.Cache = fc.cache
 	}
 
-	c := newFileCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, fileCacheTestCacheSize,
-		&block.CategoryStatsCollector{})
+	c := fc.newHandle(opts.Cache.NewID(), objProvider, opts)
 	return c, fs, nil
 }
 
@@ -870,7 +870,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 		c2.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
 	}
 
-	check := func(fs *fileCacheTestFS, c *fileCacheContainer) (float64, float64, float64) {
+	check := func(fs *fileCacheTestFS, c *fileCacheHandle) (float64, float64, float64) {
 		sumEvicted, nEvicted := 0, 0
 		sumSafe, nSafe := 0, 0
 		fs.validate(t, c, func(i, gotO, gotC int) error {
@@ -1014,8 +1014,9 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	opts.EnsureDefaults()
 	opts.Cache = NewCache(8 << 20) // 8 MB
 	defer opts.Cache.Unref()
-	c := newFileCacheContainer(nil, opts.Cache.NewID(), objProvider, opts, fileCacheTestCacheSize,
-		&block.CategoryStatsCollector{})
+	opts.FileCache = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, fileCacheTestCacheSize)
+	defer opts.FileCache.Unref()
+	c := opts.FileCache.newHandle(opts.Cache.NewID(), objProvider, opts)
 	require.NoError(t, err)
 	defer c.close()
 

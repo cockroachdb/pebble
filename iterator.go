@@ -243,7 +243,7 @@ type Iterator struct {
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
 	batch            *Batch
-	fc               *fileCacheContainer
+	fc               *fileCacheHandle
 	newIters         tableNewIters
 	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter

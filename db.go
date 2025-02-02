@@ -305,7 +305,7 @@ type DB struct {
 	fileLock *Lock
 	dataDir  vfs.File
 
-	fileCache            *fileCacheContainer
+	fileCache            *fileCacheHandle
 	newIters             tableNewIters
 	tableNewRangeKeyIter keyspanimpl.TableNewSpanIter
 
