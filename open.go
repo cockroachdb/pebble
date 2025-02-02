@@ -246,7 +246,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			opts.Cache.Unref()
 
 			if d.fileCache != nil {
-				_ = d.fileCache.close()
+				_ = d.fileCache.Close()
 			}
 
 			for _, mem := range d.mu.mem.queue {

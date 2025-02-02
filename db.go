@@ -1670,7 +1670,6 @@ func (d *DB) Close() error {
 		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
 	}
 	err = firstError(err, d.mu.formatVers.marker.Close())
-	err = firstError(err, d.fileCache.close())
 	if !d.opts.ReadOnly {
 		if d.mu.log.writer != nil {
 			_, err2 := d.mu.log.writer.Close()
@@ -1759,6 +1758,8 @@ func (d *DB) Close() error {
 	if v := d.mu.snapshots.count(); v > 0 {
 		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
 	}
+
+	err = firstError(err, d.fileCache.Close())
 
 	return err
 }
@@ -2048,7 +2049,7 @@ func (d *DB) Metrics() *Metrics {
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.FileCache, metrics.Filter = d.fileCache.metrics()
-	metrics.TableIters = int64(d.fileCache.iterCount())
+	metrics.TableIters = d.fileCache.iterCount()
 	metrics.CategoryStats = d.fileCache.dbOpts.sstStatsCollector.GetStats()
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
