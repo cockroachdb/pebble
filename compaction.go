@@ -2450,7 +2450,7 @@ func (d *DB) runCopyCompaction(
 		},
 	}
 
-	objMeta, err := d.objProvider.Lookup(fileTypeTable, inputMeta.FileBacking.DiskFileNum)
+	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, inputMeta.FileBacking.DiskFileNum)
 	if err != nil {
 		return nil, compact.Stats{}, err
 	}
@@ -2512,7 +2512,7 @@ func (d *DB) runCopyCompaction(
 	deleteOnExit := false
 	defer func() {
 		if deleteOnExit {
-			_ = d.objProvider.Remove(fileTypeTable, newMeta.FileBacking.DiskFileNum)
+			_ = d.objProvider.Remove(base.FileTypeTable, newMeta.FileBacking.DiskFileNum)
 		}
 	}()
 
@@ -2520,7 +2520,7 @@ func (d *DB) runCopyCompaction(
 	if objMeta.IsExternal() {
 		ctx := context.TODO()
 		src, err := d.objProvider.OpenForReading(
-			ctx, fileTypeTable, inputMeta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
+			ctx, base.FileTypeTable, inputMeta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
 			return nil, compact.Stats{}, err
@@ -2532,7 +2532,7 @@ func (d *DB) runCopyCompaction(
 		}()
 
 		w, _, err := d.objProvider.Create(
-			ctx, fileTypeTable, newMeta.FileBacking.DiskFileNum,
+			ctx, base.FileTypeTable, newMeta.FileBacking.DiskFileNum,
 			objstorage.CreateOptions{
 				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 			},
@@ -2586,7 +2586,7 @@ func (d *DB) runCopyCompaction(
 		newMeta.Size = wrote
 	} else {
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
-			d.objProvider.Path(objMeta), fileTypeTable, newMeta.FileBacking.DiskFileNum,
+			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true})
 		if err != nil {
 			return nil, compact.Stats{}, err
@@ -3197,7 +3197,7 @@ func (d *DB) newCompactionOutput(
 		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 		WriteCategory:       writeCategory,
 	}
-	writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
+	writable, objMeta, err := d.objProvider.Create(ctx, base.FileTypeTable, diskFileNum, createOpts)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, nil, err
 	}

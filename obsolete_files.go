@@ -64,7 +64,7 @@ type deletableFile struct {
 
 // obsoleteFile holds information about a file that needs to be deleted soon.
 type obsoleteFile struct {
-	fileType fileType
+	fileType base.FileType
 	// nonLogFile is populated when fileType != fileTypeLog.
 	nonLogFile deletableFile
 	// logFile is populated when fileType == fileTypeLog.
@@ -172,7 +172,7 @@ func (cm *cleanupManager) mainLoop() {
 				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
 				cm.deleteObsoleteObject(of.fileType, job.jobID, of.nonLogFile.fileNum)
 			case base.FileTypeLog:
-				cm.deleteObsoleteFile(of.logFile.FS, fileTypeLog, job.jobID, of.logFile.Path,
+				cm.deleteObsoleteFile(of.logFile.FS, base.FileTypeLog, job.jobID, of.logFile.Path,
 					base.DiskFileNum(of.logFile.NumWAL))
 			default:
 				path := base.MakeFilepath(cm.opts.FS, of.nonLogFile.dir, of.fileType, of.nonLogFile.fileNum)
@@ -232,7 +232,7 @@ func (cm *cleanupManager) maybePace(
 
 // deleteObsoleteFile deletes a (non-object) file that is no longer needed.
 func (cm *cleanupManager) deleteObsoleteFile(
-	fs vfs.FS, fileType fileType, jobID JobID, path string, fileNum base.DiskFileNum,
+	fs vfs.FS, fileType base.FileType, jobID JobID, path string, fileNum base.DiskFileNum,
 ) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
@@ -262,7 +262,7 @@ func (cm *cleanupManager) deleteObsoleteFile(
 }
 
 func (cm *cleanupManager) deleteObsoleteObject(
-	fileType fileType, jobID JobID, fileNum base.DiskFileNum,
+	fileType base.FileType, jobID JobID, fileNum base.DiskFileNum,
 ) {
 	if fileType != base.FileTypeTable && fileType != base.FileTypeBlob {
 		panic("not an object")
@@ -526,7 +526,7 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 
 	filesToDelete := make([]obsoleteFile, 0, len(obsoleteLogs)+len(obsoleteTables)+len(obsoleteManifests)+len(obsoleteOptions))
 	for _, f := range obsoleteLogs {
-		filesToDelete = append(filesToDelete, obsoleteFile{fileType: fileTypeLog, logFile: f})
+		filesToDelete = append(filesToDelete, obsoleteFile{fileType: base.FileTypeLog, logFile: f})
 	}
 	// We sort to make the order of deletions deterministic, which is nice for
 	// tests.
@@ -539,7 +539,7 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	for _, f := range obsoleteTables {
 		d.fileCache.evict(f.FileNum)
 		filesToDelete = append(filesToDelete, obsoleteFile{
-			fileType: fileTypeTable,
+			fileType: base.FileTypeTable,
 			nonLogFile: deletableFile{
 				dir:      d.dirname,
 				fileNum:  f.FileNum,
@@ -562,11 +562,11 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	}
 
 	files := [2]struct {
-		fileType fileType
+		fileType base.FileType
 		obsolete []fileInfo
 	}{
-		{fileTypeManifest, obsoleteManifests},
-		{fileTypeOptions, obsoleteOptions},
+		{base.FileTypeManifest, obsoleteManifests},
+		{base.FileTypeOptions, obsoleteOptions},
 	}
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for

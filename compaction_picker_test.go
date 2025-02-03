@@ -471,12 +471,12 @@ func TestCompactionPickerL0(t *testing.T) {
 						}
 						var compactFile *fileMetadata
 						for _, m := range fileMetas[level] {
-							if m.FileNum == FileNum(fileNum) {
+							if m.FileNum == base.FileNum(fileNum) {
 								compactFile = m
 							}
 						}
 						if compactFile == nil {
-							return fmt.Sprintf("cannot find compaction file %s", FileNum(fileNum))
+							return fmt.Sprintf("cannot find compaction file %s", base.FileNum(fileNum))
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
 						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
@@ -691,12 +691,12 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 						}
 						var compactFile *fileMetadata
 						for _, m := range fileMetas[level] {
-							if m.FileNum == FileNum(fileNum) {
+							if m.FileNum == base.FileNum(fileNum) {
 								compactFile = m
 							}
 						}
 						if compactFile == nil {
-							return fmt.Sprintf("cannot find compaction file %s", FileNum(fileNum))
+							return fmt.Sprintf("cannot find compaction file %s", base.FileNum(fileNum))
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
 						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
@@ -1006,7 +1006,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
 			var currentLevel int
 			var files [numLevels][]*fileMetadata
-			fileNum := FileNum(1)
+			fileNum := base.FileNum(1)
 
 			for _, data := range strings.Split(d.Input, "\n") {
 				switch data[:2] {
@@ -1146,7 +1146,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				}
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.FileNum = FileNum(len(files))
+					meta.FileNum = base.FileNum(len(files))
 					files = append(files, meta)
 				}
 				manifest.SortBySmallest(files, cmp)

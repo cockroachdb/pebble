@@ -75,7 +75,7 @@ func allTempFiles(t *testing.T, fs vfs.FS) []string {
 	require.NoError(t, err)
 	for _, f := range ls {
 		ft, _, ok := base.ParseFilename(fs, f)
-		if ok && ft == fileTypeTemp {
+		if ok && ft == base.FileTypeTemp {
 			files = append(files, f)
 		}
 	}

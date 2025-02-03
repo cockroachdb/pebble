@@ -249,7 +249,7 @@ func (d *DB) scanReadStateTableStats(
 			// to have a mismatch; the size stored in the FileBacking is just the part
 			// of the file that is referenced by this Pebble instance, not the size of
 			// the whole object.
-			objMeta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true

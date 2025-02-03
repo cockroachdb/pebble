@@ -261,7 +261,7 @@ func (c *fileCacheHandle) withVirtualReader(
 		return v.err
 	}
 	provider := c.dbOpts.objProvider
-	objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
+	objMeta, err := provider.Lookup(base.FileTypeTable, meta.FileBacking.DiskFileNum)
 	if err != nil {
 		return err
 	}
@@ -1177,7 +1177,7 @@ func (v *fileCacheValue) load(
 	var r *sstable.Reader
 	var err error
 	f, err = dbOpts.objProvider.OpenForReading(
-		ctx, fileTypeTable, backingFileNum, objstorage.OpenOptions{MustExist: true},
+		ctx, base.FileTypeTable, backingFileNum, objstorage.OpenOptions{MustExist: true},
 	)
 	if err == nil {
 		o := dbOpts.readerOpts
@@ -1191,7 +1191,7 @@ func (v *fileCacheValue) load(
 	if err == nil {
 		v.reader = r
 		var objMeta objstorage.ObjectMetadata
-		objMeta, err = dbOpts.objProvider.Lookup(fileTypeTable, backingFileNum)
+		objMeta, err = dbOpts.objProvider.Lookup(base.FileTypeTable, backingFileNum)
 		v.isShared = objMeta.IsShared()
 	}
 	if err != nil {
