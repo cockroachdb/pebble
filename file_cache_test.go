@@ -107,7 +107,7 @@ func (fs *fileCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) e
 
 		numStillOpen := 0
 		for i := 0; i < fileCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
+			filename := base.MakeFilepath(fs, "", base.FileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -137,7 +137,7 @@ func (fs *fileCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < fileCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", fileTypeTable, base.DiskFileNum(i))
+			filename := base.MakeFilepath(fs, "", base.FileTypeTable, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return errors.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -193,7 +193,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 	defer objProvider.Close()
 
 	for i := 0; i < fileCacheTestNumTables; i++ {
-		w, _, err := objProvider.Create(context.Background(), fileTypeTable, base.DiskFileNum(i), objstorage.CreateOptions{})
+		w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum(i), objstorage.CreateOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -307,7 +307,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	l6 := currVersion.Levels[6]
 	l6FileIter := l6.Iter()
 	parentFile := l6FileIter.First()
-	f1 := FileNum(d.mu.versions.nextFileNum.Load())
+	f1 := base.FileNum(d.mu.versions.nextFileNum.Load())
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum.Add(2)
 
@@ -637,7 +637,7 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.IntN(fileCacheTestNumTables), rng.IntN(1000)
 			rngMu.Unlock()
-			m := &fileMetadata{FileNum: FileNum(fileNum)}
+			m := &fileMetadata{FileNum: base.FileNum(fileNum)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			defer m.FileBacking.Unref()
@@ -702,7 +702,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
 			var iters iterSet
 			var err error
-			m := &fileMetadata{FileNum: FileNum(j)}
+			m := &fileMetadata{FileNum: base.FileNum(j)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			if rangeIter {
@@ -751,7 +751,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
-			m := &fileMetadata{FileNum: FileNum(j)}
+			m := &fileMetadata{FileNum: base.FileNum(j)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -805,7 +805,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		j := rng.IntN(fileCacheTestNumTables)
 		var iters iterSet
 		var err error
-		m := &fileMetadata{FileNum: FileNum(j)}
+		m := &fileMetadata{FileNum: base.FileNum(j)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		if rangeIter {
@@ -870,7 +870,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, 0))
 	for i := 0; i < N; i++ {
 		j := rng.IntN(fileCacheTestNumTables)
-		m := &fileMetadata{FileNum: FileNum(j)}
+		m := &fileMetadata{FileNum: base.FileNum(j)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -1037,7 +1037,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	const testFileNum = 3
 	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, ""))
 	require.NoError(t, err)
-	w, _, err := objProvider.Create(context.Background(), fileTypeTable, testFileNum, objstorage.CreateOptions{})
+	w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, testFileNum, objstorage.CreateOptions{})
 	w.Write(buf)
 	require.NoError(t, w.Finish())
 	opts := &Options{}
@@ -1102,7 +1102,7 @@ func TestFileCacheClockPro(t *testing.T) {
 
 	makeTable := func(dfn base.DiskFileNum) {
 		require.NoError(t, err)
-		f, _, err := objProvider.Create(context.Background(), fileTypeTable, dfn, objstorage.CreateOptions{})
+		f, _, err := objProvider.Create(context.Background(), base.FileTypeTable, dfn, objstorage.CreateOptions{})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))
@@ -1142,7 +1142,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		}
 
 		oldHits := cache.hits.Load()
-		m := &fileMetadata{FileNum: FileNum(key)}
+		m := &fileMetadata{FileNum: base.FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		v := cache.findNode(context.Background(), m.FileBacking, handle)
@@ -1240,7 +1240,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	makeTable := func(dfn base.DiskFileNum) {
 		require.NoError(b, err)
-		f, _, err := objProvider.Create(context.Background(), fileTypeTable, dfn, objstorage.CreateOptions{})
+		f, _, err := objProvider.Create(context.Background(), base.FileTypeTable, dfn, objstorage.CreateOptions{})
 		require.NoError(b, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte("a"), nil))

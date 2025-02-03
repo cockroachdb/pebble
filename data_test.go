@@ -1167,7 +1167,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	if m != nil {
 		backingFileNum = m.FileBacking.DiskFileNum
 	}
-	fileName := base.MakeFilename(fileTypeTable, backingFileNum)
+	fileName := base.MakeFilename(base.FileTypeTable, backingFileNum)
 	f, err := d.opts.FS.Open(fileName)
 	if err != nil {
 		return err.Error()

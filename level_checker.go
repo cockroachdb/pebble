@@ -314,7 +314,7 @@ type tombstoneWithLevel struct {
 	level int
 	// The level in LSM. A -1 means it's a memtable.
 	lsmLevel int
-	fileNum  FileNum
+	fileNum  base.FileNum
 }
 
 // For sorting tombstoneWithLevels in increasing order of start UserKey and
@@ -443,7 +443,7 @@ func checkRangeTombstones(c *checkConfig) error {
 	return iterateAndCheckTombstones(c.cmp, c.formatKey, tombstones)
 }
 
-func levelOrMemtable(lsmLevel int, fileNum FileNum) string {
+func levelOrMemtable(lsmLevel int, fileNum base.FileNum) string {
 	if lsmLevel == -1 {
 		return "memtable"
 	}
@@ -454,7 +454,7 @@ func addTombstonesFromIter(
 	iter keyspan.FragmentIterator,
 	level int,
 	lsmLevel int,
-	fileNum FileNum,
+	fileNum base.FileNum,
 	tombstones []tombstoneWithLevel,
 	seqNum base.SeqNum,
 	cmp Compare,

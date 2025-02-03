@@ -61,7 +61,7 @@ func TestLevelIter(t *testing.T) {
 				iterKVs = append(iterKVs, kvs)
 
 				meta := (&fileMetadata{
-					FileNum: FileNum(len(metas)),
+					FileNum: base.FileNum(len(metas)),
 				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
 					kvs[0].K,
@@ -213,7 +213,7 @@ func (lt *levelIterTest) runClear() string {
 }
 
 func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
-	fileNum := FileNum(len(lt.readers))
+	fileNum := base.FileNum(len(lt.readers))
 	name := fmt.Sprint(fileNum)
 	f0, err := lt.mem.Create(name, vfs.WriteCategoryUnspecified)
 	if err != nil {
@@ -572,7 +572,7 @@ func buildLevelIterTables(
 		require.NoError(b, err)
 		smallest := iter.First()
 		meta[i] = &fileMetadata{}
-		meta[i].FileNum = FileNum(i)
+		meta[i].FileNum = base.FileNum(i)
 		largest := iter.Last()
 		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
 		meta[i].InitPhysicalBacking()

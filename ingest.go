@@ -679,7 +679,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 func ingestCleanup(objProvider objstorage.Provider, meta []ingestLocalMeta) error {
 	var firstErr error
 	for i := range meta {
-		if err := objProvider.Remove(fileTypeTable, meta[i].FileBacking.DiskFileNum); err != nil {
+		if err := objProvider.Remove(base.FileTypeTable, meta[i].FileBacking.DiskFileNum); err != nil {
 			firstErr = firstError(firstErr, err)
 		}
 	}
@@ -697,7 +697,7 @@ func ingestLinkLocal(
 ) error {
 	for i := range localMetas {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
-			ctx, opts.FS, localMetas[i].path, fileTypeTable, localMetas[i].FileBacking.DiskFileNum,
+			ctx, opts.FS, localMetas[i].path, base.FileTypeTable, localMetas[i].FileBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true},
 		)
 		if err != nil {
@@ -734,7 +734,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		}
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  lr.shared[i].FileBacking.DiskFileNum,
-			FileType: fileTypeTable,
+			FileType: base.FileTypeTable,
 			Backing:  backing,
 		})
 	}
@@ -772,7 +772,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  meta.FileBacking.DiskFileNum,
-			FileType: fileTypeTable,
+			FileType: base.FileTypeTable,
 			Backing:  providerBacking,
 		})
 	}
@@ -1503,7 +1503,7 @@ func (d *DB) ingest(
 	// metaFlushableOverlaps is a map indicating which of the ingested sstables
 	// overlap some table in the flushable queue. It's used to approximate
 	// ingest-into-L0 stats when using flushable ingests.
-	metaFlushableOverlaps := make(map[FileNum]bool, loadResult.fileCount())
+	metaFlushableOverlaps := make(map[base.FileNum]bool, loadResult.fileCount())
 	var mem *flushableEntry
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.

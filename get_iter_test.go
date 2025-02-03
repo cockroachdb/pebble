@@ -20,7 +20,7 @@ func TestGetIter(t *testing.T) {
 	// Each element of data is a string of the form "internalKey value".
 	type testTable struct {
 		level   int
-		fileNum FileNum
+		fileNum base.FileNum
 		data    []string
 	}
 
@@ -384,7 +384,7 @@ func TestGetIter(t *testing.T) {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
 		// m is a map from file numbers to DBs.
-		m := map[FileNum]*memTable{}
+		m := map[base.FileNum]*memTable{}
 		newIter := func(
 			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
