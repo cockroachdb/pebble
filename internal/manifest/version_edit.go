@@ -57,6 +57,8 @@ const (
 	tagNewFile5            = 104 // Range keys.
 	tagCreatedBackingTable = 105
 	tagRemovedBackingTable = 106
+	tagNewBlobFile         = 107
+	tagDeletedBlobFile     = 108
 
 	// The custom tags sub-format used by tagNewFile4 and above. All tags less
 	// than customTagNonSafeIgnoreMask are safe to ignore and their format must be
@@ -69,6 +71,7 @@ const (
 	customTagVirtual           = 66
 	customTagSyntheticPrefix   = 67
 	customTagSyntheticSuffix   = 68
+	customTagBlobReferences    = 69
 )
 
 // DeletedFileEntry holds the state for a file deletion from a level. The file
@@ -152,6 +155,13 @@ type VersionEdit struct {
 	// and RemovedBackingTables. A file must be present in RemovedBackingTables
 	// in exactly one version edit.
 	RemovedBackingTables []base.DiskFileNum
+	// NewBlobFiles holds the metadata for all new blob files introduced within
+	// the version edit.
+	NewBlobFiles []*BlobFileMetadata
+	// DeletedBlobFiles holds all blob files that became unreferenced during the
+	// version edit. These blob files must not be referenced by any sstable in
+	// the resulting Version.
+	DeletedBlobFiles []base.DiskFileNum
 }
 
 // Decode decodes an edit from the specified reader.
@@ -346,6 +356,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}{}
 			var syntheticPrefix sstable.SyntheticPrefix
 			var syntheticSuffix sstable.SyntheticSuffix
+			var blobReferences []BlobReference
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -398,6 +409,28 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 
+					case customTagBlobReferences:
+						n, err := d.readUvarint()
+						if err != nil {
+							return err
+						}
+						blobReferences = make([]BlobReference, n)
+						for i := 0; i < int(n); i++ {
+							fileNum, err := d.readUvarint()
+							if err != nil {
+								return err
+							}
+							valueSize, err := d.readUvarint()
+							if err != nil {
+								return err
+							}
+							blobReferences[i] = BlobReference{
+								FileNum:   base.DiskFileNum(fileNum),
+								ValueSize: valueSize,
+							}
+						}
+						continue
+
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
 							return base.CorruptionErrorf("new-file4: custom field not supported: %d", customTag)
@@ -415,6 +448,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SmallestSeqNum:           smallestSeqNum,
 				LargestSeqNum:            largestSeqNum,
 				LargestSeqNumAbsolute:    largestSeqNum,
+				BlobReferences:           blobReferences,
 				MarkedForCompaction:      markedForCompaction,
 				Virtual:                  virtualState.virtual,
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
@@ -461,6 +495,37 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				nfe.BackingFileNum = base.DiskFileNum(virtualState.backingFileNum)
 			}
 			v.NewFiles = append(v.NewFiles, nfe)
+
+		case tagNewBlobFile:
+			fileNum, err := d.readFileNum()
+			if err != nil {
+				return err
+			}
+			size, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			valueSize, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			creationTime, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			v.NewBlobFiles = append(v.NewBlobFiles, &BlobFileMetadata{
+				FileNum:      base.DiskFileNum(fileNum),
+				Size:         size,
+				ValueSize:    valueSize,
+				CreationTime: creationTime,
+			})
+
+		case tagDeletedBlobFile:
+			fileNum, err := d.readFileNum()
+			if err != nil {
+				return err
+			}
+			v.DeletedBlobFiles = append(v.DeletedBlobFiles, base.DiskFileNum(fileNum))
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -524,6 +589,12 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	}
 	for _, n := range v.RemovedBackingTables {
 		fmt.Fprintf(&buf, "  del-backing:   %s\n", n)
+	}
+	for _, f := range v.NewBlobFiles {
+		fmt.Fprintf(&buf, "  add-blob-file: %s\n", f.String())
+	}
+	for _, df := range v.DeletedBlobFiles {
+		fmt.Fprintf(&buf, "  del-blob-file: %s\n", df)
 	}
 	return buf.String()
 }
@@ -596,6 +667,16 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			n := p.DiskFileNum()
 			ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
 
+		case "add-blob-file":
+			meta, err := ParseBlobFileMetadataDebug(p.Remaining())
+			if err != nil {
+				return nil, err
+			}
+			ve.NewBlobFiles = append(ve.NewBlobFiles, meta)
+
+		case "del-blob-file":
+			ve.DeletedBlobFiles = append(ve.DeletedBlobFiles, p.DiskFileNum())
+
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)
 		}
@@ -645,7 +726,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -710,8 +791,27 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagSyntheticSuffix)
 				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Suffix())
 			}
+			if len(x.Meta.BlobReferences) > 0 {
+				e.writeUvarint(customTagBlobReferences)
+				e.writeUvarint(uint64(len(x.Meta.BlobReferences)))
+				for _, ref := range x.Meta.BlobReferences {
+					e.writeUvarint(uint64(ref.FileNum))
+					e.writeUvarint(ref.ValueSize)
+				}
+			}
 			e.writeUvarint(customTagTerminate)
 		}
+	}
+	for _, x := range v.NewBlobFiles {
+		e.writeUvarint(tagNewBlobFile)
+		e.writeUvarint(uint64(x.FileNum))
+		e.writeUvarint(x.Size)
+		e.writeUvarint(x.ValueSize)
+		e.writeUvarint(x.CreationTime)
+	}
+	for _, x := range v.DeletedBlobFiles {
+		e.writeUvarint(tagDeletedBlobFile)
+		e.writeUvarint(uint64(x))
 	}
 	_, err := w.Write(e.Bytes())
 	return err

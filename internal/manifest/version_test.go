@@ -414,6 +414,10 @@ func TestFileMetadata_ParseRoundTrip(t *testing.T) {
 			name:  "virtual",
 			input: "000001(000008):[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
 		},
+		{
+			name:  "blobrefs",
+			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[0-0] points:[bar#0,SET-foo#0,SET] blobrefs:[(000191: 2952), (000075: 108520)]",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
