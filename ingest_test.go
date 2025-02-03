@@ -319,7 +319,7 @@ func TestIngestLink(t *testing.T) {
 			for j := range meta {
 				meta[j].path = fmt.Sprintf("external%d", j)
 				meta[j].fileMetadata = &fileMetadata{}
-				meta[j].FileNum = FileNum(j)
+				meta[j].FileNum = base.FileNum(j)
 				meta[j].InitPhysicalBacking()
 				f, err := opts.FS.Create(meta[j].path, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
@@ -364,7 +364,7 @@ func TestIngestLink(t *testing.T) {
 					if !ok {
 						t.Fatalf("unable to parse filename: %s", files[j])
 					}
-					if fileTypeTable != ftype {
+					if base.FileTypeTable != ftype {
 						t.Fatalf("expected table, but found %d", ftype)
 					}
 					if j != int(fileNum) {
@@ -1371,7 +1371,8 @@ func TestSimpleIngestShared(t *testing.T) {
 	{
 		// Create a shared file.
 		fn := base.FileNum(2)
-		f, meta, err := provider2.Create(context.TODO(), fileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{PreferSharedStorage: true})
+		f, meta, err := provider2.Create(context.TODO(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn),
+			objstorage.CreateOptions{PreferSharedStorage: true})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, d.opts.MakeWriterOptions(0, d.TableFormat()))
 		w.Set([]byte("d"), []byte("shared"))

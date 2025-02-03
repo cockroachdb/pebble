@@ -651,7 +651,7 @@ func buildLevelsForMergingIterSeqSeek(
 			// The same FileNum is being reused across different levels, which
 			// is harmless for the benchmark since each level has its own iterator
 			// creation func.
-			meta[j].FileNum = FileNum(j)
+			meta[j].FileNum = base.FileNum(j)
 			largest := iter.Last()
 			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
 			meta[j].InitPhysicalBacking()

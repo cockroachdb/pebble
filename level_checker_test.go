@@ -102,7 +102,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 		}
 	}()
 
-	var fileNum FileNum
+	var fileNum base.FileNum
 	newIters :=
 		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, iio internalIterOpts, _ iterKinds) (iterSet, error) {
 			r := readers[file.FileNum]

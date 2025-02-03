@@ -443,7 +443,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 					}
 					var optionsCount int
 					for _, s := range got {
-						if t, _, ok := base.ParseFilename(opts.FS, s); ok && t == fileTypeOptions {
+						if t, _, ok := base.ParseFilename(opts.FS, s); ok && t == base.FileTypeOptions {
 							optionsCount++
 						}
 					}
@@ -1233,7 +1233,7 @@ func TestGetVersion(t *testing.T) {
 			continue
 		}
 		switch ft {
-		case fileTypeOptions:
+		case base.FileTypeOptions:
 			if fn > highestOptionsNum {
 				highestOptionsNum = fn
 			}
@@ -1515,7 +1515,8 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	// Create a shared file with the newest file num and then close the db.
 	d.mu.Lock()
 	nextFileNum := d.mu.versions.getNextDiskFileNum()
-	w, _, err := d.objProvider.Create(context.TODO(), fileTypeTable, nextFileNum, objstorage.CreateOptions{PreferSharedStorage: true})
+	w, _, err := d.objProvider.Create(context.TODO(), base.FileTypeTable, nextFileNum,
+		objstorage.CreateOptions{PreferSharedStorage: true})
 	require.NoError(t, err)
 	require.NoError(t, w.Write([]byte("foobar")))
 	require.NoError(t, w.Finish())

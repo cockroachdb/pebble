@@ -197,14 +197,14 @@ func (vs *versionSet) create(
 	}
 	if err == nil {
 		// NB: Move() is responsible for syncing the data directory.
-		if err = vs.manifestMarker.Move(base.MakeFilename(fileTypeManifest, vs.manifestFileNum)); err != nil {
+		if err = vs.manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, vs.manifestFileNum)); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 		}
 	}
 
 	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 		JobID:   int(jobID),
-		Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
+		Path:    base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, vs.manifestFileNum),
 		FileNum: vs.manifestFileNum,
 		Err:     err,
 	})
@@ -227,7 +227,7 @@ func (vs *versionSet) load(
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 
 	vs.manifestFileNum = manifestFileNum
-	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
+	manifestPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeManifest, vs.manifestFileNum)
 	manifestFilename := opts.FS.PathBase(manifestPath)
 
 	// Read the versionEdits in the manifest file.
@@ -574,7 +574,7 @@ func (vs *versionSet) logAndApply(
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   int(jobID),
-					Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+					Path:    base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
 				})
@@ -603,12 +603,12 @@ func (vs *versionSet) logAndApply(
 		}
 		if newManifestFileNum != 0 {
 			// NB: Move() is responsible for syncing the data directory.
-			if err := vs.manifestMarker.Move(base.MakeFilename(fileTypeManifest, newManifestFileNum)); err != nil {
+			if err := vs.manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, newManifestFileNum)); err != nil {
 				return errors.Wrap(err, "MANIFEST set current failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   int(jobID),
-				Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+				Path:    base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})
 		}
@@ -882,7 +882,7 @@ func (vs *versionSet) createManifest(
 	virtualBackings []*fileBacking,
 ) (err error) {
 	var (
-		filename     = base.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
+		filename     = base.MakeFilepath(vs.fs, dirname, base.FileTypeManifest, fileNum)
 		manifestFile vfs.File
 		manifest     *record.Writer
 	)

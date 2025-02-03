@@ -123,7 +123,7 @@ func TestPickCompaction(t *testing.T) {
 	}
 
 	opts := (*Options)(nil).EnsureDefaults()
-	newFileMeta := func(fileNum FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
+	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
 		m := (&fileMetadata{
 			FileNum: fileNum,
 			Size:    size,
@@ -2036,7 +2036,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 					formatKey: DefaultComparer.FormatKey,
 				}
 				var files []manifest.NewFileEntry
-				fileNum := FileNum(1)
+				fileNum := base.FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
@@ -2175,7 +2175,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				var sublevel []*fileMetadata
 				var sublevelNum int
 				var parsingSublevel bool
-				fileNum := FileNum(1)
+				fileNum := base.FileNum(1)
 
 				switchSublevel := func() {
 					if sublevel != nil {
@@ -2386,7 +2386,7 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 	var lbaseFiles []*manifest.FileMetadata
 	const lbaseSize = 5 << 20
 	for i := 0; i < 100; i++ {
-		m := &manifest.FileMetadata{Size: lbaseSize, FileNum: FileNum(i)}
+		m := &manifest.FileMetadata{Size: lbaseSize, FileNum: base.FileNum(i)}
 		m.InitPhysicalBacking()
 		lbaseFiles =
 			append(lbaseFiles, m)

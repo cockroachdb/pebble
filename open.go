@@ -420,14 +420,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		return true
 	})
 	d.mu.annotators.remoteSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
-		meta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 		if err != nil {
 			return false
 		}
 		return meta.IsRemote()
 	})
 	d.mu.annotators.externalSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
-		meta, err := d.objProvider.Lookup(fileTypeTable, f.FileBacking.DiskFileNum)
+		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 		if err != nil {
 			return false
 		}
@@ -447,14 +447,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.mu.versions.markFileNumUsed(fn)
 
 		switch ft {
-		case fileTypeLog:
+		case base.FileTypeLog:
 			// Ignore.
-		case fileTypeOptions:
+		case base.FileTypeOptions:
 			if previousOptionsFileNum < fn {
 				previousOptionsFileNum = fn
 				previousOptionsFilename = filename
 			}
-		case fileTypeTemp, fileTypeOldTemp:
+		case base.FileTypeTemp, base.FileTypeOldTemp:
 			if !d.opts.ReadOnly {
 				// Some codepaths write to a temporary file and then
 				// rename it to its final location when complete.  A
@@ -569,8 +569,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.getNextDiskFileNum()
-		tmpPath := base.MakeFilepath(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
-		optionsPath := base.MakeFilepath(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
+		tmpPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeTemp, d.optionsFileNum)
+		optionsPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeOptions, d.optionsFileNum)
 
 		// Write them to a temporary file first, in case we crash before
 		// we're done. A corrupt options file prevents opening the
@@ -724,7 +724,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 			continue
 		}
 		switch ft {
-		case fileTypeOptions:
+		case base.FileTypeOptions:
 			// If this file has a higher number than the last options file
 			// processed, reset version. This is because rocksdb often
 			// writes multiple options files without deleting previous ones.
@@ -814,7 +814,8 @@ func (d *DB) replayIngestedFlushable(
 	meta := make([]*fileMetadata, len(fileNums))
 	var lastRangeKey keyspan.Span
 	for i, n := range fileNums {
-		readable, err := d.objProvider.OpenForReading(context.TODO(), fileTypeTable, n, objstorage.OpenOptions{MustExist: true})
+		readable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeTable, n,
+			objstorage.OpenOptions{MustExist: true})
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
 		}
@@ -1123,7 +1124,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 	var previousOptionsFileNum base.DiskFileNum
 	for _, filename := range ls {
 		ft, fn, ok := base.ParseFilename(fs, filename)
-		if !ok || ft != fileTypeOptions || fn < previousOptionsFileNum {
+		if !ok || ft != base.FileTypeOptions || fn < previousOptionsFileNum {
 			continue
 		}
 		previousOptionsFileNum = fn
@@ -1131,7 +1132,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 	}
 
 	if exists {
-		desc.ManifestFilename = base.MakeFilepath(fs, dirname, fileTypeManifest, manifestFileNum)
+		desc.ManifestFilename = base.MakeFilepath(fs, dirname, base.FileTypeManifest, manifestFileNum)
 	}
 	return desc, nil
 }
@@ -1144,7 +1145,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 // LockDirectory may be used to expand the critical section protected by the
 // database lock to include setup before the call to Open.
 func LockDirectory(dirname string, fs vfs.FS) (*Lock, error) {
-	fileLock, err := fs.Lock(base.MakeFilepath(fs, dirname, fileTypeLock, base.DiskFileNum(0)))
+	fileLock, err := fs.Lock(base.MakeFilepath(fs, dirname, base.FileTypeLock, base.DiskFileNum(0)))
 	if err != nil {
 		return nil, err
 	}

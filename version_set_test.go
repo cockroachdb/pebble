@@ -76,7 +76,7 @@ func TestVersionSet(t *testing.T) {
 		// createFile only exists to prevent versionSet from complaining that a
 		// file that is becoming a zombie does not exist.
 		createFile := func(fileNum base.DiskFileNum) {
-			w, _, err := provider.Create(context.Background(), fileTypeTable, fileNum, objstorage.CreateOptions{})
+			w, _, err := provider.Create(context.Background(), base.FileTypeTable, fileNum, objstorage.CreateOptions{})
 			require.NoError(t, err)
 			require.NoError(t, w.Finish())
 		}
@@ -290,7 +290,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 	var manifest vfs.File
 	for _, filename := range filenames {
 		fileType, _, ok := base.ParseFilename(mem, filename)
-		if ok && fileType == fileTypeManifest {
+		if ok && fileType == base.FileTypeManifest {
 			manifest, err = mem.Open(filename)
 			require.NoError(t, err)
 		}

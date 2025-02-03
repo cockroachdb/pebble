@@ -2213,7 +2213,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			}
 			destTables[j].Virtual = m.Virtual
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum
-			objMeta, err := d.objProvider.Lookup(fileTypeTable, m.FileBacking.DiskFileNum)
+			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
 			if err != nil {
 				return nil, err
 			}
@@ -2904,7 +2904,7 @@ func (d *DB) checkVirtualBounds(m *fileMetadata) {
 		return
 	}
 
-	objMeta, err := d.objProvider.Lookup(fileTypeTable, m.FileBacking.DiskFileNum)
+	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
 	if err != nil {
 		panic(err)
 	}
