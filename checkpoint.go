@@ -232,7 +232,7 @@ func (d *DB) Checkpoint(
 
 	{
 		// Copy the OPTIONS.
-		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeOptions, optionsFileNum)
+		srcPath := base.MakeFilepath(fs, d.dirname, base.FileTypeOptions, optionsFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = copyCheckpointOptions(fs, srcPath, destPath)
 		if ckErr != nil {
@@ -289,7 +289,7 @@ func (d *DB) Checkpoint(
 				}
 				requiredVirtualBackingFiles[fileBacking.DiskFileNum] = struct{}{}
 			}
-			meta, err := d.objProvider.Lookup(fileTypeTable, fileBacking.DiskFileNum)
+			meta, err := d.objProvider.Lookup(base.FileTypeTable, fileBacking.DiskFileNum)
 			if err != nil {
 				ckErr = err
 				return ckErr
@@ -305,7 +305,7 @@ func (d *DB) Checkpoint(
 				continue
 			}
 
-			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, fileBacking.DiskFileNum)
+			srcPath := base.MakeFilepath(fs, d.dirname, base.FileTypeTable, fileBacking.DiskFileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 			if ckErr != nil {
@@ -331,7 +331,7 @@ func (d *DB) Checkpoint(
 		return ckErr
 	}
 	if len(remoteFiles) > 0 {
-		ckErr = d.objProvider.CheckpointState(fs, destDir, fileTypeTable, remoteFiles)
+		ckErr = d.objProvider.CheckpointState(fs, destDir, base.FileTypeTable, remoteFiles)
 		if ckErr != nil {
 			return ckErr
 		}
@@ -439,7 +439,7 @@ func (d *DB) writeCheckpointManifest(
 	// If some files are excluded from the checkpoint, also append a block that
 	// records those files as deleted.
 	if err := func() error {
-		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeManifest, manifestFileNum)
+		srcPath := base.MakeFilepath(fs, d.dirname, base.FileTypeManifest, manifestFileNum)
 		destPath := fs.PathJoin(destDirPath, fs.PathBase(srcPath))
 		src, err := fs.Open(srcPath, vfs.SequentialReadsOption)
 		if err != nil {
@@ -505,7 +505,7 @@ func (d *DB) writeCheckpointManifest(
 	if err != nil {
 		return err
 	}
-	if err := manifestMarker.Move(base.MakeFilename(fileTypeManifest, manifestFileNum)); err != nil {
+	if err := manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, manifestFileNum)); err != nil {
 		return err
 	}
 	return manifestMarker.Close()

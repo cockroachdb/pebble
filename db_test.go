@@ -1036,7 +1036,7 @@ func TestRollManifest(t *testing.T) {
 		if !ok {
 			continue
 		}
-		if fileType == fileTypeManifest {
+		if fileType == base.FileTypeManifest {
 			manifests = append(manifests, filename)
 		}
 	}
