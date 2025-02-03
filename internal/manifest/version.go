@@ -234,6 +234,10 @@ type FileMetadata struct {
 	// and are updated via the MaybeExtend{Point,Range}KeyBounds methods.
 	Smallest InternalKey
 	Largest  InternalKey
+	// BlobReferences is a list of blob files containing values that are
+	// referenced by this sstable.
+	BlobReferences []BlobReference
+
 	// Stats describe table statistics. Protected by DB.mu.
 	//
 	// For virtual sstables, set stats upon virtual sstable creation as
@@ -777,6 +781,16 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 	if m.Size != 0 {
 		fmt.Fprintf(&b, " size:%d", m.Size)
 	}
+	if len(m.BlobReferences) > 0 {
+		fmt.Fprintf(&b, " blobrefs:[")
+		for i, r := range m.BlobReferences {
+			if i > 0 {
+				fmt.Fprint(&b, ", ")
+			}
+			fmt.Fprintf(&b, "(%s: %d)", r.FileNum, r.ValueSize)
+		}
+		fmt.Fprint(&b, "]")
+	}
 	return b.String()
 }
 
@@ -836,6 +850,22 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 
 		case "size":
 			m.Size = p.Uint64()
+
+		case "blobrefs":
+			p.Expect("[")
+			for p.Peek() != "]" {
+				if p.Peek() == "," {
+					p.Expect(",")
+				}
+				p.Expect("(")
+				var ref BlobReference
+				ref.FileNum = base.DiskFileNum(p.FileNum())
+				p.Expect(":")
+				ref.ValueSize = p.Uint64()
+				m.BlobReferences = append(m.BlobReferences, ref)
+				p.Expect(")")
+			}
+			p.Expect("]")
 
 		default:
 			p.Errf("unknown field %q", field)
