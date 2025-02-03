@@ -1,0 +1,50 @@
+decode
+01                           # <tagComparator>
+1a                           # len("leveldb.BytewiseComparator") = 26
+"leveldb.BytewiseComparator" # Comparer name
+0302                         # <tagNextFileNumber>, 2
+0400                         # <tagLastSequence>, 0
+0202                         # <tagLogNumber>, 2
+0303                         # <tagNextFileNumber>, 3
+0409                         # <tagLastSequence>, 9
+----
+011a6c6576656c64622e4279746577697365436f6d70617261746f720302
+0400020203030409
+  comparer:     leveldb.BytewiseComparator  log-num:       2
+  next-file-num: 3
+  last-seq-num:  9
+
+decode
+01                           # <tagComparator>
+1a                           # len("leveldb.BytewiseComparator") = 26
+"leveldb.BytewiseComparator" # Comparer name
+0202                         # <tagLogNumber>, 2
+0307                         # <tagNextFileNumber>, 7
+0400                         # <tagLastSequence>, 0
+----
+011a6c6576656c64622e4279746577697365436f6d70617261746f720202
+03070400
+  comparer:     leveldb.BytewiseComparator  log-num:       2
+  next-file-num: 7
+
+decode
+0205                         # <tagLogNumber>, 5
+0306                         # <tagNextFileNumber>, 6
+040e                         # <tagLastSequence>, 14
+67                           # <tagNewFile4>
+00                           #   . Level           = L0
+04                           #   . FileNum         = 000004
+c505                         #   . FileSize        = 709
+0b 626172000e000000000000    #   . Smallest        = "bar"#14,DEL
+0b 666f6f010d000000000000    #   . Largest         = "foo"#13,SET
+0c                           #   . Smallest Seqnum = 12
+0e                           #   . Largest Seqnum  = 14
+06 05 84a6b8ab06             #   . <customTagCreationTime> <len(field)=5> <1701712644>
+01                           #   . <customTagTerminate>
+----
+02050306040e670004c5050b626172000e0000000000000b666f6f010d00
+00000000000c0e060584a6b8ab0601
+  log-num:       5
+  next-file-num: 6
+  last-seq-num:  14
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:24Z)

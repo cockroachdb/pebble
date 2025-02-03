@@ -6,18 +6,19 @@ package manifest
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
-	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -261,123 +262,59 @@ func TestVersionEditRoundTrip(t *testing.T) {
 }
 
 func TestVersionEditDecode(t *testing.T) {
-	// TODO(radu): these should be datadriven tests that output the encoded and
-	// decoded edits.
-	cmp := base.DefaultComparer.Compare
-	m := (&FileMetadata{
-		FileNum:               4,
-		Size:                  709,
-		SmallestSeqNum:        12,
-		LargestSeqNum:         14,
-		LargestSeqNumAbsolute: 14,
-		CreationTime:          1701712644,
-	}).ExtendPointKeyBounds(
-		cmp,
-		base.MakeInternalKey([]byte("bar"), 14, base.InternalKeyKindDelete),
-		base.MakeInternalKey([]byte("foo"), 13, base.InternalKeyKindSet),
-	)
-	m.InitPhysicalBacking()
-
-	testCases := []struct {
-		filename     string
-		encodedEdits []string
-		edits        []VersionEdit
-	}{
-		// db-stage-1 and db-stage-2 have the same manifest.
-		{
-			filename: "db-stage-1/MANIFEST-000001",
-			encodedEdits: []string{
-				"\x01\x1aleveldb.BytewiseComparator\x03\x02\x04\x00",
-				"\x02\x02\x03\x03\x04\t",
-			},
-			edits: []VersionEdit{
-				{
-					ComparerName: "leveldb.BytewiseComparator",
-					NextFileNum:  2,
-				},
-				{
-					MinUnflushedLogNum: 0x2,
-					NextFileNum:        0x3,
-					LastSeqNum:         0x9,
-				},
-			},
-		},
-		// db-stage-3 and db-stage-4 have the same manifest.
-		{
-			filename: "db-stage-3/MANIFEST-000006",
-			encodedEdits: []string{
-				"\x01\x1aleveldb.BytewiseComparator\x02\x02\x03\a\x04\x00",
-				"\x02\x05\x03\x06\x04\x0eg\x00\x04\xc5\x05\vbar\x00\x0e\x00\x00\x00\x00\x00\x00\vfoo\x01\r\x00\x00\x00\x00\x00\x00\f\x0e\x06\x05\x84\xa6\xb8\xab\x06\x01",
-			},
-			edits: []VersionEdit{
-				{
-					ComparerName:       "leveldb.BytewiseComparator",
-					MinUnflushedLogNum: 0x2,
-					NextFileNum:        0x7,
-				},
-				{
-					MinUnflushedLogNum: 0x5,
-					NextFileNum:        0x6,
-					LastSeqNum:         0xe,
-					NewFiles: []NewFileEntry{
-						{
-							Level: 0,
-							Meta:  m,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
-			f, err := os.Open("../../testdata/" + tc.filename)
-			if err != nil {
-				t.Fatalf("filename=%q: open error: %v", tc.filename, err)
-			}
-			defer f.Close()
-			i, r := 0, record.NewReader(f, 0 /* logNum */)
-			for {
-				rr, err := r.Next()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					t.Fatalf("filename=%q i=%d: record reader error: %v", tc.filename, i, err)
-				}
-				if i >= len(tc.edits) {
-					t.Fatalf("filename=%q i=%d: too many version edits", tc.filename, i+1)
+	var inputBuf, outputBuf bytes.Buffer
+	datadriven.RunTest(t, "testdata/version_edit_decode",
+		func(t *testing.T, d *datadriven.TestData) string {
+			inputBuf.Reset()
+			outputBuf.Reset()
+			switch d.Cmd {
+			case "decode":
+				for _, l := range crstrings.Lines(d.Input) {
+					i := strings.IndexByte(l, '#')
+					if i == -1 {
+						i = len(l)
+					}
+					s := strings.Map(func(r rune) rune {
+						if unicode.IsSpace(r) {
+							return -1
+						}
+						return r
+					}, l[:i])
+					if strings.HasPrefix(s, "\"") {
+						unquoted, err := strconv.Unquote(s)
+						require.NoError(t, err)
+						io.WriteString(&inputBuf, unquoted)
+					} else {
+						b, err := hex.DecodeString(s)
+						require.NoError(t, err)
+						inputBuf.Write(b)
+					}
 				}
 
-				encodedEdit, err := io.ReadAll(rr)
-				if err != nil {
-					t.Fatalf("filename=%q i=%d: read error: %v", tc.filename, i, err)
-				}
-				if s := string(encodedEdit); s != tc.encodedEdits[i] {
-					t.Fatalf("filename=%q i=%d: got encoded %q, want %q", tc.filename, i, s, tc.encodedEdits[i])
+				r := bytes.NewReader(inputBuf.Bytes())
+				var ve VersionEdit
+				if err := ve.Decode(r); err != nil {
+					return fmt.Sprintf("err: %v", err)
 				}
 
-				var edit VersionEdit
-				err = edit.Decode(bytes.NewReader(encodedEdit))
-				if err != nil {
-					t.Fatalf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
-				}
-				if !reflect.DeepEqual(edit, tc.edits[i]) {
-					t.Fatalf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v\n%s", tc.filename, i, edit, tc.edits[i],
-						strings.Join(pretty.Diff(edit, tc.edits[i]), "\n"))
-				}
-				if err := checkRoundTrip(edit); err != nil {
-					t.Fatalf("filename=%q i=%d: round trip: %v", tc.filename, i, err)
+				// Ensure the version edit roundtrips.
+				if err := checkRoundTrip(ve); err != nil {
+					t.Fatal(err)
 				}
 
-				i++
-			}
-			if i != len(tc.edits) {
-				t.Fatalf("filename=%q: got %d edits, want %d", tc.filename, i, len(tc.edits))
+				serialized := inputBuf.Bytes()
+				for len(serialized) > 0 {
+					line := serialized[:min(30, len(serialized))]
+					serialized = serialized[len(line):]
+					outputBuf.WriteString(hex.EncodeToString(line))
+					outputBuf.WriteByte('\n')
+				}
+				fmt.Fprint(&outputBuf, ve.String())
+				return outputBuf.String()
+			default:
+				panic(fmt.Sprintf("unknown command: %s", d.Cmd))
 			}
 		})
-	}
 }
 
 func TestVersionEditEncodeLastSeqNum(t *testing.T) {
