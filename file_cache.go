@@ -85,33 +85,23 @@ func tableNewRangeKeyIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
 	}
 }
 
-// fileCacheOpts contains the db specific fields of a file cache. This is stored
-// in the fileCacheHandle along with the file cache.
-//
-// NB: It is important to make sure that the fields in this struct are
-// read-only. Since the fields here are shared by every single fileCacheShard,
-// if non read-only fields are updated, we could have unnecessary evictions of
-// those fields, and the surrounding fields from the CPU caches.
-type fileCacheOpts struct {
-	// iterCount keeps track of how many iterators are open. It is used to keep
-	// track of leaked iterators on a per-db level.
-	iterCount *atomic.Int32
-
-	loggerAndTracer   LoggerAndTracer
-	cache             *cache.Cache
-	cacheID           cache.ID
-	objProvider       objstorage.Provider
-	readerOpts        sstable.ReaderOptions
-	sstStatsCollector *block.CategoryStatsCollector
-}
-
 // fileCacheHandle is used to access the file cache. Each DB has its own handle.
 type fileCacheHandle struct {
 	fileCache *FileCache
 
-	// dbOpts contains fields relevant to the file cache which are unique to
-	// each DB.
-	dbOpts fileCacheOpts
+	// The handle contains fields which are unique to each DB. Note that these get
+	// accessed from all shards, so keep read-only fields separate for read-write
+	// fields.
+	loggerAndTracer LoggerAndTracer
+	cache           *cache.Cache
+	cacheID         cache.ID
+	objProvider     objstorage.Provider
+	readerOpts      sstable.ReaderOptions
+
+	// iterCount keeps track of how many iterators are open. It is used to keep
+	// track of leaked iterators on a per-db level.
+	iterCount         atomic.Int32
+	sstStatsCollector block.CategoryStatsCollector
 }
 
 // newHandle creates a handle for the FileCache which has its own options. Each
@@ -132,65 +122,68 @@ func (c *FileCache) newHandle(
 	}
 	c.Ref()
 
-	t := &fileCacheHandle{}
-	t.fileCache = c
-	t.dbOpts.loggerAndTracer = opts.LoggerAndTracer
-	t.dbOpts.cache = opts.Cache
-	t.dbOpts.cacheID = cacheID
-	t.dbOpts.objProvider = objProvider
-	t.dbOpts.readerOpts = opts.MakeReaderOptions()
-	t.dbOpts.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
-	t.dbOpts.iterCount = new(atomic.Int32)
-	t.dbOpts.sstStatsCollector = &block.CategoryStatsCollector{}
+	t := &fileCacheHandle{
+		fileCache:       c,
+		loggerAndTracer: opts.LoggerAndTracer,
+		cache:           opts.Cache,
+		cacheID:         cacheID,
+		objProvider:     objProvider,
+	}
+	t.readerOpts = opts.MakeReaderOptions()
+	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
 	return t
 }
 
-// Close the handle. Before calling, make sure that there will be no further
-// need to access any of the files associated with the store.
-func (c *fileCacheHandle) Close() error {
+// Before calling close, make sure that there will be no further need
+// to access any of the files associated with the store.
+func (h *fileCacheHandle) close() error {
 	// We want to do some cleanup work here. Check for leaked iterators
 	// by the DB using this container. Note that we'll still perform cleanup
 	// below in the case that there are leaked iterators.
 	var err error
-	if v := c.dbOpts.iterCount.Load(); v > 0 {
+	if v := h.iterCount.Load(); v > 0 {
 		err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 	}
 
 	// Release nodes here.
-	for _, shard := range c.fileCache.shards {
+	for _, shard := range h.fileCache.shards {
 		if shard != nil {
-			shard.removeDB(&c.dbOpts)
+			shard.removeDB(h)
 		}
 	}
-	err = firstError(err, c.fileCache.Unref())
-	*c = fileCacheHandle{}
+	err = firstError(err, h.fileCache.Unref())
+	*h = fileCacheHandle{}
 	return err
 }
 
-func (c *fileCacheHandle) newIters(
+func (h *fileCacheHandle) newIters(
 	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	kinds iterKinds,
 ) (iterSet, error) {
-	return c.fileCache.getShard(file.FileBacking.DiskFileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts, kinds)
+	return h.fileCache.getShard(file.FileBacking.DiskFileNum).newIters(ctx, file, opts, internalOpts, h, kinds)
 }
 
 // getTableProperties returns the properties associated with the backing physical
 // table if the input metadata belongs to a virtual sstable.
-func (c *fileCacheHandle) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.fileCache.getShard(file.FileBacking.DiskFileNum).getTableProperties(file, &c.dbOpts)
+func (h *fileCacheHandle) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+	return h.fileCache.getShard(file.FileBacking.DiskFileNum).getTableProperties(file, h)
 }
 
-func (c *fileCacheHandle) evict(fileNum base.DiskFileNum) {
-	c.fileCache.getShard(fileNum).evict(fileNum, &c.dbOpts, false)
+func (h *fileCacheHandle) evict(fileNum base.DiskFileNum) {
+	h.fileCache.getShard(fileNum).evict(fileNum, h, false)
 }
 
-func (c *fileCacheHandle) metrics() (CacheMetrics, FilterMetrics) {
+func (h *fileCacheHandle) SSTStatsCollector() *block.CategoryStatsCollector {
+	return &h.sstStatsCollector
+}
+
+func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 	var m CacheMetrics
-	for i := range c.fileCache.shards {
-		s := c.fileCache.shards[i]
+	for i := range h.fileCache.shards {
+		s := h.fileCache.shards[i]
 		s.mu.RLock()
 		m.Count += int64(len(s.mu.nodes))
 		s.mu.RUnlock()
@@ -198,14 +191,14 @@ func (c *fileCacheHandle) metrics() (CacheMetrics, FilterMetrics) {
 		m.Misses += s.misses.Load()
 	}
 	m.Size = m.Count * int64(unsafe.Sizeof(fileCacheNode{})+unsafe.Sizeof(fileCacheValue{})+unsafe.Sizeof(sstable.Reader{}))
-	f := c.dbOpts.readerOpts.FilterMetricsTracker.Load()
+	f := h.readerOpts.FilterMetricsTracker.Load()
 	return m, f
 }
 
-func (c *fileCacheHandle) estimateSize(
+func (h *fileCacheHandle) estimateSize(
 	meta *fileMetadata, lower, upper []byte,
 ) (size uint64, err error) {
-	c.withCommonReader(meta, func(cr sstable.CommonReader) error {
+	h.withCommonReader(meta, func(cr sstable.CommonReader) error {
 		size, err = cr.EstimateDiskUsage(lower, upper)
 		return err
 	})
@@ -226,11 +219,11 @@ func createCommonReader(v *fileCacheValue, file *fileMetadata) sstable.CommonRea
 	return cr
 }
 
-func (c *fileCacheHandle) withCommonReader(
+func (h *fileCacheHandle) withCommonReader(
 	meta *fileMetadata, fn func(sstable.CommonReader) error,
 ) error {
-	s := c.fileCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(context.TODO(), meta.FileBacking, &c.dbOpts)
+	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
+	v := s.findNode(context.TODO(), meta.FileBacking, h)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -238,9 +231,9 @@ func (c *fileCacheHandle) withCommonReader(
 	return fn(createCommonReader(v, meta))
 }
 
-func (c *fileCacheHandle) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
-	s := c.fileCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(context.TODO(), meta.FileBacking, &c.dbOpts)
+func (h *fileCacheHandle) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
+	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
+	v := s.findNode(context.TODO(), meta.FileBacking, h)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
@@ -249,16 +242,16 @@ func (c *fileCacheHandle) withReader(meta physicalMeta, fn func(*sstable.Reader)
 }
 
 // withVirtualReader fetches a VirtualReader associated with a virtual sstable.
-func (c *fileCacheHandle) withVirtualReader(
+func (h *fileCacheHandle) withVirtualReader(
 	meta virtualMeta, fn func(sstable.VirtualReader) error,
 ) error {
-	s := c.fileCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(context.TODO(), meta.FileBacking, &c.dbOpts)
+	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
+	v := s.findNode(context.TODO(), meta.FileBacking, h)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
 	}
-	provider := c.dbOpts.objProvider
+	provider := h.objProvider
 	objMeta, err := provider.Lookup(fileTypeTable, meta.FileBacking.DiskFileNum)
 	if err != nil {
 		return err
@@ -266,8 +259,8 @@ func (c *fileCacheHandle) withVirtualReader(
 	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(objMeta.IsShared())))
 }
 
-func (c *fileCacheHandle) iterCount() int64 {
-	return int64(c.dbOpts.iterCount.Load())
+func (h *fileCacheHandle) IterCount() int64 {
+	return int64(h.iterCount.Load())
 }
 
 // FileCache is a shareable cache for open files. Open files are exclusively
@@ -427,7 +420,7 @@ func (c *fileCacheShard) newIters(
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
-	dbOpts *fileCacheOpts,
+	handle *fileCacheHandle,
 	kinds iterKinds,
 ) (iterSet, error) {
 	// TODO(sumeer): constructing the Reader should also use a plumbed context,
@@ -438,7 +431,7 @@ func (c *fileCacheShard) newIters(
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(ctx, file.FileBacking, dbOpts)
+	v := c.findNode(ctx, file.FileBacking, handle)
 	if v.err != nil {
 		defer c.unrefValue(v)
 		return iterSet{}, v.err
@@ -453,10 +446,10 @@ func (c *fileCacheShard) newIters(
 		iters.rangeKey, err = newRangeKeyIter(ctx, r, file, cr, opts.SpanIterOptions(), internalOpts)
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
-		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, dbOpts, internalOpts)
+		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, handle, internalOpts)
 	}
 	if kinds.Point() && err == nil {
-		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, dbOpts)
+		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, handle)
 	}
 	if err != nil {
 		// NB: There's a subtlety here: Because the point iterator is the last
@@ -490,7 +483,7 @@ func (c *fileCacheShard) newPointIter(
 	cr sstable.CommonReader,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
-	dbOpts *fileCacheOpts,
+	handle *fileCacheHandle,
 ) (internalIterator, error) {
 	var (
 		hideObsoletePoints bool = false
@@ -565,9 +558,8 @@ func (c *fileCacheShard) newPointIter(
 	transforms := file.IterTransforms()
 	transforms.HideObsoletePoints = hideObsoletePoints
 	iterStatsAccum := internalOpts.iterStatsAccumulator
-	if iterStatsAccum == nil && opts != nil && dbOpts.sstStatsCollector != nil {
-		iterStatsAccum = dbOpts.sstStatsCollector.Accumulator(
-			uint64(uintptr(unsafe.Pointer(r))), opts.Category)
+	if iterStatsAccum == nil && opts != nil {
+		iterStatsAccum = handle.SSTStatsCollector().Accumulator(uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
 	if internalOpts.compaction {
 		iter, err = cr.NewCompactionIter(transforms, block.ReadEnv{IterStats: iterStatsAccum, BufferPool: internalOpts.bufferPool}, &v.readerProvider)
@@ -583,7 +575,7 @@ func (c *fileCacheShard) newPointIter(
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
 	c.iterCount.Add(1)
-	dbOpts.iterCount.Add(1)
+	handle.iterCount.Add(1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
@@ -599,7 +591,7 @@ func newRangeDelIter(
 	ctx context.Context,
 	file *manifest.FileMetadata,
 	cr sstable.CommonReader,
-	dbOpts *fileCacheOpts,
+	handle *fileCacheHandle,
 	internalOpts internalIterOpts,
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
@@ -616,8 +608,8 @@ func newRangeDelIter(
 	// Assert expected bounds in tests.
 	if invariants.Sometimes(50) && rangeDelIter != nil {
 		cmp := base.DefaultComparer.Compare
-		if dbOpts.readerOpts.Comparer != nil {
-			cmp = dbOpts.readerOpts.Comparer.Compare
+		if handle.readerOpts.Comparer != nil {
+			cmp = handle.readerOpts.Comparer.Compare
 		}
 		rangeDelIter = keyspan.AssertBounds(
 			rangeDelIter, file.SmallestPointKey, file.LargestPointKey.UserKey, cmp,
@@ -664,7 +656,7 @@ func newRangeKeyIter(
 // specific table.
 type tableCacheShardReaderProvider struct {
 	c              *fileCacheShard
-	dbOpts         *fileCacheOpts
+	handle         *fileCacheHandle
 	backingFileNum base.DiskFileNum
 
 	mu struct {
@@ -681,10 +673,10 @@ type tableCacheShardReaderProvider struct {
 var _ valblk.ReaderProvider = &tableCacheShardReaderProvider{}
 
 func (rp *tableCacheShardReaderProvider) init(
-	c *fileCacheShard, dbOpts *fileCacheOpts, backingFileNum base.DiskFileNum,
+	c *fileCacheShard, handle *fileCacheHandle, backingFileNum base.DiskFileNum,
 ) {
 	rp.c = c
-	rp.dbOpts = dbOpts
+	rp.handle = handle
 	rp.backingFileNum = backingFileNum
 	rp.mu.v = nil
 	rp.mu.refCount = 0
@@ -720,7 +712,7 @@ func (rp *tableCacheShardReaderProvider) GetReader(
 	// findNodeInternal will need to do IO to initialize a new Reader. We hold
 	// rp.mu during this time so that concurrent GetReader calls block until the
 	// Reader is created.
-	v := rp.c.findNodeInternal(ctx, rp.backingFileNum, rp.dbOpts)
+	v := rp.c.findNodeInternal(ctx, rp.backingFileNum, rp.handle)
 	if v.err != nil {
 		defer rp.c.unrefValue(v)
 		return nil, v.err
@@ -746,10 +738,10 @@ func (rp *tableCacheShardReaderProvider) Close() {
 
 // getTableProperties return sst table properties for target file.
 func (c *fileCacheShard) getTableProperties(
-	file *fileMetadata, dbOpts *fileCacheOpts,
+	file *fileMetadata, handle *fileCacheHandle,
 ) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(context.TODO(), file.FileBacking, dbOpts)
+	v := c.findNode(context.TODO(), file.FileBacking, handle)
 	defer c.unrefValue(v)
 
 	if v.err != nil {
@@ -827,7 +819,7 @@ func (c *fileCacheShard) unrefValue(v *fileCacheValue) {
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
 func (c *fileCacheShard) findNode(
-	ctx context.Context, b *fileBacking, dbOpts *fileCacheOpts,
+	ctx context.Context, b *fileBacking, handle *fileCacheHandle,
 ) *fileCacheValue {
 	// The backing must have a positive refcount (otherwise it could be deleted
 	// at any time).
@@ -839,15 +831,15 @@ func (c *fileCacheShard) findNode(
 	// be passed to findNodeInternal.
 	backingFileNum := b.DiskFileNum
 
-	return c.findNodeInternal(ctx, backingFileNum, dbOpts)
+	return c.findNodeInternal(ctx, backingFileNum, handle)
 }
 
 func (c *fileCacheShard) findNodeInternal(
-	ctx context.Context, backingFileNum base.DiskFileNum, dbOpts *fileCacheOpts,
+	ctx context.Context, backingFileNum base.DiskFileNum, handle *fileCacheHandle,
 ) *fileCacheValue {
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
-	key := fileCacheKey{dbOpts.cacheID, backingFileNum}
+	key := fileCacheKey{handle.cacheID, backingFileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
@@ -872,7 +864,7 @@ func (c *fileCacheShard) findNodeInternal(
 			fileNum: backingFileNum,
 			ptype:   fileCacheNodeCold,
 		}
-		c.addNode(n, dbOpts)
+		c.addNode(n, handle)
 		c.mu.sizeCold++
 
 	case n.value != nil:
@@ -897,7 +889,7 @@ func (c *fileCacheShard) findNodeInternal(
 
 		n.referenced.Store(false)
 		n.ptype = fileCacheNodeHot
-		c.addNode(n, dbOpts)
+		c.addNode(n, handle)
 		c.mu.sizeHot++
 	}
 
@@ -906,7 +898,7 @@ func (c *fileCacheShard) findNodeInternal(
 	v := &fileCacheValue{
 		loaded: make(chan struct{}),
 	}
-	v.readerProvider.init(c, dbOpts, backingFileNum)
+	v.readerProvider.init(c, handle, backingFileNum)
 	v.refCount.Store(2)
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
@@ -918,9 +910,7 @@ func (c *fileCacheShard) findNodeInternal(
 		}
 		c.unrefValue(v)
 		c.iterCount.Add(-1)
-		if dbOpts.iterCount != nil {
-			dbOpts.iterCount.Add(-1)
-		}
+		handle.iterCount.Add(-1)
 		return nil
 	}
 	n.value = v
@@ -929,13 +919,13 @@ func (c *fileCacheShard) findNodeInternal(
 
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
-	v.load(ctx, backingFileNum, c, dbOpts)
+	v.load(ctx, backingFileNum, c, handle)
 	return v
 }
 
-func (c *fileCacheShard) addNode(n *fileCacheNode, dbOpts *fileCacheOpts) {
+func (c *fileCacheShard) addNode(n *fileCacheNode, handle *fileCacheHandle) {
 	c.evictNodes()
-	n.cacheID = dbOpts.cacheID
+	n.cacheID = handle.cacheID
 	key := fileCacheKey{n.cacheID, n.fileNum}
 	c.mu.nodes[key] = n
 
@@ -1030,9 +1020,9 @@ func (c *fileCacheShard) runHandTest() {
 	c.mu.handTest = c.mu.handTest.next()
 }
 
-func (c *fileCacheShard) evict(fileNum base.DiskFileNum, dbOpts *fileCacheOpts, allowLeak bool) {
+func (c *fileCacheShard) evict(fileNum base.DiskFileNum, handle *fileCacheHandle, allowLeak bool) {
 	c.mu.Lock()
-	key := fileCacheKey{dbOpts.cacheID, fileNum}
+	key := fileCacheKey{handle.cacheID, fileNum}
 	n := c.mu.nodes[key]
 	var v *fileCacheValue
 	if n != nil {
@@ -1046,7 +1036,7 @@ func (c *fileCacheShard) evict(fileNum base.DiskFileNum, dbOpts *fileCacheOpts, 
 		if v != nil {
 			if !allowLeak {
 				if t := v.refCount.Add(-1); t != 0 {
-					dbOpts.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+					handle.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
 				}
 			}
 			c.releasing.Add(1)
@@ -1059,13 +1049,13 @@ func (c *fileCacheShard) evict(fileNum base.DiskFileNum, dbOpts *fileCacheOpts, 
 		v.release(c)
 	}
 
-	dbOpts.cache.EvictFile(dbOpts.cacheID, fileNum)
+	handle.cache.EvictFile(handle.cacheID, fileNum)
 }
 
 // removeDB evicts any nodes which have a reference to the DB
-// associated with dbOpts.cacheID. Make sure that there will
+// associated with handle.cacheID. Make sure that there will
 // be no more accesses to the files associated with the DB.
-func (c *fileCacheShard) removeDB(dbOpts *fileCacheOpts) {
+func (c *fileCacheShard) removeDB(handle *fileCacheHandle) {
 	var fileNums []base.DiskFileNum
 
 	c.mu.RLock()
@@ -1077,7 +1067,7 @@ func (c *fileCacheShard) removeDB(dbOpts *fileCacheOpts) {
 			firstNode = node
 		}
 
-		if node.cacheID == dbOpts.cacheID {
+		if node.cacheID == handle.cacheID {
 			fileNums = append(fileNums, node.fileNum)
 		}
 		node = node.next()
@@ -1088,7 +1078,7 @@ func (c *fileCacheShard) removeDB(dbOpts *fileCacheOpts) {
 	// This should synchronously close all the files
 	// associated with the DB.
 	for _, fileNum := range fileNums {
-		c.evict(fileNum, dbOpts, true)
+		c.evict(fileNum, handle, true)
 	}
 }
 
@@ -1168,20 +1158,20 @@ func (v *fileCacheValue) mustSSTableReader() *sstable.Reader {
 }
 
 func (v *fileCacheValue) load(
-	ctx context.Context, backingFileNum base.DiskFileNum, c *fileCacheShard, dbOpts *fileCacheOpts,
+	ctx context.Context, backingFileNum base.DiskFileNum, c *fileCacheShard, handle *fileCacheHandle,
 ) {
 	// Try opening the file first.
 	var f objstorage.Readable
 	var r *sstable.Reader
 	var err error
-	f, err = dbOpts.objProvider.OpenForReading(
+	f, err = handle.objProvider.OpenForReading(
 		ctx, fileTypeTable, backingFileNum, objstorage.OpenOptions{MustExist: true},
 	)
 	if err == nil {
-		o := dbOpts.readerOpts
+		o := handle.readerOpts
 		o.CacheOpts = sstableinternal.CacheOptions{
-			Cache:   dbOpts.cache,
-			CacheID: dbOpts.cacheID,
+			Cache:   handle.cache,
+			CacheID: handle.cacheID,
 			FileNum: backingFileNum,
 		}
 		r, err = sstable.NewReader(ctx, f, o)
@@ -1189,7 +1179,7 @@ func (v *fileCacheValue) load(
 	if err == nil {
 		v.reader = r
 		var objMeta objstorage.ObjectMetadata
-		objMeta, err = dbOpts.objProvider.Lookup(fileTypeTable, backingFileNum)
+		objMeta, err = handle.objProvider.Lookup(fileTypeTable, backingFileNum)
 		v.isShared = objMeta.IsShared()
 	}
 	if err != nil {
@@ -1201,7 +1191,7 @@ func (v *fileCacheValue) load(
 		defer c.mu.Unlock()
 		// Lookup the node in the cache again as it might have already been
 		// removed.
-		key := fileCacheKey{dbOpts.cacheID, backingFileNum}
+		key := fileCacheKey{handle.cacheID, backingFileNum}
 		n := c.mu.nodes[key]
 		if n != nil && n.value == v {
 			c.releaseNode(n)
@@ -1254,7 +1244,7 @@ type fileCacheNode struct {
 	referenced atomic.Bool
 
 	// Storing the cache id associated with the DB instance here
-	// avoids the need to thread the dbOpts struct through many functions.
+	// avoids the need to thread the handle struct through many functions.
 	cacheID cache.ID
 }
 

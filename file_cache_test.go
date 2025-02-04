@@ -1118,11 +1118,11 @@ func TestFileCacheClockPro(t *testing.T) {
 	cache := &fileCacheShard{}
 	// NB: The file cache size of 200 is required for the expected test values.
 	cache.init(200)
-	dbOpts := &fileCacheOpts{}
-	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
-	dbOpts.cacheID = 0
-	dbOpts.objProvider = objProvider
-	dbOpts.readerOpts = opts.MakeReaderOptions()
+	handle := &fileCacheHandle{}
+	handle.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
+	handle.cacheID = 0
+	handle.objProvider = objProvider
+	handle.readerOpts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)
 	tables := make(map[int]bool)
@@ -1145,7 +1145,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		m := &fileMetadata{FileNum: FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		v := cache.findNode(context.Background(), m.FileBacking, dbOpts)
+		v := cache.findNode(context.Background(), m.FileBacking, handle)
 		cache.unrefValue(v)
 
 		hit := cache.hits.Load() != oldHits
@@ -1255,11 +1255,11 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	cache := &fileCacheShard{}
 	cache.init(2)
-	dbOpts := &fileCacheOpts{}
-	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
-	dbOpts.cacheID = 0
-	dbOpts.objProvider = objProvider
-	dbOpts.readerOpts = opts.MakeReaderOptions()
+	handle := &fileCacheHandle{}
+	handle.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
+	handle.cacheID = 0
+	handle.objProvider = objProvider
+	handle.readerOpts = opts.MakeReaderOptions()
 
 	makeTable(1)
 
@@ -1269,7 +1269,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v := cache.findNode(context.Background(), m.FileBacking, dbOpts)
+		v := cache.findNode(context.Background(), m.FileBacking, handle)
 		cache.unrefValue(v)
 	}
 }
