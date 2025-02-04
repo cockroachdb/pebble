@@ -107,19 +107,9 @@ type fileCacheHandle struct {
 // newHandle creates a handle for the FileCache which has its own options. Each
 // handle has its own set of files in the cache, separate from those of other
 // handles.
-//
-// Each handle's cacheID must be unique.
-//
-// newHandle will panic if the underlying block cache in the file cache doesn't
-// match Options.Cache.
 func (c *FileCache) newHandle(
 	cacheID cache.ID, objProvider objstorage.Provider, opts *Options,
 ) *fileCacheHandle {
-	// We will release a ref to the file cache acquired here when
-	// fileCacheHandle.close is called.
-	if c.cache != opts.Cache {
-		panic("pebble: underlying cache for the file cache and db are different")
-	}
 	c.Ref()
 
 	t := &fileCacheHandle{
@@ -134,9 +124,9 @@ func (c *FileCache) newHandle(
 	return t
 }
 
-// Before calling close, make sure that there will be no further need
+// Close the handle, make sure that there will be no further need
 // to access any of the files associated with the store.
-func (h *fileCacheHandle) close() error {
+func (h *fileCacheHandle) Close() error {
 	// We want to do some cleanup work here. Check for leaked iterators
 	// by the DB using this container. Note that we'll still perform cleanup
 	// below in the case that there are leaked iterators.
@@ -268,7 +258,6 @@ func (h *fileCacheHandle) IterCount() int64 {
 type FileCache struct {
 	refs atomic.Int64
 
-	cache  *Cache
 	shards []*fileCacheShard
 }
 
@@ -299,9 +288,6 @@ func (c *FileCache) Unref() error {
 			err = firstError(err, c.shards[i].Close())
 		}
 
-		// Unref the cache which we create a reference to when the file cache is
-		// first instantiated.
-		c.cache.Unref()
 		return err
 	}
 	return nil
@@ -310,7 +296,7 @@ func (c *FileCache) Unref() error {
 // NewFileCache will create a new file cache with one outstanding reference. It
 // is the callers responsibility to call Unref if they will no longer hold a
 // reference to the file cache.
-func NewFileCache(cache *Cache, numShards int, size int) *FileCache {
+func NewFileCache(numShards int, size int) *FileCache {
 	if size == 0 {
 		panic("pebble: cannot create a file cache of size 0")
 	} else if numShards == 0 {
@@ -318,8 +304,6 @@ func NewFileCache(cache *Cache, numShards int, size int) *FileCache {
 	}
 
 	c := &FileCache{}
-	c.cache = cache
-	c.cache.Ref()
 
 	c.shards = make([]*fileCacheShard, numShards)
 	for i := range c.shards {
@@ -338,7 +322,7 @@ func (c *FileCache) getShard(fileNum base.DiskFileNum) *fileCacheShard {
 }
 
 type fileCacheKey struct {
-	cacheID cache.ID
+	handle  *fileCacheHandle
 	fileNum base.DiskFileNum
 }
 
@@ -764,7 +748,7 @@ func (c *fileCacheShard) releaseNode(n *fileCacheNode) {
 //
 // c.mu must be held when calling this.
 func (c *fileCacheShard) unlinkNode(n *fileCacheNode) {
-	key := fileCacheKey{n.cacheID, n.fileNum}
+	key := fileCacheKey{n.handle, n.fileNum}
 	delete(c.mu.nodes, key)
 
 	switch n.ptype {
@@ -839,7 +823,7 @@ func (c *fileCacheShard) findNodeInternal(
 ) *fileCacheValue {
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
-	key := fileCacheKey{handle.cacheID, backingFileNum}
+	key := fileCacheKey{handle, backingFileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
@@ -863,8 +847,9 @@ func (c *fileCacheShard) findNodeInternal(
 		n = &fileCacheNode{
 			fileNum: backingFileNum,
 			ptype:   fileCacheNodeCold,
+			handle:  handle,
 		}
-		c.addNode(n, handle)
+		c.addNode(n)
 		c.mu.sizeCold++
 
 	case n.value != nil:
@@ -889,7 +874,8 @@ func (c *fileCacheShard) findNodeInternal(
 
 		n.referenced.Store(false)
 		n.ptype = fileCacheNodeHot
-		c.addNode(n, handle)
+		n.handle = handle
+		c.addNode(n)
 		c.mu.sizeHot++
 	}
 
@@ -923,10 +909,9 @@ func (c *fileCacheShard) findNodeInternal(
 	return v
 }
 
-func (c *fileCacheShard) addNode(n *fileCacheNode, handle *fileCacheHandle) {
+func (c *fileCacheShard) addNode(n *fileCacheNode) {
 	c.evictNodes()
-	n.cacheID = handle.cacheID
-	key := fileCacheKey{n.cacheID, n.fileNum}
+	key := fileCacheKey{n.handle, n.fileNum}
 	c.mu.nodes[key] = n
 
 	n.links.next = n
@@ -1022,7 +1007,7 @@ func (c *fileCacheShard) runHandTest() {
 
 func (c *fileCacheShard) evict(fileNum base.DiskFileNum, handle *fileCacheHandle, allowLeak bool) {
 	c.mu.Lock()
-	key := fileCacheKey{handle.cacheID, fileNum}
+	key := fileCacheKey{handle, fileNum}
 	n := c.mu.nodes[key]
 	var v *fileCacheValue
 	if n != nil {
@@ -1052,9 +1037,8 @@ func (c *fileCacheShard) evict(fileNum base.DiskFileNum, handle *fileCacheHandle
 	handle.cache.EvictFile(handle.cacheID, fileNum)
 }
 
-// removeDB evicts any nodes which have a reference to the DB
-// associated with handle.cacheID. Make sure that there will
-// be no more accesses to the files associated with the DB.
+// removeDB evicts any nodes associated with handle. Make sure that there will
+// be no more accesses to files associated with the handle.
 func (c *fileCacheShard) removeDB(handle *fileCacheHandle) {
 	var fileNums []base.DiskFileNum
 
@@ -1067,7 +1051,7 @@ func (c *fileCacheShard) removeDB(handle *fileCacheHandle) {
 			firstNode = node
 		}
 
-		if node.cacheID == handle.cacheID {
+		if node.handle == handle {
 			fileNums = append(fileNums, node.fileNum)
 		}
 		node = node.next()
@@ -1191,7 +1175,7 @@ func (v *fileCacheValue) load(
 		defer c.mu.Unlock()
 		// Lookup the node in the cache again as it might have already been
 		// removed.
-		key := fileCacheKey{handle.cacheID, backingFileNum}
+		key := fileCacheKey{handle, backingFileNum}
 		n := c.mu.nodes[key]
 		if n != nil && n.value == v {
 			c.releaseNode(n)
@@ -1243,9 +1227,8 @@ type fileCacheNode struct {
 	// since the last time one of the clock hands swept it.
 	referenced atomic.Bool
 
-	// Storing the cache id associated with the DB instance here
-	// avoids the need to thread the handle struct through many functions.
-	cacheID cache.ID
+	// A fileCacheNode is associated with a specific fileCacheHandle.
+	handle *fileCacheHandle
 }
 
 func (n *fileCacheNode) next() *fileCacheNode {

@@ -50,7 +50,7 @@ import (
 
 func TestOpenSharedFileCache(t *testing.T) {
 	c := cache.New(cacheDefaultSize)
-	tc := NewFileCache(c, 16, 100)
+	tc := NewFileCache(16, 100)
 	defer tc.Unref()
 	defer c.Unref()
 
