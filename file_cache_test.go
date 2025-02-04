@@ -164,7 +164,7 @@ func newFileCacheTest(
 	t *testing.T, blockCacheSize int64, fileCacheSize int, fileCacheNumShards int,
 ) *fileCacheTest {
 	blockCache := NewCache(blockCacheSize)
-	fileCache := NewFileCache(blockCache, fileCacheNumShards, fileCacheSize)
+	fileCache := NewFileCache(fileCacheNumShards, fileCacheSize)
 	return &fileCacheTest{
 		T:          t,
 		blockCache: blockCache,
@@ -1044,7 +1044,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	opts.EnsureDefaults()
 	opts.Cache = NewCache(8 << 20) // 8 MB
 	defer opts.Cache.Unref()
-	opts.FileCache = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, fileCacheTestCacheSize)
+	opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheTestCacheSize)
 	defer opts.FileCache.Unref()
 	c := opts.FileCache.newHandle(opts.Cache.NewID(), objProvider, opts)
 	require.NoError(t, err)

@@ -409,7 +409,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
 	if opts.FileCache == nil {
-		opts.FileCache = NewFileCache(opts.Cache, opts.Experimental.FileCacheShards, fileCacheSize)
+		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
 	d.fileCache = opts.FileCache.newHandle(d.cacheID, d.objProvider, d.opts)

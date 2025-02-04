@@ -2027,9 +2027,6 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "FormatMajorVersion (%d) when CreateOnShared is set must be at least %d\n",
 			o.FormatMajorVersion, FormatMinForSharedObjects)
 	}
-	if o.FileCache != nil && o.Cache != o.FileCache.cache {
-		fmt.Fprintf(&buf, "underlying cache in the FileCache and the Cache dont match\n")
-	}
 	if len(o.KeySchemas) > 0 {
 		if o.KeySchema == "" {
 			fmt.Fprintf(&buf, "KeySchemas is set but KeySchema is not\n")
