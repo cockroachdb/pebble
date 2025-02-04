@@ -163,7 +163,9 @@ func (c *fileCacheHandle) Close() error {
 		}
 	}
 	err = firstError(err, c.fileCache.Unref())
-	*c = fileCacheHandle{}
+	// TODO(radu): we have to tolerate metrics() calls after close (see
+	// https://github.com/cockroachdb/cockroach/issues/140454).
+	// *c = fileCacheHandle{}
 	return err
 }
 
