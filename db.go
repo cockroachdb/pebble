@@ -1408,12 +1408,10 @@ func (i *Iterator) constructPointIter(
 	// accumulator for this iterator's configured category and QoS. All SSTable
 	// iterators created by this Iterator will accumulate their stats to it as
 	// they Close during iteration.
-	if collector := i.fc.dbOpts.sstStatsCollector; collector != nil {
-		internalOpts.iterStatsAccumulator = collector.Accumulator(
-			uint64(uintptr(unsafe.Pointer(i))),
-			i.opts.Category,
-		)
-	}
+	internalOpts.iterStatsAccumulator = i.fc.SSTStatsCollector().Accumulator(
+		uint64(uintptr(unsafe.Pointer(i))),
+		i.opts.Category,
+	)
 	if i.opts.RangeKeyMasking.Filter != nil {
 		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
 	}
@@ -2048,9 +2046,9 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
-	metrics.FileCache, metrics.Filter = d.fileCache.metrics()
-	metrics.TableIters = d.fileCache.iterCount()
-	metrics.CategoryStats = d.fileCache.dbOpts.sstStatsCollector.GetStats()
+	metrics.FileCache, metrics.Filter = d.fileCache.Metrics()
+	metrics.TableIters = d.fileCache.IterCount()
+	metrics.CategoryStats = d.fileCache.SSTStatsCollector().GetStats()
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
 
