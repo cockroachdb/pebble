@@ -609,7 +609,8 @@ func (d *dbT) runExcise(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	dbOpts := d.opts.EnsureDefaults()
+	d.opts.EnsureDefaults()
+	dbOpts := d.opts
 	// Disable all processes that would try to open tables: table stats,
 	// consistency check, automatic compactions.
 	dbOpts.DisableTableStats = true

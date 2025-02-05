@@ -92,11 +92,12 @@ func TestCleaner(t *testing.T) {
 				return "open <dir> [archive] [readonly]"
 			}
 			dir := td.CmdArgs[0].String()
-			opts := (&Options{
+			opts := &Options{
 				FS:     fs,
 				WALDir: dir + "_wal",
 				Logger: testLogger{t},
-			}).WithFSDefaults()
+			}
+			opts.WithFSDefaults()
 
 			for i := 1; i < len(td.CmdArgs); i++ {
 				switch td.CmdArgs[i].String() {

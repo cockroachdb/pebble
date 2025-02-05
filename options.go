@@ -449,10 +449,7 @@ type LevelOptions struct {
 // EnsureDefaults ensures that the default values for all of the options have
 // been initialized. It is valid to call EnsureDefaults on a nil receiver. A
 // non-nil result will always be returned.
-func (o *LevelOptions) EnsureDefaults() *LevelOptions {
-	if o == nil {
-		o = &LevelOptions{}
-	}
+func (o *LevelOptions) EnsureDefaults() {
 	if o.BlockRestartInterval <= 0 {
 		o.BlockRestartInterval = base.DefaultBlockRestartInterval
 	}
@@ -473,7 +470,6 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	if o.TargetFileSize <= 0 {
 		o.TargetFileSize = 2 << 20 // 2 MB
 	}
-	return o
 }
 
 // Options holds the optional parameters for configuring pebble. These options
@@ -1127,11 +1123,8 @@ func DebugCheckLevels(db *DB) error {
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
-// valid value was not already specified. Returns the new options.
-func (o *Options) EnsureDefaults() *Options {
-	if o == nil {
-		o = &Options{}
-	}
+// valid value was not already specified.
+func (o *Options) EnsureDefaults() {
 	if o.Cache == nil && o.CacheSize == 0 {
 		o.CacheSize = cacheDefaultSize
 	}
@@ -1289,12 +1282,18 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 
 	o.initMaps()
+}
+
+// DefaultOptions returns a new Options object with the default values set.
+func DefaultOptions() *Options {
+	o := &Options{}
+	o.EnsureDefaults()
 	return o
 }
 
 // WithFSDefaults configures the Options to wrap the configured filesystem with
 // the default virtual file system middleware, like disk-health checking.
-func (o *Options) WithFSDefaults() *Options {
+func (o *Options) WithFSDefaults() {
 	if o.FS == nil {
 		o.FS = vfs.Default
 	}
@@ -1302,7 +1301,6 @@ func (o *Options) WithFSDefaults() *Options {
 		func(info vfs.DiskSlowInfo) {
 			o.EventListener.DiskSlow(info)
 		})
-	return o
 }
 
 // AddEventListener adds the provided event listener to the Options, in addition

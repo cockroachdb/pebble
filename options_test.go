@@ -49,8 +49,7 @@ func testingRandomized(t testing.TB, o *Options) *Options {
 }
 
 func TestLevelOptions(t *testing.T) {
-	var opts *Options
-	opts = opts.EnsureDefaults()
+	opts := DefaultOptions()
 
 	testCases := []struct {
 		level          int
@@ -73,7 +72,7 @@ func TestLevelOptions(t *testing.T) {
 	}
 }
 
-func TestOptionsString(t *testing.T) {
+func TestDefaultOptionsString(t *testing.T) {
 	n := runtime.GOMAXPROCS(8)
 	defer runtime.GOMAXPROCS(n)
 
@@ -132,14 +131,11 @@ func TestOptionsString(t *testing.T) {
   target_file_size=2097152
 `
 
-	var opts *Options
-	opts = opts.EnsureDefaults()
-	require.Equal(t, expected, opts.String())
+	require.Equal(t, expected, DefaultOptions().String())
 }
 
 func TestOptionsCheckCompatibility(t *testing.T) {
-	var opts *Options
-	opts = opts.EnsureDefaults()
+	opts := DefaultOptions()
 	s := opts.String()
 	require.NoError(t, opts.CheckCompatibility(s))
 	require.Regexp(t, `invalid key=value syntax`, opts.CheckCompatibility("foo\n"))
@@ -182,18 +178,20 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 	// Check that an OPTIONS file that configured an explicit WALDir that will
 	// no longer be used errors if it's not also present in WALRecoveryDirs.
 	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
-		(&Options{}).EnsureDefaults().CheckCompatibility(`
+		DefaultOptions().CheckCompatibility(`
 [Options]
   wal_dir=external-wal-dir
 `))
 	// But not if it's configured as a WALRecoveryDir or current WALDir.
-	require.NoError(t,
-		(&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "external-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALRecoveryDirs: []wal.Dir{{Dirname: "external-wal-dir"}}}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(`
 [Options]
   wal_dir=external-wal-dir
 `))
-	require.NoError(t,
-		(&Options{WALDir: "external-wal-dir"}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALDir: "external-wal-dir"}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(`
 [Options]
   wal_dir=external-wal-dir
 `))
@@ -202,7 +200,7 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 	// that will no longer be used errors if it's not also present in
 	// WALRecoveryDirs.
 	require.Equal(t, ErrMissingWALRecoveryDir{Dir: "failover-wal-dir"},
-		(&Options{}).EnsureDefaults().CheckCompatibility(`
+		DefaultOptions().CheckCompatibility(`
 [Options]
 
 [WAL Failover]
@@ -210,13 +208,17 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 `))
 	// But not if it's configured as a WALRecoveryDir or current failover
 	// secondary dir.
-	require.NoError(t, (&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(`
 [Options]
 
 [WAL Failover]
   secondary_dir=failover-wal-dir
 `))
-	require.NoError(t, (&Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(`
 [Options]
 
 [WAL Failover]

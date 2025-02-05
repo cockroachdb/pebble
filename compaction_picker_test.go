@@ -367,7 +367,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 }
 
 func TestCompactionPickerL0(t *testing.T) {
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
 
 	parseMeta := func(s string) (*fileMetadata, error) {
@@ -585,7 +585,7 @@ func TestCompactionPickerL0(t *testing.T) {
 }
 
 func TestCompactionPickerConcurrency(t *testing.T) {
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
 
 	parseMeta := func(s string) (*fileMetadata, error) {
@@ -780,7 +780,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 }
 
 func TestCompactionPickerPickReadTriggered(t *testing.T) {
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	var picker *compactionPickerByScore
 	var rcList readCompactionQueue
 	var vers *version
@@ -937,8 +937,7 @@ func (d alwaysMultiLevel) allowL0() bool  { return false }
 func (d alwaysMultiLevel) String() string { return "always" }
 
 func TestPickedCompactionSetupInputs(t *testing.T) {
-	opts := &Options{}
-	opts.EnsureDefaults()
+	opts := DefaultOptions()
 
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(strings.TrimSpace(s), " ")
@@ -1117,8 +1116,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 }
 
 func TestPickedCompactionExpandInputs(t *testing.T) {
-	opts := &Options{}
-	opts.EnsureDefaults()
+	opts := DefaultOptions()
 	cmp := DefaultComparer.Compare
 	var files []*fileMetadata
 
@@ -1197,7 +1195,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 }
 
 func TestCompactionOutputFileSize(t *testing.T) {
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	var picker *compactionPickerByScore
 	var vers *version
 

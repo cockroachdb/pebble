@@ -42,7 +42,9 @@ func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
 
 func TestRatchetFormat(t *testing.T) {
 	fs := vfs.NewMem()
-	d, err := Open("", (&Options{FS: fs}).WithFSDefaults())
+	opts := &Options{FS: fs}
+	opts.WithFSDefaults()
+	d, err := Open("", opts)
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
 	require.Equal(t, FormatFlushableIngest, d.FormatMajorVersion())
@@ -63,7 +65,9 @@ func TestRatchetFormat(t *testing.T) {
 
 	// If we Open the database again, leaving the default format, the
 	// database should Open using the persisted FormatNewest.
-	d, err = Open("", (&Options{FS: fs, Logger: testLogger{t}}).WithFSDefaults())
+	opts = &Options{FS: fs, Logger: testLogger{t}}
+	opts.WithFSDefaults()
+	d, err = Open("", opts)
 	require.NoError(t, err)
 	require.Equal(t, internalFormatNewest, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
@@ -74,10 +78,12 @@ func TestRatchetFormat(t *testing.T) {
 	require.NoError(t, m.Move("999999"))
 	require.NoError(t, m.Close())
 
-	_, err = Open("", (&Options{
+	opts = &Options{
 		FS:                 fs,
 		FormatMajorVersion: FormatMinSupported,
-	}).WithFSDefaults())
+	}
+	opts.WithFSDefaults()
+	_, err = Open("", opts)
 	require.Error(t, err)
 	require.EqualError(t, err, `pebble: database "" written in unknown format major version 999999`)
 }
@@ -108,11 +114,12 @@ func TestFormatMajorVersions(t *testing.T) {
 	for vers := FormatMinSupported; vers <= FormatNewest; vers++ {
 		t.Run(fmt.Sprintf("vers=%03d", vers), func(t *testing.T) {
 			fs := vfs.NewCrashableMem()
-			opts := (&Options{
+			opts := &Options{
 				FS:                 fs,
 				FormatMajorVersion: vers,
 				Logger:             testLogger{t},
-			}).WithFSDefaults()
+			}
+			opts.WithFSDefaults()
 
 			// Create a database at this format major version and perform
 			// some very basic operations.

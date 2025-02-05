@@ -93,7 +93,8 @@ func (t *Test) init(
 		t.writeOpts = pebble.NoSync
 	}
 	testOpts.Opts.WithFSDefaults()
-	t.opts = testOpts.Opts.EnsureDefaults()
+	t.opts = testOpts.Opts.Clone()
+	t.opts.EnsureDefaults()
 	t.opts.Logger = h
 	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.EventListener = &lel

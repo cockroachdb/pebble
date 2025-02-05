@@ -2715,11 +2715,12 @@ func buildFragmentedRangeKey(b testing.TB, seed uint64) (d *DB, keys [][]byte) {
 //
 // See cockroachdb/cockroach#89327.
 func BenchmarkSeekPrefixTombstones(b *testing.B) {
-	o := (&Options{
+	o := &Options{
 		FS:                 vfs.NewMem(),
 		Comparer:           testkeys.Comparer,
 		FormatMajorVersion: FormatNewest,
-	}).EnsureDefaults()
+	}
+	o.EnsureDefaults()
 	d, err := Open("", o)
 	require.NoError(b, err)
 	defer func() { require.NoError(b, d.Close()) }()
@@ -2777,11 +2778,13 @@ func BenchmarkPointDeletedSwath(b *testing.B) {
 	ks := testkeys.Alpha(maxKeyLen)
 
 	opts := func() *Options {
-		return (&Options{
+		o := &Options{
 			FS:                 vfs.NewMem(),
 			Comparer:           testkeys.Comparer,
 			FormatMajorVersion: FormatNewest,
-		}).EnsureDefaults()
+		}
+		o.EnsureDefaults()
+		return o
 	}
 	type iteratorOp struct {
 		name string
@@ -2963,13 +2966,14 @@ func runBenchmarkQueueWorkload(b *testing.B, deleteRatio float32, initOps int, v
 		queues[i] = &Queue{}
 	}
 
-	o := (&Options{
+	o := &Options{
 		Cache:              cache.New(0), // disable cache
 		DisableWAL:         true,
 		FS:                 vfs.NewMem(),
 		Comparer:           testkeys.Comparer,
 		FormatMajorVersion: FormatNewest,
-	}).EnsureDefaults()
+	}
+	o.EnsureDefaults()
 
 	d, err := Open("", o)
 	require.NoError(b, err)

@@ -72,7 +72,8 @@ func TestExternalIterator(t *testing.T) {
 
 func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 	ks := testkeys.Alpha(6)
-	opts := (&Options{Comparer: testkeys.Comparer}).EnsureDefaults()
+	opts := &Options{Comparer: testkeys.Comparer}
+	opts.EnsureDefaults()
 	iterOpts := &IterOptions{
 		KeyTypes: IterKeyTypePointsAndRanges,
 	}
