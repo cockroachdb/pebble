@@ -110,16 +110,27 @@ func DetermineUintEncoding(minValue, maxValue uint64, numRows int) UintEncoding 
 	return makeUintEncoding(b, isDelta)
 }
 
+// byteWidthTable maps a number’s bit‐length to the number of bytes needed.
+var byteWidthTable = [65]uint8{
+	// 0 bits => 0 bytes
+	0,
+	// 1..8 bits => 1 byte
+	1, 1, 1, 1, 1, 1, 1, 1,
+	// 9..16 bits => 2 bytes
+	2, 2, 2, 2, 2, 2, 2, 2,
+	// 17..32 bits => 4 bytes
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	// 33..64 bits => 8 bytes
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+}
+
 // byteWidth returns the number of bytes necessary to represent the given value,
 // either 0, 1, 2, 4, or 8.
 func byteWidth(maxValue uint64) uint8 {
-	// b the number of bytes necessary to represent maxValue.
-	b := (uint8(bits.Len64(maxValue)) + 7) >> 3
-	// Round up to the nearest power of 2 by subtracting one and filling out all bits.
-	b--
-	b |= b >> 1
-	b |= b >> 2
-	return b + 1
+	// bits.Len64 returns 0 for 0, 1..64 for others.
+	// We then simply return the precomputed result.
+	return byteWidthTable[bits.Len64(maxValue)]
 }
 
 func makeUintEncoding(width uint8, isDelta bool) UintEncoding {
