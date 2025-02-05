@@ -821,7 +821,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 			currentBundlePrefixOffset: 1,
 			completedBundleLen:        0,
 			compressedDataLen:         len(key),
-			offsetEncoding:            DetermineUintEncoding(0, uint64(len(key)), UintEncodingRowThreshold),
+			offsetEncoding:            DetermineUintEncodingNoDelta(uint64(len(key))),
 		}
 	case b.nKeys&(b.bundleSize-1) == 0:
 		// We're starting a new bundle.
@@ -854,7 +854,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 			currentBundleDistinctKeys: 1,
 			compressedDataLen:         completedBundleSize + len(key) - (b.bundleCount(b.nKeys)-1)*blockPrefixLen,
 		}
-		curr.offsetEncoding = DetermineUintEncoding(0, uint64(curr.compressedDataLen), UintEncodingRowThreshold)
+		curr.offsetEncoding = DetermineUintEncodingNoDelta(uint64(curr.compressedDataLen))
 		b.data = append(b.data, key...)
 		b.addOffset(0) // Placeholder for bundle prefix.
 		b.addOffset(uint32(len(b.data)))
@@ -896,7 +896,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		curr.compressedDataLen -= (b.bundleCount(b.nKeys) - 1) * curr.blockPrefixLen
 		// The compressedDataLen is the largest offset we'll need to encode in the
 		// offset table.
-		curr.offsetEncoding = DetermineUintEncoding(0, uint64(curr.compressedDataLen), UintEncodingRowThreshold)
+		curr.offsetEncoding = DetermineUintEncodingNoDelta(uint64(curr.compressedDataLen))
 		b.data = append(b.data, key...)
 		b.addOffset(uint32(len(b.data)))
 	}

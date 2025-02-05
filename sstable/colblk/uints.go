@@ -110,6 +110,13 @@ func DetermineUintEncoding(minValue, maxValue uint64, numRows int) UintEncoding 
 	return makeUintEncoding(b, isDelta)
 }
 
+// DetermineUintEncodingNoDelta is a more efficient variant of
+// DetermineUintEncoding when minValue is zero (or we don't need a delta
+// encoding).
+func DetermineUintEncodingNoDelta(maxValue uint64) UintEncoding {
+	return makeUintEncoding(byteWidth(maxValue), false /* isDelta */)
+}
+
 // byteWidthTable maps a number’s bit‐length to the number of bytes needed.
 var byteWidthTable = [65]uint8{
 	// 0 bits => 0 bytes

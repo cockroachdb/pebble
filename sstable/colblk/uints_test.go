@@ -111,6 +111,9 @@ func TestUintEncoding(t *testing.T) {
 		if actual != tc.expected {
 			t.Errorf("%d/%d/%d expected %s, but got %s", tc.min, tc.max, tc.numRows, tc.expected, actual)
 		}
+		if !actual.IsDelta() {
+			require.Equal(t, actual, DetermineUintEncodingNoDelta(tc.max))
+		}
 	}
 }
 
