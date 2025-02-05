@@ -119,7 +119,10 @@ func checkMemTable(obj interface{}) {
 // newMemTable returns a new MemTable of the specified size. If size is zero,
 // Options.MemTableSize is used instead.
 func newMemTable(opts memTableOptions) *memTable {
-	opts.Options = opts.Options.EnsureDefaults()
+	if opts.Options == nil {
+		opts.Options = &Options{}
+	}
+	opts.Options.EnsureDefaults()
 	m := new(memTable)
 	m.init(opts)
 	return m
