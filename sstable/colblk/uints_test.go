@@ -49,6 +49,25 @@ func TestByteWidth(t *testing.T) {
 	}
 }
 
+func BenchmarkByteWidth(b *testing.B) {
+	for _, n := range []int{1, 2, 4, 8} {
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			vals := make([]uint64, 128)
+			for i := range vals {
+				vals[i] = (1 << (8 * (n - 1))) + rand.Uint64N((1<<(8*n))-(1<<(8*(n-1))))
+			}
+			b.ResetTimer()
+			var x int
+			for i := 0; i < b.N; i++ {
+				x += int(byteWidth(vals[i&127]))
+			}
+			if x != n*b.N {
+				b.Fatal("unexpected result")
+			}
+		})
+	}
+}
+
 func TestUintEncoding(t *testing.T) {
 	for _, r := range interestingIntRanges {
 		actual := DetermineUintEncoding(r.Min, r.Max, UintEncodingRowThreshold)
