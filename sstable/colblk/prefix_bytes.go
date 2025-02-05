@@ -662,9 +662,10 @@ type PrefixBytesBuilder struct {
 	// may remain very small while the physical in-memory size of the
 	// in-progress data slice may grow very large. This may pose memory usage
 	// problems during block building.
-	data       []byte // The raw, concatenated keys w/o any prefix compression
-	nKeys      int    // The number of keys added to the builder
-	bundleSize int    // The number of keys per bundle
+	data               []byte // The raw, concatenated keys w/o any prefix compression
+	nKeys              int    // The number of keys added to the builder
+	bundleSize         int    // The number of keys per bundle
+	completedBundleLen int    // The encoded size of completed bundles
 	// sizings maintains metadata about the size of the accumulated data at both
 	// nKeys and nKeys-1. Information for the state after the most recently
 	// added key is stored at (b.nKeys+1)%2.
@@ -754,7 +755,6 @@ type prefixBytesSizing struct {
 	// INVARIANT: currentBundlePrefixLen >= blockPrefixLen
 	currentBundlePrefixLen    int          // the length of the "current" bundle's prefix
 	currentBundlePrefixOffset int          // the index of the offset of the "current" bundle's prefix
-	completedBundleLen        int          // the encoded size of completed bundles
 	compressedDataLen         int          // the compressed, encoded size of data
 	offsetEncoding            UintEncoding // the encoding necessary to encode the offsets
 }
@@ -763,10 +763,10 @@ func (sz *prefixBytesSizing) String() string {
 	return fmt.Sprintf("lastKeyOff:%d offsetCount:%d blockPrefixLen:%d\n"+
 		"currentBundleDistinct{Len,Keys}: (%d,%d)\n"+
 		"currentBundlePrefix{Len,Offset}: (%d,%d)\n"+
-		"completedBundleLen:%d compressedDataLen:%d offsetEncoding:%s",
+		"compressedDataLen:%d offsetEncoding:%s",
 		sz.lastKeyOff, sz.offsetCount, sz.blockPrefixLen, sz.currentBundleDistinctLen,
 		sz.currentBundleDistinctKeys, sz.currentBundlePrefixLen, sz.currentBundlePrefixOffset,
-		sz.completedBundleLen, sz.compressedDataLen, sz.offsetEncoding)
+		sz.compressedDataLen, sz.offsetEncoding)
 }
 
 // Put adds the provided key to the column. The provided key must be
@@ -820,7 +820,6 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 				currentBundleDistinctKeys: 1,
 				currentBundlePrefixLen:    min(len(key), int(b.maxShared)),
 				currentBundlePrefixOffset: 1,
-				completedBundleLen:        0,
 				compressedDataLen:         len(key),
 				offsetEncoding:            DetermineUintEncodingNoDelta(uint64(len(key))),
 			}
@@ -834,7 +833,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 
 		// Finalize the encoded size of the previous bundle.
 		bundleSizeJustCompleted := prev.currentBundleDistinctLen - (prev.currentBundleDistinctKeys-1)*prev.currentBundlePrefixLen
-		completedBundleSize := prev.completedBundleLen + bundleSizeJustCompleted
+		b.completedBundleLen += bundleSizeJustCompleted
 
 		// Update the block prefix length if necessary. The caller tells us how
 		// many bytes of prefix this key shares with the previous key. The block
@@ -844,17 +843,16 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		blockPrefixLen := min(prev.blockPrefixLen, bytesSharedWithPrev)
 		b.nKeys++
 		*curr = prefixBytesSizing{
-			lastKeyOff:         len(b.data),
-			offsetCount:        b.offsets.count + 2,
-			blockPrefixLen:     blockPrefixLen,
-			completedBundleLen: completedBundleSize,
+			lastKeyOff:     len(b.data),
+			offsetCount:    b.offsets.count + 2,
+			blockPrefixLen: blockPrefixLen,
 			// We're adding the first key to the current bundle. Initialize
 			// the current bundle prefix.
 			currentBundlePrefixOffset: b.offsets.count,
 			currentBundlePrefixLen:    min(len(key), int(b.maxShared)),
 			currentBundleDistinctLen:  len(key),
 			currentBundleDistinctKeys: 1,
-			compressedDataLen:         completedBundleSize + len(key) - (b.bundleCount(b.nKeys)-1)*blockPrefixLen,
+			compressedDataLen:         b.completedBundleLen + len(key) - (b.bundleCount(b.nKeys)-1)*blockPrefixLen,
 		}
 		curr.offsetEncoding = DetermineUintEncodingNoDelta(uint64(curr.compressedDataLen))
 		b.data = append(b.data, key...)
@@ -887,10 +885,9 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		currentBundleDistinctKeys: prev.currentBundleDistinctKeys + 1,
 		currentBundlePrefixLen:    min(prev.currentBundlePrefixLen, bytesSharedWithPrev),
 		currentBundlePrefixOffset: prev.currentBundlePrefixOffset,
-		completedBundleLen:        prev.completedBundleLen,
 	}
 	// Compute the correct compressedDataLen.
-	curr.compressedDataLen = curr.completedBundleLen +
+	curr.compressedDataLen = b.completedBundleLen +
 		curr.currentBundleDistinctLen -
 		(curr.currentBundleDistinctKeys-1)*curr.currentBundlePrefixLen
 	// Currently compressedDataLen is correct, except that it includes the block
@@ -915,7 +912,7 @@ func (b *PrefixBytesBuilder) UnsafeGet(i int) []byte {
 		lastKeyOff := b.sizings[i&1].lastKeyOff
 		return b.data[lastKeyOff:]
 	case b.nKeys - 2:
-		lastKeyOff := b.sizings[(i+1)&1].lastKeyOff
+		lastKeyOff := b.sizings[(i^1)&1].lastKeyOff
 		secondLastKeyOff := b.sizings[i&1].lastKeyOff
 		if secondLastKeyOff == lastKeyOff {
 			// The last key is a duplicate of the second-to-last key.
@@ -1052,7 +1049,7 @@ func (b *PrefixBytesBuilder) Finish(
 	buf[offset] = byte(b.bundleShift)
 	offset++
 
-	sz := &b.sizings[(rows+1)%2]
+	sz := &b.sizings[rows&1^1]
 	stringDataOffset := uintColumnSize(uint32(sz.offsetCount), offset, sz.offsetEncoding)
 	if sz.offsetEncoding.IsDelta() {
 		panic(errors.AssertionFailedf("offsets never need delta encoding"))
@@ -1089,7 +1086,7 @@ func (b *PrefixBytesBuilder) Size(rows int, offset uint32) uint32 {
 	} else if rows != b.nKeys && rows != b.nKeys-1 {
 		panic(errors.AssertionFailedf("PrefixBytes has accumulated %d keys, asked to Size %d", b.nKeys, rows))
 	}
-	sz := &b.sizings[(rows+1)%2]
+	sz := &b.sizings[rows&1^1]
 	// The 1-byte bundleSize.
 	offset++
 	// Compute the size of the offsets table.
