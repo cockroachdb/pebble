@@ -112,7 +112,6 @@ func TestUintEncoding(t *testing.T) {
 			t.Errorf("%d/%d/%d expected %s, but got %s", tc.min, tc.max, tc.numRows, tc.expected, actual)
 		}
 	}
-
 }
 
 func TestUints(t *testing.T) {
