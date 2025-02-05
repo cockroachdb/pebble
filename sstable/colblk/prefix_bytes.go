@@ -781,7 +781,7 @@ func (sz *prefixBytesSizing) String() string {
 func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 	currIdx := b.nKeys & 1 // %2
 	curr := &b.sizings[currIdx]
-	prev := &b.sizings[1-currIdx]
+	prev := &b.sizings[currIdx^1]
 
 	if invariants.Enabled {
 		if len(key) == 0 {
@@ -801,29 +801,31 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		}
 	}
 
-	switch {
-	case b.nKeys == 0:
-		// We're adding the first key to the block.
-		// Set a placeholder offset for the block prefix length.
-		b.addOffset(0)
-		// Set a placeholder offset for the bundle prefix length.
-		b.addOffset(0)
-		b.nKeys++
-		b.data = append(b.data, key...)
-		b.addOffset(uint32(len(b.data)))
-		*curr = prefixBytesSizing{
-			lastKeyOff:                0,
-			offsetCount:               b.offsets.count,
-			blockPrefixLen:            min(len(key), int(b.maxShared)),
-			currentBundleDistinctLen:  len(key),
-			currentBundleDistinctKeys: 1,
-			currentBundlePrefixLen:    min(len(key), int(b.maxShared)),
-			currentBundlePrefixOffset: 1,
-			completedBundleLen:        0,
-			compressedDataLen:         len(key),
-			offsetEncoding:            DetermineUintEncodingNoDelta(uint64(len(key))),
+	// Check if this is the first key in a bundle.
+	if b.nKeys&(b.bundleSize-1) == 0 {
+		if b.nKeys == 0 {
+			// We're adding the first key to the block.
+			// Set a placeholder offset for the block prefix length.
+			b.addOffset(0)
+			// Set a placeholder offset for the bundle prefix length.
+			b.addOffset(0)
+			b.nKeys++
+			b.data = append(b.data, key...)
+			b.addOffset(uint32(len(b.data)))
+			*curr = prefixBytesSizing{
+				lastKeyOff:                0,
+				offsetCount:               b.offsets.count,
+				blockPrefixLen:            min(len(key), int(b.maxShared)),
+				currentBundleDistinctLen:  len(key),
+				currentBundleDistinctKeys: 1,
+				currentBundlePrefixLen:    min(len(key), int(b.maxShared)),
+				currentBundlePrefixOffset: 1,
+				completedBundleLen:        0,
+				compressedDataLen:         len(key),
+				offsetEncoding:            DetermineUintEncodingNoDelta(uint64(len(key))),
+			}
+			return
 		}
-	case b.nKeys&(b.bundleSize-1) == 0:
 		// We're starting a new bundle.
 
 		// Set the bundle prefix length of the previous bundle.
@@ -858,48 +860,48 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		b.data = append(b.data, key...)
 		b.addOffset(0) // Placeholder for bundle prefix.
 		b.addOffset(uint32(len(b.data)))
-	default:
-		// Adding a new key to an existing bundle.
-		b.nKeys++
-
-		if bytesSharedWithPrev == len(key) {
-			// Duplicate key; don't add it to the data slice and don't adjust
-			// currentBundleDistinct{Len,Keys}.
-			*curr = *prev
-			curr.offsetCount++
-			b.addOffset(b.offsets.elems.At(b.offsets.count - 1))
-			return
-		}
-
-		// Update the bundle prefix length. Note that the shared prefix length
-		// can only shrink as new values are added. During construction, the
-		// bundle prefix value is stored contiguously in the data array so even
-		// if the bundle prefix length changes no adjustment is needed to that
-		// value or to the first key in the bundle.
-		*curr = prefixBytesSizing{
-			lastKeyOff:                len(b.data),
-			offsetCount:               prev.offsetCount + 1,
-			blockPrefixLen:            min(prev.blockPrefixLen, bytesSharedWithPrev),
-			currentBundleDistinctLen:  prev.currentBundleDistinctLen + len(key),
-			currentBundleDistinctKeys: prev.currentBundleDistinctKeys + 1,
-			currentBundlePrefixLen:    min(prev.currentBundlePrefixLen, bytesSharedWithPrev),
-			currentBundlePrefixOffset: prev.currentBundlePrefixOffset,
-			completedBundleLen:        prev.completedBundleLen,
-		}
-		// Compute the correct compressedDataLen.
-		curr.compressedDataLen = curr.completedBundleLen +
-			curr.currentBundleDistinctLen -
-			(curr.currentBundleDistinctKeys-1)*curr.currentBundlePrefixLen
-		// Currently compressedDataLen is correct, except that it includes the block
-		// prefix length for all bundle prefixes. Adjust the length to account for
-		// the block prefix being stripped from every bundle except the first one.
-		curr.compressedDataLen -= (b.bundleCount(b.nKeys) - 1) * curr.blockPrefixLen
-		// The compressedDataLen is the largest offset we'll need to encode in the
-		// offset table.
-		curr.offsetEncoding = DetermineUintEncodingNoDelta(uint64(curr.compressedDataLen))
-		b.data = append(b.data, key...)
-		b.addOffset(uint32(len(b.data)))
+		return
 	}
+	// We're adding a new key to an existing bundle.
+	b.nKeys++
+
+	if bytesSharedWithPrev == len(key) {
+		// Duplicate key; don't add it to the data slice and don't adjust
+		// currentBundleDistinct{Len,Keys}.
+		*curr = *prev
+		curr.offsetCount++
+		b.addOffset(b.offsets.elems.At(b.offsets.count - 1))
+		return
+	}
+
+	// Update the bundle prefix length. Note that the shared prefix length
+	// can only shrink as new values are added. During construction, the
+	// bundle prefix value is stored contiguously in the data array so even
+	// if the bundle prefix length changes no adjustment is needed to that
+	// value or to the first key in the bundle.
+	*curr = prefixBytesSizing{
+		lastKeyOff:                len(b.data),
+		offsetCount:               prev.offsetCount + 1,
+		blockPrefixLen:            min(prev.blockPrefixLen, bytesSharedWithPrev),
+		currentBundleDistinctLen:  prev.currentBundleDistinctLen + len(key),
+		currentBundleDistinctKeys: prev.currentBundleDistinctKeys + 1,
+		currentBundlePrefixLen:    min(prev.currentBundlePrefixLen, bytesSharedWithPrev),
+		currentBundlePrefixOffset: prev.currentBundlePrefixOffset,
+		completedBundleLen:        prev.completedBundleLen,
+	}
+	// Compute the correct compressedDataLen.
+	curr.compressedDataLen = curr.completedBundleLen +
+		curr.currentBundleDistinctLen -
+		(curr.currentBundleDistinctKeys-1)*curr.currentBundlePrefixLen
+	// Currently compressedDataLen is correct, except that it includes the block
+	// prefix length for all bundle prefixes. Adjust the length to account for
+	// the block prefix being stripped from every bundle except the first one.
+	curr.compressedDataLen -= (b.bundleCount(b.nKeys) - 1) * curr.blockPrefixLen
+	// The compressedDataLen is the largest offset we'll need to encode in the
+	// offset table.
+	curr.offsetEncoding = DetermineUintEncodingNoDelta(uint64(curr.compressedDataLen))
+	b.data = append(b.data, key...)
+	b.addOffset(uint32(len(b.data)))
 }
 
 // UnsafeGet returns the zero-indexed i'th key added to the builder through Put.
