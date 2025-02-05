@@ -216,10 +216,12 @@ func TestIngestLoadRand(t *testing.T) {
 		}()
 	}
 
-	opts := (&Options{
+	opts := &Options{
 		Comparer: base.DefaultComparer,
 		FS:       mem,
-	}).WithFSDefaults().EnsureDefaults()
+	}
+	opts.WithFSDefaults()
+	opts.EnsureDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, 0, pending)
 	require.NoError(t, err)
 
@@ -308,7 +310,8 @@ func TestIngestLink(t *testing.T) {
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
 			opts := &Options{FS: vfs.NewMem()}
-			opts.EnsureDefaults().WithFSDefaults()
+			opts.EnsureDefaults()
+			opts.WithFSDefaults()
 			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
 			objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(opts.FS, dir))
 			require.NoError(t, err)
@@ -393,7 +396,8 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.ErrInjected.If(errorfs.OnIndex(1)))}
-	opts.EnsureDefaults().WithFSDefaults()
+	opts.EnsureDefaults()
+	opts.WithFSDefaults()
 	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
 	objSettings.FSDirInitialListing = []string{}
@@ -2174,7 +2178,8 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					opts := &Options{
 						Comparer: &comparer,
 					}
-					opts.EnsureDefaults().WithFSDefaults()
+					opts.EnsureDefaults()
+					opts.WithFSDefaults()
 					if len(d.CmdArgs) > 1 {
 						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
 					}

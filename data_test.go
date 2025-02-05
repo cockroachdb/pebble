@@ -784,7 +784,10 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 // creation of invalid database states. If opts.DebugCheck is set, the
 // level checker should detect the invalid state.
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
-	opts = opts.EnsureDefaults()
+	if opts == nil {
+		opts = &Options{}
+	}
+	opts.EnsureDefaults()
 	opts.FS = vfs.NewMem()
 	return runDBDefineCmdReuseFS(td, opts)
 }
@@ -792,7 +795,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 // runDBDefineCmdReuseFS is like runDBDefineCmd, but does not set opts.FS, expecting
 // the caller to have set an appropriate FS already.
 func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
-	opts = opts.EnsureDefaults()
+	opts.EnsureDefaults()
 	if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 		return nil, err
 	}

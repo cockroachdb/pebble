@@ -122,7 +122,7 @@ func TestPickCompaction(t *testing.T) {
 		return strings.Join(ss, ",")
 	}
 
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	newFileMeta := func(fileNum FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
 		m := (&fileMetadata{
 			FileNum: fileNum,
@@ -1289,7 +1289,7 @@ func TestManualCompaction(t *testing.T) {
 }
 
 func TestCompactionOutputLevel(t *testing.T) {
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	version := manifest.TestingNewVersion(opts.Comparer)
 
 	datadriven.RunTest(t, "testdata/compaction_output_level",

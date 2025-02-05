@@ -145,7 +145,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
 	fmtKey := DefaultComparer.FormatKey
-	opts := (*Options)(nil).EnsureDefaults()
+	opts := DefaultOptions()
 	var v *version
 	var buf bytes.Buffer
 
