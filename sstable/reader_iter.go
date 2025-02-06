@@ -49,7 +49,12 @@ type Iterator interface {
 	// NextPrefix implements (base.InternalIterator).NextPrefix.
 	NextPrefix(succKey []byte) *base.InternalKV
 
-	SetCloseHook(fn func(i Iterator) error)
+	// SetCloseHook sets a function that will be called when the iterator is
+	// closed.  This is used by the file cache to release the reference count on
+	// the open sstable.Reader when the iterator is closed. The closures takes
+	// the iterator as a parameter to enable invariant-build tracking of leaked
+	// iterators.
+	SetCloseHook(fn func(any))
 }
 
 // Iterator positioning optimizations and singleLevelIterator and
