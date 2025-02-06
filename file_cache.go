@@ -92,11 +92,10 @@ type fileCacheHandle struct {
 	// The handle contains fields which are unique to each DB. Note that these get
 	// accessed from all shards, so keep read-only fields separate for read-write
 	// fields.
-	loggerAndTracer LoggerAndTracer
-	cache           *cache.Cache
-	cacheID         cache.ID
-	objProvider     objstorage.Provider
-	readerOpts      sstable.ReaderOptions
+	loggerAndTracer  LoggerAndTracer
+	blockCacheHandle *cache.Handle
+	objProvider      objstorage.Provider
+	readerOpts       sstable.ReaderOptions
 
 	// iterCount keeps track of how many iterators are open. It is used to keep
 	// track of leaked iterators on a per-db level.
@@ -107,17 +106,17 @@ type fileCacheHandle struct {
 // newHandle creates a handle for the FileCache which has its own options. Each
 // handle has its own set of files in the cache, separate from those of other
 // handles.
+// TODO(radu): don't pass entire options.
 func (c *FileCache) newHandle(
-	cacheID cache.ID, objProvider objstorage.Provider, opts *Options,
+	cacheHandle *cache.Handle, objProvider objstorage.Provider, opts *Options,
 ) *fileCacheHandle {
 	c.Ref()
 
 	t := &fileCacheHandle{
-		fileCache:       c,
-		loggerAndTracer: opts.LoggerAndTracer,
-		cache:           opts.Cache,
-		cacheID:         cacheID,
-		objProvider:     objProvider,
+		fileCache:        c,
+		loggerAndTracer:  opts.LoggerAndTracer,
+		blockCacheHandle: cacheHandle,
+		objProvider:      objProvider,
 	}
 	t.readerOpts = opts.MakeReaderOptions()
 	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
@@ -1035,7 +1034,7 @@ func (c *fileCacheShard) evict(fileNum base.DiskFileNum, handle *fileCacheHandle
 		v.release(c)
 	}
 
-	handle.cache.EvictFile(handle.cacheID, fileNum)
+	handle.blockCacheHandle.EvictFile(fileNum)
 }
 
 // removeDB evicts any nodes associated with handle. Make sure that there will
@@ -1155,9 +1154,8 @@ func (v *fileCacheValue) load(
 	if err == nil {
 		o := handle.readerOpts
 		o.CacheOpts = sstableinternal.CacheOptions{
-			Cache:   handle.cache,
-			CacheID: handle.cacheID,
-			FileNum: backingFileNum,
+			CacheHandle: handle.blockCacheHandle,
+			FileNum:     backingFileNum,
 		}
 		r, err = sstable.NewReader(ctx, f, o)
 	}

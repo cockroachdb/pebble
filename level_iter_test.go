@@ -542,8 +542,10 @@ func buildLevelIterTables(
 	}
 	c := NewCache(128 << 20 /* 128MB */)
 	defer c.Unref()
+	ch := c.NewHandle()
+	defer ch.Close()
 	opts := sstable.ReaderOptions{Comparer: DefaultComparer}
-	opts.CacheOpts = sstableinternal.CacheOptions{Cache: c}
+	opts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: ch}
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
 		f, err := mem.Open(fmt.Sprintf("bench%d", i))

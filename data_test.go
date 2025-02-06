@@ -1181,9 +1181,8 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	// and virtual sstables expect this file number to be set. Split out the
 	// opts into fileNum opts, and cache opts.
 	readerOpts.CacheOpts = sstableinternal.CacheOptions{
-		Cache:   d.opts.Cache,
-		CacheID: 0,
-		FileNum: backingFileNum,
+		CacheHandle: d.cacheHandle,
+		FileNum:     backingFileNum,
 	}
 	r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 	if err != nil {

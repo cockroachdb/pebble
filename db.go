@@ -283,7 +283,7 @@ type DB struct {
 	diskAvailBytes       atomic.Uint64
 	lowDiskSpaceReporter lowDiskSpaceReporter
 
-	cacheID        cache.ID
+	cacheHandle    *cache.Handle
 	dirname        string
 	opts           *Options
 	cmp            Compare
@@ -1651,7 +1651,7 @@ func (d *DB) Close() error {
 	d.closed.Store(errors.WithStack(ErrClosed))
 	close(d.closedCh)
 
-	defer d.opts.Cache.Unref()
+	defer d.cacheHandle.Close()
 
 	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()

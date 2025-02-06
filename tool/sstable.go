@@ -17,6 +17,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -143,7 +144,7 @@ inclusive-inclusive range specified by --start and --end.
 	return s
 }
 
-func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
+func (s *sstableT) newReader(f vfs.File, cacheHandle *cache.Handle) (*sstable.Reader, error) {
 	readable, err := sstable.NewSimpleReadable(f)
 	if err != nil {
 		return nil, err
@@ -151,31 +152,14 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 	o := s.opts.MakeReaderOptions()
 	o.Comparers = s.comparers
 	o.Mergers = s.mergers
-	c := pebble.NewCache(128 << 20 /* 128 MB */)
-	defer c.Unref()
-	o.CacheOpts = sstableinternal.CacheOptions{Cache: c}
+	o.CacheOpts = sstableinternal.CacheOptions{CacheHandle: cacheHandle}
 	return sstable.NewReader(context.Background(), readable, o)
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(arg string) {
-		f, err := s.opts.FS.Open(arg)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
-
-		fmt.Fprintf(stdout, "%s\n", arg)
-
-		r, err := s.newReader(f)
-
-		if err != nil {
-			fmt.Fprintf(stdout, "%s\n", err)
-			return
-		}
-		defer r.Close()
-
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+		fmt.Fprintf(stdout, "%s\n", path)
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
@@ -227,21 +211,8 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(arg string) {
-		f, err := s.opts.FS.Open(arg)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
-
-		fmt.Fprintf(stdout, "%s\n", arg)
-
-		r, err := s.newReader(f)
-		if err != nil {
-			fmt.Fprintf(stdout, "%s\n", err)
-			return
-		}
-		defer r.Close()
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+		fmt.Fprintf(stdout, "%s\n", path)
 
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
@@ -267,28 +238,15 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(arg string) {
-		f, err := s.opts.FS.Open(arg)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
-
-		fmt.Fprintf(stdout, "%s\n", arg)
-
-		r, err := s.newReader(f)
-		if err != nil {
-			fmt.Fprintf(stdout, "%s\n", err)
-			return
-		}
-		defer r.Close()
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+		fmt.Fprintf(stdout, "%s\n", path)
 
 		if s.verbose {
 			fmt.Fprintf(stdout, "%s", r.Properties.String())
 			return
 		}
 
-		stat, err := f.Stat()
+		stat, err := s.opts.FS.Stat(path)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -360,32 +318,19 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(arg string) {
-		f, err := s.opts.FS.Open(arg)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+		// Update the internal formatter if this comparator has one specified.
+		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
 		// In filter-mode, we prefix ever line that is output with the sstable
 		// filename.
 		var prefix string
 		if s.filter == nil {
-			fmt.Fprintf(stdout, "%s\n", arg)
+			fmt.Fprintf(stdout, "%s\n", path)
 		} else {
-			prefix = fmt.Sprintf("%s: ", arg)
+			prefix = fmt.Sprintf("%s: ", path)
 		}
-
-		r, err := s.newReader(f)
-		if err != nil {
-			fmt.Fprintf(stdout, "%s%s\n", prefix, err)
-			return
-		}
-		defer r.Close()
-
-		// Update the internal formatter if this comparator has one specified.
-		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
-		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
 		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end)
 		if err != nil {
@@ -553,41 +498,48 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(arg string) {
-		f, err := s.opts.FS.Open(arg)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
-		r, err := s.newReader(f)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
-		defer r.Close()
-
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
 		bytes, err := r.EstimateDiskUsage(s.start, s.end)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
-		fmt.Fprintf(stdout, "%s: %d\n", arg, bytes)
+		fmt.Fprintf(stdout, "%s: %d\n", path, bytes)
 	})
 }
 
-func (s *sstableT) foreachSstable(stderr io.Writer, args []string, fn func(arg string)) {
-	// Loop over args, invoking fn for each file. Each directory is recursively
+// foreachSstable opens each sstable specified in the args (if an arg is a
+// directory, it is walked for sstable files) and calls the given function.
+func (s *sstableT) foreachSstable(
+	stderr io.Writer, args []string, fn func(path string, r *sstable.Reader),
+) {
+	pathFn := func(path string) {
+		f, err := s.opts.FS.Open(path)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+
+		c := pebble.NewCache(128 << 20 /* 128 MB */)
+		defer c.Unref()
+		ch := c.NewHandle()
+		defer ch.Close()
+
+		r, err := s.newReader(f, ch)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %s\n", path, err)
+			return
+		}
+		defer r.Close()
+		fn(path, r)
+	}
+
 	// listed and fn is invoked on any file with an .sst or .ldb suffix.
 	for _, arg := range args {
-		info, err := s.opts.FS.Stat(arg)
-		if err != nil || !info.IsDir() {
-			fn(arg)
-			continue
-		}
 		walk(stderr, s.opts.FS, arg, func(path string) {
 			switch filepath.Ext(path) {
 			case ".sst", ".ldb":
-				fn(path)
+				pathFn(path)
 			}
 		})
 	}

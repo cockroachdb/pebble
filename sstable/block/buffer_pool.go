@@ -56,13 +56,11 @@ func (b Value) MakeHandle() BufferHandle {
 	return BufferHandle{cv: b.v}
 }
 
-func (b *Value) SetInCacheForTesting(
-	c *cache.Cache, cacheID cache.ID, fileNum base.DiskFileNum, offset uint64,
-) {
+func (b *Value) SetInCacheForTesting(h *cache.Handle, fileNum base.DiskFileNum, offset uint64) {
 	if b.buf.Valid() {
 		panic("block value must be backed by a cache.Value")
 	}
-	c.Set(cacheID, fileNum, offset, b.v)
+	h.Set(fileNum, offset, b.v)
 	b.v.Release()
 	b.v = nil
 }

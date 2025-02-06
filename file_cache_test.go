@@ -21,6 +21,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -153,22 +154,25 @@ const (
 )
 
 type fileCacheTest struct {
-	*testing.T
-	blockCache *Cache
-	fileCache  *FileCache
+	testing.TB
+	blockCache       *cache.Cache
+	blockCacheHandle *cache.Handle
+	fileCache        *FileCache
 }
 
 // newFileCacheTest returns a shareable file cache to be used for tests.
 // It is the caller's responsibility to unref the file cache.
 func newFileCacheTest(
-	t *testing.T, blockCacheSize int64, fileCacheSize int, fileCacheNumShards int,
+	tb testing.TB, blockCacheSize int64, fileCacheSize int, fileCacheNumShards int,
 ) *fileCacheTest {
 	blockCache := NewCache(blockCacheSize)
+	blockCacheHandle := blockCache.NewHandle()
 	fileCache := NewFileCache(fileCacheNumShards, fileCacheSize)
 	return &fileCacheTest{
-		T:          t,
-		blockCache: blockCache,
-		fileCache:  fileCache,
+		TB:               tb,
+		blockCache:       blockCache,
+		blockCacheHandle: blockCacheHandle,
+		fileCache:        fileCache,
 	}
 }
 
@@ -176,6 +180,7 @@ func (t *fileCacheTest) cleanup() {
 	if err := t.fileCache.Unref(); err != nil {
 		t.Error(err)
 	}
+	t.blockCacheHandle.Close()
 	t.blockCache.Unref()
 }
 
@@ -220,8 +225,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 		FileCache: t.fileCache,
 	}
 	opts.EnsureDefaults()
-
-	h := t.fileCache.newHandle(t.blockCache.NewID(), objProvider, opts)
+	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts)
 	return h, fs
 }
 
@@ -230,6 +234,7 @@ func TestFileCacheRefs(t *testing.T) {
 	fct := newFileCacheTest(t, 8<<20, 10, 2)
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
+	defer fct.blockCacheHandle.Close()
 	defer fct.blockCache.Unref()
 	fc := fct.fileCache
 
@@ -432,6 +437,7 @@ func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
 	fct := newFileCacheTest(t, 8<<20, 10, 1)
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
+	defer fct.blockCacheHandle.Close()
 	defer fct.blockCache.Unref()
 	fc := fct.fileCache
 
@@ -959,6 +965,7 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
+	defer fct.blockCacheHandle.Close()
 	defer fct.blockCache.Unref()
 
 	h1, _ := fct.newTestHandle()
@@ -1040,13 +1047,15 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, testFileNum, objstorage.CreateOptions{})
 	w.Write(buf)
 	require.NoError(t, w.Finish())
-	opts := &Options{}
+
+	fcs := newFileCacheTest(t, 8<<20 /* 8 MB */, runtime.GOMAXPROCS(0), fileCacheTestCacheSize)
+	defer fcs.cleanup()
+	opts := &Options{
+		Cache:     fcs.blockCache,
+		FileCache: fcs.fileCache,
+	}
 	opts.EnsureDefaults()
-	opts.Cache = NewCache(8 << 20) // 8 MB
-	defer opts.Cache.Unref()
-	opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheTestCacheSize)
-	defer opts.FileCache.Unref()
-	c := opts.FileCache.newHandle(opts.Cache.NewID(), objProvider, opts)
+	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts)
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -1109,20 +1118,19 @@ func TestFileCacheClockPro(t *testing.T) {
 		require.NoError(t, w.Close())
 	}
 
+	// NB: The file cache size of 200 with a single shard is required for the
+	// expected test values.
+	fcs := newFileCacheTest(t, 8<<20 /* 8 MB */, 200, 1)
+	defer fcs.cleanup()
+
 	opts := &Options{
-		Cache: NewCache(8 << 20), // 8 MB
+		Cache:           fcs.blockCache,
+		FileCache:       fcs.fileCache,
+		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	defer opts.Cache.Unref()
-
-	cache := &fileCacheShard{}
-	// NB: The file cache size of 200 is required for the expected test values.
-	cache.init(200)
-	handle := &fileCacheHandle{}
-	handle.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
-	handle.cacheID = 0
-	handle.objProvider = objProvider
-	handle.readerOpts = opts.MakeReaderOptions()
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts)
+	defer h.Close()
 
 	scanner := bufio.NewScanner(f)
 	tables := make(map[int]bool)
@@ -1141,14 +1149,15 @@ func TestFileCacheClockPro(t *testing.T) {
 			tables[key] = true
 		}
 
-		oldHits := cache.hits.Load()
+		shard := fcs.fileCache.shards[0]
+		oldHits := shard.hits.Load()
 		m := &fileMetadata{FileNum: base.FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		v := cache.findNode(context.Background(), m.FileBacking, handle)
-		cache.unrefValue(v)
+		v := shard.findNode(context.Background(), m.FileBacking, h)
+		shard.unrefValue(v)
 
-		hit := cache.hits.Load() != oldHits
+		hit := shard.hits.Load() != oldHits
 		wantHit := fields[1][0] == 'h'
 		if hit != wantHit {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
@@ -1247,19 +1256,19 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 		require.NoError(b, w.Close())
 	}
 
+	fcs := newFileCacheTest(b, 8<<20 /* 8 MB */, 2, 1)
+	defer fcs.cleanup()
+
 	opts := &Options{
-		Cache: NewCache(8 << 20), // 8 MB
+		Cache:           fcs.blockCache,
+		FileCache:       fcs.fileCache,
+		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	defer opts.Cache.Unref()
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts)
+	defer h.Close()
 
-	cache := &fileCacheShard{}
-	cache.init(2)
-	handle := &fileCacheHandle{}
-	handle.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
-	handle.cacheID = 0
-	handle.objProvider = objProvider
-	handle.readerOpts = opts.MakeReaderOptions()
+	shard := fcs.fileCache.shards[0]
 
 	makeTable(1)
 
@@ -1269,8 +1278,8 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v := cache.findNode(context.Background(), m.FileBacking, handle)
-		cache.unrefValue(v)
+		v := shard.findNode(context.Background(), m.FileBacking, h)
+		shard.unrefValue(v)
 	}
 }
 

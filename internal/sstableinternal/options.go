@@ -12,11 +12,10 @@ import (
 // CacheOptions contains the information needed to interact with the block
 // cache.
 type CacheOptions struct {
-	// Cache can be nil, in which case no cache is used. When non-nil, the other
+	// CacheHandle can be nil, in which case no cache is used. When non-nil, the other
 	// fields must be set accordingly.
-	Cache   *cache.Cache
-	CacheID cache.ID
-	FileNum base.DiskFileNum
+	CacheHandle *cache.Handle
+	FileNum     base.DiskFileNum
 }
 
 // ReaderOptions are fields of sstable.ReaderOptions that can only be set from

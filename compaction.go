@@ -3218,9 +3218,8 @@ func (d *DB) newCompactionOutput(
 
 	writerOpts.SetInternal(sstableinternal.WriterOptions{
 		CacheOpts: sstableinternal.CacheOptions{
-			Cache:   d.opts.Cache,
-			CacheID: d.cacheID,
-			FileNum: diskFileNum,
+			CacheHandle: d.cacheHandle,
+			FileNum:     diskFileNum,
 		},
 	})
 

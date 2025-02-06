@@ -302,24 +302,25 @@ func formatSpan(w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, s *ke
 	}
 }
 
-func walk(stderr io.Writer, fs vfs.FS, dir string, fn func(path string)) {
-	paths, err := fs.List(dir)
+// walk calls fn for each file in dir and its subdirectories (or just on the
+// path if it is not a directory),
+func walk(stderr io.Writer, fs vfs.FS, path string, fn func(path string)) {
+	info, err := fs.Stat(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", dir, err)
+		fmt.Fprintf(stderr, "%s: %v\n", path, err)
+		return
+	}
+	if !info.IsDir() {
+		fn(path)
+		return
+	}
+	paths, err := fs.List(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", path, err)
 		return
 	}
 	sort.Strings(paths)
 	for _, part := range paths {
-		path := fs.PathJoin(dir, part)
-		info, err := fs.Stat(path)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s: %v\n", path, err)
-			continue
-		}
-		if info.IsDir() {
-			walk(stderr, fs, path, fn)
-		} else {
-			fn(path)
-		}
+		walk(stderr, fs, fs.PathJoin(path, part), fn)
 	}
 }

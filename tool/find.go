@@ -410,6 +410,8 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef) []findRef {
 	cache := pebble.NewCache(128 << 20 /* 128 MB */)
 	defer cache.Unref()
+	ch := cache.NewHandle()
+	defer ch.Close()
 
 	f.tableRefs = make(map[base.FileNum]bool)
 	for _, fl := range f.tables {
@@ -443,8 +445,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			opts.Comparers = f.comparers
 			opts.Mergers = f.mergers
 			opts.CacheOpts = sstableinternal.CacheOptions{
-				Cache:   cache,
-				FileNum: fl.DiskFileNum,
+				CacheHandle: ch,
+				FileNum:     fl.DiskFileNum,
 			}
 			readable, err := sstable.NewSimpleReadable(tf)
 			if err != nil {

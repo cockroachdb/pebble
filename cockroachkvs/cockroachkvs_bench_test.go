@@ -98,13 +98,14 @@ func benchmarkRandSeekInSST(
 	// overhead.
 	c := cache.New(obj.Size() * 2)
 	defer c.Unref()
+	ch := c.NewHandle()
+	defer ch.Close()
 	ctx := context.Background()
 	readerOpts := sstable.ReaderOptions{
 		ReaderOptions: block.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
-				Cache:   c,
-				CacheID: c.NewID(),
-				FileNum: 1,
+				CacheHandle: ch,
+				FileNum:     1,
 			},
 		},
 		Comparer:   writerOpts.Comparer,

@@ -206,12 +206,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	if opts.Cache == nil {
 		opts.Cache = cache.New(opts.CacheSize)
-	} else {
-		opts.Cache.Ref()
+		defer opts.Cache.Unref()
 	}
 
 	d := &DB{
-		cacheID:             opts.Cache.NewID(),
+		cacheHandle:         opts.Cache.NewHandle(),
 		dirname:             dirname,
 		opts:                opts,
 		cmp:                 opts.Comparer.Compare,
@@ -238,16 +237,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 				d.freeMemTable(obsoleteMemTable)
 			}
 
-			// Release our references to the Cache. Note that both the DB, and
-			// fileCache have a reference. When we release the reference to
-			// the fileCache, and if there are no other references to
-			// the fileCache, then the fileCache will also release its
-			// reference to the cache.
-			opts.Cache.Unref()
-
 			if d.fileCache != nil {
 				_ = d.fileCache.Close()
 			}
+			d.cacheHandle.Close()
 
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
@@ -412,7 +405,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
-	d.fileCache = opts.FileCache.newHandle(d.cacheID, d.objProvider, d.opts)
+	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts)
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
@@ -821,7 +814,7 @@ func (d *DB) replayIngestedFlushable(
 		}
 		// NB: ingestLoad1 will close readable.
 		meta[i], lastRangeKey, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
-			readable, d.cacheID, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
+			readable, d.cacheHandle, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
 		}

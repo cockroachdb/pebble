@@ -32,12 +32,12 @@ import (
 // key is associated with a specific block.
 type key struct {
 	// id is the namespace for fileNums.
-	id      ID
+	id      handleID
 	fileNum base.DiskFileNum
 	offset  uint64
 }
 
-func makeKey(id ID, fileNum base.DiskFileNum, offset uint64) key {
+func makeKey(id handleID, fileNum base.DiskFileNum, offset uint64) key {
 	return key{
 		id:      id,
 		fileNum: fileNum,
@@ -48,7 +48,7 @@ func makeKey(id ID, fileNum base.DiskFileNum, offset uint64) key {
 // shardIdx determines the shard index for the given key.
 func (k *key) shardIdx(numShards int) int {
 	if k.id == 0 {
-		panic("pebble: 0 cache ID is invalid")
+		panic("pebble: 0 cache handleID is invalid")
 	}
 	// Same as fibonacciHash() but without the cast to uintptr.
 	const m = 11400714819323198485
@@ -279,7 +279,7 @@ func (c *shard) delete(k key) {
 }
 
 // EvictFile evicts all of the cache values for the specified file.
-func (c *shard) evictFile(id ID, fileNum base.DiskFileNum) {
+func (c *shard) evictFile(id handleID, fileNum base.DiskFileNum) {
 	fkey := makeKey(id, fileNum, 0)
 	for c.evictFileRun(fkey) {
 		// Sched switch to give another goroutine an opportunity to acquire the
