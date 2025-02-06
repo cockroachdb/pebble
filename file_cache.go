@@ -339,7 +339,7 @@ type fileCacheShard struct {
 		sync.RWMutex
 		nodes map[fileCacheKey]*fileCacheNode
 		// The iters map is only created and populated in race builds.
-		iters map[io.Closer][]byte
+		iters map[any][]byte
 
 		handHot  *fileCacheNode
 		handCold *fileCacheNode
@@ -365,7 +365,7 @@ func (c *fileCacheShard) init(size int) {
 	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
-		c.mu.iters = make(map[io.Closer][]byte)
+		c.mu.iters = make(map[any][]byte)
 	}
 }
 
@@ -890,7 +890,7 @@ func (c *fileCacheShard) findNodeInternal(
 	v.refCount.Store(2)
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
-	v.closeHook = func(i sstable.Iterator) error {
+	v.closeHook = func(i any) {
 		if invariants.RaceEnabled {
 			c.mu.Lock()
 			delete(c.mu.iters, i)
@@ -899,7 +899,6 @@ func (c *fileCacheShard) findNodeInternal(
 		c.unrefValue(v)
 		c.iterCount.Add(-1)
 		handle.iterCount.Add(-1)
-		return nil
 	}
 	n.value = v
 
@@ -1120,7 +1119,7 @@ func (c *fileCacheShard) Close() error {
 }
 
 type fileCacheValue struct {
-	closeHook func(i sstable.Iterator) error
+	closeHook func(i any)
 	reader    io.Closer // *sstable.Reader
 	err       error
 	loaded    chan struct{}
