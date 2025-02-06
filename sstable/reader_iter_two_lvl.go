@@ -1015,7 +1015,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SetContext(ctx context.Context) {
 	i.secondLevel.SetContext(ctx)
 }
 
-func (i *twoLevelIterator[I, PI, D, PD]) SetCloseHook(fn func(i Iterator) error) {
+func (i *twoLevelIterator[I, PI, D, PD]) SetCloseHook(fn func(i any)) {
 	i.secondLevel.SetCloseHook(fn)
 }
 

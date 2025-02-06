@@ -338,8 +338,6 @@ type fileCacheShard struct {
 	mu struct {
 		sync.RWMutex
 		nodes map[fileCacheKey]*fileCacheNode
-		// The iters map is only created and populated in race builds.
-		iters map[io.Closer][]byte
 
 		handHot  *fileCacheNode
 		handCold *fileCacheNode
@@ -349,6 +347,11 @@ type fileCacheShard struct {
 		sizeHot    int
 		sizeCold   int
 		sizeTest   int
+
+		race struct {
+			// The iters map is only created and populated in race builds.
+			iters map[any][]byte
+		}
 	}
 	releasing       sync.WaitGroup
 	releasingCh     chan *fileCacheValue
@@ -365,7 +368,7 @@ func (c *fileCacheShard) init(size int) {
 	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
-		c.mu.iters = make(map[io.Closer][]byte)
+		c.mu.race.iters = make(map[any][]byte)
 	}
 }
 
@@ -564,7 +567,7 @@ func (c *fileCacheShard) newPointIter(
 	handle.iterCount.Add(1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
-		c.mu.iters[iter] = debug.Stack()
+		c.mu.race.iters[iter] = debug.Stack()
 		c.mu.Unlock()
 	}
 	return iter, nil
@@ -890,16 +893,15 @@ func (c *fileCacheShard) findNodeInternal(
 	v.refCount.Store(2)
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
-	v.closeHook = func(i sstable.Iterator) error {
+	v.closeHook = func(i any) {
 		if invariants.RaceEnabled {
 			c.mu.Lock()
-			delete(c.mu.iters, i)
+			delete(c.mu.race.iters, i)
 			c.mu.Unlock()
 		}
 		c.unrefValue(v)
 		c.iterCount.Add(-1)
 		handle.iterCount.Add(-1)
-		return nil
 	}
 	n.value = v
 
@@ -1080,7 +1082,7 @@ func (c *fileCacheShard) Close() error {
 			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 		} else {
 			var buf bytes.Buffer
-			for _, stack := range c.mu.iters {
+			for _, stack := range c.mu.race.iters {
 				fmt.Fprintf(&buf, "%s\n", stack)
 			}
 			err = errors.Errorf("leaked iterators: %d\n%s", errors.Safe(v), buf.String())
@@ -1120,7 +1122,7 @@ func (c *fileCacheShard) Close() error {
 }
 
 type fileCacheValue struct {
-	closeHook func(i sstable.Iterator) error
+	closeHook func(i any)
 	reader    io.Closer // *sstable.Reader
 	err       error
 	loaded    chan struct{}
