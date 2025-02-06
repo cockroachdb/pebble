@@ -176,7 +176,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 					t.Fatal(err)
 				}
 			}
-			wMeta, r, err = runBuildCmd(td, writerOpts, 0)
+			wMeta, r, err = runBuildCmd(td, writerOpts, nil /* cacheHandle */)
 			if err != nil {
 				return err.Error()
 			}
@@ -675,11 +675,24 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 
 func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printValue bool) {
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
+		var c *cache.Cache
+		var ch *cache.Handle
+		closeCache := func() {
+			if ch != nil {
+				ch.Close()
+				ch = nil
+			}
+			if c != nil {
+				c.Unref()
+				c = nil
+			}
+		}
 		defer func() {
 			if r != nil {
 				r.Close()
 				r = nil
 			}
+			closeCache()
 		}()
 
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
@@ -696,8 +709,11 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 				d.MaybeScanArgs(t, "block-size", &o.BlockSize)
 				d.MaybeScanArgs(t, "index-block-size", &o.IndexBlockSize)
 
+				closeCache()
+				c = cache.New(int64(cacheSize))
+				ch = c.NewHandle()
 				var err error
-				_, r, err = runBuildCmd(d, &o, cacheSize)
+				_, r, err = runBuildCmd(d, &o, ch)
 				if err != nil {
 					return err.Error()
 				}
@@ -894,7 +910,9 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, block.DefaultCompression, nil)
+				c := cache.New(128 << 20)
+				ch := c.NewHandle()
+				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, block.DefaultCompression, nil, ch)
 				var pool block.BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
@@ -916,6 +934,8 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				}
 				require.NoError(t, citer.Close())
 				require.NoError(t, r.Close())
+				ch.Close()
+				c.Unref()
 				pool.Release()
 			}
 		}
@@ -1721,6 +1741,7 @@ func buildTestTableWithProvider(
 	blockSize, indexBlockSize int,
 	compression block.Compression,
 	prefix []byte,
+	ch *cache.Handle,
 ) *Reader {
 	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.CreateOptions{})
 	require.NoError(t, err)
@@ -1748,12 +1769,10 @@ func buildTestTableWithProvider(
 	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, base.DiskFileNum(0), objstorage.OpenOptions{})
 	require.NoError(t, err)
 
-	c := cache.New(128 << 20)
-	defer c.Unref()
 	r, err := NewReader(context.Background(), f1, ReaderOptions{
 		ReaderOptions: block.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
-				Cache: c,
+				CacheHandle: ch,
 			},
 		},
 	})
@@ -1762,7 +1781,7 @@ func buildTestTableWithProvider(
 }
 
 func buildBenchmarkTable(
-	b *testing.B, options WriterOptions, confirmTwoLevelIndex bool, offset int,
+	b *testing.B, options WriterOptions, confirmTwoLevelIndex bool, offset int, ch *cache.Handle,
 ) (*Reader, [][]byte) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
@@ -1791,12 +1810,10 @@ func buildBenchmarkTable(
 	if err != nil {
 		b.Fatal(err)
 	}
-	c := cache.New(128 << 20)
-	defer c.Unref()
 	r, err := newReader(f1, ReaderOptions{
 		ReaderOptions: block.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
-				Cache: c,
+				CacheHandle: ch,
 			},
 		},
 	})
@@ -1839,7 +1856,9 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
+				c := cache.New(128 << 20)
+				ch := c.NewHandle()
+				r, keys := buildBenchmarkTable(b, bm.options, false, 0, ch)
 				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
@@ -1852,6 +1871,8 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 				b.StopTimer()
 				it.Close()
 				r.Close()
+				ch.Close()
+				c.Unref()
 			})
 	}
 }
@@ -1860,7 +1881,9 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
+				c := cache.New(128 << 20)
+				ch := c.NewHandle()
+				r, keys := buildBenchmarkTable(b, bm.options, false, 0, ch)
 				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
@@ -1873,6 +1896,8 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 				b.StopTimer()
 				it.Close()
 				r.Close()
+				ch.Close()
+				c.Unref()
 			})
 	}
 }
@@ -1881,7 +1906,9 @@ func BenchmarkTableIterNext(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, _ := buildBenchmarkTable(b, bm.options, false, 0)
+				c := cache.New(128 << 20)
+				ch := c.NewHandle()
+				r, _ := buildBenchmarkTable(b, bm.options, false, 0, ch)
 				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
@@ -1902,6 +1929,8 @@ func BenchmarkTableIterNext(b *testing.B) {
 				b.StopTimer()
 				it.Close()
 				r.Close()
+				ch.Close()
+				c.Unref()
 			})
 	}
 }
@@ -1910,7 +1939,9 @@ func BenchmarkTableIterPrev(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, _ := buildBenchmarkTable(b, bm.options, false, 0)
+				c := cache.New(128 << 20)
+				ch := c.NewHandle()
+				r, _ := buildBenchmarkTable(b, bm.options, false, 0, ch)
 				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
@@ -1931,18 +1962,24 @@ func BenchmarkTableIterPrev(b *testing.B) {
 				b.StopTimer()
 				it.Close()
 				r.Close()
+				ch.Close()
+				c.Unref()
 			})
 	}
 }
 
 func BenchmarkLayout(b *testing.B) {
-	r, _ := buildBenchmarkTable(b, WriterOptions{}, false, 0)
+	c := cache.New(128 << 20)
+	ch := c.NewHandle()
+	r, _ := buildBenchmarkTable(b, WriterOptions{}, false, 0, ch)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r.Layout()
 	}
 	b.StopTimer()
 	r.Close()
+	ch.Close()
+	c.Unref()
 }
 
 func BenchmarkSeqSeekGEExhausted(b *testing.B) {
@@ -1957,7 +1994,9 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 			options.IndexBlockSize = 512
 		}
 		const offsetCount = 5000
-		reader, keys := buildBenchmarkTable(b, options, twoLevelIndex, offsetCount)
+		c := cache.New(128 << 20)
+		ch := c.NewHandle()
+		reader, keys := buildBenchmarkTable(b, options, twoLevelIndex, offsetCount, ch)
 		var preKeys [][]byte
 		for i := 0; i < offsetCount; i++ {
 			key := make([]byte, 8)
@@ -2024,6 +2063,8 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 			}
 		}
 		reader.Close()
+		ch.Close()
+		c.Unref()
 	}
 }
 
@@ -2055,7 +2096,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 	}
 	// v2 sstable is 115,178,070 bytes. v3 sstable is 107,181,105 bytes with
 	// 99,049,269 bytes in value blocks.
-	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
+	setupBench := func(b *testing.B, tableFormat TableFormat, ch *cache.Handle) *Reader {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
@@ -2074,8 +2115,6 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 			}
 		}
 		require.NoError(b, w.Close())
-		c := cache.New(cacheSize)
-		defer c.Unref()
 		// Re-open the Filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
@@ -2083,7 +2122,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 			Comparer: testkeys.Comparer,
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
-					Cache: c,
+					CacheHandle: ch,
 				},
 			},
 		})
@@ -2098,9 +2137,13 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 			for _, cacheSize := range []int64{20 << 20, 150 << 20} {
 				b.Run(fmt.Sprintf("cache-size=%s", humanize.Bytes.Int64(cacheSize)),
 					func(b *testing.B) {
-						r := setupBench(b, format, cacheSize)
+						c := cache.New(cacheSize)
+						ch := c.NewHandle()
+						r := setupBench(b, format, ch)
 						defer func() {
 							require.NoError(b, r.Close())
+							ch.Close()
+							c.Unref()
 						}()
 						b.Run("NewIter", func(b *testing.B) {
 							for i := 0; i < b.N; i++ {
@@ -2171,7 +2214,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	for i := 0; i < sharedPrefixLen; i++ {
 		keyBuf[i] = 'A' + byte(i)
 	}
-	setupBench := func(b *testing.B, versCount int) (r *Reader, succKeys [][]byte) {
+	setupBench := func(b *testing.B, ch *cache.Handle, versCount int) (r *Reader, succKeys [][]byte) {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
@@ -2190,12 +2233,6 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			}
 		}
 		require.NoError(b, w.Close())
-		// NB: This 200MiB cache is sufficient for even the largest file: 10,000
-		// keys * 100 versions = 1M keys, where each key-value pair is ~140 bytes
-		// = 140MB. So we are not measuring the caching benefit of
-		// TableFormatPebblev3 storing older values in value blocks.
-		c := cache.New(200 << 20)
-		defer c.Unref()
 		// Re-open the Filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
@@ -2203,7 +2240,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			Comparer: testkeys.Comparer,
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
-					Cache: c,
+					CacheHandle: ch,
 				},
 			},
 		})
@@ -2253,9 +2290,17 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	// setHasSamePrefix=false eliminates a key comparison.
 	for _, versionCount := range []int{1, 2, 10, 100} {
 		b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
-			r, succKeys := setupBench(b, versionCount)
+			// NB: This 200MiB cache is sufficient for even the largest file: 10,000
+			// keys * 100 versions = 1M keys, where each key-value pair is ~140 bytes
+			// = 140MB. So we are not measuring the caching benefit of
+			// TableFormatPebblev3 storing older values in value blocks.
+			c := cache.New(200 << 20)
+			ch := c.NewHandle()
+			r, succKeys := setupBench(b, ch, versionCount)
 			defer func() {
 				require.NoError(b, r.Close())
+				ch.Close()
+				c.Unref()
 			}()
 			for _, method := range []string{"seek-ge", "next-prefix"} {
 				b.Run(fmt.Sprintf("method=%s", method), func(b *testing.B) {
@@ -2334,7 +2379,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 	}
 	expectedKeyCount := keys.Count()
 	keyBuf := make([]byte, keyLen)
-	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
+	setupBench := func(b *testing.B, tableFormat TableFormat, ch *cache.Handle) *Reader {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
@@ -2356,8 +2401,6 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 				base.MakeInternalKey(key, 0, InternalKeyKindSet), val, forceObsolete))
 		}
 		require.NoError(b, w.Close())
-		c := cache.New(cacheSize)
-		defer c.Unref()
 		// Re-open the Filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
@@ -2365,7 +2408,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 			Comparer: testkeys.Comparer,
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
-					Cache: c,
+					CacheHandle: ch,
 				},
 			},
 		})
@@ -2378,9 +2421,13 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 			for _, cacheSize := range []int64{1, 150 << 20} {
 				b.Run(fmt.Sprintf("cache-size=%s", humanize.Bytes.Int64(cacheSize)),
 					func(b *testing.B) {
-						r := setupBench(b, format, cacheSize)
+						c := cache.New(cacheSize)
+						ch := c.NewHandle()
+						r := setupBench(b, format, ch)
 						defer func() {
 							require.NoError(b, r.Close())
+							ch.Close()
+							c.Unref()
 						}()
 						for _, hideObsoletePoints := range []bool{false, true} {
 							b.Run(fmt.Sprintf("hide-obsolete=%t", hideObsoletePoints), func(b *testing.B) {

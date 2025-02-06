@@ -801,10 +801,10 @@ func (w *layoutWriter) Write(blockWithTrailer []byte) (n int, err error) {
 // clearFromCache removes the block at the provided offset from the cache. This provides defense in
 // depth against bugs which cause cache collisions.
 func (w *layoutWriter) clearFromCache(offset uint64) {
-	if w.cacheOpts.Cache != nil {
+	if w.cacheOpts.CacheHandle != nil {
 		// TODO(peter): Alternatively, we could add the uncompressed value to the
 		// cache.
-		w.cacheOpts.Cache.Delete(w.cacheOpts.CacheID, w.cacheOpts.FileNum, offset)
+		w.cacheOpts.CacheHandle.Delete(w.cacheOpts.FileNum, offset)
 	}
 }
 

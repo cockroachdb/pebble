@@ -25,10 +25,11 @@ import (
 func TestCopySpan(t *testing.T) {
 	fs := vfs.NewMem()
 	blockCache := cache.New(2 << 20 /* 1 MB */)
-	cacheID := cache.ID(1)
+	defer blockCache.Unref()
+	cacheHandle := blockCache.NewHandle()
+	defer cacheHandle.Close()
 	fileNameToNum := make(map[string]base.FileNum)
 	nextFileNum := base.FileNum(1)
-	defer blockCache.Unref()
 
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 	datadriven.RunTest(t, "testdata/copy_span", func(t *testing.T, d *datadriven.TestData) string {
@@ -110,9 +111,8 @@ func TestCopySpan(t *testing.T) {
 			rOpts := ReaderOptions{
 				ReaderOptions: block.ReaderOptions{
 					CacheOpts: sstableinternal.CacheOptions{
-						Cache:   blockCache,
-						CacheID: cacheID,
-						FileNum: base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+						CacheHandle: cacheHandle,
+						FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
 					},
 				},
 				Comparer:   testkeys.Comparer,
@@ -164,9 +164,8 @@ func TestCopySpan(t *testing.T) {
 			rOpts := ReaderOptions{
 				ReaderOptions: block.ReaderOptions{
 					CacheOpts: sstableinternal.CacheOptions{
-						Cache:   blockCache,
-						CacheID: cacheID,
-						FileNum: base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+						CacheHandle: cacheHandle,
+						FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
 					},
 				},
 				Comparer:   testkeys.Comparer,

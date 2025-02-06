@@ -35,7 +35,7 @@ type testReader struct {
 }
 
 func newTestReader(
-	ctx context.Context, id ID, fileNum base.DiskFileNum, offset uint64, mu *sync.Mutex,
+	ctx context.Context, id handleID, fileNum base.DiskFileNum, offset uint64, mu *sync.Mutex,
 ) *testReader {
 	r := &testReader{
 		ctx: ctx,
@@ -148,7 +148,7 @@ func TestReadShard(t *testing.T) {
 					ctx, cancelFunc = context.WithCancel(ctx)
 					cancelFunc()
 				}
-				r := newTestReader(ctx, ID(id), base.DiskFileNum(fileNum), uint64(offset), &mu)
+				r := newTestReader(ctx, handleID(id), base.DiskFileNum(fileNum), uint64(offset), &mu)
 				val := r.getAsync(c)
 				if val != nil {
 					return fmt.Sprintf("val: %s", *val)
@@ -200,8 +200,7 @@ func TestReadShard(t *testing.T) {
 // testSyncReaders is the config for multiple readers concurrently reading the
 // same block.
 type testSyncReaders struct {
-	// id, fileNum, offset are the key.
-	id      ID
+	handle  *Handle
 	fileNum base.DiskFileNum
 	offset  uint64
 	// val will be the value read, if not found in the cache.
@@ -221,6 +220,19 @@ type testSyncReaders struct {
 func TestReadShardConcurrent(t *testing.T) {
 	cache := New(rand.Int63n(20 << 10))
 	defer cache.Unref()
+	c := cache.NewHandle()
+	defer c.Close()
+
+	handles := make([]*Handle, 50)
+	for i := range handles {
+		handles[i] = cache.NewHandle()
+	}
+	defer func() {
+		for i := range handles {
+			handles[i].Close()
+		}
+	}()
+
 	var differentReaders []*testSyncReaders
 	// 50 blocks are read.
 	for i := 0; i < 50; i++ {
@@ -228,7 +240,7 @@ func TestReadShardConcurrent(t *testing.T) {
 		val := make([]byte, valLen)
 		crand.Read(val)
 		readers := &testSyncReaders{
-			id:                 ID(rand.Uint64()),
+			handle:             handles[rand.Intn(len(handles))],
 			fileNum:            base.DiskFileNum(rand.Uint64()),
 			offset:             rand.Uint64(),
 			val:                val,
@@ -242,7 +254,7 @@ func TestReadShardConcurrent(t *testing.T) {
 	for _, r := range differentReaders {
 		for j := 0; j < r.numReaders; j++ {
 			go func(r *testSyncReaders, index int) {
-				v, rh, _, _, err := cache.GetWithReadHandle(context.Background(), r.id, r.fileNum, r.offset)
+				v, rh, _, _, err := r.handle.GetWithReadHandle(context.Background(), r.fileNum, r.offset)
 				require.NoError(t, err)
 				if v != nil {
 					require.Equal(t, r.val, v.RawBuffer())

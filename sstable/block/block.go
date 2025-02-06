@@ -378,12 +378,6 @@ func (r *Reader) Init(readable objstorage.Readable, ro ReaderOptions, checksumTy
 	r.readable = readable
 	r.opts = ro
 	r.checksumType = checksumType
-	if r.opts.CacheOpts.Cache != nil {
-		r.opts.CacheOpts.Cache.Ref()
-		if r.opts.CacheOpts.CacheID == 0 {
-			r.opts.CacheOpts.CacheID = r.opts.CacheOpts.Cache.NewID()
-		}
-	}
 }
 
 // FileNum returns the file number of the file being read.
@@ -408,9 +402,9 @@ func (r *Reader) Read(
 	// The compaction path uses env.BufferPool, and does not coordinate read
 	// using a cache.ReadHandle. This is ok since only a single compaction is
 	// reading a block.
-	if r.opts.CacheOpts.Cache == nil || env.BufferPool != nil {
-		if r.opts.CacheOpts.Cache != nil {
-			if cv := r.opts.CacheOpts.Cache.Get(r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
+	if r.opts.CacheOpts.CacheHandle == nil || env.BufferPool != nil {
+		if r.opts.CacheOpts.CacheHandle != nil {
+			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
 				recordCacheHit(ctx, env, readHandle, bh)
 				return CacheBufferHandle(cv), nil
 			}
@@ -422,8 +416,8 @@ func (r *Reader) Read(
 		return value.MakeHandle(), err
 	}
 
-	cv, crh, errorDuration, hit, err := r.opts.CacheOpts.Cache.GetWithReadHandle(
-		ctx, r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
+	cv, crh, errorDuration, hit, err := r.opts.CacheOpts.CacheHandle.GetWithReadHandle(
+		ctx, r.opts.CacheOpts.FileNum, bh.Offset)
 	if errorDuration > 5*time.Millisecond && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		r.opts.LoggerAndTracer.Eventf(
 			ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
@@ -551,7 +545,7 @@ func (r *Reader) Readable() objstorage.Readable {
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
 func (r *Reader) GetFromCache(bh Handle) *cache.Value {
-	return r.opts.CacheOpts.Cache.Get(r.opts.CacheOpts.CacheID, r.opts.CacheOpts.FileNum, bh.Offset)
+	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset)
 }
 
 // UsePreallocatedReadHandle returns a ReadHandle that reads from the reader and
@@ -565,9 +559,6 @@ func (r *Reader) UsePreallocatedReadHandle(
 
 // Close releases resources associated with the Reader.
 func (r *Reader) Close() error {
-	if r.opts.CacheOpts.Cache != nil {
-		r.opts.CacheOpts.Cache.Unref()
-	}
 	var err error
 	if r.readable != nil {
 		err = r.readable.Close()

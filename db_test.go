@@ -810,11 +810,12 @@ func TestMemTableReservation(t *testing.T) {
 
 	// Add a block to the cache. Note that the memtable size is larger than the
 	// cache size, so opening the DB should cause this block to be evicted.
-	tmpID := opts.Cache.NewID()
 	helloWorld := []byte("hello world")
 	value := cache.Alloc(len(helloWorld))
 	copy(value.RawBuffer(), helloWorld)
-	opts.Cache.Set(tmpID, base.DiskFileNum(0), 0, value)
+	tmpHandle := opts.Cache.NewHandle()
+	defer tmpHandle.Close()
+	tmpHandle.Set(base.DiskFileNum(0), 0, value)
 	value.Release()
 
 	d, err := Open("", opts)
@@ -832,7 +833,7 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
-	if cv := opts.Cache.Get(tmpID, base.DiskFileNum(0), 0); cv != nil {
+	if cv := tmpHandle.Get(base.DiskFileNum(0), 0); cv != nil {
 		t.Fatalf("expected failure, but found success: %#v", cv)
 	}
 

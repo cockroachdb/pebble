@@ -25,8 +25,10 @@ func TestCache(t *testing.T) {
 	f, err := os.Open("testdata/cache")
 	require.NoError(t, err)
 
-	cache := newShards(200, 1)
+	cache := newCache(200, 1)
 	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
 
 	scanner := bufio.NewScanner(f)
 	line := 1
@@ -40,11 +42,11 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		cv := cache.Get(1, base.DiskFileNum(key), 0)
+		cv := h.Get(base.DiskFileNum(key), 0)
 		if cv == nil {
 			cv = Alloc(1)
 			cv.RawBuffer()[0] = fields[0][0]
-			cache.Set(1, base.DiskFileNum(key), 0, cv)
+			h.Set(base.DiskFileNum(key), 0, cv)
 		} else {
 			hit = true
 			if v := cv.RawBuffer(); !bytes.Equal(v, fields[0][:1]) {
@@ -59,66 +61,68 @@ func TestCache(t *testing.T) {
 	}
 }
 
-func setTestValue(
-	cache *Cache, id ID, fileNum base.DiskFileNum, offset uint64, s string, repeat int,
-) {
+func setTestValue(c *Handle, fileNum base.DiskFileNum, offset uint64, s string, repeat int) {
 	b := bytes.Repeat([]byte(s), repeat)
 	v := Alloc(len(b))
 	copy(v.RawBuffer(), b)
-	cache.Set(id, fileNum, offset, v)
+	c.Set(fileNum, offset, v)
 	v.Release()
 }
 
 func TestCacheDelete(t *testing.T) {
-	cache := newShards(100, 1)
+	cache := newCache(100, 1)
 	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
 
-	setTestValue(cache, 1, 0, 0, "a", 5)
-	setTestValue(cache, 1, 1, 0, "a", 5)
-	setTestValue(cache, 1, 2, 0, "a", 5)
+	setTestValue(h, 0, 0, "a", 5)
+	setTestValue(h, 1, 0, "a", 5)
+	setTestValue(h, 2, 0, "a", 5)
 	if expected, size := int64(15), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.Delete(1, base.DiskFileNum(1), 0)
+	h.Delete(base.DiskFileNum(1), 0)
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	if v := cache.Get(1, base.DiskFileNum(0), 0); v == nil {
+	if v := h.Get(base.DiskFileNum(0), 0); v == nil {
 		t.Fatalf("expected to find block 0/0")
 	} else {
 		v.Release()
 	}
-	if v := cache.Get(1, base.DiskFileNum(1), 0); v != nil {
+	if v := h.Get(base.DiskFileNum(1), 0); v != nil {
 		t.Fatalf("expected to not find block 1/0")
 	}
 	// Deleting a non-existing block does nothing.
-	cache.Delete(1, base.DiskFileNum(1), 0)
+	h.Delete(base.DiskFileNum(1), 0)
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
 }
 
 func TestEvictFile(t *testing.T) {
-	cache := newShards(100, 1)
+	cache := newCache(100, 1)
 	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
 
-	setTestValue(cache, 1, 0, 0, "a", 5)
-	setTestValue(cache, 1, 1, 0, "a", 5)
-	setTestValue(cache, 1, 2, 0, "a", 5)
-	setTestValue(cache, 1, 2, 1, "a", 5)
-	setTestValue(cache, 1, 2, 2, "a", 5)
+	setTestValue(h, 0, 0, "a", 5)
+	setTestValue(h, 1, 0, "a", 5)
+	setTestValue(h, 2, 0, "a", 5)
+	setTestValue(h, 2, 1, "a", 5)
+	setTestValue(h, 2, 2, "a", 5)
 	if expected, size := int64(25), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(1, base.DiskFileNum(0))
+	h.EvictFile(base.DiskFileNum(0))
 	if expected, size := int64(20), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(1, base.DiskFileNum(1))
+	h.EvictFile(base.DiskFileNum(1))
 	if expected, size := int64(15), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(1, base.DiskFileNum(2))
+	h.EvictFile(base.DiskFileNum(2))
 	if expected, size := int64(0), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
@@ -127,31 +131,37 @@ func TestEvictFile(t *testing.T) {
 func TestEvictAll(t *testing.T) {
 	// Verify that it is okay to evict all of the data from a cache. Previously
 	// this would trigger a nil-pointer dereference.
-	cache := newShards(100, 1)
+	cache := newCache(100, 1)
 	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
 
-	setTestValue(cache, 1, 0, 0, "a", 101)
-	setTestValue(cache, 1, 1, 0, "a", 101)
+	setTestValue(h, 0, 0, "a", 101)
+	setTestValue(h, 1, 0, "a", 101)
 }
 
 func TestMultipleDBs(t *testing.T) {
-	cache := newShards(100, 1)
+	cache := newCache(100, 1)
 	defer cache.Unref()
+	h1 := cache.NewHandle()
+	defer h1.Close()
+	h2 := cache.NewHandle()
+	defer h2.Close()
 
-	setTestValue(cache, 1, 0, 0, "a", 5)
-	setTestValue(cache, 2, 0, 0, "b", 5)
+	setTestValue(h1, 0, 0, "a", 5)
+	setTestValue(h2, 0, 0, "b", 5)
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	cache.EvictFile(1, base.DiskFileNum(0))
+	h1.EvictFile(base.DiskFileNum(0))
 	if expected, size := int64(5), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	v := cache.Get(1, base.DiskFileNum(0), 0)
+	v := h1.Get(base.DiskFileNum(0), 0)
 	if v != nil {
 		t.Fatalf("expected not present, but found %#v", v)
 	}
-	v = cache.Get(2, base.DiskFileNum(0), 0)
+	v = h2.Get(base.DiskFileNum(0), 0)
 	if v := v.RawBuffer(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %s", v)
 	}
@@ -159,36 +169,45 @@ func TestMultipleDBs(t *testing.T) {
 }
 
 func TestZeroSize(t *testing.T) {
-	cache := newShards(0, 1)
-	defer cache.Unref()
-
-	setTestValue(cache, 1, 0, 0, "a", 5)
+	c := New(0)
+	defer c.Unref()
+	h := c.NewHandle()
+	defer h.Close()
+	setTestValue(h, 0, 0, "a", 5)
 }
 
 func TestReserve(t *testing.T) {
-	cache := newShards(4, 2)
+	cache := newCache(4, 2)
 	defer cache.Unref()
+	h1 := cache.NewHandle()
+	defer h1.Close()
+	h2 := cache.NewHandle()
+	defer h2.Close()
+	h3 := cache.NewHandle()
+	defer h3.Close()
+	h4 := cache.NewHandle()
+	defer h4.Close()
 
-	setTestValue(cache, 1, 0, 0, "a", 1)
-	setTestValue(cache, 2, 0, 0, "a", 1)
+	setTestValue(h1, 0, 0, "a", 1)
+	setTestValue(h2, 0, 0, "a", 1)
 	require.EqualValues(t, 2, cache.Size())
 	r := cache.Reserve(1)
 	require.EqualValues(t, 0, cache.Size())
 
-	setTestValue(cache, 1, 0, 0, "a", 1)
-	setTestValue(cache, 2, 0, 0, "a", 1)
-	setTestValue(cache, 3, 0, 0, "a", 1)
-	setTestValue(cache, 4, 0, 0, "a", 1)
+	setTestValue(h1, 0, 0, "a", 1)
+	setTestValue(h2, 0, 0, "a", 1)
+	setTestValue(h3, 0, 0, "a", 1)
+	setTestValue(h4, 0, 0, "a", 1)
 	require.EqualValues(t, 2, cache.Size())
 	r()
 	require.EqualValues(t, 2, cache.Size())
-	setTestValue(cache, 1, 0, 0, "a", 1)
-	setTestValue(cache, 2, 0, 0, "a", 1)
+	setTestValue(h1, 0, 0, "a", 1)
+	setTestValue(h2, 0, 0, "a", 1)
 	require.EqualValues(t, 4, cache.Size())
 }
 
 func TestReserveDoubleRelease(t *testing.T) {
-	cache := newShards(100, 1)
+	cache := newCache(100, 1)
 	defer cache.Unref()
 
 	r := cache.Reserve(10)
@@ -210,8 +229,10 @@ func TestReserveDoubleRelease(t *testing.T) {
 }
 
 func TestCacheStressSetExisting(t *testing.T) {
-	cache := newShards(1, 1)
+	cache := newCache(1, 1)
 	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -219,7 +240,7 @@ func TestCacheStressSetExisting(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			for j := 0; j < 10000; j++ {
-				setTestValue(cache, 1, 0, uint64(i), "a", 1)
+				setTestValue(h, 0, uint64(i), "a", 1)
 				runtime.Gosched()
 			}
 		}(i)
@@ -230,11 +251,13 @@ func TestCacheStressSetExisting(t *testing.T) {
 func BenchmarkCacheGet(b *testing.B) {
 	const size = 100000
 
-	cache := newShards(size, 1)
+	cache := newCache(size, 1)
 	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
 
 	for i := 0; i < size; i++ {
-		setTestValue(cache, 1, 0, 0, "a", 1)
+		setTestValue(h, 0, 0, "a", 1)
 	}
 
 	b.ResetTimer()
@@ -242,7 +265,7 @@ func BenchmarkCacheGet(b *testing.B) {
 		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 		for pb.Next() {
-			v := cache.Get(1, base.DiskFileNum(0), uint64(rng.IntN(size)))
+			v := h.Get(base.DiskFileNum(0), uint64(rng.IntN(size)))
 			if v == nil {
 				b.Fatal("failed to lookup value")
 			}

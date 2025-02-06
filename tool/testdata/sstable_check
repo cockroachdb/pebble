@@ -44,14 +44,12 @@ WARNING: OUT OF ORDER KEYS!
 sstable check
 testdata/corrupted.sst
 ----
-corrupted.sst
-pebble/table: table 000000: block 87/465: crc32c checksum mismatch c8539ba5 != b972e324
+corrupted.sst: pebble/table: table 000000: block 87/465: crc32c checksum mismatch c8539ba5 != b972e324
 
 sstable check
 testdata/bad-magic.sst
 ----
-bad-magic.sst
-pebble/table: invalid table 000000: (bad magic number: 0xf6cff485b741e288)
+bad-magic.sst: pebble/table: invalid table 000000: (bad magic number: 0xf6cff485b741e288)
 
 sstable check
 ./testdata/mixed/000005.sst

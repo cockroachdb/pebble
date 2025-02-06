@@ -377,8 +377,8 @@ func (d *dbT) openDBInternal(dir string, openOptions ...OpenOption) (*pebble.DB,
 	for _, opt := range d.openOptions {
 		opt.Apply(dir, &opts)
 	}
-	opts.Cache = pebble.NewCache(128 << 20 /* 128 MB */)
-	defer opts.Cache.Unref()
+	opts.Cache = nil
+	opts.CacheSize = 128 * 1024 * 1024
 	return pebble.Open(dir, &opts)
 }
 

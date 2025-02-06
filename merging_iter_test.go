@@ -370,9 +370,11 @@ func buildMergingIterTables(
 	}
 	c := NewCache(128 << 20 /* 128MB */)
 	defer c.Unref()
+	ch := c.NewHandle()
+	defer ch.Close()
 
 	var opts sstable.ReaderOptions
-	opts.CacheOpts = sstableinternal.CacheOptions{Cache: c}
+	opts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: ch}
 
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {
@@ -613,9 +615,11 @@ func buildLevelsForMergingIterSeqSeek(
 
 	c := NewCache(128 << 20 /* 128MB */)
 	defer c.Unref()
+	ch := c.NewHandle()
+	defer ch.Close()
 
 	opts := sstable.ReaderOptions{Comparer: DefaultComparer}
-	opts.CacheOpts = sstableinternal.CacheOptions{Cache: c}
+	opts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: ch}
 
 	if writeBloomFilters {
 		opts.Filters = make(map[string]FilterPolicy)

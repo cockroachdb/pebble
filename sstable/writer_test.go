@@ -151,7 +151,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			if err != nil {
 				return err.Error()
 			}
-			r, err = openReader(obj, wopts, 0)
+			r, err = openReader(obj, wopts, nil /* cacheHandle */)
 			if err != nil {
 				return err.Error()
 			}
@@ -399,7 +399,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				RequiredInPlaceValueBound: inPlaceValueBound,
 				ShortAttributeExtractor:   attributeExtractor,
 				DisableValueBlocks:        disableValueBlocks,
-			}, 0)
+			}, nil /* cacheHandle */)
 			if err != nil {
 				return err.Error()
 			}
@@ -700,12 +700,14 @@ func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
 
+	c := cache.New(64 << 20)
+	defer c.Unref()
+
 	cacheOpts := sstableinternal.CacheOptions{
-		Cache:   cache.New(64 << 20),
-		CacheID: 1,
-		FileNum: 1,
+		CacheHandle: c.NewHandle(),
+		FileNum:     1,
 	}
-	defer cacheOpts.Cache.Unref()
+	defer cacheOpts.CacheHandle.Close()
 
 	readerOpts := ReaderOptions{
 		ReaderOptions: block.ReaderOptions{CacheOpts: cacheOpts},
@@ -775,7 +777,7 @@ func TestWriterClearCache(t *testing.T) {
 	// Poison the cache for each of the blocks.
 	poison := func(bh block.Handle) {
 		v := invalidData()
-		cacheOpts.Cache.Set(cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset, v)
+		cacheOpts.CacheHandle.Set(cacheOpts.FileNum, bh.Offset, v)
 		v.Release()
 	}
 	foreachBH(layout, poison)
@@ -786,7 +788,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Verify that the written blocks have been cleared from the cache.
 	check := func(bh block.Handle) {
-		cv := cacheOpts.Cache.Get(cacheOpts.CacheID, cacheOpts.FileNum, bh.Offset)
+		cv := cacheOpts.CacheHandle.Get(cacheOpts.FileNum, bh.Offset)
 		if cv != nil {
 			t.Fatalf("%d: expected cache to be cleared, but found %#v", bh.Offset, cv)
 		}

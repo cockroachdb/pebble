@@ -153,20 +153,22 @@ func writeKVs(w RawWriter, input string) (err error) {
 }
 
 func runBuildCmd(
-	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
+	td *datadriven.TestData, writerOpts *WriterOptions, cacheHandle *cache.Handle,
 ) (*WriterMetadata, *Reader, error) {
 	meta, obj, err := runBuildMemObjCmd(td, writerOpts)
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := openReader(obj, writerOpts, cacheSize)
+	r, err := openReader(obj, writerOpts, cacheHandle)
 	if err != nil {
 		return nil, nil, err
 	}
 	return meta, r, nil
 }
 
-func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int) (*Reader, error) {
+func openReader(
+	obj *objstorage.MemObj, writerOpts *WriterOptions, cacheHandle *cache.Handle,
+) (*Reader, error) {
 	readerOpts := ReaderOptions{
 		Comparer:   writerOpts.Comparer,
 		KeySchemas: KeySchemas{writerOpts.KeySchema.Name: writerOpts.KeySchema},
@@ -176,11 +178,7 @@ func openReader(obj *objstorage.MemObj, writerOpts *WriterOptions, cacheSize int
 			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
 		}
 	}
-	if cacheSize > 0 {
-		c := cache.New(int64(cacheSize))
-		defer c.Unref()
-		readerOpts.CacheOpts = sstableinternal.CacheOptions{Cache: c}
-	}
+	readerOpts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: cacheHandle}
 	r, err := NewMemReader(obj.Data(), readerOpts)
 	if err != nil {
 		return nil, err

@@ -1261,7 +1261,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 				err = errors.Errorf("%v", r)
 			}
 		}()
-		meta, r, err = runBuildCmd(td, &opts, 0)
+		meta, r, err = runBuildCmd(td, &opts, nil /* cacheHandle */)
 	}()
 	if err != nil {
 		return r, err.Error()
