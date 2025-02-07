@@ -102,13 +102,13 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 						b.ResetTimer()
 						for i := 0; i < b.N; i++ {
 							k := keys[rng.IntN(len(keys))]
-							it.SeekGE(k, base.SeekGEFlagsNone)
+							kv := it.SeekGE(k, base.SeekGEFlagsNone)
 							if testing.Verbose() {
 								if !it.Valid() && !withSyntheticSuffix {
 									b.Fatal("expected to find key")
 								}
-								if !bytes.Equal(k, it.Key().UserKey) && !withSyntheticSuffix {
-									b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+								if !bytes.Equal(k, kv.K.UserKey) && !withSyntheticSuffix {
+									b.Fatalf("expected %s, but found %s", k, kv.K.UserKey)
 								}
 							}
 						}
@@ -144,7 +144,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 						b.ResetTimer()
 						for i := 0; i < b.N; i++ {
 							j := rng.IntN(len(keys))
-							it.SeekLT(keys[j], base.SeekLTFlagsNone)
+							kv := it.SeekLT(keys[j], base.SeekLTFlagsNone)
 							if testing.Verbose() {
 								if j == 0 {
 									if it.Valid() && !withSyntheticSuffix {
@@ -155,8 +155,8 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 										b.Fatal("expected to find key")
 									}
 									k := keys[j-1]
-									if !bytes.Equal(k, it.Key().UserKey) && !withSyntheticSuffix {
-										b.Fatalf("expected %s, but found %s", k, it.Key().UserKey)
+									if !bytes.Equal(k, kv.K.UserKey) && !withSyntheticSuffix {
+										b.Fatalf("expected %s, but found %s", k, kv.K.UserKey)
 									}
 								}
 							}

@@ -1561,19 +1561,9 @@ start:
 	return &i.ikv
 }
 
-// Key returns the internal key at the current iterator position.
-func (i *Iter) Key() *base.InternalKey {
-	return &i.ikv.K
-}
-
 // KV returns the internal KV at the current iterator position.
 func (i *Iter) KV() *base.InternalKV {
 	return &i.ikv
-}
-
-// Value returns the value at the current iterator position.
-func (i *Iter) Value() base.LazyValue {
-	return i.ikv.V
 }
 
 // Error implements internalIterator.Error, as documented in the pebble
@@ -1766,8 +1756,8 @@ func (i *RawIter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
-// SeekGE implements internalIterator.SeekGE, as documented in the pebble
-// package.
+// SeekGE repositions the iterator to point to the first KV with a user key
+// greater than or equal to key. It returns whether the iterator is valid.
 func (i *RawIter) SeekGE(key []byte) bool {
 	// Find the index of the smallest restart point whose key is > the key
 	// sought; index will be numRestarts if there is no such restart point.
@@ -1802,15 +1792,16 @@ func (i *RawIter) SeekGE(key []byte) bool {
 	return i.Valid()
 }
 
-// First implements internalIterator.First, as documented in the pebble
-// package.
+// First repositions the iterator so that it is pointing to the first key in the
+// block, returning whether or not the iterator is still valid.
 func (i *RawIter) First() bool {
 	i.offset = 0
 	i.loadEntry()
 	return i.Valid()
 }
 
-// Last implements internalIterator.Last, as documented in the pebble package.
+// Last repositions the iterator so that it is pointing to the last key in the
+// block, returning whether or not the iterator is still valid.
 func (i *RawIter) Last() bool {
 	// Seek forward from the last restart point.
 	i.offset = offsetInBlock(binary.LittleEndian.Uint32(i.data[i.restarts+4*offsetInBlock(i.numRestarts-1):]))
@@ -1829,8 +1820,8 @@ func (i *RawIter) Last() bool {
 	return i.Valid()
 }
 
-// Next implements internalIterator.Next, as documented in the pebble
-// package.
+// Next repositions the iterator one step forward, returning whether or not the
+// iterator is still valid.
 func (i *RawIter) Next() bool {
 	i.offset = i.nextOffset
 	if !i.Valid() {
@@ -1840,8 +1831,8 @@ func (i *RawIter) Next() bool {
 	return true
 }
 
-// Prev implements internalIterator.Prev, as documented in the pebble
-// package.
+// Prev repositions the iterator one step backwards, returning whether or not
+// the iterator is still valid.
 func (i *RawIter) Prev() bool {
 	if n := len(i.cached) - 1; n > 0 && i.cached[n].offset == i.offset {
 		i.nextOffset = i.offset
@@ -1883,31 +1874,24 @@ func (i *RawIter) Prev() bool {
 	return true
 }
 
-// Key implements internalIterator.Key, as documented in the pebble package.
+// Key returns the key at the current iterator position. The iterator must be
+// Valid().
 func (i *RawIter) Key() base.InternalKey {
 	return i.ikey
 }
 
-// Value implements internalIterator.Value, as documented in the pebble
-// package.
+// Value returns the value at the current iterator position. The iterator must
+// be Valid().
 func (i *RawIter) Value() []byte {
 	return i.val
 }
 
-// Valid implements internalIterator.Valid, as documented in the pebble
-// package.
+// Valid returns true if the iterator is currently positioned at a valid KV.
 func (i *RawIter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
-// Error implements internalIterator.Error, as documented in the pebble
-// package.
-func (i *RawIter) Error() error {
-	return nil
-}
-
-// Close implements internalIterator.Close, as documented in the pebble
-// package.
+// Close implements closes the iterator.
 func (i *RawIter) Close() error {
 	i.val = nil
 	return nil
