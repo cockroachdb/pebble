@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -356,7 +355,7 @@ func corruptBlock(buf []byte, blockNum int) {
 	buf[blockSize*blockNum+3] = 0x00
 }
 
-func TestRecoverNoOp(t *testing.T) {
+func TestBasicReads(t *testing.T) {
 	recs, err := makeTestRecords(
 		blockSize-legacyHeaderSize,
 		blockSize-legacyHeaderSize,
@@ -365,41 +364,10 @@ func TestRecoverNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("makeTestRecords: %v", err)
 	}
-
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
-	_, err = r.Next()
-	if err != nil || r.err != nil {
-		t.Fatalf("reader.Next: %v reader.err: %v", err, r.err)
-	}
-
-	seq, begin, end, n := r.seq, r.begin, r.end, r.n
-
-	// Should be a no-op since r.err == nil.
-	r.recover()
-
-	// r.err was nil, nothing should have changed.
-	if seq != r.seq || begin != r.begin || end != r.end || n != r.n {
-		t.Fatal("reader.Recover when no error existed, was not a no-op")
-	}
-}
-
-func TestBasicRecover(t *testing.T) {
-	recs, err := makeTestRecords(
-		blockSize-legacyHeaderSize,
-		blockSize-legacyHeaderSize,
-		blockSize-legacyHeaderSize,
-	)
-	if err != nil {
-		t.Fatalf("makeTestRecords: %v", err)
-	}
-
-	// Corrupt the checksum of the second record r1 in our file.
-	corruptBlock(recs.buf, 1)
 
 	underlyingReader := bytes.NewReader(recs.buf)
 	r := NewReader(underlyingReader, 0 /* logNum */)
 
-	// The first record r0 should be read just fine.
 	r0, err := r.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -411,27 +379,17 @@ func TestBasicRecover(t *testing.T) {
 	if !bytes.Equal(r0Data, recs.records[0]) {
 		t.Fatal("Unexpected output in r0's data")
 	}
-
-	// The next record should have a checksum mismatch.
-	_, err = r.Next()
-	if err == nil {
-		t.Fatal("Expected an error while reading a corrupted record")
-	}
-	if err != ErrInvalidChunk {
-		t.Fatalf("Unexpected error returned: %v", err)
-	}
-
-	// Recover from that checksum mismatch.
-	r.recover()
-	currentOffset, err := underlyingReader.Seek(0, io.SeekCurrent)
+	r1, err := r.Next()
 	if err != nil {
-		t.Fatalf("current offset: %v", err)
+		t.Fatalf("Next: %v", err)
 	}
-	if currentOffset != blockSize*2 {
-		t.Fatalf("current offset: got %d, want %d", currentOffset, blockSize*2)
+	r1Data, err := io.ReadAll(r1)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
 	}
-
-	// The third record r2 should be read just fine.
+	if !bytes.Equal(r1Data, recs.records[1]) {
+		t.Fatal("Unexpected output in r1's data")
+	}
 	r2, err := r.Next()
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -445,13 +403,12 @@ func TestBasicRecover(t *testing.T) {
 	}
 }
 
-func TestRecoverSingleBlock(t *testing.T) {
+func TestCorruptBlock(t *testing.T) {
 	// The first record will be blockSize * 3 bytes long. Since each block has
 	// a 7 byte header, the first record will roll over into 4 blocks.
 	recs, err := makeTestRecords(
 		blockSize*3,
 		blockSize-legacyHeaderSize,
-		blockSize/2,
 	)
 	if err != nil {
 		t.Fatalf("makeTestRecords: %v", err)
@@ -476,152 +433,6 @@ func TestRecoverSingleBlock(t *testing.T) {
 	}
 	if err != ErrInvalidChunk {
 		t.Fatalf("Unexpected error returned: %v", err)
-	}
-
-	// Recover from that checksum mismatch.
-	r.recover()
-
-	// All of the data in the second record r1 is lost because the first record
-	// r0 shared a partial block with it. The second record also overlapped
-	// into the block with the third record r2. Recovery should jump to that
-	// block, skipping over the end of the second record and start parsing the
-	// third record.
-	r2, err := r.Next()
-	if err != nil {
-		t.Fatalf("Next: %v", err)
-	}
-	r2Data, _ := io.ReadAll(r2)
-	if !bytes.Equal(r2Data, recs.records[2]) {
-		t.Fatal("Unexpected output in r2's data")
-	}
-}
-
-func TestRecoverMultipleBlocks(t *testing.T) {
-	recs, err := makeTestRecords(
-		// The first record will consume 3 entire blocks but a fraction of the 4th.
-		blockSize*3,
-		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
-		// Consume the entirety of the 5th block.
-		blockSize-legacyHeaderSize,
-		// Consume the entirety of the 6th block.
-		blockSize-legacyHeaderSize,
-		// Consume roughly half of the 7th block.
-		blockSize/2,
-	)
-	if err != nil {
-		t.Fatalf("makeTestRecords: %v", err)
-	}
-
-	// Corrupt the checksum for the portion of the first record that exists in the 4th block.
-	corruptBlock(recs.buf, 3)
-
-	// Now corrupt the two blocks in a row that correspond to recs.records[2:4].
-	corruptBlock(recs.buf, 4)
-	corruptBlock(recs.buf, 5)
-
-	// The first record should fail, but only when we read deeper beyond the first block.
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
-	r0, err := r.Next()
-	if err != nil {
-		t.Fatalf("Next: %v", err)
-	}
-
-	// Reading deeper should yield a checksum mismatch.
-	_, err = io.ReadAll(r0)
-	if err == nil {
-		t.Fatal("Exptected a checksum mismatch error, got nil")
-	}
-	if err != ErrInvalidChunk {
-		t.Fatalf("Unexpected error returned: %v", err)
-	}
-
-	// Recover from that checksum mismatch.
-	r.recover()
-
-	// All of the data in the second record is lost because the first
-	// record shared a partial block with it. The following two records
-	// have corrupted checksums as well, so the call above to r.Recover
-	// should result in r.Next() being a reader to the 5th record.
-	r4, err := r.Next()
-	if err != nil {
-		t.Fatalf("Next: %v", err)
-	}
-
-	r4Data, _ := io.ReadAll(r4)
-	if !bytes.Equal(r4Data, recs.records[4]) {
-		t.Fatal("Unexpected output in r4's data")
-	}
-}
-
-// verifyLastBlockRecover reads each record from recs expecting that the
-// last record will be corrupted. It will then try Recover and verify that EOF
-// is returned.
-func verifyLastBlockRecover(recs *testRecords) error {
-	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
-	// Loop to one element larger than the number of records to verify EOF.
-	for i := 0; i < len(recs.records)+1; i++ {
-		_, err := r.Next()
-		switch i {
-		case len(recs.records) - 1:
-			if err == nil {
-				return errors.New("Expected a checksum mismatch error, got nil")
-			}
-			r.recover()
-		case len(recs.records):
-			if err != io.EOF {
-				return errors.Errorf("Expected io.EOF, got %v", err)
-			}
-		default:
-			if err != nil {
-				return errors.Errorf("Next: %v", err)
-			}
-		}
-	}
-	return nil
-}
-
-func TestRecoverLastPartialBlock(t *testing.T) {
-	recs, err := makeTestRecords(
-		// The first record will consume 3 entire blocks but a fraction of the 4th.
-		blockSize*3,
-		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
-		// Consume roughly half of the 5th block.
-		blockSize/2,
-	)
-	if err != nil {
-		t.Fatalf("makeTestRecords: %v", err)
-	}
-
-	// Corrupt the 5th block.
-	corruptBlock(recs.buf, 4)
-
-	// Verify Recover works when the last block is corrupted.
-	if err := verifyLastBlockRecover(recs); err != nil {
-		t.Fatalf("verifyLastBlockRecover: %v", err)
-	}
-}
-
-func TestRecoverLastCompleteBlock(t *testing.T) {
-	recs, err := makeTestRecords(
-		// The first record will consume 3 entire blocks but a fraction of the 4th.
-		blockSize*3,
-		// The second record will completely fill the remainder of the 4th block.
-		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
-		// Consume the entire 5th block.
-		blockSize-legacyHeaderSize,
-	)
-	if err != nil {
-		t.Fatalf("makeTestRecords: %v", err)
-	}
-
-	// Corrupt the 5th block.
-	corruptBlock(recs.buf, 4)
-
-	// Verify Recover works when the last block is corrupted.
-	if err := verifyLastBlockRecover(recs); err != nil {
-		t.Fatalf("verifyLastBlockRecover: %v", err)
 	}
 }
 
@@ -656,7 +467,7 @@ func TestReaderOffset(t *testing.T) {
 	}
 }
 
-func TestSeekRecord(t *testing.T) {
+func TestSeekRecordInvalidChunk(t *testing.T) {
 	recs, err := makeTestRecords(
 		// The first record will consume 3 entire blocks but a fraction of the 4th.
 		blockSize*3,
@@ -674,8 +485,8 @@ func TestSeekRecord(t *testing.T) {
 	}
 
 	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
-	// Seek to a valid block offset, but within a multiblock record. This should cause the next call to
-	// Next after SeekRecord to return the next valid FIRST/FULL chunk of the subsequent record.
+
+	// Seek to the FIRST/FULL chunk of the second block in the first record.
 	err = r.seekRecord(blockSize)
 	if err != nil {
 		t.Fatalf("SeekRecord: %v", err)
@@ -698,7 +509,39 @@ func TestSeekRecord(t *testing.T) {
 	if _, err = r.Next(); err == nil {
 		t.Fatalf("Expected an error seeking to an invalid chunk boundary")
 	}
-	r.recover()
+}
+
+func TestSeekRecordEndOfFile(t *testing.T) {
+	recs, err := makeTestRecords(
+		// The first record will consume 3 entire blocks but a fraction of the 4th.
+		blockSize*3,
+		// The second record will completely fill the remainder of the 4th block.
+		3*(blockSize-legacyHeaderSize)-2*blockSize-2*legacyHeaderSize,
+		// Consume the entirety of the 5th block.
+		blockSize-legacyHeaderSize,
+		// Consume the entirety of the 6th block.
+		blockSize-legacyHeaderSize,
+		// Consume roughly half of the 7th block.
+		blockSize/2,
+	)
+	if err != nil {
+		t.Fatalf("makeTestRecords: %v", err)
+	}
+
+	r := NewReader(bytes.NewReader(recs.buf), 0 /* logNum */)
+	// Seek to the FIRST/FULL chunk of the second block in the first record.
+	err = r.seekRecord(blockSize)
+	if err != nil {
+		t.Fatalf("SeekRecord: %v", err)
+	}
+	rec, err := r.Next()
+	if err != nil {
+		t.Fatalf("Next: %v", err)
+	}
+	rData, _ := io.ReadAll(rec)
+	if !bytes.Equal(rData, recs.records[1]) {
+		t.Fatalf("Unexpected output in record 1's data, got %v want %v", rData, recs.records[1])
+	}
 
 	// Seek to the fifth block and verify all records can be read as appropriate.
 	err = r.seekRecord(blockSize * 4)
@@ -736,14 +579,6 @@ func TestSeekRecord(t *testing.T) {
 	if err != io.ErrUnexpectedEOF {
 		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
 	}
-	r.recover() // Verify recovery works.
-
-	// Validate the current records are returned after seeking to a valid offset.
-	err = r.seekRecord(blockSize * 4)
-	if err != nil {
-		t.Fatalf("SeekRecord: %v", err)
-	}
-	check(2)
 }
 
 func TestLastRecordOffset(t *testing.T) {

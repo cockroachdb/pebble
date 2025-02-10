@@ -28,17 +28,7 @@
 //			if err == io.EOF {
 //				break
 //			}
-//			if err != nil {
-//				log.Printf("recovering from %v", err)
-//				r.Recover()
-//				continue
-//			}
 //			s, err := io.ReadAll(rec)
-//			if err != nil {
-//				log.Printf("recovering from %v", err)
-//				r.Recover()
-//				continue
-//			}
 //			ss = append(ss, string(s))
 //		}
 //		return ss, nil
@@ -93,10 +83,6 @@
 // extra "recyclable" chunk types that map directly to the legacy chunk types
 // (i.e. full, first, middle, last). The CRC is computed over the type, log
 // number, and payload.
-//
-// The wire format allows for limited recovery in the face of data corruption:
-// on a format error (such as a checksum mismatch), the reader moves to the
-// next block and looks for the next full or first chunk.
 package record
 
 // The C++ Level-DB code calls this the log, but it has been renamed to record
@@ -227,8 +213,6 @@ type Reader struct {
 	// n is the number of bytes of buf that are valid. Once reading has started,
 	// only the final block can have n < blockSize.
 	n int
-	// recovering is true when recovering from corruption.
-	recovering bool
 	// last is whether the current chunk is the last chunk of the record.
 	last bool
 	// err is any accumulated error.
@@ -270,15 +254,6 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					r.end = r.n
 					continue
 				}
-				if r.recovering {
-					// Skip the rest of the block, if it looks like it is all
-					// zeroes. This is common with WAL preallocation.
-					//
-					// Set r.err to be an error so r.recover actually recovers.
-					r.err = ErrZeroedChunk
-					r.recover()
-					continue
-				}
 				return ErrZeroedChunk
 			}
 
@@ -307,17 +282,9 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			r.end = r.begin + int(length)
 			if r.end > r.n {
 				// The chunk straddles a 32KB boundary (or the end of file).
-				if r.recovering {
-					r.recover()
-					continue
-				}
 				return ErrInvalidChunk
 			}
 			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
-				if r.recovering {
-					r.recover()
-					continue
-				}
 				return ErrInvalidChunk
 			}
 			if wantFirst {
@@ -326,7 +293,6 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				}
 			}
 			r.last = chunkPosition == fullChunkPosition || chunkPosition == lastChunkPosition
-			r.recovering = false
 			return nil
 		}
 		if r.n < blockSize && r.blockNum >= 0 {
@@ -375,23 +341,6 @@ func (r *Reader) Offset() int64 {
 	return int64(r.blockNum)*blockSize + int64(r.end)
 }
 
-// recover clears any errors read so far, so that calling Next will start
-// reading from the next good 32KiB block. If there are no such blocks, Next
-// will return io.EOF. recover also marks the current reader, the one most
-// recently returned by Next, as stale. If recover is called without any
-// prior error, then recover is a no-op.
-func (r *Reader) recover() {
-	if r.err == nil {
-		return
-	}
-	r.recovering = true
-	r.err = nil
-	// Discard the rest of the current block.
-	r.begin, r.end, r.last = r.n, r.n, false
-	// Invalidate any outstanding singleReader.
-	r.seq++
-}
-
 // seekRecord seeks in the underlying io.Reader such that calling r.Next
 // returns the record whose first chunk header starts at the provided offset.
 // Its behavior is undefined if the argument given is not such an offset, as
@@ -401,12 +350,7 @@ func (r *Reader) recover() {
 // io.Seeker.
 //
 // seekRecord will fail and return an error if the Reader previously
-// encountered an error, including io.EOF. Such errors can be cleared by
-// calling Recover. Calling seekRecord after Recover will make calling Next
-// return the record at the given offset, instead of the record at the next
-// good 32KiB block as Recover normally would. Calling seekRecord before
-// Recover has no effect on Recover's semantics other than changing the
-// starting point for determining the next good 32KiB block.
+// encountered an error, including io.EOF.
 //
 // The offset is always relative to the start of the underlying io.Reader, so
 // negative values will result in an error as per io.Seeker.
@@ -429,7 +373,7 @@ func (r *Reader) seekRecord(offset int64) error {
 
 	// Clear the state of the internal reader.
 	r.begin, r.end, r.n = 0, 0, 0
-	r.blockNum, r.recovering, r.last = -1, false, false
+	r.blockNum, r.last = -1, false
 	if r.err = r.nextChunk(false); r.err != nil {
 		return r.err
 	}
