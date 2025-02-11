@@ -140,7 +140,8 @@ func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *rea
 	var value *Value
 	if e, _ := c.blocks.Get(k); e != nil {
 		value = e.acquireValue()
-		if value != nil {
+		// Note: we Load first to avoid an atomic XCHG when not necessary.
+		if value != nil && !e.referenced.Load() {
 			e.referenced.Store(true)
 		}
 	}
