@@ -47,7 +47,7 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 		var bve BulkVersionEdit
-		bve.AddedByFileNum = addedByFileNum
+		bve.AddedTablesByFileNum = addedByFileNum
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}

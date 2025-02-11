@@ -91,7 +91,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		NextFileNum:          44,
 		LastSeqNum:           55,
 		CreatedBackingTables: []*FileBacking{m1.FileBacking},
-		NewFiles: []NewFileEntry{
+		NewTables: []NewTableEntry{
 			{
 				Level: 4,
 				Meta:  m2,
@@ -224,7 +224,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			LastSeqNum:           55,
 			RemovedBackingTables: []base.DiskFileNum{10, 11},
 			CreatedBackingTables: []*FileBacking{m5.FileBacking, m6.FileBacking},
-			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
+			DeletedTables: map[DeletedTableEntry]*FileMetadata{
 				{
 					Level:   3,
 					FileNum: 703,
@@ -234,7 +234,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					FileNum: 704,
 				}: nil,
 			},
-			NewFiles: []NewFileEntry{
+			NewTables: []NewTableEntry{
 				{
 					Level: 4,
 					Meta:  m1,
@@ -413,11 +413,11 @@ func TestVersionEditApply(t *testing.T) {
 				}
 
 				bve := BulkVersionEdit{}
-				bve.AddedByFileNum = make(map[base.FileNum]*FileMetadata)
+				bve.AddedTablesByFileNum = make(map[base.FileNum]*FileMetadata)
 				for _, l := range v.Levels {
 					it := l.Iter()
 					for f := it.First(); f != nil; f = it.Next() {
-						bve.AddedByFileNum[f.FileNum] = f
+						bve.AddedTablesByFileNum[f.FileNum] = f
 					}
 				}
 

@@ -260,11 +260,11 @@ func (f *findT) readManifests(stdout io.Writer) {
 				if num := ve.MinUnflushedLogNum; num != 0 {
 					f.editRefs[num] = append(f.editRefs[num], i)
 				}
-				for df := range ve.DeletedFiles {
+				for df := range ve.DeletedTables {
 					diskFileNum := base.PhysicalTableDiskFileNum(df.FileNum)
 					f.editRefs[diskFileNum] = append(f.editRefs[diskFileNum], i)
 				}
-				for _, nf := range ve.NewFiles {
+				for _, nf := range ve.NewTables {
 					// The same file can be deleted and added in a single version edit
 					// which indicates a "move" compaction. Only add the edit to the list
 					// once.
@@ -575,14 +575,14 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 	for len(editRefs) > 0 {
 		ve := f.edits[editRefs[0]]
 		editRefs = editRefs[1:]
-		for _, nf := range ve.NewFiles {
+		for _, nf := range ve.NewTables {
 			if fileNum != nf.Meta.FileNum {
 				continue
 			}
 
 			var buf bytes.Buffer
 			switch {
-			case len(ve.DeletedFiles) > 0:
+			case len(ve.DeletedTables) > 0:
 				// A version edit with deleted files is a compaction. The deleted
 				// files are the inputs to the compaction. We're going to
 				// reconstruct the input files and display those inputs that
@@ -591,7 +591,7 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 				// been elided.
 				var sourceLevels []int
 				levels := make(map[int][]base.FileNum)
-				for df := range ve.DeletedFiles {
+				for df := range ve.DeletedTables {
 					files := levels[df.Level]
 					if len(files) == 0 {
 						sourceLevels = append(sourceLevels, df.Level)
@@ -655,9 +655,9 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 			for len(editRefs) > 0 {
 				ve := f.edits[editRefs[0]]
 				editRefs = editRefs[1:]
-				for _, nf := range ve.NewFiles {
+				for _, nf := range ve.NewTables {
 					if fileNum == nf.Meta.FileNum {
-						for df := range ve.DeletedFiles {
+						for df := range ve.DeletedTables {
 							if fileNum == df.FileNum {
 								fmt.Fprintf(&buf, ", moved to L%d", nf.Level)
 								break

@@ -262,7 +262,7 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	var excludedFiles map[deletedFileEntry]*fileMetadata
+	var excludedTables map[deletedFileEntry]*fileMetadata
 	var remoteFiles []base.DiskFileNum
 	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
@@ -272,10 +272,10 @@ func (d *DB) Checkpoint(
 		iter := current.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			if excludeFromCheckpoint(f, opt, d.cmp) {
-				if excludedFiles == nil {
-					excludedFiles = make(map[deletedFileEntry]*fileMetadata)
+				if excludedTables == nil {
+					excludedTables = make(map[deletedFileEntry]*fileMetadata)
 				}
-				excludedFiles[deletedFileEntry{
+				excludedTables[deletedFileEntry{
 					Level:   l,
 					FileNum: f.FileNum,
 				}] = f
@@ -325,7 +325,7 @@ func (d *DB) Checkpoint(
 
 	ckErr = d.writeCheckpointManifest(
 		fs, formatVers, destDir, dir, manifestFileNum, manifestSize,
-		excludedFiles, removeBackingTables,
+		excludedTables, removeBackingTables,
 	)
 	if ckErr != nil {
 		return ckErr
@@ -480,7 +480,7 @@ func (d *DB) writeCheckpointManifest(
 		if len(excludedFiles) > 0 {
 			// Write out an additional VersionEdit that deletes the excluded SST files.
 			ve := versionEdit{
-				DeletedFiles:         excludedFiles,
+				DeletedTables:        excludedFiles,
 				RemovedBackingTables: removeBackingTables,
 			}
 

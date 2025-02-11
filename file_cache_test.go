@@ -372,8 +372,8 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 	// Write the version edit.
 	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
-		metrics := newFileMetrics(ve.NewFiles)
-		for de, f := range ve.DeletedFiles {
+		metrics := newFileMetrics(ve.NewTables)
+		for de, f := range ve.DeletedTables {
 			lm := metrics[de.Level]
 			if lm == nil {
 				lm = &LevelMetrics{}
@@ -397,14 +397,14 @@ func TestVirtualReadsWiring(t *testing.T) {
 	}
 
 	ve := manifest.VersionEdit{}
-	d1 := manifest.DeletedFileEntry{Level: 6, FileNum: parentFile.FileNum}
-	n1 := manifest.NewFileEntry{Level: 6, Meta: v1}
-	n2 := manifest.NewFileEntry{Level: 6, Meta: v2}
+	d1 := manifest.DeletedTableEntry{Level: 6, FileNum: parentFile.FileNum}
+	n1 := manifest.NewTableEntry{Level: 6, Meta: v1}
+	n2 := manifest.NewTableEntry{Level: 6, Meta: v2}
 
-	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
-	ve.DeletedFiles[d1] = parentFile
-	ve.NewFiles = append(ve.NewFiles, n1)
-	ve.NewFiles = append(ve.NewFiles, n2)
+	ve.DeletedTables = make(map[manifest.DeletedTableEntry]*manifest.FileMetadata)
+	ve.DeletedTables[d1] = parentFile
+	ve.NewTables = append(ve.NewTables, n1)
+	ve.NewTables = append(ve.NewTables, n2)
 	ve.CreatedBackingTables = append(ve.CreatedBackingTables, parentFile.FileBacking)
 
 	require.NoError(t, applyVE(&ve))

@@ -26,12 +26,12 @@ const manifestMarkerName = `manifest`
 
 // Provide type aliases for the various manifest structs.
 type bulkVersionEdit = manifest.BulkVersionEdit
-type deletedFileEntry = manifest.DeletedFileEntry
+type deletedFileEntry = manifest.DeletedTableEntry
 type fileMetadata = manifest.FileMetadata
 type physicalMeta = manifest.PhysicalFileMeta
 type virtualMeta = manifest.VirtualFileMeta
 type fileBacking = manifest.FileBacking
-type newFileEntry = manifest.NewFileEntry
+type newTableEntry = manifest.NewTableEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
 type versionList = manifest.VersionList
@@ -232,7 +232,7 @@ func (vs *versionSet) load(
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
-	bve.AddedByFileNum = make(map[base.FileNum]*fileMetadata)
+	bve.AddedTablesByFileNum = make(map[base.FileNum]*fileMetadata)
 	manifest, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
@@ -316,7 +316,7 @@ func (vs *versionSet) load(
 		vs.virtualBackings.AddAndRef(b)
 	}
 
-	for _, addedLevel := range bve.Added {
+	for _, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
 			if m.Virtual {
 				vs.virtualBackings.AddTable(m)
@@ -327,7 +327,7 @@ func (vs *versionSet) load(
 	if invariants.Enabled {
 		// There should be no deleted tables or backings, since we're starting from
 		// an empty state.
-		for _, deletedLevel := range bve.Deleted {
+		for _, deletedLevel := range bve.DeletedTables {
 			if len(deletedLevel) != 0 {
 				panic("deleted files after manifest replay")
 			}
@@ -518,7 +518,7 @@ func (vs *versionSet) logAndApply(
 	//
 	// The logic below uses the min of the last snapshot file count and the file
 	// count in the current version.
-	vs.rotationHelper.AddRecord(int64(len(ve.DeletedFiles) + len(ve.NewFiles)))
+	vs.rotationHelper.AddRecord(int64(len(ve.DeletedTables) + len(ve.NewTables)))
 	sizeExceeded := vs.manifest.Size() >= vs.opts.MaxManifestFileSize
 	requireRotation := forceRotation || vs.manifest == nil
 
@@ -743,7 +743,7 @@ func getZombiesAndUpdateVirtualBackings(
 	// Note that for the common case where there are very few elements, the map
 	// will stay on the stack.
 	stillUsed := make(map[base.DiskFileNum]struct{})
-	for _, nf := range ve.NewFiles {
+	for _, nf := range ve.NewTables {
 		if !nf.Meta.Virtual {
 			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
 			_, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
@@ -753,7 +753,7 @@ func getZombiesAndUpdateVirtualBackings(
 	for _, b := range ve.CreatedBackingTables {
 		stillUsed[b.DiskFileNum] = struct{}{}
 	}
-	for _, m := range ve.DeletedFiles {
+	for _, m := range ve.DeletedTables {
 		if !m.Virtual {
 			// NB: this deleted file may also be in NewFiles or
 			// CreatedBackingTables, due to a file moving between levels, or
@@ -780,12 +780,12 @@ func getZombiesAndUpdateVirtualBackings(
 		_, localFileDelta := sizeIfLocal(b, provider)
 		localLiveSizeDelta += localFileDelta
 	}
-	for _, nf := range ve.NewFiles {
+	for _, nf := range ve.NewTables {
 		if nf.Meta.Virtual {
 			virtualBackings.AddTable(nf.Meta)
 		}
 	}
-	for _, m := range ve.DeletedFiles {
+	for _, m := range ve.DeletedTables {
 		if m.Virtual {
 			virtualBackings.RemoveTable(m)
 		}
@@ -910,7 +910,7 @@ func (vs *versionSet) createManifest(
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		iter := levelMetadata.Iter()
 		for meta := iter.First(); meta != nil; meta = iter.Next() {
-			snapshot.NewFiles = append(snapshot.NewFiles, newFileEntry{
+			snapshot.NewTables = append(snapshot.NewTables, newTableEntry{
 				Level: level,
 				Meta:  meta,
 			})
@@ -1116,7 +1116,7 @@ func findCurrentManifest(
 	return marker, manifestNum, true, nil
 }
 
-func newFileMetrics(newFiles []manifest.NewFileEntry) map[int]*LevelMetrics {
+func newFileMetrics(newFiles []manifest.NewTableEntry) map[int]*LevelMetrics {
 	m := map[int]*LevelMetrics{}
 	for _, nf := range newFiles {
 		lm := m[nf.Level]

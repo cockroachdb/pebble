@@ -74,16 +74,16 @@ const (
 	customTagBlobReferences    = 69
 )
 
-// DeletedFileEntry holds the state for a file deletion from a level. The file
-// itself might still be referenced by another level.
-type DeletedFileEntry struct {
+// DeletedTableEntry holds the state for a sstable deletion from a level. The
+// table itself might still be referenced by another level.
+type DeletedTableEntry struct {
 	Level   int
 	FileNum base.FileNum
 }
 
-// NewFileEntry holds the state for a new file or one moved from a different
+// NewTableEntry holds the state for a new sstable or one moved from a different
 // level.
-type NewFileEntry struct {
+type NewTableEntry struct {
 	Level int
 	Meta  *FileMetadata
 	// BackingFileNum is only set during manifest replay, and only for virtual
@@ -124,8 +124,8 @@ type VersionEdit struct {
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
 	// found that there was no overlapping file at the higher level).
-	DeletedFiles map[DeletedFileEntry]*FileMetadata
-	NewFiles     []NewFileEntry
+	DeletedTables map[DeletedTableEntry]*FileMetadata
+	NewTables     []NewTableEntry
 	// CreatedBackingTables can be used to preserve the FileBacking associated
 	// with a physical sstable. This is useful when virtual sstables in the
 	// latest version are reconstructed during manifest replay, and we also need
@@ -252,10 +252,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			if v.DeletedFiles == nil {
-				v.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
+			if v.DeletedTables == nil {
+				v.DeletedTables = make(map[DeletedTableEntry]*FileMetadata)
 			}
-			v.DeletedFiles[DeletedFileEntry{level, fileNum}] = nil
+			v.DeletedTables[DeletedTableEntry{level, fileNum}] = nil
 
 		case tagNewFile, tagNewFile2, tagNewFile3, tagNewFile4, tagNewFile5:
 			level, err := d.readLevel()
@@ -487,14 +487,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				m.InitPhysicalBacking()
 			}
 
-			nfe := NewFileEntry{
+			nfe := NewTableEntry{
 				Level: level,
 				Meta:  m,
 			}
 			if virtualState.virtual {
 				nfe.BackingFileNum = base.DiskFileNum(virtualState.backingFileNum)
 			}
-			v.NewFiles = append(v.NewFiles, nfe)
+			v.NewTables = append(v.NewTables, nfe)
 
 		case tagNewBlobFile:
 			fileNum, err := d.readFileNum()
@@ -561,11 +561,11 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	if v.LastSeqNum != 0 {
 		fmt.Fprintf(&buf, "  last-seq-num:  %d\n", v.LastSeqNum)
 	}
-	entries := make([]DeletedFileEntry, 0, len(v.DeletedFiles))
-	for df := range v.DeletedFiles {
+	entries := make([]DeletedTableEntry, 0, len(v.DeletedTables))
+	for df := range v.DeletedTables {
 		entries = append(entries, df)
 	}
-	slices.SortFunc(entries, func(a, b DeletedFileEntry) int {
+	slices.SortFunc(entries, func(a, b DeletedTableEntry) int {
 		if v := stdcmp.Compare(a.Level, b.Level); v != 0 {
 			return v
 		}
@@ -574,7 +574,7 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	for _, df := range entries {
 		fmt.Fprintf(&buf, "  del-table:     L%d %s\n", df.Level, df.FileNum)
 	}
-	for _, nf := range v.NewFiles {
+	for _, nf := range v.NewTables {
 		fmt.Fprintf(&buf, "  add-table:     L%d", nf.Level)
 		fmt.Fprintf(&buf, " %s", nf.Meta.DebugString(fmtKey, verbose))
 		if nf.Meta.CreationTime != 0 {
@@ -640,7 +640,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			if err != nil {
 				return nil, err
 			}
-			ve.NewFiles = append(ve.NewFiles, NewFileEntry{
+			ve.NewTables = append(ve.NewTables, NewTableEntry{
 				Level: level,
 				Meta:  meta,
 			})
@@ -648,10 +648,10 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 		case "del-table":
 			level := p.Level()
 			num := p.FileNum()
-			if ve.DeletedFiles == nil {
-				ve.DeletedFiles = make(map[DeletedFileEntry]*FileMetadata)
+			if ve.DeletedTables == nil {
+				ve.DeletedTables = make(map[DeletedTableEntry]*FileMetadata)
 			}
-			ve.DeletedFiles[DeletedFileEntry{
+			ve.DeletedTables[DeletedTableEntry{
 				Level:   level,
 				FileNum: num,
 			}] = nil
@@ -720,12 +720,12 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagLastSequence)
 		e.writeUvarint(uint64(v.LastSeqNum))
 	}
-	for x := range v.DeletedFiles {
+	for x := range v.DeletedTables {
 		e.writeUvarint(tagDeletedFile)
 		e.writeUvarint(uint64(x.Level))
 		e.writeUvarint(uint64(x.FileNum))
 	}
-	for _, x := range v.NewFiles {
+	for _, x := range v.NewTables {
 		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0
 		var tag uint64
 		switch {
@@ -913,24 +913,24 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // before (in a prior version edit). Note that a given file can be deleted from
 // a level and added to another level in a single version edit
 type BulkVersionEdit struct {
-	Added   [NumLevels]map[base.FileNum]*FileMetadata
-	Deleted [NumLevels]map[base.FileNum]*FileMetadata
+	AddedTables   [NumLevels]map[base.FileNum]*FileMetadata
+	DeletedTables [NumLevels]map[base.FileNum]*FileMetadata
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
 	// FileBacking of virtual sstables during manifest replay.
 	AddedFileBacking   map[base.DiskFileNum]*FileBacking
 	RemovedFileBacking []base.DiskFileNum
 
-	// AddedByFileNum maps file number to file metadata for all added files
-	// from accumulated version edits. AddedByFileNum is only populated if set
-	// to non-nil by a caller. It must be set to non-nil when replaying
-	// version edits read from a MANIFEST (as opposed to VersionEdits
+	// AddedTablesByFileNum maps file number to file metadata for all added
+	// files from accumulated version edits. AddedTablesByFileNum is only
+	// populated if set to non-nil by a caller. It must be set to non-nil when
+	// replaying version edits read from a MANIFEST (as opposed to VersionEdits
 	// constructed in-memory).  While replaying a MANIFEST file,
-	// VersionEdit.DeletedFiles map entries have nil values, because the
-	// on-disk deletion record encodes only the file number. Accumulate
-	// uses AddedByFileNum to correctly populate the BulkVersionEdit's Deleted
+	// VersionEdit.DeletedFiles map entries have nil values, because the on-disk
+	// deletion record encodes only the file number. Accumulate uses
+	// AddedTablesByFileNum to correctly populate the BulkVersionEdit's Deleted
 	// field with non-nil *FileMetadata.
-	AddedByFileNum map[base.FileNum]*FileMetadata
+	AddedTablesByFileNum map[base.FileNum]*FileMetadata
 
 	// MarkedForCompactionCountDiff holds the aggregated count of files
 	// marked for compaction added or removed.
@@ -953,19 +953,19 @@ type BulkVersionEdit struct {
 // of the accumulation, because we need to decrease the refcount of the
 // deleted file in Apply.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
-	for df, m := range ve.DeletedFiles {
-		dmap := b.Deleted[df.Level]
+	for df, m := range ve.DeletedTables {
+		dmap := b.DeletedTables[df.Level]
 		if dmap == nil {
 			dmap = make(map[base.FileNum]*FileMetadata)
-			b.Deleted[df.Level] = dmap
+			b.DeletedTables[df.Level] = dmap
 		}
 
 		if m == nil {
 			// m is nil only when replaying a MANIFEST.
-			if b.AddedByFileNum == nil {
+			if b.AddedTablesByFileNum == nil {
 				return errors.Errorf("deleted file L%d.%s's metadata is absent and bve.AddedByFileNum is nil", df.Level, df.FileNum)
 			}
-			m = b.AddedByFileNum[df.FileNum]
+			m = b.AddedTablesByFileNum[df.FileNum]
 			if m == nil {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", df.Level, df.FileNum)
 			}
@@ -973,11 +973,11 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if m.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff--
 		}
-		if _, ok := b.Added[df.Level][df.FileNum]; !ok {
+		if _, ok := b.AddedTables[df.Level][df.FileNum]; !ok {
 			dmap[df.FileNum] = m
 		} else {
 			// Present in b.Added for the same level.
-			delete(b.Added[df.Level], df.FileNum)
+			delete(b.AddedTables[df.Level], df.FileNum)
 		}
 	}
 
@@ -997,10 +997,10 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		b.AddedFileBacking[fb.DiskFileNum] = fb
 	}
 
-	for _, nf := range ve.NewFiles {
+	for _, nf := range ve.NewTables {
 		// A new file should not have been deleted in this or a preceding
 		// VersionEdit at the same level (though files can move across levels).
-		if dmap := b.Deleted[nf.Level]; dmap != nil {
+		if dmap := b.DeletedTables[nf.Level]; dmap != nil {
 			if _, ok := dmap[nf.Meta.FileNum]; ok {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
@@ -1016,12 +1016,12 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.FileNum)
 		}
 
-		if b.Added[nf.Level] == nil {
-			b.Added[nf.Level] = make(map[base.FileNum]*FileMetadata)
+		if b.AddedTables[nf.Level] == nil {
+			b.AddedTables[nf.Level] = make(map[base.FileNum]*FileMetadata)
 		}
-		b.Added[nf.Level][nf.Meta.FileNum] = nf.Meta
-		if b.AddedByFileNum != nil {
-			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
+		b.AddedTables[nf.Level][nf.Meta.FileNum] = nf.Meta
+		if b.AddedTablesByFileNum != nil {
+			b.AddedTablesByFileNum[nf.Meta.FileNum] = nf.Meta
 		}
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++
@@ -1076,7 +1076,7 @@ func (b *BulkVersionEdit) Apply(
 			v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
 		}
 
-		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
+		if len(b.AddedTables[level]) == 0 && len(b.DeletedTables[level]) == 0 {
 			// There are no edits on this level.
 			if level == 0 {
 				// Initialize L0Sublevels.
@@ -1096,19 +1096,19 @@ func (b *BulkVersionEdit) Apply(
 		lm := &v.Levels[level]
 		lmRange := &v.RangeKeyLevels[level]
 
-		addedFilesMap := b.Added[level]
-		deletedFilesMap := b.Deleted[level]
-		if n := v.Levels[level].Len() + len(addedFilesMap); n == 0 {
+		addedTablesMap := b.AddedTables[level]
+		deletedTablesMap := b.DeletedTables[level]
+		if n := v.Levels[level].Len() + len(addedTablesMap); n == 0 {
 			return nil, base.CorruptionErrorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
-				errors.Safe(len(deletedFilesMap)))
+				errors.Safe(len(deletedTablesMap)))
 		}
 
 		// NB: addedFilesMap may be empty. If a file is present in addedFilesMap
 		// for a level, it won't be present in deletedFilesMap for the same
 		// level.
 
-		for _, f := range deletedFilesMap {
+		for _, f := range deletedTablesMap {
 			if obsolete := v.Levels[level].remove(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
@@ -1129,19 +1129,19 @@ func (b *BulkVersionEdit) Apply(
 			}
 		}
 
-		addedFiles := make([]*FileMetadata, 0, len(addedFilesMap))
-		for _, f := range addedFilesMap {
-			addedFiles = append(addedFiles, f)
+		addedTables := make([]*FileMetadata, 0, len(addedTablesMap))
+		for _, f := range addedTablesMap {
+			addedTables = append(addedTables, f)
 		}
 		// Sort addedFiles by file number. This isn't necessary, but tests which
 		// replay invalid manifests check the error output, and the error output
 		// depends on the order in which files are added to the btree.
-		slices.SortFunc(addedFiles, func(a, b *FileMetadata) int {
+		slices.SortFunc(addedTables, func(a, b *FileMetadata) int {
 			return stdcmp.Compare(a.FileNum, b.FileNum)
 		})
 
 		var sm, la *FileMetadata
-		for _, f := range addedFiles {
+		for _, f := range addedTables {
 			// NB: allowedSeeks is used for read triggered compactions. It is set using
 			// Options.Experimental.ReadCompactionRate which defaults to 32KB.
 			var allowedSeeks int64
@@ -1175,14 +1175,14 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		if level == 0 {
-			if curr != nil && curr.L0Sublevels != nil && len(deletedFilesMap) == 0 {
+			if curr != nil && curr.L0Sublevels != nil && len(deletedTablesMap) == 0 {
 				// Flushes and ingestions that do not delete any L0 files do not require
 				// a regeneration of L0Sublevels from scratch. We can instead generate
 				// it incrementally.
 				var err error
 				// AddL0Files requires addedFiles to be sorted in seqnum order.
-				SortBySeqNum(addedFiles)
-				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
+				SortBySeqNum(addedTables)
+				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedTables, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
 					err = v.InitL0Sublevels(flushSplitBytes)
 				} else if invariants.Enabled && err == nil {
@@ -1215,8 +1215,8 @@ func (b *BulkVersionEdit) Apply(
 		// Check consistency of the level in the vicinity of our edits.
 		if sm != nil && la != nil {
 			overlap := v.Levels[level].Slice().Overlaps(comparer.Compare, sm.UserKeyBounds())
-			// overlap contains all of the added files. We want to ensure that
-			// the added files are consistent with neighboring existing files
+			// overlap contains all of the added tables. We want to ensure that
+			// the added tables are consistent with neighboring existing tables
 			// too, so reslice the overlap to pull in a neighbor on each side.
 			check := overlap.Reslice(func(start, end *LevelIterator) {
 				if m := start.Prev(); m == nil {
