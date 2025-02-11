@@ -33,7 +33,7 @@ func readManifest(filename string) (*Version, error) {
 	defer f.Close()
 	rr := record.NewReader(f, 0 /* logNum */)
 	var v *Version
-	addedByFileNum := make(map[base.FileNum]*FileMetadata)
+	addedByFileNum := make(map[base.FileNum]*TableMetadata)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF {
@@ -59,14 +59,14 @@ func readManifest(filename string) (*Version, error) {
 }
 
 func visualizeSublevels(
-	s *L0Sublevels, compactionFiles bitSet, otherLevels [][]*FileMetadata,
+	s *L0Sublevels, compactionFiles bitSet, otherLevels [][]*TableMetadata,
 ) string {
 	var buf strings.Builder
 	if compactionFiles == nil {
 		compactionFiles = newBitSet(s.levelMetadata.Len())
 	}
 	largestChar := byte('a')
-	printLevel := func(files []*FileMetadata, level string, isL0 bool) {
+	printLevel := func(files []*TableMetadata, level string, isL0 bool) {
 		lastChar := byte('a')
 		fmt.Fprintf(&buf, "L%s:", level)
 		for i := 0; i < 5-len(level); i++ {
@@ -156,7 +156,7 @@ func visualizeSublevels(
 }
 
 func TestL0Sublevels(t *testing.T) {
-	parseMeta := func(s string) (*FileMetadata, error) {
+	parseMeta := func(s string) (*TableMetadata, error) {
 		parts := strings.Split(s, ":")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
@@ -167,7 +167,7 @@ func TestL0Sublevels(t *testing.T) {
 		}
 		fields := strings.Fields(parts[1])
 		keyRange := strings.Split(strings.TrimSpace(fields[0]), "-")
-		m := (&FileMetadata{}).ExtendPointKeyBounds(
+		m := (&TableMetadata{}).ExtendPointKeyBounds(
 			base.DefaultComparer.Compare,
 			base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
 			base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
@@ -207,8 +207,8 @@ func TestL0Sublevels(t *testing.T) {
 	}
 
 	var err error
-	var fileMetas [NumLevels][]*FileMetadata
-	var explicitSublevels [][]*FileMetadata
+	var fileMetas [NumLevels][]*TableMetadata
+	var explicitSublevels [][]*TableMetadata
 	var activeCompactions []L0Compaction
 	var sublevels *L0Sublevels
 	baseLevel := NumLevels - 1
@@ -224,13 +224,13 @@ func TestL0Sublevels(t *testing.T) {
 			fallthrough
 		case "define":
 			if !addL0FilesOpt {
-				fileMetas = [NumLevels][]*FileMetadata{}
+				fileMetas = [NumLevels][]*TableMetadata{}
 				baseLevel = NumLevels - 1
 				activeCompactions = nil
 			}
-			explicitSublevels = [][]*FileMetadata{}
+			explicitSublevels = [][]*TableMetadata{}
 			sublevel := -1
-			addedL0Files := make([]*FileMetadata, 0)
+			addedL0Files := make([]*TableMetadata, 0)
 			for _, data := range strings.Split(td.Input, "\n") {
 				data = strings.TrimSpace(data)
 				switch data[:2] {
@@ -262,7 +262,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 					if sublevel != -1 {
 						for len(explicitSublevels) <= sublevel {
-							explicitSublevels = append(explicitSublevels, []*FileMetadata{})
+							explicitSublevels = append(explicitSublevels, []*TableMetadata{})
 						}
 						explicitSublevels[sublevel] = append(explicitSublevels[sublevel], meta)
 					}
@@ -465,7 +465,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 				}
 			}
-			files := make([]*FileMetadata, 0, len(fileNums))
+			files := make([]*TableMetadata, 0, len(fileNums))
 			for _, num := range fileNums {
 				for _, f := range fileMetas[0] {
 					if f.FileNum == num {
@@ -499,7 +499,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 
 	var inUseKeys [][]byte
 	const keyReusePct = 0.15
-	var fileMetas []*FileMetadata
+	var fileMetas []*TableMetadata
 	var s, s2 *L0Sublevels
 	keySpace := testkeys.Alpha(8)
 
@@ -508,7 +508,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 	// The outer loop runs once for each version edit. The inner loop(s) run
 	// once for each file, or each file bound.
 	for i := 0; i < 100; i++ {
-		var filesToAdd []*FileMetadata
+		var filesToAdd []*TableMetadata
 		numFiles := 1 + rng.IntN(9)
 		keys := make([][]byte, 0, 2*numFiles)
 		for j := 0; j < 2*numFiles; j++ {
@@ -527,7 +527,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			if bytes.Equal(startKey, endKey) {
 				continue
 			}
-			meta := (&FileMetadata{
+			meta := (&TableMetadata{
 				FileNum:               base.FileNum(i*10 + j + 1),
 				Size:                  rng.Uint64N(1 << 20),
 				SmallestSeqNum:        base.SeqNum(2*i + 1),

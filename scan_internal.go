@@ -89,7 +89,7 @@ type SharedSSTMeta struct {
 	fileNum base.FileNum
 }
 
-func (s *SharedSSTMeta) cloneFromFileMeta(f *fileMetadata) {
+func (s *SharedSSTMeta) cloneFromFileMeta(f *tableMetadata) {
 	*s = SharedSSTMeta{
 		Smallest:         f.Smallest.Clone(),
 		Largest:          f.Largest.Clone(),
@@ -459,7 +459,7 @@ func (d *DB) truncateExternalFile(
 	ctx context.Context,
 	lower, upper []byte,
 	level int,
-	file *fileMetadata,
+	file *tableMetadata,
 	objMeta objstorage.ObjectMetadata,
 ) (*ExternalFile, error) {
 	cmp := d.cmp
@@ -514,7 +514,7 @@ func (d *DB) truncateSharedFile(
 	ctx context.Context,
 	lower, upper []byte,
 	level int,
-	file *fileMetadata,
+	file *tableMetadata,
 	objMeta objstorage.ObjectMetadata,
 ) (sst *SharedSSTMeta, shouldSkip bool, err error) {
 	cmp := d.cmp
@@ -935,7 +935,7 @@ func (i *scanInternalIterator) constructPointIter(
 		i.iterLevels[mlevelsIndex] = IteratorLevel{Kind: IteratorLevelLSM, Level: level}
 		levIter := current.Levels[level].Iter()
 		if level == skipStart {
-			nonRemoteFiles := make([]*manifest.FileMetadata, 0)
+			nonRemoteFiles := make([]*manifest.TableMetadata, 0)
 			for f := levIter.First(); f != nil; f = levIter.Next() {
 				meta, err := i.db.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 				if err != nil {
@@ -1047,7 +1047,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 		spanIterOpts := i.opts.SpanIterOptions()
 		levIter := current.RangeKeyLevels[level].Iter()
 		if level == skipStart {
-			nonRemoteFiles := make([]*manifest.FileMetadata, 0)
+			nonRemoteFiles := make([]*manifest.TableMetadata, 0)
 			for f := levIter.First(); f != nil; f = levIter.Next() {
 				meta, err := i.db.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 				if err != nil {

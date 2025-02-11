@@ -21,14 +21,14 @@ import (
 
 func TestChecker(t *testing.T) {
 	tables := newTestTables()
-	byName := make(map[string]*manifest.FileMetadata)
+	byName := make(map[string]*manifest.TableMetadata)
 
 	datadriven.RunTest(t, "testdata/checker", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			tt := testTable{
 				name: d.CmdArgs[0].String(),
-				meta: &manifest.FileMetadata{
+				meta: &manifest.TableMetadata{
 					FileNum: base.FileNum(1 + len(tables.tables)),
 				},
 			}
@@ -99,7 +99,7 @@ func TestChecker(t *testing.T) {
 			tables.tables[tt.meta] = tt
 
 		case "overlap":
-			var metas []*manifest.FileMetadata
+			var metas []*manifest.TableMetadata
 			lines := strings.Split(d.Input, "\n")
 			for _, arg := range d.CmdArgs {
 				name := arg.String()
@@ -143,7 +143,7 @@ func TestChecker(t *testing.T) {
 
 type testTable struct {
 	name      string
-	meta      *manifest.FileMetadata
+	meta      *manifest.TableMetadata
 	points    []base.InternalKV
 	rangeDels []keyspan.Span
 	rangeKeys []keyspan.Span
@@ -153,7 +153,7 @@ var _ IteratorFactory = (*testTables)(nil)
 
 // testTables implements the IteratorFactory interface for testing purposes.
 type testTables struct {
-	tables map[*manifest.FileMetadata]testTable
+	tables map[*manifest.TableMetadata]testTable
 	// openedIterators keeps track of the iterators we opened. It is reset before
 	// every overlap check.
 	openedIterators []string
@@ -161,7 +161,7 @@ type testTables struct {
 
 func newTestTables() *testTables {
 	return &testTables{
-		tables: make(map[*manifest.FileMetadata]testTable),
+		tables: make(map[*manifest.TableMetadata]testTable),
 	}
 }
 
@@ -175,7 +175,7 @@ func (tt *testTables) OpenedIterators() string {
 }
 
 func (tt *testTables) Points(
-	ctx context.Context, m *manifest.FileMetadata,
+	ctx context.Context, m *manifest.TableMetadata,
 ) (base.InternalIterator, error) {
 	t := tt.get(m)
 	tt.openedIterators = append(tt.openedIterators, fmt.Sprintf("%s/points", t.name))
@@ -186,7 +186,7 @@ func (tt *testTables) Points(
 }
 
 func (tt *testTables) RangeDels(
-	ctx context.Context, m *manifest.FileMetadata,
+	ctx context.Context, m *manifest.TableMetadata,
 ) (keyspan.FragmentIterator, error) {
 	t := tt.get(m)
 	tt.openedIterators = append(tt.openedIterators, fmt.Sprintf("%s/range-del", t.name))
@@ -197,7 +197,7 @@ func (tt *testTables) RangeDels(
 }
 
 func (tt *testTables) RangeKeys(
-	ctx context.Context, m *manifest.FileMetadata,
+	ctx context.Context, m *manifest.TableMetadata,
 ) (keyspan.FragmentIterator, error) {
 	t := tt.get(m)
 	tt.openedIterators = append(tt.openedIterators, fmt.Sprintf("%s/range-key", t.name))
@@ -207,7 +207,7 @@ func (tt *testTables) RangeKeys(
 	return keyspan.NewIter(bytes.Compare, t.rangeKeys), nil
 }
 
-func (tt *testTables) get(m *manifest.FileMetadata) testTable {
+func (tt *testTables) get(m *manifest.TableMetadata) testTable {
 	t, ok := tt.tables[m]
 	if !ok {
 		panic("table not found")

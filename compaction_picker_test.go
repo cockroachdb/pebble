@@ -41,7 +41,7 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 		return nil, nil, err.Error()
 	}
 
-	var files [numLevels][]*fileMetadata
+	var files [numLevels][]*tableMetadata
 	if len(d.Input) > 0 {
 		// Parse each line as
 		//
@@ -76,7 +76,7 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 				}
 			}
 
-			var lastFile *fileMetadata
+			var lastFile *tableMetadata
 			for i := uint64(1); sizes[level] < int64(size); i++ {
 				var key InternalKey
 				if level == 0 {
@@ -85,7 +85,7 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 				} else {
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), base.SeqNum(i), InternalKeyKindSet)
 				}
-				m := (&fileMetadata{
+				m := (&tableMetadata{
 					FileNum:               base.FileNum(uint64(level)*100_000 + i),
 					SmallestSeqNum:        key.SeqNum(),
 					LargestSeqNum:         key.SeqNum(),
@@ -182,7 +182,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 
 	resetCompacting := func() {
 		for _, files := range vers.Levels {
-			files.Slice().Each(func(f *fileMetadata) {
+			files.Slice().Each(func(f *tableMetadata) {
 				f.CompactionState = manifest.CompactionStateNotCompacting
 			})
 		}
@@ -248,7 +248,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						break
 					}
 					for _, cl := range pc.inputs {
-						cl.files.Each(func(f *fileMetadata) {
+						cl.files.Each(func(f *tableMetadata) {
 							f.CompactionState = manifest.CompactionStateCompacting
 							fmt.Fprintf(&b, "  %s marked as compacting\n", f)
 						})
@@ -290,7 +290,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						// L0->Lbase: mark all of Lbase as compacting.
 						c.inputs[1].files = vers.Levels[c.outputLevel].Slice()
 						for _, in := range c.inputs {
-							in.files.Each(func(f *fileMetadata) {
+							in.files.Each(func(f *tableMetadata) {
 								f.CompactionState = manifest.CompactionStateCompacting
 							})
 						}
@@ -370,7 +370,7 @@ func TestCompactionPickerL0(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
 
-	parseMeta := func(s string) (*fileMetadata, error) {
+	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
 		if err != nil {
@@ -381,7 +381,7 @@ func TestCompactionPickerL0(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{
+		m := (&tableMetadata{
 			FileNum: base.FileNum(fileNum),
 		}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
@@ -405,7 +405,7 @@ func TestCompactionPickerL0(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			fileMetas := [manifest.NumLevels][]*fileMetadata{}
+			fileMetas := [manifest.NumLevels][]*tableMetadata{}
 			baseLevel := manifest.NumLevels - 1
 			level := 0
 			var err error
@@ -445,7 +445,7 @@ func TestCompactionPickerL0(t *testing.T) {
 				var level int
 				var info compactionInfo
 				first := true
-				compactionFiles := map[int][]*fileMetadata{}
+				compactionFiles := map[int][]*tableMetadata{}
 				for _, p := range parts {
 					switch p {
 					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
@@ -469,7 +469,7 @@ func TestCompactionPickerL0(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						var compactFile *fileMetadata
+						var compactFile *tableMetadata
 						for _, m := range fileMetas[level] {
 							if m.FileNum == base.FileNum(fileNum) {
 								compactFile = m
@@ -588,7 +588,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
 
-	parseMeta := func(s string) (*fileMetadata, error) {
+	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
 		if err != nil {
@@ -599,7 +599,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{
+		m := (&tableMetadata{
 			FileNum: base.FileNum(fileNum),
 			Size:    1028,
 		}).ExtendPointKeyBounds(
@@ -629,7 +629,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_concurrency", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			fileMetas := [manifest.NumLevels][]*fileMetadata{}
+			fileMetas := [manifest.NumLevels][]*tableMetadata{}
 			level := 0
 			var err error
 			lines := strings.Split(td.Input, "\n")
@@ -665,7 +665,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				var level int
 				var info compactionInfo
 				first := true
-				compactionFiles := map[int][]*fileMetadata{}
+				compactionFiles := map[int][]*tableMetadata{}
 				for _, p := range parts {
 					switch p {
 					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
@@ -689,7 +689,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						var compactFile *fileMetadata
+						var compactFile *tableMetadata
 						for _, m := range fileMetas[level] {
 							if m.FileNum == base.FileNum(fileNum) {
 								compactFile = m
@@ -785,7 +785,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 	var rcList readCompactionQueue
 	var vers *version
 
-	parseMeta := func(s string) (*fileMetadata, error) {
+	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
 		if err != nil {
@@ -796,7 +796,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
 		}
-		m := (&fileMetadata{
+		m := (&tableMetadata{
 			FileNum: base.FileNum(fileNum),
 			Size:    1028,
 		}).ExtendPointKeyBounds(
@@ -824,7 +824,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			rcList = readCompactionQueue{}
-			fileMetas := [manifest.NumLevels][]*fileMetadata{}
+			fileMetas := [manifest.NumLevels][]*tableMetadata{}
 			level := 0
 			var err error
 			lines := strings.Split(td.Input, "\n")
@@ -939,7 +939,7 @@ func (d alwaysMultiLevel) String() string { return "always" }
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := DefaultOptions()
 
-	parseMeta := func(s string) *fileMetadata {
+	parseMeta := func(s string) *tableMetadata {
 		parts := strings.Split(strings.TrimSpace(s), " ")
 		var fileSize uint64
 		var compacting bool
@@ -961,7 +961,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		if compacting {
 			state = manifest.CompactionStateCompacting
 		}
-		m := (&fileMetadata{
+		m := (&tableMetadata{
 			CompactionState: state,
 			Size:            fileSize,
 		}).ExtendPointKeyBounds(
@@ -1004,7 +1004,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			}
 			pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
 			var currentLevel int
-			var files [numLevels][]*fileMetadata
+			var files [numLevels][]*tableMetadata
 			fileNum := base.FileNum(1)
 
 			for _, data := range strings.Split(d.Input, "\n") {
@@ -1077,7 +1077,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				}
 
 				fmt.Fprintf(&buf, "L%d\n", cl.level)
-				cl.files.Each(func(f *fileMetadata) {
+				cl.files.Each(func(f *tableMetadata) {
 					fmt.Fprintf(&buf, "  %s\n", f)
 				})
 			}
@@ -1118,14 +1118,14 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 func TestPickedCompactionExpandInputs(t *testing.T) {
 	opts := DefaultOptions()
 	cmp := DefaultComparer.Compare
-	var files []*fileMetadata
+	var files []*tableMetadata
 
-	parseMeta := func(s string) *fileMetadata {
+	parseMeta := func(s string) *tableMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
+		m := (&tableMetadata{}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			base.ParseInternalKey(parts[0]),
 			base.ParseInternalKey(parts[1]),
@@ -1163,7 +1163,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				}
 				pc.startLevel = &pc.inputs[0]
 
-				var filesLevelled [numLevels][]*fileMetadata
+				var filesLevelled [numLevels][]*tableMetadata
 				filesLevelled[pc.startLevel.level] = files
 				pc.version = newVersion(opts, filesLevelled)
 
@@ -1183,7 +1183,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				}
 
 				var buf bytes.Buffer
-				iter.Take().Slice().Each(func(f *fileMetadata) {
+				iter.Take().Slice().Each(func(f *tableMetadata) {
 					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
 				})
 				return buf.String()
@@ -1199,7 +1199,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 	var picker *compactionPickerByScore
 	var vers *version
 
-	parseMeta := func(s string) (*fileMetadata, error) {
+	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
 		if err != nil {
@@ -1210,7 +1210,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
 		}
-		m := (&fileMetadata{
+		m := (&tableMetadata{
 			FileNum: base.FileNum(fileNum),
 			Size:    1028,
 		}).ExtendPointKeyBounds(
@@ -1246,7 +1246,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_output_file_size", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			fileMetas := [manifest.NumLevels][]*fileMetadata{}
+			fileMetas := [manifest.NumLevels][]*tableMetadata{}
 			level := 0
 			var err error
 			lines := strings.Split(td.Input, "\n")
@@ -1335,7 +1335,7 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			f := &fileMetadata{Size: tc.size}
+			f := &tableMetadata{Size: tc.size}
 			f.InitPhysicalBacking()
 			f.Stats.PointDeletionsBytesEstimate = tc.pointDelEstimateBytes
 			f.Stats.RangeDeletionsBytesEstimate = tc.rangeDelEstimateBytes
@@ -1423,7 +1423,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			if !ok {
 				return "(none)"
 			}
-			return lf.FileMetadata.String()
+			return lf.TableMetadata.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -1606,7 +1606,7 @@ func TestCompactionPickerScores(t *testing.T) {
 
 func fileNums(files manifest.LevelSlice) string {
 	var ss []string
-	files.Each(func(f *fileMetadata) {
+	files.Each(func(f *tableMetadata) {
 		ss = append(ss, f.FileNum.String())
 	})
 	sort.Strings(ss)
@@ -1631,7 +1631,7 @@ func checkClone(t *testing.T, pc *pickedCompaction) {
 	}
 }
 
-func checkTableBoundary(a, b *fileMetadata, cmp base.Compare) (ok bool) {
+func checkTableBoundary(a, b *tableMetadata, cmp base.Compare) (ok bool) {
 	c := cmp(a.LargestPointKey.UserKey, b.SmallestPointKey.UserKey)
 	return c < 0 || (c == 0 && a.LargestPointKey.IsExclusiveSentinel())
 }

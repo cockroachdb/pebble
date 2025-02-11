@@ -169,12 +169,12 @@ func TestIngestLoadRand(t *testing.T) {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = base.FileNum(rng.Uint64())
 		expected[i] = ingestLocalMeta{
-			fileMetadata: &fileMetadata{
+			tableMetadata: &tableMetadata{
 				FileNum: pending[i],
 			},
 			path: paths[i],
 		}
-		expected[i].fileMetadata.Stats.CompressionType = block.SnappyCompression
+		expected[i].tableMetadata.Stats.CompressionType = block.SnappyCompression
 		expected[i].StatsMarkValid()
 
 		func() {
@@ -279,11 +279,11 @@ func TestIngestSortAndVerify(t *testing.T) {
 					if cmp(smallest.UserKey, largest.UserKey) > 0 {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
-					m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+					m := (&tableMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
 					m.InitPhysicalBacking()
 					meta = append(meta, ingestLocalMeta{
-						fileMetadata: m,
-						path:         strconv.Itoa(i),
+						tableMetadata: m,
+						path:          strconv.Itoa(i),
 					})
 				}
 				lr := ingestLoadResult{local: meta}
@@ -323,7 +323,7 @@ func TestIngestLink(t *testing.T) {
 			contents := make([][]byte, len(meta))
 			for j := range meta {
 				meta[j].path = fmt.Sprintf("external%d", j)
-				meta[j].fileMetadata = &fileMetadata{}
+				meta[j].tableMetadata = &tableMetadata{}
 				meta[j].FileNum = base.FileNum(j)
 				meta[j].InitPhysicalBacking()
 				f, err := opts.FS.Create(meta[j].path, vfs.WriteCategoryUnspecified)
@@ -407,9 +407,9 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer objProvider.Close()
 
-	meta := &fileMetadata{FileNum: 1}
+	meta := &tableMetadata{FileNum: 1}
 	meta.InitPhysicalBacking()
-	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{fileMetadata: meta, path: "source"}})
+	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{tableMetadata: meta, path: "source"}})
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -867,7 +867,7 @@ func TestExcise(t *testing.T) {
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedTables: map[deletedFileEntry]*fileMetadata{},
+				DeletedTables: map[deletedFileEntry]*tableMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -1219,7 +1219,7 @@ func testIngestSharedImpl(
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedTables: map[deletedFileEntry]*fileMetadata{},
+				DeletedTables: map[deletedFileEntry]*tableMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -1721,7 +1721,7 @@ func TestConcurrentExcise(t *testing.T) {
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedTables: map[deletedFileEntry]*fileMetadata{},
+				DeletedTables: map[deletedFileEntry]*tableMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -2145,9 +2145,9 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 		t.Run(comparer.Name, func(t *testing.T) {
 			var mem *memTable
 
-			parseMeta := func(s string) *fileMetadata {
+			parseMeta := func(s string) *tableMetadata {
 				parts := strings.Split(s, "-")
-				meta := &fileMetadata{}
+				meta := &tableMetadata{}
 				if len(parts) != 2 {
 					t.Fatalf("malformed table spec: %s", s)
 				}
@@ -2235,22 +2235,22 @@ func TestKeyRangeBasic(t *testing.T) {
 	require.True(t, k1.Contains(cmp, base.MakeInternalKey([]byte("bb"), 1, InternalKeyKindSet)))
 	require.True(t, k1.Contains(cmp, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("c"))))
 
-	m1 := &fileMetadata{
+	m1 := &tableMetadata{
 		Smallest: base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
 		Largest:  base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
 	}
 	require.True(t, k1.Overlaps(cmp, m1))
-	m2 := &fileMetadata{
+	m2 := &tableMetadata{
 		Smallest: base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
 		Largest:  base.MakeInternalKey([]byte("d"), 1, InternalKeyKindSet),
 	}
 	require.False(t, k1.Overlaps(cmp, m2))
-	m3 := &fileMetadata{
+	m3 := &tableMetadata{
 		Smallest: base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
 		Largest:  base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("b")),
 	}
 	require.False(t, k1.Overlaps(cmp, m3))
-	m4 := &fileMetadata{
+	m4 := &tableMetadata{
 		Smallest: base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
 		Largest:  base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
 	}
@@ -3146,7 +3146,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 	rr := record.NewReader(f, 0 /* logNum */)
-	var largest *fileMetadata
+	var largest *tableMetadata
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || err == record.ErrInvalidChunk {
@@ -3301,7 +3301,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 	var (
 		seqNum base.SeqNum
-		metas  []*fileMetadata
+		metas  []*tableMetadata
 	)
 	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -3342,7 +3342,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			}
 
 			// Construct the file metadata from the writer metadata.
-			m := &fileMetadata{
+			m := &tableMetadata{
 				SmallestSeqNum: 0, // Simulate an ingestion.
 				LargestSeqNum:  0,
 			}
@@ -3460,9 +3460,9 @@ func TestIngestCleanup(t *testing.T) {
 			// Cleanup the set of files in the FS.
 			var toRemove []ingestLocalMeta
 			for _, fn := range tc.cleanupFiles {
-				m := &fileMetadata{FileNum: fn}
+				m := &tableMetadata{FileNum: fn}
 				m.InitPhysicalBacking()
-				toRemove = append(toRemove, ingestLocalMeta{fileMetadata: m})
+				toRemove = append(toRemove, ingestLocalMeta{tableMetadata: m})
 			}
 
 			err = ingestCleanup(objProvider, toRemove)

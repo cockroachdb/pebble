@@ -13,17 +13,17 @@ import (
 )
 
 // Creates a version with numFiles files in level 6.
-func makeTestVersion(numFiles int) (*Version, []*FileMetadata) {
-	files := make([]*FileMetadata, numFiles)
+func makeTestVersion(numFiles int) (*Version, []*TableMetadata) {
+	files := make([]*TableMetadata, numFiles)
 	for i := 0; i < numFiles; i++ {
 		// Each file spans 10 keys, e.g. [0->9], [10->19], etc.
-		files[i] = (&FileMetadata{}).ExtendPointKeyBounds(
+		files[i] = (&TableMetadata{}).ExtendPointKeyBounds(
 			base.DefaultComparer.Compare, key(i*10), key(i*10+9),
 		)
 		files[i].InitPhysicalBacking()
 	}
 
-	var levelFiles [7][]*FileMetadata
+	var levelFiles [7][]*TableMetadata
 	levelFiles[6] = files
 
 	v := NewVersion(base.DefaultComparer, 0, levelFiles)
@@ -52,12 +52,12 @@ func BenchmarkNumFilesAnnotator(b *testing.B) {
 
 func TestPickFileAggregator(t *testing.T) {
 	const count = 1000
-	a := Annotator[FileMetadata]{
+	a := Annotator[TableMetadata]{
 		Aggregator: PickFileAggregator{
-			Filter: func(f *FileMetadata) (eligible bool, cacheOK bool) {
+			Filter: func(f *TableMetadata) (eligible bool, cacheOK bool) {
 				return true, true
 			},
-			Compare: func(f1 *FileMetadata, f2 *FileMetadata) bool {
+			Compare: func(f1 *TableMetadata, f2 *TableMetadata) bool {
 				return base.DefaultComparer.Compare(f1.Smallest.UserKey, f2.Smallest.UserKey) < 0
 			},
 		},

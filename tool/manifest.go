@@ -105,7 +105,7 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 		if level == 0 && len(v.L0SublevelFiles) > 0 && !v.Levels[level].Empty() {
 			for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
-				v.L0SublevelFiles[sublevel].Each(func(f *manifest.FileMetadata) {
+				v.L0SublevelFiles[sublevel].Each(func(f *manifest.TableMetadata) {
 					if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
 						return
 					}
@@ -151,7 +151,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s\n", arg)
 
 			var bve manifest.BulkVersionEdit
-			bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+			bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
 			var comparer *base.Comparer
 			var editIdx int
 			rr := record.NewReader(f, 0 /* logNum */)
@@ -273,7 +273,7 @@ func anyOverlap(cmp base.Compare, ve *manifest.VersionEdit, start, end key) bool
 	return false
 }
 
-func anyOverlapFile(cmp base.Compare, f *manifest.FileMetadata, start, end key) bool {
+func anyOverlapFile(cmp base.Compare, f *manifest.TableMetadata, start, end key) bool {
 	if f == nil {
 		return true
 	}
@@ -321,9 +321,9 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		newestOverall time.Time
 		oldestOverall time.Time // oldest after initial version edit
 		buckets       = map[time.Time]*summaryBucket{}
-		metadatas     = map[base.FileNum]*manifest.FileMetadata{}
+		metadatas     = map[base.FileNum]*manifest.TableMetadata{}
 	)
-	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
 	rr := record.NewReader(f, 0 /* logNum */)
 	numHistErrors := 0
 	for i := 0; ; i++ {
@@ -577,7 +577,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			// Contains the FileMetadata needed by BulkVersionEdit.Apply.
 			// It accumulates the additions since later edits contain
 			// deletions of earlier added files.
-			addedByFileNum := make(map[base.FileNum]*manifest.FileMetadata)
+			addedByFileNum := make(map[base.FileNum]*manifest.TableMetadata)
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()

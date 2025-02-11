@@ -690,7 +690,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 
 		cmp := base.DefaultComparer
 		var bve manifest.BulkVersionEdit
-		bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+		bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
 		rr := record.NewReader(f, 0 /* logNum */)
 		for {
 			r, err := rr.Next()
@@ -953,7 +953,7 @@ func (p *props) update(o props) {
 }
 
 func (d *dbT) addProps(
-	objProvider objstorage.Provider, m manifest.PhysicalFileMeta, p *props,
+	objProvider objstorage.Provider, m manifest.PhysicalTableMeta, p *props,
 ) error {
 	ctx := context.Background()
 	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileBacking.DiskFileNum, objstorage.OpenOptions{})

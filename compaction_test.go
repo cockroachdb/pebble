@@ -38,7 +38,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newVersion(opts *Options, files [numLevels][]*fileMetadata) *version {
+func newVersion(opts *Options, files [numLevels][]*tableMetadata) *version {
 	v := manifest.NewVersion(
 		opts.Comparer,
 		opts.FlushSplitBytes,
@@ -115,7 +115,7 @@ func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
 func TestPickCompaction(t *testing.T) {
 	fileNums := func(files manifest.LevelSlice) string {
 		var ss []string
-		files.Each(func(meta *fileMetadata) {
+		files.Each(func(meta *tableMetadata) {
 			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
 		})
 		sort.Strings(ss)
@@ -123,8 +123,8 @@ func TestPickCompaction(t *testing.T) {
 	}
 
 	opts := DefaultOptions()
-	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
-		m := (&fileMetadata{
+	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *tableMetadata {
+		m := (&tableMetadata{
 			FileNum: fileNum,
 			Size:    size,
 		}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
@@ -141,7 +141,7 @@ func TestPickCompaction(t *testing.T) {
 	}{
 		{
 			desc: "no compaction",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -156,7 +156,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "1 L0 file",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -176,7 +176,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "2 L0 files (0 overlaps)",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -202,7 +202,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "2 L0 files, with ikey overlap",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -228,7 +228,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "2 L0 files, with ukey overlap",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -254,7 +254,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -288,7 +288,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -348,7 +348,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "4 L1 files, 2 L2 files, can grow",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				1: {
 					newFileMeta(
 						200,
@@ -401,7 +401,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				1: {
 					newFileMeta(
 						200,
@@ -454,7 +454,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
-			version: newVersion(opts, [numLevels][]*fileMetadata{
+			version: newVersion(opts, [numLevels][]*tableMetadata{
 				1: {
 					newFileMeta(
 						200,
@@ -753,8 +753,8 @@ func TestValidateVersionEdit(t *testing.T) {
 	}
 
 	cmp := DefaultComparer.Compare
-	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
-		m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+	newFileMeta := func(smallest, largest base.InternalKey) *tableMetadata {
+		m := (&tableMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
 		m.InitPhysicalBacking()
 		return m
 	}
@@ -819,7 +819,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "single deleted file; start key",
 			ve: &versionEdit{
-				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte(badKey)},
 						manifest.InternalKey{UserKey: []byte("z")},
@@ -832,7 +832,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "single deleted file; end key",
 			ve: &versionEdit{
-				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte(badKey)},
@@ -845,7 +845,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "multiple deleted files",
 			ve: &versionEdit{
-				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte("c")},
@@ -878,7 +878,7 @@ func TestValidateVersionEdit(t *testing.T) {
 						),
 					},
 				},
-				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					deletedFileEntry{Level: 6, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte("d")},
@@ -1415,11 +1415,11 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 					start, end := []byte(parts[2]), []byte(parts[3])
 
-					var tombstoneFile *fileMetadata
+					var tombstoneFile *tableMetadata
 					tombstoneLevel := int(parseUint64(parts[0][1:]))
 
 					// Set file number to the value provided in the input.
-					tombstoneFile = &fileMetadata{
+					tombstoneFile = &tableMetadata{
 						FileNum: base.FileNum(parseUint64(parts[1])),
 					}
 
@@ -1908,7 +1908,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 
 	metaRE := regexp.MustCompile(`^L([0-9]+):([^-]+)-(.+)$`)
 	var fileNum base.FileNum
-	parseMeta := func(s string) (level int, meta *fileMetadata) {
+	parseMeta := func(s string) (level int, meta *tableMetadata) {
 		match := metaRE.FindStringSubmatch(s)
 		if match == nil {
 			t.Fatalf("malformed table spec: %s", s)
@@ -1918,7 +1918,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			t.Fatalf("malformed table spec: %s: %s", s, err)
 		}
 		fileNum++
-		meta = (&fileMetadata{
+		meta = (&tableMetadata{
 			FileNum: fileNum,
 		}).ExtendPointKeyBounds(
 			d.cmp,
@@ -1967,7 +1967,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					c.flushing = nil
 					c.startLevel.level = -1
 
-					var startFiles, outputFiles []*fileMetadata
+					var startFiles, outputFiles []*tableMetadata
 
 					switch {
 					case len(parts) == 1 && parts[0] == "flush":
@@ -2017,12 +2017,12 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 
 func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 	cmp := DefaultComparer.Compare
-	parseMeta := func(s string) *fileMetadata {
+	parseMeta := func(s string) *tableMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
+		m := (&tableMetadata{}).ExtendPointKeyBounds(
 			cmp,
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
@@ -2149,12 +2149,12 @@ func TestCompactionErrorCleanup(t *testing.T) {
 
 func TestCompactionCheckOrdering(t *testing.T) {
 	cmp := DefaultComparer.Compare
-	parseMeta := func(s string) *fileMetadata {
+	parseMeta := func(s string) *tableMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
+		m := (&tableMetadata{}).ExtendPointKeyBounds(
 			cmp,
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
@@ -2178,10 +2178,10 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					inputs:    []compactionLevel{{level: -1}, {level: -1}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
-				var startFiles, outputFiles []*fileMetadata
+				var startFiles, outputFiles []*tableMetadata
 				var sublevels []manifest.LevelSlice
-				var files *[]*fileMetadata
-				var sublevel []*fileMetadata
+				var files *[]*tableMetadata
+				var sublevel []*tableMetadata
 				var sublevelNum int
 				var parsingSublevel bool
 				fileNum := base.FileNum(1)
@@ -2255,7 +2255,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 
 				newIters := func(
-					_ context.Context, _ *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+					_ context.Context, _ *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 				) (iterSet, error) {
 					return iterSet{point: &errorIter{}}, nil
 				}
@@ -2398,10 +2398,10 @@ func TestFlushError(t *testing.T) {
 
 func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 	// 500MB in Lbase
-	var lbaseFiles []*manifest.FileMetadata
+	var lbaseFiles []*manifest.TableMetadata
 	const lbaseSize = 5 << 20
 	for i := 0; i < 100; i++ {
-		m := &manifest.FileMetadata{Size: lbaseSize, FileNum: base.FileNum(i)}
+		m := &manifest.TableMetadata{Size: lbaseSize, FileNum: base.FileNum(i)}
 		m.InitPhysicalBacking()
 		lbaseFiles =
 			append(lbaseFiles, m)

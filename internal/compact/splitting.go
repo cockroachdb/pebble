@@ -179,7 +179,7 @@ func (s *OutputSplitter) boundaryReached(key []byte) (nextBoundary []byte) {
 	return s.nextBoundary.key
 }
 
-func (s *OutputSplitter) setNextBoundary(nextGrandparent *manifest.FileMetadata) {
+func (s *OutputSplitter) setNextBoundary(nextGrandparent *manifest.TableMetadata) {
 	if nextGrandparent != nil && (s.limit == nil || s.cmp(nextGrandparent.Smallest.UserKey, s.limit) < 0) {
 		s.nextBoundary = splitterBoundary{
 			key:           nextGrandparent.Smallest.UserKey,

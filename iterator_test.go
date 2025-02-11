@@ -368,7 +368,7 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
-				l.Slice().Each(func(f *fileMetadata) {
+				l.Slice().Each(func(f *tableMetadata) {
 					f.AllowedSeeks.Store(allowedSeeks)
 				})
 			}
@@ -398,7 +398,7 @@ func TestReadSampling(t *testing.T) {
 			var foundAllowedSeeks int64 = -1
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
-				l.Slice().Each(func(f *fileMetadata) {
+				l.Slice().Each(func(f *tableMetadata) {
 					if f.FileNum == base.FileNum(fileNum) {
 						actualAllowedSeeks := f.AllowedSeeks.Load()
 						foundAllowedSeeks = actualAllowedSeeks
@@ -721,7 +721,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 			d.mu.Unlock()
 			oldNewIters := d.newIters
 			d.newIters = func(
-				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				ctx context.Context, file *manifest.TableMetadata, opts *IterOptions,
 				internalOpts internalIterOpts, kinds iterKinds) (iterSet, error) {
 				iters, err := oldNewIters(ctx, file, opts, internalOpts, kinds)
 				iters.point = &iterSeekOptWrapper{

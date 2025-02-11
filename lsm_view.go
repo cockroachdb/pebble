@@ -50,7 +50,7 @@ type lsmViewBuilder struct {
 	fmtKey base.FormatKey
 
 	levelNames []string
-	levels     [][]*fileMetadata
+	levels     [][]*tableMetadata
 
 	// The keys that appear as Smallest/Largest, sorted and formatted.
 	sortedKeys []string
@@ -66,10 +66,10 @@ type lsmViewBuilder struct {
 // levelNames and levels.
 func (b *lsmViewBuilder) InitLevels(v *version) {
 	var levelNames []string
-	var levels [][]*fileMetadata
+	var levels [][]*tableMetadata
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
-		var files []*fileMetadata
-		v.L0SublevelFiles[sublevel].Each(func(f *fileMetadata) {
+		var files []*tableMetadata
+		v.L0SublevelFiles[sublevel].Each(func(f *tableMetadata) {
 			files = append(files, f)
 		})
 
@@ -81,8 +81,8 @@ func (b *lsmViewBuilder) InitLevels(v *version) {
 		levels = append(levels, nil)
 	}
 	for level := 1; level < len(v.Levels); level++ {
-		var files []*fileMetadata
-		v.Levels[level].Slice().Each(func(f *fileMetadata) {
+		var files []*tableMetadata
+		v.Levels[level].Slice().Each(func(f *tableMetadata) {
 			files = append(files, f)
 		})
 		levelNames = append(levelNames, fmt.Sprintf("L%d", level))
@@ -158,7 +158,7 @@ func (b *lsmViewBuilder) Build(
 }
 
 func (b *lsmViewBuilder) tableDetails(
-	m *fileMetadata, objProvider objstorage.Provider, newIters tableNewIters,
+	m *tableMetadata, objProvider objstorage.Provider, newIters tableNewIters,
 ) []string {
 	res := make([]string, 0, 10)
 	outf := func(format string, args ...any) {

@@ -40,7 +40,7 @@ func TestLevelIter(t *testing.T) {
 	var files manifest.LevelSlice
 
 	newIters := func(
-		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+		_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {
 		f := base.NewFakeIter(iterKVs[file.FileNum])
 		f.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
@@ -51,7 +51,7 @@ func TestLevelIter(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			iterKVs = nil
-			var metas []*fileMetadata
+			var metas []*tableMetadata
 			for _, line := range strings.Split(d.Input, "\n") {
 				var kvs []base.InternalKV
 				for _, key := range strings.Fields(line) {
@@ -60,7 +60,7 @@ func TestLevelIter(t *testing.T) {
 				}
 				iterKVs = append(iterKVs, kvs)
 
-				meta := (&fileMetadata{
+				meta := (&tableMetadata{
 					FileNum: base.FileNum(len(metas)),
 				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
@@ -128,7 +128,7 @@ func TestLevelIter(t *testing.T) {
 
 			var tableOpts *IterOptions
 			newIters2 := func(
-				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				ctx context.Context, file *manifest.TableMetadata, opts *IterOptions,
 				internalOpts internalIterOpts, kinds iterKinds,
 			) (iterSet, error) {
 				tableOpts = opts
@@ -159,7 +159,7 @@ type levelIterTest struct {
 	cmp          base.Comparer
 	mem          vfs.FS
 	readers      []*sstable.Reader
-	metas        []*fileMetadata
+	metas        []*tableMetadata
 	itersCreated int
 }
 
@@ -174,7 +174,7 @@ func newLevelIterTest() *levelIterTest {
 
 func (lt *levelIterTest) newIters(
 	ctx context.Context,
-	file *manifest.FileMetadata,
+	file *manifest.TableMetadata,
 	opts *IterOptions,
 	iio internalIterOpts,
 	kinds iterKinds,
@@ -295,7 +295,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	m := &fileMetadata{FileNum: fileNum}
+	m := &tableMetadata{FileNum: fileNum}
 	if meta.HasPointKeys {
 		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestPoint, meta.LargestPoint)
 	}
@@ -568,12 +568,12 @@ func buildLevelIterTables(
 		}
 	}
 
-	meta := make([]*fileMetadata, len(readers))
+	meta := make([]*tableMetadata, len(readers))
 	for i := range readers {
 		iter, err := readers[i].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 		require.NoError(b, err)
 		smallest := iter.First()
-		meta[i] = &fileMetadata{}
+		meta[i] = &tableMetadata{}
 		meta[i].FileNum = base.FileNum(i)
 		largest := iter.Last()
 		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
@@ -595,7 +595,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							readers, metas, keys, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+								_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
 								iter, err := readers[file.FileNum].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								return iterSet{point: iter}, err
@@ -636,7 +636,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							// This newIters is cheaper than in practice since it does not do
 							// fileCacheShard.findNode.
 							newIters := func(
-								_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+								_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
 								iter, err := readers[file.FileNum].NewIter(
 									sstable.NoTransforms,
@@ -683,7 +683,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 	// This newIters is cheaper than in practice since it does not do
 	// fileCacheShard.findNode.
 	newIters := func(
-		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
+		_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {
 		iter, err := readers[file.FileNum].NewIter(
 			sstable.NoTransforms,
@@ -739,7 +739,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+								_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
 								iter, err := readers[file.FileNum].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								return iterSet{point: iter}, err
@@ -773,7 +773,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+								_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
 								iter, err := readers[file.FileNum].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
 								return iterSet{point: iter}, err

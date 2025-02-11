@@ -57,7 +57,7 @@ func TestVersionSet(t *testing.T) {
 	))
 	vs.logSeqNum.Store(100)
 
-	metas := make(map[base.FileNum]*manifest.FileMetadata)
+	metas := make(map[base.FileNum]*manifest.TableMetadata)
 	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
 	// When we parse VersionEdits, we get a new FileBacking each time. We need to
 	// deduplicate them, since they hold a ref count.
@@ -176,7 +176,7 @@ func TestVersionSet(t *testing.T) {
 			}
 
 			// Repopulate the maps.
-			metas = make(map[base.FileNum]*manifest.FileMetadata)
+			metas = make(map[base.FileNum]*manifest.TableMetadata)
 			backings = make(map[base.DiskFileNum]*manifest.FileBacking)
 			v := vs.currentVersion()
 			for _, l := range v.Levels {
