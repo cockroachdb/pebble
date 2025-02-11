@@ -251,13 +251,14 @@ func TestCacheStressSetExisting(t *testing.T) {
 func BenchmarkCacheGet(b *testing.B) {
 	const size = 100000
 
-	cache := newCache(size, 1)
+	n := runtime.GOMAXPROCS(0)
+	cache := newCache(size*int64(n), n)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
 
 	for i := 0; i < size; i++ {
-		setTestValue(h, 0, 0, "a", 1)
+		setTestValue(h, 0, uint64(i), "a", 1)
 	}
 
 	b.ResetTimer()
