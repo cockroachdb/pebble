@@ -501,7 +501,7 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	// Ensure that SeekGE() finds the correct KV
 	require.NotNil(t, kv, "failed to find the key")
 	require.Equal(t, largeKey, kv.K.UserKey, "unexpected key")
-	require.Equal(t, largeValue, kv.V.ValueOrHandle, "unexpected value")
+	require.Equal(t, largeValue, kv.InPlaceValue(), "unexpected value")
 
 	// Ensure that SeekGE() does not raise panic due to integer overflow
 	// indexing problems.
@@ -510,7 +510,7 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	// Ensure that SeekLT() finds the correct KV
 	require.NotNil(t, kv, "failed to find the key")
 	require.Equal(t, largeKey, kv.K.UserKey, "unexpected key")
-	require.Equal(t, largeValue, kv.V.ValueOrHandle, "unexpected value")
+	require.Equal(t, largeValue, kv.InPlaceValue(), "unexpected value")
 }
 
 func TestBufferExceeding256MBShouldPanic(t *testing.T) {
@@ -625,7 +625,7 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 		kv := iter.SeekGE(key, base.SeekGEFlagsNone)
 		require.NotNil(t, kv, "failed to find the large key")
 		require.Equal(t, key, kv.K.UserKey, "unexpected key")
-		require.Equal(t, value, kv.V.ValueOrHandle, "unexpected value")
+		require.Equal(t, value, kv.InPlaceValue(), "unexpected value")
 	}
 }
 

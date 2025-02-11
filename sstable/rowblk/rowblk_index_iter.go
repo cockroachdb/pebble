@@ -79,7 +79,7 @@ func (i *IndexIter) SeparatorGT(key []byte, inclusively bool) bool {
 // BlockHandleWithProperties decodes the block handle with any encoded
 // properties at the iterator's current position.
 func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, error) {
-	return block.DecodeHandleWithProperties(i.iter.ikv.V.ValueOrHandle)
+	return block.DecodeHandleWithProperties(i.iter.ikv.InPlaceValue())
 }
 
 // SeekGE seeks the index iterator to the first block entry with a separator key
