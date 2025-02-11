@@ -897,3 +897,10 @@ func BenchmarkRecordWrite(b *testing.B) {
 		})
 	}
 }
+
+// TODO(edward) Suppresses linting warning.
+// Delete after readAheadForCorruption() is called in follow-up PRs.
+func TestReadAheadForCorruption(t *testing.T) {
+	r := NewReader(new(bytes.Buffer), 0)
+	r.readAheadForCorruption()
+}
