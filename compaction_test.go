@@ -768,7 +768,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "single new file; start key",
 			ve: &versionEdit{
-				NewFiles: []manifest.NewFileEntry{
+				NewTables: []manifest.NewTableEntry{
 					{
 						Meta: newFileMeta(
 							manifest.InternalKey{UserKey: []byte(badKey)},
@@ -783,7 +783,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "single new file; end key",
 			ve: &versionEdit{
-				NewFiles: []manifest.NewFileEntry{
+				NewTables: []manifest.NewTableEntry{
 					{
 						Meta: newFileMeta(
 							manifest.InternalKey{UserKey: []byte("a")},
@@ -798,7 +798,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "multiple new files",
 			ve: &versionEdit{
-				NewFiles: []manifest.NewFileEntry{
+				NewTables: []manifest.NewTableEntry{
 					{
 						Meta: newFileMeta(
 							manifest.InternalKey{UserKey: []byte("a")},
@@ -819,7 +819,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "single deleted file; start key",
 			ve: &versionEdit{
-				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
 					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte(badKey)},
 						manifest.InternalKey{UserKey: []byte("z")},
@@ -832,7 +832,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "single deleted file; end key",
 			ve: &versionEdit{
-				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
 					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte(badKey)},
@@ -845,7 +845,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "multiple deleted files",
 			ve: &versionEdit{
-				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
 					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte("c")},
@@ -862,7 +862,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		{
 			desc: "no errors",
 			ve: &versionEdit{
-				NewFiles: []manifest.NewFileEntry{
+				NewTables: []manifest.NewTableEntry{
 					{
 						Level: 0,
 						Meta: newFileMeta(
@@ -878,7 +878,7 @@ func TestValidateVersionEdit(t *testing.T) {
 						),
 					},
 				},
-				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.FileMetadata{
 					deletedFileEntry{Level: 6, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte("d")},
@@ -2043,19 +2043,19 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 					comparer:  DefaultComparer,
 					formatKey: DefaultComparer.FormatKey,
 				}
-				var files []manifest.NewFileEntry
+				var files []manifest.NewTableEntry
 				fileNum := base.FileNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
 					meta.FileNum = fileNum
 					fileNum++
-					files = append(files, manifest.NewFileEntry{Level: 1, Meta: meta})
+					files = append(files, manifest.NewTableEntry{Level: 1, Meta: meta})
 				}
 
 				result := "OK"
 				ve := &versionEdit{
-					NewFiles: files,
+					NewTables: files,
 				}
 				if err := c.errorOnUserKeyOverlap(ve); err != nil {
 					result = fmt.Sprint(err)

@@ -1767,9 +1767,9 @@ func (d *DB) ingest(
 		info.Tables = make([]struct {
 			TableInfo
 			Level int
-		}, len(ve.NewFiles))
-		for i := range ve.NewFiles {
-			e := &ve.NewFiles[i]
+		}, len(ve.NewTables))
+		for i := range ve.NewTables {
+			e := &ve.NewTables[i]
 			info.Tables[i].Level = e.Level
 			info.Tables[i].TableInfo = e.Meta.TableInfo()
 			stats.Bytes += e.Meta.Size
@@ -1819,14 +1819,14 @@ func (d *DB) ingest(
 // the mutex is not held.
 func (d *DB) excise(
 	ctx context.Context, exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
-) ([]manifest.NewFileEntry, error) {
+) ([]manifest.NewTableEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
 	mBounds := base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
 	if !exciseSpan.Overlaps(d.cmp, &mBounds) {
 		return nil, nil
 	}
-	ve.DeletedFiles[deletedFileEntry{
+	ve.DeletedTables[deletedFileEntry{
 		Level:   level,
 		FileNum: m.FileNum,
 	}] = m
@@ -1950,7 +1950,7 @@ func (d *DB) excise(
 				return nil, err
 			}
 			leftFile.ValidateVirtual(m)
-			ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: leftFile})
+			ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: leftFile})
 			needsBacking = true
 			numCreatedFiles++
 		}
@@ -1965,7 +1965,7 @@ func (d *DB) excise(
 			// indicated by the VersionEdit.CreatedBackingTables invariant.
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 		}
-		return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
+		return ve.NewTables[len(ve.NewTables)-numCreatedFiles:], nil
 	}
 	// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
 	//
@@ -2064,7 +2064,7 @@ func (d *DB) excise(
 			return nil, err
 		}
 		rightFile.ValidateVirtual(m)
-		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: rightFile})
+		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: rightFile})
 		needsBacking = true
 		numCreatedFiles++
 	}
@@ -2077,7 +2077,7 @@ func (d *DB) excise(
 		ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 	}
 
-	return ve.NewFiles[len(ve.NewFiles)-numCreatedFiles:], nil
+	return ve.NewTables[len(ve.NewTables)-numCreatedFiles:], nil
 }
 
 type ingestSplitFile struct {
@@ -2100,9 +2100,9 @@ type ingestSplitFile struct {
 func (d *DB) ingestSplit(
 	ctx context.Context,
 	ve *versionEdit,
-	updateMetrics func(*fileMetadata, int, []newFileEntry),
+	updateMetrics func(*fileMetadata, int, []newTableEntry),
 	files []ingestSplitFile,
-	replacedFiles map[base.FileNum][]newFileEntry,
+	replacedFiles map[base.FileNum][]newTableEntry,
 ) error {
 	for _, s := range files {
 		ingestFileBounds := s.ingestFile.UserKeyBounds()
@@ -2168,7 +2168,7 @@ func (d *DB) ingestSplit(
 		if err != nil {
 			return err
 		}
-		if _, ok := ve.DeletedFiles[deletedFileEntry{
+		if _, ok := ve.DeletedTables[deletedFileEntry{
 			Level:   s.level,
 			FileNum: splitFile.FileNum,
 		}]; !ok {
@@ -2185,17 +2185,17 @@ func (d *DB) ingestSplit(
 	}
 	// Flatten the version edit by removing any entries from ve.NewFiles that
 	// are also in ve.DeletedFiles.
-	newNewFiles := ve.NewFiles[:0]
-	for i := range ve.NewFiles {
-		fn := ve.NewFiles[i].Meta.FileNum
-		deEntry := deletedFileEntry{Level: ve.NewFiles[i].Level, FileNum: fn}
-		if _, ok := ve.DeletedFiles[deEntry]; ok {
-			delete(ve.DeletedFiles, deEntry)
+	newNewFiles := ve.NewTables[:0]
+	for i := range ve.NewTables {
+		fn := ve.NewTables[i].Meta.FileNum
+		deEntry := deletedFileEntry{Level: ve.NewTables[i].Level, FileNum: fn}
+		if _, ok := ve.DeletedTables[deEntry]; ok {
+			delete(ve.DeletedTables, deEntry)
 		} else {
-			newNewFiles = append(newNewFiles, ve.NewFiles[i])
+			newNewFiles = append(newNewFiles, ve.NewTables[i])
 		}
 	}
-	ve.NewFiles = newNewFiles
+	ve.NewTables = newNewFiles
 	return nil
 }
 
@@ -2211,10 +2211,10 @@ func (d *DB) ingestApply(
 	defer d.mu.Unlock()
 
 	ve := &versionEdit{
-		NewFiles: make([]newFileEntry, lr.fileCount()),
+		NewTables: make([]newTableEntry, lr.fileCount()),
 	}
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
-		ve.DeletedFiles = map[manifest.DeletedFileEntry]*manifest.FileMetadata{}
+		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.FileMetadata{}
 	}
 	metrics := make(map[int]*LevelMetrics)
 
@@ -2291,7 +2291,7 @@ func (d *DB) ingestApply(
 			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 		}
 
-		f := &ve.NewFiles[i]
+		f := &ve.NewTables[i]
 		var err error
 		if specifiedLevel != -1 {
 			f.Level = specifiedLevel
@@ -2367,8 +2367,8 @@ func (d *DB) ingestApply(
 	// possible for a file that we want to split to no longer exist or have a
 	// newer fileMetadata due to a split induced by another ingestion file, or an
 	// excise.
-	replacedFiles := make(map[base.FileNum][]newFileEntry)
-	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newFileEntry) {
+	replacedFiles := make(map[base.FileNum][]newTableEntry)
+	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newTableEntry) {
 		levelMetrics := metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
@@ -2407,7 +2407,7 @@ func (d *DB) ingestApply(
 					return nil, err
 				}
 
-				if _, ok := ve.DeletedFiles[deletedFileEntry{
+				if _, ok := ve.DeletedTables[deletedFileEntry{
 					Level:   level,
 					FileNum: m.FileNum,
 				}]; !ok {
@@ -2499,13 +2499,13 @@ func (d *DB) ingestApply(
 	// updateReadStateLocked could have generated obsolete tables, schedule a
 	// cleanup job if necessary.
 	d.deleteObsoleteFiles(jobID)
-	d.updateTableStatsLocked(ve.NewFiles)
+	d.updateTableStatsLocked(ve.NewTables)
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
-	var toValidate []manifest.NewFileEntry
+	var toValidate []manifest.NewTableEntry
 	dedup := make(map[base.DiskFileNum]struct{})
-	for _, entry := range ve.NewFiles {
+	for _, entry := range ve.NewTables {
 		if _, ok := dedup[entry.Meta.FileBacking.DiskFileNum]; !ok {
 			toValidate = append(toValidate, entry)
 			dedup[entry.Meta.FileBacking.DiskFileNum] = struct{}{}
@@ -2515,14 +2515,14 @@ func (d *DB) ingestApply(
 	return ve, nil
 }
 
-// maybeValidateSSTablesLocked adds the slice of newFileEntrys to the pending
+// maybeValidateSSTablesLocked adds the slice of newTableEntrys to the pending
 // queue of files to be validated, when the feature is enabled.
 //
 // Note that if two entries with the same backing file are added twice, then the
 // block checksums for the backing file will be validated twice.
 //
 // DB.mu must be locked when calling.
-func (d *DB) maybeValidateSSTablesLocked(newFiles []newFileEntry) {
+func (d *DB) maybeValidateSSTablesLocked(newFiles []newTableEntry) {
 	// Only add to the validation queue when the feature is enabled.
 	if !d.opts.Experimental.ValidateOnIngest {
 		return
@@ -2568,7 +2568,7 @@ func (d *DB) validateSSTables() {
 
 	// If we fail to validate any files due to reasons other than uncovered
 	// corruption, accumulate them and re-queue them for another attempt.
-	var retry []manifest.NewFileEntry
+	var retry []manifest.NewTableEntry
 
 	for _, f := range pending {
 		// The file may have been moved or deleted since it was ingested, in

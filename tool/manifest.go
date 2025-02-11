@@ -151,7 +151,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s\n", arg)
 
 			var bve manifest.BulkVersionEdit
-			bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+			bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 			var comparer *base.Comparer
 			var editIdx int
 			rr := record.NewReader(f, 0 /* logNum */)
@@ -206,12 +206,12 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					empty = false
 					fmt.Fprintf(stdout, "  last-seq-num:  %d\n", ve.LastSeqNum)
 				}
-				entries := make([]manifest.DeletedFileEntry, 0, len(ve.DeletedFiles))
-				for df := range ve.DeletedFiles {
+				entries := make([]manifest.DeletedTableEntry, 0, len(ve.DeletedTables))
+				for df := range ve.DeletedTables {
 					empty = false
 					entries = append(entries, df)
 				}
-				slices.SortFunc(entries, func(a, b manifest.DeletedFileEntry) int {
+				slices.SortFunc(entries, func(a, b manifest.DeletedTableEntry) int {
 					if v := cmp.Compare(a.Level, b.Level); v != 0 {
 						return v
 					}
@@ -220,7 +220,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				for _, df := range entries {
 					fmt.Fprintf(stdout, "  deleted:       L%d %s\n", df.Level, df.FileNum)
 				}
-				for _, nf := range ve.NewFiles {
+				for _, nf := range ve.NewTables {
 					empty = false
 					fmt.Fprintf(stdout, "  added:         L%d %s:%d",
 						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
@@ -260,12 +260,12 @@ func anyOverlap(cmp base.Compare, ve *manifest.VersionEdit, start, end key) bool
 	if start == nil && end == nil {
 		return true
 	}
-	for _, df := range ve.DeletedFiles {
+	for _, df := range ve.DeletedTables {
 		if anyOverlapFile(cmp, df, start, end) {
 			return true
 		}
 	}
-	for _, nf := range ve.NewFiles {
+	for _, nf := range ve.NewTables {
 		if anyOverlapFile(cmp, nf.Meta, start, end) {
 			return true
 		}
@@ -323,7 +323,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		buckets       = map[time.Time]*summaryBucket{}
 		metadatas     = map[base.FileNum]*manifest.FileMetadata{}
 	)
-	bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 	rr := record.NewReader(f, 0 /* logNum */)
 	numHistErrors := 0
 	for i := 0; ; i++ {
@@ -354,10 +354,10 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		//
 		// TODO(sumeer): this summarization needs a rewrite. We could do that
 		// after adding an enum to the VersionEdit to aid the summarization.
-		isLikelyCompaction := len(ve.NewFiles) > 0 && len(ve.DeletedFiles) > 0 && len(ve.CreatedBackingTables) == 0
-		isIntraL0Compaction := isLikelyCompaction && ve.NewFiles[0].Level == 0
+		isLikelyCompaction := len(ve.NewTables) > 0 && len(ve.DeletedTables) > 0 && len(ve.CreatedBackingTables) == 0
+		isIntraL0Compaction := isLikelyCompaction && ve.NewTables[0].Level == 0
 		veNewest := newestOverall
-		for _, nf := range ve.NewFiles {
+		for _, nf := range ve.NewTables {
 			_, seen := metadatas[nf.Meta.FileNum]
 			if seen && !isLikelyCompaction {
 				// Output error and continue processing as usual.
@@ -396,7 +396,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 			buckets[bucketKey] = b
 		}
 
-		for _, nf := range ve.NewFiles {
+		for _, nf := range ve.NewTables {
 			if !isLikelyCompaction {
 				b.bytesAdded[nf.Level] += nf.Meta.Size
 			} else if !isIntraL0Compaction {
@@ -405,7 +405,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 			}
 		}
 
-		for dfe := range ve.DeletedFiles {
+		for dfe := range ve.DeletedTables {
 			// Increase `bytesCompactOut` for the input level of any compactions
 			// that remove bytes from a level (excluding intra-L0 compactions).
 			if isLikelyCompaction && !isIntraL0Compaction && dfe.Level != manifest.NumLevels-1 {
@@ -598,7 +598,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 				var bve manifest.BulkVersionEdit
-				bve.AddedByFileNum = addedByFileNum
+				bve.AddedTablesByFileNum = addedByFileNum
 				if err := bve.Accumulate(&ve); err != nil {
 					fmt.Fprintf(stderr, "%s\n", err)
 					ok = false
@@ -618,8 +618,8 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				}
 				empty = empty && ve.MinUnflushedLogNum == 0 && ve.ObsoletePrevLogNum == 0 &&
-					ve.LastSeqNum == 0 && len(ve.DeletedFiles) == 0 &&
-					len(ve.NewFiles) == 0
+					ve.LastSeqNum == 0 && len(ve.DeletedTables) == 0 &&
+					len(ve.NewTables) == 0
 				if empty {
 					continue
 				}
@@ -632,10 +632,10 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "Version state before failed Apply\n")
 					m.printLevels(cmp.Compare, stdout, v)
 					fmt.Fprintf(stdout, "Version edit that failed\n")
-					for df := range ve.DeletedFiles {
+					for df := range ve.DeletedTables {
 						fmt.Fprintf(stdout, "  deleted: L%d %s\n", df.Level, df.FileNum)
 					}
-					for _, nf := range ve.NewFiles {
+					for _, nf := range ve.NewTables {
 						fmt.Fprintf(stdout, "  added: L%d %s:%d",
 							nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 						formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
