@@ -588,7 +588,7 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 			origSnapshotIdx := i.curSnapshotIdx
 			var valueMerger base.ValueMerger
 			// MERGE values are always stored in-place.
-			valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.V.InPlaceValue())
+			valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.InPlaceValue())
 			if i.err == nil {
 				i.mergeNext(valueMerger)
 			}
@@ -1115,7 +1115,7 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 	// In this case, we still peek forward in case there's another DELSIZED key
 	// with a lower sequence number, in which case we'll adopt its value.
 	// If the DELSIZED does have a value, it must be in-place.
-	i.valueBuf = append(i.valueBuf[:0], i.iterKV.V.InPlaceValue()...)
+	i.valueBuf = append(i.valueBuf[:0], i.iterKV.InPlaceValue()...)
 	i.value = base.MakeInPlaceValue(i.valueBuf)
 
 	// Loop through all the keys within this stripe that are skippable.
@@ -1289,7 +1289,7 @@ func (i *Iter) saveValue() {
 	// TODO(jackson): With the introduction of values stored in separate
 	// physical blob files, this should begin to Clone LazyValues that are
 	// stored in blob reference files when non-rewriting blob files.
-	v, callerOwned, err := i.iterKV.V.Value(i.valueBuf[:0])
+	v, callerOwned, err := i.iterKV.Value(i.valueBuf[:0])
 	if err != nil {
 		i.err = err
 		i.value = base.LazyValue{}
