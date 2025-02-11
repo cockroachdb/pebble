@@ -170,7 +170,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 			var err error
 			r := readers[file.FileNum]
 			if kinds.RangeDeletion() {
-				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.ReadEnv{Stats: iio.stats})
+				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.readEnv)
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
@@ -179,7 +179,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 				set.point, err = r.NewPointIter(
 					context.Background(),
 					sstable.NoTransforms,
-					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, block.ReadEnv{Stats: iio.stats, IterStats: nil}, sstable.MakeTrivialReaderProvider(r))
+					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, iio.readEnv, sstable.MakeTrivialReaderProvider(r))
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
@@ -291,6 +291,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
 			var stats base.InternalIteratorStats
+			iio := internalIterOpts{readEnv: block.ReadEnv{Stats: &stats}}
 			for i, l := range v.Levels {
 				slice := l.Slice()
 				if slice.Empty() {
@@ -298,7 +299,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 				}
 				li := &levelIter{}
 				li.init(context.Background(), IterOptions{}, testkeys.Comparer,
-					newIters, slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
+					newIters, slice.Iter(), manifest.Level(i), iio)
 
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
@@ -678,7 +679,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			if err != nil {
 				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.ReadEnv{Stats: iio.stats})
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.readEnv)
 			if err != nil {
 				iter.Close()
 				return iterSet{}, err
