@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func levelMetadata(level int, files ...*FileMetadata) LevelMetadata {
+func levelMetadata(level int, files ...*TableMetadata) LevelMetadata {
 	return MakeLevelMetadata(base.DefaultComparer.Compare, level, files)
 }
 
@@ -72,10 +72,10 @@ func TestIkeyRange(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		var f []*FileMetadata
+		var f []*TableMetadata
 		if tc.input != "" {
 			for i, s := range strings.Split(tc.input, " ") {
-				m := (&FileMetadata{
+				m := (&TableMetadata{
 					FileNum: base.FileNum(i),
 				}).ExtendPointKeyBounds(cmp, ikey(s[0:1]), ikey(s[2:3]))
 				m.InitPhysicalBacking()
@@ -114,7 +114,7 @@ func TestOverlaps(t *testing.T) {
 			overlaps := v.Overlaps(level, base.UserKeyBoundsEndExclusiveIf([]byte(start), []byte(end), exclusiveEnd))
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "%d files:\n", overlaps.Len())
-			overlaps.Each(func(f *FileMetadata) {
+			overlaps.Each(func(f *TableMetadata) {
 				fmt.Fprintf(&buf, "%s\n", f.DebugString(base.DefaultFormatter, false))
 			})
 			return buf.String()
@@ -126,8 +126,8 @@ func TestOverlaps(t *testing.T) {
 
 func TestContains(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
-	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *FileMetadata {
-		m := (&FileMetadata{
+	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *TableMetadata {
+		m := (&TableMetadata{
 			FileNum: fileNum,
 			Size:    size,
 		}).ExtendPointKeyBounds(cmp, smallest, largest)
@@ -225,7 +225,7 @@ func TestContains(t *testing.T) {
 
 	testCases := []struct {
 		level int
-		file  *FileMetadata
+		file  *TableMetadata
 		want  bool
 	}{
 		// Level 0: m00=b-e, m01=c-f, m02=f-g, m03=x-y, m04=n-p, m05=p-p, m06=p-u, m07=r-s.
@@ -298,7 +298,7 @@ func TestCheckOrdering(t *testing.T) {
 				}
 				// L0 files compare on sequence numbers. Use the seqnums from the
 				// smallest / largest bounds for the table.
-				v.Levels[0].Slice().Each(func(m *FileMetadata) {
+				v.Levels[0].Slice().Each(func(m *TableMetadata) {
 					m.SmallestSeqNum = m.Smallest.SeqNum()
 					m.LargestSeqNum = m.Largest.SeqNum()
 					m.LargestSeqNumAbsolute = m.LargestSeqNum
@@ -336,7 +336,7 @@ func TestExtendBounds(t *testing.T) {
 		}
 		return
 	}
-	format := func(m *FileMetadata) string {
+	format := func(m *TableMetadata) string {
 		var b bytes.Buffer
 		var smallest, largest string
 		switch m.boundTypeSmallest {
@@ -363,11 +363,11 @@ func TestExtendBounds(t *testing.T) {
 		fmt.Fprintf(&b, "  bounds: (smallest=%s,largest=%s) (0x%08b)\n", smallest, largest, bounds)
 		return b.String()
 	}
-	m := &FileMetadata{}
+	m := &TableMetadata{}
 	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "reset":
-			m = &FileMetadata{}
+			m = &TableMetadata{}
 			return ""
 		case "extend-point-key-bounds":
 			u, l := parseBounds(d.Input)
@@ -436,7 +436,7 @@ func TestFileMetadata_ParseRoundTrip(t *testing.T) {
 }
 
 func TestCalculateInuseKeyRanges(t *testing.T) {
-	newVersion := func(files [NumLevels][]*FileMetadata) *Version {
+	newVersion := func(files [NumLevels][]*TableMetadata) *Version {
 		t.Helper()
 		v := NewVersion(base.DefaultComparer, 64*1024, files)
 		if err := v.CheckOrdering(); err != nil {
@@ -444,8 +444,8 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		}
 		return v
 	}
-	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *FileMetadata {
-		m := &FileMetadata{
+	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *TableMetadata {
+		m := &TableMetadata{
 			FileNum: fileNum,
 			Size:    size,
 		}
@@ -464,7 +464,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 	}{
 		{
 			name: "No files in next level",
-			v: newVersion([NumLevels][]*FileMetadata{
+			v: newVersion([NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -491,7 +491,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "No overlapping key ranges",
-			v: newVersion([NumLevels][]*FileMetadata{
+			v: newVersion([NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -534,7 +534,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "First few non-overlapping, followed by overlapping",
-			v: newVersion([NumLevels][]*FileMetadata{
+			v: newVersion([NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -589,7 +589,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "All overlapping",
-			v: newVersion([NumLevels][]*FileMetadata{
+			v: newVersion([NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -636,7 +636,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "Touching ranges",
-			v: newVersion([NumLevels][]*FileMetadata{
+			v: newVersion([NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -700,9 +700,9 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				base.InternalKeyKindSet,
 			)
 		}
-		makeFile := func(level, start, end int) *FileMetadata {
+		makeFile := func(level, start, end int) *TableMetadata {
 			fileNum++
-			m := &FileMetadata{FileNum: fileNum}
+			m := &TableMetadata{FileNum: fileNum}
 			m.ExtendPointKeyBounds(
 				cmp,
 				makeIK(level, start),
@@ -718,7 +718,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 			disjoint := cmp(endB, startA) < 0 || cmp(endA, startB) < 0
 			return !disjoint
 		}
-		var files [NumLevels][]*FileMetadata
+		var files [NumLevels][]*TableMetadata
 		for l := 0; l < NumLevels; l++ {
 			for i := 0; i < rand.IntN(10); i++ {
 				s := rng.IntN(endKeyspace)
@@ -736,7 +736,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				}
 				files[l] = append(files[l], makeFile(l, s, e))
 			}
-			slices.SortFunc(files[l], func(a, b *FileMetadata) int {
+			slices.SortFunc(files[l], func(a, b *TableMetadata) int {
 				return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 			})
 		}

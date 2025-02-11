@@ -21,7 +21,7 @@ func TestLevelIterator(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
-				var files []*FileMetadata
+				var files []*TableMetadata
 				var startReslice int
 				var endReslice int
 				for _, metaStr := range strings.Split(d.Input, " ") {
@@ -39,7 +39,7 @@ func TestLevelIterator(t *testing.T) {
 						if len(parts) != 2 {
 							t.Fatalf("malformed table spec: %q", metaStr)
 						}
-						m := &FileMetadata{FileNum: base.FileNum(len(files) + 1)}
+						m := &TableMetadata{FileNum: base.FileNum(len(files) + 1)}
 						m.ExtendPointKeyBounds(
 							base.DefaultComparer.Compare,
 							base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -78,7 +78,7 @@ func TestLevelIteratorFiltered(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
-				var files []*FileMetadata
+				var files []*TableMetadata
 				for _, metaStr := range strings.Split(d.Input, "\n") {
 					m, err := ParseFileMetadataDebug(metaStr)
 					require.NoError(t, err)
@@ -114,7 +114,7 @@ func runIterCmd(t *testing.T, d *datadriven.TestData, iter LevelIterator, verbos
 		if len(parts) == 0 {
 			continue
 		}
-		var m *FileMetadata
+		var m *TableMetadata
 		switch parts[0] {
 		case "first":
 			m = iter.First()

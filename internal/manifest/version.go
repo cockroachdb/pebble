@@ -138,21 +138,21 @@ func (s CompactionState) String() string {
 	}
 }
 
-// FileMetadata is maintained for leveled-ssts, i.e., they belong to a level of
-// some version. FileMetadata does not contain the actual level of the sst,
+// TableMetadata is maintained for leveled-ssts, i.e., they belong to a level of
+// some version. TableMetadata does not contain the actual level of the sst,
 // since such leveled-ssts can move across levels in different versions, while
-// sharing the same FileMetadata. There are two kinds of leveled-ssts, physical
+// sharing the same TableMetadata. There are two kinds of leveled-ssts, physical
 // and virtual. Underlying both leveled-ssts is a backing-sst, for which the
 // only state is FileBacking. A backing-sst is level-less. It is possible for a
 // backing-sst to be referred to by a physical sst in one version and by one or
-// more virtual ssts in one or more versions. A backing-sst becomes obsolete
-// and can be deleted once it is no longer required by any physical or virtual
-// sst in any version.
+// more virtual ssts in one or more versions. A backing-sst becomes obsolete and
+// can be deleted once it is no longer required by any physical or virtual sst
+// in any version.
 //
 // We maintain some invariants:
 //
-//  1. Each physical and virtual sst will have a unique FileMetadata.FileNum,
-//     and there will be exactly one FileMetadata associated with the FileNum.
+//  1. Each physical and virtual sst will have a unique TableMetadata.FileNum,
+//     and there will be exactly one TableMetadata associated with the FileNum.
 //
 //  2. Within a version, a backing-sst is either only referred to by one
 //     physical sst or one or more virtual ssts.
@@ -165,7 +165,7 @@ func (s CompactionState) String() string {
 // maintain the file metadata associated with it. We will still maintain the
 // FileBacking associated with the physical sst if the backing sst is required
 // by any virtual ssts in any version.
-type FileMetadata struct {
+type TableMetadata struct {
 	// AllowedSeeks is used to determine if a file should be picked for
 	// a read triggered compaction. It is decremented when read sampling
 	// in pebble.Iterator after every after every positioning operation
@@ -302,14 +302,14 @@ type FileMetadata struct {
 }
 
 // InternalKeyBounds returns the set of overall table bounds.
-func (m *FileMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
+func (m *TableMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
 	return m.Smallest, m.Largest
 }
 
 // UserKeyBounds returns the user key bounds that correspond to m.Smallest and
 // Largest. Because we do not allow split user keys, the user key bounds of
 // files within a level do not overlap.
-func (m *FileMetadata) UserKeyBounds() base.UserKeyBounds {
+func (m *TableMetadata) UserKeyBounds() base.UserKeyBounds {
 	return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
 }
 
@@ -317,7 +317,7 @@ func (m *FileMetadata) UserKeyBounds() base.UserKeyBounds {
 // Note that the returned bounds are invalid when requesting KeyTypePoint but
 // HasPointKeys is false, or when requesting KeyTypeRange and HasRangeKeys is
 // false.
-func (m *FileMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds {
+func (m *TableMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds {
 	switch keyType {
 	case KeyTypePoint:
 		return base.UserKeyBoundsFromInternal(m.SmallestPointKey, m.LargestPointKey)
@@ -330,7 +330,7 @@ func (m *FileMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds {
 
 // SyntheticSeqNum returns a SyntheticSeqNum which is set when SmallestSeqNum
 // equals LargestSeqNum.
-func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
+func (m *TableMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
 	if m.SmallestSeqNum == m.LargestSeqNum {
 		return sstable.SyntheticSeqNum(m.SmallestSeqNum)
 	}
@@ -339,7 +339,7 @@ func (m *FileMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
 
 // IterTransforms returns an sstable.IterTransforms populated according to the
 // file.
-func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
+func (m *TableMetadata) IterTransforms() sstable.IterTransforms {
 	return sstable.IterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
@@ -348,26 +348,26 @@ func (m *FileMetadata) IterTransforms() sstable.IterTransforms {
 
 // FragmentIterTransforms returns an sstable.FragmentIterTransforms populated
 // according to the file.
-func (m *FileMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms {
+func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms {
 	return sstable.FragmentIterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 	}
 }
 
-// PhysicalFileMeta is used by functions which want a guarantee that their input
+// PhysicalTableMeta is used by functions which want a guarantee that their input
 // belongs to a physical sst and not a virtual sst.
 //
 // NB: This type should only be constructed by calling
 // FileMetadata.PhysicalMeta.
-type PhysicalFileMeta struct {
-	*FileMetadata
+type PhysicalTableMeta struct {
+	*TableMetadata
 }
 
-// VirtualFileMeta is used by functions which want a guarantee that their input
+// VirtualTableMeta is used by functions which want a guarantee that their input
 // belongs to a virtual sst and not a physical sst.
 //
-// A VirtualFileMeta inherits all the same fields as a FileMetadata. These
+// A VirtualTableMeta inherits all the same fields as a FileMetadata. These
 // fields have additional invariants imposed on them, and/or slightly varying
 // meanings:
 //   - Smallest and Largest (and their counterparts
@@ -396,13 +396,13 @@ type PhysicalFileMeta struct {
 //     bounds would be too expensive and deliver little value.
 //
 // NB: This type should only be constructed by calling FileMetadata.VirtualMeta.
-type VirtualFileMeta struct {
-	*FileMetadata
+type VirtualTableMeta struct {
+	*TableMetadata
 }
 
 // VirtualReaderParams fills in the parameters necessary to create a virtual
 // sstable reader.
-func (m VirtualFileMeta) VirtualReaderParams(isShared bool) sstable.VirtualReaderParams {
+func (m VirtualTableMeta) VirtualReaderParams(isShared bool) sstable.VirtualReaderParams {
 	return sstable.VirtualReaderParams{
 		Lower:            m.Smallest,
 		Upper:            m.Largest,
@@ -415,22 +415,22 @@ func (m VirtualFileMeta) VirtualReaderParams(isShared bool) sstable.VirtualReade
 
 // PhysicalMeta should be the only source of creating the PhysicalFileMeta
 // wrapper type.
-func (m *FileMetadata) PhysicalMeta() PhysicalFileMeta {
+func (m *TableMetadata) PhysicalMeta() PhysicalTableMeta {
 	if m.Virtual {
 		panic("pebble: file metadata does not belong to a physical sstable")
 	}
-	return PhysicalFileMeta{
+	return PhysicalTableMeta{
 		m,
 	}
 }
 
 // VirtualMeta should be the only source of creating the VirtualFileMeta wrapper
 // type.
-func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
+func (m *TableMetadata) VirtualMeta() VirtualTableMeta {
 	if !m.Virtual {
 		panic("pebble: file metadata does not belong to a virtual sstable")
 	}
-	return VirtualFileMeta{
+	return VirtualTableMeta{
 		m,
 	}
 }
@@ -491,7 +491,7 @@ func (b *FileBacking) Unref() int32 {
 // already set on the FileMetadata before InitPhysicalBacking is called.
 // Calling InitPhysicalBacking only after the relevant state has been set in the
 // FileMetadata is not necessary in tests which don't rely on FileBacking.
-func (m *FileMetadata) InitPhysicalBacking() {
+func (m *TableMetadata) InitPhysicalBacking() {
 	if m.Virtual {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
 	}
@@ -505,7 +505,7 @@ func (m *FileMetadata) InitPhysicalBacking() {
 
 // InitProviderBacking creates a new FileBacking for a file backed by
 // an objstorage.Provider.
-func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64) {
+func (m *TableMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64) {
 	if !m.Virtual {
 		panic("pebble: provider-backed sstables must be virtual")
 	}
@@ -517,7 +517,7 @@ func (m *FileMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64
 
 // ValidateVirtual should be called once the FileMetadata for a virtual sstable
 // is created to verify that the fields of the virtual sstable are sound.
-func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
+func (m *TableMetadata) ValidateVirtual(createdFrom *TableMetadata) {
 	switch {
 	case !m.Virtual:
 		panic("pebble: invalid virtual sstable")
@@ -536,7 +536,7 @@ func (m *FileMetadata) ValidateVirtual(createdFrom *FileMetadata) {
 
 // SetCompactionState transitions this file's compaction state to the given
 // state. Protected by DB.mu.
-func (m *FileMetadata) SetCompactionState(to CompactionState) {
+func (m *TableMetadata) SetCompactionState(to CompactionState) {
 	if invariants.Enabled {
 		transitionErr := func() error {
 			return errors.Newf("pebble: invalid compaction state transition: %s -> %s", m.CompactionState, to)
@@ -561,21 +561,21 @@ func (m *FileMetadata) SetCompactionState(to CompactionState) {
 
 // IsCompacting returns true if this file's compaction state is
 // CompactionStateCompacting. Protected by DB.mu.
-func (m *FileMetadata) IsCompacting() bool {
+func (m *TableMetadata) IsCompacting() bool {
 	return m.CompactionState == CompactionStateCompacting
 }
 
 // StatsValid returns true if the table stats have been populated. If StatValid
 // returns true, the Stats field may be read (with or without holding the
 // database mutex).
-func (m *FileMetadata) StatsValid() bool {
+func (m *TableMetadata) StatsValid() bool {
 	return m.statsValid.Load()
 }
 
 // StatsMarkValid marks the TableStats as valid. The caller must hold DB.mu
 // while populating TableStats and calling StatsMarkValud. Once stats are
 // populated, they must not be mutated.
-func (m *FileMetadata) StatsMarkValid() {
+func (m *TableMetadata) StatsMarkValid() {
 	m.statsValid.Store(true)
 }
 
@@ -585,9 +585,9 @@ func (m *FileMetadata) StatsMarkValid() {
 // bound that is smaller or larger, respectively. The receiver is returned.
 // NB: calling this method should be preferred to manually setting the bounds by
 // manipulating the fields directly, to maintain certain invariants.
-func (m *FileMetadata) ExtendPointKeyBounds(
+func (m *TableMetadata) ExtendPointKeyBounds(
 	cmp Compare, smallest, largest InternalKey,
-) *FileMetadata {
+) *TableMetadata {
 	// Update the point key bounds.
 	if !m.HasPointKeys {
 		m.SmallestPointKey, m.LargestPointKey = smallest, largest
@@ -611,9 +611,9 @@ func (m *FileMetadata) ExtendPointKeyBounds(
 // bound that is smaller or larger, respectively. The receiver is returned.
 // NB: calling this method should be preferred to manually setting the bounds by
 // manipulating the fields directly, to maintain certain invariants.
-func (m *FileMetadata) ExtendRangeKeyBounds(
+func (m *TableMetadata) ExtendRangeKeyBounds(
 	cmp Compare, smallest, largest InternalKey,
-) *FileMetadata {
+) *TableMetadata {
 	// Update the range key bounds.
 	if !m.HasRangeKeys {
 		m.SmallestRangeKey, m.LargestRangeKey = smallest, largest
@@ -635,7 +635,7 @@ func (m *FileMetadata) ExtendRangeKeyBounds(
 // bounds. The given bounds may not be used if a lower or upper bound already
 // exists that is smaller or larger than the given keys, respectively. The given
 // boundType will be used if the bounds are updated.
-func (m *FileMetadata) extendOverallBounds(
+func (m *TableMetadata) extendOverallBounds(
 	cmp Compare, smallest, largest InternalKey, bTyp boundType,
 ) {
 	if !m.boundsSet {
@@ -655,21 +655,21 @@ func (m *FileMetadata) extendOverallBounds(
 }
 
 // Overlaps returns true if the file key range overlaps with the given user key bounds.
-func (m *FileMetadata) Overlaps(cmp Compare, bounds *base.UserKeyBounds) bool {
+func (m *TableMetadata) Overlaps(cmp Compare, bounds *base.UserKeyBounds) bool {
 	b := m.UserKeyBounds()
 	return b.Overlaps(cmp, bounds)
 }
 
 // ContainedWithinSpan returns true if the file key range completely overlaps with the
 // given range ("end" is assumed to exclusive).
-func (m *FileMetadata) ContainedWithinSpan(cmp Compare, start, end []byte) bool {
+func (m *TableMetadata) ContainedWithinSpan(cmp Compare, start, end []byte) bool {
 	lowerCmp, upperCmp := cmp(m.Smallest.UserKey, start), cmp(m.Largest.UserKey, end)
 	return lowerCmp >= 0 && (upperCmp < 0 || (upperCmp == 0 && m.Largest.IsExclusiveSentinel()))
 }
 
 // ContainsKeyType returns whether or not the file contains keys of the provided
 // type.
-func (m *FileMetadata) ContainsKeyType(kt KeyType) bool {
+func (m *TableMetadata) ContainsKeyType(kt KeyType) bool {
 	switch kt {
 	case KeyTypePointAndRange:
 		return true
@@ -685,7 +685,7 @@ func (m *FileMetadata) ContainsKeyType(kt KeyType) bool {
 // SmallestBound returns the file's smallest bound of the key type. It returns a
 // false second return value if the file does not contain any keys of the key
 // type.
-func (m *FileMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
+func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
 		return &m.Smallest, true
@@ -701,7 +701,7 @@ func (m *FileMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 // LargestBound returns the file's largest bound of the key type. It returns a
 // false second return value if the file does not contain any keys of the key
 // type.
-func (m *FileMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
+func (m *TableMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
 		return &m.Largest, true
@@ -725,7 +725,7 @@ const (
 // - if the table contains point keys
 // - if the table's smallest key is a point key
 // - if the table's largest key is a point key
-func (m *FileMetadata) boundsMarker() (sentinel uint8, err error) {
+func (m *TableMetadata) boundsMarker() (sentinel uint8, err error) {
 	if m.HasPointKeys {
 		sentinel |= maskContainsPointKeys
 	}
@@ -750,14 +750,14 @@ func (m *FileMetadata) boundsMarker() (sentinel uint8, err error) {
 
 // String implements fmt.Stringer, printing the file number and the overall
 // table bounds.
-func (m *FileMetadata) String() string {
+func (m *TableMetadata) String() string {
 	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest, m.Largest)
 }
 
 // DebugString returns a verbose representation of FileMetadata, typically for
 // use in tests and debugging, returning the file number and the point, range
 // and overall bounds for the table.
-func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
+func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string {
 	var b bytes.Buffer
 	if m.Virtual {
 		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
@@ -796,7 +796,7 @@ func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
 
 // ParseFileMetadataDebug parses a FileMetadata from its DebugString
 // representation.
-func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
+func ParseFileMetadataDebug(s string) (_ *TableMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.CombineErrors(err, errFromPanic(r))
@@ -805,7 +805,7 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 
 	// Input format:
 	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...] size:5
-	m := &FileMetadata{}
+	m := &TableMetadata{}
 	p := makeDebugParser(s)
 	m.FileNum = p.FileNum()
 	var backingNum base.DiskFileNum
@@ -890,7 +890,7 @@ func ParseFileMetadataDebug(s string) (_ *FileMetadata, err error) {
 
 // Validate validates the metadata for consistency with itself, returning an
 // error if inconsistent.
-func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
+func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Combined range and point key validation.
 
 	if !m.HasPointKeys && !m.HasRangeKeys {
@@ -1008,7 +1008,7 @@ var (
 
 // TableInfo returns a subset of the FileMetadata state formatted as a
 // TableInfo.
-func (m *FileMetadata) TableInfo() TableInfo {
+func (m *TableMetadata) TableInfo() TableInfo {
 	return TableInfo{
 		FileNum:        m.FileNum,
 		Size:           m.Size,
@@ -1019,7 +1019,7 @@ func (m *FileMetadata) TableInfo() TableInfo {
 	}
 }
 
-func (m *FileMetadata) cmpSeqNum(b *FileMetadata) int {
+func (m *TableMetadata) cmpSeqNum(b *TableMetadata) int {
 	// NB: This is the same ordering that RocksDB uses for L0 files.
 
 	// Sort first by largest sequence number.
@@ -1034,11 +1034,11 @@ func (m *FileMetadata) cmpSeqNum(b *FileMetadata) int {
 	return stdcmp.Compare(m.FileNum, b.FileNum)
 }
 
-func (m *FileMetadata) lessSeqNum(b *FileMetadata) bool {
+func (m *TableMetadata) lessSeqNum(b *TableMetadata) bool {
 	return m.cmpSeqNum(b) < 0
 }
 
-func (m *FileMetadata) cmpSmallestKey(b *FileMetadata, cmp Compare) int {
+func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
 	return base.InternalCompare(cmp, m.Smallest, b.Smallest)
 }
 
@@ -1064,7 +1064,7 @@ func KeyRange(ucmp Compare, iters ...LevelIterator) (smallest, largest InternalK
 	return smallest, largest
 }
 
-type bySeqNum []*FileMetadata
+type bySeqNum []*TableMetadata
 
 func (b bySeqNum) Len() int { return len(b) }
 func (b bySeqNum) Less(i, j int) bool {
@@ -1073,12 +1073,12 @@ func (b bySeqNum) Less(i, j int) bool {
 func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
 // SortBySeqNum sorts the specified files by increasing sequence number.
-func SortBySeqNum(files []*FileMetadata) {
+func SortBySeqNum(files []*TableMetadata) {
 	sort.Sort(bySeqNum(files))
 }
 
 type bySmallest struct {
-	files []*FileMetadata
+	files []*TableMetadata
 	cmp   Compare
 }
 
@@ -1090,7 +1090,7 @@ func (b bySmallest) Swap(i, j int) { b.files[i], b.files[j] = b.files[j], b.file
 
 // SortBySmallest sorts the specified files by smallest key using the supplied
 // comparison function to order user keys.
-func SortBySmallest(files []*FileMetadata, cmp Compare) {
+func SortBySmallest(files []*TableMetadata, cmp Compare) {
 	sort.Sort(bySmallest{files, cmp})
 }
 
@@ -1100,7 +1100,7 @@ const NumLevels = 7
 // NewVersion constructs a new Version with the provided files. It requires
 // the provided files are already well-ordered. It's intended for testing.
 func NewVersion(
-	comparer *base.Comparer, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
+	comparer *base.Comparer, flushSplitBytes int64, files [NumLevels][]*TableMetadata,
 ) *Version {
 	v := &Version{
 		cmp: comparer,
@@ -1227,7 +1227,7 @@ func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSli
 	var buf bytes.Buffer
 	for sublevel := len(sublevels) - 1; sublevel >= 0; sublevel-- {
 		fmt.Fprintf(&buf, "L0.%d:\n", sublevel)
-		sublevels[sublevel].Each(func(f *FileMetadata) {
+		sublevels[sublevel].Each(func(f *TableMetadata) {
 			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
 		})
 	}
@@ -1254,7 +1254,7 @@ func (v *Version) string(verbose bool) string {
 
 // ParseVersionDebug parses a Version from its DebugString output.
 func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string) (*Version, error) {
-	var files [NumLevels][]*FileMetadata
+	var files [NumLevels][]*TableMetadata
 	level := -1
 	for _, l := range strings.Split(s, "\n") {
 		if l == "" {
@@ -1388,7 +1388,7 @@ func (v *Version) CalculateInuseKeyRanges(
 
 		cmp := v.cmp.Compare
 		inputIdx := 0
-		var currFile *FileMetadata
+		var currFile *TableMetadata
 		// If we have an accumulated key range and its start is ≤ smallest,
 		// we can seek to the accumulated range's end. Otherwise, we need to
 		// start at the first overlapping file within the level.
@@ -1463,7 +1463,7 @@ func (v *Version) CalculateInuseKeyRanges(
 //     greater than boundary.End.Key
 //   - if boundary.End is exclusive, the returned file ending boundary is either
 //     greater than boundary.End.Key, or it's inclusive at boundary.End.Key.
-func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary) *FileMetadata {
+func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary) *TableMetadata {
 	f := iter.SeekGE(cmp, boundary.Key)
 	if f == nil {
 		return nil
@@ -1482,7 +1482,7 @@ func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary
 // the version at the given level. If level is non-zero then Contains binary
 // searches among the files. If level is zero, Contains scans the entire
 // level.
-func (v *Version) Contains(level int, m *FileMetadata) bool {
+func (v *Version) Contains(level int, m *TableMetadata) bool {
 	iter := v.Levels[level].Iter()
 	if level > 0 {
 		overlaps := v.Overlaps(level, m.UserKeyBounds())
@@ -1713,7 +1713,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 		// with future versions of pebble, this method relaxes most L0 invariant
 		// checks.
 
-		var prev *FileMetadata
+		var prev *TableMetadata
 		for f := files.First(); f != nil; f, prev = files.Next(), f {
 			if prev == nil {
 				continue
@@ -1729,7 +1729,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 			}
 		}
 	} else {
-		var prev *FileMetadata
+		var prev *TableMetadata
 		for f := files.First(); f != nil; f, prev = files.Next(), f {
 			if err := f.Validate(cmp, format); err != nil {
 				return errors.Wrapf(err, "%s ", level)

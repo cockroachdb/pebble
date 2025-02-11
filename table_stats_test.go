@@ -191,7 +191,7 @@ func TestTableStats(t *testing.T) {
 }
 
 func TestTableRangeDeletionIter(t *testing.T) {
-	var m *fileMetadata
+	var m *tableMetadata
 	cmp := testkeys.Comparer
 	keySchema := colblk.DefaultKeySchema(cmp, 16)
 	fs := vfs.NewMem()
@@ -207,7 +207,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				KeySchema:   &keySchema,
 				TableFormat: sstable.TableFormatMax,
 			})
-			m = &fileMetadata{}
+			m = &tableMetadata{}
 			for _, line := range strings.Split(td.Input, "\n") {
 				err = w.EncodeSpan(keyspan.ParseSpan(line))
 				if err != nil {

@@ -69,7 +69,7 @@ type CheckpointSpan struct {
 // excludeFromCheckpoint returns true if an SST file should be excluded from the
 // checkpoint because it does not overlap with the spans of interest
 // (opt.restrictToSpans).
-func excludeFromCheckpoint(f *fileMetadata, opt *checkpointOptions, cmp Compare) bool {
+func excludeFromCheckpoint(f *tableMetadata, opt *checkpointOptions, cmp Compare) bool {
 	if len(opt.restrictToSpans) == 0 {
 		// Option not set; don't exclude anything.
 		return false
@@ -262,7 +262,7 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	var excludedTables map[deletedFileEntry]*fileMetadata
+	var excludedTables map[deletedFileEntry]*tableMetadata
 	var remoteFiles []base.DiskFileNum
 	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
@@ -273,7 +273,7 @@ func (d *DB) Checkpoint(
 		for f := iter.First(); f != nil; f = iter.Next() {
 			if excludeFromCheckpoint(f, opt, d.cmp) {
 				if excludedTables == nil {
-					excludedTables = make(map[deletedFileEntry]*fileMetadata)
+					excludedTables = make(map[deletedFileEntry]*tableMetadata)
 				}
 				excludedTables[deletedFileEntry{
 					Level:   l,
@@ -427,7 +427,7 @@ func (d *DB) writeCheckpointManifest(
 	destDir vfs.File,
 	manifestFileNum base.DiskFileNum,
 	manifestSize int64,
-	excludedFiles map[deletedFileEntry]*fileMetadata,
+	excludedFiles map[deletedFileEntry]*tableMetadata,
 	removeBackingTables []base.DiskFileNum,
 ) error {
 	// Copy the MANIFEST, and create a pointer to it. We copy rather

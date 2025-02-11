@@ -49,7 +49,7 @@ type AnnotationAggregator[T any] interface {
 	// the annotator must return false.
 	//
 	// Implementations may modify dst and return it to avoid an allocation.
-	Accumulate(f *FileMetadata, dst *T) (v *T, cacheOK bool)
+	Accumulate(f *TableMetadata, dst *T) (v *T, cacheOK bool)
 
 	// Merge combines two values src and dst, returning the result.
 	// Implementations may modify dst and return it to avoid an allocation.
@@ -61,7 +61,7 @@ type AnnotationAggregator[T any] interface {
 // partially overlap with the range.
 type PartialOverlapAnnotationAggregator[T any] interface {
 	AnnotationAggregator[T]
-	AccumulatePartialOverlap(f *FileMetadata, dst *T, bounds base.UserKeyBounds) *T
+	AccumulatePartialOverlap(f *TableMetadata, dst *T, bounds base.UserKeyBounds) *T
 }
 
 type annotation struct {
@@ -329,8 +329,8 @@ func (a *Annotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
 // SumAggregator defines an Aggregator which sums together a uint64 value
 // across files.
 type SumAggregator struct {
-	AccumulateFunc               func(f *FileMetadata) (v uint64, cacheOK bool)
-	AccumulatePartialOverlapFunc func(f *FileMetadata, bounds base.UserKeyBounds) uint64
+	AccumulateFunc               func(f *TableMetadata) (v uint64, cacheOK bool)
+	AccumulatePartialOverlapFunc func(f *TableMetadata, bounds base.UserKeyBounds) uint64
 }
 
 // Zero implements AnnotationAggregator.Zero, returning a new uint64 set to 0.
@@ -344,7 +344,7 @@ func (sa SumAggregator) Zero(dst *uint64) *uint64 {
 
 // Accumulate implements AnnotationAggregator.Accumulate, accumulating a single
 // file's uint64 value.
-func (sa SumAggregator) Accumulate(f *FileMetadata, dst *uint64) (v *uint64, cacheOK bool) {
+func (sa SumAggregator) Accumulate(f *TableMetadata, dst *uint64) (v *uint64, cacheOK bool) {
 	accumulated, ok := sa.AccumulateFunc(f)
 	*dst += accumulated
 	return dst, ok
@@ -355,7 +355,7 @@ func (sa SumAggregator) Accumulate(f *FileMetadata, dst *uint64) (v *uint64, cac
 // single file's uint64 value for a file which only partially overlaps with the
 // range defined by bounds.
 func (sa SumAggregator) AccumulatePartialOverlap(
-	f *FileMetadata, dst *uint64, bounds base.UserKeyBounds,
+	f *TableMetadata, dst *uint64, bounds base.UserKeyBounds,
 ) *uint64 {
 	if sa.AccumulatePartialOverlapFunc == nil {
 		v, _ := sa.Accumulate(f, dst)
@@ -374,7 +374,7 @@ func (sa SumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
 // SumAnnotator takes a function that computes a uint64 value from a single
 // FileMetadata and returns an Annotator that sums together the values across
 // files.
-func SumAnnotator(accumulate func(f *FileMetadata) (v uint64, cacheOK bool)) *Annotator[uint64] {
+func SumAnnotator(accumulate func(f *TableMetadata) (v uint64, cacheOK bool)) *Annotator[uint64] {
 	return &Annotator[uint64]{
 		Aggregator: SumAggregator{
 			AccumulateFunc: accumulate,
@@ -386,7 +386,7 @@ func SumAnnotator(accumulate func(f *FileMetadata) (v uint64, cacheOK bool)) *An
 // equal to the number of files included in the annotation. Particularly, it
 // can be used to efficiently calculate the number of files in a given key
 // range using range annotations.
-var NumFilesAnnotator = SumAnnotator(func(f *FileMetadata) (uint64, bool) {
+var NumFilesAnnotator = SumAnnotator(func(f *TableMetadata) (uint64, bool) {
 	return 1, true
 })
 
@@ -396,19 +396,21 @@ type PickFileAggregator struct {
 	// Filter takes a FileMetadata and returns whether it is eligible to be
 	// picked by this PickFileAggregator. The second return value indicates
 	// whether this eligibility is stable and thus cacheable.
-	Filter func(f *FileMetadata) (eligible bool, cacheOK bool)
+	Filter func(f *TableMetadata) (eligible bool, cacheOK bool)
 	// Compare compares two instances of FileMetadata and returns true if
 	// the first one should be picked over the second one. It may assume
 	// that both arguments are non-nil.
-	Compare func(f1 *FileMetadata, f2 *FileMetadata) bool
+	Compare func(f1 *TableMetadata, f2 *TableMetadata) bool
 }
 
 // Zero implements AnnotationAggregator.Zero, returning nil as the zero value.
-func (fa PickFileAggregator) Zero(dst *FileMetadata) *FileMetadata {
+func (fa PickFileAggregator) Zero(dst *TableMetadata) *TableMetadata {
 	return nil
 }
 
-func (fa PickFileAggregator) mergePickedFiles(src *FileMetadata, dst *FileMetadata) *FileMetadata {
+func (fa PickFileAggregator) mergePickedFiles(
+	src *TableMetadata, dst *TableMetadata,
+) *TableMetadata {
 	switch {
 	case src == nil:
 		return dst
@@ -424,8 +426,8 @@ func (fa PickFileAggregator) mergePickedFiles(src *FileMetadata, dst *FileMetada
 // Accumulate implements AnnotationAggregator.Accumulate, accumulating a single
 // file as long as it is eligible to be picked.
 func (fa PickFileAggregator) Accumulate(
-	f *FileMetadata, dst *FileMetadata,
-) (v *FileMetadata, cacheOK bool) {
+	f *TableMetadata, dst *TableMetadata,
+) (v *TableMetadata, cacheOK bool) {
 	eligible, ok := fa.Filter(f)
 	if eligible {
 		return fa.mergePickedFiles(f, dst), ok
@@ -435,6 +437,6 @@ func (fa PickFileAggregator) Accumulate(
 
 // Merge implements AnnotationAggregator.Merge by picking a single file based
 // on the output of PickFileAggregator.Compare.
-func (fa PickFileAggregator) Merge(src *FileMetadata, dst *FileMetadata) *FileMetadata {
+func (fa PickFileAggregator) Merge(src *TableMetadata, dst *TableMetadata) *TableMetadata {
 	return fa.mergePickedFiles(src, dst)
 }

@@ -27,9 +27,9 @@ const manifestMarkerName = `manifest`
 // Provide type aliases for the various manifest structs.
 type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedTableEntry
-type fileMetadata = manifest.FileMetadata
-type physicalMeta = manifest.PhysicalFileMeta
-type virtualMeta = manifest.VirtualFileMeta
+type tableMetadata = manifest.TableMetadata
+type physicalMeta = manifest.PhysicalTableMeta
+type virtualMeta = manifest.VirtualTableMeta
 type fileBacking = manifest.FileBacking
 type newTableEntry = manifest.NewTableEntry
 type version = manifest.Version
@@ -232,7 +232,7 @@ func (vs *versionSet) load(
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
-	bve.AddedTablesByFileNum = make(map[base.FileNum]*fileMetadata)
+	bve.AddedTablesByFileNum = make(map[base.FileNum]*tableMetadata)
 	manifest, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",

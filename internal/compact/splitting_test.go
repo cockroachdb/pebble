@@ -24,7 +24,7 @@ func TestOutputSplitter(t *testing.T) {
 		switch d.Cmd {
 		case "init-grandparents":
 			// We create a version with all tables in L1.
-			var files [manifest.NumLevels][]*manifest.FileMetadata
+			var files [manifest.NumLevels][]*manifest.TableMetadata
 			if d.Input != "" {
 				for _, l := range strings.Split(d.Input, "\n") {
 					f, err := manifest.ParseFileMetadataDebug(l)

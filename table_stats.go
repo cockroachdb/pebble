@@ -129,9 +129,9 @@ func (d *DB) collectTableStats() bool {
 
 	maybeCompact := false
 	for _, c := range collected {
-		c.fileMetadata.Stats = c.TableStats
-		maybeCompact = maybeCompact || fileCompensation(c.fileMetadata) > 0
-		c.fileMetadata.StatsMarkValid()
+		c.tableMetadata.Stats = c.TableStats
+		maybeCompact = maybeCompact || fileCompensation(c.tableMetadata) > 0
+		c.tableMetadata.StatsMarkValid()
 	}
 
 	d.mu.tableStats.cond.Broadcast()
@@ -164,7 +164,7 @@ func (d *DB) collectTableStats() bool {
 }
 
 type collectedStats struct {
-	*fileMetadata
+	*tableMetadata
 	manifest.TableStats
 }
 
@@ -203,8 +203,8 @@ func (d *DB) loadNewFileStats(
 		// holding DB.mu. We'll copy it to the FileMetadata after we're
 		// finished with IO.
 		collected = append(collected, collectedStats{
-			fileMetadata: nf.Meta,
-			TableStats:   stats,
+			tableMetadata: nf.Meta,
+			TableStats:    stats,
 		})
 		hints = append(hints, newHints...)
 	}
@@ -290,8 +290,8 @@ func (d *DB) scanReadStateTableStats(
 				continue
 			}
 			fill = append(fill, collectedStats{
-				fileMetadata: f,
-				TableStats:   stats,
+				tableMetadata: f,
+				TableStats:    stats,
 			})
 			hints = append(hints, newHints...)
 		}
@@ -300,7 +300,7 @@ func (d *DB) scanReadStateTableStats(
 }
 
 func (d *DB) loadTableStats(
-	v *version, level int, meta *fileMetadata,
+	v *version, level int, meta *tableMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
@@ -342,7 +342,7 @@ func (d *DB) loadTablePointKeyStats(
 	props *sstable.CommonProperties,
 	v *version,
 	level int,
-	meta *fileMetadata,
+	meta *tableMetadata,
 	stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
@@ -363,7 +363,7 @@ func (d *DB) loadTablePointKeyStats(
 // loadTableRangeDelStats calculates the range deletion and range key deletion
 // statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
-	r sstable.CommonReader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
+	r sstable.CommonReader, v *version, level int, meta *tableMetadata, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
 	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta)
 	if err != nil {
@@ -471,7 +471,7 @@ func (d *DB) loadTableRangeDelStats(
 }
 
 func (d *DB) estimateSizesBeneath(
-	v *version, level int, meta *fileMetadata, fileProps *sstable.CommonProperties,
+	v *version, level int, meta *tableMetadata, fileProps *sstable.CommonProperties,
 ) (avgValueLogicalSize, compressionRatio float64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
@@ -851,7 +851,7 @@ func estimatePhysicalSizes(
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
 func newCombinedDeletionKeyspanIter(
-	comparer *base.Comparer, cr sstable.CommonReader, m *fileMetadata,
+	comparer *base.Comparer, cr sstable.CommonReader, m *tableMetadata,
 ) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.
@@ -1000,7 +1000,7 @@ func newCombinedDeletionKeyspanIter(
 // with the sum of the files' counts of range key fragments. The count of range
 // key sets may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
-var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.FileMetadata) (uint64, bool) {
+var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
 	return f.Stats.NumRangeKeySets, f.StatsValid()
 })
 
@@ -1009,7 +1009,7 @@ var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.FileMetadata)
 // keys). The count of tombstones may change once a table's stats are loaded
 // asynchronously, so its values are marked as cacheable only if a file's stats
 // have been loaded.
-var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.FileMetadata) (uint64, bool) {
+var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
 	return f.Stats.NumDeletions, f.StatsValid()
 })
 
@@ -1017,7 +1017,7 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.FileMetadata) (
 // nodes with the sum of the files' Properties.ValueBlocksSize. The value block
 // size may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
-var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *fileMetadata) (uint64, bool) {
+var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
 	return f.Stats.ValueBlocksSize, f.StatsValid()
 })
 
@@ -1045,7 +1045,7 @@ func (a compressionTypeAggregator) Zero(dst *compressionTypes) *compressionTypes
 }
 
 func (a compressionTypeAggregator) Accumulate(
-	f *fileMetadata, dst *compressionTypes,
+	f *tableMetadata, dst *compressionTypes,
 ) (v *compressionTypes, cacheOK bool) {
 	switch f.Stats.CompressionType {
 	case SnappyCompression:

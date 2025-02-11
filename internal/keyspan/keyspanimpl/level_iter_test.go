@@ -283,10 +283,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 		for j, level := range tc.levels {
 			j := j // Copy for use in closures down below.
 			var levelIter LevelIter
-			var metas []*manifest.FileMetadata
+			var metas []*manifest.TableMetadata
 			for k, file := range level {
 				fileIters = append(fileIters, keyspan.NewIter(base.DefaultComparer.Compare, file))
-				meta := &manifest.FileMetadata{
+				meta := &manifest.TableMetadata{
 					FileNum:               base.FileNum(k + 1),
 					Size:                  1024,
 					SmallestSeqNum:        2,
@@ -302,12 +302,12 @@ func TestLevelIterEquivalence(t *testing.T) {
 				metas = append(metas, meta)
 			}
 
-			tableNewIters := func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+			tableNewIters := func(ctx context.Context, file *manifest.TableMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 				return keyspan.NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
 			}
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
-			amap := make(map[base.FileNum]*manifest.FileMetadata)
+			amap := make(map[base.FileNum]*manifest.TableMetadata)
 			for i := range metas {
 				amap[metas[i].FileNum] = metas[i]
 			}
@@ -354,7 +354,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 func TestLevelIter(t *testing.T) {
 	var cmp = base.DefaultComparer.Compare
 	type file struct {
-		meta      *manifest.FileMetadata
+		meta      *manifest.TableMetadata
 		rangeDels []keyspan.Span
 		rangeKeys []keyspan.Span
 	}
@@ -366,7 +366,7 @@ func TestLevelIter(t *testing.T) {
 			files = nil
 			for _, key := range strings.Split(d.Input, "\n") {
 				if strings.HasPrefix(key, "file") {
-					meta := &manifest.FileMetadata{
+					meta := &manifest.TableMetadata{
 						FileNum: base.FileNum(len(files) + 1),
 					}
 					meta.InitPhysicalBacking()
@@ -416,14 +416,14 @@ func TestLevelIter(t *testing.T) {
 					keyType = manifest.KeyTypePoint
 				}
 			}
-			tableNewIters := func(ctx context.Context, file *manifest.FileMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+			tableNewIters := func(ctx context.Context, file *manifest.TableMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 				f := files[file.FileNum-1]
 				if keyType == manifest.KeyTypePoint {
 					return keyspan.NewIter(cmp, f.rangeDels), nil
 				}
 				return keyspan.NewIter(cmp, f.rangeKeys), nil
 			}
-			metas := make([]*manifest.FileMetadata, len(files))
+			metas := make([]*manifest.TableMetadata, len(files))
 			for i := range files {
 				metas[i] = files[i].meta
 			}

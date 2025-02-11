@@ -1396,7 +1396,7 @@ func TestCheckConsistency(t *testing.T) {
 	require.NoError(t, err)
 	defer provider.Close()
 
-	parseMeta := func(s string) (*manifest.FileMetadata, error) {
+	parseMeta := func(s string) (*manifest.TableMetadata, error) {
 		if len(s) == 0 {
 			return nil, nil
 		}
@@ -1412,7 +1412,7 @@ func TestCheckConsistency(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		m := &manifest.FileMetadata{
+		m := &manifest.TableMetadata{
 			FileNum: base.FileNum(fileNum),
 			Size:    uint64(size),
 		}
@@ -1424,8 +1424,8 @@ func TestCheckConsistency(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-consistency":
-				var filesByLevel [manifest.NumLevels][]*manifest.FileMetadata
-				var files *[]*manifest.FileMetadata
+				var filesByLevel [manifest.NumLevels][]*manifest.TableMetadata
+				var files *[]*manifest.TableMetadata
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					switch data {

@@ -70,7 +70,7 @@ type findT struct {
 	// Set of tables that contains references to the search key.
 	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
-	tableMeta map[base.FileNum]*manifest.FileMetadata
+	tableMeta map[base.FileNum]*manifest.TableMetadata
 	// List of error messages for SSTables that could not be decoded.
 	errors []string
 }
@@ -174,7 +174,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	f.logs = nil
 	f.manifests = nil
 	f.tables = nil
-	f.tableMeta = make(map[base.FileNum]*manifest.FileMetadata)
+	f.tableMeta = make(map[base.FileNum]*manifest.TableMetadata)
 
 	if _, err := f.opts.FS.Stat(dir); err != nil {
 		return err

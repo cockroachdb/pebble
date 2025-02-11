@@ -92,7 +92,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	}
 
 	memFS := vfs.NewMem()
-	var levels [][]*fileMetadata
+	var levels [][]*tableMetadata
 	formatKey := testkeys.Comparer.FormatKey
 	// Indexed by fileNum
 	var readers []*sstable.Reader
@@ -104,7 +104,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 
 	var fileNum base.FileNum
 	newIters :=
-		func(_ context.Context, file *manifest.FileMetadata, _ *IterOptions, iio internalIterOpts, _ iterKinds) (iterSet, error) {
+		func(_ context.Context, file *manifest.TableMetadata, _ *IterOptions, iio internalIterOpts, _ iterKinds) (iterSet, error) {
 			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.ReadEnv{Stats: iio.stats})
 			if err != nil {
@@ -150,7 +150,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				m := (&fileMetadata{
+				m := (&tableMetadata{
 					FileNum: fileNum,
 				}).ExtendPointKeyBounds(testkeys.Comparer.Compare, smallestKey, largestKey)
 				m.InitPhysicalBacking()
@@ -275,7 +275,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 			}
 
-			var files [numLevels][]*fileMetadata
+			var files [numLevels][]*tableMetadata
 			for i := range levels {
 				// Start from level 1 in this test.
 				files[i+1] = levels[i]

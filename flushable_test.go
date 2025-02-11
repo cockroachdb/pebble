@@ -48,7 +48,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 	}
 	reset()
 
-	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*fileMetadata {
+	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*tableMetadata {
 		pendingOutputs := make([]base.FileNum, len(paths))
 		for i := range paths {
 			pendingOutputs[i] = d.mu.versions.getNextFileNum()
@@ -61,12 +61,12 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		meta := make([]*fileMetadata, len(lr.local))
+		meta := make([]*tableMetadata, len(lr.local))
 		if exciseSpan.Valid() {
 			seqNum++
 		}
 		for i := range meta {
-			meta[i] = lr.local[i].fileMetadata
+			meta[i] = lr.local[i].tableMetadata
 			if err := setSeqNumInMetadata(meta[i], seqNum+base.SeqNum(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				t.Fatal(err)
 			}

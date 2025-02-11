@@ -18,7 +18,7 @@ import (
 // TableNewSpanIter creates a new iterator for range key spans for the given
 // file.
 type TableNewSpanIter func(
-	ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions,
+	ctx context.Context, file *manifest.TableMetadata, iterOptions keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error)
 
 // LevelIter provides a merged view of spans from sstables in an L1+ level or an
@@ -56,7 +56,7 @@ type LevelIter struct {
 	files manifest.LevelIterator
 
 	// file always corresponds to the current position of LevelIter.files.
-	file *manifest.FileMetadata
+	file *manifest.TableMetadata
 	pos  levelIterPos
 	// fileIter is the iterator for LevelIter.file when pos is atFile; it is nil
 	// otherwise.
@@ -66,7 +66,7 @@ type LevelIter struct {
 	// need an iterator it is for the same file. When fileIter is not nil,
 	// fileIter is the same with lastIter and file is the same with lastIterFile.
 	lastIter     keyspan.FragmentIterator
-	lastIterFile *manifest.FileMetadata
+	lastIterFile *manifest.TableMetadata
 
 	wrapFn       keyspan.WrapFn
 	straddleSpan keyspan.Span
@@ -436,17 +436,17 @@ func (l *LevelIter) DebugTree(tp treeprinter.Node) {
 	}
 }
 
-func (l *LevelIter) setPosBeforeFile(f *manifest.FileMetadata) {
+func (l *LevelIter) setPosBeforeFile(f *manifest.TableMetadata) {
 	l.setPosInternal(f, beforeFile)
 }
 
-func (l *LevelIter) setPosAfterFile(f *manifest.FileMetadata) {
+func (l *LevelIter) setPosAfterFile(f *manifest.TableMetadata) {
 	l.setPosInternal(f, afterFile)
 }
 
 // setPosAtFile sets the current position and opens an iterator for the file (if
 // necessary).
-func (l *LevelIter) setPosAtFile(f *manifest.FileMetadata) error {
+func (l *LevelIter) setPosAtFile(f *manifest.TableMetadata) error {
 	l.setPosInternal(f, atFile)
 	// See if the last iterator was for the same file; if not, close it and open a
 	// new one.
@@ -472,7 +472,7 @@ func (l *LevelIter) setPosAtFile(f *manifest.FileMetadata) error {
 }
 
 // setPos sets l.file and l.pos (and closes the iteris for the new file).
-func (l *LevelIter) setPosInternal(f *manifest.FileMetadata, pos levelIterPos) {
+func (l *LevelIter) setPosInternal(f *manifest.TableMetadata, pos levelIterPos) {
 	l.file = f
 	l.fileIter = nil
 	l.pos = pos
@@ -485,7 +485,7 @@ func (l *LevelIter) straddleSpansEnabled() bool {
 // needStraddleSpan returns true if straddle spans are enabled and there is a
 // gap between the bounds of the files. file and nextFile are assumed to be
 // consecutive files in the level, in the order they appear in the level.
-func (l *LevelIter) needStraddleSpan(file, nextFile *manifest.FileMetadata) bool {
+func (l *LevelIter) needStraddleSpan(file, nextFile *manifest.TableMetadata) bool {
 	// We directly use range key bounds because that is the current condition for
 	// straddleSpansEnabled.
 	return l.straddleSpansEnabled() && l.cmp(file.LargestRangeKey.UserKey, nextFile.SmallestRangeKey.UserKey) < 0
@@ -493,7 +493,7 @@ func (l *LevelIter) needStraddleSpan(file, nextFile *manifest.FileMetadata) bool
 
 // makeStraddleSpan returns a straddle span that covers the gap between file and
 // nextFile.
-func (l *LevelIter) makeStraddleSpan(file, nextFile *manifest.FileMetadata) *keyspan.Span {
+func (l *LevelIter) makeStraddleSpan(file, nextFile *manifest.TableMetadata) *keyspan.Span {
 	l.straddleSpan = keyspan.Span{
 		Start: file.LargestRangeKey.UserKey,
 		End:   nextFile.SmallestRangeKey.UserKey,

@@ -401,7 +401,7 @@ func checkRangeTombstones(c *checkConfig) error {
 		for f := files.First(); f != nil; f = files.Next() {
 			lf := files.Take()
 			iters, err := c.newIters(
-				context.Background(), lf.FileMetadata, &IterOptions{layer: manifest.Level(lsmLevel)},
+				context.Background(), lf.TableMetadata, &IterOptions{layer: manifest.Level(lsmLevel)},
 				internalIterOpts{}, iterRangeDeletions)
 			if err != nil {
 				return err
