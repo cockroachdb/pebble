@@ -78,12 +78,12 @@
 // first, middle or last chunk of a multi-chunk record. A multi-chunk record
 // has one first chunk, zero or more middle chunks, and one last chunk.
 //
-// The recyclyable chunk format is similar to the legacy format, but extends
+// The recyclable chunk format is similar to the legacy format, but extends
 // the chunk header with an additional log number field. This allows reuse
 // (recycling) of log files which can provide significantly better performance
 // when syncing frequently as it avoids needing to update the file
 // metadata. Additionally, recycling log files is a prequisite for using direct
-// IO with log writing. The recyclyable format is:
+// IO with log writing. The recyclable format is:
 //
 //	+----------+-----------+-----------+----------------+--- ... ---+
 //	| CRC (4B) | Size (2B) | Type (1B) | Log number (4B)| Payload   |
@@ -97,6 +97,19 @@
 // The wire format allows for limited recovery in the face of data corruption:
 // on a format error (such as a checksum mismatch), the reader moves to the
 // next block and looks for the next full or first chunk.
+//
+// The WAL sync chunk format extends the recyclable header with an additional
+// offset field. This allows "reading ahead" to be done in order to decipher
+// whether an invalid or zeroed chunk was a corruption or the logical end of WAL.
+// Offset is a promise that the WAL should have been synced up until the offset.
+// A promised offset is needed because cloud providers may write blocks out of
+// order, rendering "read aheads" scanning for logNum inaccurate.
+// The WAL sync format is:
+//	+----------+-----------+-----------+----------------+-------------+--- ... ---+
+//	| CRC (4B) | Size (2B) | Type (1B) | Log number (4B)| Offset (8B) | Payload   |
+//	+----------+-----------+-----------+----------------+-------------+--- ... ---+
+//
+
 package record
 
 // The C++ Level-DB code calls this the log, but it has been renamed to record
@@ -107,6 +120,7 @@ package record
 import (
 	"encoding/binary"
 	"io"
+	"math"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -126,6 +140,11 @@ const (
 	recyclableFirstChunkEncoding  = 6
 	recyclableMiddleChunkEncoding = 7
 	recyclableLastChunkEncoding   = 8
+
+	walSyncFullChunkEncoding   = 9
+	walSyncFirstChunkEncoding  = 10
+	walSyncMiddleChunkEncoding = 11
+	walSyncLastChunkEncoding   = 12
 )
 
 const (
@@ -133,6 +152,7 @@ const (
 	blockSizeMask        = blockSize - 1
 	legacyHeaderSize     = 7
 	recyclableHeaderSize = legacyHeaderSize + 4
+	walSyncHeaderSize    = recyclableHeaderSize + 8
 )
 
 // chunkPosition represents the type of a chunk in the WAL.
@@ -163,6 +183,7 @@ const (
 	invalidWireFormat wireFormat = iota
 	legacyWireFormat
 	recyclableWireFormat
+	walSyncWireFormat
 )
 
 // headerFormat represents the format of a chunk which has
@@ -184,6 +205,10 @@ var headerFormatMappings = [...]headerFormat{
 	recyclableFirstChunkEncoding:  {chunkPosition: firstChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
 	recyclableMiddleChunkEncoding: {chunkPosition: middleChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
 	recyclableLastChunkEncoding:   {chunkPosition: lastChunkPosition, wireFormat: recyclableWireFormat, headerSize: recyclableHeaderSize},
+	walSyncFullChunkEncoding:      {chunkPosition: fullChunkPosition, wireFormat: walSyncWireFormat, headerSize: walSyncHeaderSize},
+	walSyncFirstChunkEncoding:     {chunkPosition: firstChunkPosition, wireFormat: walSyncWireFormat, headerSize: walSyncHeaderSize},
+	walSyncMiddleChunkEncoding:    {chunkPosition: middleChunkPosition, wireFormat: walSyncWireFormat, headerSize: walSyncHeaderSize},
+	walSyncLastChunkEncoding:      {chunkPosition: lastChunkPosition, wireFormat: walSyncWireFormat, headerSize: walSyncHeaderSize},
 }
 
 var (
@@ -235,6 +260,10 @@ type Reader struct {
 	err error
 	// buf is the buffer.
 	buf [blockSize]byte
+	// invalidOffset is the first encountered chunk offset found during nextChunk()
+	// that had garbage values. It is used to clarify whether or not a garbage chunk
+	// encountered during WAL replay was the logical EOF or confirmed corruption.
+	invalidOffset uint64
 }
 
 // NewReader returns a new reader. If the file contains records encoded using
@@ -245,6 +274,9 @@ func NewReader(r io.Reader, logNum base.DiskFileNum) *Reader {
 		r:        r,
 		logNum:   uint32(logNum),
 		blockNum: -1,
+		// invalidOffset is initialized as MaxUint64 so that reading ahead
+		// with the old chunk wire formats results in io.ErrUnexpectedEOF.
+		invalidOffset: math.MaxUint64,
 	}
 }
 
@@ -364,6 +396,97 @@ func (r *Reader) Next() (io.Reader, error) {
 		return nil, r.err
 	}
 	return singleReader{r, r.seq}, nil
+}
+
+// readAheadForCorruption scans ahead in the WAL to detect corruption.
+// It loads in blocks and reads chunks until it either detects corruption
+// due to an offset (encoded in a chunk header) exceeding the invalid offset,
+// or encountering end of file when loading a new block.
+func (r *Reader) readAheadForCorruption() error {
+	// wantFirst is analogous to the wantFirst parameter in nextChunk().
+	// It is initialized to false because there is no guarantee that the
+	// first chunk in a block is encoded with  firstChunkPosition or
+	// fullChunkPosition. Whenever another chunk issue is encountered
+	// during reading ahead, wantFirst is also set to false as there
+	// is no promise that the next block is going to begin with a
+	// firstChunkPosition or fullChunkPosition chunk.
+	wantFirst := false
+	for {
+		// Load the next block into r.buf.
+		n, err := io.ReadFull(r.r, r.buf[:])
+		if err == io.EOF {
+			// io.ErrUnexpectedEOF is returned instead of
+			// io.EOF because io library functions clear
+			// an error when it is io.EOF. io.ErrUnexpectedEOF
+			// is returned so that the error is not cleared
+			// when the io library makes calls to Reader.Read().
+			return io.ErrUnexpectedEOF
+		}
+
+		r.begin, r.end, r.n = 0, 0, n
+		r.blockNum++
+
+		for r.end+legacyHeaderSize <= r.n {
+			checksum := binary.LittleEndian.Uint32(r.buf[r.end+0 : r.end+4])
+			length := binary.LittleEndian.Uint16(r.buf[r.end+4 : r.end+6])
+			chunkEncoding := r.buf[r.end+6]
+			if int(chunkEncoding) >= len(headerFormatMappings) {
+				wantFirst = false
+				break
+			}
+
+			headerFormat := headerFormatMappings[chunkEncoding]
+			chunkType, wireFormat, headerSize := headerFormat.chunkPosition, headerFormat.wireFormat, headerFormat.headerSize
+			if checksum == 0 && length == 0 && chunkType == invalidChunkPosition {
+				wantFirst = false
+				break
+			}
+			if wireFormat == invalidWireFormat {
+				wantFirst = false
+				break
+			}
+			if wireFormat == recyclableWireFormat || wireFormat == walSyncWireFormat {
+				if r.begin+headerSize > r.n {
+					wantFirst = false
+					break
+				}
+				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
+				if logNum != r.logNum {
+					wantFirst = false
+					break
+				}
+			}
+
+			r.begin = r.end + headerSize
+			r.end = r.begin + int(length)
+			if r.end > r.n {
+				// The chunk straddles a 32KB boundary (or the end of file).
+				wantFirst = false
+				break
+			}
+			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
+				wantFirst = false
+				break
+			}
+
+			// Decode offset in header when chunk has the WAL Sync wire format.
+			if wireFormat == walSyncWireFormat {
+				offset := binary.LittleEndian.Uint64(r.buf[r.begin-headerSize+11 : r.begin-headerSize+19])
+				// If the encountered chunk offset promises durability beyond the invalid offset,
+				// the invalid offset must have been corruption.
+				if offset > r.invalidOffset {
+					return r.err
+				}
+			}
+
+			if wantFirst {
+				if chunkType != fullChunkPosition && chunkType != firstChunkPosition {
+					break
+				}
+			}
+			wantFirst = chunkType == fullChunkPosition || chunkType == lastChunkPosition
+		}
+	}
 }
 
 // Offset returns the current offset within the file. If called immediately
