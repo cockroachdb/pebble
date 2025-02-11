@@ -20,15 +20,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newItem(k InternalKey) *FileMetadata {
-	m := (&FileMetadata{}).ExtendPointKeyBounds(
+func newItem(k InternalKey) *TableMetadata {
+	m := (&TableMetadata{}).ExtendPointKeyBounds(
 		base.DefaultComparer.Compare, k, k,
 	)
 	m.InitPhysicalBacking()
 	return m
 }
 
-func cmp(a, b *FileMetadata) int {
+func cmp(a, b *TableMetadata) int {
 	return cmpKey(a.Smallest, b.Smallest)
 }
 
@@ -114,7 +114,7 @@ func (t *btree) isSorted(tt *testing.T) {
 	t.root.isSorted(tt, t.bcmp)
 }
 
-func (n *node) isSorted(t *testing.T, cmp func(*FileMetadata, *FileMetadata) int) {
+func (n *node) isSorted(t *testing.T, cmp func(*TableMetadata, *TableMetadata) int) {
 	for i := int16(1); i < n.count; i++ {
 		require.LessOrEqual(t, cmp(n.items[i-1], n.items[i]), 0)
 	}
@@ -477,7 +477,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 	t.Log("Checking all values again")
 	for i, tree := range trees {
-		var wantpart []*FileMetadata
+		var wantpart []*TableMetadata
 		if i < len(trees)/2 {
 			wantpart = want[:cloneTestSize/2]
 		} else {
@@ -551,7 +551,7 @@ func TestRandomizedBTree(t *testing.T) {
 		numOps = 10_000 + rng.IntN(40_000)
 	}
 
-	var metadataAlloc [maxFileNum]FileMetadata
+	var metadataAlloc [maxFileNum]TableMetadata
 	for i := 0; i < len(metadataAlloc); i++ {
 		metadataAlloc[i].FileNum = base.FileNum(i)
 		metadataAlloc[i].InitPhysicalBacking()
@@ -560,7 +560,7 @@ func TestRandomizedBTree(t *testing.T) {
 	// Use a btree comparator that sorts by file number to make it easier to
 	// prevent duplicates or overlaps.
 	tree := btree{
-		bcmp: func(a *FileMetadata, b *FileMetadata) int {
+		bcmp: func(a *TableMetadata, b *TableMetadata) int {
 			return stdcmp.Compare(a.FileNum, b.FileNum)
 		},
 	}
@@ -635,7 +635,7 @@ func TestRandomizedBTree(t *testing.T) {
 //////////////////////////////////////////
 
 // perm returns a random permutation of items with keys in the range [0, n).
-func perm(n int) (out []*FileMetadata) {
+func perm(n int) (out []*TableMetadata) {
 	for _, i := range rand.Perm(n) {
 		out = append(out, newItem(key(i)))
 	}
@@ -643,14 +643,14 @@ func perm(n int) (out []*FileMetadata) {
 }
 
 // rang returns an ordered list of items with keys in the range [m, n].
-func rang(m, n int) (out []*FileMetadata) {
+func rang(m, n int) (out []*TableMetadata) {
 	for i := m; i <= n; i++ {
 		out = append(out, newItem(key(i)))
 	}
 	return out
 }
 
-func strReprs(items []*FileMetadata) []string {
+func strReprs(items []*TableMetadata) []string {
 	s := make([]string, len(items))
 	for i := range items {
 		s[i] = items[i].String()
@@ -659,7 +659,7 @@ func strReprs(items []*FileMetadata) []string {
 }
 
 // all extracts all items from a tree in order as a slice.
-func all(tr *btree) (out []*FileMetadata) {
+func all(tr *btree) (out []*TableMetadata) {
 	it := tr.Iter()
 	it.first()
 	for it.valid() {

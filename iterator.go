@@ -828,7 +828,7 @@ func (i *Iterator) maybeSampleRead() {
 }
 
 func (i *Iterator) sampleRead() {
-	var topFile *manifest.FileMetadata
+	var topFile *manifest.TableMetadata
 	topLevel, numOverlappingLevels := numLevels, 0
 	mi := i.merging
 	if mi == nil {

@@ -77,7 +77,7 @@ func (k *KeyRange) OverlapsInternalKeyRange(cmp base.Compare, smallest, largest 
 // Overlaps checks if the specified file has an overlap with the KeyRange.
 // Note that we aren't checking for full containment of m within k, rather just
 // that there's some intersection between m and k's bounds.
-func (k *KeyRange) Overlaps(cmp base.Compare, m *fileMetadata) bool {
+func (k *KeyRange) Overlaps(cmp base.Compare, m *tableMetadata) bool {
 	b := k.UserKeyBounds()
 	return m.Overlaps(cmp, &b)
 }
@@ -109,14 +109,14 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 // or shared by another node.
 func ingestSynthesizeShared(
 	opts *Options, sm SharedSSTMeta, fileNum base.FileNum,
-) (*fileMetadata, error) {
+) (*tableMetadata, error) {
 	if sm.Size == 0 {
 		// Disallow 0 file sizes
 		return nil, errors.New("pebble: cannot ingest shared file with size 0")
 	}
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
-	meta := &fileMetadata{
+	meta := &tableMetadata{
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
@@ -181,7 +181,7 @@ func ingestSynthesizeShared(
 // Sequence number and target level calculation happens during prepare/apply.
 func ingestLoad1External(
 	opts *Options, e ExternalFile, fileNum base.FileNum,
-) (*fileMetadata, error) {
+) (*tableMetadata, error) {
 	if e.Size == 0 {
 		return nil, errors.New("pebble: cannot ingest external file with size 0")
 	}
@@ -204,7 +204,7 @@ func ingestLoad1External(
 
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
-	meta := &fileMetadata{
+	meta := &tableMetadata{
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
@@ -307,7 +307,7 @@ func ingestLoad1(
 	cacheHandle *cache.Handle,
 	fileNum base.FileNum,
 	rangeKeyValidator rangeKeyIngestValidator,
-) (meta *fileMetadata, lastRangeKey keyspan.Span, err error) {
+) (meta *tableMetadata, lastRangeKey keyspan.Span, err error) {
 	o := opts.MakeReaderOptions()
 	o.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: cacheHandle,
@@ -338,7 +338,7 @@ func ingestLoad1(
 		}
 	}
 
-	meta = &fileMetadata{}
+	meta = &tableMetadata{}
 	meta.FileNum = fileNum
 	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
@@ -477,17 +477,17 @@ type ingestLoadResult struct {
 }
 
 type ingestLocalMeta struct {
-	*fileMetadata
+	*tableMetadata
 	path string
 }
 
 type ingestSharedMeta struct {
-	*fileMetadata
+	*tableMetadata
 	shared SharedSSTMeta
 }
 
 type ingestExternalMeta struct {
-	*fileMetadata
+	*tableMetadata
 	external ExternalFile
 	// usedExistingBacking is true if the external file is reusing a backing
 	// that existed before this ingestion. In this case, we called
@@ -535,7 +535,7 @@ func ingestLoad(
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		var m *fileMetadata
+		var m *tableMetadata
 		rangeKeyValidator := disableRangeKeyChecks()
 		if !shouldDisableRangeKeyChecks {
 			rangeKeyValidator = validateSuffixedBoundaries(opts.Comparer, lastRangeKey)
@@ -546,8 +546,8 @@ func ingestLoad(
 		}
 		if m != nil {
 			result.local = append(result.local, ingestLocalMeta{
-				fileMetadata: m,
-				path:         paths[i],
+				tableMetadata: m,
+				path:          paths[i],
 			})
 		}
 	}
@@ -572,8 +572,8 @@ func ingestLoad(
 			return ingestLoadResult{}, errors.New("cannot ingest shared file in level below sharedLevelsStart")
 		}
 		result.shared = append(result.shared, ingestSharedMeta{
-			fileMetadata: m,
-			shared:       shared[i],
+			tableMetadata: m,
+			shared:        shared[i],
 		})
 	}
 	result.external = make([]ingestExternalMeta, 0, len(external))
@@ -583,8 +583,8 @@ func ingestLoad(
 			return ingestLoadResult{}, err
 		}
 		result.external = append(result.external, ingestExternalMeta{
-			fileMetadata: m,
-			external:     external[i],
+			tableMetadata: m,
+			external:      external[i],
 		})
 		if external[i].Level > 0 {
 			if i != 0 && !result.externalFilesHaveLevel {
@@ -650,20 +650,20 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	if len(lr.shared) == 0 {
 		return nil
 	}
-	filesInLevel := make([]*fileMetadata, 0, len(lr.shared))
+	filesInLevel := make([]*tableMetadata, 0, len(lr.shared))
 	for l := sharedLevelsStart; l < numLevels; l++ {
 		filesInLevel = filesInLevel[:0]
 		for i := range lr.shared {
 			if lr.shared[i].shared.Level == uint8(l) {
-				filesInLevel = append(filesInLevel, lr.shared[i].fileMetadata)
+				filesInLevel = append(filesInLevel, lr.shared[i].tableMetadata)
 			}
 		}
 		for i := range lr.external {
 			if lr.external[i].external.Level == uint8(l) {
-				filesInLevel = append(filesInLevel, lr.external[i].fileMetadata)
+				filesInLevel = append(filesInLevel, lr.external[i].tableMetadata)
 			}
 		}
-		slices.SortFunc(filesInLevel, func(a, b *fileMetadata) int {
+		slices.SortFunc(filesInLevel, func(a, b *tableMetadata) int {
 			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 		})
 		for i := 1; i < len(filesInLevel); i++ {
@@ -742,7 +742,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 
 	newFileBackings := make(map[remote.ObjectKey]*fileBacking, len(lr.external))
 	for i := range lr.external {
-		meta := lr.external[i].fileMetadata
+		meta := lr.external[i].tableMetadata
 		if meta.FileBacking != nil {
 			// The backing was filled in by findExistingBackingsForExternalObjects().
 			continue
@@ -862,7 +862,7 @@ func (d *DB) ingestUnprotectExternalBackings(lr ingestLoadResult) {
 }
 
 func setSeqNumInMetadata(
-	m *fileMetadata, seqNum base.SeqNum, cmp Compare, format base.FormatKey,
+	m *tableMetadata, seqNum base.SeqNum, cmp Compare, format base.FormatKey,
 ) error {
 	setSeqFn := func(k base.InternalKey) base.InternalKey {
 		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
@@ -913,19 +913,19 @@ func ingestUpdateSeqNum(
 		if i-1 >= 0 && loadResult.shared[i-1].shared.Level > loadResult.shared[i].shared.Level {
 			panic(errors.AssertionFailedf("shared files %s, %s out of order", loadResult.shared[i-1], loadResult.shared[i]))
 		}
-		if err := setSeqNumInMetadata(loadResult.shared[i].fileMetadata, seqNum, cmp, format); err != nil {
+		if err := setSeqNumInMetadata(loadResult.shared[i].tableMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
 		seqNum++
 	}
 	for i := range loadResult.external {
-		if err := setSeqNumInMetadata(loadResult.external[i].fileMetadata, seqNum, cmp, format); err != nil {
+		if err := setSeqNumInMetadata(loadResult.external[i].tableMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
 		seqNum++
 	}
 	for i := range loadResult.local {
-		if err := setSeqNumInMetadata(loadResult.local[i].fileMetadata, seqNum, cmp, format); err != nil {
+		if err := setSeqNumInMetadata(loadResult.local[i].tableMetadata, seqNum, cmp, format); err != nil {
 			return err
 		}
 		seqNum++
@@ -943,9 +943,9 @@ func ingestTargetLevel(
 	lsmOverlap overlap.WithLSM,
 	baseLevel int,
 	compactions map[*compaction]struct{},
-	meta *fileMetadata,
+	meta *tableMetadata,
 	suggestSplit bool,
-) (targetLevel int, splitFile *fileMetadata, err error) {
+) (targetLevel int, splitFile *tableMetadata, err error) {
 	// Find the lowest level which does not have any files which overlap meta. We
 	// search from L0 to L6 looking for whether there are any files in the level
 	// which overlap meta. We want the "lowest" level (where lower means
@@ -1018,7 +1018,7 @@ func ingestTargetLevel(
 	targetLevel = 0
 	splitFile = nil
 	for level := baseLevel; level < numLevels; level++ {
-		var candidateSplitFile *fileMetadata
+		var candidateSplitFile *tableMetadata
 		switch lsmOverlap[level].Result {
 		case overlap.Data:
 			// We cannot ingest into or under this level; return the best target level
@@ -1290,7 +1290,7 @@ func (d *DB) IngestAndExcise(
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*fileMetadata, seqNum base.SeqNum, logNum base.DiskFileNum, exciseSpan KeyRange,
+	meta []*tableMetadata, seqNum base.SeqNum, logNum base.DiskFileNum, exciseSpan KeyRange,
 ) (*flushableEntry, error) {
 	// If there's an excise being done atomically with the same ingest, we
 	// assign the lowest sequence number in the set of sequence numbers for this
@@ -1332,7 +1332,7 @@ func (d *DB) newIngestedFlushableEntry(
 		var obsolete []*fileBacking
 		for _, file := range f.files {
 			if file.FileBacking.Unref() == 0 {
-				obsolete = append(obsolete, file.FileMetadata.FileBacking)
+				obsolete = append(obsolete, file.TableMetadata.FileBacking)
 			}
 		}
 		return obsolete
@@ -1348,7 +1348,7 @@ func (d *DB) newIngestedFlushableEntry(
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
 func (d *DB) handleIngestAsFlushable(
-	meta []*fileMetadata, seqNum base.SeqNum, exciseSpan KeyRange,
+	meta []*tableMetadata, seqNum base.SeqNum, exciseSpan KeyRange,
 ) error {
 	b := d.NewBatch()
 	if exciseSpan.Valid() {
@@ -1515,13 +1515,13 @@ func (d *DB) ingest(
 		// to check for overlap with its bounds as well.
 		overlapBounds := make([]bounded, 0, loadResult.fileCount()+1)
 		for _, m := range loadResult.local {
-			overlapBounds = append(overlapBounds, m.fileMetadata)
+			overlapBounds = append(overlapBounds, m.tableMetadata)
 		}
 		for _, m := range loadResult.shared {
-			overlapBounds = append(overlapBounds, m.fileMetadata)
+			overlapBounds = append(overlapBounds, m.tableMetadata)
 		}
 		for _, m := range loadResult.external {
-			overlapBounds = append(overlapBounds, m.fileMetadata)
+			overlapBounds = append(overlapBounds, m.tableMetadata)
 		}
 		if exciseSpan.Valid() {
 			overlapBounds = append(overlapBounds, &exciseSpan)
@@ -1592,7 +1592,7 @@ func (d *DB) ingest(
 				}
 
 				switch v := b.(type) {
-				case *fileMetadata:
+				case *tableMetadata:
 					// NB: False positives are possible if `m` is a flushable
 					// ingest that overlaps the file `v` in bounds but doesn't
 					// contain overlapping data. This is considered acceptable
@@ -1666,9 +1666,9 @@ func (d *DB) ingest(
 		// Since there aren't too many memtables already queued up, we can
 		// slide the ingested sstables on top of the existing memtables.
 		asFlushable = true
-		fileMetas := make([]*fileMetadata, len(loadResult.local))
+		fileMetas := make([]*tableMetadata, len(loadResult.local))
 		for i := range fileMetas {
-			fileMetas[i] = loadResult.local[i].fileMetadata
+			fileMetas[i] = loadResult.local[i].tableMetadata
 		}
 		err = d.handleIngestAsFlushable(fileMetas, seqNum, exciseSpan)
 	}
@@ -1818,7 +1818,7 @@ func (d *DB) ingest(
 // the db mutex held (eg. ingest-time excises), while in the case of compactions
 // the mutex is not held.
 func (d *DB) excise(
-	ctx context.Context, exciseSpan base.UserKeyBounds, m *fileMetadata, ve *versionEdit, level int,
+	ctx context.Context, exciseSpan base.UserKeyBounds, m *tableMetadata, ve *versionEdit, level int,
 ) ([]manifest.NewTableEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
@@ -1875,7 +1875,7 @@ func (d *DB) excise(
 	// have changed since our previous calculation. Do this optimiaztino as part of
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
-		leftFile := &fileMetadata{
+		leftFile := &tableMetadata{
 			Virtual:     true,
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
@@ -1971,7 +1971,7 @@ func (d *DB) excise(
 	//
 	// See comment before the definition of leftFile for the motivation behind
 	// calculating tight user-key bounds.
-	rightFile := &fileMetadata{
+	rightFile := &tableMetadata{
 		Virtual:     true,
 		FileBacking: m.FileBacking,
 		FileNum:     d.mu.versions.getNextFileNum(),
@@ -2082,10 +2082,10 @@ func (d *DB) excise(
 
 type ingestSplitFile struct {
 	// ingestFile is the file being ingested.
-	ingestFile *fileMetadata
+	ingestFile *tableMetadata
 	// splitFile is the file that needs to be split to allow ingestFile to slot
 	// into `level` level.
-	splitFile *fileMetadata
+	splitFile *tableMetadata
 	// The level where ingestFile will go (and where splitFile already is).
 	level int
 }
@@ -2100,7 +2100,7 @@ type ingestSplitFile struct {
 func (d *DB) ingestSplit(
 	ctx context.Context,
 	ve *versionEdit,
-	updateMetrics func(*fileMetadata, int, []newTableEntry),
+	updateMetrics func(*tableMetadata, int, []newTableEntry),
 	files []ingestSplitFile,
 	replacedFiles map[base.FileNum][]newTableEntry,
 ) error {
@@ -2214,7 +2214,7 @@ func (d *DB) ingestApply(
 		NewTables: make([]newTableEntry, lr.fileCount()),
 	}
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
-		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.FileMetadata{}
+		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.TableMetadata{}
 	}
 	metrics := make(map[int]*LevelMetrics)
 
@@ -2260,24 +2260,24 @@ func (d *DB) ingestApply(
 	for i := 0; i < lr.fileCount(); i++ {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
-		var m *fileMetadata
+		var m *tableMetadata
 		specifiedLevel := -1
 		isShared := false
 		isExternal := false
 		if i < len(lr.local) {
 			// local file.
-			m = lr.local[i].fileMetadata
+			m = lr.local[i].tableMetadata
 		} else if (i - len(lr.local)) < len(lr.shared) {
 			// shared file.
 			isShared = true
 			sharedIdx := i - len(lr.local)
-			m = lr.shared[sharedIdx].fileMetadata
+			m = lr.shared[sharedIdx].tableMetadata
 			specifiedLevel = int(lr.shared[sharedIdx].shared.Level)
 		} else {
 			// external file.
 			isExternal = true
 			externalIdx := i - (len(lr.local) + len(lr.shared))
-			m = lr.external[externalIdx].fileMetadata
+			m = lr.external[externalIdx].tableMetadata
 			if lr.externalFilesHaveLevel {
 				specifiedLevel = int(lr.external[externalIdx].external.Level)
 			}
@@ -2296,7 +2296,7 @@ func (d *DB) ingestApply(
 		if specifiedLevel != -1 {
 			f.Level = specifiedLevel
 		} else {
-			var splitFile *fileMetadata
+			var splitTable *tableMetadata
 			if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
 				// This file fits perfectly within the excise span. We can slot it at
 				// L6, or sharedLevelsStart - 1 if we have shared files.
@@ -2319,15 +2319,15 @@ func (d *DB) ingestApply(
 					return overlapChecker.DetermineLSMOverlap(ctx, m.UserKeyBounds())
 				}()
 				if err == nil {
-					f.Level, splitFile, err = ingestTargetLevel(
+					f.Level, splitTable, err = ingestTargetLevel(
 						ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, m, shouldIngestSplit,
 					)
 				}
 			}
 
-			if splitFile != nil {
+			if splitTable != nil {
 				if invariants.Enabled {
-					if lf := current.Levels[f.Level].Find(d.cmp, splitFile); lf.Empty() {
+					if lf := current.Levels[f.Level].Find(d.cmp, splitTable); lf.Empty() {
 						panic("splitFile returned is not in level it should be")
 					}
 				}
@@ -2336,10 +2336,10 @@ func (d *DB) ingestApply(
 				// get added to a new in-progress compaction at this point. We can
 				// avoid having to iterate on in-progress compactions to cancel them
 				// if none of the files being split have a compacting state.
-				if splitFile.IsCompacting() {
+				if splitTable.IsCompacting() {
 					checkCompactions = true
 				}
-				filesToSplit = append(filesToSplit, ingestSplitFile{ingestFile: m, splitFile: splitFile, level: f.Level})
+				filesToSplit = append(filesToSplit, ingestSplitFile{ingestFile: m, splitFile: splitTable, level: f.Level})
 			}
 		}
 		if err != nil {
@@ -2368,7 +2368,7 @@ func (d *DB) ingestApply(
 	// newer fileMetadata due to a split induced by another ingestion file, or an
 	// excise.
 	replacedFiles := make(map[base.FileNum][]newTableEntry)
-	updateLevelMetricsOnExcise := func(m *fileMetadata, level int, added []newTableEntry) {
+	updateLevelMetricsOnExcise := func(m *tableMetadata, level int, added []newTableEntry) {
 		levelMetrics := metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}

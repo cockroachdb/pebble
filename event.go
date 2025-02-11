@@ -451,7 +451,7 @@ func (i TableStatsInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 // on an sstable.
 type TableValidatedInfo struct {
 	JobID int
-	Meta  *fileMetadata
+	Meta  *tableMetadata
 }
 
 func (i TableValidatedInfo) String() string {

@@ -42,7 +42,7 @@ func (lm *LevelMetadata) release() (obsolete []*FileBacking) {
 }
 
 // MakeLevelMetadata creates a LevelMetadata with the given files.
-func MakeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetadata {
+func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMetadata {
 	bcmp := btreeCmpSeqNum
 	if level > 0 {
 		bcmp = btreeCmpSmallestKey(cmp)
@@ -60,7 +60,7 @@ func MakeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetad
 	return lm
 }
 
-func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*FileMetadata) (btree, LevelSlice) {
+func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*TableMetadata) (btree, LevelSlice) {
 	var t btree
 	t.cmp = cmp
 	t.bcmp = bcmp
@@ -70,7 +70,7 @@ func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*FileMetadata) (btree, L
 	return t, newLevelSlice(t.Iter())
 }
 
-func (lm *LevelMetadata) insert(f *FileMetadata) error {
+func (lm *LevelMetadata) insert(f *TableMetadata) error {
 	if err := lm.tree.Insert(f); err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (lm *LevelMetadata) insert(f *FileMetadata) error {
 	return nil
 }
 
-func (lm *LevelMetadata) remove(f *FileMetadata) bool {
+func (lm *LevelMetadata) remove(f *TableMetadata) bool {
 	lm.totalSize -= f.Size
 	if f.Virtual {
 		lm.NumVirtual--
@@ -118,12 +118,12 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 
 // Find finds the provided file in the level. If it exists, returns a LevelSlice
 // that contains just that file; otherwise, returns an empty LevelSlice.
-func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) LevelSlice {
+func (lm *LevelMetadata) Find(cmp base.Compare, m *TableMetadata) LevelSlice {
 	iter := lm.Iter()
 	if lm.level == 0 {
 		// We only need to look at the portion of files that are "equal" to m with
 		// respect to the L0 ordering.
-		f := iter.seek(func(f *FileMetadata) bool {
+		f := iter.seek(func(f *TableMetadata) bool {
 			return f.cmpSeqNum(m) >= 0
 		})
 		for ; f != nil && f.cmpSeqNum(m) == 0; f = iter.Next() {
@@ -144,7 +144,7 @@ func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) LevelSlice {
 // LevelFile holds a file's metadata along with its position
 // within a level of the LSM.
 type LevelFile struct {
-	*FileMetadata
+	*TableMetadata
 	slice LevelSlice
 }
 
@@ -157,7 +157,7 @@ func (lf LevelFile) Slice() LevelSlice {
 // sorted by the L0 sequence number sort order.
 // TODO(jackson): Can we improve this interface or avoid needing to export
 // a slice constructor like this?
-func NewLevelSliceSeqSorted(files []*FileMetadata) LevelSlice {
+func NewLevelSliceSeqSorted(files []*TableMetadata) LevelSlice {
 	tr, slice := makeBTree(nil, btreeCmpSeqNum, files)
 	tr.Release()
 	slice.verifyInvariants()
@@ -168,7 +168,7 @@ func NewLevelSliceSeqSorted(files []*FileMetadata) LevelSlice {
 // sorted by the files smallest keys.
 // TODO(jackson): Can we improve this interface or avoid needing to export
 // a slice constructor like this?
-func NewLevelSliceKeySorted(cmp base.Compare, files []*FileMetadata) LevelSlice {
+func NewLevelSliceKeySorted(cmp base.Compare, files []*TableMetadata) LevelSlice {
 	tr, slice := makeBTree(cmp, btreeCmpSmallestKey(cmp), files)
 	tr.Release()
 	slice.verifyInvariants()
@@ -179,7 +179,7 @@ func NewLevelSliceKeySorted(cmp base.Compare, files []*FileMetadata) LevelSlice 
 // ordering the files by their order in the provided slice. It's used in
 // tests.
 // TODO(jackson): Update tests to avoid requiring this and remove it.
-func NewLevelSliceSpecificOrder(files []*FileMetadata) LevelSlice {
+func NewLevelSliceSpecificOrder(files []*TableMetadata) LevelSlice {
 	tr, slice := makeBTree(nil, btreeCmpSpecificOrder(files), files)
 	tr.Release()
 	slice.verifyInvariants()
@@ -255,7 +255,7 @@ func (ls LevelSlice) verifyInvariants() {
 }
 
 // Each invokes fn for each element in the slice.
-func (ls LevelSlice) Each(fn func(*FileMetadata)) {
+func (ls LevelSlice) Each(fn func(*TableMetadata)) {
 	iter := ls.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {
 		fn(f)
@@ -266,7 +266,7 @@ func (ls LevelSlice) Each(fn func(*FileMetadata)) {
 func (ls LevelSlice) String() string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%d files: ", ls.length)
-	ls.Each(func(f *FileMetadata) {
+	ls.Each(func(f *TableMetadata) {
 		if buf.Len() > 0 {
 			fmt.Fprintf(&buf, " ")
 		}
@@ -480,7 +480,7 @@ func emptyWithBounds(i iterator, start, end *iterator) bool {
 }
 
 // First seeks to the first file in the iterator and returns it.
-func (i *LevelIterator) First() *FileMetadata {
+func (i *LevelIterator) First() *TableMetadata {
 	if i.empty() {
 		return nil
 	}
@@ -496,7 +496,7 @@ func (i *LevelIterator) First() *FileMetadata {
 }
 
 // Last seeks to the last file in the iterator and returns it.
-func (i *LevelIterator) Last() *FileMetadata {
+func (i *LevelIterator) Last() *TableMetadata {
 	if i.empty() {
 		return nil
 	}
@@ -512,7 +512,7 @@ func (i *LevelIterator) Last() *FileMetadata {
 }
 
 // Next advances the iterator to the next file and returns it.
-func (i *LevelIterator) Next() *FileMetadata {
+func (i *LevelIterator) Next() *TableMetadata {
 	if i.iter.r == nil {
 		return nil
 	}
@@ -527,7 +527,7 @@ func (i *LevelIterator) Next() *FileMetadata {
 }
 
 // Prev moves the iterator the previous file and returns it.
-func (i *LevelIterator) Prev() *FileMetadata {
+func (i *LevelIterator) Prev() *TableMetadata {
 	if i.iter.r == nil {
 		return nil
 	}
@@ -551,12 +551,12 @@ func (i *LevelIterator) Prev() *FileMetadata {
 // The iterator must have been constructed from L1+ or from a single sublevel of
 // L0, because it requires the underlying files to be sorted by user keys and
 // non-overlapping.
-func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
+func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *TableMetadata {
 	if i.iter.r == nil {
 		return nil
 	}
 	i.assertNotL0Cmp()
-	m := i.seek(func(m *FileMetadata) bool {
+	m := i.seek(func(m *TableMetadata) bool {
 		return m.Largest.IsUpperBoundFor(cmp, userKey)
 	})
 	if i.filter != KeyTypePointAndRange && m != nil {
@@ -577,12 +577,12 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 // The iterator must have been constructed from L1+ or from a single sublevel of
 // L0, because it requires the underlying files to be sorted by user keys and
 // non-overlapping.
-func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
+func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 	if i.iter.r == nil {
 		return nil
 	}
 	i.assertNotL0Cmp()
-	i.seek(func(m *FileMetadata) bool {
+	i.seek(func(m *TableMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
 	})
 	m := i.Prev()
@@ -626,7 +626,7 @@ func (i *LevelIterator) assertNotL0Cmp() {
 //
 // skipFilteredForward also enforces the upper bound, returning nil if at any
 // point the upper bound is exceeded.
-func (i *LevelIterator) skipFilteredForward(meta *FileMetadata) *FileMetadata {
+func (i *LevelIterator) skipFilteredForward(meta *TableMetadata) *TableMetadata {
 	for meta != nil && !meta.ContainsKeyType(i.filter) {
 		i.iter.next()
 		if !i.iter.valid() {
@@ -650,7 +650,7 @@ func (i *LevelIterator) skipFilteredForward(meta *FileMetadata) *FileMetadata {
 //
 // skipFilteredBackward also enforces the lower bound, returning nil if at any
 // point the lower bound is exceeded.
-func (i *LevelIterator) skipFilteredBackward(meta *FileMetadata) *FileMetadata {
+func (i *LevelIterator) skipFilteredBackward(meta *TableMetadata) *TableMetadata {
 	for meta != nil && !meta.ContainsKeyType(i.filter) {
 		i.iter.prev()
 		if !i.iter.valid() {
@@ -670,7 +670,7 @@ func (i *LevelIterator) skipFilteredBackward(meta *FileMetadata) *FileMetadata {
 // mirroring the semantics of the standard library's sort.Search function: fn
 // returns false for some (possibly empty) prefix of the tree's files, and then
 // true for the (possibly empty) remainder.
-func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
+func (i *LevelIterator) seek(fn func(*TableMetadata) bool) *TableMetadata {
 	i.iter.seek(fn)
 
 	// i.iter.seek seeked in the unbounded underlying B-Tree. If the iterator
@@ -715,7 +715,7 @@ func (i *LevelIterator) Take() LevelFile {
 	boundsIter := i.iter.clone()
 	s := newBoundedLevelSlice(i.iter.clone(), &boundsIter, &boundsIter)
 	return LevelFile{
-		FileMetadata: m,
-		slice:        s,
+		TableMetadata: m,
+		slice:         s,
 	}
 }

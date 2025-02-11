@@ -386,7 +386,7 @@ func TestGetIter(t *testing.T) {
 		// m is a map from file numbers to DBs.
 		m := map[base.FileNum]*memTable{}
 		newIter := func(
-			_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
+			_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
 			d, ok := m[file.FileNum]
 			if !ok {
@@ -395,12 +395,12 @@ func TestGetIter(t *testing.T) {
 			return iterSet{point: d.newIter(nil)}, nil
 		}
 
-		var files [numLevels][]*fileMetadata
+		var files [numLevels][]*tableMetadata
 		for _, tt := range tc.tables {
 			d := newMemTable(memTableOptions{})
 			m[tt.fileNum] = d
 
-			meta := &fileMetadata{
+			meta := &tableMetadata{
 				FileNum: tt.fileNum,
 			}
 			meta.InitPhysicalBacking()

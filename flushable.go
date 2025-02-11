@@ -54,7 +54,7 @@ type bounded interface {
 	UserKeyBounds() base.UserKeyBounds
 }
 
-var _ bounded = (*fileMetadata)(nil)
+var _ bounded = (*tableMetadata)(nil)
 var _ bounded = KeyRange{}
 
 func sliceAsBounded[B bounded](s []B) []bounded {
@@ -168,7 +168,7 @@ type ingestedFlushable struct {
 }
 
 func newIngestedFlushable(
-	files []*fileMetadata,
+	files []*tableMetadata,
 	comparer *Comparer,
 	newIters tableNewIters,
 	newRangeKeyIters keyspanimpl.TableNewSpanIter,
@@ -232,7 +232,7 @@ func (s *ingestedFlushable) newFlushIter(*IterOptions) internalIterator {
 }
 
 func (s *ingestedFlushable) constructRangeDelIter(
-	ctx context.Context, file *manifest.FileMetadata, _ keyspan.SpanIterOptions,
+	ctx context.Context, file *manifest.TableMetadata, _ keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
 	iters, err := s.newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
 	if err != nil {

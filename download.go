@@ -227,7 +227,7 @@ type downloadSpanTask struct {
 
 	// Testing hooks.
 	testing struct {
-		launchDownloadCompaction func(f *fileMetadata) (chan error, bool)
+		launchDownloadCompaction func(f *tableMetadata) (chan error, bool)
 	}
 }
 
@@ -309,7 +309,7 @@ func (c downloadCursor) String() string {
 // makeCursorAtFile returns a downloadCursor that is immediately before the
 // given file. Calling nextExternalFile on the resulting cursor (using the same
 // version) should return f.
-func makeCursorAtFile(f *fileMetadata, level int) downloadCursor {
+func makeCursorAtFile(f *tableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
 		key:    f.Smallest.UserKey,
@@ -319,7 +319,7 @@ func makeCursorAtFile(f *fileMetadata, level int) downloadCursor {
 
 // makeCursorAfterFile returns a downloadCursor that is immediately
 // after the given file.
-func makeCursorAfterFile(f *fileMetadata, level int) downloadCursor {
+func makeCursorAfterFile(f *tableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
 		key:    f.Smallest.UserKey,
@@ -327,7 +327,7 @@ func makeCursorAfterFile(f *fileMetadata, level int) downloadCursor {
 	}
 }
 
-func (c downloadCursor) FileIsAfterCursor(cmp base.Compare, f *fileMetadata, level int) bool {
+func (c downloadCursor) FileIsAfterCursor(cmp base.Compare, f *tableMetadata, level int) bool {
 	return c.Compare(cmp, makeCursorAfterFile(f, level)) < 0
 }
 
@@ -345,7 +345,7 @@ func (c downloadCursor) Compare(keyCmp base.Compare, other downloadCursor) int {
 // and the level. If no such file exists, returns nil fileMetadata.
 func (c downloadCursor) NextExternalFile(
 	cmp base.Compare, objProvider objstorage.Provider, bounds base.UserKeyBounds, v *version,
-) (_ *fileMetadata, level int) {
+) (_ *tableMetadata, level int) {
 	for !c.AtEnd() {
 		if f := c.NextExternalFileOnLevel(cmp, objProvider, bounds.End, v); f != nil {
 			return f, c.level
@@ -362,13 +362,13 @@ func (c downloadCursor) NextExternalFile(
 // after c and with Smallest.UserKey within the end bound.
 func (c downloadCursor) NextExternalFileOnLevel(
 	cmp base.Compare, objProvider objstorage.Provider, endBound base.UserKeyBoundary, v *version,
-) *fileMetadata {
+) *tableMetadata {
 	if c.level > 0 {
 		it := v.Levels[c.level].Iter()
 		return firstExternalFileInLevelIter(cmp, objProvider, c, it, endBound)
 	}
 	// For L0, we look at all sublevel iterators and take the first file.
-	var first *fileMetadata
+	var first *tableMetadata
 	var firstCursor downloadCursor
 	for _, sublevel := range v.L0SublevelFiles {
 		f := firstExternalFileInLevelIter(cmp, objProvider, c, sublevel.Iter(), endBound)
@@ -394,7 +394,7 @@ func firstExternalFileInLevelIter(
 	cursor downloadCursor,
 	it manifest.LevelIterator,
 	endBound base.UserKeyBoundary,
-) *fileMetadata {
+) *tableMetadata {
 	f := it.SeekGE(cmp, cursor.key)
 	// Skip the file if it starts before cursor.key or is at that same key with lower
 	// sequence number.
@@ -413,7 +413,7 @@ func firstExternalFileInLevelIter(
 // given file. Returns true on success, or false if the file is already
 // involved in a compaction.
 func (d *DB) tryLaunchDownloadForFile(
-	vers *version, env compactionEnv, download *downloadSpanTask, level int, f *fileMetadata,
+	vers *version, env compactionEnv, download *downloadSpanTask, level int, f *tableMetadata,
 ) (doneCh chan error, ok bool) {
 	if f.IsCompacting() {
 		return nil, false

@@ -85,7 +85,7 @@ type DeletedTableEntry struct {
 // level.
 type NewTableEntry struct {
 	Level int
-	Meta  *FileMetadata
+	Meta  *TableMetadata
 	// BackingFileNum is only set during manifest replay, and only for virtual
 	// sstables.
 	BackingFileNum base.DiskFileNum
@@ -124,7 +124,7 @@ type VersionEdit struct {
 	// A file num may be present in both deleted files and new files when it
 	// is moved from a lower level to a higher level (when the compaction
 	// found that there was no overlapping file at the higher level).
-	DeletedTables map[DeletedTableEntry]*FileMetadata
+	DeletedTables map[DeletedTableEntry]*TableMetadata
 	NewTables     []NewTableEntry
 	// CreatedBackingTables can be used to preserve the FileBacking associated
 	// with a physical sstable. This is useful when virtual sstables in the
@@ -253,7 +253,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			if v.DeletedTables == nil {
-				v.DeletedTables = make(map[DeletedTableEntry]*FileMetadata)
+				v.DeletedTables = make(map[DeletedTableEntry]*TableMetadata)
 			}
 			v.DeletedTables[DeletedTableEntry{level, fileNum}] = nil
 
@@ -441,7 +441,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 				}
 			}
-			m := &FileMetadata{
+			m := &TableMetadata{
 				FileNum:                  fileNum,
 				Size:                     size,
 				CreationTime:             int64(creationTime),
@@ -649,7 +649,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			level := p.Level()
 			num := p.FileNum()
 			if ve.DeletedTables == nil {
-				ve.DeletedTables = make(map[DeletedTableEntry]*FileMetadata)
+				ve.DeletedTables = make(map[DeletedTableEntry]*TableMetadata)
 			}
 			ve.DeletedTables[DeletedTableEntry{
 				Level:   level,
@@ -913,8 +913,8 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // before (in a prior version edit). Note that a given file can be deleted from
 // a level and added to another level in a single version edit
 type BulkVersionEdit struct {
-	AddedTables   [NumLevels]map[base.FileNum]*FileMetadata
-	DeletedTables [NumLevels]map[base.FileNum]*FileMetadata
+	AddedTables   [NumLevels]map[base.FileNum]*TableMetadata
+	DeletedTables [NumLevels]map[base.FileNum]*TableMetadata
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
 	// FileBacking of virtual sstables during manifest replay.
@@ -930,7 +930,7 @@ type BulkVersionEdit struct {
 	// deletion record encodes only the file number. Accumulate uses
 	// AddedTablesByFileNum to correctly populate the BulkVersionEdit's Deleted
 	// field with non-nil *FileMetadata.
-	AddedTablesByFileNum map[base.FileNum]*FileMetadata
+	AddedTablesByFileNum map[base.FileNum]*TableMetadata
 
 	// MarkedForCompactionCountDiff holds the aggregated count of files
 	// marked for compaction added or removed.
@@ -956,7 +956,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	for df, m := range ve.DeletedTables {
 		dmap := b.DeletedTables[df.Level]
 		if dmap == nil {
-			dmap = make(map[base.FileNum]*FileMetadata)
+			dmap = make(map[base.FileNum]*TableMetadata)
 			b.DeletedTables[df.Level] = dmap
 		}
 
@@ -1017,7 +1017,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		}
 
 		if b.AddedTables[nf.Level] == nil {
-			b.AddedTables[nf.Level] = make(map[base.FileNum]*FileMetadata)
+			b.AddedTables[nf.Level] = make(map[base.FileNum]*TableMetadata)
 		}
 		b.AddedTables[nf.Level][nf.Meta.FileNum] = nf.Meta
 		if b.AddedTablesByFileNum != nil {
@@ -1129,18 +1129,18 @@ func (b *BulkVersionEdit) Apply(
 			}
 		}
 
-		addedTables := make([]*FileMetadata, 0, len(addedTablesMap))
+		addedTables := make([]*TableMetadata, 0, len(addedTablesMap))
 		for _, f := range addedTablesMap {
 			addedTables = append(addedTables, f)
 		}
 		// Sort addedFiles by file number. This isn't necessary, but tests which
 		// replay invalid manifests check the error output, and the error output
 		// depends on the order in which files are added to the btree.
-		slices.SortFunc(addedTables, func(a, b *FileMetadata) int {
+		slices.SortFunc(addedTables, func(a, b *TableMetadata) int {
 			return stdcmp.Compare(a.FileNum, b.FileNum)
 		})
 
-		var sm, la *FileMetadata
+		var sm, la *TableMetadata
 		for _, f := range addedTables {
 			// NB: allowedSeeks is used for read triggered compactions. It is set using
 			// Options.Experimental.ReadCompactionRate which defaults to 32KB.

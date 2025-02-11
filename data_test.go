@@ -919,12 +919,12 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	}
 
 	// Example, a-c.
-	parseMeta := func(s string) (*fileMetadata, error) {
+	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
+		m := (&tableMetadata{}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			InternalKey{UserKey: []byte(parts[0])},
 			InternalKey{UserKey: []byte(parts[1])},
@@ -1121,7 +1121,7 @@ func runVersionFileSizes(v *version) string {
 func runMetadataCommand(t *testing.T, td *datadriven.TestData, d *DB) string {
 	var file int
 	td.ScanArgs(t, "file", &file)
-	var m *fileMetadata
+	var m *tableMetadata
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
@@ -1146,7 +1146,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 
 	// See if we can grab the FileMetadata associated with the file. This is needed
 	// to easily construct virtual sstable properties.
-	var m *fileMetadata
+	var m *tableMetadata
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {

@@ -55,7 +55,7 @@ var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 // fileCacheHandle.newIters().
 type tableNewIters func(
 	ctx context.Context,
-	file *manifest.FileMetadata,
+	file *manifest.TableMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	kinds iterKinds,
@@ -64,7 +64,7 @@ type tableNewIters func(
 // tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
 // for the rangedel iterator returned by tableNewIters.
 func tableNewRangeDelIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
-	return func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+	return func(ctx context.Context, file *manifest.TableMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeDeletions)
 		if err != nil {
 			return nil, err
@@ -76,7 +76,7 @@ func tableNewRangeDelIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
 // tableNewRangeKeyIter takes a tableNewIters and returns a TableNewSpanIter
 // for the range key iterator returned by tableNewIters.
 func tableNewRangeKeyIter(newIters tableNewIters) keyspanimpl.TableNewSpanIter {
-	return func(ctx context.Context, file *manifest.FileMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+	return func(ctx context.Context, file *manifest.TableMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
 		iters, err := newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
 		if err != nil {
 			return nil, err
@@ -149,7 +149,7 @@ func (h *fileCacheHandle) Close() error {
 
 func (h *fileCacheHandle) newIters(
 	ctx context.Context,
-	file *manifest.FileMetadata,
+	file *manifest.TableMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	kinds iterKinds,
@@ -159,7 +159,7 @@ func (h *fileCacheHandle) newIters(
 
 // getTableProperties returns the properties associated with the backing physical
 // table if the input metadata belongs to a virtual sstable.
-func (h *fileCacheHandle) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Properties, error) {
 	return h.fileCache.getShard(file.FileBacking.DiskFileNum).getTableProperties(file, h)
 }
 
@@ -187,7 +187,7 @@ func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 }
 
 func (h *fileCacheHandle) estimateSize(
-	meta *fileMetadata, lower, upper []byte,
+	meta *tableMetadata, lower, upper []byte,
 ) (size uint64, err error) {
 	h.withCommonReader(meta, func(cr sstable.CommonReader) error {
 		size, err = cr.EstimateDiskUsage(lower, upper)
@@ -197,7 +197,7 @@ func (h *fileCacheHandle) estimateSize(
 }
 
 // createCommonReader creates a Reader for this file.
-func createCommonReader(v *fileCacheValue, file *fileMetadata) sstable.CommonReader {
+func createCommonReader(v *fileCacheValue, file *tableMetadata) sstable.CommonReader {
 	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
 	r := v.mustSSTableReader()
 	var cr sstable.CommonReader = r
@@ -211,7 +211,7 @@ func createCommonReader(v *fileCacheValue, file *fileMetadata) sstable.CommonRea
 }
 
 func (h *fileCacheHandle) withCommonReader(
-	meta *fileMetadata, fn func(sstable.CommonReader) error,
+	meta *tableMetadata, fn func(sstable.CommonReader) error,
 ) error {
 	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
 	v := s.findNode(context.TODO(), meta.FileBacking, h)
@@ -404,7 +404,7 @@ func checkAndIntersectFilters(
 
 func (c *fileCacheShard) newIters(
 	ctx context.Context,
-	file *manifest.FileMetadata,
+	file *manifest.TableMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	handle *fileCacheHandle,
@@ -466,7 +466,7 @@ const filterBlockSizeLimitForFlushableIngests = 64 * 1024
 func (c *fileCacheShard) newPointIter(
 	ctx context.Context,
 	v *fileCacheValue,
-	file *manifest.FileMetadata,
+	file *manifest.TableMetadata,
 	cr sstable.CommonReader,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
@@ -575,7 +575,7 @@ func (c *fileCacheShard) newPointIter(
 // only, and callers should use newIters instead.
 func newRangeDelIter(
 	ctx context.Context,
-	file *manifest.FileMetadata,
+	file *manifest.TableMetadata,
 	cr sstable.CommonReader,
 	handle *fileCacheHandle,
 	internalOpts internalIterOpts,
@@ -605,7 +605,7 @@ func newRangeDelIter(
 func newRangeKeyIter(
 	ctx context.Context,
 	r *sstable.Reader,
-	file *fileMetadata,
+	file *tableMetadata,
 	cr sstable.CommonReader,
 	opts keyspan.SpanIterOptions,
 	internalOpts internalIterOpts,
@@ -714,7 +714,7 @@ func (rp *tableCacheShardReaderProvider) Close() {
 
 // getTableProperties return sst table properties for target file.
 func (c *fileCacheShard) getTableProperties(
-	file *fileMetadata, handle *fileCacheHandle,
+	file *tableMetadata, handle *fileCacheHandle,
 ) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
 	v := c.findNode(context.TODO(), file.FileBacking, handle)

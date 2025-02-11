@@ -713,7 +713,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	var v *manifest.Version
 	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
-	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
 	applyVE := func(ve *manifest.VersionEdit) error {
 		return bve.Accumulate(ve)
 	}

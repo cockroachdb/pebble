@@ -79,7 +79,7 @@ func NewExternalIterWithContext(
 		// Add the external iter state to the Iterator so that Close closes it,
 		// and SetOptions can re-construct iterators using its state.
 		externalIter: &externalIterState{readers: readers},
-		newIters: func(context.Context, *manifest.FileMetadata, *IterOptions,
+		newIters: func(context.Context, *manifest.TableMetadata, *IterOptions,
 			internalIterOpts, iterKinds) (iterSet, error) {
 			// NB: External iterators are currently constructed without any
 			// `levelIters`. newIters should never be called. When we support

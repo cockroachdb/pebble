@@ -323,7 +323,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	seqNumRangeUnset := seqNumA + 5
 	seqNumZ := seqNumA + 6
 
-	v1 := &manifest.FileMetadata{
+	v1 := &manifest.TableMetadata{
 		FileBacking:           parentFile.FileBacking,
 		FileNum:               f1,
 		CreationTime:          time.Now().Unix(),
@@ -340,7 +340,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	}
 	v1.Stats.NumEntries = 1
 
-	v2 := &manifest.FileMetadata{
+	v2 := &manifest.TableMetadata{
 		FileBacking:           parentFile.FileBacking,
 		FileNum:               f2,
 		CreationTime:          time.Now().Unix(),
@@ -401,7 +401,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	n1 := manifest.NewTableEntry{Level: 6, Meta: v1}
 	n2 := manifest.NewTableEntry{Level: 6, Meta: v2}
 
-	ve.DeletedTables = make(map[manifest.DeletedTableEntry]*manifest.FileMetadata)
+	ve.DeletedTables = make(map[manifest.DeletedTableEntry]*manifest.TableMetadata)
 	ve.DeletedTables[d1] = parentFile
 	ve.NewTables = append(ve.NewTables, n1)
 	ve.NewTables = append(ve.NewTables, n2)
@@ -643,7 +643,7 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.IntN(fileCacheTestNumTables), rng.IntN(1000)
 			rngMu.Unlock()
-			m := &fileMetadata{FileNum: base.FileNum(fileNum)}
+			m := &tableMetadata{FileNum: base.FileNum(fileNum)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			defer m.FileBacking.Unref()
@@ -708,7 +708,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
 			var iters iterSet
 			var err error
-			m := &fileMetadata{FileNum: base.FileNum(j)}
+			m := &tableMetadata{FileNum: base.FileNum(j)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			if rangeIter {
@@ -757,7 +757,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
-			m := &fileMetadata{FileNum: base.FileNum(j)}
+			m := &tableMetadata{FileNum: base.FileNum(j)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -811,7 +811,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		j := rng.IntN(fileCacheTestNumTables)
 		var iters iterSet
 		var err error
-		m := &fileMetadata{FileNum: base.FileNum(j)}
+		m := &tableMetadata{FileNum: base.FileNum(j)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		if rangeIter {
@@ -876,7 +876,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, 0))
 	for i := 0; i < N; i++ {
 		j := rng.IntN(fileCacheTestNumTables)
-		m := &fileMetadata{FileNum: base.FileNum(j)}
+		m := &tableMetadata{FileNum: base.FileNum(j)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -944,7 +944,7 @@ func TestFileCacheIterLeak(t *testing.T) {
 	defer fct.cleanup()
 	h, _ := fct.newTestHandle()
 
-	m := &fileMetadata{FileNum: 0}
+	m := &tableMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
@@ -972,7 +972,7 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 	h2, _ := fct.newTestHandle()
 	h3, _ := fct.newTestHandle()
 
-	m := &fileMetadata{FileNum: 0}
+	m := &tableMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
@@ -1013,7 +1013,7 @@ func TestFileCacheRetryAfterFailure(t *testing.T) {
 	h, fs := fct.newTestHandle()
 
 	fs.setOpenError(true /* enabled */)
-	m := &fileMetadata{FileNum: 0}
+	m := &tableMetadata{FileNum: 0}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
@@ -1059,7 +1059,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	require.NoError(t, err)
 	defer c.Close()
 
-	m := &fileMetadata{FileNum: testFileNum}
+	m := &tableMetadata{FileNum: testFileNum}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 	defer m.FileBacking.Unref()
@@ -1151,7 +1151,7 @@ func TestFileCacheClockPro(t *testing.T) {
 
 		shard := fcs.fileCache.shards[0]
 		oldHits := shard.hits.Load()
-		m := &fileMetadata{FileNum: base.FileNum(key)}
+		m := &tableMetadata{FileNum: base.FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
 		v := shard.findNode(context.Background(), m.FileBacking, h)
@@ -1272,7 +1272,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	makeTable(1)
 
-	m := &fileMetadata{FileNum: 1}
+	m := &tableMetadata{FileNum: 1}
 	m.InitPhysicalBacking()
 	m.FileBacking.Ref()
 

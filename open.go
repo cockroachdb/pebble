@@ -409,17 +409,17 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
-	d.mu.annotators.totalSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
+	d.mu.annotators.totalSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
 		return true
 	})
-	d.mu.annotators.remoteSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
+	d.mu.annotators.remoteSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
 		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 		if err != nil {
 			return false
 		}
 		return meta.IsRemote()
 	})
-	d.mu.annotators.externalSize = d.makeFileSizeAnnotator(func(f *manifest.FileMetadata) bool {
+	d.mu.annotators.externalSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
 		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 		if err != nil {
 			return false
@@ -804,7 +804,7 @@ func (d *DB) replayIngestedFlushable(
 		panic("pebble: invalid number of entries in batch")
 	}
 
-	meta := make([]*fileMetadata, len(fileNums))
+	meta := make([]*tableMetadata, len(fileNums))
 	var lastRangeKey keyspan.Span
 	for i, n := range fileNums {
 		readable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeTable, n,

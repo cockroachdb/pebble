@@ -275,7 +275,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 	l.state.Edits = nil
 	l.state.StartEdit = l.startEdit
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
-	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
+	var currentFiles [manifest.NumLevels][]*manifest.TableMetadata
 
 	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
 
@@ -351,7 +351,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 	}
 
 	be := manifest.BulkVersionEdit{}
-	be.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	be.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
 
 	// Coalesce all edits from [0, l.startEdit) into a BulkVersionEdit.
 	for _, ve := range edits[:l.startEdit] {
@@ -363,7 +363,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 
 	startingEdit := edits[l.startEdit]
 	var beNewFiles []manifest.NewTableEntry
-	beDeletedFiles := make(map[manifest.DeletedTableEntry]*manifest.FileMetadata)
+	beDeletedFiles := make(map[manifest.DeletedTableEntry]*manifest.TableMetadata)
 
 	for level, deletedFiles := range be.DeletedTables {
 		for _, file := range deletedFiles {
