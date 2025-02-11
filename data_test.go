@@ -886,7 +886,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			return err
 		}
 		largestSeqNum := d.mu.versions.logSeqNum.Load()
-		for _, f := range newVE.NewFiles {
+		for _, f := range newVE.NewTables {
 			if start != nil {
 				f.Meta.SmallestPointKey = *start
 				f.Meta.Smallest = *start
@@ -898,7 +898,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			if largestSeqNum <= f.Meta.LargestSeqNum {
 				largestSeqNum = f.Meta.LargestSeqNum + 1
 			}
-			ve.NewFiles = append(ve.NewFiles, newFileEntry{
+			ve.NewTables = append(ve.NewTables, newTableEntry{
 				Level: level,
 				Meta:  f.Meta,
 			})
@@ -1043,16 +1043,16 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		return nil, err
 	}
 
-	if len(ve.NewFiles) > 0 {
+	if len(ve.NewTables) > 0 {
 		jobID := d.newJobIDLocked()
 		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), false, func() []compactionInfo {
+		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewTables), false, func() []compactionInfo {
 			return nil
 		}); err != nil {
 			return nil, err
 		}
 		d.updateReadStateLocked(nil)
-		d.updateTableStatsLocked(ve.NewFiles)
+		d.updateTableStatsLocked(ve.NewTables)
 	}
 
 	return d, nil

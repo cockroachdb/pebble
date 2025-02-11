@@ -492,7 +492,7 @@ type DB struct {
 			// Compactions, ingests, flushes append files to be processed. An
 			// active stat collection goroutine clears the list and processes
 			// them.
-			pending []manifest.NewFileEntry
+			pending []manifest.NewTableEntry
 		}
 
 		tableValidation struct {
@@ -502,7 +502,7 @@ type DB struct {
 			// pending is a slice of metadata for sstables waiting to be
 			// validated. Only physical sstables should be added to the pending
 			// queue.
-			pending []newFileEntry
+			pending []newTableEntry
 			// validating is set to true when validation is running.
 			validating bool
 		}

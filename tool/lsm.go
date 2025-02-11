@@ -243,8 +243,8 @@ func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
 func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 	var keys []base.InternalKey
 	for _, ve := range edits {
-		for i := range ve.NewFiles {
-			nf := &ve.NewFiles[i]
+		for i := range ve.NewTables {
+			nf := &ve.NewTables[i]
 			keys = append(keys, nf.Meta.Smallest)
 			keys = append(keys, nf.Meta.Largest)
 		}
@@ -283,7 +283,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 		for _, i := range ve.CreatedBackingTables {
 			backings[i.DiskFileNum] = i
 		}
-		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
+		if len(ve.DeletedTables) == 0 && len(ve.NewTables) == 0 {
 			continue
 		}
 
@@ -293,8 +293,8 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			Deleted: make(map[int][]base.FileNum),
 		}
 
-		for j := range ve.NewFiles {
-			nf := &ve.NewFiles[j]
+		for j := range ve.NewTables {
+			nf := &ve.NewTables[j]
 			if b, ok := backings[nf.BackingFileNum]; ok && nf.Meta.Virtual {
 				nf.Meta.FileBacking = b
 			}
@@ -312,7 +312,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
 		}
 
-		for df := range ve.DeletedFiles {
+		for df := range ve.DeletedTables {
 			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
 			for j, f := range currentFiles[df.Level] {
 				if f.FileNum == df.FileNum {
@@ -351,7 +351,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 	}
 
 	be := manifest.BulkVersionEdit{}
-	be.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	be.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 
 	// Coalesce all edits from [0, l.startEdit) into a BulkVersionEdit.
 	for _, ve := range edits[:l.startEdit] {
@@ -362,12 +362,12 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 	}
 
 	startingEdit := edits[l.startEdit]
-	var beNewFiles []manifest.NewFileEntry
-	beDeletedFiles := make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
+	var beNewFiles []manifest.NewTableEntry
+	beDeletedFiles := make(map[manifest.DeletedTableEntry]*manifest.FileMetadata)
 
-	for level, deletedFiles := range be.Deleted {
+	for level, deletedFiles := range be.DeletedTables {
 		for _, file := range deletedFiles {
-			dfe := manifest.DeletedFileEntry{
+			dfe := manifest.DeletedTableEntry{
 				Level:   level,
 				FileNum: file.FileNum,
 			}
@@ -376,22 +376,22 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 	}
 
 	// Filter out added files that were also deleted in the BulkVersionEdit.
-	for level, newFiles := range be.Added {
+	for level, newFiles := range be.AddedTables {
 		for _, file := range newFiles {
-			dfe := manifest.DeletedFileEntry{
+			dfe := manifest.DeletedTableEntry{
 				Level:   level,
 				FileNum: file.FileNum,
 			}
 
 			if _, ok := beDeletedFiles[dfe]; !ok {
-				beNewFiles = append(beNewFiles, manifest.NewFileEntry{
+				beNewFiles = append(beNewFiles, manifest.NewTableEntry{
 					Level: level,
 					Meta:  file,
 				})
 			}
 		}
 	}
-	startingEdit.NewFiles = append(beNewFiles, startingEdit.NewFiles...)
+	startingEdit.NewTables = append(beNewFiles, startingEdit.NewTables...)
 
 	edits = edits[l.startEdit:]
 	return edits, nil
@@ -402,14 +402,14 @@ func (l *lsmT) findKey(key base.InternalKey) int {
 }
 
 func (l *lsmT) reason(ve *manifest.VersionEdit) string {
-	if len(ve.DeletedFiles) > 0 {
+	if len(ve.DeletedTables) > 0 {
 		return "compacted"
 	}
 	if ve.MinUnflushedLogNum != 0 {
 		return "flushed"
 	}
-	for i := range ve.NewFiles {
-		nf := &ve.NewFiles[i]
+	for i := range ve.NewTables {
+		nf := &ve.NewTables[i]
 		if nf.Meta.SmallestSeqNum == nf.Meta.LargestSeqNum {
 			return "ingested"
 		}

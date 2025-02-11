@@ -55,7 +55,7 @@ func (d *DB) maybeCollectTableStatsLocked() {
 // updateTableStatsLocked is called when new files are introduced, after the
 // read state has been updated. It may trigger a new stat collection.
 // DB.mu must be locked when calling.
-func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
+func (d *DB) updateTableStatsLocked(newFiles []manifest.NewTableEntry) {
 	var needStats bool
 	for _, nf := range newFiles {
 		if !nf.Meta.StatsValid() {
@@ -169,7 +169,7 @@ type collectedStats struct {
 }
 
 func (d *DB) loadNewFileStats(
-	rs *readState, pending []manifest.NewFileEntry,
+	rs *readState, pending []manifest.NewTableEntry,
 ) ([]collectedStats, []deleteCompactionHint) {
 	var hints []deleteCompactionHint
 	collected := make([]collectedStats, 0, len(pending))

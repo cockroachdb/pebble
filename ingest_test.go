@@ -867,7 +867,7 @@ func TestExcise(t *testing.T) {
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedFiles: map[deletedFileEntry]*fileMetadata{},
+				DeletedTables: map[deletedFileEntry]*fileMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -893,7 +893,7 @@ func TestExcise(t *testing.T) {
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
-			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.DebugString(base.DefaultFormatter))
+			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.DebugString(base.DefaultFormatter))
 
 		case "confirm-backing":
 			// Confirms that the files have the same FileBacking.
@@ -1219,7 +1219,7 @@ func testIngestSharedImpl(
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedFiles: map[deletedFileEntry]*fileMetadata{},
+				DeletedTables: map[deletedFileEntry]*fileMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -1247,7 +1247,7 @@ func testIngestSharedImpl(
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
-			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.String())
+			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.String())
 
 		case "file-only-snapshot":
 			if len(td.CmdArgs) != 1 {
@@ -1721,7 +1721,7 @@ func TestConcurrentExcise(t *testing.T) {
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedFiles: map[deletedFileEntry]*fileMetadata{},
+				DeletedTables: map[deletedFileEntry]*fileMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -1749,7 +1749,7 @@ func TestConcurrentExcise(t *testing.T) {
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
-			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedFiles), ve.String())
+			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.String())
 
 		case "file-only-snapshot":
 			if len(td.CmdArgs) != 1 {
@@ -3156,7 +3156,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 		var ve manifest.VersionEdit
 		require.NoError(t, ve.Decode(r))
 		t.Log(ve.String())
-		for _, f := range ve.NewFiles {
+		for _, f := range ve.NewTables {
 			if largest != nil {
 				require.Equal(t, 0, f.Level)
 				if largest.LargestSeqNum > f.Meta.LargestSeqNum {

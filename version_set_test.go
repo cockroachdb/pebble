@@ -88,7 +88,7 @@ func TestVersionSet(t *testing.T) {
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
-			for _, nf := range ve.NewFiles {
+			for _, nf := range ve.NewTables {
 				// Set a size that depends on FileNum.
 				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
 				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
@@ -97,20 +97,20 @@ func TestVersionSet(t *testing.T) {
 					createFile(nf.Meta.FileBacking.DiskFileNum)
 				}
 			}
-			for de := range ve.DeletedFiles {
+			for de := range ve.DeletedTables {
 				m := metas[de.FileNum]
 				if m == nil {
 					td.Fatalf(t, "unknown FileNum %s", de.FileNum)
 				}
-				ve.DeletedFiles[de] = m
+				ve.DeletedTables[de] = m
 			}
 			for i := range ve.CreatedBackingTables {
 				ve.CreatedBackingTables[i] = dedupBacking(ve.CreatedBackingTables[i])
 				createFile(ve.CreatedBackingTables[i].DiskFileNum)
 			}
 
-			fileMetrics := newFileMetrics(ve.NewFiles)
-			for de, f := range ve.DeletedFiles {
+			fileMetrics := newFileMetrics(ve.NewTables)
+			for de, f := range ve.DeletedTables {
 				lm := fileMetrics[de.Level]
 				if lm == nil {
 					lm = &LevelMetrics{}

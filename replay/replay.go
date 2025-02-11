@@ -713,7 +713,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	var v *manifest.Version
 	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
-	bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 	applyVE := func(ve *manifest.VersionEdit) error {
 		return bve.Accumulate(ve)
 	}
@@ -723,7 +723,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			r.Opts.Comparer,
 			r.Opts.FlushSplitBytes,
 			r.Opts.Experimental.ReadCompactionRate)
-		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
+		bve = manifest.BulkVersionEdit{AddedTablesByFileNum: bve.AddedTablesByFileNum}
 		return v, err
 	}
 
@@ -783,14 +783,14 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					// r.workload.manifestOff, and we should skip it.
 					continue
 				}
-				if len(ve.NewFiles) == 0 && len(ve.DeletedFiles) == 0 {
+				if len(ve.NewTables) == 0 && len(ve.DeletedTables) == 0 {
 					// Skip WAL rotations and other events that don't affect the
 					// files of the LSM.
 					continue
 				}
 
 				s := workloadStep{ve: ve}
-				if len(ve.DeletedFiles) > 0 {
+				if len(ve.DeletedTables) > 0 {
 					// If a version edit deletes files, we assume it's a compaction.
 					s.kind = compactionStepKind
 				} else {
@@ -800,7 +800,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					s.kind = ingestStepKind
 				}
 				var newFiles []base.DiskFileNum
-				for _, nf := range ve.NewFiles {
+				for _, nf := range ve.NewTables {
 					newFiles = append(newFiles, nf.Meta.FileBacking.DiskFileNum)
 					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum || nf.Level != 0) {
 						s.kind = flushStepKind
