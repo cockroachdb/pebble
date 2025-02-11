@@ -1351,6 +1351,15 @@ func (d *DB) newInternalIter(
 	return finishInitializingInternalIter(buf, dbi)
 }
 
+type internalIterOpts struct {
+	// if compaction is set, sstable-level iterators will be created using
+	// NewCompactionIter; these iterators have a more constrained interface
+	// and are optimized for the sequential scan of a compaction.
+	compaction         bool
+	readEnv            block.ReadEnv
+	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
+}
+
 func finishInitializingInternalIter(
 	buf *iterAlloc, i *scanInternalIterator,
 ) (*scanInternalIterator, error) {
@@ -1402,16 +1411,18 @@ func (i *Iterator) constructPointIter(
 		return
 	}
 	internalOpts := internalIterOpts{
-		stats: &i.stats.InternalStats,
+		readEnv: block.ReadEnv{
+			Stats: &i.stats.InternalStats,
+			// If the file cache has a sstable stats collector, ask it for an
+			// accumulator for this iterator's configured category and QoS. All SSTable
+			// iterators created by this Iterator will accumulate their stats to it as
+			// they Close during iteration.
+			IterStats: i.fc.SSTStatsCollector().Accumulator(
+				uint64(uintptr(unsafe.Pointer(i))),
+				i.opts.Category,
+			),
+		},
 	}
-	// If the file cache has a sstable stats collector, ask it for an
-	// accumulator for this iterator's configured category and QoS. All SSTable
-	// iterators created by this Iterator will accumulate their stats to it as
-	// they Close during iteration.
-	internalOpts.iterStatsAccumulator = i.fc.SSTStatsCollector().Accumulator(
-		uint64(uintptr(unsafe.Pointer(i))),
-		i.opts.Category,
-	)
 	if i.opts.RangeKeyMasking.Filter != nil {
 		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
 	}

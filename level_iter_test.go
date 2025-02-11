@@ -185,7 +185,7 @@ func (lt *levelIterTest) newIters(
 	if kinds.Point() {
 		iter, err := lt.readers[file.FileNum].NewPointIter(
 			ctx, transforms,
-			opts.LowerBound, opts.UpperBound, nil, sstable.AlwaysUseFilterBlock, block.ReadEnv{Stats: iio.stats, IterStats: nil}, sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]))
+			opts.LowerBound, opts.UpperBound, nil, sstable.AlwaysUseFilterBlock, iio.readEnv, sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]))
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
@@ -486,7 +486,7 @@ func TestLevelIterSeek(t *testing.T) {
 			slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
 			iter := &levelIterTestIter{levelIter: &levelIter{}}
 			iter.init(context.Background(), IterOptions{}, testkeys.Comparer, lt.newIters, slice.Iter(),
-				manifest.Level(level), internalIterOpts{stats: &stats})
+				manifest.Level(level), internalIterOpts{readEnv: block.ReadEnv{Stats: &stats}})
 			defer iter.Close()
 			iter.initRangeDel(rangeDelIterSetterFunc(func(rangeDelIter keyspan.FragmentIterator) {
 				if iter.rangeDelIter != nil {

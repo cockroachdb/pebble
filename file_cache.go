@@ -544,16 +544,15 @@ func (c *fileCacheShard) newPointIter(
 	}
 	transforms := file.IterTransforms()
 	transforms.HideObsoletePoints = hideObsoletePoints
-	iterStatsAccum := internalOpts.iterStatsAccumulator
-	if iterStatsAccum == nil && opts != nil {
-		iterStatsAccum = handle.SSTStatsCollector().Accumulator(uint64(uintptr(unsafe.Pointer(r))), opts.Category)
+	if internalOpts.readEnv.IterStats == nil && opts != nil {
+		internalOpts.readEnv.IterStats = handle.SSTStatsCollector().Accumulator(uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
 	if internalOpts.compaction {
-		iter, err = cr.NewCompactionIter(transforms, block.ReadEnv{IterStats: iterStatsAccum, BufferPool: internalOpts.bufferPool}, &v.readerProvider)
+		iter, err = cr.NewCompactionIter(transforms, internalOpts.readEnv, &v.readerProvider)
 	} else {
 		iter, err = cr.NewPointIter(
-			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer, filterBlockSizeLimit,
-			block.ReadEnv{Stats: internalOpts.stats, IterStats: iterStatsAccum}, &v.readerProvider)
+			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer,
+			filterBlockSizeLimit, internalOpts.readEnv, &v.readerProvider)
 	}
 	if err != nil {
 		return nil, err
@@ -583,12 +582,7 @@ func newRangeDelIter(
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	readBlockEnv := block.ReadEnv{
-		Stats:      internalOpts.stats,
-		IterStats:  internalOpts.iterStatsAccumulator,
-		BufferPool: nil,
-	}
-	rangeDelIter, err := cr.NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), readBlockEnv)
+	rangeDelIter, err := cr.NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), internalOpts.readEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -631,12 +625,7 @@ func newRangeKeyIter(
 		}
 	}
 	// TODO(radu): wrap in an AssertBounds.
-	readBlockEnv := block.ReadEnv{
-		Stats:      internalOpts.stats,
-		IterStats:  internalOpts.iterStatsAccumulator,
-		BufferPool: nil,
-	}
-	return cr.NewRawRangeKeyIter(ctx, transforms, readBlockEnv)
+	return cr.NewRawRangeKeyIter(ctx, transforms, internalOpts.readEnv)
 }
 
 // tableCacheShardReaderProvider implements sstable.ReaderProvider for a

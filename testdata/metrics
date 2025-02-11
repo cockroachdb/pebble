@@ -82,6 +82,7 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    b,     latency: {BlockBytes:44 BlockBytesInCache:0 BlockReadDuration:10ms}
 
@@ -808,6 +809,8 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 
 compact a-z
 ----
@@ -846,6 +849,8 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 
 build ext1.sst
 set b 2
@@ -894,6 +899,7 @@ Filter utility: 0.0%
 Ingestions: 1  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
        pebble-ingest,     latency: {BlockBytes:59 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 batch
@@ -942,6 +948,7 @@ Filter utility: 0.0%
 Ingestions: 1  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
        pebble-ingest,     latency: {BlockBytes:59 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 # Reopen DB, to ensure stats are consistent. Also, reopened DB is not
@@ -980,6 +987,8 @@ Table iters: 0
 Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 
 compact a-z
 ----

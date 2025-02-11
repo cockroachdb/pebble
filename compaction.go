@@ -14,6 +14,7 @@ import (
 	"sort"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
@@ -27,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -687,7 +689,7 @@ func (c *compaction) allowZeroSeqNum() bool {
 
 // newInputIters returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIters(
-	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter,
+	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter, iiopts internalIterOpts,
 ) (
 	pointIter internalIterator,
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
@@ -788,11 +790,7 @@ func (c *compaction) newInputIters(
 			// deletion iterator when it steps on to a new file. Surfacing range
 			// deletions to compactions are handled below.
 			iters = append(iters, newLevelIter(context.Background(),
-				iterOpts, c.comparer, newIters, level.files.Iter(), l, internalIterOpts{
-					compaction: true,
-					bufferPool: &c.bufferPool,
-					stats:      &c.stats,
-				}))
+				iterOpts, c.comparer, newIters, level.files.Iter(), l, iiopts))
 			// TODO(jackson): Use keyspanimpl.LevelIter to avoid loading all the range
 			// deletions into memory upfront. (See #2015, which reverted this.) There
 			// will be no user keys that are split between sstables within a level in
@@ -830,7 +828,7 @@ func (c *compaction) newInputIters(
 			// mergingIter.
 			iter := level.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				rangeDelIter, err := c.newRangeDelIter(newIters, iter.Take(), iterOpts, l)
+				rangeDelIter, err := c.newRangeDelIter(newIters, iter.Take(), iterOpts, iiopts, l)
 				if err != nil {
 					// The error will already be annotated with the BackingFileNum, so
 					// we annotate it with the FileNum.
@@ -944,14 +942,15 @@ func (c *compaction) newInputIters(
 }
 
 func (c *compaction) newRangeDelIter(
-	newIters tableNewIters, f manifest.LevelFile, opts IterOptions, l manifest.Layer,
+	newIters tableNewIters,
+	f manifest.LevelFile,
+	opts IterOptions,
+	iiopts internalIterOpts,
+	l manifest.Layer,
 ) (*noCloseIter, error) {
 	opts.layer = l
 	iterSet, err := newIters(context.Background(), f.FileMetadata, &opts,
-		internalIterOpts{
-			compaction: true,
-			bufferPool: &c.bufferPool,
-		}, iterRangeDeletions)
+		iiopts, iterRangeDeletions)
 	if err != nil {
 		return nil, err
 	} else if iterSet.rangeDeletion == nil {
@@ -2983,8 +2982,19 @@ func (d *DB) compactAndWrite(
 	// translate to 3 MiB per compaction.
 	c.bufferPool.Init(12)
 	defer c.bufferPool.Release()
+	iiopts := internalIterOpts{
+		compaction: true,
+		readEnv: block.ReadEnv{
+			BufferPool: &c.bufferPool,
+			Stats:      &c.stats,
+			IterStats: d.fileCache.SSTStatsCollector().Accumulator(
+				uint64(uintptr(unsafe.Pointer(c))),
+				categoryCompaction,
+			),
+		},
+	}
 
-	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter)
+	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter, iiopts)
 	defer func() {
 		for _, closer := range c.closers {
 			closer.FragmentIterator.Close()
