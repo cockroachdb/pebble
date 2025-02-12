@@ -6,10 +6,13 @@ package record
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -171,11 +174,13 @@ func TestSyncError(t *testing.T) {
 type syncFile struct {
 	writePos atomic.Int64
 	syncPos  atomic.Int64
+	buffer   bytes.Buffer
 }
 
 func (f *syncFile) Write(buf []byte) (int, error) {
 	n := len(buf)
 	f.writePos.Add(int64(n))
+	f.buffer.Write(buf)
 	return n, nil
 }
 
@@ -731,6 +736,95 @@ func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
 	<-cbChan
 	require.Equal(t, int64(1), lastSync)
 	require.Less(t, f.syncPos.Load(), f.writePos.Load())
+}
+
+func writeWALSyncRecords(t *testing.T, numRecords int, recordSizes []int) *syncFile {
+	f := &syncFile{}
+	w := NewLogWriter(f, 1, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}), WriteWALSyncOffsets: true})
+	var syncErr error
+	for i := 0; i < numRecords; i++ {
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		data := []byte(strings.Repeat(fmt.Sprintf("%d", i%10), recordSizes[i]))
+		offset, err := w.SyncRecord(data, &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		require.NoError(t, syncErr)
+		if v := f.writePos.Load(); offset != v {
+			t.Fatalf("expected write pos %d, but found %d", offset, v)
+		}
+		if v := f.syncPos.Load(); offset != v {
+			t.Fatalf("expected sync pos %d, but found %d", offset, v)
+		}
+	}
+	return f
+}
+
+func validateWALSyncRecords(t *testing.T, buf *bytes.Buffer) {
+	var largestOffset uint64 = 0
+	i := 0
+	bufBytes := (*buf).Bytes()
+	for i < len(bufBytes) {
+		if blockSize-(i%blockSize) < walSyncHeaderSize {
+			i += blockSize - (i % blockSize)
+			continue
+		}
+
+		checksum := binary.LittleEndian.Uint32(bufBytes[i+0 : i+4])
+		length := binary.LittleEndian.Uint16(bufBytes[i+4 : i+6])
+		chunkEncoding := bufBytes[i+6]
+		logNum := binary.LittleEndian.Uint32(bufBytes[i+7 : i+11])
+
+		// Reader and Writer have a logNum of 1, so a logNum of 2 is EOF.
+		if logNum == 2 {
+			// reached EOF trailer
+			if checksum != 0 && length != 0 {
+				t.Fatal("Mismatched logNum but not EOF trailer")
+			}
+			break
+		}
+		offset := binary.LittleEndian.Uint64(bufBytes[i+11 : i+19])
+		if offset < largestOffset {
+			t.Fatal("Expected monotonitcally increasing offsets.")
+		}
+		largestOffset = offset
+		headerFormat := headerFormatMappings[chunkEncoding]
+		headerSize := headerFormat.headerSize
+		i += headerSize + int(length)
+	}
+
+	r := NewReader(bytes.NewBuffer(bufBytes), 1)
+	for {
+		rr, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Error Next(): %v", err)
+		}
+		_, err = io.ReadAll(rr)
+		if err != nil {
+			t.Fatalf("Error Next(): %v", err)
+		}
+	}
+}
+
+func TestWALSyncOffsetSimple(t *testing.T) {
+	recordSizes := []int{}
+	for i := 0; i < 1000; i++ {
+		recordSizes = append(recordSizes, blockSize-walSyncHeaderSize)
+	}
+	f := writeWALSyncRecords(t, len(recordSizes), recordSizes)
+	validateWALSyncRecords(t, &f.buffer)
+}
+
+func TestWALSyncOffsetRandom(t *testing.T) {
+	recordSizes := []int{}
+	for i := 0; i < 1000; i++ {
+		recordSizes = append(recordSizes, 1+rand.IntN(blockSize-walSyncHeaderSize))
+	}
+	f := writeWALSyncRecords(t, len(recordSizes), recordSizes)
+	validateWALSyncRecords(t, &f.buffer)
 }
 
 // BenchmarkQueueWALBlocks exercises queueing within the LogWriter. It can be

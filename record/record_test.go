@@ -11,11 +11,17 @@ import (
 	"io"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -431,7 +437,7 @@ func TestCorruptBlock(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected a checksum mismatch error, got nil")
 	}
-	if err != ErrInvalidChunk {
+	if err != io.ErrUnexpectedEOF {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 }
@@ -663,8 +669,8 @@ func TestInvalidLogNum(t *testing.T) {
 
 	{
 		r := NewReader(bytes.NewReader(buf.Bytes()), 2)
-		if _, err := r.Next(); err != ErrInvalidChunk {
-			t.Fatalf("expected %s, but found %s\n", ErrInvalidChunk, err)
+		if _, err := r.Next(); err != io.ErrUnexpectedEOF {
+			t.Fatalf("expected %s, but found %s\n", io.ErrUnexpectedEOF, err)
 		}
 	}
 }
@@ -747,7 +753,7 @@ func TestRecycleLog(t *testing.T) {
 			rr, err := r.Next()
 			if err != nil {
 				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
-				if limitedBuf.limit < 0 && (err == io.EOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
+				if limitedBuf.limit < 0 && (err == io.EOF || err == io.ErrUnexpectedEOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
 					break
 				}
 				t.Fatalf("%d/%d: %v", i, j, err)
@@ -755,7 +761,7 @@ func TestRecycleLog(t *testing.T) {
 			x, err := io.ReadAll(rr)
 			if err != nil {
 				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
-				if limitedBuf.limit < 0 && (err == io.EOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
+				if limitedBuf.limit < 0 && (err == io.EOF || err == io.ErrUnexpectedEOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
 					break
 				}
 				t.Fatalf("%d/%d: %v", i, j, err)
@@ -764,7 +770,7 @@ func TestRecycleLog(t *testing.T) {
 				t.Fatalf("%d/%d: expected record %d, but found %d", i, j, sizes[j], len(x))
 			}
 		}
-		if _, err := r.Next(); err != io.EOF && err != ErrZeroedChunk && err != ErrInvalidChunk {
+		if _, err := r.Next(); err != io.EOF && err != io.ErrUnexpectedEOF && err != ErrZeroedChunk && err != ErrInvalidChunk {
 			t.Fatalf("%d: expected EOF, but found %v", i, err)
 		}
 	}
@@ -875,7 +881,186 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = io.ReadAll(rr)
-	require.Equal(t, err, ErrInvalidChunk)
+	require.Equal(t, err, io.ErrUnexpectedEOF)
+}
+
+func TestWALSync(t *testing.T) {
+	var buffer bytes.Buffer
+	result := make([]byte, 0)
+	corruptChunkNumbers := make([]int, 0)
+
+	datadriven.RunTest(t, "testdata/walSync", func(t *testing.T, d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "init":
+			buffer.Reset()
+			result = result[:0]
+
+			for chunkNumber, line := range strings.Split(d.Input, "\n") {
+				switch {
+				case strings.HasPrefix(line, "writeChunk"):
+					var encodedLength, chunkLength uint16
+					var logNum uint32
+					var offset uint64
+					var encoding uint8
+					var corrupt bool
+
+					_, err := fmt.Sscanf(line, "writeChunk encodedLength=%d chunkLength=%d encoding=%d logNum=%d offset=%d corrupt=%t",
+						&encodedLength, &chunkLength, &encoding, &logNum, &offset, &corrupt)
+					if err != nil {
+						return fmt.Sprintf("error parsing length line: %v", err)
+					}
+
+					chunk := make([]byte, walSyncHeaderSize+chunkLength)
+
+					binary.LittleEndian.PutUint16(chunk[4:6], encodedLength)
+					chunk[6] = encoding
+					binary.LittleEndian.PutUint32(chunk[7:11], logNum)
+					binary.LittleEndian.PutUint64(chunk[11:19], offset)
+
+					checksum := uint32(crc.New(chunk[6:]).Value())
+					binary.LittleEndian.PutUint32(chunk[0:4], checksum)
+
+					if corrupt {
+						for i := 0; i < 4; i++ {
+							chunk[i] ^= 1
+						}
+						corruptChunkNumbers = append(corruptChunkNumbers, chunkNumber)
+					}
+
+					buffer.Write(chunk)
+
+				case strings.HasPrefix(line, "endblock"):
+					remainingBytes := buffer.Len() % blockSize
+					buffer.Write(make([]byte, remainingBytes))
+
+				case strings.HasPrefix(line, "EOF"):
+					var logNum uint32
+					_, err := fmt.Sscanf(line, "EOF logNum=%d", &logNum)
+					if err != nil {
+						return fmt.Sprintf("error parsing EOF line: %v", err)
+					}
+
+					eofChunk := make([]byte, 19)
+					eofChunk[6] = walSyncFullChunkEncoding
+					binary.LittleEndian.PutUint32(eofChunk[7:11], logNum)
+					buffer.Write(eofChunk)
+
+				case strings.HasPrefix(line, "raw"):
+					rawChunk, err := parseRawChunk(line)
+					if err != nil {
+						return fmt.Sprintf("error parsing raw line: %v", err)
+					}
+					buffer.Write(rawChunk)
+				}
+			}
+
+		case "read":
+			r := NewReader(bytes.NewBuffer(buffer.Bytes()), 1)
+
+			for {
+				reader, err := r.Next()
+				if err != nil {
+					return fmt.Sprintf("error reading next: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+				}
+
+				data, err := io.ReadAll(reader)
+				if err != nil {
+					return fmt.Sprintf("error reading all: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+				}
+				result = append(result, data...)
+			}
+
+		case "describe":
+			formatter := binfmt.New(buffer.Bytes()).LineWidth(20)
+			tree := treeprinter.New()
+			describeWALSyncBlocks(formatter, &tree, buffer.Bytes(), corruptChunkNumbers)
+			return tree.String()
+		}
+
+		return ""
+	})
+}
+
+func parseRawChunk(input string) ([]byte, error) {
+	words := strings.Fields(input)
+	var result []byte
+	for _, word := range words {
+		var value byte
+		if strings.HasPrefix(word, "0x") {
+			_, err := fmt.Sscanf(word, "0x%02X", &value)
+			if err != nil {
+				return nil, errors.Errorf("failed to parse hex: %s", word)
+			}
+			result = append(result, value)
+		} else if word == "#" {
+			break
+		}
+	}
+	return result, nil
+}
+
+// describeWALSyncBlocks is used to visualize blocks and chunks with the assumption
+// that they are generally well formed. Having one of the corruption conditions
+// may cause the visualization to be incorrect due to the assumption of well-formedness.
+func describeWALSyncBlocks(
+	f *binfmt.Formatter, tp *treeprinter.Node, data []byte, corruptChunks []int,
+) {
+	i := 0
+	n := tp.Child("Blocks")
+	globalChunkNumber := 0
+
+	for i < len(data) {
+		if i%blockSize == 0 {
+			blockNum := i / blockSize
+
+			blockNode := n.Childf("Block #%d", blockNum)
+
+			chunkNumber := 0
+			for i < len(data) {
+				var chunkNode treeprinter.Node
+				if slices.Contains(corruptChunks, globalChunkNumber) {
+					chunkNode = blockNode.Childf("Chunk #%d (offset %d, corrupt)", chunkNumber, i)
+				} else {
+					chunkNode = blockNode.Childf("Chunk #%d (offset %d)", chunkNumber, i)
+				}
+
+				checksum := binary.LittleEndian.Uint32(data[i+0 : i+4])
+				length := binary.LittleEndian.Uint16(data[i+4 : i+6])
+
+				if int(length) == 0 {
+					chunkNode.Child("EOF")
+					f.SetAnchorOffset()
+					f.ToTreePrinter(n)
+					return
+				}
+
+				chunkEncoding := data[i+6]
+				headerFormat := headerFormatMappings[chunkEncoding]
+				chunkType, wireFormat, headerSize := headerFormat.chunkPosition, headerFormat.wireFormat, headerFormat.headerSize
+
+				logNum := binary.LittleEndian.Uint32(data[i+7 : i+11])
+				offset := binary.LittleEndian.Uint64(data[i+11 : i+19])
+
+				chunkNode.Childf("Checksum: %d", checksum)
+				chunkNode.Childf("Encoded Length: %d", length)
+				chunkNode.Childf("Chunk encoding: %d (chunkType: %d, wireFormat: %d)", chunkEncoding, chunkType, wireFormat)
+				chunkNode.Childf("Log Num: %d", logNum)
+				chunkNode.Childf("Synced Offset: %d", offset)
+
+				i += headerSize + int(length)
+				chunkNumber++
+				globalChunkNumber++
+
+				if i%blockSize == 0 {
+					break
+				}
+
+			}
+		}
+	}
+
+	f.SetAnchorOffset()
+	f.ToTreePrinter(n)
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
@@ -896,11 +1081,4 @@ func BenchmarkRecordWrite(b *testing.B) {
 			b.StopTimer()
 		})
 	}
-}
-
-// TODO(edward) Suppresses linting warning.
-// Delete after readAheadForCorruption() is called in follow-up PRs.
-func TestReadAheadForCorruption(t *testing.T) {
-	r := NewReader(new(bytes.Buffer), 0)
-	r.readAheadForCorruption()
 }

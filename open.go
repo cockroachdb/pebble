@@ -369,6 +369,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
+		WriteWALSyncOffsets:  FormatMajorVersion(d.mu.formatVers.vers.Load()) >= FormatWALSyncChunks,
 	}
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
@@ -933,18 +934,31 @@ func (d *DB) replayWAL(
 		}
 		if err != nil {
 			// It is common to encounter a zeroed or invalid chunk due to WAL
-			// preallocation and WAL recycling. We need to distinguish these
-			// errors from EOF in order to recognize that the record was
-			// truncated and to avoid replaying subsequent WALs, but want
-			// to otherwise treat them like EOF.
-			if err == io.EOF {
+			// preallocation and WAL recycling. However zeroed or invalid chunks
+			// can also be a consequence of corruption / disk rot. When the log
+			// reader encounters one of these cases, it attempts to disambiguate
+			// by reading ahead looking for a future record. If a future chunk
+			// indicates the chunk at the original offset should've been valid, it
+			// surfaces record.ErrInvalidChunk or record.ErrZeroedChunk. These
+			// errors are always indicative of corruption and data loss.
+			//
+			// Otherwise, the reader surfaces io.ErrUnexpectedEOF indicating that
+			// the WAL terminated uncleanly and ambiguously. If the WAL is the
+			// most recent logical WAL, the caller passes in (strictWALTail=false),
+			// indicating we should tolerate the unclean ending. If the WAL is an
+			// older WAL, the caller passes in (strictWALTail=true), indicating that
+			// the WAL should have been closed cleanly, and we should interpret
+			// the `io.ErrUnexpectedEOF` as corruption and stop recovery.
+			if errors.Is(err, io.EOF) {
 				break
-			} else if record.IsInvalidRecord(err) {
-				if !strictWALTail {
-					break
-				}
+			} else if errors.Is(err, io.ErrUnexpectedEOF) && !strictWALTail {
+				break
+			} else if errors.Is(err, record.ErrInvalidChunk) || errors.Is(err, record.ErrZeroedChunk) {
+				// If a read-ahead returns one of these errors, they should be marked with corruption.
+				// Other I/O related errors should not be marked with corruption and simply returned.
 				err = errors.Mark(err, ErrCorruption)
 			}
+
 			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 

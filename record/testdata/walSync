@@ -1,0 +1,1191 @@
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+describe
+----
+Blocks
+ ├── Block #0
+ │    ├── Chunk #0 (offset 0)
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #1 (offset 20)
+ │         └── EOF
+ └── 
+
+read
+----
+error reading next: EOF
+final blockNum: 0
+bytes read: 1
+
+
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+EOF logNum=2
+----
+
+describe
+----
+Blocks
+ ├── Block #0
+ │    ├── Chunk #0 (offset 0, corrupt)
+ │    │    ├── Checksum: 3716504721
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #1 (offset 20)
+ │         └── EOF
+ └── 
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 1
+bytes read: 0
+
+###########################
+##### CRC Error Cases #####
+###########################
+
+# Simple corruption in single block with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 1
+bytes read: 0
+
+# Simple corruption spanning the entire block with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=true
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 0
+
+# Multiple corruption with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=true
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple corruption but large offset is also corrupt, no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100000 corrupt=true
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Simple corruption with confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Corrupt the first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Corrupt the first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a corrupt chunk, leading to EOF
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=true
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple corruption with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=32000 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=32000 corrupt=true
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=64000 corrupt=true
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 0
+
+# Complex multiple corruption with confirmation in blockNum 3
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=true
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple corruption with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=true
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=true
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=100 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 32749
+
+###########################
+###### log num cases ######
+###########################
+# NOTE: reader logNum == 1
+###########################
+
+
+# Simple logNum issues in single block with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 1
+bytes read: 0
+
+# Simple logNum issues spanning the entire block with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 0
+
+# Multiple logNum issues with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple logNum issues but large offset is also has issues, no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=100 offset=100000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Simple logNum issues with confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a logNum issue chunk, leading to EOF
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple logNum issues with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=32000 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=32000 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=32000 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=64000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 0
+
+
+# Complex multiple logNum issues with confirmation in blockNum 3
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=32000 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 3
+bytes read: 0
+
+
+# Complex multiple logNum issue with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=100 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 32749
+
+#######################################
+###### invalid wire format cases ######
+#######################################
+# Encoding == 0 leads to a wireFormat error
+
+
+# Simple wire issues in single block with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 1
+bytes read: 0
+
+# Simple wire issues spanning the entire block with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 0
+
+# Multiple wire issues with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple wire issues but large offset is also has issues, no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=100000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Simple wire issues with confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a wire issue chunk, leading to EOF
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=32000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple wire issues with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=32000 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=32000 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=64000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 0
+
+
+# Complex multiple wire issues with confirmation in blockNum 3
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=32000 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 3
+bytes read: 0
+
+
+# Complex multiple wire issue with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 corrupt=false
+
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=100 corrupt=false
+
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 32749
+
+###########################
+###### zeroed chunk  ######
+###########################
+# Zeroed chunk has checksum, encodedLength, and chunkEncoding == 0; minimum 7 zeroes
+
+# Simple zeroed issues in single block with no confirmation
+init
+writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 19 0x00's
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 32730
+
+# Multiple zeroed issues with no confirmation
+init
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 19 0x00's
+writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 19 0x00's
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple zeroed issues but large offset is also has issues, no confirmation
+init
+writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 19 0x00's
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 19 0x00's
+writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 32730
+
+# Simple zeroed issues with confirmation
+init
+writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 19 0x00's
+
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=100000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: zeroed chunk
+final blockNum: 1
+bytes read: 32730
+
+init
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=100000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: zeroed chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: zeroed chunk
+final blockNum: 1
+bytes read: 1
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a zeroed chunk, leading to EOF
+init
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
+writeChunk encodedLength=32738 chunkLength=32738 encoding=0 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple zeroed chunk issues with confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=1 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=64000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: zeroed chunk
+final blockNum: 2
+bytes read: 1
+
+# Complex multiple zeroed chunks with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=1 corrupt=false
+raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 32750
+
+#####################################
+###### encodedLength too long  ######
+#####################################
+# if r.end > r.n {
+
+init
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Simple encodedLength issues in single block with no confirmation
+init
+writeChunk encodedLength=64000 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 1
+bytes read: 0
+
+# Simple encodedLength issues spanning the entire block with no confirmation
+init
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 0
+
+# Multiple encodedLength issues with no confirmation
+init
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple encodedLength issues but large offset is also has issues, no confirmation
+init
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=1000 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Simple encodedLength issues with confirmation
+init
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=200 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a encodedLength issue chunk, leading to EOF
+init
+writeChunk encodedLength=200 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple encodedLength issues with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=32000 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=64000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 0
+
+# Complex multiple encodedLength issues with confirmation in blockNum 3
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=200 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=200 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 3
+bytes read: 1
+
+# Complex multiple encodedLength issues with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=200 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=200 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 6
+bytes read: 32750
+
+###########################
+#### Encoding too Large ###
+###########################
+# if int(chunkEncoding) >= len(headerFormatMappings) {
+
+# Simple encoding issues in single block with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 1
+bytes read: 0
+
+# Simple encoding issues spanning the entire block with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 0
+
+# Multiple encoding issues with no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Multiple encoding issues but large offset is also has issues, no confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=100000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Simple encoding issues with confirmation
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 0
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a encoding issue chunk, leading to EOF
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple encoding issues with no confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=64000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 0
+
+# Complex multiple encoding issues with confirmation in blockNum 3
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=32000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 3
+bytes read: 0
+
+# Complex multiple encoding issue with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32709 chunkLength=32709 encoding=9 logNum=1 offset=100 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 32749
+
+###########################
+## header format too big ##
+###########################
+# if r.end+headerSize > r.n {
+
+# large header chunk
+init
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=60000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 32738
+
+# Simple large header issues in single block with no confirmation
+init
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 2
+bytes read: 32738
+
+# Multiple large header issues with no confirmation
+init
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 32738
+
+# Multiple large header issues but large offset is also has issues, no confirmation
+init
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=1000000 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 32738
+
+# Simple large header issues with confirmation
+init
+writeChunk encodedLength=32738 chunkLength=32738 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=100000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 32738
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a confirmation chunk. Observe that final blockNum == 1
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 1
+bytes read: 1
+
+# Issues in first block with confirming chunks after. However, these next chunks
+# in the same block cannot be used to confirm because reading ahead jumps to the next
+# block which has a zeroed chunk, leading to EOF
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=60 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=32738 chunkLength=32738 encoding=0 logNum=1 offset=32000 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 3
+bytes read: 1
+
+# Multiple large header issues with confirmation
+init
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=1 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=64000 corrupt=false
+EOF logNum=2
+----
+
+read
+----
+error reading next: pebble/record: invalid chunk
+final blockNum: 2
+bytes read: 1
+
+# Complex multiple large header chunks with confirmation offset too small
+init
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=60 corrupt=false
+writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=1 corrupt=false
+raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 encodes a wal sync type, which is 19 bytes header
+writeChunk encodedLength=32718 chunkLength=32718 encoding=9 logNum=1 offset=32000 corrupt=false
+writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 corrupt=false
+
+EOF logNum=2
+----
+
+read
+----
+error reading next: unexpected EOF
+final blockNum: 5
+bytes read: 32750
