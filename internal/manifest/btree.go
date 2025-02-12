@@ -141,6 +141,9 @@ type ObsoleteFilesSet interface {
 	// AddBacking appends the provided FileBacking to the list of obsolete
 	// files.
 	AddBacking(*FileBacking)
+	// AddBlob appends the provided BlobFileMetadata to the list of obsolete
+	// files.
+	AddBlob(*BlobFileMetadata)
 }
 
 // assertNoObsoleteFiles is an obsoleteFiles implementation that panics if its
@@ -159,6 +162,11 @@ func (assertNoObsoleteFiles) AddBacking(fb *FileBacking) {
 	panic(errors.AssertionFailedf("file backing %s dereferenced to zero during tree mutation", fb.DiskFileNum))
 }
 
+// AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
+func (assertNoObsoleteFiles) AddBlob(bm *BlobFileMetadata) {
+	panic(errors.AssertionFailedf("blob file %s dereferenced to zero during tree mutation", bm.FileNum))
+}
+
 // ignoreObsoleteFiles is an ObsoleteFilesSet implementation that ignores
 // obsolete files. It's used in some contexts where we construct ephemeral
 // B-Trees which do not need to track obsolete files and in tests.
@@ -169,6 +177,9 @@ var _ ObsoleteFilesSet = ignoreObsoleteFiles{}
 
 // AddBacking appends the provided FileBacking to the list of obsolete files.
 func (ignoreObsoleteFiles) AddBacking(fb *FileBacking) {}
+
+// AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
+func (ignoreObsoleteFiles) AddBlob(bm *BlobFileMetadata) {}
 
 // incRef acquires a reference to the node.
 func (n *node) incRef() {

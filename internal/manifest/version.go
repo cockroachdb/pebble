@@ -240,13 +240,11 @@ type TableMetadata struct {
 
 	// refs is the reference count for the table, used to determine when a table
 	// is obsolete. When a table's reference count falls to zero, the table is
-	// considered obsolete and the table's references on its backing file is
-	// released.
+	// considered obsolete and the table's references on its associated files
+	// (backing file, blob references) are released.
 	//
-	// The reference count is the number of versions with non-zero reference
-	// counts that contain this table. The tables in each version are maintained
-	// in a copy-on-write B-tree and each B-tree node keeps a reference on the
-	// contained tables.
+	// The tables in each version are maintained in a copy-on-write B-tree and
+	// each B-tree node keeps a reference on the contained tables.
 	refs atomic.Int32
 
 	// Stats describe table statistics. Protected by DB.mu.
@@ -313,10 +311,22 @@ type TableMetadata struct {
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,
-// Ref will increment the reference of the table's FileBacking.
+// Ref will increment the reference of the table's FileBacking and referenced
+// blob files.
 func (m *TableMetadata) Ref() {
 	if v := m.refs.Add(1); v == 1 {
 		m.FileBacking.Ref()
+		for _, blobRef := range m.BlobReferences {
+			// BlobReference.Metadata is allowed to be nil when first decoded
+			// from a VersionEdit, but BulkVersionEdit.Accumulate should have
+			// populated the field (during manifest replay), or we should have
+			// set it explicitly when constructing the TableMetadata (during
+			// compactions, flushes).
+			if blobRef.Metadata == nil {
+				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.FileNum, blobRef.FileNum))
+			}
+			blobRef.Metadata.ref()
+		}
 	}
 }
 
@@ -328,10 +338,15 @@ func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 	if invariants.Enabled && v < 0 {
 		panic(errors.AssertionFailedf("pebble: invalid TableMetadata refcounting for table %s", m.FileNum))
 	}
-	// When the reference count reaches zero, unref the file backing.
+	// When the reference count reaches zero, release the table's references.
 	if v == 0 {
 		if m.FileBacking.Unref() == 0 {
 			obsoleteFiles.AddBacking(m.FileBacking)
+		}
+		for _, blobRef := range m.BlobReferences {
+			if blobRef.Metadata.unref() == 0 {
+				obsoleteFiles.AddBlob(blobRef.Metadata)
+			}
 		}
 	}
 }
@@ -1371,6 +1386,7 @@ func (v *Version) unrefFiles() ObsoleteFiles {
 // referenced Version.
 type ObsoleteFiles struct {
 	FileBackings []*FileBacking
+	BlobFiles    []*BlobFileMetadata
 }
 
 // AddBacking appends the provided FileBacking to the list of obsolete files.
@@ -1378,9 +1394,14 @@ func (of *ObsoleteFiles) AddBacking(fb *FileBacking) {
 	of.FileBackings = append(of.FileBackings, fb)
 }
 
+// AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
+func (of *ObsoleteFiles) AddBlob(bm *BlobFileMetadata) {
+	of.BlobFiles = append(of.BlobFiles, bm)
+}
+
 // Count returns the number of files in the ObsoleteFiles.
 func (of *ObsoleteFiles) Count() int {
-	return len(of.FileBackings)
+	return len(of.FileBackings) + len(of.BlobFiles)
 }
 
 // Assert that ObsoleteFiles implements the obsoleteFiles interface.
