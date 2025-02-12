@@ -404,6 +404,8 @@ func TestVersionEditApply(t *testing.T) {
 				return v.DebugString()
 
 			case "apply":
+				var saveName string
+				d.MaybeScanArgs(t, "name", &saveName)
 				// Apply an edit to the given version.
 				name := d.CmdArgs[0].String()
 				v := versions[name]
@@ -444,6 +446,9 @@ func TestVersionEditApply(t *testing.T) {
 				newv, err := bve.Apply(v, base.DefaultComparer, flushSplitBytes, readCompactionRate)
 				if err != nil {
 					return err.Error()
+				}
+				if saveName != "" {
+					versions[saveName] = newv
 				}
 
 				// Reinitialize the L0 sublevels in the original version; otherwise we
