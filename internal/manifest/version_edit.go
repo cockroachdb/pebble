@@ -906,8 +906,9 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // and also true for all of the calls to Accumulate for a single bulk version
 // edit.
 //
-// A file must not be added and removed from a given level in the same version
-// edit.
+// A sstable file must not be added and removed from a given level in the same
+// version edit, and a blob file must not be both added and deleted in the same
+// version edit.
 //
 // A file that is being removed from a level must have been added to that level
 // before (in a prior version edit). Note that a given file can be deleted from
@@ -915,6 +916,24 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 type BulkVersionEdit struct {
 	AddedTables   [NumLevels]map[base.FileNum]*TableMetadata
 	DeletedTables [NumLevels]map[base.FileNum]*TableMetadata
+
+	BlobFiles struct {
+		// Added holds the metadata of all new blob files introduced within the
+		// aggregated version edit, keyed by file number.
+		Added map[base.DiskFileNum]*BlobFileMetadata
+		// Deleted holds a list of all blob files that became unreferenced by
+		// any sstables, making them obsolete within the resulting version (a
+		// zombie if still referenced by previous versions). Deleted file
+		// numbers must not exist in Added.
+		Deleted []base.DiskFileNum
+		// DeletedReferences holds metadata of blob files referenced by tables
+		// deleted in the accumulated version edits. This is used during replay
+		// to populate the *BlobFileMetadata pointers of new blob references,
+		// making use of the invariant that new blob references must correspond
+		// to a file introduced in VersionEdit.AddedBlobFiles or a file
+		// referenced by a deleted sstable.
+		DeletedReferences map[base.DiskFileNum]*BlobFileMetadata
+	}
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
 	// FileBacking of virtual sstables during manifest replay.
@@ -937,22 +956,67 @@ type BulkVersionEdit struct {
 	MarkedForCompactionCountDiff int
 }
 
+// getBlobFileMetadata returns the metadata for the specified blob file. When a
+// new sstable with a reference to a blob file is accumulated to the
+// BulkVersionEdit, it must be the case that either an already-accumulated
+// version edit added the blob file to the BlobFiles.Added map, or the blob file
+// was referenced by a file that was deleted (and the blob file was added to
+// BlobFiles.DeletedReferences).
+func (b *BulkVersionEdit) getBlobFileMetadata(fileNum base.DiskFileNum) *BlobFileMetadata {
+	if b.BlobFiles.Added != nil {
+		if md, ok := b.BlobFiles.Added[fileNum]; ok {
+			return md
+		}
+	}
+	if b.BlobFiles.DeletedReferences != nil {
+		if md, ok := b.BlobFiles.DeletedReferences[fileNum]; ok {
+			return md
+		}
+	}
+	return nil
+}
+
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
 //
 // INVARIANTS:
-// If a file is added to a given level in a call to Accumulate and then removed
-// from that level in a subsequent call, the file will not be present in the
-// resulting BulkVersionEdit.Deleted for that level.
+// (1) If a table is added to a given level in a call to Accumulate and then
+// removed from that level in a subsequent call, the file will not be present in
+// the resulting BulkVersionEdit.Deleted for that level.
+// (2) If a new table is added and it includes a reference to a blob file, that
+// blob file must either appear in BlobFiles.Added, or the blob file must be
+// referenced by a table deleted in the same bulk version edit.
 //
 // After accumulation of version edits, the bulk version edit may have
-// information about a file which has been deleted from a level, but it may
-// not have information about the same file added to the same level. The add
-// could've occurred as part of a previous bulk version edit. In this case,
-// the deleted file must be present in BulkVersionEdit.Deleted, at the end
-// of the accumulation, because we need to decrease the refcount of the
-// deleted file in Apply.
+// information about a file which has been deleted from a level, but it may not
+// have information about the same file added to the same level. The add
+// could've occurred as part of a previous bulk version edit. In this case, the
+// deleted file must be present in BulkVersionEdit.Deleted, at the end of the
+// accumulation, because we need to decrease the refcount of the deleted file in
+// Apply.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
+	// Add any blob files that were introduced.
+	for _, nbf := range ve.NewBlobFiles {
+		if b.BlobFiles.Added == nil {
+			b.BlobFiles.Added = make(map[base.DiskFileNum]*BlobFileMetadata)
+		}
+		b.BlobFiles.Added[nbf.FileNum] = nbf
+	}
+
+	b.BlobFiles.Deleted = slices.Grow(b.BlobFiles.Deleted, len(ve.DeletedBlobFiles))
+	for _, dbf := range ve.DeletedBlobFiles {
+		// If the blob file was added in a prior, accumulated version edit we
+		// can resolve the deletion by removing it from the added files map.
+		// Otherwise the blob file deleted was added prior to this bulk edit,
+		// and we insert it into BlobFiles.Deleted so that Apply may remove it
+		// from the resulting version.
+		if b.BlobFiles.Added != nil && b.BlobFiles.Added[dbf] != nil {
+			delete(b.BlobFiles.Added, dbf)
+		} else {
+			b.BlobFiles.Deleted = append(b.BlobFiles.Deleted, dbf)
+		}
+	}
+
 	for df, m := range ve.DeletedTables {
 		dmap := b.DeletedTables[df.Level]
 		if dmap == nil {
@@ -978,6 +1042,17 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		} else {
 			// Present in b.Added for the same level.
 			delete(b.AddedTables[df.Level], df.FileNum)
+		}
+		// If this deleted sstable had any references to blob files, record the
+		// referenced blob file to BlobFiles.DeletedReferences. If the
+		// references are carried forward to new files (eg, during a compaction
+		// that decides not to rewrite the blob file), then we'll have the
+		// *BlobFileMetadata availabile when we process the NewTableEntry.
+		for _, blobRef := range m.BlobReferences {
+			if b.BlobFiles.DeletedReferences == nil {
+				b.BlobFiles.DeletedReferences = make(map[base.DiskFileNum]*BlobFileMetadata)
+			}
+			b.BlobFiles.DeletedReferences[blobRef.FileNum] = blobRef.Metadata
 		}
 	}
 
@@ -1026,6 +1101,20 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++
 		}
+
+		// If there are any new sstables with blob references without a pointer
+		// to the corresponding BlobFileMetadata, populate the pointer. This is
+		// the expected case during manifest replay.
+		for i := range nf.Meta.BlobReferences {
+			if nf.Meta.BlobReferences[i].Metadata != nil {
+				continue
+			}
+			nf.Meta.BlobReferences[i].Metadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileNum)
+			if nf.Meta.BlobReferences[i].Metadata == nil {
+				return errors.Errorf("blob file %s referenced by L%d.%s not found",
+					nf.Meta.BlobReferences[i].FileNum, nf.Level, nf.Meta.FileNum)
+			}
+		}
 	}
 
 	for _, n := range ve.RemovedBackingTables {
@@ -1042,7 +1131,8 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 }
 
 // Apply applies the delta b to the current version to produce a new version.
-// The new version is consistent with respect to the comparer.
+// The ordering of tables within the new version is consistent with respect to
+// the comparer.
 //
 // Apply updates the backing refcounts (Ref/Unref) as files are installed into
 // the levels.
@@ -1115,6 +1205,17 @@ func (b *BulkVersionEdit) Apply(
 			// zero. The remove call will panic if this happens.
 			v.Levels[level].remove(f)
 			v.RangeKeyLevels[level].remove(f)
+
+			// The BlobFileMetadata maintains state about the file's references
+			// in the current Version of the LSM. Update this metadata for every
+			// deleted reference. The metadata pointer in BlobReference must
+			// already be populated when the version edit was accumulated.
+			for _, ref := range f.BlobReferences {
+				if ref.Metadata == nil {
+					return nil, errors.Newf("%s has a BlobFileReference with no metadata", ref.FileNum)
+				}
+				ref.Metadata.ActiveRefs.RemoveRef(ref.ValueSize)
+			}
 		}
 
 		addedTables := make([]*TableMetadata, 0, len(addedTablesMap))
@@ -1159,6 +1260,17 @@ func (b *BulkVersionEdit) Apply(
 			}
 			if la == nil || base.InternalCompare(comparer.Compare, la.Largest, f.Largest) < 0 {
 				la = f
+			}
+
+			// The BlobFileMetadata maintains state about the file's references
+			// in the current Version of the LSM. Update this metadata for every
+			// new reference. The metadata pointer in BlobReference must already
+			// be populated when the version edit was accumulated.
+			for _, ref := range f.BlobReferences {
+				if ref.Metadata == nil {
+					return nil, errors.Newf("%s has a BlobFileReference with no metadata", ref.FileNum)
+				}
+				ref.Metadata.ActiveRefs.AddRef(ref.ValueSize)
 			}
 		}
 
@@ -1219,5 +1331,25 @@ func (b *BulkVersionEdit) Apply(
 			}
 		}
 	}
+
+	// We maintain stats about active references in blob files and can infer
+	// when a blob file has become a 'zombie,' and is no longer referenced in
+	// the resulting version. However, we expect the caller to explicitly list
+	// all deleted blob files in the VersionEdit. In invariant builds, we loop
+	// back over all the deleted tables and their blob references. If any of the
+	// blob files now have zero active refs but weren't listed in the deleted
+	// blob files, the caller has broken the contract.
+	if invariants.Enabled {
+		for _, deletedLevel := range b.DeletedTables {
+			for _, dt := range deletedLevel {
+				for _, ref := range dt.BlobReferences {
+					if ref.Metadata.ActiveRefs.count == 0 && !slices.Contains(b.BlobFiles.Deleted, ref.FileNum) {
+						panic(errors.AssertionFailedf("blob file %s has no active refs, but was not deleted in the version edit", ref.FileNum))
+					}
+				}
+			}
+		}
+	}
+
 	return v, nil
 }
