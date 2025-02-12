@@ -225,7 +225,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 		FileCache: t.fileCache,
 	}
 	opts.EnsureDefaults()
-	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts)
+	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions())
 	return h, fs
 }
 
@@ -1055,7 +1055,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 		FileCache: fcs.fileCache,
 	}
 	opts.EnsureDefaults()
-	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts)
+	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions())
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -1129,7 +1129,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts)
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions())
 	defer h.Close()
 
 	scanner := bufio.NewScanner(f)
@@ -1265,7 +1265,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts)
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions())
 	defer h.Close()
 
 	shard := fcs.fileCache.shards[0]
