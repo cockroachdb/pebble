@@ -366,6 +366,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
+		WritingWalSyncChunks: FormatMajorVersion(d.mu.formatVers.vers.Load()) >= FormatWalSyncChunks,
 	}
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
@@ -934,14 +935,16 @@ func (d *DB) replayWAL(
 			// errors from EOF in order to recognize that the record was
 			// truncated and to avoid replaying subsequent WALs, but want
 			// to otherwise treat them like EOF.
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
-			} else if record.IsInvalidRecord(err) {
-				if !strictWALTail {
-					break
-				}
+			} else if errors.Is(err, io.ErrUnexpectedEOF) && !strictWALTail {
+				break
+			} else if errors.Is(err, record.ErrInvalidChunk) || errors.Is(err, record.ErrZeroedChunk) {
+				// If a read-ahead returns one of these errors, they should be marked with corruption.
+				// Other I/O related errors should not be marked with corruption and simply returned.
 				err = errors.Mark(err, ErrCorruption)
 			}
+
 			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 

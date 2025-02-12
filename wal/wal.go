@@ -146,6 +146,10 @@ type Options struct {
 	// FailoverWriteAndSyncLatency is only populated when WAL failover is
 	// configured.
 	FailoverWriteAndSyncLatency prometheus.Histogram
+
+	// WritingWalSyncChunks represents whether to write the WAL sync chunk format.
+	// It is plumbed down from wal.Options to record.newLogWriter.
+	WritingWalSyncChunks bool
 }
 
 // Init constructs and initializes a WAL manager from the provided options and

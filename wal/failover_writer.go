@@ -463,6 +463,9 @@ type failoverWriterOpts struct {
 	writerClosed                func(logicalLogWithSizesEtc)
 
 	writerCreatedForTest chan<- struct{}
+
+	// writingWalSyncChunks represents whether to write the WAL sync chunk format.
+	writingWalSyncChunks bool
 }
 
 func simpleLogCreator(
@@ -633,6 +636,7 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 				WALFsyncLatency:           ww.opts.fsyncLatency,
 				QueueSemChan:              ww.opts.queueSemChan,
 				ExternalSyncQueueCallback: ww.doneSyncCallback,
+				WritingWalSyncChunks:      ww.opts.writingWalSyncChunks,
 			})
 		closeWriter := func() bool {
 			ww.mu.Lock()
