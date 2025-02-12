@@ -1328,14 +1328,14 @@ func (d *DB) newIngestedFlushableEntry(
 	for _, file := range f.files {
 		file.FileBacking.Ref()
 	}
-	entry.unrefFiles = func() []*fileBacking {
-		var obsolete []*fileBacking
+	entry.unrefFiles = func(of *manifest.ObsoleteFiles) {
+		// Invoke Unref on each table. If any files become obsolete, add them to
+		// the obsolete files list.
 		for _, file := range f.files {
 			if file.FileBacking.Unref() == 0 {
-				obsolete = append(obsolete, file.TableMetadata.FileBacking)
+				of.AddBacking(file.FileBacking)
 			}
 		}
-		return obsolete
 	}
 
 	entry.flushForced = true

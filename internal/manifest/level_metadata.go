@@ -37,8 +37,8 @@ func (lm *LevelMetadata) clone() LevelMetadata {
 	}
 }
 
-func (lm *LevelMetadata) release() (obsolete []*FileBacking) {
-	return lm.tree.Release()
+func (lm *LevelMetadata) release(of obsoleteFiles) {
+	lm.tree.Release(of)
 }
 
 // MakeLevelMetadata creates a LevelMetadata with the given files.
@@ -82,13 +82,13 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 	return nil
 }
 
-func (lm *LevelMetadata) remove(f *TableMetadata) bool {
+func (lm *LevelMetadata) remove(f *TableMetadata) {
 	lm.totalSize -= f.Size
 	if f.Virtual {
 		lm.NumVirtual--
 		lm.VirtualSize -= f.Size
 	}
-	return lm.tree.Delete(f)
+	lm.tree.Delete(f, assertNoObsoleteFiles{})
 }
 
 // Empty indicates whether there are any files in the level.
@@ -159,7 +159,7 @@ func (lf LevelFile) Slice() LevelSlice {
 // a slice constructor like this?
 func NewLevelSliceSeqSorted(files []*TableMetadata) LevelSlice {
 	tr, slice := makeBTree(nil, btreeCmpSeqNum, files)
-	tr.Release()
+	tr.Release(ignoreObsoleteFiles{})
 	slice.verifyInvariants()
 	return slice
 }
@@ -170,7 +170,7 @@ func NewLevelSliceSeqSorted(files []*TableMetadata) LevelSlice {
 // a slice constructor like this?
 func NewLevelSliceKeySorted(cmp base.Compare, files []*TableMetadata) LevelSlice {
 	tr, slice := makeBTree(cmp, btreeCmpSmallestKey(cmp), files)
-	tr.Release()
+	tr.Release(ignoreObsoleteFiles{})
 	slice.verifyInvariants()
 	return slice
 }
@@ -181,7 +181,7 @@ func NewLevelSliceKeySorted(cmp base.Compare, files []*TableMetadata) LevelSlice
 // TODO(jackson): Update tests to avoid requiring this and remove it.
 func NewLevelSliceSpecificOrder(files []*TableMetadata) LevelSlice {
 	tr, slice := makeBTree(nil, btreeCmpSpecificOrder(files), files)
-	tr.Release()
+	tr.Release(ignoreObsoleteFiles{})
 	slice.verifyInvariants()
 	return slice
 }

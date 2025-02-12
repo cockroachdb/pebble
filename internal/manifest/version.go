@@ -1192,7 +1192,7 @@ type Version struct {
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
-	Deleted func(obsolete []*FileBacking)
+	Deleted func(obsolete ObsoleteFiles)
 
 	// Stats holds aggregated stats about the version maintained from
 	// version to version.
@@ -1321,16 +1321,35 @@ func (v *Version) UnrefLocked() {
 	}
 }
 
-func (v *Version) unrefFiles() []*FileBacking {
-	var obsolete []*FileBacking
+func (v *Version) unrefFiles() ObsoleteFiles {
+	var obsoleteFiles ObsoleteFiles
 	for _, lm := range v.Levels {
-		obsolete = append(obsolete, lm.release()...)
+		lm.release(&obsoleteFiles)
 	}
 	for _, lm := range v.RangeKeyLevels {
-		obsolete = append(obsolete, lm.release()...)
+		lm.release(&obsoleteFiles)
 	}
-	return obsolete
+	return obsoleteFiles
 }
+
+// ObsoleteFiles holds a set of files that are no longer referenced by any
+// referenced Version.
+type ObsoleteFiles struct {
+	FileBackings []*FileBacking
+}
+
+// AddBacking appends the provided FileBacking to the list of obsolete files.
+func (of *ObsoleteFiles) AddBacking(fb *FileBacking) {
+	of.FileBackings = append(of.FileBackings, fb)
+}
+
+// Count returns the number of files in the ObsoleteFiles.
+func (of *ObsoleteFiles) Count() int {
+	return len(of.FileBackings)
+}
+
+// Assert that ObsoleteFiles implements the obsoleteFiles interface.
+var _ obsoleteFiles = (*ObsoleteFiles)(nil)
 
 // Next returns the next version in the list of versions.
 func (v *Version) Next() *Version {
@@ -1557,7 +1576,7 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 				// TODO(jackson): Avoid the oddity of constructing and
 				// immediately releasing a B-Tree. Make LevelSlice an
 				// interface?
-				tr.Release()
+				tr.Release(assertNoObsoleteFiles{})
 				break
 			}
 			// Continue looping to retry the files that were not selected.

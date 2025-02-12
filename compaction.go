@@ -2296,7 +2296,9 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 //
 // d.mu must be held when calling this method.
 func (d *DB) cleanupVersionEdit(ve *versionEdit) {
-	obsoleteFiles := make([]*fileBacking, 0, len(ve.NewTables))
+	obsoleteFiles := manifest.ObsoleteFiles{
+		FileBackings: make([]*fileBacking, 0, len(ve.NewTables)),
+	}
 	deletedFiles := make(map[base.FileNum]struct{})
 	for key := range ve.DeletedTables {
 		deletedFiles[key.FileNum] = struct{}{}
@@ -2311,21 +2313,21 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 			// Don't mark it as obsolete.
 			continue
 		}
-		obsoleteFiles = append(obsoleteFiles, ve.NewTables[i].Meta.PhysicalMeta().FileBacking)
+		obsoleteFiles.AddBacking(ve.NewTables[i].Meta.PhysicalMeta().FileBacking)
 	}
 	for i := range ve.CreatedBackingTables {
 		if ve.CreatedBackingTables[i].IsUnused() {
-			obsoleteFiles = append(obsoleteFiles, ve.CreatedBackingTables[i])
+			obsoleteFiles.AddBacking(ve.CreatedBackingTables[i])
 		}
 	}
-	for i := range obsoleteFiles {
+	for _, of := range obsoleteFiles.FileBackings {
 		// Add this file to zombie tables as well, as the versionSet
 		// asserts on whether every obsolete file was at one point
 		// marked zombie.
-		d.mu.versions.zombieTables[obsoleteFiles[i].DiskFileNum] = objectInfo{
+		d.mu.versions.zombieTables[of.DiskFileNum] = objectInfo{
 			fileInfo: fileInfo{
-				FileNum:  obsoleteFiles[i].DiskFileNum,
-				FileSize: obsoleteFiles[i].Size,
+				FileNum:  of.DiskFileNum,
+				FileSize: of.Size,
 			},
 			// TODO(bilal): This is harmless if it's wrong, as it only causes
 			// incorrect accounting for the size of it in metrics. Currently
@@ -2927,14 +2929,16 @@ func (d *DB) runCompaction(
 	}
 	if result.Err != nil {
 		// Delete any created tables.
-		obsoleteFiles := make([]*fileBacking, 0, len(result.Tables))
+		obsoleteFiles := manifest.ObsoleteFiles{
+			FileBackings: make([]*fileBacking, 0, len(result.Tables)),
+		}
 		d.mu.Lock()
 		for i := range result.Tables {
 			backing := &fileBacking{
 				DiskFileNum: result.Tables[i].ObjMeta.DiskFileNum,
 				Size:        result.Tables[i].WriterMeta.Size,
 			}
-			obsoleteFiles = append(obsoleteFiles, backing)
+			obsoleteFiles.AddBacking(backing)
 			// Add this file to zombie tables as well, as the versionSet
 			// asserts on whether every obsolete file was at one point
 			// marked zombie.

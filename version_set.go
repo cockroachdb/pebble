@@ -77,7 +77,7 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []*fileBacking)
+	obsoleteFn        func(manifest.ObsoleteFiles)
 	obsoleteTables    []objectInfo
 	obsoleteBlobs     []objectInfo
 	obsoleteManifests []fileInfo
@@ -651,10 +651,10 @@ func (vs *versionSet) logAndApply(
 	// Note that the only case where we report obsolete tables here is when
 	// VirtualBackings.Protect/Unprotect was used to keep a backing alive without
 	// it being used in the current version.
-	var obsoleteVirtualBackings []*fileBacking
+	var obsoleteVirtualBackings manifest.ObsoleteFiles
 	for _, b := range removedVirtualBackings {
 		if b.backing.Unref() == 0 {
-			obsoleteVirtualBackings = append(obsoleteVirtualBackings, b.backing)
+			obsoleteVirtualBackings.FileBackings = append(obsoleteVirtualBackings.FileBackings, b.backing)
 		}
 	}
 	vs.addObsoleteLocked(obsoleteVirtualBackings)
@@ -1033,13 +1033,13 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 // The file backings in the obsolete list must not appear more than once.
 //
 // DB.mu must be held when addObsoleteLocked is called.
-func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
-	if len(obsolete) == 0 {
+func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
+	if obsolete.Count() == 0 {
 		return
 	}
 
-	obsoleteFileInfo := make([]objectInfo, len(obsolete))
-	for i, bs := range obsolete {
+	obsoleteFileInfo := make([]objectInfo, len(obsolete.FileBackings))
+	for i, bs := range obsolete.FileBackings {
 		obsoleteFileInfo[i].FileNum = bs.DiskFileNum
 		obsoleteFileInfo[i].FileSize = bs.Size
 	}
@@ -1075,7 +1075,7 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 
 // addObsolete will acquire DB.mu, so DB.mu must not be held when this is
 // called.
-func (vs *versionSet) addObsolete(obsolete []*fileBacking) {
+func (vs *versionSet) addObsolete(obsolete manifest.ObsoleteFiles) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	vs.addObsoleteLocked(obsolete)
