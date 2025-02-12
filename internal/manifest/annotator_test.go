@@ -97,10 +97,10 @@ func TestNumFilesRangeAnnotationEmptyRanges(t *testing.T) {
 
 	// Delete files containing key ranges [0, 999] and [24_000, 25_999].
 	for i := 0; i < 100; i++ {
-		v.Levels[6].tree.Delete(files[i])
+		v.Levels[6].tree.Delete(files[i], ignoreObsoleteFiles{})
 	}
 	for i := 2400; i < 2600; i++ {
-		v.Levels[6].tree.Delete(files[i])
+		v.Levels[6].tree.Delete(files[i], ignoreObsoleteFiles{})
 	}
 
 	// Ranges that are completely empty.
@@ -147,7 +147,7 @@ func BenchmarkNumFilesRangeAnnotation(b *testing.B) {
 			// Randomly delete and reinsert a file to verify that range
 			// annotations are still fast despite small mutations.
 			toDelete := rng.IntN(count)
-			v.Levels[6].tree.Delete(files[toDelete])
+			v.Levels[6].tree.Delete(files[toDelete], ignoreObsoleteFiles{})
 
 			NumFilesAnnotator.LevelRangeAnnotation(v.Levels[6], b)
 
@@ -161,7 +161,7 @@ func BenchmarkNumFilesRangeAnnotation(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b := randomBounds(rng, count*11)
 			toDelete := rng.IntN(count)
-			v.Levels[6].tree.Delete(files[toDelete])
+			v.Levels[6].tree.Delete(files[toDelete], ignoreObsoleteFiles{})
 
 			overlaps := v.Overlaps(6, b)
 			iter := overlaps.Iter()

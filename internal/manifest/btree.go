@@ -129,25 +129,60 @@ func mut(n **node) *node {
 	// reference count to be greater than 1, we might be racing
 	// with another call to decRef on this node.
 	c := (*n).clone()
-	(*n).decRef(true /* contentsToo */, nil)
+	(*n).decRef(true /* contentsToo */, assertNoObsoleteFiles{})
 	*n = c
 	// NB: We don't need to clear annotations, because (*node).clone does not
 	// copy them.
 	return *n
 }
 
+// an obsoleteFiles accumulates files that now have zero references.
+type obsoleteFiles interface {
+	// AddBacking appends the provided FileBacking to the list of obsolete files.
+	AddBacking(*FileBacking)
+}
+
+// assertNoObsoleteFiles is an obsoleteFiles implementation that panics if its
+// methods are called.
+//
+// There are two sources of node dereferences: tree mutations and Version
+// dereferences. Files should only be made obsolete during Version dereferences,
+// during which this implementation will not be used (see Version.Unref).
+type assertNoObsoleteFiles struct{}
+
+// Assert that assertNoObsoleteFiles implements obsoleteFiles.
+var _ obsoleteFiles = assertNoObsoleteFiles{}
+
+// AddBacking appends the provided FileBacking to the list of obsolete files.
+func (assertNoObsoleteFiles) AddBacking(fb *FileBacking) {
+	panic(errors.AssertionFailedf("file backing %s dereferenced to zero during tree mutation", fb.DiskFileNum))
+}
+
+// ignoreObsoleteFiles is an obsoleteFiles implementation that ignores obsolete
+// files. It's used in some contexts where we construct ephemeral B-Trees which
+// do not need to track obsolete files and in tests.
+type ignoreObsoleteFiles struct{}
+
+// Assert that unrefBlindly implements obsoleteFiles.
+var _ obsoleteFiles = ignoreObsoleteFiles{}
+
+// AddBacking appends the provided FileBacking to the list of obsolete files.
+func (ignoreObsoleteFiles) AddBacking(fb *FileBacking) {}
+
 // incRef acquires a reference to the node.
 func (n *node) incRef() {
 	n.ref.Add(1)
 }
 
-// decRef releases a reference to the node. If requested, the method will unref
-// its items and recurse into child nodes and decrease their refcounts as well.
+// decRef releases a reference to the node. If requested, the method will call
+// the provided unref func on its items and recurse into child nodes and
+// decrease their refcounts as well.
+//
 // Some internal codepaths that manually copy the node's items or children to
 // new nodes pass contentsToo=false to preserve existing reference counts during
-// operations that should yield a net-zero change to descendant refcounts.
-// When a node is released, its contained files are dereferenced.
-func (n *node) decRef(contentsToo bool, obsolete *[]*FileBacking) {
+// operations that should yield a net-zero change to descendant refcounts. When
+// a node is released, its contained files are dereferenced.
+func (n *node) decRef(contentsToo bool, obsolete obsoleteFiles) {
 	if n.ref.Add(-1) > 0 {
 		// Other references remain. Can't free.
 		return
@@ -155,25 +190,12 @@ func (n *node) decRef(contentsToo bool, obsolete *[]*FileBacking) {
 
 	// Dereference the node's metadata and release child references if
 	// requested. Some internal callers may not want to propagate the deref
-	// because they're manually copying the filemetadata and children to other
+	// because they're manually copying the TableMetadata and children to other
 	// nodes, and they want to preserve the existing reference count.
 	if contentsToo {
 		for _, f := range n.items[:n.count] {
 			if f.FileBacking.Unref() == 0 {
-				// There are two sources of node dereferences: tree mutations
-				// and Version dereferences. Files should only be made obsolete
-				// during Version dereferences, during which `obsolete` will be
-				// non-nil.
-				if obsolete == nil {
-					panic(fmt.Sprintf("file metadata %s dereferenced to zero during tree mutation", f.FileNum))
-				}
-				// Reference counting is performed on the FileBacking. In the case
-				// of a virtual sstable, this reference counting is performed on
-				// a FileBacking which is shared by every single virtual sstable
-				// with the same backing sstable. If the reference count hits 0,
-				// then we know that the FileBacking won't be required by any
-				// sstable in Pebble, and that the backing sstable can be deleted.
-				*obsolete = append(*obsolete, f.FileBacking)
+				obsolete.AddBacking(f.FileBacking)
 			}
 		}
 		if !n.leaf {
@@ -613,7 +635,7 @@ func (n *node) rebalanceOrMerge(i int) {
 		child.count += mergeChild.count + 1
 		child.subtreeCount += mergeChild.subtreeCount + 1
 
-		mergeChild.decRef(false /* contentsToo */, nil)
+		mergeChild.decRef(false /* contentsToo */, assertNoObsoleteFiles{})
 	}
 }
 
@@ -647,14 +669,14 @@ type btree struct {
 }
 
 // Release dereferences and clears the root node of the btree, removing all
-// items from the btree. In doing so, it decrements contained file counts.
-// It returns a slice of newly obsolete backing files, if any.
-func (t *btree) Release() (obsolete []*FileBacking) {
+// items from the btree. In doing so, it unrefs files associated with the
+// tables. Any files that no longer have outstanding references are added to the
+// provided obsoleteFiles.
+func (t *btree) Release(of obsoleteFiles) {
 	if t.root != nil {
-		t.root.decRef(true /* contentsToo */, &obsolete)
+		t.root.decRef(true /* contentsToo */, of)
 		t.root = nil
 	}
-	return obsolete
 }
 
 // Clone clones the btree, lazily. It does so in constant time.
@@ -680,14 +702,17 @@ func (t *btree) Clone() btree {
 	return c
 }
 
-// Delete removes the provided file from the tree.
-// It returns true if the file now has a zero reference count.
-func (t *btree) Delete(item *TableMetadata) (obsolete bool) {
+// Delete removes the provided table from the tree, unrefing the table's files
+// if it's found. If any files are unreferenced to zero, they're added to the
+// provided obsoleteFiles.
+func (t *btree) Delete(item *TableMetadata, of obsoleteFiles) {
 	if t.root == nil || t.root.count == 0 {
-		return false
+		return
 	}
 	if out := mut(&t.root).Remove(t.bcmp, item); out != nil {
-		obsolete = out.FileBacking.Unref() == 0
+		if out.FileBacking.Unref() == 0 {
+			of.AddBacking(out.FileBacking)
+		}
 	}
 	if invariants.Enabled {
 		t.root.verifyInvariants()
@@ -699,9 +724,8 @@ func (t *btree) Delete(item *TableMetadata) (obsolete bool) {
 		} else {
 			t.root = t.root.children[0]
 		}
-		old.decRef(false /* contentsToo */, nil)
+		old.decRef(false /* contentsToo */, assertNoObsoleteFiles{})
 	}
-	return obsolete
 }
 
 // Insert adds the given item to the tree. If a item in the tree already

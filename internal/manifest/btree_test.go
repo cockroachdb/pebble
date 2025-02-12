@@ -230,8 +230,9 @@ func TestBTree(t *testing.T) {
 
 	// delete keys in sorted order.
 	for i := 0; i < count; i++ {
-		obsolete := tr.Delete(items[i])
-		if !obsolete {
+		var obsolete ObsoleteFiles
+		tr.Delete(items[i], &obsolete)
+		if len(obsolete.FileBackings) == 0 {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
 		tr.Verify(t)
@@ -253,8 +254,9 @@ func TestBTree(t *testing.T) {
 
 	// delete keys in reverse sorted order.
 	for i := 1; i <= count; i++ {
-		obsolete := tr.Delete(items[count-i])
-		if !obsolete {
+		var obsolete ObsoleteFiles
+		tr.Delete(items[count-i], &obsolete)
+		if len(obsolete.FileBackings) == 0 {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
 		tr.Verify(t)
@@ -468,7 +470,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			for _, item := range toRemove {
-				tree.Delete(item)
+				tree.Delete(item, ignoreObsoleteFiles{})
 			}
 			wg.Done()
 		}()
@@ -488,12 +490,12 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		}
 	}
 
-	var obsolete []*FileBacking
+	var obsoleteFiles ObsoleteFiles
 	for i := range trees {
-		obsolete = append(obsolete, trees[i].Release()...)
+		trees[i].Release(&obsoleteFiles)
 	}
-	if len(obsolete) != len(p) {
-		t.Errorf("got %d obsolete trees, expected %d", len(obsolete), len(p))
+	if len(obsoleteFiles.FileBackings) != len(p) {
+		t.Errorf("got %d obsolete trees, expected %d", len(obsoleteFiles.FileBackings), len(p))
 	}
 }
 
@@ -589,7 +591,7 @@ func TestRandomizedBTree(t *testing.T) {
 			// Delete
 			fn: func() {
 				f := &metadataAlloc[rng.IntN(maxFileNum)]
-				tree.Delete(f)
+				tree.Delete(f, ignoreObsoleteFiles{})
 				delete(ref, f.FileNum)
 			},
 			weight: 10,
@@ -714,7 +716,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 			}
 			b.StartTimer()
 			for _, item := range removeP {
-				tr.Delete(item)
+				tr.Delete(item, ignoreObsoleteFiles{})
 				i++
 				if i >= b.N {
 					return
@@ -741,7 +743,7 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
-			tr.Delete(item)
+			tr.Delete(item, ignoreObsoleteFiles{})
 			if err := tr.Insert(item); err != nil {
 				b.Fatal(err)
 			}
@@ -765,7 +767,7 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
-			tr.Delete(item)
+			tr.Delete(item, ignoreObsoleteFiles{})
 			if err := tr.Insert(item); err != nil {
 				b.Fatal(err)
 			}
@@ -792,11 +794,11 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					item := insertP[i%count]
 					if release {
-						trRelease.Release()
+						trRelease.Release(ignoreObsoleteFiles{})
 						trRelease = tr
 					}
 					tr = tr.Clone()
-					tr.Delete(item)
+					tr.Delete(item, ignoreObsoleteFiles{})
 					if err := tr.Insert(item); err != nil {
 						b.Fatal(err)
 					}

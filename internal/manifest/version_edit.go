@@ -1109,24 +1109,12 @@ func (b *BulkVersionEdit) Apply(
 		// level.
 
 		for _, f := range deletedTablesMap {
-			if obsolete := v.Levels[level].remove(f); obsolete {
-				// Deleting a file from the B-Tree may decrement its
-				// reference count. However, because we cloned the
-				// previous level's B-Tree, this should never result in a
-				// file's reference count dropping to zero.
-				err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during B-Tree removal", level, f.FileNum)
-				return nil, err
-			}
-			if f.HasRangeKeys {
-				if obsolete := v.RangeKeyLevels[level].remove(f); obsolete {
-					// Deleting a file from the B-Tree may decrement its
-					// reference count. However, because we cloned the
-					// previous level's B-Tree, this should never result in a
-					// file's reference count dropping to zero.
-					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
-					return nil, err
-				}
-			}
+			// Removing a table from the B-Tree may decrement file reference
+			// counts.  However, because we cloned the previous level's B-Tree,
+			// this should never result in a file's reference count dropping to
+			// zero. The remove call will panic if this happens.
+			v.Levels[level].remove(f)
+			v.RangeKeyLevels[level].remove(f)
 		}
 
 		addedTables := make([]*TableMetadata, 0, len(addedTablesMap))

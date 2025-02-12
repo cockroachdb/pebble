@@ -339,7 +339,7 @@ func NewL0Sublevels(
 	for _, sublevelFiles := range s.levelFiles {
 		tr, ls := makeBTree(cmp, btreeCmpSmallestKey(cmp), sublevelFiles)
 		s.Levels = append(s.Levels, ls)
-		tr.Release()
+		tr.Release(ignoreObsoleteFiles{})
 	}
 
 	s.calculateFlushSplitKeys(flushSplitMaxBytes)
@@ -638,7 +638,7 @@ func (s *L0Sublevels) AddL0Files(
 			// populated correctly.
 			newVal.Levels[sublevel] = ls
 		}
-		tr.Release()
+		tr.Release(ignoreObsoleteFiles{})
 	}
 
 	newVal.flushSplitUserKeys = nil
