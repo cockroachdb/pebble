@@ -276,26 +276,62 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			chunkEncoding := r.buf[r.end+6]
 
 			if int(chunkEncoding) >= len(headerFormatMappings) {
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrInvalidChunk
 			}
 			headerFormat := headerFormatMappings[chunkEncoding]
 			chunkPosition, wireFormat, headerSize := headerFormat.chunkPosition, headerFormat.wireFormat, headerFormat.headerSize
 
 			if checksum == 0 && length == 0 && chunkPosition == invalidChunkPosition {
+				// remaining bytes < 11
+				// The remaining bytes in the block is < 11 so regardless of which chunk format is
+				// being written (Recyclable or walSync), we should skip to the next block.
 				if r.end+recyclableHeaderSize > r.n {
 					// Skip the rest of the block if the recyclable header size does not
-					// fit within it.
+					// fit within it. The end of a block will be zeroed out if the log writer
+					// cannot fit another chunk into it, even a chunk with no payload like
+					// the EOF Trailer.
 					r.end = r.n
 					continue
 				}
+
+				// 11 <= remaining bytes < 19
+				// The remaining bytes in the block can fit a recyclable header but not a walSync
+				// header size. In this case, scan for the no-op sequence.
+				//
+				// If the no-op sequence is found, then the walSync format was being written but
+				// there was not enough space for another chunk; we should skip to the next block
+				// in the log.
+				//
+				// However, if the no-op sequence is not found, then the recyclable format was being
+				// written. Because there was enough space to write a recyclable header but a
+				// zeroed 6 bytes were found, ErrZeroedChunk should be returned.
+				if r.end+walSyncHeaderSize > r.n {
+					readingWALSyncFormat := true
+					for i := 0; i < noOpSequenceLength && readingWALSyncFormat; i++ {
+						if r.buf[r.end+7+i] != noOpByte {
+							readingWALSyncFormat = false
+						}
+					}
+					if readingWALSyncFormat {
+						r.end = r.n
+						continue
+					}
+				}
+
+				// The last case is when there was more than 19 bytes which means there shouldn't be
+				// a zeroed header. Thus, this case should also return ErrZeroedChunk.
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrZeroedChunk
 			}
 
 			if wireFormat == invalidWireFormat {
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrInvalidChunk
 			}
-			if wireFormat == recyclableWireFormat {
+			if wireFormat == recyclableWireFormat || wireFormat == walSyncWireFormat {
 				if r.end+headerSize > r.n {
+					r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 					return ErrInvalidChunk
 				}
 
@@ -308,6 +344,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					}
 					// Otherwise, treat this chunk as invalid in order to prevent reading
 					// of a partial record.
+					r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 					return ErrInvalidChunk
 				}
 			}
@@ -316,9 +353,11 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			r.end = r.begin + int(length)
 			if r.end > r.n {
 				// The chunk straddles a 32KB boundary (or the end of file).
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrInvalidChunk
 			}
 			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrInvalidChunk
 			}
 			if wantFirst {
@@ -334,6 +373,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				// This can happen if the previous instance of the log ended with a
 				// partial block at the same blockNum as the new log but extended
 				// beyond the partial block of the new log.
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrInvalidChunk
 			}
 			return io.EOF
@@ -341,6 +381,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		n, err := io.ReadFull(r.r, r.buf[:])
 		if err != nil && err != io.ErrUnexpectedEOF {
 			if err == io.EOF && !wantFirst {
+				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return io.ErrUnexpectedEOF
 			}
 			return err
@@ -360,11 +401,10 @@ func (r *Reader) Next() (io.Reader, error) {
 	}
 	r.begin = r.end
 	r.err = r.nextChunk(true)
-	// TODO(edward) usage of readAheadForCorruption; uncomment in follow PR
-	// if r.err == ErrInvalidChunk || r.err == ErrZeroedChunk {
-	// 	readAheadResult := r.readAheadForCorruption()
-	// 	return nil, readAheadResult
-	// }
+	if errors.Is(r.err, ErrInvalidChunk) || errors.Is(r.err, ErrZeroedChunk) {
+		readAheadResult := r.readAheadForCorruption()
+		return nil, readAheadResult
+	}
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -389,6 +429,9 @@ func (r *Reader) readAheadForCorruption() error {
 	for {
 		// Load the next block into r.buf.
 		n, err := io.ReadFull(r.r, r.buf[:])
+		r.begin, r.end, r.n = 0, 0, n
+		r.blockNum++
+
 		if errors.Is(err, io.EOF) {
 			// io.ErrUnexpectedEOF is returned instead of
 			// io.EOF because io library functions clear
@@ -411,9 +454,6 @@ func (r *Reader) readAheadForCorruption() error {
 			return err
 		}
 
-		r.begin, r.end, r.n = 0, 0, n
-		r.blockNum++
-
 		for r.end+legacyHeaderSize <= r.n {
 			checksum := binary.LittleEndian.Uint32(r.buf[r.end+0 : r.end+4])
 			length := binary.LittleEndian.Uint16(r.buf[r.end+4 : r.end+6])
@@ -431,7 +471,7 @@ func (r *Reader) readAheadForCorruption() error {
 				break
 			}
 			if wireFormat == recyclableWireFormat || wireFormat == walSyncWireFormat {
-				if r.begin+headerSize > r.n {
+				if r.end+headerSize > r.n {
 					break
 				}
 				logNum := binary.LittleEndian.Uint32(r.buf[r.end+7 : r.end+11])
@@ -533,15 +573,14 @@ func (x singleReader) Read(p []byte) (int, error) {
 		if r.last {
 			return 0, io.EOF
 		}
-		if r.err = r.nextChunk(false); r.err != nil {
+		r.err = r.nextChunk(false)
+		if errors.Is(r.err, ErrInvalidChunk) || errors.Is(r.err, ErrZeroedChunk) {
+			readAheadResult := r.readAheadForCorruption()
+			return 0, readAheadResult
+		}
+		if r.err != nil {
 			return 0, r.err
 		}
-		// TODO(edward) usage of readAheadForCorruption; uncomment in follow PR
-		// r.err = r.nextChunk(false)
-		// if r.err == ErrInvalidChunk || r.err == ErrZeroedChunk {
-		// 	readAheadResult := r.readAheadForCorruption()
-		// 	return 0, readAheadResult
-		// }
 	}
 	n := copy(p, r.buf[r.begin:r.end])
 	r.begin += n
