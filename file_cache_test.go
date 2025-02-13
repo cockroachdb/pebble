@@ -12,7 +12,6 @@ import (
 	"math/rand/v2"
 	"os"
 	"path"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,16 +78,13 @@ func (fs *fileCacheTestFS) validateAndCloseHandle(
 	t *testing.T, h *fileCacheHandle, f func(i, gotO, gotC int) error,
 ) {
 	if err := fs.validateOpenTables(f); err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
 	}
 	if err := h.Close(); err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
 	}
 	if err := fs.validateNoneStillOpen(); err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
 	}
 }
 
@@ -177,9 +173,7 @@ func newFileCacheTest(
 }
 
 func (t *fileCacheTest) cleanup() {
-	if err := t.fileCache.Unref(); err != nil {
-		t.Error(err)
-	}
+	t.fileCache.Unref()
 	t.blockCacheHandle.Close()
 	t.blockCache.Unref()
 }
@@ -630,7 +624,7 @@ func TestSharedTableConcurrent(t *testing.T) {
 
 func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 	const N = 2000
-	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
 	h, fs := fct.newTestHandle()
 
@@ -700,7 +694,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 		pinned0 = 7
 		pinned1 = 11
 	)
-	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
 	h, fs := fct.newTestHandle()
 
@@ -749,7 +743,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 		pinned0 = 7
 		pinned1 = 11
 	)
-	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, 16)
+	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, 10)
 	defer fct.cleanup()
 
 	h1, fs1 := fct.newTestHandle()
@@ -802,7 +796,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
 	h, fs := fct.newTestHandle()
 
@@ -826,7 +820,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		h.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -846,7 +840,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	// The magic 1.25 number isn't derived from formal modeling. It's just a guess. For
 	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumTables) = (10, 20, 100, 300),
 	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
-	// not evict any cache entries.
+	// not Evict any cache entries.
 	if ratio := fEvicted / fSafe; ratio < 1.25 {
 		t.Errorf("evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
 			fEvicted, fSafe, ratio)
@@ -866,7 +860,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, 16)
+	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, 10)
 	defer fct.cleanup()
 
 	h1, fs1 := fct.newTestHandle()
@@ -897,8 +891,8 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		h1.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
-		h2.evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h1.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h2.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
 	}
 
 	check := func(fs *fileCacheTestFS, h *fileCacheHandle) (float64, float64, float64) {
@@ -923,7 +917,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 	// The magic 1.25 number isn't derived from formal modeling. It's just a guess. For
 	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumTables) = (10, 20, 100, 300),
 	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
-	// not evict any cache entries.
+	// not Evict any cache entries.
 	if fEvicted, fSafe, ratio := check(fs1, h1); ratio < 1.25 {
 		t.Errorf(
 			"evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
@@ -940,7 +934,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 }
 
 func TestFileCacheIterLeak(t *testing.T) {
-	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
 	h, _ := fct.newTestHandle()
 
@@ -962,7 +956,7 @@ func TestFileCacheIterLeak(t *testing.T) {
 }
 
 func TestSharedFileCacheIterLeak(t *testing.T) {
-	fct := newFileCacheTest(t, 8<<20, 2*fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
 	defer fct.blockCacheHandle.Close()
@@ -992,23 +986,18 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 
 	fct.fileCache.Unref()
 
-	// Closing c3 should error out since c3 holds the last reference to the
+	// Closing c3 should panic since c3 holds the last reference to the
 	// FileCache, and when the FileCache closes, it will detect that there was a
 	// leaked iterator.
-	if err := h3.Close(); err == nil {
-		t.Fatalf("expected failure, but found success")
-	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
-		t.Fatalf("expected leaked iterators, but found %+v", err)
-	} else {
-		t.Log(err.Error())
-	}
-
+	require.Panics(t, func() {
+		h3.Close()
+	})
 	require.NoError(t, iters.Point().Close())
 }
 
 func TestFileCacheRetryAfterFailure(t *testing.T) {
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
-	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, runtime.GOMAXPROCS(0))
+	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
 	h, fs := fct.newTestHandle()
 
@@ -1048,7 +1037,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 	w.Write(buf)
 	require.NoError(t, w.Finish())
 
-	fcs := newFileCacheTest(t, 8<<20 /* 8 MB */, runtime.GOMAXPROCS(0), fileCacheTestCacheSize)
+	fcs := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fcs.cleanup()
 	opts := &Options{
 		Cache:     fcs.blockCache,
@@ -1149,15 +1138,15 @@ func TestFileCacheClockPro(t *testing.T) {
 			tables[key] = true
 		}
 
-		shard := fcs.fileCache.shards[0]
-		oldHits := shard.hits.Load()
+		oldHits := fcs.fileCache.c.Metrics().Hits
 		m := &tableMetadata{FileNum: base.FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		v := shard.findNode(context.Background(), m.FileBacking, h)
-		shard.unrefValue(v)
+		v, err := h.findOrCreate(context.Background(), m.FileBacking.DiskFileNum)
+		require.NoError(t, err)
+		v.Unref()
 
-		hit := shard.hits.Load() != oldHits
+		hit := fcs.fileCache.c.Metrics().Hits != oldHits
 		wantHit := fields[1][0] == 'h'
 		if hit != wantHit {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
@@ -1268,8 +1257,6 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions())
 	defer h.Close()
 
-	shard := fcs.fileCache.shards[0]
-
 	makeTable(1)
 
 	m := &tableMetadata{FileNum: 1}
@@ -1278,8 +1265,8 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v := shard.findNode(context.Background(), m.FileBacking, h)
-		shard.unrefValue(v)
+		v, _ := h.findOrCreate(context.Background(), m.FileBacking.DiskFileNum)
+		v.Unref()
 	}
 }
 

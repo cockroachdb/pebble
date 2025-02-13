@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/genericcache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -27,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
+	"github.com/cockroachdb/redact"
 )
 
 var emptyIter = &errorIter{err: nil}
@@ -101,6 +103,14 @@ type fileCacheHandle struct {
 	// track of leaked iterators on a per-db level.
 	iterCount         atomic.Int32
 	sstStatsCollector block.CategoryStatsCollector
+
+	// This struct is only populated in race builds.
+	raceMu struct {
+		sync.Mutex
+		// iters maps sstable.Iterator objects to the stack trace recorded at
+		// creation time.
+		iters map[any][]byte
+	}
 }
 
 // newHandle creates a handle for the FileCache which has its own options. Each
@@ -123,6 +133,9 @@ func (c *FileCache) newHandle(
 	}
 	t.readerOpts = readerOpts
 	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
+	if invariants.RaceEnabled {
+		t.raceMu.iters = make(map[any][]byte)
+	}
 	return t
 }
 
@@ -134,59 +147,96 @@ func (h *fileCacheHandle) Close() error {
 	// below in the case that there are leaked iterators.
 	var err error
 	if v := h.iterCount.Load(); v > 0 {
-		err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
-	}
-
-	// Release nodes here.
-	for _, shard := range h.fileCache.shards {
-		if shard != nil {
-			shard.removeDB(h)
+		if !invariants.RaceEnabled {
+			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
+		} else {
+			var buf bytes.Buffer
+			for _, stack := range h.raceMu.iters {
+				fmt.Fprintf(&buf, "%s\n", stack)
+			}
+			err = errors.Errorf("leaked iterators: %d\n%s", errors.Safe(v), buf.String())
 		}
 	}
-	err = firstError(err, h.fileCache.Unref())
+
+	// EvictAll would panic if there are still outstanding references.
+	if err == nil {
+		keys := h.fileCache.c.EvictAll(func(key fileCacheKey) bool {
+			return key.handle == h
+		})
+		// Evict any associated blocks in the cache.
+		for i := range keys {
+			h.blockCacheHandle.EvictFile(keys[i].fileNum)
+		}
+	}
+
+	h.fileCache.Unref()
 	// TODO(radu): we have to tolerate metrics() calls after close (see
 	// https://github.com/cockroachdb/cockroach/issues/140454).
 	// *h = fileCacheHandle{}
 	return err
 }
 
-func (h *fileCacheHandle) newIters(
-	ctx context.Context,
-	file *manifest.TableMetadata,
-	opts *IterOptions,
-	internalOpts internalIterOpts,
-	kinds iterKinds,
-) (iterSet, error) {
-	return h.fileCache.getShard(file.FileBacking.DiskFileNum).newIters(ctx, file, opts, internalOpts, h, kinds)
+// openFile is called when we insert a new entry in the file cache.
+func (h *fileCacheHandle) openFile(
+	ctx context.Context, fileNum base.DiskFileNum,
+) (*sstable.Reader, objstorage.ObjectMetadata, error) {
+	f, err := h.objProvider.OpenForReading(
+		ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{MustExist: true},
+	)
+	if err != nil {
+		return nil, objstorage.ObjectMetadata{}, err
+	}
+	o := h.readerOpts
+	o.CacheOpts = sstableinternal.CacheOptions{
+		CacheHandle: h.blockCacheHandle,
+		FileNum:     fileNum,
+	}
+	r, err := sstable.NewReader(ctx, f, o)
+	if err != nil {
+		return nil, objstorage.ObjectMetadata{}, err
+	}
+	objMeta, err := h.objProvider.Lookup(base.FileTypeTable, fileNum)
+	if err != nil {
+		r.Close()
+		return nil, objstorage.ObjectMetadata{}, err
+	}
+	return r, objMeta, nil
 }
 
-// getTableProperties returns the properties associated with the backing physical
-// table if the input metadata belongs to a virtual sstable.
-func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Properties, error) {
-	return h.fileCache.getShard(file.FileBacking.DiskFileNum).getTableProperties(file, h)
+// findOrCreate is a wrapper for h.fileCache.FindOrCreate.
+func (h *fileCacheHandle) findOrCreate(
+	ctx context.Context, fileNum base.DiskFileNum,
+) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
+	key := fileCacheKey{
+		handle:  h,
+		fileNum: fileNum,
+	}
+	return h.fileCache.c.FindOrCreate(ctx, key)
 }
 
-func (h *fileCacheHandle) evict(fileNum base.DiskFileNum) {
-	h.fileCache.getShard(fileNum).evict(fileNum, h, false)
+// Evict the given file from the file cache and the block cache.
+func (h *fileCacheHandle) Evict(fileNum base.DiskFileNum) {
+	h.fileCache.c.Evict(fileCacheKey{handle: h, fileNum: fileNum})
+	h.blockCacheHandle.EvictFile(fileNum)
 }
 
 func (h *fileCacheHandle) SSTStatsCollector() *block.CategoryStatsCollector {
 	return &h.sstStatsCollector
 }
 
+// Metrics returns metrics for the file cache. Note that the CacheMetrics track
+// the global cache which is shared between multiple handles (stores). The
+// FilterMetrics are per-handle.
 func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
-	var m CacheMetrics
-	for i := range h.fileCache.shards {
-		s := h.fileCache.shards[i]
-		s.mu.RLock()
-		m.Count += int64(len(s.mu.nodes))
-		s.mu.RUnlock()
-		m.Hits += s.hits.Load()
-		m.Misses += s.misses.Load()
+	m := h.fileCache.c.Metrics()
+	cm := CacheMetrics{
+		Hits:   m.Hits,
+		Misses: m.Misses,
+		Count:  m.Count,
+		Size:   m.Size + m.Count*int64(unsafe.Sizeof(sstable.Reader{})),
 	}
-	m.Size = m.Count * int64(unsafe.Sizeof(fileCacheNode{})+unsafe.Sizeof(fileCacheValue{})+unsafe.Sizeof(sstable.Reader{}))
-	f := h.readerOpts.FilterMetricsTracker.Load()
-	return m, f
+	fm := h.readerOpts.FilterMetricsTracker.Load()
+	return cm, fm
 }
 
 func (h *fileCacheHandle) estimateSize(
@@ -216,40 +266,34 @@ func createCommonReader(v *fileCacheValue, file *tableMetadata) sstable.CommonRe
 func (h *fileCacheHandle) withCommonReader(
 	meta *tableMetadata, fn func(sstable.CommonReader) error,
 ) error {
-	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(context.TODO(), meta.FileBacking, h)
-	defer s.unrefValue(v)
-	if v.err != nil {
-		return v.err
+	ref, err := h.findOrCreate(context.TODO(), meta.FileBacking.DiskFileNum)
+	if err != nil {
+		return err
 	}
-	return fn(createCommonReader(v, meta))
+	defer ref.Unref()
+	return fn(createCommonReader(ref.Value(), meta))
 }
 
 func (h *fileCacheHandle) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
-	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(context.TODO(), meta.FileBacking, h)
-	defer s.unrefValue(v)
-	if v.err != nil {
-		return v.err
+	ref, err := h.findOrCreate(context.TODO(), meta.FileBacking.DiskFileNum)
+	if err != nil {
+		return err
 	}
-	return fn(v.reader.(*sstable.Reader))
+	defer ref.Unref()
+	return fn(ref.Value().reader.(*sstable.Reader))
 }
 
 // withVirtualReader fetches a VirtualReader associated with a virtual sstable.
 func (h *fileCacheHandle) withVirtualReader(
 	meta virtualMeta, fn func(sstable.VirtualReader) error,
 ) error {
-	s := h.fileCache.getShard(meta.FileBacking.DiskFileNum)
-	v := s.findNode(context.TODO(), meta.FileBacking, h)
-	defer s.unrefValue(v)
-	if v.err != nil {
-		return v.err
-	}
-	objMeta, err := h.objProvider.Lookup(base.FileTypeTable, meta.FileBacking.DiskFileNum)
+	ref, err := h.findOrCreate(context.TODO(), meta.FileBacking.DiskFileNum)
 	if err != nil {
 		return err
 	}
-	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(objMeta.IsShared())))
+	defer ref.Unref()
+	v := ref.Value()
+	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(v.isShared)))
 }
 
 func (h *fileCacheHandle) IterCount() int64 {
@@ -261,7 +305,7 @@ func (h *fileCacheHandle) IterCount() int64 {
 type FileCache struct {
 	refs atomic.Int64
 
-	shards []*fileCacheShard
+	c genericcache.Cache[fileCacheKey, fileCacheValue]
 }
 
 // Ref adds a reference to the file cache. Once a file cache is constructed, the
@@ -276,24 +320,15 @@ func (c *FileCache) Ref() {
 }
 
 // Unref removes a reference to the file cache.
-func (c *FileCache) Unref() error {
+func (c *FileCache) Unref() {
 	v := c.refs.Add(-1)
 	switch {
 	case v < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
-		var err error
-		for i := range c.shards {
-			// The cache shard is not allocated yet, nothing to close.
-			if c.shards[i] == nil {
-				continue
-			}
-			err = firstError(err, c.shards[i].Close())
-		}
-
-		return err
+		c.c.Close()
+		c.c = genericcache.Cache[fileCacheKey, fileCacheValue]{}
 	}
-	return nil
 }
 
 // NewFileCache will create a new file cache with one outstanding reference. It
@@ -308,11 +343,40 @@ func NewFileCache(numShards int, size int) *FileCache {
 
 	c := &FileCache{}
 
-	c.shards = make([]*fileCacheShard, numShards)
-	for i := range c.shards {
-		c.shards[i] = &fileCacheShard{}
-		c.shards[i].init(size / len(c.shards))
+	// initFn is used whenever a new entry is added to the file cache.
+	initFn := func(ctx context.Context, key fileCacheKey, vRef genericcache.ValueRef[fileCacheKey, fileCacheValue]) error {
+		v := vRef.Value()
+		handle := key.handle
+		v.readerProvider.init(c, key)
+		v.closeHook = func(iterator any) {
+			if invariants.RaceEnabled {
+				handle.raceMu.Lock()
+				delete(handle.raceMu.iters, iterator)
+				handle.raceMu.Unlock()
+			}
+			// closeHook is called when an iterator is closed; the initialization of
+			// an iterator with this value will happen after a FindOrCreate() call
+			// with returns the same vRef.
+			vRef.Unref()
+			handle.iterCount.Add(-1)
+		}
+		reader, objMeta, err := handle.openFile(ctx, key.fileNum)
+		if err != nil {
+			return errors.Wrapf(err, "pebble: backing file %s error", redact.Safe(key.fileNum))
+		}
+		v.reader = reader
+		v.isShared = objMeta.IsShared()
+		return nil
 	}
+
+	releaseFn := func(v *fileCacheValue) {
+		if v.reader != nil {
+			_ = v.reader.Close()
+			v.reader = nil
+		}
+	}
+
+	c.c.Init(size, numShards, initFn, releaseFn)
 
 	// Hold a ref to the cache here.
 	c.refs.Store(1)
@@ -320,64 +384,15 @@ func NewFileCache(numShards int, size int) *FileCache {
 	return c
 }
 
-func (c *FileCache) getShard(fileNum base.DiskFileNum) *fileCacheShard {
-	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
-}
-
 type fileCacheKey struct {
 	handle  *fileCacheHandle
 	fileNum base.DiskFileNum
 }
 
-type fileCacheShard struct {
-	hits      atomic.Int64
-	misses    atomic.Int64
-	iterCount atomic.Int32
-
-	size int
-
-	mu struct {
-		sync.RWMutex
-		nodes map[fileCacheKey]*fileCacheNode
-
-		handHot  *fileCacheNode
-		handCold *fileCacheNode
-		handTest *fileCacheNode
-
-		coldTarget int
-		sizeHot    int
-		sizeCold   int
-		sizeTest   int
-
-		race struct {
-			// The iters map is only created and populated in race builds.
-			iters map[any][]byte
-		}
-	}
-	releasing       sync.WaitGroup
-	releasingCh     chan *fileCacheValue
-	releaseLoopExit sync.WaitGroup
-}
-
-func (c *fileCacheShard) init(size int) {
-	c.size = size
-
-	c.mu.nodes = make(map[fileCacheKey]*fileCacheNode)
-	c.mu.coldTarget = size
-	c.releasingCh = make(chan *fileCacheValue, 100)
-	c.releaseLoopExit.Add(1)
-	go c.releaseLoop()
-
-	if invariants.RaceEnabled {
-		c.mu.race.iters = make(map[any][]byte)
-	}
-}
-
-func (c *fileCacheShard) releaseLoop() {
-	defer c.releaseLoopExit.Done()
-	for v := range c.releasingCh {
-		v.release(c)
-	}
+// Shard implements the genericcache.Key interface.
+func (k fileCacheKey) Shard(numShards int) int {
+	// TODO(radu): maybe incorporate a handle ID.
+	return int(uint64(k.fileNum) % uint64(numShards))
 }
 
 // checkAndIntersectFilters checks the specific table and block property filters
@@ -405,41 +420,36 @@ func checkAndIntersectFilters(
 	return true, filterer, nil
 }
 
-func (c *fileCacheShard) newIters(
+func (h *fileCacheHandle) newIters(
 	ctx context.Context,
 	file *manifest.TableMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
-	handle *fileCacheHandle,
 	kinds iterKinds,
 ) (iterSet, error) {
 	// TODO(sumeer): constructing the Reader should also use a plumbed context,
 	// since parts of the sstable are read during the construction. The Reader
 	// should not remember that context since the Reader can be long-lived.
 
-	// Calling findNode gives us the responsibility of decrementing v's
-	// refCount. If opening the underlying table resulted in error, then we
-	// decrement this straight away. Otherwise, we pass that responsibility to
-	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(ctx, file.FileBacking, handle)
-	if v.err != nil {
-		defer c.unrefValue(v)
-		return iterSet{}, v.err
+	// Calling findOrCreate gives us the responsibility of Unref()ing vRef.
+	vRef, err := h.findOrCreate(ctx, file.FileBacking.DiskFileNum)
+	if err != nil {
+		return iterSet{}, err
 	}
 
+	v := vRef.Value()
 	r := v.mustSSTableReader()
 	// Note: This suffers an allocation for virtual sstables.
 	cr := createCommonReader(v, file)
 	var iters iterSet
-	var err error
 	if kinds.RangeKey() && file.HasRangeKeys {
 		iters.rangeKey, err = newRangeKeyIter(ctx, r, file, cr, opts.SpanIterOptions(), internalOpts)
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
-		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, handle, internalOpts)
+		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, h, internalOpts)
 	}
 	if kinds.Point() && err == nil {
-		iters.point, err = c.newPointIter(ctx, v, file, cr, opts, internalOpts, handle)
+		iters.point, err = h.newPointIter(ctx, v, file, cr, opts, internalOpts, h)
 	}
 	if err != nil {
 		// NB: There's a subtlety here: Because the point iterator is the last
@@ -448,13 +458,15 @@ func (c *fileCacheShard) newIters(
 		// If it were possible, we'd need to account for it to avoid double
 		// unref-ing here, once during CloseAll and once during `unrefValue`.
 		iters.CloseAll()
-		c.unrefValue(v)
+		vRef.Unref()
 		return iterSet{}, err
 	}
 	// Only point iterators ever require the reader stay pinned in the cache. If
 	// we're not returning a point iterator to the caller, we need to unref v.
+	//
+	// For point iterators, v.closeHook will be called which will release the ref.
 	if iters.point == nil {
-		c.unrefValue(v)
+		vRef.Unref()
 	}
 	return iters, nil
 }
@@ -466,7 +478,7 @@ const filterBlockSizeLimitForFlushableIngests = 64 * 1024
 // newPointIter is an internal helper that constructs a point iterator over a
 // sstable. This function is for internal use only, and callers should use
 // newIters instead.
-func (c *fileCacheShard) newPointIter(
+func (h *fileCacheHandle) newPointIter(
 	ctx context.Context,
 	v *fileCacheValue,
 	file *manifest.TableMetadata,
@@ -563,12 +575,12 @@ func (c *fileCacheShard) newPointIter(
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
-	c.iterCount.Add(1)
 	handle.iterCount.Add(1)
 	if invariants.RaceEnabled {
-		c.mu.Lock()
-		c.mu.race.iters[iter] = debug.Stack()
-		c.mu.Unlock()
+		stack := debug.Stack()
+		h.raceMu.Lock()
+		h.raceMu.iters[iter] = stack
+		h.raceMu.Unlock()
 	}
 	return iter, nil
 }
@@ -634,15 +646,13 @@ func newRangeKeyIter(
 // tableCacheShardReaderProvider implements sstable.ReaderProvider for a
 // specific table.
 type tableCacheShardReaderProvider struct {
-	c              *fileCacheShard
-	handle         *fileCacheHandle
-	backingFileNum base.DiskFileNum
+	c   *genericcache.Cache[fileCacheKey, fileCacheValue]
+	key fileCacheKey
 
 	mu struct {
 		sync.Mutex
-		// v is the result of findNode. Whenever it is not null, we hold a refcount
-		// on the fileCacheValue.
-		v *fileCacheValue
+		// r is the result of c.FindOrCreate(), only set iff refCount > 0.
+		r genericcache.ValueRef[fileCacheKey, fileCacheValue]
 		// refCount is the number of GetReader() calls that have not received a
 		// corresponding Close().
 		refCount int
@@ -651,13 +661,10 @@ type tableCacheShardReaderProvider struct {
 
 var _ valblk.ReaderProvider = &tableCacheShardReaderProvider{}
 
-func (rp *tableCacheShardReaderProvider) init(
-	c *fileCacheShard, handle *fileCacheHandle, backingFileNum base.DiskFileNum,
-) {
-	rp.c = c
-	rp.handle = handle
-	rp.backingFileNum = backingFileNum
-	rp.mu.v = nil
+func (rp *tableCacheShardReaderProvider) init(fc *FileCache, key fileCacheKey) {
+	rp.c = &fc.c
+	rp.key = key
+	rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue]{}
 	rp.mu.refCount = 0
 }
 
@@ -681,24 +688,24 @@ func (rp *tableCacheShardReaderProvider) GetReader(
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 
-	if rp.mu.v != nil {
+	if rp.mu.refCount > 0 {
+		// We already have a value.
 		rp.mu.refCount++
-		return rp.mu.v.mustSSTableReader(), nil
+		return rp.mu.r.Value().mustSSTableReader(), nil
 	}
 
-	// Calling findNodeInternal gives us the responsibility of decrementing v's
-	// refCount. Note that if the table is no longer in the cache,
-	// findNodeInternal will need to do IO to initialize a new Reader. We hold
-	// rp.mu during this time so that concurrent GetReader calls block until the
-	// Reader is created.
-	v := rp.c.findNodeInternal(ctx, rp.backingFileNum, rp.handle)
-	if v.err != nil {
-		defer rp.c.unrefValue(v)
-		return nil, v.err
+	// Calling FindOrCreate gives us the responsibility of Unref()ing r, which
+	// will happen when rp.mu.refCount reaches 0. Note that if the table is no
+	// longer in the cache, FindOrCreate will need to do IO (through initFn in
+	// NewFileCache) to initialize a new Reader. We hold rp.mu during this time so
+	// that concurrent GetReader calls block until the Reader is created.
+	r, err := rp.c.FindOrCreate(ctx, rp.key)
+	if err != nil {
+		return nil, err
 	}
-	rp.mu.v = v
+	rp.mu.r = r
 	rp.mu.refCount = 1
-	return v.mustSSTableReader(), nil
+	return r.Value().mustSSTableReader(), nil
 }
 
 // Close implements sstable.ReaderProvider.
@@ -710,416 +717,28 @@ func (rp *tableCacheShardReaderProvider) Close() {
 		if rp.mu.refCount < 0 {
 			panic("pebble: sstable.ReaderProvider misuse")
 		}
-		rp.c.unrefValue(rp.mu.v)
-		rp.mu.v = nil
+		rp.mu.r.Unref()
+		rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue]{}
 	}
 }
 
-// getTableProperties return sst table properties for target file.
-func (c *fileCacheShard) getTableProperties(
-	file *tableMetadata, handle *fileCacheHandle,
-) (*sstable.Properties, error) {
-	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(context.TODO(), file.FileBacking, handle)
-	defer c.unrefValue(v)
-
-	if v.err != nil {
-		return nil, v.err
-	}
-	r := v.mustSSTableReader()
-	return &r.Properties, nil
-}
-
-// releaseNode releases a node from the fileCacheShard.
-//
-// c.mu must be held when calling this.
-func (c *fileCacheShard) releaseNode(n *fileCacheNode) {
-	c.unlinkNode(n)
-	c.clearNode(n)
-}
-
-// unlinkNode removes a node from the fileCacheShard, leaving the shard
-// reference in place.
-//
-// c.mu must be held when calling this.
-func (c *fileCacheShard) unlinkNode(n *fileCacheNode) {
-	key := fileCacheKey{n.handle, n.fileNum}
-	delete(c.mu.nodes, key)
-
-	switch n.ptype {
-	case fileCacheNodeHot:
-		c.mu.sizeHot--
-	case fileCacheNodeCold:
-		c.mu.sizeCold--
-	case fileCacheNodeTest:
-		c.mu.sizeTest--
-	}
-
-	if n == c.mu.handHot {
-		c.mu.handHot = c.mu.handHot.prev()
-	}
-	if n == c.mu.handCold {
-		c.mu.handCold = c.mu.handCold.prev()
-	}
-	if n == c.mu.handTest {
-		c.mu.handTest = c.mu.handTest.prev()
-	}
-
-	if n.unlink() == n {
-		// This was the last entry in the cache.
-		c.mu.handHot = nil
-		c.mu.handCold = nil
-		c.mu.handTest = nil
-	}
-
-	n.links.prev = nil
-	n.links.next = nil
-}
-
-func (c *fileCacheShard) clearNode(n *fileCacheNode) {
-	if v := n.value; v != nil {
-		n.value = nil
-		c.unrefValue(v)
-	}
-}
-
-// unrefValue decrements the reference count for the specified value, releasing
-// it if the reference count fell to 0. Note that the value has a reference if
-// it is present in fileCacheShard.mu.nodes, so a reference count of 0 means the
-// node has already been removed from that map.
-func (c *fileCacheShard) unrefValue(v *fileCacheValue) {
-	if v.refCount.Add(-1) == 0 {
-		c.releasing.Add(1)
-		c.releasingCh <- v
-	}
-}
-
-// findNode returns the node for the table with the given file number, creating
-// that node if it didn't already exist. The caller is responsible for
-// decrementing the returned node's refCount.
-func (c *fileCacheShard) findNode(
-	ctx context.Context, b *fileBacking, handle *fileCacheHandle,
-) *fileCacheValue {
-	// The backing must have a positive refcount (otherwise it could be deleted
-	// at any time).
-	b.MustHaveRefs()
-	// Caution! Here b can be a physical or virtual sstable, or a blob file.
-	// File cache sstable readers are associated with the physical backings. All
-	// virtual tables with the same backing will use the same reader from the
-	// cache; so no information that can differ among these virtual tables can
-	// be passed to findNodeInternal.
-	backingFileNum := b.DiskFileNum
-
-	return c.findNodeInternal(ctx, backingFileNum, handle)
-}
-
-func (c *fileCacheShard) findNodeInternal(
-	ctx context.Context, backingFileNum base.DiskFileNum, handle *fileCacheHandle,
-) *fileCacheValue {
-	// Fast-path for a hit in the cache.
-	c.mu.RLock()
-	key := fileCacheKey{handle, backingFileNum}
-	if n := c.mu.nodes[key]; n != nil && n.value != nil {
-		// Fast-path hit.
-		//
-		// The caller is responsible for decrementing the refCount.
-		v := n.value
-		v.refCount.Add(1)
-		c.mu.RUnlock()
-		n.referenced.Store(true)
-		c.hits.Add(1)
-		<-v.loaded
-		return v
-	}
-	c.mu.RUnlock()
-
-	c.mu.Lock()
-
-	n := c.mu.nodes[key]
-	switch {
-	case n == nil:
-		// Slow-path miss of a non-existent node.
-		n = &fileCacheNode{
-			fileNum: backingFileNum,
-			ptype:   fileCacheNodeCold,
-			handle:  handle,
-		}
-		c.addNode(n)
-		c.mu.sizeCold++
-
-	case n.value != nil:
-		// Slow-path hit of a hot or cold node.
-		//
-		// The caller is responsible for decrementing the refCount.
-		v := n.value
-		v.refCount.Add(1)
-		n.referenced.Store(true)
-		c.hits.Add(1)
-		c.mu.Unlock()
-		<-v.loaded
-		return v
-
-	default:
-		// Slow-path miss of a test node.
-		c.unlinkNode(n)
-		c.mu.coldTarget++
-		if c.mu.coldTarget > c.size {
-			c.mu.coldTarget = c.size
-		}
-
-		n.referenced.Store(false)
-		n.ptype = fileCacheNodeHot
-		n.handle = handle
-		c.addNode(n)
-		c.mu.sizeHot++
-	}
-
-	c.misses.Add(1)
-
-	v := &fileCacheValue{
-		loaded: make(chan struct{}),
-	}
-	v.readerProvider.init(c, handle, backingFileNum)
-	v.refCount.Store(2)
-	// Cache the closure invoked when an iterator is closed. This avoids an
-	// allocation on every call to newIters.
-	v.closeHook = func(i any) {
-		if invariants.RaceEnabled {
-			c.mu.Lock()
-			delete(c.mu.race.iters, i)
-			c.mu.Unlock()
-		}
-		c.unrefValue(v)
-		c.iterCount.Add(-1)
-		handle.iterCount.Add(-1)
-	}
-	n.value = v
-
-	c.mu.Unlock()
-
-	// Note adding to the cache lists must complete before we begin loading the
-	// table as a failure during load will result in the node being unlinked.
-	v.load(ctx, backingFileNum, c, handle)
-	return v
-}
-
-func (c *fileCacheShard) addNode(n *fileCacheNode) {
-	c.evictNodes()
-	key := fileCacheKey{n.handle, n.fileNum}
-	c.mu.nodes[key] = n
-
-	n.links.next = n
-	n.links.prev = n
-	if c.mu.handHot == nil {
-		// First element.
-		c.mu.handHot = n
-		c.mu.handCold = n
-		c.mu.handTest = n
-	} else {
-		c.mu.handHot.link(n)
-	}
-
-	if c.mu.handCold == c.mu.handHot {
-		c.mu.handCold = c.mu.handCold.prev()
-	}
-}
-
-func (c *fileCacheShard) evictNodes() {
-	for c.size <= c.mu.sizeHot+c.mu.sizeCold && c.mu.handCold != nil {
-		c.runHandCold()
-	}
-}
-
-func (c *fileCacheShard) runHandCold() {
-	n := c.mu.handCold
-	if n.ptype == fileCacheNodeCold {
-		if n.referenced.Load() {
-			n.referenced.Store(false)
-			n.ptype = fileCacheNodeHot
-			c.mu.sizeCold--
-			c.mu.sizeHot++
-		} else {
-			c.clearNode(n)
-			n.ptype = fileCacheNodeTest
-			c.mu.sizeCold--
-			c.mu.sizeTest++
-			for c.size < c.mu.sizeTest && c.mu.handTest != nil {
-				c.runHandTest()
-			}
-		}
-	}
-
-	c.mu.handCold = c.mu.handCold.next()
-
-	for c.size-c.mu.coldTarget <= c.mu.sizeHot && c.mu.handHot != nil {
-		c.runHandHot()
-	}
-}
-
-func (c *fileCacheShard) runHandHot() {
-	if c.mu.handHot == c.mu.handTest && c.mu.handTest != nil {
-		c.runHandTest()
-		if c.mu.handHot == nil {
-			return
-		}
-	}
-
-	n := c.mu.handHot
-	if n.ptype == fileCacheNodeHot {
-		if n.referenced.Load() {
-			n.referenced.Store(false)
-		} else {
-			n.ptype = fileCacheNodeCold
-			c.mu.sizeHot--
-			c.mu.sizeCold++
-		}
-	}
-
-	c.mu.handHot = c.mu.handHot.next()
-}
-
-func (c *fileCacheShard) runHandTest() {
-	if c.mu.sizeCold > 0 && c.mu.handTest == c.mu.handCold && c.mu.handCold != nil {
-		c.runHandCold()
-		if c.mu.handTest == nil {
-			return
-		}
-	}
-
-	n := c.mu.handTest
-	if n.ptype == fileCacheNodeTest {
-		c.mu.coldTarget--
-		if c.mu.coldTarget < 0 {
-			c.mu.coldTarget = 0
-		}
-		c.unlinkNode(n)
-		c.clearNode(n)
-	}
-
-	c.mu.handTest = c.mu.handTest.next()
-}
-
-func (c *fileCacheShard) evict(fileNum base.DiskFileNum, handle *fileCacheHandle, allowLeak bool) {
-	c.mu.Lock()
-	key := fileCacheKey{handle, fileNum}
-	n := c.mu.nodes[key]
-	var v *fileCacheValue
-	if n != nil {
-		// NB: This is equivalent to fileCacheShard.releaseNode(), but we
-		// perform the fileCacheShard.release() call synchronously below to
-		// ensure the sstable file descriptor is closed before returning. Note
-		// that fileCacheShard.releasing needs to be incremented while holding
-		// fileCacheShard.mu in order to avoid a race with Close()
-		c.unlinkNode(n)
-		v = n.value
-		if v != nil {
-			if !allowLeak {
-				if t := v.refCount.Add(-1); t != 0 {
-					handle.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
-				}
-			}
-			c.releasing.Add(1)
-		}
-	}
-
-	c.mu.Unlock()
-
-	if v != nil {
-		v.release(c)
-	}
-
-	handle.blockCacheHandle.EvictFile(fileNum)
-}
-
-// removeDB evicts any nodes associated with handle. Make sure that there will
-// be no more accesses to files associated with the handle.
-func (c *fileCacheShard) removeDB(handle *fileCacheHandle) {
-	var fileNums []base.DiskFileNum
-
-	c.mu.RLock()
-	// Collect the fileNums which need to be cleaned.
-	var firstNode *fileCacheNode
-	node := c.mu.handHot
-	for node != firstNode {
-		if firstNode == nil {
-			firstNode = node
-		}
-
-		if node.handle == handle {
-			fileNums = append(fileNums, node.fileNum)
-		}
-		node = node.next()
-	}
-	c.mu.RUnlock()
-
-	// Evict all the nodes associated with the DB.
-	// This should synchronously close all the files
-	// associated with the DB.
-	for _, fileNum := range fileNums {
-		c.evict(fileNum, handle, true)
-	}
-}
-
-func (c *fileCacheShard) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Check for leaked iterators. Note that we'll still perform cleanup below in
-	// the case that there are leaked iterators.
-	var err error
-	if v := c.iterCount.Load(); v > 0 {
-		if !invariants.RaceEnabled {
-			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
-		} else {
-			var buf bytes.Buffer
-			for _, stack := range c.mu.race.iters {
-				fmt.Fprintf(&buf, "%s\n", stack)
-			}
-			err = errors.Errorf("leaked iterators: %d\n%s", errors.Safe(v), buf.String())
-		}
-	}
-
-	for c.mu.handHot != nil {
-		n := c.mu.handHot
-		if n.value != nil {
-			if n.value.refCount.Add(-1) == 0 {
-				c.releasing.Add(1)
-				c.releasingCh <- n.value
-			}
-		}
-		c.unlinkNode(n)
-	}
-	c.mu.nodes = nil
-	c.mu.handHot = nil
-	c.mu.handCold = nil
-	c.mu.handTest = nil
-
-	// Only shutdown the releasing goroutine if there were no leaked
-	// iterators. If there were leaked iterators, we leave the goroutine running
-	// and the releasingCh open so that a subsequent iterator close can
-	// complete. This behavior is used by iterator leak tests. Leaking the
-	// goroutine for these tests is less bad not closing the iterator which
-	// triggers other warnings about block cache handles not being released.
+// getTableProperties returns sst table properties for target file.
+func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Properties, error) {
+	// Calling findOrCreate gives us the responsibility of decrementing v's refCount here
+	v, err := h.findOrCreate(context.TODO(), file.FileBacking.DiskFileNum)
 	if err != nil {
-		c.releasing.Wait()
-		return err
+		return nil, err
 	}
+	defer v.Unref()
 
-	close(c.releasingCh)
-	c.releasing.Wait()
-	c.releaseLoopExit.Wait()
-	return err
+	r := v.Value().mustSSTableReader()
+	return &r.Properties, nil
 }
 
 type fileCacheValue struct {
 	closeHook func(i any)
 	reader    io.Closer // *sstable.Reader
-	err       error
-	loaded    chan struct{}
-	// Reference count for the value. The reader is closed when the reference
-	// count drops to zero.
-	refCount atomic.Int32
-	isShared bool
+	isShared  bool
 
 	// readerProvider is embedded here so that we only allocate it once as long as
 	// the table stays in the cache. Its state is not always logically tied to
@@ -1133,125 +752,6 @@ type fileCacheValue struct {
 // file is not a sstable (i.e., it is a blob file).
 func (v *fileCacheValue) mustSSTableReader() *sstable.Reader {
 	return v.reader.(*sstable.Reader)
-}
-
-func (v *fileCacheValue) load(
-	ctx context.Context, backingFileNum base.DiskFileNum, c *fileCacheShard, handle *fileCacheHandle,
-) {
-	// Try opening the file first.
-	var f objstorage.Readable
-	var r *sstable.Reader
-	var err error
-	f, err = handle.objProvider.OpenForReading(
-		ctx, base.FileTypeTable, backingFileNum, objstorage.OpenOptions{MustExist: true},
-	)
-	if err == nil {
-		o := handle.readerOpts
-		o.CacheOpts = sstableinternal.CacheOptions{
-			CacheHandle: handle.blockCacheHandle,
-			FileNum:     backingFileNum,
-		}
-		r, err = sstable.NewReader(ctx, f, o)
-	}
-	if err == nil {
-		v.reader = r
-		var objMeta objstorage.ObjectMetadata
-		objMeta, err = handle.objProvider.Lookup(base.FileTypeTable, backingFileNum)
-		v.isShared = objMeta.IsShared()
-	}
-	if err != nil {
-		v.err = errors.Wrapf(
-			err, "pebble: backing file %s error", backingFileNum)
-	}
-	if v.err != nil {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		// Lookup the node in the cache again as it might have already been
-		// removed.
-		key := fileCacheKey{handle, backingFileNum}
-		n := c.mu.nodes[key]
-		if n != nil && n.value == v {
-			c.releaseNode(n)
-		}
-	}
-	close(v.loaded)
-}
-
-func (v *fileCacheValue) release(c *fileCacheShard) {
-	<-v.loaded
-	// Nothing to be done about an error at this point. Close the reader if it is
-	// open.
-	if v.reader != nil {
-		_ = v.reader.Close()
-	}
-	c.releasing.Done()
-}
-
-type fileCacheNodeType int8
-
-const (
-	fileCacheNodeTest fileCacheNodeType = iota
-	fileCacheNodeCold
-	fileCacheNodeHot
-)
-
-func (p fileCacheNodeType) String() string {
-	switch p {
-	case fileCacheNodeTest:
-		return "test"
-	case fileCacheNodeCold:
-		return "cold"
-	case fileCacheNodeHot:
-		return "hot"
-	}
-	return "unknown"
-}
-
-type fileCacheNode struct {
-	fileNum base.DiskFileNum
-	value   *fileCacheValue
-
-	links struct {
-		next *fileCacheNode
-		prev *fileCacheNode
-	}
-	ptype fileCacheNodeType
-	// referenced is atomically set to indicate that this entry has been accessed
-	// since the last time one of the clock hands swept it.
-	referenced atomic.Bool
-
-	// A fileCacheNode is associated with a specific fileCacheHandle.
-	handle *fileCacheHandle
-}
-
-func (n *fileCacheNode) next() *fileCacheNode {
-	if n == nil {
-		return nil
-	}
-	return n.links.next
-}
-
-func (n *fileCacheNode) prev() *fileCacheNode {
-	if n == nil {
-		return nil
-	}
-	return n.links.prev
-}
-
-func (n *fileCacheNode) link(s *fileCacheNode) {
-	s.links.prev = n.links.prev
-	s.links.prev.links.next = s
-	s.links.next = n
-	s.links.next.links.prev = s
-}
-
-func (n *fileCacheNode) unlink() *fileCacheNode {
-	next := n.links.next
-	n.links.prev.links.next = n.links.next
-	n.links.next.links.prev = n.links.prev
-	n.links.prev = n
-	n.links.next = n
-	return next
 }
 
 // iterSet holds a set of iterators of various key kinds, all constructed over

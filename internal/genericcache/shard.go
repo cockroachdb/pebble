@@ -60,7 +60,7 @@ func (s *shard[K, V]) releaseLoop() {
 	defer s.releaseLoopExit.Done()
 	for v := range s.releasingCh {
 		<-v.initialized
-		if v.err != nil {
+		if v.err == nil {
 			s.releaseValueFn(&v.v)
 		}
 	}
@@ -322,7 +322,7 @@ func (s *shard[K, V]) Evict(key K) {
 			panic("element has outstanding references")
 		}
 		<-v.initialized
-		if v.err != nil {
+		if v.err == nil {
 			s.releaseValueFn(&v.v)
 		}
 	}
