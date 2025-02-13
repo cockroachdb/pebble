@@ -799,6 +799,8 @@ func (r *Reader) TableFormat() (TableFormat, error) {
 //
 // The context is used for tracing any operations performed by NewReader; it is
 // NOT stored for future use.
+//
+// In error cases, the Readable is closed.
 func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	if f == nil {
 		return nil, errors.New("pebble/table: nil file")

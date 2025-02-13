@@ -537,7 +537,7 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	for _, f := range obsoleteTables {
-		d.fileCache.evict(f.FileNum)
+		d.fileCache.Evict(f.FileNum)
 		filesToDelete = append(filesToDelete, obsoleteFile{
 			fileType: base.FileTypeTable,
 			nonLogFile: deletableFile{
@@ -549,7 +549,7 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 		})
 	}
 	for _, f := range obsoleteBlobs {
-		d.fileCache.evict(f.FileNum)
+		d.fileCache.Evict(f.FileNum)
 		filesToDelete = append(filesToDelete, obsoleteFile{
 			fileType: base.FileTypeBlob,
 			nonLogFile: deletableFile{

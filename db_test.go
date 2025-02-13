@@ -695,8 +695,10 @@ func TestIterLeak(t *testing.T) {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
+					fc := NewFileCache(10, 100)
 					d, err := Open("", testingRandomized(t, &Options{
-						FS: vfs.NewMem(),
+						FS:        vfs.NewMem(),
+						FileCache: fc,
 					}))
 					require.NoError(t, err)
 
@@ -710,7 +712,6 @@ func TestIterLeak(t *testing.T) {
 						require.NoError(t, iter.Close())
 						require.NoError(t, d.Close())
 					} else {
-						defer iter.Close()
 						if err := d.Close(); err == nil {
 							t.Fatalf("expected failure, but found success")
 						} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
@@ -718,7 +719,9 @@ func TestIterLeak(t *testing.T) {
 						} else {
 							t.Log(err.Error())
 						}
+						iter.Close()
 					}
+					fc.Unref()
 				})
 			}
 		})
@@ -732,13 +735,16 @@ func TestIterLeakSharedCache(t *testing.T) {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
+					fc := NewFileCache(10, 100)
 					d1, err := Open("", &Options{
-						FS: vfs.NewMem(),
+						FS:        vfs.NewMem(),
+						FileCache: fc,
 					})
 					require.NoError(t, err)
 
 					d2, err := Open("", &Options{
-						FS: vfs.NewMem(),
+						FS:        vfs.NewMem(),
+						FileCache: fc,
 					})
 					require.NoError(t, err)
 
@@ -789,6 +795,22 @@ func TestIterLeakSharedCache(t *testing.T) {
 						}
 					}
 
+					if !leak {
+						fc.Unref()
+					} else if flush {
+						require.Panics(t, func() {
+							fc.Unref()
+						})
+					} else {
+						// When we're not flushing and we leak an iterator, Unref might or
+						// might not panic, depending on whether there was a file involved.
+						func() {
+							defer func() {
+								recover()
+							}()
+							fc.Unref()
+						}()
+					}
 				})
 			}
 		})
