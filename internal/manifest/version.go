@@ -238,6 +238,17 @@ type TableMetadata struct {
 	// referenced by this sstable.
 	BlobReferences []BlobReference
 
+	// refs is the reference count for the table, used to determine when a table
+	// is obsolete. When a table's reference count falls to zero, the table is
+	// considered obsolete and the table's references on its backing file is
+	// released.
+	//
+	// The reference count is the number of versions with non-zero reference
+	// counts that contain this table. The tables in each version are maintained
+	// in a copy-on-write B-tree and each B-tree node keeps a reference on the
+	// contained tables.
+	refs atomic.Int32
+
 	// Stats describe table statistics. Protected by DB.mu.
 	//
 	// For virtual sstables, set stats upon virtual sstable creation as
@@ -299,6 +310,30 @@ type TableMetadata struct {
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
+}
+
+// Ref increments the table's ref count. If this is the table's first reference,
+// Ref will increment the reference of the table's FileBacking.
+func (m *TableMetadata) Ref() {
+	if v := m.refs.Add(1); v == 1 {
+		m.FileBacking.Ref()
+	}
+}
+
+// Unref decrements the table's reference count. If the count reaches zero, the
+// table releases its references on associated files. If any referenced files
+// become obsolete, they're inserted into the provided ObsoleteFiles.
+func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
+	v := m.refs.Add(-1)
+	if invariants.Enabled && v < 0 {
+		panic(errors.AssertionFailedf("pebble: invalid TableMetadata refcounting for table %s", m.FileNum))
+	}
+	// When the reference count reaches zero, unref the file backing.
+	if v == 0 {
+		if m.FileBacking.Unref() == 0 {
+			obsoleteFiles.AddBacking(m.FileBacking)
+		}
+	}
 }
 
 // InternalKeyBounds returns the set of overall table bounds.
@@ -479,7 +514,7 @@ func (b *FileBacking) IsUnused() bool {
 func (b *FileBacking) Unref() int32 {
 	v := b.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
-		panic("pebble: invalid FileBacking refcounting")
+		panic(errors.AssertionFailedf("pebble: invalid FileBacking refcounting: file %s has refcount %d", b.DiskFileNum, v))
 	}
 	return v
 }
@@ -1349,7 +1384,7 @@ func (of *ObsoleteFiles) Count() int {
 }
 
 // Assert that ObsoleteFiles implements the obsoleteFiles interface.
-var _ obsoleteFiles = (*ObsoleteFiles)(nil)
+var _ ObsoleteFilesSet = (*ObsoleteFiles)(nil)
 
 // Next returns the next version in the list of versions.
 func (v *Version) Next() *Version {
