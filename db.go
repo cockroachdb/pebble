@@ -2191,7 +2191,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	defer readState.unref()
 
 	// TODO(peter): This is somewhat expensive, especially on a large
-	// database. It might be worthwhile to unify TableInfo and FileMetadata and
+	// database. It might be worthwhile to unify TableInfo and TableMetadata and
 	// then we could simply return current.Files. Note that RocksDB is doing
 	// something similar to the current code, so perhaps it isn't too bad.
 	srcLevels := readState.current.Levels

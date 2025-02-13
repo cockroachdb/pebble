@@ -230,7 +230,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			// warrant it.
 			//
 			// TODO(bilal): Explore adding a simpleRangeKeyLevelIter that does not
-			// operate on FileMetadatas (similar to simpleLevelIter), and implements
+			// operate on TableMetadatas (similar to simpleLevelIter), and implements
 			// this optimization.
 			// We set a synthetic sequence number, with lower levels having higer numbers.
 			seqNum := 0

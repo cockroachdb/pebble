@@ -553,9 +553,10 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			s2, err = NewL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
 			require.NoError(t, err)
 		} else {
-			// AddL0Files relies on the indices in FileMetadatas pointing to that of
-			// the previous L0Sublevels. So it must be called before NewL0Sublevels;
-			// calling it the other way around results in out-of-bounds panics.
+			// AddL0Files relies on the indices in TableMetadatas pointing to
+			// that of the previous L0Sublevels. So it must be called before
+			// NewL0Sublevels; calling it the other way around results in
+			// out-of-bounds panics.
 			SortBySeqNum(filesToAdd)
 			s2, err = s2.AddL0Files(filesToAdd, flushSplitMaxBytes, &levelMetadata)
 			require.NoError(t, err)

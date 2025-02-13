@@ -743,9 +743,9 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			rr := record.NewReader(f, 0 /* logNum */)
 			// A manifest's first record always holds the initial version state.
 			// If this is the first manifest we're examining, we load it in
-			// order to seed `metas` with the file metadata of the existing
+			// order to seed `metas` with the table metadata of the existing
 			// files. Otherwise, we can skip it because we already know all the
-			// file metadatas up to this point.
+			// table metadatas up to this point.
 			rec, err := rr.Next()
 			if err != nil {
 				return err

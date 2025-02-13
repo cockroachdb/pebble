@@ -489,7 +489,7 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 	// TODO(sumeer): we don't have compression info for the data being
 	// flushed, but it is likely that existing files that overlap with
 	// this flush in Lbase are representative wrt compression ratio. We
-	// could store the uncompressed size in FileMetadata and estimate
+	// could store the uncompressed size in TableMetadata and estimate
 	// the compression ratio.
 	const approxCompressionRatio = 0.2
 	approxOutputBytes := approxCompressionRatio * float64(flushingBytes)
@@ -1085,7 +1085,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 		// happening in parallel with it, i.e. we're not in the midst of installing
 		// another version. Otherwise, it's possible that we've created another
 		// L0Sublevels instance, but not added it to the versions list, causing
-		// all the indices in FileMetadata to be inaccurate. To ensure this,
+		// all the indices in TableMetadata to be inaccurate. To ensure this,
 		// grab the manifest lock.
 		d.mu.versions.logLock()
 		defer d.mu.versions.logUnlock()

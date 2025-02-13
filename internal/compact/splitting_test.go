@@ -27,7 +27,7 @@ func TestOutputSplitter(t *testing.T) {
 			var files [manifest.NumLevels][]*manifest.TableMetadata
 			if d.Input != "" {
 				for _, l := range strings.Split(d.Input, "\n") {
-					f, err := manifest.ParseFileMetadataDebug(l)
+					f, err := manifest.ParseTableMetadataDebug(l)
 					if err != nil {
 						d.Fatalf(t, "error parsing %q: %v", l, err)
 					}

@@ -285,7 +285,7 @@ func (sl sublevelSorter) Swap(i, j int) {
 // split key is added.
 //
 // This method can be called without DB.mu being held, so any DB.mu protected
-// fields in FileMetadata cannot be accessed here, such as Compacting and
+// fields in TableMetadata cannot be accessed here, such as Compacting and
 // IsIntraL0Compacting. Those fields are accessed in InitCompactingFileInfo
 // instead.
 func NewL0Sublevels(
@@ -730,11 +730,11 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	for f := iter.First(); f != nil; f = iter.Next() {
 		if invariants.Enabled {
 			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest.UserKey) {
-				panic(fmt.Sprintf("f.minIntervalIndex in FileMetadata out of sync with intervals in L0Sublevels: %s != %s",
+				panic(fmt.Sprintf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
 					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(f.Smallest.UserKey)))
 			}
 			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest.UserKey) {
-				panic(fmt.Sprintf("f.maxIntervalIndex in FileMetadata out of sync with intervals in L0Sublevels: %s != %s",
+				panic(fmt.Sprintf("f.maxIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
 					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(f.Smallest.UserKey)))
 			}
 		}
