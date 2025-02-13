@@ -108,17 +108,20 @@ type fileCacheHandle struct {
 // handles.
 // TODO(radu): don't pass entire options.
 func (c *FileCache) newHandle(
-	cacheHandle *cache.Handle, objProvider objstorage.Provider, opts *Options,
+	cacheHandle *cache.Handle,
+	objProvider objstorage.Provider,
+	loggerAndTracer LoggerAndTracer,
+	readerOpts sstable.ReaderOptions,
 ) *fileCacheHandle {
 	c.Ref()
 
 	t := &fileCacheHandle{
 		fileCache:        c,
-		loggerAndTracer:  opts.LoggerAndTracer,
+		loggerAndTracer:  loggerAndTracer,
 		blockCacheHandle: cacheHandle,
 		objProvider:      objProvider,
 	}
-	t.readerOpts = opts.MakeReaderOptions()
+	t.readerOpts = readerOpts
 	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
 	return t
 }
