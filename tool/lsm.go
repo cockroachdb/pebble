@@ -23,7 +23,7 @@ import (
 
 //go:generate ./make_lsm_data.sh
 
-type lsmFileMetadata struct {
+type lsmTableMetadata struct {
 	Size           uint64
 	Smallest       int // ID of smallest key
 	Largest        int // ID of largest key
@@ -51,9 +51,9 @@ type lsmKey struct {
 
 type lsmState struct {
 	Manifest  string
-	Edits     []lsmVersionEdit                 `json:",omitempty"`
-	Files     map[base.FileNum]lsmFileMetadata `json:",omitempty"`
-	Keys      []lsmKey                         `json:",omitempty"`
+	Edits     []lsmVersionEdit                  `json:",omitempty"`
+	Files     map[base.FileNum]lsmTableMetadata `json:",omitempty"`
+	Keys      []lsmKey                          `json:",omitempty"`
 	StartEdit int64
 }
 
@@ -274,7 +274,7 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 	l.state.Edits = nil
 	l.state.StartEdit = l.startEdit
-	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
+	l.state.Files = make(map[base.FileNum]lsmTableMetadata)
 	var currentFiles [manifest.NumLevels][]*manifest.TableMetadata
 
 	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
@@ -299,7 +299,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 				nf.Meta.FileBacking = b
 			}
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
-				l.state.Files[nf.Meta.FileNum] = lsmFileMetadata{
+				l.state.Files[nf.Meta.FileNum] = lsmTableMetadata{
 					Size:           nf.Meta.Size,
 					Smallest:       l.findKey(nf.Meta.Smallest),
 					Largest:        l.findKey(nf.Meta.Largest),

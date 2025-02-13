@@ -636,7 +636,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 		switch field {
 		case "add-table":
 			level := p.Level()
-			meta, err := ParseFileMetadataDebug(p.Remaining())
+			meta, err := ParseTableMetadataDebug(p.Remaining())
 			if err != nil {
 				return nil, err
 			}
@@ -921,15 +921,15 @@ type BulkVersionEdit struct {
 	AddedFileBacking   map[base.DiskFileNum]*FileBacking
 	RemovedFileBacking []base.DiskFileNum
 
-	// AddedTablesByFileNum maps file number to file metadata for all added
-	// files from accumulated version edits. AddedTablesByFileNum is only
+	// AddedTablesByFileNum maps file number to table metadata for all added
+	// sstables from accumulated version edits. AddedTablesByFileNum is only
 	// populated if set to non-nil by a caller. It must be set to non-nil when
 	// replaying version edits read from a MANIFEST (as opposed to VersionEdits
 	// constructed in-memory).  While replaying a MANIFEST file,
 	// VersionEdit.DeletedFiles map entries have nil values, because the on-disk
 	// deletion record encodes only the file number. Accumulate uses
 	// AddedTablesByFileNum to correctly populate the BulkVersionEdit's Deleted
-	// field with non-nil *FileMetadata.
+	// field with non-nil *TableMetadata.
 	AddedTablesByFileNum map[base.FileNum]*TableMetadata
 
 	// MarkedForCompactionCountDiff holds the aggregated count of files

@@ -24,17 +24,17 @@ import (
 // on the node, ensuring that future queries for the annotation will recompute
 // the value.
 
-// An Annotator defines a computation over a level's FileMetadata. If the
-// computation is stable and uses inputs that are fixed for the lifetime of
-// a FileMetadata, the LevelMetadata's internal data structures are annotated
+// An Annotator defines a computation over a level's TableMetadata. If the
+// computation is stable and uses inputs that are fixed for the lifetime of a
+// TableMetadata, the LevelMetadata's internal data structures are annotated
 // with the intermediary computations. This allows the computation to be
 // computed incrementally as edits are applied to a level.
 type Annotator[T any] struct {
 	Aggregator AnnotationAggregator[T]
 }
 
-// An AnnotationAggregator defines how an annotation should be accumulated
-// from a single FileMetadata and merged with other annotated values.
+// An AnnotationAggregator defines how an annotation should be accumulated from
+// a single TableMetadata and merged with other annotated values.
 type AnnotationAggregator[T any] interface {
 	// Zero returns the zero value of an annotation. This value is returned
 	// when a LevelMetadata is empty. The dst argument, if non-nil, is an
@@ -372,7 +372,7 @@ func (sa SumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
 }
 
 // SumAnnotator takes a function that computes a uint64 value from a single
-// FileMetadata and returns an Annotator that sums together the values across
+// TableMetadata and returns an Annotator that sums together the values across
 // files.
 func SumAnnotator(accumulate func(f *TableMetadata) (v uint64, cacheOK bool)) *Annotator[uint64] {
 	return &Annotator[uint64]{
@@ -393,13 +393,13 @@ var NumFilesAnnotator = SumAnnotator(func(f *TableMetadata) (uint64, bool) {
 // PickFileAggregator implements the AnnotationAggregator interface. It defines
 // an aggregator that picks a single file from a set of eligible files.
 type PickFileAggregator struct {
-	// Filter takes a FileMetadata and returns whether it is eligible to be
+	// Filter takes a TableMetadata and returns whether it is eligible to be
 	// picked by this PickFileAggregator. The second return value indicates
 	// whether this eligibility is stable and thus cacheable.
 	Filter func(f *TableMetadata) (eligible bool, cacheOK bool)
-	// Compare compares two instances of FileMetadata and returns true if
-	// the first one should be picked over the second one. It may assume
-	// that both arguments are non-nil.
+	// Compare compares two instances of TableMetadata and returns true if the
+	// first one should be picked over the second one. It may assume that both
+	// arguments are non-nil.
 	Compare func(f1 *TableMetadata, f2 *TableMetadata) bool
 }
 

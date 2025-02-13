@@ -574,7 +574,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			var v *manifest.Version
 			var cmp *base.Comparer
 			rr := record.NewReader(f, 0 /* logNum */)
-			// Contains the FileMetadata needed by BulkVersionEdit.Apply.
+			// Contains the TableMetadata needed by BulkVersionEdit.Apply.
 			// It accumulates the additions since later edits contain
 			// deletions of earlier added files.
 			addedByFileNum := make(map[base.FileNum]*manifest.TableMetadata)

@@ -202,9 +202,9 @@ func TestMergingIterDataDriven(t *testing.T) {
 					d.Fatalf(t, "top-level strings should be L")
 				}
 				for _, file := range levels[l].Children() {
-					m, err := manifest.ParseFileMetadataDebug(file.Value())
+					m, err := manifest.ParseTableMetadataDebug(file.Value())
 					if err != nil {
-						d.Fatalf(t, "file metadata: %s", err)
+						d.Fatalf(t, "table metadata: %s", err)
 					}
 					files[l+1] = append(files[l+1], m)
 

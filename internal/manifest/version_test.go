@@ -383,7 +383,7 @@ func TestExtendBounds(t *testing.T) {
 	})
 }
 
-func TestFileMetadata_ParseRoundTrip(t *testing.T) {
+func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 	testCases := []struct {
 		name   string
 		input  string
@@ -421,7 +421,7 @@ func TestFileMetadata_ParseRoundTrip(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := ParseFileMetadataDebug(tc.input)
+			m, err := ParseTableMetadataDebug(tc.input)
 			require.NoError(t, err)
 			err = m.Validate(base.DefaultComparer.Compare, base.DefaultFormatter)
 			require.NoError(t, err)

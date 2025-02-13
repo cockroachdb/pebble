@@ -1,6 +1,6 @@
 # Note: when specifying test cases with tables in L0, the L0 files should be
 # specified in seqnum descending order, as the test case input is parsed as the
-# inverse of `(*FileMetadata).DebugString`.
+# inverse of `(*TableMetadata).DebugString`.
 
 check-ordering
 L0:

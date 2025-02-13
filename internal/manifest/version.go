@@ -162,7 +162,7 @@ func (s CompactionState) String() string {
 //     version.
 //
 // Once a physical sst is no longer needed by any version, we will no longer
-// maintain the file metadata associated with it. We will still maintain the
+// maintain the table metadata associated with it. We will still maintain the
 // FileBacking associated with the physical sst if the backing sst is required
 // by any virtual ssts in any version.
 type TableMetadata struct {
@@ -185,19 +185,19 @@ type TableMetadata struct {
 	InitAllowedSeeks int64
 	// FileNum is the file number.
 	//
-	// INVARIANT: when !FileMetadata.Virtual, FileNum == FileBacking.DiskFileNum.
+	// INVARIANT: when !TableMetadata.Virtual, FileNum == FileBacking.DiskFileNum.
 	FileNum base.FileNum
 	// Size is the size of the file, in bytes. Size is an approximate value for
 	// virtual sstables.
 	//
 	// INVARIANTS:
-	// - When !FileMetadata.Virtual, Size == FileBacking.Size.
+	// - When !TableMetadata.Virtual, Size == FileBacking.Size.
 	// - Size should be non-zero. Size 0 virtual sstables must not be created.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC). For ingested sstables, this corresponds to the time the file was
 	// ingested. For virtual sstables, this corresponds to the wall clock time
-	// when the FileMetadata for the virtual sstable was first created.
+	// when the TableMetadata for the virtual sstable was first created.
 	CreationTime int64
 	// LargestSeqNumAbsolute is an upper bound for the largest sequence number
 	// in the table. This upper bound is guaranteed to be higher than any
@@ -293,7 +293,7 @@ type TableMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
-	// Virtual is true if the FileMetadata belongs to a virtual sstable.
+	// Virtual is true if the TableMetadata belongs to a virtual sstable.
 	Virtual bool
 
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
@@ -359,7 +359,7 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 // belongs to a physical sst and not a virtual sst.
 //
 // NB: This type should only be constructed by calling
-// FileMetadata.PhysicalMeta.
+// TableMetadata.PhysicalMeta.
 type PhysicalTableMeta struct {
 	*TableMetadata
 }
@@ -367,7 +367,7 @@ type PhysicalTableMeta struct {
 // VirtualTableMeta is used by functions which want a guarantee that their input
 // belongs to a virtual sst and not a physical sst.
 //
-// A VirtualTableMeta inherits all the same fields as a FileMetadata. These
+// A VirtualTableMeta inherits all the same fields as a TableMetadata. These
 // fields have additional invariants imposed on them, and/or slightly varying
 // meanings:
 //   - Smallest and Largest (and their counterparts
@@ -395,7 +395,7 @@ type PhysicalTableMeta struct {
 //     a key with a seqnum at either of the bounds. Calculating tight seqnum
 //     bounds would be too expensive and deliver little value.
 //
-// NB: This type should only be constructed by calling FileMetadata.VirtualMeta.
+// NB: This type should only be constructed by calling TableMetadata.VirtualMeta.
 type VirtualTableMeta struct {
 	*TableMetadata
 }
@@ -417,7 +417,7 @@ func (m VirtualTableMeta) VirtualReaderParams(isShared bool) sstable.VirtualRead
 // wrapper type.
 func (m *TableMetadata) PhysicalMeta() PhysicalTableMeta {
 	if m.Virtual {
-		panic("pebble: file metadata does not belong to a physical sstable")
+		panic("pebble: table metadata does not belong to a physical sstable")
 	}
 	return PhysicalTableMeta{
 		m,
@@ -428,7 +428,7 @@ func (m *TableMetadata) PhysicalMeta() PhysicalTableMeta {
 // type.
 func (m *TableMetadata) VirtualMeta() VirtualTableMeta {
 	if !m.Virtual {
-		panic("pebble: file metadata does not belong to a virtual sstable")
+		panic("pebble: table metadata does not belong to a virtual sstable")
 	}
 	return VirtualTableMeta{
 		m,
@@ -438,7 +438,7 @@ func (m *TableMetadata) VirtualMeta() VirtualTableMeta {
 // FileBacking either backs a single physical sstable, or one or more virtual
 // sstables.
 //
-// See the comment above the FileMetadata type for sstable terminology.
+// See the comment above the TableMetadata type for sstable terminology.
 type FileBacking struct {
 	DiskFileNum base.DiskFileNum
 	Size        uint64
@@ -479,18 +479,18 @@ func (b *FileBacking) IsUnused() bool {
 func (b *FileBacking) Unref() int32 {
 	v := b.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
-		panic("pebble: invalid FileMetadata refcounting")
+		panic("pebble: invalid FileBacking refcounting")
 	}
 	return v
 }
 
 // InitPhysicalBacking allocates and sets the FileBacking which is required by a
-// physical sstable FileMetadata.
+// physical sstable TableMetadata.
 //
 // Ensure that the state required by FileBacking, such as the FileNum, is
-// already set on the FileMetadata before InitPhysicalBacking is called.
+// already set on the TableMetadata before InitPhysicalBacking is called.
 // Calling InitPhysicalBacking only after the relevant state has been set in the
-// FileMetadata is not necessary in tests which don't rely on FileBacking.
+// TableMetadata is not necessary in tests which don't rely on FileBacking.
 func (m *TableMetadata) InitPhysicalBacking() {
 	if m.Virtual {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
@@ -515,7 +515,7 @@ func (m *TableMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint6
 	m.FileBacking.Size = size
 }
 
-// ValidateVirtual should be called once the FileMetadata for a virtual sstable
+// ValidateVirtual should be called once the TableMetadata for a virtual sstable
 // is created to verify that the fields of the virtual sstable are sound.
 func (m *TableMetadata) ValidateVirtual(createdFrom *TableMetadata) {
 	switch {
@@ -754,7 +754,7 @@ func (m *TableMetadata) String() string {
 	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest, m.Largest)
 }
 
-// DebugString returns a verbose representation of FileMetadata, typically for
+// DebugString returns a verbose representation of TableMetadata, typically for
 // use in tests and debugging, returning the file number and the point, range
 // and overall bounds for the table.
 func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string {
@@ -794,9 +794,9 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	return b.String()
 }
 
-// ParseFileMetadataDebug parses a FileMetadata from its DebugString
+// ParseTableMetadataDebug parses a TableMetadata from its DebugString
 // representation.
-func ParseFileMetadataDebug(s string) (_ *TableMetadata, err error) {
+func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.CombineErrors(err, errFromPanic(r))
@@ -963,9 +963,9 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		}
 	}
 
-	// Ensure that FileMetadata.Init was called.
+	// Ensure that TableMetadata.Init was called.
 	if m.FileBacking == nil {
-		return base.CorruptionErrorf("file metadata FileBacking not set")
+		return base.CorruptionErrorf("table metadata FileBacking not set")
 	}
 
 	if m.SyntheticPrefixAndSuffix.HasPrefix() {
@@ -1006,7 +1006,7 @@ var (
 	}
 )
 
-// TableInfo returns a subset of the FileMetadata state formatted as a
+// TableInfo returns a subset of the TableMetadata state formatted as a
 // TableInfo.
 func (m *TableMetadata) TableInfo() TableInfo {
 	return TableInfo{
@@ -1043,7 +1043,7 @@ func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
 }
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
-// all the FileMetadata in iters.
+// all the TableMetadata in iters.
 func KeyRange(ucmp Compare, iters ...LevelIterator) (smallest, largest InternalKey) {
 	first := true
 	for _, iter := range iters {
@@ -1135,7 +1135,7 @@ func TestingNewVersion(comparer *base.Comparer) *Version {
 	}
 }
 
-// Version is a collection of file metadata for on-disk tables at various
+// Version is a collection of table metadata for on-disk tables at various
 // levels. In-memory DBs are written to level-0 tables, and compactions
 // migrate data from level N to level N+1. The tables map internal keys (which
 // are a user key, a delete or set bit, and a sequence number) to user values.
@@ -1211,7 +1211,7 @@ type Version struct {
 	prev, next *Version
 }
 
-// String implements fmt.Stringer, printing the FileMetadata for each level in
+// String implements fmt.Stringer, printing the TableMetadata for each level in
 // the Version.
 func (v *Version) String() string {
 	return v.string(false)
@@ -1269,7 +1269,7 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 		if level == -1 {
 			return nil, errors.Errorf("version string must start with a level")
 		}
-		m, err := ParseFileMetadataDebug(l)
+		m, err := ParseTableMetadataDebug(l)
 		if err != nil {
 			return nil, err
 		}
@@ -1366,7 +1366,7 @@ func (v *Version) InitL0Sublevels(flushSplitBytes int64) error {
 	return err
 }
 
-// CalculateInuseKeyRanges examines file metadata in levels [level, maxLevel]
+// CalculateInuseKeyRanges examines table metadata in levels [level, maxLevel]
 // within bounds [smallest,largest], returning an ordered slice of key ranges
 // that include all keys that exist within levels [level, maxLevel] and within
 // [smallest,largest].
@@ -1690,7 +1690,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 	if level == Level(0) {
 		// We have 2 kinds of files:
 		// - Files with exactly one sequence number: these could be either ingested files
-		//   or flushed files. We cannot tell the difference between them based on FileMetadata,
+		//   or flushed files. We cannot tell the difference between them based on TableMetadata,
 		//   so our consistency checking here uses the weaker checks assuming it is a narrow
 		//   flushed file. We cannot error on ingested files having sequence numbers coincident
 		//   with flushed files as the seemingly ingested file could just be a flushed file

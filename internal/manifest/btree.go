@@ -30,9 +30,9 @@ func btreeCmpSmallestKey(cmp Compare) btreeCmp {
 	}
 }
 
-// btreeCmpSpecificOrder is used in tests to construct a B-Tree with a
-// specific ordering of FileMetadata within the tree. It's typically used to
-// test consistency checking code that needs to construct a malformed B-Tree.
+// btreeCmpSpecificOrder is used in tests to construct a B-Tree with a specific
+// ordering of TableMetadata within the tree. It's typically used to test
+// consistency checking code that needs to construct a malformed B-Tree.
 func btreeCmpSpecificOrder(files []*TableMetadata) btreeCmp {
 	m := map[*TableMetadata]int{}
 	for i, f := range files {
@@ -655,10 +655,10 @@ func (n *node) verifyInvariants() {
 
 // btree is an implementation of a B-Tree.
 //
-// btree stores FileMetadata in an ordered structure, allowing easy insertion,
+// btree stores TableMetadata in an ordered structure, allowing easy insertion,
 // removal, and iteration. The B-Tree stores items in order based on cmp. The
 // first level of the LSM uses a cmp function that compares sequence numbers.
-// All other levels compare using the FileMetadata.Smallest.
+// All other levels compare using the TableMetadata.Smallest.
 //
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
@@ -890,7 +890,7 @@ type iterator struct {
 	// n may be nil iff i.r is nil.
 	n   *node
 	pos int16
-	// cmp dictates the ordering of the FileMetadata.
+	// cmp dictates the ordering of the TableMetadata.
 	cmp func(*TableMetadata, *TableMetadata) int
 	// a stack of n's ancestors within the B-Tree, alongside the position
 	// taken to arrive at n. If non-empty, the bottommost frame of the stack
