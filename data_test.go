@@ -1144,8 +1144,8 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	var file int
 	td.ScanArgs(t, "file", &file)
 
-	// See if we can grab the FileMetadata associated with the file. This is needed
-	// to easily construct virtual sstable properties.
+	// See if we can grab the TableMetadata associated with the file. This is
+	// needed to easily construct virtual sstable properties.
 	var m *tableMetadata
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()

@@ -373,7 +373,7 @@ c@4: (c@4, .)
 # Regression test for #2084.
 #
 # The optimization added in #2058 began using an enabled TrySeekUsingNext flag
-# to avoid re-seeking within a level's file metadata. This optimization was
+# to avoid re-seeking within a level's table metadata. This optimization was
 # dependent on the invariant that the iterator remained positioned at the
 # previous seek key, so that a subsequent seek to a larger key does not need to
 # backtrack.
@@ -449,7 +449,7 @@ L0.0:
 # see that level 0.0's synthetic boundary key at d@1 was at the top of the heap
 # and move to the next file in 0.0. The subsequent call to SeekPrefixGE(d@1,
 # TrySeekUsingNext=true) would incorrectly use the current position within the
-# 0.0 file metadata (nil), and miss the d@1 key.
+# 0.0 table metadata (nil), and miss the d@1 key.
 
 combined-iter
 seek-prefix-ge b@3

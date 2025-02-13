@@ -12,7 +12,7 @@
 #
 # Levels are ordered from higher to lower, and each new level starts with an L
 # For each level, one or more files are defined. A file definition starts with
-# the file metadata representation, at one indentation level. Followed are KVs
+# the table metadata representation, at one indentation level. Followed are KVs
 # arbitrarily spread over one or more lines, at two indentation levels. Point
 # KVs should be ordered relative to each other, and rangedels should be ordered
 # relative to each other.

@@ -566,10 +566,10 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	}
 
 	// The 'marked-for-compaction' bit is persisted in the MANIFEST file
-	// metadata. We've already modified the in-memory file metadata, but the
+	// metadata. We've already modified the in-memory table metadata, but the
 	// manifest hasn't been updated. Force rotation to a new MANIFEST file,
-	// which will write every file metadata to the new manifest file and ensure
-	// that the now marked-for-compaction file metadata are persisted as marked.
+	// which will write every table metadata to the new manifest file and ensure
+	// that the now marked-for-compaction table metadata are persisted as marked.
 	// NB: This call to logAndApply will unlockthe MANIFEST, which we locked up
 	// above before obtaining `vers`.
 	return d.mu.versions.logAndApply(

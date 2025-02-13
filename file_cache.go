@@ -33,7 +33,7 @@ var emptyIter = &errorIter{err: nil}
 var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 
 // tableNewIters creates new iterators (point, range deletion and/or range key)
-// for the given file metadata. Which of the various iterator kinds the user is
+// for the given table metadata. Which of the various iterator kinds the user is
 // requesting is specified with the iterKinds bitmap.
 //
 // On success, the requested subset of iters.{point,rangeDel,rangeKey} are

@@ -642,7 +642,7 @@ var compensatedSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uin
 	return compensatedSize(f), f.StatsValid()
 })
 
-// totalCompensatedSize computes the compensated size over a file metadata
+// totalCompensatedSize computes the compensated size over a table metadata
 // iterator. Note that this function is linear in the files available to the
 // iterator. Use the compensatedSizeAnnotator if querying the total
 // compensated size of a level.
@@ -1330,7 +1330,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	// units" within the code). Rewrite them in-place.
 	//
 	// It's also possible that a file may have been marked for compaction by
-	// even earlier versions of Pebble code, since FileMetadata's
+	// even earlier versions of Pebble code, since TableMetadata's
 	// MarkedForCompaction field is persisted in the manifest. That's okay. We
 	// previously would've ignored the designation, whereas now we'll re-compact
 	// the file in place.

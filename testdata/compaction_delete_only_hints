@@ -264,7 +264,7 @@ close-snapshot
 # In the current code, the hint remains but when the hint is resolved the hint
 # will not apply to any sstables containing keys that previously had sequence
 # numbers higher than the hint's lowest tombstone sequence number. We use
-# FileMetadata.LargestSeqNumAbsolute for this purpose.
+# TableMetadata.LargestSeqNumAbsolute for this purpose.
 
 get-hints
 ----

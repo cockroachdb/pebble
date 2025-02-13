@@ -580,7 +580,7 @@ type Options struct {
 		IngestSplit func() bool
 
 		// ReadCompactionRate controls the frequency of read triggered
-		// compactions by adjusting `AllowedSeeks` in manifest.FileMetadata:
+		// compactions by adjusting `AllowedSeeks` in manifest.TableMetadata:
 		//
 		// AllowedSeeks = FileSize / ReadCompactionRate
 		//

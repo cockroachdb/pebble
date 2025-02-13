@@ -2359,7 +2359,7 @@ func TestIngestTargetLevel(t *testing.T) {
 				}
 			}
 			for _, target := range strings.Split(td.Input, "\n") {
-				meta, err := manifest.ParseFileMetadataDebug(target)
+				meta, err := manifest.ParseTableMetadataDebug(target)
 				require.NoError(t, err)
 				overlapChecker := &overlapChecker{
 					comparer: d.opts.Comparer,
@@ -3341,7 +3341,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 				return key
 			}
 
-			// Construct the file metadata from the writer metadata.
+			// Construct the table metadata from the writer metadata.
 			m := &tableMetadata{
 				SmallestSeqNum: 0, // Simulate an ingestion.
 				LargestSeqNum:  0,

@@ -24,7 +24,7 @@ import (
 // opened, these statistics must be reloaded or recalculated. To minimize
 // impact on user activity and compactions, we load these statistics
 // asynchronously in the background and store loaded statistics in each
-// table's *FileMetadata.
+// table's *TableMetadata.
 //
 // This file implements the asynchronous loading of statistics by maintaining
 // a list of files that require statistics, alongside their LSM levels.
@@ -116,7 +116,7 @@ func (d *DB) collectTableStats() bool {
 	}
 	rs.unref()
 
-	// Update the FileMetadata with the loaded stats while holding d.mu.
+	// Update the TableMetadata with the loaded stats while holding d.mu.
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.mu.tableStats.loading = false
@@ -199,9 +199,9 @@ func (d *DB) loadNewFileStats(
 			d.opts.EventListener.BackgroundError(err)
 			continue
 		}
-		// NB: We don't update the FileMetadata yet, because we aren't
-		// holding DB.mu. We'll copy it to the FileMetadata after we're
-		// finished with IO.
+		// NB: We don't update the TableMetadata yet, because we aren't holding
+		// DB.mu. We'll copy it to the TableMetadata after we're finished with
+		// IO.
 		collected = append(collected, collectedStats{
 			tableMetadata: nf.Meta,
 			TableStats:    stats,
@@ -399,7 +399,7 @@ func (d *DB) loadTableRangeDelStats(
 		// itself since compacting the file will drop that covered data. In the
 		// second case, we expect that compacting the file will NOT drop any
 		// data and rewriting the file is a waste of write bandwidth. We can
-		// distinguish these cases by looking at the file metadata's sequence
+		// distinguish these cases by looking at the table metadata's sequence
 		// numbers. A file's range deletions can only delete data within the
 		// file at lower sequence numbers. All keys in an ingested sstable adopt
 		// the same sequence number, preventing tombstones from deleting keys
@@ -931,7 +931,7 @@ func newCombinedDeletionKeyspanIter(
 		// sstables.
 		//
 		// At the same time, we've also introduced the concept of "virtual
-		// SSTables" where the file metadata's effective bounds can again be
+		// SSTables" where the table metadata's effective bounds can again be
 		// reduced to be narrower than the contained tombstones. These virtual
 		// SSTables handle truncation differently, performing it using
 		// keyspan.Truncate when the sstable's range deletion iterator is

@@ -211,8 +211,8 @@ func ingestLoad1External(
 		Size:         e.Size,
 	}
 
-	// In the name of keeping this ingestion as fast as possible, we avoid
-	// *all* existence checks and synthesize a file metadata with smallest/largest
+	// In the name of keeping this ingestion as fast as possible, we avoid *all*
+	// existence checks and synthesize a table metadata with smallest/largest
 	// keys that overlap whatever the passed-in span was.
 	smallestCopy := slices.Clone(e.StartKey)
 	largestCopy := slices.Clone(e.EndKey)
@@ -293,7 +293,7 @@ func (r *rangeKeyIngestValidator) Validate(nextFileSmallestKey *keyspan.Span) er
 	return nil
 }
 
-// ingestLoad1 creates the FileMetadata for one file. This file will be owned
+// ingestLoad1 creates the TableMetadata for one file. This file will be owned
 // by this store.
 //
 // prevLastRangeKey is the last range key from the previous file. It is used to
@@ -1324,7 +1324,7 @@ func (d *DB) newIngestedFlushableEntry(
 	// to.
 	entry := d.newFlushableEntry(f, logNum, seqNum)
 	// The flushable entry starts off with a single reader ref, so increment
-	// the FileMetadata.Refs.
+	// the FileBacking.Refs.
 	for _, file := range f.files {
 		file.FileBacking.Ref()
 	}

@@ -80,7 +80,7 @@ func TestLevelIteratorFiltered(t *testing.T) {
 			case "define":
 				var files []*TableMetadata
 				for _, metaStr := range strings.Split(d.Input, "\n") {
-					m, err := ParseFileMetadataDebug(metaStr)
+					m, err := ParseTableMetadataDebug(metaStr)
 					require.NoError(t, err)
 					files = append(files, m)
 				}

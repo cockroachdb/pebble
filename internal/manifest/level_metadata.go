@@ -618,7 +618,7 @@ func (i *LevelIterator) assertNotL0Cmp() {
 	}
 }
 
-// skipFilteredForward takes the file metadata at the iterator's current
+// skipFilteredForward takes the table metadata at the iterator's current
 // position, and skips forward if the current key-type filter (i.filter)
 // excludes the file. It skips until it finds an unfiltered file or exhausts the
 // level. If lower is != nil, skipFilteredForward skips any files that do not
@@ -642,7 +642,7 @@ func (i *LevelIterator) skipFilteredForward(meta *TableMetadata) *TableMetadata 
 	return meta
 }
 
-// skipFilteredBackward takes the file metadata at the iterator's current
+// skipFilteredBackward takes the table metadata at the iterator's current
 // position, and skips backward if the current key-type filter (i.filter)
 // excludes the file. It skips until it finds an unfiltered file or exhausts the
 // level. If upper is != nil, skipFilteredBackward skips any files that do not
