@@ -37,7 +37,7 @@ func (lm *LevelMetadata) clone() LevelMetadata {
 	}
 }
 
-func (lm *LevelMetadata) release(of obsoleteFiles) {
+func (lm *LevelMetadata) release(of ObsoleteFilesSet) {
 	lm.tree.Release(of)
 }
 

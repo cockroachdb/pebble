@@ -136,9 +136,10 @@ func mut(n **node) *node {
 	return *n
 }
 
-// an obsoleteFiles accumulates files that now have zero references.
-type obsoleteFiles interface {
-	// AddBacking appends the provided FileBacking to the list of obsolete files.
+// ObsoleteFilesSet accumulates files that now have zero references.
+type ObsoleteFilesSet interface {
+	// AddBacking appends the provided FileBacking to the list of obsolete
+	// files.
 	AddBacking(*FileBacking)
 }
 
@@ -150,21 +151,21 @@ type obsoleteFiles interface {
 // during which this implementation will not be used (see Version.Unref).
 type assertNoObsoleteFiles struct{}
 
-// Assert that assertNoObsoleteFiles implements obsoleteFiles.
-var _ obsoleteFiles = assertNoObsoleteFiles{}
+// Assert that assertNoObsoleteFiles implements ObsoleteFilesSet.
+var _ ObsoleteFilesSet = assertNoObsoleteFiles{}
 
 // AddBacking appends the provided FileBacking to the list of obsolete files.
 func (assertNoObsoleteFiles) AddBacking(fb *FileBacking) {
 	panic(errors.AssertionFailedf("file backing %s dereferenced to zero during tree mutation", fb.DiskFileNum))
 }
 
-// ignoreObsoleteFiles is an obsoleteFiles implementation that ignores obsolete
-// files. It's used in some contexts where we construct ephemeral B-Trees which
-// do not need to track obsolete files and in tests.
+// ignoreObsoleteFiles is an ObsoleteFilesSet implementation that ignores
+// obsolete files. It's used in some contexts where we construct ephemeral
+// B-Trees which do not need to track obsolete files and in tests.
 type ignoreObsoleteFiles struct{}
 
-// Assert that unrefBlindly implements obsoleteFiles.
-var _ obsoleteFiles = ignoreObsoleteFiles{}
+// Assert that ignoreObsoleteFiles implements ObsoleteFilesSet.
+var _ ObsoleteFilesSet = ignoreObsoleteFiles{}
 
 // AddBacking appends the provided FileBacking to the list of obsolete files.
 func (ignoreObsoleteFiles) AddBacking(fb *FileBacking) {}
@@ -182,7 +183,7 @@ func (n *node) incRef() {
 // new nodes pass contentsToo=false to preserve existing reference counts during
 // operations that should yield a net-zero change to descendant refcounts. When
 // a node is released, its contained files are dereferenced.
-func (n *node) decRef(contentsToo bool, obsolete obsoleteFiles) {
+func (n *node) decRef(contentsToo bool, obsolete ObsoleteFilesSet) {
 	if n.ref.Add(-1) > 0 {
 		// Other references remain. Can't free.
 		return
@@ -194,9 +195,7 @@ func (n *node) decRef(contentsToo bool, obsolete obsoleteFiles) {
 	// nodes, and they want to preserve the existing reference count.
 	if contentsToo {
 		for _, f := range n.items[:n.count] {
-			if f.FileBacking.Unref() == 0 {
-				obsolete.AddBacking(f.FileBacking)
-			}
+			f.Unref(obsolete)
 		}
 		if !n.leaf {
 			for i := int16(0); i <= n.count; i++ {
@@ -221,7 +220,7 @@ func (n *node) clone() *node {
 	c.subtreeCount = n.subtreeCount
 	// Increase the refcount of each contained item.
 	for _, f := range n.items[:n.count] {
-		f.FileBacking.Ref()
+		f.Ref()
 	}
 	if !c.leaf {
 		// Copy children and increase each refcount.
@@ -672,7 +671,7 @@ type btree struct {
 // items from the btree. In doing so, it unrefs files associated with the
 // tables. Any files that no longer have outstanding references are added to the
 // provided obsoleteFiles.
-func (t *btree) Release(of obsoleteFiles) {
+func (t *btree) Release(of ObsoleteFilesSet) {
 	if t.root != nil {
 		t.root.decRef(true /* contentsToo */, of)
 		t.root = nil
@@ -705,14 +704,12 @@ func (t *btree) Clone() btree {
 // Delete removes the provided table from the tree, unrefing the table's files
 // if it's found. If any files are unreferenced to zero, they're added to the
 // provided obsoleteFiles.
-func (t *btree) Delete(item *TableMetadata, of obsoleteFiles) {
+func (t *btree) Delete(item *TableMetadata, of ObsoleteFilesSet) {
 	if t.root == nil || t.root.count == 0 {
 		return
 	}
 	if out := mut(&t.root).Remove(t.bcmp, item); out != nil {
-		if out.FileBacking.Unref() == 0 {
-			of.AddBacking(out.FileBacking)
-		}
+		out.Unref(of)
 	}
 	if invariants.Enabled {
 		t.root.verifyInvariants()
@@ -743,7 +740,7 @@ func (t *btree) Insert(item *TableMetadata) error {
 		newRoot.subtreeCount = t.root.subtreeCount + splitNode.subtreeCount + 1
 		t.root = newRoot
 	}
-	item.FileBacking.Ref()
+	item.Ref()
 	err := mut(&t.root).Insert(t.bcmp, item)
 	if invariants.Enabled {
 		t.root.verifyInvariants()

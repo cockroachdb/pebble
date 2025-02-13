@@ -1324,17 +1324,15 @@ func (d *DB) newIngestedFlushableEntry(
 	// to.
 	entry := d.newFlushableEntry(f, logNum, seqNum)
 	// The flushable entry starts off with a single reader ref, so increment
-	// the FileBacking.Refs.
+	// the TableMetadata.Refs.
 	for _, file := range f.files {
-		file.FileBacking.Ref()
+		file.Ref()
 	}
 	entry.unrefFiles = func(of *manifest.ObsoleteFiles) {
-		// Invoke Unref on each table. If any files become obsolete, add them to
-		// the obsolete files list.
+		// Invoke Unref on each table. If any files become obsolete, they'll be
+		// added to the set of obsolete files.
 		for _, file := range f.files {
-			if file.FileBacking.Unref() == 0 {
-				of.AddBacking(file.FileBacking)
-			}
+			file.Unref(of)
 		}
 	}
 
