@@ -11,6 +11,9 @@ type CompactionGrantHandleStats struct {
 	// TODO(sumeer): add more stats.
 	// cumReadBytes uint64
 	// cumReadBytesInCache uint64
+	Debugging struct {
+		EstimatedSize uint64
+	}
 }
 
 // CompactionGrantHandle is used to frequently update the CompactionScheduler

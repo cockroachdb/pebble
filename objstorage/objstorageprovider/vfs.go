@@ -6,6 +6,7 @@ package objstorageprovider
 
 import (
 	"context"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -49,6 +50,7 @@ func (p *provider) vfsCreate(
 		NoSyncOnClose: p.st.NoSyncOnClose,
 		BytesPerSync:  p.st.BytesPerSync,
 	})
+	file = newWriteShapingFile(file)
 	meta := objstorage.ObjectMetadata{
 		DiskFileNum: fileNum,
 		FileType:    fileType,
@@ -116,4 +118,36 @@ func (p *provider) vfsSize(fileType base.FileType, fileNum base.DiskFileNum) (in
 		return 0, err
 	}
 	return stat.Size(), nil
+}
+
+const rateLimit = 40 << 20
+
+type writeShapingFile struct {
+	vfs.File
+	createTime time.Time
+	writtenBytes int64
+	duration time.Duration
+}
+
+var _ vfs.File = (*writeShapingFile)(nil)
+
+func newWriteShapingFile(file vfs.File) *writeShapingFile {
+	return &writeShapingFile{
+		File:         file,
+		createTime:   time.Now(),
+	}
+}
+
+func (f *writeShapingFile) Write(p []byte) (int, error) {
+	if f.writtenBytes > 0 {
+		expectedDurMillis := (time.Duration(f.writtenBytes) * 1e3)/ rateLimit
+		now := time.Now()
+		durMillis := now.Sub(f.createTime)/time.Millisecond
+		if durMillis < expectedDurMillis {
+			time.Sleep((expectedDurMillis - durMillis)*time.Millisecond)
+		}
+	}
+	f.writtenBytes += int64(len(p))
+	// This is a no-op, but it's useful for testing.
+	return f.File.Write(p)
 }

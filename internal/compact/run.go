@@ -187,9 +187,12 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	for ; key != nil; key, value = r.iter.Next() {
 		iteratedKeys++
 		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
-			r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
-				CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize(),
-			})
+			estimatedSize := tw.EstimatedSize()
+			stats := base.CompactionGrantHandleStats{
+				CumWriteBytes: r.stats.CumulativeWrittenSize + estimatedSize,
+			}
+			stats.Debugging.EstimatedSize = estimatedSize
+			r.cfg.GrantHandle.CumulativeStats(stats)
 			// TODO: need to give the GrantHandle to the writer so it can account on
 			// all its goroutines.
 			r.cfg.GrantHandle.MeasureCPU(0)
@@ -245,9 +248,12 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	tw.SetSnapshotPinnedProperties(pinnedCount, pinnedKeySize, pinnedValueSize)
 	r.stats.CumulativePinnedKeys += pinnedCount
 	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
-	r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
-		CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize(),
-	})
+	estimatedSize := tw.EstimatedSize()
+	stats := base.CompactionGrantHandleStats{
+		CumWriteBytes: r.stats.CumulativeWrittenSize + estimatedSize,
+	}
+	stats.Debugging.EstimatedSize = estimatedSize
+	r.cfg.GrantHandle.CumulativeStats(stats)
 	r.cfg.GrantHandle.MeasureCPU(0)
 	return splitKey, nil
 }
