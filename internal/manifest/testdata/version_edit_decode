@@ -69,22 +69,22 @@ f9a006                       #   . ValueSize    = 102521
   del-blob-file: 000033
 
 encode
-  add-table:     L6 000029:[bar#14,DEL-foo#13,SET] blobrefs:[(000041: 20952)]
+  add-table:     L6 000029:[bar#14,DEL-foo#13,SET] blobrefs:1*[(000041: 20952)]
   add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
   del-blob-file: 000033
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-450129d8a301016b29d8a301f9a006006c21
-  add-table:     L6 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(000041: 20952)]
+45010129d8a301016b29d8a301f9a006006c21
+  add-table:     L6 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:1*[(000041: 20952)]
   add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
   del-blob-file: 000033
 
 decode
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-450129d8a301016b29d8a301f9a006006c21
+45010129d8a301016b29d8a301f9a006006c21
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-450129d8a301016b29d8a301f9a006006c21
+45010129d8a301016b29d8a301f9a006006c21
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET]
   add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
   del-blob-file: 000033

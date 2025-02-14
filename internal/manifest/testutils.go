@@ -30,7 +30,7 @@ type debugParser struct {
 	lastToken string
 }
 
-const debugParserSeparators = ":-[]()"
+const debugParserSeparators = ":-[]()*"
 
 func makeDebugParser(s string) debugParser {
 	p := debugParser{

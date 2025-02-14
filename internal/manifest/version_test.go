@@ -416,7 +416,7 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 		},
 		{
 			name:  "blobrefs",
-			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[0-0] points:[bar#0,SET-foo#0,SET] blobrefs:[(000191: 2952), (000075: 108520)]",
+			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[0-0] points:[bar#0,SET-foo#0,SET] blobrefs:2*[(000191: 2952), (000075: 108520)]",
 		},
 	}
 	for _, tc := range testCases {
