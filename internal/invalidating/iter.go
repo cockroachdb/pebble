@@ -6,6 +6,7 @@ package invalidating
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -67,16 +68,18 @@ func (i *iter) update(kv *base.InternalKV) *base.InternalKV {
 		return nil
 	}
 
+	lv := kv.LazyValue()
+	copiedLV := base.LazyValue{
+		ValueOrHandle: slices.Clone(lv.ValueOrHandle),
+	}
+	if lv.Fetcher != nil {
+		fetcher := new(base.LazyFetcher)
+		*fetcher = *lv.Fetcher
+		copiedLV.Fetcher = fetcher
+	}
 	i.lastKV = &base.InternalKV{
 		K: kv.K.Clone(),
-		V: base.LazyValue{
-			ValueOrHandle: append(make([]byte, 0, len(kv.V.ValueOrHandle)), kv.V.ValueOrHandle...),
-		},
-	}
-	if kv.V.Fetcher != nil {
-		fetcher := new(base.LazyFetcher)
-		*fetcher = *kv.V.Fetcher
-		i.lastKV.V.Fetcher = fetcher
+		V: base.MakeLazyValue(copiedLV),
 	}
 	return i.lastKV
 }
@@ -95,13 +98,14 @@ func (i *iter) trashLastKV() {
 		}
 		i.lastKV.K.Trailer = 0xffffffffffffffff
 	}
-	for j := range i.lastKV.V.ValueOrHandle {
-		i.lastKV.V.ValueOrHandle[j] = 0xff
+	lv := i.lastKV.LazyValue()
+	for j := range lv.ValueOrHandle {
+		lv.ValueOrHandle[j] = 0xff
 	}
-	if i.lastKV.V.Fetcher != nil {
+	if lv.Fetcher != nil {
 		// Not all the LazyFetcher fields are visible, so we zero out the last
 		// value's Fetcher struct entirely.
-		*i.lastKV.V.Fetcher = base.LazyFetcher{}
+		*lv.Fetcher = base.LazyFetcher{}
 	}
 }
 

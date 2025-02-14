@@ -173,7 +173,7 @@ func newColumnBlockTwoLevelIterator(
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
 		env)
-	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
+	var getLazyValuer block.GetInternalValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 		// can outlive the singleLevelIterator due to be being embedded in a

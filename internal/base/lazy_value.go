@@ -4,11 +4,7 @@
 
 package base
 
-import (
-	"context"
-
-	"github.com/cockroachdb/pebble/internal/invariants"
-)
+import "context"
 
 // A value can have user-defined attributes that are a function of the value
 // byte slice. For now, we only support "short attributes", which can be
@@ -222,21 +218,6 @@ func (lv *LazyValue) fetchValue(
 	return f.value, f.callerOwned, f.err
 }
 
-// IsInPlaceValue returns true iff the value was stored in-place and does not
-// need to be fetched externally.
-func (lv *LazyValue) IsInPlaceValue() bool {
-	return lv.Fetcher == nil
-}
-
-// InPlaceValue returns the value under the assumption that it is in-place.
-// This is for Pebble-internal code.
-func (lv *LazyValue) InPlaceValue() []byte {
-	if invariants.Enabled && lv.Fetcher != nil {
-		panic("value must be in-place")
-	}
-	return lv.ValueOrHandle
-}
-
 // Len returns the length of the value.
 func (lv *LazyValue) Len() int {
 	if lv.Fetcher == nil {
@@ -292,9 +273,4 @@ func (lv *LazyValue) Clone(buf []byte, fetcher *LazyFetcher) (LazyValue, []byte)
 	buf = append(buf, lv.ValueOrHandle...)
 	lvCopy.ValueOrHandle = buf[bufLen : bufLen+vLen]
 	return lvCopy, buf
-}
-
-// MakeInPlaceValue constructs an in-place value.
-func MakeInPlaceValue(val []byte) LazyValue {
-	return LazyValue{ValueOrHandle: val}
 }

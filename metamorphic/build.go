@@ -85,7 +85,7 @@ func writeSSTForIngestion(
 		k := *kv
 		k.K.SetSeqNum(base.SeqNumZero)
 		k.K.UserKey = outputKey(k.K.UserKey, syntheticSuffix)
-		value := kv.V
+		value := kv.LazyValue()
 		// It's possible that we wrote the key on a batch from a db that supported
 		// DeleteSized, but will be ingesting into a db that does not. Detect this
 		// case and translate the key to an InternalKeyKindDelete.
