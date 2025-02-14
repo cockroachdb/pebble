@@ -139,8 +139,28 @@ type Writer interface {
 	// properly. Only use if you have a workload where the performance gain is critical and you
 	// can guarantee that a record is written once and then deleted once.
 	//
-	// SingleDelete is internally transformed into a Delete if the most recent record for a key is either
-	// a Merge or Delete record.
+	// Note that SINGLEDEL, SET, SINGLEDEL, SET, DEL/RANGEDEL, ... from most
+	// recent to older will work as intended since there is a single SET
+	// sandwiched between SINGLEDEL/DEL/RANGEDEL.
+	//
+	// IMPLEMENTATION WARNING: By offering SingleDelete, Pebble must guarantee
+	// that there is no duplication of writes inside Pebble. That is, idempotent
+	// application of writes is insufficient. For example, if a SET operation
+	// gets duplicated inside Pebble, resulting in say SET#20 and SET#17, the
+	// caller may issue a SINGLEDEL#25 and it will not have the desired effect.
+	// A duplication where a SET#20 is duplicated across two sstables will have
+	// the same correctness problem, since the SINGLEDEL may meet one of the
+	// SETs. This guarantee is partially achieved by ensuring that a WAL and a
+	// flushable are usually in one-to-one correspondence, and atomically
+	// updating the MANIFEST when the flushable is flushed (which ensures the
+	// WAL will never be replayed). There is one exception: a flushableBatch (a
+	// batch too large to fit in a memtable) is written to the end of the WAL
+	// that it shares with the preceding memtable. This is safe because the
+	// memtable and the flushableBatch are part of the same flush (see DB.flush1
+	// where this invariant is maintained). If the memtable were to be flushed
+	// without the flushableBatch, the WAL cannot yet be deleted and if a crash
+	// happened, the WAL would be replayed despite the memtable already being
+	// flushed.
 	//
 	// It is safe to modify the contents of the arguments after SingleDelete returns.
 	SingleDelete(key []byte, o *WriteOptions) error
@@ -681,6 +701,8 @@ func (d *DB) DeleteSized(key []byte, valueSize uint32, opts *WriteOptions) error
 
 // SingleDelete adds an action to the batch that single deletes the entry for key.
 // See Writer.SingleDelete for more details on the semantics of SingleDelete.
+//
+// WARNING: See the detailed warning in Writer.SingleDelete before using this.
 //
 // It is safe to modify the contents of the arguments after SingleDelete returns.
 func (d *DB) SingleDelete(key []byte, opts *WriteOptions) error {

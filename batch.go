@@ -956,7 +956,7 @@ func (b *Batch) DeleteSizedDeferred(keyLen int, deletedValueSize uint32) *Deferr
 }
 
 // SingleDelete adds an action to the batch that single deletes the entry for key.
-// See Writer.SingleDelete for more details on the semantics of SingleDelete.
+// WARNING: See the detailed warning in Writer.SingleDelete before using this.
 //
 // It is safe to modify the contents of the arguments after SingleDelete returns.
 func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error {
@@ -976,6 +976,8 @@ func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error {
 // operation to the batch, except it only takes in key/value lengths instead of
 // complete slices, letting the caller encode into those objects and then call
 // Finish() on the returned object.
+//
+// WARNING: See the detailed warning in Writer.SingleDelete before using this.
 func (b *Batch) SingleDeleteDeferred(keyLen int) *DeferredBatchOp {
 	b.prepareDeferredKeyRecord(keyLen, InternalKeyKindSingleDelete)
 	b.deferredOp.index = b.index
