@@ -2314,21 +2314,21 @@ func (i *flushableBatchIter) getKey(index int) InternalKey {
 func (i *flushableBatchIter) getKV(index int) *base.InternalKV {
 	i.kv = base.InternalKV{
 		K: i.getKey(index),
-		V: i.extractValue(),
+		V: base.MakeInPlaceValue(i.extractValue()),
 	}
 	return &i.kv
 }
 
-func (i *flushableBatchIter) extractValue() base.LazyValue {
+func (i *flushableBatchIter) extractValue() []byte {
 	p := i.data[i.offsets[i.index].offset:]
 	if len(p) == 0 {
 		i.err = base.CorruptionErrorf("corrupted batch")
-		return base.LazyValue{}
+		return nil
 	}
 	kind := InternalKeyKind(p[0])
 	if kind > InternalKeyKindMax {
 		i.err = base.CorruptionErrorf("corrupted batch")
-		return base.LazyValue{}
+		return nil
 	}
 	var value []byte
 	var ok bool
@@ -2340,10 +2340,10 @@ func (i *flushableBatchIter) extractValue() base.LazyValue {
 		_, value, ok = batchrepr.DecodeStr(i.data[keyEnd:])
 		if !ok {
 			i.err = base.CorruptionErrorf("corrupted batch")
-			return base.LazyValue{}
+			return nil
 		}
 	}
-	return base.MakeInPlaceValue(value)
+	return value
 }
 
 func (i *flushableBatchIter) Valid() bool {

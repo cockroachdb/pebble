@@ -1373,7 +1373,7 @@ func (m *mergingIter) ForEachLevelIter(fn func(li *levelIter) bool) {
 func (m *mergingIter) addItemStats(l *mergingIterLevel) {
 	m.stats.PointCount++
 	m.stats.KeyBytes += uint64(len(l.iterKV.K.UserKey))
-	m.stats.ValueBytes += uint64(len(l.iterKV.V.ValueOrHandle))
+	m.stats.ValueBytes += uint64(l.iterKV.V.InternalLen())
 }
 
 var _ internalIterator = &mergingIter{}

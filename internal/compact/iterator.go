@@ -552,7 +552,7 @@ func (i *Iter) Next() *base.InternalKV {
 			switch i.iterKV.Kind() {
 			case base.InternalKeyKindDelete:
 				i.saveKey()
-				i.kv.V = base.LazyValue{} // DELs are value-less.
+				i.kv.V = base.InternalValue{} // DELs are value-less.
 				i.skip = true
 				return &i.kv
 
@@ -928,7 +928,7 @@ func (i *Iter) singleDeleteNext() bool {
 	if invariants.Enabled && (!i.iterKV.V.IsInPlaceValue() || i.iterKV.V.Len() != 0) {
 		panic(errors.AssertionFailedf("pebble: single delete value is not in-place or is non-empty"))
 	}
-	i.kv.V = base.LazyValue{} // SINGLEDELs are value-less.
+	i.kv.V = base.InternalValue{} // SINGLEDELs are value-less.
 
 	// Loop until finds a key to be passed to the next level.
 	for {
@@ -1237,7 +1237,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 				// are safer.
 				i.stats.CountMissizedDels++
 				i.kv.K.SetKind(base.InternalKeyKindDelete)
-				i.kv.V = base.LazyValue{}
+				i.kv.V = base.InternalValue{}
 				// NB: We skipInStripe now, rather than returning leaving
 				// i.skip=true and returning early, because Next() requires
 				// that i.skip=true only if i.iterPos = iterPosCurForward.
@@ -1251,7 +1251,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 			// NB: We remove the value regardless of whether the key was sized
 			// appropriately. The size encoded is 'consumed' the first time it
 			// meets a key that it deletes.
-			i.kv.V = base.LazyValue{}
+			i.kv.V = base.InternalValue{}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
@@ -1297,7 +1297,7 @@ func (i *Iter) saveValue() {
 	v, callerOwned, err := i.iterKV.Value(i.valueBuf[:0])
 	if err != nil {
 		i.err = err
-		i.kv.V = base.LazyValue{}
+		i.kv.V = base.InternalValue{}
 	} else if !callerOwned {
 		i.valueBuf = append(i.valueBuf[:0], v...)
 		i.kv.V = base.MakeInPlaceValue(i.valueBuf)
@@ -1408,7 +1408,7 @@ func (i *Iter) maybeZeroSeqnum(snapshotIdx int) {
 
 func finishValueMerger(
 	valueMerger base.ValueMerger, includesBase bool,
-) (_ base.LazyValue, needDelete bool, closer io.Closer, err error) {
+) (_ base.InternalValue, needDelete bool, closer io.Closer, err error) {
 	var value []byte
 	if valueMerger2, ok := valueMerger.(base.DeletableValueMerger); ok {
 		value, needDelete, closer, err = valueMerger2.DeletableFinish(includesBase)

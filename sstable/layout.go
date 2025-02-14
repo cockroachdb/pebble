@@ -359,25 +359,25 @@ func formatColblkDataBlock(
 		}
 		defer iter.Close()
 		for kv := iter.First(); kv != nil; kv = iter.Next() {
-			tp.Child(fmtKV(&kv.K, kv.V.ValueOrHandle))
+			tp.Child(fmtKV(&kv.K, kv.V.LazyValue().ValueOrHandle))
 		}
 	}
 	return nil
 }
 
-// describingLazyValueHandler is a block.GetLazyValueForPrefixAndValueHandler
+// describingLazyValueHandler is a block.GetInternalValueForPrefixAndValueHandler
 // that replaces a value handle with an in-place value describing the handle.
 type describingLazyValueHandler struct{}
 
 // Assert that debugLazyValueHandler implements the
-// block.GetLazyValueForPrefixAndValueHandler interface.
-var _ block.GetLazyValueForPrefixAndValueHandler = describingLazyValueHandler{}
+// block.GetInternalValueForPrefixAndValueHandler interface.
+var _ block.GetInternalValueForPrefixAndValueHandler = describingLazyValueHandler{}
 
-func (describingLazyValueHandler) GetLazyValueForPrefixAndValueHandle(
+func (describingLazyValueHandler) GetInternalValueForPrefixAndValueHandle(
 	handle []byte,
-) base.LazyValue {
+) base.InternalValue {
 	vh := valblk.DecodeHandle(handle[1:])
-	return base.LazyValue{ValueOrHandle: []byte(fmt.Sprintf("value handle %+v", vh))}
+	return base.MakeInPlaceValue([]byte(fmt.Sprintf("value handle %+v", vh)))
 }
 
 func formatColblkKeyspanBlock(

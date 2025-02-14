@@ -224,7 +224,7 @@ func newColumnBlockSingleLevelIterator(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
 		env,
 	)
-	var getLazyValuer block.GetLazyValueForPrefixAndValueHandler
+	var getLazyValuer block.GetInternalValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, env.Stats)
 		getLazyValuer = &i.vbReader

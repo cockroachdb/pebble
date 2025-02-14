@@ -217,7 +217,7 @@ type Iterator struct {
 	// is backed by keyBuf.
 	key    []byte
 	keyBuf []byte
-	value  LazyValue
+	value  base.InternalValue
 	// For use in LazyValue.Clone.
 	valueBuf []byte
 	fetcher  base.LazyFetcher
@@ -576,7 +576,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			// Save the current key.
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = LazyValue{}
+			i.value = base.InternalValue{}
 			// There may also be a live point key at this userkey that we have
 			// not yet read. We need to find the next entry with this user key
 			// to find it. Save the range key so we don't lose it when we Next
@@ -946,7 +946,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 						// a range key boundary at this key, we still want to
 						// return. Otherwise, we need to continue looking for
 						// a live key.
-						i.value = LazyValue{}
+						i.value = base.InternalValue{}
 						if rangeKeyBoundary {
 							i.rangeKey.rangeKeyOnly = true
 						} else {
@@ -1020,7 +1020,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			rangeKeyBoundary = true
 
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
-			i.value = LazyValue{}
+			i.value = base.InternalValue{}
 			i.iterValidityState = IterExhausted
 			valueMerger = nil
 			i.stats.ReverseStepCount[InternalIterCall]++
@@ -1139,7 +1139,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			i.value = base.MakeInPlaceValue(value)
 			if i.err == nil && needDelete {
 				i.key = nil
-				i.value = LazyValue{}
+				i.value = base.InternalValue{}
 				i.iterValidityState = IterExhausted
 			}
 		}
@@ -2292,7 +2292,7 @@ func (i *Iterator) ValueAndErr() ([]byte, error) {
 // LazyValue returns the LazyValue. Only for advanced use cases.
 // REQUIRES: i.Error()==nil and HasPointAndRange() returns true for hasPoint.
 func (i *Iterator) LazyValue() LazyValue {
-	return i.value
+	return i.value.LazyValue()
 }
 
 // RangeKeys returns the range key values and their suffixes covering the

@@ -96,16 +96,16 @@ func MakeReader(
 	}
 }
 
-var _ block.GetLazyValueForPrefixAndValueHandler = (*Reader)(nil)
+var _ block.GetInternalValueForPrefixAndValueHandler = (*Reader)(nil)
 
-// GetLazyValueForPrefixAndValueHandle returns a LazyValue for the given value
-// prefix and value.
+// GetInternalValueForPrefixAndValueHandle returns an InternalValue for the
+// given value prefix and value.
 //
 // The result is only valid until the next call to
-// GetLazyValueForPrefixAndValueHandle. Use LazyValue.Clone if the lifetime of
-// the LazyValue needs to be extended. For more details, see the "memory
-// management" comment where LazyValue is declared.
-func (r *Reader) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+// GetInternalValueForPrefixAndValueHandle. Use InternalValue.Clone if the
+// lifetime of the InternalValue needs to be extended. For more details, see the
+// "memory management" comment where LazyValue is declared.
+func (r *Reader) GetInternalValueForPrefixAndValueHandle(handle []byte) base.InternalValue {
 	if r.fetcher == nil {
 		// NB: we cannot avoid this allocation, since the valueBlockFetcher
 		// can outlive the singleLevelIterator due to be being embedded in a
@@ -129,10 +129,10 @@ func (r *Reader) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyVal
 		r.stats.SeparatedPointValue.Count++
 		r.stats.SeparatedPointValue.ValueBytes += uint64(valLen)
 	}
-	return base.LazyValue{
+	return base.MakeLazyValue(base.LazyValue{
 		ValueOrHandle: h,
 		Fetcher:       lazyFetcher,
-	}
+	})
 }
 
 // Close closes the Reader.
