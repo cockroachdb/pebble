@@ -408,8 +408,8 @@ func testCockroachDataColBlock(t *testing.T, seed uint64, keyCfg keyGenConfig) {
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
-	it.InitOnce(&KeySchema, &Comparer, getLazyValuer(func([]byte) base.LazyValue {
-		return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
+		return base.MakeInPlaceValue([]byte("mock external value"))
 	}))
 	decoder.Init(&KeySchema, serializedBlock)
 	if err := it.Init(&decoder, block.IterTransforms{}); err != nil {
@@ -470,9 +470,9 @@ func generateDataBlock(
 	return data, keys[:count], values[:count]
 }
 
-type getLazyValuer func([]byte) base.LazyValue
+type getInternalValuer func([]byte) base.InternalValue
 
-func (g getLazyValuer) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+func (g getInternalValuer) GetInternalValueForPrefixAndValueHandle(handle []byte) base.InternalValue {
 	return g(handle)
 }
 

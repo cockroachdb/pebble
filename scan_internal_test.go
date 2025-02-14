@@ -564,7 +564,10 @@ func TestScanInternal(t *testing.T) {
 			}
 			err := reader.ScanInternal(context.TODO(), block.CategoryUnknown, lower, upper,
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
-					v := value.InPlaceValue()
+					v, _, err := value.Value(nil)
+					if err != nil {
+						return err
+					}
 					fmt.Fprintf(&b, "%s (%s)\n", key, v)
 					return nil
 				},

@@ -188,7 +188,7 @@ type Iter struct {
 	// for block iteration for already loaded blocks.
 	firstUserKey      []byte
 	lazyValueHandling struct {
-		getValue       block.GetLazyValueForPrefixAndValueHandler
+		getValue       block.GetInternalValueForPrefixAndValueHandler
 		hasValuePrefix bool
 	}
 	synthSuffixBuf            []byte
@@ -300,7 +300,7 @@ func (i *Iter) SetHasValuePrefix(hasValuePrefix bool) {
 
 // SetGetLazyValuer sets the value block reader the iterator should use to get
 // lazy values when the value encodes a value prefix.
-func (i *Iter) SetGetLazyValuer(g block.GetLazyValueForPrefixAndValueHandler) {
+func (i *Iter) SetGetLazyValuer(g block.GetInternalValueForPrefixAndValueHandler) {
 	i.lazyValueHandling.getValue = g
 
 }
@@ -706,7 +706,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
-			i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+			i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 		}
 		return &i.ikv
 	}
@@ -992,7 +992,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1021,7 +1021,7 @@ func (i *Iter) First() *base.InternalKV {
 	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1067,7 +1067,7 @@ func (i *Iter) Last() *base.InternalKV {
 	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1126,7 +1126,7 @@ start:
 	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1416,7 +1416,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 				i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 			} else {
-				i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+				i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 			}
 			return &i.ikv
 		}
@@ -1474,7 +1474,7 @@ start:
 		} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
-			i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+			i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 		}
 		return &i.ikv
 	}
@@ -1556,7 +1556,7 @@ start:
 	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
-		i.ikv.V = i.lazyValueHandling.getValue.GetLazyValueForPrefixAndValueHandle(i.val)
+		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
 }
@@ -1658,7 +1658,8 @@ func (i *Iter) Describe(tp treeprinter.Node, fmtKV DescribeKV) {
 		enc.KeyUnshared, ptr = decodeVarint(ptr)
 		enc.ValueLen, _ = decodeVarint(ptr)
 		buf.Reset()
-		fmtKV(&buf, &kv.K, kv.V.ValueOrHandle, enc)
+		lv := kv.V.LazyValue()
+		fmtKV(&buf, &kv.K, lv.ValueOrHandle, enc)
 		tp.Child(buf.String())
 	}
 	// Format the restart points.

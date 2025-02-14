@@ -29,7 +29,7 @@ func TestLazyValue(t *testing.T) {
 	require.True(t, unsafe.Sizeof(LazyValue{}) <= 32)
 
 	fooBytes1 := []byte("foo")
-	fooLV1 := MakeInPlaceValue(fooBytes1)
+	fooLV1 := LazyValue{ValueOrHandle: fooBytes1}
 	require.Equal(t, 3, fooLV1.Len())
 	_, hasAttr := fooLV1.TryGetShortAttribute()
 	require.False(t, hasAttr)
@@ -37,7 +37,7 @@ func TestLazyValue(t *testing.T) {
 	require.Equal(t, 3, fooLV2.Len())
 	_, hasAttr = fooLV2.TryGetShortAttribute()
 	require.False(t, hasAttr)
-	require.Equal(t, fooLV1.InPlaceValue(), fooLV2.InPlaceValue())
+	require.Equal(t, fooLV1.ValueOrHandle, fooLV2.ValueOrHandle)
 	getValue := func(lv LazyValue, expectedCallerOwned bool) []byte {
 		v, callerOwned, err := lv.Value(nil)
 		require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestLazyValue(t *testing.T) {
 	}
 	require.Equal(t, getValue(fooLV1, false), getValue(fooLV2, false))
 	fooBytes2[0] = 'b'
-	require.False(t, bytes.Equal(fooLV1.InPlaceValue(), fooLV2.InPlaceValue()))
+	require.False(t, bytes.Equal(fooLV1.ValueOrHandle, fooLV2.ValueOrHandle))
 
 	for _, callerOwned := range []bool{false, true} {
 		numCalls := 0

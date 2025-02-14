@@ -99,9 +99,9 @@ func (m *simpleMergingIter) init(
 		if l.iterKV != nil {
 			item := simpleMergingIterItem{
 				index: i,
-				value: l.iterKV.V,
+				kv:    *l.iterKV,
 			}
-			item.key = l.iterKV.K.Clone()
+			item.kv.K = l.iterKV.K.Clone()
 			m.heap.items = append(m.heap.items, item)
 		}
 	}
@@ -122,7 +122,7 @@ func (m *simpleMergingIter) positionRangeDels() {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		t, err := l.rangeDelIter.SeekGE(item.key.UserKey)
+		t, err := l.rangeDelIter.SeekGE(item.kv.K.UserKey)
 		m.err = firstError(m.err, err)
 		l.tombstone = t
 	}
@@ -136,7 +136,7 @@ func (m *simpleMergingIter) step() bool {
 	item := &m.heap.items[0]
 	l := &m.levels[item.index]
 	// Sentinels are not relevant for this point checking.
-	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot, base.SeqNumMax) {
+	if !item.kv.K.IsExclusiveSentinel() && item.kv.K.Visible(m.snapshot, base.SeqNumMax) {
 		// This is a visible point key.
 		if !m.handleVisiblePoint(item, l) {
 			return false
@@ -160,16 +160,14 @@ func (m *simpleMergingIter) step() bool {
 		// L1 and higher levels are ordered. This happens when levelIter moves to the
 		// next sstable in the level, in which case item.key is previous sstable's
 		// last point key.
-		if !l.iterKV.K.IsExclusiveSentinel() && base.InternalCompare(m.heap.cmp, item.key, l.iterKV.K) >= 0 {
+		if !l.iterKV.K.IsExclusiveSentinel() && base.InternalCompare(m.heap.cmp, item.kv.K, l.iterKV.K) >= 0 {
 			m.err = errors.Errorf("out of order keys %s >= %s in %s",
-				item.key.Pretty(m.formatKey), l.iterKV.K.Pretty(m.formatKey), l.iter)
+				item.kv.K.Pretty(m.formatKey), l.iterKV.K.Pretty(m.formatKey), l.iter)
 			return false
 		}
-		item.key = base.InternalKey{
-			Trailer: l.iterKV.K.Trailer,
-			UserKey: append(item.key.UserKey[:0], l.iterKV.K.UserKey...),
-		}
-		item.value = l.iterKV.V
+		userKeyBuf := item.kv.K.UserKey[:0]
+		item.kv = *l.iterKV
+		item.kv.K.UserKey = append(userKeyBuf, l.iterKV.K.UserKey...)
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
 		}
@@ -189,7 +187,7 @@ func (m *simpleMergingIter) step() bool {
 			if err != nil {
 				m.err = errors.CombineErrors(m.err,
 					errors.Wrapf(err, "merge processing error on key %s in %s",
-						item.key.Pretty(m.formatKey), m.lastIterMsg))
+						item.kv.K.Pretty(m.formatKey), m.lastIterMsg))
 			}
 			m.valueMerger = nil
 		}
@@ -205,21 +203,21 @@ func (m *simpleMergingIter) handleVisiblePoint(
 	item *simpleMergingIterItem, l *simpleMergingIterLevel,
 ) (ok bool) {
 	m.numPoints++
-	keyChanged := m.heap.cmp(item.key.UserKey, m.lastKey.UserKey) != 0
+	keyChanged := m.heap.cmp(item.kv.K.UserKey, m.lastKey.UserKey) != 0
 	if !keyChanged {
 		// At the same user key. We will see them in decreasing seqnum
 		// order so the lastLevel must not be lower.
 		if m.lastLevel > item.index {
 			m.err = errors.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
-				item.key.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
+				item.kv.K.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
 				m.lastIterMsg)
 			return false
 		}
 		m.lastLevel = item.index
 	} else {
 		// The user key has changed.
-		m.lastKey.Trailer = item.key.Trailer
-		m.lastKey.UserKey = append(m.lastKey.UserKey[:0], item.key.UserKey...)
+		m.lastKey.Trailer = item.kv.K.Trailer
+		m.lastKey.UserKey = append(m.lastKey.UserKey[:0], item.kv.K.UserKey...)
 		m.lastLevel = item.index
 	}
 	// Ongoing series of MERGE records ends with a MERGE record.
@@ -231,14 +229,14 @@ func (m *simpleMergingIter) handleVisiblePoint(
 		}
 		m.valueMerger = nil
 	}
-	itemValue, _, err := item.value.Value(nil)
+	itemValue, _, err := item.kv.Value(nil)
 	if err != nil {
 		m.err = err
 		return false
 	}
 	if m.valueMerger != nil {
 		// Ongoing series of MERGE records.
-		switch item.key.Kind() {
+		switch item.kv.K.Kind() {
 		case InternalKeyKindSingleDelete, InternalKeyKindDelete, InternalKeyKindDeleteSized:
 			var closer io.Closer
 			_, closer, m.err = m.valueMerger.Finish(true /* includesBase */)
@@ -260,17 +258,17 @@ func (m *simpleMergingIter) handleVisiblePoint(
 			m.err = m.valueMerger.MergeOlder(itemValue)
 		default:
 			m.err = errors.Errorf("pebble: invalid internal key kind %s in %s",
-				item.key.Pretty(m.formatKey),
+				item.kv.K.Pretty(m.formatKey),
 				l.iter)
 			return false
 		}
-	} else if item.key.Kind() == InternalKeyKindMerge && m.err == nil {
+	} else if item.kv.K.Kind() == InternalKeyKindMerge && m.err == nil {
 		// New series of MERGE records.
-		m.valueMerger, m.err = m.merge(item.key.UserKey, itemValue)
+		m.valueMerger, m.err = m.merge(item.kv.K.UserKey, itemValue)
 	}
 	if m.err != nil {
 		m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-			item.key.Pretty(m.formatKey), l.iter)
+			item.kv.K.Pretty(m.formatKey), l.iter)
 		return false
 	}
 	// Is this point covered by a tombstone at a lower level? Note that all these
@@ -280,9 +278,9 @@ func (m *simpleMergingIter) handleVisiblePoint(
 		if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
 			continue
 		}
-		if lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) && lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
+		if lvl.tombstone.Contains(m.heap.cmp, item.kv.K.UserKey) && lvl.tombstone.CoversAt(m.snapshot, item.kv.K.SeqNum()) {
 			m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
-				lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
+				lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.kv.K.Pretty(m.formatKey),
 				l.iter)
 			return false
 		}
@@ -677,8 +675,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 
 type simpleMergingIterItem struct {
 	index int
-	key   InternalKey
-	value base.LazyValue
+	kv    base.InternalKV
 }
 
 type simpleMergingIterHeap struct {
@@ -692,7 +689,7 @@ func (h *simpleMergingIterHeap) len() int {
 }
 
 func (h *simpleMergingIterHeap) less(i, j int) bool {
-	ikey, jkey := h.items[i].key, h.items[j].key
+	ikey, jkey := h.items[i].kv.K, h.items[j].kv.K
 	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
 		if h.reverse {
 			return c > 0

@@ -1087,7 +1087,7 @@ func (i *scanInternalIterator) unsafeKey() *InternalKey {
 // position. Behaviour undefined if unsafeKey() returns a Range key or Rangedel
 // kind key.
 func (i *scanInternalIterator) lazyValue() LazyValue {
-	return i.iterKV.V
+	return i.iterKV.LazyValue()
 }
 
 // unsafeRangeDel returns a range key span. Behaviour undefined if UnsafeKey returns

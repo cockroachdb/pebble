@@ -610,7 +610,7 @@ func MakeInternalKV(k InternalKey, v []byte) InternalKV {
 // InternalKV represents a single internal key-value pair.
 type InternalKV struct {
 	K InternalKey
-	V LazyValue
+	V InternalValue
 }
 
 // Kind returns the KV's internal key kind.
@@ -628,7 +628,12 @@ func (kv *InternalKV) InPlaceValue() []byte {
 	return kv.V.InPlaceValue()
 }
 
-// Value return's the KV's underlying value.
+// LazyValue returns a LazyValue containing the KV's value.
+func (kv *InternalKV) LazyValue() LazyValue {
+	return kv.V.LazyValue()
+}
+
+// Value returns the KV's underlying value.
 func (kv *InternalKV) Value(buf []byte) (val []byte, callerOwned bool, err error) {
 	return kv.V.Value(buf)
 }

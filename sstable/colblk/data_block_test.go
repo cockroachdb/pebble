@@ -33,8 +33,8 @@ func TestDataBlock(t *testing.T) {
 	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.EnsureDefaults())
 	var sizes []int
 	it.InitOnce(&testKeysSchema, testkeys.Comparer,
-		getLazyValuer(func([]byte) base.LazyValue {
-			return base.LazyValue{ValueOrHandle: []byte("mock external value")}
+		getInternalValuer(func([]byte) base.InternalValue {
+			return base.MakeInPlaceValue([]byte("mock external value"))
 		}))
 
 	datadriven.Walk(t, "testdata/data_block", func(t *testing.T, path string) {
@@ -207,8 +207,8 @@ func randTestKey(rng *rand.Rand, buf []byte, prefixLen int) []byte {
 	return buf
 }
 
-type getLazyValuer func([]byte) base.LazyValue
+type getInternalValuer func([]byte) base.InternalValue
 
-func (g getLazyValuer) GetLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
+func (g getInternalValuer) GetInternalValueForPrefixAndValueHandle(handle []byte) base.InternalValue {
 	return g(handle)
 }
