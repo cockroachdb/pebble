@@ -2593,13 +2593,13 @@ func (d *DB) validateSSTables() {
 
 		var err error
 		if f.Meta.Virtual {
-			err = d.fileCache.withVirtualReader(
-				f.Meta.VirtualMeta(), func(v sstable.VirtualReader) error {
+			err = d.fileCache.withVirtualReader(context.TODO(), block.NoReadEnv,
+				f.Meta.VirtualMeta(), func(v sstable.VirtualReader, _ block.ReadEnv) error {
 					return v.ValidateBlockChecksumsOnBacking()
 				})
 		} else {
-			err = d.fileCache.withReader(
-				f.Meta.PhysicalMeta(), func(r *sstable.Reader) error {
+			err = d.fileCache.withReader(context.TODO(), block.NoReadEnv,
+				f.Meta.PhysicalMeta(), func(r *sstable.Reader, _ block.ReadEnv) error {
 					return r.ValidateBlockChecksums()
 				})
 		}

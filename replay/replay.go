@@ -610,6 +610,10 @@ func (r *Runner) eventListener() pebble.EventListener {
 			r.err.Store(err)
 			r.cancel()
 		},
+		SSTableCorruption: func(info pebble.SSTableCorruptionInfo) {
+			r.err.Store(info.Details)
+			r.cancel()
+		},
 		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
 			r.writeStallMetrics.Lock()
 			defer r.writeStallMetrics.Unlock()

@@ -294,7 +294,7 @@ func (p *provider) OpenForReading(
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
 		if opts.MustExist {
-			p.st.Logger.Fatalf("%v", err)
+			err = base.MarkCorruptionError(err)
 		}
 		return nil, err
 	}
@@ -307,6 +307,7 @@ func (p *provider) OpenForReading(
 		if err != nil && p.isNotExistError(meta, err) {
 			// Wrap the error so that IsNotExistError functions properly.
 			err = errors.Mark(err, os.ErrNotExist)
+			err = base.MarkCorruptionError(err)
 		}
 	}
 	if err != nil {

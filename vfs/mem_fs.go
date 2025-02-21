@@ -620,6 +620,18 @@ func (y *MemFS) GetDiskUsage(string) (DiskUsage, error) {
 // Unwrap implements FS.Unwrap.
 func (*MemFS) Unwrap() FS { return nil }
 
+// UnsafeGetFileDataBuffer returns the buffer holding the data for a file. Must
+// not be used while concurrent updates are happening to the file. The buffer
+// cannot be modified while concurrent file reads are happening.
+func (y *MemFS) UnsafeGetFileDataBuffer(fullname string) ([]byte, error) {
+	f, err := y.Open(fullname)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.(*memFile).n.mu.data, nil
+}
+
 // memNode holds a file's data or a directory's children.
 type memNode struct {
 	isDir bool

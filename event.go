@@ -16,6 +16,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -43,6 +45,34 @@ func formatFileNums(tables []TableInfo) string {
 		buf.WriteString(tables[i].FileNum.String())
 	}
 	return buf.String()
+}
+
+type SSTableCorruptionInfo struct {
+	// Path of the file that is corrupted. For remote files the path starts with
+	// "remote://".
+	Path     string
+	IsRemote bool
+	// Locator is only set when IsRemote is true (note that an empty Locator is
+	// valid even then).
+	Locator remote.Locator
+	// Bounds indicates the keyspace range for the corrupt SSTable.
+	Bounds base.UserKeyBounds
+	// Details of the error. See cockroachdb/error for how to format with or
+	// without redaction.
+	Details error
+}
+
+func (i SSTableCorruptionInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i SSTableCorruptionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("sstable corruption: %s", redact.Safe(i.Path))
+	if i.IsRemote {
+		w.Printf(" (remote locator %q)", redact.Safe(i.Locator))
+	}
+	w.Printf("; bounds: %s; details: %+v", i.Bounds.String(), i.Details)
 }
 
 // LevelInfo contains info pertaining to a particular level.
@@ -693,6 +723,10 @@ type EventListener struct {
 	// operation such as flush or compaction.
 	BackgroundError func(error)
 
+	// SSTableCorruption is invoked when a corruption is detected in an SSTable.
+	// It should not block, as it is called synchronously in read paths.
+	SSTableCorruption func(SSTableCorruptionInfo)
+
 	// CompactionBegin is invoked after the inputs to a compaction have been
 	// determined, but before the compaction has produced any output.
 	CompactionBegin func(CompactionInfo)
@@ -788,6 +822,15 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 			l.BackgroundError = func(error) {}
 		}
 	}
+	if l.SSTableCorruption == nil {
+		if logger != nil {
+			l.SSTableCorruption = func(info SSTableCorruptionInfo) {
+				logger.Fatalf("%s", info)
+			}
+		} else {
+			l.SSTableCorruption = func(info SSTableCorruptionInfo) {}
+		}
+	}
 	if l.CompactionBegin == nil {
 		l.CompactionBegin = func(info CompactionInfo) {}
 	}
@@ -864,6 +907,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		BackgroundError: func(err error) {
 			logger.Errorf("background error: %s", err)
 		},
+		SSTableCorruption: func(info SSTableCorruptionInfo) {
+			logger.Errorf("%s", info)
+		},
 		CompactionBegin: func(info CompactionInfo) {
 			logger.Infof("%s", info)
 		},
@@ -938,6 +984,10 @@ func TeeEventListener(a, b EventListener) EventListener {
 		BackgroundError: func(err error) {
 			a.BackgroundError(err)
 			b.BackgroundError(err)
+		},
+		SSTableCorruption: func(info SSTableCorruptionInfo) {
+			a.SSTableCorruption(info)
+			b.SSTableCorruption(info)
 		},
 		CompactionBegin: func(info CompactionInfo) {
 			a.CompactionBegin(info)
@@ -1088,4 +1138,26 @@ func (r *lowDiskSpaceReporter) findThreshold(
 		ok = true
 	}
 	return threshold, ok
+}
+
+func (d *DB) reportSSTableCorruption(meta *manifest.TableMetadata, err error) {
+	if invariants.Enabled && err == nil {
+		panic("nil error")
+	}
+	objMeta, lookupErr := d.objProvider.Lookup(base.FileTypeTable, meta.FileBacking.DiskFileNum)
+	if lookupErr != nil {
+		// If the object is not known to the provider, it must be a local object
+		// that was missing when we opened the store. Remote objects have their
+		// metadata in a catalog, so even if the backing object is deleted, the
+		// DiskFileNum would still be known.
+		objMeta = objstorage.ObjectMetadata{DiskFileNum: meta.FileBacking.DiskFileNum, FileType: base.FileTypeTable}
+	}
+	info := SSTableCorruptionInfo{
+		Path:     d.objProvider.Path(objMeta),
+		IsRemote: objMeta.IsRemote(),
+		Locator:  objMeta.Remote.Locator,
+		Bounds:   meta.UserKeyBounds(),
+		Details:  err,
+	}
+	d.opts.EventListener.SSTableCorruption(info)
 }

@@ -13,7 +13,7 @@ import (
 var ErrNotFound = errors.New("pebble: not found")
 
 // ErrCorruption is a marker to indicate that data in a file (WAL, MANIFEST,
-// sstable) isn't in the expected format.
+// sstable) isn't in the expected format (or the file is missing).
 var ErrCorruption = errors.New("pebble: corruption")
 
 // MarkCorruptionError marks given error as a corruption error.
@@ -22,6 +22,11 @@ func MarkCorruptionError(err error) error {
 		return err
 	}
 	return errors.Mark(err, ErrCorruption)
+}
+
+// IsCorruptionError returns true if the given error indicates corruption.
+func IsCorruptionError(err error) bool {
+	return errors.Is(err, ErrCorruption)
 }
 
 // CorruptionErrorf formats according to a format specifier and returns
