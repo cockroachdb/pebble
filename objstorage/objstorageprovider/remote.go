@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/redact"
 )
 
 // remoteSubsystem contains the provider fields related to remote storage.
@@ -331,11 +330,11 @@ func (p *provider) remoteOpenForReading(
 		refName := p.sharedObjectRefName(meta)
 		if _, err := meta.Remote.Storage.Size(refName); err != nil {
 			if meta.Remote.Storage.IsNotExistError(err) {
+				err = errors.Wrapf(err, "marker object %q does not exist", errors.Safe(refName))
 				if opts.MustExist {
-					p.st.Logger.Fatalf("marker object %q does not exist", errors.Safe(refName))
-					// TODO(radu): maybe list references for the object.
+					err = base.MarkCorruptionError(err)
 				}
-				return nil, errors.Errorf("marker object %q does not exist", errors.Safe(refName))
+				return nil, err
 			}
 			return nil, errors.Wrapf(err, "checking marker object %q", errors.Safe(refName))
 		}
@@ -344,8 +343,8 @@ func (p *provider) remoteOpenForReading(
 	reader, size, err := meta.Remote.Storage.ReadObject(ctx, objName)
 	if err != nil {
 		if opts.MustExist && meta.Remote.Storage.IsNotExistError(err) {
-			p.st.Logger.Fatalf("object %q does not exist", redact.SafeString(objName))
 			// TODO(radu): maybe list references for the object.
+			err = base.MarkCorruptionError(err)
 		}
 		return nil, err
 	}

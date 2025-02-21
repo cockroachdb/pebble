@@ -2562,7 +2562,7 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
-		err = d.fileCache.withVirtualReader(inputMeta.VirtualMeta(), func(r sstable.VirtualReader) error {
+		err = d.fileCache.withVirtualReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) error {
 			var err error
 			wrote, err = sstable.CopySpan(ctx,
 				src, r.UnsafeReader(), d.opts.MakeReaderOptions(),
