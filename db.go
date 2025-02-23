@@ -1843,7 +1843,7 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 				d.mu.Unlock()
 				d.commit.mu.Lock()
 				d.mu.Lock()
-				defer d.commit.mu.Unlock()
+				defer d.commit.mu.Unlock() //nolint:deferloop
 				if mem.flushable == d.mu.mem.mutable {
 					// Only flush if the active memtable is unchanged.
 					err = d.makeRoomForWrite(nil)
