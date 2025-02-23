@@ -269,7 +269,8 @@ specified database.
 func (d *dbT) loadOptions(dir string) error {
 	ls, err := d.opts.FS.List(dir)
 	if err != nil || len(ls) == 0 {
-		// NB: We don't return the error here as we prefer to return the error from
+		// nolint:returnerrcheck
+		// We don't return the error here as we prefer to return the error from
 		// pebble.Open. Another way to put this is that a non-existent directory is
 		// not a failure in loading the options.
 		return nil

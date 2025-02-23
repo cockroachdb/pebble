@@ -710,11 +710,10 @@ func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 		if err != nil {
 			// Free the block.
 			s.mu.Lock()
-			defer s.mu.Unlock()
-
 			delete(s.mu.where, k)
 			s.lruUnlink(cacheBlockIdx)
 			s.freePush(cacheBlockIdx)
+			s.mu.Unlock()
 			return err
 		}
 		s.dropWriteLock(cacheBlockIdx)

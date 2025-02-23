@@ -228,31 +228,37 @@ func intersectingIndexEntries(
 			alloc, entry.sep = alloc.Copy(entry.sep)
 			res = append(res, entry)
 		} else {
-			subBlk, err := r.readIndexBlock(ctx, block.NoReadEnv, rh, bh.Handle)
-			if err != nil {
-				return nil, err
-			}
-			defer subBlk.Release() // in-loop, but it is a short loop.
-
-			sub := r.tableFormat.newIndexIter()
-			err = sub.Init(r.Comparer, subBlk.BlockData(), NoTransforms)
-			if err != nil {
-				return nil, err
-			}
-			defer sub.Close() // in-loop, but it is a short loop.
-
-			for valid := sub.SeekGE(start.UserKey); valid; valid = sub.Next() {
-				bh, err := sub.BlockHandleWithProperties()
+			err := func() error {
+				subBlk, err := r.readIndexBlock(ctx, block.NoReadEnv, rh, bh.Handle)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				entry := indexEntry{bh: bh, sep: sub.Separator()}
-				alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
-				alloc, entry.sep = alloc.Copy(entry.sep)
-				res = append(res, entry)
-				if r.Compare(end.UserKey, entry.sep) <= 0 {
-					break
+				defer subBlk.Release()
+
+				sub := r.tableFormat.newIndexIter()
+				err = sub.Init(r.Comparer, subBlk.BlockData(), NoTransforms)
+				if err != nil {
+					return err
 				}
+				defer sub.Close()
+
+				for valid := sub.SeekGE(start.UserKey); valid; valid = sub.Next() {
+					bh, err := sub.BlockHandleWithProperties()
+					if err != nil {
+						return err
+					}
+					entry := indexEntry{bh: bh, sep: sub.Separator()}
+					alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
+					alloc, entry.sep = alloc.Copy(entry.sep)
+					res = append(res, entry)
+					if r.Compare(end.UserKey, entry.sep) <= 0 {
+						break
+					}
+				}
+				return nil
+			}()
+			if err != nil {
+				return nil, err
 			}
 		}
 		if top.SeparatorGT(end.UserKey, true /* inclusively */) {

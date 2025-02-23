@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	cmdGo       = "go"
 	staticcheck = "honnef.co/go/tools/cmd/staticcheck"
 	crlfmt      = "github.com/cockroachdb/crlfmt"
 	gcassert    = "github.com/jordanlewis/gcassert/cmd/gcassert"
+	roachvet    = "github.com/cockroachdb/pebble/internal/devtools/roachvet"
 )
 
 func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
@@ -47,7 +47,7 @@ func ignoreGoMod() stream.Filter {
 }
 
 func installTool(t *testing.T, path string) {
-	cmd := exec.Command(cmdGo, "install", "-C", "../devtools", path)
+	cmd := exec.Command("go", "install", "-C", "../devtools", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cannot install %q: %v\n%s\n", path, err, out)
@@ -148,9 +148,28 @@ func TestLint(t *testing.T) {
 		if err := stream.ForEach(
 			stream.Sequence(
 				dirCmd(t, pkg.Dir, "staticcheck", pkgs...),
-				stream.GrepNot("go: downloading"),
+				ignoreGoMod(),
 			), func(s string) {
 				t.Errorf("\n%s", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
+	t.Run("TestRoachVet", func(t *testing.T) {
+		installTool(t, roachvet)
+		out, err := exec.Command("which", "roachvet").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		roachVetPath := strings.TrimSpace(string(out))
+		t.Parallel()
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "go", "vet", "-vettool="+roachVetPath, "./..."),
+				ignoreGoMod(),
+			), func(s string) {
+				t.Errorf("%s", s)
 			}); err != nil {
 			t.Error(err)
 		}
