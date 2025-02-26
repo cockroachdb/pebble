@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -516,6 +517,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 // deletes all the keys in it, and no other levels should be written.
 func buildLevelsForMergingIterSeqSeek(
 	b *testing.B,
+	ch *cache.Handle,
 	blockSize, restartInterval, levelCount int,
 	keyOffset int,
 	writeRangeTombstoneToLowestLevel bool,
@@ -614,11 +616,6 @@ func buildLevelsForMergingIterSeqSeek(
 		}
 	}
 
-	c := NewCache(128 << 20 /* 128MB */)
-	defer c.Unref()
-	ch := c.NewHandle()
-	defer ch.Close()
-
 	opts := sstable.ReaderOptions{Comparer: DefaultComparer}
 	opts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: ch}
 
@@ -709,12 +706,16 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 	const blockSize = 32 << 10
 
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
 	restartInterval := 16
 	for _, levelCount := range []int{5} {
 		b.Run(fmt.Sprintf("levelCount=%d", levelCount),
 			func(b *testing.B) {
+				ch := c.NewHandle()
+				defer ch.Close()
 				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-					b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
+					b, ch, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
 				m := buildMergingIter(readers, levelSlices)
 				keyCount := len(keys)
 				b.ResetTimer()
@@ -741,8 +742,13 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 	const blockSize = 32 << 10
 	const restartInterval = 16
 	const levelCount = 5
+
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
+	ch := c.NewHandle()
+	defer ch.Close()
 	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
+		b, ch, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
 
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {
