@@ -1674,10 +1674,24 @@ func BenchmarkIteratorPrev(b *testing.B) {
 }
 
 type twoLevelBloomTombstoneState struct {
+	c           *cache.Cache
+	ch          *cache.Handle
 	keys        [][]byte
 	readers     [8][][]*sstable.Reader
 	levelSlices [8][]manifest.LevelSlice
 	indexFunc   func(twoLevelIndex bool, bloom bool, withTombstone bool) int
+}
+
+func (s *twoLevelBloomTombstoneState) close() {
+	s.ch.Close()
+	s.c.Unref()
+	for _, r := range s.readers {
+		for i := range r {
+			for j := range r[i] {
+				r[i][j].Close()
+			}
+		}
+	}
 }
 
 func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTombstoneState {
@@ -1685,6 +1699,8 @@ func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTo
 	const restartInterval = 16
 	const levelCount = 5
 
+	c := NewCache(128 << 20 /* 128MB */)
+	ch := c.NewHandle()
 	var readers [8][][]*sstable.Reader
 	var levelSlices [8][]manifest.LevelSlice
 	var keys [][]byte
@@ -1710,12 +1726,18 @@ func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTo
 					levels = 1
 				}
 				readers[index], levelSlices[index], keys = buildLevelsForMergingIterSeqSeek(
-					b, blockSize, restartInterval, levels, keyOffset, withTombstone, bloom, twoLevelIndex)
+					b, ch, blockSize, restartInterval, levels, keyOffset, withTombstone, bloom, twoLevelIndex)
 			}
 		}
 	}
 	return twoLevelBloomTombstoneState{
-		keys: keys, readers: readers, levelSlices: levelSlices, indexFunc: indexFunc}
+		c:           c,
+		ch:          ch,
+		keys:        keys,
+		readers:     readers,
+		levelSlices: levelSlices,
+		indexFunc:   indexFunc,
+	}
 }
 
 // BenchmarkIteratorSeqSeekPrefixGENotFound exercises the case of SeekPrefixGE
@@ -1729,6 +1751,7 @@ func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTo
 func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 	const keyOffset = 100000
 	state := setupForTwoLevelBloomTombstone(b, keyOffset)
+	defer state.close()
 	readers := state.readers
 	levelSlices := state.levelSlices
 	indexFunc := state.indexFunc
@@ -1790,13 +1813,6 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 			}
 		}
 	}
-	for _, r := range readers {
-		for i := range r {
-			for j := range r[i] {
-				r[i][j].Close()
-			}
-		}
-	}
 }
 
 // BenchmarkIteratorSeqSeekPrefixGEFound exercises the case of SeekPrefixGE
@@ -1809,6 +1825,7 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 // optimization, since the seeks are monotonic.
 func BenchmarkIteratorSeqSeekPrefixGEFound(b *testing.B) {
 	state := setupForTwoLevelBloomTombstone(b, 0)
+	defer state.close()
 	keys := state.keys
 	readers := state.readers
 	levelSlices := state.levelSlices
@@ -1858,13 +1875,6 @@ func BenchmarkIteratorSeqSeekPrefixGEFound(b *testing.B) {
 			}
 		}
 	}
-	for _, r := range readers {
-		for i := range r {
-			for j := range r[i] {
-				r[i][j].Close()
-			}
-		}
-	}
 }
 
 // BenchmarkIteratorSeqSeekGEWithBounds is analogous to
@@ -1874,11 +1884,15 @@ func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
 	const blockSize = 32 << 10
 	const restartInterval = 16
 	const levelCount = 5
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
 	for _, twoLevelIndex := range []bool{false, true} {
 		b.Run(fmt.Sprintf("two-level=%t", twoLevelIndex),
 			func(b *testing.B) {
+				ch := c.NewHandle()
+				defer ch.Close()
 				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-					b, blockSize, restartInterval, levelCount, 0, /* keyOffset */
+					b, ch, blockSize, restartInterval, levelCount, 0, /* keyOffset */
 					false, false, twoLevelIndex)
 				m := buildMergingIter(readers, levelSlices)
 				iter := Iterator{
@@ -1915,8 +1929,13 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 	const restartInterval = 16
 	const levelCount = 5
 	const keyOffset = 10000
+
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
+	ch := c.NewHandle()
+	defer ch.Close()
 	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, keyOffset, false, false, false)
+		b, ch, blockSize, restartInterval, levelCount, keyOffset, false, false, false)
 	var keys [][]byte
 	for i := 0; i < keyOffset; i++ {
 		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))
