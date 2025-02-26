@@ -167,18 +167,23 @@ type Iter struct {
 	rangeDelCompactor RangeDelSpanCompactor
 	rangeKeyCompactor RangeKeySpanCompactor
 	err               error
-	// `key.UserKey` is set to `keyBuf` caused by saving `i.iterKV.UserKey`
-	// and `key.InternalKeyTrailer` is set to `i.iterKV.InternalKeyTrailer`. This is the
-	// case on return from all public methods -- these methods return `key`.
-	// Additionally, it is the internal state when the code is moving to the
-	// next key so it can determine whether the user key has changed from
-	// the previous key.
-	key base.InternalKey
-	// keyTrailer is updated when `i.key` is updated and holds the key's
-	// original trailer (eg, before any sequence-number zeroing or changes to
-	// key kind).
+	// kv is the next key-value pair that will be yielded to the iterator
+	// consumer. All public methods will return &kv or nil.
+	//
+	// The memory of kv.K.UserKey is always backed by `keyBuf`. The memory of
+	// kv.V may be backed by `valueBuf`, or may point directly into the block
+	// buffer of an input ssblock.
+	//
+	// When stepping the inner internal iterator, the contents of iterKV are
+	// moved into kv.
+	//
+	// The value of kv.K is also used internally within the compaction iterator
+	// when moving to the next key so it can determine whether the user key has
+	// changed from the previous key.
+	kv base.InternalKV
+	// keyTrailer is updated when `i.kv` is updated and holds the key's original
+	// trailer (eg, before any sequence-number zeroing or changes to key kind).
 	keyTrailer  base.InternalKeyTrailer
-	value       base.LazyValue
 	valueCloser io.Closer
 	// Temporary buffer used for storing the previous user key in order to
 	// determine when iteration has advanced to a new user key and thus a new
@@ -365,9 +370,9 @@ func (i *Iter) Stats() IterStats {
 }
 
 // First has the same semantics as InternalIterator.First.
-func (i *Iter) First() (*base.InternalKey, base.LazyValue) {
+func (i *Iter) First() *base.InternalKV {
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
 	i.iterKV = i.iter.First()
 	if i.iterKV != nil {
@@ -381,14 +386,14 @@ func (i *Iter) First() (*base.InternalKey, base.LazyValue) {
 // Next has the same semantics as InternalIterator.Next. Note that when Next
 // returns a RANGEDEL or a range key, the caller can use Span() to get the
 // corresponding span.
-func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
+func (i *Iter) Next() *base.InternalKV {
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	// Close the closer for the current value if one was open.
 	if i.closeValueCloser() != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
 
 	// Prior to this call to `Next()` we are in one of three situations with
@@ -473,11 +478,11 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 			// call-site in compaction.go).
 			// TODO(travers): address this violation by removing the call to
 			// saveKey and instead return the original iterKey and iterValue.
-			// This goes against the comment on i.key in the struct, and
+			// This goes against the comment on i.kv in the struct, and
 			// therefore warrants some investigation.
 			i.saveKey()
-			i.value = i.iterKV.V
-			if invariants.Enabled && !i.value.IsInPlaceValue() {
+			i.kv.V = i.iterKV.V
+			if invariants.Enabled && !i.kv.V.IsInPlaceValue() {
 				panic(errors.AssertionFailedf("pebble: span key's value is not in-place"))
 			}
 			// TODO(jackson): Handle tracking pinned statistics for range keys
@@ -485,7 +490,7 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 			// emitRangeDelChunk and rangeKeyCompactionTransform to update
 			// statistics when they apply their own snapshot striping logic.
 			i.snapshotPinned = false
-			return &i.key, i.value
+			return &i.kv
 		}
 
 		// Check if the last tombstone covers the key.
@@ -524,7 +529,7 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 					// If we're at the last snapshot stripe and the tombstone
 					// can be elided skip skippable keys in the same stripe.
 					i.saveKey()
-					if i.key.Kind() == base.InternalKeyKindSingleDelete {
+					if i.kv.K.Kind() == base.InternalKeyKindSingleDelete {
 						i.skipDueToSingleDeleteElision()
 					} else {
 						i.skipInStripe()
@@ -547,9 +552,9 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 			switch i.iterKV.Kind() {
 			case base.InternalKeyKindDelete:
 				i.saveKey()
-				i.value = base.LazyValue{} // DELs are value-less.
+				i.kv.V = base.LazyValue{} // DELs are value-less.
 				i.skip = true
-				return &i.key, i.value
+				return &i.kv
 
 			case base.InternalKeyKindDeleteSized:
 				// We may skip subsequent keys because of this tombstone. Scan
@@ -559,9 +564,9 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 
 			case base.InternalKeyKindSingleDelete:
 				if i.singleDeleteNext() {
-					return &i.key, i.value
+					return &i.kv
 				} else if i.err != nil {
-					return nil, base.LazyValue{} // SINGLEDELs are value-less.
+					return nil
 				}
 				continue
 
@@ -578,9 +583,9 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 			// kind.
 			i.setNext()
 			if i.err != nil {
-				return nil, base.LazyValue{}
+				return nil
 			}
-			return &i.key, i.value
+			return &i.kv
 
 		case base.InternalKeyKindMerge:
 			// Record the snapshot index before mergeNext as merging
@@ -597,41 +602,41 @@ func (i *Iter) Next() (*base.InternalKey, base.LazyValue) {
 				// includesBase is true whenever we've transformed the MERGE record
 				// into a SET.
 				var includesBase bool
-				switch i.key.Kind() {
+				switch i.kv.K.Kind() {
 				case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
 					includesBase = true
 				case base.InternalKeyKindMerge:
 				default:
 					panic(errors.AssertionFailedf(
-						"unexpected kind %s", redact.SafeString(i.key.Kind().String())))
+						"unexpected kind %s", redact.SafeString(i.kv.K.Kind().String())))
 				}
-				i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
+				i.kv.V, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
 			}
 			if i.err == nil {
 				if needDelete {
 					if i.closeValueCloser() != nil {
-						return nil, base.LazyValue{}
+						return nil
 					}
 					continue
 				}
 
 				i.maybeZeroSeqnum(origSnapshotIdx)
-				return &i.key, i.value
+				return &i.kv
 			}
 			if i.err != nil {
 				// TODO(sumeer): why is MarkCorruptionError only being called for
 				// MERGE?
 				i.err = base.MarkCorruptionError(i.err)
 			}
-			return nil, base.LazyValue{}
+			return nil
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			return nil, base.LazyValue{}
+			return nil
 		}
 	}
 
-	return nil, base.LazyValue{}
+	return nil
 }
 
 // Span returns the range deletion or range key span corresponding to the
@@ -725,15 +730,15 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 		//    number ordering within a user key. If the previous key was one
 		//    of these keys, we consider the new key a `newStripeNewKey` to
 		//    reflect that it's the beginning of a new stream of point keys.
-		if i.key.IsExclusiveSentinel() || !i.cfg.Comparer.Equal(i.key.UserKey, kv.K.UserKey) {
+		if i.kv.K.IsExclusiveSentinel() || !i.cfg.Comparer.Equal(i.kv.K.UserKey, kv.K.UserKey) {
 			i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(kv.SeqNum())
 			return newStripeNewKey
 		}
 
-		// If i.key and key have the same user key, then
-		//   1. i.key must not have had a zero sequence number (or it would've be the last
+		// If i.kv and kv have the same user key, then
+		//   1. i.kv must not have had a zero sequence number (or it would've be the last
 		//      key with its user key).
-		//   2. i.key must have a strictly larger sequence number
+		//   2. i.kv must have a strictly larger sequence number
 		// There's an exception in that either key may be a range delete. Range
 		// deletes may share a sequence number with a point key if the keys were
 		// ingested together. Range keys may also share the sequence number if they
@@ -741,8 +746,8 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 		// iterator's input iterator at the maximal sequence number so their
 		// original sequence number will not be observed here.
 		if prevSeqNum := i.keyTrailer.SeqNum(); (prevSeqNum == 0 || prevSeqNum <= kv.SeqNum()) &&
-			i.key.Kind() != base.InternalKeyKindRangeDelete && kv.Kind() != base.InternalKeyKindRangeDelete {
-			prevKey := i.key
+			i.kv.K.Kind() != base.InternalKeyKindRangeDelete && kv.Kind() != base.InternalKeyKindRangeDelete {
+			prevKey := i.kv.K
 			prevKey.Trailer = i.keyTrailer
 			panic(errors.AssertionFailedf("pebble: invariant violation: %s and %s out of order", prevKey, kv.K))
 		}
@@ -779,7 +784,7 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 func (i *Iter) setNext() {
 	// Save the current key.
 	i.saveKey()
-	i.value = i.iterKV.V
+	i.kv.V = i.iterKV.V
 	i.maybeZeroSeqnum(i.curSnapshotIdx)
 
 	// If this key is already a SETWITHDEL we can early return and skip the remaining
@@ -809,7 +814,7 @@ func (i *Iter) setNext() {
 			// Subsequent keys are eligible for skipping.
 			switch i.iterKV.Kind() {
 			case base.InternalKeyKindDelete, base.InternalKeyKindSingleDelete, base.InternalKeyKindDeleteSized:
-				i.key.SetKind(base.InternalKeyKindSetWithDelete)
+				i.kv.K.SetKind(base.InternalKeyKindSetWithDelete)
 				i.skip = true
 				return
 			case base.InternalKeyKindSet, base.InternalKeyKindMerge, base.InternalKeyKindSetWithDelete:
@@ -864,7 +869,7 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// single Set, and then merge in any following Sets, but that is
 			// complicated wrt code and unnecessary given the narrow permitted
 			// use of SingleDelete.
-			i.key.SetKind(base.InternalKeyKindSetWithDelete)
+			i.kv.K.SetKind(base.InternalKeyKindSetWithDelete)
 			i.skip = true
 			return
 
@@ -886,7 +891,7 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			if i.err != nil {
 				return
 			}
-			i.key.SetKind(base.InternalKeyKindSet)
+			i.kv.K.SetKind(base.InternalKeyKindSet)
 			i.skip = true
 			return
 
@@ -923,7 +928,7 @@ func (i *Iter) singleDeleteNext() bool {
 	if invariants.Enabled && (!i.iterKV.V.IsInPlaceValue() || i.iterKV.V.Len() != 0) {
 		panic(errors.AssertionFailedf("pebble: single delete value is not in-place or is non-empty"))
 	}
-	i.value = base.LazyValue{} // SINGLEDELs are value-less.
+	i.kv.V = base.LazyValue{} // SINGLEDELs are value-less.
 
 	// Loop until finds a key to be passed to the next level.
 	for {
@@ -945,11 +950,11 @@ func (i *Iter) singleDeleteNext() bool {
 		switch kind {
 		case base.InternalKeyKindDelete, base.InternalKeyKindSetWithDelete, base.InternalKeyKindDeleteSized:
 			if kind == base.InternalKeyKindDelete || kind == base.InternalKeyKindDeleteSized {
-				i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
+				i.cfg.IneffectualSingleDeleteCallback(i.kv.K.UserKey)
 			}
 			// We've hit a Delete, DeleteSized, SetWithDelete, transform
 			// the SingleDelete into a full Delete.
-			i.key.SetKind(base.InternalKeyKindDelete)
+			i.kv.K.SetKind(base.InternalKeyKindDelete)
 			i.skip = true
 			return true
 
@@ -975,7 +980,7 @@ func (i *Iter) singleDeleteNext() bool {
 					// violation if not covered by a RANGEDEL.
 					if change == sameStripe ||
 						i.tombstoneCovers(i.iterKV.K, i.curSnapshotSeqNum) == noCover {
-						i.cfg.NondeterministicSingleDeleteCallback(i.key.UserKey)
+						i.cfg.NondeterministicSingleDeleteCallback(i.kv.K.UserKey)
 					}
 				case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
 				default:
@@ -991,7 +996,7 @@ func (i *Iter) singleDeleteNext() bool {
 		case base.InternalKeyKindSingleDelete:
 			// Two single deletes met in a compaction. The first single delete is
 			// ineffectual.
-			i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
+			i.cfg.IneffectualSingleDeleteCallback(i.kv.K.UserKey)
 			// Continue to apply the second single delete.
 			continue
 
@@ -1025,7 +1030,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 			// user key, meaning that even now at its moment of elision, it still
 			// hasn't elided any other keys. The single delete was ineffectual (a
 			// no-op).
-			i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
+			i.cfg.IneffectualSingleDeleteCallback(i.kv.K.UserKey)
 			i.skip = false
 			return
 		case newStripeSameKey:
@@ -1037,7 +1042,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 			kind := i.iterKV.Kind()
 			switch kind {
 			case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
-				i.cfg.IneffectualSingleDeleteCallback(i.key.UserKey)
+				i.cfg.IneffectualSingleDeleteCallback(i.kv.K.UserKey)
 				switch kind {
 				case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized:
 					i.skipInStripe()
@@ -1077,7 +1082,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 					nextKind := i.iterKV.Kind()
 					switch nextKind {
 					case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete, base.InternalKeyKindMerge:
-						i.cfg.NondeterministicSingleDeleteCallback(i.key.UserKey)
+						i.cfg.NondeterministicSingleDeleteCallback(i.kv.K.UserKey)
 					case base.InternalKeyKindDelete, base.InternalKeyKindDeleteSized, base.InternalKeyKindSingleDelete:
 					default:
 						panic(errors.AssertionFailedf(
@@ -1106,7 +1111,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 //
 // When a deleteSizedNext is encountered, we skip ahead to see which keys, if
 // any, are elided as a result of the tombstone.
-func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
+func (i *Iter) deleteSizedNext() *base.InternalKV {
 	i.saveKey()
 	i.skip = true
 
@@ -1116,7 +1121,7 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 	// with a lower sequence number, in which case we'll adopt its value.
 	// If the DELSIZED does have a value, it must be in-place.
 	i.valueBuf = append(i.valueBuf[:0], i.iterKV.InPlaceValue()...)
-	i.value = base.MakeInPlaceValue(i.valueBuf)
+	i.kv.V = base.MakeInPlaceValue(i.valueBuf)
 
 	// Loop through all the keys within this stripe that are skippable.
 	i.pos = iterPosNext
@@ -1153,7 +1158,7 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 			// We treat both cases the same functionally, adopting the identity
 			// of the lower-sequence numbered tombstone. However in the second
 			// case, we also increment the stat counting missized tombstones.
-			if i.value.Len() > 0 {
+			if i.kv.V.Len() > 0 {
 				// The original DELSIZED key was missized. The key that the user
 				// thought they were deleting does not exist.
 				i.stats.CountMissizedDels++
@@ -1161,7 +1166,7 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 			// If the tombstone has a value, it must be in-place. To save it, we
 			// can just copy the in-place value directly.
 			i.valueBuf = append(i.valueBuf[:0], i.iterKV.InPlaceValue()...)
-			i.value = base.MakeInPlaceValue(i.valueBuf)
+			i.kv.V = base.MakeInPlaceValue(i.valueBuf)
 			if i.iterKV.Kind() != base.InternalKeyKindDeleteSized {
 				// Convert the DELSIZED to a DEL—The DEL/SINGLEDEL we're eliding
 				// may not have deleted the key(s) it was intended to yet. The
@@ -1169,7 +1174,7 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 				// plus we don't want to count it as a missized DEL. We early
 				// exit in this case, after skipping the remainder of the
 				// snapshot stripe.
-				i.key.SetKind(base.InternalKeyKindDelete)
+				i.kv.K.SetKind(base.InternalKeyKindDelete)
 				// NB: We skipInStripe now, rather than returning leaving
 				// i.skip=true and returning early, because Next() requires
 				// that i.skip=true only if i.iterPos = iterPosCurForward.
@@ -1178,7 +1183,7 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 				// the key/value being returned here, and the next call to Next() will
 				// expose it.
 				i.skipInStripe()
-				return &i.key, i.value
+				return &i.kv
 			}
 			// Continue, in case we uncover another DELSIZED or a key this
 			// DELSIZED deletes.
@@ -1193,8 +1198,8 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 			// case has already been elided. We don't count it as a missizing,
 			// instead converting the DELSIZED to a DEL. Skip the remainder of
 			// the snapshot stripe and return.
-			if i.value.Len() == 0 {
-				i.key.SetKind(base.InternalKeyKindDelete)
+			if i.kv.V.Len() == 0 {
+				i.kv.K.SetKind(base.InternalKeyKindDelete)
 				// NB: We skipInStripe now, rather than returning leaving
 				// i.skip=true and returning early, because Next() requires
 				// that i.skip=true only if i.iterPos = iterPosCurForward.
@@ -1203,16 +1208,16 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 				// the key/value being returned here, and the next call to Next() will
 				// expose it.
 				i.skipInStripe()
-				return &i.key, i.value
+				return &i.kv
 			}
-			// The deleted key is not a DEL, DELSIZED, and the DELSIZED in i.key
+			// The deleted key is not a DEL, DELSIZED, and the DELSIZED in i.kv
 			// has a positive size. Note that the tombstone's value must be
 			// in-place.
-			v := i.value.InPlaceValue()
+			v := i.kv.V.InPlaceValue()
 			expectedSize, n := binary.Uvarint(v)
 			if n != len(v) {
 				i.err = base.CorruptionErrorf("DELSIZED holds invalid value: %x", errors.Safe(v))
-				return nil, base.LazyValue{}
+				return nil
 			}
 			elidedSize := uint64(len(i.iterKV.K.UserKey)) + uint64(i.iterKV.V.Len())
 			if elidedSize != expectedSize {
@@ -1231,8 +1236,8 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 				// user-provided size for accuracy, so ordinary DEL heuristics
 				// are safer.
 				i.stats.CountMissizedDels++
-				i.key.SetKind(base.InternalKeyKindDelete)
-				i.value = base.LazyValue{}
+				i.kv.K.SetKind(base.InternalKeyKindDelete)
+				i.kv.V = base.LazyValue{}
 				// NB: We skipInStripe now, rather than returning leaving
 				// i.skip=true and returning early, because Next() requires
 				// that i.skip=true only if i.iterPos = iterPosCurForward.
@@ -1241,16 +1246,16 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 				// the key/value being returned here, and the next call to Next() will
 				// expose it.
 				i.skipInStripe()
-				return &i.key, i.value
+				return &i.kv
 			}
 			// NB: We remove the value regardless of whether the key was sized
 			// appropriately. The size encoded is 'consumed' the first time it
 			// meets a key that it deletes.
-			i.value = base.LazyValue{}
+			i.kv.V = base.LazyValue{}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
-			return nil, base.LazyValue{}
+			return nil
 		}
 	}
 
@@ -1260,22 +1265,22 @@ func (i *Iter) deleteSizedNext() (*base.InternalKey, base.LazyValue) {
 	// We landed outside the original stripe. Reset skip.
 	i.skip = false
 	if i.err != nil {
-		return nil, base.LazyValue{}
+		return nil
 	}
-	return &i.key, i.value
+	return &i.kv
 }
 
-// saveKey saves the key in iterKV to i.key using i.keyBuf's memory.
+// saveKey saves the key in iterKV to i.kv.K using i.keyBuf's memory.
 func (i *Iter) saveKey() {
 	i.keyBuf = append(i.keyBuf[:0], i.iterKV.K.UserKey...)
-	i.key = base.InternalKey{
+	i.kv.K = base.InternalKey{
 		UserKey: i.keyBuf,
 		Trailer: i.iterKV.K.Trailer,
 	}
-	i.keyTrailer = i.key.Trailer
+	i.keyTrailer = i.kv.K.Trailer
 }
 
-// saveValue saves the value in iterKV to i.value. It must be called before
+// saveValue saves the value in iterKV to i.kv. It must be called before
 // stepping the iterator if the value needs to be retained. Unlike keys, values
 // do not need to be copied in all code paths. For example, a SETWITHDEL key may
 // be written to output sstables without needing to read ahead, copying the
@@ -1292,12 +1297,12 @@ func (i *Iter) saveValue() {
 	v, callerOwned, err := i.iterKV.Value(i.valueBuf[:0])
 	if err != nil {
 		i.err = err
-		i.value = base.LazyValue{}
+		i.kv.V = base.LazyValue{}
 	} else if !callerOwned {
 		i.valueBuf = append(i.valueBuf[:0], v...)
-		i.value = base.MakeInPlaceValue(i.valueBuf)
+		i.kv.V = base.MakeInPlaceValue(i.valueBuf)
 	} else {
-		i.value = base.MakeInPlaceValue(v)
+		i.kv.V = base.MakeInPlaceValue(v)
 	}
 }
 
@@ -1398,7 +1403,7 @@ func (i *Iter) maybeZeroSeqnum(snapshotIdx int) {
 		// This is not the last snapshot
 		return
 	}
-	i.key.SetSeqNum(base.SeqNumZero)
+	i.kv.K.SetSeqNum(base.SeqNumZero)
 }
 
 func finishValueMerger(

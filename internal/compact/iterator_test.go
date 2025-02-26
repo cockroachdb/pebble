@@ -191,20 +191,23 @@ func TestCompactionIter(t *testing.T) {
 					if len(parts) == 0 {
 						continue
 					}
-					var key *base.InternalKey
-					var lv base.LazyValue
+					var kv *base.InternalKV
 					switch parts[0] {
 					case "first":
-						key, lv = iter.First()
+						kv = iter.First()
 					case "next":
-						key, lv = iter.Next()
+						kv = iter.Next()
 					default:
 						d.Fatalf(t, "unknown iter command: %s", parts[0])
 					}
-					value, _, err := lv.Value(nil)
-					require.NoError(t, err)
+					var value []byte
+					if kv != nil {
+						var err error
+						value, _, err = kv.Value(nil)
+						require.NoError(t, err)
+					}
 
-					if key != nil {
+					if kv != nil {
 						snapshotPinned := ""
 						if printSnapshotPinned {
 							snapshotPinned = " (not pinned)"
@@ -220,7 +223,7 @@ func TestCompactionIter(t *testing.T) {
 							}
 						}
 						v := string(value)
-						if key.Kind() == base.InternalKeyKindDeleteSized && len(value) > 0 {
+						if kv.K.Kind() == base.InternalKeyKindDeleteSized && len(value) > 0 {
 							vn, n := binary.Uvarint(value)
 							if n != len(value) {
 								v = fmt.Sprintf("err: %0x value not a uvarint", value)
@@ -228,8 +231,8 @@ func TestCompactionIter(t *testing.T) {
 								v = fmt.Sprintf("varint(%d)", vn)
 							}
 						}
-						fmt.Fprintf(&b, "%s:%s%s%s", key, v, snapshotPinned, forceObsolete)
-						if key.Kind() == base.InternalKeyKindRangeDelete || rangekey.IsRangeKey(key.Kind()) {
+						fmt.Fprintf(&b, "%s:%s%s%s", kv.K, v, snapshotPinned, forceObsolete)
+						if kv.K.Kind() == base.InternalKeyKindRangeDelete || rangekey.IsRangeKey(kv.K.Kind()) {
 							fmt.Fprintf(&b, "; Span() = %s", iter.Span())
 						}
 						fmt.Fprintln(&b)

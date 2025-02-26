@@ -108,8 +108,7 @@ type Runner struct {
 	// Stores any error encountered.
 	err error
 	// Last key/value returned by the compaction iterator.
-	key   *base.InternalKey
-	value base.LazyValue
+	kv *base.InternalKV
 	// Last RANGEDEL span (or portion of it) that was not yet written to a table.
 	lastRangeDelSpan keyspan.Span
 	// Last range key span (or portion of it) that was not yet written to a table.
@@ -124,7 +123,7 @@ func NewRunner(cfg RunnerConfig, iter *Iter) *Runner {
 		cfg:  cfg,
 		iter: iter,
 	}
-	r.key, r.value = r.iter.First()
+	r.kv = r.iter.First()
 	return r
 }
 
@@ -133,7 +132,7 @@ func (r *Runner) MoreDataToWrite() bool {
 	if r.err != nil {
 		return false
 	}
-	return r.key != nil || !r.lastRangeDelSpan.Empty() || !r.lastRangeKeySpan.Empty()
+	return r.kv != nil || !r.lastRangeDelSpan.Empty() || !r.lastRangeKeySpan.Empty()
 }
 
 // WriteTable writes a new output table. This table will be part of
@@ -152,7 +151,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 	err = errors.CombineErrors(err, tw.Close())
 	if err != nil {
 		r.err = err
-		r.key, r.value = nil, base.LazyValue{}
+		r.kv = nil
 		return
 	}
 	writerMeta, err := tw.Metadata()
@@ -171,8 +170,8 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ error) {
 	const updateSlotEveryNKeys = 1024
 	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
-	if r.key != nil && firstKey == nil {
-		firstKey = r.key.UserKey
+	if r.kv != nil && firstKey == nil {
+		firstKey = r.kv.K.UserKey
 	}
 	if firstKey == nil {
 		return nil, base.AssertionFailedf("no data to write")
@@ -186,17 +185,17 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
-	key, value := r.key, r.value
-	for ; key != nil; key, value = r.iter.Next() {
+	kv := r.kv
+	for ; kv != nil; kv = r.iter.Next() {
 		iteratedKeys++
 		if iteratedKeys%updateSlotEveryNKeys == 0 {
 			r.cfg.Slot.UpdateMetrics(r.cfg.IteratorStats.BlockBytes, r.stats.CumulativeWrittenSize+tw.EstimatedSize())
 		}
-		if splitter.ShouldSplitBefore(key.UserKey, tw.EstimatedSize(), equalPrev) {
+		if splitter.ShouldSplitBefore(kv.K.UserKey, tw.EstimatedSize(), equalPrev) {
 			break
 		}
 
-		switch key.Kind() {
+		switch kv.K.Kind() {
 		case base.InternalKeyKindRangeDelete:
 			// The previous span (if any) must end at or before this key, since the
 			// spans we receive are non-overlapping.
@@ -215,11 +214,11 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 			r.lastRangeKeySpan.CopyFrom(r.iter.Span())
 			continue
 		}
-		v, _, err := value.Value(nil)
+		v, _, err := kv.Value(nil)
 		if err != nil {
 			return nil, err
 		}
-		if err := tw.AddWithForceObsolete(*key, v, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+		if err := tw.AddWithForceObsolete(kv.K, v, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
 			return nil, err
 		}
 		if r.iter.SnapshotPinned() {
@@ -227,11 +226,11 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 			// the compaction iterator because an open snapshot prevented
 			// its elision. Increment the stats.
 			pinnedCount++
-			pinnedKeySize += uint64(len(key.UserKey)) + base.InternalTrailerLen
+			pinnedKeySize += uint64(len(kv.K.UserKey)) + base.InternalTrailerLen
 			pinnedValueSize += uint64(len(v))
 		}
 	}
-	r.key, r.value = key, value
+	r.kv = kv
 	splitKey = splitter.SplitKey()
 	if err := SplitAndEncodeSpan(r.cmp, &r.lastRangeDelSpan, splitKey, tw); err != nil {
 		return nil, err
