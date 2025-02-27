@@ -328,7 +328,7 @@ func RewriteKeySuffixesViaWriter(
 		if kv.Kind() != InternalKeyKindSet {
 			return nil, errors.New("invalid key type")
 		}
-		oldSuffix := kv.K.UserKey[r.Split(kv.K.UserKey):]
+		oldSuffix := kv.K.UserKey[r.Comparer.Split(kv.K.UserKey):]
 		if !bytes.Equal(oldSuffix, from) {
 			return nil, errors.Errorf("key has suffix %q, expected %q", oldSuffix, from)
 		}

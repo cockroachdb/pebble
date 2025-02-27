@@ -177,8 +177,9 @@ func (p *BufferPool) Release() {
 			panic(errors.AssertionFailedf("Release called on a BufferPool with in-use buffers"))
 		}
 		cache.Free(p.pool[i].v)
+		p.pool[i].v = nil
 	}
-	*p = BufferPool{}
+	p.pool = p.pool[:0]
 }
 
 // Alloc allocates a new buffer of size n. If the pool already holds a buffer at
