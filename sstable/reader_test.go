@@ -52,8 +52,8 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 			return nil, err
 		}
 		var lookupKey []byte
-		if r.Split != nil {
-			lookupKey = key[:r.Split(key)]
+		if r.Comparer.Split != nil {
+			lookupKey = key[:r.Comparer.Split(key)]
 		} else {
 			lookupKey = key
 		}
@@ -70,7 +70,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 	ikv := i.SeekGE(key, base.SeekGEFlagsNone)
 
-	if ikv == nil || r.Compare(key, ikv.K.UserKey) != 0 {
+	if ikv == nil || r.Comparer.Compare(key, ikv.K.UserKey) != 0 {
 		err := i.Close()
 		if err == nil {
 			err = base.ErrNotFound

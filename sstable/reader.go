@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -43,13 +44,8 @@ type Reader struct {
 
 	// The following fields are copied from the ReadOptions.
 	keySchema            *colblk.KeySchema
-	deniedUserProperties map[string]struct{}
 	filterMetricsTracker *FilterMetricsTracker
-
-	Comparer *base.Comparer
-	Compare  Compare
-	Equal    Equal
-	Split    Split
+	Comparer             *base.Comparer
 
 	tableFilter *tableFilterReader
 
@@ -66,15 +62,6 @@ type Reader struct {
 
 	Properties  Properties
 	tableFormat TableFormat
-
-	// metaBufferPool is a buffer pool used exclusively when opening a table and
-	// loading its meta blocks. metaBufferPoolAlloc is used to batch-allocate
-	// the BufferPool.pool slice as a part of the Reader allocation. It's
-	// capacity 3 to accommodate the meta block (1), and both the compressed
-	// properties block (1) and decompressed properties block (1)
-	// simultaneously.
-	metaBufferPool      block.BufferPool
-	metaBufferPoolAlloc [3]block.AllocedBuffer
 }
 
 var _ CommonReader = (*Reader)(nil)
@@ -256,14 +243,14 @@ func (r *Reader) NewRawRangeDelIter(
 		return nil, err
 	}
 	if r.tableFormat.BlockColumnar() {
-		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
+		iter = colblk.NewKeyspanIter(r.Comparer.Compare, h, transforms)
 	} else {
 		iter, err = rowblk.NewFragmentIter(r.blockReader.FileNum(), r.Comparer, h, transforms)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return keyspan.MaybeAssert(iter, r.Compare), nil
+	return keyspan.MaybeAssert(iter, r.Comparer.Compare), nil
 }
 
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
@@ -281,14 +268,14 @@ func (r *Reader) NewRawRangeKeyIter(
 		return nil, err
 	}
 	if r.tableFormat.BlockColumnar() {
-		iter = colblk.NewKeyspanIter(r.Compare, h, transforms)
+		iter = colblk.NewKeyspanIter(r.Comparer.Compare, h, transforms)
 	} else {
 		iter, err = rowblk.NewFragmentIter(r.blockReader.FileNum(), r.Comparer, h, transforms)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return keyspan.MaybeAssert(iter, r.Compare), nil
+	return keyspan.MaybeAssert(iter, r.Comparer.Compare), nil
 }
 
 // noReadHandle is used when we don't want to pass a ReadHandle to one of the
@@ -390,8 +377,23 @@ func (r *Reader) readValueBlock(
 	return r.blockReader.Read(ctx, env, readHandle, bh, noInitBlockMetadataFn)
 }
 
+// metaBufferPools is a sync pool of BufferPools used exclusively when opening a
+// table and loading its meta blocks. New pools are initialized with a capacity
+// of 3 to accommodate the meta block (1), and both the compressed properties
+// block (1) and decompressed properties block (1) simultaneously.
+var metaBufferPools = sync.Pool{
+	New: func() any {
+		bp := new(block.BufferPool)
+		bp.Init(3)
+		return bp
+	},
+}
+
 func (r *Reader) readMetaindex(
-	ctx context.Context, readHandle objstorage.ReadHandle, filters map[string]FilterPolicy,
+	ctx context.Context,
+	readHandle objstorage.ReadHandle,
+	filters map[string]FilterPolicy,
+	deniedUserProperties map[string]struct{},
 ) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
@@ -401,13 +403,12 @@ func (r *Reader) readMetaindex(
 	// Additionally, these blocks are exceedingly unlikely to be read again
 	// while they're still in the block cache except in misconfigurations with
 	// excessive sstables counts or a file cache that's far too small.
-	r.metaBufferPool.InitPreallocated(r.metaBufferPoolAlloc[:0])
+	bufferPool := metaBufferPools.Get().(*block.BufferPool)
+	defer metaBufferPools.Put(bufferPool)
 	// When we're finished, release the buffers we've allocated back to memory
-	// allocator. We don't expect to use metaBufferPool again.
-	defer r.metaBufferPool.Release()
-	metaEnv := block.ReadEnv{
-		BufferPool: &r.metaBufferPool,
-	}
+	// allocator.
+	defer bufferPool.Release()
+	metaEnv := block.ReadEnv{BufferPool: bufferPool}
 
 	b, err := r.readMetaindexBlock(ctx, metaEnv, readHandle)
 	if err != nil {
@@ -433,7 +434,7 @@ func (r *Reader) readMetaindex(
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.BlockData(), r.deniedUserProperties)
+		err := r.Properties.load(b.BlockData(), deniedUserProperties)
 		b.Release()
 		if err != nil {
 			return err
@@ -808,7 +809,6 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	o = o.ensureDefaults()
 
 	r := &Reader{
-		deniedUserProperties: o.DeniedUserProperties,
 		filterMetricsTracker: o.FilterMetricsTracker,
 	}
 
@@ -828,21 +828,15 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r.footerBH = footer.footerBH
 
 	// Read the metaindex and properties blocks.
-	if err := r.readMetaindex(ctx, rh, o.Filters); err != nil {
+	if err := r.readMetaindex(ctx, rh, o.Filters, o.DeniedUserProperties); err != nil {
 		r.err = err
 		return nil, r.Close()
 	}
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Comparer = o.Comparer
-		r.Compare = o.Comparer.Compare
-		r.Equal = o.Comparer.Equal
-		r.Split = o.Comparer.Split
 	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
-		r.Comparer = o.Comparer
-		r.Compare = comparer.Compare
-		r.Equal = comparer.Equal
-		r.Split = comparer.Split
+		r.Comparer = comparer
 	} else {
 		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
 			errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.ComparerName))

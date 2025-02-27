@@ -251,7 +251,7 @@ func intersectingIndexEntries(
 					alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
 					alloc, entry.sep = alloc.Copy(entry.sep)
 					res = append(res, entry)
-					if r.Compare(end.UserKey, entry.sep) <= 0 {
+					if r.Comparer.Compare(end.UserKey, entry.sep) <= 0 {
 						break
 					}
 				}
