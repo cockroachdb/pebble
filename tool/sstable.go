@@ -179,7 +179,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 
 		var lastKey base.InternalKey
 		for kv := iter.First(); kv != nil; kv = iter.Next() {
-			if base.InternalCompare(r.Compare, lastKey, kv.K) >= 0 {
+			if base.InternalCompare(r.Comparer.Compare, lastKey, kv.K) >= 0 {
 				fmt.Fprintf(stdout, "WARNING: OUT OF ORDER KEYS!\n")
 				if s.fmtKey.spec != "null" {
 					fmt.Fprintf(stdout, "    %s >= %s\n",
@@ -189,7 +189,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 			lastKey.Trailer = kv.K.Trailer
 			lastKey.UserKey = append(lastKey.UserKey[:0], kv.K.UserKey...)
 
-			n := r.Split(kv.K.UserKey)
+			n := r.Comparer.Split(kv.K.UserKey)
 			prefix := kv.K.UserKey[:n]
 			kv2 := prefixIter.SeekPrefixGE(prefix, kv.K.UserKey, base.SeekGEFlagsNone)
 			if kv2 == nil {
@@ -355,18 +355,18 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				return nil, err
 			}
 			if iter == nil {
-				return keyspan.NewIter(r.Compare, nil), nil
+				return keyspan.NewIter(r.Comparer.Compare, nil), nil
 			}
 			defer iter.Close()
 
 			var tombstones []keyspan.Span
 			t, err := iter.First()
 			for ; t != nil; t, err = iter.Next() {
-				if s.end != nil && r.Compare(s.end, t.Start) <= 0 {
+				if s.end != nil && r.Comparer.Compare(s.end, t.Start) <= 0 {
 					// The range tombstone lies after the scan range.
 					continue
 				}
-				if s.start != nil && r.Compare(s.start, t.End) >= 0 {
+				if s.start != nil && r.Comparer.Compare(s.start, t.End) >= 0 {
 					// The range tombstone lies before the scan range.
 					continue
 				}
@@ -377,9 +377,9 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			}
 
 			slices.SortFunc(tombstones, func(a, b keyspan.Span) int {
-				return r.Compare(a.Start, b.Start)
+				return r.Comparer.Compare(a.Start, b.Start)
 			})
-			return keyspan.NewIter(r.Compare, tombstones), nil
+			return keyspan.NewIter(r.Comparer.Compare, tombstones), nil
 		}()
 		if err != nil {
 			fmt.Fprintf(stdout, "%s%s\n", prefix, err)
@@ -396,7 +396,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 
 		var lastKey base.InternalKey
 		for kv != nil || rangeDel != nil {
-			if kv != nil && (rangeDel == nil || r.Compare(kv.K.UserKey, rangeDel.Start) < 0) {
+			if kv != nil && (rangeDel == nil || r.Comparer.Compare(kv.K.UserKey, rangeDel.Start) < 0) {
 				// The filter specifies a prefix of the key.
 				//
 				// TODO(peter): Is using prefix comparison like this kosher for all
@@ -412,7 +412,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					formatKeyValue(stdout, s.fmtKey, s.fmtValue, &kv.K, v)
 
 				}
-				if base.InternalCompare(r.Compare, lastKey, kv.K) >= 0 {
+				if base.InternalCompare(r.Comparer.Compare, lastKey, kv.K) >= 0 {
 					fmt.Fprintf(stdout, "%s    WARNING: OUT OF ORDER KEYS!\n", prefix)
 				}
 				lastKey.Trailer = kv.K.Trailer
@@ -424,9 +424,9 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				// somewhat complex. Consider the tombstone [aaa,ccc). We want to
 				// output this tombstone if filter is "aa", and if it "bbb".
 				if s.filter == nil ||
-					((r.Compare(s.filter, rangeDel.Start) >= 0 ||
+					((r.Comparer.Compare(s.filter, rangeDel.Start) >= 0 ||
 						bytes.HasPrefix(rangeDel.Start, s.filter)) &&
-						r.Compare(s.filter, rangeDel.End) < 0) {
+						r.Comparer.Compare(s.filter, rangeDel.End) < 0) {
 					fmt.Fprint(stdout, prefix)
 					if err := rangedel.Encode(*rangeDel, func(k base.InternalKey, v []byte) error {
 						formatKeyValue(stdout, s.fmtKey, s.fmtValue, &k, v)
@@ -471,7 +471,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				emit := s.filter == nil
 				// Skip spans that start after the end key (if provided). End keys are
 				// exclusive, e.g. [a, b), so we consider the interval [b, +inf).
-				if s.end != nil && r.Compare(span.Start, s.end) >= 0 {
+				if s.end != nil && r.Comparer.Compare(span.Start, s.end) >= 0 {
 					emit = false
 				}
 				// Filters override the provided start / end bounds, if provided.

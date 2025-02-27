@@ -310,7 +310,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 	i.bpfs = filterer
 	i.useFilterBlock = useFilterBlock
 	i.reader = r
-	i.cmp = r.Compare
+	i.cmp = r.Comparer.Compare
 	i.transforms = transforms
 	if v != nil {
 		i.vState = v

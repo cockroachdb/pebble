@@ -484,14 +484,14 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 					return nil, err
 				}
 				if iter == nil {
-					return keyspan.NewIter(r.Compare, nil), nil
+					return keyspan.NewIter(r.Comparer.Compare, nil), nil
 				}
 				defer iter.Close()
 
 				var tombstones []keyspan.Span
 				t, err := iter.First()
 				for ; t != nil; t, err = iter.Next() {
-					if !t.Contains(r.Compare, searchKey) {
+					if !t.Contains(r.Comparer.Compare, searchKey) {
 						continue
 					}
 					tombstones = append(tombstones, t.Clone())
@@ -501,9 +501,9 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				}
 
 				slices.SortFunc(tombstones, func(a, b keyspan.Span) int {
-					return r.Compare(a.Start, b.Start)
+					return r.Comparer.Compare(a.Start, b.Start)
 				})
-				return keyspan.NewIter(r.Compare, tombstones), nil
+				return keyspan.NewIter(r.Comparer.Compare, tombstones), nil
 			}()
 			if err != nil {
 				return err
@@ -518,8 +518,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			foundRef := false
 			for kv != nil || rangeDel != nil {
 				if kv != nil &&
-					(rangeDel == nil || r.Compare(kv.K.UserKey, rangeDel.Start) < 0) {
-					if r.Compare(searchKey, kv.K.UserKey) != 0 {
+					(rangeDel == nil || r.Comparer.Compare(kv.K.UserKey, rangeDel.Start) < 0) {
+					if r.Comparer.Compare(searchKey, kv.K.UserKey) != 0 {
 						kv = nil
 						continue
 					}

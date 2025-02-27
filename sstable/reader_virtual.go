@@ -58,7 +58,7 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 		lower:            p.Lower,
 		upper:            p.Upper,
 		fileNum:          p.FileNum,
-		Compare:          reader.Compare,
+		Compare:          reader.Comparer.Compare,
 		isSharedIngested: p.IsSharedIngested,
 	}
 	v := VirtualReader{
@@ -150,7 +150,7 @@ func (v *VirtualReader) NewRawRangeDelIter(
 	// includes both point keys), but not [a#2,SET-b#3,SET] (as it would truncate
 	// the rangedel at b and lead to the point being uncovered).
 	return keyspan.Truncate(
-		v.reader.Compare, iter,
+		v.reader.Comparer.Compare, iter,
 		base.UserKeyBoundsFromInternal(v.vState.lower, v.vState.upper),
 	), nil
 }
@@ -181,7 +181,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 		// TODO(bilal): Avoid these allocations by hoisting the transformer and
 		// transform iter into VirtualReader.
 		transform := &rangekey.ForeignSSTTransformer{
-			Equal:  v.reader.Equal,
+			Equal:  v.reader.Comparer.Equal,
 			SeqNum: base.SeqNum(syntheticSeqNum),
 		}
 		transformIter := &keyspan.TransformerIter{
@@ -201,7 +201,7 @@ func (v *VirtualReader) NewRawRangeKeyIter(
 	// includes both point keys), but not [a#2,SET-b#3,SET] (as it would truncate
 	// the range key at b and lead to the point being uncovered).
 	return keyspan.Truncate(
-		v.reader.Compare, iter,
+		v.reader.Comparer.Compare, iter,
 		base.UserKeyBoundsFromInternal(v.vState.lower, v.vState.upper),
 	), nil
 }

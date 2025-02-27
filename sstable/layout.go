@@ -196,7 +196,7 @@ func (l *Layout) Describe(
 					var lastKey InternalKey
 					formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), func(key *base.InternalKey, value []byte) string {
 						v := fmtKV(key, value)
-						if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
+						if base.InternalCompare(r.Comparer.Compare, lastKey, *key) >= 0 {
 							v += " WARNING: OUT OF ORDER KEYS!"
 						}
 						lastKey.Trailer = key.Trailer
@@ -235,7 +235,7 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Compare, h.BlockData())
+				iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
 				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					fmt.Fprintf(w, "%05d    %s (%d)", enc.Offset, key.UserKey, enc.Length)
 				})
@@ -248,7 +248,7 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Compare, h.BlockData())
+				iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
 				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
 					var bh block.Handle
 					var n int
@@ -395,7 +395,7 @@ func formatColblkKeyspanBlock(
 }
 
 func formatRowblkIndexBlock(tp treeprinter.Node, r *Reader, b NamedBlockHandle, data []byte) error {
-	iter, err := rowblk.NewIter(r.Compare, r.Comparer.ComparePointSuffixes, r.Split, data, NoTransforms)
+	iter, err := rowblk.NewIter(r.Comparer.Compare, r.Comparer.ComparePointSuffixes, r.Comparer.Split, data, NoTransforms)
 	if err != nil {
 		return err
 	}
@@ -420,7 +420,7 @@ func formatRowblkDataBlock(
 	data []byte,
 	fmtRecord func(key *base.InternalKey, value []byte) string,
 ) error {
-	iter, err := rowblk.NewIter(r.Compare, r.Comparer.ComparePointSuffixes, r.Split, data, NoTransforms)
+	iter, err := rowblk.NewIter(r.Comparer.Compare, r.Comparer.ComparePointSuffixes, r.Comparer.Split, data, NoTransforms)
 	if err != nil {
 		return err
 	}
