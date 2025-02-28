@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -140,7 +141,18 @@ func (l *Layout) Describe(
 			trailer, offset := make([]byte, b.Length), 0
 			_ = r.blockReader.Readable().ReadAt(ctx, trailer, int64(b.Offset))
 
+			var version uint32
+			var computedChecksum uint32
+			var encodedChecksum uint32
 			if b.Name == "footer" {
+				version = binary.LittleEndian.Uint32(trailer[len(trailer)-12:])
+				if version == 6 {
+					computedChecksum = crc.CRC(0).
+						Update(trailer[:checkedRocksDBChecksumOffset]).
+						Update(trailer[checkedRocksDBVersionOffset:]).
+						Value()
+					encodedChecksum = binary.LittleEndian.Uint32(trailer[checkedRocksDBChecksumOffset:])
+				}
 				checksumType := block.ChecksumType(trailer[0])
 				tpNode.Childf("%03d  checksum type: %s", offset, checksumType)
 				trailer, offset = trailer[1:], offset+1
@@ -165,17 +177,21 @@ func (l *Layout) Describe(
 			trailer = trailer[len(trailer)-trailing:]
 
 			if b.Name == "footer" {
-				version := trailer[:4]
-				tpNode.Childf("%03d  version: %d", offset, binary.LittleEndian.Uint32(version))
-				trailer, offset = trailer[4:], offset+4
+				if version == 6 {
+					if computedChecksum == encodedChecksum {
+						tpNode.Childf("%03d  footer checksum: 0x%04x", offset-4, encodedChecksum)
+					} else {
+						tpNode.Childf("%03d  invalid footer checksum: 0x%04x, expected: 0x%04x", offset-4, encodedChecksum, computedChecksum)
+					}
+				}
 			}
-
+			version = binary.LittleEndian.Uint32(trailer[:4])
+			tpNode.Childf("%03d  version: %d", offset, version)
+			trailer, offset = trailer[4:], offset+4
 			magicNumber := trailer
 			tpNode.Childf("%03d  magic number: 0x%x", offset, magicNumber)
-
 			continue
 		}
-
 		// Read the block and format it. Returns an error if we couldn't read the
 		// block.
 		err := func() error {

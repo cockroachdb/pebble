@@ -45,6 +45,7 @@ func testWriterParallelism(t *testing.T, parallelism bool) {
 		{TableFormat: TableFormatPebblev2, File: "testdata/writer"},
 		{TableFormat: TableFormatPebblev3, File: "testdata/writer_v3"},
 		{TableFormat: TableFormatPebblev5, File: "testdata/writer_v5"},
+		{TableFormat: TableFormatPebblev6, File: "testdata/writer_v6"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
@@ -62,6 +63,7 @@ func testRewriterParallelism(t *testing.T, parallelism bool) {
 		{TableFormat: TableFormatPebblev2, File: "testdata/rewriter"},
 		{TableFormat: TableFormatPebblev3, File: "testdata/rewriter_v3"},
 		{TableFormat: TableFormatPebblev5, File: "testdata/rewriter_v5"},
+		{TableFormat: TableFormatPebblev6, File: "testdata/rewriter_v6"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
@@ -1156,7 +1158,7 @@ func BenchmarkWriter(b *testing.B) {
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev5} {
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev5, TableFormatPebblev6} {
 		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
 			runWriterBench(b, keys, nil, format)
 		})
@@ -1183,7 +1185,7 @@ func BenchmarkWriterWithVersions(b *testing.B) {
 		// TableFormatPebblev2, since testkeys.Compare is expensive (mainly due to
 		// split) and with v3 we have to call it twice for 50% of the Set calls,
 		// since they have the same prefix as the preceding key.
-		for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev5} {
+		for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev5, TableFormatPebblev6} {
 			b.Run(fmt.Sprintf("vals-per-key=%d/format=%s", valsPerKey, format.String()), func(b *testing.B) {
 				runWriterBench(b, keys, testkeys.Comparer, format)
 			})

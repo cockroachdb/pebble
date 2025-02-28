@@ -54,6 +54,18 @@ func BenchmarkRandSeekInSST(b *testing.B) {
 			valueLen: 128,        // ~200 KVs per data block
 			version:  sstable.TableFormatPebblev5,
 		},
+		{
+			name:     "v6/single-level",
+			numKeys:  200 * 100, // ~100 data blocks.
+			valueLen: 128,       // ~200 KVs per data block
+			version:  sstable.TableFormatPebblev6,
+		},
+		{
+			name:     "v6/two-level",
+			numKeys:  200 * 5000, // ~5000 data blocks
+			valueLen: 128,        // ~200 KVs per data block
+			version:  sstable.TableFormatPebblev6,
+		},
 	}
 	keyCfg := keyGenConfig{
 		PrefixAlphabetLen: 26,
