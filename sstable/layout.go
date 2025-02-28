@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -140,6 +141,23 @@ func (l *Layout) Describe(
 			trailer, offset := make([]byte, b.Length), 0
 			_ = r.blockReader.Readable().ReadAt(ctx, trailer, int64(b.Offset))
 
+			version := binary.LittleEndian.Uint32(trailer[len(trailer)-12:])
+			magicNumber := trailer[len(trailer)-8:]
+			format, err := parseTableFormat(magicNumber, version)
+			if err != nil {
+				panic("Error parsing table format.")
+			}
+
+			var computedChecksum uint32
+			var encodedChecksum uint32
+			if format >= TableFormatPebblev6 {
+				computedChecksum = crc.CRC(0).
+					Update(trailer[:checkedRocksDBChecksumOffset]).
+					Update(trailer[checkedRocksDBVersionOffset:]).
+					Value()
+				encodedChecksum = binary.LittleEndian.Uint32(trailer[checkedRocksDBChecksumOffset:])
+			}
+
 			if b.Name == "footer" {
 				checksumType := block.ChecksumType(trailer[0])
 				tpNode.Childf("%03d  checksum type: %s", offset, checksumType)
@@ -160,22 +178,21 @@ func (l *Layout) Describe(
 			if b.Name == "leveldb-footer" {
 				trailing = 8
 			}
-
 			offset += len(trailer) - trailing
-			trailer = trailer[len(trailer)-trailing:]
 
-			if b.Name == "footer" {
-				version := trailer[:4]
-				tpNode.Childf("%03d  version: %d", offset, binary.LittleEndian.Uint32(version))
-				trailer, offset = trailer[4:], offset+4
+			if format >= TableFormatPebblev6 {
+				if computedChecksum == encodedChecksum {
+					tpNode.Childf("%03d  footer checksum: 0x%04x", offset-4, encodedChecksum)
+				} else {
+					tpNode.Childf("%03d  invalid footer checksum: 0x%04x, expected: 0x%04x", offset-4, encodedChecksum, computedChecksum)
+				}
 			}
 
-			magicNumber := trailer
+			tpNode.Childf("%03d  version: %d", offset, version)
+			offset = offset + 4
 			tpNode.Childf("%03d  magic number: 0x%x", offset, magicNumber)
-
 			continue
 		}
-
 		// Read the block and format it. Returns an error if we couldn't read the
 		// block.
 		err := func() error {
