@@ -109,7 +109,7 @@ sstable
  │    ├── restart points
  │    │    └── 00025 [restart 0]
  │    └── trailer [compression=none checksum=0x816ce1ee]
- └── footer  offset: 814  length: 53
+ └── rocksdb-footer  offset: 814  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=776, length=33
       ├── 004  index: offset=93, length=51
@@ -256,7 +256,7 @@ sstable
  │    ├── restart points
  │    │    └── 00025 [restart 0]
  │    └── trailer [compression=none checksum=0x3febf671]
- └── footer  offset: 810  length: 53
+ └── rocksdb-footer  offset: 810  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=772, length=33
       ├── 004  index: offset=121, length=51
@@ -651,7 +651,7 @@ sstable
  │    ├── restart points
  │    │    └── 00025 [restart 0]
  │    └── trailer [compression=none checksum=0x13c9c4b]
- └── footer  offset: 1333  length: 53
+ └── rocksdb-footer  offset: 1333  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=1295, length=33
       ├── 004  index: offset=582, length=110
@@ -1042,7 +1042,7 @@ sstable
  │    ├── restart points
  │    │    └── 00025 [restart 0]
  │    └── trailer [compression=none checksum=0x13c9c4b]
- └── footer  offset: 1333  length: 53
+ └── rocksdb-footer  offset: 1333  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=1295, length=33
       ├── 004  index: offset=582, length=110
@@ -1141,7 +1141,7 @@ sstable
  │    │    ├── 00047 [restart 0]
  │    │    └── 00051 [restart 24]
  │    └── trailer [compression=none checksum=0xb95e4caa]
- └── footer  offset: 738  length: 53
+ └── rocksdb-footer  offset: 738  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=674, length=59
       ├── 004  index: offset=0, length=28
@@ -1259,7 +1259,7 @@ sstable
  │    │    ├── 00045 [restart 0]
  │    │    └── 00049 [restart 21]
  │    └── trailer [compression=none checksum=0x1a6d95f4]
- └── footer  offset: 835  length: 53
+ └── rocksdb-footer  offset: 835  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=773, length=57
       ├── 004  index: offset=0, length=28

@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -98,8 +99,10 @@ func (l *Layout) orderedBlocks() []NamedBlockHandle {
 	if l.Footer.Length != 0 {
 		if l.Footer.Length == levelDBFooterLen {
 			blocks = append(blocks, NamedBlockHandle{l.Footer, "leveldb-footer"})
+		} else if l.Footer.Length == rocksDBFooterLen {
+			blocks = append(blocks, NamedBlockHandle{l.Footer, "rocksdb-footer"})
 		} else {
-			blocks = append(blocks, NamedBlockHandle{l.Footer, "footer"})
+			blocks = append(blocks, NamedBlockHandle{l.Footer, "checksum-footer"})
 		}
 	}
 	slices.SortFunc(blocks, func(a, b NamedBlockHandle) int {
@@ -136,11 +139,19 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		if b.Name == "footer" || b.Name == "leveldb-footer" {
+		if b.Name == "checksum-footer" || b.Name == "rocksdb-footer" || b.Name == "leveldb-footer" {
 			trailer, offset := make([]byte, b.Length), 0
 			_ = r.blockReader.Readable().ReadAt(ctx, trailer, int64(b.Offset))
 
-			if b.Name == "footer" {
+			var encodedChecksum uint32 = 0
+			var computedChecksum uint32 = 0
+			if b.Name == "checksum-footer" {
+				checksumInput := append([]byte{}, trailer[:checksummedFormatChecksumOffset]...)
+				checksumInput = append(checksumInput, trailer[checksummedFormatChecksumOffset+4:]...)
+				computedChecksum = crc.New(checksumInput).Value()
+				encodedChecksum = binary.LittleEndian.Uint32(trailer[checksummedFormatChecksumOffset:])
+			}
+			if b.Name == "rocksdb-footer" || b.Name == "checksum-footer" {
 				checksumType := block.ChecksumType(trailer[0])
 				tpNode.Childf("%03d  checksum type: %s", offset, checksumType)
 				trailer, offset = trailer[1:], offset+1
@@ -156,15 +167,26 @@ func (l *Layout) Describe(
 			tpNode.Childf("%03d  index: offset=%d, length=%d", offset, indexHandle, indexLen)
 			trailer, offset = trailer[n+m:], offset+n+m
 
-			trailing := 12
-			if b.Name == "leveldb-footer" {
+			trailing := 16
+			if b.Name == "rocksdb-footer" {
+				trailing = 12
+			} else if b.Name == "leveldb-footer" {
 				trailing = 8
 			}
 
 			offset += len(trailer) - trailing
 			trailer = trailer[len(trailer)-trailing:]
 
-			if b.Name == "footer" {
+			if b.Name == "checksum-footer" {
+				if computedChecksum == encodedChecksum {
+					tpNode.Childf("%03d  footer checksum: 0x%04x", offset, encodedChecksum)
+				} else {
+					tpNode.Childf("%03d  invalid footer checksum: 0x%04x, expected: 0x%04x", offset, encodedChecksum, computedChecksum)
+				}
+				trailer, offset = trailer[4:], offset+4
+			}
+
+			if b.Name == "rocksdb-footer" || b.Name == "checksum-footer" {
 				version := trailer[:4]
 				tpNode.Childf("%03d  version: %d", offset, binary.LittleEndian.Uint32(version))
 				trailer, offset = trailer[4:], offset+4

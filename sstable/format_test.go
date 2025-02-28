@@ -65,6 +65,12 @@ func TestTableFormat_RoundTrip(t *testing.T) {
 			version: 5,
 			want:    TableFormatPebblev5,
 		},
+		{
+			name:    "PebbleDBv6",
+			magic:   checksummedFormatMagic,
+			version: 6,
+			want:    TableFormatPebblev6,
+		},
 		// Invalid cases.
 		{
 			name:    "Invalid RocksDB version",

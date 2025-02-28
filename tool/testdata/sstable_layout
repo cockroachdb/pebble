@@ -25,7 +25,7 @@ sstable
  ├── range-del  offset: 14163  length: 421
  ├── properties  offset: 14589  length: 409
  ├── meta-index  offset: 15003  length: 62
- └── footer  offset: 15070  length: 53
+ └── rocksdb-footer  offset: 15070  length: 53
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
@@ -51,7 +51,7 @@ sstable
  ├── range-del  offset: 29379  length: 421
  ├── properties  offset: 29805  length: 453
  ├── meta-index  offset: 30263  length: 113
- └── footer  offset: 30381  length: 53
+ └── rocksdb-footer  offset: 30381  length: 53
 
 sstable layout
 ../sstable/testdata/h.no-compression.two_level_index.sst
@@ -79,7 +79,7 @@ sstable
  ├── range-del  offset: 27222  length: 421
  ├── properties  offset: 27648  length: 455
  ├── meta-index  offset: 28108  length: 64
- └── footer  offset: 28177  length: 53
+ └── rocksdb-footer  offset: 28177  length: 53
 
 sstable layout
 -v
@@ -3793,7 +3793,7 @@ sstable
  │    │    ├── 00052 [restart 0]
  │    │    └── 00056 [restart 26]
  │    └── trailer [compression=none checksum=0x8809b4f7]
- └── footer  offset: 28177  length: 53
+ └── rocksdb-footer  offset: 28177  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=28108, length=64
       ├── 005  index: offset=27147, length=70
@@ -3851,7 +3851,7 @@ sstable
  │    ├── restart points
  │    │    └── 00024 [restart 0]
  │    └── trailer [compression=none checksum=0xbba76d3c]
- └── footer  offset: 643  length: 53
+ └── rocksdb-footer  offset: 643  length: 53
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=606, length=32
       ├── 004  index: offset=33, length=22
@@ -3868,4 +3868,4 @@ sstable
  ├── range-key  offset: 264  length: 64
  ├── properties  offset: 333  length: 601
  ├── meta-index  offset: 939  length: 59
- └── footer  offset: 1003  length: 53
+ └── rocksdb-footer  offset: 1003  length: 53
