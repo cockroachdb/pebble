@@ -161,6 +161,7 @@ func (l *Layout) Describe(
 				trailing = 8
 			}
 
+			maybeChecksum := binary.LittleEndian.Uint32(trailer[len(trailer)-trailing-4:])
 			offset += len(trailer) - trailing
 			trailer = trailer[len(trailer)-trailing:]
 
@@ -172,6 +173,10 @@ func (l *Layout) Describe(
 
 			magicNumber := trailer
 			tpNode.Childf("%03d  magic number: 0x%x", offset, magicNumber)
+
+			if string(magicNumber) == footerFormatMagic {
+				tpNode.Childf("%03d  footer: %d", offset, maybeChecksum)
+			}
 
 			continue
 		}

@@ -5,7 +5,7 @@ set hello foo
 get
 hello
 ----
-reading footer of 53 bytes took 5ms
+reading footer of 57 bytes took 5ms
 reading block of 37 bytes took 5ms (<redacted>)
 reading block of 417 bytes took 5ms (<redacted>)
 reading block of 31 bytes took 5ms (<redacted>)
@@ -48,7 +48,7 @@ range-key-set a z @4 foo2
 get
 hello@2
 ----
-reading footer of 53 bytes took 5ms
+reading footer of 57 bytes took 5ms
 reading block of 62 bytes took 5ms (<redacted>)
 reading block of 504 bytes took 5ms (<redacted>)
 reading block of 27 bytes took 5ms (<redacted>)
