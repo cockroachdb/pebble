@@ -156,3 +156,77 @@ iter test34
 a#0,SET: foo
 b#0,SET: bar
 c#0,SET: baz
+
+# Try the above with checksummed columnar blocks.
+
+build test3 format=pebblev6
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+----
+
+iter test3 start=c
+----
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test3 test4 b.SET.10 cc.SET.0
+----
+copied 893 bytes
+
+iter test4
+----
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test3 test5 a.SET.10 bb.SET.0
+----
+copied 901 bytes
+
+iter test5
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
+
+
+# Try the above with small blocks.
+build test32 format=pebblev6 block_size=1 index_block_size=1
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+e.SET.5:foo
+f.SET.5:foo
+g.SET.5:foo
+h.SET.5:foo
+i.SET.5:foo
+j.SET.5:foo
+----
+
+iter test32 start=c end=e
+----
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test32 test33 b.SET.10 cc.SET.0
+----
+copied 893 bytes
+
+iter test33
+----
+b#0,SET: bar
+c#0,SET: baz
+d#0,SET: foobar
+
+copy-span test32 test34 a.SET.10 bb.SET.0
+----
+copied 901 bytes
+
+iter test34
+----
+a#0,SET: foo
+b#0,SET: bar
+c#0,SET: baz
