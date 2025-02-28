@@ -447,6 +447,7 @@ func (b *UintBuilder) WriteDebug(w io.Writer, rows int) {
 // The values slice can be smaller than dst; in that case, the values between
 // len(values) and len(dst) are assumed to be 0.
 func reduceUints[N constraints.Integer](minimum uint64, values []uint64, dst []N) {
+	_ = dst[len(values)-1]
 	for i, v := range values {
 		if invariants.Enabled {
 			if v < minimum {
@@ -456,12 +457,11 @@ func reduceUints[N constraints.Integer](minimum uint64, values []uint64, dst []N
 				panic("incorrect target width")
 			}
 		}
+		//gcassert:bce
 		dst[i] = N(v - minimum)
 	}
-	if invariants.Enabled && len(values) < len(dst) {
-		if minimum != 0 {
-			panic("incorrect minimum value")
-		}
+	if invariants.Enabled && len(values) < len(dst) && minimum != 0 {
+		panic("incorrect minimum value")
 	}
 	for i := len(values); i < len(dst); i++ {
 		dst[i] = 0
