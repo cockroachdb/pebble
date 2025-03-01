@@ -73,6 +73,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
@@ -203,8 +204,15 @@ const (
 
 	pebbleDBMagic = "\xf0\x9f\xaa\xb3\xf0\x9f\xaa\xb3" // 🪳🪳
 
+	checksumLen                = 4
+	footerFormatLen            = rocksDBFooterLen + checksumLen
+	footerFormatMagic          = "\xf0\x9f\xa6\xb6\xf0\x9f\xa6\xb6" // 🦶🦶
+	footerFormatMagicOffset    = footerFormatLen - len(footerFormatMagic)
+	footerFormatVersionOffset  = footerFormatMagicOffset - 4
+	footerFormatChecksumOffset = footerFormatVersionOffset - 4
+
 	minFooterLen = levelDBFooterLen
-	maxFooterLen = rocksDBFooterLen
+	maxFooterLen = footerFormatLen
 
 	levelDBFormatVersion  = 0
 	rocksDBFormatVersion2 = 2
@@ -327,6 +335,36 @@ func parseFooter(buf []byte, off, size int64) (footer, error) {
 		}
 		buf = buf[1:]
 
+	case footerFormatMagic:
+		if len(buf) < footerFormatLen {
+			return footer, base.CorruptionErrorf("(footer too short): %d", errors.Safe(len(buf)))
+		}
+		footer.footerBH.Offset = uint64(off+int64(len(buf))) - footerFormatLen
+		buf = buf[len(buf)-footerFormatLen:]
+		footer.footerBH.Length = uint64(len(buf))
+		version := binary.LittleEndian.Uint32(buf[footerFormatVersionOffset:footerFormatMagicOffset])
+
+		format, err := parseTableFormat(magic, version)
+		if err != nil {
+			return footer, err
+		}
+		footer.format = format
+
+		switch block.ChecksumType(buf[0]) {
+		case block.ChecksumTypeCRC32c:
+			footer.checksum = block.ChecksumTypeCRC32c
+		case block.ChecksumTypeXXHash64:
+			footer.checksum = block.ChecksumTypeXXHash64
+		default:
+			return footer, base.CorruptionErrorf("(unsupported checksum type %d)", errors.Safe(footer.checksum))
+		}
+
+		encodedChecksum := binary.LittleEndian.Uint32(buf[footerFormatChecksumOffset:footerFormatVersionOffset])
+		if encodedChecksum != crc.New(buf[footerFormatVersionOffset:]).Value() {
+			return footer, base.CorruptionErrorf("(footer corrupted, checksum mismatch)")
+		}
+		buf = buf[1:]
+
 	default:
 		return footer, base.CorruptionErrorf("(bad magic number: 0x%x)", magic)
 	}
@@ -378,6 +416,28 @@ func (f footer) encode(buf []byte) []byte {
 		n += f.indexBH.EncodeVarints(buf[n:])
 		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], version)
 		copy(buf[len(buf)-len(rocksDBMagic):], magic)
+	case footerFormatMagic:
+		buf = buf[:footerFormatLen]
+		clear(buf)
+		switch f.checksum {
+		case block.ChecksumTypeNone:
+			buf[0] = byte(block.ChecksumTypeNone)
+		case block.ChecksumTypeCRC32c:
+			buf[0] = byte(block.ChecksumTypeCRC32c)
+		case block.ChecksumTypeXXHash:
+			buf[0] = byte(block.ChecksumTypeXXHash)
+		case block.ChecksumTypeXXHash64:
+			buf[0] = byte(block.ChecksumTypeXXHash64)
+		default:
+			panic("unknown checksum type")
+		}
+		n := 1
+		n += f.metaindexBH.EncodeVarints(buf[n:])
+		n += f.indexBH.EncodeVarints(buf[n:])
+		binary.LittleEndian.PutUint32(buf[footerFormatVersionOffset:], version)
+		copy(buf[len(buf)-len(footerFormatMagic):], magic)
+
+		binary.LittleEndian.PutUint32(buf[footerFormatChecksumOffset:], crc.New(buf[footerFormatVersionOffset:]).Value())
 
 	default:
 		panic("sstable: unspecified table format version")
