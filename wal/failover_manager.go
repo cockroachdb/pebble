@@ -631,6 +631,7 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		failoverWriteAndSyncLatency: wm.opts.FailoverWriteAndSyncLatency,
 		writerClosed:                wm.writerClosed,
 		writerCreatedForTest:        wm.opts.logWriterCreatedForTesting,
+		writeWALSyncOffsets:         wm.opts.WriteWALSyncOffsets,
 	}
 	var err error
 	var ww *failoverWriter
