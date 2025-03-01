@@ -110,9 +110,12 @@ func TestMustExist(t *testing.T) {
 	filename := fs.PathJoin("..", "..", "testdata", "db-stage-4", "000000.sst")
 
 	MustExist(fs, filename, &buf, err)
-	require.Equal(t, `000000.sst:
-file does not exist
-directory contains 9 files, 3 unknown, 1 tables, 1 logs, 2 manifests`, buf.buf.String())
+
+	expected := fmt.Sprintf(`file does not exist
+(1) filename: %s; directory contains 9 files, 3 unknown, 1 tables, 1 logs, 2 manifests
+Wraps: (2) file does not exist
+Error types: (1) *hintdetail.withDetail (2) *errors.errorString`, filename)
+	require.Equal(t, expected, buf.buf.String())
 }
 
 func TestRedactFileNum(t *testing.T) {
