@@ -157,16 +157,8 @@ type UintBuilder struct {
 	// configuration fixed on Init; preserved across Reset
 	useDefault bool
 
-	// array holds the underlying heap-allocated array in which values are
-	// stored.
-	array struct {
-		// n is the size of the array (in count of T elements; not bytes). n is
-		// NOT the number of elements that have been populated by the user.
-		n int
-		// elems provides access to elements without bounds checking. elems is
-		// grown automatically in Set.
-		elems UnsafeRawSlice[uint64]
-	}
+	elems []uint64
+
 	// stats holds state for the purpose of tracking which UintEncoding would
 	// be used if the caller Finished the column including all elements Set so
 	// far. The stats state is used by Size (and Finish) to cheaply determine
@@ -233,15 +225,15 @@ func (b *UintBuilder) Reset() {
 		// will include at least one default value.
 		b.stats.minimum = 0
 		b.stats.maximum = 0
-		clear(b.array.elems.Slice(b.array.n))
+		clear(b.elems)
 	} else {
 		b.stats.minimum = math.MaxUint64
 		b.stats.maximum = 0
 		// We could reset all values as a precaution, but it has a visible cost
 		// in benchmarks.
 		if invariants.Enabled && invariants.Sometimes(50) {
-			for i := 0; i < b.array.n; i++ {
-				b.array.elems.set(i, math.MaxUint64)
+			for i := range b.elems {
+				b.elems[i] = math.MaxUint64
 			}
 		}
 	}
@@ -254,32 +246,29 @@ func (b *UintBuilder) Reset() {
 func (b *UintBuilder) Get(row int) uint64 {
 	// If the UintBuilder is configured to use a zero value for unset rows, it's
 	// possible that the array has not been grown to a size that includes [row].
-	if b.array.n <= row {
+	if len(b.elems) <= row {
 		if invariants.Enabled && !b.useDefault {
-			panic(errors.AssertionFailedf("Get(%d) on UintBuilder with array of size %d", row, b.array.n))
+			panic(errors.AssertionFailedf("Get(%d) on UintBuilder with array of size %d", row, len(b.elems)))
 		}
 		return 0
 	}
-	return b.array.elems.At(row)
+	return b.elems[row]
 }
 
 // Set sets the value of the provided row index to v.
 func (b *UintBuilder) Set(row int, v uint64) {
-	if b.array.n <= row {
+	if len(b.elems) <= row {
 		// Double the size of the allocated array, or initialize it to at least 32
 		// values (256 bytes) if this is the first allocation. Then double until
 		// there's sufficient space.
-		n2 := max(b.array.n<<1, 32)
+		n2 := max(len(b.elems)<<1, 32)
 		for n2 <= row {
-			n2 <<= 1 /* double the size */
+			n2 <<= 1 // double the size
 		}
 		// NB: Go guarantees the allocated array will be 64-bit aligned.
-		newDataTyped := make([]uint64, n2)
-		copy(newDataTyped, b.array.elems.Slice(b.array.n))
-		newElems := makeUnsafeRawSlice[uint64](unsafe.Pointer(&newDataTyped[0]))
-		b.array.n = n2
-		b.array.elems = newElems
-
+		newElems := make([]uint64, n2)
+		copy(newElems, b.elems)
+		b.elems = newElems
 	}
 	// Maintain the running minimum and maximum for the purpose of maintaining
 	// knowledge of the delta encoding that would be used.
@@ -293,7 +282,7 @@ func (b *UintBuilder) Set(row int, v uint64) {
 			b.stats.encodingRow = row
 		}
 	}
-	b.array.elems.set(row, v)
+	b.elems[row] = v
 }
 
 // Size implements ColumnWriter and returns the size of the column if its first
@@ -332,7 +321,7 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, deltaBase uin
 
 func (b *UintBuilder) recalculateEncoding(rows int) (_ UintEncoding, deltaBase uint64) {
 	// We have to recalculate the minimum and maximum.
-	minimum, maximum := computeMinMax(b.array.elems.Slice(min(rows, b.array.n)))
+	minimum, maximum := computeMinMax(b.elems[:min(rows, len(b.elems))])
 	if b.useDefault {
 		// Mirror the pessimism of the fast path so that the result is consistent.
 		// Otherwise, adding a row can result in a different encoding even when not
@@ -371,17 +360,8 @@ func (b *UintBuilder) Finish(col, rows int, offset uint32, buf []byte) uint32 {
 
 	e, minimum := b.determineEncoding(rows)
 
-	// NB: In some circumstances, it's possible for b.array.elems.ptr to be nil.
-	// Specifically, if the builder is initialized using InitWithDefault and no
-	// non-default values exist, no array will have been allocated (we lazily
-	// allocate b.array.elems.ptr). It's illegal to try to construct an unsafe
-	// slice from a nil ptr with non-zero rows. Only attempt to construct the
-	// values slice if there's actually a non-nil ptr.
-	var valuesSlice []uint64
-	if b.array.elems.ptr != nil {
-		valuesSlice = b.array.elems.Slice(min(rows, b.array.n))
-	}
-	return uintColumnFinish(rows, minimum, valuesSlice, e, offset, buf)
+	values := b.elems[:min(rows, len(b.elems))]
+	return uintColumnFinish(rows, minimum, values, e, offset, buf)
 }
 
 // uintColumnFinish finishes the column of unsigned integers of type T, applying
