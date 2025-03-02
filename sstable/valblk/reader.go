@@ -121,7 +121,7 @@ func (r *Reader) GetInternalValueForPrefixAndValueHandle(handle []byte) base.Int
 	*lazyFetcher = base.LazyFetcher{
 		Fetcher: r.fetcher,
 		Attribute: base.AttributeAndLen{
-			ValueLen:       int32(valLen),
+			ValueLen:       valLen,
 			ShortAttribute: block.ValuePrefix(handle[0]).ShortAttribute(),
 		},
 	}
@@ -191,7 +191,7 @@ func newValueBlockFetcher(
 
 // Fetch implements base.ValueFetcher.
 func (f *valueBlockFetcher) Fetch(
-	ctx context.Context, handle []byte, valLen int32, buf []byte,
+	ctx context.Context, handle []byte, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if !f.closed {
 		val, err := f.getValueInternal(handle, valLen)
@@ -251,9 +251,9 @@ func (f *valueBlockFetcher) doValueMangling(v []byte) []byte {
 	return f.bufToMangle
 }
 
-func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val []byte, err error) {
+func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val []byte, err error) {
 	vh := DecodeRemainingHandle(handle)
-	vh.ValueLen = uint32(valLen)
+	vh.ValueLen = valLen
 	if f.vbiBlock == nil {
 		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats)
 		if err != nil {
