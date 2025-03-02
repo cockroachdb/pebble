@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -183,7 +184,9 @@ func (b *RawBytesBuilder) UnsafeGet(i int) []byte {
 	if b.rows == 0 {
 		return nil
 	}
-	return b.data[b.offsets.array.elems.At(i):b.offsets.array.elems.At(i+1)]
+	start := unsafeGetUint64(b.offsets.elems, i)
+	end := unsafeGetUint64(b.offsets.elems, i+1)
+	return b.data[start:end]
 }
 
 // Finish writes the serialized byte slices to buf starting at offset. The buf
@@ -218,4 +221,12 @@ func (b *RawBytesBuilder) Size(rows int, offset uint32) uint32 {
 // WriteDebug implements Encoder.
 func (b *RawBytesBuilder) WriteDebug(w io.Writer, rows int) {
 	fmt.Fprintf(w, "bytes: %d rows set; %d bytes in data", b.rows, len(b.data))
+}
+
+//gcassert:inline
+func unsafeGetUint64(slice []uint64, idx int) uint64 {
+	if invariants.Enabled {
+		_ = slice[idx]
+	}
+	return *(*uint64)(unsafe.Add(unsafe.Pointer(unsafe.SliceData(slice)), uintptr(idx)<<3))
 }

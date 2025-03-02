@@ -6,7 +6,6 @@ package cockroachkvs
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand/v2"
 	"testing"
 	"time"
@@ -17,25 +16,10 @@ import (
 )
 
 func BenchmarkCockroachDataRowBlockWriter(b *testing.B) {
-	for _, alphaLen := range []int{4, 8, 26} {
-		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, roachKeyLen := range []int{8, 32, 128} {
-				lenShared := int(float64(roachKeyLen) * lenSharedPct)
-				for _, valueLen := range []int{8, 128, 1024} {
-					keyConfig := keyGenConfig{
-						PrefixAlphabetLen: alphaLen,
-						RoachKeyLen:       roachKeyLen,
-						PrefixLenShared:   lenShared,
-						AvgKeysPerPrefix:  2,
-						PercentLogical:    0,
-						BaseWallTime:      uint64(time.Now().UnixNano()),
-					}
-					b.Run(fmt.Sprintf("%s,valueLen=%d", keyConfig, valueLen), func(b *testing.B) {
-						benchmarkCockroachDataRowBlockWriter(b, keyConfig, valueLen)
-					})
-				}
-			}
-		}
+	for _, cfg := range benchConfigs {
+		b.Run(cfg.String(), func(b *testing.B) {
+			benchmarkCockroachDataRowBlockWriter(b, cfg.keyGenConfig, cfg.ValueLen)
+		})
 	}
 }
 
@@ -67,28 +51,11 @@ func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig keyGenConfig, 
 	}
 }
 
-func BenchmarkCockroachDataBlockIter(b *testing.B) {
-	for _, alphaLen := range []int{4, 8, 26} {
-		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, roachKeyLen := range []int{8, 32, 128} {
-				lenShared := int(float64(roachKeyLen) * lenSharedPct)
-				for _, logical := range []int{0, 100} {
-					for _, valueLen := range []int{8, 128, 1024} {
-						keyConfig := keyGenConfig{
-							PrefixAlphabetLen: alphaLen,
-							RoachKeyLen:       roachKeyLen,
-							PrefixLenShared:   lenShared,
-							PercentLogical:    logical,
-							BaseWallTime:      uint64(time.Now().UnixNano()),
-						}
-						b.Run(fmt.Sprintf("%s,value=%d", keyConfig, valueLen),
-							func(b *testing.B) {
-								benchmarkCockroachDataRowBlockIter(b, keyConfig, valueLen)
-							})
-					}
-				}
-			}
-		}
+func BenchmarkCockroachDataRowBlockIter(b *testing.B) {
+	for _, cfg := range benchConfigs {
+		b.Run(cfg.String(), func(b *testing.B) {
+			benchmarkCockroachDataRowBlockIter(b, cfg.keyGenConfig, cfg.ValueLen)
+		})
 	}
 }
 
