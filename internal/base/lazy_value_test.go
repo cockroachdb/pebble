@@ -14,10 +14,10 @@ import (
 )
 
 type valueFetcherFunc func(
-	handle []byte, valLen int32, buf []byte) (val []byte, callerOwned bool, err error)
+	handle []byte, valLen uint32, buf []byte) (val []byte, callerOwned bool, err error)
 
 func (v valueFetcherFunc) Fetch(
-	ctx context.Context, handle []byte, valLen int32, buf []byte,
+	ctx context.Context, handle []byte, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	return v(handle, valLen, buf)
 }
@@ -54,10 +54,10 @@ func TestLazyValue(t *testing.T) {
 			ValueOrHandle: []byte("foo-handle"),
 			Fetcher: &LazyFetcher{
 				Fetcher: valueFetcherFunc(
-					func(handle []byte, valLen int32, buf []byte) ([]byte, bool, error) {
+					func(handle []byte, valLen uint32, buf []byte) ([]byte, bool, error) {
 						numCalls++
 						require.Equal(t, []byte("foo-handle"), handle)
-						require.Equal(t, int32(3), valLen)
+						require.Equal(t, uint32(3), valLen)
 						return fooBytes1, callerOwned, nil
 					}),
 				Attribute: AttributeAndLen{ValueLen: 3, ShortAttribute: 7},
