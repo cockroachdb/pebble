@@ -40,7 +40,7 @@ type ShortAttributeExtractor func(
 // AttributeAndLen represents the pair of value length and the short
 // attribute.
 type AttributeAndLen struct {
-	ValueLen       int32
+	ValueLen       uint32
 	ShortAttribute ShortAttribute
 }
 
@@ -184,7 +184,7 @@ type ValueFetcher interface {
 	// will allocate a new slice for the value. In either case it will set
 	// callerOwned to true.
 	Fetch(
-		ctx context.Context, handle []byte, valLen int32, buf []byte,
+		ctx context.Context, handle []byte, valLen uint32, buf []byte,
 	) (val []byte, callerOwned bool, err error)
 }
 

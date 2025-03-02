@@ -9,7 +9,6 @@ import (
 	"math/rand/v2"
 	"unsafe"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -121,7 +120,7 @@ func (r *Reader) GetInternalValueForPrefixAndValueHandle(handle []byte) base.Int
 	*lazyFetcher = base.LazyFetcher{
 		Fetcher: r.fetcher,
 		Attribute: base.AttributeAndLen{
-			ValueLen:       int32(valLen),
+			ValueLen:       valLen,
 			ShortAttribute: block.ValuePrefix(handle[0]).ShortAttribute(),
 		},
 	}
@@ -191,7 +190,7 @@ func newValueBlockFetcher(
 
 // Fetch implements base.ValueFetcher.
 func (f *valueBlockFetcher) Fetch(
-	ctx context.Context, handle []byte, valLen int32, buf []byte,
+	ctx context.Context, handle []byte, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if !f.closed {
 		val, err := f.getValueInternal(handle, valLen)
@@ -251,9 +250,9 @@ func (f *valueBlockFetcher) doValueMangling(v []byte) []byte {
 	return f.bufToMangle
 }
 
-func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val []byte, err error) {
+func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val []byte, err error) {
 	vh := DecodeRemainingHandle(handle)
-	vh.ValueLen = uint32(valLen)
+	vh.ValueLen = valLen
 	if f.vbiBlock == nil {
 		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats)
 		if err != nil {
@@ -284,26 +283,5 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen int32) (val [
 }
 
 func (f *valueBlockFetcher) getBlockHandle(blockNum uint32) (block.Handle, error) {
-	indexEntryLen :=
-		int(f.vbih.BlockNumByteLength + f.vbih.BlockOffsetByteLength + f.vbih.BlockLengthByteLength)
-	offsetInIndex := indexEntryLen * int(blockNum)
-	if len(f.vbiBlock) < offsetInIndex+indexEntryLen {
-		return block.Handle{}, base.AssertionFailedf(
-			"index entry out of bounds: offset %d length %d block length %d",
-			offsetInIndex, indexEntryLen, len(f.vbiBlock))
-	}
-	b := f.vbiBlock[offsetInIndex : offsetInIndex+indexEntryLen]
-	n := int(f.vbih.BlockNumByteLength)
-	bn := littleEndianGet(b, n)
-	if uint32(bn) != blockNum {
-		return block.Handle{},
-			errors.Errorf("expected block num %d but found %d", blockNum, bn)
-	}
-	b = b[n:]
-	n = int(f.vbih.BlockOffsetByteLength)
-	blockOffset := littleEndianGet(b, n)
-	b = b[n:]
-	n = int(f.vbih.BlockLengthByteLength)
-	blockLen := littleEndianGet(b, n)
-	return block.Handle{Offset: blockOffset, Length: blockLen}, nil
+	return DecodeBlockHandleFromIndex(f.vbiBlock, blockNum, f.vbih)
 }

@@ -172,6 +172,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -365,6 +366,34 @@ func DecodeIndex(data []byte, vbih IndexHandle) ([]block.Handle, error) {
 		valueBlocks = append(valueBlocks, block.Handle{Offset: blockOffset, Length: blockLen})
 	}
 	return valueBlocks, nil
+}
+
+// DecodeBlockHandleFromIndex decodes the block handle for the given block
+// number from the provided index block.
+func DecodeBlockHandleFromIndex(
+	vbiBlock []byte, blockNum uint32, indexHandle IndexHandle,
+) (block.Handle, error) {
+	w := indexHandle.RowWidth()
+	off := w * int(blockNum)
+	if len(vbiBlock) < off+w {
+		return block.Handle{}, base.CorruptionErrorf(
+			"index entry out of bounds: offset %d length %d block length %d",
+			off, w, len(vbiBlock))
+	}
+	b := vbiBlock[off : off+w]
+	n := int(indexHandle.BlockNumByteLength)
+	bn := littleEndianGet(b, n)
+	if uint32(bn) != blockNum {
+		return block.Handle{},
+			errors.Errorf("expected block num %d but found %d", blockNum, bn)
+	}
+	b = b[n:]
+	n = int(indexHandle.BlockOffsetByteLength)
+	blockOffset := littleEndianGet(b, n)
+	b = b[n:]
+	n = int(indexHandle.BlockLengthByteLength)
+	blockLen := littleEndianGet(b, n)
+	return block.Handle{Offset: blockOffset, Length: blockLen}, nil
 }
 
 // littleEndianPut writes v to b using little endian encoding, under the

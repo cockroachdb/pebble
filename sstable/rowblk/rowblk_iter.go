@@ -703,7 +703,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != base.InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+		} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
 			i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -989,7 +989,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -1018,7 +1018,7 @@ func (i *Iter) First() *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -1064,7 +1064,7 @@ func (i *Iter) Last() *base.InternalKV {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -1123,7 +1123,7 @@ start:
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -1413,7 +1413,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			}
 			if i.ikv.K.Kind() != base.InternalKeyKindSet {
 				i.ikv.V = base.MakeInPlaceValue(i.val)
-			} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+			} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 				i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 			} else {
 				i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -1471,7 +1471,7 @@ start:
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != base.InternalKeyKindSet {
 			i.ikv.V = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+		} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 			i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 		} else {
 			i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
@@ -1553,7 +1553,7 @@ start:
 	if !i.lazyValueHandling.hasValuePrefix ||
 		i.ikv.K.Kind() != base.InternalKeyKindSet {
 		i.ikv.V = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.getValue == nil || !block.ValuePrefix(i.val[0]).IsValueHandle() {
+	} else if i.lazyValueHandling.getValue == nil || block.ValuePrefix(i.val[0]).IsInPlaceValue() {
 		i.ikv.V = base.MakeInPlaceValue(i.val[1:])
 	} else {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
