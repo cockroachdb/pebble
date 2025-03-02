@@ -192,6 +192,9 @@ type pickedCompaction struct {
 	score float64
 	// kind indicates the kind of compaction.
 	kind compactionKind
+	// manualID > 0 iff this is a manual compaction. It exists solely for
+	// internal bookkeeping.
+	manualID uint64
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
@@ -1153,6 +1156,44 @@ func responsibleForGarbageBytes(
 	return uint64(totalGarbage) / uint64(useCount)
 }
 
+func (p *compactionPickerByScore) getCompactionConcurrency() int {
+	maxConcurrentCompactions := p.opts.MaxConcurrentCompactions()
+	// Compaction concurrency is controlled by L0 read-amp. We allow one
+	// additional compaction per L0CompactionConcurrency sublevels, as well as
+	// one additional compaction per CompactionDebtConcurrency bytes of
+	// compaction debt. Compaction concurrency is tied to L0 sublevels as that
+	// signal is independent of the database size. We tack on the compaction
+	// debt as a second signal to prevent compaction concurrency from dropping
+	// significantly right after a base compaction finishes, and before those
+	// bytes have been compacted further down the LSM.
+	//
+	// Let n be the number of in-progress compactions.
+	//
+	// l0ReadAmp >= ccSignal1 then can run another compaction, where
+	// ccSignal1 = n * p.opts.Experimental.L0CompactionConcurrency
+	// Rearranging,
+	// n <= l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency.
+	// So we can run up to
+	// l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency + 1 compactions
+	l0ReadAmpCompactions := 1
+	if p.opts.Experimental.L0CompactionConcurrency > 0 {
+		l0ReadAmp := p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
+		l0ReadAmpCompactions = (l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency) + 1
+	}
+	// compactionDebt >= ccSignal2 then can run another compaction, where
+	// ccSignal2 = uint64(n) * p.opts.Experimental.CompactionDebtConcurrency
+	// Rearranging,
+	// n <= compactionDebt / p.opts.Experimental.CompactionDebtConcurrency
+	// So we can run up to
+	// compactionDebt / p.opts.Experimental.CompactionDebtConcurrency + 1 compactions.
+	compactionDebtCompactions := 1
+	if p.opts.Experimental.CompactionDebtConcurrency > 0 {
+		compactionDebt := p.estimatedCompactionDebt(0)
+		compactionDebtCompactions = int(compactionDebt/p.opts.Experimental.CompactionDebtConcurrency) + 1
+	}
+	return max(min(maxConcurrentCompactions, max(l0ReadAmpCompactions, compactionDebtCompactions)), 1)
+}
+
 // pickAuto picks the best compaction, if any.
 //
 // On each call, pickAuto computes per-level size adjustments based on
@@ -1163,24 +1204,6 @@ func responsibleForGarbageBytes(
 // If a score-based compaction cannot be found, pickAuto falls back to looking
 // for an elision-only compaction to remove obsolete keys.
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompaction) {
-	// Compaction concurrency is controlled by L0 read-amp. We allow one
-	// additional compaction per L0CompactionConcurrency sublevels, as well as
-	// one additional compaction per CompactionDebtConcurrency bytes of
-	// compaction debt. Compaction concurrency is tied to L0 sublevels as that
-	// signal is independent of the database size. We tack on the compaction
-	// debt as a second signal to prevent compaction concurrency from dropping
-	// significantly right after a base compaction finishes, and before those
-	// bytes have been compacted further down the LSM.
-	if n := len(env.inProgressCompactions); n > 0 {
-		l0ReadAmp := p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
-		compactionDebt := p.estimatedCompactionDebt(0)
-		ccSignal1 := n * p.opts.Experimental.L0CompactionConcurrency
-		ccSignal2 := uint64(n) * p.opts.Experimental.CompactionDebtConcurrency
-		if l0ReadAmp < ccSignal1 && compactionDebt < ccSignal2 {
-			return nil
-		}
-	}
-
 	scores := p.calculateLevelScores(env.inProgressCompactions)
 
 	// TODO(bananabrick): Either remove, or change this into an event sent to the
@@ -1489,6 +1512,9 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 // necessary. A rewrite compaction outputs files to the same level as
 // the input level.
 func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *pickedCompaction) {
+	if p.vers.Stats.MarkedForCompaction == 0 {
+		return nil
+	}
 	for l := numLevels - 1; l >= 0; l-- {
 		candidate := markedForCompactionAnnotator.LevelAnnotation(p.vers.Levels[l])
 		if candidate == nil {
@@ -1766,7 +1792,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	return pc
 }
 
-func pickManualCompaction(
+func newPickedManualCompaction(
 	vers *version, opts *Options, env compactionEnv, baseLevel int, manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {
 	outputLevel := manual.level + 1
@@ -1790,6 +1816,7 @@ func pickManualCompaction(
 		return nil, true
 	}
 	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
+	pc.manualID = manual.id
 	manual.outputLevel = pc.outputLevel.level
 	pc.startLevel.files = vers.Overlaps(manual.level, base.UserKeyBoundsInclusive(manual.start, manual.end))
 	if pc.startLevel.files.Empty() {
