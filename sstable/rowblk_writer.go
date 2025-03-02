@@ -786,7 +786,7 @@ func (w *RawRowWriter) addPoint(key InternalKey, value []byte, forceObsolete boo
 				return err
 			}
 		}
-		prefix = block.ValueHandlePrefix(setHasSameKeyPrefix, attribute)
+		prefix = block.ValueBlockHandlePrefix(setHasSameKeyPrefix, attribute)
 	} else {
 		valueStoredWithKey = value
 		valueStoredWithKeyLen = len(value)

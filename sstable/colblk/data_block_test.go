@@ -69,7 +69,7 @@ func TestDataBlock(t *testing.T) {
 					valueString := line[j+1:]
 					vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
 					if strings.HasPrefix(valueString, "valueHandle") {
-						vp = block.ValueHandlePrefix(kcmp.PrefixEqual(), 0)
+						vp = block.ValueBlockHandlePrefix(kcmp.PrefixEqual(), 0)
 					}
 					if kcmp.UserKeyComparison == 0 && prevKey.Kind() != base.InternalKeyKindMerge {
 						isObsolete = true
