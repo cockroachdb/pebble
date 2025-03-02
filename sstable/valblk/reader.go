@@ -9,7 +9,6 @@ import (
 	"math/rand/v2"
 	"unsafe"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -284,26 +283,5 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val 
 }
 
 func (f *valueBlockFetcher) getBlockHandle(blockNum uint32) (block.Handle, error) {
-	indexEntryLen :=
-		int(f.vbih.BlockNumByteLength + f.vbih.BlockOffsetByteLength + f.vbih.BlockLengthByteLength)
-	offsetInIndex := indexEntryLen * int(blockNum)
-	if len(f.vbiBlock) < offsetInIndex+indexEntryLen {
-		return block.Handle{}, base.AssertionFailedf(
-			"index entry out of bounds: offset %d length %d block length %d",
-			offsetInIndex, indexEntryLen, len(f.vbiBlock))
-	}
-	b := f.vbiBlock[offsetInIndex : offsetInIndex+indexEntryLen]
-	n := int(f.vbih.BlockNumByteLength)
-	bn := littleEndianGet(b, n)
-	if uint32(bn) != blockNum {
-		return block.Handle{},
-			errors.Errorf("expected block num %d but found %d", blockNum, bn)
-	}
-	b = b[n:]
-	n = int(f.vbih.BlockOffsetByteLength)
-	blockOffset := littleEndianGet(b, n)
-	b = b[n:]
-	n = int(f.vbih.BlockLengthByteLength)
-	blockLen := littleEndianGet(b, n)
-	return block.Handle{Offset: blockOffset, Length: blockLen}, nil
+	return DecodeBlockHandleFromIndex(f.vbiBlock, blockNum, f.vbih)
 }
