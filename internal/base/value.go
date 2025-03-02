@@ -17,7 +17,7 @@ type InternalValue struct {
 	lazyValue LazyValue
 }
 
-// MakeLazyValue constructs an IntrenalValue from a LazyValue.
+// MakeLazyValue constructs an InternalValue from a LazyValue.
 func MakeLazyValue(v LazyValue) InternalValue {
 	return InternalValue{lazyValue: v}
 }
@@ -58,6 +58,13 @@ func (v *InternalValue) Len() int {
 // stored out-of-band.
 func (v *InternalValue) InternalLen() int {
 	return len(v.lazyValue.ValueOrHandle)
+}
+
+// ValueOrHandle returns the value or handle that is stored inlined. If the
+// value is stored out-of-band, the returned slice contains a binary-encoded
+// value handle.
+func (v *InternalValue) ValueOrHandle() []byte {
+	return v.lazyValue.ValueOrHandle
 }
 
 // Value returns the KV's underlying value.
