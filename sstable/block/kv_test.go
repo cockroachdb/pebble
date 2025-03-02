@@ -41,11 +41,11 @@ func TestValuePrefix(t *testing.T) {
 		t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
 			var prefix ValuePrefix
 			if tc.isHandle {
-				prefix = ValueHandlePrefix(tc.setHasSamePrefix, tc.attr)
+				prefix = ValueBlockHandlePrefix(tc.setHasSamePrefix, tc.attr)
 			} else {
 				prefix = InPlaceValuePrefix(tc.setHasSamePrefix)
 			}
-			require.Equal(t, tc.isHandle, prefix.IsValueHandle())
+			require.Equal(t, tc.isHandle, prefix.IsValueBlockHandle())
 			require.Equal(t, tc.setHasSamePrefix, prefix.SetHasSamePrefix())
 			if tc.isHandle {
 				require.Equal(t, tc.attr, prefix.ShortAttribute())

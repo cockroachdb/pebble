@@ -13,9 +13,9 @@ type ValuePrefix byte
 
 const (
 	// 2 most-significant bits of valuePrefix encodes the value-kind.
-	valueKindMask           ValuePrefix = 0xC0
-	valueKindIsValueHandle  ValuePrefix = 0x80
-	valueKindIsInPlaceValue ValuePrefix = 0x00
+	valueKindMask               ValuePrefix = 0xC0
+	valueKindIsValueBlockHandle ValuePrefix = 0x80
+	valueKindIsInPlaceValue     ValuePrefix = 0x00
 
 	// 1 bit indicates SET has same key prefix as immediately preceding key that
 	// is also a SET. If the immediately preceding key in the same block is a
@@ -32,9 +32,14 @@ const (
 	userDefinedShortAttributeMask ValuePrefix = 0x07
 )
 
-// IsValueHandle returns true if the ValuePrefix is for a valueHandle.
-func (vp ValuePrefix) IsValueHandle() bool {
-	return vp&valueKindMask == valueKindIsValueHandle
+// IsInPlaceValue returns true if the ValuePrefix is for an in-place value.
+func (vp ValuePrefix) IsInPlaceValue() bool {
+	return vp&valueKindMask == valueKindIsInPlaceValue
+}
+
+// IsValueBlockHandle returns true if the ValuePrefix is for a valblk.Handle.
+func (vp ValuePrefix) IsValueBlockHandle() bool {
+	return vp&valueKindMask == valueKindIsValueBlockHandle
 }
 
 // SetHasSamePrefix returns true if the ValuePrefix encodes that the key is a
@@ -46,14 +51,14 @@ func (vp ValuePrefix) SetHasSamePrefix() bool {
 // ShortAttribute returns the user-defined base.ShortAttribute encoded in the
 // ValuePrefix.
 //
-// REQUIRES: IsValueHandle()
+// REQUIRES: !IsInPlaceValue()
 func (vp ValuePrefix) ShortAttribute() base.ShortAttribute {
 	return base.ShortAttribute(vp & userDefinedShortAttributeMask)
 }
 
-// ValueHandlePrefix returns the ValuePrefix for a valueHandle.
-func ValueHandlePrefix(setHasSameKeyPrefix bool, attribute base.ShortAttribute) ValuePrefix {
-	prefix := valueKindIsValueHandle | ValuePrefix(attribute)
+// ValueBlockHandlePrefix returns the ValuePrefix for a valblk.Handle.
+func ValueBlockHandlePrefix(setHasSameKeyPrefix bool, attribute base.ShortAttribute) ValuePrefix {
+	prefix := valueKindIsValueBlockHandle | ValuePrefix(attribute)
 	if setHasSameKeyPrefix {
 		prefix = prefix | setHasSameKeyPrefixMask
 	}

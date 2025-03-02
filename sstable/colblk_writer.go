@@ -372,7 +372,7 @@ func (w *RawColumnWriter) AddWithForceObsolete(
 				return err
 			}
 		}
-		valuePrefix = block.ValueHandlePrefix(eval.kcmp.PrefixEqual(), attribute)
+		valuePrefix = block.ValueBlockHandlePrefix(eval.kcmp.PrefixEqual(), attribute)
 	} else {
 		valueStoredWithKey = value
 		if len(value) > 0 {

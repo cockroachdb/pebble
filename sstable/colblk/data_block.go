@@ -581,7 +581,7 @@ func (w *DataBlockEncoder) Add(
 		w.isObsolete.Set(w.rows)
 	}
 	w.trailers.Set(w.rows, uint64(ikey.Trailer))
-	if valuePrefix.IsValueHandle() {
+	if valuePrefix.IsValueBlockHandle() {
 		w.isValueExternal.Set(w.rows)
 		// Write the value with the value prefix byte preceding the value.
 		w.valuePrefixTmp[0] = byte(valuePrefix)

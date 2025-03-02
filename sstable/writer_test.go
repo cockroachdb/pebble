@@ -443,13 +443,15 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				if kv.K.Kind() == InternalKeyKindSet {
 					prefix := block.ValuePrefix(lv.ValueOrHandle[0])
 					setWithSamePrefix := prefix.SetHasSamePrefix()
-					if prefix.IsValueHandle() {
+					if prefix.IsInPlaceValue() {
+						fmt.Fprintf(&buf, "%s:in-place %s, same-pre %t\n", kv.K, lv.ValueOrHandle[1:], setWithSamePrefix)
+					} else if prefix.IsValueBlockHandle() {
 						attribute := prefix.ShortAttribute()
 						vh := valblk.DecodeHandle(lv.ValueOrHandle[1:])
 						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",
 							kv.K, vh.ValueLen, vh.BlockNum, vh.OffsetInBlock, attribute, setWithSamePrefix)
 					} else {
-						fmt.Fprintf(&buf, "%s:in-place %s, same-pre %t\n", kv.K, lv.ValueOrHandle[1:], setWithSamePrefix)
+						panic(fmt.Sprintf("unknown value prefix: %d", lv.ValueOrHandle[0]))
 					}
 				} else {
 					fmt.Fprintf(&buf, "%s:%s\n", kv.K, lv.ValueOrHandle)
