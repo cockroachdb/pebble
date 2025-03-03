@@ -99,8 +99,9 @@ type FileWriter struct {
 }
 
 type compressedBlock struct {
-	pb block.PhysicalBlock
-	bh *block.BufHandle
+	pb  block.PhysicalBlock
+	bh  *block.BufHandle
+	off uint64
 }
 
 // NewFileWriter creates a new FileWriter.
@@ -141,11 +142,12 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 
 func (w *FileWriter) flush() {
 	pb, bh := w.b.CompressAndChecksum()
-	compressedLen := uint64(pb.LengthWithTrailer())
+	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	w.stats.BlockLenLongest = max(w.stats.BlockLenLongest, compressedLen)
-	w.stats.FileLen += compressedLen
-	w.writeQueue.ch <- compressedBlock{pb: pb, bh: bh}
+	off := w.stats.FileLen
+	w.stats.FileLen += compressedLen + block.TrailerLen
+	w.writeQueue.ch <- compressedBlock{pb: pb, bh: bh, off: off}
 }
 
 // drainWriteQueue runs in its own goroutine and is responsible for writing
@@ -154,12 +156,12 @@ func (w *FileWriter) flush() {
 func (w *FileWriter) drainWriteQueue() {
 	defer w.writeQueue.wg.Done()
 	for cb := range w.writeQueue.ch {
-		n, err := cb.pb.WriteTo(w.w)
+		_, err := cb.pb.WriteTo(w.w)
 		if err != nil {
 			w.writeQueue.err = err
 			continue
 		}
-		w.blockOffsets = append(w.blockOffsets, uint64(n))
+		w.blockOffsets = append(w.blockOffsets, cb.off)
 		// We're done with the buffer associated with this physical block.
 		// Release it back to its pool.
 		cb.bh.Release()
@@ -206,7 +208,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		BlockLengthByteLength: uint8(lenLittleEndian(stats.BlockLenLongest)),
 	}
 	indexBlockLen := vbih.RowWidth() * int(stats.BlockCount)
-	vbih.Handle.Length = uint64(indexBlockLen) + block.TrailerLen
+	vbih.Handle.Length = uint64(indexBlockLen)
 	{
 		w.b.Resize(indexBlockLen)
 		b := w.b.Get()
@@ -217,9 +219,9 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 			b = b[int(vbih.BlockOffsetByteLength):]
 			var l uint64
 			if i == len(w.blockOffsets)-1 {
-				l = stats.FileLen - w.blockOffsets[i]
+				l = stats.FileLen - w.blockOffsets[i] - block.TrailerLen
 			} else {
-				l = w.blockOffsets[i+1] - w.blockOffsets[i]
+				l = w.blockOffsets[i+1] - w.blockOffsets[i] - block.TrailerLen
 			}
 			littleEndianPut(l, b, int(vbih.BlockLengthByteLength))
 			b = b[int(vbih.BlockLengthByteLength):]
@@ -234,7 +236,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 			return FileWriterStats{}, w.err
 		}
 		bh.Release()
-		stats.FileLen += vbih.Handle.Length
+		stats.FileLen += vbih.Handle.Length + block.TrailerLen
 	}
 
 	// Write the footer.
@@ -328,6 +330,9 @@ type FileReader struct {
 	footer fileFooter
 }
 
+// Assert that FileReader implements the ValueReader interface.
+var _ ValueReader = (*FileReader)(nil)
+
 // FileReaderOptions configures a reader of a blob file.
 type FileReaderOptions struct {
 	block.ReaderOptions
@@ -377,6 +382,35 @@ func NewFileReader(
 func (r *FileReader) Close() error {
 	return r.r.Close()
 }
+
+// InitReadHandle initializes a read handle for the file reader, using the
+// provided preallocated read handle.
+func (r *FileReader) InitReadHandle(
+	rh *objstorageprovider.PreallocatedReadHandle,
+) objstorage.ReadHandle {
+	return objstorageprovider.UsePreallocatedReadHandle(r.r.Readable(), objstorage.NoReadBefore, rh)
+}
+
+// ReadValueBlock reads a value block from the file.
+func (r *FileReader) ReadValueBlock(
+	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle, h block.Handle,
+) (block.BufferHandle, error) {
+	return r.r.Read(ctx, env, rh, h, noInitBlockMetadata)
+}
+
+// ReadValueIndexBlock reads the index block from the file.
+func (r *FileReader) ReadValueIndexBlock(
+	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle,
+) (block.BufferHandle, error) {
+	return r.r.Read(ctx, env, rh, r.footer.indexHandle.Handle, noInitBlockMetadata)
+}
+
+// ValueIndexHandle returns the index handle for the file's value block.
+func (r *FileReader) ValueIndexHandle() valblk.IndexHandle {
+	return r.footer.indexHandle
+}
+
+func noInitBlockMetadata(_ *block.Metadata, _ []byte) error { return nil }
 
 // lenLittleEndian returns the minimum number of bytes needed to encode v
 // using little endian encoding.
