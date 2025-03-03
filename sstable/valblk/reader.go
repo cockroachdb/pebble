@@ -190,7 +190,7 @@ func newValueBlockFetcher(
 
 // Fetch implements base.ValueFetcher.
 func (f *valueBlockFetcher) Fetch(
-	ctx context.Context, handle []byte, valLen uint32, buf []byte,
+	ctx context.Context, handle []byte, blobFileNum base.DiskFileNum, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if !f.closed {
 		val, err := f.getValueInternal(handle, valLen)
