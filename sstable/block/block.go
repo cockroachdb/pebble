@@ -26,7 +26,10 @@ import (
 
 // Handle is the file offset and length of a block.
 type Handle struct {
-	Offset, Length uint64
+	// Offset identifies the offset of the block within the file.
+	Offset uint64
+	// Length is the length of the block data (excludes the trailer).
+	Length uint64
 }
 
 // EncodeVarints encodes the block handle into dst using a variable-width
