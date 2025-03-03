@@ -149,30 +149,15 @@ func benchmarkRandSeekInSST(
 	b.StopTimer()
 }
 
-func BenchmarkCockroachDataBlockWriter(b *testing.B) {
-	for _, alphaLen := range []int{4, 8, 26} {
-		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, roachKeyLen := range []int{8, 32, 128} {
-				lenShared := int(float64(roachKeyLen) * lenSharedPct)
-				for _, valueLen := range []int{8, 128, 1024} {
-					keyConfig := keyGenConfig{
-						PrefixAlphabetLen: alphaLen,
-						RoachKeyLen:       roachKeyLen,
-						PrefixLenShared:   lenShared,
-						PercentLogical:    0,
-						AvgKeysPerPrefix:  2,
-						BaseWallTime:      uint64(time.Now().UnixNano()),
-					}
-					b.Run(fmt.Sprintf("%s,valueLen=%d", keyConfig, valueLen), func(b *testing.B) {
-						benchmarkCockroachDataBlockWriter(b, keyConfig, valueLen)
-					})
-				}
-			}
-		}
+func BenchmarkCockroachDataColBlockWriter(b *testing.B) {
+	for _, cfg := range benchConfigs {
+		b.Run(cfg.String(), func(b *testing.B) {
+			benchmarkCockroachDataColBlockWriter(b, cfg.keyGenConfig, cfg.ValueLen)
+		})
 	}
 }
 
-func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
+func benchmarkCockroachDataColBlockWriter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
@@ -195,36 +180,7 @@ func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig keyGenConfig, val
 	}
 }
 
-func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
-	for _, alphaLen := range []int{4, 8, 26} {
-		for _, lenSharedPct := range []float64{0.25, 0.5} {
-			for _, roachKeyLen := range []int{8, 32, 128} {
-				lenShared := int(float64(roachKeyLen) * lenSharedPct)
-				for _, avgKeysPerPrefix := range []int{1, 10, 100} {
-					for _, percentLogical := range []int{0, 50} {
-						for _, valueLen := range []int{8, 128, 1024} {
-							cfg := benchConfig{
-								keyGenConfig: keyGenConfig{
-									PrefixAlphabetLen: alphaLen,
-									RoachKeyLen:       roachKeyLen,
-									PrefixLenShared:   lenShared,
-									AvgKeysPerPrefix:  avgKeysPerPrefix,
-									PercentLogical:    percentLogical,
-								},
-								ValueLen: valueLen,
-							}
-							b.Run(cfg.String(), func(b *testing.B) {
-								benchmarkCockroachDataBlockIter(b, cfg, block.IterTransforms{})
-							})
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-var shortBenchConfigs = []benchConfig{
+var benchConfigs = []benchConfig{
 	{
 		keyGenConfig: keyGenConfig{
 			PrefixAlphabetLen: 8,
@@ -241,21 +197,31 @@ var shortBenchConfigs = []benchConfig{
 			RoachKeyLen:       128,
 			PrefixLenShared:   64,
 			AvgKeysPerPrefix:  4,
-			PercentLogical:    10,
+			PercentLogical:    50,
 		},
 		ValueLen: 128,
 	},
+	{
+		keyGenConfig: keyGenConfig{
+			PrefixAlphabetLen: 26,
+			RoachKeyLen:       1024,
+			PrefixLenShared:   512,
+			AvgKeysPerPrefix:  1,
+			PercentLogical:    0,
+		},
+		ValueLen: 1024,
+	},
 }
 
-func BenchmarkCockroachDataBlockIterShort(b *testing.B) {
-	for _, cfg := range shortBenchConfigs {
+func BenchmarkCockroachDataColBlockIter(b *testing.B) {
+	for _, cfg := range benchConfigs {
 		b.Run(cfg.String(), func(b *testing.B) {
-			benchmarkCockroachDataBlockIter(b, cfg, block.IterTransforms{})
+			benchmarkCockroachDataColBlockIter(b, cfg, block.IterTransforms{})
 		})
 	}
 }
 
-func BenchmarkCockroachDataBlockIterTransforms(b *testing.B) {
+func BenchmarkCockroachDataColBlockIterTransforms(b *testing.B) {
 	transforms := []struct {
 		description string
 		transforms  block.IterTransforms
@@ -289,11 +255,11 @@ func BenchmarkCockroachDataBlockIterTransforms(b *testing.B) {
 			},
 		},
 	}
-	for _, cfg := range shortBenchConfigs {
+	for _, cfg := range benchConfigs {
 		for _, t := range transforms {
 			name := cfg.String() + crstrings.If(t.description != "", ","+t.description)
 			b.Run(name, func(b *testing.B) {
-				benchmarkCockroachDataBlockIter(b, cfg, t.transforms)
+				benchmarkCockroachDataColBlockIter(b, cfg, t.transforms)
 			})
 		}
 	}
@@ -308,7 +274,7 @@ func (cfg benchConfig) String() string {
 	return fmt.Sprintf("%s,ValueLen=%d", cfg.keyGenConfig, cfg.ValueLen)
 }
 
-func benchmarkCockroachDataBlockIter(
+func benchmarkCockroachDataColBlockIter(
 	b *testing.B, cfg benchConfig, transforms block.IterTransforms,
 ) {
 	const targetBlockSize = 32 << 10
