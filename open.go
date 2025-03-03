@@ -405,7 +405,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
-	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, d.opts.MakeReaderOptions())
+	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, d.opts.MakeReaderOptions(), d.reportSSTableCorruption)
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
@@ -1233,7 +1233,7 @@ var ErrDBNotPristine = errors.New("pebble: database already exists and is not pr
 // IsCorruptionError returns true if the given error indicates database
 // corruption.
 func IsCorruptionError(err error) bool {
-	return errors.Is(err, base.ErrCorruption)
+	return base.IsCorruptionError(err)
 }
 
 func checkConsistency(v *manifest.Version, objProvider objstorage.Provider) error {

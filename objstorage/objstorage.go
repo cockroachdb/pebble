@@ -217,8 +217,8 @@ const (
 
 // OpenOptions contains optional arguments for OpenForReading.
 type OpenOptions struct {
-	// MustExist triggers a fatal error if the file does not exist. The fatal
-	// error message contains extra information helpful for debugging.
+	// MustExist converts a not-exist error into a corruption error, and adds
+	// extra information helpful for debugging.
 	MustExist bool
 }
 

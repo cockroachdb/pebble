@@ -104,6 +104,10 @@ type fileCacheHandle struct {
 	iterCount         atomic.Int32
 	sstStatsCollector block.CategoryStatsCollector
 
+	// reportCorruptionFn is used for block.ReadEnv.ReportCorruptionFn. It expects
+	// the first argument to be a `*TableMetadata`.
+	reportCorruptionFn func(any, error)
+
 	// This struct is only populated in race builds.
 	raceMu struct {
 		sync.Mutex
@@ -116,12 +120,12 @@ type fileCacheHandle struct {
 // newHandle creates a handle for the FileCache which has its own options. Each
 // handle has its own set of files in the cache, separate from those of other
 // handles.
-// TODO(radu): don't pass entire options.
 func (c *FileCache) newHandle(
 	cacheHandle *cache.Handle,
 	objProvider objstorage.Provider,
 	loggerAndTracer LoggerAndTracer,
 	readerOpts sstable.ReaderOptions,
+	reportSSTableCorruptionFn func(*manifest.TableMetadata, error),
 ) *fileCacheHandle {
 	c.Ref()
 
@@ -133,6 +137,11 @@ func (c *FileCache) newHandle(
 	}
 	t.readerOpts = readerOpts
 	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
+	if reportSSTableCorruptionFn != nil {
+		t.reportCorruptionFn = func(arg any, err error) {
+			reportSSTableCorruptionFn(arg.(*manifest.TableMetadata), err)
+		}
+	}
 	if invariants.RaceEnabled {
 		t.raceMu.iters = make(map[any][]byte)
 	}
@@ -203,15 +212,21 @@ func (h *fileCacheHandle) openFile(
 	return r, objMeta, nil
 }
 
-// findOrCreate is a wrapper for h.fileCache.FindOrCreate.
+// findOrCreate retrieves an existing reader or creates a new one for the
+// backing file of the given table. If a corruption error is encountered,
+// reportCorruptionFn() is called.
 func (h *fileCacheHandle) findOrCreate(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, meta *manifest.TableMetadata,
 ) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
 	key := fileCacheKey{
 		handle:  h,
-		fileNum: fileNum,
+		fileNum: meta.FileBacking.DiskFileNum,
 	}
-	return h.fileCache.c.FindOrCreate(ctx, key)
+	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
+	if err != nil && IsCorruptionError(err) {
+		h.reportCorruptionFn(meta, err)
+	}
+	return valRef, err
 }
 
 // Evict the given file from the file cache and the block cache.
@@ -242,7 +257,7 @@ func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 func (h *fileCacheHandle) estimateSize(
 	meta *tableMetadata, lower, upper []byte,
 ) (size uint64, err error) {
-	h.withCommonReader(meta, func(cr sstable.CommonReader) error {
+	err = h.withCommonReader(context.TODO(), block.NoReadEnv, meta, func(cr sstable.CommonReader, env block.ReadEnv) error {
 		size, err = cr.EstimateDiskUsage(lower, upper)
 		return err
 	})
@@ -264,36 +279,53 @@ func createCommonReader(v *fileCacheValue, file *tableMetadata) sstable.CommonRe
 }
 
 func (h *fileCacheHandle) withCommonReader(
-	meta *tableMetadata, fn func(sstable.CommonReader) error,
+	ctx context.Context,
+	env block.ReadEnv,
+	meta *tableMetadata,
+	fn func(sstable.CommonReader, block.ReadEnv) error,
 ) error {
-	ref, err := h.findOrCreate(context.TODO(), meta.FileBacking.DiskFileNum)
+	ref, err := h.findOrCreate(ctx, meta)
 	if err != nil {
 		return err
 	}
 	defer ref.Unref()
-	return fn(createCommonReader(ref.Value(), meta))
+	env.ReportCorruptionFn = h.reportCorruptionFn
+	env.ReportCorruptionArg = meta
+	return fn(createCommonReader(ref.Value(), meta), env)
 }
 
-func (h *fileCacheHandle) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
-	ref, err := h.findOrCreate(context.TODO(), meta.FileBacking.DiskFileNum)
+func (h *fileCacheHandle) withReader(
+	ctx context.Context,
+	env block.ReadEnv,
+	meta physicalMeta,
+	fn func(*sstable.Reader, block.ReadEnv) error,
+) error {
+	ref, err := h.findOrCreate(ctx, meta.TableMetadata)
 	if err != nil {
 		return err
 	}
 	defer ref.Unref()
-	return fn(ref.Value().reader.(*sstable.Reader))
+	env.ReportCorruptionFn = h.reportCorruptionFn
+	env.ReportCorruptionArg = meta.TableMetadata
+	return fn(ref.Value().reader.(*sstable.Reader), env)
 }
 
 // withVirtualReader fetches a VirtualReader associated with a virtual sstable.
 func (h *fileCacheHandle) withVirtualReader(
-	meta virtualMeta, fn func(sstable.VirtualReader) error,
+	ctx context.Context,
+	env block.ReadEnv,
+	meta virtualMeta,
+	fn func(sstable.VirtualReader, block.ReadEnv) error,
 ) error {
-	ref, err := h.findOrCreate(context.TODO(), meta.FileBacking.DiskFileNum)
+	ref, err := h.findOrCreate(ctx, meta.TableMetadata)
 	if err != nil {
 		return err
 	}
 	defer ref.Unref()
 	v := ref.Value()
-	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(v.isShared)))
+	env.ReportCorruptionFn = h.reportCorruptionFn
+	env.ReportCorruptionArg = &meta.TableMetadata
+	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(v.isShared)), env)
 }
 
 func (h *fileCacheHandle) IterCount() int64 {
@@ -427,15 +459,14 @@ func (h *fileCacheHandle) newIters(
 	internalOpts internalIterOpts,
 	kinds iterKinds,
 ) (iterSet, error) {
-	// TODO(sumeer): constructing the Reader should also use a plumbed context,
-	// since parts of the sstable are read during the construction. The Reader
-	// should not remember that context since the Reader can be long-lived.
-
 	// Calling findOrCreate gives us the responsibility of Unref()ing vRef.
-	vRef, err := h.findOrCreate(ctx, file.FileBacking.DiskFileNum)
+	vRef, err := h.findOrCreate(ctx, file)
 	if err != nil {
 		return iterSet{}, err
 	}
+
+	internalOpts.readEnv.ReportCorruptionFn = h.reportCorruptionFn
+	internalOpts.readEnv.ReportCorruptionArg = file
 
 	v := vRef.Value()
 	r := v.mustSSTableReader()
@@ -722,10 +753,13 @@ func (rp *tableCacheShardReaderProvider) Close() {
 	}
 }
 
-// getTableProperties returns sst table properties for target file.
+// getTableProperties returns sst table properties for the backing file.
+//
+// WARNING! If file is a virtual table, we return the properties of the physical
+// table.
 func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Properties, error) {
 	// Calling findOrCreate gives us the responsibility of decrementing v's refCount here
-	v, err := h.findOrCreate(context.TODO(), file.FileBacking.DiskFileNum)
+	v, err := h.findOrCreate(context.TODO(), file)
 	if err != nil {
 		return nil, err
 	}

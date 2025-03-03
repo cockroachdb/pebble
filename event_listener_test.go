@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -350,12 +352,6 @@ func TestEventListenerRedact(t *testing.T) {
 	require.Equal(t, "[JOB 5] WAL delete error: unredacted error: ‹×›\n", log.String())
 }
 
-func TestEventListenerEnsureDefaultsBackgroundError(t *testing.T) {
-	e := EventListener{}
-	e.EnsureDefaults(nil)
-	e.BackgroundError(errors.New("an example error"))
-}
-
 func TestEventListenerEnsureDefaultsSetsAllCallbacks(t *testing.T) {
 	e := EventListener{}
 	e.EnsureDefaults(nil)
@@ -480,4 +476,77 @@ type mockDiskUsageFS struct {
 
 func (fs *mockDiskUsageFS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
 	return fs.usage.Load().(vfs.DiskUsage), nil
+}
+
+func TestSSTCorruptionEvent(t *testing.T) {
+	for _, test := range []string{"missing-file", "missing-before-open", "meta-block-corruption", "data-block-corruption"} {
+		t.Run(test, func(t *testing.T) {
+			var mu sync.Mutex
+			var events []DataCorruptionInfo
+			fs := vfs.NewMem()
+			opts := &Options{
+				FS: fs,
+				// We use panicLogger to avoid errors being printed and make sure Fatalf
+				// is not called.
+				Logger: panicLogger{},
+				EventListener: &EventListener{
+					DataCorruption: func(info DataCorruptionInfo) {
+						mu.Lock()
+						defer mu.Unlock()
+						events = append(events, info)
+					},
+				},
+				DisableAutomaticCompactions: true,
+			}
+			d, err := Open("", opts)
+			require.NoError(t, err)
+			key := func(k int) []byte {
+				return []byte(fmt.Sprintf("key-%05d", k))
+			}
+
+			for i := 0; i < 100; i++ {
+				d.Set(key(i), []byte(fmt.Sprintf("value-%05d", i)), nil)
+			}
+			require.NoError(t, d.Flush())
+			require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+
+			// We expect a single sst file.
+			files := testutils.CheckErr(fs.List(""))
+			files = slices.DeleteFunc(files, func(name string) bool {
+				return !strings.HasSuffix(name, ".sst")
+			})
+			require.Lenf(t, files, 1, "expected a single sst file, got %v", files)
+			sstFileName := files[0]
+
+			switch test {
+			case "missing-file":
+				require.NoError(t, fs.Remove(sstFileName))
+			case "missing-before-open":
+				require.NoError(t, d.Close())
+				require.NoError(t, fs.Remove(sstFileName))
+				opts.DisableConsistencyCheck = true
+				d, err = Open("", opts)
+				require.NoError(t, err)
+			case "meta-block-corruption":
+				buf, err := fs.UnsafeGetFileDataBuffer(sstFileName)
+				require.NoError(t, err)
+				buf[len(buf)-100]++
+			case "data-block-corruption":
+				buf, err := fs.UnsafeGetFileDataBuffer(sstFileName)
+				require.NoError(t, err)
+				buf[20]++
+			default:
+				t.Fatalf("invalid test")
+			}
+			_, _, err = d.Get(key(5))
+			require.Error(t, err)
+			require.Greater(t, len(events), 0)
+			info := events[0]
+			require.Equal(t, info.Path, sstFileName)
+			require.False(t, info.IsRemote)
+			require.Equal(t, base.UserKeyBoundsInclusive(key(0), key(99)), info.Bounds)
+
+			d.Close()
+		})
+	}
 }
