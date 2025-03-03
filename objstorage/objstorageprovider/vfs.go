@@ -26,8 +26,9 @@ func (p *provider) vfsOpenForReading(
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
-		if opts.MustExist {
-			base.MustExist(p.st.FS, filename, p.st.Logger, err)
+		if opts.MustExist && p.IsNotExistError(err) {
+			err = base.AddDetailsToNotExistError(p.st.FS, filename, err)
+			err = base.MarkCorruptionError(err)
 		}
 		return nil, err
 	}

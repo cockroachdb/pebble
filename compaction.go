@@ -2562,8 +2562,10 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
-		err = d.fileCache.withVirtualReader(inputMeta.VirtualMeta(), func(r sstable.VirtualReader) error {
+		err = d.fileCache.withVirtualReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) error {
 			var err error
+			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
+			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,
 				src, r.UnsafeReader(), d.opts.MakeReaderOptions(),
 				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -200,14 +201,20 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 	if err == nil || !oserror.IsNotExist(err) {
 		return
 	}
+	err = AddDetailsToNotExistError(fs, filename, err)
+	fataler.Fatalf("%+v", err)
+}
 
+// AddDetailsToNotExistError annotates an unexpected not-exist error with
+// information about the directory contents.
+func AddDetailsToNotExistError(fs vfs.FS, filename string, err error) error {
 	ls, lsErr := fs.List(fs.PathDir(filename))
 	if lsErr != nil {
 		// TODO(jackson): if oserror.IsNotExist(lsErr), the data directory
 		// doesn't exist anymore. Another process likely deleted it before
 		// killing the process. We want to fatal the process, but without
 		// triggering error reporting like Sentry.
-		fataler.Fatalf("%s:\norig err: %s\nlist err: %s", redact.Safe(fs.PathBase(filename)), err, lsErr)
+		return errors.WithDetailf(err, "list err: %+v", lsErr)
 	}
 	var total, unknown, tables, logs, manifests int
 	total = len(ls)
@@ -234,8 +241,8 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 		}
 	}
 
-	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs, %d manifests",
-		fs.PathBase(filename), err, total, unknown, tables, logs, manifests)
+	return errors.WithDetailf(err, "filename: %s; directory contains %d files, %d unknown, %d tables, %d logs, %d manifests",
+		filename, total, unknown, tables, logs, manifests)
 }
 
 // FileInfo provides some rudimentary information about a file.
