@@ -15,6 +15,7 @@ const (
 	// 2 most-significant bits of valuePrefix encodes the value-kind.
 	valueKindMask               ValuePrefix = 0xC0
 	valueKindIsValueBlockHandle ValuePrefix = 0x80
+	valueKindIsBlobHandle       ValuePrefix = 0x40
 	valueKindIsInPlaceValue     ValuePrefix = 0x00
 
 	// 1 bit indicates SET has same key prefix as immediately preceding key that
@@ -40,6 +41,11 @@ func (vp ValuePrefix) IsInPlaceValue() bool {
 // IsValueBlockHandle returns true if the ValuePrefix is for a valblk.Handle.
 func (vp ValuePrefix) IsValueBlockHandle() bool {
 	return vp&valueKindMask == valueKindIsValueBlockHandle
+}
+
+// IsBlobValueHandle returns true if the ValuePrefix is for a blob.
+func (vp ValuePrefix) IsBlobValueHandle() bool {
+	return vp&valueKindMask == valueKindIsBlobHandle
 }
 
 // SetHasSamePrefix returns true if the ValuePrefix encodes that the key is a
@@ -68,6 +74,15 @@ func ValueBlockHandlePrefix(setHasSameKeyPrefix bool, attribute base.ShortAttrib
 // InPlaceValuePrefix returns the ValuePrefix for an in-place value.
 func InPlaceValuePrefix(setHasSameKeyPrefix bool) ValuePrefix {
 	prefix := valueKindIsInPlaceValue
+	if setHasSameKeyPrefix {
+		prefix = prefix | setHasSameKeyPrefixMask
+	}
+	return prefix
+}
+
+// BlobValueHandlePrefix returns the ValuePrefix for a blob.
+func BlobValueHandlePrefix(setHasSameKeyPrefix bool) ValuePrefix {
+	prefix := valueKindIsBlobHandle
 	if setHasSameKeyPrefix {
 		prefix = prefix | setHasSameKeyPrefixMask
 	}

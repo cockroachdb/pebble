@@ -55,7 +55,7 @@ nectarine
 Stats:
   BlockCount: 3
   ValueCount: 26
-  BlockLenLongest: 69
+  BlockLenLongest: 64
   UncompressedValueBytes: 182
   FileLen: 240
 
@@ -63,4 +63,4 @@ open
 ----
 TableFormat: blobV1
 ChecksumType: crc32c
-IndexHandle: {Handle: {197,14}, DataLens:(1,1,1)}
+IndexHandle: {Handle: {197,9}, DataLens:(1,1,1)}
