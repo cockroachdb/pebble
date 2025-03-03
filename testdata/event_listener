@@ -56,6 +56,11 @@ close: db/marker.format-version.000006.019
 remove: db/marker.format-version.000005.018
 sync: db
 upgraded to format version: 019
+create: db/marker.format-version.000007.020
+close: db/marker.format-version.000007.020
+remove: db/marker.format-version.000006.019
+sync: db
+upgraded to format version: 020
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
 close: db/temporary.000003.dbtmp
@@ -84,7 +89,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 3] MANIFEST created 000006
-[JOB 3] flushed 1 memtable (100B) to L0 [000005] (726B), in 1.0s (2.0s total), output rate 726B/s
+[JOB 3] flushed 1 memtable (100B) to L0 [000005] (730B), in 1.0s (2.0s total), output rate 730B/s
 
 compact
 ----
@@ -108,16 +113,16 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 5] MANIFEST created 000009
-[JOB 5] flushed 1 memtable (100B) to L0 [000008] (726B), in 1.0s (2.0s total), output rate 726B/s
+[JOB 5] flushed 1 memtable (100B) to L0 [000008] (730B), in 1.0s (2.0s total), output rate 730B/s
 remove: db/MANIFEST-000001
 [JOB 5] MANIFEST deleted 000001
 [JOB 6] compacting(default) L0 [000005 000008] (1.4KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
 open: db/000005.sst (options: *vfs.randomReadsOption)
-read-at(673, 53): db/000005.sst
+read-at(673, 57): db/000005.sst
 read-at(636, 37): db/000005.sst
 read-at(119, 517): db/000005.sst
 open: db/000008.sst (options: *vfs.randomReadsOption)
-read-at(673, 53): db/000008.sst
+read-at(673, 57): db/000008.sst
 read-at(636, 37): db/000008.sst
 read-at(119, 517): db/000008.sst
 read-at(78, 41): db/000005.sst
@@ -141,7 +146,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 6] MANIFEST created 000011
-[JOB 6] compacted(default) L0 [000005 000008] (1.4KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (729B), in 1.0s (3.0s total), output rate 729B/s
+[JOB 6] compacted(default) L0 [000005 000008] (1.4KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (733B), in 1.0s (3.0s total), output rate 733B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/000005.sst
@@ -176,7 +181,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 8] MANIFEST created 000014
-[JOB 8] flushed 1 memtable (100B) to L0 [000013] (726B), in 1.0s (2.0s total), output rate 726B/s
+[JOB 8] flushed 1 memtable (100B) to L0 [000013] (730B), in 1.0s (2.0s total), output rate 730B/s
 
 enable-file-deletions
 ----
@@ -186,7 +191,7 @@ remove: db/MANIFEST-000009
 ingest
 ----
 open: ext/0
-read-at(676, 53): ext/0
+read-at(676, 57): ext/0
 read-at(639, 37): ext/0
 read-at(122, 517): ext/0
 read-at(81, 41): ext/0
@@ -206,21 +211,21 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 10] MANIFEST deleted 000011
 remove: ext/0
-[JOB 10] ingested L0:000015 (729B)
+[JOB 10] ingested L0:000015 (733B)
 
 metrics
 ----
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     2  1.4KB     0B       0 |  0.40 |   81B |     1   729B |     0     0B |     3  2.1KB |    0B |   2 26.9
+    0 |     2  1.4KB     0B       0 |  0.40 |   81B |     1   733B |     0     0B |     3  2.1KB |    0B |   2 27.0
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   729B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   729B | 1.4KB |   1  0.5
-total |     3  2.1KB     0B       0 |     - |  810B |     1   729B |     0     0B |     4  3.6KB | 1.4KB |   3  4.6
+    6 |     1   733B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   733B | 1.4KB |   1  0.5
+total |     3  2.1KB     0B       0 |     - |  814B |     1   733B |     0     0B |     4  3.6KB | 1.4KB |   3  4.6
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 48B  written: 81B (69% overhead)
 Flushes: 3
@@ -248,14 +253,14 @@ ingest-flushable
 ----
 sync-data: wal/000012.log
 open: ext/a
-read-at(676, 53): ext/a
+read-at(676, 57): ext/a
 read-at(639, 37): ext/a
 read-at(122, 517): ext/a
 read-at(81, 41): ext/a
 read-at(0, 81): ext/a
 close: ext/a
 open: ext/b
-read-at(676, 53): ext/b
+read-at(676, 57): ext/b
 read-at(639, 37): ext/b
 read-at(122, 517): ext/b
 read-at(81, 41): ext/b
@@ -279,7 +284,7 @@ sync: wal
 [JOB 13] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 11] ingested as flushable 000017 (729B), 000018 (729B)
+[JOB 11] ingested as flushable 000017 (733B), 000018 (733B)
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -292,7 +297,7 @@ sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
-[JOB 15] flushed 1 memtable (100B) to L0 [000022] (726B), in 1.0s (2.0s total), output rate 726B/s
+[JOB 15] flushed 1 memtable (100B) to L0 [000022] (730B), in 1.0s (2.0s total), output rate 730B/s
 [JOB 16] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
@@ -302,7 +307,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 16] MANIFEST created 000023
-[JOB 16] flushed 2 ingested flushables L0:000017 (729B) + L6:000018 (729B) in 1.0s (2.0s total), output rate 1.4KB/s
+[JOB 16] flushed 2 ingested flushables L0:000017 (733B) + L6:000018 (733B) in 1.0s (2.0s total), output rate 1.4KB/s
 remove: db/MANIFEST-000014
 [JOB 16] MANIFEST deleted 000014
 [JOB 17] flushing 1 memtable (100B) to L0
@@ -314,14 +319,14 @@ metrics
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-    0 |     4  2.8KB     0B       0 |  0.80 |  108B |     2  1.4KB |     0     0B |     4  2.8KB |    0B |   4 26.9
+    0 |     4  2.9KB     0B       0 |  0.80 |  108B |     2  1.4KB |     0     0B |     4  2.9KB |    0B |   4 27.0
     1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     2  1.4KB     0B       0 |     - | 1.4KB |     1   729B |     0     0B |     1   729B | 1.4KB |   1  0.5
-total |     6  4.3KB     0B       0 |     - | 2.2KB |     3  2.1KB |     0     0B |     5  5.8KB | 1.4KB |   5  2.6
+    6 |     2  1.4KB     0B       0 |     - | 1.4KB |     1   733B |     0     0B |     1   733B | 1.4KB |   1  0.5
+total |     6  4.3KB     0B       0 |     - | 2.3KB |     3  2.1KB |     0     0B |     5  5.8KB | 1.4KB |   5  2.6
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 82B  written: 108B (32% overhead)
 Flushes: 6
@@ -365,9 +370,9 @@ sync-data: checkpoint/OPTIONS-000003
 close: checkpoint/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.019
-sync-data: checkpoint/marker.format-version.000001.019
-close: checkpoint/marker.format-version.000001.019
+create: checkpoint/marker.format-version.000001.020
+sync-data: checkpoint/marker.format-version.000001.020
+close: checkpoint/marker.format-version.000001.020
 sync: checkpoint
 close: checkpoint
 link: db/000013.sst -> checkpoint/000013.sst

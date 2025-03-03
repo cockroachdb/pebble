@@ -216,7 +216,7 @@ sstable
  ├── top-index  offset: 162  length: 49
  ├── properties  offset: 216  length: 451
  ├── meta-index  offset: 672  length: 33
- └── footer  offset: 710  length: 53
+ └── rocksdb-footer  offset: 710  length: 53
 
 # Exercise the non-Reader layout-decoding codepath.
 
@@ -232,7 +232,7 @@ sstable
  ├── top-index  offset: 162  length: 49
  ├── properties  offset: 216  length: 451
  ├── meta-index  offset: 672  length: 33
- └── footer  offset: 710  length: 53
+ └── rocksdb-footer  offset: 710  length: 53
 
 scan
 ----
@@ -280,4 +280,4 @@ sstable
  ├── range-key  offset: 39  length: 79
  ├── properties  offset: 123  length: 499
  ├── meta-index  offset: 627  length: 57
- └── footer  offset: 689  length: 53
+ └── rocksdb-footer  offset: 689  length: 53
