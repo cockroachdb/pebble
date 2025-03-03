@@ -224,13 +224,13 @@ func newColumnBlockSingleLevelIterator(
 		ctx, r, v, transforms, lower, upper, filterer, useFilterBlock,
 		env,
 	)
-	var getLazyValuer block.GetInternalValueForPrefixAndValueHandler
+	var getInternalValuer block.GetInternalValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		i.vbReader = valblk.MakeReader(i, rp, r.valueBIH, env.Stats)
-		getLazyValuer = &i.vbReader
+		getInternalValuer = &i.vbReader
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, r.Comparer, getLazyValuer)
+	i.data.InitOnce(r.keySchema, r.Comparer, getInternalValuer)
 	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
 	if err == nil {
 		err = i.index.InitHandle(r.Comparer, indexH, transforms)

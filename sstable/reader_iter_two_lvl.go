@@ -173,7 +173,7 @@ func newColumnBlockTwoLevelIterator(
 	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
 		env)
-	var getLazyValuer block.GetInternalValueForPrefixAndValueHandler
+	var getInternalValuer block.GetInternalValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 		// can outlive the singleLevelIterator due to be being embedded in a
@@ -185,11 +185,11 @@ func newColumnBlockTwoLevelIterator(
 		// separated to their callers, they can put this valueBlockReader into a
 		// sync.Pool.
 		i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, rp, r.valueBIH, env.Stats)
-		getLazyValuer = &i.secondLevel.vbReader
+		getInternalValuer = &i.secondLevel.vbReader
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, getLazyValuer)
+	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, getInternalValuer)
 	i.useFilterBlock = shouldUseFilterBlock(r, filterBlockSizeLimit)
 	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH)
 	if err == nil {

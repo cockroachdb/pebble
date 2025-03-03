@@ -14,40 +14,58 @@ import (
 
 func TestValuePrefix(t *testing.T) {
 	testCases := []struct {
-		isHandle         bool
-		setHasSamePrefix bool
-		attr             base.ShortAttribute
+		isValueBlockHandle bool
+		isBlobHandle       bool
+		setHasSamePrefix   bool
+		attr               base.ShortAttribute
 	}{
 		{
-			isHandle:         false,
-			setHasSamePrefix: false,
+			isValueBlockHandle: false,
+			isBlobHandle:       false,
+			setHasSamePrefix:   false,
 		},
 		{
-			isHandle:         false,
-			setHasSamePrefix: true,
+			isValueBlockHandle: false,
+			isBlobHandle:       false,
+			setHasSamePrefix:   true,
 		},
 		{
-			isHandle:         true,
-			setHasSamePrefix: false,
-			attr:             5,
+			isValueBlockHandle: true,
+			isBlobHandle:       false,
+			setHasSamePrefix:   false,
+			attr:               5,
 		},
 		{
-			isHandle:         true,
-			setHasSamePrefix: true,
-			attr:             2,
+			isValueBlockHandle: true,
+			isBlobHandle:       false,
+			setHasSamePrefix:   true,
+			attr:               2,
+		},
+		{
+			isValueBlockHandle: false,
+			isBlobHandle:       true,
+			setHasSamePrefix:   false,
+		},
+		{
+			isValueBlockHandle: false,
+			isBlobHandle:       true,
+			setHasSamePrefix:   true,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
 			var prefix ValuePrefix
-			if tc.isHandle {
+			if tc.isValueBlockHandle {
 				prefix = ValueBlockHandlePrefix(tc.setHasSamePrefix, tc.attr)
+			} else if tc.isBlobHandle {
+				prefix = BlobValueHandlePrefix(tc.setHasSamePrefix)
 			} else {
 				prefix = InPlaceValuePrefix(tc.setHasSamePrefix)
 			}
-			require.Equal(t, tc.isHandle, prefix.IsValueBlockHandle())
+			require.Equal(t, tc.isValueBlockHandle, prefix.IsValueBlockHandle())
+			require.Equal(t, tc.isBlobHandle, prefix.IsBlobValueHandle())
 			require.Equal(t, tc.setHasSamePrefix, prefix.SetHasSamePrefix())
-			if tc.isHandle {
+			if tc.isValueBlockHandle {
 				require.Equal(t, tc.attr, prefix.ShortAttribute())
 			}
 		})
