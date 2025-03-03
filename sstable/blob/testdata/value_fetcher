@@ -1,4 +1,4 @@
-build target-block-size=64 block-size-threshold=90
+define filenum=000001 target-block-size=64 block-size-threshold=90
 canteloupe
 apple
 orange
@@ -59,8 +59,26 @@ Stats:
   UncompressedValueBytes: 182
   FileLen: 240
 
-open
+new-fetcher name=iter1
 ----
-TableFormat: blobV1
-ChecksumType: crc32c
-IndexHandle: {Handle: {197,9}, DataLens:(1,1,1)}
+
+fetch name=iter1 filenum=000001 valLen=10 blknum=0 off=0
+----
+# GetValueReader(000001)
+canteloupe
+
+fetch name=iter1 filenum=000001 valLen=5 blknum=0 off=10
+----
+apple
+
+new-fetcher name=iter2
+----
+
+fetch name=iter2 filenum=000001 blknum=2 valLen=5 off=34
+----
+# GetValueReader(000001)
+peach
+
+fetch name=iter1 filenum=000001 valLen=4 blknum=1 off=13
+----
+plum
