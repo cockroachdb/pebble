@@ -28,7 +28,7 @@ L0.0:
 L6:
   000004:[a#10,SET-l#10,SET]
 
-excise c k
+excise-dryrun c k
 ----
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
@@ -38,7 +38,7 @@ would excise 2 files, use ingest-and-excise to excise.
   add-backing:   000004
 
 
-excise a e
+excise-dryrun a e
 ----
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
@@ -48,7 +48,7 @@ would excise 2 files, use ingest-and-excise to excise.
   add-backing:   000006
   add-backing:   000004
 
-excise e z
+excise-dryrun e z
 ----
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
@@ -58,7 +58,7 @@ would excise 2 files, use ingest-and-excise to excise.
   add-backing:   000006
   add-backing:   000004
 
-excise f l
+excise-dryrun f l
 ----
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
@@ -69,7 +69,7 @@ would excise 2 files, use ingest-and-excise to excise.
   add-backing:   000006
   add-backing:   000004
 
-excise f ll
+excise-dryrun f ll
 ----
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
@@ -79,7 +79,7 @@ would excise 2 files, use ingest-and-excise to excise.
   add-backing:   000006
   add-backing:   000004
 
-excise p q
+excise-dryrun p q
 ----
 would excise 0 files, use ingest-and-excise to excise.
 
@@ -159,7 +159,7 @@ L0.0:
 L6:
   000004:[c#10,RANGEKEYSET-f#inf,RANGEKEYSET]
 
-excise f g
+excise-dryrun f g
 ----
 would excise 1 files, use ingest-and-excise to excise.
   del-table:     L0 000005
@@ -167,21 +167,21 @@ would excise 1 files, use ingest-and-excise to excise.
   add-table:     L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
   add-backing:   000005
 
-excise b c
+excise-dryrun b c
 ----
 would excise 1 files, use ingest-and-excise to excise.
   del-table:     L0 000005
   add-table:     L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
   add-backing:   000005
 
-excise i j
+excise-dryrun i j
 ----
 would excise 0 files, use ingest-and-excise to excise.
 
 # Excise mid range key. This will not happen in practice, but excise()
 # supports it.
 
-excise c d
+excise-dryrun c d
 ----
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000005
@@ -708,6 +708,16 @@ b: (somethingElse, .)
 c: (somethingElse, .)
 .
 .
+
+excise a b
+----
+
+lsm
+----
+L0.0:
+  000020:[b#23,SET-f#23,SET]
+L6:
+  000022(000018):[f#0,SET-x#0,SET]
 
 # Two overlapping ingestions wait on one another even if
 # the overlap is only on the excise span.

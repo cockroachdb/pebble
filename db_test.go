@@ -2198,6 +2198,13 @@ func TestDeterminism(t *testing.T) {
 					require.NoError(t, runBuildCmd(td, d, fs))
 					return ""
 				})
+			case "excise":
+				return addStep(td, func(td *datadriven.TestData) string {
+					if err := runExciseCmd(td, d); err != nil {
+						return err.Error()
+					}
+					return ""
+				})
 			case "flush":
 				return addStep(td, func(td *datadriven.TestData) string {
 					_, err := d.AsyncFlush()
@@ -2208,7 +2215,7 @@ func TestDeterminism(t *testing.T) {
 				})
 			case "ingest-and-excise":
 				return addStep(td, func(td *datadriven.TestData) string {
-					if err := runIngestAndExciseCmd(td, d, fs); err != nil {
+					if err := runIngestAndExciseCmd(td, d); err != nil {
 						return err.Error()
 					}
 					return ""
