@@ -108,7 +108,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 
 			// Hacky but the command doesn't expect a db string. Get rid of it.
 			td.CmdArgs = td.CmdArgs[1:]
-			if err := runIngestAndExciseCmd(td, d, mem); err != nil {
+			if err := runIngestAndExciseCmd(td, d); err != nil {
 				return err.Error()
 			}
 			return ""

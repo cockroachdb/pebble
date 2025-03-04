@@ -1252,7 +1252,18 @@ func (d *DB) waitTableStats() {
 	}
 }
 
-func runIngestAndExciseCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
+func runExciseCmd(td *datadriven.TestData, d *DB) error {
+	if len(td.CmdArgs) != 2 {
+		return errors.New("excise expects two arguments: <start-key> <end-key>")
+	}
+	exciseSpan := KeyRange{
+		Start: []byte(td.CmdArgs[0].String()),
+		End:   []byte(td.CmdArgs[1].String()),
+	}
+	return d.Excise(context.Background(), exciseSpan)
+}
+
+func runIngestAndExciseCmd(td *datadriven.TestData, d *DB) error {
 	var exciseSpan KeyRange
 	paths := make([]string, 0, len(td.CmdArgs))
 	for i, arg := range td.CmdArgs {

@@ -279,7 +279,7 @@ func TestMetrics(t *testing.T) {
 			return s
 
 		case "ingest-and-excise":
-			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestAndExciseCmd(td, d); err != nil {
 				return err.Error()
 			}
 			return ""

@@ -1270,17 +1270,15 @@ func (d *DB) IngestAndExcise(
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	if invariants.Enabled {
-		// Excise is only supported on prefix keys.
-		if d.opts.Comparer.Split(exciseSpan.Start) != len(exciseSpan.Start) {
-			panic("IngestAndExcise called with suffixed start key")
-		}
-		if d.opts.Comparer.Split(exciseSpan.End) != len(exciseSpan.End) {
-			panic("IngestAndExcise called with suffixed end key")
-		}
+	// Excise is only supported on prefix keys.
+	if d.opts.Comparer.Split(exciseSpan.Start) != len(exciseSpan.Start) {
+		return IngestOperationStats{}, errors.New("IngestAndExcise called with suffixed start key")
+	}
+	if d.opts.Comparer.Split(exciseSpan.End) != len(exciseSpan.End) {
+		return IngestOperationStats{}, errors.New("IngestAndExcise called with suffixed end key")
 	}
 	if v := d.FormatMajorVersion(); v < FormatMinForSharedObjects {
-		return IngestOperationStats{}, errors.Errorf(
+		return IngestOperationStats{}, errors.Newf(
 			"store has format major version %d; IngestAndExcise requires at least %d",
 			v, FormatMinForSharedObjects,
 		)
@@ -1466,7 +1464,7 @@ func (d *DB) ingest(
 		return IngestOperationStats{}, err
 	}
 
-	if loadResult.fileCount() == 0 {
+	if loadResult.fileCount() == 0 && !exciseSpan.Valid() {
 		// All of the sstables to be ingested were empty. Nothing to do.
 		return IngestOperationStats{}, nil
 	}
@@ -1713,61 +1711,66 @@ func (d *DB) ingest(
 		}
 	}
 
-	info := TableIngestInfo{
-		JobID:     int(jobID),
-		Err:       err,
-		flushable: asFlushable,
-	}
-	if len(loadResult.local) > 0 {
-		info.GlobalSeqNum = loadResult.local[0].SmallestSeqNum
-	} else if len(loadResult.shared) > 0 {
-		info.GlobalSeqNum = loadResult.shared[0].SmallestSeqNum
-	} else {
-		info.GlobalSeqNum = loadResult.external[0].SmallestSeqNum
-	}
+	// TODO(jackson): Refactor this so that the case where there are no files
+	// but a valid excise span is not so exceptional.
+
 	var stats IngestOperationStats
-	if ve != nil {
-		info.Tables = make([]struct {
-			TableInfo
-			Level int
-		}, len(ve.NewTables))
-		for i := range ve.NewTables {
-			e := &ve.NewTables[i]
-			info.Tables[i].Level = e.Level
-			info.Tables[i].TableInfo = e.Meta.TableInfo()
-			stats.Bytes += e.Meta.Size
-			if e.Level == 0 {
-				stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
+	if loadResult.fileCount() > 0 {
+		info := TableIngestInfo{
+			JobID:     int(jobID),
+			Err:       err,
+			flushable: asFlushable,
+		}
+		if len(loadResult.local) > 0 {
+			info.GlobalSeqNum = loadResult.local[0].SmallestSeqNum
+		} else if len(loadResult.shared) > 0 {
+			info.GlobalSeqNum = loadResult.shared[0].SmallestSeqNum
+		} else {
+			info.GlobalSeqNum = loadResult.external[0].SmallestSeqNum
+		}
+		if ve != nil {
+			info.Tables = make([]struct {
+				TableInfo
+				Level int
+			}, len(ve.NewTables))
+			for i := range ve.NewTables {
+				e := &ve.NewTables[i]
+				info.Tables[i].Level = e.Level
+				info.Tables[i].TableInfo = e.Meta.TableInfo()
+				stats.Bytes += e.Meta.Size
+				if e.Level == 0 {
+					stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
+				}
+				if metaFlushableOverlaps[e.Meta.FileNum] {
+					stats.MemtableOverlappingFiles++
+				}
 			}
-			if metaFlushableOverlaps[e.Meta.FileNum] {
-				stats.MemtableOverlappingFiles++
+		} else if asFlushable {
+			// NB: If asFlushable == true, there are no shared sstables.
+			info.Tables = make([]struct {
+				TableInfo
+				Level int
+			}, len(loadResult.local))
+			for i, f := range loadResult.local {
+				info.Tables[i].Level = -1
+				info.Tables[i].TableInfo = f.TableInfo()
+				stats.Bytes += f.Size
+				// We don't have exact stats on which files will be ingested into
+				// L0, because actual ingestion into the LSM has been deferred until
+				// flush time. Instead, we infer based on memtable overlap.
+				//
+				// TODO(jackson): If we optimistically compute data overlap (#2112)
+				// before entering the commit pipeline, we can use that overlap to
+				// improve our approximation by incorporating overlap with L0, not
+				// just memtables.
+				if metaFlushableOverlaps[f.FileNum] {
+					stats.ApproxIngestedIntoL0Bytes += f.Size
+					stats.MemtableOverlappingFiles++
+				}
 			}
 		}
-	} else if asFlushable {
-		// NB: If asFlushable == true, there are no shared sstables.
-		info.Tables = make([]struct {
-			TableInfo
-			Level int
-		}, len(loadResult.local))
-		for i, f := range loadResult.local {
-			info.Tables[i].Level = -1
-			info.Tables[i].TableInfo = f.TableInfo()
-			stats.Bytes += f.Size
-			// We don't have exact stats on which files will be ingested into
-			// L0, because actual ingestion into the LSM has been deferred until
-			// flush time. Instead, we infer based on memtable overlap.
-			//
-			// TODO(jackson): If we optimistically compute data overlap (#2112)
-			// before entering the commit pipeline, we can use that overlap to
-			// improve our approximation by incorporating overlap with L0, not
-			// just memtables.
-			if metaFlushableOverlaps[f.FileNum] {
-				stats.ApproxIngestedIntoL0Bytes += f.Size
-				stats.MemtableOverlappingFiles++
-			}
-		}
+		d.opts.EventListener.TableIngested(info)
 	}
-	d.opts.EventListener.TableIngested(info)
 
 	return stats, err
 }

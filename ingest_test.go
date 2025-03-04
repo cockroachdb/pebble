@@ -721,25 +721,21 @@ func TestExcise(t *testing.T) {
 				return err.Error()
 			}
 			return ""
-
 		case "flush":
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
 			return ""
-
 		case "block-flush":
 			d.mu.Lock()
 			d.mu.compact.flushing = true
 			d.mu.Unlock()
 			return ""
-
 		case "allow-flush":
 			d.mu.Lock()
 			d.mu.compact.flushing = false
 			d.mu.Unlock()
 			return ""
-
 		case "ingest":
 			noWait := td.HasArg("no-wait")
 			if !noWait {
@@ -761,7 +757,6 @@ func TestExcise(t *testing.T) {
 				return "memtable flushed"
 			}
 			return ""
-
 		case "ingest-and-excise":
 			var prevFlushableIngests uint64
 			noWait := td.HasArg("no-wait")
@@ -772,7 +767,7 @@ func TestExcise(t *testing.T) {
 				d.mu.Unlock()
 			}
 
-			if err := runIngestAndExciseCmd(td, d, mem); err != nil {
+			if err := runIngestAndExciseCmd(td, d); err != nil {
 				return err.Error()
 			}
 			if noWait {
@@ -792,7 +787,6 @@ func TestExcise(t *testing.T) {
 				return "memtable flushed"
 			}
 			return ""
-
 		case "file-only-snapshot":
 			if len(td.CmdArgs) != 1 {
 				panic("insufficient args for file-only-snapshot command")
@@ -811,10 +805,8 @@ func TestExcise(t *testing.T) {
 			s := d.NewEventuallyFileOnlySnapshot(keyRanges)
 			efos[name] = s
 			return "ok"
-
 		case "get":
 			return runGetCmd(t, td, d)
-
 		case "iter":
 			opts := &IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
@@ -849,10 +841,8 @@ func TestExcise(t *testing.T) {
 			}
 			iter, _ := reader.NewIter(opts)
 			return runIterCmd(td, iter, true)
-
 		case "lsm":
 			return runLSMCmd(td, d)
-
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
@@ -861,11 +851,14 @@ func TestExcise(t *testing.T) {
 			d.mu.Unlock()
 
 			return d.Metrics().StringForTests()
-
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
-
 		case "excise":
+			if err := runExciseCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return ""
+		case "excise-dryrun":
 			ve := &versionEdit{
 				DeletedTables: map[deletedFileEntry]*tableMetadata{},
 			}
@@ -894,7 +887,6 @@ func TestExcise(t *testing.T) {
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.DebugString(base.DefaultFormatter))
-
 		case "confirm-backing":
 			// Confirms that the files have the same FileBacking.
 			fileNums := make(map[base.FileNum]struct{})
@@ -1097,7 +1089,7 @@ func testIngestSharedImpl(
 			return ""
 
 		case "ingest-and-excise":
-			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestAndExciseCmd(td, d); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.
@@ -1595,7 +1587,7 @@ func TestConcurrentExcise(t *testing.T) {
 			d.mu.Lock()
 			prevFlushableIngests := d.mu.versions.metrics.Flush.AsIngestCount
 			d.mu.Unlock()
-			if err := runIngestAndExciseCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestAndExciseCmd(td, d); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.

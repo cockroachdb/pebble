@@ -134,3 +134,12 @@ run count=100
 sequential( 0:define 1:memtable-info 2:batch 3:batch 4:memtable-info parallel( 5:batch 6:batch ) )
 ----
 ok
+
+excise a z
+----
+7:excise
+
+run count=100
+sequential( 0:define 1:memtable-info 2:batch 3:batch 4:memtable-info parallel( 5:batch 6:batch ) 7:excise )
+----
+ok

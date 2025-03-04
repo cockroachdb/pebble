@@ -8,10 +8,41 @@ import (
 	"context"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
+
+// Excise atomically deletes all data overlapping with the provided span. All
+// data overlapping with the span is removed, including from open snapshots.
+// Only currently-open iterators will still observe the removed data (because an
+// open iterator pins all memtables and sstables in its view of the LSM until
+// it's closed). Excise may initiate a flush if there exists unflushed data
+// overlapping the excise span.
+func (d *DB) Excise(ctx context.Context, span KeyRange) error {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+	// Excise is only supported on prefix keys.
+	if d.opts.Comparer.Split(span.Start) != len(span.Start) {
+		return errors.New("Excise called with suffixed start key")
+	}
+	if d.opts.Comparer.Split(span.End) != len(span.End) {
+		return errors.New("Excise called with suffixed end key")
+	}
+	if v := d.FormatMajorVersion(); v < FormatVirtualSSTables {
+		return errors.Newf(
+			"store has format major version %d; Excise requires at least %d",
+			v, FormatVirtualSSTables,
+		)
+	}
+	_, err := d.ingest(ctx, nil, nil, span, nil)
+	return err
+}
 
 // excise updates ve to include a replacement of the file m with new virtual
 // sstables that exclude exciseSpan, returning a slice of newly-created files if
