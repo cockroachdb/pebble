@@ -1619,11 +1619,21 @@ func (d *DB) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterator,
 // will not prevent memtables from being released or sstables from being
 // deleted. Instead, a snapshot prevents deletion of sequence numbers
 // referenced by the snapshot.
+//
+// There exists one violation of a Snapshot's point-in-time guarantee: An excise
+// (see DB.Excise and DB.IngestAndExcise) that occurs after the snapshot's
+// creation will be observed by iterators created from the snapshot after the
+// excise. See NewEventuallyFileOnlySnapshot for a variant of NewSnapshot that
+// provides a full point-in-time guarantee.
 func (d *DB) NewSnapshot() *Snapshot {
+	// TODO(jackson): Consider removal of regular, non-eventually-file-only
+	// snapshots given they no longer provide a true point-in-time snapshot of
+	// the database due to excises. If we had a mechanism to construct a maximal
+	// key range, we could implement NewSnapshot in terms of
+	// NewEventuallyFileOnlySnapshot and provide a true point-in-time guarantee.
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-
 	d.mu.Lock()
 	s := &Snapshot{
 		db:     d,
