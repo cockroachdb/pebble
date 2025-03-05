@@ -71,7 +71,8 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	vbRH         objstorage.ReadHandle
 	vbRHPrealloc objstorageprovider.PreallocatedReadHandle
 	err          error
-	closeHook    func(i any)
+	fileRefID    invariants.Value[uint64]
+	closeHook    func(refID uint64)
 
 	readBlockEnv block.ReadEnv
 
@@ -1515,9 +1516,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) Error() error {
 
 // SetCloseHook sets a function that will be called when the iterator is closed.
 // This is used by the file cache to release the reference count on the open
-// sstable.Reader when the iterator is closed. The closures takes the iterator
-// as a parameter to enable invariant-build tracking of leaked iterators.
-func (i *singleLevelIterator[I, PI, D, PD]) SetCloseHook(fn func(i any)) {
+// sstable.Reader when the iterator is closed. SetCloseHook also takes a
+// reference ID which it passes back into fn to enable invariant-build tracking
+// of leaked iterators.
+func (i *singleLevelIterator[I, PI, D, PD]) SetCloseHook(refID uint64, fn func(refID uint64)) {
+	i.fileRefID.Set(refID)
 	i.closeHook = fn
 }
 
@@ -1546,7 +1549,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	}
 
 	if i.closeHook != nil {
-		i.closeHook(i)
+		i.closeHook(i.fileRefID.Get())
 	}
 	var err error
 	err = firstError(err, PD(&i.data).Close())

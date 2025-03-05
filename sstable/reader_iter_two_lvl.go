@@ -1015,8 +1015,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) SetContext(ctx context.Context) {
 	i.secondLevel.SetContext(ctx)
 }
 
-func (i *twoLevelIterator[I, PI, D, PD]) SetCloseHook(fn func(i any)) {
-	i.secondLevel.SetCloseHook(fn)
+func (i *twoLevelIterator[I, PI, D, PD]) SetCloseHook(refID uint64, fn func(refID uint64)) {
+	i.secondLevel.SetCloseHook(refID, fn)
 }
 
 func (i *twoLevelIterator[I, PI, D, PD]) SetupForCompaction() {
