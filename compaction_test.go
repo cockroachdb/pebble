@@ -1276,6 +1276,12 @@ func TestManualCompaction(t *testing.T) {
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev5",
 			minVersion: FormatColumnarBlocks,
+			maxVersion: FormatColumnarBlocks,
+		},
+		{
+			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev6",
+			minVersion: formatChecksumFooter,
+			maxVersion: formatChecksumFooter,
 		},
 	}
 

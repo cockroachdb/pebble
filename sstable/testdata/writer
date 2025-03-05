@@ -242,7 +242,7 @@ sstable
  ├── top-index  offset: 159  length: 48
  ├── properties  offset: 212  length: 451
  ├── meta-index  offset: 668  length: 33
- └── footer  offset: 706  length: 53
+ └── rocksdb-footer  offset: 706  length: 53
 
 scan
 ----
@@ -290,4 +290,4 @@ sstable
  ├── range-key  offset: 39  length: 79
  ├── properties  offset: 123  length: 499
  ├── meta-index  offset: 627  length: 57
- └── footer  offset: 689  length: 53
+ └── rocksdb-footer  offset: 689  length: 53

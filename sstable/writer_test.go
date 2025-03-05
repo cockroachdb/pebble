@@ -45,6 +45,7 @@ func testWriterParallelism(t *testing.T, parallelism bool) {
 		{TableFormat: TableFormatPebblev2, File: "testdata/writer"},
 		{TableFormat: TableFormatPebblev3, File: "testdata/writer_v3"},
 		{TableFormat: TableFormatPebblev5, File: "testdata/writer_v5"},
+		{TableFormat: TableFormatPebblev6, File: "testdata/writer_v6"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
@@ -62,6 +63,7 @@ func testRewriterParallelism(t *testing.T, parallelism bool) {
 		{TableFormat: TableFormatPebblev2, File: "testdata/rewriter"},
 		{TableFormat: TableFormatPebblev3, File: "testdata/rewriter_v3"},
 		{TableFormat: TableFormatPebblev5, File: "testdata/rewriter_v5"},
+		{TableFormat: TableFormatPebblev6, File: "testdata/rewriter_v6"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {

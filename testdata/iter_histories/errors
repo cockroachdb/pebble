@@ -83,7 +83,7 @@ sstable
  ├── range-key  offset: 83  length: 29
  ├── properties  offset: 117  length: 573
  ├── meta-index  offset: 695  length: 57
- └── footer  offset: 757  length: 53
+ └── rocksdb-footer  offset: 757  length: 53
 
 # Inject an error on the first `ReadAt` call on 000004.sst's range key block
 # (which is at offset 83).
@@ -131,7 +131,7 @@ sstable
  ├── index  offset: 193  length: 113
  ├── properties  offset: 311  length: 571
  ├── meta-index  offset: 887  length: 33
- └── footer  offset: 925  length: 53
+ └── rocksdb-footer  offset: 925  length: 53
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 0))))
 ----
@@ -185,7 +185,7 @@ sstable
  ├── index  offset: 135  length: 84
  ├── properties  offset: 224  length: 495
  ├── meta-index  offset: 724  length: 33
- └── footer  offset: 762  length: 53
+ └── rocksdb-footer  offset: 762  length: 53
 
 # NB: Block offset to key contained:
 #  0 -> a, 27 -> b, 54 -> c, 81 -> d, 108 -> e
@@ -246,7 +246,7 @@ sstable
  ├── index  offset: 108  length: 71
  ├── properties  offset: 184  length: 570
  ├── meta-index  offset: 759  length: 33
- └── footer  offset: 797  length: 53
+ └── rocksdb-footer  offset: 797  length: 53
 
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54))))

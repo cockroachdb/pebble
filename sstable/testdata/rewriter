@@ -47,7 +47,7 @@ sstable
  ├── top-index  offset: 245  length: 48
  ├── properties  offset: 298  length: 486
  ├── meta-index  offset: 789  length: 79
- └── footer  offset: 873  length: 53
+ └── rocksdb-footer  offset: 873  length: 53
 
 scan
 ----
@@ -82,7 +82,7 @@ sstable
  ├── top-index  offset: 245  length: 48
  ├── properties  offset: 298  length: 486
  ├── meta-index  offset: 789  length: 79
- └── footer  offset: 873  length: 53
+ └── rocksdb-footer  offset: 873  length: 53
 
 scan
 ----
@@ -117,7 +117,7 @@ sstable
  ├── top-index  offset: 245  length: 48
  ├── properties  offset: 298  length: 486
  ├── meta-index  offset: 789  length: 79
- └── footer  offset: 873  length: 53
+ └── rocksdb-footer  offset: 873  length: 53
 
 scan
 ----
@@ -152,7 +152,7 @@ sstable
  ├── top-index  offset: 245  length: 48
  ├── properties  offset: 298  length: 486
  ├── meta-index  offset: 789  length: 79
- └── footer  offset: 873  length: 53
+ └── rocksdb-footer  offset: 873  length: 53
 
 scan
 ----
@@ -188,7 +188,7 @@ sstable
  ├── top-index  offset: 245  length: 48
  ├── properties  offset: 298  length: 486
  ├── meta-index  offset: 789  length: 79
- └── footer  offset: 873  length: 53
+ └── rocksdb-footer  offset: 873  length: 53
 
 scan
 ----
