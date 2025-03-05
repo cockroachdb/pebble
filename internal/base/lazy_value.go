@@ -165,7 +165,10 @@ type LazyFetcher struct {
 	err     error
 	value   []byte
 	// Attribute includes the short attribute and value length.
-	Attribute   AttributeAndLen
+	Attribute AttributeAndLen
+	// BlobFileNum identifies the blob file containing the value. It is only
+	// populated if the value is stored in a blob file.
+	BlobFileNum DiskFileNum
 	fetched     bool
 	callerOwned bool
 }
@@ -184,7 +187,7 @@ type ValueFetcher interface {
 	// will allocate a new slice for the value. In either case it will set
 	// callerOwned to true.
 	Fetch(
-		ctx context.Context, handle []byte, valLen uint32, buf []byte,
+		ctx context.Context, handle []byte, blobFileNum DiskFileNum, valLen uint32, buf []byte,
 	) (val []byte, callerOwned bool, err error)
 }
 
@@ -213,7 +216,7 @@ func (lv *LazyValue) fetchValue(
 	if !f.fetched {
 		f.fetched = true
 		f.value, f.callerOwned, f.err = f.Fetcher.Fetch(ctx,
-			lv.ValueOrHandle, lv.Fetcher.Attribute.ValueLen, buf)
+			lv.ValueOrHandle, lv.Fetcher.BlobFileNum, lv.Fetcher.Attribute.ValueLen, buf)
 	}
 	return f.value, f.callerOwned, f.err
 }
