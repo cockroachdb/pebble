@@ -107,9 +107,12 @@ type fileCacheHandle struct {
 	// This struct is only populated in race builds.
 	raceMu struct {
 		sync.Mutex
-		// iters maps sstable.Iterator objects to the stack trace recorded at
-		// creation time.
-		iters map[any][]byte
+		// nextRefID is the next ID to allocate for a new reference.
+		nextRefID uint64
+		// openRefs maps reference IDs to the stack trace recorded at creation
+		// time. It's used to track which call paths leaked open references to
+		// files.
+		openRefs map[uint64][]byte
 	}
 }
 
@@ -134,7 +137,7 @@ func (c *FileCache) newHandle(
 	t.readerOpts = readerOpts
 	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
 	if invariants.RaceEnabled {
-		t.raceMu.iters = make(map[any][]byte)
+		t.raceMu.openRefs = make(map[uint64][]byte)
 	}
 	return t
 }
@@ -151,7 +154,7 @@ func (h *fileCacheHandle) Close() error {
 			err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
 		} else {
 			var buf bytes.Buffer
-			for _, stack := range h.raceMu.iters {
+			for _, stack := range h.raceMu.openRefs {
 				fmt.Fprintf(&buf, "%s\n", stack)
 			}
 			err = errors.Errorf("leaked iterators: %d\n%s", errors.Safe(v), buf.String())
@@ -348,12 +351,7 @@ func NewFileCache(numShards int, size int) *FileCache {
 		v := vRef.Value()
 		handle := key.handle
 		v.readerProvider.init(c, key)
-		v.closeHook = func(iterator any) {
-			if invariants.RaceEnabled {
-				handle.raceMu.Lock()
-				delete(handle.raceMu.iters, iterator)
-				handle.raceMu.Unlock()
-			}
+		v.closeHook = func() {
 			// closeHook is called when an iterator is closed; the initialization of
 			// an iterator with this value will happen after a FindOrCreate() call
 			// with returns the same vRef.
@@ -572,17 +570,35 @@ func (h *fileCacheHandle) newPointIter(
 	if err != nil {
 		return nil, err
 	}
-	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
-	// care to avoid introducing an allocation here by adding a closure.
-	iter.SetCloseHook(v.closeHook)
-	handle.iterCount.Add(1)
+	// NB: closeHook (v.closeHook) takes responsibility for calling
+	// unrefValue(v) here. Take care to avoid introducing an allocation here by
+	// adding a closure.
+	closeHook := h.addReference(v)
+	iter.SetCloseHook(closeHook)
+	return iter, nil
+}
+
+func (h *fileCacheHandle) addReference(v *fileCacheValue) (closeHook func()) {
+	h.iterCount.Add(1)
+	closeHook = v.closeHook
 	if invariants.RaceEnabled {
 		stack := debug.Stack()
 		h.raceMu.Lock()
-		h.raceMu.iters[iter] = stack
+		refID := h.raceMu.nextRefID
+		h.raceMu.openRefs[refID] = stack
+		h.raceMu.nextRefID++
 		h.raceMu.Unlock()
+		// In race builds, this closeHook closure will force an allocation.
+		// Race builds are already unperformant (and allocate a stack trace), so
+		// we don't care.
+		closeHook = func() {
+			v.closeHook()
+			h.raceMu.Lock()
+			defer h.raceMu.Unlock()
+			delete(h.raceMu.openRefs, refID)
+		}
 	}
-	return iter, nil
+	return closeHook
 }
 
 // newRangeDelIter is an internal helper that constructs an iterator over a
@@ -736,7 +752,7 @@ func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Prop
 }
 
 type fileCacheValue struct {
-	closeHook func(i any)
+	closeHook func()
 	reader    io.Closer // *sstable.Reader
 	isShared  bool
 
