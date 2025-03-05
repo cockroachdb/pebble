@@ -197,6 +197,13 @@ const (
 	// block.
 	FormatColumnarBlocks
 
+	// FormatWALSyncChunks is a format major version enabling the writing of
+	// WAL sync chunks. These new chunks are used to disambiguate between corruption
+	// and logical EOF during WAL replay. This is implemented by adding a new
+	// chunk wire format that encodes an additional "Synced Offset" field which acts
+	// as a commitment that the WAL should have been synced up until the offset.
+	FormatWALSyncChunks
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -235,7 +242,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises:
 		return sstable.TableFormatPebblev4
-	case FormatColumnarBlocks:
+	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -248,7 +255,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	switch v {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
-		FormatFlushableIngestExcises, FormatColumnarBlocks:
+		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -290,6 +297,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatColumnarBlocks: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatColumnarBlocks)
+	},
+	FormatWALSyncChunks: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatWALSyncChunks)
 	},
 }
 

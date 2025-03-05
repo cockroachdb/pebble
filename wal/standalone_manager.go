@@ -194,9 +194,10 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		PreallocateSize: m.o.PreallocateSize(),
 	})
 	w := record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
-		WALFsyncLatency:    m.o.FsyncLatency,
-		WALMinSyncInterval: m.o.MinSyncInterval,
-		QueueSemChan:       m.o.QueueSemChan,
+		WALFsyncLatency:     m.o.FsyncLatency,
+		WALMinSyncInterval:  m.o.MinSyncInterval,
+		QueueSemChan:        m.o.QueueSemChan,
+		WriteWALSyncOffsets: m.o.WriteWALSyncOffsets,
 	})
 	m.w = &standaloneWriter{
 		m: m,
