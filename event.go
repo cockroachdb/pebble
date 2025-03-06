@@ -774,9 +774,9 @@ type EventListener struct {
 	PossibleAPIMisuse func(PossibleAPIMisuseInfo)
 }
 
-// ErrCancelledCompaction is not an unexpected error, hence has severity INFO.
 func backgroundError(logger Logger, err error) {
 	if errors.Is(err, ErrCancelledCompaction) {
+		// ErrCancelledCompaction is not an unexpected error, hence severity INFO.
 		logger.Infof("background error: %s", err)
 	} else {
 		logger.Errorf("background error: %s", err)
