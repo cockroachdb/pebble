@@ -774,6 +774,15 @@ type EventListener struct {
 	PossibleAPIMisuse func(PossibleAPIMisuseInfo)
 }
 
+func backgroundError(logger Logger, err error) {
+	if errors.Is(err, ErrCancelledCompaction) {
+		// ErrCancelledCompaction is not an unexpected error, hence severity INFO.
+		logger.Infof("background error: %s", err)
+	} else {
+		logger.Errorf("background error: %s", err)
+	}
+}
+
 // EnsureDefaults ensures that background error events are logged to the
 // specified logger if a handler for those events hasn't been otherwise
 // specified. Ensure all handlers are non-nil so that we don't have to check
@@ -782,7 +791,7 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.BackgroundError == nil {
 		if logger != nil {
 			l.BackgroundError = func(err error) {
-				logger.Errorf("background error: %s", err)
+				backgroundError(logger, err)
 			}
 		} else {
 			l.BackgroundError = func(error) {}
@@ -862,7 +871,7 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 
 	return EventListener{
 		BackgroundError: func(err error) {
-			logger.Errorf("background error: %s", err)
+			backgroundError(logger, err)
 		},
 		CompactionBegin: func(info CompactionInfo) {
 			logger.Infof("%s", info)
