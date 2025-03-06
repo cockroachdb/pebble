@@ -367,6 +367,18 @@ func TestMakeLoggingEventListenerSetsAllCallbacks(t *testing.T) {
 	testAllCallbacksSetInEventListener(t, e)
 }
 
+func TestMakeLoggingEventListenerBackgroundErrorCancelledCompaction(t *testing.T) {
+	e := MakeLoggingEventListener(nil)
+	e.BackgroundError(ErrCancelledCompaction)
+	testAllCallbacksSetInEventListener(t, e)
+}
+
+func TestMakeLoggingEventListenerBackgroundErrorOtherError(t *testing.T) {
+	e := MakeLoggingEventListener(nil)
+	e.BackgroundError(errors.New("an example error"))
+	testAllCallbacksSetInEventListener(t, e)
+}
+
 func TestTeeEventListenerSetsAllCallbacks(t *testing.T) {
 	e := TeeEventListener(EventListener{}, EventListener{})
 	testAllCallbacksSetInEventListener(t, e)

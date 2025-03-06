@@ -782,7 +782,11 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.BackgroundError == nil {
 		if logger != nil {
 			l.BackgroundError = func(err error) {
-				logger.Errorf("background error: %s", err)
+				if errors.Is(err, ErrCancelledCompaction) {
+					logger.Infof("background info: %s", err)
+				} else {
+					logger.Errorf("background error: %s", err)
+				}
 			}
 		} else {
 			l.BackgroundError = func(error) {}
@@ -862,7 +866,11 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 
 	return EventListener{
 		BackgroundError: func(err error) {
-			logger.Errorf("background error: %s", err)
+			if errors.Is(err, ErrCancelledCompaction) {
+				logger.Infof("background info: %s", err)
+			} else {
+				logger.Errorf("background error: %s", err)
+			}
 		},
 		CompactionBegin: func(info CompactionInfo) {
 			logger.Infof("%s", info)
