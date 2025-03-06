@@ -367,15 +367,64 @@ func TestMakeLoggingEventListenerSetsAllCallbacks(t *testing.T) {
 	testAllCallbacksSetInEventListener(t, e)
 }
 
+type mockLogger struct {
+	infoFunc  func(format string, args ...interface{})
+	errorFunc func(format string, args ...interface{})
+	fatalFunc func(format string, args ...interface{})
+}
+
+func (l *mockLogger) Infof(format string, args ...interface{}) {
+	if l.infoFunc != nil {
+		l.infoFunc(format, args...)
+	}
+}
+
+func (l *mockLogger) Errorf(format string, args ...interface{}) {
+	if l.errorFunc != nil {
+		l.errorFunc(format, args...)
+	}
+}
+
+func (l *mockLogger) Fatalf(format string, args ...interface{}) {
+	if l.fatalFunc != nil {
+		l.fatalFunc(format, args...)
+	}
+}
+
+func newCountingMockLogger(t *testing.T) (*mockLogger, *int, *int) {
+	var infoCount, errorCount int
+	return &mockLogger{
+		infoFunc: func(format string, args ...interface{}) {
+			infoCount++
+		},
+		errorFunc: func(format string, args ...interface{}) {
+			errorCount++
+		},
+		fatalFunc: func(format string, args ...interface{}) {
+			t.Fatal("Unexpected call to Fatalf")
+		},
+	}, &infoCount, &errorCount
+}
+
 func TestMakeLoggingEventListenerBackgroundErrorCancelledCompaction(t *testing.T) {
-	e := MakeLoggingEventListener(nil)
+	mockLogger, infoCount, errorCount := newCountingMockLogger(t)
+	e := MakeLoggingEventListener(mockLogger)
+
 	e.BackgroundError(ErrCancelledCompaction)
+	require.Equal(t, 1, *infoCount, "Infof should be called once for ErrCancelledCompaction")
+	require.Equal(t, 0, *errorCount, "Errorf should not be called for ErrCancelledCompaction")
+
 	testAllCallbacksSetInEventListener(t, e)
 }
 
 func TestMakeLoggingEventListenerBackgroundErrorOtherError(t *testing.T) {
-	e := MakeLoggingEventListener(nil)
+	mockLogger, infoCount, errorCount := newCountingMockLogger(t)
+	e := MakeLoggingEventListener(mockLogger)
+
 	e.BackgroundError(errors.New("an example error"))
+	require.Equal(t, 0, *infoCount, "Infof should not be called for other errors")
+	require.Equal(t, 1, *errorCount, "Errorf should be called once for other errors")
+
 	testAllCallbacksSetInEventListener(t, e)
 }
 
