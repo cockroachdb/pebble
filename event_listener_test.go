@@ -411,8 +411,8 @@ func TestMakeLoggingEventListenerBackgroundErrorCancelledCompaction(t *testing.T
 	e := MakeLoggingEventListener(mockLogger)
 
 	e.BackgroundError(ErrCancelledCompaction)
-	require.Equal(t, 1, *infoCount, "Infof should be called once for ErrCancelledCompaction")
-	require.Equal(t, 0, *errorCount, "Errorf should not be called for ErrCancelledCompaction")
+	require.Equal(t, 1, *infoCount)
+	require.Equal(t, 0, *errorCount)
 
 	testAllCallbacksSetInEventListener(t, e)
 }
@@ -422,8 +422,8 @@ func TestMakeLoggingEventListenerBackgroundErrorOtherError(t *testing.T) {
 	e := MakeLoggingEventListener(mockLogger)
 
 	e.BackgroundError(errors.New("an example error"))
-	require.Equal(t, 0, *infoCount, "Infof should not be called for other errors")
-	require.Equal(t, 1, *errorCount, "Errorf should be called once for other errors")
+	require.Equal(t, 0, *infoCount)
+	require.Equal(t, 1, *errorCount)
 
 	testAllCallbacksSetInEventListener(t, e)
 }
