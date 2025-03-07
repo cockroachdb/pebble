@@ -132,7 +132,7 @@ func benchmarkRandSeekInSST(
 	rp := sstable.MakeTrivialReaderProvider(reader)
 	iter, err := reader.NewPointIter(ctx, sstable.IterOptions{
 		FilterBlockSizeLimit: sstable.NeverUseFilterBlock,
-		Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+		Env:                  sstable.ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 		ReaderProvider:       rp,
 	})
 	require.NoError(b, err)
@@ -150,7 +150,7 @@ func benchmarkRandSeekInSST(
 		key := queryKeys[i%numQueryKeys]
 		iter, err := reader.NewPointIter(ctx, sstable.IterOptions{
 			FilterBlockSizeLimit: sstable.NeverUseFilterBlock,
-			Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+			Env:                  sstable.ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 			ReaderProvider:       rp,
 		})
 		if err != nil {

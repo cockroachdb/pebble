@@ -283,7 +283,7 @@ func (d *DB) Checkpoint(
 			}
 
 			fileBacking := f.FileBacking
-			if f.Virtual {
+			if f.Virtual != nil {
 				if _, ok := requiredVirtualBackingFiles[fileBacking.DiskFileNum]; ok {
 					continue
 				}

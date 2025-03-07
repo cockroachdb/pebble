@@ -28,8 +28,6 @@ const manifestMarkerName = `manifest`
 type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedTableEntry
 type tableMetadata = manifest.TableMetadata
-type physicalMeta = manifest.PhysicalTableMeta
-type virtualMeta = manifest.VirtualTableMeta
 type fileBacking = manifest.FileBacking
 type newTableEntry = manifest.NewTableEntry
 type version = manifest.Version
@@ -316,7 +314,7 @@ func (vs *versionSet) load(
 
 	for _, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
-			if m.Virtual {
+			if m.Virtual != nil {
 				vs.virtualBackings.AddTable(m)
 			}
 		}
@@ -352,7 +350,7 @@ func (vs *versionSet) load(
 	}
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
-			if !f.Virtual {
+			if f.Virtual == nil {
 				_, localSize := sizeIfLocal(f.FileBacking, vs.provider)
 				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 			}
@@ -760,7 +758,7 @@ func getZombiesAndUpdateVirtualBackings(
 	// will stay on the stack.
 	stillUsed := make(map[base.DiskFileNum]struct{})
 	for _, nf := range ve.NewTables {
-		if !nf.Meta.Virtual {
+		if nf.Meta.Virtual == nil {
 			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
 			_, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
 			localLiveSizeDelta += localFileDelta
@@ -770,7 +768,7 @@ func getZombiesAndUpdateVirtualBackings(
 		stillUsed[b.DiskFileNum] = struct{}{}
 	}
 	for _, m := range ve.DeletedTables {
-		if !m.Virtual {
+		if m.Virtual == nil {
 			// NB: this deleted file may also be in NewFiles or
 			// CreatedBackingTables, due to a file moving between levels, or
 			// becoming virtualized. In which case there is no change due to this
@@ -797,12 +795,12 @@ func getZombiesAndUpdateVirtualBackings(
 		localLiveSizeDelta += localFileDelta
 	}
 	for _, nf := range ve.NewTables {
-		if nf.Meta.Virtual {
+		if nf.Meta.Virtual != nil {
 			virtualBackings.AddTable(nf.Meta)
 		}
 	}
 	for _, m := range ve.DeletedTables {
-		if m.Virtual {
+		if m.Virtual != nil {
 			virtualBackings.RemoveTable(m)
 		}
 	}
@@ -1004,7 +1002,7 @@ func (vs *versionSet) append(v *version) {
 		// the version.
 		for _, l := range v.Levels {
 			for f := range l.All() {
-				if f.Virtual {
+				if f.Virtual != nil {
 					if _, ok := vs.virtualBackings.Get(f.FileBacking.DiskFileNum); !ok {
 						panic(fmt.Sprintf("%s is not in virtualBackings", f.FileBacking.DiskFileNum))
 					}

@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -119,7 +120,7 @@ func ingestSynthesizeShared(
 	meta := &tableMetadata{
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
-		Virtual:      true,
+		Virtual:      &virtual.VirtualReaderParams{},
 		Size:         sm.Size,
 	}
 	// For simplicity, we use the same number for both the FileNum and the
@@ -207,10 +208,9 @@ func ingestLoad1External(
 	meta := &tableMetadata{
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
-		Virtual:      true,
 		Size:         e.Size,
+		Virtual:      &virtual.VirtualReaderParams{},
 	}
-
 	// In the name of keeping this ingestion as fast as possible, we avoid *all*
 	// existence checks and synthesize a table metadata with smallest/largest
 	// keys that overlap whatever the passed-in span was.
@@ -386,7 +386,7 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, block.NoReadEnv)
+	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, sstable.NoReadEnv)
 	if err != nil {
 		return nil, keyspan.Span{}, err
 	}
@@ -416,7 +416,7 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, block.NoReadEnv)
+		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, sstable.NoReadEnv)
 		if err != nil {
 			return nil, keyspan.Span{}, err
 		}
@@ -2280,20 +2280,12 @@ func (d *DB) validateSSTables() {
 			}
 		}
 
-		var err error
 		// TOOD(radu): plumb a ReadEnv with a CategoryIngest stats collector through
 		// to ValidateBlockChecksums.
-		if f.Meta.Virtual {
-			err = d.fileCache.withVirtualReader(context.TODO(), block.NoReadEnv,
-				f.Meta.VirtualMeta(), func(v sstable.VirtualReader, _ block.ReadEnv) error {
-					return v.ValidateBlockChecksumsOnBacking()
-				})
-		} else {
-			err = d.fileCache.withReader(context.TODO(), block.NoReadEnv,
-				f.Meta.PhysicalMeta(), func(r *sstable.Reader, _ block.ReadEnv) error {
-					return r.ValidateBlockChecksums()
-				})
-		}
+		err := d.fileCache.withReader(context.TODO(), block.NoReadEnv,
+			f.Meta, func(r *sstable.Reader, _ sstable.ReadEnv) error {
+				return r.ValidateBlockChecksums()
+			})
 
 		if err != nil {
 			if IsCorruptionError(err) {
