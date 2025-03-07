@@ -27,6 +27,13 @@ func MakeInPlaceValue(val []byte) InternalValue {
 	return InternalValue{lazyValue: LazyValue{ValueOrHandle: val}}
 }
 
+// IsBlobValueHandle returns true iff the value is a blob value handle, pointing
+// to a value stored externally in a blob file.
+func (v *InternalValue) IsBlobValueHandle() bool {
+	f := v.lazyValue.Fetcher
+	return f != nil && f.BlobFileNum > 0
+}
+
 // IsInPlaceValue returns true iff the value was stored in-place and does not
 // need to be fetched externally.
 func (v *InternalValue) IsInPlaceValue() bool {
