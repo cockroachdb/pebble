@@ -34,6 +34,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -124,7 +125,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 	var bp block.BufferPool
 
 	// Set during the latest virtualize command.
-	var v *VirtualReader
+	var env ReadEnv
 	var syntheticSuffix SyntheticSuffix
 
 	defer func() {
@@ -134,13 +135,14 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 		}
 	}()
 
-	formatVirtualReader := func(v *VirtualReader, showProps bool) string {
+	formatVirtualReader := func(r *Reader, showProps bool, env ReadEnv) string {
 		var b bytes.Buffer
-		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", v.vState.lower, v.vState.upper)
+		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", env.Virtual.Lower, env.Virtual.Upper)
 		if showProps {
-			fmt.Fprintf(&b, "filenum: %s\n", v.vState.fileNum.String())
+			fmt.Fprintf(&b, "filenum: %s\n", env.Virtual.FileNum.String())
 			fmt.Fprintf(&b, "props:\n")
-			for _, line := range strings.Split(strings.TrimSpace(v.Properties.String()), "\n") {
+			p := r.Properties.GetScaledProperties(env.Virtual.BackingSize, env.Virtual.Size)
+			for _, line := range strings.Split(strings.TrimSpace(p.String()), "\n") {
 				fmt.Fprintf(&b, "  %s\n", line)
 			}
 		}
@@ -154,7 +156,6 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				bp.Release()
 				_ = r.Close()
 				r = nil
-				v = nil
 			}
 			var err error
 			writerOpts := &WriterOptions{
@@ -193,9 +194,8 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if wMeta == nil {
 				return "build must be called at least once before virtualize"
 			}
-			v = nil
 
-			var params VirtualReaderParams
+			var params virtual.VirtualReaderParams
 			// Parse the virtualization bounds.
 			var lowerStr, upperStr string
 			td.ScanArgs(t, "lower", &lowerStr)
@@ -214,20 +214,20 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 			params.FileNum = nextFileNum()
 			params.BackingSize = wMeta.Size
+			env.Virtual = &params
+
 			var err error
-			params.Size, err = r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey)
+			params.Size, err = r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env)
 			if err != nil {
 				return err.Error()
 			}
-			vr := MakeVirtualReader(r, params)
-			v = &vr
-			return formatVirtualReader(v, showProps)
+			return formatVirtualReader(r, showProps, env)
 
 		case "compaction-iter":
 			// Creates a compaction iterator from the virtual reader, and then
 			// just scans the keyspace. Which is all a compaction iterator is
 			// used for. This tests the First and Next calls.
-			if v == nil {
+			if env.Virtual == nil {
 				return "virtualize must be called before creating compaction iters"
 			}
 
@@ -235,7 +235,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := IterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewCompactionIter(transforms, block.ReadEnv{BufferPool: &bp}, rp)
+
+			env.Block.BufferPool = &bp
+			iter, err := r.NewCompactionIter(transforms, env, rp)
 			if err != nil {
 				return err.Error()
 			}
@@ -251,12 +253,12 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "constrain":
-			if v == nil {
+			if env.Virtual == nil {
 				return "virtualize must be called before constrain"
 			}
 			splits := strings.Split(td.CmdArgs[0].String(), ",")
 			of, ol := []byte(splits[0]), []byte(splits[1])
-			inclusive, f, l := v.vState.constrainBounds(of, ol, splits[2] == "true")
+			inclusive, f, l := env.Virtual.ConstrainBounds(of, ol, splits[2] == "true", r.Comparer.Compare)
 			var buf bytes.Buffer
 			buf.Write(f)
 			buf.WriteByte(',')
@@ -271,13 +273,13 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "scan-range-del":
-			if v == nil {
+			if env.Virtual == nil {
 				return "virtualize must be called before scan-range-del"
 			}
 			transforms := FragmentIterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewRawRangeDelIter(context.Background(), transforms, block.NoReadEnv)
+			iter, err := r.NewRawRangeDelIter(context.Background(), transforms, env)
 			if err != nil {
 				return err.Error()
 			}
@@ -297,13 +299,14 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "scan-range-key":
-			if v == nil {
+			if env.Virtual == nil {
 				return "virtualize must be called before scan-range-key"
 			}
 			transforms := FragmentIterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewRawRangeKeyIter(context.Background(), transforms, block.NoReadEnv)
+
+			iter, err := r.NewRawRangeKeyIter(context.Background(), transforms, env)
 			if err != nil {
 				return err.Error()
 			}
@@ -323,7 +326,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "iter":
-			if v == nil {
+			if env.Virtual == nil {
 				return "virtualize must be called before iter"
 			}
 			var lower, upper []byte
@@ -360,9 +363,12 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := IterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewPointIter(
+
+			env.Block.Stats = &stats
+			iter, err := r.NewPointIter(
 				context.Background(), transforms, lower, upper, filterer, NeverUseFilterBlock,
-				block.ReadEnv{Stats: &stats, IterStats: nil}, MakeTrivialReaderProvider(r))
+				env, MakeTrivialReaderProvider(r))
+
 			if err != nil {
 				return err.Error()
 			}
@@ -572,7 +578,7 @@ func TestInjectedErrors(t *testing.T) {
 			}
 			defer func() { reterr = firstError(reterr, r.Close()) }()
 
-			_, err = r.EstimateDiskUsage([]byte("borrower"), []byte("lender"))
+			_, err = r.EstimateDiskUsage([]byte("borrower"), []byte("lender"), NoReadEnv)
 			if err != nil {
 				return err
 			}
@@ -771,7 +777,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					nil, /* upper */
 					filterer,
 					AlwaysUseFilterBlock,
-					block.ReadEnv{Stats: &stats, IterStats: nil},
+					ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 					MakeTrivialReaderProvider(r),
 				)
 				if err != nil {
@@ -916,7 +922,9 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				var pool block.BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					NoTransforms, block.ReadEnv{BufferPool: &pool}, MakeTrivialReaderProvider(r))
+					NoTransforms,
+					ReadEnv{Block: block.ReadEnv{BufferPool: &pool}},
+					MakeTrivialReaderProvider(r))
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *singleLevelIteratorRowBlocks:
@@ -976,7 +984,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		pool.Init(5)
 		defer pool.Release()
 		citer, err := r.NewCompactionIter(
-			NoTransforms, block.ReadEnv{BufferPool: &pool}, MakeTrivialReaderProvider(r))
+			NoTransforms, ReadEnv{Block: block.ReadEnv{BufferPool: &pool}}, MakeTrivialReaderProvider(r))
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*singleLevelIteratorRowBlocks)
@@ -1273,11 +1281,12 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			},
 			nil, nil, nil,
-			AlwaysUseFilterBlock, block.NoReadEnv,
-			MakeTrivialReaderProvider(eReader), &virtualState{
-				lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
-				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
-			})
+			AlwaysUseFilterBlock, ReadEnv{
+				Virtual: &virtual.VirtualReaderParams{
+					Lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
+					Upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~"))},
+			},
+			MakeTrivialReaderProvider(eReader))
 		require.NoError(t, err)
 		return iter, func() {
 			require.NoError(t, iter.Close())
@@ -2447,7 +2456,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								transforms := IterTransforms{HideObsoletePoints: hideObsoletePoints}
 								iter, err := r.NewPointIter(
 									context.Background(), transforms, nil, nil, filterer,
-									AlwaysUseFilterBlock, block.NoReadEnv,
+									AlwaysUseFilterBlock, NoReadEnv,
 									MakeTrivialReaderProvider(r))
 								require.NoError(b, err)
 								b.ResetTimer()

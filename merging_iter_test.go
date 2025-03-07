@@ -292,7 +292,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
 			var stats base.InternalIteratorStats
-			iio := internalIterOpts{readEnv: block.ReadEnv{Stats: &stats}}
+			iio := internalIterOpts{readEnv: sstable.ReadEnv{Block: block.ReadEnv{Stats: &stats}}}
 			for i, l := range v.Levels {
 				slice := l.Slice()
 				if slice.Empty() {

@@ -401,7 +401,7 @@ func newCompaction(
 		if mustCopy {
 			// If the source is virtual, it's best to just rewrite the file as all
 			// conditions in the above comment are met.
-			if !meta.Virtual {
+			if meta.Virtual == nil {
 				c.kind = compactionKindCopy
 			}
 		} else {
@@ -937,7 +937,7 @@ func (c *compaction) newRangeDelIter(
 	iterSet, err := newIters(context.Background(), f.TableMetadata, &opts,
 		internalIterOpts{
 			compaction: true,
-			readEnv:    block.ReadEnv{BufferPool: &c.bufferPool},
+			readEnv:    sstable.ReadEnv{Block: block.ReadEnv{BufferPool: &c.bufferPool}},
 		}, iterRangeDeletions)
 	if err != nil {
 		return nil, err
@@ -1286,8 +1286,8 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 
 		// This file fits perfectly within the excise span, so we can slot it at L6.
 		if ingestFlushable.exciseSpan.Valid() &&
-			ingestFlushable.exciseSpan.Contains(d.cmp, file.TableMetadata.Smallest) &&
-			ingestFlushable.exciseSpan.Contains(d.cmp, file.TableMetadata.Largest) {
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.Smallest) &&
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.Largest) {
 			level = 6
 		} else {
 			// TODO(radu): this can perform I/O; we should not do this while holding DB.mu.
@@ -1296,7 +1296,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 				return nil, err
 			}
 			level, fileToSplit, err = ingestTargetLevel(
-				ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, file.TableMetadata, suggestSplit,
+				ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, file, suggestSplit,
 			)
 			if err != nil {
 				return nil, err
@@ -1304,10 +1304,10 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 
 		// Add the current flushableIngest file to the version.
-		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: file.TableMetadata})
+		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: file})
 		if fileToSplit != nil {
 			ingestSplitFiles = append(ingestSplitFiles, ingestSplitFile{
-				ingestFile: file.TableMetadata,
+				ingestFile: file,
 				splitFile:  fileToSplit,
 				level:      level,
 			})
@@ -2364,7 +2364,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 		deletedFiles[key.FileNum] = struct{}{}
 	}
 	for i := range ve.NewTables {
-		if ve.NewTables[i].Meta.Virtual {
+		if ve.NewTables[i].Meta.Virtual != nil {
 			// We handle backing files separately.
 			continue
 		}
@@ -2525,8 +2525,8 @@ func (d *DB) runCopyCompaction(
 			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
 		}
 		// Note that based on logic in the compaction picker, we're guaranteed
-		// inputMeta.Virtual is false.
-		if inputMeta.Virtual {
+		// inputMeta.Virtual is nil.
+		if inputMeta.Virtual != nil {
 			panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
 		}
 	}
@@ -2624,12 +2624,12 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
-		err = d.fileCache.withVirtualReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) error {
+		err = d.fileCache.withReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) error {
 			var err error
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,
-				src, r.UnsafeReader(), d.opts.MakeReaderOptions(),
+				src, r, d.opts.MakeReaderOptions(),
 				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),
 				start, end,
 			)
@@ -2665,7 +2665,7 @@ func (d *DB) runCopyCompaction(
 		Level: c.outputLevel.level,
 		Meta:  newMeta,
 	}}
-	if newMeta.Virtual {
+	if newMeta.Virtual != nil {
 		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
 	}
 	c.metrics = map[int]*LevelMetrics{
@@ -2878,7 +2878,7 @@ func (d *DB) runDeleteOnlyCompaction(
 	// NewFiles.
 	usedBackingFiles := make(map[base.DiskFileNum]struct{})
 	for _, e := range ve.NewTables {
-		if e.Meta.Virtual {
+		if e.Meta.Virtual != nil {
 			usedBackingFiles[e.Meta.FileBacking.DiskFileNum] = struct{}{}
 		}
 	}
@@ -3051,13 +3051,15 @@ func (d *DB) compactAndWrite(
 	defer c.bufferPool.Release()
 	iiopts := internalIterOpts{
 		compaction: true,
-		readEnv: block.ReadEnv{
-			BufferPool: &c.bufferPool,
-			Stats:      &c.stats,
-			IterStats: d.fileCache.SSTStatsCollector().Accumulator(
-				uint64(uintptr(unsafe.Pointer(c))),
-				categoryCompaction,
-			),
+		readEnv: sstable.ReadEnv{
+			Block: block.ReadEnv{
+				BufferPool: &c.bufferPool,
+				Stats:      &c.stats,
+				IterStats: d.fileCache.SSTStatsCollector().Accumulator(
+					uint64(uintptr(unsafe.Pointer(c))),
+					categoryCompaction,
+				),
+			},
 		},
 	}
 

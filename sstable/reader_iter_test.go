@@ -58,11 +58,10 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			_, err := newRowBlockSingleLevelIterator(
 				context.Background(),
 				r,
-				nil, /* v */
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
-				block.ReadEnv{Stats: &stats, BufferPool: &pool},
+				ReadEnv{Block: block.ReadEnv{Stats: &stats, BufferPool: &pool}},
 				MakeTrivialReaderProvider(r),
 			)
 			require.Error(t, err)
@@ -70,11 +69,10 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			_, err := newRowBlockTwoLevelIterator(
 				context.Background(),
 				r,
-				nil, /* v */
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
-				block.ReadEnv{Stats: &stats, BufferPool: &pool},
+				ReadEnv{Block: block.ReadEnv{Stats: &stats, BufferPool: &pool}},
 				MakeTrivialReaderProvider(r),
 			)
 			require.Error(t, err)

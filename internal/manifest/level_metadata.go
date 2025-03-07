@@ -52,7 +52,7 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	lm.tree, _ = makeBTree(cmp, bcmp, files)
 	for _, f := range files {
 		lm.totalSize += f.Size
-		if f.Virtual {
+		if f.Virtual != nil {
 			lm.NumVirtual++
 			lm.VirtualSize += f.Size
 		}
@@ -75,7 +75,7 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 		return err
 	}
 	lm.totalSize += f.Size
-	if f.Virtual {
+	if f.Virtual != nil {
 		lm.NumVirtual++
 		lm.VirtualSize += f.Size
 	}
@@ -84,7 +84,7 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 
 func (lm *LevelMetadata) remove(f *TableMetadata) {
 	lm.totalSize -= f.Size
-	if f.Virtual {
+	if f.Virtual != nil {
 		lm.NumVirtual--
 		lm.VirtualSize -= f.Size
 	}
@@ -311,7 +311,7 @@ func (ls *LevelSlice) NumVirtual() uint64 {
 	var n uint64
 	iter := ls.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {
-		if f.Virtual {
+		if f.Virtual != nil {
 			n++
 		}
 	}
@@ -324,7 +324,7 @@ func (ls *LevelSlice) VirtualSizeSum() uint64 {
 	var sum uint64
 	iter := ls.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {
-		if f.Virtual {
+		if f.Virtual != nil {
 			sum += f.Size
 		}
 	}

@@ -111,7 +111,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		nil /* lower TODO */, nil, /* upper TODO */
 		filterer,
 		filterBlockSizeLimit,
-		block.ReadEnv{Stats: &stats, IterStats: nil},
+		ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 		MakeTrivialReaderProvider(r),
 	)
 	require.NoError(t, err)

@@ -304,10 +304,13 @@ func (d *DB) loadTableStats(
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.fileCache.withCommonReader(
-		context.TODO(), block.NoReadEnv,
-		meta, func(r sstable.CommonReader, _ block.ReadEnv) (err error) {
-			props := r.CommonProperties()
+
+	err := d.fileCache.withReader(
+		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
+			props := r.Properties
+			if meta.Virtual != nil {
+				props = r.Properties.GetScaledProperties(env.Virtual.BackingSize, env.Virtual.Size)
+			}
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
 			stats.NumRangeKeySets = props.NumRangeKeySets
@@ -318,13 +321,13 @@ func (d *DB) loadTableStats(
 			}
 
 			if props.NumPointDeletions() > 0 {
-				if err = d.loadTablePointKeyStats(props, v, level, meta, &stats); err != nil {
+				if err = d.loadTablePointKeyStats(&props, v, level, meta, &stats); err != nil {
 					return
 				}
 			}
 			if props.NumRangeDeletions > 0 || props.NumRangeKeyDels > 0 {
 				if compactionHints, err = d.loadTableRangeDelStats(
-					r, v, level, meta, &stats,
+					r, v, level, meta, &stats, env,
 				); err != nil {
 					return
 				}
@@ -340,11 +343,7 @@ func (d *DB) loadTableStats(
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table. The provided manifest.TableStats are updated.
 func (d *DB) loadTablePointKeyStats(
-	props *sstable.CommonProperties,
-	v *version,
-	level int,
-	meta *tableMetadata,
-	stats *manifest.TableStats,
+	props *sstable.Properties, v *version, level int, meta *tableMetadata, stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
@@ -353,6 +352,7 @@ func (d *DB) loadTablePointKeyStats(
 	// a sstable property and call averageValueSizeBeneath for each of
 	// these narrower ranges to improve the estimate.
 	avgValLogicalSize, compressionRatio, err := d.estimateSizesBeneath(v, level, meta, props)
+
 	if err != nil {
 		return err
 	}
@@ -364,9 +364,14 @@ func (d *DB) loadTablePointKeyStats(
 // loadTableRangeDelStats calculates the range deletion and range key deletion
 // statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
-	r sstable.CommonReader, v *version, level int, meta *tableMetadata, stats *manifest.TableStats,
+	r *sstable.Reader,
+	v *version,
+	level int,
+	meta *tableMetadata,
+	stats *manifest.TableStats,
+	env sstable.ReadEnv,
 ) ([]deleteCompactionHint, error) {
-	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta)
+	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta, env)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +430,7 @@ func (d *DB) loadTableRangeDelStats(
 		// the size of the range key block relative to the overall size of the
 		// table is expected to be small.
 		if level == numLevels-1 && meta.SmallestSeqNum < maxRangeDeleteSeqNum {
-			size, err := r.EstimateDiskUsage(start, end)
+			size, err := r.EstimateDiskUsage(start, end, env)
 			if err != nil {
 				return nil, err
 			}
@@ -472,7 +477,7 @@ func (d *DB) loadTableRangeDelStats(
 }
 
 func (d *DB) estimateSizesBeneath(
-	v *version, level int, meta *tableMetadata, fileProps *sstable.CommonProperties,
+	v *version, level int, meta *tableMetadata, fileProps *sstable.Properties,
 ) (avgValueLogicalSize, compressionRatio float64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
@@ -488,14 +493,14 @@ func (d *DB) estimateSizesBeneath(
 	keySum += fileProps.RawKeySize
 	valSum += fileProps.RawValueSize
 
-	addPhysicalTableStats := func(r *sstable.Reader, _ block.ReadEnv) (err error) {
+	addPhysicalTableStats := func(r *sstable.Reader, _ sstable.ReadEnv) (err error) {
 		fileSum += file.Size
 		entryCount += r.Properties.NumEntries
 		keySum += r.Properties.RawKeySize
 		valSum += r.Properties.RawValueSize
 		return nil
 	}
-	addVirtualTableStats := func(v sstable.VirtualReader, _ block.ReadEnv) (err error) {
+	addVirtualTableStats := func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
 		fileSum += file.Size
 		entryCount += file.Stats.NumEntries
 		keySum += v.Properties.RawKeySize
@@ -508,8 +513,8 @@ func (d *DB) estimateSizesBeneath(
 		iter := overlaps.Iter()
 		for file = iter.First(); file != nil; file = iter.Next() {
 			var err error
-			if file.Virtual {
-				err = d.fileCache.withVirtualReader(context.TODO(), block.NoReadEnv, file.VirtualMeta(), addVirtualTableStats)
+			if file.Virtual != nil {
+				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.VirtualMeta(), addVirtualTableStats)
 			} else {
 				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.PhysicalMeta(), addPhysicalTableStats)
 			}
@@ -615,18 +620,18 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				}
 				var size uint64
 				var err error
-				if file.Virtual {
-					err = d.fileCache.withVirtualReader(
+				if file.Virtual != nil {
+					err = d.fileCache.withReader(
 						context.TODO(), block.NoReadEnv,
-						file.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) (err error) {
-							size, err = r.EstimateDiskUsage(start, end)
+						file.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
+							size, err = r.EstimateDiskUsage(start, end, env)
 							return err
 						})
 				} else {
 					err = d.fileCache.withReader(
 						context.TODO(), block.NoReadEnv,
-						file.PhysicalMeta(), func(r *sstable.Reader, _ block.ReadEnv) (err error) {
-							size, err = r.EstimateDiskUsage(start, end)
+						file.PhysicalMeta(), func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
+							size, err = r.EstimateDiskUsage(start, end, env)
 							return err
 						})
 				}
@@ -646,7 +651,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	return estimate, hintSeqNum, nil
 }
 
-func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) bool {
+func maybeSetStatsFromProperties(meta *tableMetadata, props *sstable.Properties) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -677,7 +682,7 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 		// doesn't require any additional IO and since the number of point
 		// deletions in the file is low, the error introduced by this crude
 		// estimate is expected to be small.
-		commonProps := &props.CommonProperties
+		commonProps := props
 		avgValSize, compressionRatio := estimatePhysicalSizes(meta.Size, commonProps)
 		pointEstimate = pointDeletionsBytesEstimate(meta.Size, commonProps, avgValSize, compressionRatio)
 	}
@@ -694,7 +699,7 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 }
 
 func pointDeletionsBytesEstimate(
-	fileSize uint64, props *sstable.CommonProperties, avgValLogicalSize, compressionRatio float64,
+	fileSize uint64, props *sstable.Properties, avgValLogicalSize, compressionRatio float64,
 ) (estimate uint64) {
 	if props.NumEntries == 0 {
 		return 0
@@ -781,7 +786,7 @@ func pointDeletionsBytesEstimate(
 }
 
 func estimatePhysicalSizes(
-	fileSize uint64, props *sstable.CommonProperties,
+	fileSize uint64, props *sstable.Properties,
 ) (avgValLogicalSize, compressionRatio float64) {
 	// RawKeySize and RawValueSize are uncompressed totals. Scale according to
 	// the data size to account for compression, index blocks and metadata
@@ -854,7 +859,7 @@ func estimatePhysicalSizes(
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
 func newCombinedDeletionKeyspanIter(
-	comparer *base.Comparer, cr sstable.CommonReader, m *tableMetadata,
+	comparer *base.Comparer, r *sstable.Reader, m *tableMetadata, env sstable.ReadEnv,
 ) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.
@@ -915,8 +920,7 @@ func newCombinedDeletionKeyspanIter(
 		return nil
 	})
 	mIter.Init(comparer, transform, new(keyspanimpl.MergingBuffers))
-
-	iter, err := cr.NewRawRangeDelIter(context.TODO(), m.FragmentIterTransforms(), block.NoReadEnv)
+	iter, err := r.NewRawRangeDelIter(context.TODO(), m.FragmentIterTransforms(), env)
 	if err != nil {
 		return nil, err
 	}
@@ -967,7 +971,7 @@ func newCombinedDeletionKeyspanIter(
 		mIter.AddLevel(iter)
 	}
 
-	iter, err = cr.NewRawRangeKeyIter(context.TODO(), m.FragmentIterTransforms(), block.NoReadEnv)
+	iter, err = r.NewRawRangeKeyIter(context.TODO(), m.FragmentIterTransforms(), env)
 	if err != nil {
 		return nil, err
 	}

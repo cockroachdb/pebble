@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -277,7 +276,7 @@ func openExternalObj(
 	pointIter, err = reader.NewIter(sstable.NoTransforms, start, end)
 	panicIfErr(err)
 
-	rangeDelIter, err = reader.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.NoReadEnv)
+	rangeDelIter, err = reader.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, sstable.NoReadEnv)
 	panicIfErr(err)
 	if rangeDelIter != nil {
 		rangeDelIter = keyspan.Truncate(
@@ -287,7 +286,7 @@ func openExternalObj(
 		)
 	}
 
-	rangeKeyIter, err = reader.NewRawRangeKeyIter(context.Background(), sstable.NoFragmentTransforms, block.NoReadEnv)
+	rangeKeyIter, err = reader.NewRawRangeKeyIter(context.Background(), sstable.NoFragmentTransforms, sstable.NoReadEnv)
 	panicIfErr(err)
 	if rangeKeyIter != nil {
 		rangeKeyIter = keyspan.Truncate(

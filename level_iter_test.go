@@ -192,7 +192,7 @@ func (lt *levelIterTest) newIters(
 		set.point = iter
 	}
 	if kinds.RangeDeletion() {
-		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(context.Background(), file.FragmentIterTransforms(), block.NoReadEnv)
+		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(context.Background(), file.FragmentIterTransforms(), sstable.NoReadEnv)
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
@@ -486,7 +486,7 @@ func TestLevelIterSeek(t *testing.T) {
 			slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
 			iter := &levelIterTestIter{levelIter: &levelIter{}}
 			iter.init(context.Background(), IterOptions{}, testkeys.Comparer, lt.newIters, slice.Iter(),
-				manifest.Level(level), internalIterOpts{readEnv: block.ReadEnv{Stats: &stats}})
+				manifest.Level(level), internalIterOpts{readEnv: sstable.ReadEnv{Block: block.ReadEnv{Stats: &stats}}})
 			defer iter.Close()
 			iter.initRangeDel(rangeDelIterSetterFunc(func(rangeDelIter keyspan.FragmentIterator) {
 				if iter.rangeDelIter != nil {

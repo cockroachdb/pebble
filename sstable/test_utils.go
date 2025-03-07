@@ -10,7 +10,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // ReadAll returns all point keys, range del spans, and range key spans from an
@@ -41,7 +40,7 @@ func ReadAll(
 	}
 
 	ctx := context.Background()
-	rangeDelIter, err := reader.NewRawRangeDelIter(ctx, NoFragmentTransforms, block.NoReadEnv)
+	rangeDelIter, err := reader.NewRawRangeDelIter(ctx, NoFragmentTransforms, NoReadEnv)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -60,7 +59,7 @@ func ReadAll(
 		}
 	}
 
-	rangeKeyIter, err := reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms, block.NoReadEnv)
+	rangeKeyIter, err := reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms, NoReadEnv)
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 func TestVirtualBackings(t *testing.T) {
@@ -37,18 +38,20 @@ func TestVirtualBackings(t *testing.T) {
 			bv.Remove(n)
 
 		case "add-table":
-			bv.AddTable(&TableMetadata{
-				Virtual:     true,
+			m := &TableMetadata{
 				FileBacking: &FileBacking{DiskFileNum: n},
 				Size:        size,
-			})
+				Virtual:     &virtual.VirtualReaderParams{},
+			}
+			bv.AddTable(m)
 
 		case "remove-table":
-			bv.RemoveTable(&TableMetadata{
-				Virtual:     true,
+			m := &TableMetadata{
 				FileBacking: &FileBacking{DiskFileNum: n},
 				Size:        size,
-			})
+				Virtual:     &virtual.VirtualReaderParams{},
+			}
+			bv.RemoveTable(m)
 
 		case "protect":
 			bv.Protect(n)
