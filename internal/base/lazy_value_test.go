@@ -58,9 +58,11 @@ func TestLazyValue(t *testing.T) {
 						numCalls++
 						require.Equal(t, []byte("foo-handle"), handle)
 						require.Equal(t, uint32(3), valLen)
+						require.Equal(t, DiskFileNum(90), blobFileNum)
 						return fooBytes1, callerOwned, nil
 					}),
-				Attribute: AttributeAndLen{ValueLen: 3, ShortAttribute: 7},
+				Attribute:   AttributeAndLen{ValueLen: 3, ShortAttribute: 7},
+				BlobFileNum: 90,
 			},
 		}
 		require.Equal(t, []byte("foo"), getValue(fooLV3, callerOwned))

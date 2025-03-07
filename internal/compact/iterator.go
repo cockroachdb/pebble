@@ -192,7 +192,11 @@ type Iter struct {
 	// Temporary buffer used for storing the previous value, which may be an
 	// unsafe, i.iter-owned slice that could be altered when the iterator is
 	// advanced.
-	valueBuf         []byte
+	valueBuf []byte
+	// valueFetcher is used by saveValue when Cloning values.  When the iterator
+	// is configured to preserve blob references, the iterator may Clone blob
+	// reference values before returning them to the caller.
+	valueFetcher     base.LazyFetcher
 	iterKV           *base.InternalKV
 	iterStripeChange stripeChangeType
 	// skip indicates whether the remaining entries in the current snapshot
@@ -272,6 +276,20 @@ type IterConfig struct {
 	// optimization during forward iteration). This can be enabled if there are no
 	// tables overlapping the output at lower levels (than the output) in the LSM.
 	AllowZeroSeqNum bool
+
+	// PreserveBlobReferences configures the compaction iterator to preserve
+	// existing blob references in the input tables wherever possible.
+	// Compactions that don't write blob files may set this to true, so that
+	// they carry forward existing blob references.
+	//
+	// If PreserveBlobReferences is false, the compaction iterator may still
+	// output InternalValues backed by blob references. Callers should be
+	// prepared to handle InternalValues backed by blob references regardless of
+	// the this value. Compactions that rewrite blob files will set this to
+	// false. It may also be set to false if separation of values into external
+	// blob files has been disabled, in which case we wish to convert any extant
+	// external blob file references to in-place values.
+	PreserveBlobReferences bool
 
 	// IneffectualPointDeleteCallback is called if a SINGLEDEL is being elided
 	// without deleting a point set/merge. False positives are rare but possible
@@ -878,6 +896,11 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// value and return. We change the kind of the resulting key to a
 			// Set so that it shadows keys in lower levels. That is:
 			// MERGE + (SET*) -> SET.
+			//
+			// Because we must merge the value, we must retrieve it regardless
+			// of whether the compaction is attempting to preserve existing blob
+			// references. If the compaction is preserving blob references, the
+			// resulting value will end up in-place within the sstable.
 			var v []byte
 			var callerOwned bool
 			v, callerOwned, i.err = i.iterKV.Value(i.valueBuf[:0])
@@ -1289,11 +1312,22 @@ func (i *Iter) saveKey() {
 //
 // If the value is in-place, this copies it into i.valueBuf. If the value is in
 // a value block, it retrieves the value from the block (possibly storing the
-// result into i.valueBuf).
+// result into i.valueBuf). If the value is stored in an external blob file and
+// the compaction iterator is configured to preserve blob file references, the
+// value is cloned (InternalValue.Clone) without retrieving it from the external
+// file. Otherwise, the external blob value is retrieved.
+//
+// Note that because saveValue uses i.valueBuf and i.valueFetcher to avoid
+// allocations, values saved by saveValue are only valid until the next call to
+// saveValue.
 func (i *Iter) saveValue() {
-	// TODO(jackson): With the introduction of values stored in separate
-	// physical blob files, this should begin to Clone LazyValues that are
-	// stored in blob reference files when non-rewriting blob files.
+	// If the iterator is configured to preserve blob references, we don't
+	// want to actually retrieve the value to save it. Instead, Clone it.
+	if i.cfg.PreserveBlobReferences && i.iterKV.V.IsBlobValueHandle() {
+		i.kv.V, i.valueBuf = i.iterKV.V.Clone(i.valueBuf, &i.valueFetcher)
+		return
+	}
+
 	v, callerOwned, err := i.iterKV.Value(i.valueBuf[:0])
 	if err != nil {
 		i.err = err

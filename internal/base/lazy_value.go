@@ -216,7 +216,7 @@ func (lv *LazyValue) fetchValue(
 	if !f.fetched {
 		f.fetched = true
 		f.value, f.callerOwned, f.err = f.Fetcher.Fetch(ctx,
-			lv.ValueOrHandle, lv.Fetcher.BlobFileNum, lv.Fetcher.Attribute.ValueLen, buf)
+			lv.ValueOrHandle, f.BlobFileNum, f.Attribute.ValueLen, buf)
 	}
 	return f.value, f.callerOwned, f.err
 }
@@ -262,8 +262,9 @@ func (lv *LazyValue) Clone(buf []byte, fetcher *LazyFetcher) (LazyValue, []byte)
 	var lvCopy LazyValue
 	if lv.Fetcher != nil {
 		*fetcher = LazyFetcher{
-			Fetcher:   lv.Fetcher.Fetcher,
-			Attribute: lv.Fetcher.Attribute,
+			Fetcher:     lv.Fetcher.Fetcher,
+			Attribute:   lv.Fetcher.Attribute,
+			BlobFileNum: lv.Fetcher.BlobFileNum,
 			// Not copying anything that has been extracted.
 		}
 		lvCopy.Fetcher = fetcher
