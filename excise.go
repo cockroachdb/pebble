@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 // Excise atomically deletes all data overlapping with the provided span. All
@@ -102,7 +103,7 @@ func (d *DB) exciseTable(
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
 		leftTable = &tableMetadata{
-			Virtual:     true,
+			Virtual:     &virtual.VirtualReaderParams{},
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -135,7 +136,7 @@ func (d *DB) exciseTable(
 		// See comment before the definition of leftFile for the motivation behind
 		// calculating tight user-key bounds.
 		rightTable = &tableMetadata{
-			Virtual:     true,
+			Virtual:     &virtual.VirtualReaderParams{},
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -351,7 +352,7 @@ func applyExciseToVersionEdit(
 	if leftTable == nil && rightTable == nil {
 		return
 	}
-	if !originalTable.Virtual {
+	if originalTable.Virtual == nil {
 		// If the original table was virtual, then its file backing is already known
 		// to the manifest; we don't need to create another file backing. Note that
 		// there must be only one CreatedBackingTables entry per backing sstable.

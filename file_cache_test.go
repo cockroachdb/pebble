@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -358,7 +359,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestPointKey:      base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		LargestPointKey:       base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		HasPointKeys:          true,
-		Virtual:               true,
+		Virtual:               &virtual.VirtualReaderParams{},
 	}
 	v1.Stats.NumEntries = 1
 
@@ -377,7 +378,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestRangeKey:      base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
 		LargestRangeKey:       base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset),
 		HasPointKeys:          true,
-		Virtual:               true,
+		Virtual:               &virtual.VirtualReaderParams{},
 	}
 	v2.Stats.NumEntries = 6
 
@@ -434,7 +435,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	currVersion = d.mu.versions.currentVersion()
 	l6 = currVersion.Levels[6]
 	for f := range l6.All() {
-		require.Equal(t, true, f.Virtual)
+		require.Equal(t, true, f.Virtual != nil)
 	}
 	d.mu.Unlock()
 

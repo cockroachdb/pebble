@@ -139,7 +139,7 @@ func validateExternalIterOpts(iterOpts *IterOptions) error {
 }
 
 func createExternalPointIter(
-	ctx context.Context, it *Iterator, readEnv block.ReadEnv,
+	ctx context.Context, it *Iterator, readEnv sstable.ReadEnv,
 ) (topLevelIterator, error) {
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
@@ -217,14 +217,16 @@ func createExternalPointIter(
 }
 
 func finishInitializingExternal(ctx context.Context, it *Iterator) error {
-	readEnv := block.ReadEnv{
-		Stats: &it.stats.InternalStats,
-		// TODO(jackson): External iterators never provide categorized iterator
-		// stats today because they exist outside the context of a *DB. If the
-		// sstables being read are on the physical filesystem, we may still want to
-		// thread a CategoryStatsCollector through so that we collect their stats.
-		IterStats:  nil,
-		BufferPool: &it.externalIter.bufferPool,
+	readEnv := sstable.ReadEnv{
+		Block: block.ReadEnv{
+			Stats: &it.stats.InternalStats,
+			// TODO(jackson): External iterators never provide categorized iterator
+			// stats today because they exist outside the context of a *DB. If the
+			// sstables being read are on the physical filesystem, we may still want to
+			// thread a CategoryStatsCollector through so that we collect their stats.
+			IterStats:  nil,
+			BufferPool: &it.externalIter.bufferPool,
+		},
 	}
 	pointIter, err := createExternalPointIter(ctx, it, readEnv)
 	if err != nil {

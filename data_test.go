@@ -1324,11 +1324,13 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	}
 	defer r.Close()
 
-	var v sstable.VirtualReader
 	props := r.Properties.String()
-	if m != nil && m.Virtual {
-		v = sstable.MakeVirtualReader(r, m.VirtualMeta().VirtualReaderParams(false /* isShared */))
-		props = v.Properties.String()
+	env := sstable.ReadEnv{}
+	if m != nil && m.Virtual != nil {
+		m.InitVirtual(false /* isShared */)
+		env.Virtual = m.Virtual
+		scaledProps := r.Properties.GetScaledProperties(env.Virtual.BackingSize, env.Virtual.Size)
+		props = scaledProps.String()
 	}
 	if len(td.Input) == 0 {
 		return props
