@@ -6,6 +6,7 @@ package compact
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -13,11 +14,13 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,7 +56,6 @@ func TestCompactionIter(t *testing.T) {
 	var snapshots Snapshots
 	var elideTombstones bool
 	var allowZeroSeqnum bool
-
 	var ineffectualSingleDeleteKeys []string
 	var invariantViolationSingleDeleteKeys []string
 	resetSingleDelStats := func() {
@@ -133,16 +135,18 @@ func TestCompactionIter(t *testing.T) {
 						continue
 					}
 
-					var value []byte
+					var iv base.InternalValue
 					if strings.HasPrefix(key[j+1:], "varint(") {
 						valueStr := strings.TrimSuffix(strings.TrimPrefix(key[j+1:], "varint("), ")")
 						v, err := strconv.ParseUint(valueStr, 10, 64)
 						require.NoError(t, err)
-						value = binary.AppendUvarint([]byte(nil), v)
+						iv = base.MakeInPlaceValue(binary.AppendUvarint([]byte(nil), v))
+					} else if strings.HasPrefix(key[j+1:], "blobref(") {
+						iv = decodeBlobReference(t, key[j+1:])
 					} else {
-						value = []byte(key[j+1:])
+						iv = base.MakeInPlaceValue([]byte(key[j+1:]))
 					}
-					kvs = append(kvs, base.MakeInternalKV(ik, value))
+					kvs = append(kvs, base.InternalKV{K: ik, V: iv})
 				}
 				rangeDelFragmenter.Finish()
 				return ""
@@ -202,9 +206,15 @@ func TestCompactionIter(t *testing.T) {
 					}
 					var value []byte
 					if kv != nil {
-						var err error
-						value, _, err = kv.Value(nil)
-						require.NoError(t, err)
+						if kv.V.IsBlobValueHandle() {
+							lv := kv.V.LazyValue()
+							value = []byte(fmt.Sprintf("<blobref(%s, encodedHandle=%x, valLen=%d)>",
+								lv.Fetcher.BlobFileNum, lv.ValueOrHandle, lv.Fetcher.Attribute.ValueLen))
+						} else {
+							var err error
+							value, _, err = kv.Value(nil)
+							require.NoError(t, err)
+						}
 					}
 
 					if kv != nil {
@@ -265,6 +275,60 @@ func TestCompactionIter(t *testing.T) {
 	runTest(t, "testdata/iter")
 	runTest(t, "testdata/iter_set_with_del")
 	runTest(t, "testdata/iter_delete_sized")
+}
+
+// mockBlobValueFetcher is a dummy ValueFetcher implementation which produces
+// string values referencing the blobref.
+type mockBlobValueFetcher struct{}
+
+var _ base.ValueFetcher = mockBlobValueFetcher{}
+
+func (mockBlobValueFetcher) Fetch(
+	ctx context.Context, handle []byte, fileNum base.DiskFileNum, valLen uint32, buf []byte,
+) (val []byte, callerOwned bool, err error) {
+	s := fmt.Sprintf("<fetched value from blobref(%s, encodedHandle=%x, valLen=%d)>",
+		fileNum, handle, valLen)
+	return []byte(s), false, nil
+}
+
+// decodeBlobReference decodes a blob reference from a debug string. It expects
+// a value of the form: blobref(<filenum>, blk<blocknum>, <offset>, <valLen>).
+// For example: blobref(000124, blk255, 10, 9235)
+func decodeBlobReference(t testing.TB, ref string) base.InternalValue {
+	fields := strings.FieldsFunc(strings.TrimSuffix(strings.TrimPrefix(ref, "blobref("), ")"),
+		func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+	require.Equal(t, 4, len(fields))
+	fileNum, err := strconv.ParseUint(fields[0], 10, 64)
+	require.NoError(t, err)
+	blockNum, err := strconv.ParseUint(strings.TrimPrefix(fields[1], "blk"), 10, 32)
+	require.NoError(t, err)
+	off, err := strconv.ParseUint(fields[2], 10, 32)
+	require.NoError(t, err)
+	valLen, err := strconv.ParseUint(fields[3], 10, 32)
+	require.NoError(t, err)
+
+	// TODO(jackson): Support short (and long, when introduced) attributes.
+	return base.MakeLazyValue(base.LazyValue{
+		ValueOrHandle: encodeRemainingHandle(uint32(blockNum), uint32(off)),
+		Fetcher: &base.LazyFetcher{
+			Fetcher:     mockBlobValueFetcher{},
+			BlobFileNum: base.DiskFileNum(fileNum),
+			Attribute: base.AttributeAndLen{
+				ValueLen: uint32(valLen),
+			},
+		},
+	})
+}
+
+func encodeRemainingHandle(blockNum uint32, offsetInBlock uint32) []byte {
+	// TODO(jackson): Pull this into a common helper.
+	dst := make([]byte, valblk.HandleMaxLen)
+	n := valblk.EncodeHandle(dst, valblk.Handle{
+		ValueLen:      0,
+		BlockNum:      blockNum,
+		OffsetInBlock: offsetInBlock,
+	})
+	return dst[1:n]
 }
 
 // makeInputIters creates the iterators necessthat can be used to create a compaction

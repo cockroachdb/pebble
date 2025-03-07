@@ -192,7 +192,9 @@ type Iter struct {
 	// Temporary buffer used for storing the previous value, which may be an
 	// unsafe, i.iter-owned slice that could be altered when the iterator is
 	// advanced.
-	valueBuf         []byte
+	valueBuf []byte
+	// valueFetcher is used by saveValue when Cloning InternalValues.
+	valueFetcher     base.LazyFetcher
 	iterKV           *base.InternalKV
 	iterStripeChange stripeChangeType
 	// skip indicates whether the remaining entries in the current snapshot
@@ -878,6 +880,9 @@ func (i *Iter) mergeNext(valueMerger base.ValueMerger) {
 			// value and return. We change the kind of the resulting key to a
 			// Set so that it shadows keys in lower levels. That is:
 			// MERGE + (SET*) -> SET.
+			//
+			// Because we must merge the value, we must retrieve it regardless
+			// of whether the value is a blob reference.
 			var v []byte
 			var callerOwned bool
 			v, callerOwned, i.err = i.iterKV.Value(i.valueBuf[:0])
@@ -1289,11 +1294,20 @@ func (i *Iter) saveKey() {
 //
 // If the value is in-place, this copies it into i.valueBuf. If the value is in
 // a value block, it retrieves the value from the block (possibly storing the
-// result into i.valueBuf).
+// result into i.valueBuf). If the value is stored in an external blob file, the
+// value is cloned (InternalValue.Clone) without retrieving it from the external
+// file.
+//
+// Note that because saveValue uses i.valueBuf and i.valueFetcher to avoid
+// allocations, values saved by saveValue are only valid until the next call to
+// saveValue.
 func (i *Iter) saveValue() {
-	// TODO(jackson): With the introduction of values stored in separate
-	// physical blob files, this should begin to Clone LazyValues that are
-	// stored in blob reference files when non-rewriting blob files.
+	// Clone blob value handles to defer the retrieval of the value.
+	if i.iterKV.V.IsBlobValueHandle() {
+		i.kv.V, i.valueBuf = i.iterKV.V.Clone(i.valueBuf, &i.valueFetcher)
+		return
+	}
+
 	v, callerOwned, err := i.iterKV.Value(i.valueBuf[:0])
 	if err != nil {
 		i.err = err

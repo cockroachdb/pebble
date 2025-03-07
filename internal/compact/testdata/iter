@@ -1124,3 +1124,44 @@ next
 ----
 a#3,SET:val
 .
+
+# Define an input sequence of simple blob references, all pointing into the same
+# blob file block.
+
+define
+a.SET.9:blobref(000294, blk2, 10, 20)
+b.SET.3:blobref(000294, blk2, 30, 5)
+c.SETWITHDEL.8:blobref(000294, blk2, 35, 100)
+d.SET.2:blobref(000294, blk2, 135, 4)
+----
+
+# An iterator should preserve blob references.
+
+iter
+first
+next
+next
+next
+----
+a#9,SET:<blobref(000294, encodedHandle=020a, valLen=20)>
+b#3,SET:<blobref(000294, encodedHandle=021e, valLen=5)>
+c#8,SETWITHDEL:<blobref(000294, encodedHandle=0223, valLen=100)>
+d#2,SET:<blobref(000294, encodedHandle=028701, valLen=4)>
+
+# The iterator may need to fetch a blob value if it's an operand to the merge
+# operator.
+
+define
+a.SET.3:blobref(000294, blk2, 10, 20)
+b.MERGE.9:mergekeyvalue
+b.SETWITHDEL.8:blobref(000294, blk2, 35, 100)
+----
+
+iter
+first
+next
+next
+----
+a#3,SET:<blobref(000294, encodedHandle=020a, valLen=20)>
+b#9,SET:<fetched value from blobref(000294, encodedHandle=0223, valLen=100)>mergekeyvalue[base]
+.
