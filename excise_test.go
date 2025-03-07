@@ -820,9 +820,9 @@ func TestExciseBounds(t *testing.T) {
 			checkErr(err)
 			pointIter, err := r.NewPointIter(ctx, sstable.IterOptions{})
 			checkErr(err)
-			rangeDelIter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, block.ReadEnv{})
+			rangeDelIter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, sstable.ReadEnv{})
 			checkErr(err)
-			rangeKeyIter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, block.ReadEnv{})
+			rangeKeyIter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, sstable.ReadEnv{})
 			checkErr(err)
 			iters := iterSet{
 				point:         pointIter,

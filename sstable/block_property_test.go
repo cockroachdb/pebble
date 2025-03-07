@@ -992,7 +992,7 @@ func TestBlockProperties(t *testing.T) {
 				Transforms:           NoTransforms,
 				Filterer:             filterer,
 				FilterBlockSizeLimit: NeverUseFilterBlock,
-				Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+				Env:                  ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
 				BlobContext:          AssertNoBlobHandles,
 			})
@@ -1082,7 +1082,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				Transforms:           NoTransforms,
 				Filterer:             filterer,
 				FilterBlockSizeLimit: NeverUseFilterBlock,
-				Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+				Env:                  ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
 				BlobContext:          AssertNoBlobHandles,
 			})

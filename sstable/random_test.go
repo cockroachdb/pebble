@@ -109,7 +109,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		Transforms:           NoTransforms,
 		Filterer:             filterer,
 		FilterBlockSizeLimit: filterBlockSizeLimit,
-		Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+		Env:                  ReadEnv{Block: block.ReadEnv{Stats: &stats, IterStats: nil}},
 		ReaderProvider:       MakeTrivialReaderProvider(r),
 		BlobContext:          AssertNoBlobHandles,
 	})

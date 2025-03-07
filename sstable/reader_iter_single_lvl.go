@@ -51,9 +51,6 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	blockLower []byte
 	blockUpper []byte
 	reader     *Reader
-	// vState will be set iff the iterator is constructed for virtual sstable
-	// iteration.
-	vState *virtualState
 	// endKeyInclusive is set to force the iterator to treat the upper field as
 	// inclusive while iterating instead of exclusive.
 	endKeyInclusive       bool
@@ -73,7 +70,8 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	err          error
 	closeHook    func()
 
-	readBlockEnv block.ReadEnv
+	readEnv ReadEnv
+
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
 	// can use the fact that the iterator is either within the previous bounds
@@ -201,7 +199,7 @@ var _ base.InternalIterator = (*singleLevelIteratorRowBlocks)(nil)
 // sstable bounds. If the virtualState passed in is not nil, then virtual
 // sstable bounds will be enforced.
 func newColumnBlockSingleLevelIterator(
-	ctx context.Context, r *Reader, v *virtualState, opts IterOptions,
+	ctx context.Context, r *Reader, opts IterOptions,
 ) (*singleLevelIteratorColumnBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -210,13 +208,13 @@ func newColumnBlockSingleLevelIterator(
 		panic(errors.AssertionFailedf("table format %d should not use columnar block format", r.tableFormat))
 	}
 	i := singleLevelIterColumnBlockPool.Get().(*singleLevelIteratorColumnBlocks)
-	i.init(ctx, r, v, opts)
+	i.init(ctx, r, opts)
 	if r.Properties.NumValueBlocks > 0 {
-		i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Stats)
+		i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
 	i.data.InitOnce(r.keySchema, r.Comparer, &i.internalValueConstructor)
-	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
+	indexH, err := r.readTopLevelIndexBlock(ctx, i.readEnv.Block, i.indexFilterRH)
 	if err == nil {
 		err = i.index.InitHandle(r.Comparer, indexH, opts.Transforms)
 	}
@@ -235,7 +233,7 @@ func newColumnBlockSingleLevelIterator(
 // sstable bounds. If the virtualState passed in is not nil, then virtual
 // sstable bounds will be enforced.
 func newRowBlockSingleLevelIterator(
-	ctx context.Context, r *Reader, v *virtualState, opts IterOptions,
+	ctx context.Context, r *Reader, opts IterOptions,
 ) (*singleLevelIteratorRowBlocks, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -244,10 +242,10 @@ func newRowBlockSingleLevelIterator(
 		panic(errors.AssertionFailedf("table format %s uses block columnar format", r.tableFormat))
 	}
 	i := singleLevelIterRowBlockPool.Get().(*singleLevelIteratorRowBlocks)
-	i.init(ctx, r, v, opts)
+	i.init(ctx, r, opts)
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
-			i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Stats)
+			i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
 			// We can set the GetLazyValuer directly to the vbReader because
 			// rowblk sstables never contain blob value handles.
 			(&i.data).SetGetLazyValuer(&i.internalValueConstructor.vbReader)
@@ -256,7 +254,7 @@ func newRowBlockSingleLevelIterator(
 		i.data.SetHasValuePrefix(true)
 	}
 
-	indexH, err := r.readTopLevelIndexBlock(ctx, i.readBlockEnv, i.indexFilterRH)
+	indexH, err := r.readTopLevelIndexBlock(ctx, i.readEnv.Block, i.indexFilterRH)
 	if err == nil {
 		err = i.index.InitHandle(r.Comparer, indexH, opts.Transforms)
 	}
@@ -268,9 +266,7 @@ func newRowBlockSingleLevelIterator(
 }
 
 // init initializes the singleLevelIterator struct. It does not read the index.
-func (i *singleLevelIterator[I, PI, D, PD]) init(
-	ctx context.Context, r *Reader, v *virtualState, opts IterOptions,
-) {
+func (i *singleLevelIterator[I, PI, D, PD]) init(ctx context.Context, r *Reader, opts IterOptions) {
 	i.inPool = false
 	i.ctx = ctx
 	i.lower = opts.Lower
@@ -280,12 +276,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 	i.reader = r
 	i.cmp = r.Comparer.Compare
 	i.transforms = opts.Transforms
-	i.readBlockEnv = opts.Env
+	i.readEnv = opts.Env
 	i.internalValueConstructor.blobContext = opts.BlobContext
-	i.internalValueConstructor.env = &i.readBlockEnv
-	if v != nil {
-		i.vState = v
-		i.endKeyInclusive, i.lower, i.upper = v.constrainBounds(opts.Lower, opts.Upper, false /* endInclusive */)
+	i.internalValueConstructor.env = &i.readEnv.Block
+	if opts.Env.Virtual != nil {
+		i.endKeyInclusive, i.lower, i.upper = opts.Env.Virtual.ConstrainBounds(opts.Lower, opts.Upper, false /* endInclusive */, r.Comparer.Compare)
 	}
 
 	i.indexFilterRH = r.blockReader.UsePreallocatedReadHandle(
@@ -296,13 +291,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(
 
 // Helper function to check if keys returned from iterator are within virtual bounds.
 func (i *singleLevelIterator[I, PI, D, PD]) maybeVerifyKey(kv *base.InternalKV) *base.InternalKV {
-	if invariants.Enabled && kv != nil && i.vState != nil {
+	if invariants.Enabled && kv != nil && i.readEnv.Virtual != nil {
 		key := kv.K.UserKey
-		v := i.vState
-		lc := i.cmp(key, v.lower.UserKey)
-		uc := i.cmp(key, v.upper.UserKey)
-		if lc < 0 || uc > 0 || (uc == 0 && v.upper.IsExclusiveSentinel()) {
-			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.lower.UserKey, v.upper.UserKey))
+		v := i.readEnv.Virtual
+		lc := i.cmp(key, v.Lower.UserKey)
+		uc := i.cmp(key, v.Upper.UserKey)
+		if lc < 0 || uc > 0 || (uc == 0 && v.Upper.IsExclusiveSentinel()) {
+			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.Lower.UserKey, v.Upper.UserKey))
 		}
 	}
 	return kv
@@ -406,20 +401,20 @@ var ensureBoundsOptDeterminism bool
 // this iterator knows bounds will be passed to vState, it can signal that it
 // they should be passed without being rewritten to skip converting to and fro.
 func (i singleLevelIterator[I, PI, P, PD]) SetBoundsWithSyntheticPrefix() bool {
-	return i.vState != nil
+	return i.readEnv.Virtual != nil
 }
 
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
 func (i *singleLevelIterator[I, PI, P, PD]) SetBounds(lower, upper []byte) {
 	i.boundsCmp = 0
-	if i.vState != nil {
+	if i.readEnv.Virtual != nil {
 		// If the reader is constructed for a virtual sstable, then we must
 		// constrain the bounds of the reader. For physical sstables, the bounds
 		// can be wider than the actual sstable's bounds because we won't
 		// accidentally expose additional keys as there are no additional keys.
-		i.endKeyInclusive, lower, upper = i.vState.constrainBounds(
-			lower, upper, false,
+		i.endKeyInclusive, lower, upper = i.readEnv.Virtual.ConstrainBounds(
+			lower, upper, false, i.reader.Comparer.Compare,
 		)
 	} else {
 		// TODO(bananabrick): Figure out the logic here to enable the boundsCmp
@@ -495,7 +490,7 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockRes
 		}
 		// blockIntersects
 	}
-	block, err := i.reader.readDataBlock(i.ctx, i.readBlockEnv, i.dataRH, i.dataBH)
+	block, err := i.reader.readDataBlock(i.ctx, i.readEnv.Block, i.dataRH, i.dataBH)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -515,7 +510,7 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockRes
 func (i *singleLevelIterator[I, PI, D, PD]) ReadValueBlock(
 	bh block.Handle, stats *base.InternalIteratorStats,
 ) (block.BufferHandle, error) {
-	env := i.readBlockEnv
+	env := i.readEnv.Block
 	env.Stats = stats
 	return i.reader.readValueBlock(i.ctx, env, i.vbRH, bh)
 }
@@ -644,7 +639,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.vState != nil {
+	if i.readEnv.Virtual != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
 		//
@@ -795,7 +790,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.vState != nil {
+	if i.readEnv.Virtual != nil {
 		// Callers of SeekPrefixGE aren't aware of virtual sstable bounds, so
 		// we may have to internally restrict the bounds.
 		//
@@ -884,7 +879,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 		}
 	}
 
-	dataH, err := i.reader.readFilterBlock(i.ctx, i.readBlockEnv, i.indexFilterRH, i.reader.filterBH)
+	dataH, err := i.reader.readFilterBlock(i.ctx, i.readEnv.Block, i.indexFilterRH, i.reader.filterBH)
 	if err != nil {
 		return false, err
 	}
@@ -892,9 +887,9 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 	return i.reader.tableFilter.mayContain(dataH.BlockData(), prefixToCheck), nil
 }
 
-// virtualLast should only be called if i.vReader != nil.
+// virtualLast should only be called if i.readBlockEnv.Virtual != nil
 func (i *singleLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
-	if i.vState == nil {
+	if i.readEnv.Virtual == nil {
 		panic("pebble: invalid call to virtualLast")
 	}
 
@@ -998,7 +993,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
-	if i.vState != nil {
+	if i.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
 		//
@@ -1169,7 +1164,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *singleLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
-	if i.vState != nil {
+	if i.readEnv.Virtual != nil {
 		return i.maybeVerifyKey(i.virtualLast())
 	}
 
@@ -1406,7 +1401,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 		// Note that this is only a problem with virtual tables; we make no
 		// guarantees wrt an iterator lower bound when we iterate forward. But we
 		// must never return keys that are not inside the virtual table.
-		if i.vState != nil && i.blockLower != nil {
+		if i.readEnv.Virtual != nil && i.blockLower != nil {
 			kv = PD(&i.data).SeekGE(i.lower, base.SeekGEFlagsNone)
 		} else {
 			kv = PD(&i.data).First()
@@ -1541,8 +1536,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) String() string {
-	if i.vState != nil {
-		return i.vState.fileNum.String()
+	if i.readEnv.Virtual != nil {
+		return i.readEnv.Virtual.FileNum.String()
 	}
 	return i.reader.blockReader.FileNum().String()
 }

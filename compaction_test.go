@@ -600,7 +600,7 @@ func TestCompaction(t *testing.T) {
 		defer provider.Close()
 		for _, levelMetadata := range v.Levels {
 			for meta := range levelMetadata.All() {
-				if meta.Virtual {
+				if meta.Virtual != nil {
 					continue
 				}
 				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{})
@@ -3001,7 +3001,7 @@ func hasExternalFiles(d *DB) bool {
 	for level := 0; level < manifest.NumLevels; level++ {
 		iter := v.Levels[level].Iter()
 		for m := iter.First(); m != nil; m = iter.Next() {
-			if m.Virtual {
+			if m.Virtual != nil {
 				meta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
 				if err != nil {
 					panic(err)

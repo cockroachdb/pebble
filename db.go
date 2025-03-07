@@ -1353,7 +1353,7 @@ type internalIterOpts struct {
 	// NewCompactionIter; these iterators have a more constrained interface
 	// and are optimized for the sequential scan of a compaction.
 	compaction         bool
-	readEnv            block.ReadEnv
+	readEnv            sstable.ReadEnv
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
 	// blobValueFetcher is the base.ValueFetcher to use when constructing
 	// internal values to represent values stored externally in blob files.
@@ -1423,7 +1423,7 @@ func (i *Iterator) constructPointIter(
 	}
 	i.blobValueFetcher.Init(i.fc, readEnv)
 	internalOpts := internalIterOpts{
-		readEnv:          readEnv,
+		readEnv:          sstable.ReadEnv{Block: readEnv},
 		blobValueFetcher: &i.blobValueFetcher,
 	}
 	if i.opts.RangeKeyMasking.Filter != nil {
@@ -2248,7 +2248,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				}
 				destTables[j].Properties = p
 			}
-			destTables[j].Virtual = m.Virtual
+			destTables[j].Virtual = m.Virtual != nil
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum
 			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
 			if err != nil {

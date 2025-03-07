@@ -403,7 +403,7 @@ func firstExternalFileInLevelIter(
 		f = it.Next()
 	}
 	for ; f != nil && endBound.IsUpperBoundFor(cmp, f.Smallest.UserKey); f = it.Next() {
-		if f.Virtual && objstorage.IsExternalTable(objProvider, f.FileBacking.DiskFileNum) {
+		if f.Virtual != nil && objstorage.IsExternalTable(objProvider, f.FileBacking.DiskFileNum) {
 			return f
 		}
 	}

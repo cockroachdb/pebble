@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -122,7 +121,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 						return err.Error()
 					}
 
-					iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms, block.NoReadEnv)
+					iter, err := r.NewRawRangeKeyIter(context.Background(), NoFragmentTransforms, NoReadEnv)
 					if err != nil {
 						return err.Error()
 					}

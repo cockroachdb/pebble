@@ -742,7 +742,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		for _, l := range v.Levels {
 			var level props
 			for t := range l.All() {
-				if t.Virtual {
+				if t.Virtual != nil {
 					// TODO(bananabrick): Handle virtual sstables here. We don't
 					// really have any stats or properties at this point. Maybe
 					// we could approximate some of these properties for virtual
@@ -958,9 +958,7 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func (d *dbT) addProps(
-	objProvider objstorage.Provider, m manifest.PhysicalTableMeta, p *props,
-) error {
+func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadata, p *props) error {
 	ctx := context.Background()
 	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileBacking.DiskFileNum, objstorage.OpenOptions{})
 	if err != nil {
