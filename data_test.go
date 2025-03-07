@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -1190,11 +1191,12 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	}
 	defer r.Close()
 
-	var v sstable.VirtualReader
 	props := r.Properties.String()
+	env := block.ReadEnv{}
 	if m != nil && m.Virtual {
-		v = sstable.MakeVirtualReader(r, m.VirtualMeta().VirtualReaderParams(false /* isShared */))
-		props = v.Properties.String()
+		env.VirtualizeEnv(m.VirtualReaderParams(false /* isShared */), r.Comparer.Compare)
+		scaledProps := r.GetScaledProperties(env.VReaderParams.BackingSize, env.VReaderParams.Size)
+		props = scaledProps.String()
 	}
 	if len(td.Input) == 0 {
 		return props

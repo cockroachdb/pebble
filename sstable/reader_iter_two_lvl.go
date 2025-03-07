@@ -155,7 +155,6 @@ func (i *twoLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) intersec
 func newColumnBlockTwoLevelIterator(
 	ctx context.Context,
 	r *Reader,
-	v *virtualState,
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
@@ -170,7 +169,7 @@ func newColumnBlockTwoLevelIterator(
 		panic(errors.AssertionFailedf("table format %d should not use columnar block format", r.tableFormat))
 	}
 	i := twoLevelIterColumnBlockPool.Get().(*twoLevelIteratorColumnBlocks)
-	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
+	i.secondLevel.init(ctx, r, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
 		env)
 	var getInternalValuer block.GetInternalValueForPrefixAndValueHandler
@@ -212,7 +211,6 @@ func newColumnBlockTwoLevelIterator(
 func newRowBlockTwoLevelIterator(
 	ctx context.Context,
 	r *Reader,
-	v *virtualState,
 	transforms IterTransforms,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
@@ -227,7 +225,7 @@ func newRowBlockTwoLevelIterator(
 		panic(errors.AssertionFailedf("table format %s uses block columnar format", r.tableFormat))
 	}
 	i := twoLevelIterRowBlockPool.Get().(*twoLevelIteratorRowBlocks)
-	i.secondLevel.init(ctx, r, v, transforms, lower, upper, filterer,
+	i.secondLevel.init(ctx, r, transforms, lower, upper, filterer,
 		false, // Disable the use of the filter block in the second level.
 		env)
 	if r.tableFormat >= TableFormatPebblev3 {
@@ -277,7 +275,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) DebugTree(tp treeprinter.Node) {
 func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.secondLevel.vState != nil {
+	if i.secondLevel.readBlockEnv.Virtual {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
 		//
@@ -415,7 +413,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.secondLevel.vState != nil {
+	if i.secondLevel.readBlockEnv.Virtual {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
 		//
@@ -577,7 +575,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 
 // virtualLast should only be called if i.vReader != nil.
 func (i *twoLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
-	if i.secondLevel.vState == nil {
+	if !i.secondLevel.readBlockEnv.Virtual {
 		panic("pebble: invalid call to virtualLast")
 	}
 	if !i.secondLevel.endKeyInclusive {
@@ -638,7 +636,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
-	if i.secondLevel.vState != nil {
+	if i.secondLevel.readBlockEnv.Virtual {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
 		//
@@ -764,7 +762,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
-	if i.secondLevel.vState != nil {
+	if i.secondLevel.readBlockEnv.Virtual {
 		if i.secondLevel.endKeyInclusive {
 			return i.virtualLast()
 		}
@@ -922,8 +920,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 		// Note that this is only a problem with virtual tables; we make no
 		// guarantees wrt an iterator lower bound when we iterate forward. But we
 		// must never return keys that are not inside the virtual table.
-		useSeek := i.secondLevel.vState != nil && (!PI(&i.topLevelIndex).Valid() ||
-			PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.vState.lower.UserKey))
+		useSeek := i.secondLevel.readBlockEnv.Virtual && (!PI(&i.topLevelIndex).Valid() ||
+			PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.readBlockEnv.VReaderParams.Lower.UserKey))
 
 		i.secondLevel.exhaustedBounds = 0
 		if !PI(&i.topLevelIndex).Next() {

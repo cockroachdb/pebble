@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 // Handle is the file offset and length of a block.
@@ -337,6 +338,17 @@ type ReadEnv struct {
 	// allocating a separate function for each object.
 	ReportCorruptionFn  func(opaque any, err error)
 	ReportCorruptionArg any
+
+	// Parameters for when a reader object is used to read virtual tables.
+	VReaderParams virtual.VirtualReaderParams
+	Virtual       bool
+}
+
+// VirtualizeEnv intializes a ReadEnv for reading virtual tables.
+func (env *ReadEnv) VirtualizeEnv(v virtual.VirtualReaderParams, c base.Compare) {
+	env.Virtual = true
+	env.VReaderParams = v
+	env.VReaderParams.Compare = c
 }
 
 // BlockServedFromCache updates the stats when a block was found in the cache.

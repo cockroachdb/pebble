@@ -953,9 +953,7 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func (d *dbT) addProps(
-	objProvider objstorage.Provider, m manifest.PhysicalTableMeta, p *props,
-) error {
+func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadata, p *props) error {
 	ctx := context.Background()
 	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileBacking.DiskFileNum, objstorage.OpenOptions{})
 	if err != nil {

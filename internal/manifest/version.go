@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 // Compare exports the base.Compare type.
@@ -165,6 +166,33 @@ func (s CompactionState) String() string {
 // maintain the table metadata associated with it. We will still maintain the
 // FileBacking associated with the physical sst if the backing sst is required
 // by any virtual ssts in any version.
+//
+// When using these fields in the context of a Virtual Table, These fields
+// have additional invariants imposed on them, and/or slightly varying meanings:
+//   - Smallest and Largest (and their counterparts
+//     {Smallest, Largest}{Point,Range}Key) remain tight bounds that represent a
+//     key at that exact bound. We make the effort to determine the next smallest
+//     or largest key in an sstable after virtualizing it, to maintain this
+//     tightness. If the largest is a sentinel key (IsExclusiveSentinel()), it
+//     could mean that a rangedel or range key ends at that user key, or has been
+//     truncated to that user key.
+//   - One invariant is that if a rangedel or range key is truncated on its
+//     upper bound, the virtual sstable *must* have a rangedel or range key
+//     sentinel key as its upper bound. This is because truncation yields
+//     an exclusive upper bound for the rangedel/rangekey, and if there are
+//     any points at that exclusive upper bound within the same virtual
+//     sstable, those could get uncovered by this truncation. We enforce this
+//     invariant in calls to keyspan.Truncate.
+//   - Size is an estimate of the size of the virtualized portion of this sstable.
+//     The underlying file's size is stored in FileBacking.Size, though it could
+//     also be estimated or could correspond to just the referenced portion of
+//     a file (eg. if the file originated on another node).
+//   - Size must be > 0.
+//   - SmallestSeqNum and LargestSeqNum are loose bounds for virtual sstables.
+//     This means that all keys in the virtual sstable must have seqnums within
+//     [SmallestSeqNum, LargestSeqNum], however there's no guarantee that there's
+//     a key with a seqnum at either of the bounds. Calculating tight seqnum
+//     bounds would be too expensive and deliver little value.
 type TableMetadata struct {
 	// AllowedSeeks is used to determine if a file should be picked for
 	// a read triggered compaction. It is decremented when read sampling
@@ -348,6 +376,17 @@ type TableMetadata struct {
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
 }
 
+func (m *TableMetadata) VirtualReaderParams(isShared bool) virtual.VirtualReaderParams {
+	return virtual.VirtualReaderParams{
+		Lower:            m.Smallest,
+		Upper:            m.Largest,
+		FileNum:          m.FileNum,
+		IsSharedIngested: isShared && m.SyntheticSeqNum() != 0,
+		Size:             m.Size,
+		BackingSize:      m.FileBacking.Size,
+	}
+}
+
 // Ref increments the table's ref count. If this is the table's first reference,
 // Ref will increment the reference of the table's FileBacking and referenced
 // blob files.
@@ -443,84 +482,22 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 	}
 }
 
-// PhysicalTableMeta is used by functions which want a guarantee that their input
-// belongs to a physical sst and not a virtual sst.
-//
-// NB: This type should only be constructed by calling
-// TableMetadata.PhysicalMeta.
-type PhysicalTableMeta struct {
-	*TableMetadata
-}
-
-// VirtualTableMeta is used by functions which want a guarantee that their input
-// belongs to a virtual sst and not a physical sst.
-//
-// A VirtualTableMeta inherits all the same fields as a TableMetadata. These
-// fields have additional invariants imposed on them, and/or slightly varying
-// meanings:
-//   - Smallest and Largest (and their counterparts
-//     {Smallest, Largest}{Point,Range}Key) remain tight bounds that represent a
-//     key at that exact bound. We make the effort to determine the next smallest
-//     or largest key in an sstable after virtualizing it, to maintain this
-//     tightness. If the largest is a sentinel key (IsExclusiveSentinel()), it
-//     could mean that a rangedel or range key ends at that user key, or has been
-//     truncated to that user key.
-//   - One invariant is that if a rangedel or range key is truncated on its
-//     upper bound, the virtual sstable *must* have a rangedel or range key
-//     sentinel key as its upper bound. This is because truncation yields
-//     an exclusive upper bound for the rangedel/rangekey, and if there are
-//     any points at that exclusive upper bound within the same virtual
-//     sstable, those could get uncovered by this truncation. We enforce this
-//     invariant in calls to keyspan.Truncate.
-//   - Size is an estimate of the size of the virtualized portion of this sstable.
-//     The underlying file's size is stored in FileBacking.Size, though it could
-//     also be estimated or could correspond to just the referenced portion of
-//     a file (eg. if the file originated on another node).
-//   - Size must be > 0.
-//   - SmallestSeqNum and LargestSeqNum are loose bounds for virtual sstables.
-//     This means that all keys in the virtual sstable must have seqnums within
-//     [SmallestSeqNum, LargestSeqNum], however there's no guarantee that there's
-//     a key with a seqnum at either of the bounds. Calculating tight seqnum
-//     bounds would be too expensive and deliver little value.
-//
-// NB: This type should only be constructed by calling TableMetadata.VirtualMeta.
-type VirtualTableMeta struct {
-	*TableMetadata
-}
-
-// VirtualReaderParams fills in the parameters necessary to create a virtual
-// sstable reader.
-func (m VirtualTableMeta) VirtualReaderParams(isShared bool) sstable.VirtualReaderParams {
-	return sstable.VirtualReaderParams{
-		Lower:            m.Smallest,
-		Upper:            m.Largest,
-		FileNum:          m.FileNum,
-		IsSharedIngested: isShared && m.SyntheticSeqNum() != 0,
-		Size:             m.Size,
-		BackingSize:      m.FileBacking.Size,
-	}
-}
-
 // PhysicalMeta should be the only source of creating the PhysicalFileMeta
 // wrapper type.
-func (m *TableMetadata) PhysicalMeta() PhysicalTableMeta {
+func (m *TableMetadata) PhysicalMeta() *TableMetadata {
 	if m.Virtual {
 		panic("pebble: table metadata does not belong to a physical sstable")
 	}
-	return PhysicalTableMeta{
-		m,
-	}
+	return m
 }
 
 // VirtualMeta should be the only source of creating the VirtualFileMeta wrapper
 // type.
-func (m *TableMetadata) VirtualMeta() VirtualTableMeta {
+func (m *TableMetadata) VirtualMeta() *TableMetadata {
 	if !m.Virtual {
 		panic("pebble: table metadata does not belong to a virtual sstable")
 	}
-	return VirtualTableMeta{
-		m,
-	}
+	return m
 }
 
 // FileBacking either backs a single physical sstable, or one or more virtual

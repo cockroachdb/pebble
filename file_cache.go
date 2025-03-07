@@ -303,75 +303,45 @@ func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 func (h *fileCacheHandle) estimateSize(
 	meta *tableMetadata, lower, upper []byte,
 ) (size uint64, err error) {
-	err = h.withCommonReader(context.TODO(), block.NoReadEnv, meta, func(cr sstable.CommonReader, env block.ReadEnv) error {
-		size, err = cr.EstimateDiskUsage(lower, upper)
+	err = h.withReader(context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env block.ReadEnv) error {
+		size, err = r.EstimateDiskUsage(lower, upper, env)
 		return err
 	})
 	return size, err
 }
 
-// createCommonReader creates a Reader for this file.
-func createCommonReader(v *fileCacheValue, file *tableMetadata) sstable.CommonReader {
+func createReader(v *fileCacheValue, file *tableMetadata) (*sstable.Reader, block.ReadEnv) {
 	// TODO(bananabrick): We suffer an allocation if file is a virtual sstable.
 	r := v.mustSSTableReader()
-	var cr sstable.CommonReader = r
+	env := block.ReadEnv{}
 	if file.Virtual {
-		virtualReader := sstable.MakeVirtualReader(
-			r, file.VirtualMeta().VirtualReaderParams(v.isShared),
-		)
-		cr = &virtualReader
+		env.VirtualizeEnv(file.VirtualReaderParams(v.isShared), r.Comparer.Compare)
 	}
-	return cr
+	return r, env
 }
 
-func (h *fileCacheHandle) withCommonReader(
+func (h *fileCacheHandle) withReader(
 	ctx context.Context,
 	env block.ReadEnv,
 	meta *tableMetadata,
-	fn func(sstable.CommonReader, block.ReadEnv) error,
+	fn func(*sstable.Reader, block.ReadEnv) error,
 ) error {
 	ref, err := h.findOrCreateTable(ctx, meta)
 	if err != nil {
 		return err
 	}
 	defer ref.Unref()
-	env.ReportCorruptionFn = h.reportCorruptionFn
-	env.ReportCorruptionArg = meta
-	return fn(createCommonReader(ref.Value(), meta), env)
-}
-
-func (h *fileCacheHandle) withReader(
-	ctx context.Context,
-	env block.ReadEnv,
-	meta physicalMeta,
-	fn func(*sstable.Reader, block.ReadEnv) error,
-) error {
-	ref, err := h.findOrCreateTable(ctx, meta.TableMetadata)
-	if err != nil {
-		return err
-	}
-	defer ref.Unref()
-	env.ReportCorruptionFn = h.reportCorruptionFn
-	env.ReportCorruptionArg = meta.TableMetadata
-	return fn(ref.Value().reader.(*sstable.Reader), env)
-}
-
-// withVirtualReader fetches a VirtualReader associated with a virtual sstable.
-func (h *fileCacheHandle) withVirtualReader(
-	ctx context.Context,
-	env block.ReadEnv,
-	meta virtualMeta,
-	fn func(sstable.VirtualReader, block.ReadEnv) error,
-) error {
-	ref, err := h.findOrCreateTable(ctx, meta.TableMetadata)
-	if err != nil {
-		return err
-	}
-	defer ref.Unref()
 	v := ref.Value()
 	env.ReportCorruptionFn = h.reportCorruptionFn
-	env.ReportCorruptionArg = &meta.TableMetadata
-	return fn(sstable.MakeVirtualReader(v.mustSSTableReader(), meta.VirtualReaderParams(v.isShared)), env)
+	env.ReportCorruptionArg = meta
+
+	r := v.mustSSTableReader()
+	if meta.Virtual {
+		env.VirtualizeEnv(meta.VirtualReaderParams(v.isShared), r.Comparer.Compare)
+	}
+
+	return fn(r, env)
+
 }
 
 func (h *fileCacheHandle) IterCount() int64 {
@@ -551,18 +521,20 @@ func (h *fileCacheHandle) newIters(
 	internalOpts.readEnv.ReportCorruptionArg = file
 
 	v := vRef.Value()
-	r := v.mustSSTableReader()
 	// Note: This suffers an allocation for virtual sstables.
-	cr := createCommonReader(v, file)
+	r, env := createReader(v, file)
+	internalOpts.readEnv.Virtual = env.Virtual
+	internalOpts.readEnv.VReaderParams = env.VReaderParams
+
 	var iters iterSet
 	if kinds.RangeKey() && file.HasRangeKeys {
-		iters.rangeKey, err = newRangeKeyIter(ctx, r, file, cr, opts.SpanIterOptions(), internalOpts)
+		iters.rangeKey, err = newRangeKeyIter(ctx, file, r, opts.SpanIterOptions(), internalOpts)
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
-		iters.rangeDeletion, err = newRangeDelIter(ctx, file, cr, h, internalOpts)
+		iters.rangeDeletion, err = newRangeDelIter(ctx, file, r, h, internalOpts)
 	}
 	if kinds.Point() && err == nil {
-		iters.point, err = h.newPointIter(ctx, v, file, cr, opts, internalOpts, h)
+		iters.point, err = h.newPointIter(ctx, v, file, r, opts, internalOpts, h)
 	}
 	if err != nil {
 		// NB: There's a subtlety here: Because the point iterator is the last
@@ -595,7 +567,7 @@ func (h *fileCacheHandle) newPointIter(
 	ctx context.Context,
 	v *fileCacheValue,
 	file *manifest.TableMetadata,
-	cr sstable.CommonReader,
+	reader *sstable.Reader,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	handle *fileCacheHandle,
@@ -676,9 +648,9 @@ func (h *fileCacheHandle) newPointIter(
 		internalOpts.readEnv.IterStats = handle.SSTStatsCollector().Accumulator(uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
 	if internalOpts.compaction {
-		iter, err = cr.NewCompactionIter(transforms, internalOpts.readEnv, &v.readerProvider)
+		iter, err = reader.NewCompactionIter(transforms, internalOpts.readEnv, &v.readerProvider)
 	} else {
-		iter, err = cr.NewPointIter(
+		iter, err = reader.NewPointIter(
 			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer,
 			filterBlockSizeLimit, internalOpts.readEnv, &v.readerProvider)
 	}
@@ -722,13 +694,13 @@ func (h *fileCacheHandle) addReference(v *fileCacheValue) (closeHook func()) {
 func newRangeDelIter(
 	ctx context.Context,
 	file *manifest.TableMetadata,
-	cr sstable.CommonReader,
+	r *sstable.Reader,
 	handle *fileCacheHandle,
 	internalOpts internalIterOpts,
 ) (keyspan.FragmentIterator, error) {
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := cr.NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), internalOpts.readEnv)
+	rangeDelIter, err := r.NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), internalOpts.readEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -750,9 +722,8 @@ func newRangeDelIter(
 // callers should use newIters instead.
 func newRangeKeyIter(
 	ctx context.Context,
-	r *sstable.Reader,
 	file *tableMetadata,
-	cr sstable.CommonReader,
+	r *sstable.Reader,
 	opts keyspan.SpanIterOptions,
 	internalOpts internalIterOpts,
 ) (keyspan.FragmentIterator, error) {
@@ -771,7 +742,7 @@ func newRangeKeyIter(
 		}
 	}
 	// TODO(radu): wrap in an AssertBounds.
-	return cr.NewRawRangeKeyIter(ctx, transforms, internalOpts.readEnv)
+	return r.NewRawRangeKeyIter(ctx, transforms, internalOpts.readEnv)
 }
 
 // tableCacheShardReaderProvider implements sstable.ReaderProvider for a
