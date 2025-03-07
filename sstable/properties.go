@@ -72,7 +72,7 @@ func init() {
 // and virtual sstables properties.
 //
 // For virtual sstables, fields are constructed through extrapolation upon virtual
-// reader construction. See MakeVirtualReader for implementation details.
+// reader construction.
 //
 // NB: The values of these properties can affect correctness. For example,
 // if NumRangeKeySets == 0, but the sstable actually contains range keys, then
@@ -250,6 +250,29 @@ func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Bu
 			panic("not reached")
 		}
 	}
+}
+
+func (p *Properties) GetScaledProperties(backingSize, size uint64) Properties {
+	scale := func(a uint64) uint64 {
+		return (a*size + backingSize - 1) / backingSize
+	}
+
+	props := *p
+	props.RawKeySize = scale(p.RawKeySize)
+	props.RawValueSize = scale(p.RawValueSize)
+	props.NumEntries = scale(p.NumEntries)
+	props.NumDeletions = scale(p.NumDeletions)
+	props.NumRangeDeletions = scale(p.NumRangeDeletions)
+	props.NumRangeKeyDels = scale(p.NumRangeKeyDels)
+	props.NumDataBlocks = scale(p.NumDataBlocks)
+	props.NumTombstoneDenseBlocks = scale(p.NumTombstoneDenseBlocks)
+	props.NumRangeKeySets = scale(p.NumRangeKeySets)
+	props.ValueBlocksSize = scale(p.ValueBlocksSize)
+	props.NumSizedDeletions = scale(p.NumSizedDeletions)
+	props.RawPointTombstoneKeySize = scale(p.RawPointTombstoneKeySize)
+	props.RawPointTombstoneValueSize = scale(p.RawPointTombstoneValueSize)
+
+	return props
 }
 
 func (p *Properties) String() string {
