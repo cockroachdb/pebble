@@ -373,7 +373,6 @@ func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32
 	buf[offset] = byte(defaultBitmapEncoding)
 	offset++
 	offset = alignWithZeroes(buf, offset, align64)
-	dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset]))
 
 	nBitmapWords := (nRows + 63) >> 6
 	// Truncate the bitmap to the number of words required to represent nRows.
@@ -390,19 +389,21 @@ func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32
 		b.words[nBitmapWords-1] &= (1 << i) - 1
 	}
 
+	nSummaryWords := (nBitmapWords + 63) >> 6
+	dest := makeUintsEncoder[uint64](buf[offset:], nBitmapWords+nSummaryWords)
 	// Copy all the words of the bitmap into the destination buffer.
-	offset += uint32(copy(dest.Slice(len(b.words)), b.words)) << align64Shift
+	dest.CopyFrom(0, b.words)
+	offset += uint32(len(b.words)) << align64Shift
 
 	// The caller may have written fewer than nRows rows if the tail is all
 	// zeroes, relying on these bits being implicitly zero. If the tail of b is
 	// sparse, fill in zeroes.
 	for i := len(b.words); i < nBitmapWords; i++ {
-		dest.set(i, 0)
+		dest.UnsafeSet(i, 0)
 		offset += align64
 	}
 
 	// Add the summary bitmap.
-	nSummaryWords := (nBitmapWords + 63) >> 6
 	for i := 0; i < nSummaryWords; i++ {
 		wordsOff := (i << 6) // i*64
 		nWords := min(64, len(b.words)-wordsOff)
@@ -412,8 +413,9 @@ func (b *BitmapBuilder) Finish(col, nRows int, offset uint32, buf []byte) uint32
 				summaryWord |= 1 << j
 			}
 		}
-		dest.set(nBitmapWords+i, summaryWord)
+		dest.UnsafeSet(nBitmapWords+i, summaryWord)
 	}
+	dest.Finish()
 	return offset + uint32(nSummaryWords)<<align64Shift
 }
 
