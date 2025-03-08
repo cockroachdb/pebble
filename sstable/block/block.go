@@ -331,6 +331,12 @@ type ReadEnv struct {
 	// BufferPool is not-nil if we read blocks into a buffer pool and not into the
 	// cache. This is used during compactions.
 	BufferPool *BufferPool
+
+	// ReportCorruptionFn is called with ReportCorruptionArg and the error
+	// whenever an SSTable corruption is detected. The argument is used to avoid
+	// allocating a separate function for each object.
+	ReportCorruptionFn  func(opaque any, err error)
+	ReportCorruptionArg any
 }
 
 // BlockServedFromCache updates the stats when a block was found in the cache.
@@ -352,6 +358,14 @@ func (env *ReadEnv) BlockRead(blockLength uint64, readDuration time.Duration) {
 	}
 	if env.IterStats != nil {
 		env.IterStats.Accumulate(blockLength, 0, readDuration)
+	}
+}
+
+// maybeReportCorruption calls the ReportCorruptionFn if the given error
+// indicates corruption.
+func (env *ReadEnv) maybeReportCorruption(err error) {
+	if env.ReportCorruptionFn != nil && base.IsCorruptionError(err) {
+		env.ReportCorruptionFn(env.ReportCorruptionArg, err)
 	}
 }
 
@@ -414,9 +428,10 @@ func (r *Reader) Read(
 		}
 		value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 		if err != nil {
+			env.maybeReportCorruption(err)
 			return BufferHandle{}, err
 		}
-		return value.MakeHandle(), err
+		return value.MakeHandle(), nil
 	}
 
 	cv, crh, errorDuration, hit, err := r.opts.CacheOpts.CacheHandle.GetWithReadHandle(
@@ -428,6 +443,11 @@ func (r *Reader) Read(
 	// TODO(sumeer): consider tracing when waited longer than some duration
 	// for turn to do the read.
 	if err != nil {
+		// Another caller tried to read this block and failed. We want each caller
+		// to report corruption errors separately, since the ReportCorruptionArg
+		// could be different. In particular, we might read the same physical block
+		// (e.g. an index block) for two different virtual tables.
+		env.maybeReportCorruption(err)
 		return BufferHandle{}, err
 	}
 
@@ -444,6 +464,7 @@ func (r *Reader) Read(
 	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 	if err != nil {
 		crh.SetReadError(err)
+		env.maybeReportCorruption(err)
 		return BufferHandle{}, err
 	}
 	crh.SetReadValue(value.v)

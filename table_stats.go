@@ -305,7 +305,8 @@ func (d *DB) loadTableStats(
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
 	err := d.fileCache.withCommonReader(
-		meta, func(r sstable.CommonReader) (err error) {
+		context.TODO(), block.NoReadEnv,
+		meta, func(r sstable.CommonReader, _ block.ReadEnv) (err error) {
 			props := r.CommonProperties()
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
@@ -487,14 +488,14 @@ func (d *DB) estimateSizesBeneath(
 	keySum += fileProps.RawKeySize
 	valSum += fileProps.RawValueSize
 
-	addPhysicalTableStats := func(r *sstable.Reader) (err error) {
+	addPhysicalTableStats := func(r *sstable.Reader, _ block.ReadEnv) (err error) {
 		fileSum += file.Size
 		entryCount += r.Properties.NumEntries
 		keySum += r.Properties.RawKeySize
 		valSum += r.Properties.RawValueSize
 		return nil
 	}
-	addVirtualTableStats := func(v sstable.VirtualReader) (err error) {
+	addVirtualTableStats := func(v sstable.VirtualReader, _ block.ReadEnv) (err error) {
 		fileSum += file.Size
 		entryCount += file.Stats.NumEntries
 		keySum += v.Properties.RawKeySize
@@ -508,9 +509,9 @@ func (d *DB) estimateSizesBeneath(
 		for file = iter.First(); file != nil; file = iter.Next() {
 			var err error
 			if file.Virtual {
-				err = d.fileCache.withVirtualReader(file.VirtualMeta(), addVirtualTableStats)
+				err = d.fileCache.withVirtualReader(context.TODO(), block.NoReadEnv, file.VirtualMeta(), addVirtualTableStats)
 			} else {
-				err = d.fileCache.withReader(file.PhysicalMeta(), addPhysicalTableStats)
+				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.PhysicalMeta(), addPhysicalTableStats)
 			}
 			if err != nil {
 				return 0, 0, err
@@ -616,13 +617,15 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				var err error
 				if file.Virtual {
 					err = d.fileCache.withVirtualReader(
-						file.VirtualMeta(), func(r sstable.VirtualReader) (err error) {
+						context.TODO(), block.NoReadEnv,
+						file.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) (err error) {
 							size, err = r.EstimateDiskUsage(start, end)
 							return err
 						})
 				} else {
 					err = d.fileCache.withReader(
-						file.PhysicalMeta(), func(r *sstable.Reader) (err error) {
+						context.TODO(), block.NoReadEnv,
+						file.PhysicalMeta(), func(r *sstable.Reader, _ block.ReadEnv) (err error) {
 							size, err = r.EstimateDiskUsage(start, end)
 							return err
 						})
