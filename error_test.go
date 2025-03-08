@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -271,7 +272,7 @@ func TestCorruptReadError(t *testing.T) {
 		opts := &Options{
 			DisableTableStats:  true,
 			FS:                 fs,
-			Logger:             panicLogger{},
+			Logger:             base.NoopLoggerAndTracer{},
 			FormatMajorVersion: formatVersion,
 		}
 		d, err := Open("", opts)

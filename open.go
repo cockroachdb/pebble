@@ -74,6 +74,9 @@ func FileCacheSize(maxOpenFiles int) int {
 }
 
 // Open opens a DB whose files live in the given directory.
+//
+// IsCorruptionError() can be use to determine if the error is caused by on-disk
+// corruption.
 func Open(dirname string, opts *Options) (db *DB, err error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
@@ -405,7 +408,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
-	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, d.opts.MakeReaderOptions())
+	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, d.opts.MakeReaderOptions(), d.reportSSTableCorruption)
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
@@ -1229,12 +1232,6 @@ var ErrDBAlreadyExists = errors.New("pebble: database already exists")
 //
 // Note that errors can be wrapped with more details; use errors.Is().
 var ErrDBNotPristine = errors.New("pebble: database already exists and is not pristine")
-
-// IsCorruptionError returns true if the given error indicates database
-// corruption.
-func IsCorruptionError(err error) bool {
-	return errors.Is(err, base.ErrCorruption)
-}
 
 func checkConsistency(v *manifest.Version, objProvider objstorage.Provider) error {
 	var errs []error

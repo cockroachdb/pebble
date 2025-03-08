@@ -55,8 +55,15 @@ type internalIterator = base.InternalIterator
 
 type topLevelIterator = base.TopLevelIterator
 
+// IsCorruptionError returns true if the given error indicates database
+// corruption.
+func IsCorruptionError(err error) bool {
+	return base.IsCorruptionError(err)
+}
+
 // ErrCorruption is a marker to indicate that data in a file (WAL, MANIFEST,
 // sstable) isn't in the expected format.
+// DEPRECATED: should use IsCorruptionError() instead.
 var ErrCorruption = base.ErrCorruption
 
 // AttributeAndLen exports the base.AttributeAndLen type.
