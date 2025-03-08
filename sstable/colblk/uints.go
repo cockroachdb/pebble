@@ -388,22 +388,22 @@ func uintColumnFinish(
 
 	switch e.Width() {
 	case 1:
-		dest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset])).Slice(rows)
+		dest := buf[offset : offset+uint32(rows)]
 		reduceUints(deltaBase, values, dest)
 
 	case 2:
-		dest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset])).Slice(rows)
+		dest := unsafe.Slice((*uint16)(unsafe.Pointer(&buf[offset])), rows)
 		reduceUints(deltaBase, values, dest)
 
 	case 4:
-		dest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset])).Slice(rows)
+		dest := unsafe.Slice((*uint32)(unsafe.Pointer(&buf[offset])), rows)
 		reduceUints(deltaBase, values, dest)
 
 	case 8:
 		if deltaBase != 0 {
 			panic("unreachable")
 		}
-		dest := makeUnsafeRawSlice[uint64](unsafe.Pointer(&buf[offset])).Slice(rows)
+		dest := unsafe.Slice((*uint64)(unsafe.Pointer(&buf[offset])), rows)
 		copy(dest, values)
 
 	default:

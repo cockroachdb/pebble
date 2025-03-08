@@ -964,29 +964,29 @@ func (b *PrefixBytesBuilder) addOffset(offset uint32) {
 //	| ...                                 |
 //	+-------------------------------------+
 func writePrefixCompressed[T Uint](
-	b *PrefixBytesBuilder,
-	rows int,
-	sz *prefixBytesSizing,
-	offsetDeltas UnsafeRawSlice[T],
-	buf []byte,
+	b *PrefixBytesBuilder, rows int, sz *prefixBytesSizing, offsetDeltas uintsEncoder[T], buf []byte,
 ) {
-	if rows == 0 {
-		return
-	} else if rows == 1 {
-		// If there's just 1 row, no prefix compression is necessary and we can
-		// just encode the first key as the entire block prefix and first bundle
-		// prefix.
-		e := b.offsets.elems.At(2)
-		offsetDeltas.set(0, T(e))
-		offsetDeltas.set(1, T(e))
-		offsetDeltas.set(2, T(e))
-		copy(buf, b.data[:e])
+	if invariants.Enabled && offsetDeltas.Len() != sz.offsetCount {
+		panic("incorrect offsetDeltas length")
+	}
+	if rows <= 1 {
+		if rows == 1 {
+			// If there's just 1 row, no prefix compression is necessary and we can
+			// just encode the first key as the entire block prefix and first bundle
+			// prefix.
+			e := b.offsets.elems.At(2)
+			offsetDeltas.UnsafeSet(0, T(e))
+			offsetDeltas.UnsafeSet(1, T(e))
+			offsetDeltas.UnsafeSet(2, T(e))
+			copy(buf[:e], b.data[:e])
+		}
 		return
 	}
 
 	// The offset at index 0 is the block prefix length.
-	offsetDeltas.set(0, T(sz.blockPrefixLen))
-	destOffset := T(copy(buf, b.data[:sz.blockPrefixLen]))
+	copy(buf[:sz.blockPrefixLen], b.data[:sz.blockPrefixLen])
+	destOffset := T(sz.blockPrefixLen)
+	offsetDeltas.UnsafeSet(0, destOffset)
 	var lastRowOffset uint32
 	var shared int
 
@@ -1012,18 +1012,23 @@ func writePrefixCompressed[T Uint](
 			// previous key, then the key is a duplicate. All we need to do is
 			// set the same offset in the destination.
 			if off == lastRowOffset {
-				offsetDeltas.set(i, offsetDeltas.At(i-1))
+				offsetDeltas.UnsafeSet(i, destOffset)
 				continue
 			}
 			suffix = b.data[lastRowOffset+uint32(shared) : off]
 			// Update lastRowOffset for the next iteration of this loop.
 			lastRowOffset = off
 		}
-		if invariants.Enabled && len(buf[destOffset:]) < len(suffix) {
+		if invariants.Enabled && len(buf) < int(destOffset)+len(suffix) {
 			panic(errors.AssertionFailedf("buf is too small: %d < %d", len(buf[destOffset:]), len(suffix)))
 		}
-		destOffset += T(copy(buf[destOffset:], suffix))
-		offsetDeltas.set(i, destOffset)
+		memmove(
+			unsafe.Add(unsafe.Pointer(unsafe.SliceData(buf)), destOffset),
+			unsafe.Pointer(unsafe.SliceData(suffix)),
+			uintptr(len(suffix)),
+		)
+		destOffset += T(len(suffix))
+		offsetDeltas.UnsafeSet(i, destOffset)
 	}
 	if destOffset != T(sz.compressedDataLen) {
 		panic(errors.AssertionFailedf("wrote %d, expected %d", destOffset, sz.compressedDataLen))
@@ -1061,14 +1066,17 @@ func (b *PrefixBytesBuilder) Finish(
 	offset = alignWithZeroes(buf, offset, width)
 	switch width {
 	case 1:
-		offsetDest := makeUnsafeRawSlice[uint8](unsafe.Pointer(&buf[offset]))
+		offsetDest := makeUintsEncoder[uint8](buf[offset:], sz.offsetCount)
 		writePrefixCompressed[uint8](b, rows, sz, offsetDest, buf[stringDataOffset:])
+		offsetDest.Finish()
 	case align16:
-		offsetDest := makeUnsafeRawSlice[uint16](unsafe.Pointer(&buf[offset]))
+		offsetDest := makeUintsEncoder[uint16](buf[offset:], sz.offsetCount)
 		writePrefixCompressed[uint16](b, rows, sz, offsetDest, buf[stringDataOffset:])
+		offsetDest.Finish()
 	case align32:
-		offsetDest := makeUnsafeRawSlice[uint32](unsafe.Pointer(&buf[offset]))
+		offsetDest := makeUintsEncoder[uint32](buf[offset:], sz.offsetCount)
 		writePrefixCompressed[uint32](b, rows, sz, offsetDest, buf[stringDataOffset:])
+		offsetDest.Finish()
 	default:
 		panic("unreachable")
 	}
