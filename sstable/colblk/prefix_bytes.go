@@ -672,12 +672,9 @@ type PrefixBytesBuilder struct {
 	sizings [2]prefixBytesSizing
 	offsets struct {
 		count int // The number of offsets in the builder
-		// elemsSize is the size of the array (in count of uint32 elements; not
-		// bytes)
-		elemsSize int
 		// elems provides access to elements without bounds checking. elems is
 		// grown automatically in addOffset.
-		elems UnsafeRawSlice[uint32]
+		elems []uint32
 	}
 	maxShared uint16
 }
@@ -828,8 +825,10 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		// We're starting a new bundle.
 
 		// Set the bundle prefix length of the previous bundle.
-		b.offsets.elems.set(prev.currentBundlePrefixOffset,
-			b.offsets.elems.At(prev.currentBundlePrefixOffset-1)+uint32(prev.currentBundlePrefixLen))
+		unsafeSetUint32(
+			b.offsets.elems, prev.currentBundlePrefixOffset,
+			unsafeGetUint32(b.offsets.elems, prev.currentBundlePrefixOffset-1)+uint32(prev.currentBundlePrefixLen),
+		)
 
 		// Finalize the encoded size of the previous bundle.
 		bundleSizeJustCompleted := prev.currentBundleDistinctLen - (prev.currentBundleDistinctKeys-1)*prev.currentBundlePrefixLen
@@ -868,7 +867,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 		// currentBundleDistinct{Len,Keys}.
 		*curr = *prev
 		curr.offsetCount++
-		b.addOffset(b.offsets.elems.At(b.offsets.count - 1))
+		b.addOffset(unsafeGetUint32(b.offsets.elems, b.offsets.count-1))
 		return
 	}
 
@@ -927,16 +926,15 @@ func (b *PrefixBytesBuilder) UnsafeGet(i int) []byte {
 // addOffset adds an offset to the offsets table. If necessary, addOffset will
 // grow the offset table to accommodate the new offset.
 func (b *PrefixBytesBuilder) addOffset(offset uint32) {
-	if b.offsets.count == b.offsets.elemsSize {
+	if b.offsets.count == len(b.offsets.elems) {
 		// Double the size of the allocated array, or initialize it to at least
 		// 64 rows if this is the first allocation.
-		n2 := max(b.offsets.elemsSize<<1, 64)
-		newDataTyped := make([]uint32, n2)
-		copy(newDataTyped, b.offsets.elems.Slice(b.offsets.elemsSize))
-		b.offsets.elems = makeUnsafeRawSlice[uint32](unsafe.Pointer(&newDataTyped[0]))
-		b.offsets.elemsSize = n2
+		n2 := max(len(b.offsets.elems)<<1, 64)
+		newSlice := make([]uint32, n2)
+		copy(newSlice, b.offsets.elems)
+		b.offsets.elems = newSlice
 	}
-	b.offsets.elems.set(b.offsets.count, offset)
+	unsafeSetUint32(b.offsets.elems, b.offsets.count, offset)
 	b.offsets.count++
 }
 
@@ -974,7 +972,7 @@ func writePrefixCompressed[T Uint](
 			// If there's just 1 row, no prefix compression is necessary and we can
 			// just encode the first key as the entire block prefix and first bundle
 			// prefix.
-			e := b.offsets.elems.At(2)
+			e := b.offsets.elems[2]
 			offsetDeltas.UnsafeSet(0, T(e))
 			offsetDeltas.UnsafeSet(1, T(e))
 			offsetDeltas.UnsafeSet(2, T(e))
@@ -995,7 +993,7 @@ func writePrefixCompressed[T Uint](
 	// block prefix. Otherwise, carve off the suffix that excludes the block
 	// prefix + bundle prefix.
 	for i := 1; i < sz.offsetCount; i++ {
-		off := b.offsets.elems.At(i)
+		off := unsafeGetUint32(b.offsets.elems, i)
 		var suffix []byte
 		if (i-1)%(b.bundleSize+1) == 0 {
 			// This is a bundle prefix.

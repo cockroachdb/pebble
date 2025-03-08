@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"golang.org/x/exp/constraints"
 )
 
@@ -34,11 +35,6 @@ func (s UnsafeRawSlice[T]) At(i int) T {
 // unsafe slice.
 func (s UnsafeRawSlice[T]) Slice(len int) []T {
 	return unsafe.Slice((*T)(s.ptr), len)
-}
-
-// set mutates the slice, setting the `i`-th value to `v`.
-func (s UnsafeRawSlice[T]) set(i int, v T) {
-	*(*T)(unsafe.Pointer(uintptr(s.ptr) + unsafe.Sizeof(T(0))*uintptr(i))) = v
 }
 
 // UnsafeUints exposes a read-only view of integers from a column, transparently
@@ -184,4 +180,35 @@ func (s UnsafeOffsets) At2(i int) (uint32, uint32) {
 	}
 	v := *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
 	return uint32(v), uint32(v >> 32)
+}
+
+// unsafeGetUint32 is just like slice[idx] but without bounds checking.
+//
+//gcassert:inline
+func unsafeGetUint32(slice []uint32, idx int) uint32 {
+	if invariants.Enabled {
+		_ = slice[idx]
+	}
+	return *(*uint32)(unsafe.Add(unsafe.Pointer(unsafe.SliceData(slice)), uintptr(idx)<<align32Shift))
+}
+
+// unsafeSetUint32 is just like assigning to slice[idx] but without bounds
+// checking.
+//
+//gcassert:inline
+func unsafeSetUint32(slice []uint32, idx int, value uint32) {
+	if invariants.Enabled {
+		_ = slice[idx]
+	}
+	*(*uint32)(unsafe.Add(unsafe.Pointer(unsafe.SliceData(slice)), uintptr(idx)<<align32Shift)) = value
+}
+
+// unsafeGetUint64 is just like slice[idx] but without bounds checking.
+//
+//gcassert:inline
+func unsafeGetUint64(slice []uint64, idx int) uint64 {
+	if invariants.Enabled {
+		_ = slice[idx]
+	}
+	return *(*uint64)(unsafe.Add(unsafe.Pointer(unsafe.SliceData(slice)), uintptr(idx)<<align64Shift))
 }
