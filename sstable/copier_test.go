@@ -53,6 +53,8 @@ func TestCopySpan(t *testing.T) {
 						tableFormat = TableFormatPebblev4
 					case "pebblev5":
 						tableFormat = TableFormatPebblev5
+					case "pebblev6":
+						tableFormat = TableFormatPebblev6
 					}
 				case "block_size":
 					var err error

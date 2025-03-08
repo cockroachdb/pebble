@@ -29,6 +29,7 @@ const (
 	TableFormatPebblev3 // Value blocks.
 	TableFormatPebblev4 // DELSIZED tombstones.
 	TableFormatPebblev5 // Columnar blocks.
+	TableFormatPebblev6 // Checksum Footer.
 	NumTableFormats
 
 	TableFormatMax = NumTableFormats - 1
@@ -236,6 +237,8 @@ func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 			return TableFormatPebblev4, nil
 		case 5:
 			return TableFormatPebblev5, nil
+		case 6:
+			return TableFormatPebblev6, nil
 		default:
 			return TableFormatUnspecified, base.CorruptionErrorf(
 				"(unsupported pebble format version %d)", errors.Safe(version))
@@ -276,6 +279,8 @@ func (f TableFormat) AsTuple() (string, uint32) {
 		return pebbleDBMagic, 4
 	case TableFormatPebblev5:
 		return pebbleDBMagic, 5
+	case TableFormatPebblev6:
+		return pebbleDBMagic, 6
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
@@ -300,6 +305,8 @@ func (f TableFormat) String() string {
 		return "(Pebble,v4)"
 	case TableFormatPebblev5:
 		return "(Pebble,v5)"
+	case TableFormatPebblev6:
+		return "(Pebble,v6)"
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
