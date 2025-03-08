@@ -348,9 +348,9 @@ func (b *PrefixBytesBuilder) debugString(offset uint32) string {
 	fmt.Fprint(&sb, "\nOffsets:")
 	for i := 0; i < b.offsets.count; i++ {
 		if i%10 == 0 {
-			fmt.Fprintf(&sb, "\n  %04d", b.offsets.elems.At(i))
+			fmt.Fprintf(&sb, "\n  %04d", b.offsets.elems[i])
 		} else {
-			fmt.Fprintf(&sb, "  %04d", b.offsets.elems.At(i))
+			fmt.Fprintf(&sb, "  %04d", b.offsets.elems[i])
 		}
 	}
 	fmt.Fprintf(&sb, "\nData (len=%d):\n", len(b.data))
