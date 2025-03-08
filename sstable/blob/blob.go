@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -41,7 +42,7 @@ const (
 )
 
 const (
-	fileFooterLength = 29
+	fileFooterLength = 33
 	fileMagic        = "\xf0\x9f\xaa\xb3\xf0\x9f\xa6\x80" // 🪳🦀
 )
 
@@ -269,6 +270,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 // file.
 //
 // Blob file footer format:
+//   - checksum CRC over footer data (4 bytes)
 //   - index block offset (8 bytes)
 //   - index block length (8 bytes)
 //   - index block block-number byte length (1 byte)
@@ -287,11 +289,16 @@ func (f *fileFooter) decode(b []byte) error {
 	if uint64(len(b)) != fileFooterLength {
 		return errors.AssertionFailedf("invalid blob file footer length")
 	}
-	f.indexHandle.Handle.Offset = binary.LittleEndian.Uint64(b[0:])
-	f.indexHandle.Handle.Length = binary.LittleEndian.Uint64(b[8:])
-	f.indexHandle.BlockNumByteLength = b[16]
-	f.indexHandle.BlockOffsetByteLength = b[17]
-	f.indexHandle.BlockLengthByteLength = b[18]
+	encodedChecksum := binary.LittleEndian.Uint32(b[0:])
+	computedChecksum := crc.New(b[4:]).Value()
+	if encodedChecksum != computedChecksum {
+		return base.CorruptionErrorf("invalid blob file checksum 0x%04x, expected: 0x%04x", encodedChecksum, computedChecksum)
+	}
+	f.indexHandle.Handle.Offset = binary.LittleEndian.Uint64(b[4:])
+	f.indexHandle.Handle.Length = binary.LittleEndian.Uint64(b[12:])
+	f.indexHandle.BlockNumByteLength = b[20]
+	f.indexHandle.BlockOffsetByteLength = b[21]
+	f.indexHandle.BlockLengthByteLength = b[22]
 	if f.indexHandle.BlockNumByteLength > 4 {
 		return base.CorruptionErrorf("invalid block num byte length %d", f.indexHandle.BlockNumByteLength)
 	}
@@ -302,26 +309,28 @@ func (f *fileFooter) decode(b []byte) error {
 		return base.CorruptionErrorf("invalid block length byte length %d", f.indexHandle.BlockLengthByteLength)
 	}
 
-	f.checksum = block.ChecksumType(b[19])
-	f.format = FileFormat(b[20])
+	f.checksum = block.ChecksumType(b[23])
+	f.format = FileFormat(b[24])
 	if f.format != FileFormatV1 {
 		return base.CorruptionErrorf("invalid blob file format %x", f.format)
 	}
-	if string(b[21:]) != fileMagic {
-		return base.CorruptionErrorf("invalid blob file magic string %x", b[21:])
+	if string(b[25:]) != fileMagic {
+		return base.CorruptionErrorf("invalid blob file magic string %x", b[25:])
 	}
 	return nil
 }
 
 func (f *fileFooter) encode(b []byte) {
-	binary.LittleEndian.PutUint64(b[0:], f.indexHandle.Handle.Offset)
-	binary.LittleEndian.PutUint64(b[8:], f.indexHandle.Handle.Length)
-	b[16] = f.indexHandle.BlockNumByteLength
-	b[17] = f.indexHandle.BlockOffsetByteLength
-	b[18] = f.indexHandle.BlockLengthByteLength
-	b[19] = byte(f.checksum)
-	b[20] = byte(f.format)
-	copy(b[21:], fileMagic)
+	binary.LittleEndian.PutUint64(b[4:], f.indexHandle.Handle.Offset)
+	binary.LittleEndian.PutUint64(b[12:], f.indexHandle.Handle.Length)
+	b[20] = f.indexHandle.BlockNumByteLength
+	b[21] = f.indexHandle.BlockOffsetByteLength
+	b[22] = f.indexHandle.BlockLengthByteLength
+	b[23] = byte(f.checksum)
+	b[24] = byte(f.format)
+	copy(b[25:], fileMagic)
+	footerChecksum := crc.New(b[4:]).Value()
+	binary.LittleEndian.PutUint32(b[0:], footerChecksum)
 }
 
 // FileReader reads a blob file.
