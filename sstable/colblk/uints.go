@@ -386,6 +386,9 @@ func uintColumnFinish(
 	// Align the offset appropriately.
 	offset = alignWithZeroes(buf, offset, width)
 
+	if invariants.Enabled && len(buf) < int(offset)+rows*e.Width() {
+		panic("buffer too small")
+	}
 	switch e.Width() {
 	case 1:
 		dest := buf[offset : offset+uint32(rows)]
@@ -394,10 +397,16 @@ func uintColumnFinish(
 	case 2:
 		dest := unsafe.Slice((*uint16)(unsafe.Pointer(&buf[offset])), rows)
 		reduceUints(deltaBase, values, dest)
+		if BigEndian {
+			ReverseBytes16(dest)
+		}
 
 	case 4:
 		dest := unsafe.Slice((*uint32)(unsafe.Pointer(&buf[offset])), rows)
 		reduceUints(deltaBase, values, dest)
+		if BigEndian {
+			ReverseBytes32(dest)
+		}
 
 	case 8:
 		if deltaBase != 0 {
@@ -405,6 +414,12 @@ func uintColumnFinish(
 		}
 		dest := unsafe.Slice((*uint64)(unsafe.Pointer(&buf[offset])), rows)
 		copy(dest, values)
+		for i := len(values); i < len(dest); i++ {
+			dest[i] = 0
+		}
+		if BigEndian {
+			ReverseBytes64(dest)
+		}
 
 	default:
 		panic("unreachable")

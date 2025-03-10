@@ -36,21 +36,21 @@ func TestUnsafeUints(t *testing.T) {
 
 					uints, _ := DecodeUnsafeUints(buf, 0, rows)
 					for i := range rows {
-						if uints.At(i) != vals[i] {
-							t.Fatalf("mismatch at row %d: got %d, expected %d", i, uints.At(i), vals[i])
+						if v := uints.At(i); v != vals[i] {
+							t.Fatalf("mismatch at row %d: got %X, expected %X", i, v, vals[i])
 						}
 					}
 					if encoding := UintEncoding(buf[0]); encoding.Width() <= 4 && !encoding.IsDelta() {
 						offsets, _ := DecodeUnsafeOffsets(buf, 0, rows)
 						for i := range rows {
-							if uint64(offsets.At(i)) != vals[i] {
-								t.Fatalf("mismatch at row %d: got %d, expected %d", i, uints.At(i), vals[i])
+							if v := uint64(offsets.At(i)); v != vals[i] {
+								t.Fatalf("mismatch at row %d: got %X, expected %X", i, v, vals[i])
 							}
 						}
 						for i := 0; i < rows-1; i++ {
 							a, b := offsets.At2(i)
 							if uint64(a) != vals[i] || uint64(b) != vals[i+1] {
-								t.Fatalf("mismatch at row %d: got %d,%d, expected %d,%d", i, a, b, vals[i], vals[i+1])
+								t.Fatalf("mismatch at row %d: got %X,%X, expected %X,%X", i, a, b, vals[i], vals[i+1])
 							}
 						}
 					}
