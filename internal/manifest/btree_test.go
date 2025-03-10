@@ -16,7 +16,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/stretchr/testify/require"
 )
 
@@ -546,7 +546,7 @@ func TestRandomizedBTree(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, seed))
 
 	var numOps int
-	if invariants.RaceEnabled {
+	if buildtags.Instrumented {
 		// Reduce the number of ops in race mode so the test doesn't take very long.
 		numOps = 1_000 + rng.IntN(4_000)
 	} else {

@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/datatest"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -512,11 +513,10 @@ func TestCompactionsQuiesce(t *testing.T) {
 			}()
 
 			wait := 30 * time.Second
-			if invariants.Enabled {
+			if buildtags.Instrumented {
+				wait = 5 * time.Minute
+			} else if invariants.Enabled {
 				wait = time.Minute
-				if invariants.RaceEnabled {
-					wait = 5 * time.Minute
-				}
 			}
 
 			// The above call to [Wait] should eventually return. [Wait] blocks
