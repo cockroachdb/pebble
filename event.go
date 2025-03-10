@@ -1150,17 +1150,32 @@ func (r *lowDiskSpaceReporter) findThreshold(
 	return threshold, ok
 }
 
-func (d *DB) reportSSTableCorruption(meta *manifest.TableMetadata, err error) {
+func (d *DB) reportCorruption(meta any, err error) {
+	switch meta := meta.(type) {
+	case *manifest.TableMetadata:
+		d.reportFileCorruption(base.FileTypeTable, meta.FileBacking.DiskFileNum, meta.UserKeyBounds(), err)
+	case *manifest.BlobFileMetadata:
+		// TODO(jackson): Add bounds for blob files.
+		d.reportFileCorruption(base.FileTypeBlob, meta.FileNum, base.UserKeyBounds{}, err)
+	default:
+		panic(fmt.Sprintf("unknown metadata type: %T", meta))
+	}
+}
+
+func (d *DB) reportFileCorruption(
+	fileType base.FileType, fileNum base.DiskFileNum, userKeyBounds base.UserKeyBounds, err error,
+) {
 	if invariants.Enabled && err == nil {
 		panic("nil error")
 	}
-	objMeta, lookupErr := d.objProvider.Lookup(base.FileTypeTable, meta.FileBacking.DiskFileNum)
+
+	objMeta, lookupErr := d.objProvider.Lookup(fileType, fileNum)
 	if lookupErr != nil {
 		// If the object is not known to the provider, it must be a local object
 		// that was missing when we opened the store. Remote objects have their
 		// metadata in a catalog, so even if the backing object is deleted, the
 		// DiskFileNum would still be known.
-		objMeta = objstorage.ObjectMetadata{DiskFileNum: meta.FileBacking.DiskFileNum, FileType: base.FileTypeTable}
+		objMeta = objstorage.ObjectMetadata{DiskFileNum: fileNum, FileType: fileType}
 	}
 	path := d.objProvider.Path(objMeta)
 	if objMeta.IsRemote() {
@@ -1176,7 +1191,7 @@ func (d *DB) reportSSTableCorruption(meta *manifest.TableMetadata, err error) {
 		Path:     path,
 		IsRemote: objMeta.IsRemote(),
 		Locator:  objMeta.Remote.Locator,
-		Bounds:   meta.UserKeyBounds(),
+		Bounds:   userKeyBounds,
 		Details:  err,
 	}
 	d.opts.EventListener.DataCorruption(info)

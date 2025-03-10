@@ -178,7 +178,7 @@ func (t *fileCacheTest) cleanup() {
 	t.blockCache.Unref()
 }
 
-func noopSSTableCorruptionFn(*manifest.TableMetadata, error) {}
+func noopCorruptionFn(any, error) {}
 
 // newTestHandle creates a filesystem with a set of test tables and an
 // associated file cache handle. The caller must close the handle.
@@ -221,7 +221,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 		FileCache: t.fileCache,
 	}
 	opts.EnsureDefaults()
-	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	return h, fs
 }
 
@@ -822,7 +822,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		h.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h.Evict(base.DiskFileNum(lo+rng.Uint64N(hi-lo)), base.FileTypeTable)
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -893,8 +893,8 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
 		}
 
-		h1.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
-		h2.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h1.Evict(base.DiskFileNum(lo+rng.Uint64N(hi-lo)), base.FileTypeTable)
+		h2.Evict(base.DiskFileNum(lo+rng.Uint64N(hi-lo)), base.FileTypeTable)
 	}
 
 	check := func(fs *fileCacheTestFS, h *fileCacheHandle) (float64, float64, float64) {
@@ -1046,7 +1046,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 		FileCache: fcs.fileCache,
 	}
 	opts.EnsureDefaults()
-	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -1120,7 +1120,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	defer h.Close()
 
 	scanner := bufio.NewScanner(f)
@@ -1144,7 +1144,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		m := &tableMetadata{FileNum: base.FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		v, err := h.findOrCreate(context.Background(), m)
+		v, err := h.findOrCreateTable(context.Background(), m)
 		require.NoError(t, err)
 		v.Unref()
 
@@ -1256,7 +1256,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	defer h.Close()
 
 	makeTable(1)
@@ -1267,7 +1267,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v, _ := h.findOrCreate(context.Background(), m)
+		v, _ := h.findOrCreateTable(context.Background(), m)
 		v.Unref()
 	}
 }

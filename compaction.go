@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -196,6 +197,10 @@ type compaction struct {
 	// goroutine is still cleaning up (eg, deleting obsolete files).
 	versionEditApplied bool
 	bufferPool         sstable.BufferPool
+	// blobValueFetcher fetches values from blob files, caching blob file
+	// readers. Even compactions that don't rewrite blob files may need to
+	// fetch values from blob files to resolve merge operations.
+	blobValueFetcher blob.ValueFetcher
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -3002,6 +3007,7 @@ func (d *DB) compactAndWrite(
 			),
 		},
 	}
+	c.blobValueFetcher.Init(d.fileCache, iiopts.readEnv)
 
 	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter, iiopts)
 	defer func() {
