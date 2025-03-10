@@ -34,9 +34,9 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	testOpts := metamorphic.RandomOptions(rng, metamorphic.TestkeysKeyFormat, nil /* custom opt parsers */)
 	{
 		nOps := 10000
-		if buildtags.Race {
-			// Reduce the number of operations in race mode (the test can time out if
-			// we are unlucky).
+		if buildtags.Instrumented {
+			// Reduce the number of operations in instrumented builds (the test can
+			// time out if we are unlucky).
 			nOps = 2000
 		}
 		ops := metamorphic.GenerateOps(rng, uint64(nOps), metamorphic.TestkeysKeyFormat, metamorphic.WriteOpConfig())

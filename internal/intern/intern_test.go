@@ -8,11 +8,11 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 )
 
 func TestBytes(t *testing.T) {
-	if invariants.RaceEnabled {
+	if buildtags.Race {
 		// sync.Pool is a no-op under -race, making this test fail.
 		t.Skip("not supported under -race")
 	}

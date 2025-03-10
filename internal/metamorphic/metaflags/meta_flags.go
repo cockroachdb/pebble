@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/metamorphic"
 )
@@ -95,7 +95,7 @@ func initCommonFlags() *CommonFlags {
 	flag.IntVar(&c.NumInstances, "num-instances", 1, "number of pebble instances to create (default: 1)")
 
 	defaultOpTimeout := 2 * time.Minute
-	if invariants.RaceEnabled {
+	if buildtags.Instrumented {
 		defaultOpTimeout *= 5
 	}
 	flag.DurationVar(&c.OpTimeout, "op-timeout", defaultOpTimeout, "per-op timeout")
@@ -176,7 +176,7 @@ func initRunFlags(c *CommonFlags) *RunFlags {
 		"write an execution trace to `<run-dir>/file`")
 
 	ops := "uniform:5000-10000"
-	if invariants.RaceEnabled {
+	if buildtags.Instrumented {
 		// Reduce the size of the test under race (to avoid timeouts).
 		ops = "uniform:1000-2000"
 	}

@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -62,9 +62,9 @@ func TestLint(t *testing.T) {
 		// GOARCH=386 messes with the installation of devtools.
 		t.Skip("lint checks skipped on GOARCH=386")
 	}
-	if invariants.RaceEnabled {
+	if buildtags.Instrumented {
 		// We are not interested in race-testing the linters themselves.
-		t.Skip("lint checks skipped on race builds")
+		t.Skip("lint checks skipped on instrumented builds")
 	}
 
 	const root = "github.com/cockroachdb/pebble"

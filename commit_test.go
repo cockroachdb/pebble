@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -88,7 +89,7 @@ func TestCommitPipeline(t *testing.T) {
 	p := newCommitPipeline(e.env())
 
 	n := 10000
-	if invariants.RaceEnabled {
+	if buildtags.Instrumented {
 		// Under race builds we have to limit the concurrency or we hit the
 		// following error:
 		//
