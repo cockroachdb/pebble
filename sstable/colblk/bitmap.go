@@ -10,7 +10,6 @@ import (
 	"math"
 	"math/bits"
 	"strings"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -30,7 +29,7 @@ import (
 type Bitmap struct {
 	// data contains the bitmap data, according to defaultBitmapEncoding, or it
 	// is nil if the bitmap is all zeros.
-	data     UnsafeRawSlice[uint64]
+	data     unsafeUint64Decoder
 	bitCount int
 }
 
@@ -54,7 +53,7 @@ func DecodeBitmap(b []byte, off uint32, bitCount int) (bitmap Bitmap, endOffset 
 			bitCount, bitmapRequiredSize(bitCount), len(b[off:])))
 	}
 	return Bitmap{
-		data:     makeUnsafeRawSlice[uint64](unsafe.Pointer(&b[off])),
+		data:     makeUnsafeUint64Decoder(b[off:], sz>>align64Shift),
 		bitCount: bitCount,
 	}, off + uint32(sz)
 }
@@ -70,10 +69,7 @@ func (b Bitmap) At(i int) bool {
 		// zero bitmap case.
 		return false
 	}
-	// Inline b.data.At(i/64).
-	// The offset of the correct word is i / 64 * 8 = (i >> 3) &^ 0b111
-	const mask = ^uintptr(0b111)
-	val := *(*uint64)(unsafe.Pointer(uintptr(b.data.ptr) + (uintptr(i)>>3)&mask))
+	val := b.data.At(int(uint(i) >> 6)) // aka At(i/64)
 	return val&(1<<(uint(i)&63)) != 0
 }
 
