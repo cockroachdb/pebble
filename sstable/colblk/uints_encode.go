@@ -61,6 +61,18 @@ func (s uintsEncoder[T]) CopyFrom(i int, in []T) {
 	copy(s.slice[i:i+len(in)], in)
 }
 
+// Finish finalizes the encoding, rearranging the bytes if the arch is big
+// endian.
 func (s uintsEncoder[T]) Finish() {
-	// TODO(radu): swap order on big-endian arch.
+	if !BigEndian {
+		return
+	}
+	switch unsafe.Sizeof(T(0)) {
+	case 2:
+		ReverseBytes16(unsafe.Slice((*uint16)(unsafe.Pointer(unsafe.SliceData(s.slice))), len(s.slice)))
+	case 4:
+		ReverseBytes32(unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(s.slice))), len(s.slice)))
+	case 8:
+		ReverseBytes64(unsafe.Slice((*uint64)(unsafe.Pointer(unsafe.SliceData(s.slice))), len(s.slice)))
+	}
 }

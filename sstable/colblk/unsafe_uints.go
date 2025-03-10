@@ -10,37 +10,14 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"golang.org/x/exp/constraints"
 )
-
-// UnsafeRawSlice maintains a pointer to a slice of elements of type T.
-// UnsafeRawSlice provides no bounds checking.
-type UnsafeRawSlice[T constraints.Integer] struct {
-	ptr unsafe.Pointer
-}
-
-func makeUnsafeRawSlice[T constraints.Integer](ptr unsafe.Pointer) UnsafeRawSlice[T] {
-	if align(uintptr(ptr), unsafe.Sizeof(T(0))) != uintptr(ptr) {
-		panic(errors.AssertionFailedf("slice pointer %p not %d-byte aligned", ptr, unsafe.Sizeof(T(0))))
-	}
-	return UnsafeRawSlice[T]{ptr: ptr}
-}
-
-// At returns the `i`-th element of the slice.
-func (s UnsafeRawSlice[T]) At(i int) T {
-	return *(*T)(unsafe.Pointer(uintptr(s.ptr) + unsafe.Sizeof(T(0))*uintptr(i)))
-}
-
-// Slice returns a go []T slice containing the first `len` elements of the
-// unsafe slice.
-func (s UnsafeRawSlice[T]) Slice(len int) []T {
-	return unsafe.Slice((*T)(s.ptr), len)
-}
 
 // UnsafeUints exposes a read-only view of integers from a column, transparently
 // decoding data based on the UintEncoding.
 //
 // See UintEncoding and UintBuilder.
+//
+// The At() method is defined in endian_little.go and endian_big.go.
 type UnsafeUints struct {
 	base  uint64
 	ptr   unsafe.Pointer
@@ -94,35 +71,12 @@ func makeUnsafeUints(base uint64, ptr unsafe.Pointer, width int) UnsafeUints {
 	}
 }
 
-// At returns the `i`-th element.
-func (s UnsafeUints) At(i int) uint64 {
-	// TODO(radu): this implementation assumes little-endian architecture.
-
-	// One of the most common case is decoding timestamps, which require the full
-	// 8 bytes (2^32 nanoseconds is only ~4 seconds).
-	if s.width == 8 {
-		// NB: The slice encodes 64-bit integers, there is no base (it doesn't save
-		// any bits to compute a delta). We cast directly into a *uint64 pointer and
-		// don't add the base.
-		return *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align64Shift))
-	}
-	// Another common case is 0 width, when all keys have zero logical timestamps.
-	if s.width == 0 {
-		return s.base
-	}
-	if s.width == 4 {
-		return s.base + uint64(*(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift)))
-	}
-	if s.width == 2 {
-		return s.base + uint64(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
-	}
-	return s.base + uint64(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
-}
-
 // UnsafeOffsets is a specialization of UnsafeInts (providing the same
 // functionality) which is optimized when the integers are offsets inside a
 // column block. It can only be used with 0, 1, 2, or 4 byte encoding without
 // delta.
+//
+// The At() and At2() methods are defined in endian_little.go and endian_big.go.
 type UnsafeOffsets struct {
 	ptr   unsafe.Pointer
 	width uint8
@@ -139,47 +93,6 @@ func DecodeUnsafeOffsets(b []byte, off uint32, rows int) (_ UnsafeOffsets, endOf
 		ptr:   ints.ptr,
 		width: ints.width,
 	}, endOffset
-}
-
-// At returns the `i`-th offset.
-//
-//gcassert:inline
-func (s UnsafeOffsets) At(i int) uint32 {
-	// TODO(radu): this implementation assumes little-endian architecture.
-
-	// We expect offsets to be encoded as 16-bit integers in most cases.
-	if s.width == 2 {
-		return uint32(*(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift)))
-	}
-	if s.width <= 1 {
-		if s.width == 0 {
-			return 0
-		}
-		return uint32(*(*uint8)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i))))
-	}
-	return *(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
-}
-
-// At2 returns the `i`-th and `i+1`-th offsets.
-//
-//gcassert:inline
-func (s UnsafeOffsets) At2(i int) (uint32, uint32) {
-	// TODO(radu): this implementation assumes little-endian architecture.
-
-	// We expect offsets to be encoded as 16-bit integers in most cases.
-	if s.width == 2 {
-		v := *(*uint32)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align16Shift))
-		return v & 0xFFFF, v >> 16
-	}
-	if s.width <= 1 {
-		if s.width == 0 {
-			return 0, 0
-		}
-		v := *(*uint16)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)))
-		return uint32(v & 0xFF), uint32(v >> 8)
-	}
-	v := *(*uint64)(unsafe.Pointer(uintptr(s.ptr) + uintptr(i)<<align32Shift))
-	return uint32(v), uint32(v >> 32)
 }
 
 // unsafeGetUint32 is just like slice[idx] but without bounds checking.
