@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -77,7 +78,7 @@ func (fs *fileCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, 
 func (fs *fileCacheTestFS) validateAndCloseHandle(
 	t *testing.T, h *fileCacheHandle, f func(i, gotO, gotC int) error,
 ) {
-	if err := fs.validateOpenTables(f); err != nil {
+	if err := fs.validateOpenFiles(f); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.Close(); err != nil {
@@ -94,17 +95,21 @@ func (fs *fileCacheTestFS) setOpenError(enabled bool) {
 	fs.openErrorEnabled = enabled
 }
 
-// validateOpenTables validates that no tables in the cache are open twice, and
+// validateOpenFiles validates that no files in the cache are open twice, and
 // the number still open is no greater than fileCacheTestCacheSize.
-func (fs *fileCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) error {
+func (fs *fileCacheTestFS) validateOpenFiles(f func(i, gotO, gotC int) error) error {
 	// try backs off to let any clean-up goroutines do their work.
 	return try(100*time.Microsecond, 20*time.Second, func() error {
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
 
 		numStillOpen := 0
-		for i := 0; i < fileCacheTestNumTables; i++ {
-			filename := base.MakeFilepath(fs, "", base.FileTypeTable, base.DiskFileNum(i))
+		for i := 0; i < fileCacheTestNumFiles; i++ {
+			typ := base.FileTypeTable
+			if i >= fileCacheTestNumTables {
+				typ = base.FileTypeBlob
+			}
+			filename := base.MakeFilepath(fs, "", typ, base.DiskFileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -145,7 +150,9 @@ func (fs *fileCacheTestFS) validateNoneStillOpen() error {
 }
 
 const (
-	fileCacheTestNumTables = 300
+	fileCacheTestNumTables = 200
+	fileCacheTestNumBlobs  = 100
+	fileCacheTestNumFiles  = fileCacheTestNumTables + fileCacheTestNumBlobs
 	fileCacheTestCacheSize = 100
 )
 
@@ -172,18 +179,25 @@ func newFileCacheTest(
 	}
 }
 
+func (t *fileCacheTest) fileByIdx(i int) (base.DiskFileNum, base.FileType) {
+	if i < fileCacheTestNumTables {
+		return base.DiskFileNum(i), base.FileTypeTable
+	}
+	return base.DiskFileNum(i), base.FileTypeBlob
+}
+
 func (t *fileCacheTest) cleanup() {
 	t.fileCache.Unref()
 	t.blockCacheHandle.Close()
 	t.blockCache.Unref()
 }
 
-func noopSSTableCorruptionFn(*manifest.TableMetadata, error) {}
+func noopCorruptionFn(any, error) {}
 
 // newTestHandle creates a filesystem with a set of test tables and an
 // associated file cache handle. The caller must close the handle.
 func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
-	xxx := bytes.Repeat([]byte("x"), fileCacheTestNumTables)
+	xxx := bytes.Repeat([]byte("x"), fileCacheTestNumFiles)
 	fs := &fileCacheTestFS{
 		FS: vfs.NewMem(),
 	}
@@ -210,6 +224,18 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 			t.Fatal(err)
 		}
 	}
+	for i := 0; i < fileCacheTestNumBlobs; i++ {
+		fn := base.DiskFileNum(i + fileCacheTestNumTables)
+		w, _, err := objProvider.Create(context.Background(), base.FileTypeBlob, fn, objstorage.CreateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bw := blob.NewFileWriter(fn, w, blob.FileWriterOptions{})
+		_ = bw.AddValue(xxx[:fn])
+		if _, err := bw.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	fs.mu.Lock()
 	fs.openCounts = map[string]int{}
@@ -221,7 +247,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 		FileCache: t.fileCache,
 	}
 	opts.EnsureDefaults()
-	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	h := t.fileCache.newHandle(t.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	return h, fs
 }
 
@@ -701,10 +727,19 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 	h, fs := fct.newTestHandle()
 
 	for i := 0; i < N; i++ {
-		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
+		for _, j := range [...]int{pinned0, i % fileCacheTestNumFiles, pinned1} {
+			fn, typ := fct.fileByIdx(j)
+			if typ == base.FileTypeBlob {
+				_, closeFunc, err := h.GetValueReader(context.Background(), fn)
+				if err != nil {
+					t.Fatalf("i=%d, j=%d: get value reader: %v", i, j, err)
+				}
+				closeFunc()
+				continue
+			}
 			var iters iterSet
 			var err error
-			m := &tableMetadata{FileNum: base.FileNum(j)}
+			m := &tableMetadata{FileNum: base.FileNum(fn)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			if rangeIter {
@@ -752,8 +787,17 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 	h2, fs2 := fct.newTestHandle()
 
 	for i := 0; i < N; i++ {
-		for _, j := range [...]int{pinned0, i % fileCacheTestNumTables, pinned1} {
-			m := &tableMetadata{FileNum: base.FileNum(j)}
+		for _, j := range [...]int{pinned0, i % fileCacheTestNumFiles, pinned1} {
+			fn, typ := fct.fileByIdx(j)
+			if typ == base.FileTypeBlob {
+				_, closeFunc, err := h1.GetValueReader(context.Background(), fn)
+				if err != nil {
+					t.Fatalf("i=%d, j=%d: get value reader: %v", i, j, err)
+				}
+				closeFunc()
+				continue
+			}
+			m := &tableMetadata{FileNum: base.FileNum(fn)}
 			m.InitPhysicalBacking()
 			m.FileBacking.Ref()
 			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -804,25 +848,33 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 
 	rng := rand.New(rand.NewPCG(2, 2))
 	for i := 0; i < N; i++ {
-		j := rng.IntN(fileCacheTestNumTables)
-		var iters iterSet
-		var err error
-		m := &tableMetadata{FileNum: base.FileNum(j)}
-		m.InitPhysicalBacking()
-		m.FileBacking.Ref()
-		if rangeIter {
-			iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
+		fn, typ := fct.fileByIdx(rng.IntN(fileCacheTestNumFiles))
+		if typ == base.FileTypeBlob {
+			_, closeFunc, err := h.GetValueReader(context.Background(), fn)
+			if err != nil {
+				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
+			}
+			closeFunc()
 		} else {
-			iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
-		}
-		if err != nil {
-			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
-		}
-		if err := iters.CloseAll(); err != nil {
-			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
+			var iters iterSet
+			var err error
+			m := &tableMetadata{FileNum: base.FileNum(fn)}
+			m.InitPhysicalBacking()
+			m.FileBacking.Ref()
+			if rangeIter {
+				iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterRangeKeys)
+			} else {
+				iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			}
+			if err != nil {
+				t.Fatalf("i=%d, fn=%d: find: %v", i, fn, err)
+			}
+			if err := iters.CloseAll(); err != nil {
+				t.Fatalf("i=%d, fn=%d: close: %v", i, fn, err)
+			}
 		}
 
-		h.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h.Evict(fct.fileByIdx(int(lo + rng.Uint64N(hi-lo))))
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -840,7 +892,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	fEvicted := float64(sumEvicted) / float64(nEvicted)
 	fSafe := float64(sumSafe) / float64(nSafe)
 	// The magic 1.25 number isn't derived from formal modeling. It's just a guess. For
-	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumTables) = (10, 20, 100, 300),
+	// (lo, hi, fileCacheTestCacheSize, fileCacheTestNumFiles) = (10, 20, 100, 300),
 	// the ratio seems to converge on roughly 1.5 for large N, compared to 1.0 if we do
 	// not Evict any cache entries.
 	if ratio := fEvicted / fSafe; ratio < 1.25 {
@@ -871,30 +923,41 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 	// TODO(radu): this test fails on most seeds.
 	rng := rand.New(rand.NewPCG(0, 0))
 	for i := 0; i < N; i++ {
-		j := rng.IntN(fileCacheTestNumTables)
-		m := &tableMetadata{FileNum: base.FileNum(j)}
-		m.InitPhysicalBacking()
-		m.FileBacking.Ref()
-		iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
-		if err != nil {
-			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
+		j := rng.IntN(fileCacheTestNumFiles)
+		fn, typ := fct.fileByIdx(j)
+		if typ == base.FileTypeBlob {
+			_, closeFunc1, err := h1.GetValueReader(context.Background(), fn)
+			if err != nil {
+				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
+			}
+			_, closeFunc2, err := h2.GetValueReader(context.Background(), fn)
+			if err != nil {
+				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
+			}
+			closeFunc1()
+			closeFunc2()
+		} else {
+			m := &tableMetadata{FileNum: base.FileNum(fn)}
+			m.InitPhysicalBacking()
+			m.FileBacking.Ref()
+			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			if err != nil {
+				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
+			}
+			iters2, err := h2.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
+			if err != nil {
+				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
+			}
+			if err := iters1.Point().Close(); err != nil {
+				t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
+			}
+			if err := iters2.Point().Close(); err != nil {
+				t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
+			}
 		}
 
-		iters2, err := h2.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
-		if err != nil {
-			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
-		}
-
-		if err := iters1.Point().Close(); err != nil {
-			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
-		}
-
-		if err := iters2.Point().Close(); err != nil {
-			t.Fatalf("i=%d, j=%d: close: %v", i, j, err)
-		}
-
-		h1.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
-		h2.Evict(base.DiskFileNum(lo + rng.Uint64N(hi-lo)))
+		h1.Evict(fct.fileByIdx(int(lo + rng.Uint64N(hi-lo))))
+		h2.Evict(fct.fileByIdx(int(lo + rng.Uint64N(hi-lo))))
 	}
 
 	check := func(fs *fileCacheTestFS, h *fileCacheHandle) (float64, float64, float64) {
@@ -1046,7 +1109,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 		FileCache: fcs.fileCache,
 	}
 	opts.EnsureDefaults()
-	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	c := opts.FileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -1120,7 +1183,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	defer h.Close()
 
 	scanner := bufio.NewScanner(f)
@@ -1144,7 +1207,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		m := &tableMetadata{FileNum: base.FileNum(key)}
 		m.InitPhysicalBacking()
 		m.FileBacking.Ref()
-		v, err := h.findOrCreate(context.Background(), m)
+		v, err := h.findOrCreateTable(context.Background(), m)
 		require.NoError(t, err)
 		v.Unref()
 
@@ -1256,7 +1319,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 	}
 	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopSSTableCorruptionFn)
+	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
 	defer h.Close()
 
 	makeTable(1)
@@ -1267,7 +1330,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v, _ := h.findOrCreate(context.Background(), m)
+		v, _ := h.findOrCreateTable(context.Background(), m)
 		v.Unref()
 	}
 }

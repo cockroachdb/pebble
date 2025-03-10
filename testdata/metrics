@@ -75,7 +75,7 @@ Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 1
 Block cache: 2 entries (716B)  hit rate: 0.0%
-Table cache: 1 entries (800B)  hit rate: 0.0%
+Table cache: 1 entries (824B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -224,7 +224,7 @@ Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
 Block cache: 2 entries (716B)  hit rate: 33.3%
-Table cache: 1 entries (800B)  hit rate: 66.7%
+Table cache: 1 entries (824B)  hit rate: 66.7%
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -503,7 +503,7 @@ Virtual tables: 0 (0B)
 Local tables size: 4.3KB
 Compression types: snappy: 7
 Block cache: 8 entries (2.8KB)  hit rate: 9.1%
-Table cache: 1 entries (800B)  hit rate: 53.8%
+Table cache: 1 entries (824B)  hit rate: 53.8%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -567,7 +567,7 @@ Virtual tables: 0 (0B)
 Local tables size: 6.1KB
 Compression types: snappy: 10
 Block cache: 8 entries (2.8KB)  hit rate: 9.1%
-Table cache: 1 entries (800B)  hit rate: 53.8%
+Table cache: 1 entries (824B)  hit rate: 53.8%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -843,7 +843,7 @@ Virtual tables: 0 (0B)
 Local tables size: 0B
 Compression types: snappy: 1
 Block cache: 0 entries (0B)  hit rate: 0.0%
-Table cache: 1 entries (800B)  hit rate: 0.0%
+Table cache: 1 entries (824B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -892,7 +892,7 @@ Virtual tables: 0 (0B)
 Local tables size: 0B
 Compression types: snappy: 2
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
-Table cache: 1 entries (800B)  hit rate: 50.0%
+Table cache: 1 entries (824B)  hit rate: 50.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -941,7 +941,7 @@ Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 3
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
-Table cache: 1 entries (800B)  hit rate: 50.0%
+Table cache: 1 entries (824B)  hit rate: 50.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%

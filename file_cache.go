@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/redact"
@@ -120,6 +121,9 @@ type fileCacheHandle struct {
 	}
 }
 
+// Assert that *fileCacheHandle implements blob.ReaderProvider.
+var _ blob.ReaderProvider = (*fileCacheHandle)(nil)
+
 // newHandle creates a handle for the FileCache which has its own options. Each
 // handle has its own set of files in the cache, separate from those of other
 // handles.
@@ -128,7 +132,7 @@ func (c *FileCache) newHandle(
 	objProvider objstorage.Provider,
 	loggerAndTracer LoggerAndTracer,
 	readerOpts sstable.ReaderOptions,
-	reportSSTableCorruptionFn func(*manifest.TableMetadata, error),
+	reportCorruptionFn func(any, error),
 ) *fileCacheHandle {
 	c.Ref()
 
@@ -140,11 +144,7 @@ func (c *FileCache) newHandle(
 	}
 	t.readerOpts = readerOpts
 	t.readerOpts.FilterMetricsTracker = &sstable.FilterMetricsTracker{}
-	if reportSSTableCorruptionFn != nil {
-		t.reportCorruptionFn = func(arg any, err error) {
-			reportSSTableCorruptionFn(arg.(*manifest.TableMetadata), err)
-		}
-	}
+	t.reportCorruptionFn = reportCorruptionFn
 	if invariants.RaceEnabled {
 		t.raceMu.openRefs = make(map[uint64][]byte)
 	}
@@ -190,40 +190,54 @@ func (h *fileCacheHandle) Close() error {
 
 // openFile is called when we insert a new entry in the file cache.
 func (h *fileCacheHandle) openFile(
-	ctx context.Context, fileNum base.DiskFileNum,
-) (*sstable.Reader, objstorage.ObjectMetadata, error) {
+	ctx context.Context, fileNum base.DiskFileNum, fileType base.FileType,
+) (io.Closer, objstorage.ObjectMetadata, error) {
 	f, err := h.objProvider.OpenForReading(
-		ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{MustExist: true},
+		ctx, fileType, fileNum, objstorage.OpenOptions{MustExist: true},
 	)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
+	objMeta, err := h.objProvider.Lookup(fileType, fileNum)
+	if err != nil {
+		return nil, objstorage.ObjectMetadata{}, err
+	}
+
 	o := h.readerOpts
 	o.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: h.blockCacheHandle,
 		FileNum:     fileNum,
 	}
-	r, err := sstable.NewReader(ctx, f, o)
-	if err != nil {
-		return nil, objstorage.ObjectMetadata{}, err
+	switch fileType {
+	case base.FileTypeTable:
+		r, err := sstable.NewReader(ctx, f, o)
+		if err != nil {
+			return nil, objMeta, err
+		}
+		return r, objMeta, nil
+	case base.FileTypeBlob:
+		r, err := blob.NewFileReader(ctx, f, blob.FileReaderOptions{
+			ReaderOptions: o.ReaderOptions,
+		})
+		if err != nil {
+			return nil, objMeta, err
+		}
+		return r, objMeta, nil
+	default:
+		panic(errors.AssertionFailedf("pebble: unexpected file cache file type: %s", fileType))
 	}
-	objMeta, err := h.objProvider.Lookup(base.FileTypeTable, fileNum)
-	if err != nil {
-		r.Close()
-		return nil, objstorage.ObjectMetadata{}, err
-	}
-	return r, objMeta, nil
 }
 
-// findOrCreate retrieves an existing reader or creates a new one for the
-// backing file of the given table. If a corruption error is encountered,
-// reportCorruptionFn() is called.
-func (h *fileCacheHandle) findOrCreate(
+// findOrCreateTable retrieves an existing sstable reader or creates a new one
+// for the backing file of the given table. If a corruption error is
+// encountered, reportCorruptionFn() is called.
+func (h *fileCacheHandle) findOrCreateTable(
 	ctx context.Context, meta *manifest.TableMetadata,
 ) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
 	key := fileCacheKey{
-		handle:  h,
-		fileNum: meta.FileBacking.DiskFileNum,
+		handle:   h,
+		fileNum:  meta.FileBacking.DiskFileNum,
+		fileType: base.FileTypeTable,
 	}
 	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
 	if err != nil && IsCorruptionError(err) {
@@ -232,9 +246,28 @@ func (h *fileCacheHandle) findOrCreate(
 	return valRef, err
 }
 
+// findOrCreateBlob retrieves an existing blob reader or creates a new one for
+// the given blob file. If a corruption error is encountered,
+// reportCorruptionFn() is called.
+func (h *fileCacheHandle) findOrCreateBlob(
+	ctx context.Context, fileNum base.DiskFileNum,
+) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
+	key := fileCacheKey{
+		handle:   h,
+		fileNum:  fileNum,
+		fileType: base.FileTypeBlob,
+	}
+	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
+	// TODO(jackson): Propagate a blob metadata object here.
+	if err != nil && IsCorruptionError(err) {
+		h.reportCorruptionFn(nil, err)
+	}
+	return valRef, err
+}
+
 // Evict the given file from the file cache and the block cache.
-func (h *fileCacheHandle) Evict(fileNum base.DiskFileNum) {
-	h.fileCache.c.Evict(fileCacheKey{handle: h, fileNum: fileNum})
+func (h *fileCacheHandle) Evict(fileNum base.DiskFileNum, fileType base.FileType) {
+	h.fileCache.c.Evict(fileCacheKey{handle: h, fileNum: fileNum, fileType: fileType})
 	h.blockCacheHandle.EvictFile(fileNum)
 }
 
@@ -247,11 +280,21 @@ func (h *fileCacheHandle) SSTStatsCollector() *block.CategoryStatsCollector {
 // FilterMetrics are per-handle.
 func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 	m := h.fileCache.c.Metrics()
+
+	// The generic cache maintains a count of entries, but it doesn't know which
+	// entries are sstables and which are blob files, which affects the memory
+	// footprint of the table cache. So the FileCache maintains its own counts,
+	// incremented when initializing a new value and decremented by the
+	// releasing func.
+	countSSTables := h.fileCache.counts.sstables.Load()
+	countBlobFiles := h.fileCache.counts.blobFiles.Load()
+
 	cm := CacheMetrics{
 		Hits:   m.Hits,
 		Misses: m.Misses,
-		Count:  m.Count,
-		Size:   m.Size + m.Count*int64(unsafe.Sizeof(sstable.Reader{})),
+		Count:  countSSTables + countBlobFiles,
+		Size: m.Size + countSSTables*int64(unsafe.Sizeof(sstable.Reader{})) +
+			countBlobFiles*int64(unsafe.Sizeof(blob.FileReader{})),
 	}
 	fm := h.readerOpts.FilterMetricsTracker.Load()
 	return cm, fm
@@ -287,7 +330,7 @@ func (h *fileCacheHandle) withCommonReader(
 	meta *tableMetadata,
 	fn func(sstable.CommonReader, block.ReadEnv) error,
 ) error {
-	ref, err := h.findOrCreate(ctx, meta)
+	ref, err := h.findOrCreateTable(ctx, meta)
 	if err != nil {
 		return err
 	}
@@ -303,7 +346,7 @@ func (h *fileCacheHandle) withReader(
 	meta physicalMeta,
 	fn func(*sstable.Reader, block.ReadEnv) error,
 ) error {
-	ref, err := h.findOrCreate(ctx, meta.TableMetadata)
+	ref, err := h.findOrCreateTable(ctx, meta.TableMetadata)
 	if err != nil {
 		return err
 	}
@@ -320,7 +363,7 @@ func (h *fileCacheHandle) withVirtualReader(
 	meta virtualMeta,
 	fn func(sstable.VirtualReader, block.ReadEnv) error,
 ) error {
-	ref, err := h.findOrCreate(ctx, meta.TableMetadata)
+	ref, err := h.findOrCreateTable(ctx, meta.TableMetadata)
 	if err != nil {
 		return err
 	}
@@ -335,10 +378,32 @@ func (h *fileCacheHandle) IterCount() int64 {
 	return int64(h.iterCount.Load())
 }
 
+// GetValueReader returns a blob.ValueReader for blob file identified by fileNum.
+func (h *fileCacheHandle) GetValueReader(
+	ctx context.Context, fileNum base.DiskFileNum,
+) (r blob.ValueReader, closeFunc func(), err error) {
+	ref, err := h.findOrCreateBlob(ctx, fileNum)
+	if err != nil {
+		return nil, nil, err
+	}
+	v := ref.Value()
+	r = v.mustBlob()
+	// NB: The call to findOrCreateBlob incremented the value's reference count.
+	// The closeHook (v.closeHook) takes responsibility for unreferencing the
+	// value. Take care to avoid introducing an allocation here by adding a
+	// closure.
+	closeHook := h.addReference(v)
+	return r, closeHook, nil
+}
+
 // FileCache is a shareable cache for open files. Open files are exclusively
 // sstable files today.
 type FileCache struct {
-	refs atomic.Int64
+	refs   atomic.Int64
+	counts struct {
+		sstables  atomic.Int64
+		blobFiles atomic.Int64
+	}
 
 	c genericcache.Cache[fileCacheKey, fileCacheValue]
 }
@@ -390,17 +455,31 @@ func NewFileCache(numShards int, size int) *FileCache {
 			vRef.Unref()
 			handle.iterCount.Add(-1)
 		}
-		reader, objMeta, err := handle.openFile(ctx, key.fileNum)
+		reader, objMeta, err := handle.openFile(ctx, key.fileNum, key.fileType)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: backing file %s error", redact.Safe(key.fileNum))
 		}
 		v.reader = reader
 		v.isShared = objMeta.IsShared()
+		switch key.fileType {
+		case base.FileTypeTable:
+			c.counts.sstables.Add(1)
+		case base.FileTypeBlob:
+			c.counts.blobFiles.Add(1)
+		default:
+			panic("unexpected file type")
+		}
 		return nil
 	}
 
 	releaseFn := func(v *fileCacheValue) {
 		if v.reader != nil {
+			switch v.reader.(type) {
+			case *sstable.Reader:
+				c.counts.sstables.Add(-1)
+			case *blob.FileReader:
+				c.counts.blobFiles.Add(-1)
+			}
 			_ = v.reader.Close()
 			v.reader = nil
 		}
@@ -417,6 +496,11 @@ func NewFileCache(numShards int, size int) *FileCache {
 type fileCacheKey struct {
 	handle  *fileCacheHandle
 	fileNum base.DiskFileNum
+	// fileType describes the type of file being cached (blob or sstable). A
+	// file number alone uniquely identifies every file within a DB, but we need
+	// to propagate the type so the file cache looks for the correct file in
+	// object storage / the filesystem.
+	fileType base.FileType
 }
 
 // Shard implements the genericcache.Key interface.
@@ -458,7 +542,7 @@ func (h *fileCacheHandle) newIters(
 	kinds iterKinds,
 ) (iterSet, error) {
 	// Calling findOrCreate gives us the responsibility of Unref()ing vRef.
-	vRef, err := h.findOrCreate(ctx, file)
+	vRef, err := h.findOrCreateTable(ctx, file)
 	if err != nil {
 		return iterSet{}, err
 	}
@@ -774,8 +858,9 @@ func (rp *tableCacheShardReaderProvider) Close() {
 // WARNING! If file is a virtual table, we return the properties of the physical
 // table.
 func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Properties, error) {
-	// Calling findOrCreate gives us the responsibility of decrementing v's refCount here
-	v, err := h.findOrCreate(context.TODO(), file)
+	// Calling findOrCreateTable gives us the responsibility of decrementing v's
+	// refCount here
+	v, err := h.findOrCreateTable(context.TODO(), file)
 	if err != nil {
 		return nil, err
 	}
@@ -787,7 +872,7 @@ func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Prop
 
 type fileCacheValue struct {
 	closeHook func()
-	reader    io.Closer // *sstable.Reader
+	reader    io.Closer // *sstable.Reader or *blob.FileReader
 	isShared  bool
 
 	// readerProvider is embedded here so that we only allocate it once as long as
@@ -802,6 +887,12 @@ type fileCacheValue struct {
 // file is not a sstable (i.e., it is a blob file).
 func (v *fileCacheValue) mustSSTableReader() *sstable.Reader {
 	return v.reader.(*sstable.Reader)
+}
+
+// mustBlob retrieves the value's *blob.FileReader. It panics if the cached file
+// is not a blob file.
+func (v *fileCacheValue) mustBlob() *blob.FileReader {
+	return v.reader.(*blob.FileReader)
 }
 
 // iterSet holds a set of iterators of various key kinds, all constructed over
