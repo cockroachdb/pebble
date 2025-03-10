@@ -433,7 +433,7 @@ func (d *DB) tryLaunchDownloadForFile(
 
 	download.numLaunchedDownloads++
 	doneCh = make(chan error, 1)
-	c := newCompaction(pc, d.opts, d.timeNow(), d.objProvider, nil /* slot */)
+	c := newCompaction(pc, d.opts, d.timeNow(), d.objProvider, noopGrantHandle{})
 	c.isDownload = true
 	d.mu.compact.downloadingCount++
 	d.addInProgressCompaction(c)

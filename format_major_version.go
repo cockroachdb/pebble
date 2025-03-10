@@ -454,19 +454,23 @@ func (d *DB) writeFormatVersionMarker(formatVers FormatMajorVersion) error {
 // waiting for compactions to complete (or for slots to free up).
 func (d *DB) compactMarkedFilesLocked() error {
 	curr := d.mu.versions.currentVersion()
+	if curr.Stats.MarkedForCompaction == 0 {
+		return nil
+	}
+	// Attempt to schedule a compaction to rewrite a file marked for compaction.
+	// We simply call maybeScheduleCompaction since it also picks rewrite
+	// compactions. Note that we don't need to call this repeatedly in the for
+	// loop below since the completion of a compaction either starts a new one
+	// or ensures a compaction is queued for scheduling. By calling
+	// maybeScheduleCompaction here we are simply kicking off this behavior.
+	d.maybeScheduleCompaction()
+
+	// The above attempt might succeed and schedule a rewrite compaction. Or
+	// there might not be available compaction concurrency to schedule the
+	// compaction.  Or compaction of the file might have already been in
+	// progress. In any scenario, wait until there's some change in the
+	// state of active compactions.
 	for curr.Stats.MarkedForCompaction > 0 {
-		// Attempt to schedule a compaction to rewrite a file marked for
-		// compaction.
-		d.maybeScheduleCompactionPicker(func(picker compactionPicker, env compactionEnv) *pickedCompaction {
-			return picker.pickRewriteCompaction(env)
-		})
-
-		// The above attempt might succeed and schedule a rewrite compaction. Or
-		// there might not be available compaction concurrency to schedule the
-		// compaction.  Or compaction of the file might have already been in
-		// progress. In any scenario, wait until there's some change in the
-		// state of active compactions.
-
 		// Before waiting, check that the database hasn't been closed. Trying to
 		// schedule the compaction may have dropped d.mu while waiting for a
 		// manifest write to complete. In that dropped interim, the database may
@@ -483,9 +487,10 @@ func (d *DB) compactMarkedFilesLocked() error {
 		// Only wait on compactions if there are files still marked for compaction.
 		// NB: Waiting on this condition variable drops d.mu while blocked.
 		if curr.Stats.MarkedForCompaction > 0 {
-			if d.mu.compact.compactingCount == 0 {
-				panic("expected a compaction of marked files in progress")
-			}
+			// NB: we cannot assert that d.mu.compact.compactingCount > 0, since
+			// with a CompactionScheduler a DB may not have even one ongoing
+			// compaction (if other competing activities are being preferred by the
+			// scheduler).
 			d.mu.compact.cond.Wait()
 			// Refresh the current version again.
 			curr = d.mu.versions.currentVersion()
