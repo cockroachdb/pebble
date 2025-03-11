@@ -656,6 +656,7 @@ rocksdb.raw.value.size: 1
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.data.blocks: 1
+rocksdb.compression: Snappy
 
 properties file=8
 ----
@@ -665,6 +666,7 @@ rocksdb.raw.value.size: 1
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.data.blocks: 1
+rocksdb.compression: Snappy
 
 wait-pending-table-stats
 000007
@@ -771,6 +773,7 @@ rocksdb.raw.key.size: 2
 rocksdb.raw.value.size: 1
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
+rocksdb.compression: Snappy
 
 properties file=13
 ----
@@ -779,6 +782,7 @@ rocksdb.raw.key.size: 2
 rocksdb.raw.value.size: 1
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
+rocksdb.compression: Snappy
 
 wait-pending-table-stats
 000012
@@ -879,6 +883,7 @@ rocksdb.raw.value.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 1
 rocksdb.num.data.blocks: 1
+rocksdb.compression: Snappy
 
 properties file=21
 ----
@@ -888,6 +893,7 @@ rocksdb.raw.value.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 1
 rocksdb.num.data.blocks: 1
+rocksdb.compression: Snappy
 
 wait-pending-table-stats
 000020
