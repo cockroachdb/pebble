@@ -89,6 +89,8 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 	v.Properties.RawPointTombstoneKeySize = scale(reader.Properties.RawPointTombstoneKeySize)
 	v.Properties.RawPointTombstoneValueSize = scale(reader.Properties.RawPointTombstoneValueSize)
 
+	v.Properties.CompressionName = reader.Properties.CompressionName
+
 	return v
 }
 

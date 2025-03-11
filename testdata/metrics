@@ -643,7 +643,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 2 (1.2KB)
 Virtual tables: 2 (102B)
 Local tables size: 6.7KB
-Compression types: snappy: 9 unknown: 2
+Compression types: snappy: 11
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
