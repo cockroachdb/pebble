@@ -36,10 +36,12 @@ testrace: testflags += -race -timeout 20m
 testrace: test
 
 testasan: testflags += -asan -timeout 20m
+testasan: TAGS += slowbuild
 testasan: test
 
 testmsan: export CC=clang
 testmsan: testflags += -msan -timeout 20m
+testmsan: TAGS += slowbuild
 testmsan: test
 
 .PHONY: testobjiotracing
