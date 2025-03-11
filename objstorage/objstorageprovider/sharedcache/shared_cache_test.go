@@ -12,7 +12,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
@@ -137,7 +137,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 			for _, concurrentReads := range []bool{false, true} {
 				t.Run(fmt.Sprintf("concurrentReads=%v", concurrentReads), func(t *testing.T) {
 					maxShards := 32
-					if invariants.RaceEnabled {
+					if buildtags.SlowBuild {
 						maxShards = 8
 					}
 					numShards := rng.IntN(maxShards) + 1
@@ -200,7 +200,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 	t.Run("32 KB block size", helper(32*1024, 1024*1024))
 	t.Run("1 MB block size", helper(1024*1024, 1024*1024))
 
-	if !invariants.RaceEnabled {
+	if !buildtags.SlowBuild {
 		for i := 0; i < 5; i++ {
 			exp := rng.IntN(11) + 10    // [10, 20]
 			randomBlockSize := 1 << exp // [1 KB, 1 MB]
