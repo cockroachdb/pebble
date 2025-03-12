@@ -53,6 +53,22 @@ type FileWriterOptions struct {
 	FlushGovernor block.FlushGovernor
 }
 
+func (o *FileWriterOptions) ensureDefaults() {
+	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression {
+		o.Compression = block.SnappyCompression
+	}
+	if o.ChecksumType == block.ChecksumTypeNone {
+		o.ChecksumType = block.ChecksumTypeCRC32c
+	}
+	if o.FlushGovernor == (block.FlushGovernor{}) {
+		o.FlushGovernor = block.MakeFlushGovernor(
+			base.DefaultBlockSize,
+			base.DefaultBlockSizeThreshold,
+			base.SizeClassAwareBlockSizeThreshold,
+			nil)
+	}
+}
+
 // FileWriterStats aggregates statistics about a blob file written by a
 // FileWriter.
 type FileWriterStats struct {
@@ -107,6 +123,7 @@ type compressedBlock struct {
 
 // NewFileWriter creates a new FileWriter.
 func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOptions) *FileWriter {
+	opts.ensureDefaults()
 	fw := writerPool.Get().(*FileWriter)
 	fw.fileNum = fn
 	fw.w = w
@@ -199,6 +216,9 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	if stats.BlockCount != uint32(len(w.blockOffsets)) {
 		panic(errors.AssertionFailedf("block count mismatch: %d vs %d",
 			stats.BlockCount, len(w.blockOffsets)))
+	}
+	if stats.BlockCount == 0 {
+		panic(errors.AssertionFailedf("no blocks written"))
 	}
 
 	// Write the index block.
