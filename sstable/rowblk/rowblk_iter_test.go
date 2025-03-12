@@ -17,6 +17,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -564,21 +565,20 @@ func TestBufferExceeding256MBShouldPanic(t *testing.T) {
 	writer.Add(base.InternalKey{UserKey: []byte("arbitrary-last-key")}, []byte("arbitrary-last-value"))
 }
 
+// TestMultipleKVBlockRestartsOverflow tests that SeekGE() works when
+// iter.restarts is greater than math.MaxUint32 for multiple KVs. Test writes
+// <256MiB to the block and then 4GiB causing iter.restarts to be an int >
+// math.MaxUint32. Reaching just shy of 256MiB before adding 4GiB allows the
+// final write to succeed without surpassing 256MiB limit. Then verify that
+// SeekGE() returns valid output without integer overflow.
 func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
-
-	_, isCI := os.LookupEnv("CI")
-	if isCI {
-		t.Skip("Skipping test: requires too much memory for CI now.")
+	if _, isCI := os.LookupEnv("CI"); isCI {
+		t.Skip("Skipping test: requires too much memory for CI.")
 	}
 
-	// Tests that SeekGE() works when iter.restarts is
-	// greater than math.MaxUint32 for multiple KVs.
-	// Test writes < 256MiB to the block and then 4GiB
-	// causing iter.restarts will be an int > math.MaxUint32.
-	// Reaching just shy of 256MiB before adding 4GiB allows
-	// the final write to succeed without surpassing 256MiB
-	// limit.  Then test whether SeekGE() will return valid
-	// output without integer overflow.
+	if buildtags.SlowBuild {
+		t.Skip("Skipping test: requires too much memory for instrumented builds")
+	}
 
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
