@@ -76,6 +76,23 @@ crossversion-meta:
 stress-crossversion:
 	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-23.1 crl-release-23.2 crl-release-24.1 crl-release-24.2 master
 
+.PHONY: test-s390x-qemu
+test-s390x-qemu: TAGS += slowbuild
+test-s390x-qemu:
+	@echo "Running tests on s390x using QEMU"
+	@echo "Requires a recent linux with docker and qemu-user-static installed"
+	@echo "(sudo apt-get install -y qemu-user-static)"
+	@echo ""
+	@qemu-s390x-static --version
+	@echo ""
+	@docker run --rm -v "$(CURDIR):/pebble" --platform=linux/s390x golang:1.23 \
+		bash -c " \
+				uname -a && \
+				lscpu | grep Endian && \
+				cd /pebble && \
+				go version && \
+				go test -tags '$(TAGS)' -timeout 30m ./..."
+
 .PHONY: gen-bazel
 gen-bazel:
 	@echo "Generating WORKSPACE"

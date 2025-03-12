@@ -1,0 +1,35 @@
+name: Nightly tests on s390x
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # 9am UTC, daily.
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  linux-qemu-s390x:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install qemu
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          qemu-s390x-static --version
+
+      - name: Run tests in container
+        run: make test-s390x-qemu
+
+      - name: Post issue on failure
+        if: failure()
+        id: create-or-update-unique-issue
+        uses: ./.github/actions/post-issue
+        with:
+          title: "s390x tests failed"
+          body: "The nightly s390x test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          unique-title-includes: "s390x tests failed"
+          labels: "C-test-failure"
