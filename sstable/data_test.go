@@ -140,9 +140,9 @@ func writeKVs(w RawWriter, input string) (err error) {
 				if forceObsolete {
 					return errors.Errorf("force-obsolete is not allowed for RANGEDEL")
 				}
-				err = w.AddWithForceObsolete(key, value, false /* forceObsolete */)
+				err = w.Add(key, value, false /* forceObsolete */)
 			default:
-				err = w.AddWithForceObsolete(key, value, forceObsolete)
+				err = w.Add(key, value, forceObsolete)
 			}
 		}
 		if err != nil {
@@ -223,7 +223,7 @@ func runBuildRawCmd(
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
 		value := []byte(data[j+1:])
-		if err := w.AddWithForceObsolete(key, value, false); err != nil {
+		if err := w.Add(key, value, false); err != nil {
 			return nil, nil, err
 		}
 	}

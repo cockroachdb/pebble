@@ -98,7 +98,7 @@ func writeSSTForIngestion(
 			return nil, err
 		}
 		t.opts.Comparer.ValidateKey.MustValidate(k.K.UserKey)
-		if err := w.Raw().AddWithForceObsolete(k.K, valBytes, false); err != nil {
+		if err := w.Raw().Add(k.K, valBytes, false); err != nil {
 			return nil, err
 		}
 	}

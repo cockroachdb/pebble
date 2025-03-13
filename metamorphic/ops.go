@@ -2003,7 +2003,7 @@ func (r *replicateOp) runSharedReplicate(
 			if err != nil {
 				panic(err)
 			}
-			return w.Raw().AddWithForceObsolete(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
+			return w.Raw().Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
 		},
 		func(start, end []byte, seqNum base.SeqNum) error {
 			return w.DeleteRange(start, end)
@@ -2067,7 +2067,7 @@ func (r *replicateOp) runExternalReplicate(
 				panic(err)
 			}
 			t.opts.Comparer.ValidateKey.MustValidate(key.UserKey)
-			return w.Raw().AddWithForceObsolete(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
+			return w.Raw().Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
 		},
 		func(start, end []byte, seqNum base.SeqNum) error {
 			t.opts.Comparer.ValidateKey.MustValidate(start)

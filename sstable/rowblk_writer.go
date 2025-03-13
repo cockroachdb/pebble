@@ -565,7 +565,7 @@ type bufferedIndexBlock struct {
 	block []byte
 }
 
-// AddWithForceObsolete must be used when writing a strict-obsolete sstable.
+// Add must be used when writing a strict-obsolete sstable.
 //
 // forceObsolete indicates whether the caller has determined that this key is
 // obsolete even though it may be the latest point key for this userkey. This
@@ -576,9 +576,7 @@ type bufferedIndexBlock struct {
 // that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 // responsibility of the caller. S1 is solely the responsibility of the
 // callee.
-func (w *RawRowWriter) AddWithForceObsolete(
-	key InternalKey, value []byte, forceObsolete bool,
-) error {
+func (w *RawRowWriter) Add(key InternalKey, value []byte, forceObsolete bool) error {
 	if w.err != nil {
 		return w.err
 	}

@@ -193,7 +193,7 @@ func makeTestkeySSTable(
 	for i := 0; i < keys; i++ {
 		n := testkeys.WriteKey(keyBuf[len(sharedPrefix):], alphabet, int64(i))
 		key := append(keyBuf[:len(sharedPrefix)+n], suffix...)
-		err := w.Raw().AddWithForceObsolete(
+		err := w.Raw().Add(
 			base.MakeInternalKey(key, 0, InternalKeyKindSet), key, false)
 		if err != nil {
 			t.Fatal(err)
