@@ -5,8 +5,10 @@
 package blob
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -78,6 +80,14 @@ type FileWriterStats struct {
 	FileLen                uint64
 }
 
+// String implements the fmt.Stringer interface.
+func (s FileWriterStats) String() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "{BlockCount: %d, ValueCount: %d, BlockLenLongest: %d, UncompressedValueBytes: %d, FileLen: %d}",
+		s.BlockCount, s.ValueCount, s.BlockLenLongest, s.UncompressedValueBytes, s.FileLen)
+	return buf.String()
+}
+
 // A FileWriter writes a blob file.
 type FileWriter struct {
 	fileNum      base.DiskFileNum
@@ -136,6 +146,16 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 		OffsetInBlock: off,
 		ValueLen:      uint32(len(v)),
 	}
+}
+
+// EstimatedSize returns an estimate of the disk space consumed by the blob file
+// if it were closed now.
+func (w *FileWriter) EstimatedSize() uint64 {
+	sz := w.stats.FileLen                                    // Completed blocks
+	sz += uint64(w.b.Size()) + block.TrailerLen              // Pending uncompressed block
+	sz += uint64(w.stats.BlockCount+1)*12 + block.TrailerLen // Index block (worst case of 12 bytes per block [4 per integer])
+	sz += fileFooterLength                                   // Footer
+	return sz
 }
 
 func (w *FileWriter) flush() {
