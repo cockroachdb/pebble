@@ -343,7 +343,7 @@ func RewriteKeySuffixesViaWriter(
 		if invariants.Enabled && invariants.Sometimes(10) {
 			r.Comparer.ValidateKey.MustValidate(scratch.UserKey)
 		}
-		if err := w.AddWithForceObsolete(scratch, val, false); err != nil {
+		if err := w.Add(scratch, val, false); err != nil {
 			return nil, err
 		}
 		kv = i.Next()

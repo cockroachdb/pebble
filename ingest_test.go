@@ -117,7 +117,7 @@ func TestIngestLoad(t *testing.T) {
 				}
 				key := base.ParseInternalKey(data[:j])
 				value := []byte(data[j+1:])
-				if err := w.AddWithForceObsolete(key, value, false /* forceObsolete */); err != nil {
+				if err := w.Add(key, value, false /* forceObsolete */); err != nil {
 					return err.Error()
 				}
 			}
@@ -203,7 +203,7 @@ func TestIngestLoadRand(t *testing.T) {
 					// Duplicate key, ignore.
 					continue
 				}
-				require.NoError(t, w.AddWithForceObsolete(keys[i], nil, false /* forceObsolete */))
+				require.NoError(t, w.Add(keys[i], nil, false /* forceObsolete */))
 				count++
 			}
 			expected[i].Stats.NumEntries = count
@@ -1136,7 +1136,7 @@ func testIngestSharedImpl(
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
-					require.NoError(t, w.AddWithForceObsolete(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
 					return nil
 				},
 				func(start, end []byte, seqNum base.SeqNum) error {
@@ -1638,7 +1638,7 @@ func TestConcurrentExcise(t *testing.T) {
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
-					require.NoError(t, w.AddWithForceObsolete(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
 					return nil
 				},
 				func(start, end []byte, seqNum base.SeqNum) error {
@@ -2075,7 +2075,7 @@ func TestIngestExternal(t *testing.T) {
 				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
-					require.NoError(t, w.AddWithForceObsolete(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
 					return nil
 				},
 				func(start, end []byte, seqNum base.SeqNum) error {
@@ -2625,7 +2625,7 @@ func TestIngestCompact(t *testing.T) {
 
 	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	key := []byte("a")
-	require.NoError(t, w.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil, false /* forceObsolete */))
+	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil, false /* forceObsolete */))
 	require.NoError(t, w.Close())
 
 	// Make N copies of the sstable.
@@ -3284,7 +3284,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			}
 			key := base.ParseInternalKey(data[:j])
 			value := []byte(data[j+1:])
-			if err := w.AddWithForceObsolete(key, value, false /* forceObsolete */); err != nil {
+			if err := w.Add(key, value, false /* forceObsolete */); err != nil {
 				return nil, err
 			}
 		}

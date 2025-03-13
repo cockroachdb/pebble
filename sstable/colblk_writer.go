@@ -317,7 +317,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 	return nil
 }
 
-// AddWithForceObsolete adds a point key/value pair when writing a
+// Add adds a point key/value pair when writing a
 // strict-obsolete sstable. For a given Writer, the keys passed to Add must be
 // in increasing order. Span keys (range deletions, range keys) must be added
 // through EncodeSpan.
@@ -331,9 +331,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 // that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 // responsibility of the caller. S1 is solely the responsibility of the
 // callee.
-func (w *RawColumnWriter) AddWithForceObsolete(
-	key InternalKey, value []byte, forceObsolete bool,
-) error {
+func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool) error {
 	switch key.Kind() {
 	case base.InternalKeyKindRangeDelete, base.InternalKeyKindRangeKeySet,
 		base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:

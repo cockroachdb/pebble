@@ -442,7 +442,7 @@ func TestScanInternal(t *testing.T) {
 					var err error
 					value, _, err = kv.Value(value)
 					require.NoError(t, err)
-					require.NoError(t, w.Raw().AddWithForceObsolete(kv.K, value, false))
+					require.NoError(t, w.Raw().Add(kv.K, value, false))
 				}
 				points.Close()
 				require.NoError(t, w.Close())
