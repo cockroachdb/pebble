@@ -218,7 +218,7 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 		if err != nil {
 			return nil, err
 		}
-		if err := tw.AddWithForceObsolete(kv.K, v, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+		if err := tw.Add(kv.K, v, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
 			return nil, err
 		}
 		if r.iter.SnapshotPinned() {

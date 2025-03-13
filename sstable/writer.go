@@ -109,7 +109,7 @@ func (w *Writer) Set(key, value []byte) error {
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable delete the added points.
-	return w.rw.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false)
+	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false)
 }
 
 // Delete deletes the value for the given key. The sequence number is set to
@@ -126,7 +126,7 @@ func (w *Writer) Delete(key []byte) error {
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable delete the added points.
-	return w.rw.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false)
+	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false)
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -167,7 +167,7 @@ func (w *Writer) Merge(key, value []byte) error {
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable that delete the added points. If the user configured this writer
 	// to be strict-obsolete, addPoint will reject the addition of this MERGE.
-	return w.rw.AddWithForceObsolete(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false)
+	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false)
 }
 
 // RangeKeySet sets a range between start (inclusive) and end (exclusive) with
@@ -297,7 +297,7 @@ func (w *Writer) Close() (err error) {
 type RawWriter interface {
 	// Error returns the current accumulated error if any.
 	Error() error
-	// AddWithForceObsolete must be used when writing a strict-obsolete sstable.
+	// Add adds a key-value pair to the sstable.
 	//
 	// forceObsolete indicates whether the caller has determined that this key is
 	// obsolete even though it may be the latest point key for this userkey. This
@@ -308,9 +308,7 @@ type RawWriter interface {
 	// that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 	// responsibility of the caller. S1 is solely the responsibility of the
 	// callee.
-	AddWithForceObsolete(
-		key InternalKey, value []byte, forceObsolete bool,
-	) error
+	Add(key InternalKey, value []byte, forceObsolete bool) error
 	// EncodeSpan encodes the keys in the given span. The span can contain
 	// either only RANGEDEL keys or only range keys.
 	//

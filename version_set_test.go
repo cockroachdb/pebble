@@ -32,7 +32,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
-	require.NoError(t, w.AddWithForceObsolete(k, v, false /* forceObsolete */))
+	require.NoError(t, w.Add(k, v, false /* forceObsolete */))
 	require.NoError(t, w.Close())
 	require.NoError(t, d.Ingest(context.Background(), []string{path}))
 }

@@ -1760,7 +1760,7 @@ func buildTestTableWithProvider(
 		value := make([]byte, i%100)
 		key = binary.BigEndian.AppendUint64(key, i)
 		ikey.UserKey = key
-		require.NoError(t, w.AddWithForceObsolete(ikey, value, false /* forceObsolete */))
+		require.NoError(t, w.Add(ikey, value, false /* forceObsolete */))
 	}
 
 	require.NoError(t, w.Close())
@@ -1798,7 +1798,7 @@ func buildBenchmarkTable(
 		binary.BigEndian.PutUint64(key, i+uint64(offset))
 		keys = append(keys, key)
 		ikey.UserKey = key
-		require.NoError(b, w.AddWithForceObsolete(ikey, nil, false /* forceObsolete */))
+		require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */))
 	}
 
 	if err := w.Close(); err != nil {
@@ -2397,7 +2397,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 			if i == 0 {
 				forceObsolete = false
 			}
-			require.NoError(b, w.AddWithForceObsolete(
+			require.NoError(b, w.Add(
 				base.MakeInternalKey(key, 0, InternalKeyKindSet), val, forceObsolete))
 		}
 		require.NoError(b, w.Close())
