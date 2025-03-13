@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/stretchr/testify/require"
@@ -35,9 +36,9 @@ func TestCompressionRoundtrip(t *testing.T) {
 			// Create a randomly-sized buffer to house the compressed output. If it's
 			// not sufficient, Compress should allocate one that is.
 			compressedBuf := make([]byte, 1+rng.IntN(1<<10 /* 1 KiB */))
-
-			btyp, compressed := compress(compression, payload, compressedBuf)
-			v, err := decompress(btyp, compressed)
+			zstdContext := zstd.NewCtx()
+			btyp, compressed := compress(compression, payload, compressedBuf, zstdContext)
+			v, err := decompress(btyp, compressed, zstdContext)
 			require.NoError(t, err)
 			got := payload
 			if v != nil {
@@ -65,7 +66,7 @@ func TestDecompressionError(t *testing.T) {
 		fauxCompressed[i] = byte(rng.Uint32())
 	}
 
-	v, err := decompress(ZstdCompressionIndicator, fauxCompressed)
+	v, err := decompress(ZstdCompressionIndicator, fauxCompressed, zstd.NewCtx())
 	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, v)
@@ -74,7 +75,7 @@ func TestDecompressionError(t *testing.T) {
 // decompress decompresses an sstable block into memory manually allocated with
 // `cache.Alloc`.  NB: If Decompress returns (nil, nil), no decompression was
 // necessary and the caller may use `b` directly.
-func decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
+func decompress(algo CompressionIndicator, b []byte, zstdContext zstd.Ctx) (*cache.Value, error) {
 	if algo == NoCompressionIndicator {
 		return nil, nil
 	}
@@ -87,7 +88,7 @@ func decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
 	// Allocate sufficient space from the cache.
 	decoded := cache.Alloc(decodedLen)
 	decodedBuf := decoded.RawBuffer()
-	if err := DecompressInto(algo, b, decodedBuf); err != nil {
+	if err := DecompressInto(algo, b, decodedBuf, zstdContext); err != nil {
 		cache.Free(decoded)
 		return nil, err
 	}
@@ -103,6 +104,7 @@ func TestBufferRandomized(t *testing.T) {
 	b.Init(SnappyCompression, ChecksumTypeCRC32c)
 	defer b.Release()
 	vbuf := make([]byte, 0, 1<<10) // 1 KiB
+	zstdContext := zstd.NewCtx()
 
 	for i := 0; i < 25; i++ {
 		t.Run(fmt.Sprintf("iteration %d", i), func(t *testing.T) {
@@ -130,7 +132,7 @@ func TestBufferRandomized(t *testing.T) {
 				s := b.Get()
 				require.Equal(t, vbuf, s[len(s)-len(vbuf):])
 			}
-			_, bh := b.CompressAndChecksum()
+			_, bh := b.CompressAndChecksum(zstdContext)
 			bh.Release()
 		})
 	}

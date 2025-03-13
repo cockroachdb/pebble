@@ -14,6 +14,7 @@ import (
 	"slices"
 	"unsafe"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -460,12 +461,12 @@ func formatRowblkDataBlock(
 	return nil
 }
 
-func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
+func decodeLayout(comparer *base.Comparer, data []byte, zstdContext zstd.Ctx) (Layout, error) {
 	foot, err := parseFooter(data, 0, int64(len(data)))
 	if err != nil {
 		return Layout{}, err
 	}
-	decompressedMeta, err := decompressInMemory(data, foot.metaindexBH)
+	decompressedMeta, err := decompressInMemory(data, foot.metaindexBH, zstdContext)
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing metaindex")
 	}
@@ -483,7 +484,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 		Format:     foot.format,
 	}
 	var props Properties
-	decompressedProps, err := decompressInMemory(data, layout.Properties)
+	decompressedProps, err := decompressInMemory(data, layout.Properties, zstdContext)
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing properties")
 	}
@@ -492,7 +493,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 	}
 
 	if props.IndexType == twoLevelIndex {
-		decompressed, err := decompressInMemory(data, foot.indexBH)
+		decompressed, err := decompressInMemory(data, foot.indexBH, zstdContext)
 		if err != nil {
 			return Layout{}, errors.Wrap(err, "decompressing two-level index")
 		}
@@ -511,7 +512,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 		layout.Index = append(layout.Index, foot.indexBH)
 	}
 	for _, indexBH := range layout.Index {
-		decompressed, err := decompressInMemory(data, indexBH)
+		decompressed, err := decompressInMemory(data, indexBH, zstdContext)
 		if err != nil {
 			return Layout{}, errors.Wrap(err, "decompressing index block")
 		}
@@ -528,7 +529,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 	}
 
 	if layout.ValueIndex.Length > 0 {
-		vbiBlock, err := decompressInMemory(data, layout.ValueIndex)
+		vbiBlock, err := decompressInMemory(data, layout.ValueIndex, zstdContext)
 		if err != nil {
 			return Layout{}, errors.Wrap(err, "decompressing value index")
 		}
@@ -541,7 +542,7 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 	return layout, nil
 }
 
-func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
+func decompressInMemory(data []byte, bh block.Handle, zstdContext zstd.Ctx) ([]byte, error) {
 	typ := block.CompressionIndicator(data[bh.Offset+bh.Length])
 	var decompressed []byte
 	if typ == block.NoCompressionIndicator {
@@ -553,7 +554,7 @@ func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
 		return nil, err
 	}
 	decompressed = make([]byte, decodedLen)
-	if err := block.DecompressInto(typ, data[int(bh.Offset)+prefixLen:bh.Offset+bh.Length], decompressed); err != nil {
+	if err := block.DecompressInto(typ, data[int(bh.Offset)+prefixLen:bh.Offset+bh.Length], decompressed, zstdContext); err != nil {
 		return nil, err
 	}
 	return decompressed, nil
@@ -649,6 +650,8 @@ type layoutWriter struct {
 	handlesBuf           bytealloc.A
 	tmp                  [blockHandleLikelyMaxLen]byte
 	buf                  blockBuf
+
+	zstdContext zstd.Ctx
 }
 
 func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {
@@ -661,6 +664,7 @@ func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {
 		buf: blockBuf{
 			checksummer: block.Checksummer{Type: opts.Checksum},
 		},
+		zstdContext: zstd.NewCtx(),
 	}
 }
 
@@ -768,7 +772,7 @@ func (w *layoutWriter) WriteValueIndexBlock(
 func (w *layoutWriter) writeBlock(
 	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
-	pb := block.CompressAndChecksum(&buf.dataBuf, b, compression, &buf.checksummer)
+	pb := block.CompressAndChecksum(&buf.dataBuf, b, compression, &buf.checksummer, w.zstdContext)
 	h, err := w.writePrecompressedBlock(pb)
 	return h, err
 }

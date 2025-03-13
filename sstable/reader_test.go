@@ -1850,6 +1850,16 @@ var basicBenchmarks = []struct {
 			TableFormat:          TableFormatPebblev2,
 		},
 	},
+	{
+		name: "restart=16,compression=ZSTDContext",
+		options: WriterOptions{
+			BlockSize:            32 << 10,
+			BlockRestartInterval: 16,
+			FilterPolicy:         nil,
+			Compression:          block.ZstdContextCompression,
+			TableFormat:          TableFormatPebblev2,
+		},
+	},
 }
 
 func BenchmarkTableIterSeekGE(b *testing.B) {

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/DataDog/zstd"
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/crlib/fifo"
@@ -375,6 +376,7 @@ type Reader struct {
 	readable     objstorage.Readable
 	opts         ReaderOptions
 	checksumType ChecksumType
+	zstdContext  zstd.Ctx
 }
 
 // ReaderOptions configures a block reader.
@@ -395,6 +397,7 @@ func (r *Reader) Init(readable objstorage.Readable, ro ReaderOptions, checksumTy
 	r.readable = readable
 	r.opts = ro
 	r.checksumType = checksumType
+	r.zstdContext = zstd.NewCtx()
 }
 
 // FileNum returns the file number of the file being read.
@@ -543,7 +546,7 @@ func (r *Reader) doRead(
 			return Value{}, err
 		}
 		decompressed = Alloc(decodedLen, env.BufferPool)
-		err = DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData())
+		err = DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData(), r.zstdContext)
 		compressed.Release()
 		if err != nil {
 			decompressed.Release()

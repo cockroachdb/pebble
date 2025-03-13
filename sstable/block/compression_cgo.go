@@ -53,3 +53,25 @@ func encodeZstd(compressedBuf []byte, varIntLen int, b []byte) []byte {
 	writer.Close()
 	return buf.Bytes()
 }
+
+func encodeZstdWithContext(compressedBuf []byte, varIntLen int, b []byte, zctx zstd.Ctx) []byte {
+	buf, _ := zctx.CompressLevel(nil, b, 3)
+	res := make([]byte, varIntLen+len(buf))
+	copy(res, compressedBuf[:varIntLen])
+	copy(res[varIntLen:], buf)
+	return res
+}
+
+func decodeZstdWithContext(dst, src []byte, zctx zstd.Ctx) ([]byte, error) {
+	if len(src) == 0 {
+		return nil, errors.Errorf("decodeZstd: empty src buffer")
+	}
+	if len(dst) == 0 {
+		return nil, errors.Errorf("decodeZstd: empty dst buffer")
+	}
+	dst, err := zctx.Decompress(dst, src)
+	if err != nil {
+		return nil, err
+	}
+	return dst, nil
+}

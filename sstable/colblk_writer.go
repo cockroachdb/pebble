@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
@@ -101,6 +102,8 @@ type RawColumnWriter struct {
 	previousUserKey       invariants.Value[[]byte]
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
+
+	zstdContext zstd.Ctx
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -173,6 +176,8 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	w.props.CompressionName = o.Compression.String()
 	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
+
+	w.zstdContext = zstd.NewCtx()
 
 	w.writeQueue.ch = make(chan *compressedBlock)
 	w.writeQueue.wg.Add(1)
@@ -666,6 +671,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 		serializedBlock,
 		w.opts.Compression,
 		&cb.blockBuf.checksummer,
+		w.zstdContext,
 	)
 	return w.enqueuePhysicalBlock(cb, separator)
 }
@@ -1055,7 +1061,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	// Copy over the filter block if it exists.
 	if w.filterBlock != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filterBlock.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(sstBytes, filterBlockBH, r.blockReader.ChecksumType(), nil)
+			filterBlock, _, err := readBlockBuf(sstBytes, filterBlockBH, r.blockReader.ChecksumType(), nil, w.zstdContext)
 			if err != nil {
 				return errors.Wrap(err, "reading filter")
 			}
@@ -1155,6 +1161,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 		b,
 		w.opts.Compression,
 		&cb.blockBuf.checksummer,
+		w.zstdContext,
 	)
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
 		return err
