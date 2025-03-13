@@ -10,12 +10,12 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/golang/snappy"
 )
 
@@ -152,7 +152,7 @@ func DecompressedLen(
 // exact size as the decompressed value. Callers may use DecompressedLen to
 // determine the correct size.
 func DecompressInto(
-	algo CompressionIndicator, compressed []byte, buf []byte, zstdContext zstd.Ctx,
+	algo CompressionIndicator, compressed []byte, buf []byte, zstdContext types.ZstdCtx,
 ) error {
 	var result []byte
 	var err error
@@ -259,7 +259,7 @@ func CompressAndChecksum(
 	blockData []byte,
 	compression Compression,
 	checksummer *Checksummer,
-	zstdContext zstd.Ctx,
+	zstdContext types.ZstdCtx,
 ) PhysicalBlock {
 	buf := (*dst)[:0]
 	// Compress the buffer, discarding the result if the improvement isn't at
@@ -292,7 +292,7 @@ func CompressAndChecksum(
 // The result is aliased to dstBuf if that buffer had enough capacity, otherwise
 // it is a newly-allocated buffer.
 func compress(
-	compression Compression, b []byte, dstBuf []byte, zstdContext zstd.Ctx,
+	compression Compression, b []byte, dstBuf []byte, zstdContext types.ZstdCtx,
 ) (indicator CompressionIndicator, compressed []byte) {
 	switch compression {
 	case SnappyCompression:
@@ -384,7 +384,7 @@ func (b *Buffer) Resize(length int) {
 //
 // When CompressAndChecksum returns, the callee has been reset and is ready to
 // be reused.
-func (b *Buffer) CompressAndChecksum(zstdContext zstd.Ctx) (PhysicalBlock, *BufHandle) {
+func (b *Buffer) CompressAndChecksum(zstdContext types.ZstdCtx) (PhysicalBlock, *BufHandle) {
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := compressedBuffers.Get()
 	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer, zstdContext)

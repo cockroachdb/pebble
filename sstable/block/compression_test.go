@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +76,9 @@ func TestDecompressionError(t *testing.T) {
 // decompress decompresses an sstable block into memory manually allocated with
 // `cache.Alloc`.  NB: If Decompress returns (nil, nil), no decompression was
 // necessary and the caller may use `b` directly.
-func decompress(algo CompressionIndicator, b []byte, zstdContext zstd.Ctx) (*cache.Value, error) {
+func decompress(
+	algo CompressionIndicator, b []byte, zstdContext types.ZstdCtx,
+) (*cache.Value, error) {
 	if algo == NoCompressionIndicator {
 		return nil, nil
 	}

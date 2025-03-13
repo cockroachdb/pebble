@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -461,7 +462,7 @@ func formatRowblkDataBlock(
 	return nil
 }
 
-func decodeLayout(comparer *base.Comparer, data []byte, zstdContext zstd.Ctx) (Layout, error) {
+func decodeLayout(comparer *base.Comparer, data []byte, zstdContext types.ZstdCtx) (Layout, error) {
 	foot, err := parseFooter(data, 0, int64(len(data)))
 	if err != nil {
 		return Layout{}, err
@@ -542,7 +543,7 @@ func decodeLayout(comparer *base.Comparer, data []byte, zstdContext zstd.Ctx) (L
 	return layout, nil
 }
 
-func decompressInMemory(data []byte, bh block.Handle, zstdContext zstd.Ctx) ([]byte, error) {
+func decompressInMemory(data []byte, bh block.Handle, zstdContext types.ZstdCtx) ([]byte, error) {
 	typ := block.CompressionIndicator(data[bh.Offset+bh.Length])
 	var decompressed []byte
 	if typ == block.NoCompressionIndicator {
@@ -651,7 +652,7 @@ type layoutWriter struct {
 	tmp                  [blockHandleLikelyMaxLen]byte
 	buf                  blockBuf
 
-	zstdContext zstd.Ctx
+	zstdContext types.ZstdCtx
 }
 
 func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {

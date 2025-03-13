@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/types"
 )
 
 // Writer writes a sequence of value blocks, and the value blocks index, for a
@@ -28,7 +29,7 @@ type Writer struct {
 	totalBlockBytes uint64
 	numValues       uint64
 
-	zstdContext zstd.Ctx
+	zstdContext types.ZstdCtx
 }
 
 type bufferedValueBlock struct {

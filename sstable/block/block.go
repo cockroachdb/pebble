@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/types"
 )
 
 // Handle is the file offset and length of a block.
@@ -376,7 +377,7 @@ type Reader struct {
 	readable     objstorage.Readable
 	opts         ReaderOptions
 	checksumType ChecksumType
-	zstdContext  zstd.Ctx
+	zstdContext  types.ZstdCtx
 }
 
 // ReaderOptions configures a block reader.

@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -125,7 +126,7 @@ type RawRowWriter struct {
 	numDeletionsThreshold      int
 	deletionSizeRatioThreshold float32
 
-	zstdContext zstd.Ctx
+	zstdContext types.ZstdCtx
 }
 
 type pointKeyInfo struct {
@@ -547,7 +548,7 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.Finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(c block.Compression, zstdContext zstd.Ctx) {
+func (d *dataBlockBuf) compressAndChecksum(c block.Compression, zstdContext types.ZstdCtx) {
 	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, c, &d.checksummer, zstdContext)
 }
 

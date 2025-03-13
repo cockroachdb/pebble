@@ -13,7 +13,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
@@ -23,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -103,7 +103,8 @@ type RawColumnWriter struct {
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
 
-	zstdContext zstd.Ctx
+	// zstdContext types.ZstdCtx
+	zstdContext types.ZstdCtx
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -177,7 +178,7 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
 
-	w.zstdContext = zstd.NewCtx()
+	w.zstdContext = types.GetZstdCtx()
 
 	w.writeQueue.ch = make(chan *compressedBlock)
 	w.writeQueue.wg.Add(1)

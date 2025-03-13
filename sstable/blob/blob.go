@@ -9,13 +9,13 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/redact"
 )
@@ -114,7 +114,7 @@ type FileWriter struct {
 		ch  chan compressedBlock
 		err error
 	}
-	zstdContext zstd.Ctx
+	zstdContext types.ZstdCtx
 }
 
 type compressedBlock struct {

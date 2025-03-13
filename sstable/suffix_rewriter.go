@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/types"
 )
 
 // RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
@@ -377,7 +378,7 @@ func readBlockBuf(
 	bh block.Handle,
 	checksumType block.ChecksumType,
 	buf []byte,
-	zstdContext zstd.Ctx,
+	zstdContext types.ZstdCtx,
 ) ([]byte, []byte, error) {
 	raw := sstBytes[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
 	if err := block.ValidateChecksum(checksumType, raw, bh); err != nil {

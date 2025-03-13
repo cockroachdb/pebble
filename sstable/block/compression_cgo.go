@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/sstable/types"
 )
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
@@ -54,7 +55,9 @@ func encodeZstd(compressedBuf []byte, varIntLen int, b []byte) []byte {
 	return buf.Bytes()
 }
 
-func encodeZstdWithContext(compressedBuf []byte, varIntLen int, b []byte, zctx zstd.Ctx) []byte {
+func encodeZstdWithContext(
+	compressedBuf []byte, varIntLen int, b []byte, zctx types.ZstdCtx,
+) []byte {
 	buf, _ := zctx.CompressLevel(nil, b, 3)
 	res := make([]byte, varIntLen+len(buf))
 	copy(res, compressedBuf[:varIntLen])
@@ -62,7 +65,7 @@ func encodeZstdWithContext(compressedBuf []byte, varIntLen int, b []byte, zctx z
 	return res
 }
 
-func decodeZstdWithContext(dst, src []byte, zctx zstd.Ctx) ([]byte, error) {
+func decodeZstdWithContext(dst, src []byte, zctx types.ZstdCtx) ([]byte, error) {
 	if len(src) == 0 {
 		return nil, errors.Errorf("decodeZstd: empty src buffer")
 	}
