@@ -1,0 +1,185 @@
+# Test a value separation policy that writes new blob files, and that the policy
+# obeys the minimum size. A blob file should only be created, and only the
+# values "yuumi" and "poiandyaya" should be stored in them. Input values that
+# are stored in existing blob files should be retrieved.
+
+init write-new-blob-files minimum-size=5
+----
+
+add
+bar#201,SET:poi
+bax#202,SET:blob{value=yaya}
+----
+# create: 000001.sst
+RawWriter.Add("bar#201,SET", "poi", false)
+RawWriter.Add("bax#202,SET", "yaya", false)
+
+estimated-sizes
+----
+file: 0, references: 0
+
+add
+baz#202,SET:blob{value=yuumi}
+foo#209,SET:poiandyaya
+----
+# create: 000002.blob
+RawWriter.AddWithBlobHandle("baz#202,SET", "(f0,blk0[0:5])", 0, false)
+RawWriter.AddWithBlobHandle("foo#209,SET", "(f0,blk0[5:15])", 0, false)
+
+estimated-sizes
+----
+file: 70, references: 70
+
+close-output
+----
+# sync-data: 000001.sst
+# close: 000001.sst
+# sync-data: 000002.blob
+# close: 000002.blob
+Blob file created: 000002 size:[61 (61B)] vals:[15 (15B)]
+{BlockCount: 1, ValueCount: 2, BlockLenLongest: 15, UncompressedValueBytes: 15, FileLen: 61}
+blobrefs:[
+ 0: 000002 15
+]
+
+add
+zoo#220,SET:mai
+----
+# create: 000003.sst
+RawWriter.Add("zoo#220,SET", "mai", false)
+
+estimated-sizes
+----
+file: 0, references: 0
+
+close-output
+----
+# sync-data: 000003.sst
+# close: 000003.sst
+no blob file created
+blobrefs:[]
+
+# Test a policy to never separate values. Existing blob handles should be
+# retrieved and stored inline.
+
+init never-separate-values
+----
+
+add
+a#9,SET:blob{value=poipoipoipoipoi}
+b#8,SET:yayayayayayaya
+c#7,SET:blob{value=maimaimaimaimai}
+d#6,SET:yuumiyuumiyuumiyuumi
+----
+# create: 000004.sst
+RawWriter.Add("a#9,SET", "poipoipoipoipoi", false)
+RawWriter.Add("b#8,SET", "yayayayayayaya", false)
+RawWriter.Add("c#7,SET", "maimaimaimaimai", false)
+RawWriter.Add("d#6,SET", "yuumiyuumiyuumiyuumi", false)
+
+estimated-sizes
+----
+file: 0, references: 0
+
+close-output
+----
+# sync-data: 000004.sst
+# close: 000004.sst
+no blob file created
+blobrefs:[]
+
+# Test a policy to preserve blob references. We need to configure it with a set
+# of blob file metadatas for blob files that are referenced by the compaction's
+# input sstables. The compaction should only observe references to these files.
+
+init preserve-blob-references
+000001 size:[903530] vals:[39531]
+000002 size:[82530] vals:[72111]
+000003 size:[192542] vals:[85225]
+----
+
+add
+a#9,SET:blob{fileNum=000001 value=darcy}
+a#5,SET:blob{fileNum=000003 value=tani}
+b#2,DEL:
+c#9,SET:paddy
+----
+# create: 000005.sst
+RawWriter.AddWithBlobHandle("a#9,SET", "(f0,blk0[0:5])", 5, false)
+RawWriter.AddWithBlobHandle("a#5,SET", "(f1,blk0[5:9])", 4, false)
+RawWriter.Add("b#2,DEL", "", false)
+RawWriter.Add("c#9,SET", "paddy", false)
+
+estimated-sizes
+----
+file: 0, references: 9
+
+close-output
+----
+# sync-data: 000005.sst
+# close: 000005.sst
+no blob file created
+blobrefs:[
+ 0: 000001 5
+ 1: 000003 4
+]
+
+add
+d#2,DEL:
+e#9,SET:blob{value=yayoi}
+----
+# create: 000006.sst
+RawWriter.Add("d#2,DEL", "", false)
+RawWriter.AddWithBlobHandle("e#9,SET", "(f0,blk0[9:14])", 5, false)
+
+estimated-sizes
+----
+file: 0, references: 14
+
+close-output
+----
+# sync-data: 000006.sst
+# close: 000006.sst
+no blob file created
+blobrefs:[
+ 0: 000003 5
+]
+
+# Test a policy that requires keys within [g,p) to be stored in-place.
+
+init write-new-blob-files required-in-place=(g, p)
+----
+
+add
+ash#92,SET:near threatened
+----
+# create: 000007.sst
+# create: 000008.blob
+RawWriter.AddWithBlobHandle("ash#92,SET", "(f0,blk0[0:15])", 0, false)
+
+add
+ginkgo#285,SETWITHDEL:endangered
+----
+RawWriter.Add("ginkgo#285,SETWITHDEL", "endangered", false)
+
+add
+hickory#395,SETWITHDEL:least concern
+----
+RawWriter.Add("hickory#395,SETWITHDEL", "least concern", false)
+
+add
+palm#29,SET:least concern
+----
+RawWriter.AddWithBlobHandle("palm#29,SET", "(f0,blk0[15:28])", 0, false)
+
+close-output
+----
+# sync-data: 000007.sst
+# close: 000007.sst
+# sync-data: 000008.blob
+# close: 000008.blob
+Blob file created: 000008 size:[74 (74B)] vals:[28 (28B)]
+{BlockCount: 1, ValueCount: 2, BlockLenLongest: 28, UncompressedValueBytes: 28, FileLen: 74}
+blobrefs:[
+ 0: 000008 28
+]
