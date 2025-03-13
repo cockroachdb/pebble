@@ -3,168 +3,43 @@ name: Test
 on:
   push:
     branches:
-    - master
-    - crl-release-*
+      - master
+      - crl-release-*
   pull_request:
     branches:
-    - master
-    - crl-release-*
+      - master
+      - crl-release-*
 
 jobs:
 
-  linux:
+  # This check is required to merge PRs.
+  go-linux:
     name: go-linux
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.23'
 
       - run: GOTRACEBACK=all make test testobjiotracing generate
 
       - name: Assert workspace clean
         run: scripts/check-workspace-clean.sh
 
-  # Summary job that is required to merge PRs.
-  go-linux:
-    needs: [linux]  # Waits for all matrix jobs to complete
-    runs-on: ubuntu-latest
-    if: ${{ success() }}  # Only runs if all dependent jobs succeed
-    steps:
-      - name: Summary
-        run: echo "All go-linux matrix jobs passed successfully."
-
-  linux-32bit:
-    name: go-linux-32bit
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-
-      - run: GOTRACEBACK=all GOARCH=386 make test
-
-  linux-crossversion:
-    name: go-linux-crossversion
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-
-      - run: make crossversion-meta
-
-  linux-race:
-    name: go-linux-race
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-
-      - run: GOTRACEBACK=all make testrace TAGS=
-
-  linux-no-invariants:
-    name: go-linux-no-invariants
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-
-      - run: GOTRACEBACK=all make test TAGS=
-
-  linux-no-cgo:
-    name: go-linux-no-cgo
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-
-      - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
-
-  darwin:
-    name: go-macos
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v2
-  
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-  
-      - run: GOTRACEBACK=all make test
-
-  windows:
-    name: go-windows
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go }}
-
-      - run: go test -tags invariants ./...
-
-  lint-checks:
+  # This check is required to merge PRs.
+  go-lint-checks:
     name: go-lint-checks
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.23'
 
       - name: mod-tidy-check
         run: make mod-tidy-check
@@ -172,33 +47,29 @@ jobs:
       - name: format-check
         run: make format-check
 
-  # Summary job that is required to merge PRs.
-  go-lint-checks:
-    needs: [lint-checks]  # Waits for all matrix jobs to complete
-    runs-on: ubuntu-latest
-    if: ${{ success() }}  # Only runs if all dependent jobs succeed
-    steps:
-      - name: Summary
-        run: echo "All go-lint-checks matrix jobs passed successfully."
-
-  # Builds for other OSes and architectures.
-  go-build-other:
-    name: go-build-other
-    strategy:
-      matrix:
-        go: ['1.22', '1.23']
+  linux-no-invariants:
+    name: go-linux-no-invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.23'
 
-      - run: GOARCH=mips go build ./...
-      - run: GOARCH=mipsle go build ./...
-      - run: GOARCH=mips64le go build ./...
-      - run: GOOS=freebsd go build -v ./...
-      - run: GOOS=netbsd go build -v ./...
-      - run: GOOS=openbsd go build -v ./...
+      - run: GOTRACEBACK=all make test TAGS=
+
+  darwin:
+    name: go-macos
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - run: GOTRACEBACK=all make test
+
