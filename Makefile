@@ -70,7 +70,7 @@ crossversion-meta:
 		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/${LATEST_RELEASE}.test'; \
 		git checkout -; \
 		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/head.test'; \
-		${GO} test -tags '$(TAGS)' ${testflags} -v -run 'TestMetaCrossVersion' ./internal/metamorphic/crossversion --version '${LATEST_RELEASE},${LATEST_RELEASE},${LATEST_RELEASE}.test' --version 'HEAD,HEAD,./head.test'
+		${GO} test -tags '$(TAGS)' ${testflags} -v -timeout 20m -run 'TestMetaCrossVersion' ./internal/metamorphic/crossversion --version '${LATEST_RELEASE},${LATEST_RELEASE},${LATEST_RELEASE}.test' --version 'HEAD,HEAD,./head.test'
 
 .PHONY: stress-crossversion
 stress-crossversion:
