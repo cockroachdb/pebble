@@ -7,6 +7,7 @@ package sstable
 import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -35,5 +36,14 @@ const valueBlocksIndexHandleMaxLen = blockHandleMaxLenWithoutProperties + 3
 // Assert blockHandleLikelyMaxLen >= valueBlocksIndexHandleMaxLen.
 const _ = uint(blockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
 
-// Assert blockHandleLikelyMaxLen >= valblk.HandleMaxLen.
-const _ = uint(blockHandleLikelyMaxLen - valblk.HandleMaxLen)
+// Assert blockHandleLikelyMaxLen >= (valblk.HandleMaxLen+1).
+//
+// The additional 1 is for the 'valuePrefix' byte which prefaces values in
+// recent SSTable versions.
+const _ = uint(blockHandleLikelyMaxLen - valblk.HandleMaxLen - 1)
+
+// Assert blockHandleLikelyMaxLen >= (blob.MaxInlineHandleLength+1).
+//
+// The additional 1 is for the 'valuePrefix' byte which prefaces values in recent
+// SSTable versions.
+const _ = uint(blockHandleLikelyMaxLen - blob.MaxInlineHandleLength - 1)

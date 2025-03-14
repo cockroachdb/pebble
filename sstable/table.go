@@ -186,7 +186,10 @@ Data blocks have some additional features:
 */
 
 const (
-	blockHandleMaxLenWithoutProperties = 10 + 10
+	// blockHandleMaxLenWithoutProperties is the maximum length of a block
+	// handle that does not encode any block properties. It consists of just
+	// the offset and length, each of which is a varint-encoded uint64.
+	blockHandleMaxLenWithoutProperties = 2 * binary.MaxVarintLen64
 	// blockHandleLikelyMaxLen can be used for pre-allocating buffers to
 	// reduce memory copies. It is not guaranteed that a block handle will not
 	// exceed this length.
