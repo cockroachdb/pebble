@@ -209,17 +209,17 @@ func DecodeLenFromHandle(src []byte) (uint32, []byte) {
 	if a := *((*uint8)(ptr)); a < 128 {
 		v = uint32(a)
 		src = src[1:]
-	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Add(ptr, 1))); b < 128 {
 		v = uint32(b)<<7 | uint32(a)
 		src = src[2:]
-	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Add(ptr, 2))); c < 128 {
 		v = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		src = src[3:]
-	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Add(ptr, 3))); d < 128 {
 		v = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		src = src[4:]
 	} else {
-		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		d, e := d&0x7f, *((*uint8)(unsafe.Add(ptr, 4)))
 		v = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 		src = src[5:]
 	}
@@ -237,33 +237,33 @@ func DecodeRemainingHandle(src []byte) Handle {
 	var v uint32
 	if a := *((*uint8)(ptr)); a < 128 {
 		v = uint32(a)
-		ptr = unsafe.Pointer(uintptr(ptr) + 1)
-	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+		ptr = unsafe.Add(ptr, 1)
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Add(ptr, 1))); b < 128 {
 		v = uint32(b)<<7 | uint32(a)
-		ptr = unsafe.Pointer(uintptr(ptr) + 2)
-	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+		ptr = unsafe.Add(ptr, 2)
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Add(ptr, 2))); c < 128 {
 		v = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-		ptr = unsafe.Pointer(uintptr(ptr) + 3)
-	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+		ptr = unsafe.Add(ptr, 3)
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Add(ptr, 3))); d < 128 {
 		v = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+		ptr = unsafe.Add(ptr, 4)
 	} else {
-		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		d, e := d&0x7f, *((*uint8)(unsafe.Add(ptr, 4)))
 		v = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+		ptr = unsafe.Add(ptr, 5)
 	}
 	vh.BlockNum = v
 
 	if a := *((*uint8)(ptr)); a < 128 {
 		v = uint32(a)
-	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Add(ptr, 1))); b < 128 {
 		v = uint32(b)<<7 | uint32(a)
-	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Add(ptr, 2))); c < 128 {
 		v = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Add(ptr, 3))); d < 128 {
 		v = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 	} else {
-		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		d, e := d&0x7f, *((*uint8)(unsafe.Add(ptr, 4)))
 		v = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
 	}
 	vh.OffsetInBlock = v
