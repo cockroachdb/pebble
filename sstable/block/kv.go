@@ -81,8 +81,8 @@ func InPlaceValuePrefix(setHasSameKeyPrefix bool) ValuePrefix {
 }
 
 // BlobValueHandlePrefix returns the ValuePrefix for a blob.
-func BlobValueHandlePrefix(setHasSameKeyPrefix bool) ValuePrefix {
-	prefix := valueKindIsBlobHandle
+func BlobValueHandlePrefix(setHasSameKeyPrefix bool, attr base.ShortAttribute) ValuePrefix {
+	prefix := valueKindIsBlobHandle | ValuePrefix(attr)
 	if setHasSameKeyPrefix {
 		prefix = prefix | setHasSameKeyPrefixMask
 	}

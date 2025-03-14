@@ -78,12 +78,12 @@ func (r *ValueFetcher) Init(rp ReaderProvider, env block.ReadEnv) {
 func (r *ValueFetcher) Fetch(
 	ctx context.Context, handle []byte, fileNum base.DiskFileNum, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
-	vblkHandle := valblk.DecodeRemainingHandle(handle)
+	handleSuffix := DecodeHandleSuffix(handle)
 	vh := Handle{
 		FileNum:       fileNum,
-		BlockNum:      vblkHandle.BlockNum,
-		OffsetInBlock: vblkHandle.OffsetInBlock,
 		ValueLen:      valLen,
+		BlockNum:      handleSuffix.BlockNum,
+		OffsetInBlock: handleSuffix.OffsetInBlock,
 	}
 	v, err := r.retrieve(ctx, vh)
 	return v, false, err

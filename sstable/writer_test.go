@@ -531,6 +531,84 @@ func TestWriterWithValueBlocks(t *testing.T) {
 	})
 }
 
+func TestWriterWithBlobValueHandles(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	var r *Reader
+	defer func() {
+		if r != nil {
+			require.NoError(t, r.Close())
+		}
+	}()
+	formatMeta := func(m *WriterMetadata) string {
+		return fmt.Sprintf("blob-separated-values: num-values %d",
+			m.Properties.NumValuesInBlobFiles)
+	}
+
+	attributeExtractor := func(
+		key []byte, keyPrefixLen int, value []byte) (base.ShortAttribute, error) {
+		require.NotNil(t, key)
+		require.Less(t, 0, keyPrefixLen)
+		attribute := base.ShortAttribute(len(value) & '\x07')
+		return attribute, nil
+	}
+
+	datadriven.RunTest(t, "testdata/writer_blob_value_handles", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			formatVersion := TableFormatMax
+			var meta *WriterMetadata
+			var err error
+			var blockSize int
+			if td.HasArg("block-size") {
+				td.ScanArgs(t, "block-size", &blockSize)
+			}
+			if arg, ok := td.Arg("table-format"); ok {
+				// The datadriven cmd parser will parse the TableFormat string
+				// because its string representation looks like the datadriven
+				// format for multiple arguments (<arg1>,<arg2>).
+				name, v := arg.TwoVals(t)
+				formatVersion, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
+				if err != nil {
+					return err.Error()
+				}
+			}
+			meta, r, err = runBuildCmd(td, &WriterOptions{
+				BlockSize:               blockSize,
+				Comparer:                testkeys.Comparer,
+				TableFormat:             formatVersion,
+				ShortAttributeExtractor: attributeExtractor,
+			}, nil /* cacheHandle */)
+			if err != nil {
+				return err.Error()
+			}
+			return formatMeta(meta)
+
+		case "layout":
+			l, err := r.Layout()
+			if err != nil {
+				return err.Error()
+			}
+			return l.Describe(true, r, func(key *base.InternalKey, value []byte) string {
+				return fmt.Sprintf("%s:%s", key.String(), asciiOrHex(value))
+			})
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+func asciiOrHex(b []byte) string {
+	if bytes.ContainsFunc(b, func(r rune) bool { return r < ' ' || r > '~' }) {
+		return fmt.Sprintf("hex:%x", b)
+	}
+	return string(b)
+}
+
 func testBlockBufClear(t *testing.T, b1, b2 *blockBuf) {
 	require.Equal(t, b1.tmp, b2.tmp)
 }

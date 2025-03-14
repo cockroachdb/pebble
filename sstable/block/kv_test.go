@@ -50,6 +50,7 @@ func TestValuePrefix(t *testing.T) {
 			isValueBlockHandle: false,
 			isBlobHandle:       true,
 			setHasSamePrefix:   true,
+			attr:               2,
 		},
 	}
 	for _, tc := range testCases {
@@ -58,7 +59,7 @@ func TestValuePrefix(t *testing.T) {
 			if tc.isValueBlockHandle {
 				prefix = ValueBlockHandlePrefix(tc.setHasSamePrefix, tc.attr)
 			} else if tc.isBlobHandle {
-				prefix = BlobValueHandlePrefix(tc.setHasSamePrefix)
+				prefix = BlobValueHandlePrefix(tc.setHasSamePrefix, tc.attr)
 			} else {
 				prefix = InPlaceValuePrefix(tc.setHasSamePrefix)
 			}
