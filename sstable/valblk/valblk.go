@@ -186,11 +186,10 @@ type Handle struct {
 
 // HandleMaxLen is the maximum length of a variable-width encoded Handle.
 //
-// Handle fields are varint encoded, so maximum 5 bytes each, plus 1 byte for
-// the valuePrefix. This could alternatively be group varint encoded, but
-// experiments were inconclusive
+// Handle fields are varint encoded, so maximum 5 bytes each. This could
+// alternatively be group varint encoded, but experiments were inconclusive
 // (https://github.com/cockroachdb/pebble/pull/1443#issuecomment-1270298802).
-const HandleMaxLen = 5*3 + 1
+const HandleMaxLen = 3 * binary.MaxVarintLen32
 
 // EncodeHandle encodes the Handle into dst in a variable-width encoding and
 // returns the number of bytes encoded.
