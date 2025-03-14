@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -377,7 +378,52 @@ func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool)
 			valuePrefix = block.InPlaceValuePrefix(eval.kcmp.PrefixEqual())
 		}
 	}
+	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval)
+}
 
+// AddWithBlobHandle implements the RawWriter interface.
+func (w *RawColumnWriter) AddWithBlobHandle(
+	key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+) error {
+	// Blob value handles require at least TableFormatPebblev6.
+	if w.opts.TableFormat <= TableFormatPebblev5 {
+		w.err = errors.Newf("pebble: blob value handles are not supported in %s", w.opts.TableFormat.String())
+		return w.err
+	}
+	switch key.Kind() {
+	case base.InternalKeyKindRangeDelete, base.InternalKeyKindRangeKeySet,
+		base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
+		return errors.Newf("%s must be added through EncodeSpan", key.Kind())
+	case base.InternalKeyKindMerge:
+		return errors.Errorf("MERGE does not support blob value handles")
+	}
+
+	eval, err := w.evaluatePoint(key, int(h.ValueLen))
+	if err != nil {
+		return err
+	}
+	eval.isObsolete = eval.isObsolete || forceObsolete
+	w.prevPointKey.trailer = key.Trailer
+	w.prevPointKey.isObsolete = eval.isObsolete
+
+	n := h.Encode(w.tmp[:])
+	valueStoredWithKey := w.tmp[:n]
+	valuePrefix := block.BlobValueHandlePrefix(eval.kcmp.PrefixEqual(), attr)
+	err = w.add(key, int(h.ValueLen), valueStoredWithKey, valuePrefix, eval)
+	if err != nil {
+		return err
+	}
+	w.props.NumValuesInBlobFiles++
+	return nil
+}
+
+func (w *RawColumnWriter) add(
+	key InternalKey,
+	valueLen int,
+	valueStoredWithKey []byte,
+	valuePrefix block.ValuePrefix,
+	eval pointKeyEvaluation,
+) error {
 	// Append the key to the data block. We have NOT yet committed to
 	// including the key in the block. The data block writer permits us to
 	// finish the block excluding the last-appended KV.
@@ -406,12 +452,12 @@ func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool)
 	}
 
 	for i := range w.blockPropCollectors {
-		v := value
-		if key.Kind() == base.InternalKeyKindSet {
-			// Values for SET are not required to be in-place, and in the future
-			// may not even be read by the compaction, so pass nil values. Block
-			// property collectors in such Pebble DB's must not look at the
-			// value.
+		v := valueStoredWithKey
+		if key.Kind() == base.InternalKeyKindSet || key.Kind() == base.InternalKeyKindSetWithDelete || !valuePrefix.IsInPlaceValue() {
+			// Values for SET, SETWITHDEL keys are not required to be in-place,
+			// and may not even be read by the compaction, so pass nil values.
+			// Block property collectors in such Pebble DB's must not look at
+			// the value.
 			v = nil
 		}
 		if err := w.blockPropCollectors[i].AddPointKey(key, v); err != nil {
@@ -437,12 +483,12 @@ func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool)
 		w.dataBlock.deletionSize += len(key.UserKey)
 	case InternalKeyKindDeleteSized:
 		var size uint64
-		if len(value) > 0 {
+		if len(valueStoredWithKey) > 0 {
 			var n int
-			size, n = binary.Uvarint(value)
+			size, n = binary.Uvarint(valueStoredWithKey)
 			if n <= 0 {
 				return errors.Newf("%s key's value (%x) does not parse as uvarint",
-					errors.Safe(key.Kind().String()), value)
+					errors.Safe(key.Kind().String()), valueStoredWithKey)
 			}
 		}
 		w.props.NumDeletions++
@@ -455,7 +501,7 @@ func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool)
 		w.props.NumMergeOperands++
 	}
 	w.props.RawKeySize += uint64(key.Size())
-	w.props.RawValueSize += uint64(len(value))
+	w.props.RawValueSize += uint64(valueLen)
 	return nil
 }
 

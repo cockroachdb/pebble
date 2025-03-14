@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
-	"github.com/cockroachdb/redact"
 )
 
 var (
@@ -77,25 +76,6 @@ type FileWriterStats struct {
 	BlockLenLongest        uint64
 	UncompressedValueBytes uint64
 	FileLen                uint64
-}
-
-// Handle describes the location of a value stored within a blob file.
-type Handle struct {
-	FileNum       base.DiskFileNum
-	BlockNum      uint32
-	OffsetInBlock uint32
-	ValueLen      uint32
-}
-
-// String implements the fmt.Stringer interface.
-func (h Handle) String() string {
-	return redact.StringWithoutMarkers(h)
-}
-
-// SafeFormat implements redact.SafeFormatter.
-func (h Handle) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("(%s,blk%d[%d:%d])",
-		h.FileNum, h.BlockNum, h.OffsetInBlock, h.OffsetInBlock+h.ValueLen)
 }
 
 // A FileWriter writes a blob file.
