@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBlobWriter(t *testing.T) {
@@ -80,4 +81,38 @@ func printFileWriterStats(w io.Writer, stats FileWriterStats) {
 	fmt.Fprintf(w, "  BlockLenLongest: %d\n", stats.BlockLenLongest)
 	fmt.Fprintf(w, "  UncompressedValueBytes: %d\n", stats.UncompressedValueBytes)
 	fmt.Fprintf(w, "  FileLen: %d\n", stats.FileLen)
+}
+
+func TestHandleRoundtrip(t *testing.T) {
+	handles := []InlineHandle{
+		{
+			InlineHandlePreface: InlineHandlePreface{
+				ReferenceIndex: 0,
+				ValueLen:       29357353,
+			},
+			HandleSuffix: HandleSuffix{
+				BlockNum:      194,
+				OffsetInBlock: 32911,
+			},
+		},
+		{
+			InlineHandlePreface: InlineHandlePreface{
+				ReferenceIndex: 129,
+				ValueLen:       205,
+			},
+			HandleSuffix: HandleSuffix{
+				BlockNum:      2,
+				OffsetInBlock: 20,
+			},
+		},
+	}
+
+	for _, h := range handles {
+		var buf [MaxInlineHandleLength]byte
+		n := h.Encode(buf[:])
+		preface, rem := DecodeInlineHandlePrefix(buf[:n])
+		suffix := DecodeHandleSuffix(rem)
+		require.Equal(t, h.InlineHandlePreface, preface)
+		require.Equal(t, h.HandleSuffix, suffix)
+	}
 }

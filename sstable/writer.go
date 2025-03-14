@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -309,6 +310,10 @@ type RawWriter interface {
 	// responsibility of the caller. S1 is solely the responsibility of the
 	// callee.
 	Add(key InternalKey, value []byte, forceObsolete bool) error
+	// AddWithBlobHandle adds a key to the sstable, but encoding a blob value
+	// handle instead of an in-place value. See Add for more details. The caller
+	// must provide the already-extracted ShortAttribute for the value.
+	AddWithBlobHandle(key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool) error
 	// EncodeSpan encodes the keys in the given span. The span can contain
 	// either only RANGEDEL keys or only range keys.
 	//

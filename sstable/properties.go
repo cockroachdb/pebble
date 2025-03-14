@@ -169,6 +169,8 @@ type Properties struct {
 	NumValueBlocks uint64 `prop:"pebble.num.value-blocks"`
 	// The number of values stored in value blocks. Only serialized if > 0.
 	NumValuesInValueBlocks uint64 `prop:"pebble.num.values.in.value-blocks"`
+	// The number of values stored in blob files. Only serialized if > 0.
+	NumValuesInBlobFiles uint64 `prop:"pebble.num.values.in.blob-files"`
 	// A comma separated list of names of the property collectors used in this
 	// table.
 	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
@@ -406,6 +408,9 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	if p.NumValuesInValueBlocks > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInValueBlocks), p.NumValuesInValueBlocks)
 	}
+	if p.NumValuesInBlobFiles > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInBlobFiles), p.NumValuesInBlobFiles)
+	}
 	if p.PropertyCollectorNames != "" {
 		p.saveString(m, unsafe.Offsetof(p.PropertyCollectorNames), p.PropertyCollectorNames)
 	}
@@ -424,13 +429,13 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	}
 
 	if tblFormat < TableFormatPebblev1 {
-		m["rocksdb.column.family.id"] = binary.AppendUvarint([]byte(nil), math.MaxInt32)
-		m["rocksdb.fixed.key.length"] = []byte{0x00}
-		m["rocksdb.index.key.is.user.key"] = []byte{0x00}
-		m["rocksdb.index.value.is.delta.encoded"] = []byte{0x00}
-		m["rocksdb.oldest.key.time"] = []byte{0x00}
-		m["rocksdb.creation.time"] = []byte{0x00}
-		m["rocksdb.format.version"] = []byte{0x00}
+		m["rocksdb.column.family.id"] = maxInt32Slice
+		m["rocksdb.fixed.key.length"] = singleZeroSlice
+		m["rocksdb.index.key.is.user.key"] = singleZeroSlice
+		m["rocksdb.index.value.is.delta.encoded"] = singleZeroSlice
+		m["rocksdb.oldest.key.time"] = singleZeroSlice
+		m["rocksdb.creation.time"] = singleZeroSlice
+		m["rocksdb.format.version"] = singleZeroSlice
 	}
 
 	keys := make([]string, 0, len(m))
@@ -442,3 +447,8 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 		w.AddRawString(key, m[key])
 	}
 }
+
+var (
+	singleZeroSlice = []byte{0x00}
+	maxInt32Slice   = binary.AppendUvarint([]byte(nil), math.MaxInt32)
+)
