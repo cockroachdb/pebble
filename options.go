@@ -43,10 +43,11 @@ type Compression = block.Compression
 
 // Exported Compression constants.
 const (
-	DefaultCompression = block.DefaultCompression
-	NoCompression      = block.NoCompression
-	SnappyCompression  = block.SnappyCompression
-	ZstdCompression    = block.ZstdCompression
+	DefaultCompression     = block.DefaultCompression
+	NoCompression          = block.NoCompression
+	SnappyCompression      = block.SnappyCompression
+	ZstdCompression        = block.ZstdCompression
+	ZstdContextCompression = block.ZstdContextCompression
 )
 
 // FilterType exports the base.FilterType type.

@@ -7,9 +7,11 @@ package valblk
 import (
 	"sync"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/types"
 )
 
 // Writer writes a sequence of value blocks, and the value blocks index, for a
@@ -26,6 +28,8 @@ type Writer struct {
 	// Cumulative value block bytes written so far.
 	totalBlockBytes uint64
 	numValues       uint64
+
+	zstdContext types.ZstdCtx
 }
 
 type bufferedValueBlock struct {
@@ -53,6 +57,7 @@ func NewWriter(
 		flush:             flushGovernor,
 		blockFinishedFunc: blockFinishedFunc,
 		blocks:            w.blocks[:0],
+		zstdContext:       zstd.NewCtx(),
 	}
 	w.buf.Init(compression, checksumType)
 	return w
@@ -87,7 +92,7 @@ func (w *Writer) Size() uint64 {
 }
 
 func (w *Writer) compressAndFlush() {
-	physicalBlock, bufHandle := w.buf.CompressAndChecksum()
+	physicalBlock, bufHandle := w.buf.CompressAndChecksum(w.zstdContext)
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
 	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
 	// blockFinishedFunc length excludes the block trailer.
@@ -163,7 +168,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	pb, bufHandle := w.buf.CompressAndChecksum()
+	pb, bufHandle := w.buf.CompressAndChecksum(w.zstdContext)
 	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}

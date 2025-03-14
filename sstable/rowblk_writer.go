@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
@@ -24,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -123,6 +125,8 @@ type RawRowWriter struct {
 
 	numDeletionsThreshold      int
 	deletionSizeRatioThreshold float32
+
+	zstdContext types.ZstdCtx
 }
 
 type pointKeyInfo struct {
@@ -544,8 +548,8 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.Finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
-	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, c, &d.checksummer)
+func (d *dataBlockBuf) compressAndChecksum(c block.Compression, zstdContext types.ZstdCtx) {
+	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, c, &d.checksummer, zstdContext)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -1055,7 +1059,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 	}
 	w.dataBlockBuf.finish()
 	w.maybeIncrementTombstoneDenseBlocks()
-	w.dataBlockBuf.compressAndChecksum(w.compression)
+	w.dataBlockBuf.compressAndChecksum(w.compression, w.zstdContext)
 	// Since dataBlockEstimates.addInflightDataBlock was never called, the
 	// inflightSize is set to 0.
 	w.coordination.sizeEstimate.dataBlockCompressed(w.dataBlockBuf.physical.LengthWithoutTrailer(), 0)
@@ -1741,6 +1745,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		allocatorSizeClasses:       o.AllocatorSizeClasses,
 		numDeletionsThreshold:      o.NumDeletionsThreshold,
 		deletionSizeRatioThreshold: o.DeletionSizeRatioThreshold,
+		zstdContext:                zstd.NewCtx(),
 	}
 	w.dataFlush = block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
@@ -1914,7 +1919,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	// already have ensured this is valid if it exists).
 	if w.filter != nil {
 		if filterBlockBH, ok := l.FilterByName(w.filter.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(sst, filterBlockBH, r.blockReader.ChecksumType(), nil)
+			filterBlock, _, err := readBlockBuf(sst, filterBlockBH, r.blockReader.ChecksumType(), nil, w.zstdContext)
 			if err != nil {
 				return errors.Wrap(err, "reading filter")
 			}
@@ -1967,6 +1972,7 @@ func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithPropertie
 		b,
 		w.layout.compression,
 		&blockBuf.checksummer,
+		w.zstdContext,
 	)
 
 	// layout.WriteDataBlock keeps layout.offset up-to-date for us.

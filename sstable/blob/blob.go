@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/redact"
 )
@@ -113,6 +114,7 @@ type FileWriter struct {
 		ch  chan compressedBlock
 		err error
 	}
+	zstdContext types.ZstdCtx
 }
 
 type compressedBlock struct {
@@ -159,7 +161,7 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 }
 
 func (w *FileWriter) flush() {
-	pb, bh := w.b.CompressAndChecksum()
+	pb, bh := w.b.CompressAndChecksum(w.zstdContext)
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	w.stats.BlockLenLongest = max(w.stats.BlockLenLongest, compressedLen)
@@ -252,7 +254,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 				len(b), indexBlockLen))
 		}
 		w.b.SetCompression(block.NoCompression)
-		pb, bh := w.b.CompressAndChecksum()
+		pb, bh := w.b.CompressAndChecksum(w.zstdContext)
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
 			return FileWriterStats{}, w.err
 		}

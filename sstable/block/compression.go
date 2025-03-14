@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/types"
 	"github.com/golang/snappy"
 )
 
@@ -27,6 +28,7 @@ const (
 	NoCompression
 	SnappyCompression
 	ZstdCompression
+	ZstdContextCompression
 	NCompression
 )
 
@@ -42,6 +44,8 @@ func (c Compression) String() string {
 		return "Snappy"
 	case ZstdCompression:
 		return "ZSTD"
+	case ZstdContextCompression:
+		return "ZSTDContext"
 	default:
 		return "Unknown"
 	}
@@ -59,6 +63,8 @@ func CompressionFromString(s string) Compression {
 		return SnappyCompression
 	case "ZSTD":
 		return ZstdCompression
+	case "ZSTDContext":
+		return ZstdContextCompression
 	default:
 		return DefaultCompression
 	}
@@ -78,14 +84,15 @@ type CompressionIndicator byte
 // use the default compression (which is snappy).
 // Not all compression types listed here are supported.
 const (
-	NoCompressionIndicator     CompressionIndicator = 0
-	SnappyCompressionIndicator CompressionIndicator = 1
-	ZlibCompressionIndicator   CompressionIndicator = 2
-	Bzip2CompressionIndicator  CompressionIndicator = 3
-	Lz4CompressionIndicator    CompressionIndicator = 4
-	Lz4hcCompressionIndicator  CompressionIndicator = 5
-	XpressCompressionIndicator CompressionIndicator = 6
-	ZstdCompressionIndicator   CompressionIndicator = 7
+	NoCompressionIndicator          CompressionIndicator = 0
+	SnappyCompressionIndicator      CompressionIndicator = 1
+	ZlibCompressionIndicator        CompressionIndicator = 2
+	Bzip2CompressionIndicator       CompressionIndicator = 3
+	Lz4CompressionIndicator         CompressionIndicator = 4
+	Lz4hcCompressionIndicator       CompressionIndicator = 5
+	XpressCompressionIndicator      CompressionIndicator = 6
+	ZstdCompressionIndicator        CompressionIndicator = 7
+	ZstdContextCompressionIndicator CompressionIndicator = 8
 )
 
 // String implements fmt.Stringer.
@@ -107,6 +114,8 @@ func (i CompressionIndicator) String() string {
 		return "xpress"
 	case 7:
 		return "zstd"
+	case 8:
+		return "zstdContext"
 	default:
 		panic(errors.Newf("sstable: unknown block type: %d", i))
 	}
@@ -126,7 +135,7 @@ func DecompressedLen(
 	case SnappyCompressionIndicator:
 		l, err := snappy.DecodedLen(b)
 		return l, 0, err
-	case ZstdCompressionIndicator:
+	case ZstdCompressionIndicator, ZstdContextCompressionIndicator:
 		// This will also be used by zlib, bzip2 and lz4 to retrieve the decodedLen
 		// if we implement these algorithms in the future.
 		decodedLenU64, varIntLen := binary.Uvarint(b)
@@ -142,7 +151,9 @@ func DecompressedLen(
 // DecompressInto decompresses compressed into buf. The buf slice must have the
 // exact size as the decompressed value. Callers may use DecompressedLen to
 // determine the correct size.
-func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) error {
+func DecompressInto(
+	algo CompressionIndicator, compressed []byte, buf []byte, zstdContext types.ZstdCtx,
+) error {
 	var result []byte
 	var err error
 	switch algo {
@@ -153,6 +164,8 @@ func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) er
 		result, err = snappy.Decode(buf, compressed)
 	case ZstdCompressionIndicator:
 		result, err = decodeZstd(buf, compressed)
+	case ZstdContextCompressionIndicator:
+		result, err = decodeZstdWithContext(buf, compressed, zstdContext)
 	default:
 		return base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(algo))
 	}
@@ -242,14 +255,18 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 // the compressed payload is discarded and the original, uncompressed block data
 // is used to avoid unnecessary decompression overhead at read time.
 func CompressAndChecksum(
-	dst *[]byte, blockData []byte, compression Compression, checksummer *Checksummer,
+	dst *[]byte,
+	blockData []byte,
+	compression Compression,
+	checksummer *Checksummer,
+	zstdContext types.ZstdCtx,
 ) PhysicalBlock {
 	buf := (*dst)[:0]
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	algo := NoCompressionIndicator
 	if compression != NoCompression {
-		algo, buf = compress(compression, blockData, buf)
+		algo, buf = compress(compression, blockData, buf, zstdContext)
 		if len(buf) >= len(blockData)-len(blockData)/8 {
 			algo = NoCompressionIndicator
 		}
@@ -275,7 +292,7 @@ func CompressAndChecksum(
 // The result is aliased to dstBuf if that buffer had enough capacity, otherwise
 // it is a newly-allocated buffer.
 func compress(
-	compression Compression, b []byte, dstBuf []byte,
+	compression Compression, b []byte, dstBuf []byte, zstdContext types.ZstdCtx,
 ) (indicator CompressionIndicator, compressed []byte) {
 	switch compression {
 	case SnappyCompression:
@@ -289,6 +306,12 @@ func compress(
 		}
 		varIntLen := binary.PutUvarint(dstBuf, uint64(len(b)))
 		return ZstdCompressionIndicator, encodeZstd(dstBuf, varIntLen, b)
+	case ZstdContextCompression:
+		if len(dstBuf) < binary.MaxVarintLen64 {
+			dstBuf = append(dstBuf, make([]byte, binary.MaxVarintLen64-len(dstBuf))...)
+		}
+		varIntLen := binary.PutUvarint(dstBuf, uint64(len(b)))
+		return ZstdContextCompressionIndicator, encodeZstdWithContext(dstBuf, varIntLen, b, zstdContext)
 	default:
 		panic("unreachable")
 	}
@@ -361,10 +384,10 @@ func (b *Buffer) Resize(length int) {
 //
 // When CompressAndChecksum returns, the callee has been reset and is ready to
 // be reused.
-func (b *Buffer) CompressAndChecksum() (PhysicalBlock, *BufHandle) {
+func (b *Buffer) CompressAndChecksum(zstdContext types.ZstdCtx) (PhysicalBlock, *BufHandle) {
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := compressedBuffers.Get()
-	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer)
+	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer, zstdContext)
 	b.h.b = b.h.b[:0]
 	return pb, compressedBuf
 }

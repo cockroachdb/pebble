@@ -13,12 +13,14 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/types"
 )
 
 // RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
@@ -162,13 +164,14 @@ func rewriteDataBlocksInParallel(
 			var compressedBuf []byte
 			var inputBlock, inputBlockBuf []byte
 			checksummer := block.Checksummer{Type: opts.Checksum}
+			zstdContext := zstd.NewCtx()
 			// We'll assume all blocks are _roughly_ equal so round-robin static partition
 			// of each worker doing every ith block is probably enough.
 			err := func() error {
 				for i := worker; i < len(input); i += concurrency {
 					bh := input[i]
 					var err error
-					inputBlock, inputBlockBuf, err = readBlockBuf(sstBytes, bh.Handle, r.blockReader.ChecksumType(), inputBlockBuf)
+					inputBlock, inputBlockBuf, err = readBlockBuf(sstBytes, bh.Handle, r.blockReader.ChecksumType(), inputBlockBuf, zstdContext)
 					if err != nil {
 						return err
 					}
@@ -185,7 +188,7 @@ func rewriteDataBlocksInParallel(
 						return err
 					}
 					compressedBuf = compressedBuf[:cap(compressedBuf)]
-					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, opts.Compression, &checksummer)
+					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, opts.Compression, &checksummer, zstdContext)
 					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
 				}
 				return nil
@@ -371,7 +374,11 @@ func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
 // returned slice before writing it out to a objstorage.Writable which may
 // mangle it.
 func readBlockBuf(
-	sstBytes []byte, bh block.Handle, checksumType block.ChecksumType, buf []byte,
+	sstBytes []byte,
+	bh block.Handle,
+	checksumType block.ChecksumType,
+	buf []byte,
+	zstdContext types.ZstdCtx,
 ) ([]byte, []byte, error) {
 	raw := sstBytes[bh.Offset : bh.Offset+bh.Length+block.TrailerLen]
 	if err := block.ValidateChecksum(checksumType, raw, bh); err != nil {
@@ -399,7 +406,7 @@ func readBlockBuf(
 		}
 	}
 	dst := buf[:decompressedLen]
-	err = block.DecompressInto(algo, raw[prefix:], dst)
+	err = block.DecompressInto(algo, raw[prefix:], dst, zstdContext)
 	return dst, buf, err
 }
 

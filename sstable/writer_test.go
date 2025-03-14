@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -139,6 +140,8 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 	defer closeReaderAndWriter()
 
 	datadriven.RunTest(t, file, func(t *testing.T, td *datadriven.TestData) string {
+
+		zstdContext := zstd.NewCtx()
 		switch td.Cmd {
 		case "build":
 			closeReaderAndWriter()
@@ -296,7 +299,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			return l.Describe(verbose, r, nil)
 
 		case "decode-layout":
-			l, err := decodeLayout(testkeys.Comparer, obj.Data())
+			l, err := decodeLayout(testkeys.Comparer, obj.Data(), zstdContext)
 			if err != nil {
 				return err.Error()
 			}
@@ -1202,7 +1205,7 @@ func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format
 		b.Run(fmt.Sprintf("block=%s", humanize.Bytes.Int64(int64(bs))), func(b *testing.B) {
 			for _, filter := range []bool{true, false} {
 				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {
-					for _, comp := range []block.Compression{block.NoCompression, block.SnappyCompression, block.ZstdCompression} {
+					for _, comp := range []block.Compression{block.NoCompression, block.SnappyCompression, block.ZstdCompression, block.ZstdContextCompression} {
 						b.Run(fmt.Sprintf("compression=%s", comp), func(b *testing.B) {
 							opts := WriterOptions{
 								BlockRestartInterval: 16,
