@@ -984,27 +984,27 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(
 		res := ki.Buf[:roachKeyLen+2+len(untypedVersion)]
 		*(*byte)(ptr) = 0
 		memmove(
-			unsafe.Pointer(uintptr(ptr)+1),
+			unsafe.Add(ptr, 1),
 			unsafe.Pointer(unsafe.SliceData(untypedVersion)),
 			uintptr(len(untypedVersion)),
 		)
-		*(*byte)(unsafe.Pointer(uintptr(ptr) + uintptr(len(untypedVersion)+1))) = byte(len(untypedVersion) + 1)
+		*(*byte)(unsafe.Add(ptr, len(untypedVersion)+1)) = byte(len(untypedVersion) + 1)
 		return res
 	}
 
 	// Inline binary.BigEndian.PutUint64. Note that this code is converted into
 	// word-size instructions by the compiler.
 	*(*byte)(ptr) = 0
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 1)) = byte(mvccWall >> 56)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 2)) = byte(mvccWall >> 48)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 3)) = byte(mvccWall >> 40)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 4)) = byte(mvccWall >> 32)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 5)) = byte(mvccWall >> 24)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 6)) = byte(mvccWall >> 16)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 7)) = byte(mvccWall >> 8)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 8)) = byte(mvccWall)
+	*(*byte)(unsafe.Add(ptr, 1)) = byte(mvccWall >> 56)
+	*(*byte)(unsafe.Add(ptr, 2)) = byte(mvccWall >> 48)
+	*(*byte)(unsafe.Add(ptr, 3)) = byte(mvccWall >> 40)
+	*(*byte)(unsafe.Add(ptr, 4)) = byte(mvccWall >> 32)
+	*(*byte)(unsafe.Add(ptr, 5)) = byte(mvccWall >> 24)
+	*(*byte)(unsafe.Add(ptr, 6)) = byte(mvccWall >> 16)
+	*(*byte)(unsafe.Add(ptr, 7)) = byte(mvccWall >> 8)
+	*(*byte)(unsafe.Add(ptr, 8)) = byte(mvccWall)
 
-	ptr = unsafe.Pointer(uintptr(ptr) + 9)
+	ptr = unsafe.Add(ptr, 9)
 	// This is an MVCC key.
 	if mvccLogical == 0 {
 		*(*byte)(ptr) = 9
@@ -1013,10 +1013,10 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(
 
 	// Inline binary.BigEndian.PutUint32.
 	*(*byte)(ptr) = byte(mvccLogical >> 24)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 1)) = byte(mvccLogical >> 16)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 2)) = byte(mvccLogical >> 8)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 3)) = byte(mvccLogical)
-	*(*byte)(unsafe.Pointer(uintptr(ptr) + 4)) = 13
+	*(*byte)(unsafe.Add(ptr, 1)) = byte(mvccLogical >> 16)
+	*(*byte)(unsafe.Add(ptr, 2)) = byte(mvccLogical >> 8)
+	*(*byte)(unsafe.Add(ptr, 3)) = byte(mvccLogical)
+	*(*byte)(unsafe.Add(ptr, 4)) = 13
 	return ki.Buf[:len(ki.Buf)+14]
 }
 
