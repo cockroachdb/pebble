@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package sstable
+package testing
 
 import (
 	"context"
@@ -11,16 +11,17 @@ import (
 	"github.com/cockroachdb/pebble/v2/internal/keyspan"
 	"github.com/cockroachdb/pebble/v2/internal/testutils"
 	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/sstable"
 )
 
 // ReadAll returns all point keys, range del spans, and range key spans from an
 // sstable. Closes the Readable. Panics on errors.
 func ReadAll(
-	r objstorage.Readable, ro ReaderOptions,
+	r objstorage.Readable, ro sstable.ReaderOptions,
 ) (points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span) {
-	reader := testutils.CheckErr(NewReader(context.Background(), r, ro))
+	reader := testutils.CheckErr(sstable.NewReader(context.Background(), r, ro))
 	defer reader.Close()
-	pointIter := testutils.CheckErr(reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */))
+	pointIter := testutils.CheckErr(reader.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */))
 	defer pointIter.Close()
 
 	for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
@@ -32,14 +33,14 @@ func ReadAll(
 	}
 
 	ctx := context.Background()
-	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(ctx, NoFragmentTransforms)); rangeDelIter != nil {
+	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms)); rangeDelIter != nil {
 		defer rangeDelIter.Close()
 		for s := testutils.CheckErr(rangeDelIter.First()); s != nil; s = testutils.CheckErr(rangeDelIter.Next()) {
 			rangeDels = append(rangeDels, s.Clone())
 		}
 	}
 
-	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms)); rangeKeyIter != nil {
+	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms)); rangeKeyIter != nil {
 		defer rangeKeyIter.Close()
 		for s := testutils.CheckErr(rangeKeyIter.First()); s != nil; s = testutils.CheckErr(rangeKeyIter.Next()) {
 			rangeKeys = append(rangeKeys, s.Clone())
