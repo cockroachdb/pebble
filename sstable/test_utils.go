@@ -9,7 +9,6 @@ import (
 
 	"github.com/cockroachdb/pebble/v2/internal/base"
 	"github.com/cockroachdb/pebble/v2/internal/keyspan"
-	"github.com/cockroachdb/pebble/v2/internal/testutils"
 	"github.com/cockroachdb/pebble/v2/objstorage"
 )
 
@@ -17,14 +16,23 @@ import (
 // sstable. Closes the Readable. Panics on errors.
 func ReadAll(
 	r objstorage.Readable, ro ReaderOptions,
-) (points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span) {
-	reader := testutils.CheckErr(NewReader(context.Background(), r, ro))
+) (points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span, err error) {
+	reader, err := NewReader(context.Background(), r, ro)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	defer reader.Close()
-	pointIter := testutils.CheckErr(reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */))
+	pointIter, err := reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	defer pointIter.Close()
 
 	for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
-		val, _ := testutils.CheckErr2(kv.Value(nil))
+		val, _, err := kv.Value(nil)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 		points = append(points, base.InternalKV{
 			K: kv.K.Clone(),
 			V: base.MakeInPlaceValue(val),
@@ -32,18 +40,42 @@ func ReadAll(
 	}
 
 	ctx := context.Background()
-	if rangeDelIter := testutils.CheckErr(reader.NewRawRangeDelIter(ctx, NoFragmentTransforms)); rangeDelIter != nil {
+	rangeDelIter, err := reader.NewRawRangeDelIter(ctx, NoFragmentTransforms)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if rangeDelIter != nil {
 		defer rangeDelIter.Close()
-		for s := testutils.CheckErr(rangeDelIter.First()); s != nil; s = testutils.CheckErr(rangeDelIter.Next()) {
+		s, err := rangeDelIter.First()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for s != nil {
 			rangeDels = append(rangeDels, s.Clone())
+			s, err = rangeDelIter.Next()
+			if err != nil {
+				return nil, nil, nil, err
+			}
 		}
 	}
 
-	if rangeKeyIter := testutils.CheckErr(reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms)); rangeKeyIter != nil {
+	rangeKeyIter, err := reader.NewRawRangeKeyIter(ctx, NoFragmentTransforms)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if rangeKeyIter != nil {
 		defer rangeKeyIter.Close()
-		for s := testutils.CheckErr(rangeKeyIter.First()); s != nil; s = testutils.CheckErr(rangeKeyIter.Next()) {
+		s, err := rangeKeyIter.First()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for s != nil {
 			rangeKeys = append(rangeKeys, s.Clone())
+			s, err = rangeKeyIter.Next()
+			if err != nil {
+				return nil, nil, nil, err
+			}
 		}
 	}
-	return points, rangeDels, rangeKeys
+	return points, rangeDels, rangeKeys, nil
 }
