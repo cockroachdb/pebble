@@ -58,7 +58,6 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			_, err := newRowBlockSingleLevelIterator(
 				context.Background(),
 				r,
-				nil, /* v */
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,
@@ -70,7 +69,6 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			_, err := newRowBlockTwoLevelIterator(
 				context.Background(),
 				r,
-				nil, /* v */
 				NoTransforms,
 				nil /* lower */, nil, /* upper */
 				nil /* filterer */, NeverUseFilterBlock,

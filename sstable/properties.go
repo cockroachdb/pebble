@@ -68,7 +68,7 @@ func init() {
 // and virtual sstables properties.
 //
 // For virtual sstables, fields are constructed through extrapolation upon virtual
-// reader construction. See MakeVirtualReader for implementation details.
+// reader construction.
 //
 // NB: The values of these properties can affect correctness. For example,
 // if NumRangeKeySets == 0, but the sstable actually contains range keys, then

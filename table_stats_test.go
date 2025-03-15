@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -249,7 +250,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return err.Error()
 			}
 			defer r.Close()
-			iter, err := newCombinedDeletionKeyspanIter(cmp, r, m)
+			iter, err := newCombinedDeletionKeyspanIter(cmp, r, m, block.NoReadEnv)
 			if err != nil {
 				return err.Error()
 			}

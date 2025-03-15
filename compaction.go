@@ -1297,8 +1297,8 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 
 		// This file fits perfectly within the excise span, so we can slot it at L6.
 		if ingestFlushable.exciseSpan.Valid() &&
-			ingestFlushable.exciseSpan.Contains(d.cmp, file.TableMetadata.Smallest) &&
-			ingestFlushable.exciseSpan.Contains(d.cmp, file.TableMetadata.Largest) {
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.Smallest) &&
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.Largest) {
 			level = 6
 		} else {
 			// TODO(radu): this can perform I/O; we should not do this while holding DB.mu.
@@ -1307,7 +1307,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 				return nil, err
 			}
 			level, fileToSplit, err = ingestTargetLevel(
-				ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, file.TableMetadata, suggestSplit,
+				ctx, d.cmp, lsmOverlap, baseLevel, d.mu.compact.inProgress, file, suggestSplit,
 			)
 			if err != nil {
 				return nil, err
@@ -1315,10 +1315,10 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 
 		// Add the current flushableIngest file to the version.
-		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: file.TableMetadata})
+		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: file})
 		if fileToSplit != nil {
 			ingestSplitFiles = append(ingestSplitFiles, ingestSplitFile{
-				ingestFile: file.TableMetadata,
+				ingestFile: file,
 				splitFile:  fileToSplit,
 				level:      level,
 			})
@@ -2562,12 +2562,12 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
-		err = d.fileCache.withVirtualReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r sstable.VirtualReader, _ block.ReadEnv) error {
+		err = d.fileCache.withReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r *sstable.Reader, env block.ReadEnv) error {
 			var err error
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,
-				src, r.UnsafeReader(), d.opts.MakeReaderOptions(),
+				src, r, d.opts.MakeReaderOptions(),
 				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),
 				start, end,
 			)

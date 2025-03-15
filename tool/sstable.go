@@ -499,7 +499,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
-		bytes, err := r.EstimateDiskUsage(s.start, s.end)
+		bytes, err := r.EstimateDiskUsage(s.start, s.end, block.NoReadEnv)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return

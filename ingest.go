@@ -2286,20 +2286,12 @@ func (d *DB) validateSSTables() {
 			}
 		}
 
-		var err error
 		// TOOD(radu): plumb a ReadEnv with a CategoryIngest stats collector through
 		// to ValidateBlockChecksums.
-		if f.Meta.Virtual {
-			err = d.fileCache.withVirtualReader(context.TODO(), block.NoReadEnv,
-				f.Meta.VirtualMeta(), func(v sstable.VirtualReader, _ block.ReadEnv) error {
-					return v.ValidateBlockChecksumsOnBacking()
-				})
-		} else {
-			err = d.fileCache.withReader(context.TODO(), block.NoReadEnv,
-				f.Meta.PhysicalMeta(), func(r *sstable.Reader, _ block.ReadEnv) error {
-					return r.ValidateBlockChecksums()
-				})
-		}
+		err := d.fileCache.withReader(context.TODO(), block.NoReadEnv,
+			f.Meta, func(r *sstable.Reader, _ block.ReadEnv) error {
+				return r.ValidateBlockChecksums()
+			})
 
 		if err != nil {
 			if IsCorruptionError(err) {

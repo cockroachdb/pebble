@@ -152,7 +152,7 @@ type flushableList []*flushableEntry
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
 	// files are non-overlapping and ordered (according to their bounds).
-	files            []physicalMeta
+	files            []*tableMetadata
 	comparer         *Comparer
 	newIters         tableNewIters
 	newRangeKeyIters keyspanimpl.TableNewSpanIter
@@ -185,7 +185,7 @@ func newIngestedFlushable(
 			}
 		}
 	}
-	var physicalFiles []physicalMeta
+	var physicalFiles []*tableMetadata
 	var hasRangeKeys bool
 	for _, f := range files {
 		if f.HasRangeKeys {
