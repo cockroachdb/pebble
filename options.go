@@ -1037,19 +1037,41 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+	// The controls below manage deletion pacing, which slows down
+	// deletions when compactions finish or when readers close and
+	// obsolete files must be cleaned up. Rapid deletion of many
+	// files simultaneously can increase disk latency on certain
+	// SSDs, and this functionality helps protect against that.
+
 	// TargetByteDeletionRate is the rate (in bytes per second) at which sstable file
 	// deletions are limited to (under normal circumstances).
-	//
-	// Deletion pacing is used to slow down deletions when compactions finish up
-	// or readers close and newly-obsolete files need cleaning up. Deleting lots
-	// of files at once can cause disk latency to go up on some SSDs, which this
-	// functionality guards against.
 	//
 	// This value is only a best-effort target; the effective rate can be
 	// higher if deletions are falling behind or disk space is running low.
 	//
 	// Setting this to 0 disables deletion pacing, which is also the default.
 	TargetByteDeletionRate int
+
+	// FreeSpaceThreshold specifies the minimum amount of free disk space that Pebble
+	// attempts to maintain. If free disk space drops below this threshold, deletions
+	// are accelerated above TargetByteDeletionRate until the threshold is restored.
+	// Default is 16GB.
+	FreeSpaceThreshold uint64
+
+	// FreeSpaceTimeframe sets the duration (in seconds) within which Pebble attempts
+	// to restore the free disk space back to FreeSpaceThreshold. A lower value means
+	// more aggressive deletions. Default is 10s.
+	FreeSpaceTimeframe uint64
+
+	// ObsoleteBytesMaxRatio specifies the maximum allowed ratio of obsolete files to
+	// live files. If this ratio is exceeded, Pebble speeds up deletions above the
+	// TargetByteDeletionRate until the ratio is restored. Default is 0.20.
+	ObsoleteBytesMaxRatio float64
+
+	// ObsoleteBytesTimeframe sets the duration (in seconds) within which Pebble aims
+	// to restore the obsolete-to-live bytes ratio below ObsoleteBytesMaxRatio. A lower
+	// value means more aggressive deletions. Default is 300s.
+	ObsoleteBytesTimeframe uint64
 
 	// EnableSQLRowSpillMetrics specifies whether the Pebble instance will only be used
 	// to temporarily persist data spilled to disk for row-oriented SQL query execution.
@@ -1135,6 +1157,22 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
+	}
+
+	if o.FreeSpaceThreshold == 0 {
+		o.FreeSpaceThreshold = 16 << 30
+	}
+
+	if o.FreeSpaceTimeframe == 0 {
+		o.FreeSpaceTimeframe = 10
+	}
+
+	if o.ObsoleteBytesMaxRatio == 0 {
+		o.ObsoleteBytesMaxRatio = 0.20
+	}
+
+	if o.ObsoleteBytesTimeframe == 0 {
+		o.ObsoleteBytesTimeframe = 300
 	}
 
 	if o.Experimental.DisableIngestAsFlushable == nil {
@@ -1401,6 +1439,10 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate)
+	fmt.Fprintf(&buf, "  free_space_threshold=%d\n", o.FreeSpaceThreshold)
+	fmt.Fprintf(&buf, "  free_space_timeframe=%d\n", o.FreeSpaceTimeframe)
+	fmt.Fprintf(&buf, "  obsolete_bytes_max_ratio=%f\n", o.ObsoleteBytesMaxRatio)
+	fmt.Fprintf(&buf, "  obsolete_bytes_timeframe=%d\n", o.ObsoleteBytesTimeframe)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	if o.Experimental.MultiLevelCompactionHeuristic != nil {
 		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic.String())
@@ -1739,6 +1781,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// may be meaningful again eventually.
 			case "min_deletion_rate":
 				o.TargetByteDeletionRate, err = strconv.Atoi(value)
+			case "free_space_threshold":
+				o.FreeSpaceThreshold, err = strconv.ParseUint(value, 10, 64)
+			case "free_space_timeframe":
+				o.FreeSpaceTimeframe, err = strconv.ParseUint(value, 10, 64)
+			case "obsolete_bytes_max_ratio":
+				o.ObsoleteBytesMaxRatio, err = strconv.ParseFloat(value, 64)
+			case "obsolete_bytes_timeframe":
+				o.ObsoleteBytesTimeframe, err = strconv.ParseUint(value, 10, 64)
 			case "min_flush_rate":
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
