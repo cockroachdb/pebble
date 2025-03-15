@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	crand "crypto/rand"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -517,7 +519,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.picker = &tc.picker
 		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
-			c := newCompaction(pc, opts, time.Now(), nil /* provider */, nil /* slot */)
+			c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
 
 			gotStart := fileNums(c.startLevel.files)
 			gotML := ""
@@ -955,6 +957,7 @@ func TestManualCompaction(t *testing.T) {
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+		opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 		var err error
 		d, err = Open("", opts)
@@ -1060,6 +1063,7 @@ func TestManualCompaction(t *testing.T) {
 				}
 				opts.WithFSDefaults()
 				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -1158,10 +1162,6 @@ func TestManualCompaction(t *testing.T) {
 					if len(d.mu.compact.manual) == 0 {
 						return errors.New("no manual compaction queued")
 					}
-					manual := d.mu.compact.manual[0]
-					if manual.retries == 0 {
-						return errors.New("manual compaction has not been retried")
-					}
 					return nil
 				})
 				if err != nil {
@@ -1175,6 +1175,13 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				deleteOngoingCompaction(ongoingCompaction)
 				ongoingCompaction = nil
+				d.mu.Unlock()
+				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
+					adjustRunningCompactionsForTesting(-1)
+				// If the ongoing compaction conflicted with the manual compaction,
+				// the CompactionScheduler may believe there is no waiting compaction.
+				// So explicitly call maybeScheduleCompaction.
+				d.mu.Lock()
 				d.maybeScheduleCompaction()
 				d.mu.Unlock()
 				if err := <-ch; err != nil {
@@ -1194,6 +1201,8 @@ func TestManualCompaction(t *testing.T) {
 				d.mu.Lock()
 				ongoingCompaction = createOngoingCompaction([]byte(start), []byte(end), startLevel, outputLevel)
 				d.mu.Unlock()
+				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
+					adjustRunningCompactionsForTesting(+1)
 				return ""
 
 			case "remove-ongoing-compaction":
@@ -1201,6 +1210,9 @@ func TestManualCompaction(t *testing.T) {
 				deleteOngoingCompaction(ongoingCompaction)
 				ongoingCompaction = nil
 				d.mu.Unlock()
+				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
+					adjustRunningCompactionsForTesting(-1)
+
 				return ""
 
 			case "set-concurrent-compactions":
@@ -1317,7 +1329,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, nil /* slot */)
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 
@@ -1590,23 +1602,45 @@ func TestCompactionTombstones(t *testing.T) {
 		}
 	}()
 
-	var compactInfo *CompactionInfo // protected by d.mu
+	var compactInfo []*CompactionInfo // protected by d.mu
 
 	compactionString := func() string {
 		for d.mu.compact.compactingCount > 0 {
 			d.mu.compact.cond.Wait()
 		}
 
-		s := "(none)"
-		if compactInfo != nil {
-			// Fix the job ID and durations for determinism.
-			compactInfo.JobID = 100
-			compactInfo.Duration = time.Second
-			compactInfo.TotalDuration = 2 * time.Second
-			s = compactInfo.String()
-			compactInfo = nil
+		if len(compactInfo) == 0 {
+			return "(none)"
 		}
-		return s
+		for _, c := range compactInfo {
+			// Fix the job ID and durations for determinism.
+			c.JobID = 0
+			c.Duration = time.Second
+			c.TotalDuration = 2 * time.Second
+			if len(compactInfo) > 1 {
+				// The output table numbering is non-deterministic when there are
+				// multiple concurrent compactions.
+				for i := range c.Output.Tables {
+					c.Output.Tables[i].FileNum = 0
+				}
+			}
+		}
+		// Sort for determinism. We use the negative value of cmp.Compare to sort
+		// delete-only before default since it is more natural in the output, as
+		// delete-only is selected first.
+		slices.SortFunc(compactInfo, func(a, b *CompactionInfo) int {
+			return -cmp.Compare(a.String(), b.String())
+		})
+		var b strings.Builder
+		jobID := 100
+		for _, c := range compactInfo {
+			// Fix the job ID.
+			c.JobID = jobID
+			jobID++
+			fmt.Fprintf(&b, "%s\n", c.String())
+		}
+		compactInfo = nil
+		return b.String()
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_tombstones",
@@ -1614,18 +1648,18 @@ func TestCompactionTombstones(t *testing.T) {
 			switch td.Cmd {
 			case "define":
 				if d != nil {
-					compactInfo = nil
 					require.NoError(t, closeAllSnapshots(d))
 					if err := d.Close(); err != nil {
 						return err.Error()
 					}
+					compactInfo = nil
 				}
 				opts := &Options{
 					FS:         vfs.NewMem(),
 					DebugCheck: DebugCheckLevels,
 					EventListener: &EventListener{
 						CompactionEnd: func(info CompactionInfo) {
-							compactInfo = &info
+							compactInfo = append(compactInfo, &info)
 						},
 					},
 					FormatMajorVersion: internalFormatNewest,
@@ -1633,6 +1667,7 @@ func TestCompactionTombstones(t *testing.T) {
 				opts.WithFSDefaults()
 				opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
 				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {

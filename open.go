@@ -525,6 +525,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	d.mu.versions.visibleSeqNum.Store(d.mu.versions.logSeqNum.Load())
 
+	// Register with the CompactionScheduler before calling
+	// d.maybeScheduleFlush, since completion of the flush can trigger
+	// compactions.
+	d.opts.Experimental.CompactionScheduler.Register(2, d)
 	if !d.opts.ReadOnly {
 		d.maybeScheduleFlush()
 		for d.mu.compact.flushing {

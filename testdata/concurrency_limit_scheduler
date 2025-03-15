@@ -1,0 +1,157 @@
+init
+----
+
+# Compaction 0 is scheduled.
+try-schedule
+----
+GetAllowedWithoutPermission(): 1
+try-schedule succeeded
+Ongoing compactions nums: 0
+
+# Compaction is not scheduled since allowed count is 1.
+try-schedule
+----
+GetAllowedWithoutPermission(): 1
+try-schedule failed
+Ongoing compactions nums: 0
+
+# Queue of two waiting compactions.
+set-waiting-count count=2
+----
+Ongoing compactions nums: 0
+Waiting compactions count: 2
+
+# Update allowed count to 2 and tell scheduler. Compaction 1 is scheduled, to
+# reach the allowed limit.
+set-allowed allowed=2 inform-scheduler wait-for-periodic-granter
+----
+GetAllowedWithoutPermission(): 2
+GetAllowedWithoutPermission(): 2
+GetWaitingCompaction(): true
+Schedule(): true
+Ongoing compactions nums: 0 1
+Waiting compactions count: 1
+
+# Update allowed count to 4 and tell scheduler. Compaction 2 is scheduled. 3
+# compactions are running even though 4 are allowed, since there are no more
+# waiting compactions.
+set-allowed allowed=4 inform-scheduler wait-for-periodic-granter
+----
+GetAllowedWithoutPermission(): 4
+GetAllowedWithoutPermission(): 4
+GetWaitingCompaction(): true
+Schedule(): true
+GetWaitingCompaction(): false
+Ongoing compactions nums: 0 1 2
+
+# Compaction 3 is scheduled and the allowed limit is reached.
+try-schedule
+----
+GetAllowedWithoutPermission(): 4
+try-schedule succeeded
+Ongoing compactions nums: 0 1 2 3
+
+# Periodic tick. No more compactions scheduled.
+tick
+----
+GetAllowedWithoutPermission(): 4
+Ongoing compactions nums: 0 1 2 3
+
+# Compaction 2 is done. There is no waiting compaction.
+compaction-done index=2
+----
+GetAllowedWithoutPermission(): 4
+GetWaitingCompaction(): false
+Ongoing compactions nums: 0 1 3
+
+# Periodic tick. No more compactions scheduled.
+tick
+----
+GetAllowedWithoutPermission(): 4
+GetWaitingCompaction(): false
+Ongoing compactions nums: 0 1 3
+
+# Have 3 waiting compactions. This is a bit artificial in that we did not call
+# try-get, so nothing is scheduled yet.
+set-waiting-count count=3
+----
+Ongoing compactions nums: 0 1 3
+Waiting compactions count: 3
+
+# Compaction 1 is done. Compactions 4 and 5 are scheduled and the allowed
+# limit is reached.
+compaction-done index=1
+----
+GetAllowedWithoutPermission(): 4
+GetWaitingCompaction(): true
+Schedule(): true
+GetWaitingCompaction(): true
+Schedule(): true
+Ongoing compactions nums: 0 3 4 5
+Waiting compactions count: 1
+
+# Reduce the allowed count to 2. We are running 4 compactions.
+set-allowed allowed=2 inform-scheduler
+----
+GetAllowedWithoutPermission(): 2
+Ongoing compactions nums: 0 3 4 5
+Waiting compactions count: 1
+
+# Compaction 0 is done. Running 3 compactions and 2 are allowed.
+compaction-done index=0
+----
+GetAllowedWithoutPermission(): 2
+Ongoing compactions nums: 3 4 5
+Waiting compactions count: 1
+
+# Compaction 3 is done. Running 3 compactions and 2 are allowed.
+compaction-done index=3
+----
+GetAllowedWithoutPermission(): 2
+Ongoing compactions nums: 4 5
+Waiting compactions count: 1
+
+# Compaction 5 is done. Running 1 compaction and 2 are allowed, so compaction
+# 6 is scheduled.
+compaction-done index=5
+----
+GetAllowedWithoutPermission(): 2
+GetWaitingCompaction(): true
+Schedule(): true
+Ongoing compactions nums: 4 6
+
+# Queue of 3 waiting compactions.
+set-waiting-count count=3
+----
+Ongoing compactions nums: 4 6
+Waiting compactions count: 3
+
+# Increase allowed count to 4, but don't tell scheduler. This fact will be
+# picked up in the next tick.
+set-allowed allowed=4
+----
+Ongoing compactions nums: 4 6
+Waiting compactions count: 3
+
+# Tick schedules compactions 7 and 8.
+tick
+----
+GetAllowedWithoutPermission(): 4
+GetWaitingCompaction(): true
+Schedule(): true
+GetWaitingCompaction(): true
+Schedule(): true
+Ongoing compactions nums: 4 6 7 8
+Waiting compactions count: 1
+
+# Unregister can happen with ongoing compactions.
+unregister
+----
+Ongoing compactions nums: 4 6 7 8
+Waiting compactions count: 1
+
+# Since db is unregistered, another compaction is not scheduled.
+compaction-done index=8
+----
+Ongoing compactions nums: 4 6 7
+Waiting compactions count: 1
