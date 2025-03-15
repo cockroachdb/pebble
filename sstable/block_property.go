@@ -13,7 +13,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Block properties are an optional user-facing feature that can be used to
@@ -108,7 +107,7 @@ type BlockPropertyCollector interface {
 	// key properties are stored separately and don't contribute to data block
 	// properties. They are only used when FinishTable is called.
 	// TODO(radu): clean up this subtle semantic.
-	AddRangeKeys(span keyspan.Span) error
+	AddRangeKeys(span Span) error
 
 	// AddCollectedWithSuffixReplacement adds previously collected property data
 	// and updates it to reflect a change of suffix on all keys: the old property
