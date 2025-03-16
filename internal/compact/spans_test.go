@@ -132,10 +132,11 @@ func TestSplitAndEncodeSpan(t *testing.T) {
 			tw := sstable.NewRawWriter(obj, wo)
 			require.NoError(t, SplitAndEncodeSpan(base.DefaultComparer.Compare, &span, upToKey, tw))
 			require.NoError(t, tw.Close())
-			_, rangeDels, rangeKeys := sstable.ReadAll(obj, sstable.ReaderOptions{
+			_, rangeDels, rangeKeys, err := sstable.ReadAll(obj, sstable.ReaderOptions{
 				Comparer:   wo.Comparer,
 				KeySchemas: sstable.MakeKeySchemas(wo.KeySchema),
 			})
+			require.NoError(t, err)
 			require.LessOrEqual(t, len(rangeDels)+len(rangeKeys), 1)
 			s := "."
 			if all := append(rangeDels, rangeKeys...); len(all) == 1 {
