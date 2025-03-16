@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/v2/objstorage"
 	"github.com/cockroachdb/pebble/v2/sstable"
 	"github.com/cockroachdb/pebble/v2/sstable/colblk"
-	sstabletesting "github.com/cockroachdb/pebble/v2/sstable/testing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,7 +132,7 @@ func TestSplitAndEncodeSpan(t *testing.T) {
 			tw := sstable.NewRawWriter(obj, wo)
 			require.NoError(t, SplitAndEncodeSpan(base.DefaultComparer.Compare, &span, upToKey, tw))
 			require.NoError(t, tw.Close())
-			_, rangeDels, rangeKeys := sstabletesting.ReadAll(obj, sstable.ReaderOptions{
+			_, rangeDels, rangeKeys := sstable.ReadAll(obj, sstable.ReaderOptions{
 				Comparer:   wo.Comparer,
 				KeySchemas: sstable.MakeKeySchemas(wo.KeySchema),
 			})
