@@ -5,6 +5,7 @@
 package block
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/minio/minlz"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,4 +137,14 @@ func TestBufferRandomized(t *testing.T) {
 			bh.Release()
 		})
 	}
+}
+
+func TestMinlzEncodingLimit(t *testing.T) {
+	// Tests that Minlz compression has a strict limit of 8<<20 (8MiB)
+	_, err := minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, 8<<20-1), minlz.LevelBalanced)
+	require.NoError(t, err)
+	_, err = minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, 8<<20), minlz.LevelBalanced)
+	require.NoError(t, err)
+	_, err = minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, 8<<20+1), minlz.LevelBalanced)
+	require.Error(t, err)
 }

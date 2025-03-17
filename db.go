@@ -2075,6 +2075,7 @@ func (d *DB) Metrics() *Metrics {
 		metrics.Table.CompressedCountUnknown += int64(compressionTypes.unknown)
 		metrics.Table.CompressedCountSnappy += int64(compressionTypes.snappy)
 		metrics.Table.CompressedCountZstd += int64(compressionTypes.zstd)
+		metrics.Table.CompressedCountMinlz += int64(compressionTypes.minlz)
 		metrics.Table.CompressedCountNone += int64(compressionTypes.none)
 	}
 
