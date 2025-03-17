@@ -200,3 +200,49 @@ is-empty now=55s
 empty
 Set:
   <empty>
+
+# Test size-limit.
+reset size-limit=8
+----
+Set:
+  <empty>
+
+add
+[0, 1] 10s
+[2, 3] 15s
+[4, 5] 5s
+[6, 7] 15s
+----
+Set:
+  [0, 1]  expires in: 10s
+  [2, 3]  expires in: 15s
+  [4, 5]  expires in: 5s
+  [6, 7]  expires in: 15s
+
+# Add a span that will exceed the size limit. The result should retain the 15s
+# spans.
+add
+[8, 9] 13s
+----
+Set:
+  [2, 3]  expires in: 15s
+  [6, 7]  expires in: 15s
+
+add
+[1, 2] 20s
+[4, 5] 25s
+----
+Set:
+  [1, 2]  expires in: 20s
+  (2, 3]  expires in: 15s
+  [4, 5]  expires in: 25s
+  [6, 7]  expires in: 15s
+
+# Add a span that will exceed the size limit. The result should retain the 20s
+# and 25s spans.
+add
+[8, 9] 5s
+----
+Set:
+  [1, 2]  expires in: 20s
+  [4, 5]  expires in: 25s

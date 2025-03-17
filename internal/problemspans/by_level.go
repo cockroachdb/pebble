@@ -43,7 +43,7 @@ func (bl *ByLevel) InitForTesting(numLevels int, cmp base.Compare, nowFn func() 
 	bl.empty.Store(false)
 	bl.levels = make([]Set, numLevels)
 	for i := range bl.levels {
-		bl.levels[i].init(cmp, nowFn)
+		bl.levels[i].init(cmp, nowFn, SetSizeLimit)
 	}
 }
 

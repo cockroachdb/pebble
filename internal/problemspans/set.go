@@ -5,7 +5,9 @@
 package problemspans
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,9 +24,14 @@ import (
 // logarithmic.
 //
 // Set is not safe for concurrent use.
+//
+// To avoid blow-up in pathological corner cases, the Set limits the amount of
+// keys it stores internally (see SetSizeLimit). When this limit is hit, the
+// spans (or fragments of spans) that would expire first are dropped.
 type Set struct {
-	cmp   base.Compare
-	nowFn func() crtime.Mono
+	cmp       base.Compare
+	nowFn     func() crtime.Mono
+	sizeLimit int
 
 	now crtime.Mono
 
@@ -33,17 +40,26 @@ type Set struct {
 	rt regiontree.T[axisds.Endpoint[[]byte], expirationTime]
 }
 
+// SetSizeLimit is the maximum number of regions in the region tree. When we
+// exceed this limit, we halve the size by removing the earliest expiring
+// regions.
+const SetSizeLimit = 1000
+
 // expirationTime of a problem span. 0 means that there is no problem span in a
 // region. Expiration times <= Set.now are equivalent to 0.
 type expirationTime crtime.Mono
 
 // Init must be called before a Set can be used.
 func (s *Set) Init(cmp base.Compare) {
-	s.init(cmp, crtime.NowMono)
+	s.init(cmp, crtime.NowMono, SetSizeLimit)
 }
 
-func (s *Set) init(cmp base.Compare, nowFn func() crtime.Mono) {
-	*s = Set{}
+func (s *Set) init(cmp base.Compare, nowFn func() crtime.Mono, sizeLimit int) {
+	*s = Set{
+		cmp:       cmp,
+		nowFn:     nowFn,
+		sizeLimit: sizeLimit,
+	}
 	s.cmp = cmp
 	s.nowFn = nowFn
 	propEqFn := func(a, b expirationTime) bool {
@@ -68,6 +84,9 @@ func (s *Set) Add(bounds base.UserKeyBounds, expiration time.Duration) {
 	s.rt.Update(start, end, func(p expirationTime) expirationTime {
 		return max(p, expTime)
 	})
+	if s.rt.InternalLen() > s.sizeLimit {
+		s.reduce()
+	}
 }
 
 // Overlaps returns true if the bounds overlap with a non-expired span.
@@ -96,6 +115,44 @@ func (s *Set) Excise(bounds base.UserKeyBounds) {
 func (s *Set) IsEmpty() bool {
 	s.now = s.nowFn()
 	return s.rt.IsEmpty()
+}
+
+// reduce halves the size of the region table, keeping the latest expiring regions.
+// Used to avoid unbounded growth in corner cases.
+func (s *Set) reduce() {
+	type region struct {
+		start, end axisds.Endpoint[[]byte]
+		exp        expirationTime
+	}
+	regions := make([]region, 0, s.rt.InternalLen())
+	s.now = s.nowFn()
+	s.rt.EnumerateAll(func(start, end axisds.Endpoint[[]byte], prop expirationTime) bool {
+		regions = append(regions, region{start: start, end: end, exp: prop})
+		return true
+	})
+
+	byExpiration := make([]int, len(regions))
+	for i := range byExpiration {
+		byExpiration[i] = i
+	}
+	// Sort regions by descending expiration time.
+	slices.SortFunc(byExpiration, func(i, j int) int {
+		c := cmp.Compare(regions[j].exp, regions[i].exp)
+		if c == 0 {
+			// Break ties by region index, so the result is predictable.
+			return cmp.Compare(i, j)
+		}
+		return c
+	})
+	// Clear the set and add back regions until we reach sizeLimit/2.
+	s.init(s.cmp, s.nowFn, s.sizeLimit)
+	for _, idx := range byExpiration {
+		r := regions[idx]
+		s.rt.Update(r.start, r.end, func(expirationTime) expirationTime { return r.exp })
+		if s.rt.InternalLen() >= s.sizeLimit/2 {
+			break
+		}
+	}
 }
 
 // String prints all active (non-expired) span fragments.

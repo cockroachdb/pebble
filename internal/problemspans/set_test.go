@@ -22,7 +22,7 @@ func TestSet(t *testing.T) {
 	now := crtime.Mono(0)
 	nowFn := func() crtime.Mono { return now }
 	var set Set
-	set.init(base.DefaultComparer.Compare, nowFn)
+	set.init(base.DefaultComparer.Compare, nowFn, SetSizeLimit)
 
 	datadriven.RunTest(t, "testdata/set", func(t *testing.T, td *datadriven.TestData) string {
 		var nowStr string
@@ -41,7 +41,9 @@ func TestSet(t *testing.T) {
 		var out bytes.Buffer
 		switch td.Cmd {
 		case "reset":
-			set.init(base.DefaultComparer.Compare, nowFn)
+			sizeLimit := SetSizeLimit
+			td.MaybeScanArgs(t, "size-limit", &sizeLimit)
+			set.init(base.DefaultComparer.Compare, nowFn, sizeLimit)
 			now = 0
 
 		case "add":
@@ -109,9 +111,10 @@ func TestSetRandomized(t *testing.T) {
 	nowFn := func() crtime.Mono { return now }
 
 	for test := 0; test < 1000; test++ {
-		var set Set
-		set.init(base.DefaultComparer.Compare, nowFn)
+		var set, setSmall Set
 		var naive naiveSet
+		set.init(base.DefaultComparer.Compare, nowFn, 10000)
+		setSmall.init(base.DefaultComparer.Compare, nowFn, 50)
 
 		keys := 4 + rand.Intn(100)
 		key := func(k int) []byte {
@@ -130,15 +133,21 @@ func TestSetRandomized(t *testing.T) {
 			if n := rand.Intn(10); n < 2 {
 				expiration := time.Duration(rand.Intn(100))
 				set.Add(bounds, expiration)
+				setSmall.Add(bounds, expiration)
 				naive.Add(bounds, now+crtime.Mono(expiration))
 			} else if bounds.End.Kind == base.Exclusive && n == 9 {
 				set.Excise(bounds)
+				setSmall.Excise(bounds)
 				naive.Excise(bounds)
 			} else {
 				overlap := set.Overlaps(bounds)
 				expected := naive.Overlaps(bounds, now)
 				if expected != overlap {
 					t.Fatalf("expected overlap=%t, got %t for bounds %s", expected, overlap, bounds)
+				}
+				// The smaller set's Overlap should have false negatives, but never false positives.
+				if !overlap && setSmall.Overlaps(bounds) {
+					t.Fatalf("small set incorrectly reports overlap for bounds %s", bounds)
 				}
 			}
 
