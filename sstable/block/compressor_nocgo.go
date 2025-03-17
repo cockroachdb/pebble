@@ -6,7 +6,11 @@
 
 package block
 
-import "github.com/klauspost/compress/zstd"
+import (
+	"encoding/binary"
+
+	"github.com/klauspost/compress/zstd"
+)
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
 // official one in the facebook/zstd repository.
@@ -19,21 +23,25 @@ import "github.com/klauspost/compress/zstd"
 // relies on CGo.
 const UseStandardZstdLib = false
 
-// decodeZstd decompresses src with the Zstandard algorithm. The destination
-// buffer must already be sufficiently sized, otherwise decodeZstd may error.
-func decodeZstd(dst, src []byte) ([]byte, error) {
+// Compress compresses b with the Zstandard algorithm at default compression
+// level (level 3). It reuses the preallocated capacity of compressedBuf if it
+// is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
+// the length of `b` before calling Compress. It returns the encoded byte
+// slice, including the `compressedBuf[:varIntLen]` prefix.
+func (ZstdCompressor) Compress(compressedBuf, b []byte) (CompressionIndicator, []byte) {
+	if len(compressedBuf) < binary.MaxVarintLen64 {
+		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
+	}
+	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
+	encoder, _ := zstd.NewWriter(nil)
+	defer encoder.Close()
+	return ZstdCompressionIndicator, encoder.EncodeAll(b, compressedBuf[:varIntLen])
+}
+
+// Decode decompresses src with the Zstandard algorithm. The destination
+// buffer must already be sufficiently sized, otherwise Decode may error.
+func (ZstdDecoder) Decode(dst, src []byte) ([]byte, error) {
 	decoder, _ := zstd.NewReader(nil)
 	defer decoder.Close()
 	return decoder.DecodeAll(src, dst[:0])
-}
-
-// encodeZstd compresses b with the Zstandard algorithm at default compression
-// level (level 3). It reuses the preallocated capacity of compressedBuf if it
-// is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
-// the length of `b` before calling encodeZstd. It returns the encoded byte
-// slice, including the `compressedBuf[:varIntLen]` prefix.
-func encodeZstd(compressedBuf []byte, varIntLen int, b []byte) []byte {
-	encoder, _ := zstd.NewWriter(nil)
-	defer encoder.Close()
-	return encoder.EncodeAll(b, compressedBuf[:varIntLen])
 }

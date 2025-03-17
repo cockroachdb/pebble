@@ -143,19 +143,8 @@ func DecompressedLen(
 // exact size as the decompressed value. Callers may use DecompressedLen to
 // determine the correct size.
 func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) error {
-	var result []byte
-	var err error
-	switch algo {
-	case NoCompressionIndicator:
-		result = buf[:len(compressed)]
-		copy(result, compressed)
-	case SnappyCompressionIndicator:
-		result, err = snappy.Decode(buf, compressed)
-	case ZstdCompressionIndicator:
-		result, err = decodeZstd(buf, compressed)
-	default:
-		return base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(algo))
-	}
+	decoder := GetDecoder(algo)
+	result, err := decoder.Decode(buf, compressed)
 	if err != nil {
 		return base.MarkCorruptionError(err)
 	}
@@ -163,6 +152,7 @@ func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) er
 		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
 			errors.Safe(result), errors.Safe(buf))
 	}
+
 	return nil
 }
 
@@ -249,7 +239,8 @@ func CompressAndChecksum(
 	// least 12.5%.
 	algo := NoCompressionIndicator
 	if compression != NoCompression {
-		algo, buf = compress(compression, blockData, buf)
+		compressor := GetCompressor(compression)
+		algo, buf = compressor.Compress(buf, blockData)
 		if len(buf) >= len(blockData)-len(blockData)/8 {
 			algo = NoCompressionIndicator
 		}
@@ -268,30 +259,6 @@ func CompressAndChecksum(
 	checksum := checksummer.Checksum(buf, byte(algo))
 	pb.trailer = MakeTrailer(byte(algo), checksum)
 	return pb
-}
-
-// compress compresses a sstable block, using dstBuf as the desired destination.
-//
-// The result is aliased to dstBuf if that buffer had enough capacity, otherwise
-// it is a newly-allocated buffer.
-func compress(
-	compression Compression, b []byte, dstBuf []byte,
-) (indicator CompressionIndicator, compressed []byte) {
-	switch compression {
-	case SnappyCompression:
-		// snappy relies on the length of the buffer, and not the capacity to
-		// determine if it needs to make an allocation.
-		dstBuf = dstBuf[:cap(dstBuf):cap(dstBuf)]
-		return SnappyCompressionIndicator, snappy.Encode(dstBuf, b)
-	case ZstdCompression:
-		if len(dstBuf) < binary.MaxVarintLen64 {
-			dstBuf = append(dstBuf, make([]byte, binary.MaxVarintLen64-len(dstBuf))...)
-		}
-		varIntLen := binary.PutUvarint(dstBuf, uint64(len(b)))
-		return ZstdCompressionIndicator, encodeZstd(dstBuf, varIntLen, b)
-	default:
-		panic("unreachable")
-	}
 }
 
 // A Buffer is a buffer for encoding a block. The caller mutates the buffer to
