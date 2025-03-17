@@ -3,12 +3,24 @@
 package block
 
 import (
-	"bytes"
 	"encoding/binary"
+	"sync"
 
 	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
 )
+
+type zstdCompressor struct {
+	ctx zstd.Ctx
+}
+
+var _ Compressor = (*zstdCompressor)(nil)
+
+var zstdCompressorPool = sync.Pool{
+	New: func() any {
+		return &zstdCompressor{zstd.NewCtx()}
+	},
+}
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
 // official one in the facebook/zstd repository.
@@ -26,21 +38,40 @@ const UseStandardZstdLib = true
 // is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
 // the length of `b` before calling Compress. It returns the encoded byte
 // slice, including the `compressedBuf[:varIntLen]` prefix.
-func (zstdCompressor) Compress(compressedBuf []byte, b []byte) (CompressionIndicator, []byte) {
+func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) (CompressionIndicator, []byte) {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	buf := bytes.NewBuffer(compressedBuf[:varIntLen])
-	writer := zstd.NewWriterLevel(buf, 3)
-	writer.Write(b)
-	writer.Close()
-	return ZstdCompressionIndicator, buf.Bytes()
+	result, err := z.ctx.CompressLevel(compressedBuf[varIntLen:], b, 3)
+	if err != nil {
+		panic("Error while compressing using Zstd.")
+	}
+	// Check if the result slice is using the same underlying array as compressedBuf
+	if &result[0] == &compressedBuf[varIntLen] {
+		return ZstdCompressionIndicator, compressedBuf[:varIntLen+len(result)]
+	}
+	// If CompressLevel returned a new buffer, we must allocate and copy
+	finalBuf := make([]byte, varIntLen+len(result))
+	copy(finalBuf[:varIntLen], compressedBuf[:varIntLen])
+	copy(finalBuf[varIntLen:], result)
+	return ZstdCompressionIndicator, finalBuf
+}
+
+func (z *zstdCompressor) Release() {
+	zstdCompressorPool.Put(z)
+}
+
+func getZstdCompressor() *zstdCompressor {
+	return zstdCompressorPool.Get().(*zstdCompressor)
 }
 
 // DecompressInto decompresses src with the Zstandard algorithm. The destination
 // buffer must already be sufficiently sized, otherwise Decompress may error.
 func (zstdDecompressor) DecompressInto(dst, src []byte) error {
+	// TODO(edward) switch to using DecompressInto with Context
+	// when the change is merged upstream to Datadog/zstd.
+
 	// The payload is prefixed with a varint encoding the length of
 	// the decompressed block.
 	_, prefixLen := binary.Uvarint(src)

@@ -10,24 +10,26 @@ import (
 
 type Compressor interface {
 	Compress(dst, src []byte) (CompressionIndicator, []byte)
+	Release()
 }
 
 type noopCompressor struct{}
 type snappyCompressor struct{}
-type zstdCompressor struct{}
 
 var _ Compressor = noopCompressor{}
 var _ Compressor = snappyCompressor{}
-var _ Compressor = zstdCompressor{}
 
 func (noopCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
 	panic("NoCompressionCompressor.Compress() should not be called.")
 }
+func (noopCompressor) Release() {}
 
 func (snappyCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
 	dst = dst[:cap(dst):cap(dst)]
 	return SnappyCompressionIndicator, snappy.Encode(dst, src)
 }
+
+func (snappyCompressor) Release() {}
 
 func GetCompressor(c Compression) Compressor {
 	switch c {
@@ -36,7 +38,7 @@ func GetCompressor(c Compression) Compressor {
 	case SnappyCompression:
 		return snappyCompressor{}
 	case ZstdCompression:
-		return zstdCompressor{}
+		return getZstdCompressor()
 	default:
 		panic("Invalid compression type.")
 	}

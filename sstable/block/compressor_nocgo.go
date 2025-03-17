@@ -14,6 +14,10 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+type zstdCompressor struct{}
+
+var _ Compressor = zstdCompressor{}
+
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
 // official one in the facebook/zstd repository.
 //
@@ -40,6 +44,8 @@ func (zstdCompressor) Compress(compressedBuf, b []byte) (CompressionIndicator, [
 	return ZstdCompressionIndicator, encoder.EncodeAll(b, compressedBuf[:varIntLen])
 }
 
+func (zstdCompressor) Release() {}
+
 // Decompress decompresses src with the Zstandard algorithm. The destination
 // buffer must already be sufficiently sized, otherwise Decompress may error.
 func (zstdDecompressor) DecompressInto(dst, src []byte) error {
@@ -58,4 +64,8 @@ func (zstdDecompressor) DecompressInto(dst, src []byte) error {
 			errors.Safe(result), errors.Safe(dst))
 	}
 	return nil
+}
+
+func getZstdCompressor() zstdCompressor {
+	return zstdCompressor{}
 }

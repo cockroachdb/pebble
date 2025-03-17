@@ -565,6 +565,7 @@ func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
 	if typ == block.NoCompressionIndicator {
 		return data[bh.Offset : bh.Offset+bh.Length], nil
 	}
+
 	// Decode the length of the decompressed value.
 	decodedLen, err := block.DecompressedLen(typ, data[bh.Offset:bh.Offset+bh.Length])
 	if err != nil {
