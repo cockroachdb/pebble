@@ -1240,7 +1240,7 @@ func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format
 		b.Run(fmt.Sprintf("block=%s", humanize.Bytes.Int64(int64(bs))), func(b *testing.B) {
 			for _, filter := range []bool{true, false} {
 				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {
-					for _, comp := range []block.Compression{block.NoCompression, block.SnappyCompression, block.ZstdCompression} {
+					for _, comp := range []block.Compression{block.NoCompression, block.SnappyCompression, block.ZstdCompression, block.MinlzCompression} {
 						b.Run(fmt.Sprintf("compression=%s", comp), func(b *testing.B) {
 							opts := WriterOptions{
 								BlockRestartInterval: 16,
