@@ -35,8 +35,8 @@ func TestCompressionRoundtrip(t *testing.T) {
 			// Create a randomly-sized buffer to house the compressed output. If it's
 			// not sufficient, Compress should allocate one that is.
 			compressedBuf := make([]byte, 1+rng.IntN(1<<10 /* 1 KiB */))
-
-			btyp, compressed := compress(compression, payload, compressedBuf)
+			compressor := GetCompressor(compression)
+			btyp, compressed := compressor.Compress(compressedBuf, payload)
 			v, err := decompress(btyp, compressed)
 			require.NoError(t, err)
 			got := payload
@@ -78,6 +78,7 @@ func decompress(algo CompressionIndicator, b []byte) (*cache.Value, error) {
 	if algo == NoCompressionIndicator {
 		return nil, nil
 	}
+
 	// first obtain the decoded length.
 	decodedLen, prefixLen, err := DecompressedLen(algo, b)
 	if err != nil {
