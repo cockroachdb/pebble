@@ -16,5 +16,6 @@ func main() {
 		deferloop.Analyzer,
 		nocopy.Analyzer,
 		returnerrcheck.Analyzer,
+		ForbiddenImportsAnalyzer,
 	)
 }
