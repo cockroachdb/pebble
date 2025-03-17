@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/problemspans"
 )
 
 // The minimum count for an intra-L0 compaction. This matches the RocksDB
@@ -38,6 +39,10 @@ type compactionEnv struct {
 	earliestSnapshotSeqNum  base.SeqNum
 	inProgressCompactions   []compactionInfo
 	readCompactionEnv       readCompactionEnv
+	// problemSpans is checked by the compaction picker to avoid compactions that
+	// overlap an active "problem span". It can be nil when there are no problem
+	// spans.
+	problemSpans *problemspans.ByLevel
 }
 
 type compactionPicker interface {
@@ -404,7 +409,10 @@ func (pc *pickedCompaction) maybeExpandBounds(smallest InternalKey, largest Inte
 // setupInputs returns true if a compaction has been set up. It returns false if
 // a concurrent compaction is occurring on the start or output level files.
 func (pc *pickedCompaction) setupInputs(
-	opts *Options, diskAvailBytes uint64, startLevel *compactionLevel,
+	opts *Options,
+	diskAvailBytes uint64,
+	startLevel *compactionLevel,
+	problemSpans *problemspans.ByLevel,
 ) bool {
 	// maxExpandedBytes is the maximum size of an expanded compaction. If
 	// growing a compaction results in a larger size, the original compaction
@@ -413,7 +421,7 @@ func (pc *pickedCompaction) setupInputs(
 		opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes,
 	)
 
-	if anyTablesCompacting(startLevel.files) {
+	if !canCompactTables(startLevel.files, startLevel.level, problemSpans) {
 		return false
 	}
 
@@ -424,7 +432,7 @@ func (pc *pickedCompaction) setupInputs(
 	// left empty for those.
 	if startLevel.level != pc.outputLevel.level {
 		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
-		if anyTablesCompacting(pc.outputLevel.files) {
+		if !canCompactTables(pc.outputLevel.files, pc.outputLevel.level, problemSpans) {
 			return false
 		}
 
@@ -494,7 +502,7 @@ func (pc *pickedCompaction) setupInputs(
 				*pc.lcf = *oldLcf
 			}
 		}
-	} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, startLevel) {
+	} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, startLevel, problemSpans) {
 		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
 			startLevel.files.Iter(), pc.outputLevel.files.Iter()))
 	}
@@ -511,13 +519,16 @@ func (pc *pickedCompaction) setupInputs(
 // c.level+1 files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
 func (pc *pickedCompaction) grow(
-	sm, la InternalKey, maxExpandedBytes uint64, startLevel *compactionLevel,
+	sm, la InternalKey,
+	maxExpandedBytes uint64,
+	startLevel *compactionLevel,
+	problemSpans *problemspans.ByLevel,
 ) bool {
 	if pc.outputLevel.files.Empty() {
 		return false
 	}
 	grow0 := pc.version.Overlaps(startLevel.level, base.UserKeyBoundsFromInternal(sm, la))
-	if anyTablesCompacting(grow0) {
+	if !canCompactTables(grow0, startLevel.level, problemSpans) {
 		return false
 	}
 	if grow0.Len() <= startLevel.files.Len() {
@@ -530,10 +541,10 @@ func (pc *pickedCompaction) grow(
 	// sm1 and la1 could shift the output level keyspace when pc.outputLevel.files is set to grow1.
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.Iter(), pc.outputLevel.files.Iter())
 	grow1 := pc.version.Overlaps(pc.outputLevel.level, base.UserKeyBoundsFromInternal(sm1, la1))
-	if anyTablesCompacting(grow1) {
+	if grow1.Len() != pc.outputLevel.files.Len() {
 		return false
 	}
-	if grow1.Len() != pc.outputLevel.files.Len() {
+	if !canCompactTables(grow1, pc.outputLevel.level, problemSpans) {
 		return false
 	}
 	startLevel.files = grow0
@@ -560,19 +571,24 @@ func (pc *pickedCompaction) setupMultiLevelCandidate(opts *Options, diskAvailByt
 	pc.startLevel = &pc.inputs[0]
 	pc.extraLevels = []*compactionLevel{&pc.inputs[1]}
 	pc.outputLevel = &pc.inputs[2]
-	return pc.setupInputs(opts, diskAvailBytes, pc.extraLevels[len(pc.extraLevels)-1])
+	return pc.setupInputs(opts, diskAvailBytes, pc.extraLevels[len(pc.extraLevels)-1], nil /* TODO(radu) */)
 }
 
-// anyTablesCompacting returns true if any tables in the level slice are
-// compacting.
-func anyTablesCompacting(inputs manifest.LevelSlice) bool {
+// canCompactTables returns true if the tables in the level slice are not
+// compacting already and don't intersect any problem spans.
+func canCompactTables(
+	inputs manifest.LevelSlice, level int, problemSpans *problemspans.ByLevel,
+) bool {
 	it := inputs.Iter()
 	for f := it.First(); f != nil; f = it.Next() {
 		if f.IsCompacting() {
-			return true
+			return false
+		}
+		if problemSpans != nil && problemSpans.Overlaps(level, f.UserKeyBounds()) {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // newCompactionPickerByScore creates a compactionPickerByScore associated with
@@ -1010,6 +1026,7 @@ func pickCompactionSeedFile(
 	opts *Options,
 	level, outputLevel int,
 	earliestSnapshotSeqNum base.SeqNum,
+	problemSpans *problemspans.ByLevel,
 ) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
 	// amplification, but also ensure that (a) deletes are propagated to the
@@ -1044,11 +1061,14 @@ func pickCompactionSeedFile(
 
 	for f := startIter.First(); f != nil; f = startIter.Next() {
 		var overlappingBytes uint64
-		compacting := f.IsCompacting()
-		if compacting {
+		if f.IsCompacting() {
 			// Move on if this file is already being compacted. We'll likely
 			// still need to move past the overlapping output files regardless,
 			// but in cases where all start-level files are compacting we won't.
+			continue
+		}
+		if problemSpans != nil && problemSpans.Overlaps(level, f.UserKeyBounds()) {
+			// File touches problem span which temporarily disallows auto compactions.
 			continue
 		}
 
@@ -1057,9 +1077,20 @@ func pickCompactionSeedFile(
 			outputFile = outputIter.Next()
 		}
 
-		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest, f.Largest) <= 0 && !compacting {
+		skip := false
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest, f.Largest) <= 0 {
 			overlappingBytes += outputFile.Size
-			compacting = compacting || outputFile.IsCompacting()
+			if outputFile.IsCompacting() {
+				// If one of the overlapping files is compacting, we're not going to be
+				// able to compact f anyway, so skip it.
+				skip = true
+				break
+			}
+			if problemSpans != nil && problemSpans.Overlaps(outputLevel, outputFile.UserKeyBounds()) {
+				// Overlapping file touches problem span which temporarily disallows auto compactions.
+				skip = true
+				break
+			}
 
 			// For files in the bottommost level of the LSM, the
 			// Stats.RangeDeletionsBytesEstimate field is set to the estimate
@@ -1106,11 +1137,7 @@ func pickCompactionSeedFile(
 			}
 			outputFile = outputIter.Next()
 		}
-
-		// If the input level file or one of the overlapping files is
-		// compacting, we're not going to be able to compact this file
-		// anyways, so skip it.
-		if compacting {
+		if skip {
 			continue
 		}
 
@@ -1289,7 +1316,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 		// info.level > 0
 		var ok bool
-		info.file, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum)
+		info.file, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum, env.problemSpans)
 		if !ok {
 			continue
 		}
@@ -1481,9 +1508,7 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 		return nil
 	}
 
-	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
-		// TODO(radu): do we expect this to happen? (it does seem to happen if I add
-		// a log here).
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 		return nil
 	}
 
@@ -1611,8 +1636,7 @@ func pickAutoLPositive(
 		}
 	}
 
-	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
-		opts.Logger.Errorf("%v", base.AssertionFailedf("setupInputs failed"))
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 		return nil
 	}
 	return pc.maybeAddLevel(opts, env.diskAvailBytes)
@@ -1751,10 +1775,10 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pic
 	//
 	// TODO(bilal) Remove the minCompactionDepth parameter once fixing it at 1
 	// has been shown to not cause a performance regression.
-	lcf := vers.L0Sublevels.PickBaseCompaction(opts.Logger, 1, vers.Levels[baseLevel].Slice())
+	lcf := vers.L0Sublevels.PickBaseCompaction(opts.Logger, 1, vers.Levels[baseLevel].Slice(), baseLevel, env.problemSpans)
 	if lcf != nil {
 		pc := newPickedCompactionFromL0(lcf, opts, vers, baseLevel, true)
-		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Errorf("%v", base.AssertionFailedf("empty compaction chosen"))
 			}
@@ -1771,7 +1795,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pic
 	lcf = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
 	if lcf != nil {
 		pc := newPickedCompactionFromL0(lcf, opts, vers, 0, false)
-		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Fatalf("empty compaction chosen")
 			}
@@ -1819,7 +1843,9 @@ func newPickedManualCompaction(
 		// Nothing to do
 		return nil, false
 	}
-	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+	// We use nil problemSpans because we don't want problem spans to prevent
+	// manual compactions.
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, nil /* problemSpans */) {
 		// setupInputs returned false indicating there's a conflicting
 		// concurrent compaction.
 		return nil, true
@@ -1863,7 +1889,7 @@ func pickDownloadCompaction(
 	pc = newPickedCompaction(opts, vers, level, level, baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*tableMetadata{file})
-	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, nil /* problemSpans */) {
 		// setupInputs returned false indicating there's a conflicting
 		// concurrent compaction.
 		return nil
@@ -1922,7 +1948,7 @@ func pickReadTriggeredCompactionHelper(
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
 
 	pc.startLevel.files = overlapSlice
-	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 		return nil
 	}
 	if inputRangeAlreadyCompacting(env, pc) {

@@ -1773,7 +1773,7 @@ func (d *DB) makeCompactionEnvLocked() *compactionEnv {
 	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return nil
 	}
-	return &compactionEnv{
+	env := &compactionEnv{
 		diskAvailBytes:          d.diskAvailBytes.Load(),
 		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),
@@ -1784,6 +1784,10 @@ func (d *DB) makeCompactionEnvLocked() *compactionEnv {
 			rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
 		},
 	}
+	if !d.problemSpans.IsEmpty() {
+		env.problemSpans = &d.problemSpans
+	}
+	return env
 }
 
 // pickAnyCompaction tries to pick a manual or automatic compaction.
@@ -2312,7 +2316,7 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 		d.mu.Lock()
 		c.grantHandle.Started()
 		if err := d.compact1(c, errChannel); err != nil {
-			d.handleCompactFailure(err)
+			d.handleCompactFailure(c, err)
 		}
 		if c.isDownload {
 			d.mu.compact.downloadingCount--
@@ -2350,13 +2354,34 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 	})
 }
 
-func (d *DB) handleCompactFailure(err error) {
+func (d *DB) handleCompactFailure(c *compaction, err error) {
 	if errors.Is(err, ErrCancelledCompaction) {
 		// ErrCancelledCompaction is expected during normal operation, so we don't
 		// want to report it as a background error.
 		d.opts.Logger.Infof("%v", err)
 		return
 	}
+
+	// Record problem spans for a short duration, unless the error is a corruption.
+	expiration := 30 * time.Second
+	if IsCorruptionError(err) {
+		// TODO(radu): ideally, we should be using the corruption reporting
+		// mechanism which has a tighter span for the corruption. We would need to
+		// somehow plumb the level of the file.
+		expiration = 5 * time.Minute
+	}
+	for i := range c.inputs {
+		level := c.inputs[i].level
+		if level == 0 {
+			// We do not set problem spans on L0, as they could block flushes.
+			continue
+		}
+		it := c.inputs[i].files.Iter()
+		for f := it.First(); f != nil; f = it.Next() {
+			d.problemSpans.Add(level, f.UserKeyBounds(), expiration)
+		}
+	}
+
 	// TODO(peter): count consecutive compaction errors and backoff.
 	d.opts.EventListener.BackgroundError(err)
 }

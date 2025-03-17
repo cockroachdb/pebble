@@ -18,11 +18,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -2901,4 +2903,174 @@ func TestCompactionErrorStats(t *testing.T) {
 	require.Equal(t, 9, int(d.mu.snapshots.cumulativePinnedSize))
 	d.mu.Unlock()
 	require.NoError(t, d.Close())
+}
+
+func TestCompactionCorruption(t *testing.T) {
+	mem := vfs.NewMem()
+	var numFinishedCompactions atomic.Int32
+	opts := &Options{
+		FS:                 mem,
+		FormatMajorVersion: FormatNewest,
+		EventListener: &EventListener{
+			DataCorruption: func(info DataCorruptionInfo) {
+				if testing.Verbose() {
+					fmt.Printf("got expected data corruption: %s\n", info.Path)
+				}
+			},
+			CompactionEnd: func(info CompactionInfo) {
+				if info.Err == nil {
+					numFinishedCompactions.Add(1)
+				}
+			},
+		},
+	}
+	opts.WithFSDefaults()
+	remoteStorage := remote.NewInMem()
+	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"external-locator": remoteStorage,
+	})
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	var now crtime.AtomicMono
+	now.Store(1)
+	d.problemSpans.InitForTesting(manifest.NumLevels, d.cmp, func() crtime.Mono { return now.Load() })
+
+	randKey := func() []byte {
+		return []byte{'a' + byte(rand.IntN(26))}
+	}
+
+	var workloadWG sync.WaitGroup
+	var stopWorkload atomic.Bool
+	defer stopWorkload.Store(true)
+	startWorkload := func() {
+		stopWorkload.Store(false)
+		workloadWG.Add(1)
+		go func() {
+			defer workloadWG.Done()
+			for !stopWorkload.Load() {
+				b := d.NewBatch()
+				v := make([]byte, 100+rand.IntN(1000))
+				for i := range v {
+					v[i] = byte(rand.Uint32())
+				}
+				for i := 0; i < 100; i++ {
+					if err := b.Set(randKey(), v, nil); err != nil {
+						panic(err)
+					}
+				}
+				if err := b.Commit(nil); err != nil {
+					panic(err)
+				}
+				if err := d.Flush(); err != nil {
+					panic(err)
+				}
+				time.Sleep(10 * time.Microsecond)
+			}
+		}()
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_corruption", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build-remote":
+			require.NoError(t, runBuildRemoteCmd(td, d, remoteStorage))
+
+		case "ingest-external":
+			require.NoError(t, runIngestExternalCmd(t, td, d, remoteStorage, "external-locator"))
+
+		case "move-remote-object":
+			if len(td.CmdArgs) < 2 {
+				td.Fatalf(t, "build <path> <new-path> argument missing")
+			}
+			before := td.CmdArgs[0].String()
+			after := td.CmdArgs[1].String()
+			ctx := context.Background()
+			reader, objSize, err := remoteStorage.ReadObject(ctx, before)
+			require.NoError(t, err)
+			buf := make([]byte, objSize)
+			require.NoError(t, reader.ReadAt(ctx, buf, 0))
+			require.NoError(t, reader.Close())
+			require.NoError(t, remoteStorage.Delete(before))
+			writer, err := remoteStorage.CreateObject(after)
+			require.NoError(t, err)
+			n, err := writer.Write(buf)
+			require.NoError(t, err)
+			require.Equal(t, len(buf), n)
+			require.NoError(t, writer.Close())
+			return fmt.Sprintf("%s -> %s", before, after)
+
+		case "start-workload":
+			startWorkload()
+
+		case "stop-workload":
+			stopWorkload.Store(true)
+			workloadWG.Wait()
+
+		case "wait-for-problem-span":
+			timeout := time.Now().Add(100 * time.Second)
+			for d.problemSpans.IsEmpty() {
+				if timeout.Before(time.Now()) {
+					td.Fatalf(t, "timeout waiting for problem span")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if testing.Verbose() {
+				fmt.Printf("%s: wait-for-problem-span:\n%s", td.Pos, d.problemSpans.String())
+			}
+
+		case "wait-for-compactions":
+			target := numFinishedCompactions.Load() + 5
+			timeout := time.Now().Add(10 * time.Second)
+			for numFinishedCompactions.Load() < target {
+				if timeout.Before(time.Now()) {
+					td.Fatalf(t, "timeout waiting for compactions")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+
+		case "expire-spans":
+			now.Store(now.Load() + crtime.Mono(30*time.Minute))
+
+		case "wait-for-no-external-files":
+			timeout := time.Now().Add(10 * time.Second)
+			for hasExternalFiles(d) {
+				if timeout.Before(time.Now()) {
+					td.Fatalf(t, "timeout waiting for compactions")
+				}
+			}
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+
+		return ""
+	})
+}
+
+func hasExternalFiles(d *DB) bool {
+	v := func() *version {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		v := d.mu.versions.currentVersion()
+		v.Ref()
+		return v
+	}()
+	defer v.Unref()
+
+	for level := 0; level < manifest.NumLevels; level++ {
+		iter := v.Levels[level].Iter()
+		for m := iter.First(); m != nil; m = iter.Next() {
+			if m.Virtual {
+				meta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
+				if err != nil {
+					panic(err)
+				}
+				if meta.IsExternal() {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

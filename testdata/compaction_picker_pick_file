@@ -220,3 +220,81 @@ L6:
 pick-file L5
 ----
 000011:[e#11,SET-e#11,SET]
+
+define
+L1
+  b.SET.11:foo
+  c.SET.11:foo
+L2
+  c.SET.0:foo
+  d.SET.0:foo
+----
+L1:
+  000004:[b#11,SET-c#11,SET]
+L2:
+  000005:[c#0,SET-d#0,SET]
+
+pick-file L1
+----
+000004:[b#11,SET-c#11,SET]
+
+problem-spans
+L1 [a, bb]
+----
+
+pick-file L1
+----
+(none)
+
+pick-file L2
+----
+000005:[c#0,SET-d#0,SET]
+
+problem-spans
+L2 [c, e]
+----
+
+pick-file L2
+----
+(none)
+
+define
+L1
+  b.SET.11:foo
+  c.SET.11:foo
+L1
+  d.SET.11:foo
+  e.SET.11:foo
+L1
+  f.SET.11:foo
+  g.SET.11:foo
+L2
+  a.SET.0:foo
+  z.SET.0:foo
+----
+L1:
+  000004:[b#11,SET-c#11,SET]
+  000005:[d#11,SET-e#11,SET]
+  000006:[f#11,SET-g#11,SET]
+L2:
+  000007:[a#0,SET-z#0,SET]
+
+pick-file L1
+----
+000004:[b#11,SET-c#11,SET]
+
+problem-spans
+L1 [bb, dd)
+----
+
+pick-file L1
+----
+000006:[f#11,SET-g#11,SET]
+
+problem-spans
+L1 [b1, b2]
+----
+
+pick-file L1
+----
+000005:[d#11,SET-e#11,SET]
