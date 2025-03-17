@@ -6,6 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/golang/snappy"
+	"github.com/minio/minlz"
 )
 
 type Compressor interface {
@@ -18,9 +19,11 @@ type Compressor interface {
 
 type noopCompressor struct{}
 type snappyCompressor struct{}
+type minlzCompressor struct{}
 
 var _ Compressor = noopCompressor{}
 var _ Compressor = snappyCompressor{}
+var _ Compressor = minlzCompressor{}
 
 func (noopCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
 	panic("NoCompressionCompressor.Compress() should not be called.")
@@ -34,6 +37,21 @@ func (snappyCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte)
 
 func (snappyCompressor) Close() {}
 
+func (minlzCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
+	// Minlz cannot encode blocks greater than 8MB. Fall back to Snappy in those cases.
+	if len(src) > minlz.MaxBlockSize {
+		return (snappyCompressor{}).Compress(dst, src)
+	}
+
+	compressed, err := minlz.Encode(dst, src, minlz.LevelFastest)
+	if err != nil {
+		panic(errors.Wrap(err, "minlz compression"))
+	}
+	return MinlzCompressionIndicator, compressed
+}
+
+func (minlzCompressor) Close() {}
+
 func GetCompressor(c Compression) Compressor {
 	switch c {
 	case NoCompression:
@@ -42,6 +60,8 @@ func GetCompressor(c Compression) Compressor {
 		return snappyCompressor{}
 	case ZstdCompression:
 		return getZstdCompressor()
+	case MinlzCompression:
+		return minlzCompressor{}
 	default:
 		panic("Invalid compression type.")
 	}
@@ -65,9 +85,11 @@ type Decompressor interface {
 
 type noopDecompressor struct{}
 type snappyDecompressor struct{}
+type minlzDecompressor struct{}
 
 var _ Decompressor = noopDecompressor{}
 var _ Decompressor = snappyDecompressor{}
+var _ Decompressor = minlzDecompressor{}
 
 func (noopDecompressor) DecompressInto(dst, src []byte) error {
 	dst = dst[:len(src)]
@@ -94,8 +116,7 @@ func (snappyDecompressor) DecompressInto(buf, compressed []byte) error {
 }
 
 func (snappyDecompressor) DecompressedLen(b []byte) (decompressedLen int, err error) {
-	l, err := snappy.DecodedLen(b)
-	return l, err
+	return snappy.DecodedLen(b)
 }
 
 func (snappyDecompressor) Close() {}
@@ -110,6 +131,22 @@ func (zstdDecompressor) DecompressedLen(b []byte) (decompressedLen int, err erro
 	return int(decodedLenU64), nil
 }
 
+func (minlzDecompressor) DecompressInto(buf, compressed []byte) error {
+	result, err := minlz.Decode(buf, compressed)
+	if len(result) != len(buf) || (len(result) > 0 && &result[0] != &buf[0]) {
+		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
+			errors.Safe(result), errors.Safe(buf))
+	}
+	return err
+}
+
+func (minlzDecompressor) DecompressedLen(b []byte) (decompressedLen int, err error) {
+	l, err := minlz.DecodedLen(b)
+	return l, err
+}
+
+func (minlzDecompressor) Close() {}
+
 func GetDecompressor(c CompressionIndicator) Decompressor {
 	switch c {
 	case NoCompressionIndicator:
@@ -118,6 +155,8 @@ func GetDecompressor(c CompressionIndicator) Decompressor {
 		return snappyDecompressor{}
 	case ZstdCompressionIndicator:
 		return getZstdDecompressor()
+	case MinlzCompressionIndicator:
+		return minlzDecompressor{}
 	default:
 		panic("Invalid compression type.")
 	}
