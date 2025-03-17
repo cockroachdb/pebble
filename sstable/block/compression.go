@@ -25,6 +25,7 @@ const (
 	NoCompression
 	SnappyCompression
 	ZstdCompression
+	MinlzCompression
 	NCompression
 )
 
@@ -40,6 +41,8 @@ func (c Compression) String() string {
 		return "Snappy"
 	case ZstdCompression:
 		return "ZSTD"
+	case MinlzCompression:
+		return "Minlz"
 	default:
 		return "Unknown"
 	}
@@ -57,6 +60,8 @@ func CompressionFromString(s string) Compression {
 		return SnappyCompression
 	case "ZSTD":
 		return ZstdCompression
+	case "MinLz":
+		return MinlzCompression
 	default:
 		return DefaultCompression
 	}
@@ -84,6 +89,7 @@ const (
 	Lz4hcCompressionIndicator  CompressionIndicator = 5
 	XpressCompressionIndicator CompressionIndicator = 6
 	ZstdCompressionIndicator   CompressionIndicator = 7
+	MinlzCompressionIndicator  CompressionIndicator = 8
 )
 
 // String implements fmt.Stringer.
@@ -105,6 +111,8 @@ func (i CompressionIndicator) String() string {
 		return "xpress"
 	case 7:
 		return "zstd"
+	case 8:
+		return "minlz"
 	default:
 		panic(errors.Newf("sstable: unknown block type: %d", i))
 	}
