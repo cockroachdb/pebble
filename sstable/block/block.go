@@ -537,13 +537,13 @@ func (r *Reader) doRead(
 		decompressed = compressed
 	} else {
 		// Decode the length of the decompressed value.
-		decodedLen, prefixLen, err := DecompressedLen(typ, compressed.BlockData())
+		decodedLen, err := DecompressedLen(typ, compressed.BlockData())
 		if err != nil {
 			compressed.Release()
 			return Value{}, err
 		}
 		decompressed = Alloc(decodedLen, env.BufferPool)
-		err = DecompressInto(typ, compressed.BlockData()[prefixLen:], decompressed.BlockData())
+		err = DecompressInto(typ, compressed.BlockData(), decompressed.BlockData())
 		compressed.Release()
 		if err != nil {
 			decompressed.Release()

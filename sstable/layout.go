@@ -566,12 +566,12 @@ func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
 		return data[bh.Offset : bh.Offset+bh.Length], nil
 	}
 	// Decode the length of the decompressed value.
-	decodedLen, prefixLen, err := block.DecompressedLen(typ, data[bh.Offset:bh.Offset+bh.Length])
+	decodedLen, err := block.DecompressedLen(typ, data[bh.Offset:bh.Offset+bh.Length])
 	if err != nil {
 		return nil, err
 	}
 	decompressed = make([]byte, decodedLen)
-	if err := block.DecompressInto(typ, data[int(bh.Offset)+prefixLen:bh.Offset+bh.Length], decompressed); err != nil {
+	if err := block.DecompressInto(typ, data[int(bh.Offset):bh.Offset+bh.Length], decompressed); err != nil {
 		return nil, err
 	}
 	return decompressed, nil
