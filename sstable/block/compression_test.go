@@ -36,6 +36,7 @@ func TestCompressionRoundtrip(t *testing.T) {
 			// not sufficient, Compress should allocate one that is.
 			compressedBuf := make([]byte, 1+rng.IntN(1<<10 /* 1 KiB */))
 			compressor := GetCompressor(compression)
+			defer compressor.Release()
 			btyp, compressed := compressor.Compress(compressedBuf, payload)
 			v, err := decompress(btyp, compressed)
 			require.NoError(t, err)
