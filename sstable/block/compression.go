@@ -115,6 +115,7 @@ func (i CompressionIndicator) String() string {
 // payload.
 func DecompressedLen(algo CompressionIndicator, b []byte) (decompressedLen int, err error) {
 	decompressor := GetDecompressor(algo)
+	defer decompressor.Close()
 	return decompressor.DecompressedLen(b)
 }
 
@@ -123,6 +124,7 @@ func DecompressedLen(algo CompressionIndicator, b []byte) (decompressedLen int, 
 // determine the correct size.
 func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) error {
 	decompressor := GetDecompressor(algo)
+	defer decompressor.Close()
 	err := decompressor.DecompressInto(buf, compressed)
 	if err != nil {
 		return base.MarkCorruptionError(err)
@@ -214,6 +216,7 @@ func CompressAndChecksum(
 	algo := NoCompressionIndicator
 	if compression != NoCompression {
 		compressor := GetCompressor(compression)
+		defer compressor.Close()
 		algo, buf = compressor.Compress(buf, blockData)
 		if len(buf) >= len(blockData)-len(blockData)/8 {
 			algo = NoCompressionIndicator

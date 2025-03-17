@@ -10,24 +10,29 @@ import (
 
 type Compressor interface {
 	Compress(dst, src []byte) (CompressionIndicator, []byte)
+
+	// Close must be called when the Compressor is no longer needed.
+	// After Close is called, the Compressor must not be used again.
+	Close()
 }
 
 type noopCompressor struct{}
 type snappyCompressor struct{}
-type zstdCompressor struct{}
 
 var _ Compressor = noopCompressor{}
 var _ Compressor = snappyCompressor{}
-var _ Compressor = zstdCompressor{}
 
 func (noopCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
 	panic("NoCompressionCompressor.Compress() should not be called.")
 }
+func (noopCompressor) Close() {}
 
 func (snappyCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
 	dst = dst[:cap(dst):cap(dst)]
 	return SnappyCompressionIndicator, snappy.Encode(dst, src)
 }
+
+func (snappyCompressor) Close() {}
 
 func GetCompressor(c Compression) Compressor {
 	switch c {
@@ -36,7 +41,7 @@ func GetCompressor(c Compression) Compressor {
 	case SnappyCompression:
 		return snappyCompressor{}
 	case ZstdCompression:
-		return zstdCompressor{}
+		return getZstdCompressor()
 	default:
 		panic("Invalid compression type.")
 	}
@@ -52,15 +57,17 @@ type Decompressor interface {
 	// allowing the caller to allocate a buffer exactly sized to the decompressed
 	// payload.
 	DecompressedLen(b []byte) (decompressedLen int, err error)
+
+	// Close must be called when the Decompressor is no longer needed.
+	// After Close is called, the Decompressor must not be used again.
+	Close()
 }
 
 type noopDecompressor struct{}
 type snappyDecompressor struct{}
-type zstdDecompressor struct{}
 
 var _ Decompressor = noopDecompressor{}
 var _ Decompressor = snappyDecompressor{}
-var _ Decompressor = zstdDecompressor{}
 
 func (noopDecompressor) DecompressInto(dst, src []byte) error {
 	dst = dst[:len(src)]
@@ -71,6 +78,8 @@ func (noopDecompressor) DecompressInto(dst, src []byte) error {
 func (noopDecompressor) DecompressedLen(b []byte) (decompressedLen int, err error) {
 	return len(b), nil
 }
+
+func (noopDecompressor) Close() {}
 
 func (snappyDecompressor) DecompressInto(buf, compressed []byte) error {
 	result, err := snappy.Decode(buf, compressed)
@@ -89,6 +98,8 @@ func (snappyDecompressor) DecompressedLen(b []byte) (decompressedLen int, err er
 	return l, err
 }
 
+func (snappyDecompressor) Close() {}
+
 func (zstdDecompressor) DecompressedLen(b []byte) (decompressedLen int, err error) {
 	// This will also be used by zlib, bzip2 and lz4 to retrieve the decodedLen
 	// if we implement these algorithms in the future.
@@ -106,7 +117,7 @@ func GetDecompressor(c CompressionIndicator) Decompressor {
 	case SnappyCompressionIndicator:
 		return snappyDecompressor{}
 	case ZstdCompressionIndicator:
-		return zstdDecompressor{}
+		return getZstdDecompressor()
 	default:
 		panic("Invalid compression type.")
 	}
