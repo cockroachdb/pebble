@@ -1001,3 +1001,361 @@ unsafe-get i=(15, 14)
 ----
 UnsafeGet(15) = ab
 UnsafeGet(14) = ab
+
+init bundle-size=4
+----
+Size: 0
+
+put
+interact
+interacting
+interaction
+interacts
+intercept
+intercepted
+interchangeable
+intercom
+interest
+interested
+interesting
+interests
+interface
+interfacing
+interfere
+interfered
+interference
+interim
+interior
+interiors
+interject
+interjected
+interjection
+interjectory
+interlace
+interlacing
+interleave
+interleaved
+interleaves
+interlock
+interlocked
+interlocking
+interlope
+interloper
+interlopers
+interloping
+interlude
+intermediary
+intermediate
+intermediately
+intermezzo
+intermingle
+intermingling
+intermix
+intern
+internal
+internally
+international
+internationally
+interned
+internet
+internets
+interning
+interns
+internship
+internships
+interpersonal
+interpersonally
+interpolate
+interpolation
+interpret
+interpretation
+interpreter
+interprets
+interrogate
+interrogates
+interrogation
+interrupt
+interrupter
+interruption
+interrupts
+intersect
+intersecting
+intersection
+intersects
+interval
+intervals
+intervene
+intervened
+intervener
+intervenes
+intervening
+interview
+interviewing
+interviews
+interwork
+interworks
+interwoven
+----
+Size: 613
+nKeys=88; bundleSize=4
+blockPrefixLen=5; currentBundleLen=39; currentBundleKeys=4
+Offsets:
+  0000  0008  0008  0019  0030  0039  0045  0048  0059  0074
+  0082  0090  0090  0100  0111  0120  0126  0129  0140  0149
+  0159  0164  0171  0178  0186  0195  0204  0204  0215  0227
+  0239  0245  0248  0259  0269  0280  0286  0291  0300  0311
+  0323  0331  0332  0342  0353  0364  0369  0373  0385  0397
+  0411  0417  0421  0432  0445  0453  0459  0459  0467  0477
+  0490  0496  0505  0513  0521  0530  0536  0539  0546  0556
+  0567  0573  0580  0595  0606  0619  0628  0628  0642  0653
+  0663  0669  0674  0686  0699  0708  0713  0719  0731  0741
+  0750  0755  0762  0774  0784  0792  0798  0801  0810  0820
+  0830  0836  0840  0851  0860  0872  0000  0882  0891  0901
+  0911
+Data (len=911):
+interactinteractinginteractioninteractsinterceptinterceptedi
+nterchangeableintercominterestinterestedinterestinginterests
+interfaceinterfacinginterfereinterferedinterferenceinterimin
+teriorinteriorsinterjectinterjectedinterjectioninterjectoryi
+nterlaceinterlacinginterleaveinterleavedinterleavesinterlock
+interlockedinterlockinginterlopeinterloperinterlopersinterlo
+pinginterludeintermediaryintermediateintermediatelyintermezz
+ointermingleinterminglingintermixinterninternalinternallyint
+ernationalinternationallyinternedinternetinternetsinterningi
+nternsinternshipinternshipsinterpersonalinterpersonallyinter
+polateinterpolationinterpretinterpretationinterpreterinterpr
+etsinterrogateinterrogatesinterrogationinterruptinterrupteri
+nterruptioninterruptsintersectintersectingintersectioninters
+ectsintervalintervalsinterveneintervenedintervenerintervenes
+interveninginterviewinterviewinginterviewsinterworkinterwork
+sinterwoven
+
+finish rows=88
+----
+prefix-bytes
+ ├── 000-001: x 02 # bundle size: 4
+ ├── offsets table
+ │    ├── 001-002: x 02   # encoding: 2b
+ │    ├── 002-004: x 0500 # data[0] = 5 [229 overall]
+ │    ├── 004-006: x 0800 # data[1] = 8 [232 overall]
+ │    ├── 006-008: x 0800 # data[2] = 8 [232 overall]
+ │    ├── 008-010: x 0b00 # data[3] = 11 [235 overall]
+ │    ├── 010-012: x 0e00 # data[4] = 14 [238 overall]
+ │    ├── 012-014: x 0f00 # data[5] = 15 [239 overall]
+ │    ├── 014-016: x 1000 # data[6] = 16 [240 overall]
+ │    ├── 016-018: x 1300 # data[7] = 19 [243 overall]
+ │    ├── 018-020: x 1800 # data[8] = 24 [248 overall]
+ │    ├── 020-022: x 2100 # data[9] = 33 [257 overall]
+ │    ├── 022-024: x 2300 # data[10] = 35 [259 overall]
+ │    ├── 024-026: x 2600 # data[11] = 38 [262 overall]
+ │    ├── 026-028: x 2600 # data[12] = 38 [262 overall]
+ │    ├── 028-030: x 2800 # data[13] = 40 [264 overall]
+ │    ├── 030-032: x 2b00 # data[14] = 43 [267 overall]
+ │    ├── 032-034: x 2c00 # data[15] = 44 [268 overall]
+ │    ├── 034-036: x 2d00 # data[16] = 45 [269 overall]
+ │    ├── 036-038: x 3000 # data[17] = 48 [272 overall]
+ │    ├── 038-040: x 3500 # data[18] = 53 [277 overall]
+ │    ├── 040-042: x 3800 # data[19] = 56 [280 overall]
+ │    ├── 042-044: x 3c00 # data[20] = 60 [284 overall]
+ │    ├── 044-046: x 3c00 # data[21] = 60 [284 overall]
+ │    ├── 046-048: x 4300 # data[22] = 67 [291 overall]
+ │    ├── 048-050: x 4500 # data[23] = 69 [293 overall]
+ │    ├── 050-052: x 4800 # data[24] = 72 [296 overall]
+ │    ├── 052-054: x 4c00 # data[25] = 76 [300 overall]
+ │    ├── 054-056: x 5000 # data[26] = 80 [304 overall]
+ │    ├── 056-058: x 5000 # data[27] = 80 [304 overall]
+ │    ├── 058-060: x 5200 # data[28] = 82 [306 overall]
+ │    ├── 060-062: x 5500 # data[29] = 85 [309 overall]
+ │    ├── 062-064: x 5800 # data[30] = 88 [312 overall]
+ │    ├── 064-066: x 5900 # data[31] = 89 [313 overall]
+ │    ├── 066-068: x 5c00 # data[32] = 92 [316 overall]
+ │    ├── 068-070: x 6100 # data[33] = 97 [321 overall]
+ │    ├── 070-072: x 6500 # data[34] = 101 [325 overall]
+ │    ├── 072-074: x 6a00 # data[35] = 106 [330 overall]
+ │    ├── 074-076: x 6b00 # data[36] = 107 [331 overall]
+ │    ├── 076-078: x 7000 # data[37] = 112 [336 overall]
+ │    ├── 078-080: x 7300 # data[38] = 115 [339 overall]
+ │    ├── 080-082: x 7800 # data[39] = 120 [344 overall]
+ │    ├── 082-084: x 7e00 # data[40] = 126 [350 overall]
+ │    ├── 084-086: x 8100 # data[41] = 129 [353 overall]
+ │    ├── 086-088: x 8200 # data[42] = 130 [354 overall]
+ │    ├── 088-090: x 8400 # data[43] = 132 [356 overall]
+ │    ├── 090-092: x 8700 # data[44] = 135 [359 overall]
+ │    ├── 092-094: x 8a00 # data[45] = 138 [362 overall]
+ │    ├── 094-096: x 8a00 # data[46] = 138 [362 overall]
+ │    ├── 096-098: x 8e00 # data[47] = 142 [366 overall]
+ │    ├── 098-100: x 9500 # data[48] = 149 [373 overall]
+ │    ├── 100-102: x 9c00 # data[49] = 156 [380 overall]
+ │    ├── 102-104: x a500 # data[50] = 165 [389 overall]
+ │    ├── 104-106: x a600 # data[51] = 166 [390 overall]
+ │    ├── 106-108: x aa00 # data[52] = 170 [394 overall]
+ │    ├── 108-110: x af00 # data[53] = 175 [399 overall]
+ │    ├── 110-112: x b600 # data[54] = 182 [406 overall]
+ │    ├── 112-114: x b800 # data[55] = 184 [408 overall]
+ │    ├── 114-116: x b900 # data[56] = 185 [409 overall]
+ │    ├── 116-118: x b900 # data[57] = 185 [409 overall]
+ │    ├── 118-120: x bb00 # data[58] = 187 [411 overall]
+ │    ├── 120-122: x bf00 # data[59] = 191 [415 overall]
+ │    ├── 122-124: x c600 # data[60] = 198 [422 overall]
+ │    ├── 124-126: x c700 # data[61] = 199 [423 overall]
+ │    ├── 126-128: x d000 # data[62] = 208 [432 overall]
+ │    ├── 128-130: x d200 # data[63] = 210 [434 overall]
+ │    ├── 130-132: x d400 # data[64] = 212 [436 overall]
+ │    ├── 132-134: x d700 # data[65] = 215 [439 overall]
+ │    ├── 134-136: x d800 # data[66] = 216 [440 overall]
+ │    ├── 136-138: x db00 # data[67] = 219 [443 overall]
+ │    ├── 138-140: x dc00 # data[68] = 220 [444 overall]
+ │    ├── 140-142: x e000 # data[69] = 224 [448 overall]
+ │    ├── 142-144: x e500 # data[70] = 229 [453 overall]
+ │    ├── 144-146: x e600 # data[71] = 230 [454 overall]
+ │    ├── 146-148: x ed00 # data[72] = 237 [461 overall]
+ │    ├── 148-150: x f600 # data[73] = 246 [470 overall]
+ │    ├── 150-152: x fb00 # data[74] = 251 [475 overall]
+ │    ├── 152-154: x 0201 # data[75] = 258 [482 overall]
+ │    ├── 154-156: x 0601 # data[76] = 262 [486 overall]
+ │    ├── 156-158: x 0601 # data[77] = 262 [486 overall]
+ │    ├── 158-160: x 0b01 # data[78] = 267 [491 overall]
+ │    ├── 160-162: x 0d01 # data[79] = 269 [493 overall]
+ │    ├── 162-164: x 0e01 # data[80] = 270 [494 overall]
+ │    ├── 164-166: x 0f01 # data[81] = 271 [495 overall]
+ │    ├── 166-168: x 1401 # data[82] = 276 [500 overall]
+ │    ├── 168-170: x 1a01 # data[83] = 282 [506 overall]
+ │    ├── 170-172: x 2101 # data[84] = 289 [513 overall]
+ │    ├── 172-174: x 2401 # data[85] = 292 [516 overall]
+ │    ├── 174-176: x 2401 # data[86] = 292 [516 overall]
+ │    ├── 176-178: x 2a01 # data[87] = 298 [522 overall]
+ │    ├── 178-180: x 3101 # data[88] = 305 [529 overall]
+ │    ├── 180-182: x 3601 # data[89] = 310 [534 overall]
+ │    ├── 182-184: x 3a01 # data[90] = 314 [538 overall]
+ │    ├── 184-186: x 3a01 # data[91] = 314 [538 overall]
+ │    ├── 186-188: x 4101 # data[92] = 321 [545 overall]
+ │    ├── 188-190: x 4801 # data[93] = 328 [552 overall]
+ │    ├── 190-192: x 4d01 # data[94] = 333 [557 overall]
+ │    ├── 192-194: x 5001 # data[95] = 336 [560 overall]
+ │    ├── 194-196: x 5101 # data[96] = 337 [561 overall]
+ │    ├── 196-198: x 5401 # data[97] = 340 [564 overall]
+ │    ├── 198-200: x 5701 # data[98] = 343 [567 overall]
+ │    ├── 200-202: x 5b01 # data[99] = 347 [571 overall]
+ │    ├── 202-204: x 5f01 # data[100] = 351 [575 overall]
+ │    ├── 204-206: x 6001 # data[101] = 352 [576 overall]
+ │    ├── 206-208: x 6401 # data[102] = 356 [580 overall]
+ │    ├── 208-210: x 6901 # data[103] = 361 [585 overall]
+ │    ├── 210-212: x 6c01 # data[104] = 364 [588 overall]
+ │    ├── 212-214: x 7201 # data[105] = 370 [594 overall]
+ │    ├── 214-216: x 7201 # data[106] = 370 [594 overall]
+ │    ├── 216-218: x 7701 # data[107] = 375 [599 overall]
+ │    ├── 218-220: x 7b01 # data[108] = 379 [603 overall]
+ │    ├── 220-222: x 8001 # data[109] = 384 [608 overall]
+ │    └── 222-224: x 8501 # data[110] = 389 [613 overall]
+ └── data
+      ├── 224-229: x 696e746572         # data[00]: inter (block prefix)
+      ├── 229-232: x 616374             # data[01]: .....act (bundle prefix)
+      ├── 232-232: x                    # data[02]: ........
+      ├── 232-235: x 696e67             # data[03]: ........ing
+      ├── 235-238: x 696f6e             # data[04]: ........ion
+      ├── 238-239: x 73                 # data[05]: ........s
+      ├── 239-240: x 63                 # data[06]: .....c (bundle prefix)
+      ├── 240-243: x 657074             # data[07]: ......ept
+      ├── 243-248: x 6570746564         # data[08]: ......epted
+      ├── 248-257: x 68616e676561626c65 # data[09]: ......hangeable
+      ├── 257-259: x 6f6d               # data[10]: ......om
+      ├── 259-262: x 657374             # data[11]: .....est (bundle prefix)
+      ├── 262-262: x                    # data[12]: ........
+      ├── 262-264: x 6564               # data[13]: ........ed
+      ├── 264-267: x 696e67             # data[14]: ........ing
+      ├── 267-268: x 73                 # data[15]: ........s
+      ├── 268-269: x 66                 # data[16]: .....f (bundle prefix)
+      ├── 269-272: x 616365             # data[17]: ......ace
+      ├── 272-277: x 6163696e67         # data[18]: ......acing
+      ├── 277-280: x 657265             # data[19]: ......ere
+      ├── 280-284: x 65726564           # data[20]: ......ered
+      ├── 284-284: x                    # data[21]: ..... (bundle prefix)
+      ├── 284-291: x 666572656e6365     # data[22]: .....ference
+      ├── 291-293: x 696d               # data[23]: .....im
+      ├── 293-296: x 696f72             # data[24]: .....ior
+      ├── 296-300: x 696f7273           # data[25]: .....iors
+      ├── 300-304: x 6a656374           # data[26]: .....ject (bundle prefix)
+      ├── 304-304: x                    # data[27]: .........
+      ├── 304-306: x 6564               # data[28]: .........ed
+      ├── 306-309: x 696f6e             # data[29]: .........ion
+      ├── 309-312: x 6f7279             # data[30]: .........ory
+      ├── 312-313: x 6c                 # data[31]: .....l (bundle prefix)
+      ├── 313-316: x 616365             # data[32]: ......ace
+      ├── 316-321: x 6163696e67         # data[33]: ......acing
+      ├── 321-325: x 65617665           # data[34]: ......eave
+      ├── 325-330: x 6561766564         # data[35]: ......eaved
+      ├── 330-331: x 6c                 # data[36]: .....l (bundle prefix)
+      ├── 331-336: x 6561766573         # data[37]: ......eaves
+      ├── 336-339: x 6f636b             # data[38]: ......ock
+      ├── 339-344: x 6f636b6564         # data[39]: ......ocked
+      ├── 344-350: x 6f636b696e67       # data[40]: ......ocking
+      ├── 350-353: x 6c6f70             # data[41]: .....lop (bundle prefix)
+      ├── 353-354: x 65                 # data[42]: ........e
+      ├── 354-356: x 6572               # data[43]: ........er
+      ├── 356-359: x 657273             # data[44]: ........ers
+      ├── 359-362: x 696e67             # data[45]: ........ing
+      ├── 362-362: x                    # data[46]: ..... (bundle prefix)
+      ├── 362-366: x 6c756465           # data[47]: .....lude
+      ├── 366-373: x 6d656469617279     # data[48]: .....mediary
+      ├── 373-380: x 6d656469617465     # data[49]: .....mediate
+      ├── 380-389: x 6d6564696174656c79 # data[50]: .....mediately
+      ├── 389-390: x 6d                 # data[51]: .....m (bundle prefix)
+      ├── 390-394: x 657a7a6f           # data[52]: ......ezzo
+      ├── 394-399: x 696e676c65         # data[53]: ......ingle
+      ├── 399-406: x 696e676c696e67     # data[54]: ......ingling
+      ├── 406-408: x 6978               # data[55]: ......ix
+      ├── 408-409: x 6e                 # data[56]: .....n (bundle prefix)
+      ├── 409-409: x                    # data[57]: ......
+      ├── 409-411: x 616c               # data[58]: ......al
+      ├── 411-415: x 616c6c79           # data[59]: ......ally
+      ├── 415-422: x 6174696f6e616c     # data[60]: ......ational
+      ├── 422-423: x 6e                 # data[61]: .....n (bundle prefix)
+      ├── 423-432: x 6174696f6e616c6c79 # data[62]: ......ationally
+      ├── 432-434: x 6564               # data[63]: ......ed
+      ├── 434-436: x 6574               # data[64]: ......et
+      ├── 436-439: x 657473             # data[65]: ......ets
+      ├── 439-440: x 6e                 # data[66]: .....n (bundle prefix)
+      ├── 440-443: x 696e67             # data[67]: ......ing
+      ├── 443-444: x 73                 # data[68]: ......s
+      ├── 444-448: x 73686970           # data[69]: ......ship
+      ├── 448-453: x 7368697073         # data[70]: ......ships
+      ├── 453-454: x 70                 # data[71]: .....p (bundle prefix)
+      ├── 454-461: x 6572736f6e616c     # data[72]: ......ersonal
+      ├── 461-470: x 6572736f6e616c6c79 # data[73]: ......ersonally
+      ├── 470-475: x 6f6c617465         # data[74]: ......olate
+      ├── 475-482: x 6f6c6174696f6e     # data[75]: ......olation
+      ├── 482-486: x 70726574           # data[76]: .....pret (bundle prefix)
+      ├── 486-486: x                    # data[77]: .........
+      ├── 486-491: x 6174696f6e         # data[78]: .........ation
+      ├── 491-493: x 6572               # data[79]: .........er
+      ├── 493-494: x 73                 # data[80]: .........s
+      ├── 494-495: x 72                 # data[81]: .....r (bundle prefix)
+      ├── 495-500: x 6f67617465         # data[82]: ......ogate
+      ├── 500-506: x 6f6761746573       # data[83]: ......ogates
+      ├── 506-513: x 6f676174696f6e     # data[84]: ......ogation
+      ├── 513-516: x 757074             # data[85]: ......upt
+      ├── 516-516: x                    # data[86]: ..... (bundle prefix)
+      ├── 516-522: x 727570746572       # data[87]: .....rupter
+      ├── 522-529: x 72757074696f6e     # data[88]: .....ruption
+      ├── 529-534: x 7275707473         # data[89]: .....rupts
+      ├── 534-538: x 73656374           # data[90]: .....sect
+      ├── 538-538: x                    # data[91]: ..... (bundle prefix)
+      ├── 538-545: x 73656374696e67     # data[92]: .....secting
+      ├── 545-552: x 73656374696f6e     # data[93]: .....section
+      ├── 552-557: x 7365637473         # data[94]: .....sects
+      ├── 557-560: x 76616c             # data[95]: .....val
+      ├── 560-561: x 76                 # data[96]: .....v (bundle prefix)
+      ├── 561-564: x 616c73             # data[97]: ......als
+      ├── 564-567: x 656e65             # data[98]: ......ene
+      ├── 567-571: x 656e6564           # data[99]: ......ened
+      ├── 571-575: x 656e6572           # data[100]: ......ener
+      ├── 575-576: x 76                 # data[101]: .....v (bundle prefix)
+      ├── 576-580: x 656e6573           # data[102]: ......enes
+      ├── 580-585: x 656e696e67         # data[103]: ......ening
+      ├── 585-588: x 696577             # data[104]: ......iew
+      ├── 588-594: x 696577696e67       # data[105]: ......iewing
+      ├── 594-594: x                    # data[106]: ..... (bundle prefix)
+      ├── 594-599: x 7669657773         # data[107]: .....views
+      ├── 599-603: x 776f726b           # data[108]: .....work
+      ├── 603-608: x 776f726b73         # data[109]: .....works
+      └── 608-613: x 776f76656e         # data[110]: .....woven
