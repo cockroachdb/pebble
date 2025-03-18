@@ -96,7 +96,7 @@ compact a-z
 ----
 ok
 
-wait-for-background-error
+wait-for-compaction-error
 ----
 pebble: compaction cancelled by a concurrent operation, will retry compaction
 

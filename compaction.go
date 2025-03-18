@@ -2312,8 +2312,7 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 		d.mu.Lock()
 		c.grantHandle.Started()
 		if err := d.compact1(c, errChannel); err != nil {
-			// TODO(peter): count consecutive compaction errors and backoff.
-			d.opts.EventListener.BackgroundError(err)
+			d.handleCompactFailure(err)
 		}
 		if c.isDownload {
 			d.mu.compact.downloadingCount--
@@ -2349,6 +2348,17 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 		d.mu.compact.cond.Broadcast()
 		d.mu.Unlock()
 	})
+}
+
+func (d *DB) handleCompactFailure(err error) {
+	if errors.Is(err, ErrCancelledCompaction) {
+		// ErrCancelledCompaction is expected during normal operation, so we don't
+		// want to report it as a background error.
+		d.opts.Logger.Infof("%v", err)
+		return
+	}
+	// TODO(peter): count consecutive compaction errors and backoff.
+	d.opts.EventListener.BackgroundError(err)
 }
 
 // cleanupVersionEdit cleans up any on-disk artifacts that were created
