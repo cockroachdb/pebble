@@ -115,7 +115,10 @@ type CompactionInfo struct {
 	// always ≥ Duration.
 	TotalDuration time.Duration
 	Done          bool
-	Err           error
+	// Err is set only if Done is true. If non-nil, indicates that the compaction
+	// failed. Note that err can be ErrCancelledCompaction, which can happen
+	// during normal operation.
+	Err error
 
 	SingleLevelOverlappingRatio float64
 	MultiLevelOverlappingRatio  float64
@@ -809,15 +812,6 @@ type EventListener struct {
 	PossibleAPIMisuse func(PossibleAPIMisuseInfo)
 }
 
-func backgroundError(logger Logger, err error) {
-	if errors.Is(err, ErrCancelledCompaction) {
-		// ErrCancelledCompaction is not an unexpected error, hence severity INFO.
-		logger.Infof("background error: %s", err)
-	} else {
-		logger.Errorf("background error: %s", err)
-	}
-}
-
 // EnsureDefaults ensures that background error events are logged to the
 // specified logger if a handler for those events hasn't been otherwise
 // specified. Ensure all handlers are non-nil so that we don't have to check
@@ -826,7 +820,7 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.BackgroundError == nil {
 		if logger != nil {
 			l.BackgroundError = func(err error) {
-				backgroundError(logger, err)
+				logger.Errorf("background error: %s", err)
 			}
 		} else {
 			l.BackgroundError = func(error) {}
@@ -915,7 +909,7 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 
 	return EventListener{
 		BackgroundError: func(err error) {
-			backgroundError(logger, err)
+			logger.Errorf("background error: %s", err)
 		},
 		DataCorruption: func(info DataCorruptionInfo) {
 			logger.Errorf("%s", info)

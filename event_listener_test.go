@@ -402,17 +402,6 @@ func newCountingMockLogger(t *testing.T) (*mockLogger, *int, *int) {
 	}, &infoCount, &errorCount
 }
 
-func TestMakeLoggingEventListenerBackgroundErrorCancelledCompaction(t *testing.T) {
-	mockLogger, infoCount, errorCount := newCountingMockLogger(t)
-	e := MakeLoggingEventListener(mockLogger)
-
-	e.BackgroundError(ErrCancelledCompaction)
-	require.Equal(t, 1, *infoCount)
-	require.Equal(t, 0, *errorCount)
-
-	testAllCallbacksSetInEventListener(t, e)
-}
-
 func TestMakeLoggingEventListenerBackgroundErrorOtherError(t *testing.T) {
 	mockLogger, infoCount, errorCount := newCountingMockLogger(t)
 	e := MakeLoggingEventListener(mockLogger)
