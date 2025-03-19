@@ -1208,7 +1208,7 @@ func NewVersion(
 		// order to test consistency checking, etc. Once we've constructed the
 		// initial B-Tree, we swap out the btreeCmp for the correct one.
 		// TODO(jackson): Adjust or remove the tests and remove this.
-		v.Levels[l].tree, _ = makeBTree(comparer.Compare, btreeCmpSpecificOrder(files[l]), files[l])
+		v.Levels[l].tree = makeBTree(comparer.Compare, btreeCmpSpecificOrder(files[l]), files[l])
 		v.Levels[l].level = l
 		if l == 0 {
 			v.Levels[l].tree.bcmp = btreeCmpSeqNum
