@@ -41,8 +41,9 @@ L0
 L0 files 000001 and 000002 are not properly ordered: <#2-#4> vs <#3-#3>
 
 check-ordering
-L0
+L0.0
   a.SET.3-d.SET.3
+L0.1
   a.SET.3-b.SET.3
 ----
 OK
