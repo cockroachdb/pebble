@@ -65,7 +65,9 @@ func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*TableMetadata) (btree, 
 	t.cmp = cmp
 	t.bcmp = bcmp
 	for _, f := range files {
-		t.Insert(f)
+		if err := t.Insert(f); err != nil {
+			panic(err)
+		}
 	}
 	return t, newLevelSlice(t.Iter())
 }
