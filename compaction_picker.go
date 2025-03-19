@@ -1755,11 +1755,12 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	}
 	if lcf != nil {
 		pc = newPickedCompactionFromL0(lcf, opts, vers, baseLevel, true)
-		pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel)
-		if pc.startLevel.files.Empty() {
-			opts.Logger.Fatalf("empty compaction chosen")
+		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+			if pc.startLevel.files.Empty() {
+				opts.Logger.Fatalf("empty compaction chosen")
+			}
+			return pc.maybeAddLevel(opts, env.diskAvailBytes)
 		}
-		return pc.maybeAddLevel(opts, env.diskAvailBytes)
 	}
 
 	// Couldn't choose a base compaction. Try choosing an intra-L0
