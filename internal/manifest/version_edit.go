@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -640,7 +641,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			return nil, errors.Errorf("malformed line %q", l)
 		}
 		field = strings.TrimSpace(field)
-		p := makeDebugParser(value)
+		p := strparse.MakeParser(debugParserSeparators, value)
 		switch field {
 		case "add-table":
 			level := p.Level()
