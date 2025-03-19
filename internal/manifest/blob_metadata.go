@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/redact"
 )
 
@@ -148,7 +149,7 @@ func ParseBlobFileMetadataDebug(s string) (_ *BlobFileMetadata, err error) {
 	// Input format:
 	//  000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]
 	m := &BlobFileMetadata{}
-	p := makeDebugParser(s)
+	p := strparse.MakeParser(debugParserSeparators, s)
 	m.FileNum = base.DiskFileNum(p.FileNum())
 
 	maybeSkipParens := func() {

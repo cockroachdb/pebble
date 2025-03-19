@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
@@ -882,6 +883,16 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	return b.String()
 }
 
+const debugParserSeparators = ":-[]();"
+
+// errFromPanic can be used in a recover block to convert panics into errors.
+func errFromPanic(r any) error {
+	if err, ok := r.(error); ok {
+		return err
+	}
+	return errors.Errorf("%v", r)
+}
+
 // ParseTableMetadataDebug parses a TableMetadata from its DebugString
 // representation.
 func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
@@ -894,7 +905,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	// Input format:
 	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...] size:5
 	m := &TableMetadata{}
-	p := makeDebugParser(s)
+	p := strparse.MakeParser(debugParserSeparators, s)
 	m.FileNum = p.FileNum()
 	var backingNum base.DiskFileNum
 	if p.Peek() == "(" {
@@ -1357,7 +1368,7 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 		if l == "" {
 			continue
 		}
-		p := makeDebugParser(l)
+		p := strparse.MakeParser(debugParserSeparators, l)
 		if l, ok := p.TryLevel(); ok {
 			level = l
 			continue
