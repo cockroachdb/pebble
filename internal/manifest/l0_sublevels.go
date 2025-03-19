@@ -337,9 +337,8 @@ func NewL0Sublevels(
 	// Construct a parallel slice of sublevel B-Trees.
 	// TODO(jackson): Consolidate and only use the B-Trees.
 	for _, sublevelFiles := range s.levelFiles {
-		tr, ls := makeBTree(cmp, btreeCmpSmallestKey(cmp), sublevelFiles)
+		ls := makeLevelSlice(cmp, btreeCmpSmallestKey(cmp), sublevelFiles)
 		s.Levels = append(s.Levels, ls)
-		tr.Release(ignoreObsoleteFiles{})
 	}
 
 	s.calculateFlushSplitKeys(flushSplitMaxBytes)
@@ -630,7 +629,7 @@ func (s *L0Sublevels) AddL0Files(
 	// Construct a parallel slice of sublevel B-Trees.
 	// TODO(jackson): Consolidate and only use the B-Trees.
 	for _, sublevel := range updatedSublevels {
-		tr, ls := makeBTree(newVal.cmp, btreeCmpSmallestKey(newVal.cmp), newVal.levelFiles[sublevel])
+		ls := makeLevelSlice(newVal.cmp, btreeCmpSmallestKey(newVal.cmp), newVal.levelFiles[sublevel])
 		if sublevel == len(newVal.Levels) {
 			newVal.Levels = append(newVal.Levels, ls)
 		} else {
@@ -638,7 +637,6 @@ func (s *L0Sublevels) AddL0Files(
 			// populated correctly.
 			newVal.Levels[sublevel] = ls
 		}
-		tr.Release(ignoreObsoleteFiles{})
 	}
 
 	newVal.flushSplitUserKeys = nil
