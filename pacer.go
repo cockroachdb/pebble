@@ -63,17 +63,17 @@ func newDeletionPacer(
 	now crtime.Mono,
 	freeSpaceThreshold uint64,
 	targetByteDeletionRate int64,
-	freeSpaceTimeframe uint64,
+	freeSpaceTimeframe time.Duration,
 	obsoleteBytesMaxRatio float64,
-	obsoleteBytesTimeframe uint64,
+	obsoleteBytesTimeframe time.Duration,
 	getInfo func() deletionPacerInfo,
 ) *deletionPacer {
 	d := &deletionPacer{
 		freeSpaceThreshold: freeSpaceThreshold,
-		freeSpaceTimeframe: time.Duration(freeSpaceTimeframe) * time.Second,
+		freeSpaceTimeframe: freeSpaceTimeframe,
 
 		obsoleteBytesMaxRatio:  obsoleteBytesMaxRatio,
-		obsoleteBytesTimeframe: time.Duration(obsoleteBytesTimeframe) * time.Second,
+		obsoleteBytesTimeframe: obsoleteBytesTimeframe,
 
 		targetByteDeletionRate: targetByteDeletionRate,
 		getInfo:                getInfo,

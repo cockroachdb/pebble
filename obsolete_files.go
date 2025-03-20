@@ -90,7 +90,7 @@ func openCleanupManager(
 		onTableDeleteFn: onTableDeleteFn,
 		deletePacer: newDeletionPacer(
 			crtime.NowMono(),
-			opts.FreeSpaceThreshold,
+			opts.FreeSpaceThresholdBytes,
 			int64(opts.TargetByteDeletionRate),
 			opts.FreeSpaceTimeframe,
 			opts.ObsoleteBytesMaxRatio,

@@ -103,10 +103,10 @@ func TestDefaultOptionsString(t *testing.T) {
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
   min_deletion_rate=0
-  free_space_threshold=17179869184
-  free_space_timeframe=10
+  free_space_threshold_bytes=17179869184
+  free_space_timeframe=10s
   obsolete_bytes_max_ratio=0.200000
-  obsolete_bytes_timeframe=300
+  obsolete_bytes_timeframe=5m0s
   merger=pebble.concatenate
   multilevel_compaction_heuristic=wamp(0.00, false)
   read_compaction_rate=16000

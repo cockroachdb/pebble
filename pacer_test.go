@@ -121,7 +121,7 @@ func TestDeletionPacer(t *testing.T) {
 			}
 			start := crtime.NowMono()
 			last := start
-			pacer := newDeletionPacer(start, 16*GB, 100*MB, 10, 0.2, 300, getInfo)
+			pacer := newDeletionPacer(start, 16*GB, 100*MB, 10 * time.Second, 0.2, 300 * time.Second, getInfo)
 			for _, h := range tc.history {
 				last = start + crtime.Mono(time.Second*time.Duration(h[0]))
 				pacer.ReportDeletion(last, uint64(h[1]))
