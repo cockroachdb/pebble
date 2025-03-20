@@ -343,6 +343,7 @@ func NewL0Sublevels(
 	}
 
 	s.calculateFlushSplitKeys(flushSplitMaxBytes)
+	s.Check()
 	return s, nil
 }
 
@@ -453,8 +454,36 @@ func mergeIntervals(
 func (s *L0Sublevels) AddL0Files(
 	files []*TableMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
 ) (*L0Sublevels, error) {
-	if invariants.Enabled && s.addL0FilesCalled {
-		panic("AddL0Files called twice on the same receiver")
+	if s.addL0FilesCalled {
+		if invariants.Enabled {
+			panic("AddL0Files called twice on the same receiver")
+		}
+		return nil, errInvalidL0SublevelsOpt
+	}
+	if s.levelMetadata.Len()+len(files) != levelMetadata.Len() {
+		if invariants.Enabled {
+			panic("levelMetadata mismatch")
+		}
+		return nil, errInvalidL0SublevelsOpt
+	}
+	// AddL0Files only works when the files we are adding match exactly the last
+	// files in the levelMetadata (and the rest of the levelMetadata matches
+	// s.levelMetadata).
+	{
+		iterOld, iterNew := s.levelMetadata.Iter(), levelMetadata.Iter()
+		tOld, tNew := iterOld.First(), iterNew.First()
+		for i := 0; i < s.levelMetadata.Len(); i++ {
+			if tOld != tNew {
+				return nil, errInvalidL0SublevelsOpt
+			}
+			tOld, tNew = iterOld.Next(), iterNew.Next()
+		}
+		for i := range files {
+			if files[i] != tNew {
+				return nil, errInvalidL0SublevelsOpt
+			}
+			tNew = iterNew.Next()
+		}
 	}
 	s.addL0FilesCalled = true
 
@@ -643,6 +672,7 @@ func (s *L0Sublevels) AddL0Files(
 
 	newVal.flushSplitUserKeys = nil
 	newVal.calculateFlushSplitKeys(flushSplitMaxBytes)
+	newVal.Check()
 	return newVal, nil
 }
 
@@ -791,6 +821,33 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 			for j := minIndex; j <= interval.filesMaxIntervalIndex; j++ {
 				min = j
 				s.orderedIntervals[j].intervalRangeIsBaseCompacting = true
+			}
+		}
+	}
+}
+
+// Check performs sanity checks on L0Sublevels in invariants mode.
+func (s *L0Sublevels) Check() {
+	if !invariants.Enabled {
+		return
+	}
+	iter := s.levelMetadata.Iter()
+	n := 0
+	for t := iter.First(); t != nil; n, t = n+1, iter.Next() {
+		if t.L0Index != n {
+			panic(fmt.Sprintf("t.L0Index out of sync (%d vs %d)", t.L0Index, n))
+		}
+	}
+	if len(s.Levels) != len(s.levelFiles) {
+		panic("Levels and levelFiles inconsistency")
+	}
+	for i := range s.Levels {
+		if s.Levels[i].Len() != len(s.levelFiles[i]) {
+			panic("Levels and levelFiles inconsistency")
+		}
+		for _, t := range s.levelFiles[i] {
+			if t.SubLevel != i {
+				panic("t.SubLevel out of sync")
 			}
 		}
 	}

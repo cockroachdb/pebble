@@ -297,6 +297,8 @@ type TableMetadata struct {
 
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions. Only accurate for the most recent Version.
+	// TODO(radu): this is very hacky and fragile. This information should live
+	// inside L0Sublevels.
 	SubLevel         int
 	L0Index          int
 	minIntervalIndex int
