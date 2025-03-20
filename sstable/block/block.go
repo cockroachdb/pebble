@@ -171,11 +171,39 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 		return errors.Errorf("unsupported checksum type: %d", checksumType)
 	}
 	if expectedChecksum != computedChecksum {
+		flipped, indexFlipped, bitFlipped := checkForBitFlip(b[:bh.Length+1], checksumType, expectedChecksum)
+		if flipped {
+			base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x. bit flip found: bit %d index %d",
+				errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
+				expectedChecksum, computedChecksum, bitFlipped, indexFlipped)
+		}
 		return base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
 			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
 			expectedChecksum, computedChecksum)
 	}
 	return nil
+}
+
+func checkForBitFlip(
+	data []byte, checksumType ChecksumType, expectedChecksum uint32,
+) (flipped bool, indexFlipped int, bitFlipped int) {
+	for i := 0; i < len(data); i++ {
+		for bit := 0; bit < 8; bit++ {
+			data[i] = data[i] ^ (1 << bit)
+			var computedChecksum uint32
+			switch checksumType {
+			case ChecksumTypeCRC32c:
+				computedChecksum = crc.New(data).Value()
+			case ChecksumTypeXXHash64:
+				computedChecksum = uint32(xxhash.Sum64(data))
+			}
+			data[i] = data[i] ^ (1 << bit)
+			if computedChecksum == expectedChecksum {
+				return true, i, bit
+			}
+		}
+	}
+	return false, 0, 0
 }
 
 // Metadata is an in-memory buffer that stores metadata for a block. It is
