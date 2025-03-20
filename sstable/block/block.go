@@ -7,8 +7,10 @@ package block
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -171,11 +173,53 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 		return errors.Errorf("unsupported checksum type: %d", checksumType)
 	}
 	if expectedChecksum != computedChecksum {
-		return base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
+		// Check if the checksum was due to a singular bit flip and report it.
+		data := slices.Clone(b[:bh.Length+1])
+		found, indexFound, bitFound := checkSliceForBitFlip(data, checksumType, expectedChecksum)
+		bitFlipExtraMsg := ""
+		if found {
+			bitFlipExtraMsg = fmt.Sprintf(". bit flip found: byte index %d. got: %x. want: %x.",
+				indexFound, data[indexFound], data[indexFound]^(1<<bitFound))
+		}
+		return base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x%s",
 			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
-			expectedChecksum, computedChecksum)
+			expectedChecksum, computedChecksum, bitFlipExtraMsg)
 	}
 	return nil
+}
+
+func checkSliceForBitFlip(
+	data []byte, checksumType ChecksumType, expectedChecksum uint32,
+) (found bool, indexFound int, bitFound int) {
+	// TODO(edward) This checking process likely can be made faster.
+	iterationLimit := 40 * (1 << 10) // 40KB
+	for i := 0; i < min(len(data), iterationLimit); i++ {
+		foundFlip, bit := checkByteForFlip(data, i, checksumType, expectedChecksum)
+		if foundFlip {
+			return true, i, bit
+		}
+	}
+	return false, 0, 0
+}
+
+func checkByteForFlip(
+	data []byte, i int, checksumType ChecksumType, expectedChecksum uint32,
+) (found bool, bit int) {
+	for bit := 0; bit < 8; bit++ {
+		data[i] ^= (1 << bit)
+		var computedChecksum uint32
+		switch checksumType {
+		case ChecksumTypeCRC32c:
+			computedChecksum = crc.New(data).Value()
+		case ChecksumTypeXXHash64:
+			computedChecksum = uint32(xxhash.Sum64(data))
+		}
+		data[i] ^= (1 << bit)
+		if computedChecksum == expectedChecksum {
+			return true, bit
+		}
+	}
+	return false, 0
 }
 
 // Metadata is an in-memory buffer that stores metadata for a block. It is
