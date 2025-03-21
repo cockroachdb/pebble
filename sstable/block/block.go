@@ -334,8 +334,9 @@ type ReadEnv struct {
 
 	// ReportCorruptionFn is called with ReportCorruptionArg and the error
 	// whenever an SSTable corruption is detected. The argument is used to avoid
-	// allocating a separate function for each object.
-	ReportCorruptionFn  func(opaque any, err error)
+	// allocating a separate function for each object. It returns an error with
+	// more details.
+	ReportCorruptionFn  func(opaque any, err error) error
 	ReportCorruptionArg any
 }
 
@@ -363,10 +364,11 @@ func (env *ReadEnv) BlockRead(blockLength uint64, readDuration time.Duration) {
 
 // maybeReportCorruption calls the ReportCorruptionFn if the given error
 // indicates corruption.
-func (env *ReadEnv) maybeReportCorruption(err error) {
+func (env *ReadEnv) maybeReportCorruption(err error) error {
 	if env.ReportCorruptionFn != nil && base.IsCorruptionError(err) {
-		env.ReportCorruptionFn(env.ReportCorruptionArg, err)
+		return env.ReportCorruptionFn(env.ReportCorruptionArg, err)
 	}
+	return err
 }
 
 // A Reader reads blocks from a single file, handling caching, checksum
@@ -428,8 +430,7 @@ func (r *Reader) Read(
 		}
 		value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 		if err != nil {
-			env.maybeReportCorruption(err)
-			return BufferHandle{}, err
+			return BufferHandle{}, env.maybeReportCorruption(err)
 		}
 		return value.MakeHandle(), nil
 	}
@@ -447,8 +448,7 @@ func (r *Reader) Read(
 		// to report corruption errors separately, since the ReportCorruptionArg
 		// could be different. In particular, we might read the same physical block
 		// (e.g. an index block) for two different virtual tables.
-		env.maybeReportCorruption(err)
-		return BufferHandle{}, err
+		return BufferHandle{}, env.maybeReportCorruption(err)
 	}
 
 	if cv != nil {
@@ -464,8 +464,7 @@ func (r *Reader) Read(
 	value, err := r.doRead(ctx, env, readHandle, bh, initBlockMetadataFn)
 	if err != nil {
 		crh.SetReadError(err)
-		env.maybeReportCorruption(err)
-		return BufferHandle{}, err
+		return BufferHandle{}, env.maybeReportCorruption(err)
 	}
 	crh.SetReadValue(value.v)
 	return value.MakeHandle(), nil

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
+	errorsjoin "github.com/cockroachdb/errors/join"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -1150,13 +1151,15 @@ func (r *lowDiskSpaceReporter) findThreshold(
 	return threshold, ok
 }
 
-func (d *DB) reportCorruption(meta any, err error) {
+// reportCorruption reports a corruption of a TableMetadat or BlobFileMetadata
+// to the event listener and also adds a DataCorruptionInfo payload to the error.
+func (d *DB) reportCorruption(meta any, err error) error {
 	switch meta := meta.(type) {
 	case *manifest.TableMetadata:
-		d.reportFileCorruption(base.FileTypeTable, meta.FileBacking.DiskFileNum, meta.UserKeyBounds(), err)
+		return d.reportFileCorruption(base.FileTypeTable, meta.FileBacking.DiskFileNum, meta.UserKeyBounds(), err)
 	case *manifest.BlobFileMetadata:
 		// TODO(jackson): Add bounds for blob files.
-		d.reportFileCorruption(base.FileTypeBlob, meta.FileNum, base.UserKeyBounds{}, err)
+		return d.reportFileCorruption(base.FileTypeBlob, meta.FileNum, base.UserKeyBounds{}, err)
 	default:
 		panic(fmt.Sprintf("unknown metadata type: %T", meta))
 	}
@@ -1164,9 +1167,9 @@ func (d *DB) reportCorruption(meta any, err error) {
 
 func (d *DB) reportFileCorruption(
 	fileType base.FileType, fileNum base.DiskFileNum, userKeyBounds base.UserKeyBounds, err error,
-) {
-	if invariants.Enabled && err == nil {
-		panic("nil error")
+) error {
+	if invariants.Enabled && !IsCorruptionError(err) {
+		panic("not a corruption error")
 	}
 
 	objMeta, lookupErr := d.objProvider.Lookup(fileType, fileNum)
@@ -1195,4 +1198,23 @@ func (d *DB) reportFileCorruption(
 		Details:  err,
 	}
 	d.opts.EventListener.DataCorruption(info)
+	return errorsjoin.Join(err, &corruptionDetailError{info: info})
+}
+
+type corruptionDetailError struct {
+	info DataCorruptionInfo
+}
+
+func (e *corruptionDetailError) Error() string {
+	return "<corruption detail carrier>"
+}
+
+// ExtractDataCorruptionInfo extracts the DataCorruptionInfo details from a
+// corruption error. Returns nil if there is no such detail.
+func ExtractDataCorruptionInfo(err error) *DataCorruptionInfo {
+	var e *corruptionDetailError
+	if errors.As(err, &e) {
+		return &e.info
+	}
+	return nil
 }

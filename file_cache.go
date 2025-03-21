@@ -106,8 +106,9 @@ type fileCacheHandle struct {
 	sstStatsCollector block.CategoryStatsCollector
 
 	// reportCorruptionFn is used for block.ReadEnv.ReportCorruptionFn. It expects
-	// the first argument to be a `*TableMetadata`.
-	reportCorruptionFn func(any, error)
+	// the first argument to be a `*TableMetadata`. It returns an error that
+	// contains more details.
+	reportCorruptionFn func(any, error) error
 
 	// This struct is only populated in race builds.
 	raceMu struct {
@@ -132,7 +133,7 @@ func (c *FileCache) newHandle(
 	objProvider objstorage.Provider,
 	loggerAndTracer LoggerAndTracer,
 	readerOpts sstable.ReaderOptions,
-	reportCorruptionFn func(any, error),
+	reportCorruptionFn func(any, error) error,
 ) *fileCacheHandle {
 	c.Ref()
 
@@ -241,7 +242,7 @@ func (h *fileCacheHandle) findOrCreateTable(
 	}
 	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
 	if err != nil && IsCorruptionError(err) {
-		h.reportCorruptionFn(meta, err)
+		err = h.reportCorruptionFn(meta, err)
 	}
 	return valRef, err
 }
