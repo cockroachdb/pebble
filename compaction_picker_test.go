@@ -290,18 +290,31 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
+				var l0InProgress []manifest.L0Compaction
+
 				// Mark files as compacting for each in-progress compaction.
 				for i := range inProgress {
 					c := &inProgress[i]
 					for j, cl := range c.inputs {
 						iter := vers.Levels[cl.level].Iter()
-						for f := iter.First(); f != nil; f = iter.Next() {
+						for f := iter.First(); ; f = iter.Next() {
+							if f == nil {
+								d.Fatalf(t, "could not find any non-compacting files in L%d", cl.level)
+							}
 							if !f.IsCompacting() {
 								f.CompactionState = manifest.CompactionStateCompacting
 								c.inputs[j].files = iter.Take().Slice()
 								break
 							}
 						}
+					}
+					if c.inputs[0].level == 0 {
+						iter := c.inputs[0].files.Iter()
+						l0InProgress = append(l0InProgress, manifest.L0Compaction{
+							Smallest:  iter.First().Smallest,
+							Largest:   iter.Last().Largest,
+							IsIntraL0: c.outputLevel == 0,
+						})
 					}
 					if c.inputs[0].level == 0 && c.outputLevel != 0 {
 						// L0->Lbase: mark all of Lbase as compacting.
@@ -313,6 +326,9 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						}
 					}
 				}
+
+				// Make sure L0Sublevels reflects the current in-progress compactions.
+				vers.L0Sublevels.InitCompactingFileInfo(l0InProgress)
 
 				var b strings.Builder
 				fmt.Fprintf(&b, "Initial state before pick:\n%s", runVersionFileSizes(vers))
