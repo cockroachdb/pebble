@@ -1381,7 +1381,7 @@ type internalIterOpts struct {
 	// NewCompactionIter; these iterators have a more constrained interface
 	// and are optimized for the sequential scan of a compaction.
 	compaction         bool
-	readEnv            block.ReadEnv
+	readEnv            sstable.ReadEnv
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
 }
 
@@ -1436,16 +1436,18 @@ func (i *Iterator) constructPointIter(
 		return
 	}
 	internalOpts := internalIterOpts{
-		readEnv: block.ReadEnv{
-			Stats: &i.stats.InternalStats,
-			// If the file cache has a sstable stats collector, ask it for an
-			// accumulator for this iterator's configured category and QoS. All SSTable
-			// iterators created by this Iterator will accumulate their stats to it as
-			// they Close during iteration.
-			IterStats: i.fc.SSTStatsCollector().Accumulator(
-				uint64(uintptr(unsafe.Pointer(i))),
-				i.opts.Category,
-			),
+		readEnv: sstable.ReadEnv{
+			Block: block.ReadEnv{
+				Stats: &i.stats.InternalStats,
+				// If the file cache has a sstable stats collector, ask it for an
+				// accumulator for this iterator's configured category and QoS. All SSTable
+				// iterators created by this Iterator will accumulate their stats to it as
+				// they Close during iteration.
+				IterStats: i.fc.SSTStatsCollector().Accumulator(
+					uint64(uintptr(unsafe.Pointer(i))),
+					i.opts.Category,
+				),
+			},
 		},
 	}
 	if i.opts.RangeKeyMasking.Filter != nil {
@@ -2274,7 +2276,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				}
 				destTables[j].Properties = p
 			}
-			destTables[j].Virtual = m.Virtual
+			destTables[j].Virtual = m.Virtual != nil
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum
 			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
 			if err != nil {

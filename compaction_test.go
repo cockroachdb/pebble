@@ -657,7 +657,7 @@ func TestCompaction(t *testing.T) {
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {
-				if meta.Virtual {
+				if meta.Virtual != nil {
 					continue
 				}
 				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{})
