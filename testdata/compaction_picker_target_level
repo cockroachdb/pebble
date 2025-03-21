@@ -541,6 +541,8 @@ L6:
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
 Picked: L4->L5: 12.0
 
+# We won't pick any compaction because the calculated compaction
+# concurrency is <= 2.
 pick ongoing=(0,4)
 ----
 Initial state before pick:
@@ -584,7 +586,7 @@ L6:
   600008:[0008#8,SET-0008#8,SET]: 1 bytes (1B)
   600009:[0009#9,SET-0009#9,SET]: 1 bytes (1B)
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
-Picked: L5->L6: 3.3
+Picked: no compaction
 
 pick ongoing=(0,0,0,4)
 ----
@@ -678,7 +680,7 @@ L6:
   600008:[0008#8,SET-0008#8,SET]: 1 bytes (1B)
   600009:[0009#9,SET-0009#9,SET]: 1 bytes (1B)
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
-Picked: L4->L5: 8.6
+Picked: no compaction
 
 init 1
 0: 20
@@ -782,7 +784,7 @@ L6:
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
 Picked: L0->L4: 1000.0
 
-pick ongoing=(0,4)
+pick ongoing=(0,6)
 ----
 Initial state before pick:
 L0:
@@ -807,17 +809,17 @@ L0:
   000019:[0001#19,SET-0001#19,SET]: 1 bytes (1B)
   000020:[0001#20,SET-0001#20,SET]: 1 bytes (1B)
 L6:
-  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B)
-  600002:[0002#2,SET-0002#2,SET]: 1 bytes (1B)
-  600003:[0003#3,SET-0003#3,SET]: 1 bytes (1B)
-  600004:[0004#4,SET-0004#4,SET]: 1 bytes (1B)
-  600005:[0005#5,SET-0005#5,SET]: 1 bytes (1B)
-  600006:[0006#6,SET-0006#6,SET]: 1 bytes (1B)
-  600007:[0007#7,SET-0007#7,SET]: 1 bytes (1B)
-  600008:[0008#8,SET-0008#8,SET]: 1 bytes (1B)
-  600009:[0009#9,SET-0009#9,SET]: 1 bytes (1B)
-  600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
-Picked: no compaction
+  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B) (IsCompacting)
+  600002:[0002#2,SET-0002#2,SET]: 1 bytes (1B) (IsCompacting)
+  600003:[0003#3,SET-0003#3,SET]: 1 bytes (1B) (IsCompacting)
+  600004:[0004#4,SET-0004#4,SET]: 1 bytes (1B) (IsCompacting)
+  600005:[0005#5,SET-0005#5,SET]: 1 bytes (1B) (IsCompacting)
+  600006:[0006#6,SET-0006#6,SET]: 1 bytes (1B) (IsCompacting)
+  600007:[0007#7,SET-0007#7,SET]: 1 bytes (1B) (IsCompacting)
+  600008:[0008#8,SET-0008#8,SET]: 1 bytes (1B) (IsCompacting)
+  600009:[0009#9,SET-0009#9,SET]: 1 bytes (1B) (IsCompacting)
+  600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B) (IsCompacting)
+Picked: L0->L0: 950.0
 
 # We'll only pick a concurrent compaction if it is "high" priority
 # (i.e. has a score >= highPriorityThreshold).
@@ -890,7 +892,7 @@ L0->L4: 1000.0
   000019:[0001#19,SET-0001#19,SET] marked as compacting
   000020:[0001#20,SET-0001#20,SET] marked as compacting
 
-pick ongoing=(0,4,4,5)
+pick ongoing=(0,5,6,6)
 ----
 Initial state before pick:
 L0:
@@ -917,8 +919,8 @@ L0:
 L5:
   500001:[0001#1,SET-0001#1,SET]: 1 bytes (1B) (IsCompacting)
 L6:
-  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B)
-  600002:[0002#2,SET-0002#2,SET]: 1 bytes (1B)
+  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B) (IsCompacting)
+  600002:[0002#2,SET-0002#2,SET]: 1 bytes (1B) (IsCompacting)
   600003:[0003#3,SET-0003#3,SET]: 1 bytes (1B)
   600004:[0004#4,SET-0004#4,SET]: 1 bytes (1B)
   600005:[0005#5,SET-0005#5,SET]: 1 bytes (1B)
@@ -929,7 +931,7 @@ L6:
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
 Picked: no compaction
 
-pick ongoing=(4,5)
+pick ongoing=(5,6)
 ----
 Initial state before pick:
 L0:
@@ -956,7 +958,7 @@ L0:
 L5:
   500001:[0001#1,SET-0001#1,SET]: 1 bytes (1B) (IsCompacting)
 L6:
-  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B)
+  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B) (IsCompacting)
   600002:[0002#2,SET-0002#2,SET]: 1 bytes (1B)
   600003:[0003#3,SET-0003#3,SET]: 1 bytes (1B)
   600004:[0004#4,SET-0004#4,SET]: 1 bytes (1B)
