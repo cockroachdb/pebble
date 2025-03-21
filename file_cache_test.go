@@ -192,7 +192,7 @@ func (t *fileCacheTest) cleanup() {
 	t.blockCache.Unref()
 }
 
-func noopCorruptionFn(any, error) {}
+func noopCorruptionFn(_ any, err error) error { return err }
 
 // newTestHandle creates a filesystem with a set of test tables and an
 // associated file cache handle. The caller must close the handle.
