@@ -136,6 +136,15 @@ func (p *Parser) Uint64() uint64 {
 	return x
 }
 
+// Uint32 parses the next token as an uint32.
+func (p *Parser) Uint32() uint32 {
+	x, err := strconv.ParseUint(p.Next(), 10, 32)
+	if err != nil {
+		p.Errf("cannot parse number: %v", err)
+	}
+	return uint32(x)
+}
+
 // Uint64 parses the next token as a sequence number.
 func (p *Parser) SeqNum() base.SeqNum {
 	return base.ParseSeqNum(p.Next())

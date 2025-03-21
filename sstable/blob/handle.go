@@ -68,6 +68,15 @@ type HandleSuffix struct {
 	OffsetInBlock uint32
 }
 
+// Encode encodes the handle suffix into the provided buffer, returning the
+// number of bytes encoded.
+func (h HandleSuffix) Encode(b []byte) int {
+	n := 0
+	n += binary.PutUvarint(b[n:], uint64(h.BlockNum))
+	n += binary.PutUvarint(b[n:], uint64(h.OffsetInBlock))
+	return n
+}
+
 // String implements the fmt.Stringer interface.
 func (h InlineHandle) String() string {
 	return redact.StringWithoutMarkers(h)

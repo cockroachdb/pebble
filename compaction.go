@@ -3247,6 +3247,47 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 func (d *DB) newCompactionOutput(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, CPUWorkHandle, error) {
+	writable, objMeta, err := d.newCompactionOutputObj(jobID, c, base.FileTypeTable)
+	if err != nil {
+		return objstorage.ObjectMetadata{}, nil, nil, err
+	}
+
+	var reason string
+	if c.kind == compactionKindFlush {
+		reason = "flushing"
+	} else {
+		reason = "compacting"
+	}
+	d.opts.EventListener.TableCreated(TableCreateInfo{
+		JobID:   int(jobID),
+		Reason:  reason,
+		Path:    d.objProvider.Path(objMeta),
+		FileNum: objMeta.DiskFileNum,
+	})
+
+	writerOpts.SetInternal(sstableinternal.WriterOptions{
+		CacheOpts: sstableinternal.CacheOptions{
+			CacheHandle: d.cacheHandle,
+			FileNum:     objMeta.DiskFileNum,
+		},
+	})
+
+	const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
+	cpuWorkHandle := d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
+		MaxFileWriteAdditionalCPUTime,
+	)
+	writerOpts.Parallelism =
+		d.opts.Experimental.MaxWriterConcurrency > 0 &&
+			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
+
+	tw := sstable.NewRawWriter(writable, writerOpts)
+	return objMeta, tw, cpuWorkHandle, nil
+}
+
+// newCompactionOutputObj creates an object produced by a compaction or flush.
+func (d *DB) newCompactionOutputObj(
+	jobID JobID, c *compaction, typ base.FileType,
+) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
 
 	var writeCategory vfs.DiskWriteCategory
@@ -3259,13 +3300,6 @@ func (d *DB) newCompactionOutput(
 		writeCategory = "pebble-memtable-flush"
 	} else {
 		writeCategory = "pebble-compaction"
-	}
-
-	var reason string
-	if c.kind == compactionKindFlush {
-		reason = "flushing"
-	} else {
-		reason = "compacting"
 	}
 
 	ctx := context.TODO()
@@ -3283,9 +3317,9 @@ func (d *DB) newCompactionOutput(
 		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 		WriteCategory:       writeCategory,
 	}
-	writable, objMeta, err := d.objProvider.Create(ctx, base.FileTypeTable, diskFileNum, createOpts)
+	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, createOpts)
 	if err != nil {
-		return objstorage.ObjectMetadata{}, nil, nil, err
+		return nil, objstorage.ObjectMetadata{}, err
 	}
 
 	if c.kind != compactionKindFlush {
@@ -3295,32 +3329,7 @@ func (d *DB) newCompactionOutput(
 			written:  &c.bytesWritten,
 		}
 	}
-	d.opts.EventListener.TableCreated(TableCreateInfo{
-		JobID:   int(jobID),
-		Reason:  reason,
-		Path:    d.objProvider.Path(objMeta),
-		FileNum: diskFileNum,
-	})
-
-	writerOpts.SetInternal(sstableinternal.WriterOptions{
-		CacheOpts: sstableinternal.CacheOptions{
-			CacheHandle: d.cacheHandle,
-			FileNum:     diskFileNum,
-		},
-	})
-
-	const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
-	cpuWorkHandle := d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
-		MaxFileWriteAdditionalCPUTime,
-	)
-	writerOpts.Parallelism =
-		d.opts.Experimental.MaxWriterConcurrency > 0 &&
-			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
-
-	// TODO(jackson): Make the compaction body generic over the RawWriter type,
-	// so that we don't need to pay the cost of dynamic dispatch?
-	tw := sstable.NewRawWriter(writable, writerOpts)
-	return objMeta, tw, cpuWorkHandle, nil
+	return writable, objMeta, nil
 }
 
 // validateVersionEdit validates that start and end keys across new and deleted
