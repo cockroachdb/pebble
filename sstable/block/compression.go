@@ -214,6 +214,7 @@ func CompressAndChecksum(
 	algo := NoCompressionIndicator
 	if compression != NoCompression {
 		compressor := GetCompressor(compression)
+		defer compressor.Release()
 		algo, buf = compressor.Compress(buf, blockData)
 		if len(buf) >= len(blockData)-len(blockData)/8 {
 			algo = NoCompressionIndicator
