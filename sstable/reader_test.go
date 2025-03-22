@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1474,7 +1475,6 @@ func TestReaderChecksumErrors(t *testing.T) {
 									// Corrupt a random bit in the block.
 									r := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
 									randOffset := r.Uint64N(bh.Length) + bh.Offset
-									println(bh.Offset, bh.Length)
 									randBit := uint(r.IntN(8))
 									data[randOffset] ^= (1 << randBit)
 								}
@@ -1513,8 +1513,16 @@ func TestReaderChecksumErrors(t *testing.T) {
 									// Check that the error message has the bit flip message if there was an error.
 									checkBitFlipErr := func(err error) bool {
 										if err != nil {
-											require.Regexp(t, `checksum mismatch.+bit flip found:.+`, err)
-											return true
+											details := errors.GetAllSafeDetails(err)
+											re := regexp.MustCompile(`bit flip found`)
+											for _, d := range details {
+												for _, s := range d.SafeDetails {
+													if re.MatchString(s) {
+														return true
+													}
+												}
+											}
+											require.Fail(t, "expected at least one detail to match bit flip found", err)
 										}
 										return false
 									}

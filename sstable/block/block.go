@@ -7,7 +7,6 @@ package block
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -176,14 +175,14 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 		// Check if the checksum was due to a singular bit flip and report it.
 		data := slices.Clone(b[:bh.Length+1])
 		found, indexFound, bitFound := checkSliceForBitFlip(data, checksumType, expectedChecksum)
-		bitFlipExtraMsg := ""
+		err := base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
+			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
+			expectedChecksum, computedChecksum)
 		if found {
-			bitFlipExtraMsg = fmt.Sprintf(". bit flip found: byte index %d. got: %x. want: %x.",
+			err = errors.WithSafeDetails(err, ". bit flip found: byte index %d. got: %x. want: %x.",
 				indexFound, data[indexFound], data[indexFound]^(1<<bitFound))
 		}
-		return base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x%s",
-			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
-			expectedChecksum, computedChecksum, bitFlipExtraMsg)
+		return err
 	}
 	return nil
 }
