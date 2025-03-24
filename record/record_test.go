@@ -884,6 +884,20 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	require.Equal(t, err, io.ErrUnexpectedEOF)
 }
 
+type readerLogger struct {
+	builder strings.Builder
+}
+
+var _ loggerForTesting = (*readerLogger)(nil)
+
+func (l *readerLogger) getLog() string {
+	return l.builder.String()
+}
+
+func (l *readerLogger) logf(format string, args ...interface{}) {
+	fmt.Fprintf(&l.builder, format, args...)
+}
+
 func TestWALSync(t *testing.T) {
 	var buffer bytes.Buffer
 	result := make([]byte, 0)
@@ -894,6 +908,7 @@ func TestWALSync(t *testing.T) {
 		case "init":
 			buffer.Reset()
 			result = result[:0]
+			corruptChunkNumbers = corruptChunkNumbers[:0]
 
 			for chunkNumber, line := range strings.Split(d.Input, "\n") {
 				switch {
@@ -956,16 +971,17 @@ func TestWALSync(t *testing.T) {
 
 		case "read":
 			r := NewReader(bytes.NewBuffer(buffer.Bytes()), 1)
-
+			r.loggerForTesting = &readerLogger{}
 			for {
 				reader, err := r.Next()
 				if err != nil {
-					return fmt.Sprintf("error reading next: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+					r.loggerForTesting.logf("error reading next: %v\nfinal blockNum: %d\nbytes read: %d\n", err, r.blockNum, len(result))
+					return r.loggerForTesting.(*readerLogger).getLog()
 				}
-
 				data, err := io.ReadAll(reader)
 				if err != nil {
-					return fmt.Sprintf("error reading all: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+					r.loggerForTesting.logf("error reading all: %v\nfinal blockNum: %d\nbytes read: %d\n", err, r.blockNum, len(result))
+					return r.loggerForTesting.(*readerLogger).getLog()
 				}
 				result = append(result, data...)
 			}
