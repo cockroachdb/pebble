@@ -3271,8 +3271,6 @@ func (d *DB) newCompactionOutput(
 		},
 	})
 
-	writerOpts.Parallelism = d.opts.Experimental.ForceWriterParallelism
-
 	tw := sstable.NewRawWriter(writable, writerOpts)
 	return objMeta, tw, nil
 }

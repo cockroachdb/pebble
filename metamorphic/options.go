@@ -584,41 +584,36 @@ func standardOptions(kf KeyFormat) []*TestOptions {
   use_jemalloc_size_classes=true
 `,
 		22: `
-[Options]
-  max_writer_concurrency=2
-  force_writer_parallelism=true
-`,
-		23: `
 [TestOptions]
   disable_block_property_collector=true
 `,
-		24: `
+		23: `
 [TestOptions]
   threads=1
 `,
-		25: `
+		24: `
 [TestOptions]
   enable_value_blocks=true
   use_jemalloc_size_classes=true
 `,
-		26: fmt.Sprintf(`
+		25: fmt.Sprintf(`
 [Options]
   format_major_version=%s
 `, newestFormatMajorVersionToTest),
-		27: fmt.Sprintf(`
+		26: fmt.Sprintf(`
 [Options]
   format_major_version=%s
 [TestOptions]
   shared_storage_enabled=true
   secondary_cache_enabled=true
 `, pebble.FormatMinForSharedObjects),
-		28: fmt.Sprintf(`
+		27: fmt.Sprintf(`
 [Options]
   format_major_version=%s
 [TestOptions]
   external_storage_enabled=true
 `, pebble.FormatSyntheticPrefixSuffix),
-		29: fmt.Sprintf(`
+		28: fmt.Sprintf(`
 [Options]
   format_major_version=%s
   max_concurrent_downloads=2
@@ -736,10 +731,6 @@ func RandomOptions(
 				ElevatedWriteStallThresholdLag: expRandDuration(rng, 5*referenceDur, 2*time.Second),
 			},
 		}
-	}
-	if rng.IntN(4) == 0 {
-		// Enable Writer parallelism for 25% of the random options.
-		opts.Experimental.ForceWriterParallelism = true
 	}
 	if rng.IntN(2) == 0 {
 		opts.Experimental.DisableIngestAsFlushable = func() bool { return true }

@@ -40,7 +40,8 @@ type tableFormatFile struct {
 	File        string
 }
 
-func testWriterParallelism(t *testing.T, parallelism bool) {
+func TestWriter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	formatFiles := []tableFormatFile{
 		{TableFormat: TableFormatPebblev2, File: "testdata/writer"},
 		{TableFormat: TableFormatPebblev3, File: "testdata/writer_v3"},
@@ -49,16 +50,13 @@ func testWriterParallelism(t *testing.T, parallelism bool) {
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
-			runDataDriven(t, tff.File, tff.TableFormat, parallelism)
+			runDataDriven(t, tff.File, tff.TableFormat)
 		})
 	}
 }
-func TestWriter(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	testWriterParallelism(t, false)
-}
 
-func testRewriterParallelism(t *testing.T, parallelism bool) {
+func TestRewriter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	formatFiles := []tableFormatFile{
 		{TableFormat: TableFormatPebblev2, File: "testdata/rewriter"},
 		{TableFormat: TableFormatPebblev3, File: "testdata/rewriter_v3"},
@@ -67,24 +65,9 @@ func testRewriterParallelism(t *testing.T, parallelism bool) {
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
-			runDataDriven(t, tff.File, tff.TableFormat, parallelism)
+			runDataDriven(t, tff.File, tff.TableFormat)
 		})
 	}
-}
-
-func TestRewriter(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	testRewriterParallelism(t, false)
-}
-
-func TestWriterParallel(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	testWriterParallelism(t, true)
-}
-
-func TestRewriterParallel(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	testRewriterParallelism(t, true)
 }
 
 func formatWriterMetadata(td *datadriven.TestData, m *WriterMetadata) string {
@@ -122,7 +105,7 @@ func formatWriterMetadata(td *datadriven.TestData, m *WriterMetadata) string {
 	return b.String()
 }
 
-func runDataDriven(t *testing.T, file string, tableFormat TableFormat, parallelism bool) {
+func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 	var r *Reader
 	var w RawWriter
 	var obj *objstorage.MemObj
@@ -147,7 +130,6 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 			wopts := &WriterOptions{
 				Comparer:    testkeys.Comparer,
 				TableFormat: tableFormat,
-				Parallelism: parallelism,
 			}
 			meta, obj, err = runBuildMemObjCmd(td, wopts)
 			if err != nil {
@@ -185,7 +167,6 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 				Comparer:           testkeys.Comparer,
 				DisableValueBlocks: td.HasArg("disable-value-blocks"),
 				TableFormat:        tableFormat,
-				Parallelism:        parallelism,
 			}
 			obj := &objstorage.MemObj{}
 			if err := optsFromArgs(td, wopts); err != nil {
@@ -397,7 +378,6 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
 				TableFormat:               formatVersion,
-				Parallelism:               parallelism,
 				RequiredInPlaceValueBound: inPlaceValueBound,
 				ShortAttributeExtractor:   attributeExtractor,
 				DisableValueBlocks:        disableValueBlocks,
@@ -637,7 +617,7 @@ func TestClearDataBlockBuf(t *testing.T) {
 
 func TestClearIndexBlockBuf(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	i := newIndexBlockBuf(false)
+	i := newIndexBlockBuf()
 	i.block.Add(ikey("apple"), nil)
 	i.block.Add(ikey("banana"), nil)
 	i.clear()
@@ -709,7 +689,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 	f, err := fs.Create("test", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
 	opts := WriterOptions{
-		TableFormat: TableFormatPebblev1, BlockSize: 1, Parallelism: true,
+		TableFormat: TableFormatPebblev1, BlockSize: 1,
 	}
 
 	w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
