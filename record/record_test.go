@@ -956,16 +956,19 @@ func TestWALSync(t *testing.T) {
 
 		case "read":
 			r := NewReader(bytes.NewBuffer(buffer.Bytes()), 1)
-
+			r.logger = &readerLogger{}
 			for {
 				reader, err := r.Next()
 				if err != nil {
-					return fmt.Sprintf("error reading next: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+					endMsg := fmt.Sprintf("error reading next: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+					r.logger.Log(endMsg)
+					return r.logger.builder.String()
 				}
-
 				data, err := io.ReadAll(reader)
 				if err != nil {
-					return fmt.Sprintf("error reading all: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+					endMsg := fmt.Sprintf("error reading all: %v\nfinal blockNum: %d\nbytes read: %d", err, r.blockNum, len(result))
+					r.logger.Log(endMsg)
+					return r.logger.builder.String()
 				}
 				result = append(result, data...)
 			}

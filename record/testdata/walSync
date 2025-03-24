@@ -45,6 +45,9 @@ Blocks
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 1
 bytes read: 0
@@ -61,6 +64,9 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 1
 bytes read: 0
@@ -73,6 +79,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 0
@@ -87,6 +99,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
+	Checksum mismatch in block 1 at offset 32768; potential corruption
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -101,6 +122,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2875854606, length=32749, encoding=9
+	Checksum mismatch in block 1 at offset 32768; potential corruption
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -114,6 +144,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=19)
+	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 19
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -131,6 +166,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=19)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 19
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -148,6 +188,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=383674465, length=32749, encoding=9
+	Checksum mismatch in block 1 at offset 32768; potential corruption
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -167,6 +216,21 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=383674465, length=32749, encoding=9
+	Checksum mismatch in block 1 at offset 32768; potential corruption
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=614591033, length=1, encoding=9
+	Checksum mismatch in block 2 at offset 20; potential corruption
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=1645328786, length=32749, encoding=9
+	Checksum mismatch in block 3 at offset 32768; potential corruption
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 0
@@ -186,6 +250,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=383674465, length=32749, encoding=9
+	Checksum mismatch in block 1 at offset 32768; potential corruption
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 2 at offset 20; potential corruption
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=19)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 19
 error reading next: pebble/record: invalid chunk
 final blockNum: 3
 bytes read: 0
@@ -203,6 +278,18 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 2 at offset 20; potential corruption
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32787)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 32749
@@ -222,6 +309,9 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 1
 bytes read: 0
@@ -234,6 +324,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 0
@@ -247,6 +343,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -261,6 +366,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3034178164, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 100)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -274,6 +388,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -291,6 +410,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -308,6 +432,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -331,6 +464,21 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=2522303644, length=1, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3593774434, length=32749, encoding=9
+	Mismatch log number in block 3 at offset 0 (expected 1, got 0)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 0
@@ -355,6 +503,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 3
 bytes read: 0
@@ -377,6 +536,18 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32768)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 32749
@@ -395,6 +566,9 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 1
 bytes read: 0
@@ -407,6 +581,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 0
@@ -422,6 +602,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
+	Invalid wire format detected in block 1 at offset 0
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -437,6 +626,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2207032925, length=32749, encoding=0
+	Invalid wire format detected in block 1 at offset 0
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -451,6 +649,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -469,6 +672,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -488,6 +696,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=910217490, length=32749, encoding=0
+	Invalid wire format detected in block 1 at offset 0
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -511,6 +728,21 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=910217490, length=32749, encoding=0
+	Invalid wire format detected in block 1 at offset 0
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=1220209282, length=1, encoding=0
+	Invalid wire format detected in block 2 at offset 0
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3371122657, length=32749, encoding=0
+	Invalid wire format detected in block 3 at offset 0
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 0
@@ -535,6 +767,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=910217490, length=32749, encoding=0
+	Invalid wire format detected in block 1 at offset 0
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 2 at offset 0
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 3
 bytes read: 0
@@ -557,6 +800,18 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 2 at offset 0
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32768)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 32749
@@ -575,6 +830,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 32730
@@ -590,6 +851,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=4108154917, length=32730, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=0)
+	Block 1: Processing chunk at offset 32749, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 1 offset 32749; aborting this block scan
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -605,6 +877,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 1 offset 0; aborting this block scan
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 32730
@@ -620,6 +901,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2654412641, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=32749)
+	Corruption confirmed: syncedOffset 100000 exceeds invalidOffset 32749
 error reading next: pebble/record: zeroed chunk
 final blockNum: 1
 bytes read: 32730
@@ -633,6 +919,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2654412641, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 100000 exceeds invalidOffset 0
 error reading next: pebble/record: zeroed chunk
 final blockNum: 1
 bytes read: 0
@@ -650,6 +941,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2529962274, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=20)
+	Corruption confirmed: syncedOffset 1000000 exceeds invalidOffset 20
 error reading next: pebble/record: zeroed chunk
 final blockNum: 1
 bytes read: 1
@@ -668,6 +964,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 1 offset 0; aborting this block scan
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -686,6 +991,16 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=1 (invalidOffset=20)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 1 offset 20; aborting this block scan
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=1662040211, length=32749, encoding=9
+	Block 2: Found WAL sync chunk with syncedOffset=64000 (invalidOffset=20)
+	Corruption confirmed: syncedOffset 64000 exceeds invalidOffset 20
 error reading next: pebble/record: zeroed chunk
 final blockNum: 2
 bytes read: 1
@@ -705,6 +1020,20 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
+	Block 2: Found WAL sync chunk with syncedOffset=1 (invalidOffset=32788)
+	Block 2: Processing chunk at offset 20, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 2 offset 20; aborting this block scan
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32788)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 32750
@@ -722,6 +1051,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=19)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 19
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -734,6 +1068,9 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 1
 bytes read: 0
@@ -747,6 +1084,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 0
@@ -761,6 +1104,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
+	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -775,6 +1127,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2172933859, length=64000, encoding=9
+	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -788,6 +1149,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=19)
+	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 19
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -805,6 +1171,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2172933859, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=1000 (invalidOffset=19)
+	Corruption confirmed: syncedOffset 1000 exceeds invalidOffset 19
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -822,6 +1193,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=64000, encoding=9
+	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -841,6 +1221,21 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=2522303644, length=1, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3593774434, length=32749, encoding=9
+	Mismatch log number in block 3 at offset 0 (expected 1, got 0)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 0
@@ -860,6 +1255,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=64000, encoding=9
+	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3699662224, length=200, encoding=9
+	Checksum mismatch in block 2 at offset 219; potential corruption
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=39)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 39
 error reading next: pebble/record: invalid chunk
 final blockNum: 3
 bytes read: 1
@@ -880,6 +1286,21 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=400517472, length=64000, encoding=9
+	Chunk in block 2 spans beyond block boundaries (begin=19, end=64019, n=32768)
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3699662224, length=200, encoding=9
+	Checksum mismatch in block 3 at offset 219; potential corruption
+Read block 4 with 32768 bytes
+	Block 4: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 4: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32807)
+Read block 5 with 19 bytes
+	Block 5: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 5 at offset 0 (expected 1, got 2)
+Read block 6 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 6
 bytes read: 32750
@@ -897,6 +1318,9 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 1
 bytes read: 0
@@ -909,6 +1333,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 0
@@ -922,6 +1352,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -935,6 +1374,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3910387679, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -948,6 +1396,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -965,6 +1418,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 0
@@ -982,6 +1440,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3601296272, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 0
@@ -1001,6 +1468,21 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3601296272, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=3330109772, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=611851875, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 3
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 0
@@ -1020,6 +1502,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3601296272, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
+	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
 error reading next: pebble/record: invalid chunk
 final blockNum: 3
 bytes read: 0
@@ -1037,6 +1530,18 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32768)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 32749
@@ -1056,6 +1561,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2928164217, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=60000 (invalidOffset=32757)
+	Corruption confirmed: syncedOffset 60000 exceeds invalidOffset 32757
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 32738
@@ -1069,6 +1579,12 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 19 bytes
+	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 2
 bytes read: 32738
@@ -1084,6 +1600,17 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=32757)
+	Block 1: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 1 at offset 32757; breaking out
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 32738
@@ -1099,6 +1626,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=1660446616, length=32738, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=32757)
+	Corruption confirmed: syncedOffset 1000000 exceeds invalidOffset 32757
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 32738
@@ -1113,6 +1645,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 39 bytes
+	Block 1: Processing chunk at offset 0, checksum=2654412641, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=32757)
+	Corruption confirmed: syncedOffset 100000 exceeds invalidOffset 32757
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 32738
@@ -1130,6 +1667,11 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2529962274, length=32749, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=20)
+	Corruption confirmed: syncedOffset 1000000 exceeds invalidOffset 20
 error reading next: pebble/record: invalid chunk
 final blockNum: 1
 bytes read: 1
@@ -1148,6 +1690,15 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=1306192168, length=32738, encoding=0
+	Invalid wire format detected in block 1 at offset 0
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 3
 bytes read: 1
@@ -1166,6 +1717,16 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 0.
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
+	Block 1: Found WAL sync chunk with syncedOffset=1 (invalidOffset=20)
+	Block 1: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 0)
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=1662040211, length=32749, encoding=9
+	Block 2: Found WAL sync chunk with syncedOffset=64000 (invalidOffset=20)
+	Corruption confirmed: syncedOffset 64000 exceeds invalidOffset 20
 error reading next: pebble/record: invalid chunk
 final blockNum: 2
 bytes read: 1
@@ -1186,6 +1747,20 @@ EOF logNum=2
 
 read
 ----
+Starting read ahead for corruption. Block corrupted 1.
+Read block 2 with 32768 bytes
+	Block 2: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
+	Block 2: Found WAL sync chunk with syncedOffset=1 (invalidOffset=32788)
+	Block 2: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
+	Mismatch log number in block 2 at offset 20 (expected 1, got 0)
+Read block 3 with 32768 bytes
+	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
+	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32788)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 error reading next: unexpected EOF
 final blockNum: 5
 bytes read: 32750
