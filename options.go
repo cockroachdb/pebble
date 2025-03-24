@@ -660,23 +660,11 @@ type Options struct {
 		// compaction will never get triggered.
 		MultiLevelCompactionHeuristic MultiLevelHeuristic
 
-		// MaxWriterConcurrency is used to indicate the maximum number of
-		// compression workers the compression queue is allowed to use. If
-		// MaxWriterConcurrency > 0, then the Writer will use parallelism, to
-		// compress and write blocks to disk. Otherwise, the writer will
-		// compress and write blocks to disk synchronously.
-		MaxWriterConcurrency int
-
 		// ForceWriterParallelism is used to force parallelism in the sstable
 		// Writer for the metamorphic tests. Even with the MaxWriterConcurrency
 		// option set, we only enable parallelism in the sstable Writer if there
 		// is enough CPU available, and this option bypasses that.
 		ForceWriterParallelism bool
-
-		// CPUWorkPermissionGranter should be set if Pebble should be given the
-		// ability to optionally schedule additional CPU. See the documentation
-		// for CPUWorkPermissionGranter for more details.
-		CPUWorkPermissionGranter CPUWorkPermissionGranter
 
 		// EnableColumnarBlocks is used to decide whether to enable writing
 		// TableFormatPebblev5 sstables. This setting is only respected by
@@ -1287,9 +1275,6 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.FileCacheShards <= 0 {
 		o.Experimental.FileCacheShards = runtime.GOMAXPROCS(0)
 	}
-	if o.Experimental.CPUWorkPermissionGranter == nil {
-		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
-	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
 	}
@@ -1433,7 +1418,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
-	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
 	fmt.Fprintf(&buf, "  create_on_shared=%d\n", o.Experimental.CreateOnShared)
@@ -1833,7 +1817,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
 			case "max_writer_concurrency":
-				o.Experimental.MaxWriterConcurrency, err = strconv.Atoi(value)
+				// No longer implemented; ignore.
 			case "force_writer_parallelism":
 				o.Experimental.ForceWriterParallelism, err = strconv.ParseBool(value)
 			case "secondary_cache_size_bytes":

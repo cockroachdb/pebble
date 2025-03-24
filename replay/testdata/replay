@@ -11,7 +11,7 @@ tree
      614      000007.sst
        0      LOCK
      133      MANIFEST-000001
-    1418      OPTIONS-000003
+    1391      OPTIONS-000003
        0      marker.format-version.000001.013
        0      marker.manifest.000001.MANIFEST-000001
             simple/
@@ -21,7 +21,7 @@ tree
       25        000004.log
      586        000005.sst
       85        MANIFEST-000001
-    1418        OPTIONS-000003
+    1391        OPTIONS-000003
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -67,7 +67,6 @@ cat build/OPTIONS-000003
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
-  max_writer_concurrency=0
   force_writer_parallelism=false
   secondary_cache_size_bytes=0
   create_on_shared=0

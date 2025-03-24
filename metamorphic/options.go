@@ -738,10 +738,7 @@ func RandomOptions(
 		}
 	}
 	if rng.IntN(4) == 0 {
-		// Enable Writer parallelism for 25% of the random options. Setting
-		// MaxWriterConcurrency to any value greater than or equal to 1 has the
-		// same effect currently.
-		opts.Experimental.MaxWriterConcurrency = 2
+		// Enable Writer parallelism for 25% of the random options.
 		opts.Experimental.ForceWriterParallelism = true
 	}
 	if rng.IntN(2) == 0 {
