@@ -590,11 +590,15 @@ func TestSSTCorruptionEvent(t *testing.T) {
 			}
 			_, _, err = d.Get(key(5))
 			require.Error(t, err)
+			require.True(t, IsCorruptionError(err))
+			infoInError := ExtractDataCorruptionInfo(err)
+			require.NotNil(t, infoInError)
 			require.Greater(t, len(events), 0)
 			info := events[0]
 			require.Equal(t, info.Path, sstFileName)
 			require.False(t, info.IsRemote)
 			require.Equal(t, base.UserKeyBoundsInclusive(key(0), key(99)), info.Bounds)
+			require.Equal(t, info, *infoInError)
 
 			d.Close()
 		})
