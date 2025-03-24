@@ -1482,6 +1482,8 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 	}
 
 	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
+		// TODO(radu): do we expect this to happen? (it does seem to happen if I add
+		// a log here).
 		return nil
 	}
 
@@ -1610,6 +1612,7 @@ func pickAutoLPositive(
 	}
 
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+		opts.Logger.Errorf("%v", base.AssertionFailedf("setupInputs failed"))
 		return nil
 	}
 	return pc.maybeAddLevel(opts, env.diskAvailBytes)
@@ -1740,7 +1743,7 @@ func (wa WriteAmpHeuristic) String() string {
 
 // Helper method to pick compactions originating from L0. Uses information about
 // sublevels to generate a compaction.
-func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc *pickedCompaction) {
+func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pickedCompaction {
 	// It is important to pass information about Lbase files to L0Sublevels
 	// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
 	// compaction. Without this, we observed reduced concurrency of L0=>Lbase
@@ -1748,48 +1751,38 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) (pc 
 	//
 	// TODO(bilal) Remove the minCompactionDepth parameter once fixing it at 1
 	// has been shown to not cause a performance regression.
-	lcf, err := vers.L0Sublevels.PickBaseCompaction(1, vers.Levels[baseLevel].Slice())
-	if err != nil {
-		opts.Logger.Errorf("error when picking base compaction: %s", err)
-		return
-	}
+	lcf := vers.L0Sublevels.PickBaseCompaction(opts.Logger, 1, vers.Levels[baseLevel].Slice())
 	if lcf != nil {
-		pc = newPickedCompactionFromL0(lcf, opts, vers, baseLevel, true)
-		pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel)
-		if pc.startLevel.files.Empty() {
-			opts.Logger.Fatalf("empty compaction chosen")
+		pc := newPickedCompactionFromL0(lcf, opts, vers, baseLevel, true)
+		if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+			opts.Logger.Errorf("%v", base.AssertionFailedf("setupInputs failed"))
+		} else {
+			if pc.startLevel.files.Empty() {
+				opts.Logger.Errorf("%v", base.AssertionFailedf("empty compaction chosen"))
+			}
+			return pc.maybeAddLevel(opts, env.diskAvailBytes)
 		}
-		return pc.maybeAddLevel(opts, env.diskAvailBytes)
 	}
 
 	// Couldn't choose a base compaction. Try choosing an intra-L0
 	// compaction. Note that we pass in L0CompactionThreshold here as opposed to
 	// 1, since choosing a single sublevel intra-L0 compaction is
 	// counterproductive.
-	lcf, err = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
-	if err != nil {
-		opts.Logger.Errorf("error when picking intra-L0 compaction: %s", err)
-		return
-	}
+	lcf = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
 	if lcf != nil {
-		pc = newPickedCompactionFromL0(lcf, opts, vers, 0, false)
-		if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
-			return nil
-		}
-		if pc.startLevel.files.Empty() {
-			opts.Logger.Fatalf("empty compaction chosen")
-		}
-		{
-			iter := pc.startLevel.files.Iter()
-			if iter.First() == nil || iter.Next() == nil {
-				// A single-file intra-L0 compaction is unproductive.
-				return nil
+		pc := newPickedCompactionFromL0(lcf, opts, vers, 0, false)
+		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
+			if pc.startLevel.files.Empty() {
+				opts.Logger.Fatalf("empty compaction chosen")
+			}
+			// A single-file intra-L0 compaction is unproductive.
+			if iter := pc.startLevel.files.Iter(); iter.First() != nil && iter.Next() != nil {
+				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
+				return pc
 			}
 		}
-
-		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
 	}
-	return pc
+	return nil
 }
 
 func newPickedManualCompaction(
