@@ -660,12 +660,6 @@ type Options struct {
 		// compaction will never get triggered.
 		MultiLevelCompactionHeuristic MultiLevelHeuristic
 
-		// ForceWriterParallelism is used to force parallelism in the sstable
-		// Writer for the metamorphic tests. Even with the MaxWriterConcurrency
-		// option set, we only enable parallelism in the sstable Writer if there
-		// is enough CPU available, and this option bypasses that.
-		ForceWriterParallelism bool
-
 		// EnableColumnarBlocks is used to decide whether to enable writing
 		// TableFormatPebblev5 sstables. This setting is only respected by
 		// FormatColumnarBlocks. In lower format major versions, the
@@ -1418,7 +1412,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
-	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
 	fmt.Fprintf(&buf, "  create_on_shared=%d\n", o.Experimental.CreateOnShared)
 
@@ -1819,7 +1812,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "max_writer_concurrency":
 				// No longer implemented; ignore.
 			case "force_writer_parallelism":
-				o.Experimental.ForceWriterParallelism, err = strconv.ParseBool(value)
+				// No longer implemented; ignore.
 			case "secondary_cache_size_bytes":
 				o.Experimental.SecondaryCacheSizeBytes, err = strconv.ParseInt(value, 10, 64)
 			case "create_on_shared":

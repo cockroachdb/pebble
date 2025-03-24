@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"runtime"
 	"slices"
 	"sync"
 
@@ -138,8 +137,6 @@ type pointKeyInfo struct {
 }
 
 type coordinationState struct {
-	parallelismEnabled bool
-
 	// writeQueue is used to write data blocks to disk. The writeQueue is primarily
 	// used to maintain the order in which data blocks must be written to disk. For
 	// this reason, every single data block write must be done through the writeQueue.
@@ -148,21 +145,11 @@ type coordinationState struct {
 	sizeEstimate dataBlockEstimates
 }
 
-func (c *coordinationState) init(parallelismEnabled bool, writer *RawRowWriter) {
-	c.parallelismEnabled = parallelismEnabled
-	// useMutex is false regardless of parallelismEnabled, because we do not do
-	// parallel compression yet.
-	c.sizeEstimate.useMutex = false
-
-	// writeQueueSize determines the size of the write queue, or the number
-	// of items which can be added to the queue without blocking. By default, we
-	// use a writeQueue size of 0, since we won't be doing any block writes in
-	// parallel.
-	writeQueueSize := 0
-	if parallelismEnabled {
-		writeQueueSize = runtime.GOMAXPROCS(0)
-	}
-	c.writeQueue = newWriteQueue(writeQueueSize, writer)
+func (c *coordinationState) init(writer *RawRowWriter) {
+	// writeQueueSize determines the size of the write queue, or the number of
+	// items which can be added to the queue without blocking. We always use a
+	// writeQueue size of 0.
+	c.writeQueue = newWriteQueue(0 /* size */, writer)
 }
 
 // sizeEstimate is a general purpose helper for estimating two kinds of sizes:
@@ -301,8 +288,6 @@ type indexBlockBuf struct {
 	block rowblk.Writer
 
 	size struct {
-		useMutex bool
-		mu       sync.Mutex
 		estimate sizeEstimate
 	}
 
@@ -313,10 +298,6 @@ type indexBlockBuf struct {
 
 func (i *indexBlockBuf) clear() {
 	i.block.Reset()
-	if i.size.useMutex {
-		i.size.mu.Lock()
-		defer i.size.mu.Unlock()
-	}
 	i.size.estimate.clear()
 	i.restartInterval = 0
 }
@@ -329,9 +310,8 @@ var indexBlockBufPool = sync.Pool{
 
 const indexBlockRestartInterval = 1
 
-func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
+func newIndexBlockBuf() *indexBlockBuf {
 	i := indexBlockBufPool.Get().(*indexBlockBuf)
-	i.size.useMutex = useMutex
 	i.restartInterval = indexBlockRestartInterval
 	i.block.RestartInterval = indexBlockRestartInterval
 	i.size.estimate.init(rowblk.EmptySize)
@@ -341,11 +321,6 @@ func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
 func (i *indexBlockBuf) shouldFlush(
 	sep InternalKey, valueLen int, flushGovernor *block.FlushGovernor,
 ) bool {
-	if i.size.useMutex {
-		i.size.mu.Lock()
-		defer i.size.mu.Unlock()
-	}
-
 	nEntries := i.size.estimate.numTotalEntries()
 	return shouldFlush(
 		sep.Size(), valueLen, i.restartInterval, int(i.size.estimate.size()),
@@ -355,10 +330,6 @@ func (i *indexBlockBuf) shouldFlush(
 func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
 	i.block.Add(key, value)
 	size := i.block.EstimatedSize()
-	if i.size.useMutex {
-		i.size.mu.Lock()
-		defer i.size.mu.Unlock()
-	}
 	i.size.estimate.writtenWithTotal(uint64(size), inflightSize)
 }
 
@@ -368,31 +339,17 @@ func (i *indexBlockBuf) finish() []byte {
 }
 
 func (i *indexBlockBuf) addInflight(inflightSize int) {
-	if i.size.useMutex {
-		i.size.mu.Lock()
-		defer i.size.mu.Unlock()
-	}
 	i.size.estimate.addInflight(inflightSize)
 }
 
 func (i *indexBlockBuf) estimatedSize() uint64 {
-	if i.size.useMutex {
-		i.size.mu.Lock()
-		defer i.size.mu.Unlock()
-	}
-
-	// Make sure that the size estimation works as expected when parallelism
-	// is disabled.
-	if invariants.Enabled && !i.size.useMutex {
+	// Make sure that the size estimation works as expected.
+	if invariants.Enabled {
 		if i.size.estimate.inflightSize != 0 {
 			panic("unexpected inflight entry in index block size estimation")
 		}
-
-		// NB: The i.block should only be accessed from the writeQueue goroutine,
-		// when parallelism is enabled. We break that invariant here, but that's
-		// okay since parallelism is disabled.
 		if i.size.estimate.size() != uint64(i.block.EstimatedSize()) {
-			panic("index block size estimation sans parallelism is incorrect")
+			panic("index block size estimation is incorrect")
 		}
 	}
 	return i.size.estimate.size()
@@ -403,11 +360,6 @@ func (i *indexBlockBuf) estimatedSize() uint64 {
 // should only be read/updated through the functions defined on the
 // *sizeEstimate type.
 type dataBlockEstimates struct {
-	// If we don't do block compression in parallel, then we don't need to take
-	// the performance hit of synchronizing using this mutex.
-	useMutex bool
-	mu       sync.Mutex
-
 	estimate sizeEstimate
 }
 
@@ -416,21 +368,12 @@ type dataBlockEstimates struct {
 // has not been called, this must be set to 0. compressedSize is the
 // compressed size of the block.
 func (d *dataBlockEstimates) dataBlockCompressed(compressedSize int, inflightSize int) {
-	if d.useMutex {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-	}
 	d.estimate.writtenWithDelta(compressedSize+block.TrailerLen, inflightSize)
 }
 
 // size is an estimated size of datablock data which has been written to disk.
 func (d *dataBlockEstimates) size() uint64 {
-	if d.useMutex {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-	}
-	// If there is no parallel compression, there should not be any inflight bytes.
-	if invariants.Enabled && !d.useMutex {
+	if invariants.Enabled {
 		if d.estimate.inflightSize != 0 {
 			panic("unexpected inflight entry in data block size estimation")
 		}
@@ -443,11 +386,6 @@ var _ = (&dataBlockEstimates{}).addInflightDataBlock
 
 // NB: unused since no parallel compression.
 func (d *dataBlockEstimates) addInflightDataBlock(size int) {
-	if d.useMutex {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-	}
-
 	d.estimate.addInflight(size)
 }
 
@@ -1090,7 +1028,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 	var flushableIndexBlock *indexBlockBuf
 	if shouldFlushIndexBlock {
 		flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
+		w.indexBlock = newIndexBlockBuf()
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
 		indexProps, err = w.finishIndexBlockProps()
@@ -1121,11 +1059,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 	w.indexBlock.addInflight(writeTask.indexInflightSize)
 
 	w.dataBlockBuf = nil
-	if w.coordination.parallelismEnabled {
-		w.coordination.writeQueue.add(writeTask)
-	} else {
-		err = w.coordination.writeQueue.addSync(writeTask)
-	}
+	err = w.coordination.writeQueue.addSync(writeTask)
 	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
 
 	return err
@@ -1284,7 +1218,7 @@ func (w *RawRowWriter) addIndexEntrySep(
 	var err error
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
+		w.indexBlock = newIndexBlockBuf()
 		w.twoLevelIndex = true
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
@@ -1742,7 +1676,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		restartInterval:            o.BlockRestartInterval,
 		checksumType:               o.Checksum,
 		disableKeyOrderChecks:      o.internal.DisableKeyOrderChecks,
-		indexBlock:                 newIndexBlockBuf(o.Parallelism),
+		indexBlock:                 newIndexBlockBuf(),
 		rangeDelBlock:              rowblk.Writer{RestartInterval: 1},
 		rangeKeyBlock:              rowblk.Writer{RestartInterval: 1},
 		topLevelIndexBlock:         rowblk.Writer{RestartInterval: 1},
@@ -1771,7 +1705,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		checksummer: block.Checksummer{Type: o.Checksum},
 	}
 
-	w.coordination.init(o.Parallelism, w)
+	w.coordination.init(w)
 	defer func() {
 		if r := recover(); r != nil {
 			// Don't leak a goroutine if we hit a panic.

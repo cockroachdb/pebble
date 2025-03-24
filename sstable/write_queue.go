@@ -105,10 +105,6 @@ func (w *writeQueue) runWorker() {
 	w.wg.Done()
 }
 
-func (w *writeQueue) add(task *writeTask) {
-	w.tasks <- task
-}
-
 // addSync will perform the writeTask synchronously with the caller goroutine. Calls to addSync
 // are no longer valid once writeQueue.add has been called at least once.
 func (w *writeQueue) addSync(task *writeTask) error {

@@ -299,7 +299,6 @@ func (cfg *randomTableConfig) randomize() {
 			BlockPropertyCollectors: nil,
 			KeySchema:               &testkeysSchema,
 			WritingToLowestLevel:    cfg.rng.IntN(2) == 1,
-			Parallelism:             cfg.rng.IntN(2) == 1,
 		}
 		if v := cfg.rng.IntN(11); v > 0 {
 			cfg.wopts.FilterPolicy = bloom.FilterPolicy(v)
