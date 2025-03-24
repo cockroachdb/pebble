@@ -88,8 +88,16 @@ func openCleanupManager(
 		opts:            opts,
 		objProvider:     objProvider,
 		onTableDeleteFn: onTableDeleteFn,
-		deletePacer:     newDeletionPacer(crtime.NowMono(), int64(opts.TargetByteDeletionRate), getDeletePacerInfo),
-		jobsCh:          make(chan *cleanupJob, jobsQueueDepth),
+		deletePacer: newDeletionPacer(
+			crtime.NowMono(),
+			opts.FreeSpaceThresholdBytes,
+			int64(opts.TargetByteDeletionRate),
+			opts.FreeSpaceTimeframe,
+			opts.ObsoleteBytesMaxRatio,
+			opts.ObsoleteBytesTimeframe,
+			getDeletePacerInfo,
+		),
+		jobsCh: make(chan *cleanupJob, jobsQueueDepth),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
 	cm.waitGroup.Add(1)
