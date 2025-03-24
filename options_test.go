@@ -115,7 +115,6 @@ func TestDefaultOptionsString(t *testing.T) {
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
-  max_writer_concurrency=0
   force_writer_parallelism=false
   secondary_cache_size_bytes=0
   create_on_shared=0
@@ -296,7 +295,6 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.DeletionSizeRatioThreshold = 0.7
 			opts.Experimental.TombstoneDenseCompactionThreshold = 0.2
 			opts.Experimental.FileCacheShards = 500
-			opts.Experimental.MaxWriterConcurrency = 1
 			opts.Experimental.ForceWriterParallelism = true
 			opts.Experimental.SecondaryCacheSizeBytes = 1024
 			opts.EnsureDefaults()

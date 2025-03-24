@@ -3118,12 +3118,11 @@ func (d *DB) compactAndWrite(
 		}
 		// Create a new table.
 		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
-		objMeta, tw, cpuWorkHandle, err := d.newCompactionOutput(jobID, c, writerOpts)
+		objMeta, tw, err := d.newCompactionOutput(jobID, c, writerOpts)
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
 		runner.WriteTable(objMeta, tw)
-		d.opts.Experimental.CPUWorkPermissionGranter.CPUWorkDone(cpuWorkHandle)
 	}
 	result = runner.Finish()
 	if result.Err == nil {
@@ -3246,10 +3245,10 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 // compaction or flush.
 func (d *DB) newCompactionOutput(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
-) (objstorage.ObjectMetadata, sstable.RawWriter, CPUWorkHandle, error) {
+) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
 	writable, objMeta, err := d.newCompactionOutputObj(jobID, c, base.FileTypeTable)
 	if err != nil {
-		return objstorage.ObjectMetadata{}, nil, nil, err
+		return objstorage.ObjectMetadata{}, nil, err
 	}
 
 	var reason string
@@ -3272,16 +3271,10 @@ func (d *DB) newCompactionOutput(
 		},
 	})
 
-	const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
-	cpuWorkHandle := d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
-		MaxFileWriteAdditionalCPUTime,
-	)
-	writerOpts.Parallelism =
-		d.opts.Experimental.MaxWriterConcurrency > 0 &&
-			(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
+	writerOpts.Parallelism = d.opts.Experimental.ForceWriterParallelism
 
 	tw := sstable.NewRawWriter(writable, writerOpts)
-	return objMeta, tw, cpuWorkHandle, nil
+	return objMeta, tw, nil
 }
 
 // newCompactionOutputObj creates an object produced by a compaction or flush.

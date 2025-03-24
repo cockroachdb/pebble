@@ -220,40 +220,6 @@ type Writer interface {
 	RangeKeyDelete(start, end []byte, opts *WriteOptions) error
 }
 
-// CPUWorkHandle represents a handle used by the CPUWorkPermissionGranter API.
-type CPUWorkHandle interface {
-	// Permitted indicates whether Pebble can use additional CPU resources.
-	Permitted() bool
-}
-
-// CPUWorkPermissionGranter is used to request permission to opportunistically
-// use additional CPUs to speed up internal background work.
-type CPUWorkPermissionGranter interface {
-	// GetPermission returns a handle regardless of whether permission is granted
-	// or not. In the latter case, the handle is only useful for recording
-	// the CPU time actually spent on this calling goroutine.
-	GetPermission(time.Duration) CPUWorkHandle
-	// CPUWorkDone must be called regardless of whether CPUWorkHandle.Permitted
-	// returns true or false.
-	CPUWorkDone(CPUWorkHandle)
-}
-
-// Use a default implementation for the CPU work granter to avoid excessive nil
-// checks in the code.
-type defaultCPUWorkHandle struct{}
-
-func (d defaultCPUWorkHandle) Permitted() bool {
-	return false
-}
-
-type defaultCPUWorkGranter struct{}
-
-func (d defaultCPUWorkGranter) GetPermission(_ time.Duration) CPUWorkHandle {
-	return defaultCPUWorkHandle{}
-}
-
-func (d defaultCPUWorkGranter) CPUWorkDone(_ CPUWorkHandle) {}
-
 // DB provides a concurrent, persistent ordered key/value store.
 //
 // A DB's basic operations (Get, Set, Delete) should be self-explanatory. Get
