@@ -97,6 +97,48 @@ func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(i.Score))
 }
 
+// BlobFileCreateInfo contains the info for a blob file creation event.
+type BlobFileCreateInfo struct {
+	JobID int
+	// Reason is the reason for the table creation: "compacting", "flushing", or
+	// "ingesting".
+	Reason  string
+	Path    string
+	FileNum base.DiskFileNum
+}
+
+func (i BlobFileCreateInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i BlobFileCreateInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("[JOB %d] %s: blob file created %s",
+		redact.Safe(i.JobID), redact.Safe(i.Reason), i.FileNum)
+}
+
+// BlobFileDeleteInfo contains the info for a blob file deletion event.
+type BlobFileDeleteInfo struct {
+	JobID   int
+	Path    string
+	FileNum base.DiskFileNum
+	Err     error
+}
+
+func (i BlobFileDeleteInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i BlobFileDeleteInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	if i.Err != nil {
+		w.Printf("[JOB %d] blob file delete error %s: %s",
+			redact.Safe(i.JobID), i.FileNum, i.Err)
+		return
+	}
+	w.Printf("[JOB %d] blob file deleted %s", redact.Safe(i.JobID), i.FileNum)
+}
+
 // CompactionInfo contains the info for a compaction event.
 type CompactionInfo struct {
 	// JobID is the ID of the compaction job.
@@ -728,6 +770,12 @@ type EventListener struct {
 	// operation such as flush or compaction.
 	BackgroundError func(error)
 
+	// BlobFileCreated is invoked after a blob file has been created.
+	BlobFileCreated func(BlobFileCreateInfo)
+
+	// BlobFileDeleted is invoked after a blob file has been deleted.
+	BlobFileDeleted func(BlobFileDeleteInfo)
+
 	// DataCorruption is invoked when an on-disk corruption is detected. It should
 	// not block, as it is called synchronously in read paths.
 	DataCorruption func(DataCorruptionInfo)
@@ -827,6 +875,12 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 			l.BackgroundError = func(error) {}
 		}
 	}
+	if l.BlobFileCreated == nil {
+		l.BlobFileCreated = func(info BlobFileCreateInfo) {}
+	}
+	if l.BlobFileDeleted == nil {
+		l.BlobFileDeleted = func(info BlobFileDeleteInfo) {}
+	}
 	if l.DataCorruption == nil {
 		if logger != nil {
 			l.DataCorruption = func(info DataCorruptionInfo) {
@@ -912,6 +966,12 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		BackgroundError: func(err error) {
 			logger.Errorf("background error: %s", err)
 		},
+		BlobFileCreated: func(info BlobFileCreateInfo) {
+			logger.Infof("%s", info)
+		},
+		BlobFileDeleted: func(info BlobFileDeleteInfo) {
+			logger.Infof("%s", info)
+		},
 		DataCorruption: func(info DataCorruptionInfo) {
 			logger.Errorf("%s", info)
 		},
@@ -989,6 +1049,14 @@ func TeeEventListener(a, b EventListener) EventListener {
 		BackgroundError: func(err error) {
 			a.BackgroundError(err)
 			b.BackgroundError(err)
+		},
+		BlobFileCreated: func(info BlobFileCreateInfo) {
+			a.BlobFileCreated(info)
+			b.BlobFileCreated(info)
+		},
+		BlobFileDeleted: func(info BlobFileDeleteInfo) {
+			a.BlobFileDeleted(info)
+			b.BlobFileDeleted(info)
 		},
 		DataCorruption: func(info DataCorruptionInfo) {
 			a.DataCorruption(info)

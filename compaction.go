@@ -174,6 +174,15 @@ func (k compactionKind) String() string {
 	return "?"
 }
 
+// compactingOrFlushing returns "flushing" if the compaction kind is a flush,
+// otherwise it returns "compacting".
+func (k compactionKind) compactingOrFlushing() string {
+	if k == compactionKindFlush {
+		return "flushing"
+	}
+	return "compacting"
+}
+
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
 type compaction struct {
@@ -3143,7 +3152,7 @@ func (d *DB) compactAndWrite(
 		}
 		// Create a new table.
 		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
-		objMeta, tw, err := d.newCompactionOutput(jobID, c, writerOpts)
+		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
@@ -3271,43 +3280,56 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	return ve, nil
 }
 
-// newCompactionOutput creates an object for a new table produced by a
+// newCompactionOutputTable creates an object for a new table produced by a
 // compaction or flush.
-func (d *DB) newCompactionOutput(
+func (d *DB) newCompactionOutputTable(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
-	writable, objMeta, err := d.newCompactionOutputObj(jobID, c, base.FileTypeTable)
+	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeTable)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
 	}
-
-	var reason string
-	if c.kind == compactionKindFlush {
-		reason = "flushing"
-	} else {
-		reason = "compacting"
-	}
 	d.opts.EventListener.TableCreated(TableCreateInfo{
 		JobID:   int(jobID),
-		Reason:  reason,
+		Reason:  c.kind.compactingOrFlushing(),
 		Path:    d.objProvider.Path(objMeta),
 		FileNum: objMeta.DiskFileNum,
 	})
-
 	writerOpts.SetInternal(sstableinternal.WriterOptions{
 		CacheOpts: sstableinternal.CacheOptions{
 			CacheHandle: d.cacheHandle,
 			FileNum:     objMeta.DiskFileNum,
 		},
 	})
-
 	tw := sstable.NewRawWriterWithCPUMeasurer(writable, writerOpts, c.grantHandle)
 	return objMeta, tw, nil
 }
 
+// Allow the newCompactionOutputBlob method to be unused for now.
+// TODO(jackson): Hook this up.
+var _ = (*DB).newCompactionOutputBlob
+
+// newCompactionOutputBlob creates an object for a new blob produced by a
+// compaction or flush.
+func (d *DB) newCompactionOutputBlob(
+	jobID JobID, c *compaction,
+) (objstorage.Writable, objstorage.ObjectMetadata, error) {
+	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeBlob)
+	if err != nil {
+		return nil, objstorage.ObjectMetadata{}, err
+	}
+	d.opts.EventListener.BlobFileCreated(BlobFileCreateInfo{
+		JobID:   int(jobID),
+		Reason:  c.kind.compactingOrFlushing(),
+		Path:    d.objProvider.Path(objMeta),
+		FileNum: objMeta.DiskFileNum,
+	})
+	return writable, objMeta, nil
+}
+
 // newCompactionOutputObj creates an object produced by a compaction or flush.
 func (d *DB) newCompactionOutputObj(
-	jobID JobID, c *compaction, typ base.FileType,
+	c *compaction, typ base.FileType,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
 
