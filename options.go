@@ -1272,9 +1272,6 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
 	}
-	if o.Experimental.CompactionScheduler == nil {
-		o.Experimental.CompactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
-	}
 
 	o.initMaps()
 }

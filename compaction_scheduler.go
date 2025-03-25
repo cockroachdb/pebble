@@ -237,7 +237,8 @@ func (c *pickedCompactionCache) add(pc *pickedCompaction) {
 // ConcurrencyLimitScheduler is the default scheduler used by Pebble. It
 // simply uses the concurrency limit retrieved from
 // DBForCompaction.GetAllowedWithoutPermission to decide the number of
-// compactions to schedule.
+// compactions to schedule. ConcurrencyLimitScheduler must have its Register
+// method called at most once -- i.e., it cannot be reused across DBs.
 //
 // Since the GetAllowedWithoutPermission value changes over time, the
 // scheduler needs to be quite current in its sampling, especially if the

@@ -81,6 +81,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
 	opts.EnsureDefaults()
+	if opts.Experimental.CompactionScheduler == nil {
+		opts.Experimental.CompactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
+	}
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
