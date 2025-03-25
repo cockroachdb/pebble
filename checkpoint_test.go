@@ -464,6 +464,9 @@ func TestCheckpointManyFiles(t *testing.T) {
 
 	// Open the checkpoint and iterate through all the keys.
 	{
+		// Cannot reuse the CompactionScheduler across DB opens.
+		opts.Experimental.CompactionScheduler = nil
+		opts.EnsureDefaults()
 		d, err := Open(checkpointPath, opts)
 		require.NoError(t, err)
 		iter, _ := d.NewIter(nil)
