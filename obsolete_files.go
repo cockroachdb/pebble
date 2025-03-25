@@ -286,7 +286,13 @@ func (cm *cleanupManager) deleteObsoleteObject(
 			FileNum: fileNum,
 			Err:     err,
 		})
-		// TODO(jackson): Add BlobFileDeleted event.
+	case base.FileTypeBlob:
+		cm.opts.EventListener.BlobFileDeleted(BlobFileDeleteInfo{
+			JobID:   int(jobID),
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
 	}
 }
 
