@@ -26,7 +26,8 @@ import (
 // sorted in internal key order, where lower index files contain keys that sort
 // left of files with higher indexes.
 //
-// Input sstables must only contain keys with the zero sequence number.
+// Input sstables must only contain keys with the zero sequence number and must
+// not contain references to values in external blob files.
 //
 // Iterators constructed through NewExternalIter do not support all iterator
 // options, including block-property and table filters. NewExternalIter errors
@@ -301,6 +302,9 @@ func openExternalTables(
 		r, err := sstable.NewReader(ctx, readable, readerOpts)
 		if err != nil {
 			return readers, err
+		}
+		if r.Properties.NumValuesInBlobFiles > 0 {
+			return readers, errors.Newf("pebble: NewExternalIter does not support blob references")
 		}
 		readers = append(readers, r)
 	}

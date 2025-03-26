@@ -18,7 +18,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -28,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -428,26 +431,51 @@ func parseValue(s string) []byte {
 	return []byte(s)
 }
 
+func splitFields(line string, n int) ([]string, error) {
+	return splitFieldsRange(line, n, n)
+}
+
+func splitFieldsRange(line string, minmum, maximum int) ([]string, error) {
+	fields := strings.Fields(line)
+	if len(fields) < minmum {
+		return nil, errors.Errorf("require at least %d fields, got %d", minmum, len(fields))
+	}
+	if len(fields) > maximum {
+		fields[maximum-1] = strings.Join(fields[maximum-1:], " ")
+		fields = fields[:maximum]
+	}
+	for i := range fields {
+		if fields[i] == `<nil>` {
+			fields[i] = ""
+		}
+	}
+	return fields, nil
+}
+
 func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
-	for _, line := range strings.Split(d.Input, "\n") {
-		parts := strings.Fields(line)
-		if len(parts) == 0 {
+	for _, line := range crstrings.Lines(d.Input) {
+		i := strings.IndexFunc(line, unicode.IsSpace)
+		cmd := line
+		if i > 0 {
+			cmd = line[:i]
+		} else if cmd == "" {
 			continue
 		}
-		if parts[1] == `<nil>` {
-			parts[1] = ""
-		}
+
+		var parts []string
 		var err error
-		switch parts[0] {
+		switch cmd {
 		case "set":
-			if len(parts) != 3 {
-				return errors.Errorf("%s expects 2 arguments", parts[0])
+			parts, err = splitFields(line, 3)
+			if err != nil {
+				return err
 			}
 			err = b.Set([]byte(parts[1]), parseValue(parts[2]), nil)
 
 		case "set-multiple":
-			if len(parts) != 3 {
-				return errors.Errorf("%s expects 2 arguments (n and prefix)", parts[0])
+			parts, err = splitFields(line, 3)
+			if err != nil {
+				return err
 			}
 			n, err := strconv.ParseUint(parts[1], 10, 32)
 			if err != nil {
@@ -462,13 +490,15 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			}
 
 		case "del":
-			if len(parts) != 2 {
-				return errors.Errorf("%s expects 1 argument", parts[0])
+			parts, err = splitFields(line, 2)
+			if err != nil {
+				return err
 			}
 			err = b.Delete([]byte(parts[1]), nil)
 		case "del-sized":
-			if len(parts) != 3 {
-				return errors.Errorf("%s expects 2 arguments", parts[0])
+			parts, err = splitFields(line, 3)
+			if err != nil {
+				return err
 			}
 			var valSize uint64
 			valSize, err = strconv.ParseUint(parts[2], 10, 32)
@@ -477,23 +507,27 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			}
 			err = b.DeleteSized([]byte(parts[1]), uint32(valSize), nil)
 		case "singledel":
-			if len(parts) != 2 {
-				return errors.Errorf("%s expects 1 argument", parts[0])
+			parts, err = splitFields(line, 2)
+			if err != nil {
+				return err
 			}
 			err = b.SingleDelete([]byte(parts[1]), nil)
 		case "del-range":
-			if len(parts) != 3 {
-				return errors.Errorf("%s expects 2 arguments", parts[0])
+			parts, err = splitFields(line, 3)
+			if err != nil {
+				return err
 			}
 			err = b.DeleteRange([]byte(parts[1]), []byte(parts[2]), nil)
 		case "merge":
-			if len(parts) != 3 {
-				return errors.Errorf("%s expects 2 arguments", parts[0])
+			parts, err = splitFields(line, 3)
+			if err != nil {
+				return err
 			}
 			err = b.Merge([]byte(parts[1]), parseValue(parts[2]), nil)
 		case "range-key-set":
-			if len(parts) < 4 || len(parts) > 5 {
-				return errors.Errorf("%s expects 3 or 4 arguments", parts[0])
+			parts, err = splitFieldsRange(line, 4, 5)
+			if err != nil {
+				return err
 			}
 			var val []byte
 			if len(parts) == 5 {
@@ -506,8 +540,9 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 				val,
 				nil)
 		case "range-key-unset":
-			if len(parts) != 4 {
-				return errors.Errorf("%s expects 3 arguments", parts[0])
+			parts, err = splitFields(line, 4)
+			if err != nil {
+				return err
 			}
 			err = b.RangeKeyUnset(
 				[]byte(parts[1]),
@@ -515,15 +550,16 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 				[]byte(parts[3]),
 				nil)
 		case "range-key-del":
-			if len(parts) != 3 {
-				return errors.Errorf("%s expects 2 arguments", parts[0])
+			parts, err = splitFields(line, 3)
+			if err != nil {
+				return err
 			}
 			err = b.RangeKeyDelete(
 				[]byte(parts[1]),
 				[]byte(parts[2]),
 				nil)
 		default:
-			return errors.Errorf("unknown op: %s", parts[0])
+			return errors.Errorf("unknown op: %s", cmd)
 		}
 		if err != nil {
 			return err
@@ -635,7 +671,27 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	return w.Close()
 }
 
-func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
+type dataDrivenCmdOptions struct {
+	blobValues *testutils.BlobValues
+}
+
+func withBlobValues(bv *testutils.BlobValues) func(*dataDrivenCmdOptions) {
+	return func(o *dataDrivenCmdOptions) { o.blobValues = bv }
+}
+
+func combineDataDrivenOpts(opts ...func(*dataDrivenCmdOptions)) dataDrivenCmdOptions {
+	combined := dataDrivenCmdOptions{}
+	for _, opt := range opts {
+		opt(&combined)
+	}
+	return combined
+}
+
+func runBuildCmd(
+	td *datadriven.TestData, d *DB, fs vfs.FS, opts ...func(*dataDrivenCmdOptions),
+) error {
+	ddOpts := combineDataDrivenOpts(opts...)
+
 	b := newIndexedBatch(nil, d.opts.Comparer)
 	if err := runBatchDefineCmd(td, b); err != nil {
 		return err
@@ -660,6 +716,8 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 				tableFormat = sstable.TableFormatPebblev3
 			case "pebblev4":
 				tableFormat = sstable.TableFormatPebblev4
+			case "pebblev5":
+				tableFormat = sstable.TableFormatPebblev5
 			default:
 				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
 			}
@@ -667,7 +725,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
-
+	var blobReferences testutils.BlobReferences
 	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
@@ -677,7 +735,22 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
 		tmp := kv.K
 		tmp.SetSeqNum(0)
-		if err := w.Raw().Add(tmp, kv.InPlaceValue(), false); err != nil {
+
+		v := kv.InPlaceValue()
+		// If the value looks like it's a debug blob handle, parse it and add it
+		// to the sstable as a blob handle.
+		if ddOpts.blobValues != nil && ddOpts.blobValues.IsBlobHandle(string(v)) {
+			handle, err := ddOpts.blobValues.ParseInlineHandle(string(v), &blobReferences)
+			if err != nil {
+				return err
+			}
+			if err := w.Raw().AddWithBlobHandle(tmp, handle, base.ShortAttribute(0), false); err != nil {
+				return err
+			}
+			continue
+		}
+		// Otherwise add it as an ordinary value.
+		if err := w.Raw().Add(tmp, v, false); err != nil {
 			return err
 		}
 	}

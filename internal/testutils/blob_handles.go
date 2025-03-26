@@ -7,6 +7,7 @@ package testutils
 import (
 	"context"
 	"math/rand/v2"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -85,6 +86,12 @@ func (bv *BlobValues) ParseInternalValue(input string) (base.InternalValue, erro
 	}), nil
 }
 
+// IsBlobHandle returns true if the input string looks like it's a debug blob
+// handle.
+func (bv *BlobValues) IsBlobHandle(input string) bool {
+	return strings.HasPrefix(input, "blob{")
+}
+
 // Parse parses a debug blob handle from the string, returning the handle and
 // recording the handle's corresponding value.
 func (bv *BlobValues) Parse(input string) (h blob.Handle, err error) {
@@ -158,10 +165,54 @@ func (bv *BlobValues) Parse(input string) (h blob.Handle, err error) {
 	return h, nil
 }
 
+// ParseInlineHandle parses a debug blob handle from the string. It maps the
+// file number to a reference index using the provided *BlobReferences,
+// returning an inline handle.
+//
+// It's intended for tests that must manually construct inline blob references.
+func (bv *BlobValues) ParseInlineHandle(
+	input string, references *BlobReferences,
+) (h blob.InlineHandle, err error) {
+	fullHandle, err := bv.Parse(input)
+	if err != nil {
+		return blob.InlineHandle{}, err
+	}
+	return blob.InlineHandle{
+		InlineHandlePreface: blob.InlineHandlePreface{
+			ReferenceIndex: references.MapToReferenceIndex(fullHandle.FileNum),
+			ValueLen:       fullHandle.ValueLen,
+		},
+		HandleSuffix: blob.HandleSuffix{
+			BlockNum:      fullHandle.BlockNum,
+			OffsetInBlock: fullHandle.OffsetInBlock,
+		},
+	}, nil
+}
+
 // errFromPanic can be used in a recover block to convert panics into errors.
 func errFromPanic(r any) error {
 	if err, ok := r.(error); ok {
 		return err
 	}
 	return errors.Errorf("%v", r)
+}
+
+// BlobReferences is a helper for tests that manually construct inline blob
+// references. It tracks the set of file numbers used within a sstable, and maps
+// each file number to a reference index (encoded within the
+// blob.InlineHandlePreface).
+type BlobReferences struct {
+	fileNums []base.DiskFileNum
+}
+
+// MapToReferenceIndex maps the given file number to a reference index.
+func (b *BlobReferences) MapToReferenceIndex(fileNum base.DiskFileNum) uint32 {
+	for i, fn := range b.fileNums {
+		if fn == fileNum {
+			return uint32(i)
+		}
+	}
+	i := uint32(len(b.fileNums))
+	b.fileNums = append(b.fileNums, fileNum)
+	return i
 }

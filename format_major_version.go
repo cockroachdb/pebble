@@ -214,10 +214,15 @@ const (
 
 	// -- Add experimental versions here --
 
-	// formatChecksumFooter is a format major version enabling use of the
-	// TableFormatPebblev6 table format. It is a format allowing for the checksum
-	// of sstable footers.
-	formatChecksumFooter
+	// formatTableFormatV6 is a format major version enabling the sstable table
+	// format TableFormatPebblev6.
+	//
+	// The TableFormatPebblev6 sstable format introduces a checksum within the
+	// sstable footer, and allows inclusion of blob handle references within the
+	// value column of a sstable block.
+	//
+	// This format major version does not yet enable use of value separation.
+	formatTableFormatV6
 
 	// internalFormatNewest is the most recent, possibly experimental format major
 	// version.
@@ -249,7 +254,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev4
 	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
-	case formatChecksumFooter:
+	case formatTableFormatV6:
 		return sstable.TableFormatPebblev6
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -263,7 +268,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		formatChecksumFooter:
+		formatTableFormatV6:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -309,8 +314,8 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	FormatWALSyncChunks: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatWALSyncChunks)
 	},
-	formatChecksumFooter: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(formatChecksumFooter)
+	formatTableFormatV6: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(formatTableFormatV6)
 	},
 }
 
