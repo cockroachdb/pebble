@@ -150,3 +150,8 @@ load writer-version=15 db-version=14
 a.SET.0:
 ----
 pebble: table format (Pebble,v4) is not within range supported at DB format major version 14, ((Pebble,v1),(Pebble,v3))
+
+load writer-version=21 db-version=21
+d.SET.0:blob{fileNum=2952 value=foo}
+----
+pebble: ingesting tables with blob references is not supported

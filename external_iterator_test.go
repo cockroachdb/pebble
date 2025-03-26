@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -33,6 +34,28 @@ func TestExternalIterator(t *testing.T) {
 	d, err := Open("", o)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, d.Close()) }()
+	var bv testutils.BlobValues
+
+	getOptsAndFiles := func(td *datadriven.TestData) (opts IterOptions, files [][]sstable.ReadableFile) {
+		opts = IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
+		for _, arg := range td.CmdArgs {
+			switch arg.Key {
+			case "mask-suffix":
+				opts.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
+			case "lower":
+				opts.LowerBound = []byte(arg.Vals[0])
+			case "upper":
+				opts.UpperBound = []byte(arg.Vals[0])
+			case "files":
+				for _, v := range arg.Vals {
+					f, err := mem.Open(v)
+					require.NoError(t, err)
+					files = append(files, []sstable.ReadableFile{f})
+				}
+			}
+		}
+		return opts, files
+	}
 
 	datadriven.RunTest(t, "testdata/external_iterator", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -40,32 +63,20 @@ func TestExternalIterator(t *testing.T) {
 			mem = vfs.NewMem()
 			return ""
 		case "build":
-			if err := runBuildCmd(td, d, mem); err != nil {
+			if err := runBuildCmd(td, d, mem, withBlobValues(&bv)); err != nil {
 				return err.Error()
 			}
 			return ""
-		case "iter":
-			opts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
-			var files [][]sstable.ReadableFile
-			for _, arg := range td.CmdArgs {
-				switch arg.Key {
-				case "mask-suffix":
-					opts.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
-				case "lower":
-					opts.LowerBound = []byte(arg.Vals[0])
-				case "upper":
-					opts.UpperBound = []byte(arg.Vals[0])
-				case "files":
-					for _, v := range arg.Vals {
-						f, err := mem.Open(v)
-						require.NoError(t, err)
-						files = append(files, []sstable.ReadableFile{f})
-					}
-				}
-			}
+		case "iter-init-error":
+			opts, files := getOptsAndFiles(td)
 			testExternalIteratorInitError(t, o, &opts, files)
+			return ""
+		case "iter":
+			opts, files := getOptsAndFiles(td)
 			it, err := NewExternalIter(o, &opts, files)
-			require.NoError(t, err)
+			if err != nil {
+				return fmt.Sprintf("error: %s", err.Error())
+			}
 			return runIterCmd(td, it, true /* close iter */)
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

@@ -32,12 +32,14 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
@@ -75,11 +77,15 @@ func TestSSTableKeyCompare(t *testing.T) {
 
 func TestIngestLoad(t *testing.T) {
 	mem := vfs.NewMem()
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 
 	datadriven.RunTest(t, "testdata/ingest_load", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "load":
-			writerOpts := sstable.WriterOptions{}
+			writerOpts := sstable.WriterOptions{
+				Comparer:  testkeys.Comparer,
+				KeySchema: &keySchema,
+			}
 			var dbVersion FormatMajorVersion
 			for _, cmdArgs := range td.CmdArgs {
 				v, err := strconv.Atoi(cmdArgs.Vals[0])
@@ -100,6 +106,8 @@ func TestIngestLoad(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			var bv testutils.BlobValues
+			var br testutils.BlobReferences
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "EncodeSpan: ") {
@@ -116,9 +124,17 @@ func TestIngestLoad(t *testing.T) {
 					return fmt.Sprintf("malformed input: %s\n", data)
 				}
 				key := base.ParseInternalKey(data[:j])
-				value := []byte(data[j+1:])
-				if err := w.Add(key, value, false /* forceObsolete */); err != nil {
-					return err.Error()
+				if bv.IsBlobHandle(data[j+1:]) {
+					ih, err := bv.ParseInlineHandle(data[j+1:], &br)
+					require.NoError(t, err)
+					if err := w.AddWithBlobHandle(key, ih, base.ShortAttribute(0), false /* forceObsolete */); err != nil {
+						return err.Error()
+					}
+				} else {
+					value := []byte(data[j+1:])
+					if err := w.Add(key, value, false /* forceObsolete */); err != nil {
+						return err.Error()
+					}
 				}
 			}
 			if err := w.Close(); err != nil {
@@ -126,8 +142,10 @@ func TestIngestLoad(t *testing.T) {
 			}
 
 			opts := &Options{
-				Comparer: DefaultComparer,
-				FS:       mem,
+				Comparer:   testkeys.Comparer,
+				KeySchema:  keySchema.Name,
+				KeySchemas: sstable.MakeKeySchemas(&keySchema),
+				FS:         mem,
 			}
 			opts.WithFSDefaults()
 			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, []base.FileNum{1})
