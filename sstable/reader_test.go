@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/vfs"
@@ -2534,4 +2535,69 @@ func newReader(r ReadableFile, o ReaderOptions) (*Reader, error) {
 		return nil, err
 	}
 	return NewReader(context.Background(), readable, o)
+}
+
+// TestReaderReportsCorruption tests that the reader reports corruption when
+// an external file goes missing after obtaining a remote.ObjectReader for it.
+func TestReaderReportsCorruption(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	remoteStorage := remote.NewInMem()
+	settings := objstorageprovider.DefaultSettings(vfs.NewMem(), "")
+	settings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"locator": remoteStorage,
+	})
+	settings.Remote.CreateOnSharedLocator = "locator"
+	settings.Remote.CreateOnShared = remote.CreateOnSharedAll
+	provider, err := objstorageprovider.Open(settings)
+	require.NoError(t, err)
+	defer provider.Close()
+	require.NoError(t, provider.SetCreatorID(1))
+
+	writable, objMeta, err := provider.Create(ctx, base.FileTypeTable, 1, objstorage.CreateOptions{
+		PreferSharedStorage: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, objMeta.Remote.Storage)
+
+	// Create an sst file with multiple data blocks.
+	w := NewWriter(writable, WriterOptions{BlockSize: 1})
+	for i := range 100 {
+		require.NoError(t, w.Set([]byte(fmt.Sprintf("%04d", i)), []byte(fmt.Sprintf("value%04d", i))))
+	}
+	require.NoError(t, w.Close())
+
+	readable, err := provider.OpenForReading(ctx, base.FileTypeTable, 1, objstorage.OpenOptions{})
+	require.NoError(t, err)
+	r, err := NewReader(context.Background(), readable, ReaderOptions{})
+	require.NoError(t, err)
+	defer r.Close()
+
+	var lastReportedCorruption error
+	env := block.ReadEnv{
+		ReportCorruptionFn: func(opaque any, err error) error {
+			lastReportedCorruption = err
+			return errors.Wrap(err, "error passed through ReportCorruptionFn")
+		},
+	}
+	iter, err := r.NewPointIter(context.Background(), NoTransforms, nil, nil, nil, 0, env, nil)
+	require.NoError(t, err)
+	defer iter.Close()
+	kv := iter.First()
+	require.NotNil(t, kv)
+
+	// Delete all objects from the store and expect to get a corruption error.
+	objects, err := remoteStorage.List("", "")
+	require.NoError(t, err)
+	for _, o := range objects {
+		require.NoError(t, remoteStorage.Delete(o))
+	}
+	for ; kv != nil; kv = iter.Next() {
+	}
+	iterErr := iter.Error()
+	require.ErrorContains(t, iterErr, "error passed through ReportCorruptionFn: in-mem remote storage object does not exist")
+	require.True(t, base.IsCorruptionError(iterErr))
+	require.ErrorContains(t, lastReportedCorruption, "in-mem remote storage object does not exist")
+	require.True(t, base.IsCorruptionError(lastReportedCorruption))
 }

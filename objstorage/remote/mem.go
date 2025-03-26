@@ -8,9 +8,10 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
 	"strings"
 	"sync"
+
+	"github.com/cockroachdb/errors"
 )
 
 // NewInMem returns an in-memory implementation of the remote.Storage
@@ -49,25 +50,32 @@ func (s *inMemStore) ReadObject(
 	if err != nil {
 		return nil, 0, err
 	}
-	return &inMemReader{data: obj.data}, int64(len(obj.data)), nil
+	return &inMemReader{objName: objName, store: s}, int64(len(obj.data)), nil
 }
 
 type inMemReader struct {
-	data []byte
+	objName string
+	store   *inMemStore
 }
 
 var _ ObjectReader = (*inMemReader)(nil)
 
 func (r *inMemReader) ReadAt(ctx context.Context, p []byte, offset int64) error {
-	if offset+int64(len(p)) > int64(len(r.data)) {
+	// We don't just store obj.data in the inMemReader because we want to emit an
+	// error if the object is deleted from under us.
+	obj, err := r.store.getObj(r.objName)
+	if err != nil {
+		return err
+	}
+	if offset+int64(len(p)) > int64(len(obj.data)) {
 		return io.EOF
 	}
-	copy(p, r.data[offset:])
+	copy(p, obj.data[offset:])
 	return nil
 }
 
 func (r *inMemReader) Close() error {
-	r.data = nil
+	r.store = nil
 	return nil
 }
 
@@ -135,15 +143,19 @@ func (s *inMemStore) Size(objName string) (int64, error) {
 }
 
 func (s *inMemStore) IsNotExistError(err error) bool {
-	return err == os.ErrNotExist
+	return errors.Is(err, inMemStoreNotExistErr)
 }
+
+// We use a custom "not exists" error to make sure that callers correctly use
+// IsNotExistError.
+var inMemStoreNotExistErr = errors.Newf("in-mem remote storage object does not exist")
 
 func (s *inMemStore) getObj(name string) (*inMemObj, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	obj, ok := s.mu.objects[name]
 	if !ok {
-		return nil, os.ErrNotExist
+		return nil, inMemStoreNotExistErr
 	}
 	return obj, nil
 }
