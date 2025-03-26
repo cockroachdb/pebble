@@ -35,22 +35,27 @@ const remoteReadaheadSizeForCompaction = 8 * 1024 * 1024 /* 8MB */
 // remote.ObjectReader returned by remote.Storage.ReadObject. It is stateless
 // and can be called concurrently.
 type remoteReadable struct {
-	objReader remote.ObjectReader
-	size      int64
-	fileNum   base.DiskFileNum
-	cache     *sharedcache.Cache
+	objReader     remote.ObjectReader
+	size          int64
+	fileNum       base.DiskFileNum
+	cache         *sharedcache.Cache
+	errIsNotExist func(error) bool
 }
 
 var _ objstorage.Readable = (*remoteReadable)(nil)
 
 func (p *provider) newRemoteReadable(
-	objReader remote.ObjectReader, size int64, fileNum base.DiskFileNum,
+	objReader remote.ObjectReader,
+	size int64,
+	fileNum base.DiskFileNum,
+	errIsNotExist func(error) bool,
 ) *remoteReadable {
 	return &remoteReadable{
-		objReader: objReader,
-		size:      size,
-		fileNum:   fileNum,
-		cache:     p.remote.cache,
+		objReader:     objReader,
+		size:          size,
+		fileNum:       fileNum,
+		cache:         p.remote.cache,
+		errIsNotExist: errIsNotExist,
 	}
 }
 
@@ -64,14 +69,21 @@ func (r *remoteReadable) ReadAt(ctx context.Context, p []byte, offset int64) err
 func (r *remoteReadable) readInternal(
 	ctx context.Context, p []byte, offset int64, forCompaction bool,
 ) error {
+	var err error
 	if r.cache != nil {
 		flags := sharedcache.ReadFlags{
 			// Don't add data to the cache if this read is for a compaction.
 			ReadOnly: forCompaction,
 		}
-		return r.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
+		err = r.cache.ReadAt(ctx, r.fileNum, p, offset, r.objReader, r.size, flags)
+	} else {
+		err = r.objReader.ReadAt(ctx, p, offset)
 	}
-	return r.objReader.ReadAt(ctx, p, offset)
+	if err != nil && r.errIsNotExist(err) {
+		// If a file goes missing, we consider this a corruption error.
+		err = base.MarkCorruptionError(err)
+	}
+	return err
 }
 
 func (r *remoteReadable) Close() error {

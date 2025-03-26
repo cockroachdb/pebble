@@ -13,7 +13,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -105,4 +108,41 @@ func TestRemoteReadHandle(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
 	})
+}
+
+// TestErrorWhenObjectDisappears verifies that the provider returns a corruption
+// error when we read from an opened object that disappears from under us.
+func TestErrorWhenObjectDisappears(t *testing.T) {
+	remoteStorage := remote.NewInMem()
+	settings := DefaultSettings(vfs.NewMem(), "")
+	settings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		"locator": remoteStorage,
+	})
+	settings.Remote.CreateOnSharedLocator = "locator"
+	settings.Remote.CreateOnShared = remote.CreateOnSharedAll
+	provider, err := Open(settings)
+	require.NoError(t, err)
+	defer provider.Close()
+	require.NoError(t, provider.SetCreatorID(1))
+
+	ctx := context.Background()
+	writable, objMeta, err := provider.Create(ctx, base.FileTypeTable, 1, objstorage.CreateOptions{
+		PreferSharedStorage: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, objMeta.Remote.Storage)
+	require.NoError(t, writable.Write([]byte("hello")))
+	require.NoError(t, writable.Finish())
+
+	readable, err := provider.OpenForReading(ctx, base.FileTypeTable, 1, objstorage.OpenOptions{})
+	require.NoError(t, err)
+
+	// Delete all objects from the store and expect to get a corruption error.
+	objects, err := remoteStorage.List("", "")
+	require.NoError(t, err)
+	for _, o := range objects {
+		require.NoError(t, remoteStorage.Delete(o))
+	}
+	err = readable.ReadAt(ctx, make([]byte, 1), 0)
+	require.True(t, base.IsCorruptionError(err))
 }

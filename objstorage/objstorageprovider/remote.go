@@ -348,7 +348,7 @@ func (p *provider) remoteOpenForReading(
 		}
 		return nil, err
 	}
-	return p.newRemoteReadable(reader, size, meta.DiskFileNum), nil
+	return p.newRemoteReadable(reader, size, meta.DiskFileNum, meta.Remote.Storage.IsNotExistError), nil
 }
 
 func (p *provider) remoteSize(meta objstorage.ObjectMetadata) (int64, error) {

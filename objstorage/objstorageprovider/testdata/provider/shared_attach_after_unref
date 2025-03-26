@@ -83,7 +83,7 @@ p5b2 102
 ----
 <remote> create object "1ab5-5-000002.sst.ref.6.000102"
 <remote> close writer for "1ab5-5-000002.sst.ref.6.000102" after 0 bytes
-<remote> size of object "1ab5-5-000002.sst.ref.5.000002": error: file does not exist
+<remote> size of object "1ab5-5-000002.sst.ref.5.000002": error: in-mem remote storage object does not exist
 <remote> delete object "1ab5-5-000002.sst.ref.6.000102"
 <remote> list (prefix="1ab5-5-000002.sst.ref.", delimiter="")
 <remote> delete object "1ab5-5-000002.sst"

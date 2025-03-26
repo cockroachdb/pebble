@@ -263,7 +263,7 @@ func (p *provider) AttachRemoteObjects(
 			_ = p.sharedUnref(d.meta)
 			// TODO(radu): clean up references previously created in this loop.
 			if d.meta.Remote.Storage.IsNotExistError(err) {
-				return nil, errors.Errorf("origin marker object %q does not exist;"+
+				return nil, base.CorruptionErrorf("origin marker object %q does not exist;"+
 					" object probably removed from the provider which created the backing", refName)
 			}
 			return nil, errors.Wrapf(err, "checking origin's marker object %s", refName)
