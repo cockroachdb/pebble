@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -31,6 +32,7 @@ func TestExternalIterator(t *testing.T) {
 	d, err := Open("", o)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, d.Close()) }()
+	var bv testutils.BlobValues
 
 	datadriven.RunTest(t, "testdata/external_iterator", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -38,7 +40,7 @@ func TestExternalIterator(t *testing.T) {
 			mem = vfs.NewMem()
 			return ""
 		case "build":
-			if err := runBuildCmd(td, d, mem); err != nil {
+			if err := runBuildCmd(td, d, mem, withBlobValues(&bv)); err != nil {
 				return err.Error()
 			}
 			return ""
@@ -62,7 +64,9 @@ func TestExternalIterator(t *testing.T) {
 				}
 			}
 			it, err := NewExternalIter(o, &opts, files)
-			require.NoError(t, err)
+			if err != nil {
+				return fmt.Sprintf("error: %s", err.Error())
+			}
 			return runIterCmd(td, it, true /* close iter */)
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

@@ -214,10 +214,16 @@ const (
 
 	// -- Add experimental versions here --
 
-	// formatChecksumFooter is a format major version enabling use of the
-	// TableFormatPebblev6 table format. It is a format allowing for the checksum
-	// of sstable footers.
-	formatChecksumFooter
+	// formatBlobValueSeparation is a format major version enabling the
+	// separation of values into external blob files and the TableFormatPebblev6
+	// table format.
+	//
+	// The TableFormatPebblev6 sstable format introduces a checksum within the
+	// sstable footer, and allows inclusion of blob handle references within the
+	// value column of a sstable block.
+	//
+	// This format major version is unexported until value separation is stable.
+	formatBlobValueSeparation
 
 	// internalFormatNewest is the most recent, possibly experimental format major
 	// version.
@@ -249,7 +255,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev4
 	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
-	case formatChecksumFooter:
+	case formatBlobValueSeparation:
 		return sstable.TableFormatPebblev6
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -263,7 +269,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		formatChecksumFooter:
+		formatBlobValueSeparation:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -309,8 +315,8 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	FormatWALSyncChunks: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatWALSyncChunks)
 	},
-	formatChecksumFooter: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(formatChecksumFooter)
+	formatBlobValueSeparation: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(formatBlobValueSeparation)
 	},
 }
 

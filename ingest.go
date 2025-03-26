@@ -337,6 +337,10 @@ func ingestLoad1(
 				r.Properties.KeySchemaName)
 		}
 	}
+	if r.Properties.NumValuesInBlobFiles > 0 {
+		return nil, keyspan.Span{}, errors.Newf(
+			"pebble: ingesting tables with blob references is not supported")
+	}
 
 	meta = &tableMetadata{}
 	meta.FileNum = fileNum
@@ -1079,6 +1083,10 @@ func ingestTargetLevel(
 // flushed. The ingested sstable files are moved into the DB and must reside on
 // the same filesystem as the DB. Sstables can be created for ingestion using
 // sstable.Writer. On success, Ingest removes the input paths.
+//
+// Ingested sstables must have been created with a known KeySchema (when written
+// with columnar blocks) and Comparer. They must not contain any references to
+// external blob files.
 //
 // Two types of sstables are accepted for ingestion(s): one is sstables present
 // in the instance's vfs.FS and can be referenced locally. The other is sstables

@@ -246,3 +246,15 @@ aaaa@1: (aaaa@1, .)
 aaaaa@3: (aaaaa@3, .)
 aaaaa@1: (aaaaa@1, .)
 stats: seeked 5 times (5 internal); stepped 5 times (5 internal); blocks: 0B cached, 1.3KB not cached (read time: 0s); points: 10 (50B keys, 35B values); separated: 5 (25B, 25B fetched)
+
+build table-with-blob-refs
+set a@9 a9
+set a@8 a8
+set b@3 blob{fileNum=1005 value=a-value-stored-in-a-blob-file}
+set c@9 c9
+----
+
+iter files=(table-with-blob-refs)
+seek-ge a
+----
+error: pebble: NewExternalIter does not support blob references

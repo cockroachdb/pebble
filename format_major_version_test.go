@@ -64,8 +64,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatColumnarBlocks, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatWALSyncChunks))
 	require.Equal(t, FormatWALSyncChunks, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(formatChecksumFooter))
-	require.Equal(t, formatChecksumFooter, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(formatBlobValueSeparation))
+	require.Equal(t, formatBlobValueSeparation, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -224,7 +224,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatFlushableIngestExcises:     {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
 		FormatColumnarBlocks:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
 		FormatWALSyncChunks:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
-		formatChecksumFooter:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
+		formatBlobValueSeparation:        {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
 	}
 
 	// Valid versions.
