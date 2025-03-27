@@ -166,13 +166,21 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (topLevelIterato
 				sstable.NeverUseFilterBlock,
 				&it.stats.InternalStats, nil,
 				sstable.MakeTrivialReaderProvider(r))
-			if err != nil {
-				return nil, err
+			if err == nil {
+				rangeDelIter, err = r.NewRawRangeDelIter(ctx, sstable.FragmentIterTransforms{
+					SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),
+				})
 			}
-			rangeDelIter, err = r.NewRawRangeDelIter(ctx, sstable.FragmentIterTransforms{
-				SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),
-			})
 			if err != nil {
+				if pointIter != nil {
+					pointIter.Close()
+				}
+				for i := range mlevels {
+					mlevels[i].iter.Close()
+					if mlevels[i].rangeDelIter != nil {
+						mlevels[i].rangeDelIter.Close()
+					}
+				}
 				return nil, err
 			}
 			mlevels = append(mlevels, mergingIterLevel{
@@ -220,9 +228,14 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 				for _, r := range readers {
 					transforms := sstable.FragmentIterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
 					seqNum--
-					if rki, err := r.NewRawRangeKeyIter(ctx, transforms); err != nil {
+					rki, err := r.NewRawRangeKeyIter(ctx, transforms)
+					if err != nil {
+						for _, iter := range rangeKeyIters {
+							iter.Close()
+						}
 						return err
-					} else if rki != nil {
+					}
+					if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)
 					}
 				}
