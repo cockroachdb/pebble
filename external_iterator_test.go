@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -66,6 +67,7 @@ func TestExternalIterator(t *testing.T) {
 					}
 				}
 			}
+			testExternalIteratorInitError(t, o, &opts, files)
 			it, err := NewExternalIter(o, &opts, files, externalIterOpts...)
 			require.NoError(t, err)
 			return runIterCmd(td, it, true /* close iter */)
@@ -74,6 +76,45 @@ func TestExternalIterator(t *testing.T) {
 		}
 	})
 }
+
+// testExternalIteratorInitError tests error handling paths inside
+// NewExternalIter by injecting errors when reading files.
+//
+// See github.com/cockroachdb/cockroach/issues/141606 where an error during
+// initialization caused NewExternalIter to panic.
+func testExternalIteratorInitError(
+	t *testing.T, o *Options, iterOpts *IterOptions, files [][]sstable.ReadableFile,
+) {
+	files = slices.Clone(files)
+	for i := range files {
+		files[i] = slices.Clone(files[i])
+		for j := range files[i] {
+			files[i][j] = &flakyFile{ReadableFile: files[i][j]}
+		}
+	}
+
+	for iter := 0; iter < 100; iter++ {
+		it, err := NewExternalIter(o, iterOpts, files)
+		if err != nil {
+			require.Contains(t, err.Error(), "flaky file")
+		} else {
+			it.Close()
+		}
+	}
+}
+
+type flakyFile struct {
+	sstable.ReadableFile
+}
+
+func (ff *flakyFile) ReadAt(p []byte, off int64) (n int, err error) {
+	if rand.Intn(10) == 0 {
+		return 0, errors.New("flaky file")
+	}
+	return ff.ReadableFile.ReadAt(p, off)
+}
+
+func (ff *flakyFile) Close() error { return nil }
 
 func TestSimpleLevelIter(t *testing.T) {
 	mem := vfs.NewMem()
