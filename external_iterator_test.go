@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -61,6 +63,7 @@ func TestExternalIterator(t *testing.T) {
 					}
 				}
 			}
+			testExternalIteratorInitError(t, o, &opts, files)
 			it, err := NewExternalIter(o, &opts, files)
 			require.NoError(t, err)
 			return runIterCmd(td, it, true /* close iter */)
@@ -69,6 +72,45 @@ func TestExternalIterator(t *testing.T) {
 		}
 	})
 }
+
+// testExternalIteratorInitError tests error handling paths inside
+// NewExternalIter by injecting errors when reading files.
+//
+// See github.com/cockroachdb/cockroach/issues/141606 where an error during
+// initialization caused NewExternalIter to panic.
+func testExternalIteratorInitError(
+	t *testing.T, o *Options, iterOpts *IterOptions, files [][]sstable.ReadableFile,
+) {
+	files = slices.Clone(files)
+	for i := range files {
+		files[i] = slices.Clone(files[i])
+		for j := range files[i] {
+			files[i][j] = &flakyFile{ReadableFile: files[i][j]}
+		}
+	}
+
+	for iter := 0; iter < 100; iter++ {
+		it, err := NewExternalIter(o, iterOpts, files)
+		if err != nil {
+			require.Contains(t, err.Error(), "flaky file")
+		} else {
+			it.Close()
+		}
+	}
+}
+
+type flakyFile struct {
+	sstable.ReadableFile
+}
+
+func (ff *flakyFile) ReadAt(p []byte, off int64) (n int, err error) {
+	if rand.IntN(10) == 0 {
+		return 0, errors.New("flaky file")
+	}
+	return ff.ReadableFile.ReadAt(p, off)
+}
+
+func (ff *flakyFile) Close() error { return nil }
 
 func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 	ks := testkeys.Alpha(6)
