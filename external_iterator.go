@@ -241,9 +241,14 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 				for _, r := range readers {
 					transforms := sstable.FragmentIterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
 					seqNum--
-					if rki, err := r.NewRawRangeKeyIter(ctx, transforms, readEnv); err != nil {
+					rki, err := r.NewRawRangeKeyIter(ctx, transforms, readEnv)
+					if err != nil {
+						for _, iter := range rangeKeyIters {
+							iter.Close()
+						}
 						return err
-					} else if rki != nil {
+					}
+					if rki != nil {
 						rangeKeyIters = append(rangeKeyIters, rki)
 					}
 				}
