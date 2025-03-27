@@ -1225,8 +1225,8 @@ func TestManualCompaction(t *testing.T) {
 		},
 		{
 			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev6",
-			minVersion: formatTableFormatV6,
-			maxVersion: formatTableFormatV6,
+			minVersion: FormatTableFormatV6,
+			maxVersion: FormatTableFormatV6,
 		},
 	}
 

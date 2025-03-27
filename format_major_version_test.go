@@ -30,7 +30,7 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 
 	// When we add a new version, we should add a check for the new version in
 	// addition to updating these expected values.
-	require.Equal(t, FormatNewest, FormatMajorVersion(20))
+	require.Equal(t, FormatNewest, FormatMajorVersion(21))
 	require.Equal(t, internalFormatNewest, FormatMajorVersion(21))
 }
 
@@ -64,8 +64,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatColumnarBlocks, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatWALSyncChunks))
 	require.Equal(t, FormatWALSyncChunks, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(formatTableFormatV6))
-	require.Equal(t, formatTableFormatV6, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatTableFormatV6))
+	require.Equal(t, FormatTableFormatV6, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -224,7 +224,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatFlushableIngestExcises:     {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
 		FormatColumnarBlocks:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
 		FormatWALSyncChunks:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
-		formatTableFormatV6:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
+		FormatTableFormatV6:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
 	}
 
 	// Valid versions.
