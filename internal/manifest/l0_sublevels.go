@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/problemspans"
 )
 
 // errInvalidL0SublevelsOpt is for use in AddL0Files when the incremental
@@ -1414,8 +1415,12 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 // files that can be selected for compaction. Returns nil if no compaction is
 // possible.
 func (s *L0Sublevels) PickBaseCompaction(
-	minCompactionDepth int, baseFiles LevelSlice,
-) (*L0CompactionFiles, error) {
+	logger base.Logger,
+	minCompactionDepth int,
+	baseFiles LevelSlice,
+	baseLevel int,
+	problemSpans *problemspans.ByLevel,
+) *L0CompactionFiles {
 	// For LBase compactions, we consider intervals in a greedy manner in the
 	// following order:
 	// - Intervals that are unlikely to be blocked due
@@ -1430,11 +1435,18 @@ func (s *L0Sublevels) PickBaseCompaction(
 	// this cost we can eliminate this heuristic.
 	scoredIntervals := make([]intervalAndScore, 0, len(s.orderedIntervals))
 	sublevelCount := len(s.levelFiles)
-	for i := range s.orderedIntervals {
+	for i := range s.orderedIntervals[:len(s.orderedIntervals)-1] {
 		interval := &s.orderedIntervals[i]
 		depth := len(interval.files) - interval.compactingFileCount
-		if interval.isBaseCompacting || minCompactionDepth > depth {
+		if interval.isBaseCompacting || depth < minCompactionDepth {
 			continue
+		}
+		if problemSpans != nil {
+			endKey := s.orderedIntervals[i+1].startKey
+			bounds := base.UserKeyBoundsEndExclusiveIf(interval.startKey.key, endKey.key, !endKey.isInclusiveEndBound)
+			if problemSpans.Overlaps(baseLevel, bounds) {
+				continue
+			}
 		}
 		if interval.intervalRangeIsBaseCompacting {
 			scoredIntervals = append(scoredIntervals, intervalAndScore{interval: i, score: depth})
@@ -1463,21 +1475,19 @@ func (s *L0Sublevels) PickBaseCompaction(
 		// file since they are likely nearby. Note that it is possible that
 		// those intervals have seed files at lower sub-levels so could be
 		// viable for compaction.
-		if f == nil {
-			return nil, errors.New("no seed file found in sublevel intervals")
-		}
 		consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
 		if f.IsCompacting() {
 			if f.IsIntraL0Compacting {
 				// If we're picking a base compaction and we came across a seed
 				// file candidate that's being intra-L0 compacted, skip the
-				// interval instead of erroring out.
+				// interval instead of emitting an error.
 				continue
 			}
-			// We chose a compaction seed file that should not be compacting.
-			// Usually means the score is not accurately accounting for files
-			// already compacting, or internal state is inconsistent.
-			return nil, errors.Errorf("file %s chosen as seed file for compaction should not be compacting", f.FileNum)
+			// We chose a compaction seed file that should not be compacting; this
+			// indicates that the the internal state is inconsistent. Note that
+			// base.AssertionFailedf panics in invariant builds.
+			logger.Errorf("%v", base.AssertionFailedf("seed file %s should not be compacting", f.FileNum))
+			continue
 		}
 
 		c := s.baseCompactionUsingSeed(f, interval.index, minCompactionDepth)
@@ -1503,10 +1513,10 @@ func (s *L0Sublevels) PickBaseCompaction(
 			if baseCompacting {
 				continue
 			}
-			return c, nil
+			return c
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // Helper function for building an L0 -> Lbase compaction using a seed interval
@@ -1640,7 +1650,7 @@ func (s *L0Sublevels) extendFiles(
 // selection.
 func (s *L0Sublevels) PickIntraL0Compaction(
 	earliestUnflushedSeqNum base.SeqNum, minCompactionDepth int,
-) (*L0CompactionFiles, error) {
+) *L0CompactionFiles {
 	scoredIntervals := make([]intervalAndScore, len(s.orderedIntervals))
 	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
@@ -1661,49 +1671,44 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 			continue
 		}
 
-		var f *TableMetadata
 		// Pick the seed file for the interval as the file in the highest
 		// sub-level.
-		stackDepthReduction := scoredInterval.score
-		for i := len(interval.files) - 1; i >= 0; i-- {
-			f = interval.files[i]
-			if f.IsCompacting() {
-				break
-			}
-			consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
-			// Can this be the seed file? Files with newer sequence numbers than
-			// earliestUnflushedSeqNum cannot be in the compaction.
-			if f.LargestSeqNum >= earliestUnflushedSeqNum {
-				stackDepthReduction--
-				if stackDepthReduction == 0 {
-					break
+		seedFile := func() *TableMetadata {
+			stackDepthReduction := scoredInterval.score
+			for i := len(interval.files) - 1; i >= 0; i-- {
+				f := interval.files[i]
+				if f.IsCompacting() {
+					// This file could be in a concurrent intra-L0 or base compaction; we
+					// can't use this interval.
+					return nil
 				}
-			} else {
-				break
+				consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
+				// Can this be the seed file? Files with newer sequence numbers than
+				// earliestUnflushedSeqNum cannot be in the compaction.
+				if f.LargestSeqNum < earliestUnflushedSeqNum {
+					return f
+				}
+				stackDepthReduction--
+				if stackDepthReduction < minCompactionDepth {
+					// Can't use this interval.
+					return nil
+				}
 			}
-		}
-		if stackDepthReduction < minCompactionDepth {
-			// Can't use this interval.
-			continue
-		}
-
-		if f == nil {
-			return nil, errors.New("no seed file found in sublevel intervals")
-		}
-		if f.IsCompacting() {
-			// This file could be in a concurrent intra-L0 or base compaction.
+			return nil
+		}()
+		if seedFile == nil {
 			// Try another interval.
 			continue
 		}
 
 		// We have a seed file. Build a compaction off of that seed.
 		c := s.intraL0CompactionUsingSeed(
-			f, interval.index, earliestUnflushedSeqNum, minCompactionDepth)
+			seedFile, interval.index, earliestUnflushedSeqNum, minCompactionDepth)
 		if c != nil {
-			return c, nil
+			return c
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 func (s *L0Sublevels) intraL0CompactionUsingSeed(

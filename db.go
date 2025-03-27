@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/problemspans"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
@@ -504,6 +505,11 @@ type DB struct {
 			externalSize *manifest.Annotator[uint64]
 		}
 	}
+
+	// problemSpans keeps track of spans of keys within LSM levels where
+	// compactions have failed; used to avoid retrying these compactions too
+	// quickly.
+	problemSpans problemspans.ByLevel
 
 	// Normally equal to time.Now() but may be overridden in tests.
 	timeNow func() time.Time

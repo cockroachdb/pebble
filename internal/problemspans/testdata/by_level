@@ -1,0 +1,80 @@
+is-empty
+----
+empty
+ByLevel:
+  <empty>
+
+add
+L2 [c, f) 10s
+L4 [d, h) 10s
+----
+ByLevel:
+  L2:
+    [c, f)  expires in: 10s
+  L4:
+    [d, h)  expires in: 10s
+
+is-empty
+----
+not empty
+ByLevel:
+  L2:
+    [c, f)  expires in: 10s
+  L4:
+    [d, h)  expires in: 10s
+
+overlap
+L1 [a, z)
+L3 [a, z]
+L2 [a, c)
+L2 [d, d]
+L2 [f, z]
+L4 [a, c]
+L4 [g, g]
+----
+[a, z): no overlap
+[a, z]: no overlap
+[a, c): no overlap
+[d, d]: overlap
+[f, z]: no overlap
+[a, c]: no overlap
+[g, g]: overlap
+ByLevel:
+  L2:
+    [c, f)  expires in: 10s
+  L4:
+    [d, h)  expires in: 10s
+
+excise
+[d, e)
+----
+ByLevel:
+  L2:
+    [c, d)  expires in: 10s
+    [e, f)  expires in: 10s
+  L4:
+    [e, h)  expires in: 10s
+
+overlap
+L2 [da, db]
+L2 [e, e]
+L4 [da, db]
+L4 [e, e]
+----
+[da, db]: no overlap
+[e, e]: overlap
+[da, db]: no overlap
+[e, e]: overlap
+ByLevel:
+  L2:
+    [c, d)  expires in: 10s
+    [e, f)  expires in: 10s
+  L4:
+    [e, h)  expires in: 10s
+
+overlap now=20s
+L2 [a, z]
+----
+[a, z]: no overlap
+ByLevel:
+  <empty>
