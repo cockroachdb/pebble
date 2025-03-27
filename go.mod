@@ -23,10 +23,10 @@ require (
 	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
-	golang.org/x/perf v0.0.0-20230113213139-801c7ef9e5c5
-	golang.org/x/sync v0.7.0
-	golang.org/x/sys v0.18.0
+	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
+	golang.org/x/perf v0.0.0-20250305200902-02a15fd477ba
+	golang.org/x/sync v0.12.0
+	golang.org/x/sys v0.31.0
 )
 
 require (
@@ -45,9 +45,9 @@ require (
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-go 1.23
+go 1.23.0
