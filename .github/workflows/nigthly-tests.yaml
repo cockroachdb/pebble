@@ -11,7 +11,7 @@ jobs:
     name: linux
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
     name: linux-32bit
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +68,7 @@ jobs:
     name: linux-arm
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +95,7 @@ jobs:
     name: linux-crossversion
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +125,7 @@ jobs:
     name: linux-no-invariants
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -152,7 +152,7 @@ jobs:
     name: linux-no-cgo
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,7 +179,7 @@ jobs:
     name: macos
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -206,7 +206,7 @@ jobs:
     name: windows
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -232,7 +232,7 @@ jobs:
     name: lint-checks
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -264,7 +264,7 @@ jobs:
     name: build-other
     strategy:
       matrix:
-        go: [ '1.22', '1.23' ]
+        go: [ '1.23' ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
