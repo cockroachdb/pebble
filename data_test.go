@@ -25,12 +25,12 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -672,10 +672,10 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 }
 
 type dataDrivenCmdOptions struct {
-	blobValues *testutils.BlobValues
+	blobValues *blobtest.Values
 }
 
-func withBlobValues(bv *testutils.BlobValues) func(*dataDrivenCmdOptions) {
+func withBlobValues(bv *blobtest.Values) func(*dataDrivenCmdOptions) {
 	return func(o *dataDrivenCmdOptions) { o.blobValues = bv }
 }
 
@@ -725,7 +725,7 @@ func runBuildCmd(
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
-	var blobReferences testutils.BlobReferences
+	var blobReferences blobtest.References
 	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err

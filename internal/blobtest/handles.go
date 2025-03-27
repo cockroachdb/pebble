@@ -2,7 +2,9 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package testutils
+// Package blobtest contains helpers for interacting with value separation and
+// blob files in tests.
+package blobtest
 
 import (
 	"context"
@@ -12,13 +14,14 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/strparse"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/blob"
 )
 
-// BlobValues is a helper for using blob handles in tests. It supports parsing a
+// Values is a helper for using blob handles in tests. It supports parsing a
 // human-readable string describing a blob handle, synthesizing unspecified
 // fields, and tracking the blob handle to support future fetches.
-type BlobValues struct {
+type Values struct {
 	mostRecentHandle blob.Handle
 	// trackedHandles maps from a blob handle to its value. The value may be nil
 	// if the value was not specified (in which case Fetch will
@@ -27,7 +30,7 @@ type BlobValues struct {
 }
 
 // Fetch returns the value corresponding to the given handle.
-func (bv *BlobValues) Fetch(
+func (bv *Values) Fetch(
 	ctx context.Context, handleSuffix []byte, blobFileNum base.DiskFileNum, valLen uint32, _ []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if bv.trackedHandles == nil {
@@ -51,14 +54,14 @@ func (bv *BlobValues) Fetch(
 	// deterministically from the file number, block number and offset in block.
 	if len(value) == 0 {
 		rng := rand.New(rand.NewPCG((uint64(decodedHandle.FileNum)<<32)|uint64(decodedHandle.BlockNum), uint64(decodedHandle.OffsetInBlock)))
-		return RandBytes(rng, int(decodedHandle.ValueLen)), false, nil
+		return testutils.RandBytes(rng, int(decodedHandle.ValueLen)), false, nil
 	}
 	return []byte(value), false, nil
 }
 
 // ParseInternalValue parses a debug blob handle from the string, returning the
 // handle as an InternalValue and recording the handle's corresponding value.
-func (bv *BlobValues) ParseInternalValue(input string) (base.InternalValue, error) {
+func (bv *Values) ParseInternalValue(input string) (base.InternalValue, error) {
 	h, err := bv.Parse(input)
 	if err != nil {
 		return base.InternalValue{}, err
@@ -88,13 +91,13 @@ func (bv *BlobValues) ParseInternalValue(input string) (base.InternalValue, erro
 
 // IsBlobHandle returns true if the input string looks like it's a debug blob
 // handle.
-func (bv *BlobValues) IsBlobHandle(input string) bool {
+func (bv *Values) IsBlobHandle(input string) bool {
 	return strings.HasPrefix(input, "blob{")
 }
 
 // Parse parses a debug blob handle from the string, returning the handle and
 // recording the handle's corresponding value.
-func (bv *BlobValues) Parse(input string) (h blob.Handle, err error) {
+func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 	if bv.trackedHandles == nil {
 		bv.trackedHandles = make(map[blob.Handle]string)
 	}
@@ -170,8 +173,8 @@ func (bv *BlobValues) Parse(input string) (h blob.Handle, err error) {
 // returning an inline handle.
 //
 // It's intended for tests that must manually construct inline blob references.
-func (bv *BlobValues) ParseInlineHandle(
-	input string, references *BlobReferences,
+func (bv *Values) ParseInlineHandle(
+	input string, references *References,
 ) (h blob.InlineHandle, err error) {
 	fullHandle, err := bv.Parse(input)
 	if err != nil {
@@ -197,16 +200,16 @@ func errFromPanic(r any) error {
 	return errors.Errorf("%v", r)
 }
 
-// BlobReferences is a helper for tests that manually construct inline blob
+// References is a helper for tests that manually construct inline blob
 // references. It tracks the set of file numbers used within a sstable, and maps
 // each file number to a reference index (encoded within the
 // blob.InlineHandlePreface).
-type BlobReferences struct {
+type References struct {
 	fileNums []base.DiskFileNum
 }
 
 // MapToReferenceIndex maps the given file number to a reference index.
-func (b *BlobReferences) MapToReferenceIndex(fileNum base.DiskFileNum) uint32 {
+func (b *References) MapToReferenceIndex(fileNum base.DiskFileNum) uint32 {
 	for i, fn := range b.fileNums {
 		if fn == fileNum {
 			return uint32(i)
