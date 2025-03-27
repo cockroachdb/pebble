@@ -15,10 +15,10 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -29,7 +29,7 @@ import (
 
 func TestValueSeparationPolicy(t *testing.T) {
 	var (
-		bv  testutils.BlobValues
+		bv  blobtest.Values
 		vs  compact.ValueSeparation
 		tw  sstable.RawWriter
 		fn  base.DiskFileNum
@@ -71,7 +71,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 				if tw != nil {
 					require.NoError(t, tw.Close())
 				}
-				bv = testutils.BlobValues{}
+				bv = blobtest.Values{}
 				switch x := d.CmdArgs[0].String(); x {
 				case "never-separate-values":
 					vs = compact.NeverSeparateValues{}

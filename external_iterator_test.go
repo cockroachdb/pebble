@@ -13,8 +13,8 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -34,7 +34,7 @@ func TestExternalIterator(t *testing.T) {
 	d, err := Open("", o)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, d.Close()) }()
-	var bv testutils.BlobValues
+	var bv blobtest.Values
 
 	getOptsAndFiles := func(td *datadriven.TestData) (opts IterOptions, files [][]sstable.ReadableFile) {
 		opts = IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
