@@ -14,6 +14,7 @@ import (
 	"math/rand/v2"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1732,4 +1734,65 @@ func TestBatchOption(t *testing.T) {
 		b.data = nil
 		require.Equal(t, tc.expected, b)
 	}
+}
+
+// TestBatchCommitDoesntTouchSST tests that committing a writeBatch doesn't
+// touch SST files.
+func TestBatchCommitDoesntTouchSST(t *testing.T) {
+	// Create an atomic variable that will cause an error when SST operations are
+	// performed.
+	var errSSTOps atomic.Bool
+
+	// Create a custom injector that blocks SST operations when errSSTOps is
+	// true.
+	injector := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if strings.Contains(op.Path, ".sst") && errSSTOps.Load() {
+			return errors.Newf("blocking SST operation: %+v", op)
+		}
+		return nil
+	})
+
+	// Create the wrapped filesystem.
+	memFS := vfs.NewMem()
+	fs := errorfs.Wrap(memFS, injector)
+
+	// Create a new DB with the wrapped filesystem.
+	db, err := Open("", &Options{
+		FS: fs,
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, db.Close())
+	}()
+
+	// Initialize the db with some data.
+	batch := db.NewBatch()
+	defer batch.Close()
+
+	// Perform some operations
+	require.NoError(t, batch.Set([]byte("key1"), []byte("value1"), nil))
+	require.NoError(t, batch.Set([]byte("key2"), []byte("value2"), nil))
+	require.NoError(t, batch.Set([]byte("key3"), []byte("value3"), nil))
+	require.NoError(t, batch.Set([]byte("key4"), []byte("value4"), nil))
+	require.NoError(t, batch.Commit(nil))
+
+	// Force a flush to create an SST file
+	require.NoError(t, db.Flush())
+
+	// Create a new batch for testing.
+	testingBatch := newIndexedBatch(db, DefaultComparer)
+	defer testingBatch.Close()
+
+	// Perform some operations on the testing batch.
+	require.NoError(t, testingBatch.Set([]byte("key1"), []byte("value1test"), nil))
+	_, closer, err := testingBatch.Get([]byte("key2"))
+	require.NoError(t, err)
+	require.NoError(t, closer.Close())
+	require.NoError(t, testingBatch.Delete([]byte("key3"), nil))
+	require.NoError(t, testingBatch.DeleteRange([]byte("key3"), []byte("key5"), nil))
+
+	// Before committing, enable SST operation errors and make sure the commit
+	// succeeds.
+	errSSTOps.Store(true)
+	require.NoError(t, testingBatch.Commit(nil))
 }
