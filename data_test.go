@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -1017,7 +1018,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 
 	// Example, compact: a-c.
 	parseCompaction := func(outputLevel int, s string) (*compaction, error) {
-		m, err := parseMeta(s[len("compact:"):])
+		m, err := parseMeta(s)
 		if err != nil {
 			return nil, err
 		}
@@ -1030,7 +1031,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		return c, nil
 	}
 
-	for _, line := range strings.Split(td.Input, "\n") {
+	for _, line := range crstrings.Lines(td.Input) {
 		fields := strings.Fields(line)
 		if len(fields) > 0 {
 			switch fields[0] {
@@ -1049,6 +1050,10 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				mem = d.mu.mem.mutable
 				start, end = nil, nil
 				fields = fields[1:]
+				if len(fields) != 0 {
+					return nil, errors.Errorf("unexpected excess arguments: %s", strings.Join(fields, " "))
+				}
+				continue
 			case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
 				if err := maybeFlush(); err != nil {
 					return nil, err
@@ -1079,23 +1084,30 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 					}
 				}
 				fields = fields[boundFields:]
+				if len(fields) != 0 {
+					return nil, errors.Errorf("unexpected excess arguments: %s", strings.Join(fields, " "))
+				}
 				mem = newMemTable(memTableOptions{Options: d.opts})
+				continue
 			}
 		}
 
-		for _, data := range fields {
-			i := strings.Index(data, ":")
-			// Define in-progress compactions.
-			if data[:i] == "compact" {
-				c, err := parseCompaction(level, data)
+		p := strparse.MakeParser(":{}", line)
+		for !p.Done() {
+			field := p.Next()
+			switch field {
+			case "compact":
+				// Define in-progress compactions.
+				p.Expect(":")
+				c, err := parseCompaction(level, p.Remaining())
 				if err != nil {
 					return nil, err
 				}
 				d.mu.compact.inProgress[c] = struct{}{}
 				continue
-			}
-			if data[:i] == "rangekey" {
-				span := keyspan.ParseSpan(data[i:])
+			case "rangekey":
+				p.Expect(":")
+				span := keyspan.ParseSpan(p.Remaining())
 				err := rangekey.Encode(span, func(k base.InternalKey, v []byte) error {
 					return mem.set(k, v)
 				})
@@ -1103,20 +1115,25 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 					return nil, err
 				}
 				continue
-			}
-			key := base.ParseInternalKey(data[:i])
-			valueStr := data[i+1:]
-			value := []byte(valueStr)
-			var randBytes int
-			if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
-				value = make([]byte, randBytes)
-				rnd := rand.New(rand.NewPCG(0, uint64(key.SeqNum())))
-				for j := range value {
-					value[j] = byte(rnd.Uint32())
+			default:
+				key := base.ParseInternalKey(field)
+				p.Expect(":")
+				var value []byte
+				if key.Kind() != base.InternalKeyKindDelete && key.Kind() != base.InternalKeyKindSingleDelete {
+					valueStr := p.Next()
+					value = []byte(valueStr)
+					var randBytes int
+					if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
+						value = make([]byte, randBytes)
+						rnd := rand.New(rand.NewPCG(0, uint64(key.SeqNum())))
+						for j := range value {
+							value[j] = byte(rnd.Uint32())
+						}
+					}
 				}
-			}
-			if err := mem.set(key, value); err != nil {
-				return nil, err
+				if err := mem.set(key, value); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
