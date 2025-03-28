@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
@@ -2126,6 +2127,22 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.NumDeletionsThreshold = o.Experimental.NumDeletionsThreshold
 	writerOpts.DeletionSizeRatioThreshold = o.Experimental.DeletionSizeRatioThreshold
 	return writerOpts
+}
+
+// MakeBlobWriterOptions constructs blob.FileWriterOptions from the corresponding
+// options in the receiver.
+func (o *Options) MakeBlobWriterOptions(level int) blob.FileWriterOptions {
+	lo := o.Level(level)
+	return blob.FileWriterOptions{
+		Compression:  resolveDefaultCompression(lo.Compression()),
+		ChecksumType: block.ChecksumTypeCRC32c,
+		FlushGovernor: block.MakeFlushGovernor(
+			lo.BlockSize,
+			lo.BlockSizeThreshold,
+			base.SizeClassAwareBlockSizeThreshold,
+			o.AllocatorSizeClasses,
+		),
+	}
 }
 
 func resolveDefaultCompression(c Compression) Compression {
