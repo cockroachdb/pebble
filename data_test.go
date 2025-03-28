@@ -10,6 +10,7 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"regexp"
@@ -26,11 +27,15 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -936,6 +941,17 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	}
 	d.mu.versions.dynamicBaseLevel = false
 
+	// We use a custom compact.ValueSeparation implementation that wraps
+	// preserveBlobReferences. It parses values containing human-readable blob
+	// references (as understood by blobtest.Values) and preserves the
+	// references.  It also accumulates all the handles so that after writing
+	// all the tables, we can construct all the referenced blob files and add
+	// them to the final version edit.
+	valueSeparator := &defineDBValueSeparator{
+		pbr:   &preserveBlobReferences{},
+		metas: make(map[base.DiskFileNum]*manifest.BlobFileMetadata),
+	}
+
 	var mem *memTable
 	var start, end *base.InternalKey
 	ve := &versionEdit{}
@@ -955,6 +971,9 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		if err != nil {
 			return err
 		}
+		c.getValueSeparation = func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
+			return valueSeparator
+		}
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file
 		// size to test grandparent limits, etc, the maxOutputFileSize
@@ -968,6 +987,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			return err
 		}
 		largestSeqNum := d.mu.versions.logSeqNum.Load()
+		ve.NewBlobFiles = append(ve.NewBlobFiles, newVE.NewBlobFiles...)
 		for _, f := range newVE.NewTables {
 			if start != nil {
 				f.Meta.SmallestPointKey = *start
@@ -1017,7 +1037,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 
 	// Example, compact: a-c.
 	parseCompaction := func(outputLevel int, s string) (*compaction, error) {
-		m, err := parseMeta(s[len("compact:"):])
+		m, err := parseMeta(s)
 		if err != nil {
 			return nil, err
 		}
@@ -1030,7 +1050,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		return c, nil
 	}
 
-	for _, line := range strings.Split(td.Input, "\n") {
+	for _, line := range crstrings.Lines(td.Input) {
 		fields := strings.Fields(line)
 		if len(fields) > 0 {
 			switch fields[0] {
@@ -1049,6 +1069,10 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				mem = d.mu.mem.mutable
 				start, end = nil, nil
 				fields = fields[1:]
+				if len(fields) != 0 {
+					return nil, errors.Errorf("unexpected excess arguments: %s", strings.Join(fields, " "))
+				}
+				continue
 			case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
 				if err := maybeFlush(); err != nil {
 					return nil, err
@@ -1079,23 +1103,30 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 					}
 				}
 				fields = fields[boundFields:]
+				if len(fields) != 0 {
+					return nil, errors.Errorf("unexpected excess arguments: %s", strings.Join(fields, " "))
+				}
 				mem = newMemTable(memTableOptions{Options: d.opts})
+				continue
 			}
 		}
 
-		for _, data := range fields {
-			i := strings.Index(data, ":")
-			// Define in-progress compactions.
-			if data[:i] == "compact" {
-				c, err := parseCompaction(level, data)
+		p := strparse.MakeParser(":{}", line)
+		for !p.Done() {
+			field := p.Next()
+			switch field {
+			case "compact":
+				// Define in-progress compactions.
+				p.Expect(":")
+				c, err := parseCompaction(level, p.Remaining())
 				if err != nil {
 					return nil, err
 				}
 				d.mu.compact.inProgress[c] = struct{}{}
 				continue
-			}
-			if data[:i] == "rangekey" {
-				span := keyspan.ParseSpan(data[i:])
+			case "rangekey":
+				p.Expect(":")
+				span := keyspan.ParseSpan(p.Remaining())
 				err := rangekey.Encode(span, func(k base.InternalKey, v []byte) error {
 					return mem.set(k, v)
 				})
@@ -1103,20 +1134,35 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 					return nil, err
 				}
 				continue
-			}
-			key := base.ParseInternalKey(data[:i])
-			valueStr := data[i+1:]
-			value := []byte(valueStr)
-			var randBytes int
-			if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
-				value = make([]byte, randBytes)
-				rnd := rand.New(rand.NewPCG(0, uint64(key.SeqNum())))
-				for j := range value {
-					value[j] = byte(rnd.Uint32())
+			default:
+				key := base.ParseInternalKey(field)
+				p.Expect(":")
+				var value []byte
+				if key.Kind() != base.InternalKeyKindDelete && key.Kind() != base.InternalKeyKindSingleDelete {
+					valueStr := p.Next()
+					// If the value looks like a blob reference, read until the closing brace.
+					if valueStr == "blob" && p.Peek() == "{" {
+						tok := p.Next()
+						valueStr += " " + tok
+						for !p.Done() && tok != "}" {
+							tok = p.Next()
+							valueStr += " " + tok
+						}
+					}
+
+					value = []byte(valueStr)
+					var randBytes int
+					if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
+						value = make([]byte, randBytes)
+						rnd := rand.New(rand.NewPCG(0, uint64(key.SeqNum())))
+						for j := range value {
+							value[j] = byte(rnd.Uint32())
+						}
+					}
 				}
-			}
-			if err := mem.set(key, value); err != nil {
-				return nil, err
+				if err := mem.set(key, value); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -1126,6 +1172,16 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	}
 
 	if len(ve.NewTables) > 0 {
+		// Collect any blob files created.
+		err := blobtest.WriteFiles(&valueSeparator.bv, func(fileNum base.DiskFileNum) (objstorage.Writable, error) {
+			writable, _, err := d.objProvider.Create(context.Background(), base.FileTypeBlob, fileNum, objstorage.CreateOptions{})
+			return writable, err
+		}, d.opts.MakeBlobWriterOptions(0), valueSeparator.metas)
+		if err != nil {
+			return nil, err
+		}
+		ve.NewBlobFiles = slices.Collect(maps.Values(valueSeparator.metas))
+
 		jobID := d.newJobIDLocked()
 		d.mu.versions.logLock()
 		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewTables), false, func() []compactionInfo {

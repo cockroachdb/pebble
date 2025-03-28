@@ -49,6 +49,8 @@ type OutputTable struct {
 	WriterMeta sstable.WriterMetadata
 	// BlobReferences is the list of blob references for the table.
 	BlobReferences []manifest.BlobReference
+	// BlobReferenceDepth is the depth of the blob references for the table.
+	BlobReferenceDepth int
 }
 
 // OutputBlob contains metadata about a blob file that was created during a
@@ -136,8 +138,9 @@ type ValueSeparation interface {
 // ValueSeparationMetadata describes metadata about a table's blob references,
 // and optionally a newly constructed blob file.
 type ValueSeparationMetadata struct {
-	BlobReferences    []manifest.BlobReference
-	BlobReferenceSize uint64
+	BlobReferences     []manifest.BlobReference
+	BlobReferenceSize  uint64
+	BlobReferenceDepth int
 
 	// The below fields are only populated if a new blob file was created.
 	BlobFileStats    blob.FileWriterStats
@@ -216,6 +219,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 		r.err = errors.CombineErrors(r.err, valSepErr)
 	} else {
 		r.tables[len(r.tables)-1].BlobReferences = valSepMeta.BlobReferences
+		r.tables[len(r.tables)-1].BlobReferenceDepth = valSepMeta.BlobReferenceDepth
 		if valSepMeta.BlobFileObject.DiskFileNum != 0 {
 			r.blobs = append(r.blobs, OutputBlob{
 				Stats:    valSepMeta.BlobFileStats,

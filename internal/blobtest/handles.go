@@ -7,14 +7,18 @@
 package blobtest
 
 import (
+	"cmp"
 	"context"
 	"math/rand/v2"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 )
 
@@ -53,10 +57,14 @@ func (bv *Values) Fetch(
 	// If there was not an explicitly specified value, generate a random one
 	// deterministically from the file number, block number and offset in block.
 	if len(value) == 0 {
-		rng := rand.New(rand.NewPCG((uint64(decodedHandle.FileNum)<<32)|uint64(decodedHandle.BlockNum), uint64(decodedHandle.OffsetInBlock)))
-		return testutils.RandBytes(rng, int(decodedHandle.ValueLen)), false, nil
+		return deriveValueFromHandle(decodedHandle), false, nil
 	}
 	return []byte(value), false, nil
+}
+
+func deriveValueFromHandle(handle blob.Handle) []byte {
+	rng := rand.New(rand.NewPCG((uint64(handle.FileNum)<<32)|uint64(handle.BlockNum), uint64(handle.OffsetInBlock)))
+	return testutils.RandBytes(rng, int(handle.ValueLen))
 }
 
 // ParseInternalValue parses a debug blob handle from the string, returning the
@@ -190,6 +198,51 @@ func (bv *Values) ParseInlineHandle(
 			OffsetInBlock: fullHandle.OffsetInBlock,
 		},
 	}, nil
+}
+
+// WriteFiles writes all the blob files referenced by Values, using
+// newBlobObject to construct new objects. Additionally, it updates the
+// BlobFileMetadatas contained within metas with the resulting physical and
+// logical sizes of the blob files.
+func WriteFiles(
+	bv *Values,
+	newBlobObject func(fileNum base.DiskFileNum) (objstorage.Writable, error),
+	writerOpts blob.FileWriterOptions,
+	metas map[base.DiskFileNum]*manifest.BlobFileMetadata,
+) error {
+	// Organize the handles by file number.
+	files := make(map[base.DiskFileNum][]blob.Handle)
+	for handle := range bv.trackedHandles {
+		files[handle.FileNum] = append(files[handle.FileNum], handle)
+	}
+
+	for fileNum, handles := range files {
+		slices.SortFunc(handles, func(a, b blob.Handle) int {
+			if v := cmp.Compare(a.BlockNum, b.BlockNum); v != 0 {
+				return v
+			}
+			return cmp.Compare(a.OffsetInBlock, b.OffsetInBlock)
+		})
+		writable, err := newBlobObject(fileNum)
+		if err != nil {
+			return err
+		}
+		writer := blob.NewFileWriter(fileNum, writable, writerOpts)
+		for _, handle := range handles {
+			if value, ok := bv.trackedHandles[handle]; ok {
+				writer.AddValue([]byte(value))
+			} else {
+				writer.AddValue(deriveValueFromHandle(handle))
+			}
+		}
+		stats, err := writer.Close()
+		if err != nil {
+			return err
+		}
+		metas[fileNum].Size = stats.FileLen
+		metas[fileNum].ValueSize = stats.UncompressedValueBytes
+	}
+	return nil
 }
 
 // errFromPanic can be used in a recover block to convert panics into errors.

@@ -1,0 +1,14 @@
+define verbose format-major-version=21
+L5
+  b@9.SET.9:v
+  c@9.SET.9:blob{fileNum=000921 value=helloworld}
+  d@9.SET.9:v
+L6
+  b@2.SET.2:v
+  c@2.SET.2:blob{fileNum=000921 value=foobar}
+  d@2.SET.2:v
+----
+L5:
+  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:885 blobrefs:[(000921: 10); depth:1]
+L6:
+  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:863 blobrefs:[(000921: 6); depth:1]
