@@ -199,6 +199,22 @@ type compaction struct {
 	// goroutine is still cleaning up (eg, deleting obsolete files).
 	versionEditApplied bool
 	bufferPool         sstable.BufferPool
+	// getValueSeparation constructs a compact.ValueSeparation for use in a
+	// compaction. It implements heuristics around choosing whether a compaction
+	// should:
+	//
+	// a) preserve existing blob references: The compaction does not write any
+	// new blob files, but propagates existing references to blob files.This
+	// conserves write bandwidth by avoiding rewriting the referenced values. It
+	// also reduces the locality of the referenced values which can reduce scan
+	// performance because a scan must load values from more unique blob files.
+	// It can also delay reclamation of disk space if some of the references to
+	// blob values are elided by the compaction, increasing space amplification.
+	//
+	// b) rewrite blob files: The compaction will write eligible values to new
+	// blob files. This consumes more write bandwidth because all values are
+	// rewritten. However it restores locality.
+	getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -342,17 +358,20 @@ func newCompaction(
 	grantHandle CompactionGrantHandle,
 ) *compaction {
 	c := &compaction{
-		kind:              compactionKindDefault,
-		cmp:               pc.cmp,
-		equal:             opts.Comparer.Equal,
-		comparer:          opts.Comparer,
-		formatKey:         opts.Comparer.FormatKey,
-		inputs:            pc.inputs,
-		smallest:          pc.smallest,
-		largest:           pc.largest,
-		logger:            opts.Logger,
-		version:           pc.version,
-		beganAt:           beganAt,
+		kind:      compactionKindDefault,
+		cmp:       pc.cmp,
+		equal:     opts.Comparer.Equal,
+		comparer:  opts.Comparer,
+		formatKey: opts.Comparer.FormatKey,
+		inputs:    pc.inputs,
+		smallest:  pc.smallest,
+		largest:   pc.largest,
+		logger:    opts.Logger,
+		version:   pc.version,
+		beganAt:   beganAt,
+		getValueSeparation: func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
+			return compact.NeverSeparateValues{}
+		},
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
 		pickerMetrics:     pc.pickerMetrics,
@@ -514,15 +533,18 @@ func newFlush(
 	opts *Options, cur *version, baseLevel int, flushing flushableList, beganAt time.Time,
 ) (*compaction, error) {
 	c := &compaction{
-		kind:              compactionKindFlush,
-		cmp:               opts.Comparer.Compare,
-		equal:             opts.Comparer.Equal,
-		comparer:          opts.Comparer,
-		formatKey:         opts.Comparer.FormatKey,
-		logger:            opts.Logger,
-		version:           cur,
-		beganAt:           beganAt,
-		inputs:            []compactionLevel{{level: -1}, {level: 0}},
+		kind:      compactionKindFlush,
+		cmp:       opts.Comparer.Compare,
+		equal:     opts.Comparer.Equal,
+		comparer:  opts.Comparer,
+		formatKey: opts.Comparer.FormatKey,
+		logger:    opts.Logger,
+		version:   cur,
+		beganAt:   beganAt,
+		inputs:    []compactionLevel{{level: -1}, {level: 0}},
+		getValueSeparation: func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
+			return compact.NeverSeparateValues{}
+		},
 		maxOutputFileSize: math.MaxUint64,
 		maxOverlapBytes:   math.MaxUint64,
 		flushing:          flushing,
@@ -2993,7 +3015,14 @@ func (d *DB) runCompaction(
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	result := d.compactAndWrite(jobID, c, snapshots, tableFormat)
+	// Determine whether we should separate values into blob files.
+	//
+	// TODO(jackson): Currently we never separate values in non-tests. Choose
+	// and initialize the appropriate ValueSeparation implementation based on
+	// Options and the compaction inputs.
+	valueSeparation := c.getValueSeparation(jobID, c, tableFormat)
+
+	result := d.compactAndWrite(jobID, c, snapshots, tableFormat, valueSeparation)
 	if result.Err == nil {
 		ve, result.Err = c.makeVersionEdit(result)
 	}
@@ -3032,7 +3061,11 @@ func (d *DB) runCompaction(
 // compactAndWrite runs the data part of a compaction, where we set up a
 // compaction iterator and use it to write output tables.
 func (d *DB) compactAndWrite(
-	jobID JobID, c *compaction, snapshots compact.Snapshots, tableFormat sstable.TableFormat,
+	jobID JobID,
+	c *compaction,
+	snapshots compact.Snapshots,
+	tableFormat sstable.TableFormat,
+	valueSeparation compact.ValueSeparation,
 ) (result compact.Result) {
 	// Compactions use a pool of buffers to read blocks, avoiding polluting the
 	// block cache with blocks that will not be read again. We initialize the
@@ -3110,6 +3143,7 @@ func (d *DB) compactAndWrite(
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
 		GrantHandle:                c.grantHandle,
+		ValueSeparation:            valueSeparation,
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 	for runner.MoreDataToWrite() {
@@ -3170,17 +3204,25 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		outputMetrics.MultiLevel.BytesRead = outputMetrics.BytesRead
 	}
 
+	// Add any newly constructed blob files to the version edit.
+	ve.NewBlobFiles = make([]*manifest.BlobFileMetadata, len(result.Blobs))
+	for i := range result.Blobs {
+		ve.NewBlobFiles[i] = result.Blobs[i].Metadata
+	}
+
 	inputLargestSeqNumAbsolute := c.inputLargestSeqNumAbsolute()
 	ve.NewTables = make([]newTableEntry, len(result.Tables))
 	for i := range result.Tables {
 		t := &result.Tables[i]
 
 		fileMeta := &tableMetadata{
-			FileNum:        base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
-			CreationTime:   t.CreationTime.Unix(),
-			Size:           t.WriterMeta.Size,
-			SmallestSeqNum: t.WriterMeta.SmallestSeqNum,
-			LargestSeqNum:  t.WriterMeta.LargestSeqNum,
+			FileNum:            base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
+			CreationTime:       t.CreationTime.Unix(),
+			Size:               t.WriterMeta.Size,
+			SmallestSeqNum:     t.WriterMeta.SmallestSeqNum,
+			LargestSeqNum:      t.WriterMeta.LargestSeqNum,
+			BlobReferences:     t.BlobReferences,
+			BlobReferenceDepth: t.BlobReferenceDepth,
 		}
 		if c.flushing == nil {
 			// Set the file's LargestSeqNumAbsolute to be the maximum value of any

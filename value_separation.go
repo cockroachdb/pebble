@@ -170,9 +170,10 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 			FileNum:   vs.objMeta.DiskFileNum,
 			ValueSize: stats.UncompressedValueBytes,
 		}},
-		BlobReferenceSize: stats.UncompressedValueBytes,
-		BlobFileStats:     stats,
-		BlobFileObject:    vs.objMeta,
+		BlobReferenceSize:  stats.UncompressedValueBytes,
+		BlobReferenceDepth: 1,
+		BlobFileStats:      stats,
+		BlobFileObject:     vs.objMeta,
 		BlobFileMetadata: &manifest.BlobFileMetadata{
 			FileNum:      vs.objMeta.DiskFileNum,
 			Size:         stats.FileLen,
@@ -191,7 +192,8 @@ type preserveBlobReferences struct {
 	// inputBlobMetadatas should be populated to include the *BlobFileMetadata
 	// for every unique blob file referenced by input sstables.
 	// inputBlobMetadatas must be sorted by FileNum.
-	inputBlobMetadatas []*manifest.BlobFileMetadata
+	inputBlobMetadatas       []*manifest.BlobFileMetadata
+	outputBlobReferenceDepth int
 
 	// state
 	buf            []byte
@@ -315,5 +317,10 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 	return compact.ValueSeparationMetadata{
 		BlobReferences:    references,
 		BlobReferenceSize: referenceSize,
+		// The outputBlobReferenceDepth is computed from the input sstables,
+		// reflecting the worst-case overlap of referenced blob files. If this
+		// sstable references fewer unique blob files, reduce its depth to the
+		// count of unique files.
+		BlobReferenceDepth: min(vs.outputBlobReferenceDepth, len(references)),
 	}, nil
 }
