@@ -25,15 +25,7 @@ type CommonReader interface {
 		ctx context.Context, transforms FragmentIterTransforms, env block.ReadEnv,
 	) (keyspan.FragmentIterator, error)
 
-	NewPointIter(
-		ctx context.Context,
-		transforms IterTransforms,
-		lower, upper []byte,
-		filterer *BlockPropertiesFilterer,
-		filterBlockSizeLimit FilterBlockSizeLimit,
-		env block.ReadEnv,
-		rp valblk.ReaderProvider,
-	) (Iterator, error)
+	NewPointIter(ctx context.Context, opts IterOptions) (Iterator, error)
 
 	NewCompactionIter(
 		transforms IterTransforms,

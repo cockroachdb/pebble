@@ -55,28 +55,20 @@ func TestIteratorErrorOnInit(t *testing.T) {
 	var stats base.InternalIteratorStats
 	for k := 0; k < 20; k++ {
 		if rand.IntN(2) == 0 {
-			_, err := newRowBlockSingleLevelIterator(
-				context.Background(),
-				r,
-				nil, /* v */
-				NoTransforms,
-				nil /* lower */, nil, /* upper */
-				nil /* filterer */, NeverUseFilterBlock,
-				block.ReadEnv{Stats: &stats, BufferPool: &pool},
-				MakeTrivialReaderProvider(r),
-			)
+			_, err := newRowBlockSingleLevelIterator(context.Background(), r, nil /*virtualState*/, IterOptions{
+				Transforms:           NoTransforms,
+				FilterBlockSizeLimit: NeverUseFilterBlock,
+				Env:                  block.ReadEnv{Stats: &stats, BufferPool: &pool},
+				ReaderProvider:       MakeTrivialReaderProvider(r),
+			})
 			require.Error(t, err)
 		} else {
-			_, err := newRowBlockTwoLevelIterator(
-				context.Background(),
-				r,
-				nil, /* v */
-				NoTransforms,
-				nil /* lower */, nil, /* upper */
-				nil /* filterer */, NeverUseFilterBlock,
-				block.ReadEnv{Stats: &stats, BufferPool: &pool},
-				MakeTrivialReaderProvider(r),
-			)
+			_, err := newRowBlockTwoLevelIterator(context.Background(), r, nil /*virtualState*/, IterOptions{
+				Transforms:           NoTransforms,
+				FilterBlockSizeLimit: NeverUseFilterBlock,
+				Env:                  block.ReadEnv{Stats: &stats, BufferPool: &pool},
+				ReaderProvider:       MakeTrivialReaderProvider(r),
+			})
 			require.Error(t, err)
 		}
 	}

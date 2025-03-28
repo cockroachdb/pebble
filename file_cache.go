@@ -679,9 +679,15 @@ func (h *fileCacheHandle) newPointIter(
 	if internalOpts.compaction {
 		iter, err = cr.NewCompactionIter(transforms, internalOpts.readEnv, &v.readerProvider)
 	} else {
-		iter, err = cr.NewPointIter(
-			ctx, transforms, opts.GetLowerBound(), opts.GetUpperBound(), filterer,
-			filterBlockSizeLimit, internalOpts.readEnv, &v.readerProvider)
+		iter, err = cr.NewPointIter(ctx, sstable.IterOptions{
+			Lower:                opts.GetLowerBound(),
+			Upper:                opts.GetUpperBound(),
+			Transforms:           transforms,
+			FilterBlockSizeLimit: filterBlockSizeLimit,
+			Filterer:             filterer,
+			Env:                  internalOpts.readEnv,
+			ReaderProvider:       &v.readerProvider,
+		})
 	}
 	if err != nil {
 		return nil, err

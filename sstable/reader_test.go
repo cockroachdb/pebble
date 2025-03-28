@@ -359,12 +359,17 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				}
 			}
 
-			transforms := IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
-			}
-			iter, err := v.NewPointIter(
-				context.Background(), transforms, lower, upper, filterer, NeverUseFilterBlock,
-				block.ReadEnv{Stats: &stats, IterStats: nil}, MakeTrivialReaderProvider(r))
+			iter, err := v.NewPointIter(context.Background(), IterOptions{
+				Transforms: IterTransforms{
+					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+				},
+				Lower:                lower,
+				Upper:                upper,
+				Filterer:             filterer,
+				FilterBlockSizeLimit: NeverUseFilterBlock,
+				Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+				ReaderProvider:       MakeTrivialReaderProvider(r),
+			})
 			if err != nil {
 				return err.Error()
 			}
@@ -766,16 +771,13 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 						return "table does not intersect BlockPropertyFilter"
 					}
 				}
-				iter, err := r.NewPointIter(
-					context.Background(),
-					transforms,
-					nil, /* lower */
-					nil, /* upper */
-					filterer,
-					AlwaysUseFilterBlock,
-					block.ReadEnv{Stats: &stats, IterStats: nil},
-					MakeTrivialReaderProvider(r),
-				)
+				iter, err := r.NewPointIter(context.Background(), IterOptions{
+					Transforms:           transforms,
+					Filterer:             filterer,
+					FilterBlockSizeLimit: AlwaysUseFilterBlock,
+					Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+					ReaderProvider:       MakeTrivialReaderProvider(r),
+				})
 				if err != nil {
 					return err.Error()
 				}
@@ -1269,17 +1271,16 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 		}
 		eReader, err := newReader(f, opts)
 		require.NoError(t, err)
-		iter, err := eReader.newPointIter(
-			context.Background(),
-			block.IterTransforms{
+		iter, err := eReader.newPointIter(context.Background(), IterOptions{
+			Transforms: block.IterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			},
-			nil, nil, nil,
-			AlwaysUseFilterBlock, block.NoReadEnv,
-			MakeTrivialReaderProvider(eReader), &virtualState{
-				lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
-				upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
-			})
+			FilterBlockSizeLimit: AlwaysUseFilterBlock,
+			ReaderProvider:       MakeTrivialReaderProvider(eReader),
+		}, &virtualState{
+			lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
+			upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
+		})
 		require.NoError(t, err)
 		return iter, func() {
 			require.NoError(t, iter.Close())
@@ -2497,11 +2498,11 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 										b.Fatalf("sstable does not intersect")
 									}
 								}
-								transforms := IterTransforms{HideObsoletePoints: hideObsoletePoints}
-								iter, err := r.NewPointIter(
-									context.Background(), transforms, nil, nil, filterer,
-									AlwaysUseFilterBlock, block.NoReadEnv,
-									MakeTrivialReaderProvider(r))
+								iter, err := r.NewPointIter(context.Background(), IterOptions{
+									Transforms:     IterTransforms{HideObsoletePoints: hideObsoletePoints},
+									Filterer:       filterer,
+									ReaderProvider: MakeTrivialReaderProvider(r),
+								})
 								require.NoError(b, err)
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {
@@ -2581,7 +2582,10 @@ func TestReaderReportsCorruption(t *testing.T) {
 			return errors.Wrap(err, "error passed through ReportCorruptionFn")
 		},
 	}
-	iter, err := r.NewPointIter(context.Background(), NoTransforms, nil, nil, nil, 0, env, nil)
+	iter, err := r.NewPointIter(context.Background(), IterOptions{
+		Transforms: NoTransforms,
+		Env:        env,
+	})
 	require.NoError(t, err)
 	defer iter.Close()
 	kv := iter.First()

@@ -176,9 +176,14 @@ func createExternalPointIter(
 			// BlockPropertiesFilterer that includes obsoleteKeyBlockPropertyFilter.
 			transforms := sstable.IterTransforms{SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum)}
 			seqNum--
-			pointIter, err = r.NewPointIter(
-				ctx, transforms, it.opts.LowerBound, it.opts.UpperBound, nil, /* BlockPropertiesFilterer */
-				sstable.NeverUseFilterBlock, readEnv, sstable.MakeTrivialReaderProvider(r))
+			pointIter, err = r.NewPointIter(ctx, sstable.IterOptions{
+				Lower:                it.opts.LowerBound,
+				Upper:                it.opts.UpperBound,
+				Transforms:           transforms,
+				FilterBlockSizeLimit: sstable.NeverUseFilterBlock,
+				Env:                  readEnv,
+				ReaderProvider:       sstable.MakeTrivialReaderProvider(r),
+			})
 			if err == nil {
 				rangeDelIter, err = r.NewRawRangeDelIter(ctx, sstable.FragmentIterTransforms{
 					SyntheticSeqNum: sstable.SyntheticSeqNum(seqNum),

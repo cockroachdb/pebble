@@ -130,9 +130,11 @@ func benchmarkRandSeekInSST(
 	// Iterate through the entire table to warm up the cache.
 	var stats base.InternalIteratorStats
 	rp := sstable.MakeTrivialReaderProvider(reader)
-	iter, err := reader.NewPointIter(
-		ctx, sstable.NoTransforms, nil, nil, nil, sstable.NeverUseFilterBlock,
-		block.ReadEnv{Stats: &stats, IterStats: nil}, rp)
+	iter, err := reader.NewPointIter(ctx, sstable.IterOptions{
+		FilterBlockSizeLimit: sstable.NeverUseFilterBlock,
+		Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+		ReaderProvider:       rp,
+	})
 	require.NoError(b, err)
 	n := 0
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
@@ -146,9 +148,11 @@ func benchmarkRandSeekInSST(
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		key := queryKeys[i%numQueryKeys]
-		iter, err := reader.NewPointIter(
-			ctx, sstable.NoTransforms, nil, nil, nil, sstable.NeverUseFilterBlock,
-			block.ReadEnv{Stats: &stats, IterStats: nil}, rp)
+		iter, err := reader.NewPointIter(ctx, sstable.IterOptions{
+			FilterBlockSizeLimit: sstable.NeverUseFilterBlock,
+			Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
+			ReaderProvider:       rp,
+		})
 		if err != nil {
 			b.Fatal(err)
 		}

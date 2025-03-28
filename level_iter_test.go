@@ -183,16 +183,21 @@ func (lt *levelIterTest) newIters(
 	transforms := file.IterTransforms()
 	var set iterSet
 	if kinds.Point() {
-		iter, err := lt.readers[file.FileNum].NewPointIter(
-			ctx, transforms,
-			opts.LowerBound, opts.UpperBound, nil, sstable.AlwaysUseFilterBlock, iio.readEnv, sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]))
+		iter, err := lt.readers[file.FileNum].NewPointIter(ctx, sstable.IterOptions{
+			Lower:                opts.GetLowerBound(),
+			Upper:                opts.GetUpperBound(),
+			Transforms:           transforms,
+			FilterBlockSizeLimit: sstable.AlwaysUseFilterBlock,
+			Env:                  iio.readEnv,
+			ReaderProvider:       sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]),
+		})
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
 		set.point = iter
 	}
 	if kinds.RangeDeletion() {
-		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(context.Background(), file.FragmentIterTransforms(), block.NoReadEnv)
+		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), block.NoReadEnv)
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
