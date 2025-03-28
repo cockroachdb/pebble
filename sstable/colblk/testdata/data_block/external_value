@@ -337,3 +337,151 @@ next-prefix
 ----
 seek-ge blockprefix_banana@73: blockprefix_banana@72:mock external value
                   next-prefix: blockprefix_coconut:coconut
+
+init
+----
+size=51:
+0: prefixes:       prefixbytes(16): 0 keys
+1: suffixes:       bytes: 0 rows set; 0 bytes in data
+2: trailers:       uint: 0 rows
+3: prefix changed: bitmap
+4: values:         bytes: 0 rows set; 0 bytes in data
+5: is-value-ext:   bitmap
+6: is-obsolete:    bitmap
+
+write
+apple@98#0,SET:apple98
+apple@52#0,SET:blobHandle-apple52
+apple@23#0,SET:blobHandle-apple23
+apple@11#0,SETWITHDEL:blobHandle-apple11
+banana@94#245,SETWITHDEL:banana94
+banana@93#244,DEL:
+----
+size=234:
+0: prefixes:       prefixbytes(16): 6 keys
+1: suffixes:       bytes: 6 rows set; 18 bytes in data
+2: trailers:       uint: 6 rows
+3: prefix changed: bitmap
+4: values:         bytes: 6 rows set; 72 bytes in data
+5: is-value-ext:   bitmap
+6: is-obsolete:    bitmap
+
+finish
+----
+LastKey: banana@93#244,DEL
+data block header
+ ├── columnar block header
+ │    ├── 000-004: x 09000000 # maximum key length: 9
+ │    ├── 004-005: x 01       # version 1
+ │    ├── 005-007: x 0700     # 7 columns
+ │    ├── 007-011: x 06000000 # 6 rows
+ │    ├── 011-012: b 00000100 # col 0: prefixbytes
+ │    ├── 012-016: x 2e000000 # col 0: page start 46
+ │    ├── 016-017: b 00000011 # col 1: bytes
+ │    ├── 017-021: x 43000000 # col 1: page start 67
+ │    ├── 021-022: b 00000010 # col 2: uint
+ │    ├── 022-026: x 5d000000 # col 2: page start 93
+ │    ├── 026-027: b 00000001 # col 3: bool
+ │    ├── 027-031: x 6a000000 # col 3: page start 106
+ │    ├── 031-032: b 00000011 # col 4: bytes
+ │    ├── 032-036: x 80000000 # col 4: page start 128
+ │    ├── 036-037: b 00000001 # col 5: bool
+ │    ├── 037-041: x d0000000 # col 5: page start 208
+ │    ├── 041-042: b 00000001 # col 6: bool
+ │    └── 042-046: x e8000000 # col 6: page start 232
+ ├── data for column 0 (prefixbytes)
+ │    ├── 046-047: x 04 # bundle size: 16
+ │    ├── offsets table
+ │    │    ├── 047-048: x 01 # encoding: 1b
+ │    │    ├── 048-049: x 00 # data[0] = 0 [56 overall]
+ │    │    ├── 049-050: x 00 # data[1] = 0 [56 overall]
+ │    │    ├── 050-051: x 05 # data[2] = 5 [61 overall]
+ │    │    ├── 051-052: x 05 # data[3] = 5 [61 overall]
+ │    │    ├── 052-053: x 05 # data[4] = 5 [61 overall]
+ │    │    ├── 053-054: x 05 # data[5] = 5 [61 overall]
+ │    │    ├── 054-055: x 0b # data[6] = 11 [67 overall]
+ │    │    └── 055-056: x 0b # data[7] = 11 [67 overall]
+ │    └── data
+ │         ├── 056-056: x              # data[00]:  (block prefix)
+ │         ├── 056-056: x              # data[01]:  (bundle prefix)
+ │         ├── 056-061: x 6170706c65   # data[02]: apple
+ │         ├── 061-061: x              # data[03]: .....
+ │         ├── 061-061: x              # data[04]: .....
+ │         ├── 061-061: x              # data[05]: .....
+ │         ├── 061-067: x 62616e616e61 # data[06]: banana
+ │         └── 067-067: x              # data[07]: ......
+ ├── data for column 1 (bytes)
+ │    ├── offsets table
+ │    │    ├── 067-068: x 01 # encoding: 1b
+ │    │    ├── 068-069: x 00 # data[0] = 0 [75 overall]
+ │    │    ├── 069-070: x 03 # data[1] = 3 [78 overall]
+ │    │    ├── 070-071: x 06 # data[2] = 6 [81 overall]
+ │    │    ├── 071-072: x 09 # data[3] = 9 [84 overall]
+ │    │    ├── 072-073: x 0c # data[4] = 12 [87 overall]
+ │    │    ├── 073-074: x 0f # data[5] = 15 [90 overall]
+ │    │    └── 074-075: x 12 # data[6] = 18 [93 overall]
+ │    └── data
+ │         ├── 075-078: x 403938 # data[0]: @98
+ │         ├── 078-081: x 403532 # data[1]: @52
+ │         ├── 081-084: x 403233 # data[2]: @23
+ │         ├── 084-087: x 403131 # data[3]: @11
+ │         ├── 087-090: x 403934 # data[4]: @94
+ │         └── 090-093: x 403933 # data[5]: @93
+ ├── data for column 2 (uint)
+ │    ├── 093-094: x 02   # encoding: 2b
+ │    ├── 094-096: x 0100 # data[0] = 1
+ │    ├── 096-098: x 0100 # data[1] = 1
+ │    ├── 098-100: x 0100 # data[2] = 1
+ │    ├── 100-102: x 1200 # data[3] = 18
+ │    ├── 102-104: x 12f5 # data[4] = 62738
+ │    └── 104-106: x 00f4 # data[5] = 62464
+ ├── data for column 3 (bool)
+ │    ├── 106-107: x 00                                                               # default bitmap encoding
+ │    ├── 107-112: x 0000000000                                                       # padding to align to 64-bit boundary
+ │    ├── 112-120: b 0001000100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ ├── data for column 4 (bytes)
+ │    ├── offsets table
+ │    │    ├── 128-129: x 01 # encoding: 1b
+ │    │    ├── 129-130: x 00 # data[0] = 0 [136 overall]
+ │    │    ├── 130-131: x 07 # data[1] = 7 [143 overall]
+ │    │    ├── 131-132: x 1a # data[2] = 26 [162 overall]
+ │    │    ├── 132-133: x 2d # data[3] = 45 [181 overall]
+ │    │    ├── 133-134: x 40 # data[4] = 64 [200 overall]
+ │    │    ├── 134-135: x 48 # data[5] = 72 [208 overall]
+ │    │    └── 135-136: x 48 # data[6] = 72 [208 overall]
+ │    └── data
+ │         ├── 136-143: x 6170706c653938       # data[0]: apple98
+ │         ├── 143-153: x 60626c6f6248616e646c # data[1]: `blobHandle-apple52
+ │         ├── 153-162: x 652d6170706c653532   # (continued...)
+ │         ├── 162-172: x 60626c6f6248616e646c # data[2]: `blobHandle-apple23
+ │         ├── 172-181: x 652d6170706c653233   # (continued...)
+ │         ├── 181-191: x 60626c6f6248616e646c # data[3]: `blobHandle-apple11
+ │         ├── 191-200: x 652d6170706c653131   # (continued...)
+ │         ├── 200-208: x 62616e616e613934     # data[4]: banana94
+ │         └── 208-208: x                      # data[5]:
+ ├── data for column 5 (bool)
+ │    ├── 208-209: x 00                                                               # default bitmap encoding
+ │    ├── 209-216: x 00000000000000                                                   # padding to align to 64-bit boundary
+ │    ├── 216-224: b 0000111000000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    └── 224-232: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ ├── data for column 6 (bool)
+ │    └── 232-233: x 01 # zero bitmap encoding
+ └── 233-234: x 00 # block padding byte
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+first: apple@98:apple98
+ next: apple@52:mock external value
+ next: apple@23:mock external value
+ next: apple@11:mock external value
+ next: banana@94:banana94
+ next: banana@93:
+ next: .
