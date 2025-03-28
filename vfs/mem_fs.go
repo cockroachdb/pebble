@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand/v2"
 	"os"
 	"path"
@@ -651,7 +652,7 @@ type memNode struct {
 	}
 
 	children       map[string]*memNode
-	syncedChildren map[string]*memNode
+	syncedChildren map[string]*memNode // may be nil if never synced
 }
 
 func newRootMemNode() *memNode {
@@ -659,14 +660,6 @@ func newRootMemNode() *memNode {
 		children: make(map[string]*memNode),
 		isDir:    true,
 	}
-}
-
-func cloneChildren(f map[string]*memNode) map[string]*memNode {
-	m := make(map[string]*memNode)
-	for k, v := range f {
-		m[k] = v
-	}
-	return m
 }
 
 func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
@@ -689,10 +682,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 		w.WriteByte(sep[0])
 	}
 	w.WriteByte('\n')
-	names := make([]string, 0, len(f.children))
-	for name := range f.children {
-		names = append(names, name)
-	}
+	names := slices.Collect(maps.Keys(f.children))
 	sort.Strings(names)
 	for _, name := range names {
 		f.children[name].dump(w, level+1, name)
@@ -704,7 +694,11 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 func (f *memNode) CrashClone(cfg *CrashCloneCfg) *memNode {
 	newNode := &memNode{isDir: f.isDir}
 	if f.isDir {
-		newNode.children = cloneChildren(f.syncedChildren)
+		newNode.children = maps.Clone(f.syncedChildren)
+		if newNode.children == nil {
+			// syncedChildren may be nil, but children cannot.
+			newNode.children = make(map[string]*memNode)
+		}
 		// Randomly include some non-synced children.
 		for name, child := range f.children {
 			if cfg.UnsyncedDataPercent > 0 && cfg.RNG.IntN(100) < cfg.UnsyncedDataPercent {
@@ -714,7 +708,7 @@ func (f *memNode) CrashClone(cfg *CrashCloneCfg) *memNode {
 		for name, child := range newNode.children {
 			newNode.children[name] = child.CrashClone(cfg)
 		}
-		newNode.syncedChildren = cloneChildren(newNode.children)
+		newNode.syncedChildren = maps.Clone(newNode.children)
 	} else {
 		newNode.mu.data = slices.Clone(f.mu.syncedData)
 		newNode.mu.modTime = f.mu.modTime
@@ -880,7 +874,7 @@ func (f *memFile) Sync() error {
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
 	if f.n.isDir {
-		f.n.syncedChildren = cloneChildren(f.n.children)
+		f.n.syncedChildren = maps.Clone(f.n.children)
 	} else {
 		f.n.mu.Lock()
 		f.n.mu.syncedData = append(f.n.mu.syncedData[:0], f.n.mu.data...)
