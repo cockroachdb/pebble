@@ -40,6 +40,17 @@ const (
 	TableFormatMinSupported = TableFormatPebblev1
 )
 
+var footerSizes [NumTableFormats]int = [NumTableFormats]int{
+	TableFormatLevelDB:   levelDBFooterLen,
+	TableFormatRocksDBv2: rocksDBFooterLen,
+	TableFormatPebblev1:  rocksDBFooterLen,
+	TableFormatPebblev2:  rocksDBFooterLen,
+	TableFormatPebblev3:  rocksDBFooterLen,
+	TableFormatPebblev4:  rocksDBFooterLen,
+	TableFormatPebblev5:  rocksDBFooterLen,
+	TableFormatPebblev6:  checkedPebbleDBFooterLen,
+}
+
 // TableFormatPebblev4, in addition to DELSIZED, introduces the use of
 // InternalKeyKindSSTableInternalObsoleteBit.
 //
@@ -253,6 +264,11 @@ func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 // data, index and keyspan blocks.
 func (f TableFormat) BlockColumnar() bool {
 	return f >= TableFormatPebblev5
+}
+
+// FooterSize returns the maximum size of the footer for the table format.
+func (f TableFormat) FooterSize() int {
+	return footerSizes[f]
 }
 
 func (f TableFormat) newIndexIter() block.IndexBlockIterator {

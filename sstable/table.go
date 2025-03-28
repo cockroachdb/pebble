@@ -337,14 +337,9 @@ func parseFooter(buf []byte, off, size int64) (footer, error) {
 			return footer, err
 		}
 
-		var footerLen int
-		if format >= TableFormatPebblev6 {
-			if len(buf) < checkedPebbleDBFooterLen {
-				return footer, base.CorruptionErrorf("(footer too short): %d", errors.Safe(len(buf)))
-			}
-			footerLen = checkedPebbleDBFooterLen
-		} else {
-			footerLen = rocksDBFooterLen
+		footerLen := format.FooterSize()
+		if len(buf) < footerLen {
+			return footer, base.CorruptionErrorf("(footer too short): %d", errors.Safe(len(buf)))
 		}
 		footer.footerBH.Offset = uint64(off+int64(len(buf))) - uint64(footerLen)
 		buf = buf[len(buf)-footerLen:]
@@ -394,22 +389,18 @@ func parseFooter(buf []byte, off, size int64) (footer, error) {
 }
 
 func (f footer) encode(buf []byte) []byte {
+	footerLen := f.format.FooterSize()
 	switch magic, version := f.format.AsTuple(); magic {
 	case levelDBMagic:
-		buf = buf[:levelDBFooterLen]
+		buf = buf[:footerLen]
 		clear(buf)
 		n := f.metaindexBH.EncodeVarints(buf[0:])
 		f.indexBH.EncodeVarints(buf[n:])
 		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
 
 	case rocksDBMagic, pebbleDBMagic:
-		var footerLen int
-		var versionOffset int
-		if f.format >= TableFormatPebblev6 {
-			footerLen = checkedPebbleDBFooterLen
-			versionOffset = checkedPebbleDBVersionOffset
-		} else {
-			footerLen = rocksDBFooterLen
+		versionOffset := checkedPebbleDBVersionOffset
+		if f.format < TableFormatPebblev6 {
 			versionOffset = rocksDBVersionOffset
 		}
 		buf = buf[:footerLen]
