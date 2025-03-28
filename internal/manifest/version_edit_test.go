@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -76,8 +77,8 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		SmallestSeqNum:        9,
 		LargestSeqNum:         11,
 		LargestSeqNumAbsolute: 11,
-		Virtual:               true,
 		FileBacking:           m1.FileBacking,
+		Virtual:               &virtual.VirtualReaderParams{},
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),

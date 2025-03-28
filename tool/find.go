@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/spf13/cobra"
 )
@@ -479,7 +478,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			// bit more work here to put them in a form that can be iterated in
 			// parallel with the point records.
 			rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-				iter, err := r.NewRawRangeDelIter(context.Background(), fragTransforms, block.NoReadEnv)
+				iter, err := r.NewRawRangeDelIter(context.Background(), fragTransforms, sstable.NoReadEnv)
 				if err != nil {
 					return nil, err
 				}

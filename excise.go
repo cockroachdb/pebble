@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 // Excise atomically deletes all data overlapping with the provided span. All
@@ -111,7 +112,7 @@ func (d *DB) excise(
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
 		leftFile := &tableMetadata{
-			Virtual:     true,
+			Virtual:     &virtual.VirtualReaderParams{},
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -193,7 +194,7 @@ func (d *DB) excise(
 	// Create a file to the right, if necessary.
 	if exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
 		// No key exists to the right of the excise span in this file.
-		if needsBacking && !m.Virtual {
+		if needsBacking && m.Virtual == nil {
 			// If m is virtual, then its file backing is already known to the manifest.
 			// We don't need to create another file backing. Note that there must be
 			// only one CreatedBackingTables entry per backing sstable. This is
@@ -207,7 +208,7 @@ func (d *DB) excise(
 	// See comment before the definition of leftFile for the motivation behind
 	// calculating tight user-key bounds.
 	rightFile := &tableMetadata{
-		Virtual:     true,
+		Virtual:     &virtual.VirtualReaderParams{},
 		FileBacking: m.FileBacking,
 		FileNum:     d.mu.versions.getNextFileNum(),
 		// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -304,7 +305,7 @@ func (d *DB) excise(
 		numCreatedFiles++
 	}
 
-	if needsBacking && !m.Virtual {
+	if needsBacking && m.Virtual == nil {
 		// If m is virtual, then its file backing is already known to the manifest.
 		// We don't need to create another file backing. Note that there must be
 		// only one CreatedBackingTables entry per backing sstable. This is
