@@ -10,7 +10,7 @@ blob-separated-values: num-values 4
 layout
 ----
 sstable
- ├── data  offset: 0  length: 133
+ ├── data  offset: 0  length: 154
  │    ├── data block header
  │    │    ├── columnar block header
  │    │    │    ├── 000-004: x 03000000 # maximum key length: 3
@@ -28,9 +28,9 @@ sstable
  │    │    │    ├── 031-032: b 00000011 # col 4: bytes
  │    │    │    ├── 032-036: x 68000000 # col 4: page start 104
  │    │    │    ├── 036-037: b 00000001 # col 5: bool
- │    │    │    ├── 037-041: x 82000000 # col 5: page start 130
+ │    │    │    ├── 037-041: x 86000000 # col 5: page start 134
  │    │    │    ├── 041-042: b 00000001 # col 6: bool
- │    │    │    └── 042-046: x 83000000 # col 6: page start 131
+ │    │    │    └── 042-046: x 98000000 # col 6: page start 152
  │    │    ├── data for column 0 (prefixbytes)
  │    │    │    ├── 046-047: x 04 # bundle size: 16
  │    │    │    ├── offsets table
@@ -82,33 +82,36 @@ sstable
  │    │    │    ├── offsets table
  │    │    │    │    ├── 104-105: x 01 # encoding: 1b
  │    │    │    │    ├── 105-106: x 00 # data[0] = 0 [111 overall]
- │    │    │    │    ├── 106-107: x 04 # data[1] = 4 [115 overall]
- │    │    │    │    ├── 107-108: x 09 # data[2] = 9 [120 overall]
- │    │    │    │    ├── 108-109: x 09 # data[3] = 9 [120 overall]
- │    │    │    │    ├── 109-110: x 0e # data[4] = 14 [125 overall]
- │    │    │    │    └── 110-111: x 13 # data[5] = 19 [130 overall]
+ │    │    │    │    ├── 106-107: x 05 # data[1] = 5 [116 overall]
+ │    │    │    │    ├── 107-108: x 0b # data[2] = 11 [122 overall]
+ │    │    │    │    ├── 108-109: x 0b # data[3] = 11 [122 overall]
+ │    │    │    │    ├── 109-110: x 11 # data[4] = 17 [128 overall]
+ │    │    │    │    └── 110-111: x 17 # data[5] = 23 [134 overall]
  │    │    │    └── data
- │    │    │         ├── 111-115: x 0064010a   # data[0]: "\x00d\x01\n"
- │    │    │         ├── 115-120: x 00c801026e # data[1]: "\x00\xc8\x01\x02n"
- │    │    │         ├── 120-120: x            # data[2]:
- │    │    │         ├── 120-125: x 01c8010000 # data[3]: "\x01\xc8\x01\x00\x00"
- │    │    │         └── 125-130: x 016701a602 # data[4]: "\x01g\x01\xa6\x02"
+ │    │    │         ├── 111-116: x 470064010a   # data[0]: "G\x00d\x01\n"
+ │    │    │         ├── 116-122: x 4700c801026e # data[1]: "G\x00\xc8\x01\x02n"
+ │    │    │         ├── 122-122: x              # data[2]:
+ │    │    │         ├── 122-128: x 6701c8010000 # data[3]: "g\x01\xc8\x01\x00\x00"
+ │    │    │         └── 128-134: x 67016701a602 # data[4]: "g\x01g\x01\xa6\x02"
  │    │    ├── data for column 5 (bool)
- │    │    │    └── 130-131: x 01 # zero bitmap encoding
+ │    │    │    ├── 134-135: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 135-136: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 136-144: b 0001101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 144-152: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
  │    │    ├── data for column 6 (bool)
- │    │    │    └── 131-132: x 01 # zero bitmap encoding
- │    │    └── 132-133: x 00 # block padding byte
- │    ├── a@2#1,SET:hex:0064010a
- │    ├── b@5#7,SET:hex:00c801026e
+ │    │    │    └── 152-153: x 01 # zero bitmap encoding
+ │    │    └── 153-154: x 00 # block padding byte
+ │    ├── a@2#1,SET:value handle {ValueLen:0 BlockNum:100 OffsetInBlock:1}
+ │    ├── b@5#7,SET:value handle {ValueLen:0 BlockNum:200 OffsetInBlock:2}
  │    ├── b@4#3,DEL:
- │    ├── b@3#2,SET:hex:01c8010000
- │    ├── b@2#1,SET:hex:016701a602
- │    └── trailer [compression=none checksum=0x8f109d09]
- ├── index  offset: 138  length: 36
- │    ├── 00000    block:0/133
+ │    ├── b@3#2,SET:value handle {ValueLen:1 BlockNum:200 OffsetInBlock:0}
+ │    ├── b@2#1,SET:value handle {ValueLen:1 BlockNum:103 OffsetInBlock:1}
+ │    └── trailer [compression=none checksum=0x196b9b28]
+ ├── index  offset: 159  length: 36
+ │    ├── 00000    block:0/154
  │    │   
- │    └── trailer [compression=none checksum=0x863e7ff6]
- ├── properties  offset: 179  length: 570
+ │    └── trailer [compression=none checksum=0xda1c8436]
+ ├── properties  offset: 200  length: 570
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.num.values.in.blob-files (28)
@@ -131,17 +134,17 @@ sstable
  │    ├── 00547    rocksdb.raw.value.size (15)
  │    ├── restart points
  │    │    └── 00562 [restart 0]
- │    └── trailer [compression=none checksum=0x5aee2759]
- ├── meta-index  offset: 754  length: 33
- │    ├── 0000    rocksdb.properties block:179/570 [restart]
+ │    └── trailer [compression=none checksum=0xaaf4ac72]
+ ├── meta-index  offset: 775  length: 33
+ │    ├── 0000    rocksdb.properties block:200/570 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0x336f39a9]
- └── footer  offset: 792  length: 57
+ │    └── trailer [compression=none checksum=0x7216e2e4]
+ └── footer  offset: 813  length: 57
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=754, length=33
-      ├── 004  index: offset=138, length=36
-      ├── 041  footer checksum: 0x7c352f7a
+      ├── 001  meta: offset=775, length=33
+      ├── 004  index: offset=159, length=36
+      ├── 041  footer checksum: 0x1d06bfc3
       ├── 045  version: 6
       └── 049  magic number: 0xf09faab3f09faab3
 
