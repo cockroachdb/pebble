@@ -165,22 +165,26 @@ func TestMergingIterDataDriven(t *testing.T) {
 		fileNum        base.FileNum
 	)
 	newIters :=
-		func(_ context.Context, file *manifest.TableMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
+		func(ctx context.Context, file *manifest.TableMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
 		) (iterSet, error) {
 			var set iterSet
 			var err error
 			r := readers[file.FileNum]
 			if kinds.RangeDeletion() {
-				set.rangeDeletion, err = r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.readEnv)
+				set.rangeDeletion, err = r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, iio.readEnv)
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
 			}
 			if kinds.Point() {
-				set.point, err = r.NewPointIter(
-					context.Background(),
-					sstable.NoTransforms,
-					opts.GetLowerBound(), opts.GetUpperBound(), nil, sstable.AlwaysUseFilterBlock, iio.readEnv, sstable.MakeTrivialReaderProvider(r))
+				set.point, err = r.NewPointIter(ctx, sstable.IterOptions{
+					Lower:                opts.GetLowerBound(),
+					Upper:                opts.GetUpperBound(),
+					Transforms:           sstable.NoTransforms,
+					FilterBlockSizeLimit: sstable.AlwaysUseFilterBlock,
+					Env:                  iio.readEnv,
+					ReaderProvider:       sstable.MakeTrivialReaderProvider(r),
+				})
 				if err != nil {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
