@@ -47,6 +47,7 @@ const (
 	NoCompression      = block.NoCompression
 	SnappyCompression  = block.SnappyCompression
 	ZstdCompression    = block.ZstdCompression
+	MinlzCompression   = block.MinlzCompression
 )
 
 // FilterType exports the base.FilterType type.
@@ -1894,6 +1895,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					l.Compression = func() Compression { return SnappyCompression }
 				case "ZSTD":
 					l.Compression = func() Compression { return ZstdCompression }
+				case "Minlz":
+					l.Compression = func() Compression { return MinlzCompression }
 				default:
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
