@@ -189,7 +189,7 @@ func (w *RawColumnWriter) Error() error {
 // EstimatedSize returns the estimated size of the sstable being written if
 // a call to Close() was made without adding additional keys.
 func (w *RawColumnWriter) EstimatedSize() uint64 {
-	sz := rocksDBFooterLen + w.queuedDataSize
+	sz := uint64(w.opts.TableFormat.FooterSize()) + w.queuedDataSize
 	// TODO(jackson): Avoid iterating over partitions by incrementally
 	// maintaining the size contribution of all buffered partitions.
 	for _, bib := range w.indexBuffering.partitions {
