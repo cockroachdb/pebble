@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"math"
 	"sort"
 	"strings"
@@ -79,9 +80,9 @@ func (info compactionInfo) String() string {
 			fmt.Fprintf(&buf, " -> ")
 		}
 		fmt.Fprintf(&buf, "L%d", in.level)
-		in.files.Each(func(m *tableMetadata) {
-			fmt.Fprintf(&buf, " %s", m.FileNum)
-		})
+		for f := range in.files.All() {
+			fmt.Fprintf(&buf, " %s", f.FileNum)
+		}
 		if largest < in.level {
 			largest = in.level
 		}
@@ -148,8 +149,7 @@ func (cl sublevelInfo) String() string {
 // from the level slice for all of L0.
 func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []sublevelInfo {
 	sublevelMap := make(map[uint64][]*tableMetadata)
-	it := levelFiles.Iter()
-	for f := it.First(); f != nil; f = it.Next() {
+	for f := range levelFiles.All() {
 		sublevelMap[uint64(f.SubLevel)] = append(sublevelMap[uint64(f.SubLevel)], f)
 	}
 
@@ -301,8 +301,7 @@ func newPickedCompactionFromL0(
 	// because compactions built by L0SSTables do not necessarily
 	// pick contiguous sequences of files in pc.version.Levels[0].
 	files := make([]*manifest.TableMetadata, 0, len(lcf.Files))
-	iter := vers.Levels[0].Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range vers.Levels[0].All() {
 		if lcf.FilesIncluded[f.L0Index] {
 			files = append(files, f)
 		}
@@ -417,7 +416,7 @@ func (pc *pickedCompaction) setupInputs(
 		return false
 	}
 
-	pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, startLevel.files.Iter()))
+	pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, startLevel.files.All()))
 
 	// Determine the sstables in the output level which overlap with the input
 	// sstables. No need to do this for intra-L0 compactions; outputLevel.files is
@@ -429,7 +428,7 @@ func (pc *pickedCompaction) setupInputs(
 		}
 
 		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
-			startLevel.files.Iter(), pc.outputLevel.files.Iter()))
+			startLevel.files.All(), pc.outputLevel.files.All()))
 	}
 
 	// Grow the sstables in startLevel.level as long as it doesn't affect the number
@@ -489,14 +488,14 @@ func (pc *pickedCompaction) setupInputs(
 			if sizeSum+pc.outputLevel.files.SizeSum() < maxExpandedBytes {
 				startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
-					startLevel.files.Iter(), pc.outputLevel.files.Iter())
+					startLevel.files.All(), pc.outputLevel.files.All())
 			} else {
 				*pc.lcf = *oldLcf
 			}
 		}
 	} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, startLevel) {
 		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
-			startLevel.files.Iter(), pc.outputLevel.files.Iter()))
+			startLevel.files.All(), pc.outputLevel.files.All()))
 	}
 
 	if pc.startLevel.level == 0 {
@@ -528,7 +527,7 @@ func (pc *pickedCompaction) grow(
 	}
 	// We need to include the outputLevel iter because without it, in a multiLevel scenario,
 	// sm1 and la1 could shift the output level keyspace when pc.outputLevel.files is set to grow1.
-	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.Iter(), pc.outputLevel.files.Iter())
+	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.All(), pc.outputLevel.files.All())
 	grow1 := pc.version.Overlaps(pc.outputLevel.level, base.UserKeyBoundsFromInternal(sm1, la1))
 	if anyTablesCompacting(grow1) {
 		return false
@@ -566,8 +565,7 @@ func (pc *pickedCompaction) setupMultiLevelCandidate(opts *Options, diskAvailByt
 // anyTablesCompacting returns true if any tables in the level slice are
 // compacting.
 func anyTablesCompacting(inputs manifest.LevelSlice) bool {
-	it := inputs.Iter()
-	for f := it.First(); f != nil; f = it.Next() {
+	for f := range inputs.All() {
 		if f.IsCompacting() {
 			return true
 		}
@@ -649,9 +647,9 @@ var compensatedSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uin
 // iterator. Note that this function is linear in the files available to the
 // iterator. Use the compensatedSizeAnnotator if querying the total
 // compensated size of a level.
-func totalCompensatedSize(iter manifest.LevelIterator) uint64 {
+func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 	var sz uint64
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range iter {
 		sz += compensatedSize(f)
 	}
 	return sz
@@ -870,7 +868,7 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]leve
 
 		for _, input := range c.inputs {
 			actualSize := input.files.SizeSum()
-			compensatedSize := totalCompensatedSize(input.files.Iter())
+			compensatedSize := totalCompensatedSize(input.files.All())
 
 			if input.level != c.outputLevel {
 				sizeAdjust[input.level].outgoingCompensatedBytes += compensatedSize
@@ -1231,7 +1229,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 				marker, info.level, info.compensatedScoreRatio, info.compensatedScore,
 				info.uncompensatedScoreRatio, info.uncompensatedScore,
 				humanize.Bytes.Int64(int64(totalCompensatedSize(
-					p.vers.Levels[info.level].Iter(),
+					p.vers.Levels[info.level].All(),
 				))),
 				humanize.Bytes.Int64(p.levelMaxBytes[info.level]),
 			)
@@ -1461,11 +1459,11 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 	}
 	if invariants.Enabled {
 		found := false
-		inputs.Each(func(f *tableMetadata) {
+		for f := range inputs.All() {
 			if f.FileNum == candidate.FileNum {
 				found = true
 			}
-		})
+		}
 		if !found {
 			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, startLevel))
 		}
@@ -1474,7 +1472,7 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 	pc := newPickedCompaction(p.opts, p.vers, startLevel, outputLevel, p.baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = inputs
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.All())
 
 	// Fail-safe to protect against compacting the same sstable concurrently.
 	if inputRangeAlreadyCompacting(env, pc) {
@@ -1604,7 +1602,7 @@ func pickAutoLPositive(
 	// Files in level 0 may overlap each other, so pick up all overlapping ones.
 	if pc.startLevel.level == 0 {
 		cmp := opts.Comparer.Compare
-		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files.Iter())
+		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files.All())
 		pc.startLevel.files = vers.Overlaps(0, base.UserKeyBoundsFromInternal(smallest, largest))
 		if pc.startLevel.files.Empty() {
 			panic("pebble: empty compaction")
@@ -1777,7 +1775,7 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pic
 			}
 			// A single-file intra-L0 compaction is unproductive.
 			if iter := pc.startLevel.files.Iter(); iter.First() != nil && iter.Next() != nil {
-				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
+				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.All())
 				return pc
 			}
 		} else {
@@ -1900,16 +1898,8 @@ func pickReadTriggeredCompactionHelper(
 	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
 ) (pc *pickedCompaction) {
 	overlapSlice := p.vers.Overlaps(rc.level, base.UserKeyBoundsInclusive(rc.start, rc.end))
-	if overlapSlice.Empty() {
-		// If there is no overlap, then the file with the key range
-		// must have been compacted away. So, we don't proceed to
-		// compact the same key range again.
-		return nil
-	}
-
-	iter := overlapSlice.Iter()
 	var fileMatches bool
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range overlapSlice.All() {
 		if f.FileNum == rc.fileNum {
 			fileMatches = true
 			break
@@ -1952,8 +1942,7 @@ func (p *compactionPickerByScore) forceBaseLevel1() {
 
 func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 	for _, cl := range pc.inputs {
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range cl.files.All() {
 			if f.IsCompacting() {
 				return true
 			}

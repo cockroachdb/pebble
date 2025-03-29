@@ -585,7 +585,7 @@ func (s *L0Sublevels) AddL0Files(
 	// with a binary search, or by only looping through files to the right of
 	// the first interval touched by this method.
 	for sublevel := range s.Levels {
-		s.Levels[sublevel].Each(func(f *TableMetadata) {
+		for f := range s.Levels[sublevel].All() {
 			oldIntervalDelta := f.maxIntervalIndex - f.minIntervalIndex + 1
 			oldMinIntervalIndex := f.minIntervalIndex
 			f.minIntervalIndex = oldToNewMap[f.minIntervalIndex]
@@ -614,7 +614,7 @@ func (s *L0Sublevels) AddL0Files(
 					newVal.orderedIntervals[i].estimatedBytes += f.Size / uint64(newIntervalDelta)
 				}
 			}
-		})
+		}
 	}
 	updatedSublevels := make([]int, 0)
 	// Update interval indices for new files.
@@ -743,8 +743,7 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 		s.orderedIntervals[i].intervalRangeIsBaseCompacting = false
 	}
 
-	iter := s.levelMetadata.Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range s.levelMetadata.All() {
 		if invariants.Enabled {
 			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest.UserKey) {
 				panic(fmt.Sprintf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
@@ -1139,8 +1138,7 @@ func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBas
 	minIntervalIndex := -1
 	maxIntervalIndex := 0
 	for i := range inputs {
-		iter := inputs[i].Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range inputs[i].All() {
 			for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 				interval := &s.orderedIntervals[i]
 				interval.compactingFileCount++

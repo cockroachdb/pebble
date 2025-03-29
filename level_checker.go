@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"sort"
 
 	"github.com/cockroachdb/errors"
@@ -395,11 +396,10 @@ func checkRangeTombstones(c *checkConfig) error {
 	}
 
 	current := c.readState.current
-	addTombstonesFromLevel := func(files manifest.LevelIterator, lsmLevel int) error {
-		for f := files.First(); f != nil; f = files.Next() {
-			lf := files.Take()
+	addTombstonesFromLevel := func(files iter.Seq[*manifest.TableMetadata], lsmLevel int) error {
+		for f := range files {
 			iters, err := c.newIters(
-				context.Background(), lf.TableMetadata, &IterOptions{layer: manifest.Level(lsmLevel)},
+				context.Background(), f, &IterOptions{layer: manifest.Level(lsmLevel)},
 				internalIterOpts{}, iterRangeDeletions)
 			if err != nil {
 				return err
@@ -419,14 +419,14 @@ func checkRangeTombstones(c *checkConfig) error {
 		if current.L0SublevelFiles[i].Empty() {
 			continue
 		}
-		err := addTombstonesFromLevel(current.L0SublevelFiles[i].Iter(), 0)
+		err := addTombstonesFromLevel(current.L0SublevelFiles[i].All(), 0)
 		if err != nil {
 			return err
 		}
 		level++
 	}
 	for i := 1; i < len(current.Levels); i++ {
-		if err := addTombstonesFromLevel(current.Levels[i].Iter(), i); err != nil {
+		if err := addTombstonesFromLevel(current.Levels[i].All(), i); err != nil {
 			return err
 		}
 		level++

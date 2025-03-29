@@ -2221,9 +2221,8 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	destTables := make([]SSTableInfo, totalTables)
 	destLevels := make([][]SSTableInfo, len(srcLevels))
 	for i := range destLevels {
-		iter := srcLevels[i].Iter()
 		j := 0
-		for m := iter.First(); m != nil; m = iter.Next() {
+		for m := range srcLevels[i].All() {
 			if opt.start != nil && opt.end != nil {
 				b := base.UserKeyBoundsEndExclusive(opt.start, opt.end)
 				if !m.Overlaps(d.opts.Comparer.Compare, &b) {

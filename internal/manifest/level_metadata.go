@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"reflect"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -119,6 +120,18 @@ func (lm *LevelMetadata) Size() uint64 {
 // Iter constructs a LevelIterator over the entire level.
 func (lm *LevelMetadata) Iter() LevelIterator {
 	return LevelIterator{iter: lm.tree.Iter()}
+}
+
+// All returns an iterator over all files in the level.
+func (lm *LevelMetadata) All() iter.Seq[*TableMetadata] {
+	return func(yield func(*TableMetadata) bool) {
+		iter := lm.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if !yield(f) {
+				break
+			}
+		}
+	}
 }
 
 // Slice constructs a slice containing the entire level.
@@ -246,9 +259,8 @@ type LevelSlice struct {
 
 func (ls LevelSlice) verifyInvariants() {
 	if invariants.Enabled {
-		i := ls.Iter()
 		var length int
-		for f := i.First(); f != nil; f = i.Next() {
+		for range ls.All() {
 			length++
 		}
 		if ls.length != length {
@@ -257,11 +269,15 @@ func (ls LevelSlice) verifyInvariants() {
 	}
 }
 
-// Each invokes fn for each element in the slice.
-func (ls LevelSlice) Each(fn func(*TableMetadata)) {
-	iter := ls.Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
-		fn(f)
+// All returns an iterator over all files in the slice.
+func (ls LevelSlice) All() iter.Seq[*TableMetadata] {
+	return func(yield func(*TableMetadata) bool) {
+		iter := ls.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if !yield(f) {
+				break
+			}
+		}
 	}
 }
 
@@ -269,12 +285,12 @@ func (ls LevelSlice) Each(fn func(*TableMetadata)) {
 func (ls LevelSlice) String() string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%d files: ", ls.length)
-	ls.Each(func(f *TableMetadata) {
+	for f := range ls.All() {
 		if buf.Len() > 0 {
 			fmt.Fprintf(&buf, " ")
 		}
 		fmt.Fprint(&buf, f)
-	})
+	}
 	return buf.String()
 }
 
@@ -301,8 +317,7 @@ func (ls *LevelSlice) Len() int {
 // the length of the slice.
 func (ls *LevelSlice) SizeSum() uint64 {
 	var sum uint64
-	iter := ls.Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range ls.All() {
 		sum += f.Size
 	}
 	return sum
@@ -312,8 +327,7 @@ func (ls *LevelSlice) SizeSum() uint64 {
 // linear in the length of the slice.
 func (ls *LevelSlice) NumVirtual() uint64 {
 	var n uint64
-	iter := ls.Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range ls.All() {
 		if f.Virtual {
 			n++
 		}
@@ -325,8 +339,7 @@ func (ls *LevelSlice) NumVirtual() uint64 {
 // level.
 func (ls *LevelSlice) VirtualSizeSum() uint64 {
 	var sum uint64
-	iter := ls.Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range ls.All() {
 		if f.Virtual {
 			sum += f.Size
 		}

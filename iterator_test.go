@@ -368,9 +368,9 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
-				l.Slice().Each(func(f *tableMetadata) {
+				for f := range l.All() {
 					f.AllowedSeeks.Store(allowedSeeks)
-				})
+				}
 			}
 			d.mu.Unlock()
 			return ""
@@ -398,12 +398,12 @@ func TestReadSampling(t *testing.T) {
 			var foundAllowedSeeks int64 = -1
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
-				l.Slice().Each(func(f *tableMetadata) {
+				for f := range l.All() {
 					if f.FileNum == base.FileNum(fileNum) {
 						actualAllowedSeeks := f.AllowedSeeks.Load()
 						foundAllowedSeeks = actualAllowedSeeks
 					}
-				})
+				}
 			}
 			d.mu.Unlock()
 

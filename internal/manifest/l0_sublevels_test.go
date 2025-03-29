@@ -473,7 +473,7 @@ func TestL0Sublevels(t *testing.T) {
 				}
 			}
 			slice := NewLevelSliceSeqSorted(files)
-			sm, la := KeyRange(base.DefaultComparer.Compare, slice.Iter())
+			sm, la := KeyRange(base.DefaultComparer.Compare, slice.All())
 			activeCompactions = append(activeCompactions, L0Compaction{Smallest: sm, Largest: la})
 			if err := sublevels.UpdateStateForStartedCompaction([]LevelSlice{slice}, true); err != nil {
 				return err.Error()

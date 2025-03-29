@@ -69,9 +69,9 @@ func (b *lsmViewBuilder) InitLevels(v *version) {
 	var levels [][]*tableMetadata
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		var files []*tableMetadata
-		v.L0SublevelFiles[sublevel].Each(func(f *tableMetadata) {
+		for f := range v.L0SublevelFiles[sublevel].All() {
 			files = append(files, f)
-		})
+		}
 
 		levelNames = append(levelNames, fmt.Sprintf("L0.%d", sublevel))
 		levels = append(levels, files)
@@ -82,9 +82,9 @@ func (b *lsmViewBuilder) InitLevels(v *version) {
 	}
 	for level := 1; level < len(v.Levels); level++ {
 		var files []*tableMetadata
-		v.Levels[level].Slice().Each(func(f *tableMetadata) {
+		for f := range v.Levels[level].All() {
 			files = append(files, f)
-		})
+		}
 		levelNames = append(levelNames, fmt.Sprintf("L%d", level))
 		levels = append(levels, files)
 	}

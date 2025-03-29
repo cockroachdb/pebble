@@ -357,8 +357,7 @@ func (vs *versionSet) load(
 		l.Size = int64(files.SizeSum())
 	}
 	for _, l := range newVersion.Levels {
-		iter := l.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range l.All() {
 			if !f.Virtual {
 				_, localSize := sizeIfLocal(f.FileBacking, vs.provider)
 				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
@@ -926,8 +925,7 @@ func (vs *versionSet) createManifest(
 	}
 
 	for level, levelMetadata := range vs.currentVersion().Levels {
-		iter := levelMetadata.Iter()
-		for meta := iter.First(); meta != nil; meta = iter.Next() {
+		for meta := range levelMetadata.All() {
 			snapshot.NewTables = append(snapshot.NewTables, newTableEntry{
 				Level: level,
 				Meta:  meta,
@@ -1006,8 +1004,7 @@ func (vs *versionSet) append(v *version) {
 		// Verify that the virtualBackings contains all the backings referenced by
 		// the version.
 		for _, l := range v.Levels {
-			iter := l.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
+			for f := range l.All() {
 				if f.Virtual {
 					if _, ok := vs.virtualBackings.Get(f.FileBacking.DiskFileNum); !ok {
 						panic(fmt.Sprintf("%s is not in virtualBackings", f.FileBacking.DiskFileNum))
@@ -1026,8 +1023,7 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 	current := vs.currentVersion()
 	for v := vs.versions.Front(); true; v = v.Next() {
 		for _, lm := range v.Levels {
-			iter := lm.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
+			for f := range lm.All() {
 				m[f.FileBacking.DiskFileNum] = struct{}{}
 			}
 		}

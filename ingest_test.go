@@ -919,8 +919,7 @@ func TestExcise(t *testing.T) {
 			currVersion := d.mu.versions.currentVersion()
 			var ptr *manifest.FileBacking
 			for _, level := range currVersion.Levels {
-				lIter := level.Iter()
-				for f := lIter.First(); f != nil; f = lIter.Next() {
+				for f := range level.All() {
 					if _, ok := fileNums[f.FileNum]; ok {
 						if ptr == nil {
 							ptr = f.FileBacking

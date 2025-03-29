@@ -1207,8 +1207,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	defer d.mu.Unlock()
 	v := d.mu.versions.currentVersion()
 	for _, levelMetadata := range v.Levels {
-		iter := levelMetadata.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range levelMetadata.All() {
 			if f.FileNum != fileNum {
 				continue
 			}
@@ -1242,8 +1241,7 @@ func runVersionFileSizes(v *version) string {
 			continue
 		}
 		fmt.Fprintf(&buf, "L%d:\n", l)
-		iter := levelMetadata.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range levelMetadata.All() {
 			fmt.Fprintf(&buf, "  %s: %d bytes (%s)", f, f.Size, humanize.Bytes.Uint64(f.Size))
 			if f.IsCompacting() {
 				fmt.Fprintf(&buf, " (IsCompacting)")
@@ -1263,8 +1261,7 @@ func runMetadataCommand(t *testing.T, td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
-		lIter := level.Iter()
-		for f := lIter.First(); f != nil; f = lIter.Next() {
+		for f := range level.All() {
 			if f.FileNum == base.FileNum(uint64(file)) {
 				m = f
 				break
@@ -1288,8 +1285,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
-		lIter := level.Iter()
-		for f := lIter.First(); f != nil; f = lIter.Next() {
+		for f := range level.All() {
 			if f.FileNum == base.FileNum(uint64(file)) {
 				m = f
 				break

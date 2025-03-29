@@ -134,8 +134,7 @@ func TestDownloadTask(t *testing.T) {
 				compacting[base.FileNum(n)] = struct{}{}
 			}
 			for _, lm := range vers.Levels {
-				iter := lm.Iter()
-				for f := iter.First(); f != nil; f = iter.Next() {
+				for f := range lm.All() {
 					if _, ok := compacting[f.FileNum]; ok {
 						f.CompactionState = manifest.CompactionStateCompacting
 						delete(compacting, f.FileNum)

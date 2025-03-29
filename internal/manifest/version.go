@@ -8,6 +8,7 @@ import (
 	"bytes"
 	stdcmp "cmp"
 	"fmt"
+	"iter"
 	"slices"
 	"sort"
 	"strings"
@@ -1154,10 +1155,10 @@ func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
 // all the TableMetadata in iters.
-func KeyRange(ucmp Compare, iters ...LevelIterator) (smallest, largest InternalKey) {
+func KeyRange(ucmp Compare, iters ...iter.Seq[*TableMetadata]) (smallest, largest InternalKey) {
 	first := true
 	for _, iter := range iters {
-		for meta := iter.First(); meta != nil; meta = iter.Next() {
+		for meta := range iter {
 			if first {
 				first = false
 				smallest, largest = meta.Smallest, meta.Largest
@@ -1337,9 +1338,9 @@ func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSli
 	var buf bytes.Buffer
 	for sublevel := len(sublevels) - 1; sublevel >= 0; sublevel-- {
 		fmt.Fprintf(&buf, "L0.%d:\n", sublevel)
-		sublevels[sublevel].Each(func(f *TableMetadata) {
+		for f := range sublevels[sublevel].All() {
 			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
-		})
+		}
 	}
 	return buf.String()
 }
@@ -1354,8 +1355,7 @@ func (v *Version) string(verbose bool) string {
 			continue
 		}
 		fmt.Fprintf(&buf, "L%d:\n", level)
-		iter := v.Levels[level].Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range v.Levels[level].All() {
 			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose))
 		}
 	}
@@ -1618,12 +1618,15 @@ func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary
 // searches among the files. If level is zero, Contains scans the entire
 // level.
 func (v *Version) Contains(level int, m *TableMetadata) bool {
-	iter := v.Levels[level].Iter()
-	if level > 0 {
-		overlaps := v.Overlaps(level, m.UserKeyBounds())
-		iter = overlaps.Iter()
+	if level == 0 {
+		for f := range v.Levels[0].All() {
+			if f == m {
+				return true
+			}
+		}
+		return false
 	}
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range v.Overlaps(level, m.UserKeyBounds()).All() {
 		if f == m {
 			return true
 		}

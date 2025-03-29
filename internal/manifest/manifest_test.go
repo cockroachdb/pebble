@@ -71,9 +71,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 		}
 
 		for l := level; l < manifest.NumLevels; l++ {
-			o := v.Overlaps(l, base.UserKeyBoundsInclusive(smallest, largest))
-			iter := o.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
+			for f := range v.Overlaps(l, base.UserKeyBoundsInclusive(smallest, largest)).All() {
 				// CalculateInuseKeyRanges only guarantees that it returns key
 				// ranges covering in-use ranges within [smallest, largest]. If
 				// this file extends before or after smallest/largest, truncate

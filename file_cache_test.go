@@ -433,8 +433,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 	currVersion = d.mu.versions.currentVersion()
 	l6 = currVersion.Levels[6]
-	l6FileIter = l6.Iter()
-	for f := l6FileIter.First(); f != nil; f = l6FileIter.Next() {
+	for f := range l6.All() {
 		require.Equal(t, true, f.Virtual)
 	}
 	d.mu.Unlock()
