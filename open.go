@@ -1258,8 +1258,7 @@ func checkConsistency(v *manifest.Version, objProvider objstorage.Provider) erro
 	var errs []error
 	dedup := make(map[base.DiskFileNum]struct{})
 	for level, files := range v.Levels {
-		iter := files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range files.All() {
 			backingState := f.FileBacking
 			if _, ok := dedup[backingState.DiskFileNum]; ok {
 				continue

@@ -163,10 +163,8 @@ func BenchmarkNumFilesRangeAnnotation(b *testing.B) {
 			toDelete := rng.IntN(count)
 			v.Levels[6].tree.Delete(files[toDelete], ignoreObsoleteFiles{})
 
-			overlaps := v.Overlaps(6, b)
-			iter := overlaps.Iter()
 			numFiles := 0
-			for f := iter.First(); f != nil; f = iter.Next() {
+			for range v.Overlaps(6, b).All() {
 				numFiles++
 			}
 

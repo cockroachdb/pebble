@@ -221,8 +221,7 @@ func (d *DB) scanReadStateTableStats(
 	var hints []deleteCompactionHint
 	sizesChecked := make(map[base.DiskFileNum]struct{})
 	for l, levelMetadata := range rs.current.Levels {
-		iter := levelMetadata.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range levelMetadata.All() {
 			// NB: We're not holding d.mu which protects f.Stats, but only the
 			// active stats collection job updates f.Stats for active files,
 			// and we ensure only one goroutine runs it at a time through
@@ -504,9 +503,10 @@ func (d *DB) estimateSizesBeneath(
 	}
 
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, meta.UserKeyBounds())
-		iter := overlaps.Iter()
-		for file = iter.First(); file != nil; file = iter.Next() {
+		// NB: This is subtle. The addPhysicalTableStats and
+		// addVirtualTableStats functions close over file, which is the loop
+		// variable.
+		for file = range v.Overlaps(l, meta.UserKeyBounds()).All() {
 			var err error
 			if file.Virtual {
 				err = d.fileCache.withVirtualReader(context.TODO(), block.NoReadEnv, file.VirtualMeta(), addVirtualTableStats)
@@ -556,9 +556,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end))
-		iter := overlaps.Iter()
-		for file := iter.First(); file != nil; file = iter.Next() {
+		for file := range v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end)).All() {
 			// Determine whether we need to update size estimates and hint seqnums
 			// based on the type of hint and the type of keys in this file.
 			var updateEstimates, updateHints bool

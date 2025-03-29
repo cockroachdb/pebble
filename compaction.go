@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"iter"
 	"math"
 	"runtime/pprof"
 	"slices"
@@ -294,9 +295,9 @@ type compaction struct {
 func (c *compaction) inputLargestSeqNumAbsolute() base.SeqNum {
 	var seqNum base.SeqNum
 	for _, cl := range c.inputs {
-		cl.files.Each(func(m *manifest.TableMetadata) {
+		for m := range cl.files.All() {
 			seqNum = max(seqNum, m.LargestSeqNumAbsolute)
-		})
+		}
 	}
 	return seqNum
 }
@@ -313,8 +314,7 @@ func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
 	}
 	for _, cl := range c.inputs {
 		inputInfo := LevelInfo{Level: cl.level, Tables: nil}
-		iter := cl.files.Iter()
-		for m := iter.First(); m != nil; m = iter.Next() {
+		for m := range cl.files.All() {
 			inputInfo.Tables = append(inputInfo.Tables, m.TableInfo())
 		}
 		info.Input = append(info.Input, inputInfo)
@@ -454,9 +454,9 @@ func newDeleteOnlyCompaction(
 	}
 
 	// Set c.smallest, c.largest.
-	files := make([]manifest.LevelIterator, 0, len(inputs))
+	files := make([]iter.Seq[*manifest.TableMetadata], 0, len(inputs))
 	for _, in := range inputs {
-		files = append(files, in.files.Iter())
+		files = append(files, in.files.All())
 	}
 	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, files...)
 	return c
@@ -981,8 +981,7 @@ func (c *compaction) String() string {
 	for level := c.startLevel.level; level <= c.outputLevel.level; level++ {
 		i := level - c.startLevel.level
 		fmt.Fprintf(&buf, "%d:", level)
-		iter := c.inputs[i].files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range c.inputs[i].files.All() {
 			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest, f.Largest)
 		}
 		fmt.Fprintf(&buf, "\n")
@@ -1019,8 +1018,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
 	for _, cl := range c.inputs {
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range cl.files.All() {
 			if f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
@@ -1057,8 +1055,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 	c.versionEditApplied = true
 	for _, cl := range c.inputs {
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range cl.files.All() {
 			if !f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
@@ -1344,9 +1341,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		for l := range c.version.Levels {
 			overlaps := c.version.Overlaps(l, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
-			iter := overlaps.Iter()
-
-			for m := iter.First(); m != nil; m = iter.Next() {
+			for m := range overlaps.All() {
 				newFiles, err := d.excise(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, l)
 				if err != nil {
 					return nil, err
@@ -1566,8 +1561,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// cancel the compaction.
 				for c2 := range d.mu.compact.inProgress {
 					for i := range c2.inputs {
-						iter := c2.inputs[i].files.Iter()
-						for f := iter.First(); f != nil; f = iter.Next() {
+						for f := range c2.inputs[i].files.All() {
 							if _, ok := ve.DeletedTables[deletedFileEntry{FileNum: f.FileNum, Level: c2.inputs[i].level}]; ok {
 								c2.cancel.Store(true)
 								break
@@ -2246,10 +2240,7 @@ func checkDeleteCompactionHints(
 		filesDeletedByCurrentHint := 0
 		var filesDeletedByLevel [7][]*tableMetadata
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end))
-			iter := overlaps.Iter()
-
-			for m := iter.First(); m != nil; m = iter.Next() {
+			for m := range v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end)).All() {
 				doesHintApply := h.canDeleteOrExcise(cmp, m, snapshots, exciseEnabled)
 				if m.IsCompacting() || doesHintApply == hintDoesNotApply || files[m] {
 					continue
@@ -2768,17 +2759,16 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 	fragments []deleteCompactionHintFragment,
 	exciseEnabled bool,
 ) error {
-	curFragment := 0
-	iter := cl.files.Iter()
 	if cl.level == 0 {
 		panic("cannot run delete-only compaction for L0")
 	}
+	curFragment := 0
 
 	// Outer loop loops on files. Middle loop loops on fragments. Inner loop
 	// loops on raw fragments of hints. Number of fragments are bounded by
 	// the number of hints this compaction was created with, which is capped
 	// in the compaction picker to avoid very CPU-hot loops here.
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := range cl.files.All() {
 		// curFile usually matches f, except if f got excised in which case
 		// it maps to a virtual file that replaces f, or nil if f got removed
 		// in its entirety.
@@ -3170,8 +3160,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		DeletedTables: map[deletedFileEntry]*tableMetadata{},
 	}
 	for _, cl := range c.inputs {
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range cl.files.All() {
 			ve.DeletedTables[deletedFileEntry{
 				Level:   cl.level,
 				FileNum: f.FileNum,

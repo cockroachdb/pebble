@@ -180,8 +180,7 @@ func TestVersionSet(t *testing.T) {
 			backings = make(map[base.DiskFileNum]*manifest.FileBacking)
 			v := vs.currentVersion()
 			for _, l := range v.Levels {
-				it := l.Iter()
-				for f := it.First(); f != nil; f = it.Next() {
+				for f := range l.All() {
 					metas[f.FileNum] = f
 					dedupBacking(f.FileBacking)
 				}

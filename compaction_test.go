@@ -117,9 +117,9 @@ func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
 func TestPickCompaction(t *testing.T) {
 	fileNums := func(files manifest.LevelSlice) string {
 		var ss []string
-		files.Each(func(meta *tableMetadata) {
+		for meta := range files.All() {
 			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
-		})
+		}
 		sort.Strings(ss)
 		return strings.Join(ss, ",")
 	}
@@ -588,8 +588,7 @@ func TestCompaction(t *testing.T) {
 		}
 		defer provider.Close()
 		for _, levelMetadata := range v.Levels {
-			iter := levelMetadata.Iter()
-			for meta := iter.First(); meta != nil; meta = iter.Next() {
+			for meta := range levelMetadata.All() {
 				if meta.Virtual {
 					continue
 				}
@@ -911,8 +910,7 @@ func TestManualCompaction(t *testing.T) {
 		ongoingCompaction.startLevel.files = curr.Overlaps(startLevel, base.UserKeyBoundsInclusive(start, end))
 		ongoingCompaction.outputLevel.files = curr.Overlaps(outputLevel, base.UserKeyBoundsInclusive(start, end))
 		for _, cl := range ongoingCompaction.inputs {
-			iter := cl.files.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
+			for f := range cl.files.All() {
 				f.CompactionState = manifest.CompactionStateCompacting
 			}
 		}
@@ -924,8 +922,7 @@ func TestManualCompaction(t *testing.T) {
 	// d.mu must be held when calling.
 	deleteOngoingCompaction := func(ongoingCompaction *compaction) {
 		for _, cl := range ongoingCompaction.inputs {
-			iter := cl.files.Iter()
-			for f := iter.First(); f != nil; f = iter.Next() {
+			for f := range cl.files.All() {
 				f.CompactionState = manifest.CompactionStateNotCompacting
 			}
 		}
@@ -1973,8 +1970,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					}
 
 					c.smallest, c.largest = manifest.KeyRange(c.cmp,
-						c.startLevel.files.Iter(),
-						c.outputLevel.files.Iter())
+						c.startLevel.files.All(),
+						c.outputLevel.files.All())
 
 					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
 						c.cmp, c.version, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
@@ -2494,8 +2491,7 @@ func TestMarkedForCompaction(t *testing.T) {
 			var fileNum uint64
 			td.ScanArgs(t, "file", &fileNum)
 			for l, lm := range vers.Levels {
-				iter := lm.Iter()
-				for f := iter.First(); f != nil; f = iter.Next() {
+				for f := range lm.All() {
 					if f.FileNum != base.FileNum(fileNum) {
 						continue
 					}

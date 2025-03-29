@@ -2103,10 +2103,7 @@ func (d *DB) ingestApply(
 		// for files, and if they are, we should signal those compactions to error
 		// out.
 		for level := range current.Levels {
-			overlaps := current.Overlaps(level, exciseSpan.UserKeyBounds())
-			iter := overlaps.Iter()
-
-			for m := iter.First(); m != nil; m = iter.Next() {
+			for m := range current.Overlaps(level, exciseSpan.UserKeyBounds()).All() {
 				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, level)
 				if err != nil {
 					return nil, err
@@ -2154,8 +2151,7 @@ func (d *DB) ingestApply(
 			// ingestion.
 			if checkCompactions {
 				for i := range c.inputs {
-					iter := c.inputs[i].files.Iter()
-					for f := iter.First(); f != nil; f = iter.Next() {
+					for f := range c.inputs[i].files.All() {
 						if _, ok := replacedFiles[f.FileNum]; ok {
 							c.cancel.Store(true)
 							break

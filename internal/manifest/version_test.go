@@ -84,7 +84,7 @@ func TestIkeyRange(t *testing.T) {
 		}
 		levelMetadata := MakeLevelMetadata(base.DefaultComparer.Compare, 0, f)
 
-		sm, la := KeyRange(base.DefaultComparer.Compare, levelMetadata.Iter())
+		sm, la := KeyRange(base.DefaultComparer.Compare, levelMetadata.All())
 		got := string(sm.UserKey) + "-" + string(la.UserKey)
 		if got != tc.want {
 			t.Errorf("KeyRange(%q) = %q, %q", tc.input, got, tc.want)
@@ -114,9 +114,9 @@ func TestOverlaps(t *testing.T) {
 			overlaps := v.Overlaps(level, base.UserKeyBoundsEndExclusiveIf([]byte(start), []byte(end), exclusiveEnd))
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "%d files:\n", overlaps.Len())
-			overlaps.Each(func(f *TableMetadata) {
+			for f := range overlaps.All() {
 				fmt.Fprintf(&buf, "%s\n", f.DebugString(base.DefaultFormatter, false))
-			})
+			}
 			return buf.String()
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -298,11 +298,11 @@ func TestCheckOrdering(t *testing.T) {
 				}
 				// L0 files compare on sequence numbers. Use the seqnums from the
 				// smallest / largest bounds for the table.
-				v.Levels[0].Slice().Each(func(m *TableMetadata) {
+				for m := range v.Levels[0].All() {
 					m.SmallestSeqNum = m.Smallest.SeqNum()
 					m.LargestSeqNum = m.Largest.SeqNum()
 					m.LargestSeqNumAbsolute = m.LargestSeqNum
-				})
+				}
 				if err = v.CheckOrdering(); err != nil {
 					return err.Error()
 				}

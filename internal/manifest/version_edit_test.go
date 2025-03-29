@@ -417,8 +417,7 @@ func TestVersionEditApply(t *testing.T) {
 				bve := BulkVersionEdit{}
 				bve.AddedTablesByFileNum = make(map[base.FileNum]*TableMetadata)
 				for _, l := range v.Levels {
-					it := l.Iter()
-					for f := it.First(); f != nil; f = it.Next() {
+					for f := range l.All() {
 						bve.AddedTablesByFileNum[f.FileNum] = f
 					}
 				}

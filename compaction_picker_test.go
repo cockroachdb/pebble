@@ -182,9 +182,9 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 
 	resetCompacting := func() {
 		for _, files := range vers.Levels {
-			files.Slice().Each(func(f *tableMetadata) {
+			for f := range files.All() {
 				f.CompactionState = manifest.CompactionStateNotCompacting
-			})
+			}
 		}
 	}
 
@@ -265,10 +265,10 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						break
 					}
 					for _, cl := range pc.inputs {
-						cl.files.Each(func(f *tableMetadata) {
+						for f := range cl.files.All() {
 							f.CompactionState = manifest.CompactionStateCompacting
 							fmt.Fprintf(&b, "  %s marked as compacting\n", f)
-						})
+						}
 					}
 				}
 
@@ -320,9 +320,9 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						// L0->Lbase: mark all of Lbase as compacting.
 						c.inputs[1].files = vers.Levels[c.outputLevel].Slice()
 						for _, in := range c.inputs {
-							in.files.Each(func(f *tableMetadata) {
+							for f := range in.files.All() {
 								f.CompactionState = manifest.CompactionStateCompacting
-							})
+							}
 						}
 					}
 				}
@@ -1118,9 +1118,9 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				}
 
 				fmt.Fprintf(&buf, "L%d\n", cl.level)
-				cl.files.Each(func(f *tableMetadata) {
+				for f := range cl.files.All() {
 					fmt.Fprintf(&buf, "  %s\n", f)
-				})
+				}
 			}
 			if isCompacting {
 				fmt.Fprintf(&buf, "is-compacting\n")
@@ -1224,9 +1224,9 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				}
 
 				var buf bytes.Buffer
-				iter.Take().Slice().Each(func(f *tableMetadata) {
+				for f := range iter.Take().Slice().All() {
 					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
-				})
+				}
 				return buf.String()
 
 			default:
@@ -1654,9 +1654,9 @@ func TestCompactionPickerScores(t *testing.T) {
 
 func fileNums(files manifest.LevelSlice) string {
 	var ss []string
-	files.Each(func(f *tableMetadata) {
+	for f := range files.All() {
 		ss = append(ss, f.FileNum.String())
-	})
+	}
 	sort.Strings(ss)
 	return strings.Join(ss, ",")
 }

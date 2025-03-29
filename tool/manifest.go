@@ -105,9 +105,9 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 		if level == 0 && len(v.L0SublevelFiles) > 0 && !v.Levels[level].Empty() {
 			for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
-				v.L0SublevelFiles[sublevel].Each(func(f *manifest.TableMetadata) {
+				for f := range v.L0SublevelFiles[sublevel].All() {
 					if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
-						return
+						continue
 					}
 					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
@@ -116,13 +116,12 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 						fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.FileBacking.DiskFileNum)
 					}
 					fmt.Fprintf(stdout, "\n")
-				})
+				}
 			}
 			continue
 		}
 		fmt.Fprintf(stdout, "--- L%d ---\n", level)
-		iter := v.Levels[level].Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
+		for f := range v.Levels[level].All() {
 			if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
 				continue
 			}
