@@ -1280,7 +1280,10 @@ func (b *BulkVersionEdit) Apply(
 				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedTables, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
 					err = v.InitL0Sublevels(flushSplitBytes)
-				} else if invariants.Enabled && err == nil {
+				} else if invariants.Enabled && err == nil && invariants.Sometimes(10) {
+					// Rebuild from scratch to verify that AddL0Files did the right thing.
+					// Note that NewL0Sublevels updates fields in TableMetadata like
+					// L0Index, so we don't want to do this every time.
 					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], comparer.Compare, comparer.FormatKey, flushSplitBytes)
 					if err != nil {
 						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
