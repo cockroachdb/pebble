@@ -279,7 +279,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				// Start from level 1 in this test.
 				files[i+1] = levels[i]
 			}
-			version := manifest.NewVersion(
+			version := manifest.NewVersionForTesting(
 				testkeys.Comparer,
 				0,
 				files)

@@ -243,7 +243,8 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 
 			if comparer != nil {
 				v, err := bve.Apply(
-					nil /* version */, comparer, 0,
+					manifest.NewVersion(comparer),
+					0,
 					m.opts.Experimental.ReadCompactionRate,
 				)
 				if err != nil {
@@ -625,7 +626,10 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 				}
 				// TODO(sbhola): add option to Apply that reports all errors instead of
 				// one error.
-				newv, err := bve.Apply(v, cmp, 0, m.opts.Experimental.ReadCompactionRate)
+				if v == nil {
+					v = manifest.NewVersion(cmp)
+				}
+				newv, err := bve.Apply(v, 0, m.opts.Experimental.ReadCompactionRate)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)

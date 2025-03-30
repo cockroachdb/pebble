@@ -179,7 +179,8 @@ func (vs *versionSet) create(
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 	var bve bulkVersionEdit
-	newVersion, err := bve.Apply(nil /* curr */, opts.Comparer, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	emptyVersion := manifest.NewVersion(opts.Comparer)
+	newVersion, err := bve.Apply(emptyVersion, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
@@ -239,13 +240,13 @@ func (vs *versionSet) load(
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
 	bve.AddedTablesByFileNum = make(map[base.FileNum]*tableMetadata)
-	manifest, err := vs.fs.Open(manifestPath)
+	manifestFile, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
 			errors.Safe(manifestFilename), dirname)
 	}
-	defer manifest.Close()
-	rr := record.NewReader(manifest, 0 /* logNum */)
+	defer manifestFile.Close()
+	rr := record.NewReader(manifestFile, 0 /* logNum */)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -343,7 +344,8 @@ func (vs *versionSet) load(
 		}
 	}
 
-	newVersion, err := bve.Apply(nil, opts.Comparer, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	emptyVersion := manifest.NewVersion(opts.Comparer)
+	newVersion, err := bve.Apply(emptyVersion, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
@@ -576,7 +578,7 @@ func (vs *versionSet) logAndApply(
 			return errors.Wrap(err, "MANIFEST accumulate failed")
 		}
 		newVersion, err = b.Apply(
-			currentVersion, vs.cmp, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
+			currentVersion, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")

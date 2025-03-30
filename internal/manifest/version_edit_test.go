@@ -443,7 +443,7 @@ func TestVersionEditApply(t *testing.T) {
 					}
 				}
 
-				newv, err := bve.Apply(v, base.DefaultComparer, flushSplitBytes, readCompactionRate)
+				newv, err := bve.Apply(v, flushSplitBytes, readCompactionRate)
 				if err != nil {
 					return err.Error()
 				}

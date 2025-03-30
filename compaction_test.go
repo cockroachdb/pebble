@@ -41,7 +41,7 @@ import (
 )
 
 func newVersion(opts *Options, files [numLevels][]*tableMetadata) *version {
-	v := manifest.NewVersion(
+	v := manifest.NewVersionForTesting(
 		opts.Comparer,
 		opts.FlushSplitBytes,
 		files)

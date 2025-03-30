@@ -34,7 +34,7 @@ func TestOutputSplitter(t *testing.T) {
 					files[1] = append(files[1], f)
 				}
 			}
-			v := manifest.NewVersion(base.DefaultComparer, 64*1024, files)
+			v := manifest.NewVersionForTesting(base.DefaultComparer, 64*1024, files)
 			if err := v.CheckOrdering(); err != nil {
 				d.Fatalf(t, "%v", err)
 			}

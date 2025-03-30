@@ -26,7 +26,7 @@ func makeTestVersion(numFiles int) (*Version, []*TableMetadata) {
 	var levelFiles [7][]*TableMetadata
 	levelFiles[6] = files
 
-	v := NewVersion(base.DefaultComparer, 0, levelFiles)
+	v := NewVersionForTesting(base.DefaultComparer, 0, levelFiles)
 	return v, files
 }
 
