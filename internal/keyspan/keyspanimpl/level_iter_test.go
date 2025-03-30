@@ -312,7 +312,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				amap[metas[i].FileNum] = metas[i]
 			}
 			b.AddedTables[6] = amap
-			v, err := b.Apply(nil, base.DefaultComparer, 0, 0)
+			v, err := b.Apply(manifest.NewVersion(base.DefaultComparer), 0, 0)
 			require.NoError(t, err)
 			levelIter.Init(
 				context.Background(),

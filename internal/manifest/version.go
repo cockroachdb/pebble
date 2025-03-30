@@ -1207,9 +1207,23 @@ func SortBySmallest(files []*TableMetadata, cmp Compare) {
 // NumLevels is the number of levels a Version contains.
 const NumLevels = 7
 
-// NewVersion constructs a new Version with the provided files. It requires
-// the provided files are already well-ordered. It's intended for testing.
-func NewVersion(
+// NewVersion creates a version with no files.
+func NewVersion(comparer *base.Comparer) *Version {
+	v := &Version{
+		cmp: comparer,
+	}
+	for level := range v.Levels {
+		v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
+		v.RangeKeyLevels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
+	}
+	v.L0Sublevels = &L0Sublevels{cmp: comparer.Compare, formatKey: comparer.FormatKey, levelMetadata: &v.Levels[0]}
+	return v
+}
+
+// NewVersionForTesting constructs a new Version with the provided files. It
+// requires the provided files are already well-ordered. It's intended for
+// testing.
+func NewVersionForTesting(
 	comparer *base.Comparer, flushSplitBytes int64, files [NumLevels][]*TableMetadata,
 ) *Version {
 	v := &Version{
@@ -1389,7 +1403,7 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 	// partial order that represents newest to oldest. Reverse the order of L0
 	// files to ensure we construct the same sublevels.
 	slices.Reverse(files[0])
-	v := NewVersion(comparer, flushSplitBytes, files)
+	v := NewVersionForTesting(comparer, flushSplitBytes, files)
 	if err := v.CheckOrdering(); err != nil {
 		return nil, err
 	}
@@ -1476,7 +1490,7 @@ func (v *Version) Next() *Version {
 func (v *Version) InitL0Sublevels(flushSplitBytes int64) error {
 	var err error
 	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], v.cmp.Compare, v.cmp.FormatKey, flushSplitBytes)
-	if err == nil && v.L0Sublevels != nil {
+	if err == nil {
 		v.L0SublevelFiles = v.L0Sublevels.Levels
 	}
 	return err

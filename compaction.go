@@ -571,9 +571,7 @@ func newFlush(
 		}
 	}
 
-	if cur.L0Sublevels != nil {
-		c.l0Limits = cur.L0Sublevels.FlushSplitKeys()
-	}
+	c.l0Limits = cur.L0Sublevels.FlushSplitKeys()
 
 	smallestSet, largestSet := false, false
 	updatePointBounds := func(iter internalIterator) {
@@ -1038,7 +1036,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 		}
 	}
 
-	if (isIntraL0 || isBase) && c.version.L0Sublevels != nil {
+	if isIntraL0 || isBase {
 		l0Inputs := []manifest.LevelSlice{c.startLevel.files}
 		if isIntraL0 {
 			l0Inputs = append(l0Inputs, c.outputLevel.files)

@@ -32,7 +32,7 @@ func readManifest(filename string) (*Version, error) {
 	}
 	defer f.Close()
 	rr := record.NewReader(f, 0 /* logNum */)
-	var v *Version
+	v := NewVersion(base.DefaultComparer)
 	addedByFileNum := make(map[base.FileNum]*TableMetadata)
 	for {
 		r, err := rr.Next()
@@ -51,7 +51,7 @@ func readManifest(filename string) (*Version, error) {
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
-		if v, err = bve.Apply(v, base.DefaultComparer, 10<<20, 32000); err != nil {
+		if v, err = bve.Apply(v, 10<<20, 32000); err != nil {
 			return nil, err
 		}
 	}

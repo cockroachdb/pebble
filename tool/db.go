@@ -716,7 +716,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			}
 		}
 		v, err := bve.Apply(
-			nil /* version */, cmp, d.opts.FlushSplitBytes,
+			manifest.NewVersion(cmp), d.opts.FlushSplitBytes,
 			d.opts.Experimental.ReadCompactionRate,
 		)
 		if err != nil {

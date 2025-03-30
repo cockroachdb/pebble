@@ -438,7 +438,7 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 func TestCalculateInuseKeyRanges(t *testing.T) {
 	newVersion := func(files [NumLevels][]*TableMetadata) *Version {
 		t.Helper()
-		v := NewVersion(base.DefaultComparer, 64*1024, files)
+		v := NewVersionForTesting(base.DefaultComparer, 64*1024, files)
 		if err := v.CheckOrdering(); err != nil {
 			t.Fatal(err)
 		}
@@ -740,7 +740,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 			})
 		}
-		v := NewVersion(base.DefaultComparer, 64*1024, files)
+		v := NewVersionForTesting(base.DefaultComparer, 64*1024, files)
 		if err := v.CheckOrdering(); err != nil {
 			t.Fatal(err)
 		}

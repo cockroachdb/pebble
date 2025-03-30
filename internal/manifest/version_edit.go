@@ -1149,45 +1149,29 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version, comparer *base.Comparer, flushSplitBytes int64, readCompactionRate int64,
+	curr *Version, flushSplitBytes int64, readCompactionRate int64,
 ) (*Version, error) {
+	comparer := curr.cmp
 	v := &Version{
 		cmp: comparer,
 	}
 
 	// Adjust the count of files marked for compaction.
-	if curr != nil {
-		v.Stats.MarkedForCompaction = curr.Stats.MarkedForCompaction
-	}
+	v.Stats.MarkedForCompaction = curr.Stats.MarkedForCompaction
 	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
 	if v.Stats.MarkedForCompaction < 0 {
 		return nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
 	}
 
 	for level := range v.Levels {
-		if curr == nil || curr.Levels[level].tree.root == nil {
-			v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
-		} else {
-			v.Levels[level] = curr.Levels[level].clone()
-		}
-		if curr == nil || curr.RangeKeyLevels[level].tree.root == nil {
-			v.RangeKeyLevels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
-		} else {
-			v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
-		}
+		v.Levels[level] = curr.Levels[level].clone()
+		v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
 
 		if len(b.AddedTables[level]) == 0 && len(b.DeletedTables[level]) == 0 {
 			// There are no edits on this level.
 			if level == 0 {
-				// Initialize L0Sublevels.
-				if curr == nil || curr.L0Sublevels == nil {
-					if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
-						return nil, errors.Wrap(err, "pebble: internal error")
-					}
-				} else {
-					v.L0Sublevels = curr.L0Sublevels
-					v.L0SublevelFiles = v.L0Sublevels.Levels
-				}
+				v.L0Sublevels = curr.L0Sublevels
+				v.L0SublevelFiles = curr.L0SublevelFiles
 			}
 			continue
 		}
@@ -1266,6 +1250,7 @@ func (b *BulkVersionEdit) Apply(
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest, f.Smallest) > 0 {
+
 				sm = f
 			}
 			if la == nil || base.InternalCompare(comparer.Compare, la.Largest, f.Largest) < 0 {
@@ -1285,7 +1270,7 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		if level == 0 {
-			if curr != nil && curr.L0Sublevels != nil && len(deletedTablesMap) == 0 {
+			if len(deletedTablesMap) == 0 {
 				// Flushes and ingestions that do not delete any L0 files do not require
 				// a regeneration of L0Sublevels from scratch. We can instead generate
 				// it incrementally.
