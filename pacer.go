@@ -60,18 +60,25 @@ const deletePacerHistory = 5 * time.Minute
 // normally limit deletes (when we are not falling behind or running out of
 // space). A value of 0.0 disables pacing.
 func newDeletionPacer(
-	now crtime.Mono, targetByteDeletionRate int64, getInfo func() deletionPacerInfo,
+	now crtime.Mono,
+	freeSpaceThreshold uint64,
+	targetByteDeletionRate int64,
+	freeSpaceTimeframe time.Duration,
+	obsoleteBytesMaxRatio float64,
+	obsoleteBytesTimeframe time.Duration,
+	getInfo func() deletionPacerInfo,
 ) *deletionPacer {
 	d := &deletionPacer{
-		freeSpaceThreshold: 16 << 30, // 16 GB
-		freeSpaceTimeframe: 10 * time.Second,
+		freeSpaceThreshold: freeSpaceThreshold,
+		freeSpaceTimeframe: freeSpaceTimeframe,
 
-		obsoleteBytesMaxRatio:  0.20,
-		obsoleteBytesTimeframe: 5 * time.Minute,
+		obsoleteBytesMaxRatio:  obsoleteBytesMaxRatio,
+		obsoleteBytesTimeframe: obsoleteBytesTimeframe,
 
 		targetByteDeletionRate: targetByteDeletionRate,
 		getInfo:                getInfo,
 	}
+
 	d.mu.history.Init(now, deletePacerHistory)
 	return d
 }

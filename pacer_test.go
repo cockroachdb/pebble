@@ -46,7 +46,7 @@ func TestDeletionPacer(t *testing.T) {
 			expected:      304.8,
 		},
 		// As freeBytes is 10GB below the free space threshold, rate should be
-		// increased to by 1GB/s.
+		// increased by 1GB/s.
 		{
 			freeBytes:     6 * GB,
 			obsoleteBytes: 1 * MB,
@@ -121,7 +121,17 @@ func TestDeletionPacer(t *testing.T) {
 			}
 			start := crtime.NowMono()
 			last := start
-			pacer := newDeletionPacer(start, 100*MB, getInfo)
+			var opts Options
+			opts.EnsureDefaults()
+			pacer := newDeletionPacer(
+				start,
+				opts.FreeSpaceThresholdBytes,
+				100*MB,
+				opts.FreeSpaceTimeframe,
+				opts.ObsoleteBytesMaxRatio,
+				opts.ObsoleteBytesTimeframe,
+				getInfo,
+			)
 			for _, h := range tc.history {
 				last = start + crtime.Mono(time.Second*time.Duration(h[0]))
 				pacer.ReportDeletion(last, uint64(h[1]))
