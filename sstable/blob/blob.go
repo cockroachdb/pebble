@@ -165,6 +165,19 @@ func (w *FileWriter) EstimatedSize() uint64 {
 	return sz
 }
 
+// FlushForTesting flushes the current block to the write queue. Writers should
+// generally not call FlushForTesting, and instead let the heuristics configured
+// through FileWriterOptions handle flushing.
+//
+// It's exposed so that tests can force flushes to construct blob files with
+// arbitrary structures.
+func (w *FileWriter) FlushForTesting() {
+	if w.b.Size() == 0 {
+		return
+	}
+	w.flush()
+}
+
 func (w *FileWriter) flush() {
 	pb, bh := w.b.CompressAndChecksum()
 	compressedLen := uint64(pb.LengthWithoutTrailer())

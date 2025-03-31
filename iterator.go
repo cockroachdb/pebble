@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekeystack"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
 
@@ -224,6 +225,9 @@ type Iterator struct {
 	// For use in LazyValue.Value.
 	lazyValueBuf []byte
 	valueCloser  io.Closer
+	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
+	// externally in blob files.
+	blobValueFetcher blob.ValueFetcher
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the Iterator's bounds change, the new bounds are copied into
 	// boundsBuf[boundsBufIdx]. The two bounds share a slice to reduce
@@ -2357,6 +2361,7 @@ func (i *Iterator) Close() error {
 		if i.rangeKey != nil && i.rangeKey.rangeKeyIter != nil {
 			i.rangeKey.rangeKeyIter.Close()
 		}
+		i.err = firstError(i.err, i.blobValueFetcher.Close())
 	}
 	err := i.err
 

@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -167,7 +166,6 @@ func newColumnBlockTwoLevelIterator(
 	i.useFilterBlock = i.secondLevel.useFilterBlock
 	i.secondLevel.useFilterBlock = false
 
-	var getInternalValuer block.GetInternalValueForPrefixAndValueHandler
 	if r.Properties.NumValueBlocks > 0 {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 		// can outlive the singleLevelIterator due to be being embedded in a
@@ -178,12 +176,11 @@ func newColumnBlockTwoLevelIterator(
 		// versions of keys, and therefore never expose a LazyValue that is
 		// separated to their callers, they can put this valueBlockReader into a
 		// sync.Pool.
-		i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Stats)
-		getInternalValuer = &i.secondLevel.vbReader
+		i.secondLevel.internalValueConstructor.vbReader = valblk.MakeReader(&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Stats)
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, getInternalValuer)
+	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, &i.secondLevel.internalValueConstructor)
 	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readBlockEnv, i.secondLevel.indexFilterRH)
 	if err == nil {
 		err = i.topLevelIndex.InitHandle(r.Comparer, topLevelIndexH, opts.Transforms)
@@ -216,6 +213,7 @@ func newRowBlockTwoLevelIterator(
 	// Only check the bloom filter at the top level.
 	i.useFilterBlock = i.secondLevel.useFilterBlock
 	i.secondLevel.useFilterBlock = false
+
 	if r.tableFormat >= TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -227,8 +225,10 @@ func newRowBlockTwoLevelIterator(
 			// versions of keys, and therefore never expose a LazyValue that is
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
-			i.secondLevel.vbReader = valblk.MakeReader(&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Stats)
-			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.vbReader)
+			i.secondLevel.internalValueConstructor.vbReader = valblk.MakeReader(&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Stats)
+			// We can set the GetLazyValuer directly to the vbReader because
+			// rowblk sstables never contain blob value handles.
+			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.internalValueConstructor.vbReader)
 			i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 				objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 		}

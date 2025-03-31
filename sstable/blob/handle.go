@@ -106,9 +106,9 @@ func (h InlineHandle) Encode(b []byte) int {
 	return n
 }
 
-// DecodeInlineHandlePrefix decodes the blob reference index and value length
+// DecodeInlineHandlePreface decodes the blob reference index and value length
 // from the beginning of a variable-width encoded InlineHandle.
-func DecodeInlineHandlePrefix(src []byte) (InlineHandlePreface, []byte) {
+func DecodeInlineHandlePreface(src []byte) (InlineHandlePreface, []byte) {
 	ptr := unsafe.Pointer(&src[0])
 	var refIdx uint32
 	if a := *((*uint8)(ptr)); a < 128 {
