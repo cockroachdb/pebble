@@ -300,7 +300,7 @@ type TableMetadata struct {
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions. Only accurate for the most recent Version.
 	// TODO(radu): this is very hacky and fragile. This information should live
-	// inside L0Sublevels.
+	// inside l0Sublevels.
 	SubLevel         int
 	L0Index          int
 	minIntervalIndex int
@@ -1209,17 +1209,13 @@ func SortBySmallest(files []*TableMetadata, cmp Compare) {
 const NumLevels = 7
 
 // NewInitialVersion creates a version with no files. The L0Organizer should be freshly created.
-func NewInitialVersion(comparer *base.Comparer, l0Org *L0Organizer) *Version {
+func NewInitialVersion(comparer *base.Comparer) *Version {
 	v := &Version{
 		cmp: comparer,
 	}
 	for level := range v.Levels {
 		v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
 		v.RangeKeyLevels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
-	}
-	v.L0Sublevels = l0Org.Sublevels()
-	if len(v.L0Sublevels.Levels) != 0 {
-		panic(errors.AssertionFailedf("non-empty L0Organizer"))
 	}
 	return v
 }
@@ -1251,16 +1247,8 @@ func NewVersionForTesting(
 		}
 	}
 	l0Organizer.Reset(&v.Levels[0])
-	v.L0Sublevels = l0Organizer.Sublevels()
-	v.L0SublevelFiles = v.L0Sublevels.Levels
+	v.L0SublevelFiles = l0Organizer.SublevelFiles()
 	return v
-}
-
-// TestingNewVersion returns a blank Version, used for tests.
-func TestingNewVersion(comparer *base.Comparer) *Version {
-	return &Version{
-		cmp: comparer,
-	}
 }
 
 // Version is a collection of table metadata for on-disk tables at various
@@ -1290,25 +1278,7 @@ func TestingNewVersion(comparer *base.Comparer) *Version {
 type Version struct {
 	refs atomic.Int32
 
-	// The level 0 sstables are organized in a series of sublevels. Similar to
-	// the seqnum invariant in normal levels, there is no internal key in a
-	// higher level table that has both the same user key and a higher sequence
-	// number. Within a sublevel, tables are sorted by their internal key range
-	// and any two tables at the same sublevel do not overlap. Unlike the normal
-	// levels, sublevel n contains older tables (lower sequence numbers) than
-	// sublevel n+1.
-	//
-	// The L0Sublevels struct is mostly used for compaction picking. As most
-	// internal data structures in it are only necessary for compaction picking
-	// and not for iterator creation, the reference to L0Sublevels is nil'd
-	// after this version becomes the non-newest version, to reduce memory
-	// usage.
-	//
-	// L0Sublevels.Levels contains L0 files ordered by sublevels. All the files
-	// in Levels[0] are in L0Sublevels.Levels. L0SublevelFiles is also set to
-	// a reference to that slice, as that slice is necessary for iterator
-	// creation and needs to outlast L0Sublevels.
-	L0Sublevels     *L0Sublevels
+	// L0SublevelFiles contains the L0 sublevels.
 	L0SublevelFiles []LevelSlice
 
 	Levels [NumLevels]LevelMetadata
@@ -1496,7 +1466,7 @@ func (v *Version) Next() *Version {
 // that include all keys that exist within levels [level, maxLevel] and within
 // [smallest,largest].
 func (v *Version) CalculateInuseKeyRanges(
-	level, maxLevel int, smallest, largest []byte,
+	l0Organizer *L0Organizer, level, maxLevel int, smallest, largest []byte,
 ) []base.UserKeyBounds {
 	// Use two slices, alternating which one is input and which one is output
 	// as we descend the LSM.
@@ -1506,7 +1476,7 @@ func (v *Version) CalculateInuseKeyRanges(
 	// We use the L0 Sublevels structure to efficiently calculate the merged
 	// in-use key ranges.
 	if level == 0 {
-		output = v.L0Sublevels.InUseKeyRanges(smallest, largest)
+		output = l0Organizer.InUseKeyRanges(smallest, largest)
 		level++
 	}
 
@@ -1787,9 +1757,6 @@ func (l *VersionList) PushBack(v *Version) {
 	v.next = &l.root
 	v.next.prev = v
 	v.list = l
-	// Let L0Sublevels on the second newest version get GC'd, as it is no longer
-	// necessary. See the comment in Version.
-	v.prev.L0Sublevels = nil
 }
 
 // Remove removes the specified version from the list.

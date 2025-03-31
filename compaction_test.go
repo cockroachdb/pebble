@@ -41,6 +41,13 @@ import (
 )
 
 func newVersion(opts *Options, files [numLevels][]*tableMetadata) *version {
+	v, _ := newVersionAndL0Organizer(opts, files)
+	return v
+}
+
+func newVersionAndL0Organizer(
+	opts *Options, files [numLevels][]*tableMetadata,
+) (*version, *manifest.L0Organizer) {
 	l0Organizer := manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
 	v := manifest.NewVersionForTesting(
 		opts.Comparer,
@@ -49,15 +56,16 @@ func newVersion(opts *Options, files [numLevels][]*tableMetadata) *version {
 	if err := v.CheckOrdering(); err != nil {
 		panic(err)
 	}
-	return v
+	return v, l0Organizer
 }
 
 type compactionPickerForTesting struct {
-	score     float64
-	level     int
-	baseLevel int
-	opts      *Options
-	vers      *manifest.Version
+	score       float64
+	level       int
+	baseLevel   int
+	opts        *Options
+	vers        *manifest.Version
+	l0Organizer *manifest.L0Organizer
 }
 
 var _ compactionPicker = &compactionPickerForTesting{}
@@ -92,9 +100,9 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 		file:        iter.Take(),
 	}
 	if cInfo.level == 0 {
-		return pickL0(env, p.opts, p.vers, p.baseLevel)
+		return pickL0(env, p.opts, p.vers, p.l0Organizer, p.baseLevel)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel)
+	return pickAutoLPositive(env, p.opts, p.vers, p.l0Organizer, cInfo, p.baseLevel)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
@@ -137,14 +145,14 @@ func TestPickCompaction(t *testing.T) {
 
 	testCases := []struct {
 		desc      string
-		version   *version
+		files     [numLevels][]*tableMetadata
 		picker    compactionPickerForTesting
 		want      string
 		wantMulti bool
 	}{
 		{
 			desc: "no compaction",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -153,13 +161,13 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("j.SET.102"),
 					),
 				},
-			}),
+			},
 			want: "",
 		},
 
 		{
 			desc: "1 L0 file",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -168,7 +176,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("j.SET.102"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
@@ -179,7 +187,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "2 L0 files (0 overlaps)",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -194,7 +202,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("l.SET.112"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
@@ -205,7 +213,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "2 L0 files, with ikey overlap",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -220,7 +228,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("q.SET.112"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
@@ -231,7 +239,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "2 L0 files, with ukey overlap",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -246,7 +254,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("i.SET.111"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
@@ -257,7 +265,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -280,7 +288,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("z.SET.212"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
@@ -291,7 +299,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				0: {
 					newFileMeta(
 						100,
@@ -340,7 +348,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("z.SET.332"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     0,
@@ -351,7 +359,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "4 L1 files, 2 L2 files, can grow",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				1: {
 					newFileMeta(
 						200,
@@ -392,7 +400,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("z2.SET.312"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
@@ -404,7 +412,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				1: {
 					newFileMeta(
 						200,
@@ -445,7 +453,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("z2.SET.312"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
@@ -457,7 +465,7 @@ func TestPickCompaction(t *testing.T) {
 
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
-			version: newVersion(opts, [numLevels][]*tableMetadata{
+			files: [numLevels][]*tableMetadata{
 				1: {
 					newFileMeta(
 						200,
@@ -498,7 +506,7 @@ func TestPickCompaction(t *testing.T) {
 						base.ParseInternalKey("z2.SET.312"),
 					),
 				},
-			}),
+			},
 			picker: compactionPickerForTesting{
 				score:     99,
 				level:     1,
@@ -513,10 +521,10 @@ func TestPickCompaction(t *testing.T) {
 			opts: opts,
 			cmp:  DefaultComparer,
 		}
-		vs.versions.Init(nil)
-		vs.append(tc.version)
 		tc.picker.opts = opts
-		tc.picker.vers = tc.version
+		tc.picker.vers, tc.picker.l0Organizer = newVersionAndL0Organizer(opts, tc.files)
+		vs.versions.Init(nil)
+		vs.append(tc.picker.vers)
 		vs.picker = &tc.picker
 		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
@@ -1244,7 +1252,8 @@ func TestManualCompaction(t *testing.T) {
 
 func TestCompactionOutputLevel(t *testing.T) {
 	opts := DefaultOptions()
-	version := manifest.TestingNewVersion(opts.Comparer)
+	version := manifest.NewInitialVersion(opts.Comparer)
+	l0Organizer := manifest.NewL0Organizer(opts.Comparer, 0 /* flushSplitBytes */)
 
 	datadriven.RunTest(t, "testdata/compaction_output_level",
 		func(t *testing.T, d *datadriven.TestData) (res string) {
@@ -1259,7 +1268,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				var start, base int
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
-				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
+				pc := newPickedCompaction(opts, version, l0Organizer, start, defaultOutputLevel(start, base), base)
 				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
@@ -1975,7 +1984,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel.files.All())
 
 					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
-						c.cmp, c.version, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+						c.cmp, c.version, d.mu.versions.l0Organizer, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
 					)
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}

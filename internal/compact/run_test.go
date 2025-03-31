@@ -17,18 +17,19 @@ import (
 
 func TestTableSplitLimit(t *testing.T) {
 	var v *manifest.Version
+	var l0Organizer *manifest.L0Organizer
 	datadriven.RunTest(t, "testdata/table_split_limit", func(t *testing.T, d *datadriven.TestData) string {
 		var buf strings.Builder
 		switch d.Cmd {
 		case "define":
 			var flushSplitBytes int64
 			d.MaybeScanArgs(t, "flush-split-bytes", &flushSplitBytes)
-			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+			l0Organizer = manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
 			v = testutils.CheckErr(manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, d.Input))
 			buf.WriteString(v.String())
 			if v.Levels[0].Len() != 0 {
 				buf.WriteString("flush split keys:\n")
-				for _, key := range v.L0Sublevels.FlushSplitKeys() {
+				for _, key := range l0Organizer.FlushSplitKeys() {
 					fmt.Fprintf(&buf, "\t%s\n", base.DefaultFormatter(key))
 				}
 			}
@@ -39,7 +40,7 @@ func TestTableSplitLimit(t *testing.T) {
 			r := &Runner{
 				cmp: base.DefaultComparer.Compare,
 				cfg: RunnerConfig{
-					L0SplitKeys:                v.L0Sublevels.FlushSplitKeys(),
+					L0SplitKeys:                l0Organizer.FlushSplitKeys(),
 					Grandparents:               v.Levels[1].Slice(),
 					MaxGrandparentOverlapBytes: maxOverlap,
 				},

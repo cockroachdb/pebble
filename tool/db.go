@@ -716,7 +716,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			}
 		}
 		l0Organizer := manifest.NewL0Organizer(cmp, d.opts.FlushSplitBytes)
-		emptyVersion := manifest.NewInitialVersion(cmp, l0Organizer)
+		emptyVersion := manifest.NewInitialVersion(cmp)
 		v, err := bve.Apply(emptyVersion, l0Organizer, d.opts.Experimental.ReadCompactionRate)
 		if err != nil {
 			return err

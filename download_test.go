@@ -107,6 +107,7 @@ func TestDownloadTask(t *testing.T) {
 	}
 
 	var vers *manifest.Version
+	var l0Organizer *manifest.L0Organizer
 	var task *downloadSpanTask
 	printTask := func(b *strings.Builder) {
 		for i := range task.bookmarks {
@@ -119,7 +120,7 @@ func TestDownloadTask(t *testing.T) {
 		case "define":
 			var err error
 			const flushSplitBytes = 10 * 1024 * 1024
-			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+			l0Organizer = manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
 			vers, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
@@ -186,7 +187,7 @@ func TestDownloadTask(t *testing.T) {
 				}
 				return ch, true
 			}
-			res := d.tryLaunchDownloadCompaction(task, vers, compactionEnv{}, maxConcurrentDownloads)
+			res := d.tryLaunchDownloadCompaction(task, vers, l0Organizer, compactionEnv{}, maxConcurrentDownloads)
 			printTask(&buf)
 			if res == downloadTaskCompleted {
 				fmt.Fprintf(&buf, "task completed")

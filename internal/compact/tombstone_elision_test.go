@@ -85,11 +85,12 @@ func TestTombstoneElider(t *testing.T) {
 
 func TestSetupTombstoneElision(t *testing.T) {
 	var v *manifest.Version
+	var l0Organizer *manifest.L0Organizer
 	datadriven.RunTest(t, "testdata/tombstone_elision_setup", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			var err error
-			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			l0Organizer = manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
 			v, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
@@ -113,7 +114,7 @@ func TestSetupTombstoneElision(t *testing.T) {
 					continue
 				}
 				bounds := base.UserKeyBoundsInclusive([]byte(parts[1]), []byte(parts[2]))
-				res, _ := SetupTombstoneElision(base.DefaultComparer.Compare, v, outputLevel, bounds)
+				res, _ := SetupTombstoneElision(base.DefaultComparer.Compare, v, l0Organizer, outputLevel, bounds)
 				fmt.Fprintf(&buf, "L%d %s: %s\n", outputLevel, bounds, res)
 			}
 			return buf.String()
@@ -126,11 +127,12 @@ func TestSetupTombstoneElision(t *testing.T) {
 
 func TestTombstoneElision(t *testing.T) {
 	var v *manifest.Version
+	var l0Organizer *manifest.L0Organizer
 	datadriven.RunTest(t, "testdata/tombstone_elision", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			var err error
-			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			l0Organizer = manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
 			v, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
@@ -145,7 +147,7 @@ func TestTombstoneElision(t *testing.T) {
 		case "elide":
 			var startLevel int
 			td.ScanArgs(t, "start-level", &startLevel)
-			del, _ := SetupTombstoneElision(testkeys.Comparer.Compare, v, startLevel+1, base.UserKeyBoundsInclusive([]byte("a"), []byte("z")))
+			del, _ := SetupTombstoneElision(testkeys.Comparer.Compare, v, l0Organizer, startLevel+1, base.UserKeyBoundsInclusive([]byte("a"), []byte("z")))
 			var p pointTombstoneElider
 			p.Init(testkeys.Comparer.Compare, del)
 			var r rangeTombstoneElider
