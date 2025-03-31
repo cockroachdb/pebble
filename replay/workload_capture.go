@@ -179,6 +179,7 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	// TODO(jackson): Copy blob files.
 	for _, table := range info.Output {
 		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum))
 	}

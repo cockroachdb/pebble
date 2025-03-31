@@ -164,14 +164,17 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(sstable.NoTransforms, nil, nil)
+		// TODO(jackson): Adjust to support two modes: one that surfaces the raw
+		// blob value handles, and one that fetches the blob values from blob
+		// files uncovered by scanning the directory entries. See #4448.
+		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
 
 		// Verify that SeekPrefixGE can find every key in the table.
-		prefixIter, err := r.NewIter(sstable.NoTransforms, nil, nil)
+		prefixIter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -332,7 +335,10 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			prefix = fmt.Sprintf("%s: ", path)
 		}
 
-		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end)
+		// TODO(jackson): Adjust to support two modes: one that surfaces the raw
+		// blob value handles, and one that fetches the blob values from blob
+		// files uncovered by scanning the directory entries. See #4448.
+		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end, sstable.AssertNoBlobHandles)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
 			return

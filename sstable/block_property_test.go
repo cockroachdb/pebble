@@ -994,6 +994,7 @@ func TestBlockProperties(t *testing.T) {
 				FilterBlockSizeLimit: NeverUseFilterBlock,
 				Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
+				BlobContext:          AssertNoBlobHandles,
 			})
 			if err != nil {
 				return err.Error()
@@ -1083,6 +1084,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 				FilterBlockSizeLimit: NeverUseFilterBlock,
 				Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
+				BlobContext:          AssertNoBlobHandles,
 			})
 			if err != nil {
 				return err.Error()

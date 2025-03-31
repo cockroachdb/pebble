@@ -251,7 +251,7 @@ func (vs *preserveBlobReferences) Add(
 	lv := kv.V.LazyValue()
 	fn := lv.Fetcher.BlobFileNum
 
-	refIdx, found := vs.currReferences.IDByFileNum(fn)
+	refID, found := vs.currReferences.IDByFileNum(fn)
 	if !found {
 		// This is the first time we're seeing this blob file for this sstable.
 		// Find the blob file metadata for this file among the input metadatas.
@@ -259,21 +259,21 @@ func (vs *preserveBlobReferences) Add(
 		if !found {
 			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", fn)
 		}
-		refIdx = blob.ReferenceID(len(vs.currReferences))
+		refID = blob.ReferenceID(len(vs.currReferences))
 		vs.currReferences = append(vs.currReferences, manifest.BlobReference{
 			FileNum:  fn,
 			Metadata: vs.inputBlobMetadatas[idx],
 		})
 	}
 
-	if invariants.Enabled && vs.currReferences[refIdx].Metadata.FileNum != fn {
+	if invariants.Enabled && vs.currReferences[refID].Metadata.FileNum != fn {
 		panic("wrong reference index")
 	}
 
 	handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
 	inlineHandle := blob.InlineHandle{
 		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceID: refIdx,
+			ReferenceID: refID,
 			ValueLen:    lv.Fetcher.Attribute.ValueLen,
 		},
 		HandleSuffix: handleSuffix,
@@ -282,7 +282,7 @@ func (vs *preserveBlobReferences) Add(
 	if err != nil {
 		return err
 	}
-	vs.currReferences[refIdx].ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+	vs.currReferences[refID].ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	vs.totalValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	return nil
 }

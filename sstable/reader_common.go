@@ -31,6 +31,7 @@ type CommonReader interface {
 		transforms IterTransforms,
 		env block.ReadEnv,
 		rp valblk.ReaderProvider,
+		blobContext TableBlobContext,
 	) (Iterator, error)
 
 	EstimateDiskUsage(start, end []byte) (uint64, error)

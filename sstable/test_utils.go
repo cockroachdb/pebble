@@ -16,14 +16,14 @@ import (
 // ReadAll returns all point keys, range del spans, and range key spans from an
 // sstable. Closes the Readable. Panics on errors.
 func ReadAll(
-	r objstorage.Readable, ro ReaderOptions,
+	r objstorage.Readable, ro ReaderOptions, blobValueFetcher base.ValueFetcher,
 ) (points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span, err error) {
 	reader, err := NewReader(context.Background(), r, ro)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	defer reader.Close()
-	pointIter, err := reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+	pointIter, err := reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 	if err != nil {
 		return nil, nil, nil, err
 	}

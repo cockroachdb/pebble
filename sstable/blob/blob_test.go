@@ -110,7 +110,7 @@ func TestHandleRoundtrip(t *testing.T) {
 	for _, h := range handles {
 		var buf [MaxInlineHandleLength]byte
 		n := h.Encode(buf[:])
-		preface, rem := DecodeInlineHandlePrefix(buf[:n])
+		preface, rem := DecodeInlineHandlePreface(buf[:n])
 		suffix := DecodeHandleSuffix(rem)
 		require.Equal(t, h.InlineHandlePreface, preface)
 		require.Equal(t, h.HandleSuffix, suffix)

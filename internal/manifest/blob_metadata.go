@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
@@ -223,6 +224,9 @@ type BlobReferenceDepth int
 // are ordered by earliest appearance within the sstable. The ordering is
 // persisted to the manifest.
 type BlobReferences []BlobReference
+
+// Assert that BlobReferences implements sstable.BlobReferences.
+var _ sstable.BlobReferences = BlobReferences{}
 
 // FileNumByID returns the FileNum for the identified BlobReference.
 func (br BlobReferences) FileNumByID(i blob.ReferenceID) base.DiskFileNum {

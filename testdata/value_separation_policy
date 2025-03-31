@@ -106,7 +106,7 @@ c#9,SET:paddy
 ----
 # create: 000005.sst
 RawWriter.AddWithBlobHandle("a#9,SET", "(f0,blk0[0:5])", 5, false)
-RawWriter.AddWithBlobHandle("a#5,SET", "(f1,blk0[5:9])", 4, false)
+RawWriter.AddWithBlobHandle("a#5,SET", "(f1,blk0[0:4])", 4, false)
 RawWriter.Add("b#2,DEL", "", false)
 RawWriter.Add("c#9,SET", "paddy", false)
 
@@ -130,7 +130,7 @@ e#9,SET:blob{value=yayoi}
 ----
 # create: 000006.sst
 RawWriter.Add("d#2,DEL", "", false)
-RawWriter.AddWithBlobHandle("e#9,SET", "(f0,blk0[9:14])", 5, false)
+RawWriter.AddWithBlobHandle("e#9,SET", "(f0,blk0[4:9])", 5, false)
 
 estimated-sizes
 ----
