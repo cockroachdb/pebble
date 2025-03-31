@@ -390,17 +390,20 @@ func TestVersionEditApply(t *testing.T) {
 	const readCompactionRate = 32000
 
 	versions := make(map[string]*Version)
+	l0Organizers := make(map[string]*L0Organizer)
 	datadriven.RunTest(t, "testdata/version_edit_apply",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				// Define a version.
 				name := d.CmdArgs[0].String()
-				v, err := ParseVersionDebug(base.DefaultComparer, flushSplitBytes, d.Input)
+				l0Organizer := NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+				v, err := ParseVersionDebug(base.DefaultComparer, l0Organizer, d.Input)
 				if err != nil {
 					d.Fatalf(t, "%v", err)
 				}
 				versions[name] = v
+				l0Organizers[name] = l0Organizer
 				return v.DebugString()
 
 			case "apply":
@@ -442,19 +445,26 @@ func TestVersionEditApply(t *testing.T) {
 					}
 				}
 
-				newv, err := bve.Apply(v, flushSplitBytes, readCompactionRate)
+				l0Organizer := l0Organizers[name]
+				if l0Organizer == nil {
+					d.Fatalf(t, "no L0 organizer")
+				}
+				newv, err := bve.Apply(v, l0Organizer, readCompactionRate)
 				if err != nil {
 					return err.Error()
 				}
 				if saveName != "" {
 					versions[saveName] = newv
+					l0Organizers[saveName] = l0Organizer
 				}
 
-				// Reinitialize the L0 sublevels in the original version; otherwise we
-				// will get "AddL0Files called twice on the same receiver" panics.
-				if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
-					panic(err)
-				}
+				// Reinitialize the L0 organizer and sublevels in the original version
+				// in case we want to use it again (l0Organizer now reflects newv).
+				l0Organizer = NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+				l0Organizer.Reset(&v.Levels[0])
+				v.L0Sublevels = l0Organizer.Sublevels()
+				l0Organizers[name] = l0Organizer
+
 				return newv.DebugString()
 
 			default:

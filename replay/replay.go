@@ -714,7 +714,8 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 
 	var cumulativeWriteBytes uint64
 	var flushBufs flushBuffers
-	v := manifest.NewVersion(r.Opts.Comparer)
+	l0Organizer := manifest.NewL0Organizer(r.Opts.Comparer, r.Opts.FlushSplitBytes)
+	v := manifest.NewInitialVersion(r.Opts.Comparer, l0Organizer)
 	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
 	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
@@ -723,8 +724,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	}
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
-		v, err = bve.Apply(v,
-			r.Opts.FlushSplitBytes,
+		v, err = bve.Apply(v, l0Organizer,
 			r.Opts.Experimental.ReadCompactionRate)
 		bve = manifest.BulkVersionEdit{AddedTablesByFileNum: bve.AddedTablesByFileNum}
 		return v, err

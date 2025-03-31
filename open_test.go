@@ -1457,7 +1457,8 @@ func TestCheckConsistency(t *testing.T) {
 					}
 				}
 
-				v := manifest.NewVersionForTesting(base.DefaultComparer, 0, filesByLevel)
+				l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 0 /* flushSplitBytes */)
+				v := manifest.NewVersionForTesting(base.DefaultComparer, l0Organizer, filesByLevel)
 				err := checkConsistency(v, provider)
 				if err != nil {
 					if redactErr {

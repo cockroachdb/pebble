@@ -124,9 +124,9 @@ func replayManifest(t *testing.T, opts *pebble.Options, dirname string) *manifes
 		require.NoError(t, ve.Decode(r))
 		require.NoError(t, bve.Accumulate(&ve))
 	}
-	v, err := bve.Apply(
-		manifest.NewVersion(cmp), opts.FlushSplitBytes,
-		opts.Experimental.ReadCompactionRate)
+	l0Organizer := manifest.NewL0Organizer(cmp, opts.FlushSplitBytes)
+	emptyVersion := manifest.NewInitialVersion(cmp, l0Organizer)
+	v, err := bve.Apply(emptyVersion, l0Organizer, opts.Experimental.ReadCompactionRate)
 	require.NoError(t, err)
 	return v
 }

@@ -1208,8 +1208,8 @@ func SortBySmallest(files []*TableMetadata, cmp Compare) {
 // NumLevels is the number of levels a Version contains.
 const NumLevels = 7
 
-// NewVersion creates a version with no files.
-func NewVersion(comparer *base.Comparer) *Version {
+// NewInitialVersion creates a version with no files. The L0Organizer should be freshly created.
+func NewInitialVersion(comparer *base.Comparer, l0Org *L0Organizer) *Version {
 	v := &Version{
 		cmp: comparer,
 	}
@@ -1217,15 +1217,18 @@ func NewVersion(comparer *base.Comparer) *Version {
 		v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
 		v.RangeKeyLevels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
 	}
-	v.L0Sublevels = &L0Sublevels{cmp: comparer.Compare, formatKey: comparer.FormatKey, levelMetadata: &v.Levels[0]}
+	v.L0Sublevels = l0Org.Sublevels()
+	if len(v.L0Sublevels.Levels) != 0 {
+		panic(errors.AssertionFailedf("non-empty L0Organizer"))
+	}
 	return v
 }
 
 // NewVersionForTesting constructs a new Version with the provided files. It
-// requires the provided files are already well-ordered. It's intended for
-// testing.
+// requires the provided files are already well-ordered. The L0Organizer should
+// be freshly created.
 func NewVersionForTesting(
-	comparer *base.Comparer, flushSplitBytes int64, files [NumLevels][]*TableMetadata,
+	comparer *base.Comparer, l0Organizer *L0Organizer, files [7][]*TableMetadata,
 ) *Version {
 	v := &Version{
 		cmp: comparer,
@@ -1247,9 +1250,9 @@ func NewVersionForTesting(
 			v.Levels[l].totalSize += f.Size
 		}
 	}
-	if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
-		panic(err)
-	}
+	l0Organizer.Reset(&v.Levels[0])
+	v.L0Sublevels = l0Organizer.Sublevels()
+	v.L0SublevelFiles = v.L0Sublevels.Levels
 	return v
 }
 
@@ -1377,7 +1380,9 @@ func (v *Version) string(verbose bool) string {
 }
 
 // ParseVersionDebug parses a Version from its DebugString output.
-func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string) (*Version, error) {
+func ParseVersionDebug(
+	comparer *base.Comparer, l0Organizer *L0Organizer, s string,
+) (*Version, error) {
 	var files [NumLevels][]*TableMetadata
 	level := -1
 	for _, l := range strings.Split(s, "\n") {
@@ -1403,7 +1408,7 @@ func ParseVersionDebug(comparer *base.Comparer, flushSplitBytes int64, s string)
 	// partial order that represents newest to oldest. Reverse the order of L0
 	// files to ensure we construct the same sublevels.
 	slices.Reverse(files[0])
-	v := NewVersionForTesting(comparer, flushSplitBytes, files)
+	v := NewVersionForTesting(comparer, l0Organizer, files)
 	if err := v.CheckOrdering(); err != nil {
 		return nil, err
 	}
@@ -1484,16 +1489,6 @@ var _ ObsoleteFilesSet = (*ObsoleteFiles)(nil)
 // Next returns the next version in the list of versions.
 func (v *Version) Next() *Version {
 	return v.next
-}
-
-// InitL0Sublevels initializes the L0Sublevels
-func (v *Version) InitL0Sublevels(flushSplitBytes int64) error {
-	var err error
-	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], v.cmp.Compare, v.cmp.FormatKey, flushSplitBytes)
-	if err == nil {
-		v.L0SublevelFiles = v.L0Sublevels.Levels
-	}
-	return err
 }
 
 // CalculateInuseKeyRanges examines table metadata in levels [level, maxLevel]
