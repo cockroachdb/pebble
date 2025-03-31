@@ -33,7 +33,8 @@ func TestDownloadCursor(t *testing.T) {
 		case "define":
 			var err error
 			const flushSplitBytes = 10 * 1024 * 1024
-			vers, err = manifest.ParseVersionDebug(base.DefaultComparer, flushSplitBytes, td.Input)
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+			vers, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
@@ -118,7 +119,8 @@ func TestDownloadTask(t *testing.T) {
 		case "define":
 			var err error
 			const flushSplitBytes = 10 * 1024 * 1024
-			vers, err = manifest.ParseVersionDebug(base.DefaultComparer, flushSplitBytes, td.Input)
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+			vers, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}

@@ -69,8 +69,9 @@ type versionSet struct {
 	dynamicBaseLevel bool
 
 	// Mutable fields.
-	versions versionList
-	picker   compactionPicker
+	versions    versionList
+	l0Organizer *manifest.L0Organizer
+	picker      compactionPicker
 	// curCompactionConcurrency is updated whenever picker is updated.
 	// INVARIANT: >= 1.
 	curCompactionConcurrency atomic.Int32
@@ -159,6 +160,7 @@ func (vs *versionSet) init(
 	vs.cmp = opts.Comparer
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
+	vs.l0Organizer = manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[base.DiskFileNum]objectInfo)
 	vs.virtualBackings = manifest.MakeVirtualBackings()
@@ -178,20 +180,15 @@ func (vs *versionSet) create(
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
-	var bve bulkVersionEdit
-	emptyVersion := manifest.NewVersion(opts.Comparer)
-	newVersion, err := bve.Apply(emptyVersion, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
-	if err != nil {
-		return err
-	}
-	vs.append(newVersion)
+	emptyVersion := manifest.NewInitialVersion(opts.Comparer, vs.l0Organizer)
+	vs.append(emptyVersion)
 
 	vs.setCompactionPicker(
-		newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil))
+		newCompactionPickerByScore(emptyVersion, &vs.virtualBackings, vs.opts, nil))
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
-	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum.Load(), nil /* virtualBackings */)
+	err := vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum.Load(), nil /* virtualBackings */)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
@@ -344,8 +341,8 @@ func (vs *versionSet) load(
 		}
 	}
 
-	emptyVersion := manifest.NewVersion(opts.Comparer)
-	newVersion, err := bve.Apply(emptyVersion, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	emptyVersion := manifest.NewInitialVersion(opts.Comparer, vs.l0Organizer)
+	newVersion, err := bve.Apply(emptyVersion, vs.l0Organizer, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
@@ -577,7 +574,7 @@ func (vs *versionSet) logAndApply(
 			return errors.Wrap(err, "MANIFEST accumulate failed")
 		}
 		newVersion, err = b.Apply(
-			currentVersion, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
+			currentVersion, vs.l0Organizer, vs.opts.Experimental.ReadCompactionRate,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")

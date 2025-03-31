@@ -32,7 +32,9 @@ func readManifest(filename string) (*Version, error) {
 	}
 	defer f.Close()
 	rr := record.NewReader(f, 0 /* logNum */)
-	v := NewVersion(base.DefaultComparer)
+
+	l0Organizer := NewL0Organizer(base.DefaultComparer, 10<<20 /* flushSplitBytes */)
+	v := NewInitialVersion(base.DefaultComparer, l0Organizer)
 	addedByFileNum := make(map[base.FileNum]*TableMetadata)
 	for {
 		r, err := rr.Next()
@@ -51,7 +53,7 @@ func readManifest(filename string) (*Version, error) {
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
-		if v, err = bve.Apply(v, 10<<20, 32000); err != nil {
+		if v, err = bve.Apply(v, l0Organizer, 32000); err != nil {
 			return nil, err
 		}
 	}
@@ -318,7 +320,7 @@ func TestL0Sublevels(t *testing.T) {
 					levelFiles:    explicitSublevels,
 					cmp:           base.DefaultComparer.Compare,
 					formatKey:     base.DefaultFormatter,
-					levelMetadata: &levelMetadata,
+					levelMetadata: levelMetadata,
 				}
 				for _, files := range explicitSublevels {
 					sublevels.Levels = append(sublevels.Levels, NewLevelSliceSpecificOrder(files))

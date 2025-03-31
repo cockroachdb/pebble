@@ -241,11 +241,9 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			}
 
 			if comparer != nil {
-				v, err := bve.Apply(
-					manifest.NewVersion(comparer),
-					0,
-					m.opts.Experimental.ReadCompactionRate,
-				)
+				l0Organizer := manifest.NewL0Organizer(comparer, 0 /* flushSplitBytes */)
+				emptyVersion := manifest.NewInitialVersion(comparer, l0Organizer)
+				v, err := bve.Apply(emptyVersion, l0Organizer, m.opts.Experimental.ReadCompactionRate)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
@@ -571,6 +569,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			}
 			defer f.Close()
 
+			var l0Organizer *manifest.L0Organizer
 			var v *manifest.Version
 			var cmp *base.Comparer
 			rr := record.NewReader(f, 0 /* logNum */)
@@ -626,9 +625,10 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 				// TODO(sbhola): add option to Apply that reports all errors instead of
 				// one error.
 				if v == nil {
-					v = manifest.NewVersion(cmp)
+					l0Organizer = manifest.NewL0Organizer(cmp, 0 /* flushSplitBytes */)
+					v = manifest.NewInitialVersion(cmp, l0Organizer)
 				}
-				newv, err := bve.Apply(v, 0, m.opts.Experimental.ReadCompactionRate)
+				newv, err := bve.Apply(v, l0Organizer, m.opts.Experimental.ReadCompactionRate)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)

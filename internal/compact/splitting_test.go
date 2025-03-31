@@ -34,7 +34,8 @@ func TestOutputSplitter(t *testing.T) {
 					files[1] = append(files[1], f)
 				}
 			}
-			v := manifest.NewVersionForTesting(base.DefaultComparer, 64*1024, files)
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			v := manifest.NewVersionForTesting(base.DefaultComparer, l0Organizer, files)
 			if err := v.CheckOrdering(); err != nil {
 				d.Fatalf(t, "%v", err)
 			}
