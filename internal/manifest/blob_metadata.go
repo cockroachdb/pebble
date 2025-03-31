@@ -216,3 +216,23 @@ func ParseBlobFileMetadataDebug(s string) (_ *BlobFileMetadata, err error) {
 // is actually better than in this analysis because more of the keys will be
 // from the lower level.
 type BlobReferenceDepth int
+
+// BlobReferences is a slice of BlobReference.
+type BlobReferences []BlobReference
+
+// FileNumByIndex returns the FileNum for the i-th BlobReference.
+func (br BlobReferences) FileNumByIndex(i int) base.DiskFileNum {
+	return br[i].FileNum
+}
+
+// IndexByFileNum returns the index for the given FileNum. If the file number
+// is not found, the second return value is false. IndexByFileNum is linear in
+// the length of the BlobReferences slice.
+func (br BlobReferences) IndexByFileNum(fileNum base.DiskFileNum) (int, bool) {
+	for i, ref := range br {
+		if ref.FileNum == fileNum {
+			return i, true
+		}
+	}
+	return -1, false
+}

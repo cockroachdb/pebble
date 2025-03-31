@@ -166,7 +166,7 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 	}
 	vs.writer = nil
 	return compact.ValueSeparationMetadata{
-		BlobReferences: []manifest.BlobReference{{
+		BlobReferences: manifest.BlobReferences{{
 			FileNum:   vs.objMeta.DiskFileNum,
 			ValueSize: stats.UncompressedValueBytes,
 		}},
@@ -197,7 +197,7 @@ type preserveBlobReferences struct {
 
 	// state
 	buf            []byte
-	currReferences []manifest.BlobReference
+	currReferences manifest.BlobReferences
 	// totalValueSize is the sum of the sizes of all ValueSizes in currReferences.
 	totalValueSize uint64
 }
@@ -250,16 +250,8 @@ func (vs *preserveBlobReferences) Add(
 	// sstable, taking note of the reference for the table metadata.
 	lv := kv.V.LazyValue()
 	fn := lv.Fetcher.BlobFileNum
-	var found bool
-	refIdx := 0
-	for refIdx = range vs.currReferences {
-		if vs.currReferences[refIdx].FileNum == fn {
-			// This sstable contains an existing reference to this blob file.
-			// Record the reference.
-			found = true
-			break
-		}
-	}
+
+	refIdx, found := vs.currReferences.IndexByFileNum(fn)
 	if !found {
 		// This is the first time we're seeing this blob file for this sstable.
 		// Find the blob file metadata for this file among the input metadatas.

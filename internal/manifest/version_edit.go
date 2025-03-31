@@ -357,7 +357,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}{}
 			var syntheticPrefix sstable.SyntheticPrefix
 			var syntheticSuffix sstable.SyntheticSuffix
-			var blobReferences []BlobReference
+			var blobReferences BlobReferences
 			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
