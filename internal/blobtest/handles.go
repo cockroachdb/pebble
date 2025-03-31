@@ -190,8 +190,8 @@ func (bv *Values) ParseInlineHandle(
 	}
 	return blob.InlineHandle{
 		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceIndex: references.MapToReferenceIndex(fullHandle.FileNum),
-			ValueLen:       fullHandle.ValueLen,
+			ReferenceID: references.MapToReferenceID(fullHandle.FileNum),
+			ValueLen:    fullHandle.ValueLen,
 		},
 		HandleSuffix: blob.HandleSuffix{
 			BlockNum:      fullHandle.BlockNum,
@@ -261,14 +261,14 @@ type References struct {
 	fileNums []base.DiskFileNum
 }
 
-// MapToReferenceIndex maps the given file number to a reference index.
-func (b *References) MapToReferenceIndex(fileNum base.DiskFileNum) uint32 {
+// MapToReferenceID maps the given file number to a reference ID.
+func (b *References) MapToReferenceID(fileNum base.DiskFileNum) blob.ReferenceID {
 	for i, fn := range b.fileNums {
 		if fn == fileNum {
-			return uint32(i)
+			return blob.ReferenceID(i)
 		}
 	}
 	i := uint32(len(b.fileNums))
 	b.fileNums = append(b.fileNums, fileNum)
-	return i
+	return blob.ReferenceID(i)
 }

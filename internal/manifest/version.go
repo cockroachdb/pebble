@@ -238,7 +238,7 @@ type TableMetadata struct {
 	Largest  InternalKey
 	// BlobReferences is a list of blob files containing values that are
 	// referenced by this sstable.
-	BlobReferences []BlobReference
+	BlobReferences BlobReferences
 	// BlobReferenceDepth is the stack depth of blob files referenced by this
 	// sstable. See the comment on the BlobReferenceDepth type for more details.
 	//

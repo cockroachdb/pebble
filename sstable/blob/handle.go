@@ -54,11 +54,16 @@ type InlineHandle struct {
 	HandleSuffix
 }
 
+// ReferenceID identifies a particular blob reference within a table. It's
+// implemented as an index into the slice of the BlobReferences recorded in the
+// manifest.
+type ReferenceID uint32
+
 // InlineHandlePreface is the prefix of an inline handle. It's eagerly decoded
 // when returning an InternalValue to higher layers.
 type InlineHandlePreface struct {
-	ReferenceIndex uint32
-	ValueLen       uint32
+	ReferenceID ReferenceID
+	ValueLen    uint32
 }
 
 // HandleSuffix is the suffix of an inline handle. It's decoded only when the
@@ -85,14 +90,14 @@ func (h InlineHandle) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (h InlineHandle) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("(f%d,blk%d[%d:%d])",
-		h.ReferenceIndex, h.BlockNum, h.OffsetInBlock, h.OffsetInBlock+h.ValueLen)
+		h.ReferenceID, h.BlockNum, h.OffsetInBlock, h.OffsetInBlock+h.ValueLen)
 }
 
 // Encode encodes the inline handle into the provided buffer, returning the
 // number of bytes encoded.
 func (h InlineHandle) Encode(b []byte) int {
 	n := 0
-	n += binary.PutUvarint(b[n:], uint64(h.ReferenceIndex))
+	n += binary.PutUvarint(b[n:], uint64(h.ReferenceID))
 	n += valblk.EncodeHandle(b[n:], valblk.Handle{
 		BlockNum:      h.BlockNum,
 		OffsetInBlock: h.OffsetInBlock,
@@ -145,8 +150,8 @@ func DecodeInlineHandlePrefix(src []byte) (InlineHandlePreface, []byte) {
 	}
 
 	return InlineHandlePreface{
-		ReferenceIndex: refIdx,
-		ValueLen:       valueLen,
+		ReferenceID: ReferenceID(refIdx),
+		ValueLen:    valueLen,
 	}, src
 }
 
