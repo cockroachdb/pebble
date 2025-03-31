@@ -52,6 +52,8 @@ type FileWriterOptions struct {
 	Compression   block.Compression
 	ChecksumType  block.ChecksumType
 	FlushGovernor block.FlushGovernor
+	// Only CPUMeasurer.MeasureCPUBlobFileSecondary is used.
+	CpuMeasurer base.CPUMeasurer
 }
 
 func (o *FileWriterOptions) ensureDefaults() {
@@ -67,6 +69,9 @@ func (o *FileWriterOptions) ensureDefaults() {
 			base.DefaultBlockSizeThreshold,
 			base.SizeClassAwareBlockSizeThreshold,
 			nil)
+	}
+	if o.CpuMeasurer == nil {
+		o.CpuMeasurer = base.NoopCPUMeasurer{}
 	}
 }
 
@@ -98,6 +103,7 @@ type FileWriter struct {
 	blockOffsets []uint64
 	err          error
 	checksumType block.ChecksumType
+	cpuMeasurer  base.CPUMeasurer
 	writeQueue   struct {
 		wg  sync.WaitGroup
 		ch  chan compressedBlock
@@ -120,6 +126,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.b.Init(opts.Compression, opts.ChecksumType)
 	fw.flushGov = opts.FlushGovernor
 	fw.checksumType = opts.ChecksumType
+	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)
 	go fw.drainWriteQueue()
@@ -173,8 +180,13 @@ func (w *FileWriter) flush() {
 // until the channel is closed. All value blocks are written by this goroutine.
 func (w *FileWriter) drainWriteQueue() {
 	defer w.writeQueue.wg.Done()
+	// Call once to initialize the CPU measurer.
+	w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineBlobFileSecondary)
 	for cb := range w.writeQueue.ch {
 		_, err := cb.pb.WriteTo(w.w)
+		// Report to the CPU measurer immediately after writing (note that there
+		// may be a time lag until the next block is available to write).
+		w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineBlobFileSecondary)
 		if err != nil {
 			w.writeQueue.err = err
 			continue

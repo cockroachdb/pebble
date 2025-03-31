@@ -273,12 +273,14 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 		iteratedKeys++
 		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
 			r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
+				// TODO(jackson): CumulativeWrittenSize does not include blob files
+				// already written by this compaction, and
+				// ValueSeparation.EstimatedFileSize does not either. So this
+				// CumWriteBytes is incomplete.
 				CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize() +
 					r.cfg.ValueSeparation.EstimatedFileSize(),
 			})
-			// TODO(sumeer): give the GrantHandle to the writer so it can account on
-			// all its goroutines.
-			r.cfg.GrantHandle.MeasureCPU(0)
+			r.cfg.GrantHandle.MeasureCPU(base.CompactionGoroutinePrimary)
 		}
 		outputSize := tw.EstimatedSize()
 		outputSize += r.cfg.ValueSeparation.EstimatedReferenceSize()
@@ -336,11 +338,15 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
 
 	r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
+		// TODO(jackson): CumulativeWrittenSize does not include blob files
+		// already written by this compaction, and
+		// ValueSeparation.EstimatedFileSize does not either. So this
+		// CumWriteBytes is incomplete.
 		CumWriteBytes: r.stats.CumulativeWrittenSize +
 			tw.EstimatedSize() +
 			r.cfg.ValueSeparation.EstimatedFileSize(),
 	})
-	r.cfg.GrantHandle.MeasureCPU(0)
+	r.cfg.GrantHandle.MeasureCPU(base.CompactionGoroutinePrimary)
 	return splitKey, nil
 }
 

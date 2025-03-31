@@ -20,14 +20,7 @@ type CompactionGrantHandle interface {
 	// Started is called once and must precede calls to MeasureCPU and
 	// CumulativeStats.
 	Started()
-	// MeasureCPU is used to measure the CPU consumption of a goroutine involved
-	// in a compaction. It must be called from each of the two goroutines that
-	// consume CPU during a compaction, and the first call must be before any
-	// significant work is done, since the first call is used to initialize the
-	// measurer for the goroutine. The parameter g must be 0 or 1, to
-	// differentiate between the goroutines. If a compaction is only using one
-	// goroutine, then it can skip calling MeasureCPU(1).
-	MeasureCPU(g int)
+	CPUMeasurer
 	// CumulativeStats reports the current cumulative stats. This method may
 	// block if the scheduler wants to pace the compaction (say to moderate its
 	// consumption of disk write bandwidth).
@@ -39,3 +32,36 @@ type CompactionGrantHandle interface {
 	// been installed.
 	Done()
 }
+
+// CompactionGoroutineKind identifies the kind of compaction goroutine.
+type CompactionGoroutineKind uint8
+
+const (
+	// CompactionGoroutinePrimary is the primary compaction goroutine that
+	// iterates over key-value pairs in the input and calls the current sstable
+	// writer and blob file writer.
+	CompactionGoroutinePrimary CompactionGoroutineKind = iota
+	// CompactionGoroutineSSTableSecondary is the secondary goroutine in the
+	// current sstable writer that writes blocks to the sstable.
+	CompactionGoroutineSSTableSecondary
+	// CompactionGoroutineBlobFileSecondary is the secondary goroutine in the
+	// current blob file writer that writes blocks to the blob file.
+	CompactionGoroutineBlobFileSecondary
+)
+
+// CPUMeasurer is used to measure the CPU consumption of goroutines involved
+// in a compaction.
+type CPUMeasurer interface {
+	// MeasureCPU allows the measurer to keep track of CPU usage while a
+	// compaction is ongoing. It is to be called regularly from the compaction
+	// goroutine corresponding to the argument. The first call from a goroutine
+	// must be done before any significant CPU consumption, since it is used to
+	// initialize the measurer for the goroutine making the call. If a
+	// compaction is not using a certain kind of goroutine, it can skip calling
+	// this method with the corresponding argument.
+	MeasureCPU(CompactionGoroutineKind)
+}
+
+type NoopCPUMeasurer struct{}
+
+func (NoopCPUMeasurer) MeasureCPU(CompactionGoroutineKind) {}
