@@ -438,15 +438,6 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 }
 
 func TestCalculateInuseKeyRanges(t *testing.T) {
-	newVersion := func(files [NumLevels][]*TableMetadata) *Version {
-		t.Helper()
-		l0Organizer := NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
-		v := NewVersionForTesting(base.DefaultComparer, l0Organizer, files)
-		if err := v.CheckOrdering(); err != nil {
-			t.Fatal(err)
-		}
-		return v
-	}
 	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *TableMetadata {
 		m := &TableMetadata{
 			FileNum: fileNum,
@@ -458,7 +449,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 	}
 	tests := []struct {
 		name     string
-		v        *Version
+		levels   [NumLevels][]*TableMetadata
 		level    int
 		depth    int
 		smallest []byte
@@ -467,7 +458,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 	}{
 		{
 			name: "No files in next level",
-			v: newVersion([NumLevels][]*TableMetadata{
+			levels: [NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -482,7 +473,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 						base.ParseInternalKey("e.SET.2"),
 					),
 				},
-			}),
+			},
 			level:    1,
 			depth:    2,
 			smallest: []byte("a"),
@@ -494,7 +485,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "No overlapping key ranges",
-			v: newVersion([NumLevels][]*TableMetadata{
+			levels: [NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -523,7 +514,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 						base.ParseInternalKey("w.SET.1"),
 					),
 				},
-			}),
+			},
 			level:    1,
 			depth:    2,
 			smallest: []byte("a"),
@@ -537,7 +528,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "First few non-overlapping, followed by overlapping",
-			v: newVersion([NumLevels][]*TableMetadata{
+			levels: [NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -578,7 +569,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 						base.ParseInternalKey("w.SET.1"),
 					),
 				},
-			}),
+			},
 			level:    1,
 			depth:    2,
 			smallest: []byte("a"),
@@ -592,7 +583,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "All overlapping",
-			v: newVersion([NumLevels][]*TableMetadata{
+			levels: [NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -627,7 +618,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 						base.ParseInternalKey("w.SET.1"),
 					),
 				},
-			}),
+			},
 			level:    1,
 			depth:    2,
 			smallest: []byte("a"),
@@ -639,7 +630,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 		},
 		{
 			name: "Touching ranges",
-			v: newVersion([NumLevels][]*TableMetadata{
+			levels: [NumLevels][]*TableMetadata{
 				1: {
 					newFileMeta(
 						1,
@@ -656,7 +647,7 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 						base.ParseInternalKey("c.SET.1"),
 					),
 				},
-			}),
+			},
 			level:    1,
 			depth:    2,
 			smallest: []byte("a"),
@@ -668,7 +659,13 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.v.CalculateInuseKeyRanges(tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
+			l0Organizer := NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			v := NewVersionForTesting(base.DefaultComparer, l0Organizer, tt.levels)
+			if err := v.CheckOrdering(); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := v.CalculateInuseKeyRanges(l0Organizer, tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CalculateInuseKeyRanges() = %v, want %v", got, tt.want)
 			}
 		})
@@ -755,7 +752,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 			maxWidth := rng.IntN(endKeyspace-s) + 1
 			e := rng.IntN(maxWidth) + s
 			sKey, eKey := makeUserKey(s), makeUserKey(e)
-			keyRanges := v.CalculateInuseKeyRanges(l, NumLevels-1, sKey, eKey)
+			keyRanges := v.CalculateInuseKeyRanges(l0Organizer, l, NumLevels-1, sKey, eKey)
 
 			for level := l; level < NumLevels; level++ {
 				for _, f := range files[level] {

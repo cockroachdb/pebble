@@ -3847,6 +3847,6 @@ func runBenchmarkManySSTablesInUseKeyRanges(b *testing.B, d *DB, count int) {
 	smallest := []byte("0")
 	largest := []byte("z")
 	for i := 0; i < b.N; i++ {
-		_ = v.CalculateInuseKeyRanges(0, numLevels-1, smallest, largest)
+		_ = v.CalculateInuseKeyRanges(d.mu.versions.l0Organizer, 0, numLevels-1, smallest, largest)
 	}
 }

@@ -413,7 +413,12 @@ func firstExternalFileInLevelIter(
 // given file. Returns true on success, or false if the file is already
 // involved in a compaction.
 func (d *DB) tryLaunchDownloadForFile(
-	vers *version, env compactionEnv, download *downloadSpanTask, level int, f *tableMetadata,
+	vers *version,
+	l0Organizer *manifest.L0Organizer,
+	env compactionEnv,
+	download *downloadSpanTask,
+	level int,
+	f *tableMetadata,
 ) (doneCh chan error, ok bool) {
 	if f.IsCompacting() {
 		return nil, false
@@ -425,7 +430,7 @@ func (d *DB) tryLaunchDownloadForFile(
 	if download.downloadSpan.ViaBackingFileDownload {
 		kind = compactionKindCopy
 	}
-	pc := pickDownloadCompaction(vers, d.opts, env, d.mu.versions.picker.getBaseLevel(), kind, level, f)
+	pc := pickDownloadCompaction(vers, l0Organizer, d.opts, env, d.mu.versions.picker.getBaseLevel(), kind, level, f)
 	if pc == nil {
 		// We are not able to run this download compaction at this time.
 		return nil, false
@@ -450,7 +455,11 @@ const (
 )
 
 func (d *DB) tryLaunchDownloadCompaction(
-	download *downloadSpanTask, vers *manifest.Version, env compactionEnv, maxConcurrentDownloads int,
+	download *downloadSpanTask,
+	vers *manifest.Version,
+	l0Organizer *manifest.L0Organizer,
+	env compactionEnv,
+	maxConcurrentDownloads int,
 ) launchDownloadResult {
 	// First, check the bookmarks.
 	for i := 0; i < len(download.bookmarks); i++ {
@@ -497,7 +506,7 @@ func (d *DB) tryLaunchDownloadCompaction(
 
 		// Move up the bookmark position to point at this file.
 		b.start = makeCursorAtFile(f, b.start.level)
-		doneCh, ok := d.tryLaunchDownloadForFile(vers, env, download, b.start.level, f)
+		doneCh, ok := d.tryLaunchDownloadForFile(vers, l0Organizer, env, download, b.start.level, f)
 		if ok {
 			b.downloadDoneCh = doneCh
 			return launchedCompaction
@@ -524,7 +533,7 @@ func (d *DB) tryLaunchDownloadCompaction(
 			start:    makeCursorAtFile(f, level),
 			endBound: base.UserKeyInclusive(f.Largest.UserKey),
 		})
-		doneCh, ok := d.tryLaunchDownloadForFile(vers, env, download, level, f)
+		doneCh, ok := d.tryLaunchDownloadForFile(vers, l0Organizer, env, download, level, f)
 		if ok {
 			// We launched a download for this file.
 			download.bookmarks[len(download.bookmarks)-1].downloadDoneCh = doneCh

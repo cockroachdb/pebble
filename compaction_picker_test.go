@@ -26,19 +26,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, string) {
+func loadVersion(
+	t *testing.T, d *datadriven.TestData,
+) (*version, *manifest.L0Organizer, *Options, string) {
 	var sizes [numLevels]int64
 	opts := &Options{}
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
 
 	if len(d.CmdArgs) != 1 {
-		return nil, nil, fmt.Sprintf("%s expects 1 argument", d.Cmd)
+		return nil, nil, nil, fmt.Sprintf("%s expects 1 argument", d.Cmd)
 	}
 	var err error
 	opts.LBaseMaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
 	if err != nil {
-		return nil, nil, err.Error()
+		return nil, nil, nil, err.Error()
 	}
 
 	var files [numLevels][]*tableMetadata
@@ -55,24 +57,24 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 			parts := strings.Split(data, " ")
 			parts[0] = strings.TrimSuffix(strings.TrimSpace(parts[0]), ":")
 			if len(parts) < 2 {
-				return nil, nil, fmt.Sprintf("malformed test:\n%s", d.Input)
+				return nil, nil, nil, fmt.Sprintf("malformed test:\n%s", d.Input)
 			}
 			level, err := strconv.Atoi(parts[0])
 			if err != nil {
-				return nil, nil, err.Error()
+				return nil, nil, nil, err.Error()
 			}
 			if files[level] != nil {
-				return nil, nil, fmt.Sprintf("level %d already filled", level)
+				return nil, nil, nil, fmt.Sprintf("level %d already filled", level)
 			}
 			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
 			if err != nil {
-				return nil, nil, err.Error()
+				return nil, nil, nil, err.Error()
 			}
 			var compensation uint64
 			if len(parts) == 3 {
 				compensation, err = strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64)
 				if err != nil {
-					return nil, nil, err.Error()
+					return nil, nil, nil, err.Error()
 				}
 			}
 
@@ -122,8 +124,8 @@ func loadVersion(t *testing.T, d *datadriven.TestData) (*version, *Options, stri
 		}
 	}
 
-	vers := newVersion(opts, files)
-	return vers, opts, ""
+	vers, l0Organizer := newVersionAndL0Organizer(opts, files)
+	return vers, l0Organizer, opts, ""
 }
 
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
@@ -131,13 +133,13 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, errMsg := loadVersion(t, d)
+				vers, l0Organizer, opts, errMsg := loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
 
 				vb := manifest.MakeVirtualBackings()
-				p := newCompactionPickerByScore(vers, &vb, opts, nil)
+				p := newCompactionPickerByScore(vers, l0Organizer, &vb, opts, nil)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
 					fmt.Fprintf(&buf, "%d: %d\n", level, p.levelMaxBytes[level])
@@ -152,6 +154,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 
 func TestCompactionPickerTargetLevel(t *testing.T) {
 	var vers *version
+	var l0Organizer *manifest.L0Organizer
 	var opts *Options
 	var pickerByScore *compactionPickerByScore
 
@@ -211,7 +214,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// <level>: <size> [compensation]
 				// <level>: <size> [compensation]
 				var errMsg string
-				vers, opts, errMsg = loadVersion(t, d)
+				vers, l0Organizer, opts, errMsg = loadVersion(t, d)
 				opts.MaxConcurrentCompactions = func() int {
 					// This test only limits the count based on the L0 read amp and
 					// compaction debt, so we would like to return math.MaxInt. But we
@@ -237,7 +240,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				}
 
 				vb := manifest.MakeVirtualBackings()
-				pickerByScore = newCompactionPickerByScore(vers, &vb, opts, inProgress)
+				pickerByScore = newCompactionPickerByScore(vers, l0Organizer, &vb, opts, inProgress)
 				return fmt.Sprintf("base: %d", pickerByScore.baseLevel)
 			case "queue":
 				var b strings.Builder
@@ -327,8 +330,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				// Make sure L0Sublevels reflects the current in-progress compactions.
-				vers.L0Sublevels.InitCompactingFileInfo(l0InProgress)
+				// Make sure the L0Organizer reflects the current in-progress compactions.
+				l0Organizer.InitCompactingFileInfo(l0InProgress)
 
 				var b strings.Builder
 				fmt.Fprintf(&b, "Initial state before pick:\n%s", runVersionFileSizes(vers))
@@ -361,6 +364,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 
 				pc, retryLater := newPickedManualCompaction(
 					pickerByScore.vers,
+					pickerByScore.l0Organizer,
 					opts,
 					compactionEnv{
 						earliestUnflushedSeqNum: base.SeqNumMax,
@@ -383,14 +387,14 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				vers, opts, errMsg := loadVersion(t, d)
+				vers, l0Organizer, opts, errMsg := loadVersion(t, d)
 				if errMsg != "" {
 					return errMsg
 				}
 				opts.MemTableSize = 1000
 
 				vb := manifest.MakeVirtualBackings()
-				p := newCompactionPickerByScore(vers, &vb, opts, nil)
+				p := newCompactionPickerByScore(vers, l0Organizer, &vb, opts, nil)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -536,18 +540,20 @@ func TestCompactionPickerL0(t *testing.T) {
 				inProgressCompactions = append(inProgressCompactions, info)
 			}
 
-			version := newVersion(opts, fileMetas)
-			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
+			version, l0Organizer := newVersionAndL0Organizer(opts, fileMetas)
+			l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
-				opts: opts,
-				cmp:  DefaultComparer,
+				opts:        opts,
+				l0Organizer: l0Organizer,
+				cmp:         DefaultComparer,
 			}
 			vs.versions.Init(nil)
 			vs.append(version)
 			picker = &compactionPickerByScore{
-				opts:      opts,
-				vers:      version,
-				baseLevel: baseLevel,
+				opts:        opts,
+				vers:        version,
+				l0Organizer: l0Organizer,
+				baseLevel:   baseLevel,
 			}
 			vs.picker = picker
 			picker.initLevelMaxBytes(inProgressCompactions)
@@ -761,8 +767,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				inProgressCompactions = append(inProgressCompactions, info)
 			}
 
-			version := newVersion(opts, fileMetas)
-			version.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
+			version, l0Organizer := newVersionAndL0Organizer(opts, fileMetas)
+			l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
 				opts: opts,
 				cmp:  DefaultComparer,
@@ -771,7 +777,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			vs.append(version)
 
 			vb := manifest.MakeVirtualBackings()
-			picker = newCompactionPickerByScore(version, &vb, opts, inProgressCompactions)
+			picker = newCompactionPickerByScore(version, l0Organizer, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -824,7 +830,6 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 	opts := DefaultOptions()
 	var picker *compactionPickerByScore
 	var rcList readCompactionQueue
-	var vers *version
 
 	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -888,16 +893,17 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 				}
 			}
 
-			vers = newVersion(opts, fileMetas)
+			vers, l0Organizer := newVersionAndL0Organizer(opts, fileMetas)
 			vs := &versionSet{
-				opts: opts,
-				cmp:  DefaultComparer,
+				opts:        opts,
+				cmp:         DefaultComparer,
+				l0Organizer: l0Organizer,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
 			var inProgressCompactions []compactionInfo
 			vb := manifest.MakeVirtualBackings()
-			picker = newCompactionPickerByScore(vers, &vb, opts, inProgressCompactions)
+			picker = newCompactionPickerByScore(vers, l0Organizer, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1238,7 +1244,6 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 func TestCompactionOutputFileSize(t *testing.T) {
 	opts := DefaultOptions()
 	var picker *compactionPickerByScore
-	var vers *version
 
 	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -1310,16 +1315,17 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				}
 			}
 
-			vers = newVersion(opts, fileMetas)
+			vers, l0Organizer := newVersionAndL0Organizer(opts, fileMetas)
 			vs := &versionSet{
-				opts: opts,
-				cmp:  DefaultComparer,
+				opts:        opts,
+				cmp:         DefaultComparer,
+				l0Organizer: l0Organizer,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
 			var inProgressCompactions []compactionInfo
 			vb := manifest.MakeVirtualBackings()
-			picker = newCompactionPickerByScore(vers, &vb, opts, inProgressCompactions)
+			picker = newCompactionPickerByScore(vers, l0Organizer, &vb, opts, inProgressCompactions)
 			vs.picker = picker
 
 			var buf bytes.Buffer

@@ -966,7 +966,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			flushable: mem,
 			flushed:   make(chan struct{}),
 		}}
-		c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
+		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
 			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now())
 		if err != nil {
 			return err
