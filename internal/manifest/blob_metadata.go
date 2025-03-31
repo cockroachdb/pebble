@@ -181,3 +181,38 @@ func ParseBlobFileMetadataDebug(s string) (_ *BlobFileMetadata, err error) {
 	}
 	return m, nil
 }
+
+// BlobReferenceDepth is a statistic maintained per-sstable, indicating an upper
+// bound on the number of blob files that a reader scanning the table would need
+// to keep open if they only open and close referenced blob files once. In other
+// words, it's the stack depth of blob files referenced by a sstable. If a
+// flush or compaction rewrites an sstable's values to a new blob file, the
+// resulting sstable has a blob reference depth of 1. When a compaction reuses
+// blob references, the max blob reference depth of the files in each level is
+// used, and then the depth is summed, and assigned to the output. This is a
+// loose upper bound (assuming worst case distribution of keys in all inputs)
+// but avoids tracking key spans for references and using key comparisons.
+//
+// Because the blob reference depth is the size of the working set of blob files
+// referenced by the table, it cannot exceed the count of distinct blob file
+// references.
+//
+// Example: Consider a compaction of file f0 from L0 and files f1, f2, f3 from
+// L1, where the former has blob reference depth of 1 and files f1, f2, f3 all
+// happen to have a blob-reference-depth of 1. Say we produce many output files,
+// one of which is f4. We are assuming here that the blobs referenced by f0
+// whose keys happened to be written to f4 are spread all across the key span of
+// f4. Say keys from f1 and f2 also made their way to f4. Then we will first
+// have keys that refer to blobs referenced by f1,f0 and at some point once we
+// move past the keys of f1, we will have keys that refer to blobs referenced by
+// f2,f0. In some sense, we have a working set of 2 blob files at any point in
+// time, and this is similar to the idea of level stack depth for reads -- hence
+// we adopt the depth terminology.  We want to keep this stack depth in check,
+// since locality is important, while allowing it to be higher than 1, since
+// otherwise we will need to rewrite blob files in every compaction (defeating
+// the write amp benefit we are looking for). Similar to the level depth, this
+// simplistic analysis does not take into account distribution of keys involved
+// in the compaction and which of them have blob references. Also the locality
+// is actually better than in this analysis because more of the keys will be
+// from the lower level.
+type BlobReferenceDepth int
