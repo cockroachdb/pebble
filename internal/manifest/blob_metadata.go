@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
 
@@ -216,3 +217,26 @@ func ParseBlobFileMetadataDebug(s string) (_ *BlobFileMetadata, err error) {
 // is actually better than in this analysis because more of the keys will be
 // from the lower level.
 type BlobReferenceDepth int
+
+// BlobReferences is a slice of BlobReference. The order of the slice is
+// significant and should be maintained. In practice, a sstable's BlobReferences
+// are ordered by earliest appearance within the sstable. The ordering is
+// persisted to the manifest.
+type BlobReferences []BlobReference
+
+// FileNumByID returns the FileNum for the identified BlobReference.
+func (br BlobReferences) FileNumByID(i blob.ReferenceID) base.DiskFileNum {
+	return br[i].FileNum
+}
+
+// IDByFileNum returns the reference ID for the given FileNum. If the file
+// number is not found, the second return value is false. IDByFileNum is linear
+// in the length of the BlobReferences slice.
+func (br BlobReferences) IDByFileNum(fileNum base.DiskFileNum) (blob.ReferenceID, bool) {
+	for i, ref := range br {
+		if ref.FileNum == fileNum {
+			return blob.ReferenceID(i), true
+		}
+	}
+	return blob.ReferenceID(len(br)), false
+}

@@ -48,7 +48,7 @@ type OutputTable struct {
 	// failure (see Result), WriterMeta might not be set.
 	WriterMeta sstable.WriterMetadata
 	// BlobReferences is the list of blob references for the table.
-	BlobReferences []manifest.BlobReference
+	BlobReferences manifest.BlobReferences
 	// BlobReferenceDepth is the depth of the blob references for the table.
 	BlobReferenceDepth manifest.BlobReferenceDepth
 }
@@ -138,7 +138,7 @@ type ValueSeparation interface {
 // ValueSeparationMetadata describes metadata about a table's blob references,
 // and optionally a newly constructed blob file.
 type ValueSeparationMetadata struct {
-	BlobReferences     []manifest.BlobReference
+	BlobReferences     manifest.BlobReferences
 	BlobReferenceSize  uint64
 	BlobReferenceDepth manifest.BlobReferenceDepth
 

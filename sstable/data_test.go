@@ -204,8 +204,8 @@ func decodeBlobInlineHandleAndAttribute(
 	}
 	return blob.InlineHandle{
 		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceIndex: uint32(refIdx),
-			ValueLen:       uint32(valLen),
+			ReferenceID: blob.ReferenceID(refIdx),
+			ValueLen:    uint32(valLen),
 		},
 		HandleSuffix: blob.HandleSuffix{
 			BlockNum:      uint32(blockNum),

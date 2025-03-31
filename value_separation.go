@@ -143,8 +143,8 @@ func (vs *writeNewBlobFiles) Add(
 			// between sstables and blob files, the reference index is always 0
 			// here. Only compactions that don't rewrite blob files will produce
 			// handles with nonzero reference indices.
-			ReferenceIndex: 0,
-			ValueLen:       handle.ValueLen,
+			ReferenceID: 0,
+			ValueLen:    handle.ValueLen,
 		},
 		HandleSuffix: blob.HandleSuffix{
 			BlockNum:      handle.BlockNum,
@@ -166,7 +166,7 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 	}
 	vs.writer = nil
 	return compact.ValueSeparationMetadata{
-		BlobReferences: []manifest.BlobReference{{
+		BlobReferences: manifest.BlobReferences{{
 			FileNum:   vs.objMeta.DiskFileNum,
 			ValueSize: stats.UncompressedValueBytes,
 		}},
@@ -197,7 +197,7 @@ type preserveBlobReferences struct {
 
 	// state
 	buf            []byte
-	currReferences []manifest.BlobReference
+	currReferences manifest.BlobReferences
 	// totalValueSize is the sum of the sizes of all ValueSizes in currReferences.
 	totalValueSize uint64
 }
@@ -250,16 +250,8 @@ func (vs *preserveBlobReferences) Add(
 	// sstable, taking note of the reference for the table metadata.
 	lv := kv.V.LazyValue()
 	fn := lv.Fetcher.BlobFileNum
-	var found bool
-	refIdx := 0
-	for refIdx = range vs.currReferences {
-		if vs.currReferences[refIdx].FileNum == fn {
-			// This sstable contains an existing reference to this blob file.
-			// Record the reference.
-			found = true
-			break
-		}
-	}
+
+	refIdx, found := vs.currReferences.IDByFileNum(fn)
 	if !found {
 		// This is the first time we're seeing this blob file for this sstable.
 		// Find the blob file metadata for this file among the input metadatas.
@@ -267,7 +259,7 @@ func (vs *preserveBlobReferences) Add(
 		if !found {
 			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", fn)
 		}
-		refIdx = len(vs.currReferences)
+		refIdx = blob.ReferenceID(len(vs.currReferences))
 		vs.currReferences = append(vs.currReferences, manifest.BlobReference{
 			FileNum:  fn,
 			Metadata: vs.inputBlobMetadatas[idx],
@@ -281,8 +273,8 @@ func (vs *preserveBlobReferences) Add(
 	handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
 	inlineHandle := blob.InlineHandle{
 		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceIndex: uint32(refIdx),
-			ValueLen:       lv.Fetcher.Attribute.ValueLen,
+			ReferenceID: refIdx,
+			ValueLen:    lv.Fetcher.Attribute.ValueLen,
 		},
 		HandleSuffix: handleSuffix,
 	}

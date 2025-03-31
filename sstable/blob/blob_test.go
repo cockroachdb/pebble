@@ -87,8 +87,8 @@ func TestHandleRoundtrip(t *testing.T) {
 	handles := []InlineHandle{
 		{
 			InlineHandlePreface: InlineHandlePreface{
-				ReferenceIndex: 0,
-				ValueLen:       29357353,
+				ReferenceID: 0,
+				ValueLen:    29357353,
 			},
 			HandleSuffix: HandleSuffix{
 				BlockNum:      194,
@@ -97,8 +97,8 @@ func TestHandleRoundtrip(t *testing.T) {
 		},
 		{
 			InlineHandlePreface: InlineHandlePreface{
-				ReferenceIndex: 129,
-				ValueLen:       205,
+				ReferenceID: 129,
+				ValueLen:    205,
 			},
 			HandleSuffix: HandleSuffix{
 				BlockNum:      2,
