@@ -26,7 +26,8 @@ import (
 // human-readable string describing a blob handle, synthesizing unspecified
 // fields, and tracking the blob handle to support future fetches.
 type Values struct {
-	mostRecentHandle blob.Handle
+	mostRecentFileNum base.DiskFileNum
+	mostRecentHandles map[base.DiskFileNum]blob.Handle
 	// trackedHandles maps from a blob handle to its value. The value may be nil
 	// if the value was not specified (in which case Fetch will
 	// deterministically derive a random value from the handle itself.)
@@ -108,6 +109,7 @@ func (bv *Values) IsBlobHandle(input string) bool {
 func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 	if bv.trackedHandles == nil {
 		bv.trackedHandles = make(map[blob.Handle]string)
+		bv.mostRecentHandles = make(map[base.DiskFileNum]blob.Handle)
 	}
 
 	defer func() {
@@ -156,13 +158,13 @@ func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 	}
 
 	if !fileNumSet {
-		h.FileNum = max(bv.mostRecentHandle.FileNum, 1)
+		h.FileNum = bv.mostRecentFileNum
 	}
 	if !blockNumSet {
-		h.BlockNum = bv.mostRecentHandle.BlockNum
+		h.BlockNum = bv.mostRecentHandles[h.FileNum].BlockNum
 	}
 	if !offsetSet {
-		h.OffsetInBlock = bv.mostRecentHandle.OffsetInBlock + bv.mostRecentHandle.ValueLen
+		h.OffsetInBlock = bv.mostRecentHandles[h.FileNum].OffsetInBlock + bv.mostRecentHandles[h.FileNum].ValueLen
 	}
 	if !valueLenSet {
 		if len(value) > 0 {
@@ -171,7 +173,8 @@ func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 			h.ValueLen = 12
 		}
 	}
-	bv.mostRecentHandle = h
+	bv.mostRecentFileNum = h.FileNum
+	bv.mostRecentHandles[h.FileNum] = h
 	bv.trackedHandles[h] = value
 	return h, nil
 }
@@ -228,7 +231,10 @@ func WriteFiles(
 			return err
 		}
 		writer := blob.NewFileWriter(fileNum, writable, writerOpts)
-		for _, handle := range handles {
+		for i, handle := range handles {
+			if i > 0 && handles[i-1].BlockNum != handle.BlockNum {
+				writer.FlushForTesting()
+			}
 			if value, ok := bv.trackedHandles[handle]; ok {
 				writer.AddValue([]byte(value))
 			} else {

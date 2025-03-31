@@ -1349,6 +1349,9 @@ type internalIterOpts struct {
 	compaction         bool
 	readEnv            block.ReadEnv
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
+	// blobValueFetcher is the base.ValueFetcher to use when constructing
+	// internal values to represent values stored externally in blob files.
+	blobValueFetcher base.ValueFetcher
 }
 
 func finishInitializingInternalIter(
@@ -1401,18 +1404,21 @@ func (i *Iterator) constructPointIter(
 		// Already have one.
 		return
 	}
+	readEnv := block.ReadEnv{
+		Stats: &i.stats.InternalStats,
+		// If the file cache has a sstable stats collector, ask it for an
+		// accumulator for this iterator's configured category and QoS. All SSTable
+		// iterators created by this Iterator will accumulate their stats to it as
+		// they Close during iteration.
+		IterStats: i.fc.SSTStatsCollector().Accumulator(
+			uint64(uintptr(unsafe.Pointer(i))),
+			i.opts.Category,
+		),
+	}
+	i.blobValueFetcher.Init(i.fc, readEnv)
 	internalOpts := internalIterOpts{
-		readEnv: block.ReadEnv{
-			Stats: &i.stats.InternalStats,
-			// If the file cache has a sstable stats collector, ask it for an
-			// accumulator for this iterator's configured category and QoS. All SSTable
-			// iterators created by this Iterator will accumulate their stats to it as
-			// they Close during iteration.
-			IterStats: i.fc.SSTStatsCollector().Accumulator(
-				uint64(uintptr(unsafe.Pointer(i))),
-				i.opts.Category,
-			),
-		},
+		readEnv:          readEnv,
+		blobValueFetcher: &i.blobValueFetcher,
 	}
 	if i.opts.RangeKeyMasking.Filter != nil {
 		internalOpts.boundLimitedFilter = &i.rangeKeyMasking

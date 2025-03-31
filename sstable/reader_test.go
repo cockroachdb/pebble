@@ -66,7 +66,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 	}
 
-	i, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+	i, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			transforms := IterTransforms{
 				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
-			iter, err := v.NewCompactionIter(transforms, block.ReadEnv{BufferPool: &bp}, rp)
+			iter, err := v.NewCompactionIter(transforms, block.ReadEnv{BufferPool: &bp}, rp, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}
@@ -369,6 +369,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				FilterBlockSizeLimit: NeverUseFilterBlock,
 				Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
+				BlobContext:          AssertNoBlobHandles,
 			})
 			if err != nil {
 				return err.Error()
@@ -584,7 +585,7 @@ func TestInjectedErrors(t *testing.T) {
 				return err
 			}
 
-			iter, err := r.NewIter(NoTransforms, nil, nil)
+			iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 			if err != nil {
 				return err
 			}
@@ -777,6 +778,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					FilterBlockSizeLimit: AlwaysUseFilterBlock,
 					Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
 					ReaderProvider:       MakeTrivialReaderProvider(r),
+					BlobContext:          AssertNoBlobHandles,
 				})
 				if err != nil {
 					return err.Error()
@@ -920,7 +922,8 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				var pool block.BufferPool
 				pool.Init(5)
 				citer, err := r.NewCompactionIter(
-					NoTransforms, block.ReadEnv{BufferPool: &pool}, MakeTrivialReaderProvider(r))
+					NoTransforms, block.ReadEnv{BufferPool: &pool},
+					MakeTrivialReaderProvider(r), AssertNoBlobHandles)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *singleLevelIteratorRowBlocks:
@@ -980,7 +983,8 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		pool.Init(5)
 		defer pool.Release()
 		citer, err := r.NewCompactionIter(
-			NoTransforms, block.ReadEnv{BufferPool: &pool}, MakeTrivialReaderProvider(r))
+			NoTransforms, block.ReadEnv{BufferPool: &pool},
+			MakeTrivialReaderProvider(r), AssertNoBlobHandles)
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*singleLevelIteratorRowBlocks)
@@ -988,7 +992,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}
 	{
-		iter, err := r.NewIter(NoTransforms, nil, nil)
+		iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 		require.NoError(t, err)
 		defer iter.Close()
 		i := iter.(*singleLevelIteratorRowBlocks)
@@ -1277,10 +1281,12 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			},
 			FilterBlockSizeLimit: AlwaysUseFilterBlock,
 			ReaderProvider:       MakeTrivialReaderProvider(eReader),
+			BlobContext:          AssertNoBlobHandles,
 		}, &virtualState{
 			lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
 			upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~")),
 		})
+
 		require.NoError(t, err)
 		return iter, func() {
 			require.NoError(t, iter.Close())
@@ -1496,14 +1502,14 @@ func TestReaderChecksumErrors(t *testing.T) {
 
 								if corruptionType == "first-byte" {
 									require.NoError(t, err)
-									iter, err := r.NewIter(NoTransforms, nil, nil)
+									iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 									require.NoError(t, err)
 									for kv := iter.First(); kv != nil; kv = iter.Next() {
 									}
 									require.Regexp(t, `checksum mismatch`, iter.Error())
 									require.Regexp(t, `checksum mismatch`, iter.Close())
 
-									iter, err = r.NewIter(NoTransforms, nil, nil)
+									iter, err = r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 									require.NoError(t, err)
 									for kv := iter.Last(); kv != nil; kv = iter.Prev() {
 									}
@@ -1531,7 +1537,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 									if checkBitFlipErr(err) {
 										break
 									}
-									iter, err := r.NewIter(NoTransforms, nil, nil)
+									iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 									if checkBitFlipErr(err) {
 										break
 									}
@@ -1539,7 +1545,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 									}
 									if checkBitFlipErr(iter.Error()) && checkBitFlipErr(iter.Close()) {
 									}
-									iter, err = r.NewIter(NoTransforms, nil, nil)
+									iter, err = r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 									if checkBitFlipErr(err) {
 										break
 									}
@@ -1913,7 +1919,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 				c := cache.New(128 << 20)
 				ch := c.NewHandle()
 				r, keys := buildBenchmarkTable(b, bm.options, false, 0, ch)
-				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
@@ -1938,7 +1944,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 				c := cache.New(128 << 20)
 				ch := c.NewHandle()
 				r, keys := buildBenchmarkTable(b, bm.options, false, 0, ch)
-				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
@@ -1963,7 +1969,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 				c := cache.New(128 << 20)
 				ch := c.NewHandle()
 				r, _ := buildBenchmarkTable(b, bm.options, false, 0, ch)
-				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 				require.NoError(b, err)
 
 				b.ResetTimer()
@@ -1996,7 +2002,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 				c := cache.New(128 << 20)
 				ch := c.NewHandle()
 				r, _ := buildBenchmarkTable(b, bm.options, false, 0, ch)
-				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 				require.NoError(b, err)
 
 				b.ResetTimer()
@@ -2084,7 +2090,7 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 						} else {
 							seekKeys = postKeys
 						}
-						it, err := reader.NewIter(NoTransforms, nil /* lower */, upper)
+						it, err := reader.NewIter(NoTransforms, nil /* lower */, upper, AssertNoBlobHandles)
 						require.NoError(b, err)
 						b.ResetTimer()
 						pos := 0
@@ -2201,14 +2207,14 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 						}()
 						b.Run("NewIter", func(b *testing.B) {
 							for i := 0; i < b.N; i++ {
-								iter, err := r.NewIter(NoTransforms, nil, nil)
+								iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 								require.NoError(b, err)
 								require.NoError(b, iter.Close())
 							}
 						})
 						for _, readValue := range []bool{false, true} {
 							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
-								iter, err := r.NewIter(NoTransforms, nil, nil)
+								iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 								require.NoError(b, err)
 								var kv *base.InternalKV
 								var valBuf [100]byte
@@ -2360,7 +2366,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 				b.Run(fmt.Sprintf("method=%s", method), func(b *testing.B) {
 					for _, readValue := range []bool{false, true} {
 						b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
-							iter, err := r.NewIter(NoTransforms, nil, nil)
+							iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 							require.NoError(b, err)
 							var nextFunc func(index int) *base.InternalKV
 							switch method {
@@ -2502,6 +2508,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 									Transforms:     IterTransforms{HideObsoletePoints: hideObsoletePoints},
 									Filterer:       filterer,
 									ReaderProvider: MakeTrivialReaderProvider(r),
+									BlobContext:    AssertNoBlobHandles,
 								})
 								require.NoError(b, err)
 								b.ResetTimer()

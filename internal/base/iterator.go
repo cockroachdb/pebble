@@ -416,6 +416,9 @@ type InternalIteratorStats struct {
 		// ValueBytesFetched is the total byte length of the values (in value
 		// blocks) that were retrieved.
 		ValueBytesFetched uint64
+
+		// TODO(jackson): Add stats for distinguishing between value-block
+		// values and blob values.
 	}
 }
 
