@@ -358,7 +358,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			var syntheticPrefix sstable.SyntheticPrefix
 			var syntheticSuffix sstable.SyntheticSuffix
 			var blobReferences []BlobReference
-			var blobReferenceDepth uint64
+			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -414,10 +414,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					case customTagBlobReferences:
 						// The first varint encodes the 'blob reference depth'
 						// of the table.
-						blobReferenceDepth, err = d.readUvarint()
+						v, err := d.readUvarint()
 						if err != nil {
 							return err
 						}
+						blobReferenceDepth = BlobReferenceDepth(v)
 						n, err := d.readUvarint()
 						if err != nil {
 							return err
@@ -457,7 +458,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				LargestSeqNum:            largestSeqNum,
 				LargestSeqNumAbsolute:    largestSeqNum,
 				BlobReferences:           blobReferences,
-				BlobReferenceDepth:       int(blobReferenceDepth),
+				BlobReferenceDepth:       blobReferenceDepth,
 				MarkedForCompaction:      markedForCompaction,
 				Virtual:                  virtualState.virtual,
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),

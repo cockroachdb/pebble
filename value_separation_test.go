@@ -251,6 +251,6 @@ func (d *defineDBValueSeparator) FinishOutput() (compact.ValueSeparationMetadata
 		return compact.ValueSeparationMetadata{}, err
 	}
 	// TODO(jackson): Support setting a specific depth from the datadriven test.
-	m.BlobReferenceDepth = len(m.BlobReferences)
+	m.BlobReferenceDepth = manifest.BlobReferenceDepth(len(m.BlobReferences))
 	return m, nil
 }

@@ -50,7 +50,7 @@ type OutputTable struct {
 	// BlobReferences is the list of blob references for the table.
 	BlobReferences []manifest.BlobReference
 	// BlobReferenceDepth is the depth of the blob references for the table.
-	BlobReferenceDepth int
+	BlobReferenceDepth manifest.BlobReferenceDepth
 }
 
 // OutputBlob contains metadata about a blob file that was created during a
@@ -140,7 +140,7 @@ type ValueSeparation interface {
 type ValueSeparationMetadata struct {
 	BlobReferences     []manifest.BlobReference
 	BlobReferenceSize  uint64
-	BlobReferenceDepth int
+	BlobReferenceDepth manifest.BlobReferenceDepth
 
 	// The below fields are only populated if a new blob file was created.
 	BlobFileStats    blob.FileWriterStats

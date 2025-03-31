@@ -193,7 +193,7 @@ type preserveBlobReferences struct {
 	// for every unique blob file referenced by input sstables.
 	// inputBlobMetadatas must be sorted by FileNum.
 	inputBlobMetadatas       []*manifest.BlobFileMetadata
-	outputBlobReferenceDepth int
+	outputBlobReferenceDepth manifest.BlobReferenceDepth
 
 	// state
 	buf            []byte
@@ -321,6 +321,6 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 		// reflecting the worst-case overlap of referenced blob files. If this
 		// sstable references fewer unique blob files, reduce its depth to the
 		// count of unique files.
-		BlobReferenceDepth: min(vs.outputBlobReferenceDepth, len(references)),
+		BlobReferenceDepth: min(vs.outputBlobReferenceDepth, manifest.BlobReferenceDepth(len(references))),
 	}, nil
 }

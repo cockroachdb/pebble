@@ -239,44 +239,12 @@ type TableMetadata struct {
 	// BlobReferences is a list of blob files containing values that are
 	// referenced by this sstable.
 	BlobReferences []BlobReference
-	// BlobReferenceDepth is an upper bound on the number of blob files that a
-	// reader scanning the table would need to keep open if they only open and
-	// close referenced blob files once. In other words, it's the stack depth of
-	// blob files referenced by this sstable. If a flush or compaction rewrites
-	// an sstable's values to a new blob file, the resulting sstable has a blob
-	// reference depth of 1. When a compaction reuses blob references, the max
-	// blob reference depth of the files in each level is used, and then the
-	// depth is summed, and assigned to the output. This is a loose upper bound
-	// (assuming worst case distribution of keys in all inputs) but avoids
-	// tracking key spans for references and using key comparisons.
-	//
-	// Because the blob reference depth is the size of the working set of blob
-	// files referenced by the table, it cannot exceed the count of distinct
-	// blob file references.
-	//
-	// Example: Consider a compaction of file f0 from L0 and files f1, f2, f3
-	// from L1, where the former has blob reference depth of 1 and files f1, f2,
-	// f3 all happen to have a blob-reference-depth of 1. Say we produce many
-	// output files, one of which is f4. We are assuming here that the blobs
-	// referenced by f0 whose keys happened to be written to f4 are spread all
-	// across the key span of f4. Say keys from f1 and f2 also made their way to
-	// f4. Then we will first have keys that refer to blobs referenced by f1,f0
-	// and at some point once we move past the keys of f1, we will have keys
-	// that refer to blobs referenced by f2,f0. In some sense, we have a working
-	// set of 2 blob files at any point in time, and this is similar to the idea
-	// of level stack depth for reads -- hence we adopt the depth terminology.
-	// We want to keep this stack depth in check, since locality is important,
-	// while allowing it to be higher than 1, since otherwise we will need to
-	// rewrite blob files in every compaction (defeating the write amp benefit
-	// we are looking for). Similar to the level depth, this simplistic analysis
-	// does not take into account distribution of keys involved in the
-	// compaction and which of them have blob references. Also the locality is
-	// actually better than in this analysis because more of the keys will be
-	// from the lower level.
+	// BlobReferenceDepth is the stack depth of blob files referenced by this
+	// sstable. See the comment on the BlobReferenceDepth type for more details.
 	//
 	// INVARIANT: BlobReferenceDepth == 0 iff len(BlobReferences) == 0
 	// INVARIANT: BlobReferenceDepth <= len(BlobReferences)
-	BlobReferenceDepth int
+	BlobReferenceDepth BlobReferenceDepth
 
 	// refs is the reference count for the table, used to determine when a table
 	// is obsolete. When a table's reference count falls to zero, the table is
@@ -970,7 +938,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 			p.Expect(";")
 			p.Expect("depth")
 			p.Expect(":")
-			m.BlobReferenceDepth = int(p.Uint64())
+			m.BlobReferenceDepth = BlobReferenceDepth(p.Uint64())
 			p.Expect("]")
 
 		default:
@@ -1076,7 +1044,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Assert that there's a nonzero blob reference depth if and only if the
 	// table has a nonzero count of blob references. Additionally, the file's
 	// blob reference depth should be bounded by the number of blob references.
-	if (len(m.BlobReferences) == 0) != (m.BlobReferenceDepth == 0) || m.BlobReferenceDepth > len(m.BlobReferences) {
+	if (len(m.BlobReferences) == 0) != (m.BlobReferenceDepth == 0) || m.BlobReferenceDepth > BlobReferenceDepth(len(m.BlobReferences)) {
 		return base.CorruptionErrorf("table %s with %d blob refs but %d blob ref depth",
 			m.FileNum, len(m.BlobReferences), m.BlobReferenceDepth)
 	}
