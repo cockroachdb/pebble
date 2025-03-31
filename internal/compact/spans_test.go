@@ -135,7 +135,7 @@ func TestSplitAndEncodeSpan(t *testing.T) {
 			_, rangeDels, rangeKeys, err := sstable.ReadAll(obj, sstable.ReaderOptions{
 				Comparer:   wo.Comparer,
 				KeySchemas: sstable.MakeKeySchemas(wo.KeySchema),
-			})
+			}, base.NoBlobFetches)
 			require.NoError(t, err)
 			require.LessOrEqual(t, len(rangeDels)+len(rangeKeys), 1)
 			s := "."

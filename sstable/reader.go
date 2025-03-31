@@ -85,6 +85,7 @@ type IterOptions struct {
 	FilterBlockSizeLimit FilterBlockSizeLimit
 	Env                  block.ReadEnv
 	ReaderProvider       valblk.ReaderProvider
+	BlobContext          TableBlobContext
 }
 
 // NewPointIter returns an iterator for the point keys in the table.
@@ -151,7 +152,9 @@ func (r *Reader) newPointIter(
 //
 // NewIter must only be used when the Reader is guaranteed to outlive any
 // LazyValues returned from the iter.
-func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterator, error) {
+func (r *Reader) NewIter(
+	transforms IterTransforms, lower, upper []byte, blobContext TableBlobContext,
+) (Iterator, error) {
 	// TODO(radu): we should probably not use bloom filters in this case, as there
 	// likely isn't a cache set up.
 	opts := IterOptions{
@@ -162,6 +165,7 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 		FilterBlockSizeLimit: AlwaysUseFilterBlock,
 		Env:                  block.NoReadEnv,
 		ReaderProvider:       MakeTrivialReaderProvider(r),
+		BlobContext:          blobContext,
 	}
 	return r.NewPointIter(context.TODO(), opts)
 }
@@ -170,13 +174,20 @@ func (r *Reader) NewIter(transforms IterTransforms, lower, upper []byte) (Iterat
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
 func (r *Reader) NewCompactionIter(
-	transforms IterTransforms, env block.ReadEnv, rp valblk.ReaderProvider,
+	transforms IterTransforms,
+	env block.ReadEnv,
+	rp valblk.ReaderProvider,
+	blobContext TableBlobContext,
 ) (Iterator, error) {
-	return r.newCompactionIter(transforms, env, rp, nil)
+	return r.newCompactionIter(transforms, env, rp, nil, blobContext)
 }
 
 func (r *Reader) newCompactionIter(
-	transforms IterTransforms, env block.ReadEnv, rp valblk.ReaderProvider, vState *virtualState,
+	transforms IterTransforms,
+	env block.ReadEnv,
+	rp valblk.ReaderProvider,
+	vState *virtualState,
+	blobContext TableBlobContext,
 ) (Iterator, error) {
 	if vState != nil && vState.isSharedIngested {
 		transforms.HideObsoletePoints = true
@@ -188,6 +199,7 @@ func (r *Reader) newCompactionIter(
 		FilterBlockSizeLimit: NeverUseFilterBlock,
 		Env:                  env,
 		ReaderProvider:       rp,
+		BlobContext:          blobContext,
 	}
 
 	if r.Properties.IndexType == twoLevelIndex {

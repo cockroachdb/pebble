@@ -111,6 +111,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		FilterBlockSizeLimit: filterBlockSizeLimit,
 		Env:                  block.ReadEnv{Stats: &stats, IterStats: nil},
 		ReaderProvider:       MakeTrivialReaderProvider(r),
+		BlobContext:          AssertNoBlobHandles,
 	})
 	require.NoError(t, err)
 	defer it.Close()

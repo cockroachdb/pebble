@@ -109,7 +109,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			if err != nil {
 				return iterSet{}, err
 			}
-			iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
 			if err != nil {
 				return iterSet{}, err
 			}

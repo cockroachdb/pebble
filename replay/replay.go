@@ -969,7 +969,7 @@ func findManifestStart(
 }
 
 // loadFlushedSSTableKeys copies keys from the sstables specified by `fileNums`
-// in the directory specified by `path` into the provided the batch. Keys are
+// in the directory specified by `path` into the provided batch. Keys are
 // applied to the batch in the order dictated by their sequence numbers within
 // the sstables, ensuring the relative relationship between sequence numbers is
 // maintained.
@@ -1006,7 +1006,13 @@ func loadFlushedSSTableKeys(
 			defer r.Close()
 
 			// Load all the point keys.
-			iter, err := r.NewIter(sstable.NoTransforms, nil, nil)
+			iter, err := r.NewIter(sstable.NoTransforms, nil, nil,
+				// TODO(jackson): We should update this to use a
+				// blob.ValueFetcher configured with a custom reader provider
+				// that opens the appropriate blob files. We'll also need to
+				// update the workload capture-side to collect blob files.
+				// See #4459.
+				sstable.AssertNoBlobHandles)
 			if err != nil {
 				return err
 			}

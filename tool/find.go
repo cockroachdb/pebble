@@ -468,7 +468,10 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				fragTransforms = m.FragmentIterTransforms()
 			}
 
-			iter, err := r.NewIter(transforms, nil, nil)
+			// TODO(jackson): Adjust to support two modes: one that surfaces the
+			// raw blob value handles, and one that fetches the blob values from
+			// blob files uncovered by scanning the directory entries. See #4448.
+			iter, err := r.NewIter(transforms, nil, nil, sstable.AssertNoBlobHandles)
 			if err != nil {
 				return err
 			}

@@ -135,7 +135,7 @@ var writerPool = sync.Pool{
 func (w *FileWriter) AddValue(v []byte) Handle {
 	// Determine if we should first flush the block.
 	if sz := w.b.Size(); sz != 0 && w.flushGov.ShouldFlush(sz, sz+len(v)) {
-		w.flush()
+		w.Flush()
 	}
 	w.stats.ValueCount++
 	w.stats.UncompressedValueBytes += uint64(len(v))
@@ -158,7 +158,16 @@ func (w *FileWriter) EstimatedSize() uint64 {
 	return sz
 }
 
-func (w *FileWriter) flush() {
+// Flush flushes the current block to the write queue. Writers should generally
+// not call Flush, and instead let the heuristics configured through
+// FileWriterOptions handle flushing.
+//
+// It's exposed so that tests can force flushes to construct blob files with
+// arbitrary structures.
+func (w *FileWriter) Flush() {
+	if w.b.Size() == 0 {
+		return
+	}
 	pb, bh := w.b.CompressAndChecksum()
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
@@ -202,7 +211,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	}()
 	// Flush the last block to the write queue if it's non-empty.
 	if w.b.Size() > 0 {
-		w.flush()
+		w.Flush()
 	}
 	// Inform the write queue we're finished by closing the channel and wait
 	// for it to complete.

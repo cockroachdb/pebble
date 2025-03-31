@@ -193,7 +193,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return formatWriterMetadata(td, meta)
 
 		case "scan":
-			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}
@@ -398,12 +398,12 @@ func TestWriterWithValueBlocks(t *testing.T) {
 
 		case "scan-raw":
 			// Raw scan does not fetch from value blocks.
-			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}
 			forceRowIterIgnoreValueBlocks := func(i *singleLevelIteratorRowBlocks) {
-				i.vbReader = valblk.Reader{}
+				i.internalValueConstructor.vbReader = valblk.Reader{}
 				i.data.SetGetLazyValuer(nil)
 				i.data.SetHasValuePrefix(false)
 			}
@@ -442,7 +442,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			return buf.String()
 
 		case "scan":
-			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}
@@ -458,7 +458,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			return buf.String()
 
 		case "scan-cloned-lazy-values":
-			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}
@@ -1128,7 +1128,7 @@ func TestWriterRace(t *testing.T) {
 			r, err := NewMemReader(f.Data(), readerOpts)
 			require.NoError(t, err)
 			defer r.Close()
-			it, err := r.NewIter(NoTransforms, nil, nil)
+			it, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 			require.NoError(t, err)
 			defer it.Close()
 			ki := 0

@@ -62,7 +62,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		}
 
 		// Check using SeekGE.
-		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 		if err != nil {
 			return err
 		}
@@ -104,7 +104,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		}
 
 		// Check using Find.
-		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 		if err != nil {
 			return err
 		}
@@ -133,7 +133,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 		if err != nil {
 			return err
 		}
@@ -186,7 +186,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 			upper = []byte(words[upperIdx])
 		}
 
-		iter, err := r.NewIter(NoTransforms, lower, upper)
+		iter, err := r.NewIter(NoTransforms, lower, upper, AssertNoBlobHandles)
 		if err != nil {
 			return err
 		}
@@ -474,7 +474,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
-					iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */)
+					iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 					require.NoError(t, err)
 					for kv := iter.First(); kv != nil; kv = iter.Next() {
 						got++
@@ -509,7 +509,7 @@ func TestReaderSymtheticSeqNum(t *testing.T) {
 	const syntheticSeqNum = 42
 	transforms := IterTransforms{SyntheticSeqNum: syntheticSeqNum}
 
-	iter, err := r.NewIter(transforms, nil /* lower */, nil /* upper */)
+	iter, err := r.NewIter(transforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 	require.NoError(t, err)
 	for kv := iter.First(); kv != nil; kv = iter.Next() {
 		if syntheticSeqNum != kv.K.SeqNum() {

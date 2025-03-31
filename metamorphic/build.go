@@ -274,7 +274,7 @@ func openExternalObj(
 		start = syntheticPrefix.Invert(start)
 		end = syntheticPrefix.Invert(end)
 	}
-	pointIter, err = reader.NewIter(sstable.NoTransforms, start, end)
+	pointIter, err = reader.NewIter(sstable.NoTransforms, start, end, sstable.AssertNoBlobHandles)
 	panicIfErr(err)
 
 	rangeDelIter, err = reader.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, block.NoReadEnv)

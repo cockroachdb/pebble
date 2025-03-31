@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -216,6 +217,9 @@ type compaction struct {
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
 	getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
+	// valueFetcher is used to fetch values from blob files. It's propagated
+	// down the iterator tree through the internal iterator options.
+	valueFetcher blob.ValueFetcher
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -3080,16 +3084,19 @@ func (d *DB) compactAndWrite(
 	// translate to 3 MiB per compaction.
 	c.bufferPool.Init(12)
 	defer c.bufferPool.Release()
+	env := block.ReadEnv{
+		BufferPool: &c.bufferPool,
+		Stats:      &c.stats,
+		IterStats: d.fileCache.SSTStatsCollector().Accumulator(
+			uint64(uintptr(unsafe.Pointer(c))),
+			categoryCompaction,
+		),
+	}
+	c.valueFetcher.Init(d.fileCache, env)
 	iiopts := internalIterOpts{
-		compaction: true,
-		readEnv: block.ReadEnv{
-			BufferPool: &c.bufferPool,
-			Stats:      &c.stats,
-			IterStats: d.fileCache.SSTStatsCollector().Accumulator(
-				uint64(uintptr(unsafe.Pointer(c))),
-				categoryCompaction,
-			),
-		},
+		compaction:       true,
+		readEnv:          env,
+		blobValueFetcher: &c.valueFetcher,
 	}
 
 	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter, iiopts)

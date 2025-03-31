@@ -96,10 +96,13 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 
 // NewCompactionIter is the compaction iterator function for virtual readers.
 func (v *VirtualReader) NewCompactionIter(
-	transforms IterTransforms, env block.ReadEnv, rp valblk.ReaderProvider,
+	transforms IterTransforms,
+	env block.ReadEnv,
+	rp valblk.ReaderProvider,
+	blobContext TableBlobContext,
 ) (Iterator, error) {
 	return v.reader.newCompactionIter(
-		transforms, env, rp, &v.vState)
+		transforms, env, rp, &v.vState, blobContext)
 }
 
 // NewPointIter returns an iterator for the point keys in the table.
