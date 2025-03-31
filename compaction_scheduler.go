@@ -157,7 +157,9 @@ type noopGrantHandle struct{}
 var _ CompactionGrantHandle = noopGrantHandle{}
 
 func (h noopGrantHandle) Started()                                              {}
-func (h noopGrantHandle) MeasureCPU(g int)                                      {}
+func (h noopGrantHandle) MeasureCPUPrimary()                                    {}
+func (h noopGrantHandle) MeasureCPUSSTableSecondary()                           {}
+func (h noopGrantHandle) MeasureCPUBlobFileSecondary()                          {}
 func (h noopGrantHandle) CumulativeStats(stats base.CompactionGrantHandleStats) {}
 func (h noopGrantHandle) Done()                                                 {}
 
@@ -335,7 +337,9 @@ func (s *ConcurrencyLimitScheduler) TrySchedule() (bool, CompactionGrantHandle) 
 
 func (s *ConcurrencyLimitScheduler) Started() {}
 
-func (s *ConcurrencyLimitScheduler) MeasureCPU(g int) {}
+func (s *ConcurrencyLimitScheduler) MeasureCPUPrimary()           {}
+func (s *ConcurrencyLimitScheduler) MeasureCPUSSTableSecondary()  {}
+func (s *ConcurrencyLimitScheduler) MeasureCPUBlobFileSecondary() {}
 
 func (s *ConcurrencyLimitScheduler) CumulativeStats(stats base.CompactionGrantHandleStats) {}
 

@@ -18,10 +18,21 @@ import (
 // NewRawWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
+	return NewRawWriterWithCPUMeasurer(writable, o, base.NoopCPUMeasurer{})
+}
+
+// NewRawWriterWithCPUMeasurer is like NewRawWriter, but additionally allows
+// the caller to specify a CPUMeasurer. Only
+// CPUMeasurer.MeasureCPUSSTableSecondary is used by the writer.
+func NewRawWriterWithCPUMeasurer(
+	writable objstorage.Writable, o WriterOptions, cpuMeasurer base.CPUMeasurer,
+) RawWriter {
 	if o.TableFormat <= TableFormatPebblev4 {
+		// Don't bother plumbing the cpuMeasurer to the row writer since it is not
+		// the default and will be removed.
 		return newRowWriter(writable, o)
 	}
-	return newColumnarWriter(writable, o)
+	return newColumnarWriter(writable, o, cpuMeasurer)
 }
 
 // Writer is a table writer.
