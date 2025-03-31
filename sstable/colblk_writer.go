@@ -102,12 +102,17 @@ type RawColumnWriter struct {
 	previousUserKey       invariants.Value[[]byte]
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
+	cpuMeasurer           base.CPUMeasurer
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
 var _ RawWriter = (*RawColumnWriter)(nil)
 
-func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumnWriter {
+// cpuMeasurer, if non-nil, is only used for calling
+// cpuMeasurer.MeasureCPUSSTableSecondary.
+func newColumnarWriter(
+	writable objstorage.Writable, o WriterOptions, cpuMeasurer base.CPUMeasurer,
+) *RawColumnWriter {
 	if writable == nil {
 		panic("pebble: nil writable")
 	}
@@ -177,6 +182,7 @@ func newColumnarWriter(writable objstorage.Writable, o WriterOptions) *RawColumn
 
 	w.writeQueue.ch = make(chan *compressedBlock)
 	w.writeQueue.wg.Add(1)
+	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
 	return w
 }
@@ -863,10 +869,15 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 // Other blocks are written directly by the client goroutine. See Close.
 func (w *RawColumnWriter) drainWriteQueue() {
 	defer w.writeQueue.wg.Done()
+	// Call once to initialize the CPU measurer.
+	w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineSSTableSecondary)
 	for cb := range w.writeQueue.ch {
 		if _, err := w.layout.WritePrecompressedDataBlock(cb.physical); err != nil {
 			w.writeQueue.err = err
 		}
+		// Report to the CPU measurer immediately after writing (note that there
+		// may be a time lag until the next block is available to write).
+		w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineSSTableSecondary)
 		cb.blockBuf.clear()
 		cb.physical = block.PhysicalBlock{}
 		compressedBlockPool.Put(cb)

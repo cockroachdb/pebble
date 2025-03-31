@@ -14,6 +14,13 @@ import (
 
 type CompactionGrantHandle = base.CompactionGrantHandle
 type CompactionGrantHandleStats = base.CompactionGrantHandleStats
+type CompactionGoroutineKind = base.CompactionGoroutineKind
+
+const (
+	CompactionGoroutinePrimary           = base.CompactionGoroutinePrimary
+	CompactionGoroutineSSTableSecondary  = base.CompactionGoroutineSSTableSecondary
+	CompactionGoroutineBlobFileSecondary = base.CompactionGoroutineBlobFileSecondary
+)
 
 // NB: This interface is experimental and subject to change.
 //
@@ -157,7 +164,7 @@ type noopGrantHandle struct{}
 var _ CompactionGrantHandle = noopGrantHandle{}
 
 func (h noopGrantHandle) Started()                                              {}
-func (h noopGrantHandle) MeasureCPU(g int)                                      {}
+func (h noopGrantHandle) MeasureCPU(CompactionGoroutineKind)                    {}
 func (h noopGrantHandle) CumulativeStats(stats base.CompactionGrantHandleStats) {}
 func (h noopGrantHandle) Done()                                                 {}
 
@@ -333,10 +340,8 @@ func (s *ConcurrencyLimitScheduler) TrySchedule() (bool, CompactionGrantHandle) 
 	return false, nil
 }
 
-func (s *ConcurrencyLimitScheduler) Started() {}
-
-func (s *ConcurrencyLimitScheduler) MeasureCPU(g int) {}
-
+func (s *ConcurrencyLimitScheduler) Started()                                              {}
+func (s *ConcurrencyLimitScheduler) MeasureCPU(CompactionGoroutineKind)                    {}
 func (s *ConcurrencyLimitScheduler) CumulativeStats(stats base.CompactionGrantHandleStats) {}
 
 func (s *ConcurrencyLimitScheduler) Done() {

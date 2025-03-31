@@ -3305,7 +3305,7 @@ func (d *DB) newCompactionOutput(
 		},
 	})
 
-	tw := sstable.NewRawWriter(writable, writerOpts)
+	tw := sstable.NewRawWriterWithCPUMeasurer(writable, writerOpts, c.grantHandle)
 	return objMeta, tw, nil
 }
 
