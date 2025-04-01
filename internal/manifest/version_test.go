@@ -783,3 +783,52 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 		}
 	}
 }
+
+func TestIterAllocs(t *testing.T) {
+	t.Run("LevelSlice", func(t *testing.T) {
+		var testLevelSlice = func() LevelSlice {
+			const n = 10
+			var tables []*TableMetadata
+			for i := 0; i < n; i++ {
+				tables = append(tables, &TableMetadata{
+					FileNum:     base.FileNum(i),
+					FileBacking: &FileBacking{},
+				})
+			}
+			return NewLevelSliceSeqSorted(tables)
+		}()
+		allocs := testing.AllocsPerRun(1, func() {
+			for v := range testLevelSlice.All() {
+				if v == nil {
+					panic("nil")
+				}
+			}
+		})
+		if allocs > 0.0001 {
+			t.Fatalf("allocs=%f", allocs)
+		}
+	})
+	t.Run("LevelMetadata", func(t *testing.T) {
+		var testLevelMetadata = func() LevelMetadata {
+			const n = 1000
+			var tables []*TableMetadata
+			for i := 0; i < n; i++ {
+				tables = append(tables, &TableMetadata{
+					FileNum:     base.FileNum(i),
+					FileBacking: &FileBacking{},
+				})
+			}
+			return MakeLevelMetadata(base.DefaultComparer.Compare, 0, tables)
+		}()
+		allocs := testing.AllocsPerRun(1, func() {
+			for v := range testLevelMetadata.All() {
+				if v == nil {
+					panic("nil")
+				}
+			}
+		})
+		if allocs > 0.0001 {
+			t.Fatalf("allocs=%f", allocs)
+		}
+	})
+}
