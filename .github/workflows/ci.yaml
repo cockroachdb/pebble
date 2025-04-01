@@ -5,10 +5,13 @@ on:
     branches:
     - master
     - crl-release-*
+    - pebble-release-*
+
   pull_request:
     branches:
     - master
     - crl-release-*
+    - pebble-release-*
 
 jobs:
 
