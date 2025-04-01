@@ -232,7 +232,7 @@ func TestL0Sublevels(t *testing.T) {
 			}
 			explicitSublevels = [][]*TableMetadata{}
 			sublevel := -1
-			addedL0Files := make([]*TableMetadata, 0)
+			addedL0Files := make(map[base.FileNum]*TableMetadata)
 			for _, data := range strings.Split(td.Input, "\n") {
 				data = strings.TrimSpace(data)
 				switch data[:2] {
@@ -260,7 +260,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 					fileMetas[level] = append(fileMetas[level], meta)
 					if level == 0 {
-						addedL0Files = append(addedL0Files, meta)
+						addedL0Files[meta.FileNum] = meta
 					}
 					if sublevel != -1 {
 						for len(explicitSublevels) <= sublevel {
@@ -294,7 +294,6 @@ func TestL0Sublevels(t *testing.T) {
 			levelMetadata := MakeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
 				if addL0FilesOpt {
-					SortBySeqNum(addedL0Files)
 					sublevels, err = sublevels.addL0Files(addedL0Files, int64(flushSplitMaxBytes), &levelMetadata)
 					// Check if the output matches a full initialization.
 					sublevels2, _ := newL0Sublevels(&levelMetadata, base.DefaultComparer.Compare, base.DefaultFormatter, int64(flushSplitMaxBytes))
@@ -507,7 +506,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 	// The outer loop runs once for each version edit. The inner loop(s) run
 	// once for each file, or each file bound.
 	for i := 0; i < 100; i++ {
-		var filesToAdd []*TableMetadata
+		filesToAdd := make(map[base.FileNum]*TableMetadata)
 		numFiles := 1 + rng.IntN(9)
 		keys := make([][]byte, 0, 2*numFiles)
 		for j := 0; j < 2*numFiles; j++ {
@@ -539,7 +538,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			)
 			meta.InitPhysicalBacking()
 			fileMetas = append(fileMetas, meta)
-			filesToAdd = append(filesToAdd, meta)
+			filesToAdd[meta.FileNum] = meta
 		}
 		if len(filesToAdd) == 0 {
 			continue
@@ -556,7 +555,6 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			// that of the previous L0Sublevels. So it must be called before
 			// newL0Sublevels; calling it the other way around results in
 			// out-of-bounds panics.
-			SortBySeqNum(filesToAdd)
 			s2, err = s2.addL0Files(filesToAdd, flushSplitMaxBytes, &levelMetadata)
 			require.NoError(t, err)
 		}
