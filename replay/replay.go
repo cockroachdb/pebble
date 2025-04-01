@@ -579,7 +579,7 @@ func (r *Runner) Close() error {
 type workloadStep struct {
 	kind stepKind
 	ve   manifest.VersionEdit
-	// readAmp estimation for the LSM *before* the workload was corrected.
+	// readAmp estimation for the LSM *before* the workload was collected.
 	previousReadAmp int
 	// a Version describing the state of the LSM when the workload was
 	// collected.
@@ -806,6 +806,9 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					}
 				}
 				if previousVersion != nil {
+					// previousVersion contains the current version, and so l0Organizer is
+					// consistent with it. The subsequent call to currentVersion will
+					// replace it with a new current version.
 					s.previousReadAmp = computeReadAmp(previousVersion, l0Organizer)
 				}
 				// Add the current reference *Version to the step. This provides
@@ -817,7 +820,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				}
 				s.l0Organizer = l0Organizer
 				// On the first time through, we set the previous version to the current
-				// version otherwise we set it to the actual previous version.
+				// version. The rest of the time, we already set it above.
 				if previousVersion == nil {
 					s.previousReadAmp = computeReadAmp(s.v, l0Organizer)
 				}
