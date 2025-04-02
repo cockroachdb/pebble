@@ -161,7 +161,11 @@ func (te *rangeTombstoneElider) ShouldElide(start, end []byte) bool {
 // SetupTombstoneElision calculates the TombstoneElision policies for a
 // compaction operating on the given version and output level.
 func SetupTombstoneElision(
-	cmp base.Compare, v *manifest.Version, outputLevel int, compactionBounds base.UserKeyBounds,
+	cmp base.Compare,
+	v *manifest.Version,
+	l0Organizer *manifest.L0Organizer,
+	outputLevel int,
+	compactionBounds base.UserKeyBounds,
 ) (dels, rangeKeys TombstoneElision) {
 	// We want to calculate the in-use key ranges from the levels below our output
 	// level, unless it is L0; L0 requires special treatment, since sstables
@@ -173,7 +177,7 @@ func SetupTombstoneElision(
 	// CalculateInuseKeyRanges will return a series of sorted spans. Overlapping
 	// or abutting spans have already been merged.
 	inUseKeyRanges := v.CalculateInuseKeyRanges(
-		startLevel, manifest.NumLevels-1, compactionBounds.Start, compactionBounds.End.Key,
+		l0Organizer, startLevel, manifest.NumLevels-1, compactionBounds.Start, compactionBounds.End.Key,
 	)
 	// Check if there's a single in-use span that encompasses the entire key range
 	// of the compaction. This is an optimization to avoid key comparisons against

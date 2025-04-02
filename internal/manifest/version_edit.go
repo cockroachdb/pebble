@@ -1294,8 +1294,7 @@ func (b *BulkVersionEdit) Apply(
 	}
 
 	l0Organizer.Update(b.AddedTables[0], b.DeletedTables[0], &v.Levels[0])
-	v.L0Sublevels = l0Organizer.Sublevels()
-	v.L0SublevelFiles = v.L0Sublevels.Levels
+	v.L0SublevelFiles = l0Organizer.SublevelFiles()
 
 	// We maintain stats about active references in blob files and can infer
 	// when a blob file has become a 'zombie,' and is no longer referenced in

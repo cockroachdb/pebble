@@ -44,8 +44,8 @@ type Pacer interface {
 }
 
 // computeReadAmp calculates the read amplification from a manifest.Version
-func computeReadAmp(v *manifest.Version) int {
-	refRAmp := v.L0Sublevels.ReadAmplification()
+func computeReadAmp(v *manifest.Version, l0Organizer *manifest.L0Organizer) int {
+	refRAmp := l0Organizer.ReadAmplification()
 	for _, lvl := range v.Levels[1:] {
 		if !lvl.Empty() {
 			refRAmp++
@@ -80,8 +80,7 @@ type PaceByReferenceReadAmp struct{}
 
 func (PaceByReferenceReadAmp) pace(r *Runner, w workloadStep) time.Duration {
 	startTime := time.Now()
-	refRAmp := computeReadAmp(w.pv)
-	waitForReadAmpLE(r, refRAmp)
+	waitForReadAmpLE(r, w.previousReadAmp)
 	return time.Since(startTime)
 }
 
@@ -580,12 +579,8 @@ func (r *Runner) Close() error {
 type workloadStep struct {
 	kind stepKind
 	ve   manifest.VersionEdit
-	// a Version describing the state of the LSM *before* the workload was
-	// collected.
-	pv *manifest.Version
-	// a Version describing the state of the LSM when the workload was
-	// collected.
-	v *manifest.Version
+	// readAmp estimation for the LSM *before* ve was applied.
+	previousReadAmp int
 	// non-nil for flushStepKind
 	flushBatch           *pebble.Batch
 	tablesToIngest       []string
@@ -715,20 +710,10 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	var cumulativeWriteBytes uint64
 	var flushBufs flushBuffers
 	l0Organizer := manifest.NewL0Organizer(r.Opts.Comparer, r.Opts.FlushSplitBytes)
-	v := manifest.NewInitialVersion(r.Opts.Comparer, l0Organizer)
+	v := manifest.NewInitialVersion(r.Opts.Comparer)
 	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
 	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
-	applyVE := func(ve *manifest.VersionEdit) error {
-		return bve.Accumulate(ve)
-	}
-	currentVersion := func() (*manifest.Version, error) {
-		var err error
-		v, err = bve.Apply(v, l0Organizer,
-			r.Opts.Experimental.ReadCompactionRate)
-		bve = manifest.BulkVersionEdit{AddedTablesByFileNum: bve.AddedTablesByFileNum}
-		return v, err
-	}
 
 	for ; idx < len(r.workload.manifests); idx++ {
 		if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
@@ -758,7 +743,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				if err := ve.Decode(rec); err != nil {
 					return err
 				}
-				if err := applyVE(&ve); err != nil {
+				if err := bve.Accumulate(&ve); err != nil {
 					return err
 				}
 			}
@@ -777,7 +762,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				} else if err != nil {
 					return err
 				}
-				if err := applyVE(&ve); err != nil {
+				if err := bve.Accumulate(&ve); err != nil {
 					return err
 				}
 				if idx == r.workload.manifestIdx && rr.Offset() <= r.workload.manifestOff {
@@ -809,20 +794,28 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 						s.kind = flushStepKind
 					}
 				}
-				// Add the current reference *Version to the step. This provides
-				// access to, for example, the read-amplification of the
-				// database at this point when the workload was collected. This
-				// can be useful for pacing.
-				if s.v, err = currentVersion(); err != nil {
+				if previousVersion != nil {
+					// previousVersion contains the current version, and so l0Organizer is
+					// consistent with it. The subsequent call to currentVersion will
+					// replace it with a new current version.
+					s.previousReadAmp = computeReadAmp(previousVersion, l0Organizer)
+				}
+
+				// Apply the edit.
+				v, err = bve.Apply(v, l0Organizer, r.Opts.Experimental.ReadCompactionRate)
+				if err != nil {
 					return err
 				}
+				// AddedTablesByFileNum maps file number to table metadata for all added
+				// sstables from accumulated version edits so we must retain it.
+				bve = manifest.BulkVersionEdit{AddedTablesByFileNum: bve.AddedTablesByFileNum}
+
 				// On the first time through, we set the previous version to the current
-				// version otherwise we set it to the actual previous version.
+				// version. The rest of the time, we already set it above.
 				if previousVersion == nil {
-					previousVersion = s.v
+					s.previousReadAmp = computeReadAmp(v, l0Organizer)
 				}
-				s.pv = previousVersion
-				previousVersion = s.v
+				previousVersion = v
 
 				// It's possible that the workload collector captured this
 				// version edit, but wasn't able to collect all of the

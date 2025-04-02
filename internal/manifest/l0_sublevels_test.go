@@ -34,7 +34,7 @@ func readManifest(filename string) (*Version, error) {
 	rr := record.NewReader(f, 0 /* logNum */)
 
 	l0Organizer := NewL0Organizer(base.DefaultComparer, 10<<20 /* flushSplitBytes */)
-	v := NewInitialVersion(base.DefaultComparer, l0Organizer)
+	v := NewInitialVersion(base.DefaultComparer)
 	addedByFileNum := make(map[base.FileNum]*TableMetadata)
 	for {
 		r, err := rr.Next()
@@ -61,7 +61,7 @@ func readManifest(filename string) (*Version, error) {
 }
 
 func visualizeSublevels(
-	s *L0Sublevels, compactionFiles bitSet, otherLevels [][]*TableMetadata,
+	s *l0Sublevels, compactionFiles bitSet, otherLevels [][]*TableMetadata,
 ) string {
 	var buf strings.Builder
 	if compactionFiles == nil {
@@ -212,7 +212,7 @@ func TestL0Sublevels(t *testing.T) {
 	var fileMetas [NumLevels][]*TableMetadata
 	var explicitSublevels [][]*TableMetadata
 	var activeCompactions []L0Compaction
-	var sublevels *L0Sublevels
+	var sublevels *l0Sublevels
 	baseLevel := NumLevels - 1
 
 	datadriven.RunTest(t, "testdata/l0_sublevels", func(t *testing.T, td *datadriven.TestData) string {
@@ -295,15 +295,15 @@ func TestL0Sublevels(t *testing.T) {
 			if initialize {
 				if addL0FilesOpt {
 					SortBySeqNum(addedL0Files)
-					sublevels, err = sublevels.AddL0Files(addedL0Files, int64(flushSplitMaxBytes), &levelMetadata)
+					sublevels, err = sublevels.addL0Files(addedL0Files, int64(flushSplitMaxBytes), &levelMetadata)
 					// Check if the output matches a full initialization.
-					sublevels2, _ := NewL0Sublevels(&levelMetadata, base.DefaultComparer.Compare, base.DefaultFormatter, int64(flushSplitMaxBytes))
+					sublevels2, _ := newL0Sublevels(&levelMetadata, base.DefaultComparer.Compare, base.DefaultFormatter, int64(flushSplitMaxBytes))
 					if sublevels != nil && sublevels2 != nil {
 						require.Equal(t, sublevels.flushSplitUserKeys, sublevels2.flushSplitUserKeys)
 						require.Equal(t, sublevels.levelFiles, sublevels2.levelFiles)
 					}
 				} else {
-					sublevels, err = NewL0Sublevels(
+					sublevels, err = newL0Sublevels(
 						&levelMetadata,
 						base.DefaultComparer.Compare,
 						base.DefaultFormatter,
@@ -316,7 +316,7 @@ func TestL0Sublevels(t *testing.T) {
 			} else {
 				// This case is for use with explicitly-specified sublevels
 				// only.
-				sublevels = &L0Sublevels{
+				sublevels = &l0Sublevels{
 					levelFiles:    explicitSublevels,
 					cmp:           base.DefaultComparer.Compare,
 					formatKey:     base.DefaultFormatter,
@@ -499,7 +499,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 	var inUseKeys [][]byte
 	const keyReusePct = 0.15
 	var fileMetas []*TableMetadata
-	var s, s2 *L0Sublevels
+	var s, s2 *l0Sublevels
 	keySpace := testkeys.Alpha(8)
 
 	flushSplitMaxBytes := rng.Int64N(1 << 20)
@@ -549,19 +549,19 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 		var err error
 
 		if s2 == nil {
-			s2, err = NewL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
+			s2, err = newL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
 			require.NoError(t, err)
 		} else {
-			// AddL0Files relies on the indices in TableMetadatas pointing to
+			// addL0Files relies on the indices in TableMetadatas pointing to
 			// that of the previous L0Sublevels. So it must be called before
-			// NewL0Sublevels; calling it the other way around results in
+			// newL0Sublevels; calling it the other way around results in
 			// out-of-bounds panics.
 			SortBySeqNum(filesToAdd)
-			s2, err = s2.AddL0Files(filesToAdd, flushSplitMaxBytes, &levelMetadata)
+			s2, err = s2.addL0Files(filesToAdd, flushSplitMaxBytes, &levelMetadata)
 			require.NoError(t, err)
 		}
 
-		s, err = NewL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
+		s, err = newL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
 		require.NoError(t, err)
 
 		// Check for equivalence.
@@ -587,7 +587,7 @@ func BenchmarkL0SublevelsInit(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(&v.Levels[0],
+		sl, err := newL0Sublevels(&v.Levels[0],
 			base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {
@@ -603,7 +603,7 @@ func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		sl, err := NewL0Sublevels(&v.Levels[0],
+		sl, err := newL0Sublevels(&v.Levels[0],
 			base.DefaultComparer.Compare, base.DefaultFormatter, 5<<20)
 		require.NoError(b, err)
 		if sl == nil {

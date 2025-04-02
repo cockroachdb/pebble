@@ -228,6 +228,7 @@ type pickedCompaction struct {
 	smallest      InternalKey
 	largest       InternalKey
 	version       *version
+	l0Organizer   *manifest.L0Organizer
 	pickerMetrics compactionPickerMetrics
 }
 
@@ -247,7 +248,10 @@ func defaultOutputLevel(startLevel, baseLevel int) int {
 }
 
 func newPickedCompaction(
-	opts *Options, cur *version, startLevel, outputLevel, baseLevel int,
+	opts *Options,
+	cur *version,
+	l0Organizer *manifest.L0Organizer,
+	startLevel, outputLevel, baseLevel int,
 ) *pickedCompaction {
 	if startLevel > 0 && startLevel < baseLevel {
 		panic(fmt.Sprintf("invalid compaction: start level %d should not be empty (base level %d)",
@@ -258,6 +262,7 @@ func newPickedCompaction(
 	pc := &pickedCompaction{
 		cmp:                    opts.Comparer.Compare,
 		version:                cur,
+		l0Organizer:            l0Organizer,
 		baseLevel:              baseLevel,
 		inputs:                 []compactionLevel{{level: startLevel}, {level: outputLevel}},
 		maxOutputFileSize:      uint64(opts.Level(adjustedLevel).TargetFileSize),
@@ -284,14 +289,19 @@ func adjustedOutputLevel(outputLevel int, baseLevel int) int {
 }
 
 func newPickedCompactionFromL0(
-	lcf *manifest.L0CompactionFiles, opts *Options, vers *version, baseLevel int, isBase bool,
+	lcf *manifest.L0CompactionFiles,
+	opts *Options,
+	vers *version,
+	l0Organizer *manifest.L0Organizer,
+	baseLevel int,
+	isBase bool,
 ) *pickedCompaction {
 	outputLevel := baseLevel
 	if !isBase {
 		outputLevel = 0 // Intra L0
 	}
 
-	pc := newPickedCompaction(opts, vers, 0, outputLevel, baseLevel)
+	pc := newPickedCompaction(opts, vers, l0Organizer, 0, outputLevel, baseLevel)
 	pc.lcf = lcf
 	pc.outputLevel.level = outputLevel
 
@@ -349,8 +359,9 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 		pickerMetrics: pc.pickerMetrics,
 
 		// Both copies see the same manifest, therefore, it's ok for them to se
-		// share the same pc. version.
-		version: pc.version,
+		// share the same pc.version and pc.l0Organizer.
+		version:     pc.version,
+		l0Organizer: pc.l0Organizer,
 	}
 
 	newPC.inputs = make([]compactionLevel, len(pc.inputs))
@@ -475,7 +486,7 @@ func (pc *pickedCompaction) setupInputs(
 			})
 		}
 		oldLcf := pc.lcf.Clone()
-		if pc.version.L0Sublevels.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
+		if pc.l0Organizer.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
 			var newStartLevelFiles []*tableMetadata
 			iter := pc.version.Levels[0].Iter()
 			var sizeSum uint64
@@ -578,6 +589,7 @@ func anyTablesCompacting(inputs manifest.LevelSlice) bool {
 // installed).
 func newCompactionPickerByScore(
 	v *version,
+	l0Organizer *manifest.L0Organizer,
 	virtualBackings *manifest.VirtualBackings,
 	opts *Options,
 	inProgressCompactions []compactionInfo,
@@ -585,6 +597,7 @@ func newCompactionPickerByScore(
 	p := &compactionPickerByScore{
 		opts:            opts,
 		vers:            v,
+		l0Organizer:     l0Organizer,
 		virtualBackings: virtualBackings,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
@@ -661,6 +674,7 @@ func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 type compactionPickerByScore struct {
 	opts            *Options
 	vers            *version
+	l0Organizer     *manifest.L0Organizer
 	virtualBackings *manifest.VirtualBackings
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
@@ -890,7 +904,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		scores[i].level = i
 		scores[i].outputLevel = i + 1
 	}
-	l0UncompensatedScore := calculateL0UncompensatedScore(p.vers, p.opts, inProgressCompactions)
+	l0UncompensatedScore := calculateL0UncompensatedScore(p.vers, p.l0Organizer, p.opts, inProgressCompactions)
 	scores[0] = candidateLevelInfo{
 		outputLevel:        p.baseLevel,
 		uncompensatedScore: l0UncompensatedScore,
@@ -967,11 +981,14 @@ func (p *compactionPickerByScore) calculateLevelScores(
 // L0 may overlap one another, so a different set of heuristics that take into
 // account read amplification apply.
 func calculateL0UncompensatedScore(
-	vers *version, opts *Options, inProgressCompactions []compactionInfo,
+	vers *version,
+	l0Organizer *manifest.L0Organizer,
+	opts *Options,
+	inProgressCompactions []compactionInfo,
 ) float64 {
 	// Use the sublevel count to calculate the score. The base vs intra-L0
 	// compaction determination happens in pickAuto, not here.
-	score := float64(2*vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
+	score := float64(2*l0Organizer.MaxDepthAfterOngoingCompactions()) /
 		float64(opts.L0CompactionThreshold)
 
 	// Also calculate a score based on the file count but use it only if it
@@ -1175,7 +1192,7 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	// l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency + 1 compactions
 	l0ReadAmpCompactions := 1
 	if p.opts.Experimental.L0CompactionConcurrency > 0 {
-		l0ReadAmp := p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
+		l0ReadAmp := p.l0Organizer.MaxDepthAfterOngoingCompactions()
 		l0ReadAmpCompactions = (l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency) + 1
 	}
 	// compactionDebt >= ccSignal2 then can run another compaction, where
@@ -1270,7 +1287,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		}
 
 		if info.level == 0 {
-			pc = pickL0(env, p.opts, p.vers, p.baseLevel)
+			pc = pickL0(env, p.opts, p.vers, p.l0Organizer, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
@@ -1292,7 +1309,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			continue
 		}
 
-		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel)
+		pc := pickAutoLPositive(env, p.opts, p.vers, p.l0Organizer, *info, p.baseLevel)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
@@ -1469,7 +1486,7 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 		}
 	}
 
-	pc := newPickedCompaction(p.opts, p.vers, startLevel, outputLevel, p.baseLevel)
+	pc := newPickedCompaction(p.opts, p.vers, p.l0Organizer, startLevel, outputLevel, p.baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = inputs
 	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.All())
@@ -1588,13 +1605,18 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 // file in a positive-numbered level. This function must not be used for
 // L0.
 func pickAutoLPositive(
-	env compactionEnv, opts *Options, vers *version, cInfo candidateLevelInfo, baseLevel int,
+	env compactionEnv,
+	opts *Options,
+	vers *version,
+	l0Organizer *manifest.L0Organizer,
+	cInfo candidateLevelInfo,
+	baseLevel int,
 ) (pc *pickedCompaction) {
 	if cInfo.level == 0 {
 		panic("pebble: pickAutoLPositive called for L0")
 	}
 
-	pc = newPickedCompaction(opts, vers, cInfo.level, defaultOutputLevel(cInfo.level, baseLevel), baseLevel)
+	pc = newPickedCompaction(opts, vers, l0Organizer, cInfo.level, defaultOutputLevel(cInfo.level, baseLevel), baseLevel)
 	if pc.outputLevel.level != cInfo.outputLevel {
 		panic("pebble: compaction picked unexpected output level")
 	}
@@ -1741,7 +1763,9 @@ func (wa WriteAmpHeuristic) String() string {
 
 // Helper method to pick compactions originating from L0. Uses information about
 // sublevels to generate a compaction.
-func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pickedCompaction {
+func pickL0(
+	env compactionEnv, opts *Options, vers *version, l0Organizer *manifest.L0Organizer, baseLevel int,
+) *pickedCompaction {
 	// It is important to pass information about Lbase files to L0Sublevels
 	// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
 	// compaction. Without this, we observed reduced concurrency of L0=>Lbase
@@ -1749,9 +1773,9 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pic
 	//
 	// TODO(bilal) Remove the minCompactionDepth parameter once fixing it at 1
 	// has been shown to not cause a performance regression.
-	lcf := vers.L0Sublevels.PickBaseCompaction(opts.Logger, 1, vers.Levels[baseLevel].Slice())
+	lcf := l0Organizer.PickBaseCompaction(opts.Logger, 1, vers.Levels[baseLevel].Slice())
 	if lcf != nil {
-		pc := newPickedCompactionFromL0(lcf, opts, vers, baseLevel, true)
+		pc := newPickedCompactionFromL0(lcf, opts, vers, l0Organizer, baseLevel, true)
 		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Errorf("%v", base.AssertionFailedf("empty compaction chosen"))
@@ -1766,9 +1790,9 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pic
 	// compaction. Note that we pass in L0CompactionThreshold here as opposed to
 	// 1, since choosing a single sublevel intra-L0 compaction is
 	// counterproductive.
-	lcf = vers.L0Sublevels.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
+	lcf = l0Organizer.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count)
 	if lcf != nil {
-		pc := newPickedCompactionFromL0(lcf, opts, vers, 0, false)
+		pc := newPickedCompactionFromL0(lcf, opts, vers, l0Organizer, 0, false)
 		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Fatalf("empty compaction chosen")
@@ -1787,7 +1811,12 @@ func pickL0(env compactionEnv, opts *Options, vers *version, baseLevel int) *pic
 }
 
 func newPickedManualCompaction(
-	vers *version, opts *Options, env compactionEnv, baseLevel int, manual *manualCompaction,
+	vers *version,
+	l0Organizer *manifest.L0Organizer,
+	opts *Options,
+	env compactionEnv,
+	baseLevel int,
+	manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {
 	outputLevel := manual.level + 1
 	if manual.level == 0 {
@@ -1809,7 +1838,7 @@ func newPickedManualCompaction(
 	if conflictsWithInProgress(manual, outputLevel, env.inProgressCompactions, opts.Comparer.Compare) {
 		return nil, true
 	}
-	pc = newPickedCompaction(opts, vers, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
+	pc = newPickedCompaction(opts, vers, l0Organizer, manual.level, defaultOutputLevel(manual.level, baseLevel), baseLevel)
 	pc.manualID = manual.id
 	manual.outputLevel = pc.outputLevel.level
 	pc.startLevel.files = vers.Overlaps(manual.level, base.UserKeyBoundsInclusive(manual.start, manual.end))
@@ -1844,6 +1873,7 @@ func newPickedManualCompaction(
 // the backing file or a rewrite compaction.
 func pickDownloadCompaction(
 	vers *version,
+	l0Organizer *manifest.L0Organizer,
 	opts *Options,
 	env compactionEnv,
 	baseLevel int,
@@ -1858,7 +1888,7 @@ func pickDownloadCompaction(
 	if kind != compactionKindCopy && kind != compactionKindRewrite {
 		panic("invalid download/rewrite compaction kind")
 	}
-	pc = newPickedCompaction(opts, vers, level, level, baseLevel)
+	pc = newPickedCompaction(opts, vers, l0Organizer, level, level, baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*tableMetadata{file})
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel) {
@@ -1909,7 +1939,7 @@ func pickReadTriggeredCompactionHelper(
 		return nil
 	}
 
-	pc = newPickedCompaction(p.opts, p.vers, rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
+	pc = newPickedCompaction(p.opts, p.vers, p.l0Organizer, rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
 
 	pc.startLevel.files = overlapSlice
 	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel) {
