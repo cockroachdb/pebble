@@ -312,7 +312,9 @@ func TestLevelIterEquivalence(t *testing.T) {
 				amap[metas[i].FileNum] = metas[i]
 			}
 			b.AddedTables[6] = amap
-			v, err := b.Apply(manifest.NewVersion(base.DefaultComparer), 0, 0)
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 0 /* flushSplitBytes */)
+			emptyVersion := manifest.NewInitialVersion(base.DefaultComparer, l0Organizer)
+			v, err := b.Apply(emptyVersion, l0Organizer, 0)
 			require.NoError(t, err)
 			levelIter.Init(
 				context.Background(),

@@ -41,9 +41,10 @@ import (
 )
 
 func newVersion(opts *Options, files [numLevels][]*tableMetadata) *version {
+	l0Organizer := manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
 	v := manifest.NewVersionForTesting(
 		opts.Comparer,
-		opts.FlushSplitBytes,
+		l0Organizer,
 		files)
 	if err := v.CheckOrdering(); err != nil {
 		panic(err)

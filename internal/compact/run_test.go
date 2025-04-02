@@ -23,7 +23,8 @@ func TestTableSplitLimit(t *testing.T) {
 		case "define":
 			var flushSplitBytes int64
 			d.MaybeScanArgs(t, "flush-split-bytes", &flushSplitBytes)
-			v = testutils.CheckErr(manifest.ParseVersionDebug(base.DefaultComparer, flushSplitBytes, d.Input))
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
+			v = testutils.CheckErr(manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, d.Input))
 			buf.WriteString(v.String())
 			if v.Levels[0].Len() != 0 {
 				buf.WriteString("flush split keys:\n")

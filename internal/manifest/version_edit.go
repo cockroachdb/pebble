@@ -1150,7 +1150,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version, flushSplitBytes int64, readCompactionRate int64,
+	curr *Version, l0Organizer *L0Organizer, readCompactionRate int64,
 ) (*Version, error) {
 	comparer := curr.cmp
 	v := &Version{
@@ -1170,10 +1170,6 @@ func (b *BulkVersionEdit) Apply(
 
 		if len(b.AddedTables[level]) == 0 && len(b.DeletedTables[level]) == 0 {
 			// There are no edits on this level.
-			if level == 0 {
-				v.L0Sublevels = curr.L0Sublevels
-				v.L0SublevelFiles = curr.L0SublevelFiles
-			}
 			continue
 		}
 
@@ -1271,40 +1267,6 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		if level == 0 {
-			if len(deletedTablesMap) == 0 {
-				// Flushes and ingestions that do not delete any L0 files do not require
-				// a regeneration of L0Sublevels from scratch. We can instead generate
-				// it incrementally.
-				var err error
-				// AddL0Files requires addedFiles to be sorted in seqnum order.
-				SortBySeqNum(addedTables)
-				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedTables, flushSplitBytes, &v.Levels[0])
-				if errors.Is(err, errInvalidL0SublevelsOpt) {
-					err = v.InitL0Sublevels(flushSplitBytes)
-				} else if invariants.Enabled && err == nil && invariants.Sometimes(10) {
-					// Rebuild from scratch to verify that AddL0Files did the right thing.
-					// Note that NewL0Sublevels updates fields in TableMetadata like
-					// L0Index, so we don't want to do this every time.
-					copyOfSublevels, err := NewL0Sublevels(&v.Levels[0], comparer.Compare, comparer.FormatKey, flushSplitBytes)
-					if err != nil {
-						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
-					}
-					s1 := describeSublevels(comparer.FormatKey, false /* verbose */, copyOfSublevels.Levels)
-					s2 := describeSublevels(comparer.FormatKey, false /* verbose */, v.L0Sublevels.Levels)
-					if s1 != s2 {
-						// Add verbosity.
-						s1 := describeSublevels(comparer.FormatKey, true /* verbose */, copyOfSublevels.Levels)
-						s2 := describeSublevels(comparer.FormatKey, true /* verbose */, v.L0Sublevels.Levels)
-						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
-					}
-				}
-				if err != nil {
-					return nil, errors.Wrap(err, "pebble: internal error")
-				}
-				v.L0SublevelFiles = v.L0Sublevels.Levels
-			} else if err := v.InitL0Sublevels(flushSplitBytes); err != nil {
-				return nil, errors.Wrap(err, "pebble: internal error")
-			}
 			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(0), v.Levels[level].Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
@@ -1330,6 +1292,10 @@ func (b *BulkVersionEdit) Apply(
 			}
 		}
 	}
+
+	l0Organizer.Update(b.AddedTables[0], b.DeletedTables[0], &v.Levels[0])
+	v.L0Sublevels = l0Organizer.Sublevels()
+	v.L0SublevelFiles = v.L0Sublevels.Levels
 
 	// We maintain stats about active references in blob files and can infer
 	// when a blob file has become a 'zombie,' and is no longer referenced in

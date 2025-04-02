@@ -89,7 +89,8 @@ func TestSetupTombstoneElision(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			var err error
-			v, err = manifest.ParseVersionDebug(base.DefaultComparer, 64*1024, td.Input)
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			v, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
@@ -129,7 +130,8 @@ func TestTombstoneElision(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			var err error
-			v, err = manifest.ParseVersionDebug(base.DefaultComparer, 64*1024, td.Input)
+			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			v, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
