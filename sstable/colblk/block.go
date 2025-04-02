@@ -199,15 +199,16 @@ func DecodeHeader(data []byte) Header {
 	}
 }
 
-// A blockEncoder encodes a columnar block and handles encoding the block's
+// A BlockEncoder encodes a columnar block and handles encoding the block's
 // header, including individual column headers.
-type blockEncoder struct {
+type BlockEncoder struct {
 	buf          []byte
 	headerOffset uint32
 	pageOffset   uint32
 }
 
-func (e *blockEncoder) reset() {
+// Reset resets an encoder for reuse.
+func (e *BlockEncoder) Reset() {
 	if cap(e.buf) > maxBlockRetainedSize {
 		e.buf = nil
 	}
@@ -215,9 +216,9 @@ func (e *blockEncoder) reset() {
 	e.pageOffset = 0
 }
 
-// init initializes the block encoder with a buffer of the specified size and
+// Init initializes the block encoder with a buffer of the specified size and
 // header.
-func (e *blockEncoder) init(size int, h Header, customHeaderSize uint32) {
+func (e *BlockEncoder) Init(size int, h Header, customHeaderSize uint32) {
 	if cap(e.buf) < size {
 		e.buf = crbytes.AllocAligned(size)
 	} else {
@@ -228,13 +229,13 @@ func (e *blockEncoder) init(size int, h Header, customHeaderSize uint32) {
 	h.Encode(e.buf[customHeaderSize:])
 }
 
-// data returns the underlying buffer.
-func (e *blockEncoder) data() []byte {
+// Data returns the underlying buffer.
+func (e *BlockEncoder) Data() []byte {
 	return e.buf
 }
 
-// encode writes w's columns to the block.
-func (e *blockEncoder) encode(rows int, w ColumnWriter) {
+// Encode encodes w's columns to the block.
+func (e *BlockEncoder) Encode(rows int, w ColumnWriter) {
 	for i := 0; i < w.NumColumns(); i++ {
 		e.buf[e.headerOffset] = byte(w.DataType(i))
 		binary.LittleEndian.PutUint32(e.buf[e.headerOffset+1:], e.pageOffset)
@@ -243,10 +244,10 @@ func (e *blockEncoder) encode(rows int, w ColumnWriter) {
 	}
 }
 
-// finish finalizes the block encoding, returning the encoded block. The
+// Finish finalizes the block encoding, returning the encoded block. The
 // returned byte slice points to the encoder's buffer, so if the encoder is
 // reused the returned slice will be invalidated.
-func (e *blockEncoder) finish() []byte {
+func (e *BlockEncoder) Finish() []byte {
 	e.buf[e.pageOffset] = 0x00 // Padding byte
 	e.pageOffset++
 	if e.pageOffset != uint32(len(e.buf)) {
@@ -267,16 +268,16 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 	}
 	size++ // +1 for the trailing version byte.
 
-	var enc blockEncoder
-	enc.init(int(size), Header{
+	var enc BlockEncoder
+	enc.Init(int(size), Header{
 		Version: Version1,
 		Columns: nCols,
 		Rows:    uint32(rows),
 	}, 0)
 	for _, cw := range writers {
-		enc.encode(rows, cw)
+		enc.Encode(rows, cw)
 	}
-	return enc.finish()
+	return enc.Finish()
 }
 
 // DecodeColumn decodes the col'th column of the provided reader's block as a
