@@ -1341,7 +1341,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		for layer, ls := range c.version.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, ingestFlushable.exciseSpan.UserKeyBounds()).All() {
-				newFiles, err := d.excise(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, layer.Level())
+				newFiles, err := d.exciseTable(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, layer.Level())
 				if err != nil {
 					return nil, err
 				}
@@ -2704,7 +2704,7 @@ func (d *DB) runCopyCompaction(
 
 // applyHintOnFile applies a deleteCompactionHint to a file, and updates the
 // versionEdit accordingly. It returns a list of new files that were created
-// if the hint was applied partially to a file (eg. through an excise as opposed
+// if the hint was applied partially to a file (eg. through an exciseTable as opposed
 // to an outright deletion). levelMetrics is kept up-to-date with the number
 // of tables deleted or excised.
 func (d *DB) applyHintOnFile(
@@ -2736,7 +2736,7 @@ func (d *DB) applyHintOnFile(
 	}
 
 	levelMetrics.TablesExcised++
-	newFiles, err = d.excise(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, ve, level)
+	newFiles, err = d.exciseTable(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, ve, level)
 	if err != nil {
 		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
 	}
