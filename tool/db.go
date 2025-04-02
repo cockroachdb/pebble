@@ -715,10 +715,9 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
-		v, err := bve.Apply(
-			manifest.NewVersion(cmp), d.opts.FlushSplitBytes,
-			d.opts.Experimental.ReadCompactionRate,
-		)
+		l0Organizer := manifest.NewL0Organizer(cmp, d.opts.FlushSplitBytes)
+		emptyVersion := manifest.NewInitialVersion(cmp, l0Organizer)
+		v, err := bve.Apply(emptyVersion, l0Organizer, d.opts.Experimental.ReadCompactionRate)
 		if err != nil {
 			return err
 		}

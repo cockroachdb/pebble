@@ -98,7 +98,8 @@ func TestOverlaps(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			var err error
-			v, err = ParseVersionDebug(testkeys.Comparer, 64*1024 /* flush split bytes */, d.Input)
+			l0Organizer := NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+			v, err = ParseVersionDebug(testkeys.Comparer, l0Organizer, d.Input)
 			if err != nil {
 				return err.Error()
 			}
@@ -292,7 +293,8 @@ func TestCheckOrdering(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
-				v, err := ParseVersionDebug(base.DefaultComparer, 10*1024*1024, d.Input)
+				l0Organizer := NewL0Organizer(base.DefaultComparer, 10*1024*1024 /* flushSplitBytes */)
+				v, err := ParseVersionDebug(base.DefaultComparer, l0Organizer, d.Input)
 				if err != nil {
 					return err.Error()
 				}
@@ -438,7 +440,8 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 func TestCalculateInuseKeyRanges(t *testing.T) {
 	newVersion := func(files [NumLevels][]*TableMetadata) *Version {
 		t.Helper()
-		v := NewVersionForTesting(base.DefaultComparer, 64*1024, files)
+		l0Organizer := NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+		v := NewVersionForTesting(base.DefaultComparer, l0Organizer, files)
 		if err := v.CheckOrdering(); err != nil {
 			t.Fatal(err)
 		}
@@ -740,7 +743,8 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
 			})
 		}
-		v := NewVersionForTesting(base.DefaultComparer, 64*1024, files)
+		l0Organizer := NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
+		v := NewVersionForTesting(base.DefaultComparer, l0Organizer, files)
 		if err := v.CheckOrdering(); err != nil {
 			t.Fatal(err)
 		}
