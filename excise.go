@@ -248,9 +248,8 @@ func determineLeftTableBounds(
 				// The key is owned by the range key iter, so we need to copy it.
 				lastRangeKey = slices.Clone(rkey.End)
 			}
-			lastRangeKeyKind := rkey.Keys[0].Kind()
 			leftTable.ExtendRangeKeyBounds(cmp, originalTable.SmallestRangeKey,
-				base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey))
+				base.MakeExclusiveSentinelKey(rkey.LargestKey().Kind(), lastRangeKey))
 		}
 	}
 	return nil
