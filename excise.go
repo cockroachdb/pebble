@@ -44,10 +44,10 @@ func (d *DB) Excise(ctx context.Context, span KeyRange) error {
 	return err
 }
 
-// exciseTable updates ve to include a replacement of the table m with new
-// virtual sstables that exclude exciseSpan, returning a slice of newly-created
-// files if any. If the entirety of m is deleted by exciseSpan, no new sstables
-// are added and m is deleted. Note that ve is updated in-place.
+// exciseTable initializes up to two virtual tables for what is left over after
+// excising the given span from the table.
+//
+// Returns the left and/or right tables, if they exist.
 //
 // The file bounds must overlap with the excise span.
 //
@@ -55,21 +55,16 @@ func (d *DB) Excise(ctx context.Context, span KeyRange) error {
 // the db mutex held (eg. ingest-time excises), while in the case of compactions
 // the mutex is not held.
 func (d *DB) exciseTable(
-	ctx context.Context, exciseSpan base.UserKeyBounds, m *tableMetadata, ve *versionEdit, level int,
-) ([]manifest.NewTableEntry, error) {
-	numCreatedFiles := 0
+	ctx context.Context, exciseSpan base.UserKeyBounds, m *tableMetadata, level int,
+) (leftTable, rightTable *tableMetadata, _ error) {
 	// Check if there's actually an overlap between m and exciseSpan.
 	mBounds := m.UserKeyBounds()
 	if !exciseSpan.Overlaps(d.cmp, &mBounds) {
-		return nil, base.AssertionFailedf("excise span does not overlap table")
+		return nil, nil, base.AssertionFailedf("excise span does not overlap table")
 	}
-	ve.DeletedTables[deletedFileEntry{
-		Level:   level,
-		FileNum: m.FileNum,
-	}] = m
 	// Fast path: m sits entirely within the exciseSpan, so just delete it.
 	if exciseSpan.ContainsInternalKey(d.cmp, m.Smallest) && exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// The file partially overlaps the excise span; we will need to open it to
@@ -79,11 +74,10 @@ func (d *DB) exciseTable(
 		layer:    manifest.Level(level),
 	}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer iters.CloseAll()
 
-	needsBacking := false
 	// Create a file to the left of the excise span, if necessary.
 	// The bounds of this file will be [m.Smallest, lastKeyBefore(exciseSpan.Start)].
 	//
@@ -107,7 +101,7 @@ func (d *DB) exciseTable(
 	// have changed since our previous calculation. Do this optimiaztino as part of
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
-		leftFile := &tableMetadata{
+		leftTable = &tableMetadata{
 			Virtual:     true,
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
@@ -118,93 +112,73 @@ func (d *DB) exciseTable(
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 		}
-		if err := determineLeftTableBounds(d.cmp, m, leftFile, exciseSpan.Start, iters); err != nil {
-			return nil, err
+		if err := determineLeftTableBounds(d.cmp, m, leftTable, exciseSpan.Start, iters); err != nil {
+			return nil, nil, err
 		}
 
-		if leftFile.HasRangeKeys || leftFile.HasPointKeys {
+		if leftTable.HasRangeKeys || leftTable.HasPointKeys {
 			var err error
-			leftFile.Size, err = d.fileCache.estimateSize(m, leftFile.Smallest.UserKey, leftFile.Largest.UserKey)
+			leftTable.Size, err = d.fileCache.estimateSize(m, leftTable.Smallest.UserKey, leftTable.Largest.UserKey)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			if leftFile.Size == 0 {
+			if leftTable.Size == 0 {
 				// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size,
 				// such as if the excised file only has range keys/dels and no point
 				// keys. This can cause panics in places where we divide by file sizes.
 				// Correct for it here.
-				leftFile.Size = 1
+				leftTable.Size = 1
 			}
-			if err := leftFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
-				return nil, err
+			if err := leftTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
+				return nil, nil, err
 			}
-			leftFile.ValidateVirtual(m)
-			ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: leftFile})
-			needsBacking = true
-			numCreatedFiles++
+			leftTable.ValidateVirtual(m)
+		} else {
+			leftTable = nil
 		}
 	}
 	// Create a file to the right, if necessary.
-	if exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
-		// No key exists to the right of the excise span in this file.
-		if needsBacking && !m.Virtual {
-			// If m is virtual, then its file backing is already known to the manifest.
-			// We don't need to create another file backing. Note that there must be
-			// only one CreatedBackingTables entry per backing sstable. This is
-			// indicated by the VersionEdit.CreatedBackingTables invariant.
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+	if !exciseSpan.End.IsUpperBoundForInternalKey(d.cmp, m.Largest) {
+		// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
+		//
+		// See comment before the definition of leftFile for the motivation behind
+		// calculating tight user-key bounds.
+		rightTable = &tableMetadata{
+			Virtual:     true,
+			FileBacking: m.FileBacking,
+			FileNum:     d.mu.versions.getNextFileNum(),
+			// Note that these are loose bounds for smallest/largest seqnums, but they're
+			// sufficient for maintaining correctness.
+			SmallestSeqNum:           m.SmallestSeqNum,
+			LargestSeqNum:            m.LargestSeqNum,
+			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
+			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 		}
-		return ve.NewTables[len(ve.NewTables)-numCreatedFiles:], nil
-	}
-	// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
-	//
-	// See comment before the definition of leftFile for the motivation behind
-	// calculating tight user-key bounds.
-	rightFile := &tableMetadata{
-		Virtual:     true,
-		FileBacking: m.FileBacking,
-		FileNum:     d.mu.versions.getNextFileNum(),
-		// Note that these are loose bounds for smallest/largest seqnums, but they're
-		// sufficient for maintaining correctness.
-		SmallestSeqNum:           m.SmallestSeqNum,
-		LargestSeqNum:            m.LargestSeqNum,
-		LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
-		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
-	}
-	if err := determineRightTableBounds(d.cmp, m, rightFile, exciseSpan.End, iters); err != nil {
-		return nil, err
-	}
-	if rightFile.HasRangeKeys || rightFile.HasPointKeys {
-		var err error
-		rightFile.Size, err = d.fileCache.estimateSize(m, rightFile.Smallest.UserKey, rightFile.Largest.UserKey)
-		if err != nil {
-			return nil, err
+		if err := determineRightTableBounds(d.cmp, m, rightTable, exciseSpan.End, iters); err != nil {
+			return nil, nil, err
 		}
-		if rightFile.Size == 0 {
-			// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size,
-			// such as if the excised file only has range keys/dels and no point keys.
-			// This can cause panics in places where we divide by file sizes. Correct
-			// for it here.
-			rightFile.Size = 1
+		if rightTable.HasRangeKeys || rightTable.HasPointKeys {
+			var err error
+			rightTable.Size, err = d.fileCache.estimateSize(m, rightTable.Smallest.UserKey, rightTable.Largest.UserKey)
+			if err != nil {
+				return nil, nil, err
+			}
+			if rightTable.Size == 0 {
+				// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size,
+				// such as if the excised file only has range keys/dels and no point keys.
+				// This can cause panics in places where we divide by file sizes. Correct
+				// for it here.
+				rightTable.Size = 1
+			}
+			if err := rightTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
+				return nil, nil, err
+			}
+			rightTable.ValidateVirtual(m)
+		} else {
+			rightTable = nil
 		}
-		if err := rightFile.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
-			return nil, err
-		}
-		rightFile.ValidateVirtual(m)
-		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: rightFile})
-		needsBacking = true
-		numCreatedFiles++
 	}
-
-	if needsBacking && !m.Virtual {
-		// If m is virtual, then its file backing is already known to the manifest.
-		// We don't need to create another file backing. Note that there must be
-		// only one CreatedBackingTables entry per backing sstable. This is
-		// indicated by the VersionEdit.CreatedBackingTables invariant.
-		ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
-	}
-
-	return ve.NewTables[len(ve.NewTables)-numCreatedFiles:], nil
+	return leftTable, rightTable, nil
 }
 
 // exciseOverlapBounds examines the provided list of snapshots, examining each
@@ -362,4 +336,35 @@ func determineRightTableBounds(
 		}
 	}
 	return nil
+}
+
+// applyExciseToVersionEdit updates ve with a table deletion for the original
+// table and table additions for the left and/or right table.
+//
+// Either or both of leftTable/rightTable can be nil.
+func applyExciseToVersionEdit(
+	ve *versionEdit, originalTable, leftTable, rightTable *tableMetadata, level int,
+) (newFiles []manifest.NewTableEntry) {
+	ve.DeletedTables[deletedFileEntry{
+		Level:   level,
+		FileNum: originalTable.FileNum,
+	}] = originalTable
+	if leftTable == nil && rightTable == nil {
+		return
+	}
+	if !originalTable.Virtual {
+		// If the original table was virtual, then its file backing is already known
+		// to the manifest; we don't need to create another file backing. Note that
+		// there must be only one CreatedBackingTables entry per backing sstable.
+		// This is indicated by the VersionEdit.CreatedBackingTables invariant.
+		ve.CreatedBackingTables = append(ve.CreatedBackingTables, originalTable.FileBacking)
+	}
+	originalLen := len(ve.NewTables)
+	if leftTable != nil {
+		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: leftTable})
+	}
+	if rightTable != nil {
+		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: rightTable})
+	}
+	return ve.NewTables[originalLen:]
 }

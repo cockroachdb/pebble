@@ -895,10 +895,11 @@ func TestExcise(t *testing.T) {
 			for l, ls := range current.AllLevelsAndSublevels() {
 				iter := ls.Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, ve, l.Level())
+					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, l.Level())
 					if err != nil {
 						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
+					applyExciseToVersionEdit(ve, m, leftTable, rightTable, l.Level())
 				}
 			}
 
@@ -1245,13 +1246,14 @@ func testIngestSharedImpl(
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level)
+					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
 						d.mu.Unlock()
 						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
 					}
+					applyExciseToVersionEdit(ve, m, leftTable, rightTable, level)
 				}
 			}
 			d.mu.Lock()
@@ -1749,13 +1751,14 @@ func TestConcurrentExcise(t *testing.T) {
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					_, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, ve, level)
+					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, level)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
 						d.mu.Unlock()
 						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
 					}
+					applyExciseToVersionEdit(ve, m, leftTable, rightTable, level)
 				}
 			}
 			d.mu.Lock()

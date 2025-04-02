@@ -1867,10 +1867,11 @@ func (d *DB) ingestSplit(
 		// as we're guaranteed to not have any data overlap between splitFile and
 		// s.ingestFile. d.excise will return an error if we pass an inclusive user
 		// key bound _and_ we end up seeing data overlap at the end key.
-		added, err := d.exciseTable(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
+		leftTable, rightTable, err := d.exciseTable(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, s.level)
 		if err != nil {
 			return err
 		}
+		added := applyExciseToVersionEdit(ve, splitFile, leftTable, rightTable, s.level)
 		replacedFiles[splitFile.FileNum] = added
 		for i := range added {
 			addedBounds := added[i].Meta.UserKeyBounds()
@@ -2098,10 +2099,11 @@ func (d *DB) ingestApply(
 		// out.
 		for layer, ls := range current.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, exciseSpan.UserKeyBounds()).All() {
-				newFiles, err := d.exciseTable(ctx, exciseSpan.UserKeyBounds(), m, ve, layer.Level())
+				leftTable, rightTable, err := d.exciseTable(ctx, exciseSpan.UserKeyBounds(), m, layer.Level())
 				if err != nil {
 					return nil, err
 				}
+				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
 				replacedFiles[m.FileNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
