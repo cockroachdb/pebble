@@ -117,17 +117,8 @@ func (d *DB) exciseTable(
 		}
 
 		if leftTable.HasRangeKeys || leftTable.HasPointKeys {
-			var err error
-			leftTable.Size, err = d.fileCache.estimateSize(m, leftTable.Smallest.UserKey, leftTable.Largest.UserKey)
-			if err != nil {
+			if err := determineExcisedTableSize(d.fileCache, m, leftTable); err != nil {
 				return nil, nil, err
-			}
-			if leftTable.Size == 0 {
-				// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size,
-				// such as if the excised file only has range keys/dels and no point
-				// keys. This can cause panics in places where we divide by file sizes.
-				// Correct for it here.
-				leftTable.Size = 1
 			}
 			if err := leftTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, nil, err
@@ -158,17 +149,8 @@ func (d *DB) exciseTable(
 			return nil, nil, err
 		}
 		if rightTable.HasRangeKeys || rightTable.HasPointKeys {
-			var err error
-			rightTable.Size, err = d.fileCache.estimateSize(m, rightTable.Smallest.UserKey, rightTable.Largest.UserKey)
-			if err != nil {
+			if err := determineExcisedTableSize(d.fileCache, m, rightTable); err != nil {
 				return nil, nil, err
-			}
-			if rightTable.Size == 0 {
-				// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size,
-				// such as if the excised file only has range keys/dels and no point keys.
-				// This can cause panics in places where we divide by file sizes. Correct
-				// for it here.
-				rightTable.Size = 1
 			}
 			if err := rightTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, nil, err
@@ -334,6 +316,24 @@ func determineRightTableBounds(
 				Trailer: rkey.SmallestKey().Trailer,
 			}, originalTable.LargestRangeKey)
 		}
+	}
+	return nil
+}
+
+func determineExcisedTableSize(
+	fc *fileCacheHandle, originalTable, excisedTable *tableMetadata,
+) error {
+	size, err := fc.estimateSize(originalTable, excisedTable.Smallest.UserKey, excisedTable.Largest.UserKey)
+	if err != nil {
+		return err
+	}
+	excisedTable.Size = size
+	if size == 0 {
+		// On occasion, estimateSize gives us a low estimate, i.e. a 0 file size,
+		// such as if the excised file only has range keys/dels and no point
+		// keys. This can cause panics in places where we divide by file sizes.
+		// Correct for it here.
+		excisedTable.Size = 1
 	}
 	return nil
 }
