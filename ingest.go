@@ -1867,7 +1867,7 @@ func (d *DB) ingestSplit(
 		// as we're guaranteed to not have any data overlap between splitFile and
 		// s.ingestFile. d.excise will return an error if we pass an inclusive user
 		// key bound _and_ we end up seeing data overlap at the end key.
-		added, err := d.excise(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
+		added, err := d.exciseTable(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, ve, s.level)
 		if err != nil {
 			return err
 		}
@@ -2104,7 +2104,7 @@ func (d *DB) ingestApply(
 		// out.
 		for layer, ls := range current.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, exciseSpan.UserKeyBounds()).All() {
-				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, layer.Level())
+				newFiles, err := d.exciseTable(ctx, exciseSpan.UserKeyBounds(), m, ve, layer.Level())
 				if err != nil {
 					return nil, err
 				}

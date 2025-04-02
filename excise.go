@@ -44,15 +44,15 @@ func (d *DB) Excise(ctx context.Context, span KeyRange) error {
 	return err
 }
 
-// excise updates ve to include a replacement of the file m with new virtual
-// sstables that exclude exciseSpan, returning a slice of newly-created files if
-// any. If the entirety of m is deleted by exciseSpan, no new sstables are added
-// and m is deleted. Note that ve is updated in-place.
+// exciseTable updates ve to include a replacement of the table m with new
+// virtual sstables that exclude exciseSpan, returning a slice of newly-created
+// files if any. If the entirety of m is deleted by exciseSpan, no new sstables
+// are added and m is deleted. Note that ve is updated in-place.
 //
 // This method is agnostic to whether d.mu is held or not. Some cases call it with
 // the db mutex held (eg. ingest-time excises), while in the case of compactions
 // the mutex is not held.
-func (d *DB) excise(
+func (d *DB) exciseTable(
 	ctx context.Context, exciseSpan base.UserKeyBounds, m *tableMetadata, ve *versionEdit, level int,
 ) ([]manifest.NewTableEntry, error) {
 	numCreatedFiles := 0
