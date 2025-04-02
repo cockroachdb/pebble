@@ -1339,23 +1339,21 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	}
 	if ingestFlushable.exciseSpan.Valid() {
 		// Iterate through all levels and find files that intersect with exciseSpan.
-		for l := range c.version.Levels {
-			overlaps := c.version.Overlaps(l, base.UserKeyBoundsEndExclusive(ingestFlushable.exciseSpan.Start, ingestFlushable.exciseSpan.End))
-			for m := range overlaps.All() {
-				newFiles, err := d.excise(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, l)
+		for layer, ls := range c.version.AllLevelsAndSublevels() {
+			for m := range ls.Overlaps(d.cmp, ingestFlushable.exciseSpan.UserKeyBounds()).All() {
+				newFiles, err := d.excise(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, layer.Level())
 				if err != nil {
 					return nil, err
 				}
 
 				if _, ok := ve.DeletedTables[deletedFileEntry{
-					Level:   l,
+					Level:   layer.Level(),
 					FileNum: m.FileNum,
 				}]; !ok {
-					// We did not excise this file.
-					continue
+					panic("did not excise file that overlaps with the excise span")
 				}
 				replacedFiles[m.FileNum] = newFiles
-				updateLevelMetricsOnExcise(m, l, newFiles)
+				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
 		}
 	}

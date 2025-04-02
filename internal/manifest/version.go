@@ -1688,14 +1688,20 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 	return v.Levels[level].Slice().Overlaps(v.cmp.Compare, bounds)
 }
 
-// IterAllLevelsAndSublevels calls fn with an iterator for each L0 sublevel
-// (from top to bottom), then once for each level below L0.
-func (v *Version) IterAllLevelsAndSublevels(fn func(it LevelIterator, level Layer)) {
-	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
-		fn(v.L0SublevelFiles[sublevel].Iter(), L0Sublevel(sublevel))
-	}
-	for level := 1; level < NumLevels; level++ {
-		fn(v.Levels[level].Iter(), Level(level))
+// AllLevelsAndSublevels returns an iterator that produces a Layer, LevelSlice
+// pair for each L0 sublevel (from top to bottom) and each level below L0.
+func (v *Version) AllLevelsAndSublevels() iter.Seq2[Layer, LevelSlice] {
+	return func(yield func(Layer, LevelSlice) bool) {
+		for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
+			if !yield(L0Sublevel(sublevel), v.L0SublevelFiles[sublevel]) {
+				return
+			}
+		}
+		for level := 1; level < NumLevels; level++ {
+			if !yield(Level(level), v.Levels[level].Slice()) {
+				return
+			}
+		}
 	}
 }
 

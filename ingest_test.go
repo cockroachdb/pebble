@@ -892,14 +892,15 @@ func TestExcise(t *testing.T) {
 			d.mu.Unlock()
 			current := d.mu.versions.currentVersion()
 
-			current.IterAllLevelsAndSublevels(func(iter manifest.LevelIterator, l manifest.Layer) {
+			for l, ls := range current.AllLevelsAndSublevels() {
+				iter := ls.Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
 					_, err := d.excise(context.Background(), exciseSpan.UserKeyBounds(), m, ve, l.Level())
 					if err != nil {
 						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
 				}
-			})
+			}
 
 			d.mu.Lock()
 			d.mu.versions.logUnlock()
