@@ -418,7 +418,11 @@ func (r *Reader) readMetaindex(
 	}
 
 	var meta map[string]block.Handle
-	meta, r.valueBIH, err = decodeMetaindex(data)
+	if r.tableFormat >= TableFormatPebblev6 {
+		meta, r.valueBIH, err = decodeColumnarMetaIndex(data)
+	} else {
+		meta, r.valueBIH, err = decodeMetaindex(data)
+	}
 	if err != nil {
 		return err
 	}
@@ -434,6 +438,8 @@ func (r *Reader) readMetaindex(
 		if err != nil {
 			return err
 		}
+	} else {
+		return errors.New("did not read any value for the properties block in the meta index")
 	}
 
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
