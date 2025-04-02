@@ -1350,10 +1350,11 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		for layer, ls := range c.version.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, ingestFlushable.exciseSpan.UserKeyBounds()).All() {
-				newFiles, err := d.exciseTable(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, ve, layer.Level())
+				leftTable, rightTable, err := d.exciseTable(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, layer.Level())
 				if err != nil {
 					return nil, err
 				}
+				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
 				replacedFiles[m.FileNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
@@ -2732,16 +2733,17 @@ func (d *DB) applyHintOnFile(
 		return nil, nil
 	}
 	// The hint overlaps with only a part of the file, not the entirety of it. We need
-	// to use d.excise. (hintOverlap == hintExcisesFile)
+	// to use d.exciseTable. (hintOverlap == hintExcisesFile)
 	if d.FormatMajorVersion() < FormatVirtualSSTables {
 		panic("pebble: delete-only compaction hint excising a file is not supported in this version")
 	}
 
 	levelMetrics.TablesExcised++
-	newFiles, err = d.exciseTable(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, ve, level)
+	leftTable, rightTable, err := d.exciseTable(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, level)
 	if err != nil {
 		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
 	}
+	newFiles = applyExciseToVersionEdit(ve, f, leftTable, rightTable, level)
 	return newFiles, nil
 }
 
