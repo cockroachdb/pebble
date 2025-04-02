@@ -22,7 +22,7 @@ type KeyValueBlockWriter struct {
 	keys   RawBytesBuilder
 	values RawBytesBuilder
 	rows   int
-	enc    blockEncoder
+	enc    BlockEncoder
 }
 
 const (
@@ -61,14 +61,14 @@ func (w *KeyValueBlockWriter) size(rows int) int {
 
 // Finish serializes the pending key value block.
 func (w *KeyValueBlockWriter) Finish(rows int) []byte {
-	w.enc.init(w.size(rows), Header{
+	w.enc.Init(w.size(rows), Header{
 		Version: Version1,
 		Columns: keyValueBlockColumnCount,
 		Rows:    uint32(rows),
 	}, indexBlockCustomHeaderSize)
-	w.enc.encode(rows, &w.keys)
-	w.enc.encode(rows, &w.values)
-	return w.enc.finish()
+	w.enc.Encode(rows, &w.keys)
+	w.enc.Encode(rows, &w.values)
+	return w.enc.Finish()
 }
 
 // KeyValueBlockDecoder reads columnar key value blocks.
