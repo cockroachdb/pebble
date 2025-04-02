@@ -358,8 +358,8 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 		// TODO(msbutler): properly clone picker metrics
 		pickerMetrics: pc.pickerMetrics,
 
-		// Both copies see the same manifest, therefore, it's ok for them to se
-		// share the same pc.version and pc.l0Organizer.
+		// Both copies see the same manifest, therefore, it's ok for them to share
+		// the same pc.version and pc.l0Organizer.
 		version:     pc.version,
 		l0Organizer: pc.l0Organizer,
 	}
@@ -672,8 +672,16 @@ func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 // compaction picker is associated with a single version. A new compaction
 // picker is created and initialized every time a new version is installed.
 type compactionPickerByScore struct {
-	opts            *Options
-	vers            *version
+	opts *Options
+	vers *version
+	// Unlike vers, which is immutable and the latest version when this picker is
+	// created, l0Organizer represents the mutable L0 state of the latest version.
+	// This means that at some point in the future a compactionPickerByScore
+	// created in the past will have mutually inconsistent state in vers and
+	// l0Organizer. This is not a problem since (a) a new picker is created in
+	// logAndApply when a new version is installed, and (b) only the latest picker
+	// is used for picking compactions. This is ensured by holding
+	// versionSet.logLock for both (a) and (b).
 	l0Organizer     *manifest.L0Organizer
 	virtualBackings *manifest.VirtualBackings
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
