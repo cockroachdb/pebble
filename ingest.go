@@ -2102,22 +2102,21 @@ func (d *DB) ingestApply(
 		// see if any new compactions are conflicting with our chosen target levels
 		// for files, and if they are, we should signal those compactions to error
 		// out.
-		for level := range current.Levels {
-			for m := range current.Overlaps(level, exciseSpan.UserKeyBounds()).All() {
-				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, level)
+		for layer, ls := range current.AllLevelsAndSublevels() {
+			for m := range ls.Overlaps(d.cmp, exciseSpan.UserKeyBounds()).All() {
+				newFiles, err := d.excise(ctx, exciseSpan.UserKeyBounds(), m, ve, layer.Level())
 				if err != nil {
 					return nil, err
 				}
 
 				if _, ok := ve.DeletedTables[deletedFileEntry{
-					Level:   level,
+					Level:   layer.Level(),
 					FileNum: m.FileNum,
 				}]; !ok {
-					// We did not excise this file.
-					continue
+					panic("did not excise file that overlaps with the excise span")
 				}
 				replacedFiles[m.FileNum] = newFiles
-				updateLevelMetricsOnExcise(m, level, newFiles)
+				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
 		}
 	}
