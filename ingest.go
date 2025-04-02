@@ -1871,12 +1871,6 @@ func (d *DB) ingestSplit(
 		if err != nil {
 			return err
 		}
-		if _, ok := ve.DeletedTables[deletedFileEntry{
-			Level:   s.level,
-			FileNum: splitFile.FileNum,
-		}]; !ok {
-			panic("did not split file that was expected to be split")
-		}
 		replacedFiles[splitFile.FileNum] = added
 		for i := range added {
 			addedBounds := added[i].Meta.UserKeyBounds()
@@ -2107,13 +2101,6 @@ func (d *DB) ingestApply(
 				newFiles, err := d.exciseTable(ctx, exciseSpan.UserKeyBounds(), m, ve, layer.Level())
 				if err != nil {
 					return nil, err
-				}
-
-				if _, ok := ve.DeletedTables[deletedFileEntry{
-					Level:   layer.Level(),
-					FileNum: m.FileNum,
-				}]; !ok {
-					panic("did not excise file that overlaps with the excise span")
 				}
 				replacedFiles[m.FileNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
