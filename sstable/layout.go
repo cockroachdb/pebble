@@ -847,17 +847,29 @@ func (w *layoutWriter) IsFinished() bool { return w.writable == nil }
 
 // Finish serializes the sstable, writing out the meta index block and sstable
 // footer and closing the file. It returns the total size of the resulting
-// ssatable.
+// sstable.
 func (w *layoutWriter) Finish() (size uint64, err error) {
 	// Sort the meta index handles by key and write the meta index block.
 	slices.SortFunc(w.handles, func(a, b metaIndexHandle) int {
 		return cmp.Compare(a.key, b.key)
 	})
-	bw := rowblk.Writer{RestartInterval: 1}
-	for _, h := range w.handles {
-		bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+	// TODO(before merge): should we be preallocating the size of this slice?
+	var b []byte
+	if w.tableFormat >= TableFormatPebblev6 {
+		var cw colblk.KeyValueBlockWriter
+		cw.Init()
+		for _, h := range w.handles {
+			cw.AddBlockHandle(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+		}
+		b = cw.Finish(cw.Rows())
+	} else {
+		bw := rowblk.Writer{RestartInterval: 1}
+		for _, h := range w.handles {
+			bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+		}
+		b = bw.Finish()
 	}
-	metaIndexHandle, err := w.writeBlock(bw.Finish(), block.NoCompression, &w.buf)
+	metaIndexHandle, err := w.writeBlock(b, block.NoCompression, &w.buf)
 	if err != nil {
 		return 0, err
 	}
