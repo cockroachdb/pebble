@@ -123,53 +123,13 @@ func (d *DB) exciseTable(
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 		}
-		if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestPointKey) {
-			// This file will probably contain point keys.
-			if err := loadItersIfNecessary(); err != nil {
-				return nil, err
-			}
-			smallestPointKey := m.SmallestPointKey
-			if kv := iters.Point().SeekLT(exciseSpan.Start, base.SeekLTFlagsNone); kv != nil {
-				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, kv.K.Clone())
-			}
-			// Store the min of (exciseSpan.Start, rdel.End) in lastRangeDel. This
-			// needs to be a copy if the key is owned by the range del iter.
-			var lastRangeDel []byte
-			if rdel, err := iters.RangeDeletion().SeekLT(exciseSpan.Start); err != nil {
-				return nil, err
-			} else if rdel != nil {
-				lastRangeDel = append(lastRangeDel[:0], rdel.End...)
-				if d.cmp(lastRangeDel, exciseSpan.Start) > 0 {
-					lastRangeDel = exciseSpan.Start
-				}
-			}
-			if lastRangeDel != nil {
-				leftFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
-			}
+		if err := loadItersIfNecessary(); err != nil {
+			return nil, err
 		}
-		if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.SmallestRangeKey) {
-			// This file will probably contain range keys.
-			if err := loadItersIfNecessary(); err != nil {
-				return nil, err
-			}
-			smallestRangeKey := m.SmallestRangeKey
-			// Store the min of (exciseSpan.Start, rkey.End) in lastRangeKey. This
-			// needs to be a copy if the key is owned by the range key iter.
-			var lastRangeKey []byte
-			var lastRangeKeyKind InternalKeyKind
-			if rkey, err := iters.RangeKey().SeekLT(exciseSpan.Start); err != nil {
-				return nil, err
-			} else if rkey != nil {
-				lastRangeKey = append(lastRangeKey[:0], rkey.End...)
-				if d.cmp(lastRangeKey, exciseSpan.Start) > 0 {
-					lastRangeKey = exciseSpan.Start
-				}
-				lastRangeKeyKind = rkey.Keys[0].Kind()
-			}
-			if lastRangeKey != nil {
-				leftFile.ExtendRangeKeyBounds(d.cmp, smallestRangeKey, base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey))
-			}
+		if err := determineLeftTableBounds(d.cmp, m, leftFile, exciseSpan.Start, iters); err != nil {
+			return nil, err
 		}
+
 		if leftFile.HasRangeKeys || leftFile.HasPointKeys {
 			var err error
 			leftFile.Size, err = d.fileCache.estimateSize(m, leftFile.Smallest.UserKey, leftFile.Largest.UserKey)
@@ -359,4 +319,53 @@ func exciseOverlapBounds(
 		}
 	}
 	return extended
+}
+
+// determineLeftTableBounds calculates the bounds for the table that remains to
+// the left of the excise span after excising originalFile.
+//
+// Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
+// the leftFile.
+func determineLeftTableBounds(
+	cmp Compare, originalTable, leftTable *tableMetadata, exciseSpanStart []byte, iters iterSet,
+) error {
+	if originalTable.HasPointKeys && cmp(originalTable.SmallestPointKey.UserKey, exciseSpanStart) < 0 {
+		// This file will probably contain point keys.
+		smallestPointKey := originalTable.SmallestPointKey
+		if kv := iters.Point().SeekLT(exciseSpanStart, base.SeekLTFlagsNone); kv != nil {
+			leftTable.ExtendPointKeyBounds(cmp, smallestPointKey, kv.K.Clone())
+		}
+		rdel, err := iters.RangeDeletion().SeekLT(exciseSpanStart)
+		if err != nil {
+			return err
+		}
+		if rdel != nil {
+			// Use the smaller of exciseSpanStart and rdel.End.
+			lastRangeDel := exciseSpanStart
+			if cmp(rdel.End, exciseSpanStart) < 0 {
+				// The key is owned by the range del iter, so we need to copy it.
+				lastRangeDel = slices.Clone(rdel.End)
+			}
+			leftTable.ExtendPointKeyBounds(cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
+		}
+	}
+
+	if originalTable.HasRangeKeys && cmp(originalTable.SmallestRangeKey.UserKey, exciseSpanStart) < 0 {
+		smallestRangeKey := originalTable.SmallestRangeKey
+		rkey, err := iters.RangeKey().SeekLT(exciseSpanStart)
+		if err != nil {
+			return err
+		}
+		if rkey != nil {
+			// Use the smaller of exciseSpanStart and rkey.End.
+			lastRangeKey := exciseSpanStart
+			if cmp(rkey.End, exciseSpanStart) < 0 {
+				// The key is owned by the range key iter, so we need to copy it.
+				lastRangeKey = slices.Clone(rkey.End)
+			}
+			lastRangeKeyKind := rkey.Keys[0].Kind()
+			leftTable.ExtendRangeKeyBounds(cmp, smallestRangeKey, base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey))
+		}
+	}
+	return nil
 }
