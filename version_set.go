@@ -180,11 +180,11 @@ func (vs *versionSet) create(
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
-	emptyVersion := manifest.NewInitialVersion(opts.Comparer, vs.l0Organizer)
+	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
 	vs.append(emptyVersion)
 
 	vs.setCompactionPicker(
-		newCompactionPickerByScore(emptyVersion, &vs.virtualBackings, vs.opts, nil))
+		newCompactionPickerByScore(emptyVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, nil))
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
@@ -341,12 +341,12 @@ func (vs *versionSet) load(
 		}
 	}
 
-	emptyVersion := manifest.NewInitialVersion(opts.Comparer, vs.l0Organizer)
+	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
 	newVersion, err := bve.Apply(emptyVersion, vs.l0Organizer, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
-	newVersion.L0Sublevels.InitCompactingFileInfo(nil /* in-progress compactions */)
+	vs.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
 	vs.append(newVersion)
 
 	for i := range vs.metrics.Levels {
@@ -369,7 +369,7 @@ func (vs *versionSet) load(
 	})
 
 	vs.setCompactionPicker(
-		newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, nil))
+		newCompactionPickerByScore(newVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, nil))
 	return nil
 }
 
@@ -642,7 +642,7 @@ func (vs *versionSet) logAndApply(
 	// L0Sublevels.
 	inProgress := inProgressCompactions()
 
-	newVersion.L0Sublevels.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
+	vs.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
 
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
@@ -722,7 +722,7 @@ func (vs *versionSet) logAndApply(
 	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localLiveSizeDelta)
 
 	vs.setCompactionPicker(
-		newCompactionPickerByScore(newVersion, &vs.virtualBackings, vs.opts, inProgress))
+		newCompactionPickerByScore(newVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}

@@ -1932,7 +1932,7 @@ func (d *DB) splitManualCompaction(
 	if level == 0 {
 		endLevel = baseLevel
 	}
-	keyRanges := curr.CalculateInuseKeyRanges(level, endLevel, start, end)
+	keyRanges := curr.CalculateInuseKeyRanges(d.mu.versions.l0Organizer, level, endLevel, start, end)
 	for _, keyRange := range keyRanges {
 		splitCompactions = append(splitCompactions, &manualCompaction{
 			level: level,
@@ -2511,7 +2511,7 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 			}
 			continue
 		}
-		l0ReadAmp := d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
+		l0ReadAmp := d.mu.versions.l0Organizer.ReadAmplification()
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			if !stalled {

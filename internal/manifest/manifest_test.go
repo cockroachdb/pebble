@@ -45,7 +45,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 		require.NoError(t, metamorphic.Execute(test))
 	}
 	t.Log("Constructed test database state")
-	v := replayManifest(t, testOpts.Opts, "")
+	v, l0Organizer := replayManifest(t, testOpts.Opts, "")
 	t.Log(v.DebugString())
 
 	const maxKeyLen = 12
@@ -64,7 +64,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 
 		level := rng.IntN(manifest.NumLevels)
 		cmp := testOpts.Opts.Comparer.Compare
-		keyRanges := v.CalculateInuseKeyRanges(level, manifest.NumLevels-1, smallest, largest)
+		keyRanges := v.CalculateInuseKeyRanges(l0Organizer, level, manifest.NumLevels-1, smallest, largest)
 		t.Logf("%d: [%s, %s] levels L%d-L6: ", i, smallest, largest, level)
 		for _, kr := range keyRanges {
 			t.Logf("  %s", kr.String())
@@ -98,7 +98,9 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	}
 }
 
-func replayManifest(t *testing.T, opts *pebble.Options, dirname string) *manifest.Version {
+func replayManifest(
+	t *testing.T, opts *pebble.Options, dirname string,
+) (*manifest.Version, *manifest.L0Organizer) {
 	desc, err := pebble.Peek(dirname, opts.FS)
 	require.NoError(t, err)
 	if !desc.Exists {
@@ -125,8 +127,8 @@ func replayManifest(t *testing.T, opts *pebble.Options, dirname string) *manifes
 		require.NoError(t, bve.Accumulate(&ve))
 	}
 	l0Organizer := manifest.NewL0Organizer(cmp, opts.FlushSplitBytes)
-	emptyVersion := manifest.NewInitialVersion(cmp, l0Organizer)
+	emptyVersion := manifest.NewInitialVersion(cmp)
 	v, err := bve.Apply(emptyVersion, l0Organizer, opts.Experimental.ReadCompactionRate)
 	require.NoError(t, err)
-	return v
+	return v, l0Organizer
 }

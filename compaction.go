@@ -393,7 +393,7 @@ func newCompaction(
 		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.userKeyBounds())
 	}
 	c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
-		c.cmp, c.version, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+		c.cmp, c.version, pc.l0Organizer, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
 	)
 	c.kind = pc.kind
 
@@ -530,7 +530,12 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 }
 
 func newFlush(
-	opts *Options, cur *version, baseLevel int, flushing flushableList, beganAt time.Time,
+	opts *Options,
+	cur *version,
+	l0Organizer *manifest.L0Organizer,
+	baseLevel int,
+	flushing flushableList,
+	beganAt time.Time,
 ) (*compaction, error) {
 	c := &compaction{
 		kind:      compactionKindFlush,
@@ -571,7 +576,7 @@ func newFlush(
 		}
 	}
 
-	c.l0Limits = cur.L0Sublevels.FlushSplitKeys()
+	c.l0Limits = l0Organizer.FlushSplitKeys()
 
 	smallestSet, largestSet := false, false
 	updatePointBounds := func(iter internalIterator) {
@@ -1039,7 +1044,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 		if isIntraL0 {
 			l0Inputs = append(l0Inputs, c.outputLevel.files)
 		}
-		if err := c.version.L0Sublevels.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
+		if err := d.mu.versions.l0Organizer.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
 			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
 		}
 	}
@@ -1096,7 +1101,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 		// may be able to pick a better compaction (though when this compaction
 		// succeeded we've also cleared the cache in logAndApply).
 		defer d.mu.versions.logUnlockAndInvalidatePickedCompactionCache()
-		d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
+		d.mu.versions.l0Organizer.InitCompactingFileInfo(l0InProgress)
 	}()
 }
 
@@ -1460,7 +1465,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		}
 	}
 
-	c, err := newFlush(d.opts, d.mu.versions.currentVersion(),
+	c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
 		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow())
 	if err != nil {
 		return 0, err
@@ -1923,7 +1928,7 @@ func (d *DB) tryScheduleDownloadCompactions(env compactionEnv, maxConcurrentDown
 			break
 		}
 		download := d.mu.compact.downloads[i]
-		switch d.tryLaunchDownloadCompaction(download, vers, env, maxConcurrentDownloads) {
+		switch d.tryLaunchDownloadCompaction(download, vers, d.mu.versions.l0Organizer, env, maxConcurrentDownloads) {
 		case launchedCompaction:
 			started = true
 			continue
@@ -1942,7 +1947,7 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc *pickedCompaction) {
 	v := d.mu.versions.currentVersion()
 	for len(d.mu.compact.manual) > 0 {
 		manual := d.mu.compact.manual[0]
-		pc, retryLater := newPickedManualCompaction(v, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
+		pc, retryLater := newPickedManualCompaction(v, d.mu.versions.l0Organizer, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
 		if pc != nil {
 			return pc
 		}
