@@ -476,7 +476,7 @@ type DataBlockEncoder struct {
 	// identical point key or range deletion with a higher sequence number).
 	isObsolete BitmapBuilder
 
-	enc              blockEncoder
+	enc              BlockEncoder
 	rows             int
 	maximumKeyLength int
 	valuePrefixTmp   [1]byte
@@ -511,7 +511,7 @@ func (w *DataBlockEncoder) Init(schema *KeySchema) {
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
-	w.enc.reset()
+	w.enc.Reset()
 }
 
 // Reset resets the data block writer to its initial state, retaining buffers.
@@ -525,7 +525,7 @@ func (w *DataBlockEncoder) Reset() {
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
-	w.enc.reset()
+	w.enc.Reset()
 }
 
 // String outputs a human-readable summary of internal DataBlockEncoder state.
@@ -645,19 +645,19 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 	// to represent when the prefix changes.
 	w.prefixSame.Invert(rows)
 
-	w.enc.init(size, h, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	w.enc.Init(size, h, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 
 	// Write the key schema custom header.
-	w.KeyWriter.FinishHeader(w.enc.data()[:w.Schema.HeaderSize])
+	w.KeyWriter.FinishHeader(w.enc.Data()[:w.Schema.HeaderSize])
 	// Write the max key length in the data block custom header.
-	binary.LittleEndian.PutUint32(w.enc.data()[w.Schema.HeaderSize:w.Schema.HeaderSize+dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
-	w.enc.encode(rows, w.KeyWriter)
-	w.enc.encode(rows, &w.trailers)
-	w.enc.encode(rows, &w.prefixSame)
-	w.enc.encode(rows, &w.values)
-	w.enc.encode(rows, &w.isValueExternal)
-	w.enc.encode(rows, &w.isObsolete)
-	finished = w.enc.finish()
+	binary.LittleEndian.PutUint32(w.enc.Data()[w.Schema.HeaderSize:w.Schema.HeaderSize+dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
+	w.enc.Encode(rows, w.KeyWriter)
+	w.enc.Encode(rows, &w.trailers)
+	w.enc.Encode(rows, &w.prefixSame)
+	w.enc.Encode(rows, &w.values)
+	w.enc.Encode(rows, &w.isValueExternal)
+	w.enc.Encode(rows, &w.isObsolete)
+	finished = w.enc.Finish()
 
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
 	w.lastUserKeyTmp = w.KeyWriter.MaterializeKey(w.lastUserKeyTmp[:0], rows-1)

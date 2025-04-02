@@ -43,7 +43,7 @@ type IndexBlockWriter struct {
 	lengths         UintBuilder
 	blockProperties RawBytesBuilder
 	rows            int
-	enc             blockEncoder
+	enc             BlockEncoder
 }
 
 const (
@@ -70,7 +70,7 @@ func (w *IndexBlockWriter) Reset() {
 	w.lengths.Reset()
 	w.blockProperties.Reset()
 	w.rows = 0
-	w.enc.reset()
+	w.enc.Reset()
 }
 
 // Rows returns the number of entries in the index block so far.
@@ -121,16 +121,16 @@ func (w *IndexBlockWriter) Finish(rows int) []byte {
 		panic(errors.AssertionFailedf("index block has %d rows; asked to finish %d", w.rows, rows))
 	}
 
-	w.enc.init(w.size(rows), Header{
+	w.enc.Init(w.size(rows), Header{
 		Version: Version1,
 		Columns: indexBlockColumnCount,
 		Rows:    uint32(rows),
 	}, indexBlockCustomHeaderSize)
-	w.enc.encode(rows, &w.separators)
-	w.enc.encode(rows, &w.offsets)
-	w.enc.encode(rows, &w.lengths)
-	w.enc.encode(rows, &w.blockProperties)
-	return w.enc.finish()
+	w.enc.Encode(rows, &w.separators)
+	w.enc.Encode(rows, &w.offsets)
+	w.enc.Encode(rows, &w.lengths)
+	w.enc.Encode(rows, &w.blockProperties)
+	return w.enc.Finish()
 }
 
 // An IndexBlockDecoder reads columnar index blocks.

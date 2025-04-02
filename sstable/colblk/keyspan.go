@@ -54,7 +54,7 @@ type KeyspanBlockWriter struct {
 	suffixes RawBytesBuilder
 	values   RawBytesBuilder
 
-	enc               blockEncoder
+	enc               BlockEncoder
 	keyCount          int
 	unsafeLastUserKey []byte
 }
@@ -79,7 +79,7 @@ func (w *KeyspanBlockWriter) Reset() {
 	w.trailers.Reset()
 	w.suffixes.Reset()
 	w.values.Reset()
-	w.enc.reset()
+	w.enc.Reset()
 	w.keyCount = 0
 	w.unsafeLastUserKey = nil
 }
@@ -165,7 +165,7 @@ func (w *KeyspanBlockWriter) Size() int {
 
 // Finish finalizes the pending block and returns the encoded block.
 func (w *KeyspanBlockWriter) Finish() []byte {
-	w.enc.init(w.Size(), Header{
+	w.enc.Init(w.Size(), Header{
 		Version: Version1,
 		Columns: keyspanColumnCount,
 		Rows:    uint32(w.keyCount),
@@ -175,16 +175,16 @@ func (w *KeyspanBlockWriter) Finish() []byte {
 	// user keys encoded within the user key and start indices columns. All
 	// other columns have the number of rows indicated by the shared columnar
 	// block header.
-	binary.LittleEndian.PutUint32(w.enc.data()[:keyspanHeaderSize], uint32(w.boundaryUserKeys.rows))
+	binary.LittleEndian.PutUint32(w.enc.Data()[:keyspanHeaderSize], uint32(w.boundaryUserKeys.rows))
 
 	// Columns with userKeyCount elements.
-	w.enc.encode(w.boundaryUserKeys.rows, &w.boundaryUserKeys)
-	w.enc.encode(w.boundaryUserKeys.rows, &w.boundaryKeyIndexes)
+	w.enc.Encode(w.boundaryUserKeys.rows, &w.boundaryUserKeys)
+	w.enc.Encode(w.boundaryUserKeys.rows, &w.boundaryKeyIndexes)
 	// Columns with keyCount elements.
-	w.enc.encode(w.keyCount, &w.trailers)
-	w.enc.encode(w.keyCount, &w.suffixes)
-	w.enc.encode(w.keyCount, &w.values)
-	return w.enc.finish()
+	w.enc.Encode(w.keyCount, &w.trailers)
+	w.enc.Encode(w.keyCount, &w.suffixes)
+	w.enc.Encode(w.keyCount, &w.values)
+	return w.enc.Finish()
 }
 
 // String returns a string representation of the pending block's state.
