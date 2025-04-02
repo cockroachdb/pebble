@@ -410,16 +410,15 @@ func mergeIntervals(
 }
 
 // addL0Files incrementally builds a new l0Sublevels for when the only change
-// since the receiver l0Sublevels was an addition of the specified files, with
+// since the receiver l0Sublevels was an addition of the specified tables, with
 // no L0 deletions. The common case of this is an ingestion or a flush. These
 // files can "sit on top" of existing sublevels, creating at most one new
 // sublevel for a flush (and possibly multiple for an ingestion), and at most
 // 2*len(files) additions to s.orderedIntervals. No files must have been deleted
 // from L0, and the added files must all be newer in sequence numbers than
-// existing files in l0Sublevels. The files parameter must be sorted in seqnum
-// order. The levelMetadata parameter corresponds to the new L0 post addition of
-// files. This method is meant to be significantly more performant than
-// newL0Sublevels.
+// existing files in l0Sublevels. The levelMetadata parameter corresponds to the
+// new L0 post addition of files. This method is meant to be significantly more
+// performant than newL0Sublevels.
 //
 // Note that this function can only be called once on a given receiver; it
 // appends to some slices in s which is only safe when done once. This is okay,
@@ -427,20 +426,22 @@ func mergeIntervals(
 // only going to necessitate one call of this method on a given receiver. The
 // returned value, if non-nil, can then have [*l0Sublevels.addL0Files] called on
 // it again, and so on. If [errInvalidL0SublevelsOpt] is returned as an error,
-// it likely means the optimization could not be applied (i.e. files added were
-// older than files already in the sublevels, which is possible around
-// ingestions and in tests). Eg. it can happen when an ingested file was
-// ingested without queueing a flush since it did not actually overlap with any
-// keys in the memtable. Later on the memtable was flushed, and the memtable had
-// keys spanning around the ingested file, producing a flushed file that
-// overlapped with the ingested file in file bounds but not in keys. It's
-// possible for that flushed file to have a lower LargestSeqNum than the
-// ingested file if all the additions after the ingestion were to another
-// flushed file that was split into a separate sstable during flush. Any other
-// non-nil error means [l0Sublevels] generation failed in the same way as
-// [newL0Sublevels] would likely fail.
+// it means the optimization could not be applied (i.e. files added were older
+// than files already in the sublevels, which is possible around ingestions and
+// in tests). Eg. it can happen when an ingested file was ingested without
+// queueing a flush since it did not actually overlap with any keys in the
+// memtable. Later on the memtable was flushed, and the memtable had keys
+// spanning around the ingested file, producing a flushed file that overlapped
+// with the ingested file in file bounds but not in keys. It's possible for that
+// flushed file to have a lower LargestSeqNum than the ingested file if all the
+// additions after the ingestion were to another flushed file that was split
+// into a separate sstable during flush. Any other non-nil error means
+// [l0Sublevels] generation failed in the same way as [newL0Sublevels] would
+// likely fail.
 func (s *l0Sublevels) addL0Files(
-	files []*TableMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
+	addedTables map[base.FileNum]*TableMetadata,
+	flushSplitMaxBytes int64,
+	levelMetadata *LevelMetadata,
 ) (*l0Sublevels, error) {
 	if s.addL0FilesCalled {
 		if invariants.Enabled {
@@ -448,31 +449,28 @@ func (s *l0Sublevels) addL0Files(
 		}
 		return nil, errInvalidL0SublevelsOpt
 	}
-	if s.levelMetadata.Len()+len(files) != levelMetadata.Len() {
+	if s.levelMetadata.Len()+len(addedTables) != levelMetadata.Len() {
 		if invariants.Enabled {
 			panic("levelMetadata mismatch")
 		}
 		return nil, errInvalidL0SublevelsOpt
 	}
+
 	// addL0Files only works when the files we are adding match exactly the last
-	// files in the new levelMetadata (and the previous s.levelMetadata matches a
-	// prefix of the new levelMetadata).
-	{
-		iterOld, iterNew := s.levelMetadata.Iter(), levelMetadata.Iter()
-		tOld, tNew := iterOld.First(), iterNew.First()
-		for i := 0; i < s.levelMetadata.Len(); i++ {
-			if tOld != tNew {
-				return nil, errInvalidL0SublevelsOpt
-			}
-			tOld, tNew = iterOld.Next(), iterNew.Next()
+	// files in the new levelMetadata (this is the case usually, but not always).
+	files := make([]*TableMetadata, len(addedTables))
+	iter := levelMetadata.Iter()
+	t := iter.Last()
+	for i := len(addedTables) - 1; i >= 0; i-- {
+		if addedTables[t.FileNum] == nil {
+			// t is an existing table that sorts after some of the new tables
+			// (specifically the ones we haven't yet seen).
+			return nil, errInvalidL0SublevelsOpt
 		}
-		for i := range files {
-			if files[i] != tNew {
-				return nil, errInvalidL0SublevelsOpt
-			}
-			tNew = iterNew.Next()
-		}
+		files[i] = t
+		t = iter.Prev()
 	}
+	// Note: files now contains addedTables in increasing seqnum order.
 	s.addL0FilesCalled = true
 
 	// Start with a shallow copy of s.
@@ -2077,15 +2075,16 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 // L0Organizer keeps track of L0 state, including the subdivision into
 // sublevels.
 //
-// It is designed to be used as a singleton (per store) which gets updated as
+// It is designed to be used as a singleton (per DB) which gets updated as
 // the version changes. It is used to initialize L0-related Version fields.
 //
 // The level 0 sstables are organized in a series of sublevels. Similar to the
-// seqnum invariant in normal levels, there is no internal key in a higher level
-// table that has both the same user key and a higher sequence number. Within a
-// sublevel, tables are sorted by their internal key range and any two tables at
-// the same sublevel do not overlap. Unlike the normal levels, sublevel n
-// contains older tables (lower sequence numbers) than sublevel n+1.
+// seqnum invariant in normal levels, there is no internal key in a lower
+// sublevel table that has both the same user key and a higher sequence number.
+// Within a sublevel, tables are sorted by their internal key range and any two
+// tables at the same sublevel do not overlap. Unlike the normal levels,
+// sublevel n contains older tables (lower sequence numbers) than sublevel n+1
+// (this is because the number of sublevels is variable).
 type L0Organizer struct {
 	cmp             base.Compare
 	formatKey       base.FormatKey
@@ -2125,7 +2124,9 @@ func NewL0Organizer(comparer *base.Comparer, flushSplitBytes int64) *L0Organizer
 	return o
 }
 
-// SublevelFiles returns the sublevels as LevelSlices.
+// SublevelFiles returns the sublevels as LevelSlices. The returned value (both
+// the slice and each LevelSlice) is immutable. The L0Organizer creates new
+// slices every time L0 changes.
 func (o *L0Organizer) SublevelFiles() []LevelSlice {
 	return o.l0Sublevels.Levels
 }
@@ -2146,45 +2147,31 @@ func (o *L0Organizer) Update(
 	}
 	// If we only added tables, try to use addL0Files.
 	if len(deletedL0Tables) == 0 {
-		// Construct the file slice needed by addL0Files.
-		// TODO(radu): change addL0Files to do this internally.
-		files := make([]*TableMetadata, 0, len(addedL0Tables))
-		iter := newLevelMeta.Iter()
-		for t := iter.Last(); len(files) < len(addedL0Tables); t = iter.Prev() {
-			if t == nil || addedL0Tables[t.FileNum] == nil {
-				break
-			}
-			files = append(files, t)
-		}
-		if len(files) == len(addedL0Tables) {
-			slices.Reverse(files)
-			newSublevels, err := o.l0Sublevels.addL0Files(files, o.flushSplitBytes, newLevelMeta)
-
-			if err == nil {
-				// In invariants mode, sometimes rebuild from scratch to verify that
-				// AddL0Files did the right thing. Note that NewL0Sublevels updates
-				// fields in TableMetadata like L0Index, so we don't want to do this
-				// every time.
-				if invariants.Enabled && invariants.Sometimes(10) {
-					expectedSublevels, err := newL0Sublevels(newLevelMeta, o.cmp, o.formatKey, o.flushSplitBytes)
-					if err != nil {
-						panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
-					}
-					s1 := describeSublevels(o.formatKey, false /* verbose */, expectedSublevels.Levels)
-					s2 := describeSublevels(o.formatKey, false /* verbose */, newSublevels.Levels)
-					if s1 != s2 {
-						// Add verbosity.
-						s1 := describeSublevels(o.formatKey, true /* verbose */, expectedSublevels.Levels)
-						s2 := describeSublevels(o.formatKey, true /* verbose */, newSublevels.Levels)
-						panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
-					}
+		newSublevels, err := o.l0Sublevels.addL0Files(addedL0Tables, o.flushSplitBytes, newLevelMeta)
+		if err == nil {
+			// In invariants mode, sometimes rebuild from scratch to verify that
+			// AddL0Files did the right thing. Note that NewL0Sublevels updates
+			// fields in TableMetadata like L0Index, so we don't want to do this
+			// every time.
+			if invariants.Enabled && invariants.Sometimes(10) {
+				expectedSublevels, err := newL0Sublevels(newLevelMeta, o.cmp, o.formatKey, o.flushSplitBytes)
+				if err != nil {
+					panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
 				}
-				o.l0Sublevels = newSublevels
-				return
+				s1 := describeSublevels(o.formatKey, false /* verbose */, expectedSublevels.Levels)
+				s2 := describeSublevels(o.formatKey, false /* verbose */, newSublevels.Levels)
+				if s1 != s2 {
+					// Add verbosity.
+					s1 := describeSublevels(o.formatKey, true /* verbose */, expectedSublevels.Levels)
+					s2 := describeSublevels(o.formatKey, true /* verbose */, newSublevels.Levels)
+					panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
+				}
 			}
-			if !errors.Is(err, errInvalidL0SublevelsOpt) {
-				panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
-			}
+			o.l0Sublevels = newSublevels
+			return
+		}
+		if !errors.Is(err, errInvalidL0SublevelsOpt) {
+			panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
 		}
 	}
 	var err error
@@ -2194,8 +2181,8 @@ func (o *L0Organizer) Update(
 	}
 }
 
-// Reset the L0Organizer to reflect a given L0 level. Used for testing.
-func (o *L0Organizer) Reset(levelMetadata *LevelMetadata) {
+// ResetForTesting reinitializes the L0Organizer to reflect a given L0 level.
+func (o *L0Organizer) ResetForTesting(levelMetadata *LevelMetadata) {
 	o.levelMetadata = *levelMetadata
 	var err error
 	o.l0Sublevels, err = newL0Sublevels(levelMetadata, o.cmp, o.formatKey, o.flushSplitBytes)

@@ -461,7 +461,7 @@ func TestVersionEditApply(t *testing.T) {
 				// Reinitialize the L0 organizer in case we want to use the same version
 				// again (l0Organizer now reflects newv).
 				l0Organizer = NewL0Organizer(base.DefaultComparer, flushSplitBytes)
-				l0Organizer.Reset(&v.Levels[0])
+				l0Organizer.ResetForTesting(&v.Levels[0])
 				l0Organizers[name] = l0Organizer
 
 				return newv.DebugString()
