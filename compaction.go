@@ -1345,13 +1345,6 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 				if err != nil {
 					return nil, err
 				}
-
-				if _, ok := ve.DeletedTables[deletedFileEntry{
-					Level:   layer.Level(),
-					FileNum: m.FileNum,
-				}]; !ok {
-					panic("did not excise file that overlaps with the excise span")
-				}
 				replacedFiles[m.FileNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
@@ -2739,12 +2732,6 @@ func (d *DB) applyHintOnFile(
 	newFiles, err = d.exciseTable(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, ve, level)
 	if err != nil {
 		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
-	}
-	if _, ok := ve.DeletedTables[deletedFileEntry{
-		Level:   level,
-		FileNum: f.FileNum,
-	}]; !ok {
-		panic("pebble: delete-only compaction hint overlapping a file did not excise that file")
 	}
 	return newFiles, nil
 }

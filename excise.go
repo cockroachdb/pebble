@@ -49,6 +49,8 @@ func (d *DB) Excise(ctx context.Context, span KeyRange) error {
 // files if any. If the entirety of m is deleted by exciseSpan, no new sstables
 // are added and m is deleted. Note that ve is updated in-place.
 //
+// The file bounds must overlap with the excise span.
+//
 // This method is agnostic to whether d.mu is held or not. Some cases call it with
 // the db mutex held (eg. ingest-time excises), while in the case of compactions
 // the mutex is not held.
@@ -57,9 +59,9 @@ func (d *DB) exciseTable(
 ) ([]manifest.NewTableEntry, error) {
 	numCreatedFiles := 0
 	// Check if there's actually an overlap between m and exciseSpan.
-	mBounds := base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+	mBounds := m.UserKeyBounds()
 	if !exciseSpan.Overlaps(d.cmp, &mBounds) {
-		return nil, nil
+		return nil, base.AssertionFailedf("excise span does not overlap table")
 	}
 	ve.DeletedTables[deletedFileEntry{
 		Level:   level,
