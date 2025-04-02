@@ -72,21 +72,16 @@ func (d *DB) exciseTable(
 		return nil, nil
 	}
 
-	var iters iterSet
-	var itersLoaded bool
-	defer iters.CloseAll()
-	loadItersIfNecessary := func() error {
-		if itersLoaded {
-			return nil
-		}
-		var err error
-		iters, err = d.newIters(ctx, m, &IterOptions{
-			Category: categoryIngest,
-			layer:    manifest.Level(level),
-		}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
-		itersLoaded = true
-		return err
+	// The file partially overlaps the excise span; we will need to open it to
+	// determine tight bounds for the left-over table(s).
+	iters, err := d.newIters(ctx, m, &IterOptions{
+		Category: categoryIngest,
+		layer:    manifest.Level(level),
+	}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
+	if err != nil {
+		return nil, err
 	}
+	defer iters.CloseAll()
 
 	needsBacking := false
 	// Create a file to the left of the excise span, if necessary.
@@ -122,9 +117,6 @@ func (d *DB) exciseTable(
 			LargestSeqNum:            m.LargestSeqNum,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
-		}
-		if err := loadItersIfNecessary(); err != nil {
-			return nil, err
 		}
 		if err := determineLeftTableBounds(d.cmp, m, leftFile, exciseSpan.Start, iters); err != nil {
 			return nil, err
@@ -179,70 +171,8 @@ func (d *DB) exciseTable(
 		LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 	}
-	if m.HasPointKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestPointKey) {
-		// This file will probably contain point keys
-		if err := loadItersIfNecessary(); err != nil {
-			return nil, err
-		}
-		largestPointKey := m.LargestPointKey
-		if kv := iters.Point().SeekGE(exciseSpan.End.Key, base.SeekGEFlagsNone); kv != nil {
-			if exciseSpan.End.Kind == base.Inclusive && d.equal(exciseSpan.End.Key, kv.K.UserKey) {
-				return nil, base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
-			}
-			rightFile.ExtendPointKeyBounds(d.cmp, kv.K.Clone(), largestPointKey)
-		}
-		// Store the max of (exciseSpan.End, rdel.Start) in firstRangeDel. This
-		// needs to be a copy if the key is owned by the range del iter.
-		var firstRangeDel []byte
-		rdel, err := iters.RangeDeletion().SeekGE(exciseSpan.End.Key)
-		if err != nil {
-			return nil, err
-		} else if rdel != nil {
-			firstRangeDel = append(firstRangeDel[:0], rdel.Start...)
-			if d.cmp(firstRangeDel, exciseSpan.End.Key) < 0 {
-				// NB: This can only be done if the end bound is exclusive.
-				if exciseSpan.End.Kind != base.Exclusive {
-					return nil, base.AssertionFailedf("cannot truncate rangedel during excise with an inclusive upper bound")
-				}
-				firstRangeDel = exciseSpan.End.Key
-			}
-		}
-		if firstRangeDel != nil {
-			smallestPointKey := rdel.SmallestKey()
-			smallestPointKey.UserKey = firstRangeDel
-			rightFile.ExtendPointKeyBounds(d.cmp, smallestPointKey, largestPointKey)
-		}
-	}
-	if m.HasRangeKeys && !exciseSpan.ContainsInternalKey(d.cmp, m.LargestRangeKey) {
-		// This file will probably contain range keys.
-		if err := loadItersIfNecessary(); err != nil {
-			return nil, err
-		}
-		largestRangeKey := m.LargestRangeKey
-		// Store the max of (exciseSpan.End, rkey.Start) in firstRangeKey. This
-		// needs to be a copy if the key is owned by the range key iter.
-		var firstRangeKey []byte
-		rkey, err := iters.RangeKey().SeekGE(exciseSpan.End.Key)
-		if err != nil {
-			return nil, err
-		} else if rkey != nil {
-			firstRangeKey = append(firstRangeKey[:0], rkey.Start...)
-			if d.cmp(firstRangeKey, exciseSpan.End.Key) < 0 {
-				if exciseSpan.End.Kind != base.Exclusive {
-					return nil, base.AssertionFailedf("cannot truncate range key during excise with an inclusive upper bound")
-				}
-				firstRangeKey = exciseSpan.End.Key
-			}
-		}
-		if firstRangeKey != nil {
-			smallestRangeKey := rkey.SmallestKey()
-			smallestRangeKey.UserKey = firstRangeKey
-			// We call ExtendRangeKeyBounds so any internal boundType fields are
-			// set correctly. Note that this is mildly wasteful as we'll be comparing
-			// rightFile.{Smallest,Largest}RangeKey with themselves, which can be
-			// avoided if we exported ExtendOverallKeyBounds or so.
-			rightFile.ExtendRangeKeyBounds(d.cmp, smallestRangeKey, largestRangeKey)
-		}
+	if err := determineRightTableBounds(d.cmp, m, rightFile, exciseSpan.End, iters); err != nil {
+		return nil, err
 	}
 	if rightFile.HasRangeKeys || rightFile.HasPointKeys {
 		var err error
@@ -331,9 +261,8 @@ func determineLeftTableBounds(
 ) error {
 	if originalTable.HasPointKeys && cmp(originalTable.SmallestPointKey.UserKey, exciseSpanStart) < 0 {
 		// This file will probably contain point keys.
-		smallestPointKey := originalTable.SmallestPointKey
 		if kv := iters.Point().SeekLT(exciseSpanStart, base.SeekLTFlagsNone); kv != nil {
-			leftTable.ExtendPointKeyBounds(cmp, smallestPointKey, kv.K.Clone())
+			leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey, kv.K.Clone())
 		}
 		rdel, err := iters.RangeDeletion().SeekLT(exciseSpanStart)
 		if err != nil {
@@ -346,12 +275,12 @@ func determineLeftTableBounds(
 				// The key is owned by the range del iter, so we need to copy it.
 				lastRangeDel = slices.Clone(rdel.End)
 			}
-			leftTable.ExtendPointKeyBounds(cmp, smallestPointKey, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
+			leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey,
+				base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
 		}
 	}
 
 	if originalTable.HasRangeKeys && cmp(originalTable.SmallestRangeKey.UserKey, exciseSpanStart) < 0 {
-		smallestRangeKey := originalTable.SmallestRangeKey
 		rkey, err := iters.RangeKey().SeekLT(exciseSpanStart)
 		if err != nil {
 			return err
@@ -364,7 +293,72 @@ func determineLeftTableBounds(
 				lastRangeKey = slices.Clone(rkey.End)
 			}
 			lastRangeKeyKind := rkey.Keys[0].Kind()
-			leftTable.ExtendRangeKeyBounds(cmp, smallestRangeKey, base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey))
+			leftTable.ExtendRangeKeyBounds(cmp, originalTable.SmallestRangeKey,
+				base.MakeExclusiveSentinelKey(lastRangeKeyKind, lastRangeKey))
+		}
+	}
+	return nil
+}
+
+// determineRightTableBounds calculates the bounds for the table that remains to
+// the right of the excise span after excising originalFile.
+//
+// Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
+// the right.
+//
+// Note that the case where exciseSpanEnd is Inclusive is very restrictive; we
+// are only allowed to excise if the original table has no keys or ranges
+// overlapping exciseSpanEnd.Key.
+func determineRightTableBounds(
+	cmp Compare,
+	originalTable, rightTable *tableMetadata,
+	exciseSpanEnd base.UserKeyBoundary,
+	iters iterSet,
+) error {
+	if originalTable.HasPointKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.LargestPointKey) {
+		if kv := iters.Point().SeekGE(exciseSpanEnd.Key, base.SeekGEFlagsNone); kv != nil {
+			if exciseSpanEnd.Kind == base.Inclusive && cmp(exciseSpanEnd.Key, kv.K.UserKey) == 0 {
+				return base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
+			}
+			rightTable.ExtendPointKeyBounds(cmp, kv.K.Clone(), originalTable.LargestPointKey)
+		}
+		rdel, err := iters.RangeDeletion().SeekGE(exciseSpanEnd.Key)
+		if err != nil {
+			return err
+		}
+		if rdel != nil {
+			// Use the larger of exciseSpanEnd.Key and rdel.Start.
+			firstRangeDel := exciseSpanEnd.Key
+			if cmp(rdel.Start, exciseSpanEnd.Key) > 0 {
+				// The key is owned by the range del iter, so we need to copy it.
+				firstRangeDel = slices.Clone(rdel.Start)
+			} else if exciseSpanEnd.Kind != base.Exclusive {
+				return base.AssertionFailedf("cannot truncate rangedel during excise with an inclusive upper bound")
+			}
+			rightTable.ExtendPointKeyBounds(cmp, base.InternalKey{
+				UserKey: firstRangeDel,
+				Trailer: rdel.SmallestKey().Trailer,
+			}, originalTable.LargestPointKey)
+		}
+	}
+	if originalTable.HasRangeKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.LargestRangeKey) {
+		rkey, err := iters.RangeKey().SeekGE(exciseSpanEnd.Key)
+		if err != nil {
+			return err
+		}
+		if rkey != nil {
+			// Use the larger of exciseSpanEnd.Key and rkey.Start.
+			firstRangeKey := exciseSpanEnd.Key
+			if cmp(rkey.Start, exciseSpanEnd.Key) > 0 {
+				// The key is owned by the range key iter, so we need to copy it.
+				firstRangeKey = slices.Clone(rkey.Start)
+			} else if exciseSpanEnd.Kind != base.Exclusive {
+				return base.AssertionFailedf("cannot truncate range key during excise with an inclusive upper bound")
+			}
+			rightTable.ExtendRangeKeyBounds(cmp, base.InternalKey{
+				UserKey: firstRangeKey,
+				Trailer: rkey.SmallestKey().Trailer,
+			}, originalTable.LargestRangeKey)
 		}
 	}
 	return nil
