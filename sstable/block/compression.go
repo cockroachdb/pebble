@@ -255,6 +255,11 @@ func (b *Buffer) Init(compression Compression, checksumType ChecksumType) {
 	b.checksummer.Type = checksumType
 }
 
+// Checksummer returns the Checksummer for the Buffer.
+func (b *Buffer) Checksummer() *Checksummer {
+	return &b.checksummer
+}
+
 // Get returns the byte slice currently backing the Buffer.
 func (b *Buffer) Get() []byte {
 	return b.h.b

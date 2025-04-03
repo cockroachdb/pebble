@@ -7,6 +7,7 @@ package block
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -39,6 +40,11 @@ func (h Handle) EncodeVarints(dst []byte) int {
 	n := binary.PutUvarint(dst, h.Offset)
 	m := binary.PutUvarint(dst[n:], h.Length)
 	return n + m
+}
+
+// String implements fmt.Stringer.
+func (h Handle) String() string {
+	return fmt.Sprintf("(%d, %d)", h.Offset, h.Length)
 }
 
 // HandleWithProperties is used for data blocks and first/lower level index
