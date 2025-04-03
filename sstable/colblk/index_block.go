@@ -105,7 +105,7 @@ func (w *IndexBlockWriter) Size() int {
 }
 
 func (w *IndexBlockWriter) size(rows int) int {
-	off := blockHeaderSize(indexBlockColumnCount, indexBlockCustomHeaderSize)
+	off := HeaderSize(indexBlockColumnCount, indexBlockCustomHeaderSize)
 	off = w.separators.Size(rows, off)
 	off = w.offsets.Size(rows, off)
 	off = w.lengths.Size(rows, off)
@@ -173,9 +173,9 @@ func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.SetAnchorOffset()
 
 	n := tp.Child("index block header")
-	r.bd.headerToBinFormatter(f, n)
+	r.bd.HeaderToBinFormatter(f, n)
 	for i := 0; i < indexBlockColumnCount; i++ {
-		r.bd.columnToBinFormatter(f, n, i, int(r.bd.header.Rows))
+		r.bd.ColumnToBinFormatter(f, n, i, int(r.bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)

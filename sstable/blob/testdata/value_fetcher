@@ -55,9 +55,8 @@ nectarine
 Stats:
   BlockCount: 3
   ValueCount: 26
-  BlockLenLongest: 64
   UncompressedValueBytes: 182
-  FileLen: 244
+  FileLen: 250
 
 define filenum=000002 target-block-size=64 block-size-threshold=90
 kale
@@ -90,9 +89,8 @@ microgreens
 Stats:
   BlockCount: 2
   ValueCount: 13
-  BlockLenLongest: 60
   UncompressedValueBytes: 105
-  FileLen: 159
+  FileLen: 167
 
 define filenum=000003 target-block-size=64 block-size-threshold=90
 beet
@@ -115,9 +113,8 @@ potato
 Stats:
   BlockCount: 1
   ValueCount: 8
-  BlockLenLongest: 55
   UncompressedValueBytes: 55
-  FileLen: 101
+  FileLen: 111
 
 define filenum=000004 target-block-size=64 block-size-threshold=90
 onion
@@ -138,9 +135,8 @@ chives
 Stats:
   BlockCount: 1
   ValueCount: 7
-  BlockLenLongest: 42
   UncompressedValueBytes: 42
-  FileLen: 88
+  FileLen: 98
 
 define filenum=000005 target-block-size=64 block-size-threshold=90
 shitake
@@ -165,9 +161,8 @@ maitake
 Stats:
   BlockCount: 2
   ValueCount: 9
-  BlockLenLongest: 58
   UncompressedValueBytes: 65
-  FileLen: 119
+  FileLen: 127
 
 define filenum=000006 target-block-size=64 block-size-threshold=90
 squash
@@ -180,9 +175,8 @@ cucumber
 Stats:
   BlockCount: 1
   ValueCount: 3
-  BlockLenLongest: 21
   UncompressedValueBytes: 21
-  FileLen: 67
+  FileLen: 77
 
 new-fetcher name=iter1
 ----
