@@ -78,7 +78,6 @@ func printFileWriterStats(w io.Writer, stats FileWriterStats) {
 	fmt.Fprintf(w, "Stats:\n")
 	fmt.Fprintf(w, "  BlockCount: %d\n", stats.BlockCount)
 	fmt.Fprintf(w, "  ValueCount: %d\n", stats.ValueCount)
-	fmt.Fprintf(w, "  BlockLenLongest: %d\n", stats.BlockLenLongest)
 	fmt.Fprintf(w, "  UncompressedValueBytes: %d\n", stats.UncompressedValueBytes)
 	fmt.Fprintf(w, "  FileLen: %d\n", stats.FileLen)
 }

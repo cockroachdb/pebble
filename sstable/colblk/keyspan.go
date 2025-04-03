@@ -150,7 +150,7 @@ func (w *KeyspanBlockWriter) UnsafeLastSpan() (
 
 // Size returns the size of the pending block.
 func (w *KeyspanBlockWriter) Size() int {
-	off := blockHeaderSize(keyspanColumnCount, keyspanHeaderSize)
+	off := HeaderSize(keyspanColumnCount, keyspanHeaderSize)
 	// Span boundary columns (with userKeyCount elements).
 	off = w.boundaryUserKeys.Size(w.boundaryUserKeys.rows, off)
 	off = w.boundaryKeyIndexes.Size(w.boundaryUserKeys.rows, off)
@@ -269,7 +269,7 @@ func (d *KeyspanDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	n := tp.Child("keyspan block header")
 	f.HexBytesln(4, "user key count: %d", d.boundaryKeysCount)
 	f.ToTreePrinter(n)
-	d.blockDecoder.headerToBinFormatter(f, n)
+	d.blockDecoder.HeaderToBinFormatter(f, n)
 
 	for i := 0; i < keyspanColumnCount; i++ {
 		// Not all columns in a keyspan block have the same number of rows; the
@@ -280,7 +280,7 @@ func (d *KeyspanDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 		if i == keyspanColBoundaryUserKeys || i == keyspanColBoundaryKeyIndices {
 			rows = int(d.boundaryKeysCount)
 		}
-		d.blockDecoder.columnToBinFormatter(f, n, i, rows)
+		d.blockDecoder.ColumnToBinFormatter(f, n, i, rows)
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)

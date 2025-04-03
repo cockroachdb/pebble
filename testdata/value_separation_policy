@@ -39,7 +39,7 @@ RawWriter.AddWithBlobHandle("gac#211,SET", "(f0,blk0[15:29])", 0, false)
 
 estimated-sizes
 ----
-file: 84, references: 84
+file: 73, references: 73
 
 close-output
 ----
@@ -47,8 +47,8 @@ close-output
 # close: 000001.sst
 # sync-data: 000002.blob
 # close: 000002.blob
-Blob file created: 000002 size:[75 (75B)] vals:[29 (29B)]
-{BlockCount: 1, ValueCount: 3, BlockLenLongest: 29, UncompressedValueBytes: 29, FileLen: 75}
+Blob file created: 000002 size:[85 (85B)] vals:[29 (29B)]
+{BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 29, FileLen: 85}
 blobrefs:[
  0: 000002 29
 ]

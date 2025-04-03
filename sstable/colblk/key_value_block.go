@@ -52,7 +52,7 @@ func (w *KeyValueBlockWriter) AddKV(key []byte, value []byte) {
 }
 
 func (w *KeyValueBlockWriter) size(rows int) int {
-	off := blockHeaderSize(keyValueBlockColumnCount, keyValueBlockCustomHeaderSize)
+	off := HeaderSize(keyValueBlockColumnCount, keyValueBlockCustomHeaderSize)
 	off = w.keys.Size(rows, off)
 	off = w.values.Size(rows, off)
 	off++
@@ -107,9 +107,9 @@ func (r *KeyValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node
 	f.SetAnchorOffset()
 
 	n := tp.Child("key value block header")
-	r.bd.headerToBinFormatter(f, n)
+	r.bd.HeaderToBinFormatter(f, n)
 	for i := 0; i < keyValueBlockColumnCount; i++ {
-		r.bd.columnToBinFormatter(f, n, i, int(r.bd.header.Rows))
+		r.bd.ColumnToBinFormatter(f, n, i, int(r.bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)
