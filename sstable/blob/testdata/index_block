@@ -1,0 +1,36 @@
+build
+10 20
+35 100
+140 10
+155 100
+260 51
+316 10
+----
+index-block-decoder
+ └── index block header
+      ├── columnar block header
+      │    ├── 00-01: x 01       # version 1
+      │    ├── 01-03: x 0100     # 1 columns
+      │    ├── 03-07: x 06000000 # 6 rows
+      │    ├── 07-08: b 00000010 # col 0: uint
+      │    └── 08-12: x 0c000000 # col 0: page start 12
+      ├── data for column 0 (uint)
+      │    ├── 12-13: x 02   # encoding: 2b
+      │    ├── 13-14: x 00   # padding (aligning to 16-bit boundary)
+      │    ├── 14-16: x 0a00 # data[0] = 10
+      │    ├── 16-18: x 2300 # data[1] = 35
+      │    ├── 18-20: x 8c00 # data[2] = 140
+      │    ├── 20-22: x 9b00 # data[3] = 155
+      │    ├── 22-24: x 0401 # data[4] = 260
+      │    ├── 24-26: x 3c01 # data[5] = 316
+      │    └── 26-28: x 4b01 # data[6] = 331
+      └── 28-29: x 00 # block padding byte
+
+get 0 1 2 3 4 5
+----
+0: (10, 20)
+1: (35, 100)
+2: (140, 10)
+3: (155, 100)
+4: (260, 51)
+5: (316, 10)
