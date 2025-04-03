@@ -181,10 +181,10 @@ func (h Header) Encode(buf []byte) {
 	binary.LittleEndian.PutUint32(buf[1+align16:], h.Rows)
 }
 
-// blockHeaderSize returns the size of the block header, including column
+// HeaderSize returns the size of the block header, including column
 // headers, for a block with the specified number of columns and optionally a
 // custom header size.
-func blockHeaderSize(cols int, customHeaderSize uint32) uint32 {
+func HeaderSize(cols int, customHeaderSize uint32) uint32 {
 	// Each column has a 1-byte DataType and a 4-byte offset into the block.
 	return uint32(blockHeaderBaseSize+cols*columnHeaderSize) + customHeaderSize
 }
@@ -225,7 +225,7 @@ func (e *BlockEncoder) Init(size int, h Header, customHeaderSize uint32) {
 		e.buf = e.buf[:size]
 	}
 	e.headerOffset = uint32(customHeaderSize) + blockHeaderBaseSize
-	e.pageOffset = blockHeaderSize(int(h.Columns), customHeaderSize)
+	e.pageOffset = HeaderSize(int(h.Columns), customHeaderSize)
 	h.Encode(e.buf[customHeaderSize:])
 }
 
@@ -260,7 +260,7 @@ func (e *BlockEncoder) Finish() []byte {
 // FinishBlock assumes all columns have the same number of rows. If that's not
 // the case, the caller should manually construct their own block.
 func FinishBlock(rows int, writers []ColumnWriter) []byte {
-	size := blockHeaderSize(len(writers), 0)
+	size := HeaderSize(len(writers), 0)
 	nCols := uint16(0)
 	for _, cw := range writers {
 		size = cw.Size(rows, size)
@@ -365,6 +365,11 @@ func (d *BlockDecoder) Uints(col int) UnsafeUints {
 	return DecodeColumn(d, col, int(d.header.Rows), DataTypeUint, DecodeUnsafeUints)
 }
 
+// Data returns the underlying buffer.
+func (d *BlockDecoder) Data() []byte {
+	return d.data
+}
+
 func (d *BlockDecoder) pageStart(col int) uint32 {
 	if uint16(col) >= d.header.Columns {
 		// -1 for the trailing version byte
@@ -384,16 +389,17 @@ func (d *BlockDecoder) FormattedString() string {
 	f := binfmt.New(d.data)
 	tp := treeprinter.New()
 	n := tp.Child("block")
-	d.headerToBinFormatter(f, n)
+	d.HeaderToBinFormatter(f, n)
 	for i := 0; i < int(d.header.Columns); i++ {
-		d.columnToBinFormatter(f, n, i, int(d.header.Rows))
+		d.ColumnToBinFormatter(f, n, i, int(d.header.Rows))
 	}
 	f.HexBytesln(1, "block trailer padding")
 	f.ToTreePrinter(n)
 	return tp.String()
 }
 
-func (d *BlockDecoder) headerToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node) {
+// HeaderToBinFormatter formats the block header to f and tp.
+func (d *BlockDecoder) HeaderToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.HexBytesln(1, "version %v", Version(f.PeekUint(1)))
 	f.HexBytesln(2, "%d columns", d.header.Columns)
 	f.HexBytesln(4, "%d rows", d.header.Rows)
@@ -426,7 +432,8 @@ func (d *BlockDecoder) formatColumn(
 	}
 }
 
-func (d *BlockDecoder) columnToBinFormatter(
+// ColumnToBinFormatter formats the col'th column to f and tp.
+func (d *BlockDecoder) ColumnToBinFormatter(
 	f *binfmt.Formatter, tp treeprinter.Node, col, rows int,
 ) {
 	d.formatColumn(f, tp, col, func(f *binfmt.Formatter, tp treeprinter.Node, dataType DataType) {

@@ -604,7 +604,7 @@ func (w *DataBlockEncoder) Rows() int {
 
 // Size returns the size of the current pending data block.
 func (w *DataBlockEncoder) Size() int {
-	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	off := HeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.InvertedSize(w.rows, off)
@@ -936,9 +936,9 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 		f.HexBytesln(keySchemaHeaderSize, "key schema header")
 	}
 	f.HexBytesln(4, "maximum key length: %d", d.maximumKeyLength)
-	d.d.headerToBinFormatter(f, n)
+	d.d.HeaderToBinFormatter(f, n)
 	for i := 0; i < int(d.d.header.Columns); i++ {
-		d.d.columnToBinFormatter(f, n, i, int(d.d.header.Rows))
+		d.d.ColumnToBinFormatter(f, n, i, int(d.d.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)

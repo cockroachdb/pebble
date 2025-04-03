@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 var (
@@ -43,7 +42,7 @@ const (
 )
 
 const (
-	fileFooterLength = 33
+	fileFooterLength = 30
 	fileMagic        = "\xf0\x9f\xaa\xb3\xf0\x9f\xa6\x80" // 🪳🦀
 )
 
@@ -80,7 +79,6 @@ func (o *FileWriterOptions) ensureDefaults() {
 type FileWriterStats struct {
 	BlockCount             uint32
 	ValueCount             uint32
-	BlockLenLongest        uint64
 	UncompressedValueBytes uint64
 	FileLen                uint64
 }
@@ -88,8 +86,8 @@ type FileWriterStats struct {
 // String implements the fmt.Stringer interface.
 func (s FileWriterStats) String() string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "{BlockCount: %d, ValueCount: %d, BlockLenLongest: %d, UncompressedValueBytes: %d, FileLen: %d}",
-		s.BlockCount, s.ValueCount, s.BlockLenLongest, s.UncompressedValueBytes, s.FileLen)
+	fmt.Fprintf(&buf, "{BlockCount: %d, ValueCount: %d, UncompressedValueBytes: %d, FileLen: %d}",
+		s.BlockCount, s.ValueCount, s.UncompressedValueBytes, s.FileLen)
 	return buf.String()
 }
 
@@ -100,7 +98,7 @@ type FileWriter struct {
 	b            block.Buffer
 	stats        FileWriterStats
 	flushGov     block.FlushGovernor
-	blockOffsets []uint64
+	indexEncoder indexBlockEncoder
 	err          error
 	checksumType block.ChecksumType
 	cpuMeasurer  base.CPUMeasurer
@@ -125,6 +123,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.w = w
 	fw.b.Init(opts.Compression, opts.ChecksumType)
 	fw.flushGov = opts.FlushGovernor
+	fw.indexEncoder.Init()
 	fw.checksumType = opts.ChecksumType
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
@@ -158,10 +157,16 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 // EstimatedSize returns an estimate of the disk space consumed by the blob file
 // if it were closed now.
 func (w *FileWriter) EstimatedSize() uint64 {
-	sz := w.stats.FileLen                                    // Completed blocks
-	sz += uint64(w.b.Size()) + block.TrailerLen              // Pending uncompressed block
-	sz += uint64(w.stats.BlockCount+1)*12 + block.TrailerLen // Index block (worst case of 12 bytes per block [4 per integer])
-	sz += fileFooterLength                                   // Footer
+	sz := w.stats.FileLen                       // Completed blocks
+	sz += uint64(w.b.Size()) + block.TrailerLen // Pending uncompressed block
+	// We estimate the size of the index block as 4 bytes per offset, and n+1
+	// offsets for n block handles. We don't use an exact accounting because the
+	// index block is constructed from the write queue goroutine, so using the
+	// exact size would introduce nondeterminism. The index block is small
+	// relatively speaking. In practice, offsets should use at most 4 bytes per
+	// offset.
+	sz += uint64(w.stats.BlockCount+1)*4 + block.TrailerLen // Index block
+	sz += fileFooterLength                                  // Footer
 	return sz
 }
 
@@ -182,7 +187,6 @@ func (w *FileWriter) flush() {
 	pb, bh := w.b.CompressAndChecksum()
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
-	w.stats.BlockLenLongest = max(w.stats.BlockLenLongest, compressedLen)
 	off := w.stats.FileLen
 	w.stats.FileLen += compressedLen + block.TrailerLen
 	w.writeQueue.ch <- compressedBlock{pb: pb, bh: bh, off: off}
@@ -204,7 +208,10 @@ func (w *FileWriter) drainWriteQueue() {
 			w.writeQueue.err = err
 			continue
 		}
-		w.blockOffsets = append(w.blockOffsets, cb.off)
+		w.indexEncoder.AddBlockHandle(block.Handle{
+			Offset: cb.off,
+			Length: uint64(cb.pb.LengthWithoutTrailer()),
+		})
 		// We're done with the buffer associated with this physical block.
 		// Release it back to its pool.
 		cb.bh.Release()
@@ -238,58 +245,33 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		return FileWriterStats{}, w.err
 	}
 	stats := w.stats
-	if stats.BlockCount != uint32(len(w.blockOffsets)) {
+	if stats.BlockCount != uint32(w.indexEncoder.countBlocks) {
 		panic(errors.AssertionFailedf("block count mismatch: %d vs %d",
-			stats.BlockCount, len(w.blockOffsets)))
+			stats.BlockCount, w.indexEncoder.countBlocks))
 	}
 	if stats.BlockCount == 0 {
 		panic(errors.AssertionFailedf("no blocks written"))
 	}
 
 	// Write the index block.
-	vbih := valblk.IndexHandle{
-		Handle:                block.Handle{Offset: stats.FileLen},
-		BlockNumByteLength:    uint8(lenLittleEndian(uint64(stats.BlockCount - 1))),
-		BlockOffsetByteLength: uint8(lenLittleEndian(w.blockOffsets[len(w.blockOffsets)-1])),
-		BlockLengthByteLength: uint8(lenLittleEndian(stats.BlockLenLongest)),
-	}
-	indexBlockLen := vbih.RowWidth() * int(stats.BlockCount)
-	vbih.Handle.Length = uint64(indexBlockLen)
+	var indexBlockHandle block.Handle
 	{
-		w.b.Resize(indexBlockLen)
-		b := w.b.Get()
-		for i := 0; i < len(w.blockOffsets); i++ {
-			littleEndianPut(uint64(i), b, int(vbih.BlockNumByteLength))
-			b = b[int(vbih.BlockNumByteLength):]
-			littleEndianPut(w.blockOffsets[i], b, int(vbih.BlockOffsetByteLength))
-			b = b[int(vbih.BlockOffsetByteLength):]
-			var l uint64
-			if i == len(w.blockOffsets)-1 {
-				l = stats.FileLen - w.blockOffsets[i] - block.TrailerLen
-			} else {
-				l = w.blockOffsets[i+1] - w.blockOffsets[i] - block.TrailerLen
-			}
-			littleEndianPut(l, b, int(vbih.BlockLengthByteLength))
-			b = b[int(vbih.BlockLengthByteLength):]
-		}
-		if len(b) != 0 {
-			panic(errors.AssertionFailedf("incorrect length calculation: buffer has %d bytes remaining of expected %d byte block",
-				len(b), indexBlockLen))
-		}
-		w.b.SetCompression(block.NoCompression)
-		pb, bh := w.b.CompressAndChecksum()
+		indexBlock := w.indexEncoder.Finish()
+		var compressedBuf []byte
+		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoCompression, w.b.Checksummer())
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
 			return FileWriterStats{}, w.err
 		}
-		bh.Release()
-		stats.FileLen += vbih.Handle.Length + block.TrailerLen
+		indexBlockHandle.Offset = stats.FileLen
+		indexBlockHandle.Length = uint64(pb.LengthWithoutTrailer())
+		stats.FileLen += uint64(pb.LengthWithTrailer())
 	}
 
 	// Write the footer.
 	footer := fileFooter{
 		format:      FileFormatV1,
 		checksum:    w.checksumType,
-		indexHandle: vbih,
+		indexHandle: indexBlockHandle,
 	}
 	w.b.Resize(fileFooterLength)
 	footerBuf := w.b.Get()
@@ -304,9 +286,12 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 
 	// Clean up w and return it to the pool.
 	w.b.Release()
-	blockOffsets := w.blockOffsets[:0]
-	*w = FileWriter{}
-	w.blockOffsets = blockOffsets
+	w.indexEncoder.Reset()
+	w.w = nil
+	w.stats = FileWriterStats{}
+	w.err = nil
+	w.writeQueue.ch = nil
+	w.writeQueue.err = nil
 	writerPool.Put(w)
 	return stats, nil
 }
@@ -318,16 +303,13 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 //   - checksum CRC over footer data (4 bytes)
 //   - index block offset (8 bytes)
 //   - index block length (8 bytes)
-//   - index block block-number byte length (1 byte)
-//   - index block block-offset byte length (1 byte)
-//   - index block block-length byte length (1 byte)
 //   - checksum type (1 byte)
 //   - format (1 byte)
 //   - blob file magic string (8 bytes)
 type fileFooter struct {
 	format      FileFormat
 	checksum    block.ChecksumType
-	indexHandle valblk.IndexHandle
+	indexHandle block.Handle
 }
 
 func (f *fileFooter) decode(b []byte) error {
@@ -339,41 +321,25 @@ func (f *fileFooter) decode(b []byte) error {
 	if encodedChecksum != computedChecksum {
 		return base.CorruptionErrorf("invalid blob file checksum 0x%04x, expected: 0x%04x", encodedChecksum, computedChecksum)
 	}
-	f.indexHandle.Handle.Offset = binary.LittleEndian.Uint64(b[4:])
-	f.indexHandle.Handle.Length = binary.LittleEndian.Uint64(b[12:])
-	f.indexHandle.BlockNumByteLength = b[20]
-	f.indexHandle.BlockOffsetByteLength = b[21]
-	f.indexHandle.BlockLengthByteLength = b[22]
-	if f.indexHandle.BlockNumByteLength > 4 {
-		return base.CorruptionErrorf("invalid block num byte length %d", f.indexHandle.BlockNumByteLength)
-	}
-	if f.indexHandle.BlockOffsetByteLength > 8 {
-		return base.CorruptionErrorf("invalid block offset byte length %d", f.indexHandle.BlockOffsetByteLength)
-	}
-	if f.indexHandle.BlockLengthByteLength > 8 {
-		return base.CorruptionErrorf("invalid block length byte length %d", f.indexHandle.BlockLengthByteLength)
-	}
-
-	f.checksum = block.ChecksumType(b[23])
-	f.format = FileFormat(b[24])
+	f.indexHandle.Offset = binary.LittleEndian.Uint64(b[4:])
+	f.indexHandle.Length = binary.LittleEndian.Uint64(b[12:])
+	f.checksum = block.ChecksumType(b[20])
+	f.format = FileFormat(b[21])
 	if f.format != FileFormatV1 {
 		return base.CorruptionErrorf("invalid blob file format %x", f.format)
 	}
-	if string(b[25:]) != fileMagic {
-		return base.CorruptionErrorf("invalid blob file magic string %x", b[25:])
+	if string(b[22:]) != fileMagic {
+		return base.CorruptionErrorf("invalid blob file magic string %x", b[22:])
 	}
 	return nil
 }
 
 func (f *fileFooter) encode(b []byte) {
-	binary.LittleEndian.PutUint64(b[4:], f.indexHandle.Handle.Offset)
-	binary.LittleEndian.PutUint64(b[12:], f.indexHandle.Handle.Length)
-	b[20] = f.indexHandle.BlockNumByteLength
-	b[21] = f.indexHandle.BlockOffsetByteLength
-	b[22] = f.indexHandle.BlockLengthByteLength
-	b[23] = byte(f.checksum)
-	b[24] = byte(f.format)
-	copy(b[25:], fileMagic)
+	binary.LittleEndian.PutUint64(b[4:], f.indexHandle.Offset)
+	binary.LittleEndian.PutUint64(b[12:], f.indexHandle.Length)
+	b[20] = byte(f.checksum)
+	b[21] = byte(f.format)
+	copy(b[22:], fileMagic)
 	footerChecksum := crc.New(b[4:]).Value()
 	binary.LittleEndian.PutUint32(b[:4], footerChecksum)
 }
@@ -452,40 +418,16 @@ func (r *FileReader) ReadValueBlock(
 	return r.r.Read(ctx, env, rh, h, noInitBlockMetadata)
 }
 
-// ReadValueIndexBlock reads the index block from the file.
-func (r *FileReader) ReadValueIndexBlock(
+// ReadIndexBlock reads the index block from the file.
+func (r *FileReader) ReadIndexBlock(
 	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle,
 ) (block.BufferHandle, error) {
-	return r.r.Read(ctx, env, rh, r.footer.indexHandle.Handle, noInitBlockMetadata)
+	return r.r.Read(ctx, env, rh, r.footer.indexHandle, initIndexBlockMetadata)
 }
 
-// ValueIndexHandle returns the index handle for the file's value block.
-func (r *FileReader) ValueIndexHandle() valblk.IndexHandle {
+// IndexHandle returns the block handle for the file's index block.
+func (r *FileReader) IndexHandle() block.Handle {
 	return r.footer.indexHandle
 }
 
 func noInitBlockMetadata(_ *block.Metadata, _ []byte) error { return nil }
-
-// lenLittleEndian returns the minimum number of bytes needed to encode v
-// using little endian encoding.
-func lenLittleEndian(v uint64) int {
-	n := 0
-	for i := 0; i < 8; i++ {
-		n++
-		v = v >> 8
-		if v == 0 {
-			break
-		}
-	}
-	return n
-}
-
-// littleEndianPut writes v to b using little endian encoding, under the
-// assumption that v can be represented using n bytes.
-func littleEndianPut(v uint64, b []byte, n int) {
-	_ = b[n-1] // bounds check
-	for i := 0; i < n; i++ {
-		b[i] = byte(v)
-		v = v >> 8
-	}
-}
