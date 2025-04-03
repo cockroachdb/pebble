@@ -2124,25 +2124,20 @@ func NewL0Organizer(comparer *base.Comparer, flushSplitBytes int64) *L0Organizer
 	return o
 }
 
-// SublevelFiles returns the sublevels as LevelSlices. The returned value (both
-// the slice and each LevelSlice) is immutable. The L0Organizer creates new
-// slices every time L0 changes.
-func (o *L0Organizer) SublevelFiles() []LevelSlice {
-	return o.l0Sublevels.Levels
-}
-
-// Update the L0 organizer with the given L0 changes.
-func (o *L0Organizer) Update(
-	addedL0Tables map[base.FileNum]*TableMetadata,
-	deletedL0Tables map[base.FileNum]*TableMetadata,
-	newLevelMeta *LevelMetadata,
-) {
+// Update the L0 organizer with the L0 changes in the given version edit.
+//
+// Sets newVersion.L0SublevelFiles (which is immutable once set).
+func (o *L0Organizer) Update(bve *BulkVersionEdit, newVersion *Version) {
+	addedL0Tables := bve.AddedTables[0]
+	deletedL0Tables := bve.DeletedTables[0]
+	newLevelMeta := &newVersion.Levels[0]
 	if invariants.Enabled && invariants.Sometimes(10) {
 		// Verify that newLevelMeta = m.levelMetadata + addedL0Tables - deletedL0Tables.
 		verifyLevelMetadataTransition(&o.levelMetadata, newLevelMeta, addedL0Tables, deletedL0Tables)
 	}
 	o.levelMetadata = *newLevelMeta
 	if len(addedL0Tables) == 0 && len(deletedL0Tables) == 0 {
+		newVersion.L0SublevelFiles = o.l0Sublevels.Levels
 		return
 	}
 	// If we only added tables, try to use addL0Files.
@@ -2168,6 +2163,7 @@ func (o *L0Organizer) Update(
 				}
 			}
 			o.l0Sublevels = newSublevels
+			newVersion.L0SublevelFiles = o.l0Sublevels.Levels
 			return
 		}
 		if !errors.Is(err, errInvalidL0SublevelsOpt) {
@@ -2179,16 +2175,19 @@ func (o *L0Organizer) Update(
 	if err != nil {
 		panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
 	}
+	newVersion.L0SublevelFiles = o.l0Sublevels.Levels
 }
 
-// ResetForTesting reinitializes the L0Organizer to reflect a given L0 level.
-func (o *L0Organizer) ResetForTesting(levelMetadata *LevelMetadata) {
-	o.levelMetadata = *levelMetadata
+// ResetForTesting reinitializes the L0Organizer to reflect the given version.
+// Sets v.L0SublevelFiles.
+func (o *L0Organizer) ResetForTesting(v *Version) {
+	o.levelMetadata = v.Levels[0]
 	var err error
-	o.l0Sublevels, err = newL0Sublevels(levelMetadata, o.cmp, o.formatKey, o.flushSplitBytes)
+	o.l0Sublevels, err = newL0Sublevels(&v.Levels[0], o.cmp, o.formatKey, o.flushSplitBytes)
 	if err != nil {
 		panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
 	}
+	v.L0SublevelFiles = o.l0Sublevels.Levels
 }
 
 // verifyLevelMetadataTransition verifies that newLevel matches oldLevel after

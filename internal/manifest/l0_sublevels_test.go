@@ -53,9 +53,10 @@ func readManifest(filename string) (*Version, error) {
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
-		if v, err = bve.Apply(v, l0Organizer, 32000); err != nil {
+		if v, err = bve.Apply(v, 32000); err != nil {
 			return nil, err
 		}
+		l0Organizer.Update(&bve, v)
 	}
 	return v, nil
 }

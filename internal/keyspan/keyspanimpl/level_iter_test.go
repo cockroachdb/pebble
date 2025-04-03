@@ -314,8 +314,9 @@ func TestLevelIterEquivalence(t *testing.T) {
 			b.AddedTables[6] = amap
 			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 0 /* flushSplitBytes */)
 			emptyVersion := manifest.NewInitialVersion(base.DefaultComparer)
-			v, err := b.Apply(emptyVersion, l0Organizer, 0)
+			v, err := b.Apply(emptyVersion, 0)
 			require.NoError(t, err)
+			l0Organizer.Update(b, v)
 			levelIter.Init(
 				context.Background(),
 				keyspan.SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,

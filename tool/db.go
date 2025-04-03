@@ -717,10 +717,11 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		}
 		l0Organizer := manifest.NewL0Organizer(cmp, d.opts.FlushSplitBytes)
 		emptyVersion := manifest.NewInitialVersion(cmp)
-		v, err := bve.Apply(emptyVersion, l0Organizer, d.opts.Experimental.ReadCompactionRate)
+		v, err := bve.Apply(emptyVersion, d.opts.Experimental.ReadCompactionRate)
 		if err != nil {
 			return err
 		}
+		l0Organizer.Update(&bve, v)
 
 		objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(d.opts.FS, dirname))
 		if err != nil {

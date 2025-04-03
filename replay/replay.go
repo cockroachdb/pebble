@@ -802,10 +802,11 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				}
 
 				// Apply the edit.
-				v, err = bve.Apply(v, l0Organizer, r.Opts.Experimental.ReadCompactionRate)
+				v, err = bve.Apply(v, r.Opts.Experimental.ReadCompactionRate)
 				if err != nil {
 					return err
 				}
+				l0Organizer.Update(&bve, v)
 				// AddedTablesByFileNum maps file number to table metadata for all added
 				// sstables from accumulated version edits so we must retain it.
 				bve = manifest.BulkVersionEdit{AddedTablesByFileNum: bve.AddedTablesByFileNum}

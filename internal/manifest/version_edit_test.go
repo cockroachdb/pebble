@@ -449,10 +449,11 @@ func TestVersionEditApply(t *testing.T) {
 				if l0Organizer == nil {
 					d.Fatalf(t, "no L0 organizer")
 				}
-				newv, err := bve.Apply(v, l0Organizer, readCompactionRate)
+				newv, err := bve.Apply(v, readCompactionRate)
 				if err != nil {
 					return err.Error()
 				}
+				l0Organizer.Update(&bve, newv)
 				if saveName != "" {
 					versions[saveName] = newv
 					l0Organizers[saveName] = l0Organizer
@@ -461,7 +462,7 @@ func TestVersionEditApply(t *testing.T) {
 				// Reinitialize the L0 organizer in case we want to use the same version
 				// again (l0Organizer now reflects newv).
 				l0Organizer = NewL0Organizer(base.DefaultComparer, flushSplitBytes)
-				l0Organizer.ResetForTesting(&v.Levels[0])
+				l0Organizer.ResetForTesting(v)
 				l0Organizers[name] = l0Organizer
 
 				return newv.DebugString()
