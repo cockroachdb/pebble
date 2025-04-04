@@ -1,0 +1,33 @@
+build
+properties  50  13
+index       65  13
+----
+key-value-block-decoder
+ └── key value block header
+      ├── columnar block header
+      │    ├── 00-01: x 01       # version 1
+      │    ├── 01-03: x 0200     # 2 columns
+      │    ├── 03-07: x 02000000 # 2 rows
+      │    ├── 07-08: b 00000011 # col 0: bytes
+      │    ├── 08-12: x 11000000 # col 0: page start 17
+      │    ├── 12-13: b 00000011 # col 1: bytes
+      │    └── 13-17: x 24000000 # col 1: page start 36
+      ├── data for column 0 (bytes)
+      │    ├── offsets table
+      │    │    ├── 17-18: x 01 # encoding: 1b
+      │    │    ├── 18-19: x 00 # data[0] = 0 [21 overall]
+      │    │    ├── 19-20: x 0a # data[1] = 10 [31 overall]
+      │    │    └── 20-21: x 0f # data[2] = 15 [36 overall]
+      │    └── data
+      │         ├── 21-31: x 70726f70657274696573 # data[0]: properties
+      │         └── 31-36: x 696e646578           # data[1]: index
+      ├── data for column 1 (bytes)
+      │    ├── offsets table
+      │    │    ├── 36-37: x 01 # encoding: 1b
+      │    │    ├── 37-38: x 00 # data[0] = 0 [40 overall]
+      │    │    ├── 38-39: x 02 # data[1] = 2 [42 overall]
+      │    │    └── 39-40: x 04 # data[2] = 4 [44 overall]
+      │    └── data
+      │         ├── 40-42: x 320d # data[0]: "2\r"
+      │         └── 42-44: x 410d # data[1]: "A\r"
+      └── 44-45: x 00 # block padding byte

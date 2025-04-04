@@ -277,7 +277,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return l.Describe(verbose, r, nil)
 
 		case "decode-layout":
-			l, err := decodeLayout(testkeys.Comparer, obj.Data())
+			l, err := decodeLayout(testkeys.Comparer, obj.Data(), tableFormat)
 			if err != nil {
 				return err.Error()
 			}

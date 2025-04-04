@@ -135,16 +135,15 @@ sstable
  │    ├── restart points
  │    │    └── 00562 [restart 0]
  │    └── trailer [compression=none checksum=0xaaf4ac72]
- ├── meta-index  offset: 775  length: 33
- │    ├── 0000    rocksdb.properties block:200/570 [restart]
- │    ├── restart points
- │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0x7216e2e4]
- └── footer  offset: 813  length: 57
+ ├── meta-index  offset: 775  length: 46
+ │    ├── 0000    rocksdb.properties block:200/570
+ │    │   
+ │    └── trailer [compression=none checksum=0x724ccf66]
+ └── footer  offset: 826  length: 57
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=775, length=33
+      ├── 001  meta: offset=775, length=46
       ├── 004  index: offset=159, length=36
-      ├── 041  footer checksum: 0x1d06bfc3
+      ├── 041  footer checksum: 0x66098f4a
       ├── 045  version: 6
       └── 049  magic number: 0xf09faab3f09faab3
 

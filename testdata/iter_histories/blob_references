@@ -9,6 +9,6 @@ L6
   d@2.SET.2:v
 ----
 L5:
-  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:885 blobrefs:[(000921: 10); depth:1]
+  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:898 blobrefs:[(000921: 10); depth:1]
 L6:
-  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:863 blobrefs:[(000921: 6); depth:1]
+  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:876 blobrefs:[(000921: 6); depth:1]
