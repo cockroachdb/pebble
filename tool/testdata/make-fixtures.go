@@ -5,22 +5,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
-const version = pebble.FormatSyntheticPrefixSuffix
-const dbName = "broken-external-db"
-
-func main() {
+func makeBrokenExternalDB() {
+	const version = pebble.FormatSyntheticPrefixSuffix
+	const dbName = "broken-external-db"
 	opts := &pebble.Options{
 		FormatMajorVersion:          version,
 		DisableAutomaticCompactions: true,
@@ -38,7 +39,7 @@ func main() {
 	}
 	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), opts.MakeWriterOptions(0, version.MaxTableFormat()))
 	for _, k := range strings.Fields("a25 b1 b2 b3 c15") {
-		err := w.Add(base.MakeInternalKey([]byte(k), 1, base.InternalKeyKindSet), []byte(k))
+		err := w.Set([]byte(k), []byte(k))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -84,7 +85,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if _, err := db.IngestExternalFiles([]pebble.ExternalFile{{
+	if _, err := db.IngestExternalFiles(context.Background(), []pebble.ExternalFile{{
 		Locator:     "external",
 		ObjName:     "foo.sst",
 		Size:        123,
@@ -101,4 +102,67 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func makeCRSchemaDB() {
+	const version = pebble.FormatColumnarBlocks
+	const dbName = "cr-schema-db"
+	opts := &pebble.Options{
+		FormatMajorVersion:          version,
+		DisableAutomaticCompactions: true,
+		ErrorIfExists:               true,
+		Comparer:                    &cockroachkvs.Comparer,
+		KeySchema:                   cockroachkvs.KeySchema.Name,
+		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
+	}
+	opts.EnsureDefaults()
+
+	path, err := filepath.Abs(dbName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := pebble.Open(path, opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if db != nil {
+			db.Close()
+		}
+	}()
+
+	rng := rand.New(rand.NewPCG(1, 1))
+	cfg := cockroachkvs.KeyGenConfig{
+		PrefixAlphabetLen:  20,
+		PrefixLenShared:    2,
+		RoachKeyLen:        8,
+		AvgKeysPerPrefix:   2,
+		BaseWallTime:       1,
+		PercentLogical:     10,
+		PercentEmptySuffix: 5,
+		PercentLockSuffix:  5,
+	}
+	keys, vals := cockroachkvs.RandomKVs(rng, 50, cfg, 16)
+	for i := range keys {
+		if err := db.Set(keys[i], vals[i], pebble.Sync); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if err := db.Flush(); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.Compact(keys[0], keys[len(keys)-1], false /* parallelize */); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Generated db with following LSM:\n%s\n", db.DebugString())
+	err = db.Close()
+	db = nil
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func main() {
+	makeBrokenExternalDB()
+	makeCRSchemaDB()
 }
