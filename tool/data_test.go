@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -132,10 +133,12 @@ func runTests(t *testing.T, path string) {
 
 				tool := New(
 					DefaultComparer(comparer),
-					Comparers(altComparer, testkeys.Comparer),
+					Comparers(altComparer, testkeys.Comparer, &cockroachkvs.Comparer),
 					Mergers(merger),
 					FS(fs),
 					OpenErrEnhancer(openErrEnhancer),
+					KeySchema(cockroachkvs.KeySchema.Name),
+					KeySchemas(&cockroachkvs.KeySchema),
 				)
 
 				c := &cobra.Command{}
