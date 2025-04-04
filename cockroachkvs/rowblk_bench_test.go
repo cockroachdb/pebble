@@ -18,16 +18,16 @@ import (
 func BenchmarkCockroachDataRowBlockWriter(b *testing.B) {
 	for _, cfg := range benchConfigs {
 		b.Run(cfg.String(), func(b *testing.B) {
-			benchmarkCockroachDataRowBlockWriter(b, cfg.keyGenConfig, cfg.ValueLen)
+			benchmarkCockroachDataRowBlockWriter(b, cfg.KeyGenConfig, cfg.ValueLen)
 		})
 	}
 }
 
-func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
+func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig KeyGenConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
-	keys, values := randomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+	keys, values := RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
 
 	var w rowblk.Writer
 	w.RestartInterval = 16
@@ -54,16 +54,16 @@ func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig keyGenConfig, 
 func BenchmarkCockroachDataRowBlockIter(b *testing.B) {
 	for _, cfg := range benchConfigs {
 		b.Run(cfg.String(), func(b *testing.B) {
-			benchmarkCockroachDataRowBlockIter(b, cfg.keyGenConfig, cfg.ValueLen)
+			benchmarkCockroachDataRowBlockIter(b, cfg.KeyGenConfig, cfg.ValueLen)
 		})
 	}
 }
 
-func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
+func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig KeyGenConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
-	keys, values := randomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+	keys, values := RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
 
 	var w rowblk.Writer
 	w.RestartInterval = 16
