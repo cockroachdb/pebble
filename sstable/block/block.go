@@ -569,7 +569,7 @@ func (r *Reader) doRead(
 	env.BlockRead(bh.Length, readDuration)
 	if err = ValidateChecksum(r.checksumType, compressed.BlockData(), bh); err != nil {
 		compressed.Release()
-		err = errors.Wrapf(err, "pebble/table: table %s", r.opts.CacheOpts.FileNum)
+		err = errors.Wrapf(err, "pebble: file %s", r.opts.CacheOpts.FileNum)
 		return Value{}, err
 	}
 	typ := CompressionIndicator(compressed.BlockData()[bh.Length])
@@ -646,7 +646,7 @@ func ReadRaw(
 ) ([]byte, error) {
 	size := f.Size()
 	if size < int64(len(buf)) {
-		return nil, base.CorruptionErrorf("pebble/table: invalid table %s (file size is too small)", errors.Safe(fileNum))
+		return nil, base.CorruptionErrorf("pebble: invalid file %s (file size is too small)", errors.Safe(fileNum))
 	}
 
 	readStopwatch := makeStopwatch()
@@ -664,7 +664,7 @@ func ReadRaw(
 			len(buf), readDuration.String())
 	}
 	if err != nil {
-		return nil, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
+		return nil, errors.Wrap(err, "pebble: invalid file (could not read footer)")
 	}
 	return buf, nil
 }
