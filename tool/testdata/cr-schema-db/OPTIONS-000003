@@ -1,0 +1,55 @@
+[Version]
+  pebble_version=0.1
+
+[Options]
+  bytes_per_sync=524288
+  cache_size=8388608
+  cleaner=delete
+  compaction_debt_concurrency=1073741824
+  comparer=cockroach_comparator
+  disable_wal=false
+  flush_delay_delete_range=0s
+  flush_delay_range_key=0s
+  flush_split_bytes=4194304
+  format_major_version=20
+  key_schema=crdb1
+  l0_compaction_concurrency=10
+  l0_compaction_file_threshold=500
+  l0_compaction_threshold=4
+  l0_stop_writes_threshold=12
+  lbase_max_bytes=67108864
+  max_concurrent_compactions=1
+  max_concurrent_downloads=1
+  max_manifest_file_size=134217728
+  max_open_files=1000
+  mem_table_size=4194304
+  mem_table_stop_writes_threshold=2
+  min_deletion_rate=0
+  free_space_threshold_bytes=17179869184
+  free_space_timeframe=10s
+  obsolete_bytes_max_ratio=0.200000
+  obsolete_bytes_timeframe=5m0s
+  merger=pebble.concatenate
+  multilevel_compaction_heuristic=wamp(0.00, false)
+  read_compaction_rate=16000
+  read_sampling_multiplier=16
+  num_deletions_threshold=100
+  deletion_size_ratio_threshold=0.500000
+  tombstone_dense_compaction_threshold=0.100000
+  strict_wal_tail=true
+  table_cache_shards=10
+  validate_on_ingest=false
+  wal_dir=
+  wal_bytes_per_sync=0
+  secondary_cache_size_bytes=0
+  create_on_shared=0
+
+[Level "0"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=2097152

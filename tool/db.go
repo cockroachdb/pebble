@@ -527,7 +527,13 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 	iter, _ := db.NewIter(&pebble.IterOptions{
 		UpperBound: d.end,
 	})
-	for valid := iter.SeekGE(d.start); valid; valid = iter.Next() {
+	var valid bool
+	if len(d.start) == 0 {
+		valid = iter.First()
+	} else {
+		valid = iter.SeekGE(d.start)
+	}
+	for ; valid; valid = iter.Next() {
 		if fmtKeys || fmtValues {
 			needDelimiter := false
 			if fmtKeys {
