@@ -18,10 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
-// errInvalidL0SublevelsOpt is for use in addL0Files when the incremental
-// sublevel generation optimization failed, and newL0Sublevels must be called.
-var errInvalidL0SublevelsOpt = errors.New("pebble: L0 sublevel generation optimization cannot be used")
-
 // Intervals are of the form [start, end) with no gap between intervals. Each
 // file overlaps perfectly with a sequence of intervals. This perfect overlap
 // occurs because the union of file boundary keys is used to pick intervals.
@@ -314,9 +310,7 @@ func newL0Sublevels(
 	// Initialize minIntervalIndex and maxIntervalIndex for each file, and use that
 	// to update intervals.
 	for f := iter.First(); f != nil; f = iter.Next() {
-		if err := s.addFileToSublevels(f, false /* checkInvariant */); err != nil {
-			return nil, err
-		}
+		s.addFileToSublevels(f)
 	}
 	// Sort each sublevel in increasing key order.
 	for i := range s.levelFiles {
@@ -409,51 +403,20 @@ func mergeIntervals(
 	return result, oldToNewMap
 }
 
-// addL0Files incrementally builds a new l0Sublevels for when the only change
-// since the receiver l0Sublevels was an addition of the specified tables, with
-// no L0 deletions. The common case of this is an ingestion or a flush. These
-// files can "sit on top" of existing sublevels, creating at most one new
-// sublevel for a flush (and possibly multiple for an ingestion), and at most
-// 2*len(files) additions to s.orderedIntervals. No files must have been deleted
-// from L0, and the added files must all be newer in sequence numbers than
-// existing files in l0Sublevels. The levelMetadata parameter corresponds to the
-// new L0 post addition of files. This method is meant to be significantly more
-// performant than newL0Sublevels.
-//
-// Note that this function can only be called once on a given receiver; it
-// appends to some slices in s which is only safe when done once. This is okay,
-// as the common case (generating a new l0Sublevels after a flush/ingestion) is
-// only going to necessitate one call of this method on a given receiver. The
-// returned value, if non-nil, can then have [*l0Sublevels.addL0Files] called on
-// it again, and so on. If [errInvalidL0SublevelsOpt] is returned as an error,
-// it means the optimization could not be applied (i.e. files added were older
-// than files already in the sublevels, which is possible around ingestions and
-// in tests). Eg. it can happen when an ingested file was ingested without
-// queueing a flush since it did not actually overlap with any keys in the
-// memtable. Later on the memtable was flushed, and the memtable had keys
-// spanning around the ingested file, producing a flushed file that overlapped
-// with the ingested file in file bounds but not in keys. It's possible for that
-// flushed file to have a lower LargestSeqNum than the ingested file if all the
-// additions after the ingestion were to another flushed file that was split
-// into a separate sstable during flush. Any other non-nil error means
-// [l0Sublevels] generation failed in the same way as [newL0Sublevels] would
-// likely fail.
-func (s *l0Sublevels) addL0Files(
-	addedTables map[base.FileNum]*TableMetadata,
-	flushSplitMaxBytes int64,
-	levelMetadata *LevelMetadata,
-) (*l0Sublevels, error) {
+func (s *l0Sublevels) canUseAddL0Files(
+	addedTables map[base.FileNum]*TableMetadata, levelMetadata *LevelMetadata,
+) (filesToAddInOrder []*TableMetadata, ok bool) {
 	if s.addL0FilesCalled {
 		if invariants.Enabled {
 			panic("addL0Files called twice on the same receiver")
 		}
-		return nil, errInvalidL0SublevelsOpt
+		return nil, false
 	}
 	if s.levelMetadata.Len()+len(addedTables) != levelMetadata.Len() {
 		if invariants.Enabled {
 			panic("levelMetadata mismatch")
 		}
-		return nil, errInvalidL0SublevelsOpt
+		return nil, false
 	}
 
 	// addL0Files only works when the files we are adding match exactly the last
@@ -465,12 +428,40 @@ func (s *l0Sublevels) addL0Files(
 		if addedTables[t.FileNum] == nil {
 			// t is an existing table that sorts after some of the new tables
 			// (specifically the ones we haven't yet seen).
-			return nil, errInvalidL0SublevelsOpt
+			return nil, false
 		}
 		files[i] = t
 		t = iter.Prev()
 	}
-	// Note: files now contains addedTables in increasing seqnum order.
+	return files, true
+}
+
+// addL0Files incrementally builds a new l0Sublevels for when the only change
+// since the receiver l0Sublevels was an addition of the specified tables, with
+// no L0 deletions. The common case of this is an ingestion or a flush. These
+// files can "sit on top" of existing sublevels, creating at most one new
+// sublevel for a flush (and possibly multiple for an ingestion), and at most
+// 2*len(files) additions to s.orderedIntervals. No files must have been deleted
+// from L0, and the added files must all be newer in sequence numbers than
+// existing files in l0Sublevels. The levelMetadata parameter corresponds to the
+// new L0 post addition of files. This method is meant to be significantly more
+// performant than newL0Sublevels.
+//
+// This function is intended to be called with the result of canUseAddL0Files(),
+// which is the list of new L0 tables in increasing L0 order.
+//
+// Note that this function can only be called once on a given receiver; it
+// appends to some slices in s which is only safe when done once. This is okay,
+// as the common case (generating a new l0Sublevels after a flush/ingestion) is
+// only going to necessitate one call of this method on a given receiver. The
+// returned value, if non-nil, can then have [*l0Sublevels.addL0Files] called on
+// it again, and so on.
+func (s *l0Sublevels) addL0Files(
+	files []*TableMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
+) *l0Sublevels {
+	if s.addL0FilesCalled {
+		panic("addL0Files called twice on the same receiver")
+	}
 	s.addL0FilesCalled = true
 
 	// Start with a shallow copy of s.
@@ -618,9 +609,7 @@ func (s *l0Sublevels) addL0Files(
 	// Update interval indices for new files.
 	for i, f := range files {
 		f.L0Index = s.levelMetadata.Len() + i
-		if err := newVal.addFileToSublevels(f, true /* checkInvariant */); err != nil {
-			return nil, err
-		}
+		newVal.addFileToSublevels(f)
 		updatedSublevels = append(updatedSublevels, f.SubLevel)
 	}
 
@@ -658,16 +647,14 @@ func (s *l0Sublevels) addL0Files(
 	newVal.flushSplitUserKeys = nil
 	newVal.calculateFlushSplitKeys(flushSplitMaxBytes)
 	newVal.Check()
-	return newVal, nil
+	return newVal
 }
 
 // addFileToSublevels is called during l0Sublevels generation, and adds f to the
 // correct sublevel's levelFiles, the relevant intervals' files slices, and sets
 // interval indices on f. This method, if called successively on multiple files,
-// _must_ be called on successively newer files (by seqnum). If checkInvariant
-// is true, it could check for this in some cases and return
-// [errInvalidL0SublevelsOpt] if that invariant isn't held.
-func (s *l0Sublevels) addFileToSublevels(f *TableMetadata, checkInvariant bool) error {
+// _must_ be called on successively newer files (by seqnum).
+func (s *l0Sublevels) addFileToSublevels(f *TableMetadata) {
 	// This is a simple and not very accurate estimate of the number of
 	// bytes this SSTable contributes to the intervals it is a part of.
 	//
@@ -680,10 +667,8 @@ func (s *l0Sublevels) addFileToSublevels(f *TableMetadata, checkInvariant bool) 
 	for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 		interval := &s.orderedIntervals[i]
 		if len(interval.files) > 0 {
-			if checkInvariant && interval.files[len(interval.files)-1].LargestSeqNum > f.LargestSeqNum {
-				// We are sliding this file "underneath" an existing file. Throw away
-				// and start over in newL0Sublevels.
-				return errInvalidL0SublevelsOpt
+			if interval.files[len(interval.files)-1].LargestSeqNum > f.LargestSeqNum {
+				panic(errors.AssertionFailedf("addFileToSublevels found existing newer file"))
 			}
 			// interval.files is sorted by sublevels, from lowest to highest.
 			// addL0Files can only add files at sublevels higher than existing files
@@ -703,14 +688,13 @@ func (s *l0Sublevels) addFileToSublevels(f *TableMetadata, checkInvariant bool) 
 	}
 	f.SubLevel = subLevel
 	if subLevel > len(s.levelFiles) {
-		return errors.Errorf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", subLevel, len(s.levelFiles))
+		panic(errors.AssertionFailedf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", subLevel, len(s.levelFiles)))
 	}
 	if subLevel == len(s.levelFiles) {
 		s.levelFiles = append(s.levelFiles, []*TableMetadata{f})
 	} else {
 		s.levelFiles[subLevel] = append(s.levelFiles[subLevel], f)
 	}
-	return nil
 }
 
 func (s *l0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
@@ -2147,8 +2131,8 @@ func (o *L0Organizer) Update(
 	}
 	// If we only added tables, try to use addL0Files.
 	if len(deletedL0Tables) == 0 {
-		newSublevels, err := o.l0Sublevels.addL0Files(addedL0Tables, o.flushSplitBytes, newLevelMeta)
-		if err == nil {
+		if files, ok := o.l0Sublevels.canUseAddL0Files(addedL0Tables, newLevelMeta); ok {
+			newSublevels := o.l0Sublevels.addL0Files(files, o.flushSplitBytes, newLevelMeta)
 			// In invariants mode, sometimes rebuild from scratch to verify that
 			// AddL0Files did the right thing. Note that NewL0Sublevels updates
 			// fields in TableMetadata like L0Index, so we don't want to do this
@@ -2169,9 +2153,6 @@ func (o *L0Organizer) Update(
 			}
 			o.l0Sublevels = newSublevels
 			return
-		}
-		if !errors.Is(err, errInvalidL0SublevelsOpt) {
-			panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
 		}
 	}
 	var err error
