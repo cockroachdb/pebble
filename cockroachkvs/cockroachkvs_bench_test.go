@@ -55,7 +55,7 @@ func BenchmarkRandSeekInSST(b *testing.B) {
 			version:  sstable.TableFormatPebblev5,
 		},
 	}
-	keyCfg := keyGenConfig{
+	keyCfg := KeyGenConfig{
 		PrefixAlphabetLen: 26,
 		RoachKeyLen:       12,
 		PrefixLenShared:   4,
@@ -83,11 +83,11 @@ func benchmarkRandSeekInSST(
 	b *testing.B,
 	rng *rand.Rand,
 	numKeys int,
-	keyCfg keyGenConfig,
+	keyCfg KeyGenConfig,
 	valueLen int,
 	writerOpts sstable.WriterOptions,
 ) {
-	keys, values := randomKVs(rng, numKeys, keyCfg, valueLen)
+	keys, values := RandomKVs(rng, numKeys, keyCfg, valueLen)
 	obj := &objstorage.MemObj{}
 	w := sstable.NewWriter(obj, writerOpts)
 	for i := range keys {
@@ -154,7 +154,7 @@ func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 			for _, roachKeyLen := range []int{8, 32, 128} {
 				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, valueLen := range []int{8, 128, 1024} {
-					keyConfig := keyGenConfig{
+					keyConfig := KeyGenConfig{
 						PrefixAlphabetLen: alphaLen,
 						RoachKeyLen:       roachKeyLen,
 						PrefixLenShared:   lenShared,
@@ -171,7 +171,7 @@ func BenchmarkCockroachDataBlockWriter(b *testing.B) {
 	}
 }
 
-func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
+func benchmarkCockroachDataBlockWriter(b *testing.B, keyConfig KeyGenConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
@@ -203,7 +203,7 @@ func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
 					for _, percentLogical := range []int{0, 50} {
 						for _, valueLen := range []int{8, 128, 1024} {
 							cfg := benchConfig{
-								keyGenConfig: keyGenConfig{
+								KeyGenConfig: KeyGenConfig{
 									PrefixAlphabetLen: alphaLen,
 									RoachKeyLen:       roachKeyLen,
 									PrefixLenShared:   lenShared,
@@ -225,7 +225,7 @@ func BenchmarkCockroachDataBlockIterFull(b *testing.B) {
 
 var shortBenchConfigs = []benchConfig{
 	{
-		keyGenConfig: keyGenConfig{
+		KeyGenConfig: KeyGenConfig{
 			PrefixAlphabetLen: 8,
 			RoachKeyLen:       8,
 			PrefixLenShared:   4,
@@ -235,7 +235,7 @@ var shortBenchConfigs = []benchConfig{
 		ValueLen: 8,
 	},
 	{
-		keyGenConfig: keyGenConfig{
+		KeyGenConfig: KeyGenConfig{
 			PrefixAlphabetLen: 8,
 			RoachKeyLen:       128,
 			PrefixLenShared:   64,
@@ -299,12 +299,12 @@ func BenchmarkCockroachDataBlockIterTransforms(b *testing.B) {
 }
 
 type benchConfig struct {
-	keyGenConfig
+	KeyGenConfig
 	ValueLen int
 }
 
 func (cfg benchConfig) String() string {
-	return fmt.Sprintf("%s,ValueLen=%d", cfg.keyGenConfig, cfg.ValueLen)
+	return fmt.Sprintf("%s,ValueLen=%d", cfg.KeyGenConfig, cfg.ValueLen)
 }
 
 func benchmarkCockroachDataBlockIter(
@@ -315,7 +315,7 @@ func benchmarkCockroachDataBlockIter(
 	rng := rand.New(rand.NewPCG(0, seed))
 	cfg.BaseWallTime = seed
 
-	serializedBlock, keys, _ := generateDataBlock(rng, targetBlockSize, cfg.keyGenConfig, cfg.ValueLen)
+	serializedBlock, keys, _ := generateDataBlock(rng, targetBlockSize, cfg.KeyGenConfig, cfg.ValueLen)
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter

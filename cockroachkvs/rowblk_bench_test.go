@@ -22,7 +22,7 @@ func BenchmarkCockroachDataRowBlockWriter(b *testing.B) {
 			for _, roachKeyLen := range []int{8, 32, 128} {
 				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, valueLen := range []int{8, 128, 1024} {
-					keyConfig := keyGenConfig{
+					keyConfig := KeyGenConfig{
 						PrefixAlphabetLen: alphaLen,
 						RoachKeyLen:       roachKeyLen,
 						PrefixLenShared:   lenShared,
@@ -39,11 +39,11 @@ func BenchmarkCockroachDataRowBlockWriter(b *testing.B) {
 	}
 }
 
-func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
+func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig KeyGenConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
-	keys, values := randomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+	keys, values := RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
 
 	var w rowblk.Writer
 	w.RestartInterval = 16
@@ -77,7 +77,7 @@ func BenchmarkCockroachDataBlockIter(b *testing.B) {
 				lenShared := int(float64(roachKeyLen) * lenSharedPct)
 				for _, logical := range []int{0, 100} {
 					for _, valueLen := range []int{8, 128, 1024} {
-						keyConfig := keyGenConfig{
+						keyConfig := KeyGenConfig{
 							PrefixAlphabetLen: alphaLen,
 							RoachKeyLen:       roachKeyLen,
 							PrefixLenShared:   lenShared,
@@ -95,11 +95,11 @@ func BenchmarkCockroachDataBlockIter(b *testing.B) {
 	}
 }
 
-func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig keyGenConfig, valueLen int) {
+func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig KeyGenConfig, valueLen int) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
-	keys, values := randomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
+	keys, values := RandomKVs(rng, targetBlockSize/valueLen, keyConfig, valueLen)
 
 	var w rowblk.Writer
 	w.RestartInterval = 16
