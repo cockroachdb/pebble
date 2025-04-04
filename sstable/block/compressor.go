@@ -78,7 +78,7 @@ func (snappyDecompressor) DecompressInto(buf, compressed []byte) error {
 		return err
 	}
 	if len(result) != len(buf) || (len(result) > 0 && &result[0] != &buf[0]) {
-		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
+		return base.CorruptionErrorf("pebble: decompressed into unexpected buffer: %p != %p",
 			errors.Safe(result), errors.Safe(buf))
 	}
 	return nil
@@ -94,7 +94,7 @@ func (zstdDecompressor) DecompressedLen(b []byte) (decompressedLen int, err erro
 	// if we implement these algorithms in the future.
 	decodedLenU64, varIntLen := binary.Uvarint(b)
 	if varIntLen <= 0 {
-		return 0, base.CorruptionErrorf("pebble/table: compression block has invalid length")
+		return 0, base.CorruptionErrorf("pebble: compression block has invalid length")
 	}
 	return int(decodedLenU64), nil
 }
