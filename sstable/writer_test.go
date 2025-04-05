@@ -353,16 +353,6 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
 			}
-			if arg, ok := td.Arg("table-format"); ok {
-				// The datadriven cmd parser will parse the TableFormat string
-				// because its string representation looks like the datadriven
-				// format for multiple arguments (<arg1>,<arg2>).
-				name, v := arg.TwoVals(t)
-				formatVersion, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
-				if err != nil {
-					return err.Error()
-				}
-			}
 			var inPlaceValueBound UserKeyPrefixBound
 			if td.HasArg("in-place-bound") {
 				var l, u string
@@ -545,16 +535,6 @@ func TestWriterWithBlobValueHandles(t *testing.T) {
 			var blockSize int
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
-			}
-			if arg, ok := td.Arg("table-format"); ok {
-				// The datadriven cmd parser will parse the TableFormat string
-				// because its string representation looks like the datadriven
-				// format for multiple arguments (<arg1>,<arg2>).
-				name, v := arg.TwoVals(t)
-				formatVersion, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
-				if err != nil {
-					return err.Error()
-				}
 			}
 			meta, r, err = runBuildCmd(td, &WriterOptions{
 				BlockSize:               blockSize,

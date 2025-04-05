@@ -1,4 +1,4 @@
-build table-format=(Pebble,v6)
+build table-format=Pebble,v6
 a@2.SET.1:blobInlineHandle(0, blk1, 10, 100, 0x07)
 b@5.SET.7:blobInlineHandle(0, blk2, 110, 200, 0x07)
 b@4.DEL.3:

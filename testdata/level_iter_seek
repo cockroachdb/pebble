@@ -385,7 +385,7 @@ f.SET.5:f
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
 
-build format=pebblev2
+build table-format=Pebble,v2
 g.RANGEKEYDEL.6:h
 ----
 0: a#9,SET-b#8,SET

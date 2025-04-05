@@ -291,7 +291,7 @@ x: (bar, .)
 reset
 ----
 
-build-remote f7 block-size=5
+build-remote f7 block-size=5 index-block-size=5
 set b ignored
 set c foo
 set d haha
@@ -299,7 +299,7 @@ set e something
 set x ignored
 ----
 
-build-remote f8 block-size=100
+build-remote f8 block-size=100 index-block-size=100
 set a ignored
 set g foo
 set h foo
