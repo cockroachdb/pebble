@@ -342,10 +342,11 @@ func (vs *versionSet) load(
 	}
 
 	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
-	newVersion, err := bve.Apply(emptyVersion, vs.l0Organizer, opts.Experimental.ReadCompactionRate)
+	newVersion, err := bve.Apply(emptyVersion, opts.Experimental.ReadCompactionRate)
 	if err != nil {
 		return err
 	}
+	vs.l0Organizer.PerformUpdate(vs.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
 	vs.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
 	vs.append(newVersion)
 
@@ -561,6 +562,7 @@ func (vs *versionSet) logAndApply(
 	zombieBackings, removedVirtualBackings, localLiveSizeDelta :=
 		getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings, vs.provider)
 
+	var l0Update manifest.L0PreparedUpdate
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
@@ -568,17 +570,16 @@ func (vs *versionSet) logAndApply(
 		if vs.getFormatMajorVersion() < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
 			return base.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
-		var b bulkVersionEdit
-		err := b.Accumulate(ve)
+		var bulkEdit bulkVersionEdit
+		err := bulkEdit.Accumulate(ve)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST accumulate failed")
 		}
-		newVersion, err = b.Apply(
-			currentVersion, vs.l0Organizer, vs.opts.Experimental.ReadCompactionRate,
-		)
+		newVersion, err = bulkEdit.Apply(currentVersion, vs.opts.Experimental.ReadCompactionRate)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}
+		l0Update = vs.l0Organizer.PrepareUpdate(&bulkEdit, newVersion)
 
 		if newManifestFileNum != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
@@ -642,6 +643,7 @@ func (vs *versionSet) logAndApply(
 	// L0Sublevels.
 	inProgress := inProgressCompactions()
 
+	vs.l0Organizer.PerformUpdate(l0Update, newVersion)
 	vs.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
 
 	// Update the zombie tables set first, as installation of the new version

@@ -1214,8 +1214,7 @@ func NewVersionForTesting(
 			v.Levels[l].totalSize += f.Size
 		}
 	}
-	l0Organizer.ResetForTesting(&v.Levels[0])
-	v.L0SublevelFiles = l0Organizer.SublevelFiles()
+	l0Organizer.ResetForTesting(v)
 	return v
 }
 
