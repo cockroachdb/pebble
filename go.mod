@@ -3,6 +3,7 @@ module github.com/cockroachdb/pebble
 require (
 	github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
+	github.com/RaduBerinde/axisds v0.0.0-20250402032031-67b60e6b299d
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b
 	github.com/cockroachdb/datadriven v1.0.3-0.20240530155848-7682d40af056
@@ -37,6 +38,7 @@ require (
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/google/btree v1.1.3 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect

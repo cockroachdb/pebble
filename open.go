@@ -232,6 +232,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
+	d.problemSpans.Init(manifest.NumLevels, opts.Comparer.Compare)
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
