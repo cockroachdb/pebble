@@ -31,10 +31,11 @@ type DeleteCleaner = base.DeleteCleaner
 type ArchiveCleaner = base.ArchiveCleaner
 
 type cleanupManager struct {
-	opts            *Options
-	objProvider     objstorage.Provider
-	onTableDeleteFn func(fileSize uint64, isLocal bool)
-	deletePacer     *deletionPacer
+	opts                       *Options
+	objProvider                objstorage.Provider
+	onTableDeleteFn            func(fileSize uint64, isLocal bool)
+	deletePacer                *deletionPacer
+	deletedFileSizePendingSync uint64
 
 	// jobsCh is used as the cleanup job queue.
 	jobsCh chan *cleanupJob
@@ -53,6 +54,8 @@ type cleanupManager struct {
 
 // We can queue this many jobs before we have to block EnqueueJob.
 const jobsQueueDepth = 1000
+
+const deleteThresholdForSync uint64 = 64 * 1024 * 1024 // 64 MB
 
 // deletableFile is used for non log files.
 type deletableFile struct {
@@ -171,22 +174,28 @@ func (cm *cleanupManager) mainLoop() {
 	tb.Init(1.0, 1.0)
 	for job := range cm.jobsCh {
 		for _, of := range job.obsoleteFiles {
+			var fileSize uint64
 			switch of.fileType {
 			case base.FileTypeTable:
 				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
 				cm.onTableDeleteFn(of.nonLogFile.fileSize, of.nonLogFile.isLocal)
 				cm.deleteObsoleteObject(of.fileType, job.jobID, of.nonLogFile.fileNum)
+				fileSize = of.nonLogFile.fileSize
 			case base.FileTypeBlob:
 				cm.maybePace(&tb, of.fileType, of.nonLogFile.fileNum, of.nonLogFile.fileSize)
 				cm.deleteObsoleteObject(of.fileType, job.jobID, of.nonLogFile.fileNum)
+				fileSize = of.nonLogFile.fileSize
 			case base.FileTypeLog:
 				cm.deleteObsoleteFile(of.logFile.FS, base.FileTypeLog, job.jobID, of.logFile.Path,
 					base.DiskFileNum(of.logFile.NumWAL))
+				fileSize = of.logFile.ApproxFileSize
 			default:
 				path := base.MakeFilepath(cm.opts.FS, of.nonLogFile.dir, of.fileType, of.nonLogFile.fileNum)
 				cm.deleteObsoleteFile(
 					cm.opts.FS, of.fileType, job.jobID, path, of.nonLogFile.fileNum)
+				fileSize = of.nonLogFile.fileSize
 			}
+			cm.syncIfAboveThreshold(fileSize)
 		}
 		cm.mu.Lock()
 		cm.mu.completedJobs++
@@ -236,6 +245,18 @@ func (cm *cleanupManager) maybePace(
 		}
 		time.Sleep(d)
 	}
+}
+
+func (cm *cleanupManager) syncIfAboveThreshold(fileSize uint64) {
+	cm.deletedFileSizePendingSync += fileSize
+	if cm.deletedFileSizePendingSync < deleteThresholdForSync {
+		return
+	}
+
+	if err := cm.objProvider.Sync(); err != nil {
+		cm.opts.Logger.Errorf("objProvider Sync failed: %v", err)
+	}
+	cm.deletedFileSizePendingSync = 0
 }
 
 // deleteObsoleteFile deletes a (non-object) file that is no longer needed.

@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -121,12 +122,21 @@ func TestCleaner(t *testing.T) {
 			return memLog.String()
 
 		case "create-bogus-file":
-			if len(td.CmdArgs) != 1 {
-				return "create-bogus-file <db/file>"
+			if len(td.CmdArgs) < 1 {
+				return "create-bogus-file <db/file> [size]"
 			}
 			dst, err := fs.Create(td.CmdArgs[0].String(), vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
-			_, err = dst.Write([]byte("bogus data"))
+			var byteStream []byte
+			if len(td.CmdArgs) == 2 {
+				num, err := strconv.Atoi(td.CmdArgs[1].String())
+				require.NoError(t, err)
+				byteStream = make([]byte, num)
+			} else {
+				byteStream = []byte("bogus data")
+			}
+
+			_, err = dst.Write(byteStream)
 			require.NoError(t, err)
 			require.NoError(t, dst.Sync())
 			require.NoError(t, dst.Close())
