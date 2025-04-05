@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/record"
@@ -294,10 +295,13 @@ func TestL0Sublevels(t *testing.T) {
 			levelMetadata := MakeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
 				if addL0FilesOpt {
-					sublevels, err = sublevels.addL0Files(addedL0Files, int64(flushSplitMaxBytes), &levelMetadata)
-					// Check if the output matches a full initialization.
-					sublevels2, _ := newL0Sublevels(&levelMetadata, base.DefaultComparer.Compare, base.DefaultFormatter, int64(flushSplitMaxBytes))
-					if sublevels != nil && sublevels2 != nil {
+					files, ok := sublevels.canUseAddL0Files(addedL0Files, &levelMetadata)
+					if !ok {
+						err = errors.Newf("pebble: L0 sublevel generation optimization cannot be used")
+					} else {
+						sublevels = sublevels.addL0Files(files, int64(flushSplitMaxBytes), &levelMetadata)
+						// Check if the output matches a full initialization.
+						sublevels2, _ := newL0Sublevels(&levelMetadata, base.DefaultComparer.Compare, base.DefaultFormatter, int64(flushSplitMaxBytes))
 						require.Equal(t, sublevels.flushSplitUserKeys, sublevels2.flushSplitUserKeys)
 						require.Equal(t, sublevels.levelFiles, sublevels2.levelFiles)
 					}
@@ -555,8 +559,9 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			// that of the previous L0Sublevels. So it must be called before
 			// newL0Sublevels; calling it the other way around results in
 			// out-of-bounds panics.
-			s2, err = s2.addL0Files(filesToAdd, flushSplitMaxBytes, &levelMetadata)
-			require.NoError(t, err)
+			files, ok := s2.canUseAddL0Files(filesToAdd, &levelMetadata)
+			require.True(t, ok)
+			s2 = s2.addL0Files(files, flushSplitMaxBytes, &levelMetadata)
 		}
 
 		s, err = newL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
