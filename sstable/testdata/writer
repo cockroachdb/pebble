@@ -147,19 +147,19 @@ build
 a.SET.1:b
 a.SET.2:c
 ----
-pebble: keys must be added in strictly increasing order: a#1,SET, a#2,SET
+failed to write a#2,SET = c: pebble: keys must be added in strictly increasing order: a#1,SET, a#2,SET
 
 build
 b.SET.1:a
 a.SET.2:b
 ----
-pebble: keys must be added in strictly increasing order: b#1,SET, a#2,SET
+failed to write a#2,SET = b: pebble: keys must be added in strictly increasing order: b#1,SET, a#2,SET
 
 build
 b.RANGEDEL.1:c
 a.RANGEDEL.2:b
 ----
-pebble: keys must be added in order: b#1,RANGEDEL, a#2,RANGEDEL
+failed to write a#2,RANGEDEL = b: pebble: keys must be added in order: b#1,RANGEDEL, a#2,RANGEDEL
 
 build-raw
 .RANGEDEL.1:b
