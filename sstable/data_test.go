@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -28,43 +27,8 @@ import (
 )
 
 func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
-	for _, arg := range td.CmdArgs {
-		switch arg.Key {
-		case "leveldb":
-			if len(arg.Vals) != 0 {
-				return errors.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
-			}
-			writerOpts.TableFormat = TableFormatLevelDB
-		case "block-size":
-			if len(arg.Vals) != 1 {
-				return errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-			}
-			var err error
-			writerOpts.BlockSize, err = strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return err
-			}
-		case "index-block-size":
-			if len(arg.Vals) != 1 {
-				return errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-			}
-			var err error
-			writerOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return err
-			}
-		case "filter":
-			writerOpts.FilterPolicy = bloom.FilterPolicy(10)
-		case "comparer":
-			var err error
-			if writerOpts.Comparer, err = comparerFromCmdArg(arg); err != nil {
-				return err
-			}
-		case "writing-to-lowest-level":
-			writerOpts.WritingToLowestLevel = true
-		case "is-strict-obsolete":
-			writerOpts.IsStrictObsolete = true
-		}
+	if err := ParseWriterOptions(writerOpts, td.CmdArgs...); err != nil {
+		return err
 	}
 	if writerOpts.Comparer == nil {
 		writerOpts.Comparer = testkeys.Comparer
@@ -74,19 +38,6 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 		writerOpts.KeySchema = &s
 	}
 	return nil
-}
-
-func comparerFromCmdArg(arg datadriven.CmdArg) (*Comparer, error) {
-	switch arg.Vals[0] {
-	case "split-4b-suffix":
-		return test4bSuffixComparer, nil
-	case "testkeys":
-		return testkeys.Comparer, nil
-	case "default":
-		return base.DefaultComparer, nil
-	default:
-		return nil, errors.Errorf("unknown comparer: %s", arg.Vals[0])
-	}
 }
 
 func runBuildMemObjCmd(
