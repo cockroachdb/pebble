@@ -16,7 +16,7 @@ file 0
 # Point keys only (range del lower bound).
 
 load
-EncodeSpan: a-b:{(#0,RANGEDEL)}
+Span: a-b:{(#0,RANGEDEL)}
 c.SET.0:
 ----
 file 1
@@ -25,7 +25,7 @@ file 1
 
 load
 a.SET.0:
-EncodeSpan: b-c:{(#0,RANGEDEL)}
+Span: b-c:{(#0,RANGEDEL)}
 ----
 file 2
 
@@ -57,7 +57,7 @@ reset
 ----
 
 load
-EncodeSpan: a-c:{#0,RANGEKEYSET,@1,foo)}
+Span: a-c:{#0,RANGEKEYSET,@1,foo)}
 ----
 file 0
 
@@ -75,7 +75,7 @@ reset
 
 load
 a.SET.0:
-EncodeSpan: b-c:{#0,RANGEKEYSET,@1,foo)}
+Span: b-c:{#0,RANGEKEYSET,@1,foo)}
 d.SET.0:
 ----
 file 0
@@ -94,7 +94,7 @@ reset
 
 load
 a.SET.0:
-EncodeSpan: b-c:{(#0,RANGEKEYSET,@1,foo)}
+Span: b-c:{(#0,RANGEKEYSET,@1,foo)}
 ----
 file 0
 
@@ -111,7 +111,7 @@ reset
 ----
 
 load
-EncodeSpan: a-c:{#0,RANGEKEYSET,@1,foo)}
+Span: a-c:{#0,RANGEKEYSET,@1,foo)}
 d.SET.0:
 ----
 file 0
@@ -129,7 +129,7 @@ reset
 ----
 
 load
-EncodeSpan: a-d:{#0,RANGEKEYSET,@1,foo)}
+Span: a-d:{#0,RANGEKEYSET,@1,foo)}
 c.SET.0:
 ----
 file 0

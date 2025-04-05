@@ -176,7 +176,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return ""
 
 		case "write-kvs":
-			if err := writeKVs(w, td.Input); err != nil {
+			if err := ParseTestSST(w, td.Input); err != nil {
 				return err.Error()
 			}
 			return fmt.Sprintf("EstimatedSize()=%d", w.EstimatedSize())
@@ -352,16 +352,6 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			var blockSize int
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
-			}
-			if arg, ok := td.Arg("table-format"); ok {
-				// The datadriven cmd parser will parse the TableFormat string
-				// because its string representation looks like the datadriven
-				// format for multiple arguments (<arg1>,<arg2>).
-				name, v := arg.TwoVals(t)
-				formatVersion, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
-				if err != nil {
-					return err.Error()
-				}
 			}
 			var inPlaceValueBound UserKeyPrefixBound
 			if td.HasArg("in-place-bound") {
@@ -545,16 +535,6 @@ func TestWriterWithBlobValueHandles(t *testing.T) {
 			var blockSize int
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
-			}
-			if arg, ok := td.Arg("table-format"); ok {
-				// The datadriven cmd parser will parse the TableFormat string
-				// because its string representation looks like the datadriven
-				// format for multiple arguments (<arg1>,<arg2>).
-				name, v := arg.TwoVals(t)
-				formatVersion, err = ParseTableFormatString(fmt.Sprintf("(%s,%s)", name, v))
-				if err != nil {
-					return err.Error()
-				}
 			}
 			meta, r, err = runBuildCmd(td, &WriterOptions{
 				BlockSize:               blockSize,

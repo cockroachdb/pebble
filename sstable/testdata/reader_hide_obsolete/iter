@@ -315,7 +315,7 @@ build is-strict-obsolete
 d.SINGLEDEL.40:
 d.MERGE.30:D30
 ----
-MERGE not supported in a strict-obsolete sstable
+failed to write d#30,MERGE = D30: MERGE not supported in a strict-obsolete sstable
 
 # Regression test for #3761. If an entire block contains obsolete points,
 # skipBackward should still skip to blocks earlier in the sstable.

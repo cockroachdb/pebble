@@ -58,7 +58,7 @@ b.MERGE.0:
   ranges: #0,DEL-#0,DEL
 
 load
-EncodeSpan: a-b:{(#0,RANGEDEL)}
+Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
@@ -66,7 +66,7 @@ EncodeSpan: a-b:{(#0,RANGEDEL)}
 
 load
 a.SET.0:
-EncodeSpan: a-b:{(#0,RANGEDEL)}
+Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
@@ -74,7 +74,7 @@ EncodeSpan: a-b:{(#0,RANGEDEL)}
 
 load
 a.SET.0:
-EncodeSpan: a-b:{(#0,RANGEDEL)}
+Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
@@ -82,7 +82,7 @@ EncodeSpan: a-b:{(#0,RANGEDEL)}
 
 load
 b.SET.0:
-EncodeSpan: a-b:{(#0,RANGEDEL)}
+Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#0,SET
   points: a#0,RANGEDEL-b#0,SET
@@ -98,7 +98,7 @@ pebble: table format (Pebble,v4) is not within range supported at DB format majo
 # Tables with range keys only.
 
 load writer-version=16 db-version=16
-EncodeSpan: a-z:{(#0,RANGEKEYSET,@1,foo)}
+Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
   points: #0,DEL-#0,DEL
@@ -110,9 +110,9 @@ load writer-version=16 db-version=16
 a.SET.0:
 b.SET.0:
 c.SET.0:
-EncodeSpan: w-x:{(#0,RANGEKEYSET,@1,foo)}
-EncodeSpan: x-y:{(#0,RANGEKEYSET,@2,bar)}
-EncodeSpan: y-z:{(#0,RANGEKEYSET,@3,baz)}
+Span: w-x:{(#0,RANGEKEYSET,@1,foo)}
+Span: x-y:{(#0,RANGEKEYSET,@2,bar)}
+Span: y-z:{(#0,RANGEKEYSET,@3,baz)}
 ----
 1: a#0,SET-z#inf,RANGEKEYSET
   points: a#0,SET-c#0,SET
@@ -120,7 +120,7 @@ EncodeSpan: y-z:{(#0,RANGEKEYSET,@3,baz)}
 
 load writer-version=16 db-version=16
 c.SET.0:d
-EncodeSpan: a-z:{(#0,RANGEKEYSET,@1,foo)}
+Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
   points: c#0,SET-c#0,SET
@@ -128,7 +128,7 @@ EncodeSpan: a-z:{(#0,RANGEKEYSET,@1,foo)}
 
 load writer-version=16 db-version=16
 a.SET.0:z
-EncodeSpan: c-d:{(#0,RANGEKEYSET,@1,foo)}
+Span: c-d:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,SET-d#inf,RANGEKEYSET
   points: a#0,SET-a#0,SET
@@ -137,8 +137,8 @@ EncodeSpan: c-d:{(#0,RANGEKEYSET,@1,foo)}
 # NB: range dels sort before range keys
 
 load writer-version=16 db-version=16
-EncodeSpan: a-z:{(#0,RANGEDEL)}
-EncodeSpan: a-z:{(#0,RANGEKEYSET,@1,foo)}
+Span: a-z:{(#0,RANGEDEL)}
+Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,RANGEKEYSET-z#inf,RANGEDEL
   points: a#0,RANGEDEL-z#inf,RANGEDEL

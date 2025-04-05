@@ -1,7 +1,7 @@
 
 # Simple test case with row blocks.
 
-build test1 format=pebblev4
+build test1 table-format=Pebble,v4
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz
@@ -37,7 +37,7 @@ c#0,SET: baz
 
 
 # Try the above with small blocks.
-build test22 format=pebblev4 block_size=1 index_block_size=1
+build test22 table-format=Pebble,v4 block_size=1 index_block_size=1
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz
@@ -85,7 +85,7 @@ c#0,SET: baz
 
 # Try the above with columnar blocks.
 
-build test3 format=pebblev5
+build test3 table-format=Pebble,v5
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz
@@ -119,7 +119,7 @@ c#0,SET: baz
 
 
 # Try the above with small blocks.
-build test32 format=pebblev5 block_size=1 index_block_size=1
+build test32 table-format=Pebble,v5 block_size=1 index_block_size=1
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz
@@ -159,7 +159,7 @@ c#0,SET: baz
 
 # Try the above with checksummed columnar blocks.
 
-build test3 format=pebblev6
+build test3 table-format=Pebble,v6
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz
@@ -193,7 +193,7 @@ c#0,SET: baz
 
 
 # Try the above with small blocks.
-build test32 format=pebblev6 block_size=1 index_block_size=1
+build test32 table-format=Pebble,v6 block_size=1 index_block_size=1
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz

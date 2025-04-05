@@ -1,5 +1,5 @@
 
-build ext0 format=pebblev2
+build ext0 table-format=Pebble,v2
 set a 1
 set l 2
 ----
@@ -103,7 +103,7 @@ f: (bar, .)
 l: (2, .)
 .
 
-build ext1 format=pebblev2
+build ext1 table-format=Pebble,v2
 set d foo3
 set e bar2
 ----
@@ -137,14 +137,14 @@ l: (2, .)
 reset
 ----
 
-build ext3 format=pebblev2
+build ext3 table-format=Pebble,v2
 range-key-set c f @4 foobar
 ----
 
 ingest ext3
 ----
 
-build ext4 format=pebblev2
+build ext4 table-format=Pebble,v2
 set b bar
 del-range g i
 ----
