@@ -229,21 +229,17 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 
-	tableFormat := sstable.TableFormatMinSupported
-	for _, arg := range d.CmdArgs {
-		if arg.Key == "format" {
-			switch arg.Vals[0] {
-			case "pebblev2":
-				tableFormat = sstable.TableFormatPebblev2
-			}
-		}
-	}
 	fp := bloom.FilterPolicy(10)
-	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{
+	writerOpts := sstable.WriterOptions{
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
-		TableFormat:  tableFormat,
-	})
+		TableFormat:  sstable.TableFormatMinSupported,
+	}
+	if err := sstable.ParseWriterOptions(&writerOpts, d.CmdArgs...); err != nil {
+		return err.Error()
+	}
+
+	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
 	var tombstones []keyspan.Span
 	f := keyspan.Fragmenter{
 		Cmp:    lt.cmp.Compare,

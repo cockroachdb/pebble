@@ -253,7 +253,7 @@ c#1,SET:c
 # Enabling leveldb format disables the creation of a two-level index
 # (the input data here mirrors the test case above).
 
-build leveldb block-size=1 index-block-size=1
+build table-format=LevelDB block-size=1 index-block-size=1
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c

@@ -584,40 +584,27 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 	path := td.CmdArgs[0].String()
 
-	// Override table format, if provided.
-	tableFormat := d.TableFormat()
-	var blockSize int64
-	for _, cmdArg := range td.CmdArgs[1:] {
-		switch cmdArg.Key {
-		case "format":
-			switch cmdArg.Vals[0] {
-			case "pebblev1":
-				tableFormat = sstable.TableFormatPebblev1
-			case "pebblev2":
-				tableFormat = sstable.TableFormatPebblev2
-			case "pebblev3":
-				tableFormat = sstable.TableFormatPebblev3
-			case "pebblev4":
-				tableFormat = sstable.TableFormatPebblev4
-			default:
-				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
-			}
-		case "block-size":
-			var err error
-			blockSize, err = strconv.ParseInt(cmdArg.Vals[0], 10, 64)
-			if err != nil {
-				return errors.Wrap(err, td.Pos)
-			}
-		}
+	// First, we parse the writer options just to get the table format.
+	tableFormat, err := sstable.ParseTableFormat(d.TableFormat(), td.CmdArgs...)
+	if err != nil {
+		return err
 	}
 
+	// Use TableFormatMax here and downgrade after, if necessary. This ensures
+	// that all fields are set.
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
-	if blockSize == 0 && rand.IntN(4) == 0 {
-		// Force two-level indexes if not already forced on or off.
-		blockSize = 5
+	if rand.IntN(4) == 0 {
+		// If block size is not specified (in which case these fields will be
+		// overridden by ParseWriterOptions), force two-level indexes some of the
+		// time.
+		writeOpts.BlockSize = 5
+		writeOpts.IndexBlockSize = 5
 	}
-	writeOpts.BlockSize = int(blockSize)
-	writeOpts.IndexBlockSize = int(blockSize)
+
+	// Now parse the arguments again against the real options.
+	if err := sstable.ParseWriterOptions(&writeOpts, td.CmdArgs...); err != nil {
+		return err
+	}
 
 	f, err := storage.CreateObject(path)
 	if err != nil {
@@ -708,28 +695,15 @@ func runBuildCmd(
 	path := td.CmdArgs[0].String()
 
 	// Override table format, if provided.
-	tableFormat := d.TableFormat()
-	for _, cmdArg := range td.CmdArgs[1:] {
-		switch cmdArg.Key {
-		case "format":
-			switch cmdArg.Vals[0] {
-			case "pebblev1":
-				tableFormat = sstable.TableFormatPebblev1
-			case "pebblev2":
-				tableFormat = sstable.TableFormatPebblev2
-			case "pebblev3":
-				tableFormat = sstable.TableFormatPebblev3
-			case "pebblev4":
-				tableFormat = sstable.TableFormatPebblev4
-			case "pebblev5":
-				tableFormat = sstable.TableFormatPebblev5
-			default:
-				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
-			}
-		}
+	tableFormat, err := sstable.ParseTableFormat(d.TableFormat(), td.CmdArgs[1:]...)
+	if err != nil {
+		return err
 	}
 
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
+	if err := sstable.ParseWriterOptions(&writeOpts, td.CmdArgs[1:]...); err != nil {
+		return err
+	}
 	var blobReferences blobtest.References
 	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {

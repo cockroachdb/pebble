@@ -457,7 +457,7 @@ lsm db
 L6:
   000010:[a#0,SET-g#0,SET]
 
-build db ext1 format=pebblev2
+build db ext1 table-format=Pebble,v2
 set i i
 set j j
 set k k
@@ -474,7 +474,7 @@ L6:
   000013(000010):[d#0,SET-g#0,SET]
   000011:[i#20,SET-k#20,SET]
 
-build db ext2 format=pebblev2
+build db ext2 table-format=Pebble,v2
 set z z
 ----
 

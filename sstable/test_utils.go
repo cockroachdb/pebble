@@ -261,6 +261,17 @@ func decodeBlobInlineHandleAndAttribute(
 	}, base.ShortAttribute(attr[0]), nil
 }
 
+// ParseTableFormat returns the table format from an argument of the form "table-format=<format>", or the given default if none is specified.
+func ParseTableFormat[StringOrStringer any](
+	defaultFormat TableFormat, args ...StringOrStringer,
+) (TableFormat, error) {
+	writerOptions := WriterOptions{TableFormat: defaultFormat}
+	if err := ParseWriterOptions(&writerOptions, args...); err != nil {
+		return 0, err
+	}
+	return writerOptions.TableFormat, nil
+}
+
 // ParseWriterOptions modifies WriterOptions based on the given arguments. Each
 // argument is a string or a fmt.Stringer (like datadriven.TestData.CmdArg) with
 // format either "<key>" or "<key>=<value>".
@@ -273,27 +284,9 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 		key, value, _ := strings.Cut(str, "=")
 		var err error
 		switch key {
-		case "leveldb":
-			o.TableFormat = TableFormatLevelDB
-		case "format":
-			switch value {
-			case "leveldb":
-				o.TableFormat = TableFormatLevelDB
-			case "pebblev1":
-				o.TableFormat = TableFormatPebblev1
-			case "pebblev2":
-				o.TableFormat = TableFormatPebblev2
-			case "pebblev3":
-				o.TableFormat = TableFormatPebblev3
-			case "pebblev4":
-				o.TableFormat = TableFormatPebblev4
-			case "pebblev5":
-				o.TableFormat = TableFormatPebblev5
-			case "pebblev6":
-				o.TableFormat = TableFormatPebblev6
-			default:
-				return errors.Errorf("unknown format string %s", value)
-			}
+		case "table-format":
+			o.TableFormat, err = ParseTableFormatString("(" + value + ")")
+
 		case "block-size":
 			o.BlockSize, err = strconv.Atoi(value)
 
@@ -311,6 +304,9 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 
 		case "is-strict-obsolete":
 			o.IsStrictObsolete = true
+
+		case "format", "leveldb":
+			return errors.Errorf("%q is deprecated", key)
 
 		default:
 			// TODO(radu): ignoring unknown keys is error-prone; we need to find an

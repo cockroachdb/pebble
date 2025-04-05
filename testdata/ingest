@@ -16,7 +16,7 @@ ingest ext0
 lsm
 ----
 
-build ext0 format=pebblev2
+build ext0 table-format=Pebble,v2
 set a 1
 set b 2
 ----
@@ -116,7 +116,7 @@ b
 a:3
 b: pebble: not found
 
-build ext2 format=pebblev2
+build ext2 table-format=Pebble,v2
 set a 4
 set b 5
 set c 6
@@ -303,7 +303,7 @@ n
 m:12
 n:13
 
-build ext7 format=pebblev2
+build ext7 table-format=Pebble,v2
 del-range a c
 del-range x z
 ----
