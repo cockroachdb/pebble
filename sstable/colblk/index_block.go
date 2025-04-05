@@ -43,7 +43,7 @@ type IndexBlockWriter struct {
 	lengths         UintBuilder
 	blockProperties RawBytesBuilder
 	rows            int
-	enc             blockEncoder
+	enc             BlockEncoder
 }
 
 const (
@@ -70,7 +70,7 @@ func (w *IndexBlockWriter) Reset() {
 	w.lengths.Reset()
 	w.blockProperties.Reset()
 	w.rows = 0
-	w.enc.reset()
+	w.enc.Reset()
 }
 
 // Rows returns the number of entries in the index block so far.
@@ -105,7 +105,7 @@ func (w *IndexBlockWriter) Size() int {
 }
 
 func (w *IndexBlockWriter) size(rows int) int {
-	off := blockHeaderSize(indexBlockColumnCount, indexBlockCustomHeaderSize)
+	off := HeaderSize(indexBlockColumnCount, indexBlockCustomHeaderSize)
 	off = w.separators.Size(rows, off)
 	off = w.offsets.Size(rows, off)
 	off = w.lengths.Size(rows, off)
@@ -121,16 +121,16 @@ func (w *IndexBlockWriter) Finish(rows int) []byte {
 		panic(errors.AssertionFailedf("index block has %d rows; asked to finish %d", w.rows, rows))
 	}
 
-	w.enc.init(w.size(rows), Header{
+	w.enc.Init(w.size(rows), Header{
 		Version: Version1,
 		Columns: indexBlockColumnCount,
 		Rows:    uint32(rows),
 	}, indexBlockCustomHeaderSize)
-	w.enc.encode(rows, &w.separators)
-	w.enc.encode(rows, &w.offsets)
-	w.enc.encode(rows, &w.lengths)
-	w.enc.encode(rows, &w.blockProperties)
-	return w.enc.finish()
+	w.enc.Encode(rows, &w.separators)
+	w.enc.Encode(rows, &w.offsets)
+	w.enc.Encode(rows, &w.lengths)
+	w.enc.Encode(rows, &w.blockProperties)
+	return w.enc.Finish()
 }
 
 // An IndexBlockDecoder reads columnar index blocks.
@@ -173,9 +173,9 @@ func (r *IndexBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.SetAnchorOffset()
 
 	n := tp.Child("index block header")
-	r.bd.headerToBinFormatter(f, n)
+	r.bd.HeaderToBinFormatter(f, n)
 	for i := 0; i < indexBlockColumnCount; i++ {
-		r.bd.columnToBinFormatter(f, n, i, int(r.bd.header.Rows))
+		r.bd.ColumnToBinFormatter(f, n, i, int(r.bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)

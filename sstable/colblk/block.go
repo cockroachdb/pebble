@@ -181,10 +181,10 @@ func (h Header) Encode(buf []byte) {
 	binary.LittleEndian.PutUint32(buf[1+align16:], h.Rows)
 }
 
-// blockHeaderSize returns the size of the block header, including column
+// HeaderSize returns the size of the block header, including column
 // headers, for a block with the specified number of columns and optionally a
 // custom header size.
-func blockHeaderSize(cols int, customHeaderSize uint32) uint32 {
+func HeaderSize(cols int, customHeaderSize uint32) uint32 {
 	// Each column has a 1-byte DataType and a 4-byte offset into the block.
 	return uint32(blockHeaderBaseSize+cols*columnHeaderSize) + customHeaderSize
 }
@@ -199,15 +199,16 @@ func DecodeHeader(data []byte) Header {
 	}
 }
 
-// A blockEncoder encodes a columnar block and handles encoding the block's
+// A BlockEncoder encodes a columnar block and handles encoding the block's
 // header, including individual column headers.
-type blockEncoder struct {
+type BlockEncoder struct {
 	buf          []byte
 	headerOffset uint32
 	pageOffset   uint32
 }
 
-func (e *blockEncoder) reset() {
+// Reset resets an encoder for reuse.
+func (e *BlockEncoder) Reset() {
 	if cap(e.buf) > maxBlockRetainedSize {
 		e.buf = nil
 	}
@@ -215,26 +216,26 @@ func (e *blockEncoder) reset() {
 	e.pageOffset = 0
 }
 
-// init initializes the block encoder with a buffer of the specified size and
+// Init initializes the block encoder with a buffer of the specified size and
 // header.
-func (e *blockEncoder) init(size int, h Header, customHeaderSize uint32) {
+func (e *BlockEncoder) Init(size int, h Header, customHeaderSize uint32) {
 	if cap(e.buf) < size {
 		e.buf = crbytes.AllocAligned(size)
 	} else {
 		e.buf = e.buf[:size]
 	}
 	e.headerOffset = uint32(customHeaderSize) + blockHeaderBaseSize
-	e.pageOffset = blockHeaderSize(int(h.Columns), customHeaderSize)
+	e.pageOffset = HeaderSize(int(h.Columns), customHeaderSize)
 	h.Encode(e.buf[customHeaderSize:])
 }
 
-// data returns the underlying buffer.
-func (e *blockEncoder) data() []byte {
+// Data returns the underlying buffer.
+func (e *BlockEncoder) Data() []byte {
 	return e.buf
 }
 
-// encode writes w's columns to the block.
-func (e *blockEncoder) encode(rows int, w ColumnWriter) {
+// Encode encodes w's columns to the block.
+func (e *BlockEncoder) Encode(rows int, w ColumnWriter) {
 	for i := 0; i < w.NumColumns(); i++ {
 		e.buf[e.headerOffset] = byte(w.DataType(i))
 		binary.LittleEndian.PutUint32(e.buf[e.headerOffset+1:], e.pageOffset)
@@ -243,10 +244,10 @@ func (e *blockEncoder) encode(rows int, w ColumnWriter) {
 	}
 }
 
-// finish finalizes the block encoding, returning the encoded block. The
+// Finish finalizes the block encoding, returning the encoded block. The
 // returned byte slice points to the encoder's buffer, so if the encoder is
 // reused the returned slice will be invalidated.
-func (e *blockEncoder) finish() []byte {
+func (e *BlockEncoder) Finish() []byte {
 	e.buf[e.pageOffset] = 0x00 // Padding byte
 	e.pageOffset++
 	if e.pageOffset != uint32(len(e.buf)) {
@@ -259,7 +260,7 @@ func (e *blockEncoder) finish() []byte {
 // FinishBlock assumes all columns have the same number of rows. If that's not
 // the case, the caller should manually construct their own block.
 func FinishBlock(rows int, writers []ColumnWriter) []byte {
-	size := blockHeaderSize(len(writers), 0)
+	size := HeaderSize(len(writers), 0)
 	nCols := uint16(0)
 	for _, cw := range writers {
 		size = cw.Size(rows, size)
@@ -267,16 +268,16 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 	}
 	size++ // +1 for the trailing version byte.
 
-	var enc blockEncoder
-	enc.init(int(size), Header{
+	var enc BlockEncoder
+	enc.Init(int(size), Header{
 		Version: Version1,
 		Columns: nCols,
 		Rows:    uint32(rows),
 	}, 0)
 	for _, cw := range writers {
-		enc.encode(rows, cw)
+		enc.Encode(rows, cw)
 	}
-	return enc.finish()
+	return enc.Finish()
 }
 
 // DecodeColumn decodes the col'th column of the provided reader's block as a
@@ -364,6 +365,11 @@ func (d *BlockDecoder) Uints(col int) UnsafeUints {
 	return DecodeColumn(d, col, int(d.header.Rows), DataTypeUint, DecodeUnsafeUints)
 }
 
+// Data returns the underlying buffer.
+func (d *BlockDecoder) Data() []byte {
+	return d.data
+}
+
 func (d *BlockDecoder) pageStart(col int) uint32 {
 	if uint16(col) >= d.header.Columns {
 		// -1 for the trailing version byte
@@ -383,16 +389,17 @@ func (d *BlockDecoder) FormattedString() string {
 	f := binfmt.New(d.data)
 	tp := treeprinter.New()
 	n := tp.Child("block")
-	d.headerToBinFormatter(f, n)
+	d.HeaderToBinFormatter(f, n)
 	for i := 0; i < int(d.header.Columns); i++ {
-		d.columnToBinFormatter(f, n, i, int(d.header.Rows))
+		d.ColumnToBinFormatter(f, n, i, int(d.header.Rows))
 	}
 	f.HexBytesln(1, "block trailer padding")
 	f.ToTreePrinter(n)
 	return tp.String()
 }
 
-func (d *BlockDecoder) headerToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node) {
+// HeaderToBinFormatter formats the block header to f and tp.
+func (d *BlockDecoder) HeaderToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.HexBytesln(1, "version %v", Version(f.PeekUint(1)))
 	f.HexBytesln(2, "%d columns", d.header.Columns)
 	f.HexBytesln(4, "%d rows", d.header.Rows)
@@ -425,7 +432,8 @@ func (d *BlockDecoder) formatColumn(
 	}
 }
 
-func (d *BlockDecoder) columnToBinFormatter(
+// ColumnToBinFormatter formats the col'th column to f and tp.
+func (d *BlockDecoder) ColumnToBinFormatter(
 	f *binfmt.Formatter, tp treeprinter.Node, col, rows int,
 ) {
 	d.formatColumn(f, tp, col, func(f *binfmt.Formatter, tp treeprinter.Node, dataType DataType) {
