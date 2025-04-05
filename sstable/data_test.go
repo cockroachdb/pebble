@@ -128,8 +128,8 @@ func writeKVs(w RawWriter, input string) (err error) {
 	}()
 	for _, data := range strings.Split(input, "\n") {
 		switch {
-		case strings.HasPrefix(data, "EncodeSpan:"):
-			err = w.EncodeSpan(keyspan.ParseSpan(strings.TrimPrefix(data, "EncodeSpan:")))
+		case strings.HasPrefix(data, "Span:"):
+			err = w.EncodeSpan(keyspan.ParseSpan(strings.TrimPrefix(data, "Span:")))
 		default:
 			forceObsolete := strings.HasPrefix(data, "force-obsolete:")
 			if forceObsolete {
@@ -274,8 +274,8 @@ func runBuildRawCmd(
 		}
 	}()
 	for _, data := range strings.Split(td.Input, "\n") {
-		if strings.HasPrefix(data, "EncodeSpan:") {
-			data = strings.TrimPrefix(data, "EncodeSpan:")
+		if strings.HasPrefix(data, "Span:") {
+			data = strings.TrimPrefix(data, "Span:")
 			if err := w.EncodeSpan(keyspan.ParseSpan(data)); err != nil {
 				return nil, nil, err
 			}

@@ -1052,7 +1052,7 @@ sstable
 # Test a sstable containing only a range deletion.
 
 build
-EncodeSpan: a-b:{(#10,RANGEDEL)}
+Span: a-b:{(#10,RANGEDEL)}
 ----
 rangedel: [a#10,RANGEDEL-b#inf,RANGEDEL]
 seqnums:  [10-10]
@@ -1151,8 +1151,8 @@ sstable
 # Test a sstable containing only range keys.
 
 build
-EncodeSpan: a-b:{(#10,RANGEKEYSET,@5,foo)}
-EncodeSpan: b-c:{(#9,RANGEKEYDEL)}
+Span: a-b:{(#10,RANGEKEYSET,@5,foo)}
+Span: b-c:{(#9,RANGEKEYDEL)}
 ----
 rangekey: [a#10,RANGEKEYSET-c#inf,RANGEKEYDEL]
 seqnums:  [9-10]

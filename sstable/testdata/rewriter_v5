@@ -208,9 +208,9 @@ c
 # Rewrite a table that contain only range keys.
 
 build block-size=1 index-block-size=1 filter
-EncodeSpan: a-b:{(#1,RANGEKEYSET,@0)}
-EncodeSpan: b-c:{(#1,RANGEKEYSET,@0)}
-EncodeSpan: c-d:{(#1,RANGEKEYSET,@0)}
+Span: a-b:{(#1,RANGEKEYSET,@0)}
+Span: b-c:{(#1,RANGEKEYSET,@0)}
+Span: c-d:{(#1,RANGEKEYSET,@0)}
 ----
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 seqnums:  [1-1]
