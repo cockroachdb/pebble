@@ -2073,6 +2073,7 @@ type L0Organizer struct {
 	cmp             base.Compare
 	formatKey       base.FormatKey
 	flushSplitBytes int64
+	generation      int64
 
 	// levelMetadata is the current L0.
 	levelMetadata LevelMetadata
@@ -2108,68 +2109,108 @@ func NewL0Organizer(comparer *base.Comparer, flushSplitBytes int64) *L0Organizer
 	return o
 }
 
-// SublevelFiles returns the sublevels as LevelSlices. The returned value (both
-// the slice and each LevelSlice) is immutable. The L0Organizer creates new
-// slices every time L0 changes.
-func (o *L0Organizer) SublevelFiles() []LevelSlice {
-	return o.l0Sublevels.Levels
-}
-
-// Update the L0 organizer with the given L0 changes.
-func (o *L0Organizer) Update(
-	addedL0Tables map[base.FileNum]*TableMetadata,
-	deletedL0Tables map[base.FileNum]*TableMetadata,
-	newLevelMeta *LevelMetadata,
-) {
+// PrepareUpdate is the first step in the two-step process to update the
+// L0Organizer. This first step performs as much work as it can without
+// modifying the L0Organizer.
+//
+// This method can be called concurrently with other methods (other than
+// PerformUpdate). It allows doing most of the update work outside an important
+// lock.
+func (o *L0Organizer) PrepareUpdate(bve *BulkVersionEdit, newVersion *Version) L0PreparedUpdate {
+	addedL0Tables := bve.AddedTables[0]
+	deletedL0Tables := bve.DeletedTables[0]
+	newLevelMeta := &newVersion.Levels[0]
 	if invariants.Enabled && invariants.Sometimes(10) {
 		// Verify that newLevelMeta = m.levelMetadata + addedL0Tables - deletedL0Tables.
 		verifyLevelMetadataTransition(&o.levelMetadata, newLevelMeta, addedL0Tables, deletedL0Tables)
 	}
-	o.levelMetadata = *newLevelMeta
+
 	if len(addedL0Tables) == 0 && len(deletedL0Tables) == 0 {
-		return
-	}
-	// If we only added tables, try to use addL0Files.
-	if len(deletedL0Tables) == 0 {
-		if files, ok := o.l0Sublevels.canUseAddL0Files(addedL0Tables, newLevelMeta); ok {
-			newSublevels := o.l0Sublevels.addL0Files(files, o.flushSplitBytes, newLevelMeta)
-			// In invariants mode, sometimes rebuild from scratch to verify that
-			// AddL0Files did the right thing. Note that NewL0Sublevels updates
-			// fields in TableMetadata like L0Index, so we don't want to do this
-			// every time.
-			if invariants.Enabled && invariants.Sometimes(10) {
-				expectedSublevels, err := newL0Sublevels(newLevelMeta, o.cmp, o.formatKey, o.flushSplitBytes)
-				if err != nil {
-					panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
-				}
-				s1 := describeSublevels(o.formatKey, false /* verbose */, expectedSublevels.Levels)
-				s2 := describeSublevels(o.formatKey, false /* verbose */, newSublevels.Levels)
-				if s1 != s2 {
-					// Add verbosity.
-					s1 := describeSublevels(o.formatKey, true /* verbose */, expectedSublevels.Levels)
-					s2 := describeSublevels(o.formatKey, true /* verbose */, newSublevels.Levels)
-					panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
-				}
-			}
-			o.l0Sublevels = newSublevels
-			return
+		return L0PreparedUpdate{
+			generation:   o.generation,
+			newSublevels: o.l0Sublevels,
 		}
 	}
-	var err error
-	o.l0Sublevels, err = newL0Sublevels(newLevelMeta, o.cmp, o.formatKey, o.flushSplitBytes)
+
+	if len(deletedL0Tables) == 0 {
+		if files, ok := o.l0Sublevels.canUseAddL0Files(addedL0Tables, newLevelMeta); ok {
+			return L0PreparedUpdate{
+				generation: o.generation,
+				addL0Files: files,
+			}
+		}
+	}
+	newSublevels, err := newL0Sublevels(newLevelMeta, o.cmp, o.formatKey, o.flushSplitBytes)
 	if err != nil {
 		panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
+	}
+
+	return L0PreparedUpdate{
+		generation:   o.generation,
+		newSublevels: newSublevels,
 	}
 }
 
-// ResetForTesting reinitializes the L0Organizer to reflect a given L0 level.
-func (o *L0Organizer) ResetForTesting(levelMetadata *LevelMetadata) {
-	o.levelMetadata = *levelMetadata
+// L0PreparedUpdate is returned by L0Organizer.PrepareUpdate(), to be passed to
+// PerformUpdate().
+type L0PreparedUpdate struct {
+	generation int64
+
+	// Exactly one of the following fields will be set.
+	addL0Files   []*TableMetadata
+	newSublevels *l0Sublevels
+}
+
+// PerformUpdate applies an update the L0 organizer which was previously
+// prepared using PrepareUpdate.
+//
+// Sets newVersion.L0SublevelFiles (which is immutable once set).
+//
+// This method cannot be called concurrently with any other methods.
+func (o *L0Organizer) PerformUpdate(prepared L0PreparedUpdate, newVersion *Version) {
+	if prepared.generation != o.generation {
+		panic("invalid L0 update generation")
+	}
+	o.levelMetadata = newVersion.Levels[0]
+	o.generation++
+	if prepared.addL0Files != nil {
+		newSublevels := o.l0Sublevels.addL0Files(prepared.addL0Files, o.flushSplitBytes, &o.levelMetadata)
+		// In invariants mode, sometimes rebuild from scratch to verify that
+		// AddL0Files did the right thing. Note that NewL0Sublevels updates
+		// fields in TableMetadata like L0Index, so we don't want to do this
+		// every time.
+		if invariants.Enabled && invariants.Sometimes(10) {
+			expectedSublevels, err := newL0Sublevels(&o.levelMetadata, o.cmp, o.formatKey, o.flushSplitBytes)
+			if err != nil {
+				panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
+			}
+			s1 := describeSublevels(o.formatKey, false /* verbose */, expectedSublevels.Levels)
+			s2 := describeSublevels(o.formatKey, false /* verbose */, newSublevels.Levels)
+			if s1 != s2 {
+				// Add verbosity.
+				s1 := describeSublevels(o.formatKey, true /* verbose */, expectedSublevels.Levels)
+				s2 := describeSublevels(o.formatKey, true /* verbose */, newSublevels.Levels)
+				panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
+			}
+		}
+		o.l0Sublevels = newSublevels
+	} else {
+		o.l0Sublevels = prepared.newSublevels
+	}
+	newVersion.L0SublevelFiles = o.l0Sublevels.Levels
+}
+
+// ResetForTesting reinitializes the L0Organizer to reflect the given version.
+// Sets v.L0SublevelFiles.
+func (o *L0Organizer) ResetForTesting(v *Version) {
+	o.levelMetadata = v.Levels[0]
+	o.generation = 0
 	var err error
-	o.l0Sublevels, err = newL0Sublevels(levelMetadata, o.cmp, o.formatKey, o.flushSplitBytes)
+	o.l0Sublevels, err = newL0Sublevels(&v.Levels[0], o.cmp, o.formatKey, o.flushSplitBytes)
 	if err != nil {
 		panic(errors.AssertionFailedf("error generating L0Sublevels: %s", err))
 	}
+	v.L0SublevelFiles = o.l0Sublevels.Levels
 }
 
 // verifyLevelMetadataTransition verifies that newLevel matches oldLevel after

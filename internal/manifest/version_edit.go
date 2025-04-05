@@ -1149,9 +1149,10 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 // the levels.
 //
 // curr may be nil, which is equivalent to a pointer to a zero version.
-func (b *BulkVersionEdit) Apply(
-	curr *Version, l0Organizer *L0Organizer, readCompactionRate int64,
-) (*Version, error) {
+//
+// Not that L0SublevelFiles is not initialized in the returned version; it is
+// the caller's responsibility to set it using L0Organizer.PerformUpdate().
+func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Version, error) {
 	comparer := curr.cmp
 	v := &Version{
 		cmp: comparer,
@@ -1292,9 +1293,6 @@ func (b *BulkVersionEdit) Apply(
 			}
 		}
 	}
-
-	l0Organizer.Update(b.AddedTables[0], b.DeletedTables[0], &v.Levels[0])
-	v.L0SublevelFiles = l0Organizer.SublevelFiles()
 
 	// We maintain stats about active references in blob files and can infer
 	// when a blob file has become a 'zombie,' and is no longer referenced in

@@ -128,7 +128,8 @@ func replayManifest(
 	}
 	l0Organizer := manifest.NewL0Organizer(cmp, opts.FlushSplitBytes)
 	emptyVersion := manifest.NewInitialVersion(cmp)
-	v, err := bve.Apply(emptyVersion, l0Organizer, opts.Experimental.ReadCompactionRate)
+	v, err := bve.Apply(emptyVersion, opts.Experimental.ReadCompactionRate)
 	require.NoError(t, err)
+	l0Organizer.PerformUpdate(l0Organizer.PrepareUpdate(&bve, v), v)
 	return v, l0Organizer
 }
