@@ -352,6 +352,7 @@ func TestManagerFailover(t *testing.T) {
 					Logger:                      nil,
 					EventListener:               nil,
 					FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+					WriteWALSyncOffsets:         func() bool { return false },
 				}
 				require.NoError(t, memFS.MkdirAll(dirs[primaryDirIndex], 0755))
 				require.NoError(t, memFS.MkdirAll(dirs[secondaryDirIndex], 0755))
@@ -587,6 +588,7 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Millisecond, true },
 		},
 		FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets:         func() bool { return false },
 	}, nil /* initial  logs */))
 	for i := 0; i < 3; i++ {
 		w, err := m.Create(NumWAL(i), i)

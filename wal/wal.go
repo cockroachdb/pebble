@@ -147,9 +147,11 @@ type Options struct {
 	// configured.
 	FailoverWriteAndSyncLatency prometheus.Histogram
 
-	// WriteWALSyncOffsets represents whether to write the WAL sync chunk format.
+	// WriteWALSyncOffsets determines whether to write WAL sync chunk offsets.
+	// The format major version can change (ratchet) at runtime, so this must be
+	// a function rather than a static bool to ensure we use the latest format version.
 	// It is plumbed down from wal.Options to record.newLogWriter.
-	WriteWALSyncOffsets bool
+	WriteWALSyncOffsets func() bool
 }
 
 // Init constructs and initializes a WAL manager from the provided options and

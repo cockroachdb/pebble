@@ -464,8 +464,10 @@ type failoverWriterOpts struct {
 
 	writerCreatedForTest chan<- struct{}
 
-	// writeWALSyncOffsets represents whether to write the WAL sync chunk format.
-	writeWALSyncOffsets bool
+	// writeWALSyncOffsets determines whether to write WAL sync chunk offsets.
+	// The format major version can change (ratchet) at runtime, so this must be
+	// a function rather than a static bool to ensure we use the latest format version.
+	writeWALSyncOffsets func() bool
 }
 
 func simpleLogCreator(

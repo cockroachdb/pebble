@@ -372,7 +372,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
-		WriteWALSyncOffsets:  FormatMajorVersion(d.mu.formatVers.vers.Load()) >= FormatWALSyncChunks,
+		WriteWALSyncOffsets:  func() bool { return d.FormatMajorVersion() >= FormatWALSyncChunks },
 	}
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
