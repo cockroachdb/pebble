@@ -286,6 +286,7 @@ func TestFailoverWriter(t *testing.T) {
 						failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 						writerClosed:                func(_ logicalLogWithSizesEtc) {},
 						writerCreatedForTest:        logWriterCreated,
+						writeWALSyncOffsets:         func() bool { return false },
 					}, testDirs[dirIndex])
 					require.NoError(t, err)
 					if !noWaitForLogWriterCreation {
@@ -650,6 +651,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		writerClosed:                func(_ logicalLogWithSizesEtc) {},
 		writerCreatedForTest:        logWriterCreated,
+		writeWALSyncOffsets:         func() bool { return false },
 	}, dirs[dirIndex])
 	require.NoError(t, err)
 	wg := &sync.WaitGroup{}
@@ -751,6 +753,7 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 		stopper:                     stopper,
 		failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		writerClosed:                func(_ logicalLogWithSizesEtc) {},
+		writeWALSyncOffsets:         func() bool { return false },
 	}, dir)
 	require.NoError(t, err)
 	var buf [1]byte

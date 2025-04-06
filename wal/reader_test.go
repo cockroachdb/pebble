@@ -127,7 +127,9 @@ func TestReader(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, dir.Sync())
 			require.NoError(t, dir.Close())
-			w := record.NewLogWriter(f, base.DiskFileNum(logNum), record.LogWriterConfig{})
+			w := record.NewLogWriter(f, base.DiskFileNum(logNum), record.LogWriterConfig{
+				WriteWALSyncOffsets: func() bool { return false },
+			})
 
 			lines := datadrivenutil.Lines(td.Input)
 			var offset int64
