@@ -509,8 +509,10 @@ type LogWriterConfig struct {
 	// callbacks are serialized since they are invoked from the flushLoop.
 	ExternalSyncQueueCallback ExternalSyncQueueCallback
 
-	// WriteWALSyncOffsets represents whether to write the WAL sync chunk format.
-	WriteWALSyncOffsets bool
+	// WriteWALSyncOffsets determines whether to write WAL sync chunk offsets.
+	// The format major version can change (ratchet) at runtime, so this must be
+	// a function rather than a static bool to ensure we use the latest format version.
+	WriteWALSyncOffsets func() bool
 }
 
 // ExternalSyncQueueCallback is to be run when a PendingSync has been
@@ -552,7 +554,7 @@ func NewLogWriter(
 		},
 	}
 
-	if logWriterConfig.WriteWALSyncOffsets {
+	if logWriterConfig.WriteWALSyncOffsets() {
 		r.emitFragment = r.emitFragmentSyncOffsets
 	} else {
 		r.emitFragment = r.emitFragmentRecyclable

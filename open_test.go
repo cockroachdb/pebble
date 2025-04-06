@@ -1748,3 +1748,44 @@ func TestWALFailoverRandomized(t *testing.T) {
 		nextRandomOp()()
 	}
 }
+
+func TestWALCorruption(t *testing.T) {
+	fs := vfs.NewMem()
+	d, err := Open("", testingRandomized(t, &Options{
+		FS:                 fs,
+		FormatMajorVersion: FormatWALSyncChunks,
+	}))
+	require.NoError(t, err)
+	require.NoError(t, d.Flush())
+
+	fourKiBValue := bytes.Repeat([]byte{'a'}, 4096)
+	for i := 1; i <= 32; i++ {
+		require.NoError(t, d.Set([]byte(fmt.Sprintf("key-%d", i)), fourKiBValue, Sync))
+	}
+	require.NoError(t, d.Close())
+
+	// We should have two WALs.
+	logs, err := fs.List("")
+	require.NoError(t, err)
+	logs = slices.DeleteFunc(logs, func(s string) bool { return filepath.Ext(s) != ".log" })
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i] < logs[j]
+	})
+	lastLog := logs[len(logs)-1]
+
+	// Corrupt the WAL by zeroing four bytes, 100 bytes from the end
+	// of the file.
+	f, err := fs.OpenReadWrite(lastLog, vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	_, err = f.WriteAt([]byte{0, 0, 0, 0}, 100)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	t.Logf("zeroed four bytes in %s at offset %d\n", lastLog, 100)
+
+	// Re-opening the database should detect and report the corruption.
+	_, err = Open("", &Options{
+		FS:                 fs,
+		FormatMajorVersion: FormatWALSyncChunks,
+	})
+	require.True(t, errors.Is(err, ErrCorruption))
+}

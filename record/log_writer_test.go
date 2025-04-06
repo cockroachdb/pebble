@@ -150,7 +150,8 @@ func TestSyncError(t *testing.T) {
 
 	injectedErr := errors.New("injected error")
 	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0, LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 
 	syncRecord := func() {
@@ -191,7 +192,10 @@ func (f *syncFile) Sync() error {
 
 func TestSyncRecord(t *testing.T) {
 	f := &syncFile{}
-	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
+	w := NewLogWriter(f, 0, LogWriterConfig{
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return false },
+	})
 
 	var syncErr error
 	for i := 0; i < 100000; i++ {
@@ -217,8 +221,9 @@ func TestSyncRecordWithSignalChan(t *testing.T) {
 		semChan <- struct{}{}
 	}
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-		QueueSemChan:    semChan,
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		QueueSemChan:        semChan,
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 	require.Equal(t, cap(semChan), len(semChan))
 	var syncErr error
@@ -268,7 +273,8 @@ func TestMinSyncInterval(t *testing.T) {
 		WALMinSyncInterval: func() time.Duration {
 			return minSyncInterval
 		},
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 
 	var timer fakeTimer
@@ -340,7 +346,8 @@ func TestMinSyncIntervalClose(t *testing.T) {
 		WALMinSyncInterval: func() time.Duration {
 			return minSyncInterval
 		},
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 
 	var timer fakeTimer
@@ -390,7 +397,10 @@ func (f *syncFileWithWait) Sync() error {
 func TestMetricsWithoutSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.writeWG.Add(1)
-	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
+	w := NewLogWriter(f, 0, LogWriterConfig{
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return false },
+	})
 	offset, err := w.SyncRecord([]byte("hello"), nil, nil)
 	require.NoError(t, err)
 	const recordSize = 16
@@ -434,7 +444,8 @@ func TestMetricsWithSync(t *testing.T) {
 	})
 
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency: syncLatencyMicros,
+		WALFsyncLatency:     syncLatencyMicros,
+		WriteWALSyncOffsets: func() bool { return false },
 	},
 	)
 	var wg sync.WaitGroup
@@ -540,7 +551,8 @@ func TestQueueWALBlocks(t *testing.T) {
 		return nil
 	}))
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 	const numBlocks = 1024
 	var b [blockSize]byte
@@ -657,6 +669,7 @@ func TestSyncRecordGeneralized(t *testing.T) {
 			lastSync++
 			cbChan <- struct{}{}
 		},
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 	offset, err := w.SyncRecordGeneralized([]byte("hello"), &PendingSyncIndex{})
 	require.NoError(t, err)
@@ -712,6 +725,7 @@ func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
 			lastSync++
 			cbChan <- struct{}{}
 		},
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 	offset, err := w.SyncRecordGeneralized([]byte("hello"), &PendingSyncIndex{})
 	require.NoError(t, err)
@@ -740,7 +754,10 @@ func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
 
 func writeWALSyncRecords(t *testing.T, numRecords int, recordSizes []int) *syncFile {
 	f := &syncFile{}
-	w := NewLogWriter(f, 1, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}), WriteWALSyncOffsets: true})
+	w := NewLogWriter(f, 1, LogWriterConfig{
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets: func() bool { return true },
+	})
 	var syncErr error
 	for i := 0; i < numRecords; i++ {
 		var syncWG sync.WaitGroup
@@ -847,7 +864,8 @@ func BenchmarkQueueWALBlocks(b *testing.B) {
 					return nil
 				}))
 				w := NewLogWriter(f, 0, LogWriterConfig{
-					WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+					WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+					WriteWALSyncOffsets: func() bool { return false },
 				})
 
 				b.StartTimer()
@@ -881,6 +899,7 @@ func BenchmarkWriteWALBlocksAllocs(b *testing.B) {
 		w := NewLogWriter(f, 0, LogWriterConfig{
 			WALFsyncLatency:           prometheus.NewHistogram(prometheus.HistogramOpts{}),
 			ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {},
+			WriteWALSyncOffsets:       func() bool { return false },
 		})
 
 		var psi PendingSyncIndex

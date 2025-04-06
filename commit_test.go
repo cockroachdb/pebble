@@ -253,8 +253,9 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	}
 	p := newCommitPipeline(testEnv)
 	wal = record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-		QueueSemChan:    p.logSyncQSem,
+		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		QueueSemChan:        p.logSyncQSem,
+		WriteWALSyncOffsets: func() bool { return false },
 	})
 
 	// Launch N (commitConcurrency) goroutines which each create a batch and
@@ -394,8 +395,9 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					p := newCommitPipeline(nullCommitEnv)
 					wal = record.NewLogWriter(io.Discard, 0, /* logNum */
 						record.LogWriterConfig{
-							WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-							QueueSemChan:    p.logSyncQSem,
+							WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
+							QueueSemChan:        p.logSyncQSem,
+							WriteWALSyncOffsets: func() bool { return false },
 						})
 					const keySize = 8
 					b.SetBytes(2 * keySize)
