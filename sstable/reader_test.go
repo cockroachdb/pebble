@@ -1512,7 +1512,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 									checkBitFlipErr := func(err error) bool {
 										if err != nil {
 											details := errors.GetAllSafeDetails(err)
-											re := regexp.MustCompile(`bit flip found`)
+											re := regexp.MustCompile(`bit flip found.+byte index`)
 											for _, d := range details {
 												for _, s := range d.SafeDetails {
 													if re.MatchString(s) {
@@ -1520,7 +1520,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 													}
 												}
 											}
-											require.Fail(t, "expected at least one detail to match bit flip found", err)
+											require.Fail(t, "expected at least one detail to match bit flip pattern", err)
 										}
 										return false
 									}

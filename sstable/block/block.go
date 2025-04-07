@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bitflip"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -174,7 +175,18 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 	if expectedChecksum != computedChecksum {
 		// Check if the checksum was due to a singular bit flip and report it.
 		data := slices.Clone(b[:bh.Length+1])
-		found, indexFound, bitFound := checkSliceForBitFlip(data, checksumType, expectedChecksum)
+		var checksumFunction func([]byte) uint32
+		switch checksumType {
+		case ChecksumTypeCRC32c:
+			checksumFunction = func(data []byte) uint32 {
+				return crc.New(data).Value()
+			}
+		case ChecksumTypeXXHash64:
+			checksumFunction = func(data []byte) uint32 {
+				return uint32(xxhash.Sum64(data))
+			}
+		}
+		found, indexFound, bitFound := bitflip.CheckSliceForBitFlip(data, checksumFunction, expectedChecksum)
 		err := base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
 			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
 			expectedChecksum, computedChecksum)
@@ -185,40 +197,6 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 		return err
 	}
 	return nil
-}
-
-func checkSliceForBitFlip(
-	data []byte, checksumType ChecksumType, expectedChecksum uint32,
-) (found bool, indexFound int, bitFound int) {
-	// TODO(edward) This checking process likely can be made faster.
-	iterationLimit := 40 * (1 << 10) // 40KB
-	for i := 0; i < min(len(data), iterationLimit); i++ {
-		foundFlip, bit := checkByteForFlip(data, i, checksumType, expectedChecksum)
-		if foundFlip {
-			return true, i, bit
-		}
-	}
-	return false, 0, 0
-}
-
-func checkByteForFlip(
-	data []byte, i int, checksumType ChecksumType, expectedChecksum uint32,
-) (found bool, bit int) {
-	for bit := 0; bit < 8; bit++ {
-		data[i] ^= (1 << bit)
-		var computedChecksum uint32
-		switch checksumType {
-		case ChecksumTypeCRC32c:
-			computedChecksum = crc.New(data).Value()
-		case ChecksumTypeXXHash64:
-			computedChecksum = uint32(xxhash.Sum64(data))
-		}
-		data[i] ^= (1 << bit)
-		if computedChecksum == expectedChecksum {
-			return true, bit
-		}
-	}
-	return false, 0
 }
 
 // Metadata is an in-memory buffer that stores metadata for a block. It is
