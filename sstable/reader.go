@@ -445,7 +445,11 @@ func (r *Reader) readMetaindex(
 			return err
 		}
 		r.propertiesBH = bh
-		err := r.Properties.load(b.BlockData(), deniedUserProperties)
+		if r.tableFormat >= TableFormatPebblev6 {
+			err = r.Properties.load(b.BlockData(), deniedUserProperties)
+		} else {
+			err = r.Properties.loadFromRowBlock(b.BlockData(), deniedUserProperties)
+		}
 		b.Release()
 		if err != nil {
 			return err

@@ -41,7 +41,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (742B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(elision-only) L6 [000004] (752B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Test a table that straddles a snapshot. It should not be compacted.
 define snapshots=(50) auto-compactions=off
@@ -80,12 +80,12 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 104
+point-deletions-bytes-estimate: 100
 range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (791B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (749B), in 1.0s (2.0s total), output rate 749B/s
+[JOB 100] compacted(elision-only) L6 [000004] (767B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (749B), in 1.0s (2.0s total), output rate 749B/s
 
 version
 ----
@@ -119,7 +119,7 @@ wait-pending-table-stats
 num-entries: 6
 num-deletions: 2
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 49
+point-deletions-bytes-estimate: 47
 range-deletions-bytes-estimate: 101
 
 maybe-compact
@@ -134,7 +134,7 @@ close-snapshot
 close-snapshot
 103
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (950B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(elision-only) L6 [000004] (906B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Test a table that contains both deletions and non-deletions, but whose
 # non-deletions well outnumber its deletions. The table should not be
@@ -152,7 +152,7 @@ wait-pending-table-stats
 num-entries: 11
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 24
+point-deletions-bytes-estimate: 23
 range-deletions-bytes-estimate: 0
 
 close-snapshot
@@ -208,7 +208,7 @@ range-deletions-bytes-estimate: 16824
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004 000005] (26KB) Score=88.99 + L6 [000007] (17KB) Score=0.73 -> L6 [000009] (25KB), in 1.0s (2.0s total), output rate 25KB/s
+[JOB 100] compacted(default) L5 [000004 000005] (26KB) Score=89.06 + L6 [000007] (17KB) Score=0.73 -> L6 [000009] (25KB), in 1.0s (2.0s total), output rate 25KB/s
 
 define level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
@@ -233,7 +233,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 7000
+point-deletions-bytes-estimate: 6988
 range-deletions-bytes-estimate: 0
 
 # By plain file size, 000005 should be picked because it is larger and
@@ -243,7 +243,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004] (795B) Score=13.82 + L6 [000006] (13KB) Score=0.92 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(default) L5 [000004] (771B) Score=13.77 + L6 [000006] (13KB) Score=0.92 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # A table containing only range keys is not eligible for elision.
 # RANGEKEYDEL or RANGEKEYUNSET.
@@ -323,7 +323,7 @@ range-deletions-bytes-estimate: 94
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (996B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (747B), in 1.0s (2.0s total), output rate 747B/s
+[JOB 100] compacted(elision-only) L6 [000004] (968B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (747B), in 1.0s (2.0s total), output rate 747B/s
 
 # Close the DB, asserting that the reference counts balance.
 close
@@ -359,7 +359,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2800
+point-deletions-bytes-estimate: 2795
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -376,7 +376,7 @@ range-deletions-bytes-estimate: 8380
 maybe-compact
 ----
 [JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 101] compacted(default) L5 [000004] (787B) Score=24.42 + L6 [000006] (13KB) Score=0.52 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+[JOB 101] compacted(default) L5 [000004] (763B) Score=24.34 + L6 [000006] (13KB) Score=0.52 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
 # 2x, the table with the point tombstone (000004) will be selected as the
@@ -405,7 +405,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2800
+point-deletions-bytes-estimate: 2795
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -422,4 +422,4 @@ range-deletions-bytes-estimate: 8380
 maybe-compact
 ----
 [JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 101] compacted(default) L5 [000004] (787B) Score=24.42 + L6 [000006] (13KB) Score=0.52 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+[JOB 101] compacted(default) L5 [000004] (763B) Score=24.34 + L6 [000006] (13KB) Score=0.52 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s

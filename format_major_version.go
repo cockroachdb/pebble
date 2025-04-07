@@ -208,8 +208,9 @@ const (
 	// format TableFormatPebblev6.
 	//
 	// The TableFormatPebblev6 sstable format introduces a checksum within the
-	// sstable footer, and allows inclusion of blob handle references within the
-	// value column of a sstable block.
+	// sstable footer, allows inclusion of blob handle references within the
+	// value column of a sstable block, and supports columnar meta index +
+	// properties blocks.
 	//
 	// This format major version does not yet enable use of value separation.
 	FormatTableFormatV6

@@ -24,7 +24,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	732B   0.0
+L5  	750B   0.0
 L6  	321KB  -
 
 enable-table-stats
@@ -37,7 +37,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 328882
+range-deletions-bytes-estimate: 328891
 
 scores
 ----
@@ -47,7 +47,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	732B   4.5
+L5  	750B   4.5
 L6  	321KB  -
 
 # Ensure that point deletions in a higher level result in a compensated level
@@ -80,7 +80,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	791B   0.0
+L5  	776B   0.0
 L6  	321KB  -
 
 enable-table-stats
@@ -92,7 +92,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 164801
+point-deletions-bytes-estimate: 164798
 range-deletions-bytes-estimate: 0
 
 scores
@@ -103,7 +103,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	791B   2.3
+L5  	776B   2.3
 L6  	321KB  -
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -145,7 +145,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 164809
+point-deletions-bytes-estimate: 164806
 range-deletions-bytes-estimate: 0
 
 maybe-compact
@@ -212,11 +212,11 @@ L6  	386KB  -
 lsm verbose
 ----
 L5:
-  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525390
-  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131845
+  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525399
+  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131854
 L6:
-  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:263242
-  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131845
+  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:263251
+  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131854
 
 # Attempting to schedule a compaction should begin a L5->L6 compaction.
 

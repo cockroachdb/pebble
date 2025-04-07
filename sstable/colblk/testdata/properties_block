@@ -1,0 +1,48 @@
+build
+rocksdb.deleted.keys       14
+rocksdb.filter.size        2
+rocksdb.index.size         3
+rocksdb.num.data.blocks    8
+----
+key-value-block-decoder
+ └── key value block header
+      ├── columnar block header
+      │    ├── 000-001: x 01       # version 1
+      │    ├── 001-003: x 0200     # 2 columns
+      │    ├── 003-007: x 04000000 # 4 rows
+      │    ├── 007-008: b 00000011 # col 0: bytes
+      │    ├── 008-012: x 11000000 # col 0: page start 17
+      │    ├── 012-013: b 00000011 # col 1: bytes
+      │    └── 013-017: x 67000000 # col 1: page start 103
+      ├── data for column 0 (bytes)
+      │    ├── offsets table
+      │    │    ├── 017-018: x 01 # encoding: 1b
+      │    │    ├── 018-019: x 00 # data[0] = 0 [23 overall]
+      │    │    ├── 019-020: x 14 # data[1] = 20 [43 overall]
+      │    │    ├── 020-021: x 27 # data[2] = 39 [62 overall]
+      │    │    ├── 021-022: x 39 # data[3] = 57 [80 overall]
+      │    │    └── 022-023: x 50 # data[4] = 80 [103 overall]
+      │    └── data
+      │         ├── 023-033: x 726f636b7364622e6465 # data[0]: rocksdb.deleted.keys
+      │         ├── 033-043: x 6c657465642e6b657973 # (continued...)
+      │         ├── 043-053: x 726f636b7364622e6669 # data[1]: rocksdb.filter.size
+      │         ├── 053-062: x 6c7465722e73697a65   # (continued...)
+      │         ├── 062-072: x 726f636b7364622e696e # data[2]: rocksdb.index.size
+      │         ├── 072-080: x 6465782e73697a65     # (continued...)
+      │         ├── 080-090: x 726f636b7364622e6e75 # data[3]: rocksdb.num.data.blocks
+      │         ├── 090-100: x 6d2e646174612e626c6f # (continued...)
+      │         └── 100-103: x 636b73               # (continued...)
+      ├── data for column 1 (bytes)
+      │    ├── offsets table
+      │    │    ├── 103-104: x 01 # encoding: 1b
+      │    │    ├── 104-105: x 00 # data[0] = 0 [109 overall]
+      │    │    ├── 105-106: x 02 # data[1] = 2 [111 overall]
+      │    │    ├── 106-107: x 03 # data[2] = 3 [112 overall]
+      │    │    ├── 107-108: x 04 # data[3] = 4 [113 overall]
+      │    │    └── 108-109: x 05 # data[4] = 5 [114 overall]
+      │    └── data
+      │         ├── 109-111: x 3134 # data[0]: 14
+      │         ├── 111-112: x 32   # data[1]: 2
+      │         ├── 112-113: x 33   # data[2]: 3
+      │         └── 113-114: x 38   # data[3]: 8
+      └── 114-115: x 00 # block padding byte
