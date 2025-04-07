@@ -1644,6 +1644,7 @@ func (d *DB) Close() error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+	d.compactionSchedulers.Wait()
 	// Compactions can be asynchronously started by the CompactionScheduler
 	// calling d.Schedule. When this Unregister returns, we know that the
 	// CompactionScheduler will never again call a method on the DB. Note that
@@ -1753,7 +1754,6 @@ func (d *DB) Close() error {
 	}
 
 	d.mu.Unlock()
-	d.compactionSchedulers.Wait()
 
 	// Wait for all cleaning jobs to finish.
 	d.cleanupManager.Close()
@@ -1771,7 +1771,7 @@ func (d *DB) Close() error {
 
 	// As a sanity check, ensure that there are no zombie tables. A non-zero count
 	// hints at a reference count leak.
-	if ztbls := len(d.mu.versions.zombieTables); ztbls > 0 {
+	if ztbls := d.mu.versions.zombieTables.Count(); ztbls > 0 {
 		err = firstError(err, errors.Errorf("non-zero zombie file count: %d", ztbls))
 	}
 
@@ -2041,13 +2041,9 @@ func (d *DB) Metrics() *Metrics {
 			metrics.Levels[level].Score = score
 		}
 	}
-	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))
-	for _, info := range d.mu.versions.zombieTables {
-		metrics.Table.ZombieSize += info.FileSize
-		if info.isLocal {
-			metrics.Table.Local.ZombieSize += info.FileSize
-		}
-	}
+	metrics.Table.ZombieCount = int64(d.mu.versions.zombieTables.Count())
+	metrics.Table.ZombieSize = d.mu.versions.zombieTables.TotalSize()
+	metrics.Table.Local.ZombieSize = d.mu.versions.zombieTables.LocalSize()
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	// TODO(jackson): Consider making these metrics optional.

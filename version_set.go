@@ -81,15 +81,16 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(manifest.ObsoleteFiles)
+	obsoleteFn func(manifest.ObsoleteFiles)
+	// obsolete{Tables,Blobs,Manifests,Options} are sorted by file number ascending.
 	obsoleteTables    []objectInfo
 	obsoleteBlobs     []objectInfo
-	obsoleteManifests []fileInfo
-	obsoleteOptions   []fileInfo
+	obsoleteManifests []obsoleteFile
+	obsoleteOptions   []obsoleteFile
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
-	zombieTables map[base.DiskFileNum]objectInfo
+	zombieTables zombieObjects
 
 	// virtualBackings contains information about the FileBackings which support
 	// virtual sstables in the latest version. It is mainly used to determine when
@@ -136,13 +137,6 @@ type versionSet struct {
 	pickedCompactionCache pickedCompactionCache
 }
 
-// objectInfo describes an object in object storage (either a sstable or a blob
-// file).
-type objectInfo struct {
-	fileInfo
-	isLocal bool
-}
-
 func (vs *versionSet) init(
 	dirname string,
 	provider objstorage.Provider,
@@ -162,7 +156,7 @@ func (vs *versionSet) init(
 	vs.versions.Init(mu)
 	vs.l0Organizer = manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
 	vs.obsoleteFn = vs.addObsoleteLocked
-	vs.zombieTables = make(map[base.DiskFileNum]objectInfo)
+	vs.zombieTables = makeZombieObjects()
 	vs.virtualBackings = manifest.MakeVirtualBackings()
 	vs.nextFileNum.Store(1)
 	vs.manifestMarker = marker
@@ -650,13 +644,13 @@ func (vs *versionSet) logAndApply(
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
 	for _, b := range zombieBackings {
-		vs.zombieTables[b.backing.DiskFileNum] = objectInfo{
+		vs.zombieTables.Add(objectInfo{
 			fileInfo: fileInfo{
 				FileNum:  b.backing.DiskFileNum,
 				FileSize: b.backing.Size,
 			},
 			isLocal: b.isLocal,
-		}
+		})
 	}
 
 	// Unref the removed backings and report those that already became obsolete.
@@ -679,9 +673,13 @@ func (vs *versionSet) logAndApply(
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {
-			vs.obsoleteManifests = append(vs.obsoleteManifests, fileInfo{
-				FileNum:  vs.manifestFileNum,
-				FileSize: prevManifestFileSize,
+			vs.obsoleteManifests = append(vs.obsoleteManifests, obsoleteFile{
+				fileType: base.FileTypeManifest,
+				fs:       vs.fs,
+				path:     base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, vs.manifestFileNum),
+				fileNum:  vs.manifestFileNum,
+				fileSize: prevManifestFileSize,
+				isLocal:  true,
 			})
 		}
 		vs.manifestFileNum = newManifestFileNum
@@ -1053,38 +1051,14 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 		return
 	}
 
+	// Note that the tables transition from zombie *to* obsolete, and will no
+	// longer be considered zombie.
 	obsoleteFileInfo := make([]objectInfo, len(obsolete.FileBackings))
 	for i, bs := range obsolete.FileBackings {
-		obsoleteFileInfo[i].FileNum = bs.DiskFileNum
-		obsoleteFileInfo[i].FileSize = bs.Size
+		obsoleteFileInfo[i] = vs.zombieTables.Extract(bs.DiskFileNum)
 	}
 
-	if invariants.Enabled {
-		dedup := make(map[base.DiskFileNum]struct{})
-		for _, fi := range obsoleteFileInfo {
-			dedup[fi.FileNum] = struct{}{}
-		}
-		if len(dedup) != len(obsoleteFileInfo) {
-			panic("pebble: duplicate FileBacking present in obsolete list")
-		}
-	}
-
-	for i, fi := range obsoleteFileInfo {
-		// Note that the obsolete tables are no longer zombie by the definition of
-		// zombie, but we leave them in the zombie tables map until they are
-		// deleted from disk.
-		//
-		// TODO(sumeer): this means that the zombie metrics, like ZombieSize,
-		// computed in DB.Metrics are also being counted in the obsolete metrics.
-		// Was this intentional?
-		info, ok := vs.zombieTables[fi.FileNum]
-		if !ok {
-			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.FileNum)
-		}
-		obsoleteFileInfo[i].isLocal = info.isLocal
-	}
-
-	vs.obsoleteTables = append(vs.obsoleteTables, obsoleteFileInfo...)
+	vs.obsoleteTables = mergeObjectInfos(vs.obsoleteTables, obsoleteFileInfo)
 	vs.updateObsoleteTableMetricsLocked()
 }
 

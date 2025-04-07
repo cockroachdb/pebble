@@ -120,7 +120,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 no virtual backings
-zombie tables: 000002
+no zombie tables
 obsolete tables: 000002
 
 # Add a virtual table with a new backing (like an ingestion would).
@@ -139,7 +139,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 100000:
   000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
-zombie tables: 000002
+no zombie tables
 obsolete tables: 000002
 
 ref-version r1
@@ -151,7 +151,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 100000:
   000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
-zombie tables: 000002
+no zombie tables
 obsolete tables: 000002
 
 # Delete a table and backing; but we have a ref on the previous version so the
@@ -167,7 +167,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 no virtual backings
-zombie tables: 000002 000100
+zombie tables: 000100
 obsolete tables: 000002
 
 # The backing is now obsolete.
@@ -177,7 +177,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 no virtual backings
-zombie tables: 000002 000100
+no zombie tables
 obsolete tables: 000002 000100
 
 # Test backing protection mechanism.
@@ -200,7 +200,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
   000101:  size=101000  useCount=2  protectionCount=0  virtualizedSize=1300
-zombie tables: 000002 000100
+no zombie tables
 obsolete tables: 000002 000100
 
 protect-backing 101
@@ -213,7 +213,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
   000101:  size=101000  useCount=2  protectionCount=1  virtualizedSize=1300
-zombie tables: 000002 000100
+no zombie tables
 obsolete tables: 000002 000100
 
 # We should not see a "del-backing" field here.
@@ -230,7 +230,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
   000101:  size=101000  useCount=0  protectionCount=1  virtualizedSize=0
-zombie tables: 000002 000100
+no zombie tables
 obsolete tables: 000002 000100
 
 unprotect-backing 101
@@ -241,7 +241,7 @@ current version:
 1 virtual backings, total size 101000:
   000101:  size=101000  useCount=0  protectionCount=0  virtualizedSize=0
 unused virtual backings: 000101
-zombie tables: 000002 000100
+no zombie tables
 obsolete tables: 000002 000100
 
 # Whatever this next apply is, it should remove the unused backing.
@@ -258,7 +258,7 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 no virtual backings
-zombie tables: 000002 000100 000101
+no zombie tables
 obsolete tables: 000002 000100 000101
 
 # Test handling of leaked protected backings.
@@ -280,7 +280,7 @@ current version:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
   000102:  size=102000  useCount=1  protectionCount=0  virtualizedSize=900
-zombie tables: 000002 000100 000101
+no zombie tables
 obsolete tables: 000002 000100 000101
 
 protect-backing 102
@@ -294,7 +294,7 @@ current version:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
   000102:  size=102000  useCount=1  protectionCount=1  virtualizedSize=900
-zombie tables: 000002 000100 000101
+no zombie tables
 obsolete tables: 000002 000100 000101
 
 apply
@@ -310,7 +310,7 @@ current version:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
   000102:  size=102000  useCount=0  protectionCount=1  virtualizedSize=0
-zombie tables: 000002 000100 000101
+no zombie tables
 obsolete tables: 000002 000100 000101
 
 # Upon reopen, we still have a record of backing 102.
@@ -342,5 +342,5 @@ current version:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
 no virtual backings
-zombie tables: 000102
+no zombie tables
 obsolete tables: 000102
