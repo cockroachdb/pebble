@@ -260,11 +260,11 @@ sync: db1/temporary.000460.dbtmp
 close: db1/temporary.000460.dbtmp
 rename: db1/temporary.000460.dbtmp -> db1/OPTIONS-000460
 sync: db1
+remove: db1/OPTIONS-000003
 remove: db1/000123.sst
 remove: db1/000456.sst
 remove: db1/000234.blob
 remove: db1/000345.blob
-remove: db1/OPTIONS-000003
 
 list db1
 ----

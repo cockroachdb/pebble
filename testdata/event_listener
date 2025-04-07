@@ -154,12 +154,12 @@ sync: db
 [JOB 6] compacted(default) L0 [000005 000008] (1.4KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (733B), in 1.0s (3.0s total), output rate 733B/s
 close: db/000005.sst
 close: db/000008.sst
+remove: db/MANIFEST-000006
+[JOB 6] MANIFEST deleted 000006
 remove: db/000005.sst
 [JOB 6] sstable deleted 000005
 remove: db/000008.sst
 [JOB 6] sstable deleted 000008
-remove: db/MANIFEST-000006
-[JOB 6] MANIFEST deleted 000006
 
 disable-file-deletions
 ----

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"strconv"
@@ -197,15 +198,12 @@ func TestVersionSet(t *testing.T) {
 			}
 		}
 		buf.WriteString(vs.virtualBackings.String())
-		if len(vs.zombieTables) == 0 {
+		if vs.zombieTables.Count() == 0 {
 			buf.WriteString("no zombie tables\n")
 		} else {
-			var nums []base.DiskFileNum
-			for k := range vs.zombieTables {
-				nums = append(nums, k)
-			}
-			buf.WriteString("zombie tables:")
+			nums := slices.Collect(maps.Keys(vs.zombieTables.objs))
 			slices.Sort(nums)
+			buf.WriteString("zombie tables:")
 			for _, n := range nums {
 				fmt.Fprintf(&buf, " %s", n)
 			}
