@@ -266,31 +266,65 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
-				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-					var bh block.Handle
-					var n int
-					var vbih valblk.IndexHandle
-					isValueBlocksIndexHandle := false
-					if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
-						vbih, n, err = valblk.DecodeIndexHandle(value)
-						bh = vbih.Handle
-						isValueBlocksIndexHandle = true
-					} else {
-						bh, n = block.DecodeHandle(value)
+
+				if r.tableFormat >= TableFormatPebblev6 {
+					var decoder colblk.KeyValueBlockDecoder
+					decoder.Init(h.BlockData())
+					for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+						key := decoder.KeyAt(i)
+						value := decoder.ValueAt(i)
+						var bh block.Handle
+						var n int
+						var vbih valblk.IndexHandle
+						isValueBlocksIndexHandle := false
+						if bytes.Equal(key, []byte(metaValueIndexName)) {
+							vbih, n, err = valblk.DecodeIndexHandle(value)
+							bh = vbih.Handle
+							isValueBlocksIndexHandle = true
+						} else {
+							bh, n = block.DecodeHandle(value)
+						}
+						if n == 0 || n != len(value) {
+							s := fmt.Sprintf("%04d    [err: %s]\n", i, err)
+							tpNode.Child(s)
+							continue
+						}
+						var vbihStr string
+						if isValueBlocksIndexHandle {
+							vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
+								vbih.BlockNumByteLength, vbih.BlockOffsetByteLength, vbih.BlockLengthByteLength)
+						}
+						s := fmt.Sprintf("%04d    %s block:%d/%d%s\n",
+							i, key, bh.Offset, bh.Length, vbihStr)
+						tpNode.Child(s)
 					}
-					if n == 0 || n != len(value) {
-						fmt.Fprintf(w, "%04d    [err: %s]\n", enc.Offset, err)
-						return
-					}
-					var vbihStr string
-					if isValueBlocksIndexHandle {
-						vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
-							vbih.BlockNumByteLength, vbih.BlockOffsetByteLength, vbih.BlockLengthByteLength)
-					}
-					fmt.Fprintf(w, "%04d    %s block:%d/%d%s",
-						uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
-				})
+				} else {
+					iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
+					iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+						var bh block.Handle
+						var n int
+						var vbih valblk.IndexHandle
+						isValueBlocksIndexHandle := false
+						if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
+							vbih, n, err = valblk.DecodeIndexHandle(value)
+							bh = vbih.Handle
+							isValueBlocksIndexHandle = true
+						} else {
+							bh, n = block.DecodeHandle(value)
+						}
+						if n == 0 || n != len(value) {
+							fmt.Fprintf(w, "%04d    [err: %s]\n", enc.Offset, err)
+							return
+						}
+						var vbihStr string
+						if isValueBlocksIndexHandle {
+							vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
+								vbih.BlockNumByteLength, vbih.BlockOffsetByteLength, vbih.BlockLengthByteLength)
+						}
+						fmt.Fprintf(w, "%04d    %s block:%d/%d%s",
+							uint64(enc.Offset), iter.Key().UserKey, bh.Offset, bh.Length, vbihStr)
+					})
+				}
 
 			case "value-block":
 				// We don't peer into the value-block since it can't be interpreted
@@ -478,7 +512,7 @@ func formatRowblkDataBlock(
 	return nil
 }
 
-func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
+func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat) (Layout, error) {
 	foot, err := parseFooter(data, 0, int64(len(data)))
 	if err != nil {
 		return Layout{}, err
@@ -487,7 +521,13 @@ func decodeLayout(comparer *base.Comparer, data []byte) (Layout, error) {
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing metaindex")
 	}
-	meta, vbih, err := decodeMetaindex(decompressedMeta)
+	var meta map[string]block.Handle
+	var vbih valblk.IndexHandle
+	if tableFormat >= TableFormatPebblev6 {
+		meta, vbih, err = decodeColumnarMetaIndex(decompressedMeta)
+	} else {
+		meta, vbih, err = decodeMetaindex(decompressedMeta)
+	}
 	if err != nil {
 		return Layout{}, err
 	}
@@ -635,6 +675,36 @@ func decodeMetaindex(
 				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
 			}
 			meta[string(i.Key().UserKey)] = bh
+		}
+	}
+	return meta, vbih, nil
+}
+
+func decodeColumnarMetaIndex(
+	data []byte,
+) (meta map[string]block.Handle, vbih valblk.IndexHandle, err error) {
+	var decoder colblk.KeyValueBlockDecoder
+	decoder.Init(data)
+	meta = map[string]block.Handle{}
+	for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+		key := decoder.KeyAt(i)
+		value := decoder.ValueAt(i)
+
+		if bytes.Equal(key, []byte(metaValueIndexName)) {
+			var n int
+			vbih, n, err = valblk.DecodeIndexHandle(value)
+			if err != nil {
+				return nil, vbih, err
+			}
+			if n == 0 || n != len(value) {
+				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad value blocks index handle)")
+			}
+		} else {
+			bh, n := block.DecodeHandle(value)
+			if n == 0 || n != len(value) {
+				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
+			}
+			meta[string(key)] = bh
 		}
 	}
 	return meta, vbih, nil
@@ -847,17 +917,28 @@ func (w *layoutWriter) IsFinished() bool { return w.writable == nil }
 
 // Finish serializes the sstable, writing out the meta index block and sstable
 // footer and closing the file. It returns the total size of the resulting
-// ssatable.
+// sstable.
 func (w *layoutWriter) Finish() (size uint64, err error) {
 	// Sort the meta index handles by key and write the meta index block.
 	slices.SortFunc(w.handles, func(a, b metaIndexHandle) int {
 		return cmp.Compare(a.key, b.key)
 	})
-	bw := rowblk.Writer{RestartInterval: 1}
-	for _, h := range w.handles {
-		bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+	var b []byte
+	if w.tableFormat >= TableFormatPebblev6 {
+		var cw colblk.KeyValueBlockWriter
+		cw.Init()
+		for _, h := range w.handles {
+			cw.AddKV(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+		}
+		b = cw.Finish(cw.Rows())
+	} else {
+		bw := rowblk.Writer{RestartInterval: 1}
+		for _, h := range w.handles {
+			bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+		}
+		b = bw.Finish()
 	}
-	metaIndexHandle, err := w.writeBlock(bw.Finish(), block.NoCompression, &w.buf)
+	metaIndexHandle, err := w.writeBlock(b, block.NoCompression, &w.buf)
 	if err != nil {
 		return 0, err
 	}
