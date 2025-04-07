@@ -2101,6 +2101,7 @@ func (d *DB) ingestApply(
 			for m := range ls.Overlaps(d.cmp, exciseSpan.UserKeyBounds()).All() {
 				leftTable, rightTable, err := d.exciseTable(ctx, exciseSpan.UserKeyBounds(), m, layer.Level())
 				if err != nil {
+					d.mu.versions.logUnlock()
 					return nil, err
 				}
 				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
@@ -2113,6 +2114,7 @@ func (d *DB) ingestApply(
 		// For the same reasons as the above call to excise, we hold the db mutex
 		// while calling this method.
 		if err := d.ingestSplit(ctx, ve, updateLevelMetricsOnExcise, filesToSplit, replacedFiles); err != nil {
+			d.mu.versions.logUnlock()
 			return nil, err
 		}
 	}
