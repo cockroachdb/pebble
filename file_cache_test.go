@@ -393,7 +393,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.checkVirtualBounds(v2)
 
 	// Write the version edit.
-	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
+	fileMetrics := func(ve *versionEdit) *levelMetricsDelta {
 		metrics := newFileMetrics(ve.NewTables)
 		for de, f := range ve.DeletedTables {
 			lm := metrics[de.Level]

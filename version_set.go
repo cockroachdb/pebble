@@ -444,7 +444,7 @@ func (vs *versionSet) logUnlockAndInvalidatePickedCompactionCache() {
 func (vs *versionSet) logAndApply(
 	jobID JobID,
 	ve *versionEdit,
-	metrics map[int]*LevelMetrics,
+	metrics *levelMetricsDelta,
 	forceRotation bool,
 	inProgressCompactions func() []compactionInfo,
 ) error {
@@ -687,8 +687,8 @@ func (vs *versionSet) logAndApply(
 		vs.manifestFileNum = newManifestFileNum
 	}
 
-	for level, update := range metrics {
-		vs.metrics.Levels[level].Add(update)
+	if metrics != nil {
+		vs.metrics.updateLevelMetrics(*metrics)
 	}
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
@@ -1131,8 +1131,8 @@ func findCurrentManifest(
 	return marker, manifestNum, true, nil
 }
 
-func newFileMetrics(newFiles []manifest.NewTableEntry) map[int]*LevelMetrics {
-	m := map[int]*LevelMetrics{}
+func newFileMetrics(newFiles []manifest.NewTableEntry) *levelMetricsDelta {
+	var m levelMetricsDelta
 	for _, nf := range newFiles {
 		lm := m[nf.Level]
 		if lm == nil {
@@ -1142,5 +1142,5 @@ func newFileMetrics(newFiles []manifest.NewTableEntry) map[int]*LevelMetrics {
 		lm.NumFiles++
 		lm.Size += int64(nf.Meta.Size)
 	}
-	return m
+	return &m
 }

@@ -606,7 +606,7 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	return d.mu.versions.logAndApply(
 		jobID,
 		&manifest.VersionEdit{},
-		map[int]*LevelMetrics{},
+		nil,  /* metrics */
 		true, /* forceRotation */
 		func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) })
 }

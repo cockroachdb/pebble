@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
@@ -717,4 +718,16 @@ func (m *Metrics) StringForTests() string {
 	// invariants tag, etc.
 	mCopy.manualMemory = manual.Metrics{}
 	return redact.StringWithoutMarkers(&mCopy)
+}
+
+// levelMetricsDelta accumulates incremental ("delta") level metric updates
+// (e.g. from compactions or flushes).
+type levelMetricsDelta [manifest.NumLevels]*LevelMetrics
+
+func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
+	for i, u := range updates {
+		if u != nil {
+			m.Levels[i].Add(u)
+		}
+	}
 }
