@@ -200,7 +200,8 @@ create: db1/000123.sst
 sync: db1/000123.sst
 close: db1/000123.sst
 
-create-bogus-file db1/000456.sst
+# Creating a large file to test the cleaner issuing a sync
+create-bogus-file db1/000456.sst 100000000
 ----
 create: db1/000456.sst
 sync: db1/000456.sst
@@ -262,6 +263,7 @@ rename: db1/temporary.000460.dbtmp -> db1/OPTIONS-000460
 sync: db1
 remove: db1/000123.sst
 remove: db1/000456.sst
+sync: db1
 remove: db1/000234.blob
 remove: db1/000345.blob
 remove: db1/OPTIONS-000003
