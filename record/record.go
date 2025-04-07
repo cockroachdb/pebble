@@ -112,6 +112,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bitflip"
 	"github.com/cockroachdb/pebble/internal/crc"
 )
 
@@ -359,9 +360,19 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrInvalidChunk
 			}
-			if checksum != crc.New(r.buf[r.begin-headerSize+6:r.end]).Value() {
+			data := r.buf[r.begin-headerSize+6 : r.end]
+			if checksum != crc.New(data).Value() {
+				computeChecksum := func(data []byte) uint32 { return crc.New(data).Value() }
+				// Check if there was a bit flip.
+				found, indexFound, bitFound := bitflip.CheckSliceForBitFlip(data, computeChecksum, checksum)
+				err := ErrInvalidChunk
+				if found {
+					err = errors.WithSafeDetails(err, ". bit flip found: block num %d. wal offset %d. byte index %d. got: 0x%x. want: 0x%x.",
+						errors.Safe(r.blockNum), errors.Safe(r.invalidOffset), errors.Safe(indexFound), errors.Safe(data[indexFound]), errors.Safe(data[indexFound]^(1<<bitFound)))
+				}
+
 				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
-				return ErrInvalidChunk
+				return err
 			}
 			if wantFirst {
 				if chunkPosition != fullChunkPosition && chunkPosition != firstChunkPosition {
