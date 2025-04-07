@@ -287,7 +287,7 @@ type compaction struct {
 	// this compaction is allowed to excise files.
 	exciseEnabled bool
 
-	metrics map[int]*LevelMetrics
+	metrics levelMetricsDelta
 
 	pickerMetrics compactionPickerMetrics
 
@@ -1262,8 +1262,6 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		panic("pebble: ingestedFlushable must be flushed one at a time.")
 	}
 
-	// Construct the VersionEdit, levelMetrics etc.
-	c.metrics = make(map[int]*LevelMetrics, numLevels)
 	// Finding the target level for ingestion must use the latest version
 	// after the logLock has been acquired.
 	c.version = d.mu.versions.currentVersion()
@@ -1526,16 +1524,16 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		// oldest unflushed memtable.
 		ve.MinUnflushedLogNum = minUnflushedLogNum
 		if c.kind != compactionKindIngestedFlushable {
-			metrics := c.metrics[0]
+			l0Metrics := c.metrics[0]
 			if d.opts.DisableWAL {
 				// If the WAL is disabled, every flushable has a zero [logSize],
 				// resulting in zero bytes in. Instead, use the number of bytes we
 				// flushed as the BytesIn. This ensures we get a reasonable w-amp
 				// calculation even when the WAL is disabled.
-				metrics.BytesIn = metrics.BytesFlushed
+				l0Metrics.BytesIn = l0Metrics.BytesFlushed
 			} else {
 				for i := 0; i < n; i++ {
-					metrics.BytesIn += d.mu.mem.queue[i].logSize
+					l0Metrics.BytesIn += d.mu.mem.queue[i].logSize
 				}
 			}
 		} else {
@@ -1572,7 +1570,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				}
 			}
 		}
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false, /* forceRotation */
+		err = d.mu.versions.logAndApply(jobID, ve, &c.metrics, false, /* forceRotation */
 			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
 			info.Err = err
@@ -1605,8 +1603,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		if ingest {
 			d.mu.versions.metrics.Flush.AsIngestCount++
 			for _, l := range c.metrics {
-				d.mu.versions.metrics.Flush.AsIngestBytes += l.BytesIngested
-				d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
+				if l != nil {
+					d.mu.versions.metrics.Flush.AsIngestBytes += l.BytesIngested
+					d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
+				}
 			}
 		}
 		d.maybeTransitionSnapshotsToFileOnlyLocked()
@@ -2467,7 +2467,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 				d.mu.versions.logUnlockAndInvalidatePickedCompactionCache()
 				return err
 			}
-			return d.mu.versions.logAndApply(jobID, ve, c.metrics, false /* forceRotation */, func() []compactionInfo {
+			return d.mu.versions.logAndApply(jobID, ve, &c.metrics, false /* forceRotation */, func() []compactionInfo {
 				return d.getInProgressCompactionInfoLocked(c)
 			})
 		}()
@@ -2663,11 +2663,10 @@ func (d *DB) runCopyCompaction(
 			if errors.Is(err, sstable.ErrEmptySpan) {
 				// The virtual table was empty. Just remove the backing file.
 				// Note that deleteOnExit is true so we will delete the created object.
-				c.metrics = map[int]*LevelMetrics{
-					c.outputLevel.level: {
-						BytesIn: inputMeta.Size,
-					},
+				c.metrics[c.outputLevel.level] = &LevelMetrics{
+					BytesIn: inputMeta.Size,
 				}
+
 				return ve, compact.Stats{}, nil
 			}
 			return nil, compact.Stats{}, err
@@ -2690,12 +2689,10 @@ func (d *DB) runCopyCompaction(
 	if newMeta.Virtual {
 		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
 	}
-	c.metrics = map[int]*LevelMetrics{
-		c.outputLevel.level: {
-			BytesIn:         inputMeta.Size,
-			BytesCompacted:  newMeta.Size,
-			TablesCompacted: 1,
-		},
+	c.metrics[c.outputLevel.level] = &LevelMetrics{
+		BytesIn:         inputMeta.Size,
+		BytesCompacted:  newMeta.Size,
+		TablesCompacted: 1,
 	}
 
 	if err := d.objProvider.Sync(); err != nil {
@@ -2869,7 +2866,6 @@ func fragmentDeleteCompactionHints(
 func (d *DB) runDeleteOnlyCompaction(
 	jobID JobID, c *compaction, snapshots compact.Snapshots,
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
-	c.metrics = make(map[int]*LevelMetrics, len(c.inputs))
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deletionHints)
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{},
@@ -2919,11 +2915,9 @@ func (d *DB) runMoveCompaction(
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
 	}
-	c.metrics = map[int]*LevelMetrics{
-		c.outputLevel.level: {
-			BytesMoved:  meta.Size,
-			TablesMoved: 1,
-		},
+	c.metrics[c.outputLevel.level] = &LevelMetrics{
+		BytesMoved:  meta.Size,
+		TablesMoved: 1,
 	}
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{
@@ -3177,9 +3171,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	}
 	outputMetrics.BytesRead += outputMetrics.BytesIn
 
-	c.metrics = map[int]*LevelMetrics{
-		c.outputLevel.level: outputMetrics,
-	}
+	c.metrics[c.outputLevel.level] = outputMetrics
 	if len(c.flushing) == 0 && c.metrics[c.startLevel.level] == nil {
 		c.metrics[c.startLevel.level] = &LevelMetrics{}
 	}

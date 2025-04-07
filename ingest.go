@@ -1914,7 +1914,7 @@ func (d *DB) ingestApply(
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
 		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.TableMetadata{}
 	}
-	metrics := make(map[int]*LevelMetrics)
+	var metrics levelMetricsDelta
 
 	// Lock the manifest for writing before we use the current version to
 	// determine the target level. This prevents two concurrent ingestion jobs
@@ -2150,7 +2150,7 @@ func (d *DB) ingestApply(
 		}
 	}
 
-	if err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
+	if err := d.mu.versions.logAndApply(jobID, ve, &metrics, false /* forceRotation */, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	}); err != nil {
 		// Note: any error during logAndApply is fatal; this won't be reachable in production.
