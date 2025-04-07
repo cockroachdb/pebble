@@ -12,9 +12,9 @@ L6
   d@2.SET.2:v
 ----
 L5:
-  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:885 blobrefs:[(000921: 10); depth:1]
+  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:898 blobrefs:[(000921: 10); depth:1]
 L6:
-  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:863 blobrefs:[(000921: 6); depth:1]
+  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:876 blobrefs:[(000921: 6); depth:1]
 
 combined-iter
 first
@@ -70,9 +70,9 @@ L6
   f@2.SETWITHDEL.3:blob{fileNum=000039 value=grapes}
 ----
 L5:
-  000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[9-9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:866 blobrefs:[(000039: 14), (000921: 20); depth:2]
+  000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[9-9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:879 blobrefs:[(000039: 14), (000921: 20); depth:2]
 L6:
-  000005:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] seqnums:[2-9] points:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] size:875 blobrefs:[(000039: 11), (000921: 13); depth:2]
+  000005:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] seqnums:[2-9] points:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] size:888 blobrefs:[(000039: 11), (000921: 13); depth:2]
 
 # The iterator stats should indicate that only the first value from each file
 # should trigger a read of the blob file. Once loaded, subsequent reads of the
@@ -132,7 +132,7 @@ L6
   l.SETWITHDEL.2:blob{fileNum=000009 value=peach blockNum=6 offset=0}
 ----
 L6:
-  000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[2-2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:945 blobrefs:[(000009: 96); depth:1]
+  000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[2-2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:958 blobrefs:[(000009: 96); depth:1]
 
 combined-iter
 first
