@@ -254,10 +254,23 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
-				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-					fmt.Fprintf(w, "%05d    %s (%d)", enc.Offset, key.UserKey, enc.Length)
-				})
+				if r.tableFormat >= TableFormatPebblev6 {
+					var decoder colblk.KeyValueBlockDecoder
+					decoder.Init(h.BlockData())
+					offset := 0
+					for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+						key := decoder.KeyAt(i)
+						value := decoder.ValueAt(i)
+						length := len(key) + len(value)
+						tpNode.Childf("%05d    %s (%d)", offset, key, length)
+						offset += length
+					}
+				} else {
+					iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
+					iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+						fmt.Fprintf(w, "%05d    %s (%d)", enc.Offset, key.UserKey, enc.Length)
+					})
+				}
 
 			case "meta-index":
 				if b.Handle != r.metaindexBH {
@@ -286,8 +299,7 @@ func (l *Layout) Describe(
 							bh, n = block.DecodeHandle(value)
 						}
 						if n == 0 || n != len(value) {
-							s := fmt.Sprintf("%04d    [err: %s]\n", i, err)
-							tpNode.Child(s)
+							tpNode.Childf("%04d    [err: %s]\n", i, err)
 							continue
 						}
 						var vbihStr string
@@ -295,9 +307,8 @@ func (l *Layout) Describe(
 							vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
 								vbih.BlockNumByteLength, vbih.BlockOffsetByteLength, vbih.BlockLengthByteLength)
 						}
-						s := fmt.Sprintf("%04d    %s block:%d/%d%s\n",
+						tpNode.Childf("%04d    %s block:%d/%d%s\n",
 							i, key, bh.Offset, bh.Length, vbihStr)
-						tpNode.Child(s)
 					}
 				} else {
 					iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
@@ -562,8 +573,14 @@ func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat)
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing properties")
 	}
-	if err := props.load(decompressedProps, map[string]struct{}{}); err != nil {
-		return Layout{}, err
+	if tableFormat >= TableFormatPebblev6 {
+		if err = props.load(decompressedProps, map[string]struct{}{}); err != nil {
+			return Layout{}, err
+		}
+	} else {
+		if err = props.loadFromRowBlock(decompressedProps, map[string]struct{}{}); err != nil {
+			return Layout{}, err
+		}
 	}
 
 	if props.IndexType == twoLevelIndex {
@@ -816,21 +833,24 @@ func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err er
 	if err != nil {
 		return block.Handle{}, err
 	}
-	return w.writeNamedBlock(b, f.metaName())
+	return w.writeNamedBlock(b, block.NoCompression, f.metaName())
 }
 
 // WritePropertiesBlock constructs a trailer for the provided properties block
 // and writes the block and trailer to the writer. It automatically adds the
 // properties block to the file's meta index when the writer is finished.
 func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
-	return w.writeNamedBlock(b, metaPropertiesName)
+	if w.tableFormat >= TableFormatPebblev6 {
+		return w.writeNamedBlock(b, w.compression, metaPropertiesName)
+	}
+	return w.writeNamedBlock(b, block.NoCompression, metaPropertiesName)
 }
 
 // WriteRangeKeyBlock constructs a trailer for the provided range key block and
 // writes the block and trailer to the writer. It automatically adds the range
 // key block to the file's meta index when the writer is finished.
 func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
-	return w.writeNamedBlock(b, metaRangeKeyName)
+	return w.writeNamedBlock(b, block.NoCompression, metaRangeKeyName)
 }
 
 // WriteRangeDeletionBlock constructs a trailer for the provided range deletion
@@ -838,11 +858,13 @@ func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 // the range deletion block to the file's meta index when the writer is
 // finished.
 func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
-	return w.writeNamedBlock(b, metaRangeDelV2Name)
+	return w.writeNamedBlock(b, block.NoCompression, metaRangeDelV2Name)
 }
 
-func (w *layoutWriter) writeNamedBlock(b []byte, name string) (bh block.Handle, err error) {
-	bh, err = w.writeBlock(b, block.NoCompression, &w.buf)
+func (w *layoutWriter) writeNamedBlock(
+	b []byte, compression block.Compression, name string,
+) (bh block.Handle, err error) {
+	bh, err = w.writeBlock(b, compression, &w.buf)
 	if err == nil {
 		w.recordToMetaindex(name, bh)
 	}

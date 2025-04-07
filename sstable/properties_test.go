@@ -103,10 +103,10 @@ func TestPropertiesSave(t *testing.T) {
 		// Check that we can save properties and read them back.
 		var w rowblk.Writer
 		w.RestartInterval = propertiesBlockRestartInterval
-		require.NoError(t, e.save(TableFormatPebblev2, &w))
+		require.NoError(t, e.saveToRowWriter(TableFormatPebblev2, &w))
 		var props Properties
 
-		require.NoError(t, props.load(w.Finish(), make(map[string]struct{})))
+		require.NoError(t, props.loadFromRowBlock(w.Finish(), make(map[string]struct{})))
 		props.Loaded = nil
 		if diff := pretty.Diff(*e, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
@@ -130,13 +130,13 @@ func TestPropertiesSave(t *testing.T) {
 func BenchmarkPropertiesLoad(b *testing.B) {
 	var w rowblk.Writer
 	w.RestartInterval = propertiesBlockRestartInterval
-	require.NoError(b, testProps.save(TableFormatPebblev2, &w))
+	require.NoError(b, testProps.saveToRowWriter(TableFormatPebblev2, &w))
 	block := w.Finish()
 
 	b.ResetTimer()
 	p := &Properties{}
 	for i := 0; i < b.N; i++ {
 		*p = Properties{}
-		require.NoError(b, p.load(block, nil))
+		require.NoError(b, p.loadFromRowBlock(block, nil))
 	}
 }
