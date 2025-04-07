@@ -8,13 +8,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
@@ -29,8 +32,9 @@ type mockReaderProvider struct {
 func (rp *mockReaderProvider) GetValueReader(
 	ctx context.Context, fileNum base.DiskFileNum,
 ) (r ValueReader, closeFunc func(), err error) {
-	fmt.Fprintf(rp.w, "# GetValueReader(%s)\n", fileNum)
-
+	if rp.w != nil {
+		fmt.Fprintf(rp.w, "# GetValueReader(%s)\n", fileNum)
+	}
 	vr, ok := rp.readers[fileNum]
 	if !ok {
 		return nil, nil, errors.Newf("no reader for file %s", fileNum)
@@ -142,4 +146,64 @@ func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentBlockNum)
 	}
 	fmt.Fprintf(w, "}\n")
+}
+
+func BenchmarkValueFetcherRetrieve(b *testing.B) {
+	defer leaktest.AfterTest(b)()
+
+	ctx := context.Background()
+	opts := FileWriterOptions{}
+	obj := &objstorage.MemObj{}
+	w := NewFileWriter(000001, obj, opts)
+	rng := rand.New(rand.NewPCG(0, 0))
+	var handles []Handle
+	for v := 4 << 20; v > 0; {
+		n := testutils.RandIntInRange(rng, 1, 4096)
+		h := w.AddValue(testutils.RandBytes(rng, n))
+		handles = append(handles, h)
+		v -= n
+	}
+	_, err := w.Close()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	r, err := NewFileReader(ctx, obj, FileReaderOptions{
+		ReaderOptions: block.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				FileNum: base.DiskFileNum(1),
+			},
+		},
+	})
+	require.NoError(b, err)
+	rp := &mockReaderProvider{readers: map[base.DiskFileNum]*FileReader{000001: r}}
+
+	b.Run("sequential", func(b *testing.B) {
+		var fetcher ValueFetcher
+		fetcher.Init(rp, block.ReadEnv{})
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			h := handles[i%len(handles)]
+			_, err := fetcher.retrieve(ctx, h)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("random", func(b *testing.B) {
+		indices := make([]int, b.N)
+		for i := 0; i < b.N; i++ {
+			indices[i] = testutils.RandIntInRange(rng, 0, len(handles))
+		}
+		var fetcher ValueFetcher
+		fetcher.Init(rp, block.ReadEnv{})
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			h := handles[indices[i]]
+			_, err := fetcher.retrieve(ctx, h)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
