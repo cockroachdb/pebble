@@ -2516,6 +2516,7 @@ func (d *DB) ingestApply(
 			for m := iter.First(); m != nil; m = iter.Next() {
 				newFiles, err := d.excise(exciseSpan.UserKeyBounds(), m, ve, level)
 				if err != nil {
+					d.mu.versions.logUnlock()
 					return nil, err
 				}
 
@@ -2535,6 +2536,7 @@ func (d *DB) ingestApply(
 		// For the same reasons as the above call to excise, we hold the db mutex
 		// while calling this method.
 		if err := d.ingestSplit(ve, updateLevelMetricsOnExcise, filesToSplit, replacedFiles); err != nil {
+			d.mu.versions.logUnlock()
 			return nil, err
 		}
 	}
