@@ -2406,7 +2406,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 		// Add this file to zombie tables as well, as the versionSet
 		// asserts on whether every obsolete file was at one point
 		// marked zombie.
-		d.mu.versions.zombieTables[of.DiskFileNum] = objectInfo{
+		d.mu.versions.zombieTables.Add(objectInfo{
 			fileInfo: fileInfo{
 				FileNum:  of.DiskFileNum,
 				FileSize: of.Size,
@@ -2417,7 +2417,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 			// disaggregated storage; if this becomes the norm, we should do
 			// an objprovider lookup here.
 			isLocal: true,
-		}
+		})
 	}
 	d.mu.versions.addObsoleteLocked(obsoleteFiles)
 }
@@ -3025,13 +3025,7 @@ func (d *DB) runCompaction(
 			// Add this file to zombie tables as well, as the versionSet
 			// asserts on whether every obsolete file was at one point
 			// marked zombie.
-			d.mu.versions.zombieTables[backing.DiskFileNum] = objectInfo{
-				fileInfo: fileInfo{
-					FileNum:  backing.DiskFileNum,
-					FileSize: backing.Size,
-				},
-				isLocal: true,
-			}
+			d.mu.versions.zombieTables.AddMetadata(&result.Tables[i].ObjMeta, backing.Size)
 		}
 		d.mu.versions.addObsoleteLocked(obsoleteFiles)
 		d.mu.Unlock()
