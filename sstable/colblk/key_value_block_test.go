@@ -48,3 +48,29 @@ func TestMetaIndexBlock(t *testing.T) {
 		}
 	})
 }
+
+func TestPropertiesBlock(t *testing.T) {
+	var decoder KeyValueBlockDecoder
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/properties_block", func(t *testing.T, d *datadriven.TestData) string {
+		buf.Reset()
+		switch d.Cmd {
+		case "build":
+			var w KeyValueBlockWriter
+			w.Init()
+			for _, line := range strings.Split(d.Input, "\n") {
+				fields := strings.Fields(line)
+				key := []byte(fields[0])
+				value := []byte(fields[1])
+				w.AddKV(key, value)
+			}
+
+			data := w.Finish(w.Rows())
+			decoder.Init(data)
+			fmt.Fprint(&buf, decoder.DebugString())
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}

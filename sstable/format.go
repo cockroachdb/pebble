@@ -29,7 +29,7 @@ const (
 	TableFormatPebblev3 // Value blocks.
 	TableFormatPebblev4 // DELSIZED tombstones.
 	TableFormatPebblev5 // Columnar blocks.
-	TableFormatPebblev6 // Checksum footer + blob value handles + columnar metaindex.
+	TableFormatPebblev6 // Checksum footer + blob value handles + columnar metaindex/properties.
 	NumTableFormats
 
 	TableFormatMax = NumTableFormats - 1

@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/intern"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
@@ -309,6 +310,44 @@ func (p *Properties) load(b []byte, deniedUserProperties map[string]struct{}) er
 	return nil
 }
 
+func (p *Properties) loadForColumnar(b []byte, deniedUserProperties map[string]struct{}) error {
+	var decoder colblk.KeyValueBlockDecoder
+	decoder.Init(b)
+	p.Loaded = make(map[uintptr]struct{})
+	v := reflect.ValueOf(p).Elem()
+
+	for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+		key := decoder.KeyAt(i)
+		value := decoder.ValueAt(i)
+		if f, ok := propTagMap[string(key)]; ok {
+			p.Loaded[f.Offset] = struct{}{}
+			field := v.FieldByIndex(f.Index)
+			switch f.Type.Kind() {
+			case reflect.Bool:
+				field.SetBool(bytes.Equal(value, propBoolTrue))
+			case reflect.Uint32:
+				field.SetUint(uint64(binary.LittleEndian.Uint32(value)))
+			case reflect.Uint64:
+				n, _ := binary.Uvarint(value)
+				field.SetUint(n)
+			case reflect.String:
+				field.SetString(intern.Bytes(value))
+			default:
+				panic("not reached")
+			}
+			continue
+		}
+		if p.UserProperties == nil {
+			p.UserProperties = make(map[string]string)
+		}
+
+		if _, denied := deniedUserProperties[string(key)]; !denied {
+			p.UserProperties[intern.Bytes(key)] = string(value)
+		}
+	}
+	return nil
+}
+
 func (p *Properties) saveBool(m map[string][]byte, offset uintptr, value bool) {
 	tag := propOffsetTagMap[offset]
 	if value {
@@ -342,7 +381,7 @@ func (p *Properties) saveString(m map[string][]byte, offset uintptr, value strin
 	m[propOffsetTagMap[offset]] = []byte(value)
 }
 
-func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) error {
+func (p *Properties) accumulateProps(tblFormat TableFormat) ([]string, map[string][]byte) {
 	m := make(map[string][]byte)
 	for k, v := range p.UserProperties {
 		m[k] = []byte(v)
@@ -443,12 +482,25 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) error {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+
+	return keys, m
+}
+
+func (p *Properties) saveToRowWriter(tblFormat TableFormat, w *rowblk.Writer) error {
+	keys, m := p.accumulateProps(tblFormat)
 	for _, key := range keys {
 		if err := w.AddRawString(key, m[key]); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (p *Properties) saveToColWriter(tblFormat TableFormat, w *colblk.KeyValueBlockWriter) {
+	keys, m := p.accumulateProps(tblFormat)
+	for _, key := range keys {
+		w.AddKV([]byte(key), m[key])
+	}
 }
 
 var (

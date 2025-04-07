@@ -1009,16 +1009,25 @@ func (w *RawColumnWriter) Close() (err error) {
 			}
 		}
 
-		var raw rowblk.Writer
-		// The restart interval is set to infinity because the properties block
-		// is always read sequentially and cached in a heap located object. This
-		// reduces table size without a significant impact on performance.
-		raw.RestartInterval = propertiesBlockRestartInterval
+		var toWrite []byte
 		w.props.CompressionOptions = rocksDBCompressionOptions
-		if err := w.props.save(w.opts.TableFormat, &raw); err != nil {
-			return err
+		if w.opts.TableFormat >= TableFormatPebblev6 {
+			var cw colblk.KeyValueBlockWriter
+			cw.Init()
+			w.props.saveToColWriter(w.opts.TableFormat, &cw)
+			toWrite = cw.Finish(cw.Rows())
+		} else {
+			var raw rowblk.Writer
+			// The restart interval is set to infinity because the properties block
+			// is always read sequentially and cached in a heap located object. This
+			// reduces table size without a significant impact on performance.
+			raw.RestartInterval = propertiesBlockRestartInterval
+			if err = w.props.saveToRowWriter(w.opts.TableFormat, &raw); err != nil {
+				return err
+			}
+			toWrite = raw.Finish()
 		}
-		if _, err := w.layout.WritePropertiesBlock(raw.Finish()); err != nil {
+		if _, err = w.layout.WritePropertiesBlock(toWrite); err != nil {
 			return err
 		}
 	}

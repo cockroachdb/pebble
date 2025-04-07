@@ -253,10 +253,23 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
-				iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
-					fmt.Fprintf(w, "%05d    %s (%d)", enc.Offset, key.UserKey, enc.Length)
-				})
+				if r.tableFormat >= TableFormatPebblev6 {
+					var decoder colblk.KeyValueBlockDecoder
+					decoder.Init(h.BlockData())
+					offset := 0
+					for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+						key := decoder.KeyAt(i)
+						value := decoder.ValueAt(i)
+						length := len(key) + len(value)
+						tpNode.Childf("%05d    %s (%d)", offset, key, length)
+						offset += length
+					}
+				} else {
+					iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
+					iter.Describe(tpNode, func(w io.Writer, key *base.InternalKey, value []byte, enc rowblk.KVEncoding) {
+						fmt.Fprintf(w, "%05d    %s (%d)", enc.Offset, key.UserKey, enc.Length)
+					})
+				}
 
 			case "meta-index":
 				if b.Handle != r.metaindexBH {
@@ -285,8 +298,7 @@ func (l *Layout) Describe(
 							bh, n = block.DecodeHandle(value)
 						}
 						if n == 0 || n != len(value) {
-							s := fmt.Sprintf("%04d    [err: %s]\n", i, err)
-							tpNode.Child(s)
+							tpNode.Childf("%04d    [err: %s]\n", i, err)
 							continue
 						}
 						var vbihStr string
@@ -294,9 +306,8 @@ func (l *Layout) Describe(
 							vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
 								vbih.BlockNumByteLength, vbih.BlockOffsetByteLength, vbih.BlockLengthByteLength)
 						}
-						s := fmt.Sprintf("%04d    %s block:%d/%d%s\n",
+						tpNode.Childf("%04d    %s block:%d/%d%s\n",
 							i, key, bh.Offset, bh.Length, vbihStr)
-						tpNode.Child(s)
 					}
 				} else {
 					iter, _ := rowblk.NewRawIter(r.Comparer.Compare, h.BlockData())
@@ -545,8 +556,14 @@ func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat)
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing properties")
 	}
-	if err := props.load(decompressedProps, map[string]struct{}{}); err != nil {
-		return Layout{}, err
+	if tableFormat >= TableFormatPebblev6 {
+		if err = props.loadForColumnar(decompressedProps, map[string]struct{}{}); err != nil {
+			return Layout{}, err
+		}
+	} else {
+		if err = props.load(decompressedProps, map[string]struct{}{}); err != nil {
+			return Layout{}, err
+		}
 	}
 
 	if props.IndexType == twoLevelIndex {

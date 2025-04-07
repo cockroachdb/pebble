@@ -358,7 +358,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1316
+range-deletions-bytes-estimate: 1490
 
 # A set operation takes precedence over a range deletion at the same
 # sequence number as can occur during ingestion.

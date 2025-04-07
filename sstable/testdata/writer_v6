@@ -235,9 +235,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 46
- └── footer  offset: 1019  length: 57
+ ├── properties  offset: 415  length: 744
+ ├── meta-index  offset: 1164  length: 46
+ └── footer  offset: 1215  length: 57
 
 # Exercise the non-Reader layout-decoding codepath.
 
@@ -251,9 +251,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 46
- └── footer  offset: 1019  length: 57
+ ├── properties  offset: 415  length: 744
+ ├── meta-index  offset: 1164  length: 46
+ └── footer  offset: 1215  length: 57
 
 scan
 ----
@@ -298,9 +298,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 589
- ├── meta-index  offset: 716  length: 65
- └── footer  offset: 786  length: 57
+ ├── properties  offset: 122  length: 840
+ ├── meta-index  offset: 967  length: 65
+ └── footer  offset: 1037  length: 57
 
 props
 ----
