@@ -1100,10 +1100,10 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 		// It is a bit peculiar that we are fiddling with th current version state
 		// in a separate critical section from when this version was installed.
 		// But this fiddling is necessary if the compaction failed. When the
-		// compaction succeeded, we've already done this in logAndApply, so this
-		// seems redundant. Anyway, we clear the pickedCompactionCache since we
+		// compaction succeeded, we've already done this in UpdateVersionLocked, so
+		// this seems redundant. Anyway, we clear the pickedCompactionCache since we
 		// may be able to pick a better compaction (though when this compaction
-		// succeeded we've also cleared the cache in logAndApply).
+		// succeeded we've also cleared the cache in UpdateVersionLocked).
 		defer d.mu.versions.logUnlockAndInvalidatePickedCompactionCache()
 		d.mu.versions.l0Organizer.InitCompactingFileInfo(l0InProgress)
 	}()
@@ -1467,44 +1467,38 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	d.addInProgressCompaction(c)
 
 	jobID := d.newJobIDLocked()
-	d.opts.EventListener.FlushBegin(FlushInfo{
+	info := FlushInfo{
 		JobID:      int(jobID),
 		Input:      inputs,
 		InputBytes: inputBytes,
 		Ingest:     ingest,
-	})
+	}
+	d.opts.EventListener.FlushBegin(info)
+
 	startTime := d.timeNow()
 
 	var ve *manifest.VersionEdit
 	var stats compact.Stats
 	// To determine the target level of the files in the ingestedFlushable, we
-	// need to acquire the logLock, and not release it for that duration. Since,
-	// we need to acquire the logLock below to perform the logAndApply step
-	// anyway, we create the VersionEdit for ingestedFlushable outside of
-	// runCompaction. For all other flush cases, we construct the VersionEdit
-	// inside runCompaction.
+	// need to acquire the logLock, and not release it for that duration. Since
+	// UpdateVersionLocked acquires it anyway, we create the VersionEdit for
+	// ingestedFlushable outside runCompaction. For all other flush cases, we
+	// construct the VersionEdit inside runCompaction.
+	var compactionErr error
 	if c.kind != compactionKindIngestedFlushable {
-		ve, stats, err = d.runCompaction(jobID, c)
+		ve, stats, compactionErr = d.runCompaction(jobID, c)
 	}
 
-	// Acquire logLock. This will be released either on an error, by way of
-	// logUnlock, or through a call to logAndApply if there is no error.
-	d.mu.versions.logLock()
+	err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		err := compactionErr
+		if c.kind == compactionKindIngestedFlushable {
+			ve, err = d.runIngestFlush(c)
+		}
+		info.Duration = d.timeNow().Sub(startTime)
+		if err != nil {
+			return versionUpdate{}, err
+		}
 
-	if c.kind == compactionKindIngestedFlushable {
-		ve, err = d.runIngestFlush(c)
-	}
-
-	info := FlushInfo{
-		JobID:      int(jobID),
-		Input:      inputs,
-		InputBytes: inputBytes,
-		Duration:   d.timeNow().Sub(startTime),
-		Done:       true,
-		Ingest:     ingest,
-		Err:        err,
-	}
-	if err == nil {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
 		for i := range ve.NewTables {
 			e := &ve.NewTables[i]
@@ -1514,9 +1508,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			if ingest {
 				info.IngestLevels = append(info.IngestLevels, e.Level)
 			}
-		}
-		if len(ve.NewTables) == 0 {
-			info.Err = errEmptyTable
 		}
 
 		// The flush succeeded or it produced an empty sstable. In either case we
@@ -1550,7 +1541,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// write a file overlapping with the excise span.
 				if ingestFlushable.exciseSpan.OverlapsInternalKeyRange(d.cmp, c2.smallest, c2.largest) {
 					c2.cancel.Store(true)
-					continue
 				}
 			}
 
@@ -1570,17 +1560,13 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				}
 			}
 		}
-		err = d.mu.versions.logAndApply(jobID, ve, &c.metrics, false, /* forceRotation */
-			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
-		if err != nil {
-			info.Err = err
-		}
-	} else {
-		// We won't be performing the logAndApply step because of the error, so
-		// logUnlock. We don't need to invalidate the pickedCompactionCache since
-		// the flush failed and so the latest version has not changed.
-		d.mu.versions.logUnlock()
-	}
+		return versionUpdate{
+			VE:                      ve,
+			JobID:                   jobID,
+			Metrics:                 c.metrics,
+			InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) },
+		}, nil
+	})
 
 	// If err != nil, then the flush will be retried, and we will recalculate
 	// these metrics.
@@ -1610,11 +1596,15 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			}
 		}
 		d.maybeTransitionSnapshotsToFileOnlyLocked()
-
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
 	// IterOptions.OnlyReadGuaranteedDurable.
+	info.Err = err
+	if info.Err == nil && len(ve.NewTables) == 0 {
+		info.Err = errEmptyTable
+	}
+	info.Done = true
 	info.TotalDuration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.FlushEnd(info)
 
@@ -2443,9 +2433,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
-		err = func() error {
-			var err error
-			d.mu.versions.logLock()
+		err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			// Check if this compaction had a conflicting operation (eg. a d.excise())
 			// that necessitates it restarting from scratch. Note that since we hold
 			// the manifest lock, we don't expect this bool to change its value
@@ -2460,17 +2448,18 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 				// would not have been true). We should delete any tables already
 				// created, as d.runCompaction did not do that.
 				d.cleanupVersionEdit(ve)
-				// logAndApply calls logUnlock. If we didn't call it, we need to call
-				// logUnlock ourselves. We also invalidate the pickedCompactionCache
-				// since this failed compaction may be the highest priority to run
-				// next.
-				d.mu.versions.logUnlockAndInvalidatePickedCompactionCache()
-				return err
+				// Note that UpdateVersionLocked invalidates the pickedCompactionCache
+				// when we return, which is relevant because this failed compaction
+				// may be the highest priority to run next.
+				return versionUpdate{}, err
 			}
-			return d.mu.versions.logAndApply(jobID, ve, &c.metrics, false /* forceRotation */, func() []compactionInfo {
-				return d.getInProgressCompactionInfoLocked(c)
-			})
-		}()
+			return versionUpdate{
+				VE:                      ve,
+				JobID:                   jobID,
+				Metrics:                 c.metrics,
+				InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) },
+			}, nil
+		})
 	}
 
 	info.Done = true

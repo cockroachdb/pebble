@@ -1183,10 +1183,15 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		ve.NewBlobFiles = slices.Collect(maps.Values(valueSeparator.metas))
 
 		jobID := d.newJobIDLocked()
-		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewTables), false, func() []compactionInfo {
-			return nil
-		}); err != nil {
+		err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+			return versionUpdate{
+				VE:                      ve,
+				JobID:                   jobID,
+				Metrics:                 newFileMetrics(ve.NewTables),
+				InProgressCompactionsFn: func() []compactionInfo { return nil },
+			}, nil
+		})
+		if err != nil {
 			return nil, err
 		}
 		d.updateReadStateLocked(nil)

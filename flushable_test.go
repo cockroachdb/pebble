@@ -96,9 +96,9 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		}
 
 		// Fsync the directory we added the tables to. We need to do this at some
-		// point before we update the MANIFEST (via logAndApply), otherwise a crash
-		// can have the tables referenced in the MANIFEST, but not present in the
-		// directory.
+		// point before we update the MANIFEST (via UpdateVersionLocked), otherwise
+		// a crash can have the tables referenced in the MANIFEST, but not present
+		// in the directory.
 		if err := d.dataDir.Sync(); err != nil {
 			t.Fatal(err)
 		}

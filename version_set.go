@@ -388,8 +388,8 @@ func (vs *versionSet) close() error {
 	return nil
 }
 
-// logLock locks the manifest for writing. The lock must be released by either
-// a call to logUnlock or logAndApply.
+// logLock locks the manifest for writing. The lock must be released by
+// a call to logUnlock.
 //
 // DB.mu must be held when calling this method, but the mutex may be dropped and
 // re-acquired during the course of this method.
@@ -419,40 +419,56 @@ func (vs *versionSet) logUnlockAndInvalidatePickedCompactionCache() {
 	vs.logUnlock()
 }
 
-// logAndApply logs the version edit to the manifest, applies the version edit
-// to the current version, and installs the new version.
+// versionUpdate is returned by the function passed to UpdateVersionLocked.
 //
-// logAndApply fills in the following fields of the VersionEdit: NextFileNum,
-// LastSeqNum, RemovedBackingTables. The removed backing tables are those
-// backings that are no longer used (in the new version) after applying the edit
-// (as per vs.virtualBackings). Other than these fields, the VersionEdit must be
-// complete.
+// If VE is nil, there is no update to apply (but it is not an error).
+type versionUpdate struct {
+	VE      *manifest.VersionEdit
+	JobID   JobID
+	Metrics levelMetricsDelta
+	// InProgressCompactionFn is called while DB.mu is held after the I/O part of
+	// the update was performed. It should return any compactions that are
+	// in-progress (excluding than the one that is being applied).
+	InProgressCompactionsFn func() []compactionInfo
+	ForceManifestRotation   bool
+}
+
+// UpdateVersionLocked is used to update the current version.
+//
+// DB.mu must be held. UpdateVersionLocked first waits for any other version
+// update to complete, releasing and reacquiring DB.mu.
+//
+// UpdateVersionLocked then calls updateFn which builds a versionUpdate, while
+// holding DB.mu. The updateFn can release and reacquire DB.mu (it should
+// attempt to do as much work as possible outside of the lock).
+//
+// UpdateVersionLocked fills in the following fields of the VersionEdit:
+// NextFileNum, LastSeqNum, RemovedBackingTables. The removed backing tables are
+// those backings that are no longer used (in the new version) after applying
+// the edit (as per vs.virtualBackings). Other than these fields, the
+// VersionEdit must be complete.
 //
 // New table backing references (FileBacking.Ref) are taken as part of applying
 // the version edit. The state of the virtual backings (vs.virtualBackings) is
 // updated before logging to the manifest and installing the latest version;
 // this is ok because any failure in those steps is fatal.
-// TODO(radu): remove the error return.
 //
-// DB.mu must be held when calling this method and will be released temporarily
-// while performing file I/O. Requires that the manifest is locked for writing
-// (see logLock). Will unconditionally release the manifest lock (via
-// logUnlock) even if an error occurs.
-//
-// inProgressCompactions is called while DB.mu is held, to get the list of
-// in-progress compactions.
-func (vs *versionSet) logAndApply(
-	jobID JobID,
-	ve *versionEdit,
-	metrics *levelMetricsDelta,
-	forceRotation bool,
-	inProgressCompactions func() []compactionInfo,
-) error {
+// If updateFn returns an error, no update is applied and that same error is returned.
+// If versionUpdate.VE is nil, the no update is applied (and no error is returned).
+func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)) error {
+	vs.logLock()
+	defer vs.logUnlockAndInvalidatePickedCompactionCache()
+
+	vu, err := updateFn()
+	if err != nil || vu.VE == nil {
+		return err
+	}
+
 	if !vs.writing {
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
-	defer vs.logUnlockAndInvalidatePickedCompactionCache()
 
+	ve := vu.VE
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
 			vs.nextFileNum.Load() <= uint64(ve.MinUnflushedLogNum) {
@@ -506,8 +522,8 @@ func (vs *versionSet) logAndApply(
 	// - The number of live files F in the DB is roughly stable: after writing
 	//   the snapshot (with F files), say we require that there be enough edits
 	//   such that the cumulative number of files in those edits, E, be greater
-	//   than F. This will ensure that the total amount of time in logAndApply
-	//   that is spent in snapshot writing is ~50%.
+	//   than F. This will ensure that the total amount of time in
+	//   UpdateVersionLocked that is spent in snapshot writing is ~50%.
 	//
 	// - The number of live files F in the DB is shrinking drastically, say from
 	//   F to F/10: This can happen for various reasons, like wide range
@@ -531,7 +547,7 @@ func (vs *versionSet) logAndApply(
 	// count in the current version.
 	vs.rotationHelper.AddRecord(int64(len(ve.DeletedTables) + len(ve.NewTables)))
 	sizeExceeded := vs.manifest.Size() >= vs.opts.MaxManifestFileSize
-	requireRotation := forceRotation || vs.manifest == nil
+	requireRotation := vu.ForceManifestRotation || vs.manifest == nil
 
 	var nextSnapshotFilecount int64
 	for i := range vs.metrics.Levels {
@@ -584,7 +600,7 @@ func (vs *versionSet) logAndApply(
 		if newManifestFileNum != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-					JobID:   int(jobID),
+					JobID:   int(vu.JobID),
 					Path:    base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
@@ -618,7 +634,7 @@ func (vs *versionSet) logAndApply(
 				return errors.Wrap(err, "MANIFEST set current failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
-				JobID:   int(jobID),
+				JobID:   int(vu.JobID),
 				Path:    base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})
@@ -641,7 +657,7 @@ func (vs *versionSet) logAndApply(
 	}
 	// Now that DB.mu is held again, initialize compacting file info in
 	// L0Sublevels.
-	inProgress := inProgressCompactions()
+	inProgress := vu.InProgressCompactionsFn()
 
 	vs.l0Organizer.PerformUpdate(l0Update, newVersion)
 	vs.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
@@ -687,9 +703,7 @@ func (vs *versionSet) logAndApply(
 		vs.manifestFileNum = newManifestFileNum
 	}
 
-	if metrics != nil {
-		vs.metrics.updateLevelMetrics(*metrics)
-	}
+	vs.metrics.updateLevelMetrics(vu.Metrics)
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
 		l.NumFiles = int64(newVersion.Levels[i].Len())
@@ -937,7 +951,7 @@ func (vs *versionSet) createManifest(
 	snapshot.CreatedBackingTables = virtualBackings
 
 	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
-	// immediately followed by another VersionEdit (being written in logAndApply()). That
+	// immediately followed by another VersionEdit (being written in UpdateVersionLocked()). That
 	// VersionEdit always contains a LastSeqNum, so we don't need to include that in the snapshot.
 	// But it does not necessarily include MinUnflushedLogNum, NextFileNum, so we initialize those
 	// using the corresponding fields in the versionSet (which came from the latest preceding
@@ -1131,7 +1145,7 @@ func findCurrentManifest(
 	return marker, manifestNum, true, nil
 }
 
-func newFileMetrics(newFiles []manifest.NewTableEntry) *levelMetricsDelta {
+func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
 	var m levelMetricsDelta
 	for _, nf := range newFiles {
 		lm := m[nf.Level]
@@ -1142,5 +1156,5 @@ func newFileMetrics(newFiles []manifest.NewTableEntry) *levelMetricsDelta {
 		lm.NumFiles++
 		lm.Size += int64(nf.Meta.Size)
 	}
-	return &m
+	return m
 }
