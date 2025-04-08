@@ -1,7 +1,7 @@
 # Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
 # block and value index block. So size 18 - 13 = 5 size of the value in the
 # value block.
-build table-format=(Pebble,v4)
+build table-format=Pebble,v4
 a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
@@ -36,7 +36,7 @@ scan-cloned-lazy-values
 
 # Repeat the above test with (Pebble,v5) [columnar blocks].
 
-build table-format=(Pebble,v5)
+build table-format=Pebble,v5
 a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
@@ -62,7 +62,7 @@ scan-cloned-lazy-values
 4(lazy: len 5, attr: 5): vbat2
 
 # Same data as previous, with disable-value-blocks set to true
-build disable-value-blocks=true table-format=(Pebble,v4)
+build disable-value-blocks=true table-format=Pebble,v4
 a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
@@ -89,7 +89,7 @@ b@2#1,SET:vbat2
 
 # Same as above but with (Pebble,v5) [columnar blocks].
 
-build disable-value-blocks=true table-format=(Pebble,v5)
+build disable-value-blocks=true table-format=Pebble,v5
 a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
@@ -109,7 +109,7 @@ b@2#1,SET:vbat2
 # Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
 # block and value index block. So size 33 - 13 = 20 is the total size of the
 # values in the value block.
-build table-format=(Pebble,v4)
+build table-format=Pebble,v4
 blue@10.SET.20:blue10
 blue@8.SET.18:blue8
 blue@8.SET.16:blue8s
@@ -156,7 +156,7 @@ scan-cloned-lazy-values
 
 # Same as above but with (Pebble,v5) [columnar blocks].
 
-build table-format=(Pebble,v5)
+build table-format=Pebble,v5
 blue@10.SET.20:blue10
 blue@8.SET.18:blue8
 blue@8.SET.16:blue8s
@@ -195,7 +195,7 @@ scan-cloned-lazy-values
 # block has to encode two tuples, each of 4 bytes (blockNumByteLength=1,
 # blockOffsetByteLength=2, blockLengthByteLength=1), so 2*4=8. The total is
 # 15+26+8=49 bytes, which corresponds to "size: 49" below.
-build block-size=8 table-format=(Pebble,v4)
+build block-size=8 table-format=Pebble,v4
 blue@10.SET.20:blue10
 blue@8.SET.18:blue8
 blue@8.SET.16:blue8s
@@ -330,7 +330,7 @@ sstable
 
 # Same as above but with (Pebble,v5) [columnar blocks].
 
-build block-size=8 table-format=(Pebble,v5)
+build block-size=8 table-format=Pebble,v5
 blue@10.SET.20:blue10
 blue@8.SET.18:blue8
 blue@8.SET.16:blue8s
@@ -685,7 +685,7 @@ sstable
       └── 045  magic number: 0xf09faab3f09faab3
 
 # Require that [c,e) must be in-place.
-build in-place-bound=(c,e) table-format=(Pebble,v4)
+build in-place-bound=(c,e) table-format=Pebble,v4
 blue@10.SET.20:blue10
 blue@8.SET.18:blue8
 c@10.SET.16:c10
@@ -724,7 +724,7 @@ scan-cloned-lazy-values
 
 # Same as above with (Pebble,v5) [columnar blocks].
 
-build in-place-bound=(c,e) table-format=(Pebble,v5)
+build in-place-bound=(c,e) table-format=Pebble,v5
 blue@10.SET.20:blue10
 blue@8.SET.18:blue8
 c@10.SET.16:c10
@@ -753,7 +753,7 @@ scan-cloned-lazy-values
 5(lazy: len 5, attr: 5): eat18
 
 # Try write empty values to value blocks.
-build table-format=(Pebble,v4)
+build table-format=Pebble,v4
 b@5.SET.7:b5
 b@3.SET.2:
 c@6.DEL.7:
@@ -831,7 +831,7 @@ sstable
 
 # Same as above but with (Pebble,v5) [columnar blocks].
 
-build table-format=(Pebble,v5)
+build table-format=Pebble,v5
 b@5.SET.7:b5
 b@3.SET.2:
 c@6.DEL.7:
@@ -975,7 +975,7 @@ sstable
       └── 045  magic number: 0xf09faab3f09faab3
 
 # Same as above but with (Pebble,v6) [footer checksum blocks].
-build table-format=(Pebble,v6)
+build table-format=Pebble,v6
 b@5.SET.7:b5
 b@3.SET.2:
 c@6.DEL.7:

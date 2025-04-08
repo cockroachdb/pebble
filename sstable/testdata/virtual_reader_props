@@ -1,5 +1,5 @@
 # Simple sanity test with single level index.
-build table-format=(Pebble,v4)
+build table-format=Pebble,v4
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -26,7 +26,7 @@ props:
 
 # Repeat the above with (Pebble,v5).
 
-build table-format=(Pebble,v5)
+build table-format=Pebble,v5
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -52,7 +52,7 @@ props:
 
 
 # Test 2: Similar to test 1 but force two level iterators.
-build block-size=1 index-block-size=1 table-format=(Pebble,v4)
+build block-size=1 index-block-size=1 table-format=Pebble,v4
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -127,7 +127,7 @@ b,aa,false
 
 # Repeat the above with (Pebble,v5).
 
-build block-size=1 index-block-size=1 table-format=(Pebble,v5)
+build block-size=1 index-block-size=1 table-format=Pebble,v5
 a.SET.1:a
 b.SET.1:b
 c.SET.1:c
@@ -200,7 +200,7 @@ constrain a,aa,false
 ----
 b,aa,false
 
-build block-size=1 index-block-size=1 table-format=(Pebble,v4)
+build block-size=1 index-block-size=1 table-format=Pebble,v4
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
@@ -232,7 +232,7 @@ props:
 
 # Repeat the above with (Pebble,v5).
 
-build block-size=1 index-block-size=1 table-format=(Pebble,v5)
+build block-size=1 index-block-size=1 table-format=Pebble,v5
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
@@ -262,7 +262,7 @@ props:
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
 
-build table-format=(Pebble,v4)
+build table-format=Pebble,v4
 a.SET.1:a
 b.SET.2:b
 c.SET.3:c
@@ -288,7 +288,7 @@ props:
 
 # Repeat the above with (Pebble,v5).
 
-build table-format=(Pebble,v5)
+build table-format=Pebble,v5
 a.SET.1:a
 b.SET.2:b
 c.SET.3:c

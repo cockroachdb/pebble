@@ -7,7 +7,6 @@ package sstable
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -43,40 +42,17 @@ func TestCopySpan(t *testing.T) {
 			fileNameToNum[d.CmdArgs[0].Key] = nextFileNum
 			nextFileNum++
 			tableFormat := TableFormatMax
-			blockSize := 1
-			var indexBlockSize int
-			for i := range d.CmdArgs[1:] {
-				switch d.CmdArgs[i+1].Key {
-				case "format":
-					switch d.CmdArgs[i+1].Vals[0] {
-					case "pebblev4":
-						tableFormat = TableFormatPebblev4
-					case "pebblev5":
-						tableFormat = TableFormatPebblev5
-					case "pebblev6":
-						tableFormat = TableFormatPebblev6
-					}
-				case "block_size":
-					var err error
-					blockSize, err = strconv.Atoi(d.CmdArgs[i+1].FirstVal(t))
-					if err != nil {
-						return err.Error()
-					}
-				case "index_block_size":
-					var err error
-					indexBlockSize, err = strconv.Atoi(d.CmdArgs[i+1].FirstVal(t))
-					if err != nil {
-						return err.Error()
-					}
-				}
+
+			writerOpts := WriterOptions{
+				BlockSize:   1,
+				TableFormat: tableFormat,
+				Comparer:    testkeys.Comparer,
+				KeySchema:   &keySchema,
 			}
-			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
-				BlockSize:      blockSize,
-				IndexBlockSize: indexBlockSize,
-				TableFormat:    tableFormat,
-				Comparer:       testkeys.Comparer,
-				KeySchema:      &keySchema,
-			})
+			if err := ParseWriterOptions(&writerOpts, d.CmdArgs[1:]...); err != nil {
+				t.Fatal(err)
+			}
+			w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, key := range strings.Split(d.Input, "\n") {
 				j := strings.Index(key, ":")
 				ikey := base.ParseInternalKey(key[:j])
