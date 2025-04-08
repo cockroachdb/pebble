@@ -15,10 +15,13 @@ import (
 )
 
 const (
-	// MaximumSize is an extremely generous maximum block size of 256MiB. We
-	// explicitly place this limit to reserve a few bits in the restart for internal
-	// use.
-	MaximumSize = 1 << 28
+	// MaximumRestartOffset indicates the maximum offset that we can encode
+	// within a restart point of a row-oriented block. The last bit is reserved
+	// for the setHasSameKeyPrefixSinceLastRestart flag within a restart point.
+	// If a block exceeds this size and we attempt to add another KV pair, the
+	// restart points table will be unable to express the position of the pair,
+	// resulting in undefined behavior and arbitrary corruption.
+	MaximumRestartOffset = 1<<31 - 1
 	// EmptySize holds the size of an empty block. Every block ends in a uint32
 	// trailer encoding the number of restart points within the block.
 	EmptySize = 4
@@ -37,6 +40,9 @@ const (
 	// key trailer.
 	TrailerObsoleteMask = (base.InternalKeyTrailer(base.SeqNumMax) << 8) | base.InternalKeyTrailer(base.InternalKeyKindSSTableInternalObsoleteMask)
 )
+
+// ErrBlockTooBig is surfaced when a block exceeds the maximum size.
+var ErrBlockTooBig = errors.New("rowblk: block size exceeds maximum size")
 
 // Writer buffers and serializes key/value pairs into a row-oriented block.
 type Writer struct {
@@ -126,11 +132,12 @@ func (w *Writer) storeWithOptionalValuePrefix(
 	addValuePrefix bool,
 	valuePrefix block.ValuePrefix,
 	setHasSameKeyPrefix bool,
-) {
-	// Ensure that the block size does not exceed rowblk.MaximumSize before writing more data
-	if len(w.buf) >= MaximumSize {
-		panic(errors.AssertionFailedf("rowblk: adding KV to %d-block; already exceeds %d-byte maximum",
-			len(w.buf), MaximumSize))
+) error {
+	// Check that the block does not already exceed MaximumRestartOffset. If it
+	// does and we append the additional key-value pair, the new key-value pair's
+	// offset in the block will be inexpressible as a restart point.
+	if len(w.buf) >= MaximumRestartOffset {
+		return errors.WithDetailf(ErrBlockTooBig, "block is %d bytes long", len(w.buf))
 	}
 
 	shared := 0
@@ -232,11 +239,12 @@ func (w *Writer) storeWithOptionalValuePrefix(
 	w.curValue = w.buf[n-len(value):]
 
 	w.nEntries++
+	return nil
 }
 
 // Add adds a key value pair to the block without a value prefix.
-func (w *Writer) Add(key base.InternalKey, value []byte) {
-	w.AddWithOptionalValuePrefix(
+func (w *Writer) Add(key base.InternalKey, value []byte) error {
+	return w.AddWithOptionalValuePrefix(
 		key, false, value, len(key.UserKey), false, 0, false)
 }
 
@@ -260,7 +268,7 @@ func (w *Writer) AddWithOptionalValuePrefix(
 	addValuePrefix bool,
 	valuePrefix block.ValuePrefix,
 	setHasSameKeyPrefix bool,
-) {
+) error {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := key.Size()
@@ -273,7 +281,7 @@ func (w *Writer) AddWithOptionalValuePrefix(
 	}
 	key.Encode(w.curKey)
 
-	w.storeWithOptionalValuePrefix(
+	return w.storeWithOptionalValuePrefix(
 		size, value, maxSharedKeyLen, addValuePrefix, valuePrefix, setHasSameKeyPrefix)
 }
 
@@ -312,7 +320,7 @@ func (w *Writer) EstimatedSize() int {
 }
 
 // AddRaw adds a key value pair to the block.
-func (w *Writer) AddRaw(key, value []byte) {
+func (w *Writer) AddRaw(key, value []byte) error {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := len(key)
@@ -321,11 +329,11 @@ func (w *Writer) AddRaw(key, value []byte) {
 	}
 	w.curKey = w.curKey[:size]
 	copy(w.curKey, key)
-	w.storeWithOptionalValuePrefix(
+	return w.storeWithOptionalValuePrefix(
 		size, value, len(key), false, 0, false)
 }
 
 // AddRawString is AddRaw but with a string key.
-func (w *Writer) AddRawString(key string, value []byte) {
-	w.AddRaw(unsafe.Slice(unsafe.StringData(key), len(key)), value)
+func (w *Writer) AddRawString(key string, value []byte) error {
+	return w.AddRaw(unsafe.Slice(unsafe.StringData(key), len(key)), value)
 }

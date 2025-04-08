@@ -55,8 +55,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 			// Range del or range key blocks always use restart interval 1.
 			w := Writer{RestartInterval: 1}
 			emitFn := func(k base.InternalKey, v []byte) error {
-				w.Add(k, v)
-				return nil
+				return w.Add(k, v)
 			}
 			for _, s := range spans {
 				if s.Keys[0].Kind() == base.InternalKeyKindRangeDelete {

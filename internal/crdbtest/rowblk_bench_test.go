@@ -58,8 +58,11 @@ func benchmarkCockroachDataRowBlockWriter(b *testing.B, keyConfig keyGenConfig, 
 			if j > 0 {
 				samePrefix = bytes.Equal(keys[j], keys[j-1])
 			}
-			w.AddWithOptionalValuePrefix(
+			err := w.AddWithOptionalValuePrefix(
 				ik, false, values[j], prevKeyLen, true, block.InPlaceValuePrefix(samePrefix), samePrefix)
+			if err != nil {
+				b.Fatalf("error adding key: %v", err)
+			}
 			j++
 			prevKeyLen = len(ik.UserKey)
 		}
@@ -108,8 +111,11 @@ func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig keyGenConfig, va
 		if count > 0 {
 			samePrefix = bytes.Equal(keys[count], keys[count-1])
 		}
-		w.AddWithOptionalValuePrefix(
+		err := w.AddWithOptionalValuePrefix(
 			ik, false, values[count], prevKeyLen, true, block.InPlaceValuePrefix(samePrefix), samePrefix)
+		if err != nil {
+			b.Fatalf("error adding key: %v", err)
+		}
 		count++
 		prevKeyLen = len(ik.UserKey)
 	}
