@@ -368,7 +368,7 @@ func (p *commitPipeline) AllocateSeqNum(
 	// performance critical code paths.
 
 	b := newBatch(nil)
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 
 	// Give the batch a count of 1 so that the log and visible sequence number
 	// are incremented correctly.

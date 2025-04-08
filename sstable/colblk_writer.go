@@ -818,7 +818,9 @@ func (w *RawColumnWriter) finishIndexBlock(rows int) error {
 func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, err error) {
 	// If there's a currently-pending index block, finish it.
 	if w.indexBlock.Rows() > 0 || len(w.indexBuffering.partitions) == 0 {
-		w.finishIndexBlock(w.indexBlock.Rows())
+		if err := w.finishIndexBlock(w.indexBlock.Rows()); err != nil {
+			return block.Handle{}, err
+		}
 	}
 	// We've buffered all the index blocks. Typically there's just one index
 	// block, in which case we're writing a "single-level" index. If we're
@@ -1093,7 +1095,9 @@ func (w *RawColumnWriter) rewriteSuffixes(
 			w.separatorBuf = w.comparer.Successor(w.separatorBuf[:0], blocks[i].end.UserKey)
 			separator = w.separatorBuf
 		}
-		w.enqueuePhysicalBlock(cb, separator)
+		if err := w.enqueuePhysicalBlock(cb, separator); err != nil {
+			return err
+		}
 	}
 
 	if len(blocks) > 0 {

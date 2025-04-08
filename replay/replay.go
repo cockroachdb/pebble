@@ -997,7 +997,7 @@ func loadFlushedSSTableKeys(
 			if err != nil {
 				return err
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 
 			// Load all the point keys.
 			iter, err := r.NewIter(sstable.NoTransforms, nil, nil,
@@ -1010,7 +1010,7 @@ func loadFlushedSSTableKeys(
 			if err != nil {
 				return err
 			}
-			defer iter.Close()
+			defer func() { _ = iter.Close() }()
 			for kv := iter.First(); kv != nil; kv = iter.Next() {
 				var key flushedKey
 				key.Trailer = kv.K.Trailer

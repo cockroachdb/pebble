@@ -6,6 +6,7 @@ require (
 	github.com/cockroachdb/cockroach v0.0.0-20250225003441-0fd08b1c5cc1
 	github.com/cockroachdb/crlfmt v0.0.0-20230505164321-461e8663b4b4
 	github.com/jordanlewis/gcassert v0.0.0-20241223220613-778fb585567f
+	github.com/kisielk/errcheck v1.9.0
 	golang.org/x/tools v0.31.0
 	honnef.co/go/tools v0.6.1
 )

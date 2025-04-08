@@ -49,7 +49,7 @@ func CopySpan(
 	o WriterOptions,
 	start, end InternalKey,
 ) (size uint64, _ error) {
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 
 	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
 		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, output) // Finishes/Aborts output.
@@ -73,7 +73,7 @@ func CopySpan(
 
 	defer func() {
 		if w != nil {
-			w.Close()
+			_ = w.Close()
 		}
 	}()
 
@@ -87,7 +87,7 @@ func CopySpan(
 	// and lower-level index blocks with one read.
 	rh := r.blockReader.UsePreallocatedReadHandle(
 		objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
-	defer rh.Close()
+	defer func() { _ = rh.Close() }()
 	rh.SetupForCompaction()
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)
 	if err != nil {
@@ -105,7 +105,9 @@ func CopySpan(
 		}
 		filterBytes := append([]byte{}, filterBlock.BlockData()...)
 		filterBlock.Release()
-		w.copyFilter(filterBytes, r.Properties.FilterPolicyName)
+		if err := w.copyFilter(filterBytes, r.Properties.FilterPolicyName); err != nil {
+			return 0, errors.Wrap(err, "copying filter")
+		}
 	}
 
 	// Copy all the props from the source file; we can't compute our own for many
@@ -213,7 +215,7 @@ func intersectingIndexEntries(
 	if err != nil {
 		return nil, err
 	}
-	defer top.Close()
+	defer func() { _ = top.Close() }()
 
 	var alloc bytealloc.A
 	res := make([]indexEntry, 0, r.Properties.NumDataBlocks)
@@ -240,7 +242,7 @@ func intersectingIndexEntries(
 				if err != nil {
 					return err
 				}
-				defer sub.Close()
+				defer func() { _ = sub.Close() }()
 
 				for valid := sub.SeekGE(start.UserKey); valid; valid = sub.Next() {
 					bh, err := sub.BlockHandleWithProperties()

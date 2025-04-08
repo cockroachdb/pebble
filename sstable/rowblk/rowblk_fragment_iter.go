@@ -270,7 +270,9 @@ func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error
 	// Apply a consistent ordering.
 	keyspan.SortKeysByTrailer(i.span.Keys)
 
-	i.applySpanTransforms()
+	if err := i.applySpanTransforms(); err != nil {
+		return nil, err
+	}
 	return &i.span, nil
 }
 
@@ -279,7 +281,7 @@ func (i *fragmentIter) SetContext(ctx context.Context) {}
 
 // Close implements (keyspan.FragmentIterator).Close.
 func (i *fragmentIter) Close() {
-	i.blockIter.Close()
+	_ = i.blockIter.Close()
 	i.closeCheck.Close()
 
 	if invariants.Sometimes(25) {

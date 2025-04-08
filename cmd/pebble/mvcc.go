@@ -20,7 +20,7 @@ func mvccForwardScan(d DB, start, end, ts []byte) (int, int64) {
 		LowerBound: cockroachkvs.EncodeMVCCKey(nil, start, 0, 0),
 		UpperBound: cockroachkvs.EncodeMVCCKey(nil, end, 0, 0),
 	})
-	defer it.Close()
+	defer func() { _ = it.Close() }()
 
 	var data bytealloc.A
 	var count int
@@ -44,7 +44,7 @@ func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 		LowerBound: cockroachkvs.EncodeMVCCKey(nil, start, 0, 0),
 		UpperBound: cockroachkvs.EncodeMVCCKey(nil, end, 0, 0),
 	})
-	defer it.Close()
+	defer func() { _ = it.Close() }()
 
 	var data bytealloc.A
 	var count int

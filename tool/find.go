@@ -459,7 +459,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				err = nil
 				return
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 
 			var transforms sstable.IterTransforms
 			var fragTransforms sstable.FragmentIterTransforms
@@ -475,7 +475,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			if err != nil {
 				return err
 			}
-			defer iter.Close()
+			defer func() { _ = iter.Close() }()
 			kv := iter.SeekGE(searchKey, base.SeekGEFlagsNone)
 
 			// We configured sstable.Reader to return raw tombstones which requires a

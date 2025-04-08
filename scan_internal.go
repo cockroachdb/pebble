@@ -542,7 +542,7 @@ func (d *DB) truncateSharedFile(
 	if err != nil {
 		return nil, false, err
 	}
-	defer iters.CloseAll()
+	defer func() { _ = iters.CloseAll() }()
 	iter := iters.point
 	rangeDelIter := iters.rangeDeletion
 	rangeKeyIter := iters.rangeKey
@@ -1118,10 +1118,8 @@ func (i *scanInternalIterator) error() error {
 }
 
 // close closes this iterator, and releases any pooled objects.
-func (i *scanInternalIterator) close() error {
-	if err := i.iter.Close(); err != nil {
-		return err
-	}
+func (i *scanInternalIterator) close() {
+	_ = i.iter.Close()
 	if i.readState != nil {
 		i.readState.unref()
 	}
@@ -1152,7 +1150,6 @@ func (i *scanInternalIterator) close() error {
 		iterAllocPool.Put(alloc)
 		i.alloc = nil
 	}
-	return nil
 }
 
 func (i *scanInternalIterator) initializeBoundBufs(lower, upper []byte) {

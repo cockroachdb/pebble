@@ -765,7 +765,7 @@ func closeIters(
 	rangeKeyIter keyspan.FragmentIterator,
 ) {
 	if pointIter != nil {
-		pointIter.Close()
+		_ = pointIter.Close()
 	}
 	if rangeDelIter != nil {
 		rangeDelIter.Close()
@@ -2173,7 +2173,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	if err != nil {
 		panic(err)
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 
 	for ok := iter.SeekGE(r.start); ok && iter.Error() == nil; ok = iter.Next() {
 		hasPoint, hasRange := iter.HasPointAndRange()

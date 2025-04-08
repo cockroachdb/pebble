@@ -904,13 +904,13 @@ func (vs *versionSet) createManifest(
 	)
 	defer func() {
 		if manifest != nil {
-			manifest.Close()
+			_ = manifest.Close()
 		}
 		if manifestFile != nil {
-			manifestFile.Close()
+			_ = manifestFile.Close()
 		}
 		if err != nil {
-			vs.fs.Remove(filename)
+			_ = vs.fs.Remove(filename)
 		}
 	}()
 	manifestFile, err = vs.fs.Create(filename, "pebble-manifest")
@@ -952,7 +952,9 @@ func (vs *versionSet) createManifest(
 	}
 
 	if vs.manifest != nil {
-		vs.manifest.Close()
+		if err := vs.manifest.Close(); err != nil {
+			return err
+		}
 		vs.manifest = nil
 	}
 	if vs.manifestFile != nil {

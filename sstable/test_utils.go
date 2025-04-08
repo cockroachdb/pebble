@@ -33,12 +33,12 @@ func ReadAll(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	pointIter, err := reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer pointIter.Close()
+	defer func() { _ = pointIter.Close() }()
 
 	for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
 		val, _, err := kv.Value(nil)

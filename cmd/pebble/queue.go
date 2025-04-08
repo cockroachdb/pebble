@@ -50,7 +50,9 @@ func queueTest() (test, *atomic.Int64) {
 				b := d.NewBatch()
 				queue[i] = cockroachkvs.EncodeMVCCKey(nil, encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
 				value = queueConfig.values.Bytes(rng, value)
-				b.Set(queue[i], value, pebble.NoSync)
+				if err := b.Set(queue[i], value, pebble.NoSync); err != nil {
+					log.Fatal(err)
+				}
 				if err := b.Commit(pebble.NoSync); err != nil {
 					log.Fatal(err)
 				}
@@ -82,7 +84,9 @@ func queueTest() (test, *atomic.Int64) {
 					b = d.NewBatch()
 					queue[idx] = cockroachkvs.EncodeMVCCKey(queue[idx][:0], encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
 					value = queueConfig.values.Bytes(rng, value)
-					b.Set(queue[idx], value, nil)
+					if err := b.Set(queue[idx], value, nil); err != nil {
+						log.Fatal(err)
+					}
 					if err := b.Commit(pebble.Sync); err != nil {
 						log.Fatal(err)
 					}

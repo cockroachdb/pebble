@@ -132,7 +132,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	defer func() {
 		if db == nil {
-			fileLock.Close()
+			_ = fileLock.Close()
 		}
 	}()
 
@@ -151,7 +151,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	defer func() {
 		if db == nil {
-			formatVersionMarker.Close()
+			_ = formatVersionMarker.Close()
 		}
 	}()
 
@@ -195,7 +195,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	defer func() {
 		if db == nil {
-			manifestMarker.Close()
+			_ = manifestMarker.Close()
 		}
 	}()
 
@@ -259,7 +259,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 				d.cleanupManager.Close()
 			}
 			if d.objProvider != nil {
-				d.objProvider.Close()
+				_ = d.objProvider.Close()
 			}
 			if r != nil {
 				panic(r)
@@ -392,7 +392,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	defer func() {
 		if db == nil {
-			walManager.Close()
+			_ = walManager.Close()
 		}
 	}()
 
@@ -869,7 +869,7 @@ func (d *DB) replayWAL(
 	jobID JobID, ll wal.LogicalLog, strictWALTail bool,
 ) (flushableIngests []*ingestedFlushable, maxSeqNum base.SeqNum, err error) {
 	rr := ll.OpenForRead()
-	defer rr.Close()
+	defer func() { _ = rr.Close() }()
 	var (
 		b               Batch
 		buf             bytes.Buffer
@@ -982,7 +982,9 @@ func (d *DB) replayWAL(
 		// which is used below.
 		b = Batch{}
 		b.db = d
-		b.SetRepr(buf.Bytes())
+		if err := b.SetRepr(buf.Bytes()); err != nil {
+			return nil, 0, err
+		}
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + base.SeqNum(b.Count())
 		keysReplayed += int64(b.Count())

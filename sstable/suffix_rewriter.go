@@ -76,7 +76,7 @@ func RewriteKeySuffixesAndReturnFormat(
 	if err != nil {
 		return nil, TableFormatUnspecified, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	return rewriteKeySuffixesInBlocks(r, sst, out, o, from, to, concurrency)
 }
 
@@ -101,7 +101,7 @@ func rewriteKeySuffixesInBlocks(
 	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
-			w.Close()
+			_ = w.Close()
 		}
 	}()
 
@@ -316,14 +316,14 @@ func RewriteKeySuffixesViaWriter(
 	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
-			w.Close()
+			_ = w.Close()
 		}
 	}()
 	i, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
 	if err != nil {
 		return nil, err
 	}
-	defer i.Close()
+	defer func() { _ = i.Close() }()
 
 	kv := i.First()
 	var scratch InternalKey

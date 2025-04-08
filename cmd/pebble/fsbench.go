@@ -58,7 +58,7 @@ func init() {
 
 	fsBenchCmd.Flags().StringVar(
 		&fsConfig.benchname, "bench-name", "", "The benchmark to run.")
-	fsBenchCmd.MarkFlagRequired("bench-name")
+	_ = fsBenchCmd.MarkFlagRequired("bench-name")
 
 	fsBenchCmd.Flags().IntVar(
 		&fsConfig.numTimes, "num-times", 1,

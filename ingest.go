@@ -317,7 +317,7 @@ func ingestLoad1(
 	if err != nil {
 		return nil, keyspan.Span{}, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Avoid ingesting tables with format versions this DB doesn't support.
 	tf, err := r.TableFormat()
@@ -364,7 +364,7 @@ func ingestLoad1(
 		if err != nil {
 			return nil, keyspan.Span{}, err
 		}
-		defer iter.Close()
+		defer func() { _ = iter.Close() }()
 		var smallest InternalKey
 		if kv := iter.First(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
@@ -452,10 +452,14 @@ func ingestLoad1(
 				lastRangeKey = s.Clone()
 			} else {
 				// s == nil.
-				rangeKeyValidator.Validate(nil /* nextFileSmallestKey */)
+				if err := rangeKeyValidator.Validate(nil /* nextFileSmallestKey */); err != nil {
+					return nil, keyspan.Span{}, err
+				}
 			}
 		} else {
-			rangeKeyValidator.Validate(nil /* nextFileSmallestKey */)
+			if err := rangeKeyValidator.Validate(nil /* nextFileSmallestKey */); err != nil {
+				return nil, keyspan.Span{}, err
+			}
 			lastRangeKey = keyspan.Span{}
 		}
 	}

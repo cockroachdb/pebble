@@ -315,7 +315,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		for _, key := range keys {
 			fmt.Fprintf(tw, "  %s\t%s\n", key, r.Properties.UserProperties[key])
 		}
-		tw.Flush()
+		_ = tw.Flush()
 	})
 }
 
@@ -536,7 +536,7 @@ func (s *sstableT) foreachSstable(
 			fmt.Fprintf(stderr, "%s: %s\n", path, err)
 			return
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 		fn(path, r)
 	}
 

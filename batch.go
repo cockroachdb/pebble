@@ -1451,7 +1451,7 @@ func (b *Batch) initRangeKeyIter(_ *IterOptions, iter *keyspan.Iter, batchSnapsh
 		iter:     b.rangeKeyIndex.NewIter(nil, nil),
 		snapshot: batchSnapshot,
 	}
-	fragmentRangeKeys(frag, it, int(b.countRangeKeys))
+	_ = fragmentRangeKeys(frag, it, int(b.countRangeKeys))
 	iter.Init(b.comparer.Compare, rangeKeys)
 
 	// If we just read all the range keys in the batch (eg, batchSnapshot was
@@ -2026,7 +2026,9 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 			cmp:     b.cmp,
 			index:   -1,
 		}
-		fragmentRangeKeys(frag, it, len(rangeKeyOffsets))
+		if err := fragmentRangeKeys(frag, it, len(rangeKeyOffsets)); err != nil {
+			return nil, err
+		}
 	}
 	return b, nil
 }

@@ -828,7 +828,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	var preallocRH objstorageprovider.PreallocatedReadHandle
 	rh := objstorageprovider.UsePreallocatedReadHandle(
 		f, objstorage.ReadBeforeForNewReader, &preallocRH)
-	defer rh.Close()
+	defer func() { _ = rh.Close() }()
 
 	footer, err := readFooter(ctx, f, rh, o.LoggerAndTracer, o.CacheOpts.FileNum)
 	if err != nil {

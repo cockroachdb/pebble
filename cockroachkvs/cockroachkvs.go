@@ -1158,7 +1158,7 @@ func ParseFormattedKeySuffix(formattedSuffix string) []byte {
 		k := make([]byte, suffixLenWithLockTable)
 		// The lock strength is encoded as a hexadecimal digit (2 chars),
 		// followed by a comma.
-		hex.Decode(k, unsafe.Slice(unsafe.StringData(formattedSuffix), 2))
+		_, _ = hex.Decode(k, unsafe.Slice(unsafe.StringData(formattedSuffix), 2))
 		if err := decodeUUID(k[1:], unsafe.Slice(unsafe.StringData(formattedSuffix[3:]), len(formattedSuffix)-3)); err != nil {
 			panic(errors.Newf("invalid lock table suffix: %w", err))
 		}

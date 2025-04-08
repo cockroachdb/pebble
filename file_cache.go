@@ -261,7 +261,7 @@ func (h *fileCacheHandle) findOrCreateBlob(
 	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
 	// TODO(jackson): Propagate a blob metadata object here.
 	if err != nil && IsCorruptionError(err) {
-		h.reportCorruptionFn(nil, err)
+		err = h.reportCorruptionFn(nil, err)
 	}
 	return valRef, err
 }
@@ -571,7 +571,7 @@ func (h *fileCacheHandle) newIters(
 		//   err != nil && iters.point != nil
 		// If it were possible, we'd need to account for it to avoid double
 		// unref-ing here, once during CloseAll and once during `unrefValue`.
-		iters.CloseAll()
+		_ = iters.CloseAll()
 		vRef.Unref()
 		return iterSet{}, err
 	}

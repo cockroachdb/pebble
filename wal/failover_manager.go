@@ -413,7 +413,7 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 					m.mu.lastFailBackTime = now
 				}
 				if m.mu.writer != nil {
-					m.mu.writer.switchToNewDir(dir)
+					_ = m.mu.writer.switchToNewDir(dir)
 				}
 				m.mu.Unlock()
 			}
