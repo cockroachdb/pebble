@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -428,8 +429,24 @@ var _ block.GetInternalValueForPrefixAndValueHandler = describingLazyValueHandle
 func (describingLazyValueHandler) GetInternalValueForPrefixAndValueHandle(
 	handle []byte,
 ) base.InternalValue {
-	vh := valblk.DecodeHandle(handle[1:])
-	return base.MakeInPlaceValue([]byte(fmt.Sprintf("value handle %+v", vh)))
+	vp := block.ValuePrefix(handle[0])
+	var result string
+	switch {
+	case vp.IsValueBlockHandle():
+		vh := valblk.DecodeHandle(handle[1:])
+		result = fmt.Sprintf("value handle %+v", vh)
+	case vp.IsBlobValueHandle():
+		handlePreface, remainder := blob.DecodeInlineHandlePreface(handle[1:])
+		handleSuffix := blob.DecodeHandleSuffix(remainder)
+		ih := blob.InlineHandle{
+			InlineHandlePreface: handlePreface,
+			HandleSuffix:        handleSuffix,
+		}
+		result = fmt.Sprintf("blob handle %+v", ih)
+	default:
+		result = "unknown value type"
+	}
+	return base.MakeInPlaceValue([]byte(result))
 }
 
 func formatColblkKeyspanBlock(

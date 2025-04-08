@@ -101,11 +101,11 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 152-153: x 01 # zero bitmap encoding
  │    │    └── 153-154: x 00 # block padding byte
- │    ├── a@2#1,SET:value handle {ValueLen:0 BlockNum:10 OffsetInBlock:1}
- │    ├── b@5#7,SET:value handle {ValueLen:0 BlockNum:200 OffsetInBlock:2}
+ │    ├── a@2#1,SET:blob handle (f0,blk1[10:20])
+ │    ├── b@5#7,SET:blob handle (f0,blk2[110:310])
  │    ├── b@4#3,DEL:
- │    ├── b@3#2,SET:value handle {ValueLen:1 BlockNum:200 OffsetInBlock:0}
- │    ├── b@2#1,SET:value handle {ValueLen:1 BlockNum:103 OffsetInBlock:1}
+ │    ├── b@3#2,SET:blob handle (f1,blk0[0:200])
+ │    ├── b@2#1,SET:blob handle (f1,blk1[294:397])
  │    └── trailer [compression=none checksum=0x834a75d7]
  ├── index  offset: 159  length: 36
  │    ├── 00000    block:0/154
