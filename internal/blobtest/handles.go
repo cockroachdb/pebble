@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/strparse"
-	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 )
@@ -25,6 +24,8 @@ import (
 // human-readable string describing a blob handle, synthesizing unspecified
 // fields, and tracking the blob handle to support future fetches.
 type Values struct {
+	References References
+
 	mostRecentFileNum base.DiskFileNum
 	mostRecentHandles map[base.DiskFileNum]blob.Handle
 	// trackedHandles maps from a blob handle to its value. The value may be nil
@@ -64,13 +65,17 @@ func (bv *Values) Fetch(
 
 func deriveValueFromHandle(handle blob.Handle) []byte {
 	rng := rand.New(rand.NewPCG((uint64(handle.FileNum)<<32)|uint64(handle.BlockNum), uint64(handle.OffsetInBlock)))
-	return testutils.RandBytes(rng, int(handle.ValueLen))
+	b := make([]byte, handle.ValueLen)
+	for i := range b {
+		b[i] = 'a' + byte(rng.IntN(26))
+	}
+	return b
 }
 
 // ParseInternalValue parses a debug blob handle from the string, returning the
 // handle as an InternalValue and recording the handle's corresponding value.
 func (bv *Values) ParseInternalValue(input string) (base.InternalValue, error) {
-	h, err := bv.Parse(input)
+	h, _, err := bv.Parse(input)
 	if err != nil {
 		return base.InternalValue{}, err
 	}
@@ -99,13 +104,13 @@ func (bv *Values) ParseInternalValue(input string) (base.InternalValue, error) {
 
 // IsBlobHandle returns true if the input string looks like it's a debug blob
 // handle.
-func (bv *Values) IsBlobHandle(input string) bool {
+func IsBlobHandle(input string) bool {
 	return strings.HasPrefix(input, "blob{")
 }
 
 // Parse parses a debug blob handle from the string, returning the handle and
 // recording the handle's corresponding value.
-func (bv *Values) Parse(input string) (h blob.Handle, err error) {
+func (bv *Values) Parse(input string) (h blob.Handle, remaining string, err error) {
 	if bv.trackedHandles == nil {
 		bv.trackedHandles = make(map[blob.Handle]string)
 		bv.mostRecentHandles = make(map[base.DiskFileNum]blob.Handle)
@@ -124,7 +129,7 @@ func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 	var fileNumSet, blockNumSet, offsetSet, valueLenSet bool
 	for done := false; !done; {
 		if p.Done() {
-			return blob.Handle{}, errors.New("unexpected end of input")
+			return blob.Handle{}, "", errors.New("unexpected end of input")
 		}
 		switch x := p.Next(); x {
 		case "}":
@@ -149,10 +154,10 @@ func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 			p.Expect("=")
 			value = p.Next()
 			if valueLenSet && h.ValueLen != uint32(len(value)) {
-				return blob.Handle{}, errors.Newf("valueLen mismatch: %d != %d", h.ValueLen, len(value))
+				return blob.Handle{}, "", errors.Newf("valueLen mismatch: %d != %d", h.ValueLen, len(value))
 			}
 		default:
-			return blob.Handle{}, errors.Newf("unknown field: %q", x)
+			return blob.Handle{}, "", errors.Newf("unknown field: %q", x)
 		}
 	}
 
@@ -175,7 +180,7 @@ func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 	bv.mostRecentFileNum = h.FileNum
 	bv.mostRecentHandles[h.FileNum] = h
 	bv.trackedHandles[h] = value
-	return h, nil
+	return h, p.Remaining(), nil
 }
 
 // ParseInlineHandle parses a debug blob handle from the string. It maps the
@@ -184,22 +189,23 @@ func (bv *Values) Parse(input string) (h blob.Handle, err error) {
 //
 // It's intended for tests that must manually construct inline blob references.
 func (bv *Values) ParseInlineHandle(
-	input string, references *References,
-) (h blob.InlineHandle, err error) {
-	fullHandle, err := bv.Parse(input)
+	input string,
+) (h blob.InlineHandle, remaining string, err error) {
+	fullHandle, remaining, err := bv.Parse(input)
 	if err != nil {
-		return blob.InlineHandle{}, err
+		return blob.InlineHandle{}, "", err
 	}
-	return blob.InlineHandle{
+	h = blob.InlineHandle{
 		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceID: references.MapToReferenceID(fullHandle.FileNum),
+			ReferenceID: bv.References.MapToReferenceID(fullHandle.FileNum),
 			ValueLen:    fullHandle.ValueLen,
 		},
 		HandleSuffix: blob.HandleSuffix{
 			BlockNum:      fullHandle.BlockNum,
 			OffsetInBlock: fullHandle.OffsetInBlock,
 		},
-	}, nil
+	}
+	return h, remaining, nil
 }
 
 // WriteFiles writes all the blob files referenced by Values, using

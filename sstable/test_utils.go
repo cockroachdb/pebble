@@ -6,18 +6,18 @@ package sstable
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -127,18 +127,19 @@ func (kv ParsedKVOrSpan) String() string {
 	if !kv.HasBlobValue() {
 		return fmt.Sprintf("%s%s = %s", prefix, kv.Key, kv.Value)
 	}
-	return fmt.Sprintf("%s%s = blobInlineHandle(%d, blk%d, %d, %d, 0x%02x)", prefix, kv.Key,
-		kv.BlobHandle.ReferenceID, kv.BlobHandle.BlockNum, kv.BlobHandle.OffsetInBlock, kv.BlobHandle.ValueLen, kv.Attr,
-	)
+	return fmt.Sprintf("%s%s = blob:%s attr=%d", prefix, kv.Key, kv.BlobHandle, kv.Attr)
 }
 
 // ParseTestKVsAndSpans parses a multi-line string that defines SSTable contents.
-// The lines can be either key-value pairs or key spans.
-// Sample input showing the format:
+//
+// The blobtest.Values argument can be nil if there are no blob references in the input.
+//
+// Each input line can be either a key-value pair or a key spans Sample input
+// showing the format:
 //
 //	a#1,SET = a
 //	force-obsolete: d#2,SET = d
-//	f#3,SET = blobInlineHandle(0, blk1, 10, 100, 0x07)
+//	f#3,SET = blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
 //	Span: d-e:{(#4,RANGEDEL)}
 //	Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
 //	Span: g-l:{(#5,RANGEDEL)}
@@ -146,7 +147,7 @@ func (kv ParsedKVOrSpan) String() string {
 //
 // Note that the older KV format "<user-key>.<kind>.<seq-num> : <value>" is also supported
 // (for now).
-func ParseTestKVsAndSpans(input string) (_ []ParsedKVOrSpan, err error) {
+func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.Newf("%v\n%s", r, debug.Stack())
@@ -162,28 +163,37 @@ func ParseTestKVsAndSpans(input string) (_ []ParsedKVOrSpan, err error) {
 
 		var kv ParsedKVOrSpan
 		line, kv.ForceObsolete = strings.CutPrefix(line, "force-obsolete:")
-		// There should be exactly one "=" or ":" in the remaining line.
-		keyStr, valStr, ok := strings.Cut(line, "=")
-		if !ok {
-			keyStr, valStr, ok = strings.Cut(line, ":")
-		}
-		if !ok {
+		// Cut the key at the first ":" or "=".
+		sepIdx := strings.IndexAny(line, "=:")
+		if sepIdx == -1 {
 			return nil, errors.Newf("KV format is [force-obsolete:] <key>=<value> (or <key>:<value>): %q", line)
 		}
-		kv.Key = base.ParseInternalKey(strings.TrimSpace(keyStr))
-		valStr = strings.TrimSpace(valStr)
+		keyStr := strings.TrimSpace(line[:sepIdx])
+		valStr := strings.TrimSpace(line[sepIdx+1:])
+		kv.Key = base.ParseInternalKey(keyStr)
 
 		if kv.ForceObsolete && kv.Key.Kind() == InternalKeyKindRangeDelete {
 			return nil, errors.Errorf("force-obsolete is not allowed for RANGEDEL")
 		}
 
-		if strings.HasPrefix(valStr, "blobInlineHandle(") {
-			handle, attr, err := decodeBlobInlineHandleAndAttribute(valStr)
+		if blobtest.IsBlobHandle(valStr) {
+			if bv == nil {
+				return nil, errors.Errorf("test not set up to support blob handles")
+			}
+			handle, remaining, err := bv.ParseInlineHandle(valStr)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "parsing blob handle")
 			}
 			kv.BlobHandle = handle
-			kv.Attr = attr
+			if remaining != "" {
+				p := strparse.MakeParser("=", remaining)
+				p.Expect("attr")
+				p.Expect("=")
+				kv.Attr = base.ShortAttribute(p.Int())
+				if !p.Done() {
+					return nil, errors.Newf("unexpected trailing input %q", p.Remaining())
+				}
+			}
 		} else {
 			kv.Value = []byte(valStr)
 		}
@@ -194,8 +204,10 @@ func ParseTestKVsAndSpans(input string) (_ []ParsedKVOrSpan, err error) {
 
 // ParseTestSST parses the KVs and spans in the input (see ParseTestKVAndSpans)
 // and writes them to an sstable.
-func ParseTestSST(w RawWriter, input string) error {
-	kvs, err := ParseTestKVsAndSpans(input)
+//
+// The blobtest.Values argument can be nil if there are no blob references in the input.
+func ParseTestSST(w RawWriter, input string, bv *blobtest.Values) error {
+	kvs, err := ParseTestKVsAndSpans(input, bv)
 	if err != nil {
 		return err
 	}
@@ -214,51 +226,6 @@ func ParseTestSST(w RawWriter, input string) error {
 		}
 	}
 	return nil
-}
-
-// decodeBlobInlineHandleAndAttribute decodes a blob handle (in its inline form)
-// and its short attribute from a debug string. It expects a value of the form:
-// blobInlineHandle(<refIndex>, blk<blocknum>, <offset>, <valLen>, <attr>). For example:
-//
-//	blobInlineHandle(24, blk255, 10, 9235, 0x07)
-func decodeBlobInlineHandleAndAttribute(
-	ref string,
-) (blob.InlineHandle, base.ShortAttribute, error) {
-	fields := strings.FieldsFunc(strings.TrimSuffix(strings.TrimPrefix(ref, "blobInlineHandle("), ")"),
-		func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
-	if len(fields) != 5 {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.New("expected 5 fields")
-	}
-	refIdx, err := strconv.ParseUint(fields[0], 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse file offset")
-	}
-	blockNum, err := strconv.ParseUint(strings.TrimPrefix(fields[1], "blk"), 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse block number")
-	}
-	off, err := strconv.ParseUint(fields[2], 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse offset")
-	}
-	valLen, err := strconv.ParseUint(fields[3], 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse value length")
-	}
-	attr, err := hex.DecodeString(strings.TrimPrefix(fields[4], "0x"))
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse attribute")
-	}
-	return blob.InlineHandle{
-		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceID: blob.ReferenceID(refIdx),
-			ValueLen:    uint32(valLen),
-		},
-		HandleSuffix: blob.HandleSuffix{
-			BlockNum:      uint32(blockNum),
-			OffsetInBlock: uint32(off),
-		},
-	}, base.ShortAttribute(attr[0]), nil
 }
 
 // ParseWriterOptions modifies WriterOptions based on the given arguments. Each

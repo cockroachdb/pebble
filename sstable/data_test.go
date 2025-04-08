@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
@@ -54,7 +55,8 @@ func runBuildMemObjCmd(
 			_ = w.Close()
 		}
 	}()
-	if err := ParseTestSST(w, td.Input); err != nil {
+	var bv blobtest.Values
+	if err := ParseTestSST(w, td.Input, &bv); err != nil {
 		return nil, nil, err
 	}
 	if err := w.Close(); err != nil {

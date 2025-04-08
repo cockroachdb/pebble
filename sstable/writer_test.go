@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
@@ -176,7 +177,8 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return ""
 
 		case "write-kvs":
-			if err := ParseTestSST(w, td.Input); err != nil {
+			var bv blobtest.Values
+			if err := ParseTestSST(w, td.Input, &bv); err != nil {
 				return err.Error()
 			}
 			return fmt.Sprintf("EstimatedSize()=%d", w.EstimatedSize())

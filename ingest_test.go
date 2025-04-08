@@ -107,7 +107,6 @@ func TestIngestLoad(t *testing.T) {
 				return err.Error()
 			}
 			var bv blobtest.Values
-			var br blobtest.References
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "Span: ") {
@@ -124,8 +123,8 @@ func TestIngestLoad(t *testing.T) {
 					return fmt.Sprintf("malformed input: %s\n", data)
 				}
 				key := base.ParseInternalKey(data[:j])
-				if bv.IsBlobHandle(data[j+1:]) {
-					ih, err := bv.ParseInlineHandle(data[j+1:], &br)
+				if blobtest.IsBlobHandle(data[j+1:]) {
+					ih, _, err := bv.ParseInlineHandle(data[j+1:])
 					require.NoError(t, err)
 					if err := w.AddWithBlobHandle(key, ih, base.ShortAttribute(0), false /* forceObsolete */); err != nil {
 						return err.Error()
