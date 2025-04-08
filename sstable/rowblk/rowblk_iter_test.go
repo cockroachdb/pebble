@@ -286,8 +286,8 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 					"pear", "persimmon",
 				}
 				for _, k := range keys {
-					elidedPrefixWriter.Add(ikey(k), nil)
-					includedPrefixWriter.Add(ikey(prefix+k), nil)
+					require.NoError(t, elidedPrefixWriter.Add(ikey(k), nil))
+					require.NoError(t, includedPrefixWriter.Add(ikey(prefix+k), nil))
 				}
 
 				elidedPrefixBlock, includedPrefixBlock := elidedPrefixWriter.Finish(), includedPrefixWriter.Finish()
