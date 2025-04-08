@@ -44,10 +44,11 @@ type Compression = block.Compression
 
 // Exported Compression constants.
 const (
-	DefaultCompression = block.DefaultCompression
-	NoCompression      = block.NoCompression
-	SnappyCompression  = block.SnappyCompression
-	ZstdCompression    = block.ZstdCompression
+	DefaultCompression  = block.DefaultCompression
+	NoCompression       = block.NoCompression
+	SnappyCompression   = block.SnappyCompression
+	ZstdCompression     = block.ZstdCompression
+	AdaptiveCompression = block.AdaptiveCompression
 )
 
 // FilterType exports the base.FilterType type.
@@ -1945,6 +1946,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					l.Compression = func() Compression { return SnappyCompression }
 				case "ZSTD":
 					l.Compression = func() Compression { return ZstdCompression }
+				case "Adaptive":
+					l.Compression = func() Compression { return AdaptiveCompression }
 				default:
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
