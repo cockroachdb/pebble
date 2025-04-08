@@ -196,8 +196,8 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				keyValues := strings.Fields(line)
 				for _, kv := range keyValues {
-					if strings.HasPrefix(kv, "EncodeSpan:") {
-						kv = kv[len("EncodeSpan:"):]
+					if strings.HasPrefix(kv, "Span:") {
+						kv = kv[len("Span:"):]
 						s := keyspan.ParseSpan(kv)
 						if writeUnfragmented {
 							if err = w.EncodeSpan(s); err != nil {
