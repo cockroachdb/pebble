@@ -264,6 +264,9 @@ func decodeBlobInlineHandleAndAttribute(
 // ParseWriterOptions modifies WriterOptions based on the given arguments. Each
 // argument is a string or a fmt.Stringer (like datadriven.TestData.CmdArg) with
 // format either "<key>" or "<key>=<value>".
+//
+// Note that the test can specify a table format. If a format is already
+// specified in WriterOptions, the test format must not be newer than that.
 func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOrStringer) error {
 	for _, arg := range args {
 		str, ok := any(arg).(string)
@@ -273,27 +276,17 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 		key, value, _ := strings.Cut(str, "=")
 		var err error
 		switch key {
-		case "leveldb":
-			o.TableFormat = TableFormatLevelDB
-		case "format":
-			switch value {
-			case "leveldb":
-				o.TableFormat = TableFormatLevelDB
-			case "pebblev1":
-				o.TableFormat = TableFormatPebblev1
-			case "pebblev2":
-				o.TableFormat = TableFormatPebblev2
-			case "pebblev3":
-				o.TableFormat = TableFormatPebblev3
-			case "pebblev4":
-				o.TableFormat = TableFormatPebblev4
-			case "pebblev5":
-				o.TableFormat = TableFormatPebblev5
-			case "pebblev6":
-				o.TableFormat = TableFormatPebblev6
-			default:
-				return errors.Errorf("unknown format string %s", value)
+		case "table-format":
+			var tableFormat TableFormat
+			tableFormat, err = ParseTableFormatString("(" + value + ")")
+			if err != nil {
+				return err
 			}
+			if o.TableFormat != 0 && o.TableFormat < tableFormat {
+				return errors.Errorf("table format %s is newer than default format %s", tableFormat, o.TableFormat)
+			}
+			o.TableFormat = tableFormat
+
 		case "block-size":
 			o.BlockSize, err = strconv.Atoi(value)
 
@@ -311,6 +304,9 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 
 		case "is-strict-obsolete":
 			o.IsStrictObsolete = true
+
+		case "format", "leveldb":
+			return errors.Errorf("%q is deprecated", key)
 
 		default:
 			// TODO(radu): ignoring unknown keys is error-prone; we need to find an
