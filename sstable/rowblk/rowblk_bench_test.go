@@ -56,7 +56,9 @@ func createBenchBlock(
 	for i := 0; w.EstimatedSize() < blockSize; i++ {
 		key := []byte(fmt.Sprintf("%s%05d%s", string(writtenPrefix), i, origSuffix))
 		ikey.UserKey = key
-		w.Add(ikey, nil)
+		if err := w.Add(ikey, nil); err != nil {
+			panic(err)
+		}
 		var readKey []byte
 		if withSyntheticPrefix {
 			readKey = append(readKey, benchPrefix...)

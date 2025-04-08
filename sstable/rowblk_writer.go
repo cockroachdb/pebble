@@ -764,9 +764,11 @@ func (w *RawRowWriter) addPoint(key InternalKey, value []byte, forceObsolete boo
 	}
 
 	w.maybeAddToFilter(key.UserKey)
-	w.dataBlockBuf.dataBlock.AddWithOptionalValuePrefix(
+	if err := w.dataBlockBuf.dataBlock.AddWithOptionalValuePrefix(
 		key, isObsolete, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
-		setHasSameKeyPrefix)
+		setHasSameKeyPrefix); err != nil {
+		return err
+	}
 
 	w.meta.updateSeqNum(key.SeqNum())
 
@@ -877,8 +879,7 @@ func (w *RawRowWriter) addTombstone(key InternalKey, value []byte) error {
 	w.props.NumRangeDeletions++
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
-	w.rangeDelBlock.Add(key, value)
-	return nil
+	return w.rangeDelBlock.Add(key, value)
 }
 
 // addRangeKey adds a range key set, unset, or delete key/value pair to the
@@ -968,8 +969,7 @@ func (w *RawRowWriter) addRangeKey(key InternalKey, value []byte) error {
 	}
 
 	// Add the key to the block.
-	w.rangeKeyBlock.Add(key, value)
-	return nil
+	return w.rangeKeyBlock.Add(key, value)
 }
 
 func (w *RawRowWriter) maybeAddToFilter(key []byte) {
@@ -1340,10 +1340,13 @@ func (w *RawRowWriter) writeTwoLevelIndex() (block.Handle, error) {
 		if err != nil {
 			return block.Handle{}, err
 		}
-		w.topLevelIndexBlock.Add(b.sep, block.HandleWithProperties{
+		err = w.topLevelIndexBlock.Add(b.sep, block.HandleWithProperties{
 			Handle: bh,
 			Props:  b.properties,
 		}.EncodeVarints(w.blockBuf.tmp[:]))
+		if err != nil {
+			return block.Handle{}, err
+		}
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size
@@ -1601,7 +1604,9 @@ func (w *RawRowWriter) Close() (err error) {
 		// reduces table size without a significant impact on performance.
 		raw.RestartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
-		w.props.save(w.tableFormat, &raw)
+		if err := w.props.save(w.tableFormat, &raw); err != nil {
+			return err
+		}
 		if _, err := w.layout.WritePropertiesBlock(raw.Finish()); err != nil {
 			return err
 		}
