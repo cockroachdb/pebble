@@ -1034,7 +1034,7 @@ var compressionTypeAnnotator = manifest.Annotator[compressionTypes]{
 type compressionTypeAggregator struct{}
 
 type compressionTypes struct {
-	snappy, zstd, minlz, none, unknown uint64
+	snappy, zstd, minlz, adaptive, none, unknown uint64
 }
 
 func (a compressionTypeAggregator) Zero(dst *compressionTypes) *compressionTypes {
@@ -1055,6 +1055,8 @@ func (a compressionTypeAggregator) Accumulate(
 		dst.zstd++
 	case MinlzCompression:
 		dst.minlz++
+	case AdaptiveCompression:
+		dst.adaptive++
 	case NoCompression:
 		dst.none++
 	default:
@@ -1069,6 +1071,7 @@ func (a compressionTypeAggregator) Merge(
 	dst.snappy += src.snappy
 	dst.zstd += src.zstd
 	dst.minlz += src.minlz
+	dst.adaptive += src.adaptive
 	dst.none += src.none
 	dst.unknown += src.unknown
 	return dst
