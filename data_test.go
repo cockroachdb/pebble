@@ -574,11 +574,6 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 }
 
 func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) error {
-	b := d.NewIndexedBatch()
-	if err := runBatchDefineCmd(td, b); err != nil {
-		return err
-	}
-
 	if len(td.CmdArgs) < 1 {
 		return errors.New("build <path>: argument missing")
 	}
@@ -605,53 +600,8 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 		return err
 	}
 	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), writeOpts)
-	iter := b.newInternalIter(nil)
-	for kv := iter.First(); kv != nil; kv = iter.Next() {
-		tmp := kv.K
-		tmp.SetSeqNum(0)
-		if err := w.Raw().Add(tmp, kv.InPlaceValue(), false); err != nil {
-			return err
-		}
-	}
-	if err := iter.Close(); err != nil {
+	if err := sstable.ParseTestSST(w.Raw(), td.Input); err != nil {
 		return err
-	}
-
-	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
-		s, err := rdi.First()
-		for ; s != nil && err == nil; s, err = rdi.Next() {
-			if err = w.DeleteRange(s.Start, s.End); err != nil {
-				return err
-			}
-		}
-		if err != nil {
-			return err
-		}
-	}
-
-	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
-		s, err := rki.First()
-		for ; s != nil; s, err = rki.Next() {
-			for _, k := range s.Keys {
-				var err error
-				switch k.Kind() {
-				case base.InternalKeyKindRangeKeySet:
-					err = w.RangeKeySet(s.Start, s.End, k.Suffix, k.Value)
-				case base.InternalKeyKindRangeKeyUnset:
-					err = w.RangeKeyUnset(s.Start, s.End, k.Suffix)
-				case base.InternalKeyKindRangeKeyDelete:
-					err = w.RangeKeyDelete(s.Start, s.End)
-				default:
-					panic("not a range key")
-				}
-				if err != nil {
-					return err
-				}
-			}
-		}
-		if err != nil {
-			return err
-		}
 	}
 
 	return w.Close()
