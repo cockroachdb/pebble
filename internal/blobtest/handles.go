@@ -15,7 +15,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -204,21 +203,20 @@ func (bv *Values) ParseInlineHandle(
 }
 
 // WriteFiles writes all the blob files referenced by Values, using
-// newBlobObject to construct new objects. Additionally, it updates the
-// BlobFileMetadatas contained within metas with the resulting physical and
-// logical sizes of the blob files.
-func WriteFiles(
-	bv *Values,
+// newBlobObject to construct new objects.
+//
+// Return the FileWriterStats for the written blob files.
+func (bv *Values) WriteFiles(
 	newBlobObject func(fileNum base.DiskFileNum) (objstorage.Writable, error),
 	writerOpts blob.FileWriterOptions,
-	metas map[base.DiskFileNum]*manifest.BlobFileMetadata,
-) error {
+) (map[base.DiskFileNum]blob.FileWriterStats, error) {
 	// Organize the handles by file number.
 	files := make(map[base.DiskFileNum][]blob.Handle)
 	for handle := range bv.trackedHandles {
 		files[handle.FileNum] = append(files[handle.FileNum], handle)
 	}
 
+	stats := make(map[base.DiskFileNum]blob.FileWriterStats)
 	for fileNum, handles := range files {
 		slices.SortFunc(handles, func(a, b blob.Handle) int {
 			if v := cmp.Compare(a.BlockNum, b.BlockNum); v != 0 {
@@ -228,7 +226,7 @@ func WriteFiles(
 		})
 		writable, err := newBlobObject(fileNum)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		writer := blob.NewFileWriter(fileNum, writable, writerOpts)
 		for i, handle := range handles {
@@ -241,14 +239,13 @@ func WriteFiles(
 				writer.AddValue(deriveValueFromHandle(handle))
 			}
 		}
-		stats, err := writer.Close()
+		fileStats, err := writer.Close()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		metas[fileNum].Size = stats.FileLen
-		metas[fileNum].ValueSize = stats.UncompressedValueBytes
+		stats[fileNum] = fileStats
 	}
-	return nil
+	return stats, nil
 }
 
 // errFromPanic can be used in a recover block to convert panics into errors.

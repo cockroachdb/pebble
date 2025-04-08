@@ -1085,13 +1085,18 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 
 	if len(ve.NewTables) > 0 {
 		// Collect any blob files created.
-		err := blobtest.WriteFiles(&valueSeparator.bv, func(fileNum base.DiskFileNum) (objstorage.Writable, error) {
+		fileStats, err := valueSeparator.bv.WriteFiles(func(fileNum base.DiskFileNum) (objstorage.Writable, error) {
 			writable, _, err := d.objProvider.Create(context.Background(), base.FileTypeBlob, fileNum, objstorage.CreateOptions{})
 			return writable, err
-		}, d.opts.MakeBlobWriterOptions(0), valueSeparator.metas)
+		}, d.opts.MakeBlobWriterOptions(0))
 		if err != nil {
 			return nil, err
 		}
+		for f, stats := range fileStats {
+			valueSeparator.metas[f].Size = stats.FileLen
+			valueSeparator.metas[f].ValueSize = stats.UncompressedValueBytes
+		}
+
 		ve.NewBlobFiles = slices.Collect(maps.Values(valueSeparator.metas))
 
 		jobID := d.newJobIDLocked()
