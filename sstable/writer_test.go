@@ -586,8 +586,8 @@ func TestClearDataBlockBuf(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	d := newDataBlockBuf(1, block.ChecksumTypeCRC32c)
 	d.blockBuf.dataBuf = make([]byte, 1)
-	d.dataBlock.Add(ikey("apple"), nil)
-	d.dataBlock.Add(ikey("banana"), nil)
+	require.NoError(t, d.dataBlock.Add(ikey("apple"), nil))
+	require.NoError(t, d.dataBlock.Add(ikey("banana"), nil))
 
 	d.clear()
 	testBlockBufClear(t, &d.blockBuf, &blockBuf{})
@@ -598,8 +598,8 @@ func TestClearDataBlockBuf(t *testing.T) {
 func TestClearIndexBlockBuf(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	i := newIndexBlockBuf()
-	i.block.Add(ikey("apple"), nil)
-	i.block.Add(ikey("banana"), nil)
+	require.NoError(t, i.block.Add(ikey("apple"), nil))
+	require.NoError(t, i.block.Add(ikey("banana"), nil))
 	i.clear()
 
 	require.Equal(
