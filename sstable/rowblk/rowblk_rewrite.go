@@ -78,7 +78,9 @@ func (r *Rewriter) RewriteSuffixes(
 		// in the block, which includes the 1-byte prefix. This is fine since bw
 		// also does not know about the prefix and will preserve it in bw.add.
 		v := kv.InPlaceValue()
-		r.writer.Add(r.scratchKey, v)
+		if err := r.writer.Add(r.scratchKey, v); err != nil {
+			return base.InternalKey{}, base.InternalKey{}, nil, err
+		}
 		if start.UserKey == nil {
 			// Copy the first key.
 			start.Trailer = r.scratchKey.Trailer

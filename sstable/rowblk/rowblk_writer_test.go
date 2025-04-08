@@ -15,9 +15,9 @@ import (
 
 func TestBlockWriterClear(t *testing.T) {
 	w := Writer{RestartInterval: 16}
-	w.Add(ikey("apple"), nil)
-	w.Add(ikey("apricot"), nil)
-	w.Add(ikey("banana"), nil)
+	require.NoError(t, w.Add(ikey("apple"), nil))
+	require.NoError(t, w.Add(ikey("apricot"), nil))
+	require.NoError(t, w.Add(ikey("banana"), nil))
 
 	w.Reset()
 
@@ -43,9 +43,9 @@ func TestBlockWriterClear(t *testing.T) {
 
 func TestBlockWriter(t *testing.T) {
 	w := &Writer{RestartInterval: 16}
-	w.AddRawString("apple", nil)
-	w.AddRawString("apricot", nil)
-	w.AddRawString("banana", nil)
+	require.NoError(t, w.AddRawString("apple", nil))
+	require.NoError(t, w.AddRawString("apricot", nil))
+	require.NoError(t, w.AddRawString("banana", nil))
 	block := w.Finish()
 
 	expected := []byte(
@@ -69,8 +69,9 @@ func TestBlockWriterWithPrefix(t *testing.T) {
 		addValuePrefix bool,
 		valuePrefix block.ValuePrefix,
 		setHasSameKeyPrefix bool) {
-		w.AddWithOptionalValuePrefix(
+		err := w.AddWithOptionalValuePrefix(
 			key, false, value, len(key.UserKey), addValuePrefix, valuePrefix, setHasSameKeyPrefix)
+		require.NoError(t, err)
 	}
 	addAdapter(
 		ikey("apple"), []byte("red"), false, 0, true)
