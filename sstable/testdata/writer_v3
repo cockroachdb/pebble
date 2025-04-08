@@ -23,9 +23,9 @@ f.SET.5:f
 g.DEL.6:
 h.MERGE.7:h
 i.RANGEDEL.8:j
-EncodeSpan: j-k:{(#9,RANGEKEYDEL)}
-EncodeSpan: k-l:{(#10,RANGEKEYUNSET,@5)}
-EncodeSpan: l-m:{(#11,RANGEKEYSET,@10,foo)}
+Span: j-k:{(#9,RANGEKEYDEL)}
+Span: k-l:{(#10,RANGEKEYUNSET,@5)}
+Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
 ----
 point:    [a#1,SET-h#7,MERGE]
 rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
@@ -65,11 +65,11 @@ i-j:{(#8,RANGEDEL)}
 # 1:          j---------------z
 
 build
-EncodeSpan: a-f:{(#3,RANGEDEL)}
-EncodeSpan: f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
-EncodeSpan: j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
-EncodeSpan: m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
-EncodeSpan: s-z:{(#1,RANGEDEL)}
+Span: a-f:{(#3,RANGEDEL)}
+Span: f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+Span: j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+Span: m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+Span: s-z:{(#1,RANGEDEL)}
 ----
 rangedel: [a#3,RANGEDEL-z#inf,RANGEDEL]
 seqnums:  [1-3]
@@ -167,20 +167,20 @@ rangedel: [a#1,RANGEDEL-d#inf,RANGEDEL]
 seqnums:  [1-2]
 
 build-raw
-EncodeSpan: a-b:{(#2,RANGEKEYSET,@10,foo) (#1,RANGEKEYSET,@10,foo)}
+Span: a-b:{(#2,RANGEKEYSET,@10,foo) (#1,RANGEKEYSET,@10,foo)}
 ----
 rangekey: [a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
 seqnums:  [1-2]
 
 build-raw
-EncodeSpan: b-c:{(#2,RANGEKEYSET,@10,foo)}
-EncodeSpan: a-b:{(#1,RANGEKEYSET,@10,foo)}
+Span: b-c:{(#2,RANGEKEYSET,@10,foo)}
+Span: a-b:{(#1,RANGEKEYSET,@10,foo)}
 ----
 pebble: range keys starts must be added in increasing order: b#2,RANGEKEYSET, a#1,RANGEKEYSET
 
 build-raw
-EncodeSpan: a-c:{(#1,RANGEKEYSET,@10,foo)}
-EncodeSpan: c-d:{(#2,RANGEKEYSET,@10,foo)}
+Span: a-c:{(#1,RANGEKEYSET,@10,foo)}
+Span: c-d:{(#2,RANGEKEYSET,@10,foo)}
 ----
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
 seqnums:  [1-2]
@@ -189,7 +189,7 @@ seqnums:  [1-2]
 # though the key kinds must be ordered (descending).
 
 build-raw
-EncodeSpan: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@10) (#1,RANGEKEYDEL)}
+Span: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@10) (#1,RANGEKEYDEL)}
 ----
 rangekey: [a#1,RANGEKEYSET-b#inf,RANGEKEYDEL]
 seqnums:  [1-1]
@@ -265,9 +265,9 @@ sstable
 # Range keys, if present, are shown in the layout.
 
 build
-EncodeSpan: a-b:{(#3,RANGEKEYSET,@3,foo)}
-EncodeSpan: b-c:{(#2,RANGEKEYSET,@2,bar)}
-EncodeSpan: c-d:{(#1,RANGEKEYSET,@1,baz)}
+Span: a-b:{(#3,RANGEKEYSET,@3,foo)}
+Span: b-c:{(#2,RANGEKEYSET,@2,bar)}
+Span: c-d:{(#1,RANGEKEYSET,@1,baz)}
 ----
 rangekey: [a#3,RANGEKEYSET-d#inf,RANGEKEYSET]
 seqnums:  [1-3]

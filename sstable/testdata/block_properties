@@ -108,9 +108,9 @@ build collectors=(suffix)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-EncodeSpan: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
-EncodeSpan: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
-EncodeSpan: f@20-z@25:{(#6,RANGEKEYDEL)}
+Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
@@ -135,9 +135,9 @@ build collectors=(suffix-point-keys-only)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-EncodeSpan: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
-EncodeSpan: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
-EncodeSpan: f@20-z@25:{(#6,RANGEKEYDEL)}
+Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
@@ -162,9 +162,9 @@ build collectors=(suffix-range-keys-only)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-EncodeSpan: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
-EncodeSpan: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
-EncodeSpan: f@20-z@25:{(#6,RANGEKEYDEL)}
+Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
@@ -190,9 +190,9 @@ build block-size=1 collectors=(suffix-point-keys-only,suffix-range-keys-only)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-EncodeSpan: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
-EncodeSpan: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
-EncodeSpan: f@20-z@25:{(#6,RANGEKEYDEL)}
+Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]

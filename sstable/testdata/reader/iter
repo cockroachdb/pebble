@@ -360,7 +360,7 @@ bbx.SET.2:X
 bby.SET.2:Y
 bbz.SET.2:Z
 c.SET.3:C
-EncodeSpan: cc-ccc:{(#3,RANGEDEL)}
+Span: cc-ccc:{(#3,RANGEDEL)}
 cce.SET.3:E
 ccf.SET.3:F
 ccg.SET.3:G
@@ -384,7 +384,7 @@ ccx.SET.3:X
 ccy.SET.3:Y
 ccz.SET.3:Z
 d.SET.4:D
-EncodeSpan: dd-ddd:{(#4,RANGEDEL)}
+Span: dd-ddd:{(#4,RANGEDEL)}
 dde.SET.4:E
 ddf.SET.4:F
 ddg.SET.4:G

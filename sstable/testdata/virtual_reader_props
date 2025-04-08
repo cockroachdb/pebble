@@ -204,10 +204,10 @@ build block-size=1 index-block-size=1 table-format=(Pebble,v4)
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
-EncodeSpan: d-e:{(#4,RANGEDEL)}
-EncodeSpan: a-d:{(#11,RANGEKEYSET,@10,foo)}
-EncodeSpan: g-l:{(#5,RANGEDEL)}
-EncodeSpan: y-z:{(#12,RANGEKEYSET,@11,foo)}
+Span: d-e:{(#4,RANGEDEL)}
+Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
+Span: g-l:{(#5,RANGEDEL)}
+Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
@@ -236,10 +236,10 @@ build block-size=1 index-block-size=1 table-format=(Pebble,v5)
 a.SET.1:a
 d.SET.2:d
 f.SET.3:f
-EncodeSpan: d-e:{(#4,RANGEDEL)}
-EncodeSpan: a-d:{(#11,RANGEKEYSET,@10,foo)}
-EncodeSpan: g-l:{(#5,RANGEDEL)}
-EncodeSpan: y-z:{(#12,RANGEKEYSET,@11,foo)}
+Span: d-e:{(#4,RANGEDEL)}
+Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
+Span: g-l:{(#5,RANGEDEL)}
+Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 ----
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
