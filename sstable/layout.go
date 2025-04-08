@@ -851,7 +851,9 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 	})
 	bw := rowblk.Writer{RestartInterval: 1}
 	for _, h := range w.handles {
-		bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle)
+		if err := bw.AddRaw(unsafe.Slice(unsafe.StringData(h.key), len(h.key)), h.encodedBlockHandle); err != nil {
+			return 0, err
+		}
 	}
 	metaIndexHandle, err := w.writeBlock(bw.Finish(), block.NoCompression, &w.buf)
 	if err != nil {
