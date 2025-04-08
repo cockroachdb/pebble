@@ -89,7 +89,7 @@ func (h InlineHandle) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (h InlineHandle) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("(f%d,blk%d[%d:%d])",
+	w.Printf("(%d, blk%d[%d:%d])",
 		h.ReferenceID, h.BlockNum, h.OffsetInBlock, h.OffsetInBlock+h.ValueLen)
 }
 

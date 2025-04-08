@@ -176,7 +176,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return ""
 
 		case "write-kvs":
-			if err := writeKVs(w, td.Input); err != nil {
+			if err := ParseTestSST(w, td.Input); err != nil {
 				return err.Error()
 			}
 			return fmt.Sprintf("EstimatedSize()=%d", w.EstimatedSize())

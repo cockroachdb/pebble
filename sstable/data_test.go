@@ -7,12 +7,10 @@ package sstable
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
@@ -25,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -106,7 +103,7 @@ func runBuildMemObjCmd(
 			_ = w.Close()
 		}
 	}()
-	if err := writeKVs(w, td.Input); err != nil {
+	if err := ParseTestSST(w, td.Input); err != nil {
 		return nil, nil, err
 	}
 	if err := w.Close(); err != nil {
@@ -118,100 +115,6 @@ func runBuildMemObjCmd(
 		return nil, nil, err
 	}
 	return meta, obj, nil
-}
-
-func writeKVs(w RawWriter, input string) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = errors.Errorf("%v", r)
-		}
-	}()
-	for _, data := range strings.Split(input, "\n") {
-		switch {
-		case strings.HasPrefix(data, "Span:"):
-			err = w.EncodeSpan(keyspan.ParseSpan(strings.TrimPrefix(data, "Span:")))
-		default:
-			forceObsolete := strings.HasPrefix(data, "force-obsolete:")
-			if forceObsolete {
-				data = strings.TrimSpace(strings.TrimPrefix(data, "force-obsolete:"))
-			}
-			j := strings.Index(data, ":")
-			key := base.ParseInternalKey(data[:j])
-			value := []byte(data[j+1:])
-
-			switch key.Kind() {
-			case InternalKeyKindRangeDelete:
-				if forceObsolete {
-					return errors.Errorf("force-obsolete is not allowed for RANGEDEL")
-				}
-				err = w.Add(key, value, false /* forceObsolete */)
-			default:
-				if bytes.HasPrefix(value, []byte("blobInlineHandle(")) {
-					var handle blob.InlineHandle
-					var attr base.ShortAttribute
-					handle, attr, err = decodeBlobInlineHandleAndAttribute(string(value))
-					if err != nil {
-						return err
-					}
-					err = w.AddWithBlobHandle(key, handle, attr, forceObsolete)
-				} else {
-					err = w.Add(key, value, forceObsolete)
-				}
-			}
-			if err != nil {
-				return err
-			}
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return err
-}
-
-// decodeBlobInlineHandleAndAttribute decodes a blob handle (in its inline form)
-// and its short attribute from a debug string. It expects a value of the form:
-// blobInlineHandle(<refIndex>, blk<blocknum>, <offset>, <valLen>, <attr>). For example:
-//
-//	blobInlineHandle(24, blk255, 10, 9235, 0x07)
-func decodeBlobInlineHandleAndAttribute(
-	ref string,
-) (blob.InlineHandle, base.ShortAttribute, error) {
-	fields := strings.FieldsFunc(strings.TrimSuffix(strings.TrimPrefix(ref, "blobInlineHandle("), ")"),
-		func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
-	if len(fields) != 5 {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.New("expected 5 fields")
-	}
-	refIdx, err := strconv.ParseUint(fields[0], 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse file offset")
-	}
-	blockNum, err := strconv.ParseUint(strings.TrimPrefix(fields[1], "blk"), 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse block number")
-	}
-	off, err := strconv.ParseUint(fields[2], 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse offset")
-	}
-	valLen, err := strconv.ParseUint(fields[3], 10, 32)
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse value length")
-	}
-	attr, err := hex.DecodeString(strings.TrimPrefix(fields[4], "0x"))
-	if err != nil {
-		return blob.InlineHandle{}, base.ShortAttribute(0), errors.Wrap(err, "failed to parse attribute")
-	}
-	return blob.InlineHandle{
-		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceID: blob.ReferenceID(refIdx),
-			ValueLen:    uint32(valLen),
-		},
-		HandleSuffix: blob.HandleSuffix{
-			BlockNum:      uint32(blockNum),
-			OffsetInBlock: uint32(off),
-		},
-	}, base.ShortAttribute(attr[0]), nil
 }
 
 func runBuildCmd(
