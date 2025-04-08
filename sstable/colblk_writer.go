@@ -968,7 +968,9 @@ func (w *RawColumnWriter) Close() (err error) {
 		// reduces table size without a significant impact on performance.
 		raw.RestartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
-		w.props.save(w.opts.TableFormat, &raw)
+		if err := w.props.save(w.opts.TableFormat, &raw); err != nil {
+			return err
+		}
 		if _, err := w.layout.WritePropertiesBlock(raw.Finish()); err != nil {
 			return err
 		}

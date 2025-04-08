@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -123,7 +124,7 @@ func TestBlockIter2(t *testing.T) {
 				case "build":
 					w := &Writer{RestartInterval: r}
 					for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
-						w.Add(makeIkey(e), nil)
+						require.NoError(t, w.Add(makeIkey(e), nil))
 					}
 					blk = w.Finish()
 					return ""
@@ -155,7 +156,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 		[]byte("banana"),
 	}
 	for i := range expected {
-		w.Add(base.InternalKey{UserKey: expected[i]}, nil)
+		require.NoError(t, w.Add(base.InternalKey{UserKey: expected[i]}, nil))
 	}
 	blk := w.Finish()
 
@@ -213,7 +214,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 		[]byte("carrot"),
 	}
 	for i := range keys {
-		w.Add(base.InternalKey{UserKey: keys[i]}, nil)
+		require.NoError(t, w.Add(base.InternalKey{UserKey: keys[i]}, nil))
 	}
 	blk := w.Finish()
 
@@ -466,8 +467,12 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 	}
 }
 
+// TestSingularKVBlockRestartsOverflow tests a scenario where a large key-value
+// pair is written to a block, such that the total block size exceeds 4GiB. This
+// works becasue the restart table never needs to encode a restart offset beyond
+// the 1st key-value pair. The offset of the restarts table itself may exceed
+// 2^32-1 but the iterator takes care to support this.
 func TestSingularKVBlockRestartsOverflow(t *testing.T) {
-
 	_, isCI := os.LookupEnv("CI")
 	if isCI {
 		t.Skip("Skipping test: requires too much memory for CI now.")
@@ -484,12 +489,11 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 
 	var largeKeySize int64 = 2 << 30   // 2GB key size
 	var largeValueSize int64 = 2 << 30 // 2GB value size
-
 	largeKey := bytes.Repeat([]byte("k"), int(largeKeySize))
 	largeValue := bytes.Repeat([]byte("v"), int(largeValueSize))
 
 	writer := &Writer{RestartInterval: 1}
-	writer.Add(base.InternalKey{UserKey: largeKey}, largeValue)
+	require.NoError(t, writer.Add(base.InternalKey{UserKey: largeKey}, largeValue))
 	blockData := writer.Finish()
 	iter, err := NewIter(bytes.Compare, nil, nil, blockData, block.NoTransforms)
 	require.NoError(t, err, "failed to create iterator for block")
@@ -501,7 +505,7 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	// Ensure that SeekGE() finds the correct KV
 	require.NotNil(t, kv, "failed to find the key")
 	require.Equal(t, largeKey, kv.K.UserKey, "unexpected key")
-	require.Equal(t, largeValue, kv.V.ValueOrHandle, "unexpected value")
+	require.Equal(t, largeValue, kv.InPlaceValue(), "unexpected value")
 
 	// Ensure that SeekGE() does not raise panic due to integer overflow
 	// indexing problems.
@@ -510,29 +514,30 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	// Ensure that SeekLT() finds the correct KV
 	require.NotNil(t, kv, "failed to find the key")
 	require.Equal(t, largeKey, kv.K.UserKey, "unexpected key")
-	require.Equal(t, largeValue, kv.V.ValueOrHandle, "unexpected value")
+	require.Equal(t, largeValue, kv.InPlaceValue(), "unexpected value")
 }
 
-func TestBufferExceeding256MBShouldPanic(t *testing.T) {
-
+// TestExceedingMaximumRestartOffset tests that writing a block that exceeds the
+// maximum restart offset errors.
+func TestExceedingMaximumRestartOffset(t *testing.T) {
 	_, isCI := os.LookupEnv("CI")
 	if isCI {
 		t.Skip("Skipping test: requires too much memory for CI now.")
 	}
 
-	// Test that writing to a block that is already >= 256MiB
-	// causes a panic to occur.
-
+	// Test that writing to a block that is already >= 2GiB
+	// returns an error.
+	//
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
 	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	// Adding 64 KVs each with size 4MiB will create a block
-	// size of >= ~256MiB
-	const numKVs = 64
-	const valueSize = (1 << 20) * 4
+	// Adding 512 KVs each with size 4MiB will create a block
+	// size of >= 2GiB.
+	const numKVs = 512
+	const valueSize = (4 << 20)
 
 	type KVTestPair struct {
 		key   []byte
@@ -545,40 +550,34 @@ func TestBufferExceeding256MBShouldPanic(t *testing.T) {
 		key := fmt.Sprintf("key-%04d", i)
 		KVTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
 	}
-
 	writer := &Writer{RestartInterval: 1}
 	for _, KVPair := range KVTestPairs {
-		writer.Add(base.InternalKey{UserKey: KVPair.key}, KVPair.value)
+		require.NoError(t, writer.Add(base.InternalKey{UserKey: KVPair.key}, KVPair.value))
 	}
 
-	// Check that buffer is larger than 256MiB
-	require.Greater(t, len(writer.buf), MaximumSize)
+	// Check that buffer is larger than 2GiB.
+	require.Greater(t, len(writer.buf), MaximumRestartOffset)
 
-	// Check that a panic has occurred after the final write after the 256MiB
+	// Check that an error is returned after the final write after the 2GiB
 	// threshold has been crossed
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic on the last write, but none occurred")
-		}
-	}()
-	writer.Add(base.InternalKey{UserKey: []byte("arbitrary-last-key")}, []byte("arbitrary-last-value"))
+	err := writer.Add(base.InternalKey{UserKey: []byte("arbitrary-last-key")}, []byte("arbitrary-last-value"))
+	require.NotNil(t, err)
+	require.True(t, errors.Is(err, ErrBlockTooBig))
 }
 
+// TestMultipleKVBlockRestartsOverflow tests that SeekGE() works when
+// iter.restarts is greater than math.MaxUint32 for multiple KVs. Test writes
+// <2GiB to the block and then 4GiB causing iter.restarts to be an int >
+// math.MaxUint32. Reaching just shy of 2GiB before adding 4GiB allows the
+// final write to succeed without surpassing 2GiB limit. Then verify that
+// SeekGE() returns valid output without integer overflow.
+//
+// Although the block exceeds math.MaxUint32 bytes, no individual KV pair has an
+// offset that exceeds MaximumRestartOffset.
 func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
-
-	_, isCI := os.LookupEnv("CI")
-	if isCI {
-		t.Skip("Skipping test: requires too much memory for CI now.")
+	if _, isCI := os.LookupEnv("CI"); isCI {
+		t.Skip("Skipping test: requires too much memory for CI.")
 	}
-
-	// Tests that SeekGE() works when iter.restarts is
-	// greater than math.MaxUint32 for multiple KVs.
-	// Test writes < 256MiB to the block and then 4GiB
-	// causing iter.restarts will be an int > math.MaxUint32.
-	// Reaching just shy of 256MiB before adding 4GiB allows
-	// the final write to succeed without surpassing 256MiB
-	// limit.  Then test whether SeekGE() will return valid
-	// output without integer overflow.
 
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
@@ -586,10 +585,10 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	// Write just shy of 256MiB to the block 63 * 4MiB < 256MiB
-	const numKVs = 63
+	// Write just shy of 2GiB to the block 511 * 4MiB < 2GiB.
+	const numKVs = 511
 	const valueSize = 4 * (1 << 20)
-	var FourGB int64 = 4 * (1 << 30)
+	var fourGB int64 = 4 * (1 << 30)
 
 	type KVTestPair struct {
 		key   []byte
@@ -611,21 +610,21 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	// Add the 4GiB KV, causing iter.restarts >= math.MaxUint32.
 	// Ensure that SeekGE() works thereafter without integer
 	// overflows.
-	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", int(FourGB))))
+	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, bytes.Repeat([]byte("v"), int(fourGB)))
 
 	blockData := writer.Finish()
 	iter, err := NewIter(bytes.Compare, nil, nil, blockData, block.NoTransforms)
 	require.NoError(t, err, "failed to create iterator for block")
-	require.Greater(t, int64(iter.restarts), int64(MaximumSize), "check iter.restarts > 256MiB")
+	require.Greater(t, int64(iter.restarts), int64(MaximumRestartOffset), "check iter.restarts > 2GiB")
 	require.Greater(t, int64(iter.restarts), int64(math.MaxUint32), "check iter.restarts > 2^32-1")
 
 	for i := 0; i < numKVs; i++ {
 		key := []byte(fmt.Sprintf("key-%04d", i))
-		value := []byte(strings.Repeat("a", valueSize))
+		value := bytes.Repeat([]byte("a"), valueSize)
 		kv := iter.SeekGE(key, base.SeekGEFlagsNone)
 		require.NotNil(t, kv, "failed to find the large key")
 		require.Equal(t, key, kv.K.UserKey, "unexpected key")
-		require.Equal(t, value, kv.V.ValueOrHandle, "unexpected value")
+		require.Equal(t, value, kv.InPlaceValue(), "unexpected value")
 	}
 }
 
