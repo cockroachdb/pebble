@@ -82,7 +82,9 @@ func (r *Rewriter) RewriteSuffixes(
 		if invariants.Enabled && invariants.Sometimes(10) {
 			r.comparer.ValidateKey.MustValidate(r.scratchKey.UserKey)
 		}
-		r.writer.Add(r.scratchKey, v)
+		if err := r.writer.Add(r.scratchKey, v); err != nil {
+			return base.InternalKey{}, base.InternalKey{}, nil, err
+		}
 		if start.UserKey == nil {
 			// Copy the first key.
 			start.Trailer = r.scratchKey.Trailer
