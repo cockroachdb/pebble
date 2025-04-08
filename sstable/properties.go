@@ -342,7 +342,7 @@ func (p *Properties) saveString(m map[string][]byte, offset uintptr, value strin
 	m[propOffsetTagMap[offset]] = []byte(value)
 }
 
-func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
+func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) error {
 	m := make(map[string][]byte)
 	for k, v := range p.UserProperties {
 		m[k] = []byte(v)
@@ -444,8 +444,11 @@ func (p *Properties) save(tblFormat TableFormat, w *rowblk.Writer) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		w.AddRawString(key, m[key])
+		if err := w.AddRawString(key, m[key]); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 var (

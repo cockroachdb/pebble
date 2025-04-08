@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	// MaximumBlockSize is the maximum permissible size of a block.
-	MaximumBlockSize = rowblk.MaximumSize
+	// MaximumRestartOffset is the maximum permissible size of a block.
+	MaximumRestartOffset = rowblk.MaximumRestartOffset
 	// DefaultNumDeletionsThreshold defines the minimum number of point
 	// tombstones that must be present in a data block for it to be
 	// considered tombstone-dense.
