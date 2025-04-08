@@ -423,8 +423,8 @@ func TestBlockBufClear(t *testing.T) {
 func TestClearDataBlockBuf(t *testing.T) {
 	d := newDataBlockBuf(1, ChecksumTypeCRC32c)
 	d.blockBuf.compressedBuf = make([]byte, 1)
-	d.dataBlock.add(ikey("apple"), nil)
-	d.dataBlock.add(ikey("banana"), nil)
+	require.NoError(t, d.dataBlock.add(ikey("apple"), nil))
+	require.NoError(t, d.dataBlock.add(ikey("banana"), nil))
 
 	d.clear()
 	testBlockCleared(t, &d.dataBlock, &blockWriter{})
@@ -435,8 +435,8 @@ func TestClearDataBlockBuf(t *testing.T) {
 
 func TestClearIndexBlockBuf(t *testing.T) {
 	i := newIndexBlockBuf(false)
-	i.block.add(ikey("apple"), nil)
-	i.block.add(ikey("banana"), nil)
+	require.NoError(t, i.block.add(ikey("apple"), nil))
+	require.NoError(t, i.block.add(ikey("banana"), nil))
 	i.clear()
 
 	testBlockCleared(t, &i.block, &blockWriter{})
