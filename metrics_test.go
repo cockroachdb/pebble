@@ -395,6 +395,12 @@ func TestMetrics(t *testing.T) {
 						panic(fmt.Sprintf("invalid level %d", l))
 					}
 					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].NumVirtualFiles))
+				} else if line == "remote-count" {
+					count, _ := m.RemoteTablesTotal()
+					buf.WriteString(fmt.Sprintf("%d\n", count))
+				} else if line == "remote-size" {
+					_, size := m.RemoteTablesTotal()
+					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(size)))
 				} else {
 					panic(fmt.Sprintf("invalid field: %s", line))
 				}
@@ -427,6 +433,7 @@ func TestMetrics(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+
 }
 
 func TestMetricsWAmpDisableWAL(t *testing.T) {

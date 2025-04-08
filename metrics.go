@@ -443,6 +443,26 @@ func (m *Metrics) Total() LevelMetrics {
 	return total
 }
 
+// RemoteTablesTotal returns the total number of remote tables and their total
+// size. Remote tables are computed as the difference between total tables
+// (live + obsolete + zombie) and local tables.
+func (m *Metrics) RemoteTablesTotal() (count uint64, size uint64) {
+	var liveTables, liveTableBytes int64
+	for level := 0; level < numLevels; level++ {
+		liveTables += m.Levels[level].NumFiles
+		liveTableBytes += m.Levels[level].Size
+	}
+	totalCount := liveTables + m.Table.ObsoleteCount + m.Table.ZombieCount
+	localCount := m.Table.Local.LiveCount + m.Table.Local.ObsoleteCount + m.Table.Local.ZombieCount
+	remoteCount := uint64(totalCount) - localCount
+
+	totalSize := uint64(liveTableBytes) + m.Table.ObsoleteSize + m.Table.ZombieSize
+	localSize := m.Table.Local.LiveSize + m.Table.Local.ObsoleteSize + m.Table.Local.ZombieSize
+	remoteSize := totalSize - localSize
+
+	return remoteCount, remoteSize
+}
+
 // String pretty-prints the metrics as below:
 //
 //	      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
