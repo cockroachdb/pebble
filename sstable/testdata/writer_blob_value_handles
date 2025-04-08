@@ -1,9 +1,9 @@
 build table-format=Pebble,v6
-a@2.SET.1:blobInlineHandle(0, blk1, 10, 100, 0x07)
-b@5.SET.7:blobInlineHandle(0, blk2, 110, 200, 0x07)
+a@2.SET.1:blob{fileNum=1 blockNum=1 offset=10 valueLen=10}attr=7
+b@5.SET.7:blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
 b@4.DEL.3:
-b@3.SET.2:blobInlineHandle(1, blk0, 0, 200, 0x07)
-b@2.SET.1:blobInlineHandle(1, blk1, 294, 103, 0x07)
+b@3.SET.2:blob{fileNum=2 blockNum=0 offset=0 valueLen=200}attr=7
+b@2.SET.1:blob{fileNum=2 blockNum=1 offset=294 valueLen=103}attr=7
 ----
 blob-separated-values: num-values 4
 
@@ -88,7 +88,7 @@ sstable
  │    │    │    │    ├── 109-110: x 11 # data[4] = 17 [128 overall]
  │    │    │    │    └── 110-111: x 17 # data[5] = 23 [134 overall]
  │    │    │    └── data
- │    │    │         ├── 111-116: x 470064010a   # data[0]: "G\x00d\x01\n"
+ │    │    │         ├── 111-116: x 47000a010a   # data[0]: "G\x00\n\x01\n"
  │    │    │         ├── 116-122: x 4700c801026e # data[1]: "G\x00\xc8\x01\x02n"
  │    │    │         ├── 122-122: x              # data[2]:
  │    │    │         ├── 122-128: x 6701c8010000 # data[3]: "g\x01\xc8\x01\x00\x00"
@@ -101,12 +101,12 @@ sstable
  │    │    ├── data for column 6 (bool)
  │    │    │    └── 152-153: x 01 # zero bitmap encoding
  │    │    └── 153-154: x 00 # block padding byte
- │    ├── a@2#1,SET:value handle {ValueLen:0 BlockNum:100 OffsetInBlock:1}
+ │    ├── a@2#1,SET:value handle {ValueLen:0 BlockNum:10 OffsetInBlock:1}
  │    ├── b@5#7,SET:value handle {ValueLen:0 BlockNum:200 OffsetInBlock:2}
  │    ├── b@4#3,DEL:
  │    ├── b@3#2,SET:value handle {ValueLen:1 BlockNum:200 OffsetInBlock:0}
  │    ├── b@2#1,SET:value handle {ValueLen:1 BlockNum:103 OffsetInBlock:1}
- │    └── trailer [compression=none checksum=0x196b9b28]
+ │    └── trailer [compression=none checksum=0x834a75d7]
  ├── index  offset: 159  length: 36
  │    ├── 00000    block:0/154
  │    │   
@@ -134,7 +134,7 @@ sstable
  │    ├── 00547    rocksdb.raw.value.size (15)
  │    ├── restart points
  │    │    └── 00562 [restart 0]
- │    └── trailer [compression=none checksum=0xaaf4ac72]
+ │    └── trailer [compression=none checksum=0x2ff97e5d]
  ├── meta-index  offset: 775  length: 46
  │    ├── 0000    rocksdb.properties block:200/570
  │    │   

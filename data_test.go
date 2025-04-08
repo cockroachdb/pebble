@@ -642,7 +642,6 @@ func runBuildCmd(
 	if err := sstable.ParseWriterOptions(&writeOpts, td.CmdArgs[1:]...); err != nil {
 		return err
 	}
-	var blobReferences blobtest.References
 	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
@@ -656,8 +655,11 @@ func runBuildCmd(
 		v := kv.InPlaceValue()
 		// If the value looks like it's a debug blob handle, parse it and add it
 		// to the sstable as a blob handle.
-		if ddOpts.blobValues != nil && ddOpts.blobValues.IsBlobHandle(string(v)) {
-			handle, err := ddOpts.blobValues.ParseInlineHandle(string(v), &blobReferences)
+		if blobtest.IsBlobHandle(string(v)) {
+			if ddOpts.blobValues == nil {
+				return errors.Newf("test not set up to support blob handles")
+			}
+			handle, _, err := ddOpts.blobValues.ParseInlineHandle(string(v))
 			if err != nil {
 				return err
 			}
