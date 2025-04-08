@@ -21,9 +21,26 @@ type noopCompressor struct{}
 type snappyCompressor struct{}
 type minlzCompressor struct{}
 
+// adaptiveCompressor dynamically switches between snappy and zstd
+// compression. It prefers using zstd because of its potential for
+// high compression ratios. However, if zstd does not achieve a good
+// compression ratio, we apply exponential backoff before trying zstd again.
+// If the compression ratio is high (50% or better), we continue using zstd.
+type adaptiveCompressor struct {
+	// timeTilTry is the number of operations to wait before
+	// attempting zstd compression again after a poor result.
+	timeTilTry int
+
+	// zstdBackoffStep is how much we increase timeTilTry
+	// each time zstd compression fails to achieve at least
+	// a 50% compression ratio.
+	zstdBackoffStep int
+}
+
 var _ Compressor = noopCompressor{}
 var _ Compressor = snappyCompressor{}
 var _ Compressor = minlzCompressor{}
+var _ Compressor = (*adaptiveCompressor)(nil)
 
 func (noopCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
 	panic("NoCompressionCompressor.Compress() should not be called.")
@@ -62,9 +79,50 @@ func GetCompressor(c Compression) Compressor {
 		return getZstdCompressor()
 	case MinlzCompression:
 		return minlzCompressor{}
+	case AdaptiveCompression:
+		// TODO(edward) investigate if we can do this without an allocation
+		return &adaptiveCompressor{}
 	default:
 		panic("Invalid compression type.")
 	}
+}
+
+func (a *adaptiveCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
+	var algo CompressionIndicator
+	var compressedBuf []byte
+	if a.timeTilTry == 0 {
+		z := getZstdCompressor()
+		defer z.Close()
+		algo, compressedBuf = z.Compress(dst, src)
+		// Perform a backoff if zstd compression ratio wasn't better than 50%.
+		if len(compressedBuf) >= len(src)-len(src)/2 {
+			a.increaseBackoff()
+		} else {
+			a.resetBackoff()
+		}
+	} else {
+		// Use Snappy
+		algo, compressedBuf = (snappyCompressor{}).Compress(dst, src)
+	}
+	a.timeTilTry--
+	return algo, compressedBuf
+}
+
+func (a *adaptiveCompressor) Close() {}
+
+// Exponential backoff for zstd
+func (a *adaptiveCompressor) increaseBackoff() {
+	a.zstdBackoffStep *= 2
+	if a.timeTilTry == 0 {
+		a.timeTilTry = a.zstdBackoffStep
+	} else {
+		a.timeTilTry += a.zstdBackoffStep
+	}
+}
+
+func (a *adaptiveCompressor) resetBackoff() {
+	a.zstdBackoffStep = 1
+	a.timeTilTry = 1
 }
 
 type Decompressor interface {
