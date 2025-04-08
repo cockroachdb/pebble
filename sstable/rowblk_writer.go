@@ -327,10 +327,13 @@ func (i *indexBlockBuf) shouldFlush(
 		int(nEntries), flushGovernor)
 }
 
-func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
-	i.block.Add(key, value)
+func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) error {
+	if err := i.block.Add(key, value); err != nil {
+		return err
+	}
 	size := i.block.EstimatedSize()
 	i.size.estimate.writtenWithTotal(uint64(size), inflightSize)
+	return nil
 }
 
 func (i *indexBlockBuf) finish() []byte {
@@ -1180,9 +1183,7 @@ func (w *RawRowWriter) addIndexEntry(
 			return err
 		}
 	}
-
-	writeTo.add(sep, encoded, inflightSize)
-	return nil
+	return writeTo.add(sep, encoded, inflightSize)
 }
 
 func (w *RawRowWriter) addPrevDataBlockToIndexBlockProps() {
