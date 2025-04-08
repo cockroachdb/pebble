@@ -263,7 +263,9 @@ func rewriteBlocks(
 					return errors.Errorf("multiple keys with same key prefix")
 				}
 			}
-			bw.add(scratch, v)
+			if err := bw.add(scratch, v); err != nil {
+				return err
+			}
 			if output[i].start.UserKey == nil {
 				keyAlloc, output[i].start = cloneKeyWithBuf(scratch, keyAlloc)
 			}
