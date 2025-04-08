@@ -322,7 +322,7 @@ type DB struct {
 	//
 	// Care is taken to avoid holding DB.mu during IO operations. Accomplishing
 	// this sometimes requires releasing DB.mu in a method that was called with
-	// it held. See versionSet.logAndApply() and DB.makeRoomForWrite() for
+	// it held. See versionSet.UpdateVersionLocked() and DB.makeRoomForWrite() for
 	// examples. This is a common pattern, so be careful about expectations that
 	// DB.mu will be held continuously across a set of calls.
 	mu struct {

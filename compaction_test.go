@@ -2558,7 +2558,7 @@ func (i *createManifestErrorInjector) MaybeError(op errorfs.Op) error {
 		return nil
 	}
 	// This necessitates having a MaxManifestSize of 1, to reliably induce
-	// logAndApply errors.
+	// UpdateVersionLocked errors.
 	if strings.Contains(op.Path, "MANIFEST") && op.Kind == errorfs.OpCreate {
 		return errorfs.ErrInjected
 	}
@@ -2567,11 +2567,11 @@ func (i *createManifestErrorInjector) MaybeError(op errorfs.Op) error {
 
 var _ errorfs.Injector = &createManifestErrorInjector{}
 
-// TestCompaction_LogAndApplyFails exercises a flush or ingest encountering an
-// unrecoverable error during logAndApply.
+// TestCompaction_UpdateVersionFails exercises a flush or ingest encountering an
+// unrecoverable error during UpdateVersionLocked.
 //
 // Regression test for #1669.
-func TestCompaction_LogAndApplyFails(t *testing.T) {
+func TestCompaction_UpdateVersionFails(t *testing.T) {
 	// flushKeys writes the given keys to the DB, flushing the resulting memtable.
 	var key = []byte("foo")
 	flushErrC := make(chan error)
@@ -2654,8 +2654,9 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		err = addFn(db)
 		require.True(t, errors.Is(err, errorfs.ErrInjected))
 
-		// Under normal circumstances, such an error in logAndApply would panic and
-		// cause the DB to terminate here. Assert that we captured the fatal error.
+		// Under normal circumstances, such an error in UpdateVersionLocked would
+		// panic and cause the DB to terminate here. Assert that we captured the
+		// fatal error.
 		require.True(t, errors.Is(logger.err, errorfs.ErrInjected))
 	}
 	for _, tc := range testCases {

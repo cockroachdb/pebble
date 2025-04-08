@@ -122,13 +122,14 @@ func TestVersionSet(t *testing.T) {
 			}
 
 			mu.Lock()
-			vs.logLock()
-
-			forceRotation := rand.IntN(3) == 0
-			err = vs.logAndApply(
-				0 /* jobID */, ve, fileMetrics, forceRotation,
-				func() []compactionInfo { return nil },
-			)
+			err = vs.UpdateVersionLocked(func() (versionUpdate, error) {
+				return versionUpdate{
+					VE:                      ve,
+					Metrics:                 fileMetrics,
+					ForceManifestRotation:   rand.IntN(3) == 0,
+					InProgressCompactionsFn: func() []compactionInfo { return nil },
+				}, nil
+			})
 			mu.Unlock()
 			if err != nil {
 				td.Fatalf(t, "%v", err)

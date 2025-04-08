@@ -695,8 +695,8 @@ type compactionPickerByScore struct {
 	// This means that at some point in the future a compactionPickerByScore
 	// created in the past will have mutually inconsistent state in vers and
 	// l0Organizer. This is not a problem since (a) a new picker is created in
-	// logAndApply when a new version is installed, and (b) only the latest picker
-	// is used for picking compactions. This is ensured by holding
+	// UpdateVersionLocked when a new version is installed, and (b) only the
+	// latest picker is used for picking compactions. This is ensured by holding
 	// versionSet.logLock for both (a) and (b).
 	l0Organizer     *manifest.L0Organizer
 	virtualBackings *manifest.VirtualBackings
