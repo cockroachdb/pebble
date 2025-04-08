@@ -449,8 +449,8 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	}
 	if o.BlockSize <= 0 {
 		o.BlockSize = base.DefaultBlockSize
-	} else if o.BlockSize > sstable.MaximumBlockSize {
-		panic(errors.Errorf("BlockSize %d exceeds MaximumBlockSize", o.BlockSize))
+	} else if o.BlockSize > sstable.MaximumRestartOffset {
+		panic(errors.Errorf("BlockSize %d exceeds MaximumRestartOffset", o.BlockSize))
 	}
 	if o.BlockSizeThreshold <= 0 {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold

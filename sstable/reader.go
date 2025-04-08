@@ -766,13 +766,18 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	rangeDelBlock := blockWriter{
 		restartInterval: 1,
 	}
+
+	// NB: There's subtle error handling here. The Emit closure will set err to
+	// the first non-nil error encountered. After we call frag.Finish(), we check
+	// err to see if the closure set an error.
+	var err error
 	frag := keyspan.Fragmenter{
 		Cmp:    r.Compare,
 		Format: r.FormatKey,
 		Emit: func(s keyspan.Span) {
 			for _, k := range s.Keys {
 				startIK := InternalKey{UserKey: s.Start, Trailer: k.Trailer}
-				rangeDelBlock.add(startIK, s.End)
+				err = firstError(err, rangeDelBlock.add(startIK, s.End))
 			}
 		},
 	}
@@ -780,6 +785,9 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 		frag.Add(tombstones[i])
 	}
 	frag.Finish()
+	if err != nil {
+		return nil, err
+	}
 
 	// Return the contents of the constructed v2 format range-del block.
 	return rangeDelBlock.finish(), nil
