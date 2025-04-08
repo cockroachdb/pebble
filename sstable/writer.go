@@ -438,14 +438,17 @@ func (i *indexBlockBuf) shouldFlush(
 		int(nEntries), targetBlockSize, sizeThreshold)
 }
 
-func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
-	i.block.add(key, value)
+func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) error {
+	if err := i.block.add(key, value); err != nil {
+		return err
+	}
 	size := i.block.estimatedSize()
 	if i.size.useMutex {
 		i.size.mu.Lock()
 		defer i.size.mu.Unlock()
 	}
 	i.size.estimate.writtenWithTotal(uint64(size), inflightSize)
+	return nil
 }
 
 func (i *indexBlockBuf) finish() []byte {
@@ -1000,9 +1003,12 @@ func (w *Writer) addPoint(key InternalKey, value []byte, forceObsolete bool) err
 	}
 
 	w.maybeAddToFilter(key.UserKey)
-	w.dataBlockBuf.dataBlock.addWithOptionalValuePrefix(
+	err = w.dataBlockBuf.dataBlock.addWithOptionalValuePrefix(
 		key, isObsolete, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
 		setHasSameKeyPrefix)
+	if err != nil {
+		return err
+	}
 
 	w.meta.updateSeqNum(key.SeqNum())
 
@@ -1131,8 +1137,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	w.props.NumRangeDeletions++
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
-	w.rangeDelBlock.add(key, value)
-	return nil
+	return w.rangeDelBlock.add(key, value)
 }
 
 // RangeKeySet sets a range between start (inclusive) and end (exclusive) with
@@ -1332,8 +1337,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	}
 
 	// Add the key to the block.
-	w.rangeKeyBlock.add(key, value)
-	return nil
+	return w.rangeKeyBlock.add(key, value)
 }
 
 // tempRangeKeyBuf returns a slice of length n from the Writer's rkBuf byte
@@ -1553,9 +1557,7 @@ func (w *Writer) addIndexEntry(
 			return err
 		}
 	}
-
-	writeTo.add(sep, encoded, inflightSize)
-	return nil
+	return writeTo.add(sep, encoded, inflightSize)
 }
 
 func (w *Writer) addPrevDataBlockToIndexBlockProps() {
@@ -1727,7 +1729,9 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 			Props:       b.properties,
 		}
 		encoded := encodeBlockHandleWithProperties(w.blockBuf.tmp[:], bhp)
-		w.topLevelIndexBlock.add(b.sep, encoded)
+		if err := w.topLevelIndexBlock.add(b.sep, encoded); err != nil {
+			return BlockHandle{}, err
+		}
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size

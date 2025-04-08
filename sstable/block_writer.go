@@ -58,13 +58,19 @@ func (w *blockWriter) clear() {
 	}
 }
 
-// MaximumBlockSize is an extremely generous maximum block size of 256MiB. We
-// explicitly place this limit to reserve a few bits in the restart for
-// internal use.
-const MaximumBlockSize = 1 << 28
+// MaximumRestartOffset indicates the maximum offset that we can encode
+// within a restart point of a row-oriented block. The last bit is reserved
+// for the setHasSameKeyPrefixSinceLastRestart flag within a restart point.
+// If a block exceeds this size and we attempt to add another KV pair, the
+// restart points table will be unable to express the position of the pair,
+// resulting in undefined behavior and arbitrary corruption.
+const MaximumRestartOffset = 1<<31 - 1
 const setHasSameKeyPrefixRestartMask uint32 = 1 << 31
 const restartMaskLittleEndianHighByteWithoutSetHasSamePrefix byte = 0b0111_1111
 const restartMaskLittleEndianHighByteOnlySetHasSamePrefix byte = 0b1000_0000
+
+// ErrBlockTooBig is surfaced when a block exceeds the maximum size.
+var ErrBlockTooBig = errors.New("block size exceeds maximum size")
 
 func (w *blockWriter) getCurKey() InternalKey {
 	k := base.DecodeInternalKey(w.curKey)
@@ -88,11 +94,12 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 	addValuePrefix bool,
 	valuePrefix valuePrefix,
 	setHasSameKeyPrefix bool,
-) {
-	// Ensure that the block size does not exceed MaximumBlockSize before writing more data
-	if len(w.buf) >= MaximumBlockSize {
-		panic(errors.AssertionFailedf("rowblk: adding KV to %d-block; already exceeds %d-byte maximum",
-			len(w.buf), MaximumBlockSize))
+) error {
+	// Check that the block does not already exceed MaximumRestartOffset. If it
+	// does and we append the additional key-value pair, the new key-value pair's
+	// offset in the block will be inexpressible as a restart point.
+	if len(w.buf) >= MaximumRestartOffset {
+		return errors.WithDetailf(ErrBlockTooBig, "block is %d bytes long", len(w.buf))
 	}
 
 	shared := 0
@@ -194,10 +201,11 @@ func (w *blockWriter) storeWithOptionalValuePrefix(
 	w.curValue = w.buf[n-len(value):]
 
 	w.nEntries++
+	return nil
 }
 
-func (w *blockWriter) add(key InternalKey, value []byte) {
-	w.addWithOptionalValuePrefix(
+func (w *blockWriter) add(key InternalKey, value []byte) error {
+	return w.addWithOptionalValuePrefix(
 		key, false, value, len(key.UserKey), false, 0, false)
 }
 
@@ -218,7 +226,7 @@ func (w *blockWriter) addWithOptionalValuePrefix(
 	addValuePrefix bool,
 	valuePrefix valuePrefix,
 	setHasSameKeyPrefix bool,
-) {
+) error {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := key.Size()
@@ -231,7 +239,7 @@ func (w *blockWriter) addWithOptionalValuePrefix(
 	}
 	key.Encode(w.curKey)
 
-	w.storeWithOptionalValuePrefix(
+	return w.storeWithOptionalValuePrefix(
 		size, value, maxSharedKeyLen, addValuePrefix, valuePrefix, setHasSameKeyPrefix)
 }
 

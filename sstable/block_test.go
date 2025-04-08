@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -60,8 +61,9 @@ func TestBlockWriterWithPrefix(t *testing.T) {
 		addValuePrefix bool,
 		valuePrefix valuePrefix,
 		setHasSameKeyPrefix bool) {
-		w.addWithOptionalValuePrefix(
+		err := w.addWithOptionalValuePrefix(
 			key, false, value, len(key.UserKey), addValuePrefix, valuePrefix, setHasSameKeyPrefix)
+		require.NoError(t, err)
 	}
 	addAdapter(
 		ikey("apple"), []byte("red"), false, 0, true)
@@ -128,10 +130,9 @@ func testBlockCleared(t *testing.T, w, b *blockWriter) {
 
 func TestBlockClear(t *testing.T) {
 	w := blockWriter{restartInterval: 16}
-	w.add(ikey("apple"), nil)
-	w.add(ikey("apricot"), nil)
-	w.add(ikey("banana"), nil)
-
+	require.NoError(t, w.add(ikey("apple"), nil))
+	require.NoError(t, w.add(ikey("apricot"), nil))
+	require.NoError(t, w.add(ikey("banana"), nil))
 	w.clear()
 
 	// Once a block is cleared, we expect its fields to be cleared, but we expect
@@ -243,7 +244,7 @@ func TestBlockIter2(t *testing.T) {
 				case "build":
 					w := &blockWriter{restartInterval: r}
 					for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
-						w.add(makeIkey(e), nil)
+						require.NoError(t, w.add(makeIkey(e), nil))
 					}
 					block = w.finish()
 					return ""
@@ -277,7 +278,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 		[]byte("banana"),
 	}
 	for i := range expected {
-		w.add(InternalKey{UserKey: expected[i]}, nil)
+		require.NoError(t, w.add(InternalKey{UserKey: expected[i]}, nil))
 	}
 	block := w.finish()
 
@@ -335,7 +336,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 		[]byte("carrot"),
 	}
 	for i := range keys {
-		w.add(InternalKey{UserKey: keys[i]}, nil)
+		require.NoError(t, w.add(InternalKey{UserKey: keys[i]}, nil))
 	}
 	block := w.finish()
 
@@ -409,8 +410,8 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 					"pear", "persimmon",
 				}
 				for _, k := range keys {
-					elidedPrefixWriter.add(ikey(k), nil)
-					includedPrefixWriter.add(ikey(prefix+k), nil)
+					require.NoError(t, elidedPrefixWriter.add(ikey(k), nil))
+					require.NoError(t, includedPrefixWriter.add(ikey(prefix+k), nil))
 				}
 
 				elidedPrefixBlock, includedPrefixBlock := elidedPrefixWriter.finish(), includedPrefixWriter.finish()
@@ -492,9 +493,9 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 					synthPrefix = []byte(prefixStr)
 				}
 				for _, key := range keys {
-					suffixWriter.add(ikey(key), nil)
+					require.NoError(t, suffixWriter.add(ikey(key), nil))
 					replacedKey := strings.Split(key, "@")[0] + "@" + expectedSuffix
-					expectedSuffixWriter.add(ikey(prefixStr+replacedKey), nil)
+					require.NoError(t, expectedSuffixWriter.add(ikey(prefixStr+replacedKey), nil))
 				}
 
 				suffixReplacedBlock := suffixWriter.finish()
@@ -586,8 +587,12 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 	}
 }
 
+// TestSingularKVBlockRestartsOverflow tests a scenario where a large key-value
+// pair is written to a block, such that the total block size exceeds 4GiB. This
+// works becasue the restart table never needs to encode a restart offset beyond
+// the 1st key-value pair. The offset of the restarts table itself may exceed
+// 2^32-1 but the iterator takes care to support this.
 func TestSingularKVBlockRestartsOverflow(t *testing.T) {
-
 	_, isCI := os.LookupEnv("CI")
 	if isCI {
 		t.Skip("Skipping test: requires too much memory for CI now.")
@@ -604,12 +609,11 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 
 	var largeKeySize int64 = 2 << 30   // 2GB key size
 	var largeValueSize int64 = 2 << 30 // 2GB value size
-
 	largeKey := bytes.Repeat([]byte("k"), int(largeKeySize))
 	largeValue := bytes.Repeat([]byte("v"), int(largeValueSize))
 
 	writer := &blockWriter{restartInterval: 1}
-	writer.add(base.InternalKey{UserKey: largeKey}, largeValue)
+	require.NoError(t, writer.add(base.InternalKey{UserKey: largeKey}, largeValue))
 	blockData := writer.finish()
 	iter, err := newBlockIter(bytes.Compare, nil, blockData, NoTransforms)
 	require.NoError(t, err, "failed to create iterator for block")
@@ -633,25 +637,26 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	require.Equal(t, largeValue, value.ValueOrHandle, "unexpected value")
 }
 
-func TestBufferExceeding256MBShouldPanic(t *testing.T) {
-
+// TestExceedingMaximumRestartOffset tests that writing a block that exceeds the
+// maximum restart offset errors.
+func TestExceedingMaximumRestartOffset(t *testing.T) {
 	_, isCI := os.LookupEnv("CI")
 	if isCI {
 		t.Skip("Skipping test: requires too much memory for CI now.")
 	}
 
-	// Test that writing to a block that is already >= 256MiB
-	// causes a panic to occur.
-
+	// Test that writing to a block that is already >= 2GiB
+	// returns an error.
+	//
 	// Skip this test on 32-bit architectures because they may not
 	// have sufficient memory to reliably execute this test.
 	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" || strconv.IntSize == 32 {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	// Adding 64 KVs each with size 4MiB will create a block
-	// size of >= ~256MiB
-	const numKVs = 64
+	// Adding 512 KVs each with size 4MiB will create a block
+	// size of >= 2GiB.
+	const numKVs = 512
 	const valueSize = (1 << 20) * 4
 
 	type KVTestPair struct {
@@ -665,27 +670,31 @@ func TestBufferExceeding256MBShouldPanic(t *testing.T) {
 		key := fmt.Sprintf("key-%04d", i)
 		KVTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
 	}
-
 	writer := &blockWriter{restartInterval: 1}
 	for _, KVPair := range KVTestPairs {
-		writer.add(base.InternalKey{UserKey: KVPair.key}, KVPair.value)
+		require.NoError(t, writer.add(base.InternalKey{UserKey: KVPair.key}, KVPair.value))
 	}
 
-	// Check that buffer is larger than 256MiB
-	require.Greater(t, len(writer.buf), MaximumBlockSize)
+	// Check that buffer is larger than 2GiB
+	require.Greater(t, len(writer.buf), MaximumRestartOffset)
 
-	// Check that a panic has occurred after the final write after the 256MiB
+	// Check that an error is returned after the final write after the 2GiB
 	// threshold has been crossed
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic on the last write, but none occurred")
-		}
-	}()
-	writer.add(base.InternalKey{UserKey: []byte("arbitrary-last-key")}, []byte("arbitrary-last-value"))
+	err := writer.add(base.InternalKey{UserKey: []byte("arbitrary-last-key")}, []byte("arbitrary-last-value"))
+	require.NotNil(t, err)
+	require.True(t, errors.Is(err, ErrBlockTooBig))
 }
 
+// TestMultipleKVBlockRestartsOverflow tests that SeekGE() works when
+// iter.restarts is greater than math.MaxUint32 for multiple KVs. Test writes
+// <2GiB to the block and then 4GiB causing iter.restarts to be an int >
+// math.MaxUint32. Reaching just shy of 2GiB before adding 4GiB allows the
+// final write to succeed without surpassing 2GiB limit. Then verify that
+// SeekGE() returns valid output without integer overflow.
+//
+// Although the block exceeds math.MaxUint32 bytes, no individual KV pair has an
+// offset that exceeds MaximumRestartOffset.
 func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
-
 	_, isCI := os.LookupEnv("CI")
 	if isCI {
 		t.Skip("Skipping test: requires too much memory for CI now.")
@@ -706,10 +715,10 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 		t.Skip("Skipping test: not supported on 32-bit architecture")
 	}
 
-	// Write just shy of 256MiB to the block 63 * 4MiB < 256MiB
+	// Write just shy of 2GiB to the block 63 * 4MiB < 2GiB
 	const numKVs = 63
 	const valueSize = 4 * (1 << 20)
-	var FourGB int64 = 4 * (1 << 30)
+	var fourGB int64 = 4 * (1 << 30)
 
 	type KVTestPair struct {
 		key   []byte
@@ -725,23 +734,23 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 
 	writer := &blockWriter{restartInterval: 1}
 	for _, KVPair := range KVTestPairs {
-		writer.add(base.InternalKey{UserKey: KVPair.key}, KVPair.value)
+		require.NoError(t, writer.add(base.InternalKey{UserKey: KVPair.key}, KVPair.value))
 	}
 
 	// Add the 4GiB KV, causing iter.restarts >= math.MaxUint32.
 	// Ensure that SeekGE() works thereafter without integer
 	// overflows.
-	writer.add(base.InternalKey{UserKey: []byte("large-kv")}, []byte(strings.Repeat("v", int(FourGB))))
+	require.NoError(t, writer.add(base.InternalKey{UserKey: []byte("large-kv")}, bytes.Repeat([]byte("v"), int(fourGB))))
 
 	blockData := writer.finish()
 	iter, err := newBlockIter(bytes.Compare, nil, blockData, NoTransforms)
 	require.NoError(t, err, "failed to create iterator for block")
-	require.Greater(t, int64(iter.restarts), int64(MaximumBlockSize), "check iter.restarts > 256MiB")
+	require.Greater(t, int64(iter.restarts), int64(MaximumRestartOffset), "check iter.restarts > 2GiB")
 	require.Greater(t, int64(iter.restarts), int64(math.MaxUint32), "check iter.restarts > 2^32-1")
 
 	for i := 0; i < numKVs; i++ {
 		expectedKey := []byte(fmt.Sprintf("key-%04d", i))
-		expectedValue := []byte(strings.Repeat("a", valueSize))
+		expectedValue := bytes.Repeat([]byte("a"), valueSize)
 		key, value := iter.SeekGE(expectedKey, base.SeekGEFlagsNone)
 		require.NotNil(t, key, "failed to find the large key")
 		require.Equal(t, expectedKey, key.UserKey, "unexpected key")
@@ -790,7 +799,9 @@ func createBenchBlock(
 	for i := 0; w.estimatedSize() < blockSize; i++ {
 		key := []byte(fmt.Sprintf("%s%05d%s", string(writtenPrefix), i, origSuffix))
 		ikey.UserKey = key
-		w.add(ikey, nil)
+		if err := w.add(ikey, nil); err != nil {
+			panic(err)
+		}
 		var readKey []byte
 		if withSyntheticPrefix {
 			readKey = append(readKey, benchPrefix...)
