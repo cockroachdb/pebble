@@ -566,47 +566,45 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 
 	// Lock the manifest for a coherent view of the LSM. The database lock has
 	// been re-acquired by the defer within the above anonymous function.
-	d.mu.versions.logLock()
-	vers := d.mu.versions.currentVersion()
-	for l, filesToMark := range files {
-		if len(filesToMark) == 0 {
-			continue
-		}
-		for _, f := range filesToMark {
-			// Ignore files to be marked that have already been compacted or marked.
-			if f.CompactionState == manifest.CompactionStateCompacted ||
-				f.MarkedForCompaction {
+	return d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		vers := d.mu.versions.currentVersion()
+		for l, filesToMark := range files {
+			if len(filesToMark) == 0 {
 				continue
 			}
-			// Else, mark the file for compaction in this version.
-			vers.Stats.MarkedForCompaction++
-			f.MarkedForCompaction = true
+			for _, f := range filesToMark {
+				// Ignore files to be marked that have already been compacted or marked.
+				if f.CompactionState == manifest.CompactionStateCompacted ||
+					f.MarkedForCompaction {
+					continue
+				}
+				// Else, mark the file for compaction in this version.
+				vers.Stats.MarkedForCompaction++
+				f.MarkedForCompaction = true
+			}
+			// The compaction picker uses the markedForCompactionAnnotator to
+			// quickly find files marked for compaction, or to quickly determine
+			// that there are no such files marked for compaction within a level.
+			// A b-tree node may be annotated with an annotation recording that
+			// there are no files marked for compaction within the node's subtree,
+			// based on the assumption that it's static.
+			//
+			// Since we're marking files for compaction, these b-tree nodes'
+			// annotations will be out of date. Clear the compaction-picking
+			// annotation, so that it's recomputed the next time the compaction
+			// picker looks for a file marked for compaction.
+			markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
 		}
-		// The compaction picker uses the markedForCompactionAnnotator to
-		// quickly find files marked for compaction, or to quickly determine
-		// that there are no such files marked for compaction within a level.
-		// A b-tree node may be annotated with an annotation recording that
-		// there are no files marked for compaction within the node's subtree,
-		// based on the assumption that it's static.
-		//
-		// Since we're marking files for compaction, these b-tree nodes'
-		// annotations will be out of date. Clear the compaction-picking
-		// annotation, so that it's recomputed the next time the compaction
-		// picker looks for a file marked for compaction.
-		markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
-	}
-
-	// The 'marked-for-compaction' bit is persisted in the MANIFEST file
-	// metadata. We've already modified the in-memory table metadata, but the
-	// manifest hasn't been updated. Force rotation to a new MANIFEST file,
-	// which will write every table metadata to the new manifest file and ensure
-	// that the now marked-for-compaction table metadata are persisted as marked.
-	// NB: This call to logAndApply will unlockthe MANIFEST, which we locked up
-	// above before obtaining `vers`.
-	return d.mu.versions.logAndApply(
-		jobID,
-		&manifest.VersionEdit{},
-		nil,  /* metrics */
-		true, /* forceRotation */
-		func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) })
+		// The 'marked-for-compaction' bit is persisted in the MANIFEST file
+		// metadata. We've already modified the in-memory table metadata, but the
+		// manifest hasn't been updated. Force rotation to a new MANIFEST file,
+		// which will write every table metadata to the new manifest file and ensure
+		// that the now marked-for-compaction table metadata are persisted as marked.
+		return versionUpdate{
+			VE:                      &manifest.VersionEdit{},
+			JobID:                   jobID,
+			ForceManifestRotation:   true,
+			InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) },
+		}, nil
+	})
 }
