@@ -417,9 +417,9 @@ func NewFileReader(
 	var preallocRH objstorageprovider.PreallocatedReadHandle
 	rh := objstorageprovider.UsePreallocatedReadHandle(
 		r, objstorage.ReadBeforeForNewReader, &preallocRH)
-	defer rh.Close()
 
 	encodedFooter, err := block.ReadRaw(ctx, r, rh, ro.LoggerAndTracer, fileNum, footerBuf[:], off)
+	_ = rh.Close()
 	if err != nil {
 		return nil, err
 	}

@@ -196,7 +196,7 @@ func (b *lsmViewBuilder) tableDetails(
 		if err != nil {
 			outf("error opening table: %v", err)
 		} else {
-			defer iters.CloseAll()
+			defer func() { _ = iters.CloseAll() }()
 		}
 	}
 	const maxPoints = 14

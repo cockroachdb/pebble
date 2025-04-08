@@ -2948,7 +2948,7 @@ func (d *DB) checkVirtualBounds(m *tableMetadata) {
 	if err != nil {
 		panic(errors.Wrap(err, "pebble: error creating iterators"))
 	}
-	defer iters.CloseAll()
+	defer func() { _ = iters.CloseAll() }()
 
 	if m.HasPointKeys {
 		pointIter := iters.Point()

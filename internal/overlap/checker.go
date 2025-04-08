@@ -177,7 +177,7 @@ func (c *Checker) emptyRegionPointsAndRangeDels(
 		return false, err
 	}
 	if points != nil {
-		defer points.Close()
+		defer func() { _ = points.Close() }()
 		var kv *base.InternalKV
 		if c.cmp(region.Start, pointBounds.Start) <= 0 {
 			kv = points.First()

@@ -2753,7 +2753,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// Iterators created through NewExternalIter have a different iterator
 	// initialization process.
 	if i.externalIter != nil {
-		finishInitializingExternal(i.ctx, i)
+		_ = finishInitializingExternal(i.ctx, i)
 		return
 	}
 	finishInitializingIter(i.ctx, i.alloc)

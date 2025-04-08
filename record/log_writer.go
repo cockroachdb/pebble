@@ -714,7 +714,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 		if fErr != nil {
 			// NB: pop may invoke ExternalSyncQueueCallback, which is why we have
 			// called f.Unlock() above. We will acquire the lock again below.
-			f.pendingSyncs.pop(snap, fErr)
+			_ = f.pendingSyncs.pop(snap, fErr)
 			// Update the idleStartTime if work could not be done, so that we don't
 			// include the duration we tried to do work as idle. We don't bother
 			// with the rest of the accounting, which means we will undercount.

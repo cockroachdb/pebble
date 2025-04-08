@@ -95,7 +95,9 @@ func (w *Writer) encodeFragmentedRangeKeySpan(s keyspan.Span) {
 	// to depend on this ordering for colblk-encoded sstables.
 	keyspan.SortKeysByTrailerAndSuffix(w.comparer.CompareRangeSuffixes, s.Keys)
 	if w.Error() == nil {
-		w.rw.EncodeSpan(s)
+		if err := w.rw.EncodeSpan(s); err != nil {
+			w.err = err
+		}
 	}
 }
 

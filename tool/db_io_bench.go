@@ -62,7 +62,7 @@ func (d *dbT) runIOBench(cmd *cobra.Command, args []string) {
 
 	defer func() {
 		for _, r := range readables {
-			r.Close()
+			_ = r.Close()
 		}
 	}()
 
@@ -252,7 +252,7 @@ func performIOs(readables []objstorage.Readable, ios []benchIO) error {
 	}
 	defer func() {
 		for i := range rh {
-			rh[i].Close()
+			_ = rh[i].Close()
 		}
 	}()
 

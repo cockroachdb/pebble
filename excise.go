@@ -76,7 +76,7 @@ func (d *DB) exciseTable(
 	if err != nil {
 		return nil, nil, err
 	}
-	defer iters.CloseAll()
+	defer func() { _ = iters.CloseAll() }()
 
 	// Create a file to the left of the excise span, if necessary.
 	// The bounds of this file will be [m.Smallest, lastKeyBefore(exciseSpan.Start)].

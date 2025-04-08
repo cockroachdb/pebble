@@ -660,7 +660,9 @@ func RandomOptions(
 			fmt.Fprintln(&privateOpts, `  disable_lazy_combined_iteration=true`)
 		}
 		if privateOptsStr := privateOpts.String(); privateOptsStr != `[Options]\n` {
-			parseOptions(testOpts, privateOptsStr, customOptionParsers)
+			if err := parseOptions(testOpts, privateOptsStr, customOptionParsers); err != nil {
+				panic(err)
+			}
 		}
 	}
 

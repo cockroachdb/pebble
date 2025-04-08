@@ -542,11 +542,11 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 			}
 			if fmtValues {
 				if needDelimiter {
-					stdout.Write([]byte{' '})
+					_, _ = stdout.Write([]byte{' '})
 				}
 				fmt.Fprintf(stdout, "%s", d.fmtValue.fn(iter.Key(), iter.Value()))
 			}
-			stdout.Write([]byte{'\n'})
+			_, _ = stdout.Write([]byte{'\n'})
 		}
 
 		count++
@@ -651,7 +651,7 @@ This command will remove all keys in this range!`
 	// the database directory so that the command works against any FS.
 	// TODO(radu): remove this if we add a separate DB.Excise method.
 	path := dbOpts.FS.PathJoin(dbDir, fmt.Sprintf("excise-%0x.sst", rand.Uint32()))
-	defer dbOpts.FS.Remove(path)
+	defer func() { _ = dbOpts.FS.Remove(path) }()
 	f, err := dbOpts.FS.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		fmt.Fprintf(stderr, "Error creating temporary sst file %q: %s\n", path, err)
@@ -733,7 +733,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		if err != nil {
 			return err
 		}
-		defer objProvider.Close()
+		defer func() { _ = objProvider.Close() }()
 
 		// Load and aggregate sstable properties.
 		tw := tabwriter.NewWriter(stdout, 2, 1, 4, ' ', 0)

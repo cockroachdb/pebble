@@ -767,7 +767,7 @@ func (c *compaction) newInputIters(
 		if retErr != nil {
 			for _, iter := range iters {
 				if iter != nil {
-					iter.Close()
+					_ = iter.Close()
 				}
 			}
 			for _, rangeDelIter := range rangeDelIters {
@@ -1214,7 +1214,7 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 			}
 
 			if d.mu.mem.mutable == tbl {
-				d.makeRoomForWrite(nil)
+				_ = d.makeRoomForWrite(nil)
 			} else {
 				mem.flushForced = true
 			}
@@ -2615,7 +2615,7 @@ func (d *DB) runCopyCompaction(
 		}
 		defer func() {
 			if src != nil {
-				src.Close()
+				_ = src.Close()
 			}
 		}()
 

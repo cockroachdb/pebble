@@ -150,8 +150,8 @@ func (c *Checksummer) Checksum(block []byte, blockType byte) (checksum uint32) {
 		} else {
 			c.xxHasher.Reset()
 		}
-		c.xxHasher.Write(block)
-		c.xxHasher.Write(c.blockTypeBuf[:])
+		_, _ = c.xxHasher.Write(block)
+		_, _ = c.xxHasher.Write(c.blockTypeBuf[:])
 		checksum = uint32(c.xxHasher.Sum64())
 	default:
 		panic(errors.Newf("unsupported checksum type: %d", c.Type))

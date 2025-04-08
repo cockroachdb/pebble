@@ -228,7 +228,7 @@ func buildForIngestExternalEmulation(
 	panicIfErr(err)
 
 	reader, pointIter, rangeDelIter, rangeKeyIter := openExternalObj(t, externalObjID, bounds, syntheticPrefix)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	writable := objstorageprovider.NewFileWritable(f)
 	// The underlying file should already have unique prefixes. Plus we are

@@ -278,12 +278,12 @@ func formatKeyValue(
 		needDelimiter := formatKey(w, fmtKey, key)
 		if fmtValue.spec != "null" {
 			if needDelimiter {
-				w.Write([]byte{' '})
+				_, _ = w.Write([]byte{' '})
 			}
 			fmt.Fprintf(w, "%s", fmtValue.fn(key.UserKey, value))
 		}
 	}
-	w.Write([]byte{'\n'})
+	_, _ = w.Write([]byte{'\n'})
 }
 
 func formatSpan(w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, s *keyspan.Span) {
@@ -297,7 +297,7 @@ func formatSpan(w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, s *ke
 			case base.InternalKeyKindRangeKeyUnset:
 				fmt.Fprintf(w, ": %s", k.Suffix)
 			}
-			w.Write([]byte{'\n'})
+			_, _ = w.Write([]byte{'\n'})
 		}
 	}
 }

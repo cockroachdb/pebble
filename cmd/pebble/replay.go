@@ -141,13 +141,13 @@ func (c *replayConfig) runE(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		execArgs := append(append([]string{executable, "bench", "replay"}, c.args()...), workloadPath)
-		syscall.Exec(executable, execArgs, os.Environ())
+		_ = syscall.Exec(executable, execArgs, os.Environ())
 	}
 	return nil
 }
 
 func (c *replayConfig) runOnce(stdout io.Writer, workloadPath string) error {
-	defer c.cleanUp()
+	defer func() { _ = c.cleanUp() }()
 	if c.name == "" {
 		c.name = vfs.Default.PathBase(workloadPath)
 	}

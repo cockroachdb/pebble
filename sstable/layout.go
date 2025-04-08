@@ -210,10 +210,10 @@ func (l *Layout) Describe(
 					return err
 				}
 				if fmtKV == nil {
-					formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), nil)
+					err = formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), nil)
 				} else {
 					var lastKey InternalKey
-					formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), func(key *base.InternalKey, value []byte) string {
+					err = formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), func(key *base.InternalKey, value []byte) string {
 						v := fmtKV(key, value)
 						if base.InternalCompare(r.Comparer.Compare, lastKey, *key) >= 0 {
 							v += " WARNING: OUT OF ORDER KEYS!"
@@ -231,7 +231,7 @@ func (l *Layout) Describe(
 				}
 				// TODO(jackson): colblk ignores fmtKV, because it doesn't
 				// make sense in the context.
-				formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
+				err = formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
 
 			case "range-key":
 				h, err = r.readRangeKeyBlock(ctx, block.NoReadEnv, noReadHandle, b.Handle)
@@ -240,14 +240,14 @@ func (l *Layout) Describe(
 				}
 				// TODO(jackson): colblk ignores fmtKV, because it doesn't
 				// make sense in the context.
-				formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
+				err = formatting.formatKeyspanBlock(tpNode, r, *b, h.BlockData(), fmtKV)
 
 			case "index", "top-index":
 				h, err = r.readIndexBlock(ctx, block.NoReadEnv, noReadHandle, b.Handle)
 				if err != nil {
 					return err
 				}
-				formatting.formatIndexBlock(tpNode, r, *b, h.BlockData())
+				err = formatting.formatIndexBlock(tpNode, r, *b, h.BlockData())
 
 			case "properties":
 				h, err = r.blockReader.Read(ctx, block.NoReadEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
@@ -379,7 +379,7 @@ func formatColblkIndexBlock(tp treeprinter.Node, r *Reader, b NamedBlockHandle, 
 	if err := iter.Init(r.Comparer, data, NoTransforms); err != nil {
 		return err
 	}
-	defer iter.Close()
+	defer func() { _ = iter.Close() }()
 	i := 0
 	for v := iter.First(); v; v = iter.Next() {
 		bh, err := iter.BlockHandleWithProperties()
@@ -410,7 +410,7 @@ func formatColblkDataBlock(
 		if err := iter.Init(&decoder, block.IterTransforms{}); err != nil {
 			return err
 		}
-		defer iter.Close()
+		defer func() { _ = iter.Close() }()
 		for kv := iter.First(); kv != nil; kv = iter.Next() {
 			tp.Child(fmtKV(&kv.K, kv.V.LazyValue().ValueOrHandle))
 		}

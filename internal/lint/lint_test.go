@@ -169,7 +169,18 @@ func TestLint(t *testing.T) {
 				dirCmd(t, pkg.Dir, "go", "vet", "-vettool="+roachVetPath, "./..."),
 				ignoreGoMod(),
 			), func(s string) {
-				t.Errorf("%s", s)
+				if strings.HasPrefix(s, "#") {
+					// Ignore "comments" which show the package before errors. Since we
+					// ignore some errors, we don't want these.
+					return
+				}
+				// Ignore unchecked errors in testing code.
+				if strings.Contains(s, "_test.go:") && strings.Contains(s, "unchecked error") {
+					return
+				}
+				// We add a "\n" so the file name is printed on its own line (which
+				// makes it clickable in Goland),
+				t.Errorf("\n%s", s)
 			}); err != nil {
 			t.Error(err)
 		}

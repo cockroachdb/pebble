@@ -99,7 +99,7 @@ func NewExternalIterWithContext(
 		dbi.processBounds(iterOpts.LowerBound, iterOpts.UpperBound)
 	}
 	if err := finishInitializingExternal(ctx, dbi); err != nil {
-		dbi.Close()
+		_ = dbi.Close()
 		return nil, err
 	}
 	return dbi, nil
@@ -191,10 +191,10 @@ func createExternalPointIter(
 			}
 			if err != nil {
 				if pointIter != nil {
-					pointIter.Close()
+					_ = pointIter.Close()
 				}
 				for i := range mlevels {
-					mlevels[i].iter.Close()
+					_ = mlevels[i].iter.Close()
 					if mlevels[i].rangeDelIter != nil {
 						mlevels[i].rangeDelIter.Close()
 					}
