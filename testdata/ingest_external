@@ -2,9 +2,9 @@
 # Simple case.
 
 build-remote f1
-set a foo
-set b bar
-set c foobar
+a#0,SET = foo
+b#0,SET = bar
+c#0,SET = foobar
 ----
 
 ingest-external
@@ -33,9 +33,9 @@ reset
 ----
 
 build-remote f2
-set a foo
-set b bar
-set c foobar
+a#0,SET = foo
+b#0,SET = bar
+c#0,SET = foobar
 ----
 
 ingest-external
@@ -59,15 +59,15 @@ b: (bar, .)
 .
 
 build-remote f3
-set c foobarbaz
-set d haha
-set e something
+c#0,SET = foobarbaz
+d#0,SET = haha
+e#0,SET = something
 ----
 
 build-remote f4
-set f foo
-set g foo
-set h foo
+f#0,SET = foo
+g#0,SET = foo
+h#0,SET = foo
 ----
 
 # This ingestion should error out due to the overlap between file spans.
@@ -154,9 +154,9 @@ h: (foo, .)
 .
 
 build-remote f5
-set f foo
-set g foo
-set h foo
+f#0,SET = foo
+g#0,SET = foo
+h#0,SET = foo
 ----
 
 ingest-external
@@ -164,9 +164,9 @@ f5 bounds=(ff,fi) synthetic-prefix=f
 ----
 
 build-remote f6
-set bf foo
-set bg foo
-set bh foo
+bf#0,SET = foo
+bg#0,SET = foo
+bh#0,SET = foo
 ----
 
 # Test that ingestion with a synthetic prefix or suffix fails on older
@@ -176,9 +176,9 @@ reset format-major-version=16
 ----
 
 build-remote f5
-set ef foo
-set eg foo
-set eh foo
+ef#0,SET = foo
+eg#0,SET = foo
+eh#0,SET = foo
 ----
 
 ingest-external
@@ -197,14 +197,14 @@ reset
 ----
 
 build-remote f1
-set a@1 foo
-set b@2 foo
-set c@1 foo
+a@1#0,SET = foo
+b@2#0,SET = foo
+c@1#0,SET = foo
 ----
 
 build-remote f6
-set b foo
-del-range f u
+b#0,SET = foo
+Span: f-u:{(#0,RANGEDEL)}
 ----
 
 ingest-external
@@ -246,8 +246,8 @@ set i bar
 ----
 
 build-remote f6
-set b foo
-del-range f u
+b#0,SET = foo
+Span: f-u:{(#0,RANGEDEL)}
 ----
 
 ingest-external
@@ -267,11 +267,11 @@ reset
 ----
 
 build-remote f7
-set a foo
+a#0,SET = foo
 ----
 
 build-remote f8
-set x bar
+x#0,SET = bar
 ----
 
 ingest-external
@@ -292,19 +292,19 @@ reset
 ----
 
 build-remote f7 block-size=5 index-block-size=5
-set b ignored
-set c foo
-set d haha
-set e something
-set x ignored
+b#0,SET = ignored
+c#0,SET = foo
+d#0,SET = haha
+e#0,SET = something
+x#0,SET = ignored
 ----
 
 build-remote f8 block-size=100 index-block-size=100
-set a ignored
-set g foo
-set h foo
-set i foo
-set z ignored
+a#0,SET = ignored
+g#0,SET = foo
+h#0,SET = foo
+i#0,SET = foo
+z#0,SET = ignored
 ----
 
 ingest-external
@@ -375,7 +375,7 @@ reset
 ----
 
 build-remote f9
-set i foo
+i#0,SET = foo
 ----
 
 ingest-external
@@ -402,9 +402,9 @@ reset
 ----
 
 build-remote ext
-set a a
-set b b
-set c c
+a#0,SET = a
+b#0,SET = b
+c#0,SET = c
 ----
 
 ingest-external
@@ -458,8 +458,8 @@ reset
 ----
 
 build-remote f11
-set a foo
-set b bar
+a#0,SET = foo
+b#0,SET = bar
 ----
 
 ingest-external
@@ -498,10 +498,10 @@ reset
 ----
 
 build-remote f12
-set a d1-v1
-set b d1-v1
-set c d1-v1
-set d d-1v1
+a#0,SET = d1-v1
+b#0,SET = d1-v1
+c#0,SET = d1-v1
+d#0,SET = d-1v1
 ----
 
 ingest-external
@@ -566,8 +566,8 @@ L6:
   000005:[d#10,SET-e#11,SET]
 
 build-remote f13
-set a d1-v1
-set b d1-v1
+a#0,SET = d1-v1
+b#0,SET = d1-v1
 ----
 
 ingest-external
@@ -612,8 +612,8 @@ reset
 ----
 
 build-remote trunctest
-set a foo
-set b bar
+a#0,SET = foo
+b#0,SET = bar
 ----
 
 ingest-external
@@ -628,9 +628,9 @@ reset
 ----
 
 build-remote inclusive_bounds_test
-set a foo
-set b bar
-set c baz
+a#0,SET = foo
+b#0,SET = bar
+c#0,SET = baz
 ----
 
 ingest-external
@@ -660,18 +660,18 @@ reset
 ----
 
 build-remote reuse1
-set ax ax
-set ay ay
-set da da
-set db db
-set dc dc
-set uv uv
+ax#0,SET = ax
+ay#0,SET = ay
+da#0,SET = da
+db#0,SET = db
+dc#0,SET = dc
+uv#0,SET = uv
 ----
 
 build-remote reuse2
-set f f
-set h h
-set j j
+f#0,SET = f
+h#0,SET = h
+j#0,SET = j
 ----
 
 # Test reuse of backings within a single ingestion. We should see only two
@@ -761,8 +761,8 @@ reset
 ----
 
 build-remote reuse
-set a@10 a
-set b@11 b
+a@10#0,SET = a
+b@11#0,SET = b
 ----
 
 ingest-external
@@ -785,8 +785,8 @@ reset
 ----
 
 build-remote ext3
-set aa@10 a
-set b@11 b
+aa@10#0,SET = a
+b@11#0,SET = b
 ----
 
 ingest-external
@@ -837,8 +837,8 @@ reset
 ----
 
 build-remote ext
-set a@10 a
-set b@11 b
+a@10#0,SET = a
+b@11#0,SET = b
 ----
 
 ingest-external
@@ -917,14 +917,14 @@ reset
 ----
 
 build-remote points.sst
-set a@1 va
-set b@1 vb
-set c@1 vc
-set d@1 vc
+a@1#0,SET = va
+b@1#0,SET = vb
+c@1#0,SET = vc
+d@1#0,SET = vc
 ----
 
 build-remote ranges.sst
-del-range b b1
+Span: b-b1:{(#0,RANGEDEL)}
 ----
 
 ingest-external
@@ -1003,11 +1003,11 @@ reset
 ----
 
 build-remote points-and-ranges.sst
-set a@1 va
-set b@1 vb
-set c@1 vc
-set d@1 vc
-range-key-set b c1 @2 vrange
+a@1#0,SET = va
+b@1#0,SET = vb
+c@1#0,SET = vc
+d@1#0,SET = vc
+Span: b-c1:{(#0,RANGEKEYSET,@2,vrange)}
 ----
 
 ingest-external
