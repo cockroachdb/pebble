@@ -15,8 +15,10 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -258,3 +260,91 @@ func decodeBlobInlineHandleAndAttribute(
 		},
 	}, base.ShortAttribute(attr[0]), nil
 }
+
+// ParseWriterOptions modifies WriterOptions based on the given arguments. Each
+// argument is a string or a fmt.Stringer (like datadriven.TestData.CmdArg) with
+// format either "<key>" or "<key>=<value>".
+func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOrStringer) error {
+	for _, arg := range args {
+		str, ok := any(arg).(string)
+		if !ok {
+			str = any(arg).(fmt.Stringer).String()
+		}
+		key, value, _ := strings.Cut(str, "=")
+		var err error
+		switch key {
+		case "leveldb":
+			o.TableFormat = TableFormatLevelDB
+		case "format":
+			switch value {
+			case "leveldb":
+				o.TableFormat = TableFormatLevelDB
+			case "pebblev1":
+				o.TableFormat = TableFormatPebblev1
+			case "pebblev2":
+				o.TableFormat = TableFormatPebblev2
+			case "pebblev3":
+				o.TableFormat = TableFormatPebblev3
+			case "pebblev4":
+				o.TableFormat = TableFormatPebblev4
+			case "pebblev5":
+				o.TableFormat = TableFormatPebblev5
+			case "pebblev6":
+				o.TableFormat = TableFormatPebblev6
+			default:
+				return errors.Errorf("unknown format string %s", value)
+			}
+		case "block-size":
+			o.BlockSize, err = strconv.Atoi(value)
+
+		case "index-block-size":
+			o.IndexBlockSize, err = strconv.Atoi(value)
+
+		case "filter":
+			o.FilterPolicy = bloom.FilterPolicy(10)
+
+		case "comparer":
+			o.Comparer, err = comparerFromCmdArg(value)
+
+		case "writing-to-lowest-level":
+			o.WritingToLowestLevel = true
+
+		case "is-strict-obsolete":
+			o.IsStrictObsolete = true
+
+		default:
+			// TODO(radu): ignoring unknown keys is error-prone; we need to find an
+			// easy way for the upper layer to extract its own arguments.
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func comparerFromCmdArg(value string) (*Comparer, error) {
+	switch value {
+	case "split-4b-suffix":
+		return test4bSuffixComparer, nil
+	case "testkeys":
+		return testkeys.Comparer, nil
+	case "default":
+		return base.DefaultComparer, nil
+	default:
+		return nil, errors.Errorf("unknown comparer: %s", value)
+	}
+}
+
+var test4bSuffixComparer = func() *base.Comparer {
+	c := new(base.Comparer)
+	*c = *base.DefaultComparer
+	c.Split = func(key []byte) int {
+		if len(key) > 4 {
+			return len(key) - 4
+		}
+		return len(key)
+	}
+	c.Name = "comparer-split-4b-suffix"
+	return c
+}()
