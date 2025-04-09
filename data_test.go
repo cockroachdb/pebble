@@ -600,7 +600,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 		return err
 	}
 	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), writeOpts)
-	if err := sstable.ParseTestSST(w.Raw(), td.Input); err != nil {
+	if err := sstable.ParseTestSST(w.Raw(), td.Input, nil /* bv */); err != nil {
 		return err
 	}
 
