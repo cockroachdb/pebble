@@ -2049,7 +2049,7 @@ func (d *DB) Metrics() *Metrics {
 	}
 	metrics.Table.ZombieCount = int64(d.mu.versions.zombieTables.Count())
 	metrics.Table.ZombieSize = d.mu.versions.zombieTables.TotalSize()
-	metrics.Table.Local.ZombieSize = d.mu.versions.zombieTables.LocalSize()
+	metrics.Table.Local.ZombieCount, metrics.Table.Local.ZombieSize = d.mu.versions.zombieTables.LocalStats()
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	// TODO(jackson): Consider making these metrics optional.

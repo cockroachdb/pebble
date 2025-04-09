@@ -353,14 +353,20 @@ func (vs *versionSet) load(
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
 			if !f.Virtual {
-				_, localSize := sizeIfLocal(f.FileBacking, vs.provider)
+				isLocal, localSize := sizeIfLocal(f.FileBacking, vs.provider)
 				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+				if isLocal {
+					vs.metrics.Table.Local.LiveCount++
+				}
 			}
 		}
 	}
 	vs.virtualBackings.ForEach(func(backing *fileBacking) {
-		_, localSize := sizeIfLocal(backing, vs.provider)
+		isLocal, localSize := sizeIfLocal(backing, vs.provider)
 		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+		if isLocal {
+			vs.metrics.Table.Local.LiveCount++
+		}
 	})
 
 	vs.setCompactionPicker(
@@ -569,7 +575,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	nextFileNum := vs.nextFileNum.Load()
 
 	// Note: this call populates ve.RemovedBackingTables.
-	zombieBackings, removedVirtualBackings, localLiveSizeDelta :=
+	zombieBackings, removedVirtualBackings, localLiveSizeDelta, localLiveCountDelta :=
 		getZombiesAndUpdateVirtualBackings(ve, &vs.virtualBackings, vs.provider)
 
 	var l0Update manifest.L0PreparedUpdate
@@ -734,6 +740,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localLiveSizeDelta)
+	vs.metrics.Table.Local.LiveCount = uint64(int64(vs.metrics.Table.Local.LiveCount) + localLiveCountDelta)
 
 	vs.setCompactionPicker(
 		newCompactionPickerByScore(newVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, inProgress))
@@ -764,7 +771,10 @@ type fileBackingInfo struct {
 //   - localLiveSizeDelta: the delta in local live bytes.
 func getZombiesAndUpdateVirtualBackings(
 	ve *versionEdit, virtualBackings *manifest.VirtualBackings, provider objstorage.Provider,
-) (zombieBackings, removedVirtualBackings []fileBackingInfo, localLiveSizeDelta int64) {
+) (
+	zombieBackings, removedVirtualBackings []fileBackingInfo,
+	localLiveSizeDelta, localLiveCountDelta int64,
+) {
 	// First, deal with the physical tables.
 	//
 	// A physical backing has become unused if it is in DeletedFiles but not in
@@ -776,8 +786,11 @@ func getZombiesAndUpdateVirtualBackings(
 	for _, nf := range ve.NewTables {
 		if !nf.Meta.Virtual {
 			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
-			_, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
+			isLocal, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
 			localLiveSizeDelta += localFileDelta
+			if isLocal {
+				localLiveCountDelta++
+			}
 		}
 	}
 	for _, b := range ve.CreatedBackingTables {
@@ -792,6 +805,9 @@ func getZombiesAndUpdateVirtualBackings(
 			// for the addition.
 			isLocal, localFileDelta := sizeIfLocal(m.FileBacking, provider)
 			localLiveSizeDelta -= localFileDelta
+			if isLocal {
+				localLiveCountDelta--
+			}
 			if _, ok := stillUsed[m.FileBacking.DiskFileNum]; !ok {
 				zombieBackings = append(zombieBackings, fileBackingInfo{
 					backing: m.FileBacking,
@@ -807,8 +823,11 @@ func getZombiesAndUpdateVirtualBackings(
 	// which works out.
 	for _, b := range ve.CreatedBackingTables {
 		virtualBackings.AddAndRef(b)
-		_, localFileDelta := sizeIfLocal(b, provider)
+		isLocal, localFileDelta := sizeIfLocal(b, provider)
 		localLiveSizeDelta += localFileDelta
+		if isLocal {
+			localLiveCountDelta++
+		}
 	}
 	for _, nf := range ve.NewTables {
 		if nf.Meta.Virtual {
@@ -828,6 +847,9 @@ func getZombiesAndUpdateVirtualBackings(
 		for i, b := range unused {
 			isLocal, localFileDelta := sizeIfLocal(b, provider)
 			localLiveSizeDelta -= localFileDelta
+			if isLocal {
+				localLiveCountDelta--
+			}
 			ve.RemovedBackingTables[i] = b.DiskFileNum
 			zombieBackings = append(zombieBackings, fileBackingInfo{
 				backing: b,
@@ -837,7 +859,7 @@ func getZombiesAndUpdateVirtualBackings(
 		}
 		removedVirtualBackings = zombieBackings[len(zombieBackings)-len(unused):]
 	}
-	return zombieBackings, removedVirtualBackings, localLiveSizeDelta
+	return zombieBackings, removedVirtualBackings, localLiveSizeDelta, localLiveCountDelta
 }
 
 // sizeIfLocal returns backing.Size if the backing is a local file, else 0.
@@ -1090,10 +1112,12 @@ func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
 	vs.metrics.Table.Local.ObsoleteSize = 0
+	vs.metrics.Table.Local.ObsoleteCount = 0
 	for _, fi := range vs.obsoleteTables {
 		vs.metrics.Table.ObsoleteSize += fi.FileSize
 		if fi.isLocal {
 			vs.metrics.Table.Local.ObsoleteSize += fi.FileSize
+			vs.metrics.Table.Local.ObsoleteCount++
 		}
 	}
 }

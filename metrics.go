@@ -299,10 +299,16 @@ type Metrics struct {
 		Local struct {
 			// LiveSize is the number of bytes in live tables.
 			LiveSize uint64
+			// LiveCount is the number of live tables.
+			LiveCount uint64
 			// ObsoleteSize is the number of bytes in obsolete tables.
 			ObsoleteSize uint64
+			// ObsoleteCount is the number of obsolete tables.
+			ObsoleteCount uint64
 			// ZombieSize is the number of bytes in zombie tables.
 			ZombieSize uint64
+			// ZombieCount is the number of zombie tables.
+			ZombieCount uint64
 		}
 	}
 
