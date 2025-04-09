@@ -1,0 +1,202 @@
+add
+[b, c) 10s
+----
+Set:
+  [b, c)  expires in: 10s
+
+# Positive overlap tests.
+overlap now=5s
+[a, b]
+[a, bb)
+[a, bb]
+[b, b]
+[a, z)
+[b1, b2)
+[b5, d)
+----
+[a, b]: overlap
+[a, bb): overlap
+[a, bb]: overlap
+[b, b]: overlap
+[a, z): overlap
+[b1, b2): overlap
+[b5, d): overlap
+Set:
+  [b, c)  expires in: 5s
+
+# Negative overlap tests.
+overlap now=5s
+[a, b)
+[c, d]
+[u, v)
+----
+[a, b): no overlap
+[c, d]: no overlap
+[u, v): no overlap
+Set:
+  [b, c)  expires in: 5s
+
+add
+[b2, b5] 5s
+----
+Set:
+  [b, c)  expires in: 5s
+
+add
+[b2, b5] 15s
+----
+Set:
+  [b, b2)  expires in: 5s
+  [b2, b5]  expires in: 10s
+  (b5, c)  expires in: 5s
+
+add
+[a, d] 5s
+----
+Set:
+  [b, b2)  expires in: 5s
+  [b2, b5]  expires in: 10s
+  (b5, c)  expires in: 5s
+
+add
+[a, d] 15s
+----
+Set:
+  [a, d]  expires in: 10s
+
+add
+[c, c] 20s
+----
+Set:
+  [a, c)  expires in: 10s
+  [c, c]  expires in: 15s
+  (c, d]  expires in: 10s
+
+overlap now=10s
+[a, a]
+[a, b)
+[b, c)
+[c, c]
+[d, e]
+[e, f)
+----
+[a, a]: overlap
+[a, b): overlap
+[b, c): overlap
+[c, c]: overlap
+[d, e]: overlap
+[e, f): no overlap
+Set:
+  [a, c)  expires in: 5s
+  [c, c]  expires in: 10s
+  (c, d]  expires in: 5s
+
+is-empty
+----
+not empty
+Set:
+  [a, c)  expires in: 5s
+  [c, c]  expires in: 10s
+  (c, d]  expires in: 5s
+
+overlap now=18s
+[a, a]
+[a, b)
+[b, c)
+[c, c]
+[d, e]
+[e, f)
+----
+[a, a]: no overlap
+[a, b): no overlap
+[b, c): no overlap
+[c, c]: overlap
+[d, e]: no overlap
+[e, f): no overlap
+Set:
+  [c, c]  expires in: 2s
+
+overlap now=21s
+[a, z]
+----
+[a, z]: no overlap
+Set:
+  <empty>
+
+is-empty
+----
+empty
+Set:
+  <empty>
+
+add
+[b, c) 30s
+----
+Set:
+  [b, c)  expires in: 9s
+
+add
+[d, e) 30s
+----
+Set:
+  [b, c)  expires in: 9s
+  [d, e)  expires in: 9s
+
+excise
+[b5, d2]
+----
+Set:
+  [b, b5)  expires in: 9s
+  (d2, e)  expires in: 9s
+
+overlap
+[d, d]
+[a, b5)
+[d20, z]
+----
+[d, d]: no overlap
+[a, b5): overlap
+[d20, z]: overlap
+Set:
+  [b, b5)  expires in: 9s
+  (d2, e)  expires in: 9s
+
+overlap now=30s
+[a, b5)
+----
+[a, b5): no overlap
+Set:
+  <empty>
+
+is-empty
+----
+empty
+Set:
+  <empty>
+
+add
+[a, b] 40s
+[d, e] 50s
+----
+Set:
+  [a, b]  expires in: 10s
+  [d, e]  expires in: 20s
+
+is-empty
+----
+not empty
+Set:
+  [a, b]  expires in: 10s
+  [d, e]  expires in: 20s
+
+is-empty now=45s
+----
+not empty
+Set:
+  [d, e]  expires in: 5s
+
+is-empty now=55s
+----
+empty
+Set:
+  <empty>
