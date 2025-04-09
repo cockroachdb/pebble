@@ -1,0 +1,48 @@
+build-remote file1
+a#0,SET = avalue
+e#0,SET = bvalue
+f#0,SET = cvalue
+----
+
+build-remote file2-not-there
+g#0,SET = dvalue
+p#0,SET = evalue
+u#0,SET = fvalue
+----
+
+build-remote file3
+v#0,SET = gvalue
+x#0,SET = hvalue
+z#0,SET = ivalue
+----
+
+ingest-external file1
+file1 bounds=(a,f)
+file2 bounds=(g,u)
+file3 bounds=(v,z)
+----
+
+start-workload
+----
+
+# Verify that a problem span is set.
+wait-for-problem-span
+----
+
+# Verify that compactions still go through.
+wait-for-compactions
+----
+
+# Make file2 appear.
+move-remote-object file2-not-there file2
+----
+file2-not-there -> file2
+
+# Expire spans.
+expire-spans
+----
+
+# Compactions should now go through and eventually there should be no external
+# files.
+wait-for-no-external-files
+----
