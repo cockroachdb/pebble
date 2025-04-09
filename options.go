@@ -43,12 +43,41 @@ const (
 type Compression = block.Compression
 
 // Exported Compression constants.
-const (
+var (
 	DefaultCompression = block.DefaultCompression
 	NoCompression      = block.NoCompression
 	SnappyCompression  = block.SnappyCompression
-	ZstdCompression    = block.ZstdCompression
-	MinlzCompression   = block.MinlzCompression
+	ZstdCompression    = block.DefaultZstdCompression
+	MinlzCompression   = block.DefaultMinlzCompression
+
+	// Zstd compression levels.
+	ZstdCompressionLevel1  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel1}
+	ZstdCompressionLevel2  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel2}
+	ZstdCompressionLevel3  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel3}
+	ZstdCompressionLevel4  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel4}
+	ZstdCompressionLevel5  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel5}
+	ZstdCompressionLevel6  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel6}
+	ZstdCompressionLevel7  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel7}
+	ZstdCompressionLevel8  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel8}
+	ZstdCompressionLevel9  = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel9}
+	ZstdCompressionLevel10 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel10}
+	ZstdCompressionLevel11 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel11}
+	ZstdCompressionLevel12 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel12}
+	ZstdCompressionLevel13 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel13}
+	ZstdCompressionLevel14 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel14}
+	ZstdCompressionLevel15 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel15}
+	ZstdCompressionLevel16 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel16}
+	ZstdCompressionLevel17 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel17}
+	ZstdCompressionLevel18 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel18}
+	ZstdCompressionLevel19 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel19}
+	ZstdCompressionLevel20 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel20}
+	ZstdCompressionLevel21 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel21}
+	ZstdCompressionLevel22 = block.Compression{Family: block.ZstdCompressionFamily, Level: block.ZstdLevel22}
+
+	// Minlz compression levels.
+	MinlzCompressionLevelFastest  = block.Compression{Family: block.MinlzCompressionFamily, Level: block.MinlzLevelFastest}
+	MinlzCompressionLevelBalanced = block.Compression{Family: block.MinlzCompressionFamily, Level: block.MinlzLevelBalanced}
+	MinlzCompressionLevelSmallest = block.Compression{Family: block.MinlzCompressionFamily, Level: block.MinlzLevelSmallest}
 )
 
 // FilterType exports the base.FilterType type.
@@ -1492,7 +1521,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
-		fmt.Fprintf(&buf, "  compression=%s\n", resolveDefaultCompression(l.Compression()))
+		fmt.Fprintf(&buf, "  compression=%s\n", resolveDefaultCompression(l.Compression()).Family.String())
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
@@ -2149,8 +2178,8 @@ func (o *Options) MakeBlobWriterOptions(level int) blob.FileWriterOptions {
 }
 
 func resolveDefaultCompression(c Compression) Compression {
-	if c <= DefaultCompression || c >= block.NCompression {
-		c = SnappyCompression
+	if c.Family <= block.DefaultCompressionFamily || c.Family >= block.NCompressionFamily {
+		c = block.SnappyCompression
 	}
 	return c
 }

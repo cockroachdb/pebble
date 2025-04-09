@@ -330,8 +330,14 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
-	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression {
-		o.Compression = block.SnappyCompression
+	if o.Compression.Family <= block.DefaultCompressionFamily || o.Compression.Family >= block.NCompressionFamily {
+		o.Compression.Family = block.SnappyCompressionFamily
+	}
+	if o.Compression.Family == block.ZstdCompressionFamily && (o.Compression.Level < block.ZstdLevelMin || o.Compression.Level > block.ZstdLevelMax) {
+		o.Compression.Level = block.ZstdLevelDefault
+	}
+	if o.Compression.Family == block.MinlzCompressionFamily && (o.Compression.Level < block.MinlzLevelMin || o.Compression.Level > block.MinlzLevelMax) {
+		o.Compression.Level = block.MinlzLevelDefault
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize

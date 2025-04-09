@@ -34,13 +34,35 @@ const UseStandardZstdLib = false
 // is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
 // the length of `b` before calling Compress. It returns the encoded byte
 // slice, including the `compressedBuf[:varIntLen]` prefix.
-func (zstdCompressor) Compress(compressedBuf, b []byte) (CompressionIndicator, []byte) {
+func (zstdCompressor) Compress(
+	compressedBuf, b []byte, level CompressionLevel,
+) (CompressionIndicator, []byte) {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	encoder, _ := zstd.NewWriter(nil)
-	defer encoder.Close()
+	var encoderLevel zstd.EncoderLevel
+	if level == LevelDefault {
+		encoderLevel = zstd.EncoderLevel(ZstdLevelDefault)
+	} else if level < ZstdLevelMin || level > ZstdLevelMax {
+		panic("zstd compression: illegal level")
+	} else {
+		encoderLevel = zstd.EncoderLevel(level)
+	}
+	// The no cgo library for zstd only has three levels: SpeedFastest, SpeedBetterCompression, SpeedBestCompression
+	// The WithEncoderLevel will take an integer and convert it to one of these three levels based on
+	// predetermined ranges. See https://github.com/klauspost/compress/blob/v1.18.0/zstd/encoder_options.go#L146
+	// for details.
+	opts := zstd.WithEncoderLevel(encoderLevel)
+	encoder, err := zstd.NewWriter(nil, opts)
+	if err != nil {
+		panic(errors.Wrap(err, "Error while compressing using Zstd."))
+	}
+	defer func() {
+		if err := encoder.Close(); err != nil {
+			panic(errors.Wrap(err, "error while closing Zstd encoder."))
+		}
+	}()
 	return ZstdCompressionIndicator, encoder.EncodeAll(b, compressedBuf[:varIntLen])
 }
 
@@ -65,7 +87,7 @@ func (zstdDecompressor) DecompressInto(dst, src []byte) error {
 	defer decoder.Close()
 	result, err := decoder.DecodeAll(src, dst[:0])
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Error while decompressing Zstd.")
 	}
 	if len(result) != len(dst) || (len(result) > 0 && &result[0] != &dst[0]) {
 		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",

@@ -10,7 +10,7 @@ import (
 )
 
 type Compressor interface {
-	Compress(dst, src []byte) (CompressionIndicator, []byte)
+	Compress(dst, src []byte, level CompressionLevel) (CompressionIndicator, []byte)
 
 	// Close must be called when the Compressor is no longer needed.
 	// After Close is called, the Compressor must not be used again.
@@ -25,42 +25,53 @@ var _ Compressor = noopCompressor{}
 var _ Compressor = snappyCompressor{}
 var _ Compressor = minlzCompressor{}
 
-func (noopCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
+func (noopCompressor) Compress(dst, src []byte, _ CompressionLevel) (CompressionIndicator, []byte) {
 	panic("NoCompressionCompressor.Compress() should not be called.")
 }
 func (noopCompressor) Close() {}
 
-func (snappyCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
+func (snappyCompressor) Compress(
+	dst, src []byte, _ CompressionLevel,
+) (CompressionIndicator, []byte) {
 	dst = dst[:cap(dst):cap(dst)]
 	return SnappyCompressionIndicator, snappy.Encode(dst, src)
 }
 
 func (snappyCompressor) Close() {}
 
-func (minlzCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
-	// Minlz cannot encode blocks greater than 8MB. Fall back to Snappy in those cases.
+func (minlzCompressor) Compress(
+	dst, src []byte, level CompressionLevel,
+) (CompressionIndicator, []byte) {
+	// Minlz cannot encode blocks greater than 8MiB. Fall back to Snappy in those cases.
 	if len(src) > minlz.MaxBlockSize {
-		return (snappyCompressor{}).Compress(dst, src)
+		return (snappyCompressor{}).Compress(dst, src, LevelDefault)
 	}
-
-	compressed, err := minlz.Encode(dst, src, minlz.LevelFastest)
+	var encoderLevel int
+	if level == LevelDefault {
+		encoderLevel = int(MinlzLevelDefault)
+	} else if level < MinlzLevelMin || level > MinlzLevelMax {
+		panic("minlz compression: illegal level")
+	} else {
+		encoderLevel = int(level)
+	}
+	compressed, err := minlz.Encode(dst, src, encoderLevel)
 	if err != nil {
-		panic(errors.Wrap(err, "minlz compression"))
+		panic(errors.Wrap(err, "Error while compressing using Minlz."))
 	}
 	return MinlzCompressionIndicator, compressed
 }
 
 func (minlzCompressor) Close() {}
 
-func GetCompressor(c Compression) Compressor {
+func GetCompressor(c CompressionFamily) Compressor {
 	switch c {
-	case NoCompression:
+	case NoCompressionFamily:
 		return noopCompressor{}
-	case SnappyCompression:
+	case SnappyCompressionFamily:
 		return snappyCompressor{}
-	case ZstdCompression:
+	case ZstdCompressionFamily:
 		return getZstdCompressor()
-	case MinlzCompression:
+	case MinlzCompressionFamily:
 		return minlzCompressor{}
 	default:
 		panic("Invalid compression type.")

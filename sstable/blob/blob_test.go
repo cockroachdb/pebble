@@ -65,7 +65,7 @@ func scanFileWriterOptions(t *testing.T, td *datadriven.TestData) FileWriterOpti
 	td.MaybeScanArgs(t, "target-block-size", &targetBlockSize)
 	td.MaybeScanArgs(t, "block-size-threshold", &blockSizeThreshold)
 	if cmdArg, ok := td.Arg("compression"); ok {
-		compression = block.CompressionFromString(cmdArg.SingleVal(t))
+		compression = block.FamilyToDefaultCompression[block.CompressionFromString(cmdArg.SingleVal(t))]
 	}
 	return FileWriterOptions{
 		Compression:   compression,

@@ -237,7 +237,7 @@ var TestFixtures = []TestFixtureInfo{
 	},
 	{
 		Filename:           "h.zstd-compression.sst",
-		Compression:        block.ZstdCompression,
+		Compression:        block.DefaultZstdCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
 		IndexBlockSize:     fixtureDefaultIndexBlockSize,

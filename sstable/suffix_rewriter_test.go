@@ -250,7 +250,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 
 	b.ResetTimer()
 	for comp := range compressions {
-		b.Run(compressions[comp].String(), func(b *testing.B) {
+		b.Run(compressions[comp].Family.String(), func(b *testing.B) {
 			for sz := range sizes {
 				r := files[comp][sz]
 				sst := sstBytes[comp][sz]

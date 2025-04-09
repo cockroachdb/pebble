@@ -176,7 +176,7 @@ func newColumnarWriter(
 	w.props.PropertyCollectorNames = buf.String()
 
 	w.props.ComparerName = o.Comparer.Name
-	w.props.CompressionName = o.Compression.String()
+	w.props.CompressionName = o.Compression.Family.String()
 	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
 

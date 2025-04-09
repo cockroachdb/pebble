@@ -57,7 +57,7 @@ type FileWriterOptions struct {
 }
 
 func (o *FileWriterOptions) ensureDefaults() {
-	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression {
+	if o.Compression.Family <= block.DefaultCompressionFamily || o.Compression.Family >= block.NCompressionFamily {
 		o.Compression = block.SnappyCompression
 	}
 	if o.ChecksumType == block.ChecksumTypeNone {
