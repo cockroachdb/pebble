@@ -360,7 +360,7 @@ func TestL0Sublevels(t *testing.T) {
 			var lcf *L0CompactionFiles
 			if pickBaseCompaction {
 				baseFiles := NewLevelSliceKeySorted(base.DefaultComparer.Compare, fileMetas[baseLevel])
-				lcf = sublevels.PickBaseCompaction(base.DefaultLogger, minCompactionDepth, baseFiles)
+				lcf = sublevels.PickBaseCompaction(base.DefaultLogger, minCompactionDepth, baseFiles, 0, nil)
 				if lcf != nil {
 					// Try to extend the base compaction into a more rectangular
 					// shape, using the smallest/largest keys of the files before
@@ -387,7 +387,7 @@ func TestL0Sublevels(t *testing.T) {
 						lcf)
 				}
 			} else {
-				lcf = sublevels.PickIntraL0Compaction(earliestUnflushedSeqNum, minCompactionDepth)
+				lcf = sublevels.PickIntraL0Compaction(earliestUnflushedSeqNum, minCompactionDepth, nil /* problemSpans */)
 			}
 			if lcf == nil {
 				return "no compaction picked"
@@ -613,7 +613,7 @@ func BenchmarkL0SublevelsInitAndPick(b *testing.B) {
 		if sl == nil {
 			b.Fatal("expected non-nil L0Sublevels to be generated")
 		}
-		c := sl.PickBaseCompaction(base.DefaultLogger, 2, LevelSlice{})
+		c := sl.PickBaseCompaction(base.DefaultLogger, 2, LevelSlice{}, 0, nil)
 		if c == nil {
 			b.Fatal("expected non-nil compaction to be generated")
 		}

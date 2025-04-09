@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/problemspans"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1108,7 +1109,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			)
 
 			var isCompacting bool
-			if !pc.setupInputs(opts, availBytes, pc.startLevel) {
+			if !pc.setupInputs(opts, availBytes, pc.startLevel, nil /* problemSpans */) {
 				isCompacting = true
 			}
 			origPC := pc
@@ -1410,9 +1411,12 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		}
 	}()
 
+	var problemSpans *problemspans.ByLevel
+
 	datadriven.RunTest(t, "testdata/compaction_picker_pick_file", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			problemSpans = nil
 			require.NoError(t, d.Close())
 
 			d, err = runDBDefineCmd(td, opts)
@@ -1445,6 +1449,21 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "problem-spans":
+			problemSpans = &problemspans.ByLevel{}
+			problemSpans.Init(manifest.NumLevels, opts.Comparer.Compare)
+			for _, line := range crstrings.Lines(td.Input) {
+				var level int
+				var span1, span2 string
+				n, err := fmt.Sscanf(line, "L%d %s %s", &level, &span1, &span2)
+				if err != nil || n != 3 {
+					td.Fatalf(t, "malformed problem span %q", line)
+				}
+				bounds := base.ParseUserKeyBounds(span1 + " " + span2)
+				problemSpans.Add(level, bounds, time.Hour*10)
+			}
+			return ""
+
 		case "pick-file":
 			s := strings.TrimPrefix(td.CmdArgs[0].String(), "L")
 			level, err := strconv.Atoi(s)
@@ -1471,7 +1490,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 					return
 				}
 				p := d.mu.versions.picker.(*compactionPickerByScore)
-				lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum)
+				lf, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, opts, level, level+1, env.earliestSnapshotSeqNum, problemSpans)
 			}()
 			if !ok {
 				return "(none)"

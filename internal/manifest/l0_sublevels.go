@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/problemspans"
 )
 
 // Intervals are of the form [start, end) with no gap between intervals. Each
@@ -1394,7 +1395,11 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 // files that can be selected for compaction. Returns nil if no compaction is
 // possible.
 func (s *l0Sublevels) PickBaseCompaction(
-	logger base.Logger, minCompactionDepth int, baseFiles LevelSlice,
+	logger base.Logger,
+	minCompactionDepth int,
+	baseFiles LevelSlice,
+	baseLevel int,
+	problemSpans *problemspans.ByLevel,
 ) *L0CompactionFiles {
 	// For LBase compactions, we consider intervals in a greedy manner in the
 	// following order:
@@ -1410,11 +1415,20 @@ func (s *l0Sublevels) PickBaseCompaction(
 	// this cost we can eliminate this heuristic.
 	scoredIntervals := make([]intervalAndScore, 0, len(s.orderedIntervals))
 	sublevelCount := len(s.levelFiles)
-	for i := range s.orderedIntervals {
+	// The last orderedInterval does not contain any files and only provides the
+	// end key for the preceding interval, so we exclude it from this iteration.
+	for i := range s.orderedIntervals[:len(s.orderedIntervals)-1] {
 		interval := &s.orderedIntervals[i]
 		depth := len(interval.files) - interval.compactingFileCount
-		if interval.isBaseCompacting || minCompactionDepth > depth {
+		if interval.isBaseCompacting || depth < minCompactionDepth {
 			continue
+		}
+		if problemSpans != nil {
+			endKey := s.orderedIntervals[i+1].startKey
+			bounds := base.UserKeyBoundsEndExclusiveIf(interval.startKey.key, endKey.key, !endKey.isInclusiveEndBound)
+			if problemSpans.Overlaps(baseLevel, bounds) {
+				continue
+			}
 		}
 		if interval.intervalRangeIsBaseCompacting {
 			scoredIntervals = append(scoredIntervals, intervalAndScore{interval: i, score: depth})
@@ -1617,14 +1631,23 @@ func (s *l0Sublevels) extendFiles(
 // See comment above [PickBaseCompaction] for heuristics involved in this
 // selection.
 func (s *l0Sublevels) PickIntraL0Compaction(
-	earliestUnflushedSeqNum base.SeqNum, minCompactionDepth int,
+	earliestUnflushedSeqNum base.SeqNum, minCompactionDepth int, problemSpans *problemspans.ByLevel,
 ) *L0CompactionFiles {
 	scoredIntervals := make([]intervalAndScore, len(s.orderedIntervals))
-	for i := range s.orderedIntervals {
+	// The last orderedInterval does not contain any files and only provides the
+	// end key for the preceding interval, so we exclude it from this iteration.
+	for i := range s.orderedIntervals[:len(s.orderedIntervals)-1] {
 		interval := &s.orderedIntervals[i]
 		depth := len(interval.files) - interval.compactingFileCount
 		if minCompactionDepth > depth {
 			continue
+		}
+		if problemSpans != nil {
+			endKey := s.orderedIntervals[i+1].startKey
+			bounds := base.UserKeyBoundsEndExclusiveIf(interval.startKey.key, endKey.key, !endKey.isInclusiveEndBound)
+			if problemSpans.Overlaps(0, bounds) {
+				continue
+			}
 		}
 		scoredIntervals[i] = intervalAndScore{interval: i, score: depth}
 	}
