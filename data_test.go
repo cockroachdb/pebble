@@ -1421,7 +1421,8 @@ func runIngestExternalCmd(
 		}
 		sz, err := st.Size(objName)
 		if err != nil {
-			return errors.Wrapf(err, "sizeof %s", objName)
+			// Tests can attach files that don't exist. Mock a size.
+			sz = 1024
 		}
 		ef := ExternalFile{
 			Locator:     remote.Locator(locator),
