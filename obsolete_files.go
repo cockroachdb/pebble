@@ -332,6 +332,7 @@ func (d *DB) onObsoleteTableDelete(fileSize uint64, isLocal bool) {
 	d.mu.versions.metrics.Table.ObsoleteSize -= fileSize
 	if isLocal {
 		d.mu.versions.metrics.Table.Local.ObsoleteSize -= fileSize
+		d.mu.versions.metrics.Table.Local.ObsoleteCount--
 	}
 	d.mu.Unlock()
 }
@@ -620,9 +621,10 @@ func makeZombieObjects() zombieObjects {
 // iterator. Such objects are 'dead,' but cannot be deleted until iterators that
 // may access them are closed.
 type zombieObjects struct {
-	objs      map[base.DiskFileNum]objectInfo
-	totalSize uint64
-	localSize uint64
+	objs       map[base.DiskFileNum]objectInfo
+	totalSize  uint64
+	localSize  uint64
+	localCount uint64
 }
 
 // Add adds an object to the set of zombie objects.
@@ -634,6 +636,7 @@ func (z *zombieObjects) Add(obj objectInfo) {
 	z.totalSize += obj.FileSize
 	if obj.isLocal {
 		z.localSize += obj.FileSize
+		z.localCount++
 	}
 }
 
@@ -674,6 +677,7 @@ func (z *zombieObjects) Extract(fileNum base.DiskFileNum) objectInfo {
 	z.totalSize -= obj.FileSize
 	if obj.isLocal {
 		z.localSize -= obj.FileSize
+		z.localCount--
 	}
 	return obj
 }
@@ -683,9 +687,9 @@ func (z *zombieObjects) TotalSize() uint64 {
 	return z.totalSize
 }
 
-// LocalSize returns the size of all local objects in the set.
-func (z *zombieObjects) LocalSize() uint64 {
-	return z.localSize
+// LocalStats returns the count and size of all local objects in the set.
+func (z *zombieObjects) LocalStats() (count uint64, size uint64) {
+	return z.localCount, z.localSize
 }
 
 func mergeObjectInfos(a, b []objectInfo) []objectInfo {
