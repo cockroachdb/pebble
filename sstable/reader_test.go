@@ -1896,7 +1896,7 @@ var basicBenchmarks = []struct {
 			BlockSize:            32 << 10,
 			BlockRestartInterval: 16,
 			FilterPolicy:         nil,
-			Compression:          block.ZstdCompression,
+			Compression:          block.DefaultZstdCompression,
 			TableFormat:          TableFormatPebblev2,
 		},
 	},

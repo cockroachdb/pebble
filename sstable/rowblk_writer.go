@@ -1735,7 +1735,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	}
 
 	w.props.ComparerName = o.Comparer.Name
-	w.props.CompressionName = o.Compression.String()
+	w.props.CompressionName = o.Compression.Family.String()
 	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
 

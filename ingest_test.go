@@ -191,7 +191,7 @@ func TestIngestLoadRand(t *testing.T) {
 			},
 			path: paths[i],
 		}
-		expected[i].tableMetadata.Stats.CompressionType = block.SnappyCompression
+		expected[i].tableMetadata.Stats.CompressionType = block.SnappyCompressionFamily
 		expected[i].StatsMarkValid()
 
 		func() {

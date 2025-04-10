@@ -38,7 +38,9 @@ const UseStandardZstdLib = true
 // is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
 // the length of `b` before calling Compress. It returns the encoded byte
 // slice, including the `compressedBuf[:varIntLen]` prefix.
-func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) (CompressionIndicator, []byte) {
+func (z *zstdCompressor) Compress(
+	compressedBuf []byte, b []byte, level CompressionLevel,
+) (CompressionIndicator, []byte) {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
@@ -52,9 +54,17 @@ func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) (CompressionIn
 	}
 
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	result, err := z.ctx.CompressLevel(compressedBuf[varIntLen:varIntLen+bound], b, 3)
+	var encoderLevel int
+	if level == LevelDefault {
+		encoderLevel = int(ZstdLevelDefault)
+	} else if level < ZstdLevelMin || level > ZstdLevelMax {
+		panic("zstd compression: illegal level")
+	} else {
+		encoderLevel = int(level)
+	}
+	result, err := z.ctx.CompressLevel(compressedBuf[varIntLen:varIntLen+bound], b, encoderLevel)
 	if err != nil {
-		panic("Error while compressing using Zstd.")
+		panic(errors.Wrap(err, "Error while compressing using Zstd."))
 	}
 	if &result[0] != &compressedBuf[varIntLen] {
 		panic("Allocated a new buffer despite checking CompressBound.")
@@ -92,7 +102,7 @@ func (z *zstdDecompressor) DecompressInto(dst, src []byte) error {
 	}
 	_, err := z.ctx.DecompressInto(dst, src)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Error while decompressing Zstd.")
 	}
 	return nil
 }

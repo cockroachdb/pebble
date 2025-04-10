@@ -26,8 +26,8 @@ func TestCompressionRoundtrip(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
 
-	for compression := DefaultCompression + 1; compression < NCompression; compression++ {
-		if compression == NoCompression {
+	for compression := DefaultCompressionFamily + 1; compression < NCompressionFamily; compression++ {
+		if compression == NoCompressionFamily {
 			continue
 		}
 		t.Run(compression.String(), func(t *testing.T) {
@@ -40,7 +40,7 @@ func TestCompressionRoundtrip(t *testing.T) {
 			compressedBuf := make([]byte, 1+rng.IntN(1<<10 /* 1 KiB */))
 			compressor := GetCompressor(compression)
 			defer compressor.Close()
-			btyp, compressed := compressor.Compress(compressedBuf, payload)
+			btyp, compressed := compressor.Compress(compressedBuf, payload, LevelDefault)
 			v, err := decompress(btyp, compressed)
 			require.NoError(t, err)
 			got := payload
@@ -151,12 +151,12 @@ func TestMinlzEncodingLimit(t *testing.T) {
 		require.Fail(t, "Expected minlz.ErrTooLarge Error")
 	}
 
-	c := GetCompressor(MinlzCompression)
+	c := GetCompressor(MinlzCompressionFamily)
 	defer c.Close()
-	algo, _ := c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize-1))
+	algo, _ := c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize-1), MinlzLevelDefault)
 	require.Equal(t, algo, MinlzCompressionIndicator)
-	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize))
+	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize), MinlzLevelDefault)
 	require.Equal(t, algo, MinlzCompressionIndicator)
-	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize+1))
+	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize+1), MinlzLevelDefault)
 	require.Equal(t, algo, SnappyCompressionIndicator)
 }

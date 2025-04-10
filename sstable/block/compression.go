@@ -16,32 +16,97 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 )
 
-// Compression is the per-block compression algorithm to use.
-type Compression int
+// CompressionFamily identifies a compression algorithm (e.g., Snappy, Zstd, Minlz).
+type CompressionFamily int
 
-// The available compression types.
+// CompressionLevel specifies the compression level for a given family.
+// Some families ignore this value if they don't support levels.
+type CompressionLevel int
+
+// Compression is the per-block compression algorithm and level to use.
+// For families like Snappy, the level is ignored. For families like Zstd or Minlz,
+// the level adjusts compression ratio and speed.
+type Compression struct {
+	Family CompressionFamily
+	Level  CompressionLevel
+}
+
+// The available compression family types.
 const (
-	DefaultCompression Compression = iota
-	NoCompression
-	SnappyCompression
-	ZstdCompression
-	MinlzCompression
-	NCompression
+	DefaultCompressionFamily CompressionFamily = iota
+	NoCompressionFamily
+	SnappyCompressionFamily
+	ZstdCompressionFamily
+	MinlzCompressionFamily
+	NCompressionFamily
 )
+
+// The available compression levels.
+const (
+	LevelDefault CompressionLevel = 0
+
+	// Zstd compression levels.
+	ZstdLevelMin     CompressionLevel = 1
+	ZstdLevel1       CompressionLevel = 1
+	ZstdLevel2       CompressionLevel = 2
+	ZstdLevel3       CompressionLevel = 3 // Default for Zstd.
+	ZstdLevelDefault CompressionLevel = ZstdLevel3
+	ZstdLevel4       CompressionLevel = 4
+	ZstdLevel5       CompressionLevel = 5
+	ZstdLevel6       CompressionLevel = 6
+	ZstdLevel7       CompressionLevel = 7
+	ZstdLevel8       CompressionLevel = 8
+	ZstdLevel9       CompressionLevel = 9
+	ZstdLevel10      CompressionLevel = 10
+	ZstdLevel11      CompressionLevel = 11
+	ZstdLevel12      CompressionLevel = 12
+	ZstdLevel13      CompressionLevel = 13
+	ZstdLevel14      CompressionLevel = 14
+	ZstdLevel15      CompressionLevel = 15
+	ZstdLevel16      CompressionLevel = 16
+	ZstdLevel17      CompressionLevel = 17
+	ZstdLevel18      CompressionLevel = 18
+	ZstdLevel19      CompressionLevel = 19
+	ZstdLevel20      CompressionLevel = 20
+	ZstdLevel21      CompressionLevel = 21
+	ZstdLevel22      CompressionLevel = 22
+	ZstdLevelMax     CompressionLevel = 22
+
+	// Minlz compression levels.
+	MinlzLevelMin      CompressionLevel = 1
+	MinlzLevelFastest  CompressionLevel = 1 // Default for MinLZ.
+	MinlzLevelDefault  CompressionLevel = MinlzLevelFastest
+	MinlzLevelBalanced CompressionLevel = 2
+	MinlzLevelSmallest CompressionLevel = 3
+	MinlzLevelMax      CompressionLevel = 3
+)
+
+var DefaultCompression = Compression{Family: DefaultCompressionFamily, Level: LevelDefault}
+var NoCompression = Compression{Family: NoCompressionFamily, Level: LevelDefault}
+var SnappyCompression = Compression{Family: SnappyCompressionFamily, Level: LevelDefault}
+var DefaultZstdCompression = Compression{Family: ZstdCompressionFamily, Level: LevelDefault}
+var DefaultMinlzCompression = Compression{Family: MinlzCompressionFamily, Level: LevelDefault}
+
+var FamilyToDefaultCompression = map[CompressionFamily]Compression{
+	DefaultCompressionFamily: DefaultCompression,
+	NoCompressionFamily:      NoCompression,
+	SnappyCompressionFamily:  SnappyCompression,
+	ZstdCompressionFamily:    DefaultZstdCompression,
+}
 
 // String implements fmt.Stringer, returning a human-readable name for the
 // compression algorithm.
-func (c Compression) String() string {
+func (c CompressionFamily) String() string {
 	switch c {
-	case DefaultCompression:
+	case DefaultCompressionFamily:
 		return "Default"
-	case NoCompression:
+	case NoCompressionFamily:
 		return "NoCompression"
-	case SnappyCompression:
+	case SnappyCompressionFamily:
 		return "Snappy"
-	case ZstdCompression:
+	case ZstdCompressionFamily:
 		return "ZSTD"
-	case MinlzCompression:
+	case MinlzCompressionFamily:
 		return "Minlz"
 	default:
 		return "Unknown"
@@ -50,20 +115,20 @@ func (c Compression) String() string {
 
 // CompressionFromString returns an sstable.Compression from its
 // string representation. Inverse of c.String() above.
-func CompressionFromString(s string) Compression {
+func CompressionFromString(s string) CompressionFamily {
 	switch s {
 	case "Default":
-		return DefaultCompression
+		return DefaultCompressionFamily
 	case "NoCompression":
-		return NoCompression
+		return NoCompressionFamily
 	case "Snappy":
-		return SnappyCompression
+		return SnappyCompressionFamily
 	case "ZSTD":
-		return ZstdCompression
+		return ZstdCompressionFamily
 	case "Minlz":
-		return MinlzCompression
+		return MinlzCompressionFamily
 	default:
-		return DefaultCompression
+		return DefaultCompressionFamily
 	}
 }
 
@@ -222,10 +287,10 @@ func CompressAndChecksum(
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	algo := NoCompressionIndicator
-	if compression != NoCompression {
-		compressor := GetCompressor(compression)
+	if compression.Family != NoCompressionFamily {
+		compressor := GetCompressor(compression.Family)
 		defer compressor.Close()
-		algo, buf = compressor.Compress(buf, blockData)
+		algo, buf = compressor.Compress(buf, blockData, compression.Level)
 		if len(buf) >= len(blockData)-len(blockData)/8 {
 			algo = NoCompressionIndicator
 		}

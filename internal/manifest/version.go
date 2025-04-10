@@ -76,7 +76,7 @@ type TableStats struct {
 	// Total size of value blocks and value index block.
 	ValueBlocksSize uint64
 	// CompressionType is the compression type of the table.
-	CompressionType block.Compression
+	CompressionType block.CompressionFamily
 	// TombstoneDenseBlocksRatio is the ratio of data blocks in this table that
 	// fulfills at least one of the following:
 	// 1. The block contains at least options.Experimental.NumDeletionsThreshold
