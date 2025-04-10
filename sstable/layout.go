@@ -574,11 +574,17 @@ func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat)
 		return Layout{}, errors.Wrap(err, "decompressing properties")
 	}
 	if tableFormat >= TableFormatPebblev6 {
-		if err = props.load(decompressedProps, map[string]struct{}{}); err != nil {
+		var decoder colblk.KeyValueBlockDecoder
+		decoder.Init(decompressedProps)
+		if err = props.load(decoder.All(), map[string]struct{}{}); err != nil {
 			return Layout{}, err
 		}
 	} else {
-		if err = props.loadFromRowBlock(decompressedProps, map[string]struct{}{}); err != nil {
+		i, err := rowblk.NewRawIter(bytes.Compare, decompressedProps)
+		if err != nil {
+			return Layout{}, err
+		}
+		if err = props.load(i.All(), map[string]struct{}{}); err != nil {
 			return Layout{}, err
 		}
 	}

@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"bytes"
 	randv1 "math/rand"
 	"path/filepath"
 	"reflect"
@@ -106,7 +107,9 @@ func TestPropertiesSave(t *testing.T) {
 		require.NoError(t, e.saveToRowWriter(TableFormatPebblev2, &w))
 		var props Properties
 
-		require.NoError(t, props.loadFromRowBlock(w.Finish(), make(map[string]struct{})))
+		i, err := rowblk.NewRawIter(bytes.Compare, w.Finish())
+		require.NoError(t, err)
+		require.NoError(t, props.load(i.All(), make(map[string]struct{})))
 		props.Loaded = nil
 		if diff := pretty.Diff(*e, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
@@ -137,6 +140,8 @@ func BenchmarkPropertiesLoad(b *testing.B) {
 	p := &Properties{}
 	for i := 0; i < b.N; i++ {
 		*p = Properties{}
-		require.NoError(b, p.loadFromRowBlock(block, nil))
+		it, err := rowblk.NewRawIter(bytes.Compare, block)
+		require.NoError(b, err)
+		require.NoError(b, p.load(it.All(), nil))
 	}
 }

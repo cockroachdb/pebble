@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"iter"
 	"maps"
 	"math"
 	"reflect"
@@ -274,66 +275,26 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-func (p *Properties) loadFromRowBlock(b []byte, deniedUserProperties map[string]struct{}) error {
-	i, err := rowblk.NewRawIter(bytes.Compare, b)
-	if err != nil {
-		return err
-	}
+func (p *Properties) load(
+	i iter.Seq2[[]byte, []byte], deniedUserProperties map[string]struct{},
+) error {
 	p.Loaded = make(map[uintptr]struct{})
 	v := reflect.ValueOf(p).Elem()
 
-	for valid := i.First(); valid; valid = i.Next() {
-		if f, ok := propTagMap[string(i.Key().UserKey)]; ok {
-			p.Loaded[f.Offset] = struct{}{}
-			field := v.FieldByIndex(f.Index)
-			switch f.Type.Kind() {
-			case reflect.Bool:
-				field.SetBool(bytes.Equal(i.Value(), propBoolTrue))
-			case reflect.Uint32:
-				field.SetUint(uint64(binary.LittleEndian.Uint32(i.Value())))
-			case reflect.Uint64:
-				n, _ := binary.Uvarint(i.Value())
-				field.SetUint(n)
-			case reflect.String:
-				field.SetString(intern.Bytes(i.Value()))
-			default:
-				panic("not reached")
-			}
-			continue
-		}
-		if p.UserProperties == nil {
-			p.UserProperties = make(map[string]string)
-		}
-
-		if _, denied := deniedUserProperties[string(i.Key().UserKey)]; !denied {
-			p.UserProperties[intern.Bytes(i.Key().UserKey)] = string(i.Value())
-		}
-	}
-	return nil
-}
-
-func (p *Properties) load(b []byte, deniedUserProperties map[string]struct{}) error {
-	var decoder colblk.KeyValueBlockDecoder
-	decoder.Init(b)
-	p.Loaded = make(map[uintptr]struct{})
-	v := reflect.ValueOf(p).Elem()
-
-	for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
-		key := decoder.KeyAt(i)
-		value := decoder.ValueAt(i)
+	for key, val := range i {
 		if f, ok := propTagMap[string(key)]; ok {
 			p.Loaded[f.Offset] = struct{}{}
 			field := v.FieldByIndex(f.Index)
 			switch f.Type.Kind() {
 			case reflect.Bool:
-				field.SetBool(bytes.Equal(value, propBoolTrue))
+				field.SetBool(bytes.Equal(val, propBoolTrue))
 			case reflect.Uint32:
-				field.SetUint(uint64(binary.LittleEndian.Uint32(value)))
+				field.SetUint(uint64(binary.LittleEndian.Uint32(val)))
 			case reflect.Uint64:
-				n, _ := binary.Uvarint(value)
+				n, _ := binary.Uvarint(val)
 				field.SetUint(n)
 			case reflect.String:
-				field.SetString(intern.Bytes(value))
+				field.SetString(intern.Bytes(val))
 			default:
 				panic("not reached")
 			}
@@ -344,7 +305,7 @@ func (p *Properties) load(b []byte, deniedUserProperties map[string]struct{}) er
 		}
 
 		if _, denied := deniedUserProperties[string(key)]; !denied {
-			p.UserProperties[intern.Bytes(key)] = string(value)
+			p.UserProperties[intern.Bytes(key)] = string(val)
 		}
 	}
 	return nil
