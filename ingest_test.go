@@ -926,10 +926,11 @@ func testIngestSharedImpl(
 			d.mu.versions.logLock()
 			d.mu.Unlock()
 			current := d.mu.versions.currentVersion()
+			exciseBounds := exciseSpan.UserKeyBounds()
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, level)
+					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, level, tightExciseBounds)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
