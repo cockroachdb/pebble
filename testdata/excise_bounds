@@ -1,0 +1,199 @@
+build-sst
+b#1,SET = b
+c#1,SET = c
+d#1,SET = d
+e#1,SET = e
+----
+Bounds:
+  overall: b#1,SET - e#1,SET
+  point:   b#1,SET - e#1,SET
+
+excise
+[a, bb)
+----
+Right table bounds:
+  overall: c#1,SET - e#1,SET
+  point:   c#1,SET - e#1,SET
+
+excise
+[a, b]
+----
+determineRightTableBounds error: cannot excise with an inclusive end key and data overlap at end key
+
+excise
+[a, bb]
+----
+Right table bounds:
+  overall: c#1,SET - e#1,SET
+  point:   c#1,SET - e#1,SET
+
+excise
+[a, c)
+----
+Right table bounds:
+  overall: c#1,SET - e#1,SET
+  point:   c#1,SET - e#1,SET
+
+excise
+[a, cc]
+----
+Right table bounds:
+  overall: d#1,SET - e#1,SET
+  point:   d#1,SET - e#1,SET
+
+excise
+[a, cc]
+----
+Right table bounds:
+  overall: d#1,SET - e#1,SET
+  point:   d#1,SET - e#1,SET
+
+excise
+[b, z)
+----
+
+excise
+[bb, z)
+----
+Left table bounds:
+  overall: b#1,SET - b#1,SET
+  point:   b#1,SET - b#1,SET
+
+excise
+[c, z)
+----
+Left table bounds:
+  overall: b#1,SET - b#1,SET
+  point:   b#1,SET - b#1,SET
+
+excise
+[cc, z)
+----
+Left table bounds:
+  overall: b#1,SET - c#1,SET
+  point:   b#1,SET - c#1,SET
+
+excise
+[bb, cc)
+----
+Left table bounds:
+  overall: b#1,SET - b#1,SET
+  point:   b#1,SET - b#1,SET
+Right table bounds:
+  overall: d#1,SET - e#1,SET
+  point:   d#1,SET - e#1,SET
+
+excise
+[bb, cc]
+----
+Left table bounds:
+  overall: b#1,SET - b#1,SET
+  point:   b#1,SET - b#1,SET
+Right table bounds:
+  overall: d#1,SET - e#1,SET
+  point:   d#1,SET - e#1,SET
+
+excise
+[bb, d)
+----
+Left table bounds:
+  overall: b#1,SET - b#1,SET
+  point:   b#1,SET - b#1,SET
+Right table bounds:
+  overall: d#1,SET - e#1,SET
+  point:   d#1,SET - e#1,SET
+
+# Test with a RANGEDEL.
+build-sst
+b#1,SET = b
+cc#1,SET = cc
+e#1,SET = e
+Span: c-d:{(#2,RANGEDEL)}
+----
+Bounds:
+  overall: b#1,SET - e#1,SET
+  point:   b#1,SET - e#1,SET
+
+excise
+[b, cc)
+----
+Right table bounds:
+  overall: cc#2,RANGEDEL - e#1,SET
+  point:   cc#2,RANGEDEL - e#1,SET
+
+excise
+[b, b]
+----
+determineRightTableBounds error: cannot excise with an inclusive end key and data overlap at end key
+
+excise
+[b, cb]
+----
+determineRightTableBounds error: cannot truncate rangedel during excise with an inclusive upper bound
+
+excise
+[b, cd]
+----
+determineRightTableBounds error: cannot truncate rangedel during excise with an inclusive upper bound
+
+excise
+[cc, e)
+----
+Left table bounds:
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
+Right table bounds:
+  overall: e#1,SET - e#1,SET
+  point:   e#1,SET - e#1,SET
+
+excise
+[cc, e]
+----
+Left table bounds:
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
+
+# Test with range keys.
+
+build-sst
+b#1,SET = b
+cc#1,SET = cc
+e#1,SET = e
+Span: c-d:{(#2,RANGEKEYSET,@10,foo)}
+----
+Bounds:
+  overall: b#1,SET - e#1,SET
+  point:   b#1,SET - e#1,SET
+  range:   c#2,RANGEKEYSET - d#inf,RANGEKEYSET
+
+excise
+[b, cc)
+----
+Right table bounds:
+  overall: cc#2,RANGEKEYSET - e#1,SET
+  point:   cc#1,SET - e#1,SET
+  range:   cc#2,RANGEKEYSET - d#inf,RANGEKEYSET
+
+excise
+[b, cc]
+----
+determineRightTableBounds error: cannot excise with an inclusive end key and data overlap at end key
+
+excise
+[cc, e)
+----
+Left table bounds:
+  overall: b#1,SET - cc#inf,RANGEKEYSET
+  point:   b#1,SET - b#1,SET
+  range:   c#2,RANGEKEYSET - cc#inf,RANGEKEYSET
+Right table bounds:
+  overall: e#1,SET - e#1,SET
+  point:   e#1,SET - e#1,SET
+
+excise
+[cc, e]
+----
+Left table bounds:
+  overall: b#1,SET - cc#inf,RANGEKEYSET
+  point:   b#1,SET - b#1,SET
+  range:   c#2,RANGEKEYSET - cc#inf,RANGEKEYSET

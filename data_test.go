@@ -608,11 +608,16 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 }
 
 type dataDrivenCmdOptions struct {
-	blobValues *blobtest.Values
+	blobValues        *blobtest.Values
+	defaultWriterOpts sstable.WriterOptions
 }
 
 func withBlobValues(bv *blobtest.Values) func(*dataDrivenCmdOptions) {
 	return func(o *dataDrivenCmdOptions) { o.blobValues = bv }
+}
+
+func withDefaultWriterOpts(defaultWriterOpts sstable.WriterOptions) func(*dataDrivenCmdOptions) {
+	return func(o *dataDrivenCmdOptions) { o.defaultWriterOpts = defaultWriterOpts }
 }
 
 func combineDataDrivenOpts(opts ...func(*dataDrivenCmdOptions)) dataDrivenCmdOptions {
@@ -623,6 +628,7 @@ func combineDataDrivenOpts(opts ...func(*dataDrivenCmdOptions)) dataDrivenCmdOpt
 	return combined
 }
 
+// TODO(radu): remove this in favor of runBuildSSTCmd.
 func runBuildCmd(
 	td *datadriven.TestData, d *DB, fs vfs.FS, opts ...func(*dataDrivenCmdOptions),
 ) error {
@@ -716,6 +722,38 @@ func runBuildCmd(
 	}
 
 	return w.Close()
+}
+
+func runBuildSSTCmd(
+	input string,
+	writerArgs []datadriven.CmdArg,
+	path string,
+	fs vfs.FS,
+	opts ...func(*dataDrivenCmdOptions),
+) (sstable.WriterMetadata, error) {
+	ddOpts := combineDataDrivenOpts(opts...)
+
+	writerOpts := ddOpts.defaultWriterOpts
+	if err := sstable.ParseWriterOptions(&writerOpts, writerArgs...); err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+
+	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+	if err := sstable.ParseTestSST(w.Raw(), input, nil /* bv */); err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	if err := w.Close(); err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	metadata, err := w.Metadata()
+	if err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	return *metadata, nil
 }
 
 func runCompactCmd(td *datadriven.TestData, d *DB) error {

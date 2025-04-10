@@ -684,7 +684,6 @@ func testIngestSharedImpl(
 			FormatMajorVersion:    FormatVirtualSSTables,
 			Logger:                testLogger{t},
 		}
-		// lel.
 		lel := MakeLoggingEventListener(testLogger{t})
 		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
