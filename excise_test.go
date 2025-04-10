@@ -7,6 +7,7 @@ package pebble
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
@@ -306,6 +307,7 @@ func TestExcise(t *testing.T) {
 				fileNums[base.FileNum(fNum)] = struct{}{}
 			}
 			d.mu.Lock()
+			defer d.mu.Unlock()
 			currVersion := d.mu.versions.currentVersion()
 			var ptr *manifest.FileBacking
 			for _, level := range currVersion.Levels {
@@ -322,7 +324,6 @@ func TestExcise(t *testing.T) {
 					}
 				}
 			}
-			d.mu.Unlock()
 			return "file backings are the same"
 		case "compact":
 			if len(td.CmdArgs) != 2 {
@@ -431,7 +432,6 @@ func TestConcurrentExcise(t *testing.T) {
 			FormatMajorVersion:    FormatVirtualSSTables,
 			Logger:                testLogger{t},
 		}
-		// lel.
 		lel := MakeLoggingEventListener(testLogger{t})
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
@@ -761,5 +761,110 @@ func TestConcurrentExcise(t *testing.T) {
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
+	})
+}
+
+func TestExciseBounds(t *testing.T) {
+	const sstPath = "foo.sst"
+	var fs vfs.FS
+	var m *manifest.TableMetadata
+	cmp := base.DefaultComparer.Compare
+
+	datadriven.RunTest(t, "testdata/excise_bounds", func(t *testing.T, td *datadriven.TestData) string {
+		checkErr := func(err error) {
+			if err != nil {
+				t.Helper()
+				td.Fatalf(t, "%v", err)
+			}
+		}
+		var buf strings.Builder
+		printBounds := func(title string, m *tableMetadata) {
+			fmt.Fprintf(&buf, "%s:\n", title)
+			fmt.Fprintf(&buf, "  overall: %v - %v\n", m.Smallest, m.Largest)
+			if m.HasPointKeys {
+				fmt.Fprintf(&buf, "  point:   %v - %v\n", m.SmallestPointKey, m.LargestPointKey)
+			}
+			if m.HasRangeKeys {
+				fmt.Fprintf(&buf, "  range:   %v - %v\n", m.SmallestRangeKey, m.LargestRangeKey)
+			}
+		}
+		switch td.Cmd {
+		case "build-sst":
+			fs = vfs.NewMem()
+			var writerOpts sstable.WriterOptions
+			writerOpts.TableFormat = sstable.TableFormat(rand.IntN(int(sstable.TableFormatMax)) + 1)
+			// We need at least v2 for tests with range keys.
+			writerOpts.TableFormat = max(writerOpts.TableFormat, sstable.TableFormatPebblev2)
+			sstMeta, err := runBuildSSTCmd(td.Input, td.CmdArgs, sstPath, fs, withDefaultWriterOpts(writerOpts))
+			checkErr(err)
+
+			m = &manifest.TableMetadata{}
+			if sstMeta.HasPointKeys {
+				m.ExtendPointKeyBounds(cmp, sstMeta.SmallestPoint, sstMeta.LargestPoint)
+			}
+			if sstMeta.HasRangeDelKeys {
+				m.ExtendPointKeyBounds(cmp, sstMeta.SmallestRangeDel, sstMeta.LargestRangeDel)
+			}
+			if sstMeta.HasRangeKeys {
+				m.ExtendRangeKeyBounds(cmp, sstMeta.SmallestRangeKey, sstMeta.LargestRangeKey)
+			}
+			printBounds("Bounds", m)
+
+		case "excise":
+			f, err := fs.Open(sstPath)
+			checkErr(err)
+			readable, err := sstable.NewSimpleReadable(f)
+			checkErr(err)
+			ctx := context.Background()
+			r, err := sstable.NewReader(ctx, readable, sstable.ReaderOptions{})
+			checkErr(err)
+			pointIter, err := r.NewPointIter(ctx, sstable.IterOptions{})
+			checkErr(err)
+			rangeDelIter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, block.ReadEnv{})
+			checkErr(err)
+			rangeKeyIter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, block.ReadEnv{})
+			checkErr(err)
+			iters := iterSet{
+				point:         pointIter,
+				rangeDeletion: rangeDelIter,
+				rangeKey:      rangeKeyIter,
+			}
+
+			exciseSpan := base.ParseUserKeyBounds(td.Input)
+			if cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
+				var t manifest.TableMetadata
+				checkErr(determineLeftTableBounds(cmp, m, &t, exciseSpan.Start, iters))
+				printBounds("Left table bounds", &t)
+			}
+
+			if !exciseSpan.End.IsUpperBoundForInternalKey(cmp, m.Largest) {
+				var t manifest.TableMetadata
+				err := func() (err error) {
+					// determineRightTableBounds can return assertion errors which we want
+					// to see in the tests but which panic in invariant builds.
+					defer func() {
+						if p := recover(); p != nil {
+							if e, ok := p.(error); ok {
+								err = e
+							} else {
+								panic(p)
+							}
+						}
+					}()
+					return determineRightTableBounds(cmp, m, &t, exciseSpan.End, iters)
+				}()
+				if err != nil {
+					fmt.Fprintf(&buf, "determineRightTableBounds error: %v", err)
+				} else {
+					printBounds("Right table bounds", &t)
+				}
+			}
+			checkErr(iters.CloseAll())
+
+		default:
+			td.Fatalf(t, "unknown command %q", td.Cmd)
+		}
+
+		return buf.String()
 	})
 }
