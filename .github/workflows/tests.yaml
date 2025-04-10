@@ -1,12 +1,28 @@
-name: Nightly tests
+name: Tests
 
 on:
-  schedule:
-    - cron: "0 6 * * *" # 6am UTC, daily.
+  workflow_call:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
   workflow_dispatch:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
 
 jobs:
-
   linux:
     name: linux
     strategy:
@@ -15,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -27,13 +45,12 @@ jobs:
         run: scripts/check-workspace-clean.sh
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -45,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -54,13 +73,12 @@ jobs:
       - run: GOTRACEBACK=all GOARCH=386 make test
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -72,6 +90,8 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -81,13 +101,12 @@ jobs:
       - run: GOTRACEBACK=all make test
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -100,6 +119,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha || github.sha }}
           # This target needs to find the crl-release-* branches.
           fetch-depth: 0
 
@@ -111,13 +131,12 @@ jobs:
       - run: make crossversion-meta
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly crossversion test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -129,6 +148,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -138,13 +159,12 @@ jobs:
       - run: GOTRACEBACK=all make test TAGS=
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -156,6 +176,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -165,13 +187,12 @@ jobs:
       - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -183,6 +204,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -192,13 +215,12 @@ jobs:
       - run: GOTRACEBACK=all make test
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -210,6 +232,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -219,13 +243,12 @@ jobs:
       - run: go test -tags invariants ./...
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
   lint-checks:
@@ -236,6 +259,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -249,13 +274,12 @@ jobs:
         run: make format-check
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -268,6 +292,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -282,11 +308,10 @@ jobs:
       - run: GOOS=openbsd go build -v ./...
 
       - name: Post issue on failure
-        if: failure()
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "nightly test failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ github.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          unique-title-includes: "nightly test failed"
+          title: "${{ inputs.file_issue_branch }}: nightly test failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
