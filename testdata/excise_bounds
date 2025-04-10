@@ -14,6 +14,9 @@ excise
 Right table bounds:
   overall: c#1,SET - e#1,SET
   point:   c#1,SET - e#1,SET
+Right table bounds (loose):
+  overall: bb#0,DELSIZED - e#1,SET
+  point:   bb#0,DELSIZED - e#1,SET
 
 excise
 [a, b]
@@ -33,6 +36,9 @@ excise
 Right table bounds:
   overall: c#1,SET - e#1,SET
   point:   c#1,SET - e#1,SET
+Right table bounds (loose):
+  overall: c#0,DELSIZED - e#1,SET
+  point:   c#0,DELSIZED - e#1,SET
 
 excise
 [a, cc]
@@ -58,6 +64,9 @@ excise
 Left table bounds:
   overall: b#1,SET - b#1,SET
   point:   b#1,SET - b#1,SET
+Left table bounds (loose):
+  overall: b#1,SET - bb#inf,RANGEDEL
+  point:   b#1,SET - bb#inf,RANGEDEL
 
 excise
 [c, z)
@@ -65,6 +74,9 @@ excise
 Left table bounds:
   overall: b#1,SET - b#1,SET
   point:   b#1,SET - b#1,SET
+Left table bounds (loose):
+  overall: b#1,SET - c#inf,RANGEDEL
+  point:   b#1,SET - c#inf,RANGEDEL
 
 excise
 [cc, z)
@@ -72,6 +84,9 @@ excise
 Left table bounds:
   overall: b#1,SET - c#1,SET
   point:   b#1,SET - c#1,SET
+Left table bounds (loose):
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
 
 excise
 [bb, cc)
@@ -79,9 +94,15 @@ excise
 Left table bounds:
   overall: b#1,SET - b#1,SET
   point:   b#1,SET - b#1,SET
+Left table bounds (loose):
+  overall: b#1,SET - bb#inf,RANGEDEL
+  point:   b#1,SET - bb#inf,RANGEDEL
 Right table bounds:
   overall: d#1,SET - e#1,SET
   point:   d#1,SET - e#1,SET
+Right table bounds (loose):
+  overall: cc#0,DELSIZED - e#1,SET
+  point:   cc#0,DELSIZED - e#1,SET
 
 excise
 [bb, cc]
@@ -89,6 +110,9 @@ excise
 Left table bounds:
   overall: b#1,SET - b#1,SET
   point:   b#1,SET - b#1,SET
+Left table bounds (loose):
+  overall: b#1,SET - bb#inf,RANGEDEL
+  point:   b#1,SET - bb#inf,RANGEDEL
 Right table bounds:
   overall: d#1,SET - e#1,SET
   point:   d#1,SET - e#1,SET
@@ -99,9 +123,15 @@ excise
 Left table bounds:
   overall: b#1,SET - b#1,SET
   point:   b#1,SET - b#1,SET
+Left table bounds (loose):
+  overall: b#1,SET - bb#inf,RANGEDEL
+  point:   b#1,SET - bb#inf,RANGEDEL
 Right table bounds:
   overall: d#1,SET - e#1,SET
   point:   d#1,SET - e#1,SET
+Right table bounds (loose):
+  overall: d#0,DELSIZED - e#1,SET
+  point:   d#0,DELSIZED - e#1,SET
 
 # Test with a RANGEDEL.
 build-sst
@@ -120,6 +150,9 @@ excise
 Right table bounds:
   overall: cc#2,RANGEDEL - e#1,SET
   point:   cc#2,RANGEDEL - e#1,SET
+Right table bounds (loose):
+  overall: cc#0,DELSIZED - e#1,SET
+  point:   cc#0,DELSIZED - e#1,SET
 
 excise
 [b, b]
@@ -142,14 +175,23 @@ excise
 Left table bounds:
   overall: b#1,SET - cc#inf,RANGEDEL
   point:   b#1,SET - cc#inf,RANGEDEL
+Left table bounds (loose):
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
 Right table bounds:
   overall: e#1,SET - e#1,SET
   point:   e#1,SET - e#1,SET
+Right table bounds (loose):
+  overall: e#0,DELSIZED - e#1,SET
+  point:   e#0,DELSIZED - e#1,SET
 
 excise
 [cc, e]
 ----
 Left table bounds:
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
+Left table bounds (loose):
   overall: b#1,SET - cc#inf,RANGEDEL
   point:   b#1,SET - cc#inf,RANGEDEL
 
@@ -173,6 +215,10 @@ Right table bounds:
   overall: cc#2,RANGEKEYSET - e#1,SET
   point:   cc#1,SET - e#1,SET
   range:   cc#2,RANGEKEYSET - d#inf,RANGEKEYSET
+Right table bounds (loose):
+  overall: cc#0,DELSIZED - e#1,SET
+  point:   cc#0,DELSIZED - e#1,SET
+  range:   cc#0,RANGEKEYSET - d#inf,RANGEKEYSET
 
 excise
 [b, cc]
@@ -186,9 +232,17 @@ Left table bounds:
   overall: b#1,SET - cc#inf,RANGEKEYSET
   point:   b#1,SET - b#1,SET
   range:   c#2,RANGEKEYSET - cc#inf,RANGEKEYSET
+Left table bounds (loose):
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
+  range:   c#2,RANGEKEYSET - cc#inf,RANGEKEYDEL
 Right table bounds:
   overall: e#1,SET - e#1,SET
   point:   e#1,SET - e#1,SET
+Right table bounds (loose):
+  overall: e#0,DELSIZED - e#1,SET
+  point:   e#0,DELSIZED - e#1,SET
+  range:   e#0,RANGEKEYSET - d#inf,RANGEKEYSET
 
 excise
 [cc, e]
@@ -197,3 +251,7 @@ Left table bounds:
   overall: b#1,SET - cc#inf,RANGEKEYSET
   point:   b#1,SET - b#1,SET
   range:   c#2,RANGEKEYSET - cc#inf,RANGEKEYSET
+Left table bounds (loose):
+  overall: b#1,SET - cc#inf,RANGEDEL
+  point:   b#1,SET - cc#inf,RANGEDEL
+  range:   c#2,RANGEKEYSET - cc#inf,RANGEKEYDEL
