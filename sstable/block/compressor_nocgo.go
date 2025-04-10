@@ -40,8 +40,11 @@ func (zstdCompressor) Compress(compressedBuf, b []byte) (CompressionIndicator, [
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
 	encoder, _ := zstd.NewWriter(nil)
-	defer encoder.Close()
-	return ZstdCompressionIndicator, encoder.EncodeAll(b, compressedBuf[:varIntLen])
+	result := encoder.EncodeAll(b, compressedBuf[:varIntLen])
+	if err := encoder.Close(); err != nil {
+		panic(err)
+	}
+	return ZstdCompressionIndicator, result
 }
 
 func (zstdCompressor) Close() {}
