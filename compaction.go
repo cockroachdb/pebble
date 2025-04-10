@@ -1345,10 +1345,11 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		levelMetrics.TablesIngested++
 	}
 	if ingestFlushable.exciseSpan.Valid() {
+		exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		for layer, ls := range c.version.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, ingestFlushable.exciseSpan.UserKeyBounds()).All() {
-				leftTable, rightTable, err := d.exciseTable(context.TODO(), ingestFlushable.exciseSpan.UserKeyBounds(), m, layer.Level())
+				leftTable, rightTable, err := d.exciseTable(context.TODO(), exciseBounds, m, layer.Level(), tightExciseBounds)
 				if err != nil {
 					return nil, err
 				}
@@ -2761,7 +2762,8 @@ func (d *DB) applyHintOnFile(
 	}
 
 	levelMetrics.TablesExcised++
-	leftTable, rightTable, err := d.exciseTable(context.TODO(), base.UserKeyBoundsEndExclusive(h.start, h.end), f, level)
+	exciseBounds := base.UserKeyBoundsEndExclusive(h.start, h.end)
+	leftTable, rightTable, err := d.exciseTable(context.TODO(), exciseBounds, f, level, tightExciseBounds)
 	if err != nil {
 		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
 	}
