@@ -246,6 +246,32 @@ func CompressAndChecksum(
 	return pb
 }
 
+func CompressAndChecksumWithCompressor(
+	dst *[]byte, blockData []byte, compressor Compressor, checksummer *Checksummer,
+) PhysicalBlock {
+	buf := (*dst)[:0]
+	// Compress the buffer, discarding the result if the improvement isn't at
+	// least 12.5%.
+	algo, buf := compressor.Compress(buf, blockData)
+	if len(buf) >= len(blockData)-len(blockData)/8 {
+		algo = NoCompressionIndicator
+	}
+	if algo == NoCompressionIndicator {
+		// We don't want to use the given blockData buffer directly: typically the
+		// result will be written to disk and that can mangle the buffer, leading to
+		// fragile code.
+		buf = append(buf[:0], blockData...)
+	}
+
+	*dst = buf
+
+	// Calculate the checksum.
+	pb := PhysicalBlock{data: buf}
+	checksum := checksummer.Checksum(buf, byte(algo))
+	pb.trailer = MakeTrailer(byte(algo), checksum)
+	return pb
+}
+
 // A Buffer is a buffer for encoding a block. The caller mutates the buffer to
 // construct the uncompressed block, and calls CompressAndChecksum to produce
 // the physical, possibly-compressed PhysicalBlock. A Buffer recycles byte

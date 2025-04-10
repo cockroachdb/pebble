@@ -103,6 +103,9 @@ type RawColumnWriter struct {
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
 	cpuMeasurer           base.CPUMeasurer
+
+	// RawColumnWriter writes data sequentially so each writer can have a compressor
+	compressor block.Compressor
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -184,6 +187,8 @@ func newColumnarWriter(
 	w.writeQueue.wg.Add(1)
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
+
+	w.compressor = block.GetCompressor(w.opts.Compression)
 	return w
 }
 
@@ -711,10 +716,10 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum
-	cb.physical = block.CompressAndChecksum(
+	cb.physical = block.CompressAndChecksumWithCompressor(
 		&cb.blockBuf.dataBuf,
 		serializedBlock,
-		w.opts.Compression,
+		w.compressor,
 		&cb.blockBuf.checksummer,
 	)
 	return w.enqueuePhysicalBlock(cb, separator)
@@ -1040,6 +1045,7 @@ func (w *RawColumnWriter) Close() (err error) {
 		return err
 	}
 	w.meta.Properties = w.props
+	w.compressor.Close()
 	// Release any held memory and make any future calls error.
 	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
 	return nil
@@ -1220,10 +1226,10 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum
-	cb.physical = block.CompressAndChecksum(
+	cb.physical = block.CompressAndChecksumWithCompressor(
 		&cb.blockBuf.dataBuf,
 		b,
-		w.opts.Compression,
+		w.compressor,
 		&cb.blockBuf.checksummer,
 	)
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
