@@ -734,6 +734,43 @@ L6:
   000024(000018):[f#0,SET-f#0,SET]
   000025(000018):[x#0,SET-x#0,SET]
 
+build-remote remote1
+set g foo
+set h bar
+set i foobar
+----
+
+ingest-external
+remote1 bounds=(g,j)
+----
+
+lsm
+----
+L0.0:
+  000019:[a#22,SET-a#22,SET]
+  000020:[b#23,SET-f#23,SET]
+L6:
+  000023(000018):[a#0,SET-a#0,SET]
+  000024(000018):[f#0,SET-f#0,SET]
+  000026(000026):[g#26,DELSIZED-j#inf,RANGEDEL]
+  000025(000018):[x#0,SET-x#0,SET]
+
+# Non-local tables are excised with loose bounds.
+excise ga ha
+----
+
+lsm
+----
+L0.0:
+  000019:[a#22,SET-a#22,SET]
+  000020:[b#23,SET-f#23,SET]
+L6:
+  000023(000018):[a#0,SET-a#0,SET]
+  000024(000018):[f#0,SET-f#0,SET]
+  000027(000026):[g#26,DELSIZED-ga#inf,RANGEDEL]
+  000028(000026):[ha#0,DELSIZED-j#inf,RANGEDEL]
+  000025(000018):[x#0,SET-x#0,SET]
+
 excise a z
 ----
 

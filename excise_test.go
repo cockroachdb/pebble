@@ -50,6 +50,7 @@ func TestExcise(t *testing.T) {
 		flushed = false
 	}
 
+	var remoteStorage remote.Storage
 	var opts *Options
 	reset := func(blockSize int) {
 		for _, e := range efos {
@@ -62,6 +63,7 @@ func TestExcise(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
+		remoteStorage = remote.NewInMem()
 		opts = &Options{
 			BlockPropertyCollectors: []func() BlockPropertyCollector{
 				sstable.NewTestKeysBlockPropertyCollector,
@@ -80,6 +82,10 @@ func TestExcise(t *testing.T) {
 		if blockSize != 0 {
 			opts.Levels = append(opts.Levels, LevelOptions{BlockSize: blockSize, IndexBlockSize: 32 << 10})
 		}
+		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			"external-locator": remoteStorage,
+		})
+		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
@@ -125,6 +131,11 @@ func TestExcise(t *testing.T) {
 			return ""
 		case "build":
 			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+		case "build-remote":
+			if err := runBuildRemoteCmd(td, d, remoteStorage); err != nil {
 				return err.Error()
 			}
 			return ""
@@ -193,7 +204,12 @@ func TestExcise(t *testing.T) {
 				}
 				return "memtable flushed"
 			}
-			return ""
+
+		case "ingest-external":
+			if err := runIngestExternalCmd(t, td, d, remoteStorage, "external-locator"); err != nil {
+				return err.Error()
+			}
+
 		case "file-only-snapshot":
 			if len(td.CmdArgs) != 1 {
 				panic("insufficient args for file-only-snapshot command")
@@ -281,10 +297,11 @@ func TestExcise(t *testing.T) {
 			d.mu.Unlock()
 			current := d.mu.versions.currentVersion()
 
+			exciseBounds := exciseSpan.UserKeyBounds()
 			for l, ls := range current.AllLevelsAndSublevels() {
 				iter := ls.Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, l.Level())
+					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, l.Level(), tightExciseBounds)
 					if err != nil {
 						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
 					}
@@ -335,10 +352,11 @@ func TestExcise(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			return ""
+
 		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
+			td.Fatalf(t, "unknown command: %s", td.Cmd)
 		}
+		return ""
 	})
 }
 
@@ -661,10 +679,11 @@ func TestConcurrentExcise(t *testing.T) {
 			d.mu.versions.logLock()
 			d.mu.Unlock()
 			current := d.mu.versions.currentVersion()
+			exciseBounds := exciseSpan.UserKeyBounds()
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
 				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseSpan.UserKeyBounds(), m, level)
+					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, level, tightExciseBounds)
 					if err != nil {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
@@ -835,6 +854,9 @@ func TestExciseBounds(t *testing.T) {
 				var t manifest.TableMetadata
 				checkErr(determineLeftTableBounds(cmp, m, &t, exciseSpan.Start, iters))
 				printBounds("Left table bounds", &t)
+				t = manifest.TableMetadata{}
+				looseLeftTableBounds(cmp, m, &t, exciseSpan.Start)
+				printBounds("Left table bounds (loose)", &t)
 			}
 
 			if !exciseSpan.End.IsUpperBoundForInternalKey(cmp, m.Largest) {
@@ -857,6 +879,11 @@ func TestExciseBounds(t *testing.T) {
 					fmt.Fprintf(&buf, "determineRightTableBounds error: %v", err)
 				} else {
 					printBounds("Right table bounds", &t)
+				}
+				if exciseSpan.End.Kind == base.Exclusive {
+					t = manifest.TableMetadata{}
+					looseRightTableBounds(cmp, m, &t, exciseSpan.End.Key)
+					printBounds("Right table bounds (loose)", &t)
 				}
 			}
 			checkErr(iters.CloseAll())

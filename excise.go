@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // Excise atomically deletes all data overlapping with the provided span. All
@@ -40,14 +41,33 @@ func (d *DB) Excise(ctx context.Context, span KeyRange) error {
 			v, FormatVirtualSSTables,
 		)
 	}
-	_, err := d.ingest(ctx, nil, nil, span, nil)
+	_, err := d.ingest(ctx, ingestArgs{ExciseSpan: span, ExciseBoundsPolicy: tightExciseBoundsIfLocal})
 	return err
 }
+
+// exciseBoundsPolicy controls whether we open excised files to obtain tight
+// bounds for the remaining file(s).
+type exciseBoundsPolicy uint8
+
+const (
+	// tightExciseBounds means that we will always open the file to find the exact
+	// bounds of the remaining file(s).
+	tightExciseBounds exciseBoundsPolicy = iota
+	// looseExciseBounds means that we will not open the file and will assign bounds
+	// pessimistically.
+	looseExciseBounds
+	// tightExciseBoundsLocalOnly means that we will only open the file if it is
+	// local; otherwise we will assign loose bounds to the remaining file(s).
+	tightExciseBoundsIfLocal
+)
 
 // exciseTable initializes up to two virtual tables for what is left over after
 // excising the given span from the table.
 //
-// Returns the left and/or right tables, if they exist.
+// Returns the left and/or right tables, if they exist. The boundsPolicy controls
+// whether we create iterators for m to determine tight bounds. Note that if the
+// exciseBounds are end-inclusive, tight bounds will be used regardless of the
+// policy.
 //
 // The file bounds must overlap with the excise span.
 //
@@ -55,28 +75,45 @@ func (d *DB) Excise(ctx context.Context, span KeyRange) error {
 // the db mutex held (eg. ingest-time excises), while in the case of compactions
 // the mutex is not held.
 func (d *DB) exciseTable(
-	ctx context.Context, exciseSpan base.UserKeyBounds, m *tableMetadata, level int,
+	ctx context.Context,
+	exciseBounds base.UserKeyBounds,
+	m *tableMetadata,
+	level int,
+	boundsPolicy exciseBoundsPolicy,
 ) (leftTable, rightTable *tableMetadata, _ error) {
 	// Check if there's actually an overlap between m and exciseSpan.
 	mBounds := m.UserKeyBounds()
-	if !exciseSpan.Overlaps(d.cmp, &mBounds) {
+	if !exciseBounds.Overlaps(d.cmp, &mBounds) {
 		return nil, nil, base.AssertionFailedf("excise span does not overlap table")
 	}
 	// Fast path: m sits entirely within the exciseSpan, so just delete it.
-	if exciseSpan.ContainsInternalKey(d.cmp, m.Smallest) && exciseSpan.ContainsInternalKey(d.cmp, m.Largest) {
+	if exciseBounds.ContainsInternalKey(d.cmp, m.Smallest) && exciseBounds.ContainsInternalKey(d.cmp, m.Largest) {
 		return nil, nil, nil
 	}
 
-	// The file partially overlaps the excise span; we will need to open it to
-	// determine tight bounds for the left-over table(s).
-	iters, err := d.newIters(ctx, m, &IterOptions{
-		Category: categoryIngest,
-		layer:    manifest.Level(level),
-	}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
-	if err != nil {
-		return nil, nil, err
+	looseBounds := boundsPolicy == looseExciseBounds ||
+		(boundsPolicy == tightExciseBoundsIfLocal && !objstorage.IsLocalTable(d.objProvider, m.FileBacking.DiskFileNum))
+
+	if exciseBounds.End.Kind == base.Inclusive {
+		// Loose bounds are not allowed with end-inclusive bounds. This can only
+		// happen for ingest splits.
+		looseBounds = false
 	}
-	defer iters.CloseAll()
+
+	// The file partially overlaps the excise span; unless looseBounds is true, we
+	// will need to open it to determine tight bounds for the left-over table(s).
+	var iters iterSet
+	if !looseBounds {
+		var err error
+		iters, err = d.newIters(ctx, m, &IterOptions{
+			Category: categoryIngest,
+			layer:    manifest.Level(level),
+		}, internalIterOpts{}, iterPointKeys|iterRangeDeletions|iterRangeKeys)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer func() { _ = iters.CloseAll() }()
+	}
 
 	// Create a file to the left of the excise span, if necessary.
 	// The bounds of this file will be [m.Smallest, lastKeyBefore(exciseSpan.Start)].
@@ -100,7 +137,7 @@ func (d *DB) exciseTable(
 	// files, then grab the lock again and recalculate for just the files that
 	// have changed since our previous calculation. Do this optimiaztino as part of
 	// https://github.com/cockroachdb/pebble/issues/2112 .
-	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
+	if d.cmp(m.Smallest.UserKey, exciseBounds.Start) < 0 {
 		leftTable = &tableMetadata{
 			Virtual:     true,
 			FileBacking: m.FileBacking,
@@ -112,7 +149,9 @@ func (d *DB) exciseTable(
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 		}
-		if err := determineLeftTableBounds(d.cmp, m, leftTable, exciseSpan.Start, iters); err != nil {
+		if looseBounds {
+			looseLeftTableBounds(d.cmp, m, leftTable, exciseBounds.Start)
+		} else if err := determineLeftTableBounds(d.cmp, m, leftTable, exciseBounds.Start, iters); err != nil {
 			return nil, nil, err
 		}
 
@@ -129,7 +168,7 @@ func (d *DB) exciseTable(
 		}
 	}
 	// Create a file to the right, if necessary.
-	if !exciseSpan.End.IsUpperBoundForInternalKey(d.cmp, m.Largest) {
+	if !exciseBounds.End.IsUpperBoundForInternalKey(d.cmp, m.Largest) {
 		// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
 		//
 		// See comment before the definition of leftFile for the motivation behind
@@ -145,7 +184,10 @@ func (d *DB) exciseTable(
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 		}
-		if err := determineRightTableBounds(d.cmp, m, rightTable, exciseSpan.End, iters); err != nil {
+		if looseBounds {
+			// We already checked that the end bound is exclusive.
+			looseRightTableBounds(d.cmp, m, rightTable, exciseBounds.End.Key)
+		} else if err := determineRightTableBounds(d.cmp, m, rightTable, exciseBounds.End, iters); err != nil {
 			return nil, nil, err
 		}
 		if rightTable.HasRangeKeys || rightTable.HasPointKeys {
@@ -207,8 +249,62 @@ func exciseOverlapBounds(
 	return extended
 }
 
+// looseLeftTableBounds initializes the bounds for the table that remains to the
+// left of the excise span after excising originalTable, without consulting the
+// contents of originalTable. The resulting bounds are loose.
+//
+// Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
+// the leftFile.
+func looseLeftTableBounds(
+	cmp Compare, originalTable, leftTable *tableMetadata, exciseSpanStart []byte,
+) {
+	if originalTable.HasPointKeys {
+		largestPointKey := originalTable.LargestPointKey
+		if largestPointKey.IsUpperBoundFor(cmp, exciseSpanStart) {
+			largestPointKey = base.MakeRangeDeleteSentinelKey(exciseSpanStart)
+		}
+		leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey, largestPointKey)
+	}
+	if originalTable.HasRangeKeys {
+		largestRangeKey := originalTable.LargestRangeKey
+		if largestRangeKey.IsUpperBoundFor(cmp, exciseSpanStart) {
+			largestRangeKey = base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, exciseSpanStart)
+		}
+		leftTable.ExtendRangeKeyBounds(cmp, originalTable.SmallestRangeKey, largestRangeKey)
+	}
+}
+
+// looseRightTableBounds initializes the bounds for the table that remains to the
+// right of the excise span after excising originalTable, without consulting the
+// contents of originalTable. The resulting bounds are loose.
+//
+// Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
+// the rightFile.
+//
+// The excise span end bound is assumed to be exclusive; this function cannot be
+// used with an inclusive end bound.
+func looseRightTableBounds(
+	cmp Compare, originalTable, rightTable *tableMetadata, exciseSpanEnd []byte,
+) {
+	if originalTable.HasPointKeys {
+		smallestPointKey := originalTable.SmallestPointKey
+		if !smallestPointKey.IsUpperBoundFor(cmp, exciseSpanEnd) {
+			smallestPointKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindMaxForSSTable)
+		}
+		rightTable.ExtendPointKeyBounds(cmp, smallestPointKey, originalTable.LargestPointKey)
+	}
+	if originalTable.HasRangeKeys {
+		smallestRangeKey := originalTable.SmallestRangeKey
+		if !smallestRangeKey.IsUpperBoundFor(cmp, exciseSpanEnd) {
+			smallestRangeKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindRangeKeyMax)
+		}
+		rightTable.ExtendRangeKeyBounds(cmp, smallestRangeKey, originalTable.LargestRangeKey)
+	}
+}
+
 // determineLeftTableBounds calculates the bounds for the table that remains to
-// the left of the excise span after excising originalFile.
+// the left of the excise span after excising originalTable. The bounds around
+// the excise span are determined precisely by looking inside the file.
 //
 // Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
 // the leftFile.
@@ -256,7 +352,8 @@ func determineLeftTableBounds(
 }
 
 // determineRightTableBounds calculates the bounds for the table that remains to
-// the right of the excise span after excising originalFile.
+// the right of the excise span after excising originalTable. The bounds around
+// the excise span are determined precisely by looking inside the file.
 //
 // Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
 // the right.

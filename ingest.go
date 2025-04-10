@@ -1144,7 +1144,7 @@ func (d *DB) Ingest(ctx context.Context, paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(ctx, paths, nil /* shared */, KeyRange{}, nil /* external */)
+	_, err := d.ingest(ctx, ingestArgs{Local: paths})
 	return err
 }
 
@@ -1232,7 +1232,7 @@ func (d *DB) IngestWithStats(ctx context.Context, paths []string) (IngestOperati
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(ctx, paths, nil, KeyRange{}, nil)
+	return d.ingest(ctx, ingestArgs{Local: paths})
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1252,7 +1252,7 @@ func (d *DB) IngestExternalFiles(
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(ctx, nil, nil, KeyRange{}, external)
+	return d.ingest(ctx, ingestArgs{External: external})
 }
 
 // IngestAndExcise does the same as IngestWithStats, and additionally accepts a
@@ -1291,7 +1291,14 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
-	return d.ingest(ctx, paths, shared, exciseSpan, external)
+	args := ingestArgs{
+		Local:              paths,
+		Shared:             shared,
+		External:           external,
+		ExciseSpan:         exciseSpan,
+		ExciseBoundsPolicy: tightExciseBounds,
+	}
+	return d.ingest(ctx, args)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
@@ -1429,18 +1436,27 @@ func (d *DB) handleIngestAsFlushable(
 	return nil
 }
 
+type ingestArgs struct {
+	// Local sstables to ingest.
+	Local []string
+	// Shared sstables to ingest.
+	Shared []SharedSSTMeta
+	// External sstables to ingest.
+	External []ExternalFile
+	// ExciseSpan (unset if not excising).
+	ExciseSpan         KeyRange
+	ExciseBoundsPolicy exciseBoundsPolicy
+}
+
 // See comment at Ingest() for details on how this works.
-func (d *DB) ingest(
-	ctx context.Context,
-	paths []string,
-	shared []SharedSSTMeta,
-	exciseSpan KeyRange,
-	external []ExternalFile,
-) (IngestOperationStats, error) {
+func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats, error) {
+	paths := args.Local
+	shared := args.Shared
+	external := args.External
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
 		panic("cannot ingest shared sstables with nil SharedStorage")
 	}
-	if (exciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
+	if (args.ExciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
 		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
 	}
 	if len(external) > 0 && d.FormatMajorVersion() < FormatSyntheticPrefixSuffix {
@@ -1472,13 +1488,13 @@ func (d *DB) ingest(
 		return IngestOperationStats{}, err
 	}
 
-	if loadResult.fileCount() == 0 && !exciseSpan.Valid() {
+	if loadResult.fileCount() == 0 && !args.ExciseSpan.Valid() {
 		// All of the sstables to be ingested were empty. Nothing to do.
 		return IngestOperationStats{}, nil
 	}
 
 	// Verify the sstables do not overlap.
-	if err := ingestSortAndVerify(d.cmp, loadResult, exciseSpan); err != nil {
+	if err := ingestSortAndVerify(d.cmp, loadResult, args.ExciseSpan); err != nil {
 		return IngestOperationStats{}, err
 	}
 
@@ -1528,21 +1544,21 @@ func (d *DB) ingest(
 		for _, m := range loadResult.external {
 			overlapBounds = append(overlapBounds, m.tableMetadata)
 		}
-		if exciseSpan.Valid() {
-			overlapBounds = append(overlapBounds, &exciseSpan)
+		if args.ExciseSpan.Valid() {
+			overlapBounds = append(overlapBounds, &args.ExciseSpan)
 		}
 
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		if exciseSpan.Valid() {
+		if args.ExciseSpan.Valid() {
 			// Check if any of the currently-open EventuallyFileOnlySnapshots
 			// overlap in key ranges with the excise span. If so, we need to
 			// check for memtable overlaps with all bounds of that
 			// EventuallyFileOnlySnapshot in addition to the ingestion's own
 			// bounds too.
 			overlapBounds = append(overlapBounds, exciseOverlapBounds(
-				d.cmp, &d.mu.snapshots.snapshotList, exciseSpan, seqNum)...)
+				d.cmp, &d.mu.snapshots.snapshotList, args.ExciseSpan, seqNum)...)
 		}
 
 		// Check to see if any files overlap with any of the memtables. The queue
@@ -1607,7 +1623,7 @@ func (d *DB) ingest(
 		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
 			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold) &&
 			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
-			(!exciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
+			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
 
 		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
@@ -1639,7 +1655,7 @@ func (d *DB) ingest(
 		for i := range fileMetas {
 			fileMetas[i] = loadResult.local[i].tableMetadata
 		}
-		err = d.handleIngestAsFlushable(fileMetas, seqNum, exciseSpan)
+		err = d.handleIngestAsFlushable(fileMetas, seqNum, args.ExciseSpan)
 	}
 
 	var ve *versionEdit
@@ -1660,7 +1676,7 @@ func (d *DB) ingest(
 		// assign the lowest sequence number in the set of sequence numbers for this
 		// ingestion to the excise. Note that we've already allocated fileCount+1
 		// sequence numbers in this case.
-		if exciseSpan.Valid() {
+		if args.ExciseSpan.Valid() {
 			seqNum++ // the first seqNum is reserved for the excise.
 		}
 		// Update the sequence numbers for all ingested sstables'
@@ -1688,7 +1704,7 @@ func (d *DB) ingest(
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(ctx, jobID, loadResult, mut, exciseSpan, seqNum)
+		ve, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -1697,7 +1713,7 @@ func (d *DB) ingest(
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
 	seqNumCount := loadResult.fileCount()
-	if exciseSpan.Valid() {
+	if args.ExciseSpan.Valid() {
 		seqNumCount++
 	}
 	d.commit.ingestSem <- struct{}{}
@@ -1867,7 +1883,8 @@ func (d *DB) ingestSplit(
 		// as we're guaranteed to not have any data overlap between splitFile and
 		// s.ingestFile. d.excise will return an error if we pass an inclusive user
 		// key bound _and_ we end up seeing data overlap at the end key.
-		leftTable, rightTable, err := d.exciseTable(ctx, base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest), splitFile, s.level)
+		exciseBounds := base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest)
+		leftTable, rightTable, err := d.exciseTable(ctx, exciseBounds, splitFile, s.level, tightExciseBounds)
 		if err != nil {
 			return err
 		}
@@ -1903,6 +1920,7 @@ func (d *DB) ingestApply(
 	lr ingestLoadResult,
 	mut *memTable,
 	exciseSpan KeyRange,
+	exciseBoundsPolicy exciseBoundsPolicy,
 	exciseSeqNum base.SeqNum,
 ) (*versionEdit, error) {
 	d.mu.Lock()
@@ -2082,6 +2100,7 @@ func (d *DB) ingestApply(
 		}
 	}
 	if exciseSpan.Valid() {
+		exciseBounds := exciseSpan.UserKeyBounds()
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		//
 		// TODO(bilal): We could drop the DB mutex here as we don't need it for
@@ -2099,7 +2118,7 @@ func (d *DB) ingestApply(
 		// out.
 		for layer, ls := range current.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, exciseSpan.UserKeyBounds()).All() {
-				leftTable, rightTable, err := d.exciseTable(ctx, exciseSpan.UserKeyBounds(), m, layer.Level())
+				leftTable, rightTable, err := d.exciseTable(ctx, exciseBounds, m, layer.Level(), exciseBoundsPolicy)
 				if err != nil {
 					d.mu.versions.logUnlock()
 					return nil, err
