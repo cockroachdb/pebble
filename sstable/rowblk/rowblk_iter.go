@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"iter"
 	"slices"
 	"sort"
 	"unsafe"
@@ -1940,6 +1941,17 @@ func (i *RawIter) Describe(tp treeprinter.Node, fmtKV DescribeKV) {
 	for j := 0; j < int(i.numRestarts); j++ {
 		offset := i.getRestart(j)
 		n.Childf("%05d [restart %d]", uint64(i.restarts+4*offsetInBlock(j)), offset)
+	}
+}
+
+// All returns an iterator that ranges over all key-value pairs in the block.
+func (i *RawIter) All() iter.Seq2[[]byte, []byte] {
+	return func(yield func([]byte, []byte) bool) {
+		for valid := i.First(); valid; valid = i.Next() {
+			if !yield(i.Key().UserKey, i.Value()) {
+				return
+			}
+		}
 	}
 }
 

@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
@@ -446,14 +447,21 @@ func (r *Reader) readMetaindex(
 		}
 		r.propertiesBH = bh
 		if r.tableFormat >= TableFormatPebblev6 {
-			err = r.Properties.load(b.BlockData(), deniedUserProperties)
+			var decoder colblk.KeyValueBlockDecoder
+			decoder.Init(b.BlockData())
+			if err := r.Properties.load(decoder.All(), deniedUserProperties); err != nil {
+				return err
+			}
 		} else {
-			err = r.Properties.loadFromRowBlock(b.BlockData(), deniedUserProperties)
+			i, err := rowblk.NewRawIter(bytes.Compare, b.BlockData())
+			if err != nil {
+				return err
+			}
+			if err := r.Properties.load(i.All(), deniedUserProperties); err != nil {
+				return err
+			}
 		}
 		b.Release()
-		if err != nil {
-			return err
-		}
 	} else {
 		return errors.New("did not read any value for the properties block in the meta index")
 	}

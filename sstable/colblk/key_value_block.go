@@ -5,6 +5,8 @@
 package colblk
 
 import (
+	"iter"
+
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
@@ -123,4 +125,15 @@ func (r *KeyValueBlockDecoder) KeyAt(i int) []byte {
 
 func (r *KeyValueBlockDecoder) ValueAt(i int) []byte {
 	return r.values.At(i)
+}
+
+// All returns an iterator that ranges over all key-value pairs in the block.
+func (r *KeyValueBlockDecoder) All() iter.Seq2[[]byte, []byte] {
+	return func(yield func([]byte, []byte) bool) {
+		for i := 0; i < r.BlockDecoder().Rows(); i++ {
+			if !yield(r.KeyAt(i), r.ValueAt(i)) {
+				return
+			}
+		}
+	}
 }
