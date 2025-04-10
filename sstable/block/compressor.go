@@ -26,7 +26,8 @@ var _ Compressor = snappyCompressor{}
 var _ Compressor = minlzCompressor{}
 
 func (noopCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
-	panic("NoCompressionCompressor.Compress() should not be called.")
+	dst = append(dst[:0], src...)
+	return NoCompressionIndicator, dst
 }
 func (noopCompressor) Close() {}
 
