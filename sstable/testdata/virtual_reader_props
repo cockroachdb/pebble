@@ -21,21 +21,9 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 3
   rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 0
-  rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 50
-  rocksdb.filter.size: 0
-  rocksdb.index.size: 40
-  rocksdb.block.based.table.index.type: 0
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Repeat the above with (Pebble,v5).
 
@@ -60,22 +48,9 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 4
   rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 0
-  rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 87
-  rocksdb.filter.size: 0
-  rocksdb.index.size: 56
-  rocksdb.block.based.table.index.type: 0
-  pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 
 # Test 2: Similar to test 1 but force two level iterators.
@@ -96,23 +71,9 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 2
   rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 0
-  rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 108
-  rocksdb.filter.size: 0
-  rocksdb.index.partitions: 4
-  rocksdb.index.size: 276
-  rocksdb.block.based.table.index.type: 2
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  rocksdb.top-level.index.size: 131
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -186,24 +147,9 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 5
   rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 0
-  rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 316
-  rocksdb.filter.size: 0
-  rocksdb.index.partitions: 4
-  rocksdb.index.size: 302
-  rocksdb.block.based.table.index.type: 2
-  pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  rocksdb.top-level.index.size: 0
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -284,26 +230,10 @@ props:
   rocksdb.raw.value.size: 1
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1
-  pebble.num.range-key-dels: 0
   pebble.num.range-key-sets: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 81
-  rocksdb.filter.size: 0
-  rocksdb.index.partitions: 3
-  rocksdb.index.size: 208
-  rocksdb.block.based.table.index.type: 2
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  pebble.num.range-key-unsets: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  pebble.raw.range-key.key.size: 18
-  pebble.raw.range-key.value.size: 20
-  rocksdb.top-level.index.size: 98
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Repeat the above with (Pebble,v5).
 
@@ -333,27 +263,10 @@ props:
   rocksdb.raw.value.size: 1
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1
-  pebble.num.range-key-dels: 0
   pebble.num.range-key-sets: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 241
-  rocksdb.filter.size: 0
-  rocksdb.index.partitions: 3
-  rocksdb.index.size: 237
-  rocksdb.block.based.table.index.type: 2
-  pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  pebble.num.range-key-unsets: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  pebble.raw.range-key.key.size: 4
-  pebble.raw.range-key.value.size: 6
-  rocksdb.top-level.index.size: 0
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 build table-format=Pebble,v4
 a.SET.1:a
@@ -376,21 +289,9 @@ props:
   rocksdb.num.entries: 2
   rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
-  rocksdb.deleted.keys: 0
-  rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 97
-  rocksdb.filter.size: 0
-  rocksdb.index.size: 40
-  rocksdb.block.based.table.index.type: 0
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Repeat the above with (Pebble,v5).
 
@@ -415,19 +316,6 @@ props:
   rocksdb.num.entries: 2
   rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
-  rocksdb.deleted.keys: 0
-  rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
-  rocksdb.comparator: pebble.internal.testkeys
-  rocksdb.data.size: 107
-  rocksdb.filter.size: 0
-  rocksdb.index.size: 56
-  rocksdb.block.based.table.index.type: 0
-  pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
-  rocksdb.merge.operator: pebble.concatenate
-  rocksdb.merge.operands: 0
-  rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
-  obsolete-key: hex:01
-  pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;

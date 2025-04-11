@@ -306,7 +306,7 @@ func (d *DB) loadTableStats(
 
 	err := d.fileCache.withReader(
 		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
-			props := r.Properties
+			props := r.Properties.CommonProperties
 			if meta.Virtual != nil {
 				props = r.Properties.GetScaledProperties(env.Virtual.BackingSize, env.Virtual.Size)
 			}
@@ -342,7 +342,11 @@ func (d *DB) loadTableStats(
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table. The provided manifest.TableStats are updated.
 func (d *DB) loadTablePointKeyStats(
-	props *sstable.Properties, v *version, level int, meta *tableMetadata, stats *manifest.TableStats,
+	props *sstable.CommonProperties,
+	v *version,
+	level int,
+	meta *tableMetadata,
+	stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
@@ -476,7 +480,7 @@ func (d *DB) loadTableRangeDelStats(
 }
 
 func (d *DB) estimateSizesBeneath(
-	v *version, level int, meta *tableMetadata, fileProps *sstable.Properties,
+	v *version, level int, meta *tableMetadata, fileProps *sstable.CommonProperties,
 ) (avgValueLogicalSize, compressionRatio float64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
@@ -649,7 +653,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	return estimate, hintSeqNum, nil
 }
 
-func maybeSetStatsFromProperties(meta *tableMetadata, props *sstable.Properties) bool {
+func maybeSetStatsFromProperties(meta *tableMetadata, props *sstable.CommonProperties) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -697,7 +701,7 @@ func maybeSetStatsFromProperties(meta *tableMetadata, props *sstable.Properties)
 }
 
 func pointDeletionsBytesEstimate(
-	fileSize uint64, props *sstable.Properties, avgValLogicalSize, compressionRatio float64,
+	fileSize uint64, props *sstable.CommonProperties, avgValLogicalSize, compressionRatio float64,
 ) (estimate uint64) {
 	if props.NumEntries == 0 {
 		return 0
@@ -784,7 +788,7 @@ func pointDeletionsBytesEstimate(
 }
 
 func estimatePhysicalSizes(
-	fileSize uint64, props *sstable.Properties,
+	fileSize uint64, props *sstable.CommonProperties,
 ) (avgValLogicalSize, compressionRatio float64) {
 	// RawKeySize and RawValueSize are uncompressed totals. Scale according to
 	// the data size to account for compression, index blocks and metadata
