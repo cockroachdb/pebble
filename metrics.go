@@ -46,14 +46,14 @@ type LevelMetrics struct {
 	// sublevel count of 0, implying no read amplification. Only L0 will have
 	// a sublevel count other than 0 or 1.
 	Sublevels int32
-	// The total number of files in the level.
-	NumFiles int64
+	// The total count of sstables in the level.
+	TablesCount int64
+	// The total size in bytes of the sstables in the level.
+	TablesSize int64
 	// The total number of virtual sstables in the level.
-	NumVirtualFiles uint64
-	// The total size in bytes of the files in the level.
-	Size int64
+	VirtualTablesCount uint64
 	// The total size of the virtual sstables in the level.
-	VirtualSize uint64
+	VirtualTablesSize uint64
 	// The level's compaction score. This is the compensatedScoreRatio in the
 	// candidateLevelInfo.
 	Score float64
@@ -118,10 +118,10 @@ type LevelMetrics struct {
 
 // Add updates the counter metrics for the level.
 func (m *LevelMetrics) Add(u *LevelMetrics) {
-	m.NumFiles += u.NumFiles
-	m.NumVirtualFiles += u.NumVirtualFiles
-	m.VirtualSize += u.VirtualSize
-	m.Size += u.Size
+	m.TablesCount += u.TablesCount
+	m.VirtualTablesCount += u.VirtualTablesCount
+	m.VirtualTablesSize += u.VirtualTablesSize
+	m.TablesSize += u.TablesSize
 	m.BytesIn += u.BytesIn
 	m.BytesIngested += u.BytesIngested
 	m.BytesMoved += u.BytesMoved
@@ -399,7 +399,7 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 func (m *Metrics) NumVirtual() uint64 {
 	var n uint64
 	for _, level := range m.Levels {
-		n += level.NumVirtualFiles
+		n += level.VirtualTablesCount
 	}
 	return n
 }
@@ -410,7 +410,7 @@ func (m *Metrics) NumVirtual() uint64 {
 func (m *Metrics) VirtualSize() uint64 {
 	var size uint64
 	for _, level := range m.Levels {
-		size += level.VirtualSize
+		size += level.VirtualTablesSize
 	}
 	return size
 }
@@ -449,8 +449,8 @@ func (m *Metrics) Total() LevelMetrics {
 func (m *Metrics) RemoteTablesTotal() (count uint64, size uint64) {
 	var liveTables, liveTableBytes int64
 	for level := 0; level < numLevels; level++ {
-		liveTables += m.Levels[level].NumFiles
-		liveTableBytes += m.Levels[level].Size
+		liveTables += m.Levels[level].TablesCount
+		liveTableBytes += m.Levels[level].TablesSize
 	}
 	totalCount := liveTables + m.Table.ObsoleteCount + m.Table.ZombieCount
 	localCount := m.Table.Local.LiveCount + m.Table.Local.ObsoleteCount + m.Table.Local.ZombieCount
@@ -553,10 +553,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		}
 
 		w.Printf("| %5s %6s %6s %7s | %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
-			humanize.Count.Int64(m.NumFiles),
-			humanize.Bytes.Int64(m.Size),
+			humanize.Count.Int64(m.TablesCount),
+			humanize.Bytes.Int64(m.TablesSize),
 			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
-			humanize.Count.Uint64(m.NumVirtualFiles),
+			humanize.Count.Uint64(m.VirtualTablesCount),
 			redact.Safe(scoreStr),
 			humanize.Bytes.Uint64(m.BytesIn),
 			humanize.Count.Uint64(m.TablesIngested),

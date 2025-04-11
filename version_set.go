@@ -344,9 +344,9 @@ func (vs *versionSet) load(
 
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(newVersion.Levels[i].Len())
+		l.TablesCount = int64(newVersion.Levels[i].Len())
 		files := newVersion.Levels[i].Slice()
-		l.Size = int64(files.SizeSum())
+		l.TablesSize = int64(files.SizeSum())
 	}
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
@@ -549,7 +549,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 
 	var nextSnapshotFilecount int64
 	for i := range vs.metrics.Levels {
-		nextSnapshotFilecount += vs.metrics.Levels[i].NumFiles
+		nextSnapshotFilecount += vs.metrics.Levels[i].TablesCount
 	}
 	if sizeExceeded && !requireRotation {
 		requireRotation = vs.rotationHelper.ShouldRotate(nextSnapshotFilecount)
@@ -708,30 +708,30 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	vs.metrics.updateLevelMetrics(vu.Metrics)
 	for i := range vs.metrics.Levels {
 		l := &vs.metrics.Levels[i]
-		l.NumFiles = int64(newVersion.Levels[i].Len())
-		l.NumVirtualFiles = newVersion.Levels[i].NumVirtual
-		l.VirtualSize = newVersion.Levels[i].VirtualSize
-		l.Size = int64(newVersion.Levels[i].Size())
+		l.TablesCount = int64(newVersion.Levels[i].Len())
+		l.VirtualTablesCount = newVersion.Levels[i].NumVirtual
+		l.VirtualTablesSize = newVersion.Levels[i].VirtualSize
+		l.TablesSize = int64(newVersion.Levels[i].Size())
 
 		l.Sublevels = 0
-		if l.NumFiles > 0 {
+		if l.TablesCount > 0 {
 			l.Sublevels = 1
 		}
 		if invariants.Enabled {
 			levelFiles := newVersion.Levels[i].Slice()
-			if size := int64(levelFiles.SizeSum()); l.Size != size {
-				vs.opts.Logger.Fatalf("versionSet metrics L%d Size = %d, actual size = %d", i, l.Size, size)
+			if size := int64(levelFiles.SizeSum()); l.TablesSize != size {
+				vs.opts.Logger.Fatalf("versionSet metrics L%d Size = %d, actual size = %d", i, l.TablesSize, size)
 			}
-			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.NumVirtualFiles {
+			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTablesCount {
 				vs.opts.Logger.Fatalf(
 					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
-					i, l.NumVirtualFiles, nVirtual,
+					i, l.VirtualTablesCount, nVirtual,
 				)
 			}
-			if vSize := levelFiles.VirtualSizeSum(); vSize != l.VirtualSize {
+			if vSize := levelFiles.VirtualSizeSum(); vSize != l.VirtualTablesSize {
 				vs.opts.Logger.Fatalf(
 					"versionSet metrics L%d Virtual size = %d, actual size = %d",
-					i, l.VirtualSize, vSize,
+					i, l.VirtualTablesSize, vSize,
 				)
 			}
 		}
@@ -1151,8 +1151,8 @@ func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
 			lm = &LevelMetrics{}
 			m[nf.Level] = lm
 		}
-		lm.NumFiles++
-		lm.Size += int64(nf.Meta.Size)
+		lm.TablesCount++
+		lm.TablesSize += int64(nf.Meta.Size)
 	}
 	return m
 }

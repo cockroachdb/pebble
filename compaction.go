@@ -1277,11 +1277,11 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			levelMetrics = &LevelMetrics{}
 			c.metrics[level] = levelMetrics
 		}
-		levelMetrics.NumFiles--
-		levelMetrics.Size -= int64(m.Size)
+		levelMetrics.TablesCount--
+		levelMetrics.TablesSize -= int64(m.Size)
 		for i := range added {
-			levelMetrics.NumFiles++
-			levelMetrics.Size += int64(added[i].Meta.Size)
+			levelMetrics.TablesCount++
+			levelMetrics.TablesSize += int64(added[i].Meta.Size)
 		}
 	}
 
@@ -3250,8 +3250,8 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 			outputMetrics.TablesFlushed++
 			outputMetrics.BytesFlushed += fileMeta.Size
 		}
-		outputMetrics.Size += int64(fileMeta.Size)
-		outputMetrics.NumFiles++
+		outputMetrics.TablesSize += int64(fileMeta.Size)
+		outputMetrics.TablesCount++
 		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize
 		outputMetrics.Additional.BytesWrittenValueBlocks += t.WriterMeta.Properties.ValueBlocksSize
 	}

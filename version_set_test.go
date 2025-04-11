@@ -117,8 +117,8 @@ func TestVersionSet(t *testing.T) {
 					lm = &LevelMetrics{}
 					fileMetrics[de.Level] = lm
 				}
-				lm.NumFiles--
-				lm.Size -= int64(f.Size)
+				lm.TablesCount--
+				lm.TablesSize -= int64(f.Size)
 			}
 
 			mu.Lock()
