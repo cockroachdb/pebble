@@ -238,7 +238,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.1KB
+3.2KB
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
