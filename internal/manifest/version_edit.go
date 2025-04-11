@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -162,7 +163,10 @@ type VersionEdit struct {
 	// DeletedBlobFiles holds all blob files that became unreferenced during the
 	// version edit. These blob files must not be referenced by any sstable in
 	// the resulting Version.
-	DeletedBlobFiles []base.DiskFileNum
+	//
+	// While replaying a MANIFEST, the values are nil. Otherwise the values must
+	// not be nil.
+	DeletedBlobFiles map[base.DiskFileNum]*BlobFileMetadata
 }
 
 // Decode decodes an edit from the specified reader.
@@ -536,7 +540,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.DeletedBlobFiles = append(v.DeletedBlobFiles, base.DiskFileNum(fileNum))
+			if v.DeletedBlobFiles == nil {
+				v.DeletedBlobFiles = make(map[base.DiskFileNum]*BlobFileMetadata)
+			}
+			v.DeletedBlobFiles[base.DiskFileNum(fileNum)] = nil
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -572,10 +579,7 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	if v.LastSeqNum != 0 {
 		fmt.Fprintf(&buf, "  last-seq-num:  %d\n", v.LastSeqNum)
 	}
-	entries := make([]DeletedTableEntry, 0, len(v.DeletedTables))
-	for df := range v.DeletedTables {
-		entries = append(entries, df)
-	}
+	entries := slices.Collect(maps.Keys(v.DeletedTables))
 	slices.SortFunc(entries, func(a, b DeletedTableEntry) int {
 		if v := stdcmp.Compare(a.Level, b.Level); v != 0 {
 			return v
@@ -604,7 +608,9 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	for _, f := range v.NewBlobFiles {
 		fmt.Fprintf(&buf, "  add-blob-file: %s\n", f.String())
 	}
-	for _, df := range v.DeletedBlobFiles {
+	deletedBlobFiles := slices.Collect(maps.Keys(v.DeletedBlobFiles))
+	slices.Sort(deletedBlobFiles)
+	for _, df := range deletedBlobFiles {
 		fmt.Fprintf(&buf, "  del-blob-file: %s\n", df)
 	}
 	return buf.String()
@@ -686,7 +692,10 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			ve.NewBlobFiles = append(ve.NewBlobFiles, meta)
 
 		case "del-blob-file":
-			ve.DeletedBlobFiles = append(ve.DeletedBlobFiles, p.DiskFileNum())
+			if ve.DeletedBlobFiles == nil {
+				ve.DeletedBlobFiles = make(map[base.DiskFileNum]*BlobFileMetadata)
+			}
+			ve.DeletedBlobFiles[p.DiskFileNum()] = nil
 
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)
@@ -821,7 +830,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(x.ValueSize)
 		e.writeUvarint(x.CreationTime)
 	}
-	for _, x := range v.DeletedBlobFiles {
+	for x := range v.DeletedBlobFiles {
 		e.writeUvarint(tagDeletedBlobFile)
 		e.writeUvarint(uint64(x))
 	}
@@ -937,7 +946,7 @@ type BulkVersionEdit struct {
 		// any sstables, making them obsolete within the resulting version (a
 		// zombie if still referenced by previous versions). Deleted file
 		// numbers must not exist in Added.
-		Deleted []base.DiskFileNum
+		Deleted map[base.DiskFileNum]*BlobFileMetadata
 		// DeletedReferences holds metadata of blob files referenced by tables
 		// deleted in the accumulated version edits. This is used during replay
 		// to populate the *BlobFileMetadata pointers of new blob references,
@@ -1015,8 +1024,8 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		b.BlobFiles.Added[nbf.FileNum] = nbf
 	}
 
-	b.BlobFiles.Deleted = slices.Grow(b.BlobFiles.Deleted, len(ve.DeletedBlobFiles))
-	for _, dbf := range ve.DeletedBlobFiles {
+	b.BlobFiles.Deleted = make(map[base.DiskFileNum]*BlobFileMetadata, len(ve.DeletedBlobFiles))
+	for dbf, blobMeta := range ve.DeletedBlobFiles {
 		// If the blob file was added in a prior, accumulated version edit we
 		// can resolve the deletion by removing it from the added files map.
 		// Otherwise the blob file deleted was added prior to this bulk edit,
@@ -1025,7 +1034,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if b.BlobFiles.Added != nil && b.BlobFiles.Added[dbf] != nil {
 			delete(b.BlobFiles.Added, dbf)
 		} else {
-			b.BlobFiles.Deleted = append(b.BlobFiles.Deleted, dbf)
+			b.BlobFiles.Deleted[dbf] = blobMeta
 		}
 	}
 
@@ -1307,7 +1316,10 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 		for _, deletedLevel := range b.DeletedTables {
 			for _, dt := range deletedLevel {
 				for _, ref := range dt.BlobReferences {
-					if ref.Metadata.ActiveRefs.count == 0 && !slices.Contains(b.BlobFiles.Deleted, ref.FileNum) {
+					if ref.Metadata.ActiveRefs.count != 0 {
+						continue
+					}
+					if _, ok := b.BlobFiles.Deleted[ref.FileNum]; !ok {
 						panic(errors.AssertionFailedf("blob file %s has no active refs, but was not deleted in the version edit", ref.FileNum))
 					}
 				}
