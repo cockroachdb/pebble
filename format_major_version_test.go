@@ -239,3 +239,64 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	require.Panics(t, func() { _ = fmv.MaxTableFormat() })
 	require.Panics(t, func() { _ = fmv.MinTableFormat() })
 }
+
+// TestFormatMajorVersions_ColumnarBlocks ensures that
+// Experimental.EnableColumnarBlocks is respected on recent format major
+// versions.
+func TestFormatMajorVersions_ColumnarBlocks(t *testing.T) {
+	type testCase struct {
+		fmv     FormatMajorVersion
+		colBlks bool
+		want    sstable.TableFormat
+	}
+	testCases := []testCase{
+		{
+			fmv:     FormatTableFormatV6,
+			colBlks: true,
+			want:    sstable.TableFormatPebblev6,
+		},
+		{
+			fmv:     FormatTableFormatV6,
+			colBlks: false,
+			want:    sstable.TableFormatPebblev4,
+		},
+		{
+			fmv:     FormatColumnarBlocks,
+			colBlks: true,
+			want:    sstable.TableFormatPebblev5,
+		},
+		{
+			fmv:     FormatColumnarBlocks,
+			colBlks: false,
+			want:    sstable.TableFormatPebblev4,
+		},
+		{
+			fmv:     FormatFlushableIngestExcises,
+			colBlks: true,
+			want:    sstable.TableFormatPebblev4,
+		},
+		{
+			fmv:     FormatNewest,
+			colBlks: false,
+			want:    sstable.TableFormatPebblev4,
+		},
+		{
+			fmv:     FormatNewest,
+			colBlks: true,
+			want:    sstable.TableFormatPebblev6,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("(%s,%t)", tc.fmv, tc.colBlks), func(t *testing.T) {
+			opts := &Options{
+				FS:                 vfs.NewMem(),
+				FormatMajorVersion: tc.fmv,
+			}
+			opts.Experimental.EnableColumnarBlocks = func() bool { return tc.colBlks }
+			d, err := Open("", opts)
+			require.NoError(t, err)
+			defer func() { _ = d.Close() }()
+			require.Equal(t, tc.want, d.TableFormat())
+		})
+	}
+}

@@ -54,7 +54,7 @@ func TestIterHistories(t *testing.T) {
 				},
 				Logger: testLogger{t},
 			}
-
+			opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 			opts.DisableAutomaticCompactions = true
 			opts.EnsureDefaults()
 			opts.WithFSDefaults()
