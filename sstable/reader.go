@@ -69,7 +69,10 @@ type Reader struct {
 
 type ReadEnv struct {
 	Virtual *virtual.VirtualReaderParams
-	Block   block.ReadEnv
+	// IsSharedIngested is true if this is a shared table that was ingested. Can
+	// only be set when Virtual is non-nil.
+	IsSharedIngested bool
+	Block            block.ReadEnv
 }
 
 var NoReadEnv = ReadEnv{}
@@ -188,7 +191,7 @@ func (r *Reader) NewCompactionIter(
 func (r *Reader) newCompactionIter(
 	transforms IterTransforms, env ReadEnv, rp valblk.ReaderProvider, blobContext TableBlobContext,
 ) (Iterator, error) {
-	if env.Virtual != nil && env.Virtual.IsSharedIngested {
+	if env.IsSharedIngested {
 		transforms.HideObsoletePoints = true
 	}
 	ctx := context.Background()
@@ -272,7 +275,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	ctx context.Context, transforms FragmentIterTransforms, env ReadEnv,
 ) (iter keyspan.FragmentIterator, err error) {
 	syntheticSeqNum := transforms.SyntheticSeqNum
-	if env.Virtual != nil && env.Virtual.IsSharedIngested {
+	if env.IsSharedIngested {
 		// Don't pass a synthetic sequence number for shared ingested sstables. We
 		// need to know the materialized sequence numbers, and we will set up the
 		// appropriate sequence number substitution below.
@@ -302,7 +305,7 @@ func (r *Reader) NewRawRangeKeyIter(
 		//
 		// TODO(bilal): Avoid these allocations by hoisting the transformer and
 		// transform iter up.
-		if env.Virtual.IsSharedIngested {
+		if env.IsSharedIngested {
 			transform := &rangekey.ForeignSSTTransformer{
 				Equal:  r.Comparer.Equal,
 				SeqNum: base.SeqNum(syntheticSeqNum),

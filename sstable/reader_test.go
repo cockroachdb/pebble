@@ -137,13 +137,13 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 		}
 	}()
 
-	formatVirtualReader := func(r *Reader, showProps bool, env ReadEnv) string {
+	formatVirtualReader := func(r *Reader, showProps bool, env ReadEnv, backingSize, tableSize uint64) string {
 		var b bytes.Buffer
 		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", env.Virtual.Lower, env.Virtual.Upper)
 		if showProps {
 			fmt.Fprintf(&b, "filenum: %s\n", env.Virtual.FileNum.String())
 			fmt.Fprintf(&b, "props:\n")
-			p := r.Properties.GetScaledProperties(env.Virtual.BackingSize, env.Virtual.Size)
+			p := r.Properties.GetScaledProperties(backingSize, tableSize)
 			for _, line := range strings.Split(strings.TrimSpace(p.String()), "\n") {
 				fmt.Fprintf(&b, "  %s\n", line)
 			}
@@ -205,15 +205,14 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			}
 
 			params.FileNum = nextFileNum()
-			params.BackingSize = wMeta.Size
 			env.Virtual = &params
 
 			var err error
-			params.Size, err = r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env)
+			tableSize, err := r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env)
 			if err != nil {
 				return err.Error()
 			}
-			return formatVirtualReader(r, showProps, env)
+			return formatVirtualReader(r, showProps, env, wMeta.Size, tableSize)
 
 		case "compaction-iter":
 			// Creates a compaction iterator from the virtual reader, and then

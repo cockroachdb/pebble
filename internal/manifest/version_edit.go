@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 // TODO(peter): describe the MANIFEST file format, independently of the C++
@@ -461,10 +460,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				BlobReferences:           blobReferences,
 				BlobReferenceDepth:       blobReferenceDepth,
 				MarkedForCompaction:      markedForCompaction,
+				Virtual:                  virtualState.virtual,
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
-			}
-			if virtualState.virtual {
-				m.Virtual = &virtual.VirtualReaderParams{}
 			}
 
 			if tag != tagNewFile5 { // no range keys present
@@ -740,7 +737,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewTables {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual != nil || len(x.Meta.BlobReferences) > 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -793,7 +790,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
-			if x.Meta.Virtual != nil {
+			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
 			}
@@ -1095,13 +1092,14 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
-		if nf.Meta.Virtual != nil && nf.Meta.FileBacking == nil {
+		if nf.Meta.Virtual && nf.Meta.FileBacking == nil {
 			// FileBacking for a virtual sstable must only be nil if we're performing
 			// manifest replay.
-			nf.Meta.FileBacking = b.AddedFileBacking[nf.BackingFileNum]
-			if nf.Meta.FileBacking == nil {
+			backing := b.AddedFileBacking[nf.BackingFileNum]
+			if backing == nil {
 				return errors.Errorf("FileBacking for virtual sstable must not be nil")
 			}
+			nf.Meta.AttachVirtualBacking(backing)
 		} else if nf.Meta.FileBacking == nil {
 			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.FileNum)
 		}

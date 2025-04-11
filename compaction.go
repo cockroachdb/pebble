@@ -424,7 +424,7 @@ func newCompaction(
 		if mustCopy {
 			// If the source is virtual, it's best to just rewrite the file as all
 			// conditions in the above comment are met.
-			if meta.Virtual == nil {
+			if !meta.Virtual {
 				c.kind = compactionKindCopy
 			}
 		} else {
@@ -2401,7 +2401,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 		deletedFiles[key.FileNum] = struct{}{}
 	}
 	for i := range ve.NewTables {
-		if ve.NewTables[i].Meta.Virtual != nil {
+		if ve.NewTables[i].Meta.Virtual {
 			// We handle backing files separately.
 			continue
 		}
@@ -2562,7 +2562,7 @@ func (d *DB) runCopyCompaction(
 		}
 		// Note that based on logic in the compaction picker, we're guaranteed
 		// inputMeta.Virtual is nil.
-		if inputMeta.Virtual != nil {
+		if inputMeta.Virtual {
 			panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
 		}
 	}
@@ -2593,7 +2593,7 @@ func (d *DB) runCopyCompaction(
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
 		// We will update this size later after we produce the new backing file.
-		newMeta.InitProviderBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
+		newMeta.InitVirtualBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
 		newMeta.InitPhysicalBacking()
@@ -2700,7 +2700,7 @@ func (d *DB) runCopyCompaction(
 		Level: c.outputLevel.level,
 		Meta:  newMeta,
 	}}
-	if newMeta.Virtual != nil {
+	if newMeta.Virtual {
 		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
 	}
 	c.metrics[c.outputLevel.level] = &LevelMetrics{
@@ -2904,7 +2904,7 @@ func (d *DB) runDeleteOnlyCompaction(
 	// NewFiles.
 	usedBackingFiles := make(map[base.DiskFileNum]struct{})
 	for _, e := range ve.NewTables {
-		if e.Meta.Virtual != nil {
+		if e.Meta.Virtual {
 			usedBackingFiles[e.Meta.FileBacking.DiskFileNum] = struct{}{}
 		}
 	}

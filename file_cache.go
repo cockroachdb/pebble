@@ -311,12 +311,17 @@ func (h *fileCacheHandle) estimateSize(
 	return size, err
 }
 
-func createReader(v *fileCacheValue, file *tableMetadata) (*sstable.Reader, sstable.ReadEnv) {
+func createReader(v *fileCacheValue, meta *tableMetadata) (*sstable.Reader, sstable.ReadEnv) {
 	r := v.mustSSTableReader()
 	env := sstable.ReadEnv{}
-	if file.Virtual != nil {
-		file.InitVirtual(v.isShared)
-		env.Virtual = file.Virtual
+	if meta.Virtual {
+		if invariants.Enabled {
+			if meta.VirtualParams.FileNum == 0 || meta.VirtualParams.Lower.UserKey == nil || meta.VirtualParams.Upper.UserKey == nil {
+				panic("virtual params not initialized")
+			}
+		}
+		env.Virtual = &meta.VirtualParams
+		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 	return r, env
 }
@@ -338,9 +343,14 @@ func (h *fileCacheHandle) withReader(
 	env := sstable.ReadEnv{Block: blockEnv}
 
 	r := v.mustSSTableReader()
-	if meta.Virtual != nil {
-		meta.InitVirtual(v.isShared)
-		env.Virtual = meta.Virtual
+	if meta.Virtual {
+		if invariants.Enabled {
+			if meta.VirtualParams.FileNum == 0 || meta.VirtualParams.Lower.UserKey == nil || meta.VirtualParams.Upper.UserKey == nil {
+				panic("virtual params not initialized")
+			}
+		}
+		env.Virtual = &meta.VirtualParams
+		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 
 	return fn(r, env)
@@ -526,6 +536,7 @@ func (h *fileCacheHandle) newIters(
 	v := vRef.Value()
 	r, env := createReader(v, file)
 	internalOpts.readEnv.Virtual = env.Virtual
+	internalOpts.readEnv.IsSharedIngested = env.IsSharedIngested
 
 	var iters iterSet
 	if kinds.RangeKey() && file.HasRangeKeys {

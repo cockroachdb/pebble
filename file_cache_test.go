@@ -27,7 +27,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
-	"github.com/cockroachdb/pebble/sstable/virtual"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -347,7 +346,6 @@ func TestVirtualReadsWiring(t *testing.T) {
 	seqNumZ := seqNumA + 6
 
 	v1 := &manifest.TableMetadata{
-		FileBacking:           parentFile.FileBacking,
 		FileNum:               f1,
 		CreationTime:          time.Now().Unix(),
 		Size:                  parentFile.Size / 2,
@@ -359,12 +357,12 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestPointKey:      base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		LargestPointKey:       base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		HasPointKeys:          true,
-		Virtual:               &virtual.VirtualReaderParams{},
+		Virtual:               true,
 	}
+	v1.AttachVirtualBacking(parentFile.FileBacking)
 	v1.Stats.NumEntries = 1
 
 	v2 := &manifest.TableMetadata{
-		FileBacking:           parentFile.FileBacking,
 		FileNum:               f2,
 		CreationTime:          time.Now().Unix(),
 		Size:                  parentFile.Size / 2,
@@ -378,8 +376,9 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestRangeKey:      base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
 		LargestRangeKey:       base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset),
 		HasPointKeys:          true,
-		Virtual:               &virtual.VirtualReaderParams{},
+		Virtual:               true,
 	}
+	v2.AttachVirtualBacking(parentFile.FileBacking)
 	v2.Stats.NumEntries = 6
 
 	v1.LargestPointKey = v1.Largest
@@ -437,7 +436,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	currVersion = d.mu.versions.currentVersion()
 	l6 = currVersion.Levels[6]
 	for f := range l6.All() {
-		require.Equal(t, true, f.Virtual != nil)
+		require.True(t, f.Virtual)
 	}
 	d.mu.Unlock()
 

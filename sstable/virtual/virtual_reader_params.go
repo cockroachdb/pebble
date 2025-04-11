@@ -4,15 +4,9 @@ import "github.com/cockroachdb/pebble/internal/base"
 
 // VirtualReaderParams are the parameters necessary for a reader to read virtual sstables.
 type VirtualReaderParams struct {
-	Lower            base.InternalKey
-	Upper            base.InternalKey
-	FileNum          base.FileNum
-	IsSharedIngested bool
-	// Size is an estimate of the size of the [Lower, Upper) section of the table.
-	Size uint64
-	// BackingSize is the total size of the backing table. The ratio between Size
-	// and BackingSize is used to estimate statistics.
-	BackingSize uint64
+	Lower   base.InternalKey
+	Upper   base.InternalKey
+	FileNum base.FileNum
 }
 
 // Constrain bounds will narrow the start, end bounds if they do not fit within
