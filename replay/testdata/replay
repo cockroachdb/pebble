@@ -11,7 +11,7 @@ tree
      614      000007.sst
        0      LOCK
      133      MANIFEST-000001
-    1494      OPTIONS-000003
+    1524      OPTIONS-000003
        0      marker.format-version.000001.013
        0      marker.manifest.000001.MANIFEST-000001
             simple/
@@ -21,7 +21,7 @@ tree
       25        000004.log
      586        000005.sst
       85        MANIFEST-000001
-    1494        OPTIONS-000003
+    1524        OPTIONS-000003
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -38,6 +38,7 @@ cat build/OPTIONS-000003
   compaction_debt_concurrency=1073741824
   comparer=pebble.internal.testkeys
   disable_wal=false
+  enable_columnar_blocks=true
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304

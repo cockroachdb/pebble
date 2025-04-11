@@ -1304,6 +1304,9 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.DeletionSizeRatioThreshold == 0 {
 		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
 	}
+	if o.Experimental.EnableColumnarBlocks == nil {
+		o.Experimental.EnableColumnarBlocks = func() bool { return true }
+	}
 	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
 		o.Experimental.TombstoneDenseCompactionThreshold = 0.10
 	}
