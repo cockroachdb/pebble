@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
+	"github.com/cockroachdb/redact"
 )
 
 const (
@@ -2125,7 +2126,13 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
-	writerOpts.KeySchema = o.KeySchemas[o.KeySchema]
+	if o.KeySchema != "" {
+		var ok bool
+		writerOpts.KeySchema, ok = o.KeySchemas[o.KeySchema]
+		if !ok {
+			panic(fmt.Sprintf("invalid schema %q", redact.Safe(o.KeySchema)))
+		}
+	}
 	writerOpts.AllocatorSizeClasses = o.AllocatorSizeClasses
 	writerOpts.NumDeletionsThreshold = o.Experimental.NumDeletionsThreshold
 	writerOpts.DeletionSizeRatioThreshold = o.Experimental.DeletionSizeRatioThreshold
