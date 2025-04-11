@@ -312,6 +312,36 @@ type Metrics struct {
 		}
 	}
 
+	BlobFiles struct {
+		// The count of all live blob files.
+		LiveCount uint64
+		// The size of all live blob files.
+		LiveSize uint64
+		// The count of all obsolete blob files.
+		ObsoleteCount uint64
+		// The size of all obsolete blob files.
+		ObsoleteSize uint64
+		// The count of all zombie blob files.
+		ZombieCount uint64
+		// The size of all zombie blob files.
+		ZombieSize uint64
+		// Local file sizes.
+		Local struct {
+			// LiveSize is the number of bytes in live blob files.
+			LiveSize uint64
+			// LiveCount is the number of live blob files.
+			LiveCount uint64
+			// ObsoleteSize is the number of bytes in obsolete blob files.
+			ObsoleteSize uint64
+			// ObsoleteCount is the number of obsolete blob files.
+			ObsoleteCount uint64
+			// ZombieSize is the number of bytes in zombie blob files.
+			ZombieSize uint64
+			// ZombieCount is the number of zombie blob files.
+			ZombieCount uint64
+		}
+	}
+
 	FileCache CacheMetrics
 
 	// Count of the number of open sstable iterators.

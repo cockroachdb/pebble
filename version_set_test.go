@@ -58,8 +58,9 @@ func TestVersionSet(t *testing.T) {
 	))
 	vs.logSeqNum.Store(100)
 
-	metas := make(map[base.FileNum]*manifest.TableMetadata)
+	tableMetas := make(map[base.FileNum]*manifest.TableMetadata)
 	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
+	blobMetas := make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
 	// When we parse VersionEdits, we get a new FileBacking each time. We need to
 	// deduplicate them, since they hold a ref count.
 	dedupBacking := func(b *manifest.FileBacking) *manifest.FileBacking {
@@ -93,17 +94,24 @@ func TestVersionSet(t *testing.T) {
 				// Set a size that depends on FileNum.
 				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
 				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
-				metas[nf.Meta.FileNum] = nf.Meta
+				tableMetas[nf.Meta.FileNum] = nf.Meta
 				if !nf.Meta.Virtual {
 					createFile(nf.Meta.FileBacking.DiskFileNum)
 				}
 			}
+			for _, bm := range ve.NewBlobFiles {
+				blobMetas[bm.FileNum] = bm
+			}
+
 			for de := range ve.DeletedTables {
-				m := metas[de.FileNum]
+				m := tableMetas[de.FileNum]
 				if m == nil {
 					td.Fatalf(t, "unknown FileNum %s", de.FileNum)
 				}
 				ve.DeletedTables[de] = m
+			}
+			for num := range ve.DeletedBlobFiles {
+				ve.DeletedBlobFiles[num] = blobMetas[num]
 			}
 			for i := range ve.CreatedBackingTables {
 				ve.CreatedBackingTables[i] = dedupBacking(ve.CreatedBackingTables[i])
@@ -178,12 +186,16 @@ func TestVersionSet(t *testing.T) {
 			}
 
 			// Repopulate the maps.
-			metas = make(map[base.FileNum]*manifest.TableMetadata)
+			tableMetas = make(map[base.FileNum]*manifest.TableMetadata)
 			backings = make(map[base.DiskFileNum]*manifest.FileBacking)
+			blobMetas = make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
 			v := vs.currentVersion()
 			for _, l := range v.Levels {
 				for f := range l.All() {
-					metas[f.FileNum] = f
+					tableMetas[f.FileNum] = f
+					for _, b := range f.BlobReferences {
+						blobMetas[b.FileNum] = b.Metadata
+					}
 					dedupBacking(f.FileBacking)
 				}
 			}
@@ -199,28 +211,30 @@ func TestVersionSet(t *testing.T) {
 			}
 		}
 		buf.WriteString(vs.virtualBackings.String())
-		if vs.zombieTables.Count() == 0 {
-			buf.WriteString("no zombie tables\n")
-		} else {
-			nums := slices.Collect(maps.Keys(vs.zombieTables.objs))
-			slices.Sort(nums)
-			buf.WriteString("zombie tables:")
-			for _, n := range nums {
-				fmt.Fprintf(&buf, " %s", n)
+		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []objectInfo) {
+			if zombies.Count() == 0 {
+				buf.WriteString(fmt.Sprintf("no zombie %s\n", kind))
+			} else {
+				nums := slices.Collect(maps.Keys(zombies.objs))
+				slices.Sort(nums)
+				buf.WriteString(fmt.Sprintf("zombie %s:", kind))
+				for _, n := range nums {
+					fmt.Fprintf(&buf, " %s", n)
+				}
+				buf.WriteString("\n")
 			}
-			buf.WriteString("\n")
-		}
-
-		if len(vs.obsoleteTables) == 0 {
-			buf.WriteString("no obsolete tables\n")
-		} else {
-			buf.WriteString("obsolete tables:")
-			for _, fi := range vs.obsoleteTables {
-				fmt.Fprintf(&buf, " %s", fi.FileNum)
+			if len(obsolete) == 0 {
+				buf.WriteString(fmt.Sprintf("no obsolete %s\n", kind))
+			} else {
+				buf.WriteString(fmt.Sprintf("obsolete %s:", kind))
+				for _, fi := range obsolete {
+					fmt.Fprintf(&buf, " %s", fi.FileNum)
+				}
+				buf.WriteString("\n")
 			}
-			buf.WriteString("\n")
 		}
-
+		printObjectBreakdown("tables", vs.zombieTables, vs.obsoleteTables)
+		printObjectBreakdown("blob files", vs.zombieBlobs, vs.obsoleteBlobs)
 		return buf.String()
 	})
 }

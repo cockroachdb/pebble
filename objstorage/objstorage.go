@@ -395,6 +395,13 @@ func Copy(ctx context.Context, r ReadHandle, out Writable, offset, length uint64
 	return nil
 }
 
+// IsLocalBlobFile returns true if a blob file with the given fileNum exists and is
+// local.
+func IsLocalBlobFile(provider Provider, fileNum base.DiskFileNum) bool {
+	meta, err := provider.Lookup(base.FileTypeBlob, fileNum)
+	return err == nil && !meta.IsRemote()
+}
+
 // IsLocalTable returns true if a table with the given fileNum exists and is
 // local.
 func IsLocalTable(provider Provider, fileNum base.DiskFileNum) bool {
