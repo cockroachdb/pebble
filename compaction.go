@@ -3224,7 +3224,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
 		maybeSetStatsFromProperties(
-			fileMeta.PhysicalMeta(), &t.WriterMeta.Properties,
+			fileMeta.PhysicalMeta(), &t.WriterMeta.Properties.CommonProperties,
 		)
 
 		if t.WriterMeta.HasPointKeys {

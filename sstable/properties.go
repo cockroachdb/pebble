@@ -252,12 +252,12 @@ func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Bu
 	}
 }
 
-func (p *Properties) GetScaledProperties(backingSize, size uint64) Properties {
+func (p *Properties) GetScaledProperties(backingSize, size uint64) CommonProperties {
 	scale := func(a uint64) uint64 {
 		return (a*size + backingSize - 1) / backingSize
 	}
 
-	props := *p
+	props := p.CommonProperties
 	props.RawKeySize = scale(p.RawKeySize)
 	props.RawValueSize = scale(p.RawValueSize)
 	props.NumEntries = scale(p.NumEntries)
