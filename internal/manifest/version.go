@@ -525,24 +525,27 @@ func (m *TableMetadata) InitPhysicalBacking() {
 	if m.Virtual != nil {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
 	}
-	if m.FileBacking == nil {
-		m.FileBacking = &FileBacking{
-			DiskFileNum: base.PhysicalTableDiskFileNum(m.FileNum),
-			Size:        m.Size,
-		}
+	if m.FileBacking != nil {
+		panic("backing already initialized")
+	}
+	m.FileBacking = &FileBacking{
+		DiskFileNum: base.PhysicalTableDiskFileNum(m.FileNum),
+		Size:        m.Size,
 	}
 }
 
-// InitProviderBacking creates a new FileBacking for a file backed by
-// an objstorage.Provider.
-func (m *TableMetadata) InitProviderBacking(fileNum base.DiskFileNum, size uint64) {
+// InitVirtualBacking creates a new FileBacking for a virtual table.
+func (m *TableMetadata) InitVirtualBacking(fileNum base.DiskFileNum, size uint64) {
 	if m.Virtual == nil {
 		panic("pebble: provider-backed sstables must be virtual")
 	}
-	if m.FileBacking == nil {
-		m.FileBacking = &FileBacking{DiskFileNum: fileNum}
+	if m.FileBacking != nil {
+		panic("backing already initialized")
 	}
-	m.FileBacking.Size = size
+	m.FileBacking = &FileBacking{
+		DiskFileNum: fileNum,
+		Size:        size,
+	}
 }
 
 // ValidateVirtual should be called once the TableMetadata for a virtual sstable
@@ -927,7 +930,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 		m.InitPhysicalBacking()
 	} else {
 		m.Virtual = &virtual.VirtualReaderParams{}
-		m.InitProviderBacking(backingNum, 0 /* size */)
+		m.InitVirtualBacking(backingNum, 0 /* size */)
 	}
 	return m, nil
 }
