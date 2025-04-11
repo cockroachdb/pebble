@@ -86,6 +86,7 @@ func TestDefaultOptionsString(t *testing.T) {
   compaction_debt_concurrency=1073741824
   comparer=leveldb.BytewiseComparator
   disable_wal=false
+  enable_columnar_blocks=true
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304

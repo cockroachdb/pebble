@@ -382,12 +382,12 @@ L3:
 	}
 
 	// TODO(jackson): Create a datadriven test and exercise it on
-	// TableFormatPebblev6 and later format major versions. This test is tightly
+	// TableFormatPebblev5 and later format major versions. This test is tightly
 	// coupled to the current estimated sizes and won't produce the necessary
 	// input LSM structure on later format major versions.
 	versions := []FormatMajorVersion{
 		FormatMinSupported,
-		FormatWALSyncChunks,
+		FormatFlushableIngestExcises,
 	}
 	for _, version := range versions {
 		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {

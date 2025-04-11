@@ -150,6 +150,7 @@ func TestMetrics(t *testing.T) {
 			MaxOpenFiles: 10000,
 		}
 		opts.Experimental.EnableValueBlocks = func() bool { return true }
+		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
 
 		// Prevent foreground flushes and compactions from triggering asynchronous
