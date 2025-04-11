@@ -314,7 +314,7 @@ func (vs *versionSet) load(
 
 	for _, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
-			if m.Virtual != nil {
+			if m.Virtual {
 				vs.virtualBackings.AddTable(m)
 			}
 		}
@@ -350,7 +350,7 @@ func (vs *versionSet) load(
 	}
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
-			if f.Virtual == nil {
+			if !f.Virtual {
 				isLocal, localSize := sizeIfLocal(f.FileBacking, vs.provider)
 				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 				if isLocal {
@@ -782,7 +782,7 @@ func getZombiesAndUpdateVirtualBackings(
 	// will stay on the stack.
 	stillUsed := make(map[base.DiskFileNum]struct{})
 	for _, nf := range ve.NewTables {
-		if nf.Meta.Virtual == nil {
+		if !nf.Meta.Virtual {
 			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
 			isLocal, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
 			localLiveSizeDelta += localFileDelta
@@ -795,7 +795,7 @@ func getZombiesAndUpdateVirtualBackings(
 		stillUsed[b.DiskFileNum] = struct{}{}
 	}
 	for _, m := range ve.DeletedTables {
-		if m.Virtual == nil {
+		if !m.Virtual {
 			// NB: this deleted file may also be in NewFiles or
 			// CreatedBackingTables, due to a file moving between levels, or
 			// becoming virtualized. In which case there is no change due to this
@@ -828,12 +828,12 @@ func getZombiesAndUpdateVirtualBackings(
 		}
 	}
 	for _, nf := range ve.NewTables {
-		if nf.Meta.Virtual != nil {
+		if nf.Meta.Virtual {
 			virtualBackings.AddTable(nf.Meta)
 		}
 	}
 	for _, m := range ve.DeletedTables {
-		if m.Virtual != nil {
+		if m.Virtual {
 			virtualBackings.RemoveTable(m)
 		}
 	}
@@ -1040,7 +1040,7 @@ func (vs *versionSet) append(v *version) {
 		// the version.
 		for _, l := range v.Levels {
 			for f := range l.All() {
-				if f.Virtual != nil {
+				if f.Virtual {
 					if _, ok := vs.virtualBackings.Get(f.FileBacking.DiskFileNum); !ok {
 						panic(fmt.Sprintf("%s is not in virtualBackings", f.FileBacking.DiskFileNum))
 					}

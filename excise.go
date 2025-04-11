@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 // Excise atomically deletes all data overlapping with the provided span. All
@@ -103,9 +102,8 @@ func (d *DB) exciseTable(
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
 		leftTable = &tableMetadata{
-			Virtual:     &virtual.VirtualReaderParams{},
-			FileBacking: m.FileBacking,
-			FileNum:     d.mu.versions.getNextFileNum(),
+			Virtual: true,
+			FileNum: d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:           m.SmallestSeqNum,
@@ -118,6 +116,7 @@ func (d *DB) exciseTable(
 		}
 
 		if leftTable.HasRangeKeys || leftTable.HasPointKeys {
+			leftTable.AttachVirtualBacking(m.FileBacking)
 			if err := determineExcisedTableSize(d.fileCache, m, leftTable); err != nil {
 				return nil, nil, err
 			}
@@ -136,9 +135,8 @@ func (d *DB) exciseTable(
 		// See comment before the definition of leftFile for the motivation behind
 		// calculating tight user-key bounds.
 		rightTable = &tableMetadata{
-			Virtual:     &virtual.VirtualReaderParams{},
-			FileBacking: m.FileBacking,
-			FileNum:     d.mu.versions.getNextFileNum(),
+			Virtual: true,
+			FileNum: d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:           m.SmallestSeqNum,
@@ -150,6 +148,7 @@ func (d *DB) exciseTable(
 			return nil, nil, err
 		}
 		if rightTable.HasRangeKeys || rightTable.HasPointKeys {
+			rightTable.AttachVirtualBacking(m.FileBacking)
 			if err := determineExcisedTableSize(d.fileCache, m, rightTable); err != nil {
 				return nil, nil, err
 			}
@@ -352,7 +351,7 @@ func applyExciseToVersionEdit(
 	if leftTable == nil && rightTable == nil {
 		return
 	}
-	if originalTable.Virtual == nil {
+	if !originalTable.Virtual {
 		// If the original table was virtual, then its file backing is already known
 		// to the manifest; we don't need to create another file backing. Note that
 		// there must be only one CreatedBackingTables entry per backing sstable.
