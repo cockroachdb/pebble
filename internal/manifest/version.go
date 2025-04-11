@@ -354,9 +354,7 @@ func (m *TableMetadata) InitVirtual(isShared bool) {
 	m.Virtual.Lower = m.Smallest
 	m.Virtual.Upper = m.Largest
 	m.Virtual.FileNum = m.FileNum
-	m.Virtual.Size = m.Size
 	m.Virtual.IsSharedIngested = isShared && m.SyntheticSeqNum() != 0
-	m.Virtual.BackingSize = m.FileBacking.Size
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,

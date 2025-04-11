@@ -8,11 +8,6 @@ type VirtualReaderParams struct {
 	Upper            base.InternalKey
 	FileNum          base.FileNum
 	IsSharedIngested bool
-	// Size is an estimate of the size of the [Lower, Upper) section of the table.
-	Size uint64
-	// BackingSize is the total size of the backing table. The ratio between Size
-	// and BackingSize is used to estimate statistics.
-	BackingSize uint64
 }
 
 // Constrain bounds will narrow the start, end bounds if they do not fit within
