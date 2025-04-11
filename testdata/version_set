@@ -13,6 +13,8 @@ current version:
 no virtual backings
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 reopen
 ----
@@ -23,6 +25,8 @@ current version:
 no virtual backings
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 # Convert 000002 to a virtual table.
 apply
@@ -43,6 +47,8 @@ current version:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=300
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 # Add another virtual table.
 apply
@@ -60,6 +66,8 @@ current version:
   000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 # Move a virtual table between levels.
 apply
@@ -80,6 +88,8 @@ current version:
   000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 # Remove a virtual table.
 apply
@@ -96,6 +106,8 @@ current version:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 reopen
 ----
@@ -107,6 +119,8 @@ current version:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 # Remove the last virtual table. This should automatically remove the last backing.
 apply
@@ -122,6 +136,8 @@ current version:
 no virtual backings
 no zombie tables
 obsolete tables: 000002
+no zombie blob files
+no obsolete blob files
 
 # Add a virtual table with a new backing (like an ingestion would).
 apply
@@ -141,6 +157,8 @@ current version:
   000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
 no zombie tables
 obsolete tables: 000002
+no zombie blob files
+no obsolete blob files
 
 ref-version r1
 ----
@@ -153,6 +171,8 @@ current version:
   000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
 no zombie tables
 obsolete tables: 000002
+no zombie blob files
+no obsolete blob files
 
 # Delete a table and backing; but we have a ref on the previous version so the
 # backing should not become obsolete.
@@ -169,6 +189,8 @@ current version:
 no virtual backings
 zombie tables: 000100
 obsolete tables: 000002
+no zombie blob files
+no obsolete blob files
 
 # The backing is now obsolete.
 unref-version r1
@@ -179,6 +201,8 @@ current version:
 no virtual backings
 no zombie tables
 obsolete tables: 000002 000100
+no zombie blob files
+no obsolete blob files
 
 # Test backing protection mechanism.
 
@@ -202,6 +226,8 @@ current version:
   000101:  size=101000  useCount=2  protectionCount=0  virtualizedSize=1300
 no zombie tables
 obsolete tables: 000002 000100
+no zombie blob files
+no obsolete blob files
 
 protect-backing 101
 ----
@@ -215,6 +241,8 @@ current version:
   000101:  size=101000  useCount=2  protectionCount=1  virtualizedSize=1300
 no zombie tables
 obsolete tables: 000002 000100
+no zombie blob files
+no obsolete blob files
 
 # We should not see a "del-backing" field here.
 apply
@@ -232,6 +260,8 @@ current version:
   000101:  size=101000  useCount=0  protectionCount=1  virtualizedSize=0
 no zombie tables
 obsolete tables: 000002 000100
+no zombie blob files
+no obsolete blob files
 
 unprotect-backing 101
 ----
@@ -243,6 +273,8 @@ current version:
 unused virtual backings: 000101
 no zombie tables
 obsolete tables: 000002 000100
+no zombie blob files
+no obsolete blob files
 
 # Whatever this next apply is, it should remove the unused backing.
 apply
@@ -260,6 +292,8 @@ current version:
 no virtual backings
 no zombie tables
 obsolete tables: 000002 000100 000101
+no zombie blob files
+no obsolete blob files
 
 # Test handling of leaked protected backings.
 
@@ -282,6 +316,8 @@ current version:
   000102:  size=102000  useCount=1  protectionCount=0  virtualizedSize=900
 no zombie tables
 obsolete tables: 000002 000100 000101
+no zombie blob files
+no obsolete blob files
 
 protect-backing 102
 ----
@@ -296,6 +332,8 @@ current version:
   000102:  size=102000  useCount=1  protectionCount=1  virtualizedSize=900
 no zombie tables
 obsolete tables: 000002 000100 000101
+no zombie blob files
+no obsolete blob files
 
 apply
   del-table:   L1 000009
@@ -312,6 +350,8 @@ current version:
   000102:  size=102000  useCount=0  protectionCount=1  virtualizedSize=0
 no zombie tables
 obsolete tables: 000002 000100 000101
+no zombie blob files
+no obsolete blob files
 
 # Upon reopen, we still have a record of backing 102.
 reopen
@@ -326,6 +366,8 @@ current version:
 unused virtual backings: 000102
 no zombie tables
 no obsolete tables
+no zombie blob files
+no obsolete blob files
 
 # Whatever this next apply is, it should remove the leaked backing.
 apply
@@ -344,3 +386,179 @@ current version:
 no virtual backings
 no zombie tables
 obsolete tables: 000102
+no zombie blob files
+no obsolete blob files
+
+apply
+  add-blob-file: 000011 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-table: L3 000012:[f#1,SET-g#1,SET] blobrefs:[(000011: 25935); depth:1]
+----
+applied:
+  last-seq-num:  99
+  add-table:     L3 000012:[f#1,SET-g#1,SET]
+  add-blob-file: 000011 size:[20535 (20KB)] vals:[25935 (25KB)]
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+    000012:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1200 blobrefs:[(000011: 25935); depth:1]
+no virtual backings
+no zombie tables
+obsolete tables: 000102
+no zombie blob files
+no obsolete blob files
+
+reopen
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+    000012:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1200 blobrefs:[(000011: 25935); depth:1]
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+# Delete the referencing table and the blob file. There is no reference to the
+# previous Version, so the files should all be immediately obsolete.
+
+apply
+  del-table: L3 000012
+  del-blob-file: 000011
+----
+applied:
+  last-seq-num:  99
+  del-table:     L3 000012
+  del-blob-file: 000011
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+no virtual backings
+no zombie tables
+obsolete tables: 000012
+no zombie blob files
+obsolete blob files: 000011
+
+reopen
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+apply
+  add-blob-file: 000013 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-table: L4 000014:[f#2,SET-g#2,SET] blobrefs:[(000013: 20000); depth:1]
+  add-table: L3 000015:[f#1,SET-g#1,SET] blobrefs:[(000013: 15935); depth:1]
+----
+applied:
+  last-seq-num:  99
+  add-table:     L4 000014:[f#2,SET-g#2,SET]
+  add-table:     L3 000015:[f#1,SET-g#1,SET]
+  add-blob-file: 000013 size:[20535 (20KB)] vals:[25935 (25KB)]
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+    000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1500 blobrefs:[(000013: 15935); depth:1]
+  L4:
+    000014:[f#2,SET-g#2,SET] seqnums:[0-0] points:[f#2,SET-g#2,SET] size:1400 blobrefs:[(000013: 20000); depth:1]
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+# Add a reference to the version.
+
+ref-version r2
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+    000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1500 blobrefs:[(000013: 15935); depth:1]
+  L4:
+    000014:[f#2,SET-g#2,SET] seqnums:[0-0] points:[f#2,SET-g#2,SET] size:1400 blobrefs:[(000013: 20000); depth:1]
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+# Remove the blob file and the referencing tables. The sstables and blob files
+# should be considered zombies due to the outstanding reference on the previous
+# version.
+
+apply
+  del-table: L3 000015
+  del-table: L4 000014
+  del-blob-file: 000013
+----
+applied:
+  last-seq-num:  99
+  del-table:     L3 000015
+  del-table:     L4 000014
+  del-blob-file: 000013
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+no virtual backings
+zombie tables: 000014 000015
+no obsolete tables
+zombie blob files: 000013
+no obsolete blob files
+
+# Remove the reference to the version. The sstables and blob files should
+# transition to obsolete.
+
+unref-version r2
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+no virtual backings
+no zombie tables
+obsolete tables: 000014 000015
+no zombie blob files
+obsolete blob files: 000013
+
+reopen
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
