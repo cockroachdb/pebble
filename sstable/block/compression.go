@@ -230,7 +230,7 @@ func CompressAndChecksumWithCompressor(
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	algo, buf := compressor.Compress(buf, blockData)
-	if len(buf) >= len(blockData)-len(blockData)/8 {
+	if len(buf) >= len(blockData)-len(blockData)/8 && algo != NoCompressionIndicator {
 		algo, buf = (noopCompressor{}).Compress(buf, blockData)
 	}
 
