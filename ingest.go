@@ -129,7 +129,7 @@ func ingestSynthesizeShared(
 	// This ensures that we don't over-prioritize this sstable for compaction just
 	// yet, as we do not have a clear sense of what parts of this sstable are
 	// referenced by other nodes.
-	meta.InitProviderBacking(base.DiskFileNum(fileNum), sm.Size)
+	meta.InitVirtualBacking(base.DiskFileNum(fileNum), sm.Size)
 
 	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
 		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
@@ -768,7 +768,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		// We have to attach the remote object (and assign it a DiskFileNum). For
 		// simplicity, we use the same number for both the FileNum and the
 		// DiskFileNum (even though this is a virtual sstable).
-		meta.InitProviderBacking(base.DiskFileNum(meta.FileNum), lr.external[i].external.Size)
+		meta.InitVirtualBacking(base.DiskFileNum(meta.FileNum), lr.external[i].external.Size)
 
 		// Set the underlying FileBacking's size to the same size as the virtualized
 		// view of the sstable. This ensures that we don't over-prioritize this

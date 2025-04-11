@@ -2593,7 +2593,7 @@ func (d *DB) runCopyCompaction(
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
 		// We will update this size later after we produce the new backing file.
-		newMeta.InitProviderBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
+		newMeta.InitVirtualBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
 		newMeta.InitPhysicalBacking()
