@@ -379,8 +379,9 @@ func (d *DB) TableFormat() sstable.TableFormat {
 		if d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks() {
 			f = sstable.TableFormatPebblev2
 		}
-	case sstable.TableFormatPebblev5, sstable.TableFormatPebblev6:
-		if d.opts.Experimental.EnableColumnarBlocks == nil || !d.opts.Experimental.EnableColumnarBlocks() {
+	default:
+		if f.BlockColumnar() && (d.opts.Experimental.EnableColumnarBlocks == nil ||
+			!d.opts.Experimental.EnableColumnarBlocks()) {
 			f = sstable.TableFormatPebblev4
 		}
 	}
