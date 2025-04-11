@@ -6,6 +6,7 @@ package blob
 
 import (
 	"context"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -13,7 +14,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
 const maxCachedReaders = 5
@@ -21,8 +21,8 @@ const maxCachedReaders = 5
 // A ValueReader is an interface defined over a file that can be used to read
 // value blocks.
 type ValueReader interface {
-	// ValueIndexHandle returns the handle for the file's value index block.
-	ValueIndexHandle() valblk.IndexHandle
+	// IndexHandle returns the handle for the file's index block.
+	IndexHandle() block.Handle
 
 	// InitReadHandle initializes a ReadHandle for the file, using the provided
 	// preallocated read handle to avoid an allocation.
@@ -34,9 +34,9 @@ type ValueReader interface {
 	ReadValueBlock(context.Context, block.ReadEnv, objstorage.ReadHandle,
 		block.Handle) (block.BufferHandle, error)
 
-	// ReadValueIndexBlock retrieves the index block from the block cache, or
-	// reads it from the blob file if it's not already cached.
-	ReadValueIndexBlock(context.Context, block.ReadEnv, objstorage.ReadHandle) (block.BufferHandle, error)
+	// ReadIndexBlock retrieves the index block from the block cache, or reads
+	// it from the blob file if it's not already cached.
+	ReadIndexBlock(context.Context, block.ReadEnv, objstorage.ReadHandle) (block.BufferHandle, error)
 }
 
 // A ReaderProvider is an interface that can be used to retrieve a ValueReader
@@ -156,6 +156,7 @@ type cachedReader struct {
 	currentBlockLoaded bool
 	currentBlockBuf    block.BufferHandle
 	indexBlockBuf      block.BufferHandle
+	indexBlockDecoder  *indexBlockDecoder
 	preallocRH         objstorageprovider.PreallocatedReadHandle
 }
 
@@ -171,21 +172,20 @@ func (cr *cachedReader) GetUnsafeValue(
 	if !cr.indexBlockBuf.Valid() {
 		// Read the index block.
 		var err error
-		cr.indexBlockBuf, err = cr.r.ReadValueIndexBlock(ctx, env, cr.rh)
+		cr.indexBlockBuf, err = cr.r.ReadIndexBlock(ctx, env, cr.rh)
 		if err != nil {
 			return nil, err
 		}
+		cr.indexBlockDecoder = (*indexBlockDecoder)(unsafe.Pointer(cr.indexBlockBuf.BlockMetadata()))
 	}
 
 	if !cr.currentBlockLoaded || vh.BlockNum != cr.currentBlockNum {
 		// Translate the handle's block number into a block handle via the blob
 		// file's index block.
-		h, err := valblk.DecodeBlockHandleFromIndex(cr.indexBlockBuf.BlockData(), vh.BlockNum, cr.r.ValueIndexHandle())
-		if err != nil {
-			return nil, err
-		}
+		h := cr.indexBlockDecoder.BlockHandle(vh.BlockNum)
 		cr.currentBlockBuf.Release()
 		cr.currentBlockLoaded = false
+		var err error
 		cr.currentBlockBuf, err = cr.r.ReadValueBlock(ctx, env, cr.rh, h)
 		if err != nil {
 			return nil, err

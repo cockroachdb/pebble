@@ -22,7 +22,7 @@ type KeyValueBlockWriter struct {
 	keys   RawBytesBuilder
 	values RawBytesBuilder
 	rows   int
-	enc    blockEncoder
+	enc    BlockEncoder
 }
 
 const (
@@ -52,7 +52,7 @@ func (w *KeyValueBlockWriter) AddKV(key []byte, value []byte) {
 }
 
 func (w *KeyValueBlockWriter) size(rows int) int {
-	off := blockHeaderSize(keyValueBlockColumnCount, keyValueBlockCustomHeaderSize)
+	off := HeaderSize(keyValueBlockColumnCount, keyValueBlockCustomHeaderSize)
 	off = w.keys.Size(rows, off)
 	off = w.values.Size(rows, off)
 	off++
@@ -61,14 +61,14 @@ func (w *KeyValueBlockWriter) size(rows int) int {
 
 // Finish serializes the pending key value block.
 func (w *KeyValueBlockWriter) Finish(rows int) []byte {
-	w.enc.init(w.size(rows), Header{
+	w.enc.Init(w.size(rows), Header{
 		Version: Version1,
 		Columns: keyValueBlockColumnCount,
 		Rows:    uint32(rows),
 	}, indexBlockCustomHeaderSize)
-	w.enc.encode(rows, &w.keys)
-	w.enc.encode(rows, &w.values)
-	return w.enc.finish()
+	w.enc.Encode(rows, &w.keys)
+	w.enc.Encode(rows, &w.values)
+	return w.enc.Finish()
 }
 
 // KeyValueBlockDecoder reads columnar key value blocks.
@@ -107,9 +107,9 @@ func (r *KeyValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node
 	f.SetAnchorOffset()
 
 	n := tp.Child("key value block header")
-	r.bd.headerToBinFormatter(f, n)
+	r.bd.HeaderToBinFormatter(f, n)
 	for i := 0; i < keyValueBlockColumnCount; i++ {
-		r.bd.columnToBinFormatter(f, n, i, int(r.bd.header.Rows))
+		r.bd.ColumnToBinFormatter(f, n, i, int(r.bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)

@@ -476,7 +476,7 @@ type DataBlockEncoder struct {
 	// identical point key or range deletion with a higher sequence number).
 	isObsolete BitmapBuilder
 
-	enc              blockEncoder
+	enc              BlockEncoder
 	rows             int
 	maximumKeyLength int
 	valuePrefixTmp   [1]byte
@@ -511,7 +511,7 @@ func (w *DataBlockEncoder) Init(schema *KeySchema) {
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
-	w.enc.reset()
+	w.enc.Reset()
 }
 
 // Reset resets the data block writer to its initial state, retaining buffers.
@@ -525,7 +525,7 @@ func (w *DataBlockEncoder) Reset() {
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
-	w.enc.reset()
+	w.enc.Reset()
 }
 
 // String outputs a human-readable summary of internal DataBlockEncoder state.
@@ -604,7 +604,7 @@ func (w *DataBlockEncoder) Rows() int {
 
 // Size returns the size of the current pending data block.
 func (w *DataBlockEncoder) Size() int {
-	off := blockHeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	off := HeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.InvertedSize(w.rows, off)
@@ -645,19 +645,19 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 	// to represent when the prefix changes.
 	w.prefixSame.Invert(rows)
 
-	w.enc.init(size, h, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	w.enc.Init(size, h, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 
 	// Write the key schema custom header.
-	w.KeyWriter.FinishHeader(w.enc.data()[:w.Schema.HeaderSize])
+	w.KeyWriter.FinishHeader(w.enc.Data()[:w.Schema.HeaderSize])
 	// Write the max key length in the data block custom header.
-	binary.LittleEndian.PutUint32(w.enc.data()[w.Schema.HeaderSize:w.Schema.HeaderSize+dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
-	w.enc.encode(rows, w.KeyWriter)
-	w.enc.encode(rows, &w.trailers)
-	w.enc.encode(rows, &w.prefixSame)
-	w.enc.encode(rows, &w.values)
-	w.enc.encode(rows, &w.isValueExternal)
-	w.enc.encode(rows, &w.isObsolete)
-	finished = w.enc.finish()
+	binary.LittleEndian.PutUint32(w.enc.Data()[w.Schema.HeaderSize:w.Schema.HeaderSize+dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
+	w.enc.Encode(rows, w.KeyWriter)
+	w.enc.Encode(rows, &w.trailers)
+	w.enc.Encode(rows, &w.prefixSame)
+	w.enc.Encode(rows, &w.values)
+	w.enc.Encode(rows, &w.isValueExternal)
+	w.enc.Encode(rows, &w.isObsolete)
+	finished = w.enc.Finish()
 
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
 	w.lastUserKeyTmp = w.KeyWriter.MaterializeKey(w.lastUserKeyTmp[:0], rows-1)
@@ -936,9 +936,9 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 		f.HexBytesln(keySchemaHeaderSize, "key schema header")
 	}
 	f.HexBytesln(4, "maximum key length: %d", d.maximumKeyLength)
-	d.d.headerToBinFormatter(f, n)
+	d.d.HeaderToBinFormatter(f, n)
 	for i := 0; i < int(d.d.header.Columns); i++ {
-		d.d.columnToBinFormatter(f, n, i, int(d.d.header.Rows))
+		d.d.ColumnToBinFormatter(f, n, i, int(d.d.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)
