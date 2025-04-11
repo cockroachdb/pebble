@@ -29,6 +29,7 @@ type walT struct {
 	Root       *cobra.Command
 	Dump       *cobra.Command
 	DumpMerged *cobra.Command
+	ReadChunks *cobra.Command
 
 	opts     *pebble.Options
 	fmtKey   keyFormatter
@@ -71,9 +72,19 @@ together form a single logical WAL.
 		Args: cobra.MinimumNArgs(1),
 		Run:  w.runDumpMerged,
 	}
+	w.ReadChunks = &cobra.Command{
+		Use:   "chunks <wal-files>",
+		Short: "print WAL chunk contents",
+		Long: `
+Print the chunk contents of WAL files.
+`,
+		Args: cobra.MinimumNArgs(1),
+		Run:  w.runChunks,
+	}
 
 	w.Root.AddCommand(w.Dump)
 	w.Root.AddCommand(w.DumpMerged)
+	w.Root.AddCommand(w.ReadChunks)
 	w.Root.PersistentFlags().BoolVarP(&w.verbose, "verbose", "v", false, "verbose output")
 
 	w.Dump.Flags().Var(
@@ -86,6 +97,39 @@ together form a single logical WAL.
 type errAndArg struct {
 	err error
 	arg string
+}
+
+func (w *walT) runChunks(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	w.fmtKey.setForComparer(w.defaultComparer, w.comparers)
+	w.fmtValue.setForComparer(w.defaultComparer, w.comparers)
+
+	for _, arg := range args {
+		func() {
+			// Parse the filename in order to extract the file number. This is
+			// necessary in case WAL recycling was used (which it is usually is). If
+			// we can't parse the filename or it isn't a log file, we'll plow ahead
+			// anyways (which will likely fail when we try to read the file).
+			fileName := path.Base(arg)
+			fileNum, _, ok := wal.ParseLogFilename(fileName)
+			if !ok {
+				fileNum = 0
+			}
+
+			f, err := w.opts.FS.Open(arg)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			defer f.Close()
+
+			fmt.Fprintf(stdout, "%s\n", arg)
+			rr := record.NewReader(f, base.DiskFileNum(fileNum))
+			chunkStrVisual, chunkLog := rr.InvestigateChunks(w.verbose)
+			fmt.Fprintf(stdout, "WAL tree visual: \n%s\n", chunkStrVisual)
+			fmt.Fprintf(stdout, "WAL reading log: \n%s\n", chunkLog)
+		}()
+	}
 }
 
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
