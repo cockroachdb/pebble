@@ -5,10 +5,12 @@
 package pebble
 
 import (
+	stdcmp "cmp"
 	"context"
 	"fmt"
 	"io"
 	"iter"
+	"slices"
 	"sort"
 
 	"github.com/cockroachdb/errors"
@@ -298,9 +300,9 @@ func (m *simpleMergingIter) handleVisiblePoint(
 // - Collect the start and end user keys from all these tombstones
 //   (collectAllUserKey()) and use them to fragment all the tombstones
 //   (fragmentUsingUserKey()).
-// - Sort tombstones by start key and decreasing seqnum
-//   (tombstonesByStartKeyAndSeqnum) - all tombstones that have the same start
-//   key will have the same end key because they have been fragmented.
+// - Sort tombstones by start key and decreasing seqnum (all tombstones that
+//   have the same start key will have the same end key because they have been
+//   fragmented)
 // - Iterate and check (iterateAndCheckTombstones()).
 //
 // Note that this simple approach requires holding all the tombstones across all
@@ -316,33 +318,15 @@ type tombstoneWithLevel struct {
 	fileNum  base.FileNum
 }
 
-// For sorting tombstoneWithLevels in increasing order of start UserKey and
-// for the same start UserKey in decreasing order of seqnum.
-type tombstonesByStartKeyAndSeqnum struct {
-	cmp Compare
-	buf []tombstoneWithLevel
-}
-
-func (v *tombstonesByStartKeyAndSeqnum) Len() int { return len(v.buf) }
-func (v *tombstonesByStartKeyAndSeqnum) Less(i, j int) bool {
-	less := v.cmp(v.buf[i].Start, v.buf[j].Start)
-	if less == 0 {
-		return v.buf[i].LargestSeqNum() > v.buf[j].LargestSeqNum()
-	}
-	return less < 0
-}
-func (v *tombstonesByStartKeyAndSeqnum) Swap(i, j int) {
-	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
-}
-
 func iterateAndCheckTombstones(
 	cmp Compare, formatKey base.FormatKey, tombstones []tombstoneWithLevel,
 ) error {
-	sortBuf := tombstonesByStartKeyAndSeqnum{
-		cmp: cmp,
-		buf: tombstones,
-	}
-	sort.Sort(&sortBuf)
+	slices.SortFunc(tombstones, func(a, b tombstoneWithLevel) int {
+		if v := cmp(a.Start, b.Start); v != 0 {
+			return v
+		}
+		return stdcmp.Compare(b.LargestSeqNum(), a.LargestSeqNum())
+	})
 
 	// For a sequence of tombstones that share the same start UserKey, we will
 	// encounter them in non-increasing seqnum order and so should encounter them
@@ -490,38 +474,15 @@ func addTombstonesFromIter(
 	return tombstones, nil
 }
 
-type userKeysSort struct {
-	cmp Compare
-	buf [][]byte
-}
-
-func (v *userKeysSort) Len() int { return len(v.buf) }
-func (v *userKeysSort) Less(i, j int) bool {
-	return v.cmp(v.buf[i], v.buf[j]) < 0
-}
-func (v *userKeysSort) Swap(i, j int) {
-	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
-}
 func collectAllUserKeys(cmp Compare, tombstones []tombstoneWithLevel) [][]byte {
 	keys := make([][]byte, 0, len(tombstones)*2)
 	for _, t := range tombstones {
-		keys = append(keys, t.Start)
-		keys = append(keys, t.End)
+		keys = append(keys, t.Start, t.End)
 	}
-	sorter := userKeysSort{
-		cmp: cmp,
-		buf: keys,
-	}
-	sort.Sort(&sorter)
-	var last, curr int
-	for last, curr = -1, 0; curr < len(keys); curr++ {
-		if last < 0 || cmp(keys[last], keys[curr]) != 0 {
-			last++
-			keys[last] = keys[curr]
-		}
-	}
-	keys = keys[:last+1]
-	return keys
+	slices.SortFunc(keys, cmp)
+	return slices.CompactFunc(keys, func(a, b []byte) bool {
+		return cmp(a, b) == 0
+	})
 }
 
 func fragmentUsingUserKeys(
