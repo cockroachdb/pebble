@@ -295,7 +295,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 
 		for j := range ve.NewTables {
 			nf := &ve.NewTables[j]
-			if b, ok := backings[nf.BackingFileNum]; ok && nf.Meta.Virtual != nil {
+			if b, ok := backings[nf.BackingFileNum]; ok && nf.Meta.Virtual.IsVirtual {
 				nf.Meta.FileBacking = b
 			}
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
@@ -305,7 +305,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 					Largest:        l.findKey(nf.Meta.Largest),
 					SmallestSeqNum: nf.Meta.SmallestSeqNum,
 					LargestSeqNum:  nf.Meta.LargestSeqNum,
-					Virtual:        nf.Meta.Virtual != nil,
+					Virtual:        nf.Meta.Virtual.IsVirtual,
 				}
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)

@@ -206,10 +206,12 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 			params.FileNum = nextFileNum()
 			params.BackingSize = wMeta.Size
-			env.Virtual = &params
+			params.IsVirtual = true
+			env.Virtual = params
 
 			var err error
 			params.Size, err = r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env)
+			env.Virtual = params
 			if err != nil {
 				return err.Error()
 			}
@@ -219,7 +221,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			// Creates a compaction iterator from the virtual reader, and then
 			// just scans the keyspace. Which is all a compaction iterator is
 			// used for. This tests the First and Next calls.
-			if env.Virtual == nil {
+			if env.Virtual.IsVirtual == false {
 				return "virtualize must be called before creating compaction iters"
 			}
 
@@ -244,7 +246,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "constrain":
-			if env.Virtual == nil {
+			if env.Virtual.IsVirtual == false {
 				return "virtualize must be called before constrain"
 			}
 			splits := strings.Split(td.CmdArgs[0].String(), ",")
@@ -264,7 +266,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "scan-range-del":
-			if env.Virtual == nil {
+			if env.Virtual.IsVirtual == false {
 				return "virtualize must be called before scan-range-del"
 			}
 			transforms := FragmentIterTransforms{
@@ -290,7 +292,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "scan-range-key":
-			if env.Virtual == nil {
+			if env.Virtual.IsVirtual == false {
 				return "virtualize must be called before scan-range-key"
 			}
 			transforms := FragmentIterTransforms{
@@ -317,7 +319,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			return buf.String()
 
 		case "iter":
-			if env.Virtual == nil {
+			if env.Virtual.IsVirtual == false {
 				return "virtualize must be called before iter"
 			}
 			var lower, upper []byte
@@ -1275,7 +1277,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			ReaderProvider:       MakeTrivialReaderProvider(eReader),
 			BlobContext:          AssertNoBlobHandles,
 			Env: ReadEnv{
-				Virtual: &virtual.VirtualReaderParams{
+				Virtual: virtual.VirtualReaderParams{
 					Lower: base.MakeInternalKey([]byte("_"), base.SeqNumMax, base.InternalKeyKindSet),
 					Upper: base.MakeRangeDeleteSentinelKey([]byte("~~~~~~~~~~~~~~~~"))},
 			},

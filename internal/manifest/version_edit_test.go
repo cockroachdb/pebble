@@ -78,7 +78,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		LargestSeqNum:         11,
 		LargestSeqNumAbsolute: 11,
 		FileBacking:           m1.FileBacking,
-		Virtual:               &virtual.VirtualReaderParams{},
+		Virtual:               virtual.VirtualReaderParams{IsVirtual: true},
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),

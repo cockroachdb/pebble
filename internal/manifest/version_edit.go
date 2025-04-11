@@ -464,7 +464,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			}
 			if virtualState.virtual {
-				m.Virtual = &virtual.VirtualReaderParams{}
+				m.Virtual = virtual.VirtualReaderParams{IsVirtual: true}
 			}
 
 			if tag != tagNewFile5 { // no range keys present
@@ -740,7 +740,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewTables {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual != nil || len(x.Meta.BlobReferences) > 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual.IsVirtual || len(x.Meta.BlobReferences) > 0
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -793,7 +793,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
-			if x.Meta.Virtual != nil {
+			if x.Meta.Virtual.IsVirtual {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
 			}
@@ -1095,7 +1095,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
-		if nf.Meta.Virtual != nil && nf.Meta.FileBacking == nil {
+		if nf.Meta.Virtual.IsVirtual && nf.Meta.FileBacking == nil {
 			// FileBacking for a virtual sstable must only be nil if we're performing
 			// manifest replay.
 			nf.Meta.FileBacking = b.AddedFileBacking[nf.BackingFileNum]

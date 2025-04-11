@@ -134,7 +134,7 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 // AddTable is used when a new table is using an exiting backing. The backing
 // must be in the set already.
 func (bv *VirtualBackings) AddTable(m *TableMetadata) {
-	if m.Virtual == nil {
+	if !m.Virtual.IsVirtual {
 		panic(errors.AssertionFailedf("table %s not virtual", m.FileNum))
 	}
 	v := bv.mustGet(m.FileBacking.DiskFileNum)
@@ -149,7 +149,7 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 // RemoveTable is used when a table using a backing is removed. The backing is
 // not removed from the set, even if it becomes unused.
 func (bv *VirtualBackings) RemoveTable(m *TableMetadata) {
-	if m.Virtual == nil {
+	if !m.Virtual.IsVirtual {
 		panic(errors.AssertionFailedf("table %s not virtual", m.FileNum))
 	}
 	v := bv.mustGet(m.FileBacking.DiskFileNum)

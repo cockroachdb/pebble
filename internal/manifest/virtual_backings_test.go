@@ -41,7 +41,7 @@ func TestVirtualBackings(t *testing.T) {
 			m := &TableMetadata{
 				FileBacking: &FileBacking{DiskFileNum: n},
 				Size:        size,
-				Virtual:     &virtual.VirtualReaderParams{},
+				Virtual:     virtual.VirtualReaderParams{IsVirtual: true},
 			}
 			bv.AddTable(m)
 
@@ -49,7 +49,7 @@ func TestVirtualBackings(t *testing.T) {
 			m := &TableMetadata{
 				FileBacking: &FileBacking{DiskFileNum: n},
 				Size:        size,
-				Virtual:     &virtual.VirtualReaderParams{},
+				Virtual:     virtual.VirtualReaderParams{IsVirtual: true},
 			}
 			bv.RemoveTable(m)
 

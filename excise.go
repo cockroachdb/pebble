@@ -103,7 +103,7 @@ func (d *DB) exciseTable(
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
 		leftTable = &tableMetadata{
-			Virtual:     &virtual.VirtualReaderParams{},
+			Virtual:     virtual.VirtualReaderParams{IsVirtual: true},
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -136,7 +136,7 @@ func (d *DB) exciseTable(
 		// See comment before the definition of leftFile for the motivation behind
 		// calculating tight user-key bounds.
 		rightTable = &tableMetadata{
-			Virtual:     &virtual.VirtualReaderParams{},
+			Virtual:     virtual.VirtualReaderParams{IsVirtual: true},
 			FileBacking: m.FileBacking,
 			FileNum:     d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -352,7 +352,7 @@ func applyExciseToVersionEdit(
 	if leftTable == nil && rightTable == nil {
 		return
 	}
-	if originalTable.Virtual == nil {
+	if !originalTable.Virtual.IsVirtual {
 		// If the original table was virtual, then its file backing is already known
 		// to the manifest; we don't need to create another file backing. Note that
 		// there must be only one CreatedBackingTables entry per backing sstable.

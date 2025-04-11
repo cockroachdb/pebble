@@ -261,7 +261,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) DebugTree(tp treeprinter.Node) {
 func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.secondLevel.readEnv.Virtual != nil {
+	if i.secondLevel.readEnv.Virtual.IsVirtual {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
 		//
@@ -399,7 +399,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.secondLevel.readEnv.Virtual != nil {
+	if i.secondLevel.readEnv.Virtual.IsVirtual {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
 		//
@@ -559,9 +559,9 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	return i.skipForward()
 }
 
-// virtualLast should only be called if i.secondLevel.readBlockEnv.Virtual != nil.
+// virtualLast should only be called if i.secondLevel.readBlockEnv.Virtual.IsVirtual.
 func (i *twoLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
-	if i.secondLevel.readEnv.Virtual == nil {
+	if !i.secondLevel.readEnv.Virtual.IsVirtual {
 		panic("pebble: invalid call to virtualLast")
 	}
 	if !i.secondLevel.endKeyInclusive {
@@ -622,7 +622,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
-	if i.secondLevel.readEnv.Virtual != nil {
+	if i.secondLevel.readEnv.Virtual.IsVirtual {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
 		//
@@ -748,7 +748,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
-	if i.secondLevel.readEnv.Virtual != nil {
+	if i.secondLevel.readEnv.Virtual.IsVirtual {
 		if i.secondLevel.endKeyInclusive {
 			return i.virtualLast()
 		}
@@ -906,7 +906,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 		// Note that this is only a problem with virtual tables; we make no
 		// guarantees wrt an iterator lower bound when we iterate forward. But we
 		// must never return keys that are not inside the virtual table.
-		useSeek := i.secondLevel.readEnv.Virtual != nil && (!PI(&i.topLevelIndex).Valid() ||
+		useSeek := i.secondLevel.readEnv.Virtual.IsVirtual && (!PI(&i.topLevelIndex).Valid() ||
 			PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.readEnv.Virtual.Lower.UserKey))
 
 		i.secondLevel.exhaustedBounds = 0

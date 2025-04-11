@@ -314,9 +314,8 @@ func (h *fileCacheHandle) estimateSize(
 func createReader(v *fileCacheValue, file *tableMetadata) (*sstable.Reader, sstable.ReadEnv) {
 	r := v.mustSSTableReader()
 	env := sstable.ReadEnv{}
-	if file.Virtual != nil {
-		file.InitVirtual(v.isShared)
-		env.Virtual = file.Virtual
+	if file.Virtual.IsVirtual {
+		env.Virtual = file.InitVirtual(v.isShared)
 	}
 	return r, env
 }
@@ -338,9 +337,8 @@ func (h *fileCacheHandle) withReader(
 	env := sstable.ReadEnv{Block: blockEnv}
 
 	r := v.mustSSTableReader()
-	if meta.Virtual != nil {
-		meta.InitVirtual(v.isShared)
-		env.Virtual = meta.Virtual
+	if meta.Virtual.IsVirtual {
+		env.Virtual = meta.InitVirtual(v.isShared)
 	}
 
 	return fn(r, env)

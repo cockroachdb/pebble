@@ -1186,7 +1186,7 @@ func pickCompactionSeedFile(
 func responsibleForGarbageBytes(
 	virtualBackings *manifest.VirtualBackings, m *tableMetadata,
 ) uint64 {
-	if m.Virtual == nil {
+	if !m.Virtual.IsVirtual {
 		return 0
 	}
 	useCount, virtualizedSize := virtualBackings.Usage(m.FileBacking.DiskFileNum)

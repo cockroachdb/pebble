@@ -94,7 +94,7 @@ func TestVersionSet(t *testing.T) {
 				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
 				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
 				metas[nf.Meta.FileNum] = nf.Meta
-				if nf.Meta.Virtual == nil {
+				if !nf.Meta.Virtual.IsVirtual {
 					createFile(nf.Meta.FileBacking.DiskFileNum)
 				}
 			}

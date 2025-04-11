@@ -279,7 +279,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(ctx context.Context, r *Reader,
 	i.readEnv = opts.Env
 	i.internalValueConstructor.blobContext = opts.BlobContext
 	i.internalValueConstructor.env = &i.readEnv.Block
-	if opts.Env.Virtual != nil {
+	if opts.Env.Virtual.IsVirtual {
 		i.endKeyInclusive, i.lower, i.upper = opts.Env.Virtual.ConstrainBounds(opts.Lower, opts.Upper, false /* endInclusive */, r.Comparer.Compare)
 	}
 
@@ -291,7 +291,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) init(ctx context.Context, r *Reader,
 
 // Helper function to check if keys returned from iterator are within virtual bounds.
 func (i *singleLevelIterator[I, PI, D, PD]) maybeVerifyKey(kv *base.InternalKV) *base.InternalKV {
-	if invariants.Enabled && kv != nil && i.readEnv.Virtual != nil {
+	if invariants.Enabled && kv != nil && i.readEnv.Virtual.IsVirtual {
 		key := kv.K.UserKey
 		v := i.readEnv.Virtual
 		lc := i.cmp(key, v.Lower.UserKey)
@@ -401,14 +401,14 @@ var ensureBoundsOptDeterminism bool
 // this iterator knows bounds will be passed to vState, it can signal that it
 // they should be passed without being rewritten to skip converting to and fro.
 func (i singleLevelIterator[I, PI, P, PD]) SetBoundsWithSyntheticPrefix() bool {
-	return i.readEnv.Virtual != nil
+	return i.readEnv.Virtual.IsVirtual
 }
 
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package. Note that the upper field is exclusive.
 func (i *singleLevelIterator[I, PI, P, PD]) SetBounds(lower, upper []byte) {
 	i.boundsCmp = 0
-	if i.readEnv.Virtual != nil {
+	if i.readEnv.Virtual.IsVirtual {
 		// If the reader is constructed for a virtual sstable, then we must
 		// constrain the bounds of the reader. For physical sstables, the bounds
 		// can be wider than the actual sstable's bounds because we won't
@@ -639,7 +639,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.readEnv.Virtual != nil {
+	if i.readEnv.Virtual.IsVirtual {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
 		//
@@ -790,7 +790,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	if i.readEnv.Virtual != nil {
+	if i.readEnv.Virtual.IsVirtual {
 		// Callers of SeekPrefixGE aren't aware of virtual sstable bounds, so
 		// we may have to internally restrict the bounds.
 		//
@@ -887,9 +887,9 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 	return i.reader.tableFilter.mayContain(dataH.BlockData(), prefixToCheck), nil
 }
 
-// virtualLast should only be called if i.readBlockEnv.Virtual != nil
+// virtualLast should only be called if i.readBlockEnv.Virtual.IsVirtual
 func (i *singleLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
-	if i.readEnv.Virtual == nil {
+	if !i.readEnv.Virtual.IsVirtual {
 		panic("pebble: invalid call to virtualLast")
 	}
 
@@ -993,7 +993,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
-	if i.readEnv.Virtual != nil {
+	if i.readEnv.Virtual.IsVirtual {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
 		//
@@ -1164,7 +1164,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *singleLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
-	if i.readEnv.Virtual != nil {
+	if i.readEnv.Virtual.IsVirtual {
 		return i.maybeVerifyKey(i.virtualLast())
 	}
 
@@ -1401,7 +1401,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 		// Note that this is only a problem with virtual tables; we make no
 		// guarantees wrt an iterator lower bound when we iterate forward. But we
 		// must never return keys that are not inside the virtual table.
-		if i.readEnv.Virtual != nil && i.blockLower != nil {
+		if i.readEnv.Virtual.IsVirtual && i.blockLower != nil {
 			kv = PD(&i.data).SeekGE(i.lower, base.SeekGEFlagsNone)
 		} else {
 			kv = PD(&i.data).First()
@@ -1536,7 +1536,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) String() string {
-	if i.readEnv.Virtual != nil {
+	if i.readEnv.Virtual.IsVirtual {
 		return i.readEnv.Virtual.FileNum.String()
 	}
 	return i.reader.blockReader.FileNum().String()

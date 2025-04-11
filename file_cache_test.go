@@ -359,7 +359,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestPointKey:      base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		LargestPointKey:       base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		HasPointKeys:          true,
-		Virtual:               &virtual.VirtualReaderParams{},
+		Virtual:               virtual.VirtualReaderParams{IsVirtual: true},
 	}
 	v1.Stats.NumEntries = 1
 
@@ -378,7 +378,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestRangeKey:      base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
 		LargestRangeKey:       base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset),
 		HasPointKeys:          true,
-		Virtual:               &virtual.VirtualReaderParams{},
+		Virtual:               virtual.VirtualReaderParams{IsVirtual: true},
 	}
 	v2.Stats.NumEntries = 6
 
@@ -437,7 +437,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	currVersion = d.mu.versions.currentVersion()
 	l6 = currVersion.Levels[6]
 	for f := range l6.All() {
-		require.Equal(t, true, f.Virtual != nil)
+		require.Equal(t, true, f.Virtual.IsVirtual)
 	}
 	d.mu.Unlock()
 

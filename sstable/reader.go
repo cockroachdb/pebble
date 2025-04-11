@@ -68,7 +68,7 @@ type Reader struct {
 }
 
 type ReadEnv struct {
-	Virtual *virtual.VirtualReaderParams
+	Virtual virtual.VirtualReaderParams
 	Block   block.ReadEnv
 }
 
@@ -188,7 +188,7 @@ func (r *Reader) NewCompactionIter(
 func (r *Reader) newCompactionIter(
 	transforms IterTransforms, env ReadEnv, rp valblk.ReaderProvider, blobContext TableBlobContext,
 ) (Iterator, error) {
-	if env.Virtual != nil && env.Virtual.IsSharedIngested {
+	if env.Virtual.IsVirtual && env.Virtual.IsSharedIngested {
 		transforms.HideObsoletePoints = true
 	}
 	ctx := context.Background()
@@ -256,7 +256,7 @@ func (r *Reader) NewRawRangeDelIter(
 	}
 
 	i := keyspan.MaybeAssert(iter, r.Comparer.Compare)
-	if env.Virtual != nil {
+	if env.Virtual.IsVirtual {
 		i = keyspan.Truncate(
 			r.Comparer.Compare, i,
 			base.UserKeyBoundsFromInternal(env.Virtual.Lower, env.Virtual.Upper),
@@ -272,7 +272,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	ctx context.Context, transforms FragmentIterTransforms, env ReadEnv,
 ) (iter keyspan.FragmentIterator, err error) {
 	syntheticSeqNum := transforms.SyntheticSeqNum
-	if env.Virtual != nil && env.Virtual.IsSharedIngested {
+	if env.Virtual.IsVirtual && env.Virtual.IsSharedIngested {
 		// Don't pass a synthetic sequence number for shared ingested sstables. We
 		// need to know the materialized sequence numbers, and we will set up the
 		// appropriate sequence number substitution below.
@@ -296,7 +296,7 @@ func (r *Reader) NewRawRangeKeyIter(
 	}
 	i := keyspan.MaybeAssert(iter, r.Comparer.Compare)
 
-	if env.Virtual != nil {
+	if env.Virtual.IsVirtual {
 		// We need to coalesce range keys within each sstable, and then apply the
 		// synthetic sequence number. For this, we use ForeignSSTTransformer.
 		//
@@ -728,7 +728,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 // data blocks overlapped and add that same fraction of the metadata blocks to the
 // estimate.
 func (r *Reader) EstimateDiskUsage(start []byte, end []byte, env ReadEnv) (uint64, error) {
-	if env.Virtual != nil {
+	if env.Virtual.IsVirtual {
 		_, start, end = env.Virtual.ConstrainBounds(start, end, false, r.Comparer.Compare)
 	}
 

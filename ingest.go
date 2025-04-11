@@ -120,7 +120,7 @@ func ingestSynthesizeShared(
 	meta := &tableMetadata{
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
-		Virtual:      &virtual.VirtualReaderParams{},
+		Virtual:      virtual.VirtualReaderParams{IsVirtual: true},
 		Size:         sm.Size,
 	}
 	// For simplicity, we use the same number for both the FileNum and the
@@ -209,7 +209,7 @@ func ingestLoad1External(
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Size:         e.Size,
-		Virtual:      &virtual.VirtualReaderParams{},
+		Virtual:      virtual.VirtualReaderParams{IsVirtual: true},
 	}
 	// In the name of keeping this ingestion as fast as possible, we avoid *all*
 	// existence checks and synthesize a table metadata with smallest/largest
