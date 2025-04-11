@@ -350,11 +350,10 @@ type TableMetadata struct {
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
 }
 
-func (m *TableMetadata) InitVirtual(isShared bool) {
+func (m *TableMetadata) InitVirtual() {
 	m.Virtual.Lower = m.Smallest
 	m.Virtual.Upper = m.Largest
 	m.Virtual.FileNum = m.FileNum
-	m.Virtual.IsSharedIngested = isShared && m.SyntheticSeqNum() != 0
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,

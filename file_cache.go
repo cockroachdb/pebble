@@ -315,8 +315,9 @@ func createReader(v *fileCacheValue, file *tableMetadata) (*sstable.Reader, ssta
 	r := v.mustSSTableReader()
 	env := sstable.ReadEnv{}
 	if file.Virtual != nil {
-		file.InitVirtual(v.isShared)
+		file.InitVirtual()
 		env.Virtual = file.Virtual
+		env.IsSharedIngested = v.isShared && file.SyntheticSeqNum() != 0
 	}
 	return r, env
 }
@@ -339,8 +340,9 @@ func (h *fileCacheHandle) withReader(
 
 	r := v.mustSSTableReader()
 	if meta.Virtual != nil {
-		meta.InitVirtual(v.isShared)
+		meta.InitVirtual()
 		env.Virtual = meta.Virtual
+		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 
 	return fn(r, env)
@@ -526,6 +528,7 @@ func (h *fileCacheHandle) newIters(
 	v := vRef.Value()
 	r, env := createReader(v, file)
 	internalOpts.readEnv.Virtual = env.Virtual
+	internalOpts.readEnv.IsSharedIngested = env.IsSharedIngested
 
 	var iters iterSet
 	if kinds.RangeKey() && file.HasRangeKeys {
