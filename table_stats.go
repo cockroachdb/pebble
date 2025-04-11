@@ -308,7 +308,7 @@ func (d *DB) loadTableStats(
 		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
 			props := r.Properties.CommonProperties
 			if meta.Virtual != nil {
-				props = r.Properties.GetScaledProperties(env.Virtual.BackingSize, env.Virtual.Size)
+				props = r.Properties.GetScaledProperties(meta.FileBacking.Size, meta.Size)
 			}
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
