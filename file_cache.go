@@ -311,13 +311,15 @@ func (h *fileCacheHandle) estimateSize(
 	return size, err
 }
 
-func createReader(v *fileCacheValue, file *tableMetadata) (*sstable.Reader, sstable.ReadEnv) {
+func createReader(v *fileCacheValue, meta *tableMetadata) (*sstable.Reader, sstable.ReadEnv) {
 	r := v.mustSSTableReader()
 	env := sstable.ReadEnv{}
-	if file.Virtual != nil {
-		file.InitVirtual()
-		env.Virtual = file.Virtual
-		env.IsSharedIngested = v.isShared && file.SyntheticSeqNum() != 0
+	if meta.Virtual {
+		env.Virtual = &meta.VirtualParams
+		if meta.VirtualParams.FileNum == 0 {
+			panic("meh")
+		}
+		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 	return r, env
 }
@@ -339,9 +341,11 @@ func (h *fileCacheHandle) withReader(
 	env := sstable.ReadEnv{Block: blockEnv}
 
 	r := v.mustSSTableReader()
-	if meta.Virtual != nil {
-		meta.InitVirtual()
-		env.Virtual = meta.Virtual
+	if meta.Virtual {
+		if meta.VirtualParams.FileNum == 0 {
+			panic("meh")
+		}
+		env.Virtual = &meta.VirtualParams
 		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 

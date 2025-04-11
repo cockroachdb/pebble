@@ -181,7 +181,7 @@ func TestDownloadTask(t *testing.T) {
 					ch <- ErrCancelledCompaction
 				} else {
 					fmt.Fprintf(&buf, "downloading %s\n", f.FileNum)
-					f.Virtual = nil
+					f.Virtual = false
 					f.FileBacking.DiskFileNum = base.DiskFileNum(f.FileNum)
 					ch <- nil
 				}
