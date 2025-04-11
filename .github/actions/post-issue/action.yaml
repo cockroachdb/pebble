@@ -12,8 +12,8 @@ inputs:
     description: "The body of the issue or comment"
     required: true
   unique-title-includes:
-    description: "The unique title to search for in the repository; if found, a comment will be posted"
-    required: true
+    description: "The unique title to search for in the repository; if found, a comment will be posted. Defaults to title"
+    required: false
   labels:
     description: "Labels to use when creating an issue"
     required: false
@@ -32,7 +32,7 @@ runs:
       with:
         token: ${{ inputs.token }}
         actions: "find-issues"
-        title-includes: ${{ inputs.unique-title-includes }}
+        title-includes: ${{ inputs.unique-title-includes || inputs.title}}
 
     - name: Get issue number
       shell: bash

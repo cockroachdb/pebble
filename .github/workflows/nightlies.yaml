@@ -1,0 +1,31 @@
+name: Nightlies (master)
+
+on:
+  schedule:
+    - cron: '00 10 * * * ' # 10am UTC daily
+  workflow_dispatch:
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+
+  s390x:
+    uses: ./.github/workflows/s390x.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+
+  stress:
+    uses: ./.github/workflows/stress.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+
+  instrumented:
+    uses: ./.github/workflows/instrumented.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
