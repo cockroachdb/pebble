@@ -127,7 +127,7 @@ func TestDefaultOptionsString(t *testing.T) {
   block_restart_interval=16
   block_size=4096
   block_size_threshold=90
-  compression=Snappy
+  compression=Minlz
   filter_policy=none
   filter_type=table
   index_block_size=4096
