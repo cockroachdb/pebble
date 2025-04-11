@@ -5,23 +5,34 @@ EOF logNum=2
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    ├── Chunk #0 (offset 0)
+ │    ├── Chunk #1 at offset 0
  │    │    ├── Checksum: 3699662224
  │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │    │    ├── Log Num: 1
  │    │    └── Synced Offset: 0
- │    └── Chunk #1 (offset 20)
- │         └── EOF
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 0 at offset 20 (expected 1, got 2)
+ │             
  └── 
+
 
 read
 ----
-error reading next: EOF
-final blockNum: 0
-bytes read: 1
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 0 at offset 20 (expected 1, got 2)
+Read block 1 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 
 init
@@ -31,26 +42,26 @@ EOF logNum=2
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    ├── Chunk #0 (offset 0, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    └── Chunk #1 (offset 20)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
  └── 
+
 
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 0 at offset 20; potential corruption
 Read block 1 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 1
-bytes read: 0
 
 ###########################
 ##### CRC Error Cases #####
@@ -62,14 +73,27 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=0 corrupt=tr
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 0 at offset 20; potential corruption
 Read block 1 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 1
-bytes read: 0
 
 # Simple corruption spanning the entire block with no confirmation
 init
@@ -77,31 +101,58 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3178158960
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
+	Checksum mismatch in block 0 at offset 32768; potential corruption
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 0
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    └── Chunk #0 (offset 0, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3178158960
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 0
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Multiple corruption with no confirmation
@@ -111,9 +162,41 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3178158960
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3178158960
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
+	Checksum mismatch in block 0 at offset 32768; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
 	Checksum mismatch in block 1 at offset 32768; potential corruption
@@ -122,30 +205,34 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    └── Chunk #0 (offset 0, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3178158960
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 0
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3178158960
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 0
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
  ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Multiple corruption but large offset is also corrupt, no confirmation
@@ -155,9 +242,41 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3178158960
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2875854606
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
+	Checksum mismatch in block 0 at offset 32768; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2875854606, length=32749, encoding=9
 	Checksum mismatch in block 1 at offset 32768; potential corruption
@@ -166,30 +285,34 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    └── Chunk #0 (offset 0, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3178158960
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 0
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 2875854606
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 100000
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
  ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Simple corruption with confirmation
@@ -199,36 +322,72 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrup
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3178158960
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2230101255
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 30000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
+	Checksum mismatch in block 0 at offset 32768; potential corruption
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=19)
-	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 19
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    └── Chunk #0 (offset 0, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3178158960
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 0
+ │         └── Checksum mismatch in block 0 at offset 32768; potential corruption
+ │             
  ├── Block #1
- │    ├── Chunk #0 (offset 32768)
+ │    ├── Chunk #1 at offset 0
  │    │    ├── Checksum: 2230101255
  │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │    │    ├── Log Num: 1
  │    │    └── Synced Offset: 30000
- │    └── Chunk #1 (offset 32788)
- │         └── EOF
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
  └── 
 
 # Corrupt the first block with confirming chunks after. However, these next chunks
@@ -242,49 +401,75 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
-read
-----
-Starting read ahead for corruption. Block corrupted 0.
-Read block 1 with 32768 bytes
-	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=19)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 19
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
-
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    ├── Chunk #0 (offset 0, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    ├── Chunk #1 (offset 20)
- │    │    ├── Checksum: 3591204049
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 60
- │    └── Chunk #2 (offset 40)
- │         ├── Checksum: 649293827
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 60
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 400517472
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 32000
  ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
+read
+----
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 0 at offset 20; potential corruption
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
+
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Corrupt the first block with confirming chunks after. However, these next chunks
@@ -298,9 +483,41 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 383674465
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 0 at offset 20; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=383674465, length=32749, encoding=9
 	Checksum mismatch in block 1 at offset 32768; potential corruption
@@ -309,42 +526,34 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    ├── Chunk #0 (offset 0, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    ├── Chunk #1 (offset 20)
- │    │    ├── Checksum: 3591204049
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 60
- │    └── Chunk #2 (offset 40)
- │         ├── Checksum: 649293827
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 60
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 383674465
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 32000
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
  ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Complex multiple corruption with no confirmation
@@ -360,9 +569,57 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=6400
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 383674465
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 614591033
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 2 at offset 20; potential corruption
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1645328786
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 3 at offset 32768; potential corruption
+ │             
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 0 at offset 20; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=383674465, length=32749, encoding=9
 	Checksum mismatch in block 1 at offset 32768; potential corruption
@@ -377,68 +634,50 @@ Read block 4 with 19 bytes
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 0
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    ├── Chunk #0 (offset 0, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    ├── Chunk #1 (offset 20)
- │    │    ├── Checksum: 3591204049
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 60
- │    └── Chunk #2 (offset 40)
- │         ├── Checksum: 649293827
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 60
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 383674465
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 32000
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
  ├── Block #2
- │    ├── Chunk #0 (offset 65536, corrupt)
- │    │    ├── Checksum: 614591033
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 32000
- │    ├── Chunk #1 (offset 65556, corrupt)
- │    │    ├── Checksum: 614591033
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 32000
- │    └── Chunk #2 (offset 65576)
- │         ├── Checksum: 1960442165
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 614591033
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 32000
+ │         └── Checksum mismatch in block 2 at offset 20; potential corruption
+ │             
  ├── Block #3
- │    └── Chunk #0 (offset 98304, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 1645328786
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 64000
+ │         └── Checksum mismatch in block 3 at offset 32768; potential corruption
+ │             
  ├── Block #4
- │    └── Chunk #0 (offset 131072)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Complex multiple corruption with confirmation in blockNum 3
@@ -454,9 +693,56 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 383674465
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 2 at offset 20; potential corruption
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
+	Checksum mismatch in block 0 at offset 20; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=383674465, length=32749, encoding=9
 	Checksum mismatch in block 1 at offset 32768; potential corruption
@@ -465,70 +751,55 @@ Read block 2 with 32768 bytes
 	Checksum mismatch in block 2 at offset 20; potential corruption
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=19)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 19
-error reading next: pebble/record: invalid chunk
-final blockNum: 3
-bytes read: 0
+Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    ├── Chunk #0 (offset 0, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    ├── Chunk #1 (offset 20)
- │    │    ├── Checksum: 3591204049
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 60
- │    └── Chunk #2 (offset 40)
- │         ├── Checksum: 649293827
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 60
+ │         └── Checksum mismatch in block 0 at offset 20; potential corruption
+ │             
  ├── Block #1
- │    └── Chunk #0 (offset 32768, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 383674465
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 32000
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
  ├── Block #2
- │    ├── Chunk #0 (offset 65536, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    ├── Chunk #1 (offset 65556, corrupt)
- │    │    ├── Checksum: 3607915984
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 60
- │    └── Chunk #2 (offset 65576)
- │         ├── Checksum: 649293827
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 60
+ │         └── Checksum mismatch in block 2 at offset 20; potential corruption
+ │             
  ├── Block #3
- │    └── Chunk #0 (offset 98304)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 400517472
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 32000
  ├── Block #4
- │    └── Chunk #0 (offset 131072)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 # Complex multiple corruption with confirmation offset too small
@@ -542,70 +813,111 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 0
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3178158960
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 2 at offset 20; potential corruption
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3178158960, length=32749, encoding=9
+	Checksum mismatch in block 1 at offset 32768; potential corruption
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=3716504721, length=1, encoding=9
 	Checksum mismatch in block 2 at offset 20; potential corruption
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32787)
+Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 32749
 
 describe
 ----
-Blocks
+Block
  ├── Block #0
- │    └── Chunk #0 (offset 0)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3161447025
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 0
  ├── Block #1
- │    └── Chunk #0 (offset 32768, corrupt)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3178158960
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 0
+ │         └── Checksum mismatch in block 1 at offset 32768; potential corruption
+ │             
  ├── Block #2
- │    ├── Chunk #0 (offset 65536, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    ├── Chunk #1 (offset 65556, corrupt)
- │    │    ├── Checksum: 3607915984
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 60
- │    └── Chunk #2 (offset 65576)
- │         ├── Checksum: 1521797213
- │         ├── Encoded Length: 32709
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3716504721
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
- │         └── Synced Offset: 100
+ │         └── Checksum mismatch in block 2 at offset 20; potential corruption
+ │             
  ├── Block #3
- │    └── Chunk #0 (offset 98304)
+ │    └── Chunk #1 at offset 0
  │         ├── Checksum: 3770313817
  │         ├── Encoded Length: 32749
- │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 100
  ├── Block #4
- │    └── Chunk #0 (offset 131072)
- │         └── EOF
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
  └── 
 
 ###########################
@@ -621,14 +933,27 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=0 offset=0 corrupt=fa
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 1
-bytes read: 0
 
 # Simple logNum issues spanning the entire block with no confirmation
 init
@@ -636,17 +961,38 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2371060608
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 0
 
 # Multiple logNum issues with no confirmation
 init
@@ -655,9 +1001,41 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2371060608
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2371060608
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
@@ -666,9 +1044,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Multiple logNum issues but large offset is also has issues, no confirmation
 init
@@ -678,9 +1053,41 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=100 offset=10
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2371060608
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3034178164
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 100
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 100)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3034178164, length=32749, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 100)
@@ -689,9 +1096,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Simple logNum issues with confirmation
 init
@@ -700,16 +1104,46 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrup
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2371060608
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2230101255
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 30000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -722,16 +1156,48 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -744,9 +1210,41 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 685962385
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
@@ -755,9 +1253,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Complex multiple logNum issues with no confirmation
 init
@@ -773,9 +1268,57 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=6400
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 685962385
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2522303644
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3593774434
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 3 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
@@ -790,9 +1333,6 @@ Read block 4 with 19 bytes
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 0
 
 
 # Complex multiple logNum issues with confirmation in blockNum 3
@@ -809,9 +1349,56 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 685962385
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
@@ -820,11 +1407,12 @@ Read block 2 with 32768 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 0)
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 3
-bytes read: 0
+Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 
 # Complex multiple logNum issue with confirmation offset too small
@@ -842,23 +1430,69 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 0
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2371060608
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2371060608, length=32749, encoding=9
+	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 0)
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32768)
+Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 32749
 
 #######################################
 ###### invalid wire format cases ######
@@ -872,14 +1506,26 @@ writeChunk encodedLength=1 chunkLength=1 encoding=0 logNum=1 offset=0 corrupt=fa
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 1
-bytes read: 0
 
 # Simple wire issues spanning the entire block with no confirmation
 init
@@ -887,17 +1533,37 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2710594051
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 0
 
 # Multiple wire issues with no confirmation
 init
@@ -906,9 +1572,39 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2710594051
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2710594051
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
 	Invalid wire format detected in block 1 at offset 0
@@ -917,9 +1613,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Multiple wire issues but large offset is also has issues, no confirmation
 init
@@ -929,9 +1622,39 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=1000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2710594051
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2207032925
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2207032925, length=32749, encoding=0
 	Invalid wire format detected in block 1 at offset 0
@@ -940,9 +1663,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Simple wire issues with confirmation
 init
@@ -951,16 +1671,45 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrup
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2710594051
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2230101255
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 30000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -973,16 +1722,47 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -995,9 +1775,39 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 910217490
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=910217490, length=32749, encoding=0
 	Invalid wire format detected in block 1 at offset 0
@@ -1006,9 +1816,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Complex multiple wire issues with no confirmation
 init
@@ -1023,9 +1830,53 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=0 logNum=1 offset=6400
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 910217490
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1220209282
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 2 at offset 0
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3371122657
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 3 at offset 0
+ │             
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=910217490, length=32749, encoding=0
 	Invalid wire format detected in block 1 at offset 0
@@ -1040,9 +1891,6 @@ Read block 4 with 19 bytes
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 0
 
 
 # Complex multiple wire issues with confirmation in blockNum 3
@@ -1062,9 +1910,53 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 0 at offset 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 910217490
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 2 at offset 0
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
+	Invalid wire format detected in block 0 at offset 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=910217490, length=32749, encoding=0
 	Invalid wire format detected in block 1 at offset 0
@@ -1073,11 +1965,12 @@ Read block 2 with 32768 bytes
 	Invalid wire format detected in block 2 at offset 0
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 3
-bytes read: 0
+Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 
 # Complex multiple wire issue with confirmation offset too small
@@ -1091,23 +1984,67 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 0
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2710594051
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3249240138
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 2 at offset 0
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=2710594051, length=32749, encoding=0
+	Invalid wire format detected in block 1 at offset 0
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=3249240138, length=1, encoding=0
 	Invalid wire format detected in block 2 at offset 0
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32768)
+Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 32749
 
 ###########################
 ###### zeroed chunk  ######
@@ -1121,17 +2058,45 @@ raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 4108154917
+ │    │    ├── Encoded Length: 32730
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32749
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 32749; aborting this block scan
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4108154917, length=32730, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32749, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 32749; aborting this block scan
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 32730
 
 # Multiple zeroed issues with no confirmation
 init
@@ -1142,12 +2107,48 @@ raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 0; aborting this block scan
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 4108154917
+ │    │    ├── Encoded Length: 32730
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32749
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 1 offset 32749; aborting this block scan
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 0; aborting this block scan
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=4108154917, length=32730, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=0)
+Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
 	Block 1: Processing chunk at offset 32749, checksum=0, length=0, encoding=0
 	Found invalid chunk marker at block 1 offset 32749; aborting this block scan
 Read block 2 with 19 bytes
@@ -1155,9 +2156,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Multiple zeroed issues but large offset is also has issues, no confirmation
 init
@@ -1168,9 +2166,47 @@ writeChunk encodedLength=32730 chunkLength=32730 encoding=9 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 4108154917
+ │    │    ├── Encoded Length: 32730
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32749
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 32749; aborting this block scan
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 1 offset 0; aborting this block scan
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4108154917, length=32730, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32749, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 32749; aborting this block scan
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=0
 	Found invalid chunk marker at block 1 offset 0; aborting this block scan
@@ -1179,9 +2215,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 32730
 
 # Simple zeroed issues with confirmation
 init
@@ -1192,16 +2225,53 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=100000 corru
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 4108154917
+ │    │    ├── Encoded Length: 32730
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32749
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 32749; aborting this block scan
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2654412641
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 100000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4108154917, length=32730, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32749, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 32749; aborting this block scan
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2654412641, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=32749)
-	Corruption confirmed: syncedOffset 100000 exceeds invalidOffset 32749
-error reading next: pebble/record: zeroed chunk
-final blockNum: 1
-bytes read: 32730
+Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 init
 raw 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 # 11 0x00's
@@ -1210,16 +2280,45 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=100000 corru
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 0; aborting this block scan
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2654412641
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 100000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 0; aborting this block scan
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2654412641, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 100000 exceeds invalidOffset 0
-error reading next: pebble/record: zeroed chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1232,16 +2331,55 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3591204049
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 60
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 20; aborting this block scan
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2529962274
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 1000000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3591204049, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=60 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 20; aborting this block scan
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2529962274, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=20)
-	Corruption confirmed: syncedOffset 1000000 exceeds invalidOffset 20
-error reading next: pebble/record: zeroed chunk
-final blockNum: 1
-bytes read: 1
+Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1255,9 +2393,39 @@ writeChunk encodedLength=32738 chunkLength=32738 encoding=0 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 0; aborting this block scan
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 1 offset 0; aborting this block scan
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 0; aborting this block scan
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=0
 	Found invalid chunk marker at block 1 offset 0; aborting this block scan
@@ -1266,9 +2434,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Multiple zeroed chunk issues with confirmation
 init
@@ -1282,21 +2447,73 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=6400
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 0 offset 20; aborting this block scan
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 957580701
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 1
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 1 offset 20; aborting this block scan
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1662040211
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 64000
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 3 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 0 offset 20; aborting this block scan
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=1 (invalidOffset=20)
+Block 1: Found WAL sync chunk with syncedOffset=1 (invalidOffset=18446744073709551615)
 	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=0
 	Found invalid chunk marker at block 1 offset 20; aborting this block scan
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=1662040211, length=32749, encoding=9
-	Block 2: Found WAL sync chunk with syncedOffset=64000 (invalidOffset=20)
-	Corruption confirmed: syncedOffset 64000 exceeds invalidOffset 20
-error reading next: pebble/record: zeroed chunk
-final blockNum: 2
-bytes read: 1
+Block 2: Found WAL sync chunk with syncedOffset=64000 (invalidOffset=18446744073709551615)
+Read block 3 with 19 bytes
+	Block 3: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 3 at offset 0 (expected 1, got 2)
+Read block 4 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Complex multiple zeroed chunks with confirmation offset too small
 init
@@ -1311,25 +2528,83 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 0
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 1 offset 20; aborting this block scan
+ │             
+ ├── Block #2
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 957580701
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 1
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Found invalid chunk marker at block 2 offset 20; aborting this block scan
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=0
+	Found invalid chunk marker at block 1 offset 20; aborting this block scan
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
-	Block 2: Found WAL sync chunk with syncedOffset=1 (invalidOffset=32788)
+Block 2: Found WAL sync chunk with syncedOffset=1 (invalidOffset=18446744073709551615)
 	Block 2: Processing chunk at offset 20, checksum=0, length=0, encoding=0
 	Found invalid chunk marker at block 2 offset 20; aborting this block scan
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32788)
+Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 32750
 
 #####################################
 ###### encodedLength too long  ######
@@ -1342,16 +2617,48 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
+	Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=19)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 19
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Simple encodedLength issues in single block with no confirmation
 init
@@ -1359,14 +2666,27 @@ writeChunk encodedLength=64000 chunkLength=1 encoding=9 logNum=1 offset=0 corrup
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3699662224
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=39)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=64000, encoding=9
+	Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=39)
 Read block 1 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 1
-bytes read: 0
 
 # Simple encodedLength issues spanning the entire block with no confirmation
 init
@@ -1375,17 +2695,38 @@ writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
+	Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 0
 
 # Multiple encodedLength issues with no confirmation
 init
@@ -1395,9 +2736,41 @@ writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=0 co
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
+	Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
 	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
@@ -1406,9 +2779,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Multiple encodedLength issues but large offset is also has issues, no confirmation
 init
@@ -1418,9 +2788,41 @@ writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=1000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2172933859
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
+	Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2172933859, length=64000, encoding=9
 	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
@@ -1429,9 +2831,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Simple encodedLength issues with confirmation
 init
@@ -1440,16 +2839,46 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrup
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2230101255
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 30000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=64000, encoding=9
+	Chunk in block 0 spans beyond block boundaries (begin=19, end=64019, n=32768)
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=19)
-	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 19
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1462,16 +2891,48 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3699662224
+ │         ├── Encoded Length: 200
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 219; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2172933859
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 1000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=200, encoding=9
+	Checksum mismatch in block 0 at offset 219; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2172933859, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=1000 (invalidOffset=19)
-	Corruption confirmed: syncedOffset 1000 exceeds invalidOffset 19
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=1000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1484,9 +2945,41 @@ writeChunk encodedLength=64000 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3699662224
+ │         ├── Encoded Length: 200
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 219; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=200, encoding=9
+	Checksum mismatch in block 0 at offset 219; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=400517472, length=64000, encoding=9
 	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
@@ -1495,9 +2988,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Complex multiple encodedLength issues with no confirmation
 init
@@ -1512,9 +3002,57 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=0 offset=6400
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3981311476
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 685962385
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2522303644
+ │         ├── Encoded Length: 1
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3593774434
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 3 at offset 0 (expected 1, got 0)
+ │             
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3981311476, length=1, encoding=9
+	Mismatch log number in block 0 at offset 0 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=685962385, length=32749, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 0)
@@ -1529,9 +3067,6 @@ Read block 4 with 19 bytes
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 0
 
 # Complex multiple encodedLength issues with confirmation in blockNum 3
 init
@@ -1546,9 +3081,64 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 3591204049
+ │         ├── Encoded Length: 200
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 0 at offset 239; potential corruption
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3699662224
+ │         ├── Encoded Length: 200
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 2 at offset 219; potential corruption
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=3591204049, length=200, encoding=9
+	Checksum mismatch in block 0 at offset 239; potential corruption
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=400517472, length=64000, encoding=9
 	Chunk in block 1 spans beyond block boundaries (begin=19, end=64019, n=32768)
@@ -1557,11 +3147,12 @@ Read block 2 with 32768 bytes
 	Checksum mismatch in block 2 at offset 219; potential corruption
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=39)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 39
-error reading next: pebble/record: invalid chunk
-final blockNum: 3
-bytes read: 1
+Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Complex multiple encodedLength issues with confirmation offset too small
 init
@@ -1577,9 +3168,74 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 3591204049
+ │         ├── Encoded Length: 200
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 1 at offset 239; potential corruption
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 64000
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Chunk in block 2 spans beyond block boundaries (begin=19, end=64019, n=32768)
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3699662224
+ │         ├── Encoded Length: 200
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Checksum mismatch in block 3 at offset 219; potential corruption
+ │             
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #5
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 5 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=3591204049, length=200, encoding=9
+	Checksum mismatch in block 1 at offset 239; potential corruption
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=400517472, length=64000, encoding=9
 	Chunk in block 2 spans beyond block boundaries (begin=19, end=64019, n=32768)
@@ -1588,15 +3244,12 @@ Read block 3 with 32768 bytes
 	Checksum mismatch in block 3 at offset 219; potential corruption
 Read block 4 with 32768 bytes
 	Block 4: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 4: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32807)
+Block 4: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 5 with 19 bytes
 	Block 5: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 5 at offset 0 (expected 1, got 2)
 Read block 6 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 6
-bytes read: 32750
 
 ###########################
 #### Encoding too Large ###
@@ -1609,14 +3262,25 @@ writeChunk encodedLength=1 chunkLength=1 encoding=100 logNum=1 offset=0 corrupt=
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 39 bytes
+	Block 0: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 1
-bytes read: 0
 
 # Simple encoding issues spanning the entire block with no confirmation
 init
@@ -1624,17 +3288,36 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 4212587649
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 0
 
 # Multiple encoding issues with no confirmation
 init
@@ -1643,9 +3326,37 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=0 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 4212587649
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 4212587649
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
@@ -1654,9 +3365,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Multiple encoding issues but large offset is also has issues, no confirmation
 init
@@ -1665,9 +3373,37 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=10
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 4212587649
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3910387679
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3910387679, length=32749, encoding=100
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
@@ -1676,9 +3412,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Simple encoding issues with confirmation
 init
@@ -1687,16 +3420,44 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=30000 corrup
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 4212587649
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2230101255
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 30000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2230101255, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 30000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=30000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1709,16 +3470,46 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 0
+Block 1: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1731,9 +3522,37 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=32
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3601296272
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3601296272, length=32749, encoding=100
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
@@ -1742,9 +3561,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 0
 
 # Complex multiple encoding issues with no confirmation
 init
@@ -1759,9 +3575,49 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=100 logNum=1 offset=64
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3601296272
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3330109772
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 611851875
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 3
+ │             
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3601296272, length=32749, encoding=100
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
@@ -1776,9 +3632,6 @@ Read block 4 with 19 bytes
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 0
 
 # Complex multiple encoding issues with confirmation in blockNum 3
 init
@@ -1793,9 +3646,50 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=3200
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3601296272
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 400517472
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 32000
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 0
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=3601296272, length=32749, encoding=100
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
@@ -1804,11 +3698,12 @@ Read block 2 with 32768 bytes
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=400517472, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=0)
-	Corruption confirmed: syncedOffset 32000 exceeds invalidOffset 0
-error reading next: pebble/record: invalid chunk
-final blockNum: 3
-bytes read: 0
+Block 3: Found WAL sync chunk with syncedOffset=32000 (invalidOffset=18446744073709551615)
+Read block 4 with 19 bytes
+	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+Read block 5 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Complex multiple encoding issue with confirmation offset too small
 init
@@ -1821,23 +3716,65 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 0
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 4212587649
+ │         ├── Encoded Length: 32749
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1030283140
+ │         ├── Encoded Length: 1
+ │         └── Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=4212587649, length=32749, encoding=100
+	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 1
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=1030283140, length=1, encoding=100
 	Invalid chunk encoding encountered (value: 100); stopping chunk scan in block 2
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32768)
+Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 32749
 
 ###########################
 ## header format too big ##
@@ -1852,16 +3789,55 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=6000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1047728140
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 0 at offset 32757; breaking out
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2928164217
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 60000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 0 at offset 32757; breaking out
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2928164217, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=60000 (invalidOffset=32757)
-	Corruption confirmed: syncedOffset 60000 exceeds invalidOffset 32757
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 32738
+Block 1: Found WAL sync chunk with syncedOffset=60000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Simple large header issues in single block with no confirmation
 init
@@ -1870,17 +3846,45 @@ raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 enc
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1047728140
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 0 at offset 32757; breaking out
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 0 at offset 32757; breaking out
 Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 2
-bytes read: 32738
 
 # Multiple large header issues with no confirmation
 init
@@ -1891,12 +3895,56 @@ raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 enc
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1047728140
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 0 at offset 32757; breaking out
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1047728140
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 1 at offset 32757; breaking out
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 0 at offset 32757; breaking out
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=32757)
+Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
 	Block 1: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
 	Incomplete header in block 1 at offset 32757; breaking out
 Read block 2 with 19 bytes
@@ -1904,9 +3952,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 32738
 
 # Multiple large header issues but large offset is also has issues, no confirmation
 init
@@ -1917,16 +3962,63 @@ raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 enc
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1047728140
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 0 at offset 32757; breaking out
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1660446616
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 1000000
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 1 at offset 32757; breaking out
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 0 at offset 32757; breaking out
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=1660446616, length=32738, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=32757)
-	Corruption confirmed: syncedOffset 1000000 exceeds invalidOffset 32757
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 32738
+Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 1 at offset 32757; breaking out
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Simple large header issues with confirmation
 init
@@ -1936,16 +4028,53 @@ writeChunk encodedLength=1 chunkLength=1 encoding=9 logNum=1 offset=100000 corru
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 1047728140
+ │    │    ├── Encoded Length: 32738
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 32757
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         └── Incomplete header in block 0 at offset 32757; breaking out
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 2654412641
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 100000
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=1047728140, length=32738, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 32757, checksum=16843009, length=257, encoding=9
+	Incomplete header in block 0 at offset 32757; breaking out
 Read block 1 with 39 bytes
 	Block 1: Processing chunk at offset 0, checksum=2654412641, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=32757)
-	Corruption confirmed: syncedOffset 100000 exceeds invalidOffset 32757
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 32738
+Block 1: Found WAL sync chunk with syncedOffset=100000 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=0, length=0, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 2)
+Read block 2 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1958,16 +4087,56 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=1000
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3591204049
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 60
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 20 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 2529962274
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 1000000
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3591204049, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=60 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
+	Mismatch log number in block 0 at offset 20 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=2529962274, length=32749, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=20)
-	Corruption confirmed: syncedOffset 1000000 exceeds invalidOffset 20
-error reading next: pebble/record: invalid chunk
-final blockNum: 1
-bytes read: 1
+Block 1: Found WAL sync chunk with syncedOffset=1000000 (invalidOffset=18446744073709551615)
+Read block 2 with 19 bytes
+	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+Read block 3 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Issues in first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -1981,9 +4150,48 @@ raw 0x01 0x01 0x01 0x01 0x01 0x01 0x09 0x00 0x00 0x00 0x00 # length 11, 0x09 enc
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3591204049
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 60
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 20 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1306192168
+ │         ├── Encoded Length: 32738
+ │         ├── Chunk encoding: invalidInvalidChunk(0) (chunkPosition: 0, wireFormat: 0)
+ │         └── Invalid wire format detected in block 1 at offset 0
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 2 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3591204049, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=60 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
+	Mismatch log number in block 0 at offset 20 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=1306192168, length=32738, encoding=0
 	Invalid wire format detected in block 1 at offset 0
@@ -1992,9 +4200,6 @@ Read block 2 with 19 bytes
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 3
-bytes read: 1
 
 # Multiple large header issues with confirmation
 init
@@ -2008,21 +4213,75 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=6400
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 0 at offset 20 (expected 1, got 0)
+ │             
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 957580701
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 1
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 1662040211
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 64000
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 3 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 0.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 0: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
+	Mismatch log number in block 0 at offset 20 (expected 1, got 0)
 Read block 1 with 32768 bytes
 	Block 1: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
-	Block 1: Found WAL sync chunk with syncedOffset=1 (invalidOffset=20)
+Block 1: Found WAL sync chunk with syncedOffset=1 (invalidOffset=18446744073709551615)
 	Block 1: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
 	Mismatch log number in block 1 at offset 20 (expected 1, got 0)
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=1662040211, length=32749, encoding=9
-	Block 2: Found WAL sync chunk with syncedOffset=64000 (invalidOffset=20)
-	Corruption confirmed: syncedOffset 64000 exceeds invalidOffset 20
-error reading next: pebble/record: invalid chunk
-final blockNum: 2
-bytes read: 1
+Block 2: Found WAL sync chunk with syncedOffset=64000 (invalidOffset=18446744073709551615)
+Read block 3 with 19 bytes
+	Block 3: Processing chunk at offset 0, checksum=0, length=0, encoding=9
+	Mismatch log number in block 3 at offset 0 (expected 1, got 2)
+Read block 4 with 0 bytes
+	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
 
 # Complex multiple large header chunks with confirmation offset too small
 init
@@ -2038,22 +4297,82 @@ writeChunk encodedLength=32749 chunkLength=32749 encoding=9 logNum=1 offset=100 
 EOF logNum=2
 ----
 
+describe
+----
+Block
+ ├── Block #0
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3161447025
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 0
+ ├── Block #1
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 3699662224
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 0
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 1 at offset 20 (expected 1, got 0)
+ │             
+ ├── Block #2
+ │    ├── Chunk #1 at offset 0
+ │    │    ├── Checksum: 957580701
+ │    │    ├── Encoded Length: 1
+ │    │    ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │    │    ├── Log Num: 1
+ │    │    └── Synced Offset: 1
+ │    └── Chunk #2 at offset 20
+ │         ├── Checksum: 16843009
+ │         ├── Encoded Length: 257
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 0
+ │         └── Mismatch log number in block 2 at offset 20 (expected 1, got 0)
+ │             
+ ├── Block #3
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 3770313817
+ │         ├── Encoded Length: 32749
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 1
+ │         └── Synced Offset: 100
+ ├── Block #4
+ │    └── Chunk #1 at offset 0
+ │         ├── Checksum: 0
+ │         ├── Encoded Length: 0
+ │         ├── Chunk encoding: walSyncFullChunk(9) (chunkPosition: 1, wireFormat: 3)
+ │         ├── Log Num: 2
+ │         └── Mismatch log number in block 4 at offset 0 (expected 1, got 2)
+ │             
+ └── 
+
 read
 ----
-Starting read ahead for corruption. Block corrupted 1.
+Starting read ahead for corruption. Block corrupted -1.
+Read block 0 with 32768 bytes
+	Block 0: Processing chunk at offset 0, checksum=3161447025, length=32749, encoding=9
+Block 0: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+Read block 1 with 32768 bytes
+	Block 1: Processing chunk at offset 0, checksum=3699662224, length=1, encoding=9
+Block 1: Found WAL sync chunk with syncedOffset=0 (invalidOffset=18446744073709551615)
+	Block 1: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
+	Mismatch log number in block 1 at offset 20 (expected 1, got 0)
 Read block 2 with 32768 bytes
 	Block 2: Processing chunk at offset 0, checksum=957580701, length=1, encoding=9
-	Block 2: Found WAL sync chunk with syncedOffset=1 (invalidOffset=32788)
+Block 2: Found WAL sync chunk with syncedOffset=1 (invalidOffset=18446744073709551615)
 	Block 2: Processing chunk at offset 20, checksum=16843009, length=257, encoding=9
 	Mismatch log number in block 2 at offset 20 (expected 1, got 0)
 Read block 3 with 32768 bytes
 	Block 3: Processing chunk at offset 0, checksum=3770313817, length=32749, encoding=9
-	Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=32788)
+Block 3: Found WAL sync chunk with syncedOffset=100 (invalidOffset=18446744073709551615)
 Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
 	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
-final blockNum: 5
-bytes read: 32750

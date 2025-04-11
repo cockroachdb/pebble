@@ -11,7 +11,6 @@ import (
 	"io"
 	"math"
 	"math/rand/v2"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,9 +18,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/crc"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -904,20 +901,6 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	require.Equal(t, err, io.ErrUnexpectedEOF)
 }
 
-type readerLogger struct {
-	builder strings.Builder
-}
-
-var _ loggerForTesting = (*readerLogger)(nil)
-
-func (l *readerLogger) getLog() string {
-	return l.builder.String()
-}
-
-func (l *readerLogger) logf(format string, args ...interface{}) {
-	fmt.Fprintf(&l.builder, format, args...)
-}
-
 func TestWALSync(t *testing.T) {
 	var buffer bytes.Buffer
 	result := make([]byte, 0)
@@ -991,26 +974,12 @@ func TestWALSync(t *testing.T) {
 
 		case "read":
 			r := NewReader(bytes.NewBuffer(buffer.Bytes()), 1)
-			r.loggerForTesting = &readerLogger{}
-			for {
-				reader, err := r.Next()
-				if err != nil {
-					r.loggerForTesting.logf("error reading next: %v\nfinal blockNum: %d\nbytes read: %d\n", err, r.blockNum, len(result))
-					return r.loggerForTesting.(*readerLogger).getLog()
-				}
-				data, err := io.ReadAll(reader)
-				if err != nil {
-					r.loggerForTesting.logf("error reading all: %v\nfinal blockNum: %d\nbytes read: %d\n", err, r.blockNum, len(result))
-					return r.loggerForTesting.(*readerLogger).getLog()
-				}
-				result = append(result, data...)
-			}
-
+			_, log := r.InvestigateChunks(false)
+			return log
 		case "describe":
-			formatter := binfmt.New(buffer.Bytes()).LineWidth(20)
-			tree := treeprinter.New()
-			describeWALSyncBlocks(formatter, &tree, buffer.Bytes(), corruptChunkNumbers)
-			return tree.String()
+			r := NewReader(bytes.NewBuffer(buffer.Bytes()), 1)
+			visual, _ := r.InvestigateChunks(false)
+			return visual
 		}
 
 		return ""
@@ -1033,70 +1002,6 @@ func parseRawChunk(input string) ([]byte, error) {
 		}
 	}
 	return result, nil
-}
-
-// describeWALSyncBlocks is used to visualize blocks and chunks with the assumption
-// that they are generally well formed. Having one of the corruption conditions
-// may cause the visualization to be incorrect due to the assumption of well-formedness.
-func describeWALSyncBlocks(
-	f *binfmt.Formatter, tp *treeprinter.Node, data []byte, corruptChunks []int,
-) {
-	i := 0
-	n := tp.Child("Blocks")
-	globalChunkNumber := 0
-
-	for i < len(data) {
-		if i%blockSize == 0 {
-			blockNum := i / blockSize
-
-			blockNode := n.Childf("Block #%d", blockNum)
-
-			chunkNumber := 0
-			for i < len(data) {
-				var chunkNode treeprinter.Node
-				if slices.Contains(corruptChunks, globalChunkNumber) {
-					chunkNode = blockNode.Childf("Chunk #%d (offset %d, corrupt)", chunkNumber, i)
-				} else {
-					chunkNode = blockNode.Childf("Chunk #%d (offset %d)", chunkNumber, i)
-				}
-
-				checksum := binary.LittleEndian.Uint32(data[i+0 : i+4])
-				length := binary.LittleEndian.Uint16(data[i+4 : i+6])
-
-				if int(length) == 0 {
-					chunkNode.Child("EOF")
-					f.SetAnchorOffset()
-					f.ToTreePrinter(n)
-					return
-				}
-
-				chunkEncoding := data[i+6]
-				headerFormat := headerFormatMappings[chunkEncoding]
-				chunkType, wireFormat, headerSize := headerFormat.chunkPosition, headerFormat.wireFormat, headerFormat.headerSize
-
-				logNum := binary.LittleEndian.Uint32(data[i+7 : i+11])
-				offset := binary.LittleEndian.Uint64(data[i+11 : i+19])
-
-				chunkNode.Childf("Checksum: %d", checksum)
-				chunkNode.Childf("Encoded Length: %d", length)
-				chunkNode.Childf("Chunk encoding: %d (chunkType: %d, wireFormat: %d)", chunkEncoding, chunkType, wireFormat)
-				chunkNode.Childf("Log Num: %d", logNum)
-				chunkNode.Childf("Synced Offset: %d", offset)
-
-				i += headerSize + int(length)
-				chunkNumber++
-				globalChunkNumber++
-
-				if i%blockSize == 0 {
-					break
-				}
-
-			}
-		}
-	}
-
-	f.SetAnchorOffset()
-	f.ToTreePrinter(n)
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
