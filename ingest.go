@@ -2054,8 +2054,8 @@ func (d *DB) ingestApply(
 				levelMetrics = &LevelMetrics{}
 				metrics[f.Level] = levelMetrics
 			}
-			levelMetrics.NumFiles++
-			levelMetrics.Size += int64(m.Size)
+			levelMetrics.TablesCount++
+			levelMetrics.TablesSize += int64(m.Size)
 			levelMetrics.BytesIngested += m.Size
 			levelMetrics.TablesIngested++
 		}
@@ -2072,11 +2072,11 @@ func (d *DB) ingestApply(
 				levelMetrics = &LevelMetrics{}
 				metrics[level] = levelMetrics
 			}
-			levelMetrics.NumFiles--
-			levelMetrics.Size -= int64(m.Size)
+			levelMetrics.TablesCount--
+			levelMetrics.TablesSize -= int64(m.Size)
 			for i := range added {
-				levelMetrics.NumFiles++
-				levelMetrics.Size += int64(added[i].Meta.Size)
+				levelMetrics.TablesCount++
+				levelMetrics.TablesSize += int64(added[i].Meta.Size)
 			}
 		}
 		if exciseSpan.Valid() {

@@ -324,7 +324,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	require.NoError(t, d.Apply(b, nil))
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Compact([]byte{'a'}, []byte{'b'}, false))
-	require.Equal(t, 1, int(d.Metrics().Levels[6].NumFiles))
+	require.Equal(t, 1, int(d.Metrics().Levels[6].TablesCount))
 
 	d.mu.Lock()
 
@@ -401,8 +401,8 @@ func TestVirtualReadsWiring(t *testing.T) {
 				lm = &LevelMetrics{}
 				metrics[de.Level] = lm
 			}
-			metrics[de.Level].NumFiles--
-			metrics[de.Level].Size -= int64(f.Size)
+			metrics[de.Level].TablesCount--
+			metrics[de.Level].TablesSize -= int64(f.Size)
 		}
 		return metrics
 	}
@@ -441,7 +441,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.mu.Unlock()
 
 	// Confirm that there were only 2 virtual sstables in L6.
-	require.Equal(t, 2, int(d.Metrics().Levels[6].NumFiles))
+	require.Equal(t, 2, int(d.Metrics().Levels[6].TablesCount))
 
 	// These reads will go through the file cache.
 	iter, _ := d.NewIter(nil)

@@ -82,10 +82,10 @@ func exampleMetrics() Metrics {
 		l := &m.Levels[i]
 		base := uint64((i + 1) * 100)
 		l.Sublevels = int32(i + 1)
-		l.NumFiles = int64(base) + 1
-		l.NumVirtualFiles = uint64(base) + 1
-		l.VirtualSize = base + 3
-		l.Size = int64(base) + 2
+		l.TablesCount = int64(base) + 1
+		l.VirtualTablesCount = uint64(base) + 1
+		l.VirtualTablesSize = base + 3
+		l.TablesSize = int64(base) + 2
 		l.Score = float64(base) + 3
 		l.BytesIn = base + 4
 		l.BytesIngested = base + 4
@@ -394,7 +394,7 @@ func TestMetrics(t *testing.T) {
 					if l >= numLevels {
 						panic(fmt.Sprintf("invalid level %d", l))
 					}
-					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].NumVirtualFiles))
+					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].VirtualTablesCount))
 				} else if line == "remote-count" {
 					count, _ := m.RemoteTablesTotal()
 					buf.WriteString(fmt.Sprintf("%d\n", count))
