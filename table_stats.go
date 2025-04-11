@@ -307,7 +307,7 @@ func (d *DB) loadTableStats(
 	err := d.fileCache.withReader(
 		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
 			props := r.Properties.CommonProperties
-			if meta.Virtual != nil {
+			if meta.Virtual {
 				props = r.Properties.GetScaledProperties(meta.FileBacking.Size, meta.Size)
 			}
 			stats.NumEntries = props.NumEntries
@@ -517,7 +517,7 @@ func (d *DB) estimateSizesBeneath(
 		// variable.
 		for file = range v.Overlaps(l, meta.UserKeyBounds()).All() {
 			var err error
-			if file.Virtual != nil {
+			if file.Virtual {
 				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.VirtualMeta(), addVirtualTableStats)
 			} else {
 				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.PhysicalMeta(), addPhysicalTableStats)
@@ -622,7 +622,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				}
 				var size uint64
 				var err error
-				if file.Virtual != nil {
+				if file.Virtual {
 					err = d.fileCache.withReader(
 						context.TODO(), block.NoReadEnv,
 						file.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) (err error) {

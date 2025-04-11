@@ -2248,7 +2248,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				}
 				destTables[j].Properties = p
 			}
-			destTables[j].Virtual = m.Virtual != nil
+			destTables[j].Virtual = m.Virtual
 			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum
 			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
 			if err != nil {

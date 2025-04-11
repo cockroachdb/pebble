@@ -742,7 +742,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		for _, l := range v.Levels {
 			var level props
 			for t := range l.All() {
-				if t.Virtual != nil {
+				if t.Virtual {
 					// TODO(bananabrick): Handle virtual sstables here. We don't
 					// really have any stats or properties at this point. Maybe
 					// we could approximate some of these properties for virtual

@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -120,17 +119,9 @@ func ingestSynthesizeShared(
 	meta := &tableMetadata{
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
-		Virtual:      &virtual.VirtualReaderParams{},
+		Virtual:      true,
 		Size:         sm.Size,
 	}
-	// For simplicity, we use the same number for both the FileNum and the
-	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
-	// FileBacking's size to the same size as the virtualized view of the sstable.
-	// This ensures that we don't over-prioritize this sstable for compaction just
-	// yet, as we do not have a clear sense of what parts of this sstable are
-	// referenced by other nodes.
-	meta.InitVirtualBacking(base.DiskFileNum(fileNum), sm.Size)
-
 	if sm.LargestPointKey.Valid() && sm.LargestPointKey.UserKey != nil {
 		// Initialize meta.{HasPointKeys,Smallest,Largest}, etc.
 		//
@@ -172,6 +163,15 @@ func ingestSynthesizeShared(
 		largestRangeKey := base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyMin, sm.LargestRangeKey.UserKey)
 		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
 	}
+
+	// For simplicity, we use the same number for both the FileNum and the
+	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
+	// FileBacking's size to the same size as the virtualized view of the sstable.
+	// This ensures that we don't over-prioritize this sstable for compaction just
+	// yet, as we do not have a clear sense of what parts of this sstable are
+	// referenced by other nodes.
+	meta.InitVirtualBacking(base.DiskFileNum(fileNum), sm.Size)
+
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func ingestLoad1External(
 		FileNum:      fileNum,
 		CreationTime: time.Now().Unix(),
 		Size:         e.Size,
-		Virtual:      &virtual.VirtualReaderParams{},
+		Virtual:      true,
 	}
 	// In the name of keeping this ingestion as fast as possible, we avoid *all*
 	// existence checks and synthesize a table metadata with smallest/largest
@@ -758,7 +758,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		key := remote.MakeObjectKey(lr.external[i].external.Locator, lr.external[i].external.ObjName)
 		if backing, ok := newFileBackings[key]; ok {
 			// We already created the same backing in this loop.
-			meta.FileBacking = backing
+			meta.AttachVirtualBacking(backing)
 			continue
 		}
 		providerBacking, err := d.objProvider.CreateExternalObjectBacking(key.Locator, key.ObjectName)
@@ -846,7 +846,7 @@ func (d *DB) findExistingBackingsForExternalObjects(metas []ingestExternalMeta) 
 				// will unprotect in ingestUnprotectExternalBackings.
 				d.mu.versions.virtualBackings.Protect(n)
 				metas[i].usedExistingBacking = true
-				metas[i].FileBacking = backing
+				metas[i].AttachVirtualBacking(backing)
 				break
 			}
 		}

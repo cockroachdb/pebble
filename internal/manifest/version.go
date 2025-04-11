@@ -336,24 +336,20 @@ type TableMetadata struct {
 	HasPointKeys bool
 	// HasRangeKeys tracks whether the table contains any range keys.
 	HasRangeKeys bool
+	// Virtual is true if the TableMetadata belongs to a virtual sstable.
+	Virtual bool
 	// smallestSet and largestSet track whether the overall bounds have been set.
 	boundsSet bool
 	// boundTypeSmallest and boundTypeLargest provide an indication as to which
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
-	// Virtual is not nil if the TableMetadata belongs to a virtual sstable.
-	Virtual *virtual.VirtualReaderParams
+	// VirtualParams are set only when Virtual is true.
+	VirtualParams virtual.VirtualReaderParams
 
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
-}
-
-func (m *TableMetadata) InitVirtual() {
-	m.Virtual.Lower = m.Smallest
-	m.Virtual.Upper = m.Largest
-	m.Virtual.FileNum = m.FileNum
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,
@@ -452,14 +448,14 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 }
 
 func (m *TableMetadata) PhysicalMeta() *TableMetadata {
-	if m.Virtual != nil {
+	if m.Virtual {
 		panic("pebble: table metadata does not belong to a physical sstable")
 	}
 	return m
 }
 
 func (m *TableMetadata) VirtualMeta() *TableMetadata {
-	if m.Virtual == nil {
+	if !m.Virtual {
 		panic("pebble: table metadata does not belong to a virtual sstable")
 	}
 	return m
@@ -522,7 +518,7 @@ func (b *FileBacking) Unref() int32 {
 // Calling InitPhysicalBacking only after the relevant state has been set in the
 // TableMetadata is not necessary in tests which don't rely on FileBacking.
 func (m *TableMetadata) InitPhysicalBacking() {
-	if m.Virtual != nil {
+	if m.Virtual {
 		panic("pebble: virtual sstables should use a pre-existing FileBacking")
 	}
 	if m.FileBacking != nil {
@@ -535,16 +531,33 @@ func (m *TableMetadata) InitPhysicalBacking() {
 }
 
 // InitVirtualBacking creates a new FileBacking for a virtual table.
+//
+// The Smallest/Largest bounds must already be set to their final values.
 func (m *TableMetadata) InitVirtualBacking(fileNum base.DiskFileNum, size uint64) {
-	if m.Virtual == nil {
+	m.AttachVirtualBacking(&FileBacking{
+		DiskFileNum: fileNum,
+		Size:        size,
+	})
+}
+
+// AttachVirtualBacking attaches an existing FileBacking for a virtual table.
+//
+// The Smallest/Largest bounds must already be set to their final values.
+func (m *TableMetadata) AttachVirtualBacking(backing *FileBacking) {
+	if !m.Virtual {
 		panic("pebble: provider-backed sstables must be virtual")
 	}
 	if m.FileBacking != nil {
 		panic("backing already initialized")
 	}
-	m.FileBacking = &FileBacking{
-		DiskFileNum: fileNum,
-		Size:        size,
+	m.FileBacking = backing
+	if m.Smallest.UserKey == nil || m.Largest.UserKey == nil {
+		panic("bounds must be set before attaching backing")
+	}
+	m.VirtualParams = virtual.VirtualReaderParams{
+		Lower:   m.Smallest,
+		Upper:   m.Largest,
+		FileNum: m.FileNum,
 	}
 }
 
@@ -552,7 +565,7 @@ func (m *TableMetadata) InitVirtualBacking(fileNum base.DiskFileNum, size uint64
 // is created to verify that the fields of the virtual sstable are sound.
 func (m *TableMetadata) ValidateVirtual(createdFrom *TableMetadata) {
 	switch {
-	case m.Virtual == nil:
+	case !m.Virtual:
 		panic("pebble: invalid virtual sstable")
 	case createdFrom.SmallestSeqNum != m.SmallestSeqNum:
 		panic("pebble: invalid smallest sequence number for virtual sstable")
@@ -792,7 +805,7 @@ func (m *TableMetadata) String() string {
 // and overall bounds for the table.
 func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string {
 	var b bytes.Buffer
-	if m.Virtual != nil {
+	if m.Virtual {
 		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
 			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
 	} else {
@@ -929,7 +942,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	if backingNum == 0 {
 		m.InitPhysicalBacking()
 	} else {
-		m.Virtual = &virtual.VirtualReaderParams{}
+		m.Virtual = true
 		m.InitVirtualBacking(backingNum, 0 /* size */)
 	}
 	return m, nil
@@ -1022,7 +1035,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 			m.FileNum, len(m.BlobReferences), m.BlobReferenceDepth)
 	}
 	if m.SyntheticPrefixAndSuffix.HasPrefix() {
-		if m.Virtual == nil {
+		if !m.Virtual {
 			return base.CorruptionErrorf("non-virtual file with synthetic prefix")
 		}
 		if !bytes.HasPrefix(m.Smallest.UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
@@ -1033,7 +1046,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		}
 	}
 	if m.SyntheticPrefixAndSuffix.HasSuffix() {
-		if m.Virtual == nil {
+		if !m.Virtual {
 			return base.CorruptionErrorf("non-virtual file with synthetic suffix")
 		}
 	}
