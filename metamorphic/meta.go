@@ -462,9 +462,7 @@ func (m MultiInstance) applyOnce(ro *runOnceOptions)   { ro.numInstances = int(m
 // to a file at the path `historyPath`.
 //
 // The `seed` parameter is not functional; it's used for context in logging.
-func RunOnce(
-	t TestingT, runDir string, seed uint64, historyPath string, kf KeyFormat, rOpts ...RunOnceOption,
-) {
+func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts ...RunOnceOption) {
 	runOpts := runOnceOptions{
 		customOptionParsers: map[string]func(string) (CustomOption, bool){},
 	}
@@ -483,7 +481,7 @@ func RunOnce(
 	// NB: It's important to use defaultTestOptions() here as the base into
 	// which we parse the serialized options. It contains the relevant defaults,
 	// like the appropriate block-property collectors.
-	testOpts := defaultTestOptions(kf)
+	testOpts := defaultTestOptions(runOpts.keyFormat)
 	opts := testOpts.Opts
 	require.NoError(t, parseOptions(testOpts, string(optionsData), runOpts.customOptionParsers))
 
@@ -662,9 +660,7 @@ func hashThread(objID objID, numThreads int) int {
 
 // Compare runs the metamorphic tests in the provided runDirs and compares their
 // histories.
-func Compare(
-	t TestingT, rootDir string, seed uint64, runDirs []string, kf KeyFormat, rOpts ...RunOnceOption,
-) {
+func Compare(t TestingT, rootDir string, seed uint64, runDirs []string, rOpts ...RunOnceOption) {
 	historyPaths := make([]string, len(runDirs))
 	for i := 0; i < len(runDirs); i++ {
 		historyPath := filepath.Join(rootDir, runDirs[i]+"-"+time.Now().Format("060102-150405.000"))
@@ -679,7 +675,7 @@ func Compare(
 	}()
 
 	for i, runDir := range runDirs {
-		RunOnce(t, runDir, seed, historyPaths[i], kf, rOpts...)
+		RunOnce(t, runDir, seed, historyPaths[i], rOpts...)
 	}
 
 	if t.Failed() {

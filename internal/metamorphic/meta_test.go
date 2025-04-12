@@ -79,8 +79,7 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 			tryToReduceCompare(t, runOnceFlags.Dir, testRootDir, runSubdirs, runOnceFlags.ReduceAttempts)
 			return
 		}
-		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs,
-			runOnceFlags.KeyFormat(), onceOpts...)
+		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs, onceOpts...)
 
 	case runOnceFlags.RunDir != "":
 		// The --run-dir flag is specified either in the child process (see
@@ -95,7 +94,7 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 			return
 		}
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed,
-			filepath.Join(runOnceFlags.RunDir, "history"), runOnceFlags.KeyFormat(), onceOpts...)
+			filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:
 		opts := runFlags.MakeRunOptions()

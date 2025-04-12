@@ -228,6 +228,7 @@ func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	onceOpts := []metamorphic.RunOnceOption{
 		metamorphic.MaxThreads(ro.MaxThreads),
 		metamorphic.OpTimeout(ro.OpTimeout),
+		ro.KeyFormat(),
 	}
 	if ro.Keep {
 		onceOpts = append(onceOpts, metamorphic.KeepData{})
