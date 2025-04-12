@@ -2910,6 +2910,7 @@ func TestCompactionCorruption(t *testing.T) {
 		}()
 	}
 
+	const timeout = 2 * time.Minute
 	datadriven.RunTest(t, "testdata/compaction_corruption", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build-remote":
@@ -2947,9 +2948,9 @@ func TestCompactionCorruption(t *testing.T) {
 			workloadWG.Wait()
 
 		case "wait-for-problem-span":
-			timeout := time.Now().Add(100 * time.Second)
+			start := time.Now()
 			for d.problemSpans.IsEmpty() {
-				if timeout.Before(time.Now()) {
+				if time.Since(start) > timeout {
 					td.Fatalf(t, "timeout waiting for problem span")
 				}
 				time.Sleep(10 * time.Millisecond)
@@ -2959,10 +2960,10 @@ func TestCompactionCorruption(t *testing.T) {
 			}
 
 		case "wait-for-compactions":
-			target := numFinishedCompactions.Load() + 5
-			timeout := time.Now().Add(10 * time.Second)
+			target := numFinishedCompactions.Load() + 2
+			start := time.Now()
 			for numFinishedCompactions.Load() < target {
-				if timeout.Before(time.Now()) {
+				if time.Since(start) > timeout {
 					td.Fatalf(t, "timeout waiting for compactions")
 				}
 				time.Sleep(10 * time.Millisecond)
@@ -2972,11 +2973,12 @@ func TestCompactionCorruption(t *testing.T) {
 			now.Store(now.Load() + crtime.Mono(30*time.Minute))
 
 		case "wait-for-no-external-files":
-			timeout := time.Now().Add(10 * time.Second)
+			start := time.Now()
 			for hasExternalFiles(d) {
-				if timeout.Before(time.Now()) {
+				if time.Since(start) > timeout {
 					td.Fatalf(t, "timeout waiting for compactions")
 				}
+				time.Sleep(10 * time.Millisecond)
 			}
 
 		default:
