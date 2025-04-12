@@ -1,0 +1,61 @@
+name: Stress test
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
+      go_version:
+        description: 'Go version'
+        required: false
+        default: '1.23'
+        type: string
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
+      go_version:
+        description: 'Go version'
+        required: false
+        default: '1.23'
+        type: string
+
+jobs:
+  linux-stress:
+    name: linux-stress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go_version }}
+
+      - name: Run unit tests under stress
+        run: |
+          go install github.com/cockroachdb/stress@latest
+          scripts/stress.sh
+
+      - name: Post issue on failure
+        if: failure() && inputs.file_issue
+        id: create-or-update-unique-issue
+        uses: ./.github/actions/post-issue
+        with:
+          title: "${{ inputs.file_issue_branch }}: nightly stress tests failed"
+          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          labels: "C-test-failure"

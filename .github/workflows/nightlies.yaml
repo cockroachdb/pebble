@@ -1,0 +1,47 @@
+name: Nightlies (master)
+
+on:
+  schedule:
+    - cron: '00 10 * * * ' # 10am UTC daily
+  workflow_dispatch:
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        go: [ '1.23' ]
+    uses: ./.github/workflows/tests.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+      go_version: ${{ matrix.go }}
+
+  s390x:
+    strategy:
+      matrix:
+        go: [ '1.23' ]
+    uses: ./.github/workflows/s390x.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+      go_version: ${{ matrix.go }}
+
+  stress:
+    strategy:
+      matrix:
+        go: [ '1.23' ]
+    uses: ./.github/workflows/stress.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+      go_version: ${{ matrix.go }}
+
+  instrumented:
+    strategy:
+      matrix:
+        go: [ '1.23' ]
+    uses: ./.github/workflows/instrumented.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+      go_version: ${{ matrix.go }}
