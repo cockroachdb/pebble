@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -176,8 +177,9 @@ func initRunFlags(c *CommonFlags) *RunFlags {
 		"write an execution trace to `<run-dir>/file`")
 
 	ops := "uniform:5000-10000"
-	if buildtags.SlowBuild {
-		// Reduce the size of the test under race (to avoid timeouts).
+	if buildtags.SlowBuild || unsafe.Sizeof(uintptr(0)) == 4 {
+		// Reduce the size of the test in slow builds (to avoid timeouts) or 32-bit
+		// builds (to avoid OOMs).
 		ops = "uniform:1000-2000"
 	}
 	if err := r.Ops.Set(ops); err != nil {
