@@ -2843,37 +2843,47 @@ func TestCompactionErrorStats(t *testing.T) {
 func TestCompactionCorruption(t *testing.T) {
 	mem := vfs.NewMem()
 	var numFinishedCompactions atomic.Int32
+	var once sync.Once
 	opts := &Options{
 		FS:                 mem,
 		FormatMajorVersion: FormatNewest,
 		EventListener: &EventListener{
+			BackgroundError: func(error) {},
 			DataCorruption: func(info DataCorruptionInfo) {
 				if testing.Verbose() {
-					fmt.Printf("got expected data corruption: %s\n", info.Path)
+					once.Do(func() { fmt.Printf("got expected data corruption: %s\n", info.Path) })
+				}
+			},
+			CompactionBegin: func(info CompactionInfo) {
+				if testing.Verbose() {
+					fmt.Printf("%d: compaction begin (L%d)\n", info.JobID, info.Output.Level)
 				}
 			},
 			CompactionEnd: func(info CompactionInfo) {
+				if testing.Verbose() {
+					fmt.Printf("%d: compaction end (L%d)\n", info.JobID, info.Output.Level)
+				}
 				if info.Err == nil {
 					numFinishedCompactions.Add(1)
 				}
 			},
 		},
+		L0CompactionThreshold:     1,
+		L0CompactionFileThreshold: 10,
 	}
 	opts.WithFSDefaults()
 	remoteStorage := remote.NewInMem()
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"external-locator": remoteStorage,
 	})
+	opts.EnsureDefaults()
+	opts.Levels[0].TargetFileSize = 8192
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
 	var now crtime.AtomicMono
 	now.Store(1)
 	d.problemSpans.InitForTesting(manifest.NumLevels, d.cmp, func() crtime.Mono { return now.Load() })
-
-	randKey := func() []byte {
-		return []byte{'a' + byte(rand.IntN(26))}
-	}
 
 	var workloadWG sync.WaitGroup
 	var stopWorkload atomic.Bool
@@ -2885,12 +2895,14 @@ func TestCompactionCorruption(t *testing.T) {
 			defer workloadWG.Done()
 			for !stopWorkload.Load() {
 				b := d.NewBatch()
-				v := make([]byte, 100+rand.IntN(1000))
-				for i := range v {
-					v[i] = byte(rand.Uint32())
-				}
+				// Write some random keys of the form a012345.
 				for i := 0; i < 100; i++ {
-					if err := b.Set(randKey(), v, nil); err != nil {
+					v := make([]byte, 100+rand.IntN(100))
+					for i := range v {
+						v[i] = byte(rand.Uint32())
+					}
+					key := fmt.Sprintf("%c%06d", 'a'+byte(rand.IntN(int('z'-'a'+1))), rand.IntN(1000000))
+					if err := b.Set([]byte(key), v, nil); err != nil {
 						panic(err)
 					}
 				}
@@ -2900,12 +2912,24 @@ func TestCompactionCorruption(t *testing.T) {
 				if err := d.Flush(); err != nil {
 					panic(err)
 				}
-				time.Sleep(10 * time.Microsecond)
+				time.Sleep(10 * time.Millisecond)
 			}
 		}()
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_corruption", func(t *testing.T, td *datadriven.TestData) string {
+		// wait until fn() returns true.
+		wait := func(what string, fn func() bool) {
+			const timeout = 2 * time.Minute
+			start := time.Now()
+			for !fn() {
+				if time.Since(start) > timeout {
+					td.Fatalf(t, "timeout waiting for %s\n%s\n", what, d.DebugString())
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+
 		switch td.Cmd {
 		case "build-remote":
 			require.NoError(t, runBuildRemoteCmd(td, d, remoteStorage))
@@ -2942,37 +2966,26 @@ func TestCompactionCorruption(t *testing.T) {
 			workloadWG.Wait()
 
 		case "wait-for-problem-span":
-			timeout := time.Now().Add(100 * time.Second)
-			for d.problemSpans.IsEmpty() {
-				if timeout.Before(time.Now()) {
-					td.Fatalf(t, "timeout waiting for problem span")
-				}
-				time.Sleep(10 * time.Millisecond)
-			}
+			wait("problem span", func() bool {
+				return !d.problemSpans.IsEmpty()
+			})
 			if testing.Verbose() {
 				fmt.Printf("%s: wait-for-problem-span:\n%s", td.Pos, d.problemSpans.String())
 			}
 
 		case "wait-for-compactions":
 			target := numFinishedCompactions.Load() + 5
-			timeout := time.Now().Add(10 * time.Second)
-			for numFinishedCompactions.Load() < target {
-				if timeout.Before(time.Now()) {
-					td.Fatalf(t, "timeout waiting for compactions")
-				}
-				time.Sleep(10 * time.Millisecond)
-			}
+			wait("compactions", func() bool {
+				return numFinishedCompactions.Load() >= target
+			})
 
 		case "expire-spans":
 			now.Store(now.Load() + crtime.Mono(30*time.Minute))
 
 		case "wait-for-no-external-files":
-			timeout := time.Now().Add(10 * time.Second)
-			for hasExternalFiles(d) {
-				if timeout.Before(time.Now()) {
-					td.Fatalf(t, "timeout waiting for compactions")
-				}
-			}
+			wait("no external files", func() bool {
+				return !hasExternalFiles(d)
+			})
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

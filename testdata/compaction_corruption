@@ -1,25 +1,25 @@
 build-remote file1
 a#0,SET = avalue
-e#0,SET = bvalue
-f#0,SET = cvalue
+b#0,SET = bvalue
+c#0,SET = cvalue
 ----
 
 build-remote file2-not-there
-g#0,SET = dvalue
-p#0,SET = evalue
-u#0,SET = fvalue
+d#0,SET = dvalue
+q#0,SET = qvalue
+w#0,SET = wvalue
 ----
 
 build-remote file3
-v#0,SET = gvalue
-x#0,SET = hvalue
-z#0,SET = ivalue
+x#0,SET = xvalue
+y#0,SET = yvalue
+z#0,SET = zvalue
 ----
 
 ingest-external file1
-file1 bounds=(a,f)
-file2 bounds=(g,u)
-file3 bounds=(v,z)
+file1 bounds=(a,c0)
+file2 bounds=(d,w0)
+file3 bounds=(x,z0)
 ----
 
 start-workload
