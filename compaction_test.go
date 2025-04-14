@@ -552,7 +552,7 @@ func TestPickCompaction(t *testing.T) {
 	}
 }
 
-func TestCompaction(t *testing.T) {
+func TestAutomaticFlush(t *testing.T) {
 	const memTableSize = 10000
 	// Tuned so that 2 values can reside in the memtable before a flush, but a
 	// 3rd value will cause a flush. Needs to account for the max skiplist node
@@ -854,7 +854,9 @@ func TestValidateVersionEdit(t *testing.T) {
 	}
 }
 
-func TestManualCompaction(t *testing.T) {
+// TestCompaction tests compaction mechanics. It is a datadriven test, with
+// multiple datadriven test files in the testdata/compaction directory.
+func TestCompaction(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
 	defer func() {
@@ -1200,46 +1202,39 @@ func TestManualCompaction(t *testing.T) {
 		})
 	}
 
-	testCases := []struct {
-		testData   string
+	type testConfig struct {
 		minVersion FormatMajorVersion // inclusive, FormatMinSupported if unspecified.
 		maxVersion FormatMajorVersion // inclusive, internalFormatNewest if unspecified.
 		verbose    bool
-	}{
-		{
-			testData: "testdata/singledel_manual_compaction_set_with_del",
-		},
-		{
-			testData: "testdata/manual_compaction_range_keys",
-			verbose:  true,
-		},
-		{
-			testData:   "testdata/manual_compaction_file_boundaries_delsized",
+	}
+	testConfigs := map[string]testConfig{
+		"singledel_set_with_del": {},
+		"range_keys":             {verbose: true},
+		"file_boundaries_delsized": {
 			minVersion: FormatDeleteSizedAndObsolete,
 			maxVersion: FormatFlushableIngestExcises,
 		},
-		{
-			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev4",
+		"set_with_del_sstable_Pebblev4": {
 			minVersion: FormatDeleteSizedAndObsolete,
 			maxVersion: FormatFlushableIngestExcises,
 		},
-		{
-			testData: "testdata/manual_compaction_multilevel",
-		},
-		{
-			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev5",
+		"multilevel": {},
+		"set_with_del_sstable_Pebblev5": {
 			minVersion: FormatColumnarBlocks,
 			maxVersion: FormatColumnarBlocks,
 		},
-		{
-			testData:   "testdata/manual_compaction_set_with_del_sstable_Pebblev6",
+		"set_with_del_sstable_Pebblev6": {
 			minVersion: FormatTableFormatV6,
 			maxVersion: FormatTableFormatV6,
 		},
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.testData, func(t *testing.T) {
+	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
+		filename := filepath.Base(path)
+		tc, ok := testConfigs[filename]
+		if !ok {
+			t.Fatalf("unknown test config: %s", filename)
+		}
+		t.Run(filename, func(t *testing.T) {
 			minVersion, maxVersion := tc.minVersion, tc.maxVersion
 			if minVersion == 0 {
 				minVersion = FormatMinSupported
@@ -1247,9 +1242,9 @@ func TestManualCompaction(t *testing.T) {
 			if maxVersion == 0 {
 				maxVersion = internalFormatNewest
 			}
-			runTest(t, tc.testData, minVersion, maxVersion, tc.verbose)
+			runTest(t, path, minVersion, maxVersion, tc.verbose)
 		})
-	}
+	})
 }
 
 func TestCompactionOutputLevel(t *testing.T) {
