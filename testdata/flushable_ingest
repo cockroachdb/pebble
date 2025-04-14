@@ -651,9 +651,9 @@ allowFlush
 get with-fs-logging
 small-00001
 ----
-read-at(158, 41): 000004.sst
-read-at(199, 74): 000004.sst
-read-at(0, 158): 000004.sst
+read-at(150, 41): 000004.sst
+read-at(191, 74): 000004.sst
+read-at(0, 150): 000004.sst
 small-00001:val-00001
 
 # When the key doesn't pass the bloom filter, we should see only two block
@@ -661,8 +661,8 @@ small-00001:val-00001
 get with-fs-logging
 small-00001-does-not-exist
 ----
-read-at(158, 41): 000004.sst
-read-at(199, 74): 000004.sst
+read-at(150, 41): 000004.sst
+read-at(191, 74): 000004.sst
 small-00001-does-not-exist: pebble: not found
 
 # When looking inside the large table, we will not read the bloom filter which
@@ -671,16 +671,16 @@ small-00001-does-not-exist: pebble: not found
 get with-fs-logging
 large-00001
 ----
-read-at(1165164, 65): 000005.sst
-read-at(1159763, 3000): 000005.sst
-read-at(0, 3069): 000005.sst
+read-at(973580, 65): 000005.sst
+read-at(968351, 2975): 000005.sst
+read-at(0, 2407): 000005.sst
 large-00001:val-00001
 
 # Same number of block reads for a key that doesn't exist.
 get with-fs-logging
 large-00001-does-not-exist
 ----
-read-at(1165164, 65): 000005.sst
-read-at(1159763, 3000): 000005.sst
-read-at(0, 3069): 000005.sst
+read-at(973580, 65): 000005.sst
+read-at(968351, 2975): 000005.sst
+read-at(0, 2407): 000005.sst
 large-00001-does-not-exist: pebble: not found

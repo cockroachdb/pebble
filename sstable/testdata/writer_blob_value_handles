@@ -111,37 +111,37 @@ sstable
  │    ├── 00000    block:0/154
  │    │   
  │    └── trailer [compression=none checksum=0xda1c8436]
- ├── properties  offset: 200  length: 562
+ ├── properties  offset: 200  length: 559
  │    ├── 00000    obsolete-key (13)
  │    ├── 00013    pebble.colblk.schema (65)
  │    ├── 00078    pebble.num.values.in.blob-files (32)
  │    ├── 00110    pebble.raw.point-tombstone.key.size (36)
  │    ├── 00146    rocksdb.block.based.table.index.type (40)
  │    ├── 00186    rocksdb.comparator (42)
- │    ├── 00228    rocksdb.compression (25)
- │    ├── 00253    rocksdb.compression_options (122)
- │    ├── 00375    rocksdb.data.size (19)
- │    ├── 00394    rocksdb.deleted.keys (21)
- │    ├── 00415    rocksdb.filter.size (20)
- │    ├── 00435    rocksdb.index.size (19)
- │    ├── 00454    rocksdb.merge.operands (23)
- │    ├── 00477    rocksdb.merge.operator (40)
- │    ├── 00517    rocksdb.num.data.blocks (24)
- │    ├── 00541    rocksdb.num.entries (20)
- │    ├── 00561    rocksdb.num.range-deletions (28)
- │    ├── 00589    rocksdb.property.collectors (41)
- │    ├── 00630    rocksdb.raw.key.size (21)
- │    ├── 00651    rocksdb.raw.value.size (24)
- │    └── trailer [compression=snappy checksum=0xf0c5768d]
- ├── meta-index  offset: 767  length: 46
- │    ├── 0000    rocksdb.properties block:200/562
+ │    ├── 00228    rocksdb.compression (24)
+ │    ├── 00252    rocksdb.compression_options (122)
+ │    ├── 00374    rocksdb.data.size (19)
+ │    ├── 00393    rocksdb.deleted.keys (21)
+ │    ├── 00414    rocksdb.filter.size (20)
+ │    ├── 00434    rocksdb.index.size (19)
+ │    ├── 00453    rocksdb.merge.operands (23)
+ │    ├── 00476    rocksdb.merge.operator (40)
+ │    ├── 00516    rocksdb.num.data.blocks (24)
+ │    ├── 00540    rocksdb.num.entries (20)
+ │    ├── 00560    rocksdb.num.range-deletions (28)
+ │    ├── 00588    rocksdb.property.collectors (41)
+ │    ├── 00629    rocksdb.raw.key.size (21)
+ │    ├── 00650    rocksdb.raw.value.size (24)
+ │    └── trailer [compression=minlz checksum=0xefe5c665]
+ ├── meta-index  offset: 764  length: 46
+ │    ├── 0000    rocksdb.properties block:200/559
  │    │   
- │    └── trailer [compression=none checksum=0xaa86f2de]
- └── footer  offset: 818  length: 57
+ │    └── trailer [compression=none checksum=0x3da86560]
+ └── footer  offset: 815  length: 57
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=767, length=46
+      ├── 001  meta: offset=764, length=46
       ├── 004  index: offset=159, length=36
-      ├── 041  footer checksum: 0xe7d8ef2e
+      ├── 041  footer checksum: 0x35ccc1c0
       ├── 045  version: 6
       └── 049  magic number: 0xf09faab3f09faab3
 

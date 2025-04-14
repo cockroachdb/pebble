@@ -2160,7 +2160,7 @@ func (o *Options) MakeBlobWriterOptions(level int) blob.FileWriterOptions {
 
 func resolveDefaultCompression(c Compression) Compression {
 	if c <= DefaultCompression || c >= block.NCompression {
-		c = SnappyCompression
+		c = MinlzCompression
 	}
 	return c
 }

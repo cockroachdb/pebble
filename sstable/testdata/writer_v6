@@ -96,7 +96,7 @@ rocksdb.raw.value.size: 0
 rocksdb.deleted.keys: 9
 rocksdb.num.range-deletions: 9
 rocksdb.num.data.blocks: 0
-rocksdb.compression: Snappy
+rocksdb.compression: Minlz
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
@@ -228,32 +228,32 @@ seqnums:  [1-1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 74
- ├── data  offset: 79  length: 74
- ├── data  offset: 158  length: 74
- ├── index  offset: 237  length: 36
- ├── index  offset: 278  length: 37
- ├── index  offset: 320  length: 37
- ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 554
- ├── meta-index  offset: 974  length: 46
- └── footer  offset: 1025  length: 57
+ ├── data  offset: 0  length: 72
+ ├── data  offset: 77  length: 72
+ ├── data  offset: 154  length: 72
+ ├── index  offset: 231  length: 36
+ ├── index  offset: 272  length: 37
+ ├── index  offset: 314  length: 37
+ ├── top-index  offset: 356  length: 48
+ ├── properties  offset: 409  length: 530
+ ├── meta-index  offset: 944  length: 46
+ └── footer  offset: 995  length: 57
 
 # Exercise the non-Reader layout-decoding codepath.
 
 decode-layout
 ----
 sstable
- ├── data  offset: 0  length: 74
- ├── data  offset: 79  length: 74
- ├── data  offset: 158  length: 74
- ├── index  offset: 237  length: 36
- ├── index  offset: 278  length: 37
- ├── index  offset: 320  length: 37
- ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 554
- ├── meta-index  offset: 974  length: 46
- └── footer  offset: 1025  length: 57
+ ├── data  offset: 0  length: 72
+ ├── data  offset: 77  length: 72
+ ├── data  offset: 154  length: 72
+ ├── index  offset: 231  length: 36
+ ├── index  offset: 272  length: 37
+ ├── index  offset: 314  length: 37
+ ├── top-index  offset: 356  length: 48
+ ├── properties  offset: 409  length: 530
+ ├── meta-index  offset: 944  length: 46
+ └── footer  offset: 995  length: 57
 
 scan
 ----
@@ -298,9 +298,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 577
- ├── meta-index  offset: 704  length: 65
- └── footer  offset: 774  length: 57
+ ├── properties  offset: 122  length: 574
+ ├── meta-index  offset: 701  length: 65
+ └── footer  offset: 771  length: 57
 
 props
 ----
@@ -312,7 +312,7 @@ rocksdb.num.range-deletions: 0
 pebble.num.range-key-dels: 0
 pebble.num.range-key-sets: 3
 rocksdb.num.data.blocks: 0
-rocksdb.compression: Snappy
+rocksdb.compression: Minlz
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0

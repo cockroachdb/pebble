@@ -238,23 +238,23 @@ close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
 open: db/000005.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): db/000005.sst
-read-at(649, 51): db/000005.sst
-read-at(132, 517): db/000005.sst
+read-at(711, 57): db/000005.sst
+read-at(660, 51): db/000005.sst
+read-at(145, 515): db/000005.sst
 open: db/000009.sst (options: *vfs.randomReadsOption)
-read-at(704, 57): db/000009.sst
-read-at(653, 51): db/000009.sst
-read-at(136, 517): db/000009.sst
+read-at(702, 57): db/000009.sst
+read-at(651, 51): db/000009.sst
+read-at(136, 515): db/000009.sst
 open: db/000007.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): db/000007.sst
-read-at(649, 51): db/000007.sst
-read-at(132, 517): db/000007.sst
-read-at(91, 41): db/000005.sst
+read-at(711, 57): db/000007.sst
+read-at(660, 51): db/000007.sst
+read-at(145, 515): db/000007.sst
+read-at(104, 41): db/000005.sst
 open: db/000005.sst (options: *vfs.sequentialReadsOption)
-read-at(0, 91): db/000005.sst
-read-at(91, 41): db/000007.sst
+read-at(0, 104): db/000005.sst
+read-at(104, 41): db/000007.sst
 open: db/000007.sst (options: *vfs.sequentialReadsOption)
-read-at(0, 91): db/000007.sst
+read-at(0, 104): db/000007.sst
 create: db/000010.sst
 close: db/000005.sst
 read-at(95, 41): db/000009.sst
@@ -318,17 +318,17 @@ close: checkpoints/checkpoint1/000006.log
 scan checkpoints/checkpoint1
 ----
 open: checkpoints/checkpoint1/000007.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): checkpoints/checkpoint1/000007.sst
-read-at(649, 51): checkpoints/checkpoint1/000007.sst
-read-at(132, 517): checkpoints/checkpoint1/000007.sst
-read-at(91, 41): checkpoints/checkpoint1/000007.sst
-read-at(0, 91): checkpoints/checkpoint1/000007.sst
+read-at(711, 57): checkpoints/checkpoint1/000007.sst
+read-at(660, 51): checkpoints/checkpoint1/000007.sst
+read-at(145, 515): checkpoints/checkpoint1/000007.sst
+read-at(104, 41): checkpoints/checkpoint1/000007.sst
+read-at(0, 104): checkpoints/checkpoint1/000007.sst
 open: checkpoints/checkpoint1/000005.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): checkpoints/checkpoint1/000005.sst
-read-at(649, 51): checkpoints/checkpoint1/000005.sst
-read-at(132, 517): checkpoints/checkpoint1/000005.sst
-read-at(91, 41): checkpoints/checkpoint1/000005.sst
-read-at(0, 91): checkpoints/checkpoint1/000005.sst
+read-at(711, 57): checkpoints/checkpoint1/000005.sst
+read-at(660, 51): checkpoints/checkpoint1/000005.sst
+read-at(145, 515): checkpoints/checkpoint1/000005.sst
+read-at(104, 41): checkpoints/checkpoint1/000005.sst
+read-at(0, 104): checkpoints/checkpoint1/000005.sst
 a 1
 b 5
 c 3
@@ -341,11 +341,11 @@ g 10
 scan db
 ----
 open: db/000010.sst (options: *vfs.randomReadsOption)
-read-at(709, 57): db/000010.sst
-read-at(658, 51): db/000010.sst
-read-at(141, 517): db/000010.sst
-read-at(100, 41): db/000010.sst
-read-at(0, 100): db/000010.sst
+read-at(712, 57): db/000010.sst
+read-at(661, 51): db/000010.sst
+read-at(146, 515): db/000010.sst
+read-at(105, 41): db/000010.sst
+read-at(0, 105): db/000010.sst
 a 1
 b 5
 c 3
@@ -385,11 +385,11 @@ close: checkpoints/checkpoint2/000006.log
 scan checkpoints/checkpoint2
 ----
 open: checkpoints/checkpoint2/000007.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): checkpoints/checkpoint2/000007.sst
-read-at(649, 51): checkpoints/checkpoint2/000007.sst
-read-at(132, 517): checkpoints/checkpoint2/000007.sst
-read-at(91, 41): checkpoints/checkpoint2/000007.sst
-read-at(0, 91): checkpoints/checkpoint2/000007.sst
+read-at(711, 57): checkpoints/checkpoint2/000007.sst
+read-at(660, 51): checkpoints/checkpoint2/000007.sst
+read-at(145, 515): checkpoints/checkpoint2/000007.sst
+read-at(104, 41): checkpoints/checkpoint2/000007.sst
+read-at(0, 104): checkpoints/checkpoint2/000007.sst
 b 5
 d 7
 e 8
@@ -427,17 +427,17 @@ close: checkpoints/checkpoint3/000006.log
 scan checkpoints/checkpoint3
 ----
 open: checkpoints/checkpoint3/000007.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): checkpoints/checkpoint3/000007.sst
-read-at(649, 51): checkpoints/checkpoint3/000007.sst
-read-at(132, 517): checkpoints/checkpoint3/000007.sst
-read-at(91, 41): checkpoints/checkpoint3/000007.sst
-read-at(0, 91): checkpoints/checkpoint3/000007.sst
+read-at(711, 57): checkpoints/checkpoint3/000007.sst
+read-at(660, 51): checkpoints/checkpoint3/000007.sst
+read-at(145, 515): checkpoints/checkpoint3/000007.sst
+read-at(104, 41): checkpoints/checkpoint3/000007.sst
+read-at(0, 104): checkpoints/checkpoint3/000007.sst
 open: checkpoints/checkpoint3/000005.sst (options: *vfs.randomReadsOption)
-read-at(700, 57): checkpoints/checkpoint3/000005.sst
-read-at(649, 51): checkpoints/checkpoint3/000005.sst
-read-at(132, 517): checkpoints/checkpoint3/000005.sst
-read-at(91, 41): checkpoints/checkpoint3/000005.sst
-read-at(0, 91): checkpoints/checkpoint3/000005.sst
+read-at(711, 57): checkpoints/checkpoint3/000005.sst
+read-at(660, 51): checkpoints/checkpoint3/000005.sst
+read-at(145, 515): checkpoints/checkpoint3/000005.sst
+read-at(104, 41): checkpoints/checkpoint3/000005.sst
+read-at(0, 104): checkpoints/checkpoint3/000005.sst
 a 1
 b 5
 c 3
@@ -570,11 +570,11 @@ close: checkpoints/checkpoint4/000008.log
 scan checkpoints/checkpoint4
 ----
 open: checkpoints/checkpoint4/000010.sst (options: *vfs.randomReadsOption)
-read-at(709, 57): checkpoints/checkpoint4/000010.sst
-read-at(658, 51): checkpoints/checkpoint4/000010.sst
-read-at(141, 517): checkpoints/checkpoint4/000010.sst
-read-at(100, 41): checkpoints/checkpoint4/000010.sst
-read-at(0, 100): checkpoints/checkpoint4/000010.sst
+read-at(712, 57): checkpoints/checkpoint4/000010.sst
+read-at(661, 51): checkpoints/checkpoint4/000010.sst
+read-at(146, 515): checkpoints/checkpoint4/000010.sst
+read-at(105, 41): checkpoints/checkpoint4/000010.sst
+read-at(0, 105): checkpoints/checkpoint4/000010.sst
 a 1
 b 5
 d 7

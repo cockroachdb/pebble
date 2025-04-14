@@ -786,14 +786,16 @@ func RandomOptions(
 		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.IntN(5))
 	}
 
-	// We use either no compression, snappy compression or zstd compression.
-	switch rng.IntN(3) {
+	// We use either no compression, snappy compression, zstd compression, or minlz compression.
+	switch rng.IntN(4) {
 	case 0:
 		lopts.Compression = func() block.Compression { return pebble.NoCompression }
 	case 1:
 		lopts.Compression = func() block.Compression { return pebble.ZstdCompression }
-	default:
+	case 2:
 		lopts.Compression = func() block.Compression { return pebble.SnappyCompression }
+	default:
+		lopts.Compression = func() block.Compression { return pebble.MinlzCompression }
 	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 

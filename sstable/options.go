@@ -331,6 +331,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 		o.Comparer = base.DefaultComparer
 	}
 	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression {
+		o.Compression = block.MinlzCompression
+	}
+	if o.Compression == block.MinlzCompression && o.TableFormat <= TableFormatPebblev5 {
 		o.Compression = block.SnappyCompression
 	}
 	if o.IndexBlockSize <= 0 {
