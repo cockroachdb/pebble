@@ -1,0 +1,75 @@
+init
+----
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+
+# A version edit that does not contain blob files leaves the set unchanged.
+
+applyAndUpdateVersionEdit
+  add-table: L3 000010:[d#1,SET-e#1,SET]
+----
+modified version edit:
+  add-table:     L3 000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET]
+current blob file set:
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+
+# A version edit that adds a new blob file records the new file and reference.
+
+applyAndUpdateVersionEdit
+  add-table: L3 000011:[d#1,SET-e#1,SET] blobrefs:[(000012: 25935); depth:1]
+  add-blob-file: 000012 size:[20535 (20KB)] vals:[25935 (25KB)]
+----
+modified version edit:
+  add-table:     L3 000011:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(000012: 25935); depth:1]
+  add-blob-file: 000012 size:[20535 (20KB)] vals:[25935 (25KB)]
+current blob file set:
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
+
+# A version edit that moves a referencing table from one level to another should
+# leave the blob set unchanged.
+
+applyAndUpdateVersionEdit
+  del-table: L3 000011
+  add-table: L4 000011:[d#1,SET-e#1,SET] blobrefs:[(000012: 25935); depth:1]
+----
+modified version edit:
+  del-table:     L3 000011
+  add-table:     L4 000011:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(000012: 25935); depth:1]
+current blob file set:
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
+
+# A version edit that moves references from deleted tables to created tables
+# preseves the referenced blob file in the set, but updates the reference data.
+
+applyAndUpdateVersionEdit
+  del-table: L4 000011
+  add-table: L5 000013:[d#1,SET-e#1,SET] blobrefs:[(000012: 10); depth:2]
+  add-table: L5 000014:[f#1,SET-g#1,SET] blobrefs:[(000012: 15935); depth:2]
+----
+modified version edit:
+  del-table:     L4 000011
+  add-table:     L5 000013:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(000012: 10); depth:2]
+  add-table:     L5 000014:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] blobrefs:[(000012: 15935); depth:2]
+current blob file set:
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15945, Count: 2}
+
+# Remove one of the two references.
+
+applyAndUpdateVersionEdit
+  del-table: L5 000014
+----
+modified version edit:
+  del-table:     L5 000014
+current blob file set:
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 10, Count: 1}
+
+# Remove the last reference. The version edit should be modified to include the
+# removal of the blob file.
+
+applyAndUpdateVersionEdit
+  del-table: L5 000013
+----
+modified version edit:
+  del-table:     L5 000013
+  del-blob-file: 000012
+current blob file set:
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}

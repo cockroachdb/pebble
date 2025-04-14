@@ -18,7 +18,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -1068,7 +1067,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		// referenced blob file to BlobFiles.DeletedReferences. If the
 		// references are carried forward to new files (eg, during a compaction
 		// that decides not to rewrite the blob file), then we'll have the
-		// *BlobFileMetadata availabile when we process the NewTableEntry.
+		// *BlobFileMetadata available when we process the NewTableEntry.
 		for _, blobRef := range m.BlobReferences {
 			if b.BlobFiles.DeletedReferences == nil {
 				b.BlobFiles.DeletedReferences = make(map[base.DiskFileNum]*BlobFileMetadata)
@@ -1208,17 +1207,6 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			// zero. The remove call will panic if this happens.
 			v.Levels[level].remove(f)
 			v.RangeKeyLevels[level].remove(f)
-
-			// The BlobFileMetadata maintains state about the file's references
-			// in the current Version of the LSM. Update this metadata for every
-			// deleted reference. The metadata pointer in BlobReference must
-			// already be populated when the version edit was accumulated.
-			for _, ref := range f.BlobReferences {
-				if ref.Metadata == nil {
-					return nil, errors.Newf("%s has a BlobFileReference with no metadata", ref.FileNum)
-				}
-				ref.Metadata.ActiveRefs.RemoveRef(ref.ValueSize)
-			}
 		}
 
 		addedTables := make([]*TableMetadata, 0, len(addedTablesMap))
@@ -1265,17 +1253,6 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			if la == nil || base.InternalCompare(comparer.Compare, la.Largest, f.Largest) < 0 {
 				la = f
 			}
-
-			// The BlobFileMetadata maintains state about the file's references
-			// in the current Version of the LSM. Update this metadata for every
-			// new reference. The metadata pointer in BlobReference must already
-			// be populated when the version edit was accumulated.
-			for _, ref := range f.BlobReferences {
-				if ref.Metadata == nil {
-					return nil, errors.Newf("%s has a BlobFileReference with no metadata", ref.FileNum)
-				}
-				ref.Metadata.ActiveRefs.AddRef(ref.ValueSize)
-			}
 		}
 
 		if level == 0 {
@@ -1304,28 +1281,5 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			}
 		}
 	}
-
-	// We maintain stats about active references in blob files and can infer
-	// when a blob file has become a 'zombie,' and is no longer referenced in
-	// the resulting version. However, we expect the caller to explicitly list
-	// all deleted blob files in the VersionEdit. In invariant builds, we loop
-	// back over all the deleted tables and their blob references. If any of the
-	// blob files now have zero active refs but weren't listed in the deleted
-	// blob files, the caller has broken the contract.
-	if invariants.Enabled {
-		for _, deletedLevel := range b.DeletedTables {
-			for _, dt := range deletedLevel {
-				for _, ref := range dt.BlobReferences {
-					if ref.Metadata.ActiveRefs.count != 0 {
-						continue
-					}
-					if _, ok := b.BlobFiles.Deleted[ref.FileNum]; !ok {
-						panic(errors.AssertionFailedf("blob file %s has no active refs, but was not deleted in the version edit", ref.FileNum))
-					}
-				}
-			}
-		}
-	}
-
 	return v, nil
 }
