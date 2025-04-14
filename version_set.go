@@ -588,17 +588,13 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		if vs.getFormatMajorVersion() < FormatVirtualSSTables && len(ve.CreatedBackingTables) > 0 {
 			return base.AssertionFailedf("MANIFEST cannot contain virtual sstable records due to format major version")
 		}
-		var bulkEdit bulkVersionEdit
-		err := bulkEdit.Accumulate(ve)
-		if err != nil {
-			return errors.Wrap(err, "MANIFEST accumulate failed")
-		}
-		newVersion, err = bulkEdit.Apply(currentVersion, vs.opts.Experimental.ReadCompactionRate)
-		if err != nil {
-			return errors.Wrap(err, "MANIFEST apply failed")
-		}
-		l0Update = vs.l0Organizer.PrepareUpdate(&bulkEdit, newVersion)
 
+		// Rotate the manifest if necessary. Rotating the manifest involves
+		// creating a new file and writing an initial version edit containing a
+		// snapshot of the current version. This initial version edit will
+		// reflect the Version prior to the pending version edit (`ve`). Once
+		// we've created the new manifest with the previous version state, we'll
+		// append the version edit `ve` to the tail of the new manifest.
 		if newManifestFileNum != 0 {
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum, newManifestVirtualBackings); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
@@ -610,6 +606,17 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 				return errors.Wrap(err, "MANIFEST create failed")
 			}
 		}
+
+		var bulkEdit bulkVersionEdit
+		err := bulkEdit.Accumulate(ve)
+		if err != nil {
+			return errors.Wrap(err, "MANIFEST accumulate failed")
+		}
+		newVersion, err = bulkEdit.Apply(currentVersion, vs.opts.Experimental.ReadCompactionRate)
+		if err != nil {
+			return errors.Wrap(err, "MANIFEST apply failed")
+		}
+		l0Update = vs.l0Organizer.PrepareUpdate(&bulkEdit, newVersion)
 
 		w, err := vs.manifest.Next()
 		if err != nil {
