@@ -69,7 +69,10 @@ type versionSet struct {
 	// Mutable fields.
 	versions    versionList
 	l0Organizer *manifest.L0Organizer
-	picker      compactionPicker
+	// blobFiles is the set of blob files referenced by the current version.
+	// blobFiles is protected by the manifest logLock (not vs.mu).
+	blobFiles manifest.CurrentBlobFileSet
+	picker    compactionPicker
 	// curCompactionConcurrency is updated whenever picker is updated.
 	// INVARIANT: >= 1.
 	curCompactionConcurrency atomic.Int32
@@ -177,6 +180,7 @@ func (vs *versionSet) create(
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
 	vs.append(emptyVersion)
+	vs.blobFiles.Init(nil)
 
 	vs.setCompactionPicker(
 		newCompactionPickerByScore(emptyVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, nil))
@@ -343,6 +347,7 @@ func (vs *versionSet) load(
 	}
 	vs.l0Organizer.PerformUpdate(vs.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
 	vs.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
+	vs.blobFiles.Init(&bve)
 	vs.append(newVersion)
 
 	for i := range vs.metrics.Levels {
@@ -578,7 +583,6 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	// Note: this call populates ve.RemovedBackingTables.
 	zombieBackings, removedVirtualBackings, localTablesLiveDelta :=
 		getZombieTablesAndUpdateVirtualBackings(ve, &vs.virtualBackings, vs.provider)
-	zombieBlobs, blobLiveDelta, localBlobLiveDelta := getZombieBlobFilesAndComputeLocalMetrics(ve, vs.provider)
 
 	var l0Update manifest.L0PreparedUpdate
 	if err := func() error {
@@ -605,6 +609,16 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 				})
 				return errors.Wrap(err, "MANIFEST create failed")
 			}
+		}
+
+		// Call ApplyAndUpdateVersionEdit before accumulating the version edit.
+		// If any blob files are no longer referenced, the version edit will be
+		// updated to explicitly record the deletion of the blob files. This can
+		// happen here because vs.blobFiles is protected by the manifest logLock
+		// (NOT vs.mu). We only read or write vs.blobFiles while holding the
+		// manifest lock.
+		if err := vs.blobFiles.ApplyAndUpdateVersionEdit(ve); err != nil {
+			return errors.Wrap(err, "MANIFEST blob files apply and update failed")
 		}
 
 		var bulkEdit bulkVersionEdit
@@ -668,6 +682,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	// L0Sublevels.
 	inProgress := vu.InProgressCompactionsFn()
 
+	zombieBlobs, localBlobLiveDelta := getZombieBlobFilesAndComputeLocalMetrics(ve, vs.provider)
 	vs.l0Organizer.PerformUpdate(l0Update, newVersion)
 	vs.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
 
@@ -752,8 +767,6 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localTablesLiveDelta.size)
 	vs.metrics.Table.Local.LiveCount = uint64(int64(vs.metrics.Table.Local.LiveCount) + localTablesLiveDelta.count)
-	vs.metrics.BlobFiles.LiveSize = uint64(int64(vs.metrics.BlobFiles.LiveSize) + blobLiveDelta.size)
-	vs.metrics.BlobFiles.LiveCount = uint64(int64(vs.metrics.BlobFiles.LiveCount) + blobLiveDelta.count)
 	vs.metrics.BlobFiles.Local.LiveSize = uint64(int64(vs.metrics.BlobFiles.Local.LiveSize) + localBlobLiveDelta.size)
 	vs.metrics.BlobFiles.Local.LiveCount = uint64(int64(vs.metrics.BlobFiles.Local.LiveCount) + localBlobLiveDelta.count)
 
@@ -884,10 +897,8 @@ func getZombieTablesAndUpdateVirtualBackings(
 // locally.
 func getZombieBlobFilesAndComputeLocalMetrics(
 	ve *versionEdit, provider objstorage.Provider,
-) (zombieBlobFiles []objectInfo, liveDelta, localLiveDelta fileMetricDelta) {
+) (zombieBlobFiles []objectInfo, localLiveDelta fileMetricDelta) {
 	for _, b := range ve.NewBlobFiles {
-		liveDelta.count++
-		liveDelta.size += int64(b.Size)
 		if objstorage.IsLocalBlobFile(provider, b.FileNum) {
 			localLiveDelta.count++
 			localLiveDelta.size += int64(b.Size)
@@ -900,8 +911,6 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 			localLiveDelta.count--
 			localLiveDelta.size -= int64(b.Size)
 		}
-		liveDelta.count--
-		liveDelta.size -= int64(b.Size)
 		zombieBlobFiles = append(zombieBlobFiles, objectInfo{
 			fileInfo: fileInfo{
 				FileNum:  b.FileNum,
@@ -910,7 +919,7 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 			isLocal: isLocal,
 		})
 	}
-	return zombieBlobFiles, liveDelta, localLiveDelta
+	return zombieBlobFiles, localLiveDelta
 }
 
 // sizeIfLocal returns backing.Size if the backing is a local file, else 0.
@@ -1006,40 +1015,30 @@ func (vs *versionSet) createManifest(
 	}
 	manifestWriter = record.NewWriter(manifestFile)
 
-	snapshot := versionEdit{
+	snapshot := manifest.VersionEdit{
 		ComparerName: vs.cmp.Name,
+		// When creating a version snapshot for an existing DB, this snapshot
+		// VersionEdit will be immediately followed by another VersionEdit
+		// (being written in UpdateVersionLocked()). That VersionEdit always
+		// contains a LastSeqNum, so we don't need to include that in the
+		// snapshot.  But it does not necessarily include MinUnflushedLogNum,
+		// NextFileNum, so we initialize those using the corresponding fields in
+		// the versionSet (which came from the latest preceding VersionEdit that
+		// had those fields).
+		MinUnflushedLogNum:   minUnflushedLogNum,
+		NextFileNum:          nextFileNum,
+		CreatedBackingTables: virtualBackings,
+		NewBlobFiles:         vs.blobFiles.Metadatas(),
 	}
-	// TODO(jackson): Consider maintaining the set of all live blob files on the
-	// Version, rather than inferring it from the extant references on sstables.
-	// We may need this for maintaining the re-mapping of rewritten blob files.
-	blobFiles := make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
+	// Add all extant sstables in the current version.
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		for meta := range levelMetadata.All() {
 			snapshot.NewTables = append(snapshot.NewTables, newTableEntry{
 				Level: level,
 				Meta:  meta,
 			})
-			if meta.BlobReferences != nil {
-				for _, blobRef := range meta.BlobReferences {
-					if _, ok := blobFiles[blobRef.FileNum]; !ok {
-						blobFiles[blobRef.FileNum] = blobRef.Metadata
-						snapshot.NewBlobFiles = append(snapshot.NewBlobFiles, blobRef.Metadata)
-					}
-				}
-			}
 		}
 	}
-
-	snapshot.CreatedBackingTables = virtualBackings
-
-	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
-	// immediately followed by another VersionEdit (being written in UpdateVersionLocked()). That
-	// VersionEdit always contains a LastSeqNum, so we don't need to include that in the snapshot.
-	// But it does not necessarily include MinUnflushedLogNum, NextFileNum, so we initialize those
-	// using the corresponding fields in the versionSet (which came from the latest preceding
-	// VersionEdit that had those fields).
-	snapshot.MinUnflushedLogNum = minUnflushedLogNum
-	snapshot.NextFileNum = nextFileNum
 
 	w, err1 := manifestWriter.Next()
 	if err1 != nil {

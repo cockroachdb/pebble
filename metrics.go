@@ -315,29 +315,50 @@ type Metrics struct {
 	BlobFiles struct {
 		// The count of all live blob files.
 		LiveCount uint64
-		// The size of all live blob files.
+		// The physical file size of all live blob files.
 		LiveSize uint64
+		// ValueSize is the sum of the length of the uncompressed values in all
+		// live (referenced by some sstable(s) within the current version) blob
+		// files. ValueSize may be greater than LiveSize when compression is
+		// effective. ValueSize includes bytes in live blob files that are not
+		// actually reachable by any sstable key. If any value within the blob
+		// file is reachable by a key in a live sstable, then the entirety of
+		// the blob file's values are included within ValueSize.
+		ValueSize uint64
+		// ReferencedValueSize is the sum of the length of the uncompressed
+		// values (in all live blob files) that are still referenced by keys
+		// within live tables. Over the lifetime of a blob file, a blob file's
+		// references are removed as some compactions choose to write new blob
+		// files containing the same values or keys referencing the file's
+		// values are deleted. ReferencedValueSize accounts the volume of bytes
+		// that are actually reachable by some key in a live table.
+		//
+		// The difference between ValueSize and ReferencedValueSize is
+		// (uncompressed) space amplification that could be reclaimed if all
+		// blob files were rewritten, discarding values that are no longer
+		// referenced by any keys in any sstables within the current version.
+		ReferencedValueSize uint64
 		// The count of all obsolete blob files.
 		ObsoleteCount uint64
-		// The size of all obsolete blob files.
+		// The physical size of all obsolete blob files.
 		ObsoleteSize uint64
 		// The count of all zombie blob files.
 		ZombieCount uint64
-		// The size of all zombie blob files.
+		// The physical size of all zombie blob files.
 		ZombieSize uint64
 		// Local file sizes.
 		Local struct {
-			// LiveSize is the number of bytes in live blob files.
+			// LiveSize is the physical size of local live blob files.
 			LiveSize uint64
-			// LiveCount is the number of live blob files.
+			// LiveCount is the number of local live blob files.
 			LiveCount uint64
-			// ObsoleteSize is the number of bytes in obsolete blob files.
+			// ObsoleteSize is the physical size of local obsolete blob files.
 			ObsoleteSize uint64
-			// ObsoleteCount is the number of obsolete blob files.
+			// ObsoleteCount is the number of local obsolete blob files.
 			ObsoleteCount uint64
-			// ZombieSize is the number of bytes in zombie blob files.
+			// ZombieSize is the physical size of local zombie blob files.
 			ZombieSize uint64
-			// ZombieCount is the number of zombie blob files.
+			// ZombieCount is the number of local zombie blob files.
 			ZombieCount uint64
 		}
 	}

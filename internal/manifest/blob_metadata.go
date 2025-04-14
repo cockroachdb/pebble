@@ -5,6 +5,9 @@
 package manifest
 
 import (
+	stdcmp "cmp"
+	"fmt"
+	"slices"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -57,55 +60,6 @@ type BlobFileMetadata struct {
 	// referencing TableMetadata is installed in a Version and decremented when
 	// that TableMetadata becomes obsolete.
 	refs atomic.Int32
-
-	// ActiveRefs holds state that describes the latest (the 'live') Version
-	// containing this blob file and the references to the file within that
-	// version.
-	ActiveRefs BlobFileActiveRefs
-}
-
-// BlobFileActiveRefs describes the state of a blob file within the latest
-// Version and the references to the file within that version.
-type BlobFileActiveRefs struct {
-	// count holds the number of tables in the latest version that reference
-	// this blob file. When this reference count falls to zero, the blob file is
-	// either a zombie file (if BlobFileMetadata.refs > 0), or obsolete and
-	// ready to be deleted.
-	//
-	// INVARIANT: BlobFileMetadata.refs > BlobFileMetadata.ActiveRefs.count
-	count int32
-	// valueSize is the sum of the length of uncompressed values in this blob
-	// file that are still live (i.e., referred to by sstables in the latest
-	// version).
-	valueSize uint64
-}
-
-// AddRef records a new reference to the blob file from a sstable in the latest
-// Version. The provided valueSize should be the value of the sstable's
-// BlobReference.ValueSize.
-//
-// Requires the manifest logLock be held.
-func (r *BlobFileActiveRefs) AddRef(valueSize uint64) {
-	r.count++
-	r.valueSize += valueSize
-}
-
-// RemoveRef removes a reference that no longer exists in the latest Version.
-// The provided valueSize should be the value of the removed sstable's
-// BlobReference.ValueSize.
-//
-// Requires the manifest logLock be held.
-func (r *BlobFileActiveRefs) RemoveRef(valueSize uint64) {
-	if invariants.Enabled {
-		if r.count <= 0 {
-			panic(errors.AssertionFailedf("pebble: negative active ref count"))
-		}
-		if valueSize > r.valueSize {
-			panic(errors.AssertionFailedf("pebble: negative active value size"))
-		}
-	}
-	r.count--
-	r.valueSize -= valueSize
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -243,4 +197,208 @@ func (br BlobReferences) IDByFileNum(fileNum base.DiskFileNum) (blob.ReferenceID
 		}
 	}
 	return blob.ReferenceID(len(br)), false
+}
+
+// AggregateBlobFileStats records cumulative stats across blob files.
+type AggregateBlobFileStats struct {
+	// Count is the number of blob files in the set.
+	Count uint64
+	// PhysicalSize is the sum of the size of all blob files in the set.  This
+	// is the size of the blob files on physical storage. Data within blob files
+	// is compressed, so this value may be less than ValueSize.
+	PhysicalSize uint64
+	// ValueSize is the sum of the length of the uncompressed values in all blob
+	// files in the set.
+	ValueSize uint64
+	// ReferencedValueSize is the sum of the length of the uncompressed values
+	// in all blob files in the set that are still referenced by live tables
+	// (i.e., in the latest version).
+	ReferencedValueSize uint64
+	// ReferencesCount is the total number of tracked references in live tables
+	// (i.e., in the latest version). When virtual sstables are present, this
+	// count is per-virtual sstable (not per backing physical sstable).
+	ReferencesCount uint64
+}
+
+// String implements fmt.Stringer.
+func (s AggregateBlobFileStats) String() string {
+	return fmt.Sprintf("Files:{Count: %d, Size: %d, ValueSize: %d}, References:{ValueSize: %d, Count: %d}",
+		s.Count, s.PhysicalSize, s.ValueSize, s.ReferencedValueSize, s.ReferencesCount)
+}
+
+// CurrentBlobFileSet describes the set of blob files that are currently live in
+// the latest Version. CurrentBlobFileSet is not thread-safe. In practice its
+// use is protected by the versionSet logLock.
+type CurrentBlobFileSet struct {
+	// files is a map of blob file numbers to a *currentBlobFile, recording
+	// metadata about the blob file's active references in the latest Version.
+	files map[base.DiskFileNum]*currentBlobFile
+	// stats records cumulative stats across all blob files in the set.
+	stats AggregateBlobFileStats
+}
+
+type currentBlobFile struct {
+	metadata *BlobFileMetadata
+	// references holds pointers to TableMetadatas that exist in the latest
+	// version and reference this blob file. When the length of references falls
+	// to zero, the blob file is either a zombie file (if BlobFileMetadata.refs
+	// > 0), or obsolete and ready to be deleted.
+	//
+	// INVARIANT: BlobFileMetadata.refs >= len(references)
+	//
+	// TODO(jackson): Rather than using 1 map per blob file which needs to grow
+	// and shrink over the lifetime of the blob file, we could use a single
+	// B-Tree that holds all blob references, sorted by blob file then by
+	// referencing table number. This would likely be more memory efficient,
+	// reduce overall number of pointers to chase and suffer fewer allocations
+	// (and we can pool the B-Tree nodes to further reduce allocs)
+	references map[*TableMetadata]struct{}
+	// referencedValueSize is the sum of the length of uncompressed values in
+	// this blob file that are still live.
+	referencedValueSize uint64
+}
+
+// Init initializes the CurrentBlobFileSet with the state of the provided
+// BulkVersionEdit. This is used after replaying a manifest.
+func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit) {
+	*s = CurrentBlobFileSet{files: make(map[base.DiskFileNum]*currentBlobFile)}
+	if bve == nil {
+		return
+	}
+	for _, m := range bve.BlobFiles.Added {
+		s.files[m.FileNum] = &currentBlobFile{
+			metadata:   m,
+			references: make(map[*TableMetadata]struct{}),
+		}
+		s.stats.Count++
+		s.stats.PhysicalSize += m.Size
+		s.stats.ValueSize += m.ValueSize
+	}
+	// Record references to blob files from extant tables. Any referenced blob
+	// files should already exist in s.files.
+	for _, levelFiles := range bve.AddedTables {
+		for _, m := range levelFiles {
+			for _, ref := range m.BlobReferences {
+				cbf, ok := s.files[ref.FileNum]
+				if !ok {
+					panic(errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileNum))
+				}
+				cbf.references[m] = struct{}{}
+				cbf.referencedValueSize += ref.ValueSize
+				s.stats.ReferencedValueSize += ref.ValueSize
+				s.stats.ReferencesCount++
+			}
+		}
+	}
+}
+
+// Stats returns the cumulative stats across all blob files in the set.
+func (s *CurrentBlobFileSet) Stats() AggregateBlobFileStats {
+	return s.stats
+}
+
+// Metadatas returns a slice of all blob file metadata in the set, sorted by
+// file number for determinism.
+func (s *CurrentBlobFileSet) Metadatas() []*BlobFileMetadata {
+	m := make([]*BlobFileMetadata, 0, len(s.files))
+	for _, cbf := range s.files {
+		m = append(m, cbf.metadata)
+	}
+	slices.SortFunc(m, func(a, b *BlobFileMetadata) int {
+		return stdcmp.Compare(a.FileNum, b.FileNum)
+	})
+	return m
+}
+
+// ApplyAndUpdateVersionEdit applies a version edit to the current blob file
+// set, updating its internal tracking of extant blob file references. If after
+// applying the version edit a blob file has no more references, the version
+// edit is modified to record the blob file removal.
+func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
+	// Insert new blob files into the set.
+	for _, nf := range ve.NewBlobFiles {
+		if _, ok := s.files[nf.FileNum]; ok {
+			return errors.AssertionFailedf("pebble: new blob file %d already exists", nf.FileNum)
+		}
+		cbf := &currentBlobFile{references: make(map[*TableMetadata]struct{})}
+		cbf.metadata = nf
+		s.files[nf.FileNum] = cbf
+		s.stats.Count++
+		s.stats.PhysicalSize += nf.Size
+		s.stats.ValueSize += nf.ValueSize
+	}
+
+	// Update references to blob files from new tables. Any referenced blob
+	// files should already exist in s.files.
+	newTables := make(map[base.FileNum]struct{})
+	for _, e := range ve.NewTables {
+		newTables[e.Meta.FileNum] = struct{}{}
+		for _, ref := range e.Meta.BlobReferences {
+			cbf, ok := s.files[ref.FileNum]
+			if !ok {
+				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileNum)
+			}
+			cbf.references[e.Meta] = struct{}{}
+			cbf.referencedValueSize += ref.ValueSize
+			s.stats.ReferencedValueSize += ref.ValueSize
+			s.stats.ReferencesCount++
+		}
+	}
+
+	// Remove references to blob files from deleted tables. Any referenced blob
+	// files should already exist in s.files. If the removal of a reference
+	// causes the blob file's ref count to drop to zero, the blob file is a
+	// zombie. We update the version edit to record the blob file removal and
+	// remove it from the set.
+	for _, meta := range ve.DeletedTables {
+		for _, ref := range meta.BlobReferences {
+			cbf, ok := s.files[ref.FileNum]
+			if !ok {
+				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileNum)
+			}
+			if invariants.Enabled {
+				if ref.ValueSize > cbf.referencedValueSize {
+					return errors.AssertionFailedf("pebble: referenced value size %d for blob file %d is greater than the referenced value size %d",
+						ref.ValueSize, cbf.metadata.FileNum, cbf.referencedValueSize)
+				}
+				if _, ok := cbf.references[meta]; !ok {
+					return errors.AssertionFailedf("pebble: deleted table %s's reference to blob file %d not known",
+						meta.FileNum, ref.FileNum)
+				}
+			}
+
+			// Decrement the stats for this reference.
+			cbf.referencedValueSize -= ref.ValueSize
+			s.stats.ReferencedValueSize -= ref.ValueSize
+			s.stats.ReferencesCount--
+			if _, ok := newTables[meta.FileNum]; ok {
+				// This table was added to a different level of the LSM in the
+				// same version edit. It's being moved. We can preserve the
+				// existing reference.  We still needed to reduce the counts
+				// above because we doubled it when we incremented stats on
+				// account of files in NewTables.
+				continue
+			}
+			// Remove the reference of this table to this blob file.
+			delete(cbf.references, meta)
+
+			// If there are no more references to the blob file, remove it from
+			// the set and add the removal of the blob file to the version edit.
+			if len(cbf.references) == 0 {
+				if cbf.referencedValueSize != 0 {
+					return errors.AssertionFailedf("pebble: referenced value size %d is non-zero for blob file %s with no refs",
+						cbf.referencedValueSize, cbf.metadata.FileNum)
+				}
+				if ve.DeletedBlobFiles == nil {
+					ve.DeletedBlobFiles = make(map[base.DiskFileNum]*BlobFileMetadata)
+				}
+				ve.DeletedBlobFiles[cbf.metadata.FileNum] = cbf.metadata
+				s.stats.Count--
+				s.stats.PhysicalSize -= cbf.metadata.Size
+				s.stats.ValueSize -= cbf.metadata.ValueSize
+				delete(s.files, cbf.metadata.FileNum)
+			}
+		}
+	}
+	return nil
 }
