@@ -317,6 +317,12 @@ type Metrics struct {
 		LiveCount uint64
 		// The size of all live blob files.
 		LiveSize uint64
+		// ValueSize is the sum of the length of the uncompressed values in all
+		// live blob files.
+		ValueSize uint64
+		// ReferencedValueSize is the sum of the length of the uncompressed values
+		// in all live blob files that are still referenced by live tables.
+		ReferencedValueSize uint64
 		// The count of all obsolete blob files.
 		ObsoleteCount uint64
 		// The size of all obsolete blob files.
