@@ -5,6 +5,7 @@
 package tool
 
 import (
+	"bytes"
 	"cmp"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
@@ -161,6 +163,17 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s\n", err)
 					break
 				}
+				fmt.Fprintf(stdout, "%d/%d\n", offset, editIdx)
+				// If verbose, dump the binary encoding of the version edit.
+				if m.verbose {
+					data, err := io.ReadAll(r)
+					if err != nil {
+						fmt.Fprintf(stdout, "%s\n", err)
+						break
+					}
+					r = bytes.NewReader(data)
+					binfmt.FHexDump(stdout, data, 16, true)
+				}
 
 				var ve manifest.VersionEdit
 				err = ve.Decode(r)
@@ -178,7 +191,6 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				}
 
 				empty := true
-				fmt.Fprintf(stdout, "%d/%d\n", offset, editIdx)
 				if ve.ComparerName != "" {
 					empty = false
 					fmt.Fprintf(stdout, "  comparer:     %s", ve.ComparerName)
