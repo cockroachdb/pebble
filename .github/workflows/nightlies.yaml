@@ -9,7 +9,7 @@ jobs:
   tests:
     strategy:
       matrix:
-        go: [ '1.23' ]
+        go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/tests.yaml
     with:
       sha: ${{ github.sha }}
@@ -19,7 +19,7 @@ jobs:
   s390x:
     strategy:
       matrix:
-        go: [ '1.23' ]
+        go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/s390x.yaml
     with:
       sha: ${{ github.sha }}
@@ -29,7 +29,7 @@ jobs:
   stress:
     strategy:
       matrix:
-        go: [ '1.23' ]
+        go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/stress.yaml
     with:
       sha: ${{ github.sha }}
@@ -39,7 +39,7 @@ jobs:
   instrumented:
     strategy:
       matrix:
-        go: [ '1.23' ]
+        go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/instrumented.yaml
     with:
       sha: ${{ github.sha }}
