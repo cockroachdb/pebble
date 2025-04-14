@@ -2061,7 +2061,12 @@ func (d *DB) Metrics() *Metrics {
 	backingCount, backingTotalSize := d.mu.versions.virtualBackings.Stats()
 	metrics.Table.BackingTableCount = uint64(backingCount)
 	metrics.Table.BackingTableSize = backingTotalSize
+	blobStats := d.mu.versions.blobFiles.Stats()
 	d.mu.versions.logUnlock()
+	metrics.BlobFiles.LiveCount = blobStats.Count
+	metrics.BlobFiles.LiveSize = blobStats.PhysicalSize
+	metrics.BlobFiles.ValueSize = blobStats.ValueSize
+	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
 	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
