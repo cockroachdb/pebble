@@ -21,8 +21,6 @@ import (
 // TODO(peter): describe the MANIFEST file format, independently of the C++
 // project.
 
-var errCorruptManifest = base.CorruptionErrorf("pebble: corrupt manifest")
-
 type byteReader interface {
 	io.ByteReader
 	io.Reader
@@ -444,7 +442,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			return base.CorruptionErrorf("column families are not supported")
 
 		default:
-			return errCorruptManifest
+			return base.CorruptionErrorf("MANIFEST: unknown tag: %d", tag)
 		}
 	}
 	return nil
@@ -626,7 +624,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 	_, err = io.ReadFull(d, s)
 	if err != nil {
 		if err == io.ErrUnexpectedEOF {
-			return nil, errCorruptManifest
+			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
 		}
 		return nil, err
 	}
@@ -639,7 +637,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 		return 0, err
 	}
 	if u >= NumLevels {
-		return 0, errCorruptManifest
+		return 0, base.CorruptionErrorf("pebble: corrupt manifest: level %d >= %d", u, NumLevels)
 	}
 	return int(u), nil
 }
@@ -655,8 +653,8 @@ func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
 func (d versionEditDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
-		if err == io.EOF {
-			return 0, errCorruptManifest
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return 0, base.CorruptionErrorf("pebble: corrupt manifest: failed to read uvarint")
 		}
 		return 0, err
 	}
