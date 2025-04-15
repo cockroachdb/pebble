@@ -1,0 +1,158 @@
+# Set a target file size of 4MB.
+
+define target-file-sizes=(4000000) format-major-version=17
+----
+
+# Commit many keys with 1MB-shared prefixes.
+
+batch-commit
+set a(p,1000000)arition
+set a(p,1000000)alling
+set a(p,1000000)eal
+set a(p,1000000)ellate
+set a(p,1000000)endectomy
+set a(p,1000000)etizers
+set a(p,1000000)etizing
+set a(p,1000000)laude
+set a(p,1000000)lauding
+set a(p,1000000)le
+set a(p,1000000)les
+set a(p,1000000)letini
+set a(p,1000000)letinis
+set a(p,1000000)lebottomjeans
+set a(p,1000000)lication
+set a(p,1000000)ly
+set a(p,1000000)lying
+set a(p,1000000)ollo
+set a(p,1000000)raisal
+set a(p,1000000)raisals
+set a(p,1000000)raiser
+set a(p,1000000)raisers
+set a(p,1000000)raising
+set a(p,1000000)rentice
+set a(p,1000000)rentices
+set a(p,1000000)renticing
+set a(p,1000000)roval
+set a(p,1000000)rovals
+set a(p,1000000)rove
+----
+
+flush verbose
+----
+L0.0:
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] seqnums:[10-38] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] size:4084896
+
+layout filename=000005.sst
+----
+         0  data (46944)
+     46949  data (46945)
+     93899  data (46941)
+    140845  data (46944)
+    187794  data (46947)
+    234746  data (46945)
+    281696  data (46945)
+    328646  data (46943)
+    375594  data (46945)
+    422544  data (46940)
+    469489  data (46951)
+    516445  data (46941)
+    563391  data (46944)
+    610340  data (46945)
+    657290  data (46946)
+    704241  data (46940)
+    751186  data (46943)
+    798134  data (46942)
+    845081  data (46944)
+    892030  data (46945)
+    938980  data (46944)
+    985929  data (46945)
+   1032879  data (46945)
+   1079829  data (46945)
+   1126779  data (46946)
+   1173730  data (46947)
+   1220682  data (46943)
+   1267630  data (46944)
+   1314579  data (46942)
+   1361526  index (46942)
+   1408473  index (46946)
+   1455424  index (46942)
+   1502371  index (46945)
+   1549321  index (46948)
+   1596274  index (46946)
+   1643225  index (46946)
+   1690176  index (46944)
+   1737125  index (46946)
+   1784076  index (46941)
+   1831022  index (46952)
+   1877979  index (46942)
+   1924926  index (46945)
+   1971876  index (46946)
+   2018827  index (46947)
+   2065779  index (46941)
+   2112725  index (46944)
+   2159674  index (46943)
+   2206622  index (46945)
+   2253572  index (46946)
+   2300523  index (46945)
+   2347473  index (46946)
+   2394424  index (46946)
+   2441375  index (46946)
+   2488326  index (46947)
+   2535278  index (46948)
+   2582231  index (46944)
+   2629180  index (46945)
+   2676130  index (46943)
+   2723078  top-index (1361225)
+   4084308  properties (490)
+   4084803  meta-index (35)
+   4084843  footer (53)
+   4084896  EOF
+
+properties file=000005
+raw.key.size
+index.size
+index.partitions
+----
+raw.key.size:
+  rocksdb.raw.key.size: 29000440
+index.size:
+  rocksdb.index.size: 58001886
+  rocksdb.top-level.index.size: 29000892
+index.partitions:
+  rocksdb.index.partitions: 29
+
+batch-commit
+del-range a(p,1000000)arition a(p,1000000)eal
+del-range a(p,1000000)ellate a(p,1000000)etizers
+del-range a(p,1000000)etizing a(p,1000000)lauding
+del-range a(p,1000000)le a(p,1000000)lebottomjeans
+del-range a(p,1000000)lebottomjeans a(p,1000000)lication
+del-range a(p,1000000)ly a(p,1000000)lying
+del-range a(p,1000000)raisals a(p,1000000)rentice
+del-range a(p,1000000)rentices a(p,1000000)roval
+del-range a(p,1000000)rovals a(p,1000000)rove
+----
+
+flush verbose
+----
+L0.1:
+  000008:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[39-47] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:18000961
+L0.0:
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] seqnums:[10-38] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] size:4084896
+
+layout filename=000008.sst
+----
+         0  data (8)
+        13  index (24)
+        42  range-del (18000310)
+  18000357  properties (447)
+  18000809  meta-index (94)
+  18000908  footer (53)
+  18000961  EOF
+
+properties file=000008
+rocksdb.raw
+----
+rocksdb.raw:
+  rocksdb.raw.key.size: 9000139
+  rocksdb.raw.value.size: 9000068
