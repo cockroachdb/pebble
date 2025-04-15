@@ -5,7 +5,6 @@ package pebble
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -230,28 +229,7 @@ func TestIterHistories(t *testing.T) {
 				}
 				return ""
 			case "layout":
-				var verbose bool
-				var filename string
-				td.ScanArgs(t, "filename", &filename)
-				td.MaybeScanArgs(t, "verbose", &verbose)
-				f, err := opts.FS.Open(filename)
-				if err != nil {
-					return err.Error()
-				}
-				readable, err := sstable.NewSimpleReadable(f)
-				if err != nil {
-					return err.Error()
-				}
-				r, err := sstable.NewReader(context.Background(), readable, opts.MakeReaderOptions())
-				if err != nil {
-					return err.Error()
-				}
-				defer r.Close()
-				l, err := r.Layout()
-				if err != nil {
-					return err.Error()
-				}
-				return l.Describe(verbose, r, nil)
+				return runLayoutCmd(t, td, d)
 			case "lsm":
 				return runLSMCmd(td, d)
 			case "metrics":
