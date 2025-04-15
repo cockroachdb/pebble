@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,10 +16,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/strparse"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
@@ -328,4 +333,137 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.Equal(t, base.SeqNum(11), lastSeqNum)
 	// logSeqNum is always one greater than the last assigned sequence number.
 	require.Equal(t, d.mu.versions.logSeqNum.Load(), lastSeqNum+1)
+}
+
+// TestLargeKeys is a datadriven test that exercises large keys with shared
+// prefixes. These keys can be problematic, in part because they cannot be
+// shortened by an index separator.
+//
+// See #4518.
+func TestLargeKeys(t *testing.T) {
+	var largeKeyComparer = func() base.Comparer {
+		c := *testkeys.Comparer
+		c.FormatKey = func(key []byte) fmt.Formatter {
+			return formatAbbreviatedKey(key)
+		}
+		return c
+	}()
+
+	opts := &Options{
+		Comparer:                    &largeKeyComparer,
+		FormatMajorVersion:          internalFormatNewest,
+		FS:                          vfs.NewMem(),
+		Logger:                      testLogger{t: t},
+		MemTableStopWritesThreshold: 4,
+		DisableTableStats:           true,
+	}
+	var d *DB
+	defer func() { require.NoError(t, d.Close()) }()
+	datadriven.RunTest(t, "testdata/large_keys", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			var err error
+			d, err = runDBDefineCmd(td, opts)
+			require.NoError(t, err)
+			return runLSMCmd(td, d)
+		case "batch-commit":
+			b := d.NewBatch()
+			for _, line := range crstrings.Lines(td.Input) {
+				op, rest := splitAt(line, " ")
+				switch op {
+				case "set":
+					k := parseLargeKey(rest)
+					require.NoError(t, b.Set(k, []byte("value"), nil))
+				case "delete":
+					k := parseLargeKey(rest)
+					require.NoError(t, b.Delete(k, nil))
+				case "del-range":
+					var firstKey string
+					firstKey, rest = splitAt(rest, " ")
+					start := parseLargeKey(firstKey)
+					end := parseLargeKey(rest)
+					require.NoError(t, b.DeleteRange(start, end, nil))
+				default:
+					panic(fmt.Sprintf("unknown op: %s", op))
+				}
+			}
+			require.NoError(t, b.Commit(Sync))
+			return ""
+		case "flush":
+			require.NoError(t, d.Flush())
+			return runLSMCmd(td, d)
+		case "layout":
+			return runLayoutCmd(t, td, d)
+		case "properties":
+			return runSSTablePropertiesCmd(t, td, d)
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+// formatAbbreviatedKey formats a key using the test key formatter, and then
+// abbreviates sequences of repeated bytes.
+type formatAbbreviatedKey []byte
+
+// Format implements the fmt.Formatter interface.
+func (p formatAbbreviatedKey) Format(s fmt.State, c rune) {
+	formattedStr := fmt.Sprint(testkeys.Comparer.FormatKey(p))
+	s.Write(abbreviateLargeKey(unsafe.Slice(unsafe.StringData(formattedStr), len(formattedStr))))
+}
+
+// parseLargeKey parses a key from a string, allowing for repetition of
+// a byte. Examples:
+//
+// (a,10) -> aaaaaaaaaa
+// f(o,5)bar -> fooooobar
+func parseLargeKey(s string) []byte {
+	var buf bytes.Buffer
+	p := strparse.MakeParser("(,)", s)
+	for !p.Done() {
+		t := p.Next()
+		if t != "(" {
+			buf.WriteString(t)
+			continue
+		}
+		repeat := p.Next()
+		p.Expect(",")
+		count := p.Int()
+		p.Expect(")")
+		for i := 0; i < count; i++ {
+			buf.WriteString(repeat)
+		}
+	}
+	return buf.Bytes()
+}
+
+// abbreviateLargeKey abbreviates a large key by replacing repeated bytes with
+// a tuple of the byte and the count. Examples:
+//
+// aaaaaaaaaa -> (a,10)
+// fooooobar -> f(o,5)bar
+func abbreviateLargeKey(k []byte) []byte {
+	var buf bytes.Buffer
+	var duplicateCount int
+	for i, b := range k {
+		if i+1 < len(k) && k[i+1] == b {
+			duplicateCount++
+		} else {
+			if duplicateCount > 0 {
+				buf.WriteString(fmt.Sprintf("(%s,%d)", string(b), duplicateCount+1))
+			} else {
+				buf.WriteByte(b)
+			}
+			duplicateCount = 0
+		}
+	}
+	return buf.Bytes()
+}
+
+func splitAt(s string, chars string) (string, string) {
+	i := strings.IndexAny(s, chars)
+	if i == -1 {
+		return s, ""
+	}
+	return s[:i], s[i+1:]
 }
