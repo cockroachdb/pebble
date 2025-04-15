@@ -1346,6 +1346,29 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	return buf.String()
 }
 
+func runLayoutCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
+	var filename string
+	td.ScanArgs(t, "filename", &filename)
+	f, err := d.opts.FS.Open(filename)
+	if err != nil {
+		return err.Error()
+	}
+	readable, err := sstable.NewSimpleReadable(f)
+	if err != nil {
+		return err.Error()
+	}
+	r, err := sstable.NewReader(context.Background(), readable, d.opts.MakeReaderOptions())
+	if err != nil {
+		return err.Error()
+	}
+	defer r.Close()
+	l, err := r.Layout()
+	if err != nil {
+		return err.Error()
+	}
+	return l.Describe(td.HasArg("verbose"), r, nil)
+}
+
 func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 	var maxKeyLength, valLength int
 	var timestamps []int
