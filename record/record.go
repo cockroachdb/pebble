@@ -148,13 +148,26 @@ var (
 	// header, length, or checksum. This usually occurs when a log is recycled,
 	// but can also occur due to corruption.
 	ErrInvalidChunk = base.CorruptionErrorf("pebble/record: invalid chunk")
+
+	// ErrUnexpectedEOF is returned if a log file ends unexpectedly. It
+	// indicates the unexpected end of the log file or an in-progress record
+	// envelope itself.
+	//
+	// This error is defined separately from io.ErrUnexpectedEOF to disambiguate
+	// this case from the case of an unexpected end of the record's payload
+	// while decoding at a higher-level (eg, version edit decoding). If a
+	// higher-level decoding routine returns record.ErrUnexpectedEOF, it
+	// unambiguously indicates that the log file itself ended unexpectedly. The
+	// record.Reader will never return io.ErrUnexpectedEOF, just
+	// record.ErrUnexpectedEOF.
+	ErrUnexpectedEOF = errors.New("pebble/record: unexpected EOF")
 )
 
 // IsInvalidRecord returns true if the error matches one of the error types
 // returned for invalid records. These are treated in a way similar to io.EOF
 // in recovery code.
 func IsInvalidRecord(err error) bool {
-	return err == ErrZeroedChunk || err == ErrInvalidChunk || err == io.ErrUnexpectedEOF
+	return err == ErrZeroedChunk || err == ErrInvalidChunk || err == ErrUnexpectedEOF
 }
 
 // Reader reads records from an underlying io.Reader.
@@ -283,7 +296,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		n, err := io.ReadFull(r.r, r.buf[:])
 		if err != nil && err != io.ErrUnexpectedEOF {
 			if err == io.EOF && !wantFirst {
-				return io.ErrUnexpectedEOF
+				return ErrUnexpectedEOF
 			}
 			return err
 		}
