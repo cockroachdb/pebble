@@ -556,7 +556,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			return base.CorruptionErrorf("column families are not supported")
 
 		default:
-			return errCorruptManifest
+			return base.CorruptionErrorf("MANIFEST: unknown tag: %d", tag)
 		}
 	}
 	return nil
@@ -865,7 +865,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 		return 0, err
 	}
 	if u >= NumLevels {
-		return 0, errCorruptManifest
+		return 0, base.CorruptionErrorf("pebble: corrupt manifest: level %d >= %d", u, NumLevels)
 	}
 	return int(u), nil
 }
