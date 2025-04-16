@@ -91,8 +91,8 @@ type SharedSSTMeta struct {
 
 func (s *SharedSSTMeta) cloneFromFileMeta(f *tableMetadata) {
 	*s = SharedSSTMeta{
-		Smallest:         f.Smallest.Clone(),
-		Largest:          f.Largest.Clone(),
+		Smallest:         f.Smallest().Clone(),
+		Largest:          f.Largest().Clone(),
 		SmallestRangeKey: f.SmallestRangeKey.Clone(),
 		LargestRangeKey:  f.LargestRangeKey.Clone(),
 		SmallestPointKey: f.SmallestPointKey.Clone(),
@@ -474,21 +474,21 @@ func (d *DB) truncateExternalFile(
 		SyntheticSuffix: slices.Clone(file.SyntheticPrefixAndSuffix.Suffix()),
 	}
 
-	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
+	needsLowerTruncate := cmp(lower, file.Smallest().UserKey) > 0
 	if needsLowerTruncate {
 		sst.StartKey = slices.Clone(lower)
 	} else {
-		sst.StartKey = slices.Clone(file.Smallest.UserKey)
+		sst.StartKey = slices.Clone(file.Smallest().UserKey)
 	}
 
-	cmpUpper := cmp(upper, file.Largest.UserKey)
+	cmpUpper := cmp(upper, file.Largest().UserKey)
 	needsUpperTruncate := cmpUpper < 0
 	if needsUpperTruncate {
 		sst.EndKey = slices.Clone(upper)
 		sst.EndKeyIsInclusive = false
 	} else {
-		sst.EndKey = slices.Clone(file.Largest.UserKey)
-		sst.EndKeyIsInclusive = !file.Largest.IsExclusiveSentinel()
+		sst.EndKey = slices.Clone(file.Largest().UserKey)
+		sst.EndKeyIsInclusive = !file.Largest().IsExclusiveSentinel()
 	}
 
 	if cmp(sst.StartKey, sst.EndKey) > 0 {
@@ -525,8 +525,8 @@ func (d *DB) truncateSharedFile(
 	if err != nil {
 		return nil, false, err
 	}
-	needsLowerTruncate := cmp(lower, file.Smallest.UserKey) > 0
-	needsUpperTruncate := cmp(upper, file.Largest.UserKey) < 0 || (cmp(upper, file.Largest.UserKey) == 0 && !file.Largest.IsExclusiveSentinel())
+	needsLowerTruncate := cmp(lower, file.Smallest().UserKey) > 0
+	needsUpperTruncate := cmp(upper, file.Largest().UserKey) < 0 || (cmp(upper, file.Largest().UserKey) == 0 && !file.Largest().IsExclusiveSentinel())
 	// Fast path: file is entirely within [lower, upper).
 	if !needsLowerTruncate && !needsUpperTruncate {
 		return sst, false, nil
@@ -702,8 +702,8 @@ func scanInternalImpl(
 		firstLevelWithRemote := opts.skipLevelForOpts()
 		for level := firstLevelWithRemote; level < numLevels; level++ {
 			files := current.Levels[level].Iter()
-			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
-				if cmp(lower, f.Largest.UserKey) == 0 && f.Largest.IsExclusiveSentinel() {
+			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest().UserKey, upper) < 0; f = files.Next() {
+				if cmp(lower, f.Largest().UserKey) == 0 && f.Largest().IsExclusiveSentinel() {
 					continue
 				}
 

@@ -601,9 +601,9 @@ func (d *DB) estimateReclaimedSizeBeneath(
 			default:
 				panic(fmt.Sprintf("pebble: unknown hint type %s", hintType))
 			}
-			startCmp := d.cmp(start, file.Smallest.UserKey)
-			endCmp := d.cmp(file.Largest.UserKey, end)
-			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
+			startCmp := d.cmp(start, file.Smallest().UserKey)
+			endCmp := d.cmp(file.Largest().UserKey, end)
+			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest().IsExclusiveSentinel()) {
 				// The range fully contains the file, so skip looking it up in table
 				// cache/looking at its indexes and add the full file size.
 				if updateEstimates {
@@ -612,7 +612,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				if updateHints && hintSeqNum > file.SmallestSeqNum {
 					hintSeqNum = file.SmallestSeqNum
 				}
-			} else if d.cmp(file.Smallest.UserKey, end) <= 0 && d.cmp(start, file.Largest.UserKey) <= 0 {
+			} else if d.cmp(file.Smallest().UserKey, end) <= 0 && d.cmp(start, file.Largest().UserKey) <= 0 {
 				// Partial overlap.
 				if hintType == deleteCompactionHintTypeRangeKeyOnly {
 					// If the hint that generated this overlap contains only range keys,

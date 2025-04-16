@@ -683,10 +683,10 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 	if n := len(ve.NewTables); n > 1 {
 		meta := ve.NewTables[n-1].Meta
 		prevMeta := ve.NewTables[n-2].Meta
-		if !prevMeta.Largest.IsExclusiveSentinel() &&
-			c.cmp(prevMeta.Largest.UserKey, meta.Smallest.UserKey) >= 0 {
+		if !prevMeta.Largest().IsExclusiveSentinel() &&
+			c.cmp(prevMeta.Largest().UserKey, meta.Smallest().UserKey) >= 0 {
 			return errors.Errorf("pebble: compaction split user key across two sstables: %s in %s and %s",
-				prevMeta.Largest.Pretty(c.formatKey),
+				prevMeta.Largest().Pretty(c.formatKey),
 				prevMeta.FileNum,
 				meta.FileNum)
 		}
@@ -1000,7 +1000,7 @@ func (c *compaction) String() string {
 		i := level - c.startLevel.level
 		fmt.Fprintf(&buf, "%d:", level)
 		for f := range c.inputs[i].files.All() {
-			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest, f.Largest)
+			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest(), f.Largest())
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -1319,8 +1319,8 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 
 		// This file fits perfectly within the excise span, so we can slot it at L6.
 		if ingestFlushable.exciseSpan.Valid() &&
-			ingestFlushable.exciseSpan.Contains(d.cmp, file.Smallest) &&
-			ingestFlushable.exciseSpan.Contains(d.cmp, file.Largest) {
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.Smallest()) &&
+			ingestFlushable.exciseSpan.Contains(d.cmp, file.Largest()) {
 			level = 6
 		} else {
 			// TODO(radu): this can perform I/O; we should not do this while holding DB.mu.
@@ -2146,7 +2146,7 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 	default:
 		panic(fmt.Sprintf("pebble: unknown delete compaction hint type: %d", h.hintType))
 	}
-	if cmp(h.start, m.Smallest.UserKey) <= 0 &&
+	if cmp(h.start, m.Smallest().UserKey) <= 0 &&
 		base.UserKeyExclusive(h.end).CompareUpperBounds(cmp, m.UserKeyBounds().End) >= 0 {
 		return hintDeletesFile
 	}
@@ -2157,7 +2157,7 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 	}
 	// Check for any overlap. In cases of partial overlap, we can excise the part of the file
 	// that overlaps with the deletion hint.
-	if cmp(h.end, m.Smallest.UserKey) > 0 &&
+	if cmp(h.end, m.Smallest().UserKey) > 0 &&
 		(m.UserKeyBounds().End.CompareUpperBounds(cmp, base.UserKeyInclusive(h.start)) >= 0) {
 		return hintExcisesFile
 	}
@@ -2260,7 +2260,7 @@ func checkDeleteCompactionHints(
 					// leaves a fragment of the file on the left, decrement
 					// the counter once. If the hint leaves a fragment of the
 					// file on the right, decrement the counter once.
-					if cmp(h.start, m.Smallest.UserKey) > 0 {
+					if cmp(h.start, m.Smallest().UserKey) > 0 {
 						filesDeletedByCurrentHint--
 					}
 					if m.UserKeyBounds().End.IsUpperBoundFor(cmp, h.end) {
@@ -2660,7 +2660,7 @@ func (d *DB) runCopyCompaction(
 		}
 		deleteOnExit = true
 
-		start, end := newMeta.Smallest, newMeta.Largest
+		start, end := newMeta.Smallest(), newMeta.Largest()
 		if newMeta.SyntheticPrefixAndSuffix.HasPrefix() {
 			syntheticPrefix := newMeta.SyntheticPrefixAndSuffix.Prefix()
 			start.UserKey = syntheticPrefix.Invert(start.UserKey)
@@ -2797,7 +2797,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 		// it maps to a virtual file that replaces f, or nil if f got removed
 		// in its entirety.
 		curFile := f
-		for curFragment < len(fragments) && d.cmp(fragments[curFragment].start, f.Smallest.UserKey) <= 0 {
+		for curFragment < len(fragments) && d.cmp(fragments[curFragment].start, f.Smallest().UserKey) <= 0 {
 			curFragment++
 		}
 		if curFragment > 0 {
@@ -3284,7 +3284,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 
 	// Sanity check that the tables are ordered and don't overlap.
 	for i := 1; i < len(ve.NewTables); i++ {
-		if ve.NewTables[i-1].Meta.UserKeyBounds().End.IsUpperBoundFor(c.cmp, ve.NewTables[i].Meta.Smallest.UserKey) {
+		if ve.NewTables[i-1].Meta.UserKeyBounds().End.IsUpperBoundFor(c.cmp, ve.NewTables[i].Meta.Smallest().UserKey) {
 			return nil, base.AssertionFailedf("pebble: compaction output tables overlap: %s and %s",
 				ve.NewTables[i-1].Meta.DebugString(c.formatKey, true),
 				ve.NewTables[i].Meta.DebugString(c.formatKey, true),
@@ -3399,11 +3399,11 @@ func validateVersionEdit(
 
 	// Validate both new and deleted files.
 	for _, f := range ve.NewTables {
-		validateKey(f.Meta, f.Meta.Smallest.UserKey)
-		validateKey(f.Meta, f.Meta.Largest.UserKey)
+		validateKey(f.Meta, f.Meta.Smallest().UserKey)
+		validateKey(f.Meta, f.Meta.Largest().UserKey)
 	}
 	for _, m := range ve.DeletedTables {
-		validateKey(m, m.Smallest.UserKey)
-		validateKey(m, m.Largest.UserKey)
+		validateKey(m, m.Smallest().UserKey)
+		validateKey(m, m.Largest().UserKey)
 	}
 }

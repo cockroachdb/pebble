@@ -151,7 +151,9 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s", r.filename)
 			if m := f.tableMeta[r.fileNum]; m != nil {
 				fmt.Fprintf(stdout, " ")
-				formatKeyRange(stdout, f.fmtKey, &m.Smallest, &m.Largest)
+				smallest := m.Smallest()
+				largest := m.Largest()
+				formatKeyRange(stdout, f.fmtKey, &smallest, &largest)
 			}
 			fmt.Fprintf(stdout, "\n")
 			if p := f.tableProvenance(r.fileNum); p != "" {

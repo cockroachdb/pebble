@@ -87,7 +87,7 @@ func (d *DB) exciseTable(
 		return nil, nil, base.AssertionFailedf("excise span does not overlap table")
 	}
 	// Fast path: m sits entirely within the exciseSpan, so just delete it.
-	if exciseBounds.ContainsInternalKey(d.cmp, m.Smallest) && exciseBounds.ContainsInternalKey(d.cmp, m.Largest) {
+	if exciseBounds.ContainsInternalKey(d.cmp, m.Smallest()) && exciseBounds.ContainsInternalKey(d.cmp, m.Largest()) {
 		return nil, nil, nil
 	}
 
@@ -137,7 +137,7 @@ func (d *DB) exciseTable(
 	// files, then grab the lock again and recalculate for just the files that
 	// have changed since our previous calculation. Do this optimiaztino as part of
 	// https://github.com/cockroachdb/pebble/issues/2112 .
-	if d.cmp(m.Smallest.UserKey, exciseBounds.Start) < 0 {
+	if d.cmp(m.Smallest().UserKey, exciseBounds.Start) < 0 {
 		leftTable = &tableMetadata{
 			Virtual: true,
 			FileNum: d.mu.versions.getNextFileNum(),
@@ -168,7 +168,7 @@ func (d *DB) exciseTable(
 		}
 	}
 	// Create a file to the right, if necessary.
-	if !exciseBounds.End.IsUpperBoundForInternalKey(d.cmp, m.Largest) {
+	if !exciseBounds.End.IsUpperBoundForInternalKey(d.cmp, m.Largest()) {
 		// Create a new file, rightFile, between [firstKeyAfter(exciseSpan.End), m.Largest].
 		//
 		// See comment before the definition of leftFile for the motivation behind
@@ -419,7 +419,7 @@ func determineRightTableBounds(
 func determineExcisedTableSize(
 	fc *fileCacheHandle, originalTable, excisedTable *tableMetadata,
 ) error {
-	size, err := fc.estimateSize(originalTable, excisedTable.Smallest.UserKey, excisedTable.Largest.UserKey)
+	size, err := fc.estimateSize(originalTable, excisedTable.Smallest().UserKey, excisedTable.Largest().UserKey)
 	if err != nil {
 		return err
 	}
