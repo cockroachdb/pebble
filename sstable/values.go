@@ -5,6 +5,10 @@
 package sstable
 
 import (
+	"context"
+	"fmt"
+	"io"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -16,9 +20,7 @@ import (
 // to panic if it ever encounters a value that references an external blob file.
 var AssertNoBlobHandles = TableBlobContext{
 	ValueFetcher: base.NoBlobFetches,
-	// Passing a nil BlobReferences will cause any attempt to construct an
-	// InternalValue from a blob handle to panic.
-	References: nil,
+	References:   nil,
 }
 
 // BlobReferences provides a mapping from an index to a file number for a
@@ -80,7 +82,7 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 	// BlobReferences providing the mapping of a reference index to a blob file
 	// number.
 	if i.blobContext.References == nil {
-		panic(errors.AssertionFailedf("blob references not configured"))
+		return base.MakeLazyValue(base.LazyValue{})
 	}
 
 	// The first byte of [handle] is the valuePrefix byte.
@@ -113,4 +115,64 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 		ValueOrHandle: remainder,
 		Fetcher:       &i.lazyFetcher,
 	})
+}
+
+// BlobRefMode specifies how blob references should be handled.
+type BlobRefMode int
+
+const (
+	// BlobRefModeNone specifies the AssertNoBlobHandles TableBlobContext.
+	BlobRefModeNone BlobRefMode = iota
+	// BlobRefModePrint specifies a TableBlobContext that allows printing the
+	// raw blob handle without reading from any blob files.
+	BlobRefModePrint
+)
+
+func ConvertToBlobRefMode(s string) BlobRefMode {
+	switch s {
+	case "print":
+		return BlobRefModePrint
+	default:
+		return BlobRefModeNone
+	}
+}
+
+// NewTableBlobContext creates a TableBlobContext based on the specified mode.
+func NewTableBlobContext(mode BlobRefMode, stdout io.Writer) TableBlobContext {
+	switch mode {
+	case BlobRefModePrint:
+		bh := &BlobHandle{stdout: stdout}
+		return TableBlobContext{
+			ValueFetcher: bh,
+			References:   nil,
+		}
+	default:
+		return AssertNoBlobHandles
+	}
+}
+
+// BlobHandle is a helper for printing blob handles in tests. We should only
+// use this in the case where we're not actually fetching the blob value; this
+// means that the TableBlobContext we pass this base.ValueFetcher into should
+// not have any corresponding BlobReferences.
+type BlobHandle struct {
+	stdout io.Writer
+}
+
+// Assert that BlobHandle implements the base.ValueFetcher interface.
+var _ base.ValueFetcher = (*BlobHandle)(nil)
+
+// Fetch returns the value corresponding to the given handle.
+func (bh *BlobHandle) Fetch(
+	_ context.Context, handleSuffix []byte, blobFileNum base.DiskFileNum, valLen uint32, _ []byte,
+) (val []byte, callerOwned bool, err error) {
+	decodedHandleSuffix := blob.DecodeHandleSuffix(handleSuffix)
+	decodedHandle := blob.Handle{
+		FileNum:       blobFileNum,
+		BlockNum:      decodedHandleSuffix.BlockNum,
+		OffsetInBlock: decodedHandleSuffix.OffsetInBlock,
+		ValueLen:      valLen,
+	}
+	fmt.Fprintf(bh.stdout, "%v", decodedHandle)
+	return []byte{}, false, nil
 }
