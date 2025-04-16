@@ -134,7 +134,7 @@ RawWriter.AddWithBlobHandle("e#9,SET", "(f0,blk0[4:9])", 5, false)
 
 estimated-sizes
 ----
-file: 0, references: 14
+file: 0, references: 5
 
 close-output
 ----

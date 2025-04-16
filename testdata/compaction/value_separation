@@ -1,0 +1,274 @@
+# Test a simple sequence of flushes and compactions where all values are
+# separated.
+
+define value-separation=(true, 0, 3)
+----
+
+batch
+set a 1
+set b 2
+----
+
+compact a-b
+----
+L6:
+  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:766 blobrefs:[(000006: 2); depth:1]
+Blob files:
+  000006: 48 physical bytes, 2 value bytes
+
+batch
+set c 3
+set d 4
+----
+
+compact c-d
+----
+L6:
+  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:766 blobrefs:[(000006: 2); depth:1]
+  000008:[c#12,SET-d#13,SET] seqnums:[12-13] points:[c#12,SET-d#13,SET] size:766 blobrefs:[(000009: 2); depth:1]
+Blob files:
+  000006: 48 physical bytes, 2 value bytes
+  000009: 48 physical bytes, 2 value bytes
+
+batch
+set b 5
+set c 6
+----
+
+compact a-d
+----
+L6:
+  000013:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:793 blobrefs:[(000006: 1), (000012: 2), (000009: 1); depth:2]
+Blob files:
+  000006: 48 physical bytes, 2 value bytes
+  000009: 48 physical bytes, 2 value bytes
+  000012: 48 physical bytes, 2 value bytes
+
+batch
+del-range a e
+----
+
+compact a-d
+----
+
+# Set up a scenario where there's a L6 sstable with a blob reference depth of 3,
+# and the value separation policy is configured to limit the blob reference
+# depth to 3.
+
+define verbose value-separation=(true, 3, 3)
+L6 blob-depth=3
+  a.SET.0:a
+  b.SET.0:blob{fileNum=100002 value=bar}
+  f.SET.0:blob{fileNum=100003 value=foo}
+  k.SET.0:k
+  z.SET.0:blob{fileNum=100004 value=zoo}
+----
+L6:
+  000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:795 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
+
+batch
+set d hello
+set e world
+----
+
+# Flush should write flushed values to a new blob file.
+
+flush
+----
+L0.0:
+  000006:[d#10,SET-e#11,SET] seqnums:[10-11] points:[d#10,SET-e#11,SET] size:765 blobrefs:[(000007: 10); depth:1]
+L6:
+  000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:795 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
+Blob files:
+  000007: 56 physical bytes, 10 value bytes
+  100002: 49 physical bytes, 3 value bytes
+  100003: 49 physical bytes, 3 value bytes
+  100004: 49 physical bytes, 3 value bytes
+
+# Compacting these two sstables should result in writing the values to a new
+# blob file and the removal of the no longer referenced blob files.
+
+compact a-z
+----
+L6:
+  000008:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:815 blobrefs:[(000009: 19); depth:1]
+Blob files:
+  000009: 65 physical bytes, 19 value bytes
+
+# Ensure we can read the separated values by iterating over the database.
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a: (a, .)
+b: (bar, .)
+d: (hello, .)
+e: (world, .)
+f: (foo, .)
+k: (k, .)
+z: (zoo, .)
+
+# Set the minimum size for a separated value to 5.
+
+define value-separation=(true, 5, 3)
+----
+
+batch
+set bar bar
+set foo foo
+set fuzz fuzz
+set yaya yaya
+----
+
+# The flush should not write a blob file because none of the keys have a
+# sufficiently long value to be separated.
+
+flush
+----
+L0.0:
+  000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:768
+
+batch
+set a a
+set b b
+set h hello
+set w world
+----
+
+# This flush *should* write a blob file, containing 2 values: "hello" and
+# "world" totalling 10 bytes of logical values.
+
+flush
+----
+L0.1:
+  000007:[a#14,SET-w#17,SET] seqnums:[14-17] points:[a#14,SET-w#17,SET] size:811 blobrefs:[(000008: 10); depth:1]
+L0.0:
+  000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:768
+Blob files:
+  000008: 56 physical bytes, 10 value bytes
+
+# Configure the database to require keys in the range [a,m) to be in-place.
+
+define required-in-place=(a,m) value-separation=(true,1,3)
+----
+
+batch
+set a apple
+set b banana
+set c coconut
+set d dragonfruit
+set m mango
+----
+
+# The flush should write a blob file, but only "mango" should be separated. This
+# should be reflected in the 5-byte value bytes of the blob file and the table's
+# blob reference value size.
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-m#14,SET] seqnums:[10-14] points:[a#10,SET-m#14,SET] size:820 blobrefs:[(000006: 5); depth:1]
+Blob files:
+  000006: 51 physical bytes, 5 value bytes
+
+
+define value-separation=(true,5,5) l0-compaction-threshold=1
+----
+
+# Test writing a non-trivial amount of data. With a key length of 4, we'll write
+# 475254 keys each with a 64-byte value, totalling ~30MB of value data.
+
+populate keylen=4 timestamps=(1) vallen=64
+----
+wrote 475254 keys
+
+# Flush the memtable. The resulting L0 sstables should be relatively small, but
+# when their sizes are summed with their corresponding blob files, the sum
+# should be around the target file size of 2MB.
+
+flush
+----
+L0.0:
+  000005:[a@1#10,SET-blof@1#26408,SET] seqnums:[10-26408] points:[a@1#10,SET-blof@1#26408,SET] size:402673 blobrefs:[(000006: 1689536); depth:1]
+  000007:[blog@1#26409,SET-cxcf@1#52799,SET] seqnums:[26409-52799] points:[blog@1#26409,SET-cxcf@1#52799,SET] size:405756 blobrefs:[(000008: 1689024); depth:1]
+  000009:[cxcg@1#52800,SET-einq@1#79120,SET] seqnums:[52800-79120] points:[cxcg@1#52800,SET-einq@1#79120,SET] size:410370 blobrefs:[(000010: 1684544); depth:1]
+  000011:[einr@1#79121,SET-fuau@1#105488,SET] seqnums:[79121-105488] points:[einr@1#79121,SET-fuau@1#105488,SET] size:407440 blobrefs:[(000012: 1687552); depth:1]
+  000013:[fuav@1#105489,SET-hfno@1#131846,SET] seqnums:[105489-131846] points:[fuav@1#105489,SET-hfno@1#131846,SET] size:408549 blobrefs:[(000014: 1686912); depth:1]
+  000015:[hfnp@1#131847,SET-iqzq@1#158184,SET] seqnums:[131847-158184] points:[hfnp@1#131847,SET-iqzq@1#158184,SET] size:408995 blobrefs:[(000016: 1685632); depth:1]
+  000017:[iqzr@1#158185,SET-kchm@1#184410,SET] seqnums:[158185-184410] points:[iqzr@1#158185,SET-kchm@1#184410,SET] size:414699 blobrefs:[(000018: 1678464); depth:1]
+  000019:[kchn@1#184411,SET-lnt@1#210733,SET] seqnums:[184411-210733] points:[kchn@1#184411,SET-lnt@1#210733,SET] size:409800 blobrefs:[(000020: 1684672); depth:1]
+  000021:[lnta@1#210734,SET-mzgo@1#237112,SET] seqnums:[210734-237112] points:[lnta@1#210734,SET-mzgo@1#237112,SET] size:407724 blobrefs:[(000022: 1688256); depth:1]
+  000023:[mzgp@1#237113,SET-okst@1#263454,SET] seqnums:[237113-263454] points:[mzgp@1#237113,SET-okst@1#263454,SET] size:408979 blobrefs:[(000024: 1685888); depth:1]
+  000025:[oksu@1#263455,SET-pwgo@1#289840,SET] seqnums:[263455-289840] points:[oksu@1#263455,SET-pwgo@1#289840,SET] size:403438 blobrefs:[(000026: 1688704); depth:1]
+  000027:[pwgp@1#289841,SET-rhth@1#316197,SET] seqnums:[289841-316197] points:[pwgp@1#289841,SET-rhth@1#316197,SET] size:408839 blobrefs:[(000028: 1686848); depth:1]
+  000029:[rhti@1#316198,SET-stec@1#342502,SET] seqnums:[316198-342502] points:[rhti@1#316198,SET-stec@1#342502,SET] size:411207 blobrefs:[(000030: 1683520); depth:1]
+  000031:[sted@1#342503,SET-uery@1#368888,SET] seqnums:[342503-368888] points:[sted@1#342503,SET-uery@1#368888,SET] size:406286 blobrefs:[(000032: 1688704); depth:1]
+  000033:[uerz@1#368889,SET-vqfq@1#395271,SET] seqnums:[368889-395271] points:[uerz@1#368889,SET-vqfq@1#395271,SET] size:406985 blobrefs:[(000034: 1688512); depth:1]
+  000035:[vqfr@1#395272,SET-xbqj@1#421574,SET] seqnums:[395272-421574] points:[vqfr@1#395272,SET-xbqj@1#421574,SET] size:410632 blobrefs:[(000036: 1683392); depth:1]
+  000037:[xbqk@1#421575,SET-ymzw@1#447842,SET] seqnums:[421575-447842] points:[xbqk@1#421575,SET-ymzw@1#447842,SET] size:412587 blobrefs:[(000038: 1681152); depth:1]
+  000039:[ymzx@1#447843,SET-zyni@1#474219,SET] seqnums:[447843-474219] points:[ymzx@1#447843,SET-zyni@1#474219,SET] size:407748 blobrefs:[(000040: 1688128); depth:1]
+  000041:[zynj@1#474220,SET-zzzz@1#475263,SET] seqnums:[474220-475263] points:[zynj@1#474220,SET-zzzz@1#475263,SET] size:16569 blobrefs:[(000042: 66816); depth:1]
+Blob files:
+  000006: 1694530 physical bytes, 1689536 value bytes
+  000008: 1694018 physical bytes, 1689024 value bytes
+  000010: 1689526 physical bytes, 1684544 value bytes
+  000012: 1692534 physical bytes, 1687552 value bytes
+  000014: 1691894 physical bytes, 1686912 value bytes
+  000016: 1690614 physical bytes, 1685632 value bytes
+  000018: 1683422 physical bytes, 1678464 value bytes
+  000020: 1689654 physical bytes, 1684672 value bytes
+  000022: 1693250 physical bytes, 1688256 value bytes
+  000024: 1690870 physical bytes, 1685888 value bytes
+  000026: 1693698 physical bytes, 1688704 value bytes
+  000028: 1691830 physical bytes, 1686848 value bytes
+  000030: 1688502 physical bytes, 1683520 value bytes
+  000032: 1693698 physical bytes, 1688704 value bytes
+  000034: 1693506 physical bytes, 1688512 value bytes
+  000036: 1688362 physical bytes, 1683392 value bytes
+  000038: 1686122 physical bytes, 1681152 value bytes
+  000040: 1693122 physical bytes, 1688128 value bytes
+  000042: 67041 physical bytes, 66816 value bytes
+
+# Schedule automatic compactions. These compactions should write data to L6. The
+# resulting sstables will reference multiple blob files but maintain a blob
+# reference depth of 1 because L6 has no referenced blob files and all the L0
+# input tables have a reference depth of 1.
+
+auto-compact
+----
+L6:
+  000044:[a@1#0,SET-czma@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-czma@1#0,SET] size:713597 blobrefs:[(000006: 1689536), (000008: 1689024), (000010: 106944); depth:1]
+  000045:[czmb@1#0,SET-fzac@1#0,SET] seqnums:[0-0] points:[czmb@1#0,SET-fzac@1#0,SET] size:710727 blobrefs:[(000010: 1577600), (000012: 1687552), (000014: 223808); depth:1]
+  000046:[fzad@1#0,SET-iyoz@1#0,SET] seqnums:[0-0] points:[fzad@1#0,SET-iyoz@1#0,SET] size:710124 blobrefs:[(000014: 1463104), (000016: 1685632), (000018: 341504); depth:1]
+  000047:[iyp@1#0,SET-lxxp@1#0,SET] seqnums:[0-0] points:[iyp@1#0,SET-lxxp@1#0,SET] size:718439 blobrefs:[(000018: 1336960), (000020: 1684672), (000022: 457856); depth:1]
+  000048:[lxxq@1#0,SET-oxlo@1#0,SET] seqnums:[0-0] points:[lxxq@1#0,SET-oxlo@1#0,SET] size:711593 blobrefs:[(000022: 1230400), (000024: 1685888), (000026: 572480); depth:1]
+  000049:[oxlp@1#0,SET-rwyj@1#0,SET] seqnums:[0-0] points:[oxlp@1#0,SET-rwyj@1#0,SET] size:713709 blobrefs:[(000026: 1116224), (000028: 1686848), (000030: 683648); depth:1]
+  000050:[rwyk@1#0,SET-uwic@1#0,SET] seqnums:[0-0] points:[rwyk@1#0,SET-uwic@1#0,SET] size:718480 blobrefs:[(000030: 999872), (000032: 1688704), (000034: 792896); depth:1]
+  000051:[uwid@1#0,SET-xvqq@1#0,SET] seqnums:[0-0] points:[uwid@1#0,SET-xvqq@1#0,SET] size:720205 blobrefs:[(000034: 895616), (000036: 1683392), (000038: 900288); depth:1]
+  000052:[xvqr@1#0,SET-zzzz@1#0,SET] seqnums:[0-0] points:[xvqr@1#0,SET-zzzz@1#0,SET] size:521418 blobrefs:[(000038: 780864), (000040: 1688128), (000042: 66816); depth:1]
+Blob files:
+  000006: 1694530 physical bytes, 1689536 value bytes
+  000008: 1694018 physical bytes, 1689024 value bytes
+  000010: 1689526 physical bytes, 1684544 value bytes
+  000012: 1692534 physical bytes, 1687552 value bytes
+  000014: 1691894 physical bytes, 1686912 value bytes
+  000016: 1690614 physical bytes, 1685632 value bytes
+  000018: 1683422 physical bytes, 1678464 value bytes
+  000020: 1689654 physical bytes, 1684672 value bytes
+  000022: 1693250 physical bytes, 1688256 value bytes
+  000024: 1690870 physical bytes, 1685888 value bytes
+  000026: 1693698 physical bytes, 1688704 value bytes
+  000028: 1691830 physical bytes, 1686848 value bytes
+  000030: 1688502 physical bytes, 1683520 value bytes
+  000032: 1693698 physical bytes, 1688704 value bytes
+  000034: 1693506 physical bytes, 1688512 value bytes
+  000036: 1688362 physical bytes, 1683392 value bytes
+  000038: 1686122 physical bytes, 1681152 value bytes
+  000040: 1693122 physical bytes, 1688128 value bytes
+  000042: 67041 physical bytes, 66816 value bytes

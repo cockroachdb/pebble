@@ -363,32 +363,33 @@ func (c *compaction) userKeyBounds() base.UserKeyBounds {
 	return base.UserKeyBoundsFromInternal(c.smallest, c.largest)
 }
 
+type getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
+
 func newCompaction(
 	pc *pickedCompaction,
 	opts *Options,
 	beganAt time.Time,
 	provider objstorage.Provider,
 	grantHandle CompactionGrantHandle,
+	getValueSeparation getValueSeparation,
 ) *compaction {
 	c := &compaction{
-		kind:      compactionKindDefault,
-		cmp:       pc.cmp,
-		equal:     opts.Comparer.Equal,
-		comparer:  opts.Comparer,
-		formatKey: opts.Comparer.FormatKey,
-		inputs:    pc.inputs,
-		smallest:  pc.smallest,
-		largest:   pc.largest,
-		logger:    opts.Logger,
-		version:   pc.version,
-		beganAt:   beganAt,
-		getValueSeparation: func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
-			return compact.NeverSeparateValues{}
-		},
-		maxOutputFileSize: pc.maxOutputFileSize,
-		maxOverlapBytes:   pc.maxOverlapBytes,
-		pickerMetrics:     pc.pickerMetrics,
-		grantHandle:       grantHandle,
+		kind:               compactionKindDefault,
+		cmp:                pc.cmp,
+		equal:              opts.Comparer.Equal,
+		comparer:           opts.Comparer,
+		formatKey:          opts.Comparer.FormatKey,
+		inputs:             pc.inputs,
+		smallest:           pc.smallest,
+		largest:            pc.largest,
+		logger:             opts.Logger,
+		version:            pc.version,
+		beganAt:            beganAt,
+		getValueSeparation: getValueSeparation,
+		maxOutputFileSize:  pc.maxOutputFileSize,
+		maxOverlapBytes:    pc.maxOverlapBytes,
+		pickerMetrics:      pc.pickerMetrics,
+		grantHandle:        grantHandle,
 	}
 	c.startLevel = &c.inputs[0]
 	if pc.startLevel.l0SublevelInfo != nil {
@@ -549,24 +550,23 @@ func newFlush(
 	baseLevel int,
 	flushing flushableList,
 	beganAt time.Time,
+	getValueSeparation getValueSeparation,
 ) (*compaction, error) {
 	c := &compaction{
-		kind:      compactionKindFlush,
-		cmp:       opts.Comparer.Compare,
-		equal:     opts.Comparer.Equal,
-		comparer:  opts.Comparer,
-		formatKey: opts.Comparer.FormatKey,
-		logger:    opts.Logger,
-		version:   cur,
-		beganAt:   beganAt,
-		inputs:    []compactionLevel{{level: -1}, {level: 0}},
-		getValueSeparation: func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
-			return compact.NeverSeparateValues{}
-		},
-		maxOutputFileSize: math.MaxUint64,
-		maxOverlapBytes:   math.MaxUint64,
-		flushing:          flushing,
-		grantHandle:       noopGrantHandle{},
+		kind:               compactionKindFlush,
+		cmp:                opts.Comparer.Compare,
+		equal:              opts.Comparer.Equal,
+		comparer:           opts.Comparer,
+		formatKey:          opts.Comparer.FormatKey,
+		logger:             opts.Logger,
+		version:            cur,
+		beganAt:            beganAt,
+		inputs:             []compactionLevel{{level: -1}, {level: 0}},
+		getValueSeparation: getValueSeparation,
+		maxOutputFileSize:  math.MaxUint64,
+		maxOverlapBytes:    math.MaxUint64,
+		flushing:           flushing,
+		grantHandle:        noopGrantHandle{},
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -1470,7 +1470,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
-		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow())
+		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow(), d.determineCompactionValueSeparation)
 	if err != nil {
 		return 0, err
 	}
@@ -1836,7 +1836,7 @@ func (d *DB) runPickedCompaction(pc *pickedCompaction, grantHandle CompactionGra
 	}
 
 	d.mu.compact.compactingCount++
-	compaction := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), grantHandle)
+	compaction := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), grantHandle, d.determineCompactionValueSeparation)
 	d.addInProgressCompaction(compaction)
 	go func() {
 		d.compact(compaction, doneChannel)
@@ -2405,10 +2405,21 @@ func (d *DB) handleCompactFailure(c *compaction, err error) {
 func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 	obsoleteFiles := manifest.ObsoleteFiles{
 		FileBackings: make([]*fileBacking, 0, len(ve.NewTables)),
+		BlobFiles:    make([]*manifest.BlobFileMetadata, 0, len(ve.NewBlobFiles)),
 	}
 	deletedFiles := make(map[base.FileNum]struct{})
 	for key := range ve.DeletedTables {
 		deletedFiles[key.FileNum] = struct{}{}
+	}
+	for i := range ve.NewBlobFiles {
+		obsoleteFiles.AddBlob(ve.NewBlobFiles[i])
+		d.mu.versions.zombieBlobs.Add(objectInfo{
+			fileInfo: fileInfo{
+				FileNum:  ve.NewBlobFiles[i].FileNum,
+				FileSize: ve.NewBlobFiles[i].Size,
+			},
+			isLocal: objstorage.IsLocalBlobFile(d.objProvider, ve.NewBlobFiles[i].FileNum),
+		})
 	}
 	for i := range ve.NewTables {
 		if ve.NewTables[i].Meta.Virtual {
@@ -2436,12 +2447,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 				FileNum:  of.DiskFileNum,
 				FileSize: of.Size,
 			},
-			// TODO(bilal): This is harmless if it's wrong, as it only causes
-			// incorrect accounting for the size of it in metrics. Currently
-			// all compactions only write to local files anyway except with
-			// disaggregated storage; if this becomes the norm, we should do
-			// an objprovider lookup here.
-			isLocal: true,
+			isLocal: objstorage.IsLocalTable(d.objProvider, of.DiskFileNum),
 		})
 	}
 	d.mu.versions.addObsoleteLocked(obsoleteFiles)
@@ -3030,9 +3036,10 @@ func (d *DB) runCompaction(
 		ve, result.Err = c.makeVersionEdit(result)
 	}
 	if result.Err != nil {
-		// Delete any created tables.
+		// Delete any created tables or blob files.
 		obsoleteFiles := manifest.ObsoleteFiles{
 			FileBackings: make([]*fileBacking, 0, len(result.Tables)),
+			BlobFiles:    make([]*manifest.BlobFileMetadata, 0, len(result.Blobs)),
 		}
 		d.mu.Lock()
 		for i := range result.Tables {
@@ -3045,6 +3052,13 @@ func (d *DB) runCompaction(
 			// asserts on whether every obsolete file was at one point
 			// marked zombie.
 			d.mu.versions.zombieTables.AddMetadata(&result.Tables[i].ObjMeta, backing.Size)
+		}
+		for i := range result.Blobs {
+			obsoleteFiles.AddBlob(result.Blobs[i].Metadata)
+			// Add this file to zombie blobs as well, as the versionSet
+			// asserts on whether every obsolete file was at one point
+			// marked zombie.
+			d.mu.versions.zombieBlobs.AddMetadata(&result.Blobs[i].ObjMeta, result.Blobs[i].Metadata.Size)
 		}
 		d.mu.versions.addObsoleteLocked(obsoleteFiles)
 		d.mu.Unlock()
@@ -3103,6 +3117,7 @@ func (d *DB) compactAndWrite(
 		readEnv:          sstable.ReadEnv{Block: blockReadEnv},
 		blobValueFetcher: &c.valueFetcher,
 	}
+	defer func() { _ = c.valueFetcher.Close() }()
 
 	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter, iiopts)
 	defer func() {
@@ -3304,10 +3319,6 @@ func (d *DB) newCompactionOutputTable(
 	tw := sstable.NewRawWriterWithCPUMeasurer(writable, writerOpts, c.grantHandle)
 	return objMeta, tw, nil
 }
-
-// Allow the newCompactionOutputBlob method to be unused for now.
-// TODO(jackson): Hook this up.
-var _ = (*DB).newCompactionOutputBlob
 
 // newCompactionOutputBlob creates an object for a new blob produced by a
 // compaction or flush.

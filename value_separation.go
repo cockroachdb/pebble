@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 	"time"
 
@@ -18,6 +19,120 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 )
+
+var neverSeparateValues getValueSeparation = func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
+	return compact.NeverSeparateValues{}
+}
+
+// determineCompactionValueSeparation determines whether a compaction should
+// separate values into blob files. It returns a compact.ValueSeparation
+// implementation that should be used for the compaction.
+func (d *DB) determineCompactionValueSeparation(
+	jobID JobID, c *compaction, tableFormat sstable.TableFormat,
+) compact.ValueSeparation {
+	if tableFormat < sstable.TableFormatPebblev6 || d.FormatMajorVersion() < formatValueSeparation ||
+		d.opts.Experimental.ValueSeparationPolicy == nil {
+		return compact.NeverSeparateValues{}
+	}
+	policy := d.opts.Experimental.ValueSeparationPolicy()
+	if !policy.Enabled {
+		return compact.NeverSeparateValues{}
+	}
+
+	// We're allowed to write blob references. Determine whether we should carry
+	// forward existing blob references, or write new ones.
+	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy); !writeBlobs {
+		// This compaction should preserve existing blob references.
+		return &preserveBlobReferences{
+			inputBlobMetadatas:       uniqueInputBlobMetadatas(c.inputs),
+			outputBlobReferenceDepth: outputBlobReferenceDepth,
+		}
+	}
+
+	// This compaction should write values to new blob files.
+	return &writeNewBlobFiles{
+		comparer: d.opts.Comparer,
+		newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+			return d.newCompactionOutputBlob(jobID, c)
+		},
+		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
+		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level),
+		minimumSize:        policy.MinimumSize,
+		// TODO(jackson): Don't propagate these bounds if they don't
+		// overlap with the compaction's bounds.
+		requiredInPlaceValueBound: d.opts.Experimental.RequiredInPlaceValueBound,
+	}
+}
+
+// shouldWriteBlobFiles returns true if the compaction should write new blob
+// files. It also returns the maximum blob reference depth to assign to output
+// sstables (the actual value may be lower iff the output table references fewer
+// distinct blob files).
+func shouldWriteBlobFiles(
+	c *compaction, policy ValueSeparationPolicy,
+) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
+	// Flushes will have no existing references to blob files and should their
+	// values to new blob files.
+	if c.kind == compactionKindFlush {
+		return true, 1
+	}
+	inputReferenceDepth := compactionBlobReferenceDepth(c.inputs)
+	if inputReferenceDepth == 0 {
+		// None of the input sstables reference blob files. This may be the case
+		// these sstables were created before value separation was enabled. We
+		// should try to write to new blob files.
+		return true, 1
+	}
+	// If the compaction's output blob reference depth would be greater than the
+	// configured max, we should rewrite the values into new blob files to
+	// restore locality.
+	if inputReferenceDepth > policy.MaxBlobReferenceDepth {
+		return true, 1
+	}
+	// Otherwise, we won't write any new blob files but will carry forward
+	// existing references.
+	return false, inputReferenceDepth
+}
+
+// compactionBlobReferenceDepth computes the blob reference depth for a
+// compaction. It's computed by finding the maximum blob reference depth of
+// input sstables in each level. These per-level depths are then summed to
+// produce a worst-case approximation of the blob reference locality of the
+// compaction's output sstables.
+//
+// The intuition is that as compactions combine files referencing distinct blob
+// files, outputted sstables begin to reference more and more distinct blob
+// files. In the worst case, these references are evenly distributed across the
+// keyspace and there is very little locality.
+func compactionBlobReferenceDepth(levels []compactionLevel) manifest.BlobReferenceDepth {
+	var depth manifest.BlobReferenceDepth
+	for _, level := range levels {
+		var levelDepth manifest.BlobReferenceDepth
+		for t := range level.files.All() {
+			levelDepth = max(levelDepth, t.BlobReferenceDepth)
+		}
+		depth += levelDepth
+	}
+	return depth
+}
+
+// uniqueInputBlobMetadatas returns a list of all unique blob file metadata
+// objects referenced by tables in levels.
+func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.BlobFileMetadata {
+	m := make(map[*manifest.BlobFileMetadata]struct{})
+	for _, level := range levels {
+		for t := range level.files.All() {
+			for _, ref := range t.BlobReferences {
+				m[ref.Metadata] = struct{}{}
+			}
+		}
+	}
+	metadatas := slices.Collect(maps.Keys(m))
+	slices.SortFunc(metadatas, func(a, b *manifest.BlobFileMetadata) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
+	})
+	return metadatas
+}
 
 // writeNewBlobFiles implements the strategy and mechanics for separating values
 // into external blob files.
@@ -301,6 +416,7 @@ func (vs *preserveBlobReferences) findInputBlobMetadata(fn base.DiskFileNum) (in
 func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadata, error) {
 	references := slices.Clone(vs.currReferences)
 	vs.currReferences = vs.currReferences[:0]
+	vs.totalValueSize = 0
 
 	referenceSize := uint64(0)
 	for _, ref := range references {

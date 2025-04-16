@@ -215,10 +215,17 @@ const (
 	// This format major version does not yet enable use of value separation.
 	FormatTableFormatV6
 
+	// formatValueSeparation enables the use of value separation, separating
+	// values into external blob files that do not participate in every
+	// compaction.
+	//
+	// TODO(jackson): Export this format major version once stable.
+	formatValueSeparation
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
-	FormatNewest FormatMajorVersion = iota - 1
+	FormatNewest FormatMajorVersion = FormatTableFormatV6
 
 	// Experimental versions, which are excluded by FormatNewest (but can be used
 	// in tests) can be defined here.
@@ -255,7 +262,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev4
 	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
-	case FormatTableFormatV6:
+	case FormatTableFormatV6, formatValueSeparation:
 		return sstable.TableFormatPebblev6
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -269,7 +276,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatTableFormatV6:
+		FormatTableFormatV6, formatValueSeparation:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -317,6 +324,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatTableFormatV6: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatTableFormatV6)
+	},
+	formatValueSeparation: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(formatValueSeparation)
 	},
 }
 
