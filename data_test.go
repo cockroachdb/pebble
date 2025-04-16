@@ -906,6 +906,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 
 	var mem *memTable
 	var start, end *base.InternalKey
+	var blobDepth manifest.BlobReferenceDepth
 	ve := &versionEdit{}
 	level := -1
 
@@ -919,7 +920,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			flushed:   make(chan struct{}),
 		}}
 		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
-			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now())
+			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now(), d.determineCompactionValueSeparation)
 		if err != nil {
 			return err
 		}
@@ -948,6 +949,9 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			if end != nil {
 				f.Meta.LargestPointKey = *end
 				f.Meta.Largest = *end
+			}
+			if blobDepth > 0 {
+				f.Meta.BlobReferenceDepth = blobDepth
 			}
 			if largestSeqNum <= f.Meta.LargestSeqNum {
 				largestSeqNum = f.Meta.LargestSeqNum + 1
@@ -1035,6 +1039,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				}
 				fields = fields[1:]
 				start, end = nil, nil
+				blobDepth = 0
 				boundFields := 0
 				for _, field := range fields {
 					toBreak := false
@@ -1046,6 +1051,13 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 					case strings.HasPrefix(field, "end="):
 						ikey := base.ParseInternalKey(strings.TrimPrefix(field, "end="))
 						end = &ikey
+						boundFields++
+					case strings.HasPrefix(field, "blob-depth="):
+						v, err := strconv.Atoi(strings.TrimPrefix(field, "blob-depth="))
+						if err != nil {
+							return nil, err
+						}
+						blobDepth = manifest.BlobReferenceDepth(v)
 						boundFields++
 					default:
 						toBreak = true
@@ -1486,12 +1498,25 @@ func runIngestExternalCmd(
 }
 
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
+	return describeLSM(d, td.HasArg("verbose"))
+}
+
+func describeLSM(d *DB, verbose bool) string {
+	var buf bytes.Buffer
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if td.HasArg("verbose") {
-		return d.mu.versions.currentVersion().DebugString()
+	if verbose {
+		buf.WriteString(d.mu.versions.currentVersion().DebugString())
+	} else {
+		buf.WriteString(d.mu.versions.currentVersion().String())
 	}
-	return d.mu.versions.currentVersion().String()
+	if blobFileMetas := d.mu.versions.blobFiles.Metadatas(); len(blobFileMetas) > 0 {
+		buf.WriteString("Blob files:\n")
+		for _, meta := range blobFileMetas {
+			fmt.Fprintf(&buf, "  %s: %d physical bytes, %d value bytes\n", meta.FileNum, meta.Size, meta.ValueSize)
+		}
+	}
+	return buf.String()
 }
 
 func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
@@ -1566,6 +1591,12 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				injs[i] = inj
 			}
 			opts.FS = errorfs.Wrap(opts.FS, errorfs.Any(injs...))
+		case "l0-compaction-threshold":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			opts.L0CompactionThreshold = v
 		case "lbase-max-bytes":
 			lbaseMaxBytes, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
 			if err != nil {
@@ -1587,6 +1618,15 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 		case "readonly":
 			opts.ReadOnly = true
+		case "required-in-place":
+			if len(cmdArg.Vals) != 2 {
+				return errors.New("required-in-place expects 2 arguments: <start-key> <end-key>")
+			}
+			start, end := cmdArg.Vals[0], cmdArg.Vals[1]
+			opts.Experimental.RequiredInPlaceValueBound = UserKeyPrefixBound{
+				Lower: []byte(start),
+				Upper: []byte(end),
+			}
 		case "target-file-sizes":
 			if len(opts.Levels) < len(cmdArg.Vals) {
 				opts.Levels = slices.Grow(opts.Levels, len(cmdArg.Vals)-len(opts.Levels))[0:len(cmdArg.Vals)]
@@ -1597,6 +1637,29 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 					return err
 				}
 				opts.Levels[i].TargetFileSize = size
+			}
+		case "value-separation":
+			if len(cmdArg.Vals) != 3 {
+				return errors.New("value-separation-policy expects 3 arguments: (enabled, minimum-size, max-blob-reference-depth)")
+			}
+			var policy ValueSeparationPolicy
+			var err error
+			policy.Enabled, err = strconv.ParseBool(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			policy.MinimumSize, err = strconv.Atoi(cmdArg.Vals[1])
+			if err != nil {
+				return err
+			}
+			var maxDepth int
+			maxDepth, err = strconv.Atoi(cmdArg.Vals[2])
+			if err != nil {
+				return err
+			}
+			policy.MaxBlobReferenceDepth = manifest.BlobReferenceDepth(maxDepth)
+			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+				return policy
 			}
 		case "wal-failover":
 			if v := cmdArg.Vals[0]; v == "off" || v == "disabled" {

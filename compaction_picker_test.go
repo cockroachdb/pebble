@@ -580,7 +580,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			var result strings.Builder
 			if pc != nil {
 				checkClone(t, pc)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
 				if !pc.outputLevel.files.Empty() {
@@ -809,7 +809,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			var result strings.Builder
 			fmt.Fprintf(&result, "picker.getCompactionConcurrency: %d\n", allowedCompactions)
 			if pc != nil {
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
 				if !pc.outputLevel.files.Empty() {

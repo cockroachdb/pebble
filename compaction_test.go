@@ -530,7 +530,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.picker = &tc.picker
 		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
-			c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
+			c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
 
 			gotStart := fileNums(c.startLevel.files)
 			gotML := ""
@@ -970,12 +970,7 @@ func TestCompaction(t *testing.T) {
 				if err := runCompactCmd(td, d); err != nil {
 					return err.Error()
 				}
-				d.mu.Lock()
-				s := d.mu.versions.currentVersion().String()
-				if verbose {
-					s = d.mu.versions.currentVersion().DebugString()
-				}
-				d.mu.Unlock()
+				s := describeLSM(d, verbose)
 				if td.HasArg("hide-file-num") {
 					re := regexp.MustCompile(`([0-9]*):\[`)
 					s = re.ReplaceAllString(s, "[")
@@ -1030,13 +1025,7 @@ func TestCompaction(t *testing.T) {
 				if err := d.Flush(); err != nil {
 					return err.Error()
 				}
-				d.mu.Lock()
-				s := d.mu.versions.currentVersion().String()
-				if verbose {
-					s = d.mu.versions.currentVersion().DebugString()
-				}
-				d.mu.Unlock()
-				return s
+				return describeLSM(d, verbose)
 
 			case "ingest":
 				if err := runIngestCmd(td, d, mem); err != nil {
@@ -1070,6 +1059,18 @@ func TestCompaction(t *testing.T) {
 				count := b.Count()
 				require.NoError(t, b.Commit(nil))
 				return fmt.Sprintf("wrote %d keys\n", count)
+
+			case "auto-compact":
+				d.mu.Lock()
+				prev := d.opts.DisableAutomaticCompactions
+				d.opts.DisableAutomaticCompactions = false
+				d.maybeScheduleCompaction()
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+				}
+				d.opts.DisableAutomaticCompactions = prev
+				d.mu.Unlock()
+				return describeLSM(d, verbose)
 
 			case "async-compact":
 				var s string
@@ -1225,7 +1226,12 @@ func TestCompaction(t *testing.T) {
 		},
 		"set_with_del_sstable_Pebblev6": {
 			minVersion: FormatTableFormatV6,
-			maxVersion: FormatTableFormatV6,
+			maxVersion: internalFormatNewest,
+		},
+		"value_separation": {
+			minVersion: formatValueSeparation,
+			maxVersion: formatValueSeparation,
+			verbose:    true,
 		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
@@ -1266,7 +1272,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, l0Organizer, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{})
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 

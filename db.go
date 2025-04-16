@@ -1755,7 +1755,7 @@ func (d *DB) Close() error {
 
 	// Since we called d.readState.val.unrefLocked() above, we are expected to
 	// manually schedule deletion of obsolete files.
-	if len(d.mu.versions.obsoleteTables) > 0 {
+	if len(d.mu.versions.obsoleteTables) > 0 || len(d.mu.versions.obsoleteBlobs) > 0 {
 		d.deleteObsoleteFiles(d.newJobIDLocked())
 	}
 
@@ -1775,10 +1775,13 @@ func (d *DB) Close() error {
 
 	d.mu.Lock()
 
-	// As a sanity check, ensure that there are no zombie tables. A non-zero count
-	// hints at a reference count leak.
+	// As a sanity check, ensure that there are no zombie tables or blob files.
+	// A non-zero count hints at a reference count leak.
 	if ztbls := d.mu.versions.zombieTables.Count(); ztbls > 0 {
 		err = firstError(err, errors.Errorf("non-zero zombie file count: %d", ztbls))
+	}
+	if zblobs := d.mu.versions.zombieBlobs.Count(); zblobs > 0 {
+		err = firstError(err, errors.Errorf("non-zero zombie blob count: %d", zblobs))
 	}
 
 	err = firstError(err, d.objProvider.Close())
