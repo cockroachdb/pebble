@@ -101,7 +101,7 @@ rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
-rocksdb.index.size: 33
+rocksdb.index.size: 28
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
@@ -239,6 +239,29 @@ sstable
  ├── meta-index  offset: 974  length: 46
  └── footer  offset: 1025  length: 57
 
+props
+----
+rocksdb.num.entries: 3
+rocksdb.raw.key.size: 27
+rocksdb.raw.value.size: 3
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 3
+rocksdb.compression: Snappy
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 237
+rocksdb.filter.size: 0
+rocksdb.index.partitions: 3
+rocksdb.index.size: 158
+rocksdb.block.based.table.index.type: 2
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.top-level.index.size: 48
+obsolete-key: hex:00
+
 # Exercise the non-Reader layout-decoding codepath.
 
 decode-layout
@@ -317,7 +340,7 @@ rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
-rocksdb.index.size: 33
+rocksdb.index.size: 28
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
