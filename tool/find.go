@@ -55,6 +55,7 @@ type findT struct {
 	fmtKey       keyFormatter
 	fmtValue     valueFormatter
 	verbose      bool
+	blobMode     string
 
 	// Map from file num to version edit index which references the file num.
 	editRefs map[base.DiskFileNum][]int
@@ -117,6 +118,8 @@ provenance of the sstables (flushed, ingested, compacted).
 		&f.fmtKey, "key", "key formatter")
 	f.Root.Flags().Var(
 		&f.fmtValue, "value", "value formatter")
+	f.Root.Flags().StringVar(
+		&f.blobMode, "blob-mode", "none", "blob value formatter")
 	return f
 }
 
@@ -467,10 +470,11 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				fragTransforms = m.FragmentIterTransforms()
 			}
 
-			// TODO(jackson): Adjust to support two modes: one that surfaces the
+			blobContext := sstable.NewTableBlobContext(sstable.ConvertToBlobRefMode(f.blobMode), stdout)
+			// TODO(annie): Adjust to support two modes: one that surfaces the
 			// raw blob value handles, and one that fetches the blob values from
 			// blob files uncovered by scanning the directory entries. See #4448.
-			iter, err := r.NewIter(transforms, nil, nil, sstable.AssertNoBlobHandles)
+			iter, err := r.NewIter(transforms, nil, nil, blobContext)
 			if err != nil {
 				return err
 			}
