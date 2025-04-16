@@ -134,7 +134,7 @@ sstable
  │    ├── 00547    rocksdb.raw.value.size (15)
  │    ├── restart points
  │    │    └── 00562 [restart 0]
- │    └── trailer [compression=none checksum=0xaaf4ac72]
+ │    └── trailer [compression=none checksum=0x78fa1429]
  ├── meta-index  offset: 775  length: 46
  │    ├── 0000    rocksdb.properties block:200/570
  │    │   

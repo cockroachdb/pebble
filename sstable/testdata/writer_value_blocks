@@ -669,7 +669,7 @@ sstable
  │    ├── 00578    rocksdb.top-level.index.size (24)
  │    ├── restart points
  │    │    └── 00602 [restart 0]
- │    └── trailer [compression=none checksum=0x307b671a]
+ │    └── trailer [compression=none checksum=0xc70b061b]
  ├── meta-index  offset: 1308  length: 64
  │    ├── 0000    pebble.value_index block:680/8 value-blocks-index-lengths: 1(num), 2(offset), 1(length) [restart]
  │    ├── 0027    rocksdb.properties block:693/610 [restart]
@@ -961,7 +961,7 @@ sstable
  │    ├── 00518    rocksdb.raw.value.size (14)
  │    ├── restart points
  │    │    └── 00532 [restart 0]
- │    └── trailer [compression=none checksum=0x62079e3b]
+ │    └── trailer [compression=none checksum=0x9b925786]
  ├── meta-index  offset: 691  length: 33
  │    ├── 0000    rocksdb.properties block:146/540 [restart]
  │    ├── restart points
@@ -1105,7 +1105,7 @@ sstable
  │    ├── 00518    rocksdb.raw.value.size (14)
  │    ├── restart points
  │    │    └── 00532 [restart 0]
- │    └── trailer [compression=none checksum=0x62079e3b]
+ │    └── trailer [compression=none checksum=0x9b925786]
  ├── meta-index  offset: 691  length: 46
  │    ├── 0000    rocksdb.properties block:146/540
  │    │   
