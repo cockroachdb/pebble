@@ -101,7 +101,7 @@ rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
-rocksdb.index.size: 33
+rocksdb.index.size: 28
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
@@ -317,7 +317,7 @@ rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
-rocksdb.index.size: 33
+rocksdb.index.size: 28
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
