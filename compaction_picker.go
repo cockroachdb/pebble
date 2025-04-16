@@ -475,10 +475,10 @@ func (pc *pickedCompaction) setupInputs(
 		if pc.outputLevel.files.Empty() {
 			baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
 			if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey); sm != nil {
-				smallestBaseKey = sm.Largest
+				smallestBaseKey = sm.Largest()
 			}
 			if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey); la != nil {
-				largestBaseKey = la.Smallest
+				largestBaseKey = la.Smallest()
 			}
 		} else {
 			// NB: We use Reslice to access the underlying level's files, but
@@ -486,10 +486,10 @@ func (pc *pickedCompaction) setupInputs(
 			// is not modified.
 			_ = pc.outputLevel.files.Reslice(func(start, end *manifest.LevelIterator) {
 				if sm := start.Prev(); sm != nil {
-					smallestBaseKey = sm.Largest
+					smallestBaseKey = sm.Largest()
 				}
 				if la := end.Next(); la != nil {
-					largestBaseKey = la.Smallest
+					largestBaseKey = la.Smallest()
 				}
 			})
 		}
@@ -1096,12 +1096,12 @@ func pickCompactionSeedFile(
 		}
 
 		// Trim any output-level files smaller than f.
-		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Largest, f.Smallest) < 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Largest(), f.Smallest()) < 0 {
 			outputFile = outputIter.Next()
 		}
 
 		skip := false
-		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest, f.Largest) <= 0 {
+		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest(), f.Largest()) <= 0 {
 			overlappingBytes += outputFile.Size
 			if outputFile.IsCompacting() {
 				// If one of the overlapping files is compacting, we're not going to be
@@ -1155,7 +1155,7 @@ func pickCompactionSeedFile(
 			// nothing in the second level and is cheap to compact, when in
 			// reality we'd need to expand the compaction to include all 5
 			// files.
-			if sstableKeyCompare(cmp, outputFile.Largest, f.Largest) > 0 {
+			if sstableKeyCompare(cmp, outputFile.Largest(), f.Largest()) > 0 {
 				break
 			}
 			outputFile = outputIter.Next()
@@ -2074,8 +2074,8 @@ func conflictsWithInProgress(
 				continue
 			}
 			iter := in.files.Iter()
-			smallest := iter.First().Smallest.UserKey
-			largest := iter.Last().Largest.UserKey
+			smallest := iter.First().Smallest().UserKey
+			largest := iter.Last().Largest().UserKey
 			if (in.level == manual.level || in.level == outputLevel) &&
 				isUserKeysOverlapping(manual.start, manual.end, smallest, largest, cmp) {
 				return true

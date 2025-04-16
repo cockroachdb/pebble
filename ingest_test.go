@@ -153,7 +153,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			var buf bytes.Buffer
 			for _, m := range lr.local {
-				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
+				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest(), m.Largest())
 				fmt.Fprintf(&buf, "  points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
 				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
 			}
@@ -309,7 +309,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 					return fmt.Sprintf("%v\n", err)
 				}
 				for i := range meta {
-					fmt.Fprintf(&buf, "%s: %v-%v\n", meta[i].path, meta[i].Smallest, meta[i].Largest)
+					fmt.Fprintf(&buf, "%s: %v-%v\n", meta[i].path, meta[i].Smallest(), meta[i].Largest())
 				}
 				return buf.String()
 
@@ -929,7 +929,7 @@ func testIngestSharedImpl(
 			exciseBounds := exciseSpan.UserKeyBounds()
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
-				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
+				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest().UserKey, exciseSpan.End) < 0; m = iter.Next() {
 					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, level, tightExciseBounds)
 					if err != nil {
 						d.mu.Lock()
@@ -1511,25 +1511,21 @@ func TestKeyRangeBasic(t *testing.T) {
 	require.True(t, k1.Contains(cmp, base.MakeInternalKey([]byte("bb"), 1, InternalKeyKindSet)))
 	require.True(t, k1.Contains(cmp, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("c"))))
 
-	m1 := &tableMetadata{
-		Smallest: base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
-		Largest:  base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
-	}
+	m1 := &tableMetadata{}
+	m1.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
+		base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet))
 	require.True(t, k1.Overlaps(cmp, m1))
-	m2 := &tableMetadata{
-		Smallest: base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
-		Largest:  base.MakeInternalKey([]byte("d"), 1, InternalKeyKindSet),
-	}
+	m2 := &tableMetadata{}
+	m2.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
+		base.MakeInternalKey([]byte("d"), 1, InternalKeyKindSet))
 	require.False(t, k1.Overlaps(cmp, m2))
-	m3 := &tableMetadata{
-		Smallest: base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
-		Largest:  base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("b")),
-	}
+	m3 := &tableMetadata{}
+	m3.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
+		base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("b")))
 	require.False(t, k1.Overlaps(cmp, m3))
-	m4 := &tableMetadata{
-		Smallest: base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
-		Largest:  base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
-	}
+	m4 := &tableMetadata{}
+	m4.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
+		base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet))
 	require.True(t, k1.Overlaps(cmp, m4))
 }
 
@@ -2661,7 +2657,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			var buf bytes.Buffer
 			for i, m := range metas {
 				fmt.Fprintf(&buf, "file %d:\n", i)
-				fmt.Fprintf(&buf, "  combined: %s-%s\n", m.Smallest, m.Largest)
+				fmt.Fprintf(&buf, "  combined: %s-%s\n", m.Smallest(), m.Largest())
 				fmt.Fprintf(&buf, "    points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
 				fmt.Fprintf(&buf, "    ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
 			}

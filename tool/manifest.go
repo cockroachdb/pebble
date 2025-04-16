@@ -113,7 +113,9 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 					}
 					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
-					formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
+					smallest := f.Smallest()
+					largest := f.Largest()
+					formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
 					if f.Virtual {
 						fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.FileBacking.DiskFileNum)
 					}
@@ -129,7 +131,9 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 			}
 			fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 			formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
-			formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
+			smallest := f.Smallest()
+			largest := f.Largest()
+			formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
 			if f.Virtual {
 				fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.FileBacking.DiskFileNum)
 			}
@@ -236,7 +240,9 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "  added:         L%d %s:%d",
 						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 					formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
-					formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
+					smallest := nf.Meta.Smallest()
+					largest := nf.Meta.Largest()
+					formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
 					if nf.Meta.CreationTime != 0 {
 						fmt.Fprintf(stdout, " (%s)",
 							time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
@@ -289,13 +295,13 @@ func anyOverlapFile(cmp base.Compare, f *manifest.TableMetadata, start, end key)
 		return true
 	}
 	if start != nil {
-		if v := cmp(f.Largest.UserKey, start); v < 0 {
+		if v := cmp(f.Largest().UserKey, start); v < 0 {
 			return false
-		} else if f.Largest.IsExclusiveSentinel() && v == 0 {
+		} else if f.Largest().IsExclusiveSentinel() && v == 0 {
 			return false
 		}
 	}
-	if end != nil && cmp(f.Smallest.UserKey, end) >= 0 {
+	if end != nil && cmp(f.Smallest().UserKey, end) >= 0 {
 		return false
 	}
 	return true
@@ -655,7 +661,9 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 						fmt.Fprintf(stdout, "  added: L%d %s:%d",
 							nf.Level, nf.Meta.FileNum, nf.Meta.Size)
 						formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
-						formatKeyRange(stdout, m.fmtKey, &nf.Meta.Smallest, &nf.Meta.Largest)
+						smallest := nf.Meta.Smallest()
+						largest := nf.Meta.Largest()
+						formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
 						fmt.Fprintf(stdout, "\n")
 					}
 					ok = false
