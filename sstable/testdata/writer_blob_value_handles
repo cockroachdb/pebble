@@ -132,7 +132,7 @@ sstable
  │    ├── 00589    rocksdb.property.collectors (41)
  │    ├── 00630    rocksdb.raw.key.size (21)
  │    ├── 00651    rocksdb.raw.value.size (24)
- │    └── trailer [compression=snappy checksum=0xf0c5768d]
+ │    └── trailer [compression=snappy checksum=0x277c72db]
  ├── meta-index  offset: 767  length: 46
  │    ├── 0000    rocksdb.properties block:200/562
  │    │   

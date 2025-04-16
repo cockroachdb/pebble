@@ -153,7 +153,7 @@ type Properties struct {
 	FilterSize uint64 `prop:"rocksdb.filter.size"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.
 	IndexPartitions uint64 `prop:"rocksdb.index.partitions"`
-	// The size of index block.
+	// The size (uncompressed) of index block.
 	IndexSize uint64 `prop:"rocksdb.index.size"`
 	// The index type. TODO(peter): add a more detailed description.
 	IndexType uint32 `prop:"rocksdb.block.based.table.index.type"`
@@ -190,7 +190,7 @@ type Properties struct {
 	// The cumulative bytes of values in this table that were pinned by
 	// open snapshots. This value is comparable to RawValueSize.
 	SnapshotPinnedValueSize uint64 `prop:"pebble.raw.snapshot-pinned-values.size"`
-	// Size of the top-level index if kTwoLevelIndexSearch is used.
+	// Size (uncompressed) of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties. Currently, we only use them to store block
 	// properties aggregated at the table level.
