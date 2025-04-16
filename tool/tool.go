@@ -195,3 +195,23 @@ func (t *T) ConfigureSharedStorage(
 	t.opts.Experimental.CreateOnShared = createOnShared
 	t.opts.Experimental.CreateOnSharedLocator = createOnSharedLocator
 }
+
+// BlobRefMode specifies how blob references should be handled.
+type BlobRefMode int
+
+const (
+	// BlobRefModeNone specifies the AssertNoBlobHandles TableBlobContext.
+	BlobRefModeNone BlobRefMode = iota
+	// BlobRefModePrint specifies a TableBlobContext that allows printing the
+	// raw blob handle without reading from any blob files.
+	BlobRefModePrint
+)
+
+func ConvertToBlobRefMode(s string) BlobRefMode {
+	switch s {
+	case "print":
+		return BlobRefModePrint
+	default:
+		return BlobRefModeNone
+	}
+}

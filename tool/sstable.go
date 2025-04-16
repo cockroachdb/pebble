@@ -50,6 +50,7 @@ type sstableT struct {
 	filter   key
 	count    int64
 	verbose  bool
+	blobMode string
 }
 
 func newSSTable(
@@ -121,6 +122,8 @@ inclusive-inclusive range specified by --start and --end.
 
 	s.Check.Flags().Var(
 		&s.fmtKey, "key", "key formatter")
+	s.Check.Flags().StringVar(
+		&s.blobMode, "blob-mode", "none", "blob value formatter")
 	s.Layout.Flags().Var(
 		&s.fmtKey, "key", "key formatter")
 	s.Layout.Flags().Var(
@@ -139,6 +142,8 @@ inclusive-inclusive range specified by --start and --end.
 		&s.filter, "filter", "only output records with matching prefix or overlapping range tombstones")
 	s.Scan.Flags().Int64Var(
 		&s.count, "count", 0, "key count for scan (0 is unlimited)")
+	s.Scan.Flags().StringVar(
+		&s.blobMode, "blob-mode", "none", "blob value formatter")
 
 	return s
 }
@@ -163,10 +168,17 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		// TODO(jackson): Adjust to support two modes: one that surfaces the raw
+		var blobContext sstable.TableBlobContext
+		switch ConvertToBlobRefMode(s.blobMode) {
+		case BlobRefModePrint:
+			blobContext = sstable.DebugHandlesBlobContext
+		default:
+			blobContext = sstable.AssertNoBlobHandles
+		}
+		// TODO(annie): Adjust to support two modes: one that surfaces the raw
 		// blob value handles, and one that fetches the blob values from blob
 		// files uncovered by scanning the directory entries. See #4448.
-		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
+		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, blobContext)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -334,10 +346,17 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			prefix = fmt.Sprintf("%s: ", path)
 		}
 
-		// TODO(jackson): Adjust to support two modes: one that surfaces the raw
+		var blobContext sstable.TableBlobContext
+		switch ConvertToBlobRefMode(s.blobMode) {
+		case BlobRefModePrint:
+			blobContext = sstable.DebugHandlesBlobContext
+		default:
+			blobContext = sstable.AssertNoBlobHandles
+		}
+		// TODO(annie): Adjust to support two modes: one that surfaces the raw
 		// blob value handles, and one that fetches the blob values from blob
 		// files uncovered by scanning the directory entries. See #4448.
-		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end, sstable.AssertNoBlobHandles)
+		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end, blobContext)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
 			return
