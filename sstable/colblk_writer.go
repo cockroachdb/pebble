@@ -796,7 +796,7 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 		if err != nil {
 			return rootIndex, err
 		}
-		w.props.IndexSize = rootIndex.Length + block.TrailerLen
+		w.props.IndexSize = uint64(len(w.indexBuffering.partitions[0].block))
 		w.props.NumDataBlocks = uint64(w.indexBuffering.partitions[0].nEntries)
 		w.props.IndexType = binarySearchIndex
 	default:
@@ -806,15 +806,17 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 			if err != nil {
 				return block.Handle{}, err
 			}
-			w.props.IndexSize += bh.Length + block.TrailerLen
-			w.props.NumDataBlocks += uint64(w.indexBuffering.partitions[0].nEntries)
+			w.props.IndexSize += uint64(len(part.block))
+			w.props.NumDataBlocks += uint64(part.nEntries)
 			w.topLevelIndexBlock.AddBlockHandle(part.sep.UserKey, bh, part.properties)
 		}
-		rootIndex, err = w.layout.WriteIndexBlock(w.topLevelIndexBlock.Finish(w.topLevelIndexBlock.Rows()))
+		topLevelIndex := w.topLevelIndexBlock.Finish(w.topLevelIndexBlock.Rows())
+		rootIndex, err = w.layout.WriteIndexBlock(topLevelIndex)
 		if err != nil {
 			return block.Handle{}, err
 		}
-		w.props.IndexSize += rootIndex.Length + block.TrailerLen
+		w.props.TopLevelIndexSize = uint64(len(topLevelIndex))
+		w.props.IndexSize += uint64(len(topLevelIndex))
 		w.props.IndexType = twoLevelIndex
 		w.props.IndexPartitions = uint64(len(w.indexBuffering.partitions))
 	}
