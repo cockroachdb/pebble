@@ -252,8 +252,8 @@ func (d *DB) newDownloadSpanTask(vers *version, sp DownloadSpan) (_ *downloadSpa
 		iter := ls.Iter()
 		if f := iter.SeekGE(d.cmp, sp.StartKey); f != nil &&
 			objstorage.IsExternalTable(d.objProvider, f.FileBacking.DiskFileNum) &&
-			d.cmp(f.Smallest.UserKey, bounds.Start) < 0 {
-			bounds.Start = f.Smallest.UserKey
+			d.cmp(f.GetSmallest().UserKey, bounds.Start) < 0 {
+			bounds.Start = f.GetSmallest().UserKey
 		}
 	}
 	startCursor := downloadCursor{
@@ -313,7 +313,7 @@ func (c downloadCursor) String() string {
 func makeCursorAtFile(f *tableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
-		key:    f.Smallest.UserKey,
+		key:    f.GetSmallest().UserKey,
 		seqNum: f.LargestSeqNum,
 	}
 }
@@ -323,7 +323,7 @@ func makeCursorAtFile(f *tableMetadata, level int) downloadCursor {
 func makeCursorAfterFile(f *tableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
-		key:    f.Smallest.UserKey,
+		key:    f.GetSmallest().UserKey,
 		seqNum: f.LargestSeqNum + 1,
 	}
 }
@@ -380,7 +380,7 @@ func (c downloadCursor) NextExternalFileOnLevel(
 				firstCursor = c
 			}
 			// Trim the end bound as an optimization.
-			endBound = base.UserKeyInclusive(f.Smallest.UserKey)
+			endBound = base.UserKeyInclusive(f.GetSmallest().UserKey)
 		}
 	}
 	return first
@@ -402,7 +402,7 @@ func firstExternalFileInLevelIter(
 	for f != nil && !cursor.FileIsAfterCursor(cmp, f, cursor.level) {
 		f = it.Next()
 	}
-	for ; f != nil && endBound.IsUpperBoundFor(cmp, f.Smallest.UserKey); f = it.Next() {
+	for ; f != nil && endBound.IsUpperBoundFor(cmp, f.GetSmallest().UserKey); f = it.Next() {
 		if f.Virtual && objstorage.IsExternalTable(objProvider, f.FileBacking.DiskFileNum) {
 			return f
 		}
@@ -532,7 +532,7 @@ func (d *DB) tryLaunchDownloadCompaction(
 
 		download.bookmarks = append(download.bookmarks, downloadBookmark{
 			start:    makeCursorAtFile(f, level),
-			endBound: base.UserKeyInclusive(f.Largest.UserKey),
+			endBound: base.UserKeyInclusive(f.GetLargest().UserKey),
 		})
 		doneCh, ok := d.tryLaunchDownloadForFile(vers, l0Organizer, env, download, level, f)
 		if ok {

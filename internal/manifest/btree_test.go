@@ -29,7 +29,7 @@ func newItem(k InternalKey) *TableMetadata {
 }
 
 func cmp(a, b *TableMetadata) int {
-	return cmpKey(a.Smallest, b.Smallest)
+	return cmpKey(a.GetSmallest(), b.GetSmallest())
 }
 
 func cmpKey(a, b InternalKey) int {
@@ -166,8 +166,8 @@ func checkIterRelative(t *testing.T, it *iterator, start, end int, keyMemo map[i
 	for ; it.valid(); it.next() {
 		item := it.cur()
 		expected := keyWithMemo(i, keyMemo)
-		if cmpKey(expected, item.Smallest) != 0 {
-			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
+		if cmpKey(expected, item.GetSmallest()) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, item.GetSmallest())
 		}
 		i++
 	}
@@ -182,8 +182,8 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 	for it.first(); it.valid(); it.next() {
 		item := it.cur()
 		expected := keyWithMemo(i, keyMemo)
-		if cmpKey(expected, item.Smallest) != 0 {
-			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
+		if cmpKey(expected, item.GetSmallest()) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, item.GetSmallest())
 		}
 		require.Equal(t, i-start, it.countLeft())
 		i++
@@ -196,8 +196,8 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 		i--
 		item := it.cur()
 		expected := keyWithMemo(i, keyMemo)
-		if cmpKey(expected, item.Smallest) != 0 {
-			t.Fatalf("expected %s, but found %s", expected, item.Smallest)
+		if cmpKey(expected, item.GetSmallest()) != 0 {
+			t.Fatalf("expected %s, but found %s", expected, item.GetSmallest())
 		}
 		require.Equal(t, i-start, it.countLeft())
 	}
@@ -379,8 +379,8 @@ func TestBTreeSeek(t *testing.T) {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
 		expected := key(2 * ((i + 1) / 2))
-		if cmpKey(expected, item.Smallest) != 0 {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
+		if cmpKey(expected, item.GetSmallest()) != 0 {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, item.GetSmallest())
 		}
 	}
 	it.SeekGE(base.DefaultComparer.Compare, key(2*count-1).UserKey)
@@ -394,8 +394,8 @@ func TestBTreeSeek(t *testing.T) {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
 		expected := key(2 * ((i - 1) / 2))
-		if cmpKey(expected, item.Smallest) != 0 {
-			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
+		if cmpKey(expected, item.GetSmallest()) != 0 {
+			t.Fatalf("%d: expected %s, but found %s", i, expected, item.GetSmallest())
 		}
 	}
 	it.SeekLT(base.DefaultComparer.Compare, key(0).UserKey)
@@ -844,8 +844,8 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 				if f == nil {
 					b.Fatal("expected to find key")
 				}
-				if cmpKey(k, f.Smallest) != 0 {
-					b.Fatalf("expected %s, but found %s", k, f.Smallest)
+				if cmpKey(k, f.GetSmallest()) != 0 {
+					b.Fatalf("expected %s, but found %s", k, f.GetSmallest())
 				}
 			}
 		}
@@ -885,8 +885,8 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 						b.Fatal("expected to find key")
 					}
 					k := keys[j-1]
-					if cmpKey(k, f.Smallest) != 0 {
-						b.Fatalf("expected %s, but found %s", k, f.Smallest)
+					if cmpKey(k, f.GetSmallest()) != 0 {
+						b.Fatalf("expected %s, but found %s", k, f.GetSmallest())
 					}
 				}
 			}

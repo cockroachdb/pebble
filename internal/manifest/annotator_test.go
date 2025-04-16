@@ -59,7 +59,7 @@ func TestPickFileAggregator(t *testing.T) {
 				return true, true
 			},
 			Compare: func(f1 *TableMetadata, f2 *TableMetadata) bool {
-				return base.DefaultComparer.Compare(f1.Smallest.UserKey, f2.Smallest.UserKey) < 0
+				return base.DefaultComparer.Compare(f1.GetSmallest().UserKey, f2.GetSmallest().UserKey) < 0
 			},
 		},
 	}

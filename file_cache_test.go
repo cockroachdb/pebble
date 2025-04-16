@@ -329,7 +329,6 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.mu.Lock()
 
 	// Virtualize the single sstable in the lsm.
-
 	currVersion := d.mu.versions.currentVersion()
 	l6 := currVersion.Levels[6]
 	l6FileIter := l6.Iter()
@@ -338,7 +337,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum.Add(2)
 
-	seqNumA := parentFile.Smallest.SeqNum()
+	seqNumA := parentFile.GetSmallest().SeqNum()
 	// See SeqNum comments above.
 	seqNumCEDel := seqNumA + 2
 	seqNumRangeSet := seqNumA + 4
@@ -352,13 +351,12 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestSeqNum:        parentFile.SmallestSeqNum,
 		LargestSeqNum:         parentFile.LargestSeqNum,
 		LargestSeqNumAbsolute: parentFile.LargestSeqNumAbsolute,
-		Smallest:              base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
-		Largest:               base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		SmallestPointKey:      base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		LargestPointKey:       base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		HasPointKeys:          true,
 		Virtual:               true,
 	}
+	v1.ExtendPointKeyBounds(DefaultComparer.Compare, v1.SmallestPointKey, v1.LargestPointKey)
 	v1.AttachVirtualBacking(parentFile.FileBacking)
 	v1.Stats.NumEntries = 1
 
@@ -369,8 +367,6 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestSeqNum:        parentFile.SmallestSeqNum,
 		LargestSeqNum:         parentFile.LargestSeqNum,
 		LargestSeqNumAbsolute: parentFile.LargestSeqNumAbsolute,
-		Smallest:              base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
-		Largest:               base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
 		SmallestPointKey:      base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
 		LargestPointKey:       base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
 		SmallestRangeKey:      base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
@@ -378,14 +374,15 @@ func TestVirtualReadsWiring(t *testing.T) {
 		HasPointKeys:          true,
 		Virtual:               true,
 	}
+	v2.ExtendPointKeyBounds(DefaultComparer.Compare, v2.SmallestPointKey, v2.LargestPointKey)
 	v2.AttachVirtualBacking(parentFile.FileBacking)
 	v2.Stats.NumEntries = 6
 
-	v1.LargestPointKey = v1.Largest
-	v1.SmallestPointKey = v1.Smallest
+	v1.LargestPointKey = v1.GetLargest()
+	v1.SmallestPointKey = v1.GetSmallest()
 
-	v2.LargestPointKey = v2.Largest
-	v2.SmallestPointKey = v2.Smallest
+	v2.LargestPointKey = v2.GetLargest()
+	v2.SmallestPointKey = v2.GetSmallest()
 
 	v1.ValidateVirtual(parentFile)
 	d.checkVirtualBounds(v1)

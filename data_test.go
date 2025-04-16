@@ -943,11 +943,11 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		for _, f := range newVE.NewTables {
 			if start != nil {
 				f.Meta.SmallestPointKey = *start
-				f.Meta.Smallest = *start
+				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *start, *start)
 			}
 			if end != nil {
 				f.Meta.LargestPointKey = *end
-				f.Meta.Largest = *end
+				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *end, *end)
 			}
 			if largestSeqNum <= f.Meta.LargestSeqNum {
 				largestSeqNum = f.Meta.LargestSeqNum + 1
@@ -995,8 +995,8 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		}
 		c := &compaction{
 			inputs:   []compactionLevel{{}, {level: outputLevel}},
-			smallest: m.Smallest,
-			largest:  m.Largest,
+			smallest: m.GetSmallest(),
+			largest:  m.GetLargest(),
 		}
 		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 		return c, nil

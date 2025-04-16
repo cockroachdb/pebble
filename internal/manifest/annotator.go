@@ -176,14 +176,14 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 	if !fullyWithinLowerBound {
 		// leftItem is the index of the first item that overlaps the lower bound.
 		leftItem = sort.Search(int(n.count), func(i int) bool {
-			return cmp(bounds.Start, n.items[i].Largest.UserKey) <= 0
+			return cmp(bounds.Start, n.items[i].GetLargest().UserKey) <= 0
 		})
 	}
 	if !fullyWithinUpperBound {
 		// rightItem is the index of the first item that does not overlap the
 		// upper bound.
 		rightItem = sort.Search(int(n.count), func(i int) bool {
-			return !bounds.End.IsUpperBoundFor(cmp, n.items[i].Smallest.UserKey)
+			return !bounds.End.IsUpperBoundFor(cmp, n.items[i].GetSmallest().UserKey)
 		})
 	}
 
@@ -208,12 +208,12 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 		leftChild, rightChild := leftItem, rightItem
 		// If the lower bound overlaps with the child at leftItem, there is no
 		// need to accumulate annotations from the child to its left.
-		if leftItem < int(n.count) && cmp(bounds.Start, n.items[leftItem].Smallest.UserKey) >= 0 {
+		if leftItem < int(n.count) && cmp(bounds.Start, n.items[leftItem].GetSmallest().UserKey) >= 0 {
 			leftChild++
 		}
 		// If the upper bound spans beyond the child at rightItem, we must also
 		// accumulate annotations from the child to its right.
-		if rightItem < int(n.count) && bounds.End.IsUpperBoundFor(cmp, n.items[rightItem].Largest.UserKey) {
+		if rightItem < int(n.count) && bounds.End.IsUpperBoundFor(cmp, n.items[rightItem].GetLargest().UserKey) {
 			rightChild++
 		}
 
@@ -312,13 +312,13 @@ func (a *Annotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBou
 	return dst
 }
 
-// InvalidateAnnotation clears any cached annotations defined by Annotator. A
-// pointer to the Annotator is used as the key for pre-calculated values, so
+// InvalidateLevelAnnotation clears any cached annotations defined by Annotator.
+// A pointer to the Annotator is used as the key for pre-calculated values, so
 // the same Annotator must be used to clear the appropriate cached annotation.
 // Calls to InvalidateLevelAnnotation are *not* concurrent-safe with any other
-// calls to Annotator methods for the same Annotator (concurrent calls from other
-// annotators are fine). Any calls to this function must have some externally-guaranteed
-// mutual exclusion.
+// calls to Annotator methods for the same Annotator (concurrent calls from
+// other annotators are fine). Any calls to this function must have some
+// externally-guaranteed mutual exclusion.
 func (a *Annotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
 	if lm.Empty() {
 		return

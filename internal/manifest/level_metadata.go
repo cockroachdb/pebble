@@ -388,7 +388,7 @@ func (ls LevelSlice) Overlaps(cmp Compare, bounds base.UserKeyBounds) LevelSlice
 	endIterFile := endIter.SeekGE(cmp, bounds.End.Key)
 	// The first file that ends at/after bounds.End.Key might or might not overlap
 	// the bounds; we need to check the start key.
-	if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.Smallest.UserKey) {
+	if endIterFile == nil || !bounds.End.IsUpperBoundFor(cmp, endIterFile.GetSmallest().UserKey) {
 		endIter.Prev()
 	}
 	return newBoundedLevelSlice(startIter.iter.clone(), &startIter.iter, &endIter.iter)
@@ -573,7 +573,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *TableMetadata {
 	}
 	i.assertNotL0Cmp()
 	m := i.seek(func(m *TableMetadata) bool {
-		return m.Largest.IsUpperBoundFor(cmp, userKey)
+		return m.GetLargest().IsUpperBoundFor(cmp, userKey)
 	})
 	if i.filter != KeyTypePointAndRange && m != nil {
 		b, ok := m.LargestBound(i.filter)
@@ -599,7 +599,7 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 	}
 	i.assertNotL0Cmp()
 	i.seek(func(m *TableMetadata) bool {
-		return cmp(m.Smallest.UserKey, userKey) >= 0
+		return cmp(m.GetSmallest().UserKey, userKey) >= 0
 	})
 	m := i.Prev()
 	// Although i.Prev() guarantees that the current file contains keys of the

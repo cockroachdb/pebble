@@ -315,8 +315,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					if c.inputs[0].level == 0 {
 						iter := c.inputs[0].files.Iter()
 						l0InProgress = append(l0InProgress, manifest.L0Compaction{
-							Smallest:  iter.First().Smallest,
-							Largest:   iter.Last().Largest,
+							Smallest:  iter.First().GetSmallest(),
+							Largest:   iter.Last().GetLargest(),
 							IsIntraL0: c.outputLevel == 0,
 						})
 					}
@@ -426,8 +426,8 @@ func TestCompactionPickerL0(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		)
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
+		m.SmallestSeqNum = m.GetSmallest().SeqNum()
+		m.LargestSeqNum = m.GetLargest().SeqNum()
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
@@ -517,11 +517,11 @@ func TestCompactionPickerL0(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", base.FileNum(fileNum))
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
-						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
-							info.largest = compactFile.Largest
+						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.GetLargest()) < 0 {
+							info.largest = compactFile.GetLargest()
 						}
-						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.Smallest) > 0 {
-							info.smallest = compactFile.Smallest
+						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.GetSmallest()) > 0 {
+							info.smallest = compactFile.GetSmallest()
 						}
 						first = false
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
@@ -658,9 +658,9 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				m.Size = uint64(v)
 			}
 		}
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		m.LargestSeqNumAbsolute = m.Largest.SeqNum()
+		m.SmallestSeqNum = m.GetSmallest().SeqNum()
+		m.LargestSeqNum = m.GetLargest().SeqNum()
+		m.LargestSeqNumAbsolute = m.GetLargest().SeqNum()
 		return m, nil
 	}
 
@@ -740,11 +740,11 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", base.FileNum(fileNum))
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
-						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
-							info.largest = compactFile.Largest
+						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.GetLargest()) < 0 {
+							info.largest = compactFile.GetLargest()
 						}
-						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.Smallest) > 0 {
-							info.smallest = compactFile.Smallest
+						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.GetSmallest()) > 0 {
+							info.smallest = compactFile.GetSmallest()
 						}
 						first = false
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
@@ -861,9 +861,9 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 				m.Size = uint64(v)
 			}
 		}
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		m.LargestSeqNumAbsolute = m.Largest.SeqNum()
+		m.SmallestSeqNum = m.GetSmallest().SeqNum()
+		m.LargestSeqNum = m.GetLargest().SeqNum()
+		m.LargestSeqNumAbsolute = m.GetLargest().SeqNum()
 		return m, nil
 	}
 
@@ -1017,8 +1017,8 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
 			base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
 		)
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
+		m.SmallestSeqNum = m.GetSmallest().SeqNum()
+		m.LargestSeqNum = m.GetLargest().SeqNum()
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
@@ -1232,7 +1232,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 
 				var buf bytes.Buffer
 				for f := range iter.Take().Slice().All() {
-					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
+					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.GetSmallest(), f.GetLargest())
 				}
 				return buf.String()
 
@@ -1284,8 +1284,8 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				m.StatsMarkValid()
 			}
 		}
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
+		m.SmallestSeqNum = m.GetSmallest().SeqNum()
+		m.LargestSeqNum = m.GetLargest().SeqNum()
 		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		return m, nil
 	}

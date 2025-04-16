@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -301,8 +302,8 @@ func TestCheckOrdering(t *testing.T) {
 				// L0 files compare on sequence numbers. Use the seqnums from the
 				// smallest / largest bounds for the table.
 				for m := range v.Levels[0].All() {
-					m.SmallestSeqNum = m.Smallest.SeqNum()
-					m.LargestSeqNum = m.Largest.SeqNum()
+					m.SmallestSeqNum = m.GetSmallest().SeqNum()
+					m.LargestSeqNum = m.GetLargest().SeqNum()
 					m.LargestSeqNumAbsolute = m.LargestSeqNum
 				}
 				if err = v.CheckOrdering(); err != nil {
@@ -708,8 +709,8 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				makeIK(level, start),
 				makeIK(level, end),
 			)
-			m.SmallestSeqNum = m.Smallest.SeqNum()
-			m.LargestSeqNum = m.Largest.SeqNum()
+			m.SmallestSeqNum = m.GetSmallest().SeqNum()
+			m.LargestSeqNum = m.GetLargest().SeqNum()
 			m.LargestSeqNumAbsolute = m.LargestSeqNum
 			m.InitPhysicalBacking()
 			return m
@@ -729,7 +730,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				// within this level.
 				var o bool
 				for _, f := range files[l] {
-					o = o || overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey)
+					o = o || overlaps(sKey, eKey, f.GetSmallest().UserKey, f.GetLargest().UserKey)
 				}
 				if o {
 					continue
@@ -737,7 +738,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				files[l] = append(files[l], makeFile(l, s, e))
 			}
 			slices.SortFunc(files[l], func(a, b *TableMetadata) int {
-				return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
+				return cmp(a.GetSmallest().UserKey, b.GetSmallest().UserKey)
 			})
 		}
 		l0Organizer := NewL0Organizer(base.DefaultComparer, 64*1024 /* flushSplitBytes */)
@@ -756,14 +757,14 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 
 			for level := l; level < NumLevels; level++ {
 				for _, f := range files[level] {
-					if !overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey) {
+					if !overlaps(sKey, eKey, f.GetSmallest().UserKey, f.GetLargest().UserKey) {
 						// This file doesn't overlap the queried range. Skip it.
 						continue
 					}
 					// This file does overlap the queried range. The key range
 					// [MAX(f.Smallest, sKey), MIN(f.Largest, eKey)] must be fully
 					// contained by a key range in keyRanges.
-					checkStart, checkEnd := f.Smallest.UserKey, f.Largest.UserKey
+					checkStart, checkEnd := f.GetSmallest().UserKey, f.GetLargest().UserKey
 					if cmp(checkStart, sKey) < 0 {
 						checkStart = sKey
 					}
@@ -832,4 +833,18 @@ func TestIterAllocs(t *testing.T) {
 			t.Fatalf("allocs=%f", allocs)
 		}
 	})
+}
+
+// TestTableMetadataSize tests the expected size of our TableMetadata struct.
+// This test exists as a callout for whoever changes the TableMetadata struct to
+// be mindful of its size increasing -- as the cost of TableMetadata is
+// proportional to the amount of files that exist.
+func TestTableMetadataSize(t *testing.T) {
+	structSize := unsafe.Sizeof(TableMetadata{})
+
+	const tableMetadataSize = 448 // bytes
+	if structSize != tableMetadataSize {
+		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
+			structSize, tableMetadataSize)
+	}
 }

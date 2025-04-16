@@ -386,14 +386,14 @@ func (r *Runner) TableSplitLimit(startKey []byte) []byte {
 	var overlappedBytes uint64
 	f := iter.SeekGE(r.cmp, startKey)
 	// Handle an overlapping table.
-	if f != nil && r.cmp(f.Smallest.UserKey, startKey) <= 0 {
+	if f != nil && r.cmp(f.GetSmallest().UserKey, startKey) <= 0 {
 		overlappedBytes += f.Size
 		f = iter.Next()
 	}
 	for ; f != nil; f = iter.Next() {
 		overlappedBytes += f.Size
 		if overlappedBytes > r.cfg.MaxGrandparentOverlapBytes {
-			limitKey = f.Smallest.UserKey
+			limitKey = f.GetSmallest().UserKey
 			break
 		}
 	}

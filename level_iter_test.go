@@ -317,7 +317,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 
 	var buf bytes.Buffer
 	for _, f := range lt.metas {
-		fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest, f.Largest)
+		fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.GetSmallest(), f.GetLargest())
 	}
 	return buf.String()
 }

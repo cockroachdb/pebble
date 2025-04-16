@@ -98,8 +98,8 @@ func (b *lsmViewBuilder) PopulateKeys() {
 	keys := make(map[string]int)
 	for _, l := range b.levels {
 		for _, f := range l {
-			keys[string(f.Smallest.UserKey)] = -1
-			keys[string(f.Largest.UserKey)] = -1
+			keys[string(f.GetSmallest().UserKey)] = -1
+			keys[string(f.GetLargest().UserKey)] = -1
 		}
 	}
 
@@ -149,8 +149,8 @@ func (b *lsmViewBuilder) Build(
 			}
 
 			t.Size = f.Size
-			t.SmallestKey = b.keys[string(f.Smallest.UserKey)]
-			t.LargestKey = b.keys[string(f.Largest.UserKey)]
+			t.SmallestKey = b.keys[string(f.GetSmallest().UserKey)]
+			t.LargestKey = b.keys[string(f.GetLargest().UserKey)]
 			t.Details = b.tableDetails(f, objProvider, newIters)
 		}
 	}
@@ -165,7 +165,7 @@ func (b *lsmViewBuilder) tableDetails(
 		res = append(res, fmt.Sprintf(format, args...))
 	}
 
-	outf("%s: %s - %s", m.FileNum, m.Smallest.Pretty(b.fmtKey), m.Largest.Pretty(b.fmtKey))
+	outf("%s: %s - %s", m.FileNum, m.GetSmallest().Pretty(b.fmtKey), m.GetLargest().Pretty(b.fmtKey))
 	outf("size: %s", humanize.Bytes.Uint64(m.Size))
 	if m.Virtual {
 		meta, err := objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)

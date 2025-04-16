@@ -610,14 +610,14 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	// Verify that all the shared files (i.e. files in sharedMeta)
 	// fit within the exciseSpan.
 	for _, f := range lr.shared {
-		if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
+		if !exciseSpan.Contains(cmp, f.GetSmallest()) || !exciseSpan.Contains(cmp, f.GetLargest()) {
 			return errors.Newf("pebble: shared file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 		}
 	}
 
 	if lr.externalFilesHaveLevel {
 		for _, f := range lr.external {
-			if !exciseSpan.Contains(cmp, f.Smallest) || !exciseSpan.Contains(cmp, f.Largest) {
+			if !exciseSpan.Contains(cmp, f.GetSmallest()) || !exciseSpan.Contains(cmp, f.GetLargest()) {
 				return base.AssertionFailedf("pebble: external file outside of excise span, span [%s-%s), file = %s", exciseSpan.Start, exciseSpan.End, f.String())
 			}
 		}
@@ -632,10 +632,10 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 
 		// Sort according to the smallest key.
 		slices.SortFunc(lr.external, func(a, b ingestExternalMeta) int {
-			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
+			return cmp(a.GetSmallest().UserKey, b.GetSmallest().UserKey)
 		})
 		for i := 1; i < len(lr.external); i++ {
-			if sstableKeyCompare(cmp, lr.external[i-1].Largest, lr.external[i].Smallest) >= 0 {
+			if sstableKeyCompare(cmp, lr.external[i-1].GetLargest(), lr.external[i].GetSmallest()) >= 0 {
 				return errors.Newf("pebble: external sstables have overlapping ranges")
 			}
 		}
@@ -647,11 +647,11 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 
 	// Sort according to the smallest key.
 	slices.SortFunc(lr.local, func(a, b ingestLocalMeta) int {
-		return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
+		return cmp(a.GetSmallest().UserKey, b.GetSmallest().UserKey)
 	})
 
 	for i := 1; i < len(lr.local); i++ {
-		if sstableKeyCompare(cmp, lr.local[i-1].Largest, lr.local[i].Smallest) >= 0 {
+		if sstableKeyCompare(cmp, lr.local[i-1].GetLargest(), lr.local[i].GetSmallest()) >= 0 {
 			return errors.Newf("pebble: local ingestion sstables have overlapping ranges")
 		}
 	}
@@ -672,10 +672,10 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 			}
 		}
 		slices.SortFunc(filesInLevel, func(a, b *tableMetadata) int {
-			return cmp(a.Smallest.UserKey, b.Smallest.UserKey)
+			return cmp(a.GetSmallest().UserKey, b.GetSmallest().UserKey)
 		})
 		for i := 1; i < len(filesInLevel); i++ {
-			if sstableKeyCompare(cmp, filesInLevel[i-1].Largest, filesInLevel[i].Smallest) >= 0 {
+			if sstableKeyCompare(cmp, filesInLevel[i-1].GetLargest(), filesInLevel[i].GetSmallest()) >= 0 {
 				return base.AssertionFailedf("pebble: external shared sstables have overlapping ranges")
 			}
 		}
@@ -883,7 +883,6 @@ func setSeqNumInMetadata(
 	if m.HasRangeKeys {
 		m.SmallestRangeKey = setSeqFn(m.SmallestRangeKey)
 	}
-	m.Smallest = setSeqFn(m.Smallest)
 	// Only update the seqnum for the largest key if that key is not an
 	// "exclusive sentinel" (i.e. a range deletion sentinel or a range key
 	// boundary), as doing so effectively drops the exclusive sentinel (by
@@ -893,9 +892,6 @@ func setSeqNumInMetadata(
 	// updated.
 	if m.HasPointKeys && !m.LargestPointKey.IsExclusiveSentinel() {
 		m.LargestPointKey = setSeqFn(m.LargestPointKey)
-	}
-	if !m.Largest.IsExclusiveSentinel() {
-		m.Largest = setSeqFn(m.Largest)
 	}
 	// Setting smallestSeqNum == largestSeqNum triggers the setting of
 	// Properties.GlobalSeqNum when an sstable is loaded.
@@ -1067,8 +1063,8 @@ func ingestTargetLevel(
 			if c.outputLevel == nil || level != c.outputLevel.level {
 				continue
 			}
-			if cmp(meta.Smallest.UserKey, c.largest.UserKey) <= 0 &&
-				cmp(meta.Largest.UserKey, c.smallest.UserKey) >= 0 {
+			if cmp(meta.GetSmallest().UserKey, c.largest.UserKey) <= 0 &&
+				cmp(meta.GetLargest().UserKey, c.smallest.UserKey) >= 0 {
 				overlaps = true
 				break
 			}
@@ -1887,7 +1883,7 @@ func (d *DB) ingestSplit(
 		// as we're guaranteed to not have any data overlap between splitFile and
 		// s.ingestFile. d.excise will return an error if we pass an inclusive user
 		// key bound _and_ we end up seeing data overlap at the end key.
-		exciseBounds := base.UserKeyBoundsFromInternal(s.ingestFile.Smallest, s.ingestFile.Largest)
+		exciseBounds := base.UserKeyBoundsFromInternal(s.ingestFile.GetSmallest(), s.ingestFile.GetLargest())
 		leftTable, rightTable, err := d.exciseTable(ctx, exciseBounds, splitFile, s.level, tightExciseBounds)
 		if err != nil {
 			return err
@@ -2014,7 +2010,7 @@ func (d *DB) ingestApply(
 				f.Level = specifiedLevel
 			} else {
 				var splitTable *tableMetadata
-				if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.Smallest) && exciseSpan.Contains(d.cmp, m.Largest) {
+				if exciseSpan.Valid() && exciseSpan.Contains(d.cmp, m.GetSmallest()) && exciseSpan.Contains(d.cmp, m.GetLargest()) {
 					// This file fits perfectly within the excise span. We can slot it at
 					// L6, or sharedLevelsStart - 1 if we have shared files.
 					if len(lr.shared) > 0 || lr.externalFilesHaveLevel {

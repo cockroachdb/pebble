@@ -253,7 +253,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			for i, l := range levels {
 				fmt.Fprintf(&buf, "Level %d\n", i+1)
 				for j, f := range l {
-					fmt.Fprintf(&buf, "  file %d: [%s-%s]\n", j, f.Smallest.String(), f.Largest.String())
+					fmt.Fprintf(&buf, "  file %d: [%s-%s]\n", j, f.GetSmallest().String(), f.GetLargest().String())
 				}
 			}
 			return buf.String()
