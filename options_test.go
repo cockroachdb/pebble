@@ -300,6 +300,13 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.TombstoneDenseCompactionThreshold = 0.2
 			opts.Experimental.FileCacheShards = 500
 			opts.Experimental.SecondaryCacheSizeBytes = 1024
+			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+				return ValueSeparationPolicy{
+					Enabled:               true,
+					MinimumSize:           1024,
+					MaxBlobReferenceDepth: 10,
+				}
+			}
 			opts.EnsureDefaults()
 			str := opts.String()
 

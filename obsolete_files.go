@@ -570,14 +570,10 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	}
 }
 
-func (d *DB) maybeScheduleObsoleteTableDeletion() {
+func (d *DB) maybeScheduleObsoleteObjectDeletion() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.maybeScheduleObsoleteTableDeletionLocked()
-}
-
-func (d *DB) maybeScheduleObsoleteTableDeletionLocked() {
-	if len(d.mu.versions.obsoleteTables) > 0 {
+	if len(d.mu.versions.obsoleteTables) > 0 || len(d.mu.versions.obsoleteBlobs) > 0 {
 		d.deleteObsoleteFiles(d.newJobIDLocked())
 	}
 }

@@ -27,11 +27,13 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 	require.Equal(t, FormatFlushableIngestExcises, FormatMajorVersion(18))
 	require.Equal(t, FormatColumnarBlocks, FormatMajorVersion(19))
 	require.Equal(t, FormatWALSyncChunks, FormatMajorVersion(20))
+	require.Equal(t, FormatTableFormatV6, FormatMajorVersion(21))
+	require.Equal(t, formatValueSeparation, FormatMajorVersion(22))
 
 	// When we add a new version, we should add a check for the new version in
 	// addition to updating these expected values.
 	require.Equal(t, FormatNewest, FormatMajorVersion(21))
-	require.Equal(t, internalFormatNewest, FormatMajorVersion(21))
+	require.Equal(t, internalFormatNewest, FormatMajorVersion(22))
 }
 
 func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
@@ -66,6 +68,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatWALSyncChunks, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatTableFormatV6))
 	require.Equal(t, FormatTableFormatV6, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(formatValueSeparation))
+	require.Equal(t, formatValueSeparation, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -225,6 +229,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatColumnarBlocks:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
 		FormatWALSyncChunks:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
 		FormatTableFormatV6:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
+		formatValueSeparation:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
 	}
 
 	// Valid versions.
@@ -277,6 +282,16 @@ func TestFormatMajorVersions_ColumnarBlocks(t *testing.T) {
 		},
 		{
 			fmv:     FormatNewest,
+			colBlks: false,
+			want:    sstable.TableFormatPebblev4,
+		},
+		{
+			fmv:     formatValueSeparation,
+			colBlks: true,
+			want:    sstable.TableFormatPebblev6,
+		},
+		{
+			fmv:     formatValueSeparation,
 			colBlks: false,
 			want:    sstable.TableFormatPebblev4,
 		},

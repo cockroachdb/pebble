@@ -742,6 +742,11 @@ type Options struct {
 		CompactionScheduler CompactionScheduler
 
 		UserKeyCategories UserKeyCategories
+
+		// ValueSeparationPolicy controls the policy for separating values into
+		// external blob files. If nil, value separation is disabled. The value
+		// separation policy is ignored if EnableColumnarBlocks() is false.
+		ValueSeparationPolicy func() ValueSeparationPolicy
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1120,6 +1125,24 @@ type Options struct {
 	}
 }
 
+// ValueSeparationPolicy controls the policy for separating values into
+// external blob files.
+type ValueSeparationPolicy struct {
+	// Enabled controls whether value separation is enabled.
+	Enabled bool
+	// MinimumSize imposes a lower bound on the size of values that can be
+	// separated into a blob file. Values smaller than this are always written
+	// to the sstable (but may still be written to a value block within the
+	// sstable).
+	MinimumSize int
+	// MaxBlobReferenceDepth limits the number of potentially overlapping (in
+	// the keyspace) blob files that can be referenced by a single sstable. If a
+	// compaction may produce an output sstable referencing more than this many
+	// overlapping blob files, the compaction will instead rewrite referenced
+	// values into new blob files.
+	MaxBlobReferenceDepth manifest.BlobReferenceDepth
+}
+
 // WALFailoverOptions configures the WAL failover mechanics to use during
 // transient write unavailability on the primary WAL volume.
 type WALFailoverOptions struct {
@@ -1316,6 +1339,8 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
 	}
+	// TODO(jackson): Enable value separation by default once we have confidence
+	// in a default policy.
 
 	o.initMaps()
 }
@@ -1476,6 +1501,15 @@ func (o *Options) String() string {
 		fmt.Fprintln(&buf, "  disable_lazy_combined_iteration=true")
 	}
 
+	if o.Experimental.ValueSeparationPolicy != nil {
+		policy := o.Experimental.ValueSeparationPolicy()
+		fmt.Fprintln(&buf)
+		fmt.Fprintln(&buf, "[Value Separation]")
+		fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
+		fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
+		fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
+	}
+
 	if o.WALFailover != nil {
 		unhealthyThreshold, _ := o.WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold()
 		fmt.Fprintf(&buf, "\n")
@@ -1603,6 +1637,8 @@ type ParseHooks struct {
 // options cannot be parsed into populated fields. For example, comparer and
 // merger.
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
+	var valSepPolicy ValueSeparationPolicy
+	var valSepPolicyOk bool
 	visitKeyValue := func(i, j int, section, key, value string) error {
 		// WARNING: DO NOT remove entries from the switches below because doing so
 		// causes a key previously written to the OPTIONS file to be considered unknown,
@@ -1881,6 +1917,28 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			}
 			return err
 
+		case section == "Value Separation":
+			valSepPolicyOk = true
+			var err error
+			switch key {
+			case "enabled":
+				valSepPolicy.Enabled, err = strconv.ParseBool(value)
+			case "minimum_size":
+				var minimumSize int
+				minimumSize, err = strconv.Atoi(value)
+				valSepPolicy.MinimumSize = minimumSize
+			case "max_blob_reference_depth":
+				var maxBlobReferenceDepth int
+				maxBlobReferenceDepth, err = strconv.Atoi(value)
+				valSepPolicy.MaxBlobReferenceDepth = manifest.BlobReferenceDepth(maxBlobReferenceDepth)
+			default:
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+					return nil
+				}
+				return errors.Errorf("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+			}
+			return err
+
 		case section == "WAL Failover":
 			if o.WALFailover == nil {
 				o.WALFailover = new(WALFailoverOptions)
@@ -1983,9 +2041,16 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		}
 		return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
 	}
-	return parseOptions(s, parseOptionsFuncs{
+	err := parseOptions(s, parseOptionsFuncs{
 		visitKeyValue: visitKeyValue,
 	})
+	if err != nil {
+		return err
+	}
+	if valSepPolicyOk {
+		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
+	}
+	return nil
 }
 
 // ErrMissingWALRecoveryDir is an error returned when a database is attempted to be
