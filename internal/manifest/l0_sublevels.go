@@ -284,14 +284,14 @@ func newL0Sublevels(
 	for i, f := 0, iter.First(); f != nil; i, f = i+1, iter.Next() {
 		f.L0Index = i
 		keys = append(keys, intervalKeyTemp{
-			intervalKey: intervalKey{key: f.Smallest.UserKey},
+			intervalKey: intervalKey{key: f.Smallest().UserKey},
 			fileMeta:    f,
 			isEndKey:    false,
 		})
 		keys = append(keys, intervalKeyTemp{
 			intervalKey: intervalKey{
-				key:                 f.Largest.UserKey,
-				isInclusiveEndBound: !f.Largest.IsExclusiveSentinel(),
+				key:                 f.Largest().UserKey,
+				isInclusiveEndBound: !f.Largest().IsExclusiveSentinel(),
 			},
 			fileMeta: f,
 			isEndKey: true,
@@ -484,13 +484,13 @@ func (s *l0Sublevels) addL0Files(
 	fileKeys := make([]intervalKeyTemp, 0, 2*len(files))
 	for _, f := range files {
 		left := intervalKeyTemp{
-			intervalKey: intervalKey{key: f.Smallest.UserKey},
+			intervalKey: intervalKey{key: f.Smallest().UserKey},
 			fileMeta:    f,
 		}
 		right := intervalKeyTemp{
 			intervalKey: intervalKey{
-				key:                 f.Largest.UserKey,
-				isInclusiveEndBound: !f.Largest.IsExclusiveSentinel(),
+				key:                 f.Largest().UserKey,
+				isInclusiveEndBound: !f.Largest().IsExclusiveSentinel(),
 			},
 			fileMeta: f,
 			isEndKey: true,
@@ -728,23 +728,24 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 
 	for f := range s.levelMetadata.All() {
 		if invariants.Enabled {
-			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest.UserKey) {
+			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest().UserKey) {
 				panic(fmt.Sprintf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
-					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(f.Smallest.UserKey)))
+					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(f.Smallest().UserKey)))
 			}
-			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest.UserKey) {
+			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest().UserKey) {
 				panic(fmt.Sprintf("f.maxIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
-					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(f.Smallest.UserKey)))
+					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(f.Smallest().UserKey)))
 			}
 		}
 		if !f.IsCompacting() {
 			continue
 		}
 		if invariants.Enabled {
-			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest.UserKey) != 0 || s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest.UserKey) != 0 {
+			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest().UserKey) != 0 ||
+				s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest().UserKey) != 0 {
 				panic(fmt.Sprintf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.FileNum,
 					s.orderedIntervals[f.minIntervalIndex].startKey.key, s.orderedIntervals[f.maxIntervalIndex+1].startKey.key,
-					f.Smallest.UserKey, f.Largest.UserKey))
+					f.Smallest().UserKey, f.Largest().UserKey))
 			}
 		}
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
@@ -1485,7 +1486,7 @@ func (s *l0Sublevels) PickBaseCompaction(
 
 			var baseCompacting bool
 			for ; m != nil && !baseCompacting; m = baseIter.Next() {
-				cmp := s.cmp(m.Smallest.UserKey, s.orderedIntervals[c.maxIntervalIndex+1].startKey.key)
+				cmp := s.cmp(m.Smallest().UserKey, s.orderedIntervals[c.maxIntervalIndex+1].startKey.key)
 				// Compaction is ending at exclusive bound of c.maxIntervalIndex+1
 				if cmp > 0 || (cmp == 0 && !s.orderedIntervals[c.maxIntervalIndex+1].startKey.isInclusiveEndBound) {
 					break

@@ -472,7 +472,6 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
 				m.LargestPointKey = base.DecodeInternalKey(largestPointKey)
 				m.HasPointKeys = true
-				m.Smallest, m.Largest = m.SmallestPointKey, m.LargestPointKey
 				m.boundTypeSmallest, m.boundTypeLargest = boundTypePointKey, boundTypePointKey
 			} else { // range keys present
 				// Set point key bounds, if parsed.
@@ -486,14 +485,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				m.LargestRangeKey = base.DecodeInternalKey(largestRangeKey)
 				m.HasRangeKeys = true
 				// Set overall bounds (by default assume range keys).
-				m.Smallest, m.Largest = m.SmallestRangeKey, m.LargestRangeKey
 				m.boundTypeSmallest, m.boundTypeLargest = boundTypeRangeKey, boundTypeRangeKey
 				if boundsMarker&maskSmallest == maskSmallest {
-					m.Smallest = m.SmallestPointKey
 					m.boundTypeSmallest = boundTypePointKey
 				}
 				if boundsMarker&maskLargest == maskLargest {
-					m.Largest = m.LargestPointKey
 					m.boundTypeLargest = boundTypePointKey
 				}
 			}
@@ -1258,11 +1254,11 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			}
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
-			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest, f.Smallest) > 0 {
+			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest(), f.Smallest()) > 0 {
 
 				sm = f
 			}
-			if la == nil || base.InternalCompare(comparer.Compare, la.Largest, f.Largest) < 0 {
+			if la == nil || base.InternalCompare(comparer.Compare, la.Largest(), f.Largest()) < 0 {
 				la = f
 			}
 

@@ -245,8 +245,8 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 	for _, ve := range edits {
 		for i := range ve.NewTables {
 			nf := &ve.NewTables[i]
-			keys = append(keys, nf.Meta.Smallest)
-			keys = append(keys, nf.Meta.Largest)
+			keys = append(keys, nf.Meta.Smallest())
+			keys = append(keys, nf.Meta.Largest())
 		}
 	}
 
@@ -301,8 +301,8 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
 				l.state.Files[nf.Meta.FileNum] = lsmTableMetadata{
 					Size:           nf.Meta.Size,
-					Smallest:       l.findKey(nf.Meta.Smallest),
-					Largest:        l.findKey(nf.Meta.Largest),
+					Smallest:       l.findKey(nf.Meta.Smallest()),
+					Largest:        l.findKey(nf.Meta.Largest()),
 					SmallestSeqNum: nf.Meta.SmallestSeqNum,
 					LargestSeqNum:  nf.Meta.LargestSeqNum,
 					Virtual:        nf.Meta.Virtual,

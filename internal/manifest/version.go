@@ -260,12 +260,6 @@ type TableMetadata struct {
 	// exported for reads as an optimization.
 	SmallestRangeKey InternalKey
 	LargestRangeKey  InternalKey
-	// Smallest and Largest are the inclusive bounds for the internal keys stored
-	// in the table, across both point and range keys.
-	// NB: these fields are derived from their point and range key equivalents,
-	// and are updated via the MaybeExtend{Point,Range}KeyBounds methods.
-	Smallest InternalKey
-	Largest  InternalKey
 	// BlobReferences is a list of blob files containing values that are
 	// referenced by this sstable.
 	BlobReferences BlobReferences
@@ -338,7 +332,7 @@ type TableMetadata struct {
 	HasRangeKeys bool
 	// Virtual is true if the TableMetadata belongs to a virtual sstable.
 	Virtual bool
-	// smallestSet and largestSet track whether the overall bounds have been set.
+	// boundsSet track whether the overall bounds have been set.
 	boundsSet bool
 	// boundTypeSmallest and boundTypeLargest provide an indication as to which
 	// key type (point or range) corresponds to the smallest and largest overall
@@ -395,14 +389,14 @@ func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 
 // InternalKeyBounds returns the set of overall table bounds.
 func (m *TableMetadata) InternalKeyBounds() (InternalKey, InternalKey) {
-	return m.Smallest, m.Largest
+	return m.Smallest(), m.Largest()
 }
 
 // UserKeyBounds returns the user key bounds that correspond to m.Smallest and
 // Largest. Because we do not allow split user keys, the user key bounds of
 // files within a level do not overlap.
 func (m *TableMetadata) UserKeyBounds() base.UserKeyBounds {
-	return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+	return base.UserKeyBoundsFromInternal(m.Smallest(), m.Largest())
 }
 
 // UserKeyBoundsByType returns the user key bounds for the given key types.
@@ -416,7 +410,7 @@ func (m *TableMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds 
 	case KeyTypeRange:
 		return base.UserKeyBoundsFromInternal(m.SmallestRangeKey, m.LargestRangeKey)
 	default:
-		return base.UserKeyBoundsFromInternal(m.Smallest, m.Largest)
+		return base.UserKeyBoundsFromInternal(m.Smallest(), m.Largest())
 	}
 }
 
@@ -551,12 +545,12 @@ func (m *TableMetadata) AttachVirtualBacking(backing *FileBacking) {
 		panic("backing already initialized")
 	}
 	m.FileBacking = backing
-	if m.Smallest.UserKey == nil || m.Largest.UserKey == nil {
+	if m.Smallest().UserKey == nil || m.Largest().UserKey == nil {
 		panic("bounds must be set before attaching backing")
 	}
 	m.VirtualParams = virtual.VirtualReaderParams{
-		Lower:   m.Smallest,
-		Upper:   m.Largest,
+		Lower:   m.Smallest(),
+		Upper:   m.Largest(),
 		FileNum: m.FileNum,
 	}
 }
@@ -685,16 +679,13 @@ func (m *TableMetadata) extendOverallBounds(
 	cmp Compare, smallest, largest InternalKey, bTyp boundType,
 ) {
 	if !m.boundsSet {
-		m.Smallest, m.Largest = smallest, largest
 		m.boundsSet = true
 		m.boundTypeSmallest, m.boundTypeLargest = bTyp, bTyp
 	} else {
-		if base.InternalCompare(cmp, smallest, m.Smallest) < 0 {
-			m.Smallest = smallest
+		if base.InternalCompare(cmp, smallest, m.Smallest()) < 0 {
 			m.boundTypeSmallest = bTyp
 		}
-		if base.InternalCompare(cmp, largest, m.Largest) > 0 {
-			m.Largest = largest
+		if base.InternalCompare(cmp, largest, m.Largest()) > 0 {
 			m.boundTypeLargest = bTyp
 		}
 	}
@@ -709,8 +700,8 @@ func (m *TableMetadata) Overlaps(cmp Compare, bounds *base.UserKeyBounds) bool {
 // ContainedWithinSpan returns true if the file key range completely overlaps with the
 // given range ("end" is assumed to exclusive).
 func (m *TableMetadata) ContainedWithinSpan(cmp Compare, start, end []byte) bool {
-	lowerCmp, upperCmp := cmp(m.Smallest.UserKey, start), cmp(m.Largest.UserKey, end)
-	return lowerCmp >= 0 && (upperCmp < 0 || (upperCmp == 0 && m.Largest.IsExclusiveSentinel()))
+	lowerCmp, upperCmp := cmp(m.Smallest().UserKey, start), cmp(m.Largest().UserKey, end)
+	return lowerCmp >= 0 && (upperCmp < 0 || (upperCmp == 0 && m.Largest().IsExclusiveSentinel()))
 }
 
 // ContainsKeyType returns whether or not the file contains keys of the provided
@@ -734,7 +725,8 @@ func (m *TableMetadata) ContainsKeyType(kt KeyType) bool {
 func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
-		return &m.Smallest, true
+		ik := m.Smallest()
+		return &ik, true
 	case KeyTypePoint:
 		return &m.SmallestPointKey, m.HasPointKeys
 	case KeyTypeRange:
@@ -750,7 +742,8 @@ func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 func (m *TableMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
-		return &m.Largest, true
+		ik := m.Largest()
+		return &ik, true
 	case KeyTypePoint:
 		return &m.LargestPointKey, m.HasPointKeys
 	case KeyTypeRange:
@@ -797,7 +790,7 @@ func (m *TableMetadata) boundsMarker() (sentinel uint8, err error) {
 // String implements fmt.Stringer, printing the file number and the overall
 // table bounds.
 func (m *TableMetadata) String() string {
-	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest, m.Largest)
+	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest(), m.Largest())
 }
 
 // DebugString returns a verbose representation of TableMetadata, typically for
@@ -807,10 +800,10 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	var b bytes.Buffer
 	if m.Virtual {
 		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
-			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
 	} else {
 		fmt.Fprintf(&b, "%s:[%s-%s]",
-			m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+			m.FileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
 	}
 	if !verbose {
 		return b.String()
@@ -871,9 +864,10 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 		p.Expect(")")
 	}
 	p.Expect(":", "[")
-	m.Smallest = p.InternalKey()
+
+	smallest := p.InternalKey()
 	p.Expect("-")
-	m.Largest = p.InternalKey()
+	largest := p.InternalKey()
 	p.Expect("]")
 
 	for !p.Done() {
@@ -932,12 +926,26 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 		}
 	}
 
+	cmp := base.DefaultComparer.Compare
+	if base.InternalCompare(cmp, smallest, m.SmallestPointKey) == 0 {
+		m.boundTypeSmallest = boundTypePointKey
+
+	} else if base.InternalCompare(cmp, smallest, m.SmallestRangeKey) == 0 {
+		m.boundTypeSmallest = boundTypeRangeKey
+	}
+	if base.InternalCompare(cmp, largest, m.LargestPointKey) == 0 {
+		m.boundTypeLargest = boundTypePointKey
+	} else if base.InternalCompare(cmp, largest, m.LargestRangeKey) == 0 {
+		m.boundTypeLargest = boundTypeRangeKey
+	}
+
 	// By default, when the parser sees just the overall bounds, we set the point
 	// keys. This preserves backwards compatability with existing test cases that
 	// specify only the overall bounds.
 	if !m.HasPointKeys && !m.HasRangeKeys {
-		m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
+		m.SmallestPointKey, m.LargestPointKey = smallest, largest
 		m.HasPointKeys = true
+		m.boundTypeSmallest, m.boundTypeLargest = boundTypePointKey, boundTypePointKey
 	}
 	if backingNum == 0 {
 		m.InitPhysicalBacking()
@@ -957,10 +965,10 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		return base.CorruptionErrorf("file %s has neither point nor range keys",
 			errors.Safe(m.FileNum))
 	}
-	if base.InternalCompare(cmp, m.Smallest, m.Largest) > 0 {
+	if base.InternalCompare(cmp, m.Smallest(), m.Largest()) > 0 {
 		return base.CorruptionErrorf("file %s has inconsistent bounds: %s vs %s",
-			errors.Safe(m.FileNum), m.Smallest.Pretty(formatKey),
-			m.Largest.Pretty(formatKey))
+			errors.Safe(m.FileNum), m.Smallest().Pretty(formatKey),
+			m.Largest().Pretty(formatKey))
 	}
 	if m.SmallestSeqNum > m.LargestSeqNum {
 		return base.CorruptionErrorf("file %s has inconsistent seqnum bounds: %d vs %d",
@@ -979,13 +987,13 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 				errors.Safe(m.FileNum), m.SmallestPointKey.Pretty(formatKey),
 				m.LargestPointKey.Pretty(formatKey))
 		}
-		if base.InternalCompare(cmp, m.SmallestPointKey, m.Smallest) < 0 ||
-			base.InternalCompare(cmp, m.LargestPointKey, m.Largest) > 0 {
+		if base.InternalCompare(cmp, m.SmallestPointKey, m.Smallest()) < 0 ||
+			base.InternalCompare(cmp, m.LargestPointKey, m.Largest()) > 0 {
 			return base.CorruptionErrorf(
 				"file %s has inconsistent point key bounds relative to overall bounds: "+
 					"overall = [%s-%s], point keys = [%s-%s]",
 				errors.Safe(m.FileNum),
-				m.Smallest.Pretty(formatKey), m.Largest.Pretty(formatKey),
+				m.Smallest().Pretty(formatKey), m.Largest().Pretty(formatKey),
 				m.SmallestPointKey.Pretty(formatKey), m.LargestPointKey.Pretty(formatKey),
 			)
 		}
@@ -1005,13 +1013,13 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 				errors.Safe(m.FileNum), m.SmallestRangeKey.Pretty(formatKey),
 				m.LargestRangeKey.Pretty(formatKey))
 		}
-		if base.InternalCompare(cmp, m.SmallestRangeKey, m.Smallest) < 0 ||
-			base.InternalCompare(cmp, m.LargestRangeKey, m.Largest) > 0 {
+		if base.InternalCompare(cmp, m.SmallestRangeKey, m.Smallest()) < 0 ||
+			base.InternalCompare(cmp, m.LargestRangeKey, m.Largest()) > 0 {
 			return base.CorruptionErrorf(
 				"file %s has inconsistent range key bounds relative to overall bounds: "+
 					"overall = [%s-%s], range keys = [%s-%s]",
 				errors.Safe(m.FileNum),
-				m.Smallest.Pretty(formatKey), m.Largest.Pretty(formatKey),
+				m.Smallest().Pretty(formatKey), m.Largest().Pretty(formatKey),
 				m.SmallestRangeKey.Pretty(formatKey), m.LargestRangeKey.Pretty(formatKey),
 			)
 		}
@@ -1038,11 +1046,11 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		if !m.Virtual {
 			return base.CorruptionErrorf("non-virtual file with synthetic prefix")
 		}
-		if !bytes.HasPrefix(m.Smallest.UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
-			return base.CorruptionErrorf("virtual file with synthetic prefix has smallest key with a different prefix: %s", m.Smallest.Pretty(formatKey))
+		if !bytes.HasPrefix(m.Smallest().UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
+			return base.CorruptionErrorf("virtual file with synthetic prefix has smallest key with a different prefix: %s", m.Smallest().Pretty(formatKey))
 		}
-		if !bytes.HasPrefix(m.Largest.UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
-			return base.CorruptionErrorf("virtual file with synthetic prefix has largest key with a different prefix: %s", m.Largest.Pretty(formatKey))
+		if !bytes.HasPrefix(m.Largest().UserKey, m.SyntheticPrefixAndSuffix.Prefix()) {
+			return base.CorruptionErrorf("virtual file with synthetic prefix has largest key with a different prefix: %s", m.Largest().Pretty(formatKey))
 		}
 	}
 	if m.SyntheticPrefixAndSuffix.HasSuffix() {
@@ -1077,8 +1085,8 @@ func (m *TableMetadata) TableInfo() TableInfo {
 	return TableInfo{
 		FileNum:        m.FileNum,
 		Size:           m.Size,
-		Smallest:       m.Smallest,
-		Largest:        m.Largest,
+		Smallest:       m.Smallest(),
+		Largest:        m.Largest(),
 		SmallestSeqNum: m.SmallestSeqNum,
 		LargestSeqNum:  m.LargestSeqNum,
 	}
@@ -1104,7 +1112,33 @@ func (m *TableMetadata) lessSeqNum(b *TableMetadata) bool {
 }
 
 func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
-	return base.InternalCompare(cmp, m.Smallest, b.Smallest)
+	return base.InternalCompare(cmp, m.Smallest(), b.Smallest())
+}
+
+// Smallest returns the smallest key based on the bound type of
+// boundTypeSmallest.
+func (m *TableMetadata) Smallest() InternalKey {
+	switch m.boundTypeSmallest {
+	case boundTypePointKey:
+		return m.SmallestPointKey
+	case boundTypeRangeKey:
+		return m.SmallestRangeKey
+	default:
+		return InternalKey{}
+	}
+}
+
+// Largest returns the largest key based on the bound type of
+// boundTypeLargest.
+func (m *TableMetadata) Largest() InternalKey {
+	switch m.boundTypeLargest {
+	case boundTypePointKey:
+		return m.LargestPointKey
+	case boundTypeRangeKey:
+		return m.LargestRangeKey
+	default:
+		return InternalKey{}
+	}
 }
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
@@ -1115,14 +1149,14 @@ func KeyRange(ucmp Compare, iters ...iter.Seq[*TableMetadata]) (smallest, larges
 		for meta := range iter {
 			if first {
 				first = false
-				smallest, largest = meta.Smallest, meta.Largest
+				smallest, largest = meta.Smallest(), meta.Largest()
 				continue
 			}
-			if base.InternalCompare(ucmp, smallest, meta.Smallest) >= 0 {
-				smallest = meta.Smallest
+			if base.InternalCompare(ucmp, smallest, meta.Smallest()) >= 0 {
+				smallest = meta.Smallest()
 			}
-			if base.InternalCompare(ucmp, largest, meta.Largest) <= 0 {
-				largest = meta.Largest
+			if base.InternalCompare(ucmp, largest, meta.Largest()) <= 0 {
+				largest = meta.Largest()
 			}
 		}
 	}
@@ -1469,12 +1503,12 @@ func (v *Version) CalculateInuseKeyRanges(
 			// Invariant: Neither currFile nor input[inputIdx] overlaps any earlier
 			// ranges.
 			switch {
-			case cmp(currFile.Largest.UserKey, input[inputIdx].Start) < 0:
+			case cmp(currFile.Largest().UserKey, input[inputIdx].Start) < 0:
 				// File is completely before input range.
 				output = append(output, currFile.UserKeyBounds())
 				currFile = iter.Next()
 
-			case cmp(input[inputIdx].End.Key, currFile.Smallest.UserKey) < 0:
+			case cmp(input[inputIdx].End.Key, currFile.Smallest().UserKey) < 0:
 				// Input range is completely before the next file.
 				output = append(output, input[inputIdx])
 				inputIdx++
@@ -1501,7 +1535,7 @@ func (v *Version) CalculateInuseKeyRanges(
 							currFile = seekGT(&iter, cmp, currAccum.End)
 						}
 						inputIdx++
-					} else if currFile != nil && cmp(currFile.Smallest.UserKey, currAccum.End.Key) <= 0 {
+					} else if currFile != nil && cmp(currFile.Smallest().UserKey, currAccum.End.Key) <= 0 {
 						if b := currFile.UserKeyBounds(); currAccum.End.CompareUpperBounds(cmp, b.End) < 0 {
 							currAccum.End = b.End
 						}
@@ -1539,7 +1573,7 @@ func seekGT(iter *LevelIterator, cmp base.Compare, boundary base.UserKeyBoundary
 	// tolerate an equal largest key.
 	// Note: we know f.Largest.UserKey >= boundary.End.Key so this condition is
 	// equivalent to boundary.End.IsUpperBoundForInternalKey(cmp, f.Largest).
-	if (boundary.Kind == base.Inclusive || f.Largest.IsExclusiveSentinel()) && cmp(boundary.Key, f.Largest.UserKey) == 0 {
+	if (boundary.Kind == base.Inclusive || f.Largest().IsExclusiveSentinel()) && cmp(boundary.Key, f.Largest().UserKey) == 0 {
 		return iter.Next()
 	}
 	return f
@@ -1601,12 +1635,12 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 				// the range. We expand the range immediately for files we have
 				// remaining to check in this loop. All already checked and unselected
 				// files will need to be rechecked via the restart below.
-				if v.cmp.Compare(meta.Smallest.UserKey, bounds.Start) < 0 {
-					bounds.Start = meta.Smallest.UserKey
+				if v.cmp.Compare(meta.Smallest().UserKey, bounds.Start) < 0 {
+					bounds.Start = meta.Smallest().UserKey
 					restart = true
 				}
-				if !bounds.End.IsUpperBoundForInternalKey(v.cmp.Compare, meta.Largest) {
-					bounds.End = base.UserKeyExclusiveIf(meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
+				if !bounds.End.IsUpperBoundForInternalKey(v.cmp.Compare, meta.Largest()) {
+					bounds.End = base.UserKeyExclusiveIf(meta.Largest().UserKey, meta.Largest().IsExclusiveSentinel())
 					restart = true
 				}
 			}
@@ -1811,19 +1845,19 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 				if prev.cmpSmallestKey(f, cmp) >= 0 {
 					return base.CorruptionErrorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
-						f.Smallest.Pretty(format), f.Largest.Pretty(format))
+						prev.Smallest().Pretty(format), prev.Largest().Pretty(format),
+						f.Smallest().Pretty(format), f.Largest().Pretty(format))
 				}
 
 				// In all supported format major version, split user keys are
 				// prohibited, so both files cannot contain keys with the same user
 				// keys. If the bounds have the same user key, the previous file's
 				// boundary must have a InternalKeyTrailer indicating that it's exclusive.
-				if v := cmp(prev.Largest.UserKey, f.Smallest.UserKey); v > 0 || (v == 0 && !prev.Largest.IsExclusiveSentinel()) {
+				if v := cmp(prev.Largest().UserKey, f.Smallest().UserKey); v > 0 || (v == 0 && !prev.Largest().IsExclusiveSentinel()) {
 					return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
 						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
-						prev.Smallest.Pretty(format), prev.Largest.Pretty(format),
-						f.Smallest.Pretty(format), f.Largest.Pretty(format))
+						prev.Smallest().Pretty(format), prev.Largest().Pretty(format),
+						f.Smallest().Pretty(format), f.Largest().Pretty(format))
 				}
 			}
 		}

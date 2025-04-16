@@ -300,7 +300,7 @@ func TestExcise(t *testing.T) {
 			exciseBounds := exciseSpan.UserKeyBounds()
 			for l, ls := range current.AllLevelsAndSublevels() {
 				iter := ls.Iter()
-				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
+				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest().UserKey, exciseSpan.End) < 0; m = iter.Next() {
 					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, l.Level(), tightExciseBounds)
 					if err != nil {
 						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
@@ -682,7 +682,7 @@ func TestConcurrentExcise(t *testing.T) {
 			exciseBounds := exciseSpan.UserKeyBounds()
 			for level := range current.Levels {
 				iter := current.Levels[level].Iter()
-				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest.UserKey, exciseSpan.End) < 0; m = iter.Next() {
+				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest().UserKey, exciseSpan.End) < 0; m = iter.Next() {
 					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, level, tightExciseBounds)
 					if err != nil {
 						d.mu.Lock()
@@ -799,7 +799,7 @@ func TestExciseBounds(t *testing.T) {
 		var buf strings.Builder
 		printBounds := func(title string, m *tableMetadata) {
 			fmt.Fprintf(&buf, "%s:\n", title)
-			fmt.Fprintf(&buf, "  overall: %v - %v\n", m.Smallest, m.Largest)
+			fmt.Fprintf(&buf, "  overall: %v - %v\n", m.Smallest(), m.Largest())
 			if m.HasPointKeys {
 				fmt.Fprintf(&buf, "  point:   %v - %v\n", m.SmallestPointKey, m.LargestPointKey)
 			}
@@ -850,7 +850,7 @@ func TestExciseBounds(t *testing.T) {
 			}
 
 			exciseSpan := base.ParseUserKeyBounds(td.Input)
-			if cmp(m.Smallest.UserKey, exciseSpan.Start) < 0 {
+			if cmp(m.Smallest().UserKey, exciseSpan.Start) < 0 {
 				var t manifest.TableMetadata
 				checkErr(determineLeftTableBounds(cmp, m, &t, exciseSpan.Start, iters))
 				printBounds("Left table bounds", &t)
@@ -859,7 +859,7 @@ func TestExciseBounds(t *testing.T) {
 				printBounds("Left table bounds (loose)", &t)
 			}
 
-			if !exciseSpan.End.IsUpperBoundForInternalKey(cmp, m.Largest) {
+			if !exciseSpan.End.IsUpperBoundForInternalKey(cmp, m.Largest()) {
 				var t manifest.TableMetadata
 				err := func() (err error) {
 					// determineRightTableBounds can return assertion errors which we want

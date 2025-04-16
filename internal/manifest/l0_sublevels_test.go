@@ -77,11 +77,11 @@ func visualizeSublevels(
 			buf.WriteByte(' ')
 		}
 		for j, f := range files {
-			for lastChar < f.Smallest.UserKey[0] {
+			for lastChar < f.Smallest().UserKey[0] {
 				buf.WriteString("   ")
 				lastChar++
 			}
-			buf.WriteByte(f.Smallest.UserKey[0])
+			buf.WriteByte(f.Smallest().UserKey[0])
 			middleChar := byte('-')
 			if isL0 {
 				if compactionFiles[f.L0Index] {
@@ -96,11 +96,11 @@ func visualizeSublevels(
 			} else if f.IsCompacting() {
 				middleChar = '='
 			}
-			if largestChar < f.Largest.UserKey[0] {
-				largestChar = f.Largest.UserKey[0]
+			if largestChar < f.Largest().UserKey[0] {
+				largestChar = f.Largest().UserKey[0]
 			}
-			if f.Smallest.UserKey[0] == f.Largest.UserKey[0] {
-				buf.WriteByte(f.Largest.UserKey[0])
+			if f.Smallest().UserKey[0] == f.Largest().UserKey[0] {
+				buf.WriteByte(f.Largest().UserKey[0])
 				if compactionFiles[f.L0Index] {
 					buf.WriteByte('+')
 				} else if j < len(files)-1 {
@@ -112,14 +112,14 @@ func visualizeSublevels(
 			buf.WriteByte(middleChar)
 			buf.WriteByte(middleChar)
 			lastChar++
-			for lastChar < f.Largest.UserKey[0] {
+			for lastChar < f.Largest().UserKey[0] {
 				buf.WriteByte(middleChar)
 				buf.WriteByte(middleChar)
 				buf.WriteByte(middleChar)
 				lastChar++
 			}
-			if f.Largest.IsExclusiveSentinel() &&
-				j < len(files)-1 && files[j+1].Smallest.UserKey[0] == f.Largest.UserKey[0] {
+			if f.Largest().IsExclusiveSentinel() &&
+				j < len(files)-1 && files[j+1].Smallest().UserKey[0] == f.Largest().UserKey[0] {
 				// This case happens where two successive files have
 				// matching end/start user keys but where the left-side file
 				// has the sentinel key as its end key trailer. In this case
@@ -130,7 +130,7 @@ func visualizeSublevels(
 				continue
 			}
 			buf.WriteByte(middleChar)
-			buf.WriteByte(f.Largest.UserKey[0])
+			buf.WriteByte(f.Largest().UserKey[0])
 			if j < len(files)-1 {
 				buf.WriteByte(' ')
 			}
@@ -176,9 +176,9 @@ func TestL0Sublevels(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
 			base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
 		)
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		if m.Largest.IsExclusiveSentinel() {
+		m.SmallestSeqNum = m.Smallest().SeqNum()
+		m.LargestSeqNum = m.Largest().SeqNum()
+		if m.Largest().IsExclusiveSentinel() {
 			m.LargestSeqNum = m.SmallestSeqNum
 		}
 		m.LargestSeqNumAbsolute = m.LargestSeqNum
@@ -368,18 +368,18 @@ func TestL0Sublevels(t *testing.T) {
 					// the compactor is expected to implement.
 					baseFiles := fileMetas[baseLevel]
 					firstFile := sort.Search(len(baseFiles), func(i int) bool {
-						return sublevels.cmp(baseFiles[i].Largest.UserKey, sublevels.orderedIntervals[lcf.minIntervalIndex].startKey.key) >= 0
+						return sublevels.cmp(baseFiles[i].Largest().UserKey, sublevels.orderedIntervals[lcf.minIntervalIndex].startKey.key) >= 0
 					})
 					lastFile := sort.Search(len(baseFiles), func(i int) bool {
-						return sublevels.cmp(baseFiles[i].Smallest.UserKey, sublevels.orderedIntervals[lcf.maxIntervalIndex+1].startKey.key) >= 0
+						return sublevels.cmp(baseFiles[i].Smallest().UserKey, sublevels.orderedIntervals[lcf.maxIntervalIndex+1].startKey.key) >= 0
 					})
 					startKey := base.InvalidInternalKey
 					endKey := base.InvalidInternalKey
 					if firstFile > 0 {
-						startKey = baseFiles[firstFile-1].Largest
+						startKey = baseFiles[firstFile-1].Largest()
 					}
 					if lastFile < len(baseFiles) {
-						endKey = baseFiles[lastFile].Smallest
+						endKey = baseFiles[lastFile].Smallest()
 					}
 					sublevels.ExtendL0ForBaseCompactionTo(
 						startKey,
