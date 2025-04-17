@@ -23,6 +23,7 @@ type getIter struct {
 	newIters tableNewIters
 	snapshot base.SeqNum
 	iterOpts IterOptions
+	iiopts   internalIterOpts
 	key      []byte
 	prefix   []byte
 	iter     internalIterator
@@ -271,7 +272,7 @@ func (g *getIter) getSSTableIterators(
 	}
 	// m may possibly contain point (or range deletion) keys relevant to g.key.
 	g.iterOpts.layer = level
-	iters, err := g.newIters(context.Background(), m, &g.iterOpts, internalIterOpts{}, iterPointKeys|iterRangeDeletions)
+	iters, err := g.newIters(context.Background(), m, &g.iterOpts, g.iiopts, iterPointKeys|iterRangeDeletions)
 	if err != nil {
 		return emptyIter, nil, err
 	}
