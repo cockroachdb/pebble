@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -196,6 +197,7 @@ func (d *DB) Checkpoint(
 	d.mu.versions.virtualBackings.ForEach(func(backing *fileBacking) {
 		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
 	})
+	versionBlobFiles := d.mu.versions.blobFiles.Metadatas()
 
 	// Acquire the logs while holding mutexes to ensure we don't race with a
 	// flush that might mark a log that's relevant to `current` as obsolete
@@ -263,10 +265,32 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedTables map[deletedFileEntry]*tableMetadata
+	var includedBlobFiles map[base.DiskFileNum]struct{}
 	var remoteFiles []base.DiskFileNum
 	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
 	requiredVirtualBackingFiles := make(map[base.DiskFileNum]struct{})
+
+	copyFile := func(typ base.FileType, fileNum base.DiskFileNum) error {
+		meta, err := d.objProvider.Lookup(typ, fileNum)
+		if err != nil {
+			return err
+		}
+		if meta.IsRemote() {
+			// We don't copy remote files. This is desirable as checkpointing is
+			// supposed to be a fast operation, and references to remote files can
+			// always be resolved by any checkpoint readers by reading the object
+			// catalog. We don't add this file to excludedFiles either, as that'd
+			// cause it to be deleted in the second manifest entry which is also
+			// inaccurate.
+			remoteFiles = append(remoteFiles, meta.DiskFileNum)
+			return nil
+		}
+		srcPath := base.MakeFilepath(fs, d.dirname, typ, fileNum)
+		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
+		return vfs.LinkOrCopy(fs, srcPath, destPath)
+	}
+
 	// Link or copy the sstables.
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
@@ -282,6 +306,22 @@ func (d *DB) Checkpoint(
 				continue
 			}
 
+			// Copy any referenced blob files that have not already been copied.
+			if len(f.BlobReferences) > 0 {
+				if includedBlobFiles == nil {
+					includedBlobFiles = make(map[base.DiskFileNum]struct{})
+				}
+				for _, ref := range f.BlobReferences {
+					if _, ok := includedBlobFiles[ref.FileNum]; !ok {
+						includedBlobFiles[ref.FileNum] = struct{}{}
+						ckErr = copyFile(base.FileTypeBlob, ref.FileNum)
+						if ckErr != nil {
+							return ckErr
+						}
+					}
+				}
+			}
+
 			fileBacking := f.FileBacking
 			if f.Virtual {
 				if _, ok := requiredVirtualBackingFiles[fileBacking.DiskFileNum]; ok {
@@ -289,25 +329,7 @@ func (d *DB) Checkpoint(
 				}
 				requiredVirtualBackingFiles[fileBacking.DiskFileNum] = struct{}{}
 			}
-			meta, err := d.objProvider.Lookup(base.FileTypeTable, fileBacking.DiskFileNum)
-			if err != nil {
-				ckErr = err
-				return ckErr
-			}
-			if meta.IsRemote() {
-				// We don't copy remote files. This is desirable as checkpointing is
-				// supposed to be a fast operation, and references to remote files can
-				// always be resolved by any checkpoint readers by reading the object
-				// catalog. We don't add this file to excludedFiles either, as that'd
-				// cause it to be deleted in the second manifest entry which is also
-				// inaccurate.
-				remoteFiles = append(remoteFiles, meta.DiskFileNum)
-				continue
-			}
-
-			srcPath := base.MakeFilepath(fs, d.dirname, base.FileTypeTable, fileBacking.DiskFileNum)
-			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
+			ckErr = copyFile(base.FileTypeTable, fileBacking.DiskFileNum)
 			if ckErr != nil {
 				return ckErr
 			}
@@ -322,16 +344,29 @@ func (d *DB) Checkpoint(
 			removeBackingTables = append(removeBackingTables, diskFileNum)
 		}
 	}
+	// Record the blob files that are not referenced by any included sstables.
+	// When we write the MANIFEST of the checkpoint, we'll include a final
+	// VersionEdit that removes these blob files so that the checkpointed
+	// manifest is consistent.
+	var excludedBlobFiles map[base.DiskFileNum]*manifest.BlobFileMetadata
+	if len(includedBlobFiles) < len(versionBlobFiles) {
+		excludedBlobFiles = make(map[base.DiskFileNum]*manifest.BlobFileMetadata, len(versionBlobFiles)-len(includedBlobFiles))
+		for _, blobFile := range versionBlobFiles {
+			if _, ok := includedBlobFiles[blobFile.FileNum]; !ok {
+				excludedBlobFiles[blobFile.FileNum] = blobFile
+			}
+		}
+	}
 
 	ckErr = d.writeCheckpointManifest(
 		fs, formatVers, destDir, dir, manifestFileNum, manifestSize,
-		excludedTables, removeBackingTables,
+		excludedTables, removeBackingTables, excludedBlobFiles,
 	)
 	if ckErr != nil {
 		return ckErr
 	}
 	if len(remoteFiles) > 0 {
-		ckErr = d.objProvider.CheckpointState(fs, destDir, base.FileTypeTable, remoteFiles)
+		ckErr = d.objProvider.CheckpointState(fs, destDir, remoteFiles)
 		if ckErr != nil {
 			return ckErr
 		}
@@ -429,6 +464,7 @@ func (d *DB) writeCheckpointManifest(
 	manifestSize int64,
 	excludedTables map[deletedFileEntry]*tableMetadata,
 	removeBackingTables []base.DiskFileNum,
+	excludedBlobFiles map[base.DiskFileNum]*manifest.BlobFileMetadata,
 ) error {
 	// Copy the MANIFEST, and create a pointer to it. We copy rather
 	// than link because additional version edits added to the
@@ -477,11 +513,12 @@ func (d *DB) writeCheckpointManifest(
 			}
 		}
 
-		if len(excludedTables) > 0 {
+		if len(excludedTables) > 0 || len(excludedBlobFiles) > 0 {
 			// Write out an additional VersionEdit that deletes the excluded SST files.
 			ve := versionEdit{
 				DeletedTables:        excludedTables,
 				RemovedBackingTables: removeBackingTables,
+				DeletedBlobFiles:     excludedBlobFiles,
 			}
 
 			rw, err := w.Next()

@@ -844,3 +844,290 @@ L6:
   000015(000011):[i#20,SET-i#20,SET]
   000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]
+
+# Create a new database with value separation enabled to test that blob files
+# are included in checkpoints.
+
+open valsepdb value-separation=(true,1,5)
+----
+mkdir-all: valsepdb 0755
+open-dir: .
+sync: .
+close: .
+open-dir: valsepdb
+close: valsepdb
+open-dir: valsepdb
+lock: valsepdb/LOCK
+open-dir: valsepdb
+open-dir: valsepdb
+open-dir: valsepdb
+open-dir: valsepdb
+create: valsepdb/MANIFEST-000001
+sync: valsepdb/MANIFEST-000001
+create: valsepdb/marker.manifest.000001.MANIFEST-000001
+close: valsepdb/marker.manifest.000001.MANIFEST-000001
+sync: valsepdb
+open-dir: valsepdb
+create: valsepdb/000002.log
+sync: valsepdb
+create: valsepdb/marker.format-version.000001.014
+close: valsepdb/marker.format-version.000001.014
+sync: valsepdb
+create: valsepdb/marker.format-version.000002.015
+close: valsepdb/marker.format-version.000002.015
+remove: valsepdb/marker.format-version.000001.014
+sync: valsepdb
+create: valsepdb/marker.format-version.000003.016
+close: valsepdb/marker.format-version.000003.016
+remove: valsepdb/marker.format-version.000002.015
+sync: valsepdb
+create: valsepdb/marker.format-version.000004.017
+close: valsepdb/marker.format-version.000004.017
+remove: valsepdb/marker.format-version.000003.016
+sync: valsepdb
+create: valsepdb/marker.format-version.000005.018
+close: valsepdb/marker.format-version.000005.018
+remove: valsepdb/marker.format-version.000004.017
+sync: valsepdb
+create: valsepdb/marker.format-version.000006.019
+close: valsepdb/marker.format-version.000006.019
+remove: valsepdb/marker.format-version.000005.018
+sync: valsepdb
+create: valsepdb/marker.format-version.000007.020
+close: valsepdb/marker.format-version.000007.020
+remove: valsepdb/marker.format-version.000006.019
+sync: valsepdb
+create: valsepdb/marker.format-version.000008.021
+close: valsepdb/marker.format-version.000008.021
+remove: valsepdb/marker.format-version.000007.020
+sync: valsepdb
+create: valsepdb/marker.format-version.000009.022
+close: valsepdb/marker.format-version.000009.022
+remove: valsepdb/marker.format-version.000008.021
+sync: valsepdb
+create: valsepdb/temporary.000003.dbtmp
+sync: valsepdb/temporary.000003.dbtmp
+close: valsepdb/temporary.000003.dbtmp
+rename: valsepdb/temporary.000003.dbtmp -> valsepdb/OPTIONS-000003
+sync: valsepdb
+
+batch valsepdb
+set a a
+set b b
+set c c
+set d d
+set e e
+set f f
+----
+sync-data: valsepdb/000002.log
+
+# The flush creates a blob file.
+
+flush valsepdb
+----
+sync-data: valsepdb/000002.log
+close: valsepdb/000002.log
+create: valsepdb/000004.log
+sync: valsepdb
+create: valsepdb/000005.sst
+create: valsepdb/000006.blob
+sync-data: valsepdb/000006.blob
+close: valsepdb/000006.blob
+sync-data: valsepdb/000005.sst
+close: valsepdb/000005.sst
+sync: valsepdb
+sync: valsepdb/MANIFEST-000001
+
+# Perform a checkpoint. It should include the blob file.
+
+checkpoint valsepdb checkpoints/checkpoint8
+----
+mkdir-all: checkpoints/checkpoint8 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint8
+open: valsepdb/OPTIONS-000003
+create: checkpoints/checkpoint8/OPTIONS-000003
+sync-data: checkpoints/checkpoint8/OPTIONS-000003
+close: checkpoints/checkpoint8/OPTIONS-000003
+close: valsepdb/OPTIONS-000003
+open-dir: checkpoints/checkpoint8
+create: checkpoints/checkpoint8/marker.format-version.000001.022
+sync-data: checkpoints/checkpoint8/marker.format-version.000001.022
+close: checkpoints/checkpoint8/marker.format-version.000001.022
+sync: checkpoints/checkpoint8
+close: checkpoints/checkpoint8
+link: valsepdb/000006.blob -> checkpoints/checkpoint8/000006.blob
+link: valsepdb/000005.sst -> checkpoints/checkpoint8/000005.sst
+open: valsepdb/MANIFEST-000001 (options: *vfs.sequentialReadsOption)
+create: checkpoints/checkpoint8/MANIFEST-000001
+sync-data: checkpoints/checkpoint8/MANIFEST-000001
+close: checkpoints/checkpoint8/MANIFEST-000001
+close: valsepdb/MANIFEST-000001
+open-dir: checkpoints/checkpoint8
+create: checkpoints/checkpoint8/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint8/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint8/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint8
+close: checkpoints/checkpoint8
+open: valsepdb/000004.log (options: *vfs.sequentialReadsOption)
+create: checkpoints/checkpoint8/000004.log
+sync-data: checkpoints/checkpoint8/000004.log
+close: checkpoints/checkpoint8/000004.log
+close: valsepdb/000004.log
+sync: checkpoints/checkpoint8
+close: checkpoints/checkpoint8
+
+# Validate that we can open the checkpoint.
+
+open checkpoints/checkpoint8 readonly
+----
+open-dir: checkpoints/checkpoint8
+lock: checkpoints/checkpoint8/LOCK
+open-dir: checkpoints/checkpoint8
+open-dir: checkpoints/checkpoint8
+open-dir: checkpoints/checkpoint8
+open-dir: checkpoints/checkpoint8
+open: checkpoints/checkpoint8/MANIFEST-000001
+close: checkpoints/checkpoint8/MANIFEST-000001
+open-dir: checkpoints/checkpoint8
+open: checkpoints/checkpoint8/OPTIONS-000003
+close: checkpoints/checkpoint8/OPTIONS-000003
+open: checkpoints/checkpoint8/000004.log
+close: checkpoints/checkpoint8/000004.log
+
+# Ensure that we can read values contained in the blob file.
+
+scan checkpoints/checkpoint8
+----
+open: checkpoints/checkpoint8/000005.sst (options: *vfs.randomReadsOption)
+read-at(750, 57): checkpoints/checkpoint8/000005.sst
+read-at(699, 51): checkpoints/checkpoint8/000005.sst
+read-at(172, 527): checkpoints/checkpoint8/000005.sst
+read-at(131, 41): checkpoints/checkpoint8/000005.sst
+read-at(0, 131): checkpoints/checkpoint8/000005.sst
+open: checkpoints/checkpoint8/000006.blob (options: *vfs.randomReadsOption)
+read-at(19, 33): checkpoints/checkpoint8/000006.blob
+read-at(11, 8): checkpoints/checkpoint8/000006.blob
+read-at(0, 11): checkpoints/checkpoint8/000006.blob
+a a
+b b
+c c
+d d
+e e
+f f
+.
+
+close checkpoints/checkpoint8
+----
+
+# Write and flush new keys.
+
+batch valsepdb
+set m m
+set n n
+set o o
+set p p
+set q q
+set r r
+----
+sync-data: valsepdb/000004.log
+
+flush valsepdb
+----
+sync-data: valsepdb/000004.log
+close: valsepdb/000004.log
+reuseForWrite: valsepdb/000002.log -> valsepdb/000007.log
+sync: valsepdb
+create: valsepdb/000008.sst
+create: valsepdb/000009.blob
+sync-data: valsepdb/000009.blob
+close: valsepdb/000009.blob
+sync-data: valsepdb/000008.sst
+close: valsepdb/000008.sst
+sync: valsepdb
+sync: valsepdb/MANIFEST-000001
+
+
+# Create a checkpoint that omits SSTs that don't overlap with the [a - c) range.
+# Blob file 000009.blob is not included because all the referencing tables are
+# exlcuded.
+
+checkpoint valsepdb checkpoints/checkpoint9 restrict=(a-c)
+----
+mkdir-all: checkpoints/checkpoint9 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint9
+open: valsepdb/OPTIONS-000003
+create: checkpoints/checkpoint9/OPTIONS-000003
+sync-data: checkpoints/checkpoint9/OPTIONS-000003
+close: checkpoints/checkpoint9/OPTIONS-000003
+close: valsepdb/OPTIONS-000003
+open-dir: checkpoints/checkpoint9
+create: checkpoints/checkpoint9/marker.format-version.000001.022
+sync-data: checkpoints/checkpoint9/marker.format-version.000001.022
+close: checkpoints/checkpoint9/marker.format-version.000001.022
+sync: checkpoints/checkpoint9
+close: checkpoints/checkpoint9
+link: valsepdb/000006.blob -> checkpoints/checkpoint9/000006.blob
+link: valsepdb/000005.sst -> checkpoints/checkpoint9/000005.sst
+open: valsepdb/MANIFEST-000001 (options: *vfs.sequentialReadsOption)
+create: checkpoints/checkpoint9/MANIFEST-000001
+sync-data: checkpoints/checkpoint9/MANIFEST-000001
+close: checkpoints/checkpoint9/MANIFEST-000001
+close: valsepdb/MANIFEST-000001
+open-dir: checkpoints/checkpoint9
+create: checkpoints/checkpoint9/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint9/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint9/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint9
+close: checkpoints/checkpoint9
+open: valsepdb/000007.log (options: *vfs.sequentialReadsOption)
+create: checkpoints/checkpoint9/000007.log
+sync-data: checkpoints/checkpoint9/000007.log
+close: checkpoints/checkpoint9/000007.log
+close: valsepdb/000007.log
+sync: checkpoints/checkpoint9
+close: checkpoints/checkpoint9
+
+open checkpoints/checkpoint9 readonly
+----
+open-dir: checkpoints/checkpoint9
+lock: checkpoints/checkpoint9/LOCK
+open-dir: checkpoints/checkpoint9
+open-dir: checkpoints/checkpoint9
+open-dir: checkpoints/checkpoint9
+open-dir: checkpoints/checkpoint9
+open: checkpoints/checkpoint9/MANIFEST-000001
+close: checkpoints/checkpoint9/MANIFEST-000001
+open-dir: checkpoints/checkpoint9
+open: checkpoints/checkpoint9/OPTIONS-000003
+close: checkpoints/checkpoint9/OPTIONS-000003
+open: checkpoints/checkpoint9/000007.log
+close: checkpoints/checkpoint9/000007.log
+
+scan checkpoints/checkpoint9
+----
+open: checkpoints/checkpoint9/000005.sst (options: *vfs.randomReadsOption)
+read-at(750, 57): checkpoints/checkpoint9/000005.sst
+read-at(699, 51): checkpoints/checkpoint9/000005.sst
+read-at(172, 527): checkpoints/checkpoint9/000005.sst
+read-at(131, 41): checkpoints/checkpoint9/000005.sst
+read-at(0, 131): checkpoints/checkpoint9/000005.sst
+open: checkpoints/checkpoint9/000006.blob (options: *vfs.randomReadsOption)
+read-at(19, 33): checkpoints/checkpoint9/000006.blob
+read-at(11, 8): checkpoints/checkpoint9/000006.blob
+read-at(0, 11): checkpoints/checkpoint9/000006.blob
+a a
+b b
+c c
+d d
+e e
+f f
+.
+
+close checkpoints/checkpoint9
+----
