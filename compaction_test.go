@@ -1027,6 +1027,9 @@ func TestCompaction(t *testing.T) {
 				}
 				return describeLSM(d, verbose)
 
+			case "get":
+				return runGetCmd(t, td, d)
+
 			case "ingest":
 				if err := runIngestCmd(td, d, mem); err != nil {
 					return err.Error()

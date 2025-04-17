@@ -612,6 +612,9 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		readState:    readState,
 		keyBuf:       buf.keyBuf,
 	}
+	// Set up a blob value fetcher to use for retrieving values from blob files.
+	i.blobValueFetcher.Init(d.fileCache, block.NoReadEnv)
+	get.iiopts.blobValueFetcher = &i.blobValueFetcher
 
 	if !i.First() {
 		err := i.Close()

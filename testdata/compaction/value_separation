@@ -153,6 +153,17 @@ L0.0:
 Blob files:
   000008: 56 physical bytes, 10 value bytes
 
+get
+a
+b
+h
+w
+----
+a:a
+b:b
+h:hello
+w:world
+
 # Configure the database to require keys in the range [a,m) to be in-place.
 
 define required-in-place=(a,m) value-separation=(true,1,3)
