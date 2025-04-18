@@ -21,7 +21,7 @@ marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 
 batch
 add 2 20 200
-add 3 30 300
+add 3 30 300 blob
 ----
 sync: test/REMOTE-OBJ-CATALOG-000001
 

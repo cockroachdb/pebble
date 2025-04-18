@@ -16,9 +16,6 @@ import (
 
 func TestSharedObjectNames(t *testing.T) {
 	t.Run("crosscheck", func(t *testing.T) {
-		supportedFileTypes := []base.FileType{
-			base.FileTypeTable,
-		}
 		for it := 0; it < 100; it++ {
 			var meta objstorage.ObjectMetadata
 			meta.DiskFileNum = base.DiskFileNum(rand.IntN(100000))
@@ -59,6 +56,21 @@ func TestSharedObjectNames(t *testing.T) {
 		require.Equal(
 			t, sharedObjectRefName(meta, refCreatorID, meta.DiskFileNum),
 			"0e17-456-000789.sst.ref.101112.000123",
+		)
+	})
+	t.Run("example-blobfile", func(t *testing.T) {
+		var meta objstorage.ObjectMetadata
+		meta.DiskFileNum = base.DiskFileNum(123)
+		meta.FileType = base.FileTypeBlob
+		meta.Remote.CreatorID = objstorage.CreatorID(456)
+		meta.Remote.CreatorFileNum = base.DiskFileNum(789)
+		require.Equal(t, remoteObjectName(meta), "0e17-456-000789.blob")
+		require.Equal(t, sharedObjectRefPrefix(meta), "0e17-456-000789.blob.ref.")
+
+		refCreatorID := objstorage.CreatorID(101112)
+		require.Equal(
+			t, sharedObjectRefName(meta, refCreatorID, meta.DiskFileNum),
+			"0e17-456-000789.blob.ref.101112.000123",
 		)
 	})
 }
