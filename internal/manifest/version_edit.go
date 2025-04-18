@@ -956,16 +956,15 @@ type BulkVersionEdit struct {
 	AddedFileBacking   map[base.DiskFileNum]*FileBacking
 	RemovedFileBacking []base.DiskFileNum
 
-	// AddedTablesByFileNum maps file number to table metadata for all added
-	// sstables from accumulated version edits. AddedTablesByFileNum is only
-	// populated if set to non-nil by a caller. It must be set to non-nil when
-	// replaying version edits read from a MANIFEST (as opposed to VersionEdits
-	// constructed in-memory).  While replaying a MANIFEST file,
-	// VersionEdit.DeletedFiles map entries have nil values, because the on-disk
-	// deletion record encodes only the file number. Accumulate uses
-	// AddedTablesByFileNum to correctly populate the BulkVersionEdit's Deleted
-	// field with non-nil *TableMetadata.
-	AddedTablesByFileNum map[base.FileNum]*TableMetadata
+	// AllAddedTables maps table number to table metadata for all added sstables
+	// from accumulated version edits. AllAddedTables is only populated if set to
+	// non-nil by a caller. It must be set to non-nil when replaying version edits
+	// read from a MANIFEST (as opposed to VersionEdits constructed in-memory).
+	// While replaying a MANIFEST file, VersionEdit.DeletedFiles map entries have
+	// nil values, because the on-disk deletion record encodes only the file
+	// number. Accumulate uses AllAddedTables to correctly populate the
+	// BulkVersionEdit's Deleted field with non-nil *TableMetadata.
+	AllAddedTables map[base.FileNum]*TableMetadata
 
 	// MarkedForCompactionCountDiff holds the aggregated count of files
 	// marked for compaction added or removed.
@@ -1042,10 +1041,10 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 
 		if m == nil {
 			// m is nil only when replaying a MANIFEST.
-			if b.AddedTablesByFileNum == nil {
+			if b.AllAddedTables == nil {
 				return errors.Errorf("deleted file L%d.%s's metadata is absent and bve.AddedByFileNum is nil", df.Level, df.FileNum)
 			}
-			m = b.AddedTablesByFileNum[df.FileNum]
+			m = b.AllAddedTables[df.FileNum]
 			if m == nil {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", df.Level, df.FileNum)
 			}
@@ -1112,8 +1111,8 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			b.AddedTables[nf.Level] = make(map[base.FileNum]*TableMetadata)
 		}
 		b.AddedTables[nf.Level][nf.Meta.FileNum] = nf.Meta
-		if b.AddedTablesByFileNum != nil {
-			b.AddedTablesByFileNum[nf.Meta.FileNum] = nf.Meta
+		if b.AllAddedTables != nil {
+			b.AllAddedTables[nf.Meta.FileNum] = nf.Meta
 		}
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++

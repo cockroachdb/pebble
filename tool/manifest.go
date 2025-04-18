@@ -156,7 +156,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s\n", arg)
 
 			var bve manifest.BulkVersionEdit
-			bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
+			bve.AllAddedTables = make(map[base.FileNum]*manifest.TableMetadata)
 			var comparer *base.Comparer
 			var editIdx int
 			rr := record.NewReader(f, 0 /* logNum */)
@@ -340,7 +340,7 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		buckets       = map[time.Time]*summaryBucket{}
 		metadatas     = map[base.FileNum]*manifest.TableMetadata{}
 	)
-	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
+	bve.AllAddedTables = make(map[base.FileNum]*manifest.TableMetadata)
 	rr := record.NewReader(f, 0 /* logNum */)
 	numHistErrors := 0
 	for i := 0; ; i++ {
@@ -616,7 +616,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 				var bve manifest.BulkVersionEdit
-				bve.AddedTablesByFileNum = addedByFileNum
+				bve.AllAddedTables = addedByFileNum
 				if err := bve.Accumulate(&ve); err != nil {
 					fmt.Fprintf(stderr, "%s\n", err)
 					ok = false

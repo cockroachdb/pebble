@@ -712,7 +712,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	v := manifest.NewInitialVersion(r.Opts.Comparer)
 	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
-	bve.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
+	bve.AllAddedTables = make(map[base.FileNum]*manifest.TableMetadata)
 
 	for ; idx < len(r.workload.manifests); idx++ {
 		if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
@@ -808,7 +808,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				l0Organizer.PerformUpdate(l0Organizer.PrepareUpdate(&bve, v), v)
 				// AddedTablesByFileNum maps file number to table metadata for all added
 				// sstables from accumulated version edits so we must retain it.
-				bve = manifest.BulkVersionEdit{AddedTablesByFileNum: bve.AddedTablesByFileNum}
+				bve = manifest.BulkVersionEdit{AllAddedTables: bve.AllAddedTables}
 
 				// On the first time through, we set the previous version to the current
 				// version. The rest of the time, we already set it above.
