@@ -47,8 +47,8 @@ read
 ----
 Starting read ahead for corruption. Block corrupted 0.
 Read block 1 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 1
 bytes read: 0
 
@@ -66,8 +66,8 @@ read
 ----
 Starting read ahead for corruption. Block corrupted 0.
 Read block 1 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 1
 bytes read: 0
 
@@ -84,8 +84,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 0
 
@@ -121,8 +121,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -165,8 +165,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -308,8 +308,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -376,8 +376,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 0
 
@@ -555,8 +555,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 32749
 
@@ -625,8 +625,8 @@ read
 ----
 Starting read ahead for corruption. Block corrupted 0.
 Read block 1 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 1
 bytes read: 0
 
@@ -643,8 +643,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 0
 
@@ -665,8 +665,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -688,8 +688,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -754,8 +754,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -789,8 +789,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 0
 
@@ -855,8 +855,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 32749
 
@@ -876,8 +876,8 @@ read
 ----
 Starting read ahead for corruption. Block corrupted 0.
 Read block 1 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 1
 bytes read: 0
 
@@ -894,8 +894,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 0
 
@@ -916,8 +916,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -939,8 +939,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1005,8 +1005,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1039,8 +1039,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 0
 
@@ -1104,8 +1104,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 32749
 
@@ -1128,8 +1128,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 32730
 
@@ -1154,8 +1154,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1178,8 +1178,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 32730
 
@@ -1265,8 +1265,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1326,8 +1326,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 32750
 
@@ -1363,8 +1363,8 @@ read
 ----
 Starting read ahead for corruption. Block corrupted 0.
 Read block 1 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 1
 bytes read: 0
 
@@ -1382,8 +1382,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 0
 
@@ -1405,8 +1405,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1428,8 +1428,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1494,8 +1494,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1528,8 +1528,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 0
 
@@ -1593,8 +1593,8 @@ Read block 5 with 19 bytes
 	Block 5: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 5 at offset 0 (expected 1, got 2)
 Read block 6 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 6
 bytes read: 32750
 
@@ -1613,8 +1613,8 @@ read
 ----
 Starting read ahead for corruption. Block corrupted 0.
 Read block 1 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 1
 bytes read: 0
 
@@ -1631,8 +1631,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 0
 
@@ -1653,8 +1653,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1675,8 +1675,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1741,8 +1741,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 0
 
@@ -1775,8 +1775,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 0
 
@@ -1834,8 +1834,8 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 32749
 
@@ -1877,8 +1877,8 @@ Read block 1 with 19 bytes
 	Block 1: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 1 at offset 0 (expected 1, got 2)
 Read block 2 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 2
 bytes read: 32738
 
@@ -1903,8 +1903,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 32738
 
@@ -1991,8 +1991,8 @@ Read block 2 with 19 bytes
 	Block 2: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 2 at offset 0 (expected 1, got 2)
 Read block 3 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 3
 bytes read: 1
 
@@ -2053,7 +2053,7 @@ Read block 4 with 19 bytes
 	Block 4: Processing chunk at offset 0, checksum=0, length=0, encoding=9
 	Mismatch log number in block 4 at offset 0 (expected 1, got 2)
 Read block 5 with 0 bytes
-	Encountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.
-error reading next: unexpected EOF
+	Encountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.
+error reading next: pebble/record: unexpected EOF
 final blockNum: 5
 bytes read: 32750

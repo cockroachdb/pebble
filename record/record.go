@@ -215,13 +215,28 @@ var (
 	// header, length, or checksum. This usually occurs when a log is recycled,
 	// but can also occur due to corruption.
 	ErrInvalidChunk = errors.New("pebble/record: invalid chunk")
+
+	// ErrUnexpectedEOF is returned if a log file ends unexpectedly. It
+	// indicates the unexpected end of the log file or an in-progress record
+	// envelope itself. ErrUnexpectedEOF may be returned by Reader when it
+	// encounters an invalid chunk but observes no evidence that the invalid
+	// chunk is caused by corruption (i.e., no future chunk indicates that
+	// offset should be valid and durably synced.)
+	//
+	// This error is defined separately from io.ErrUnexpectedEOF to disambiguate
+	// this case from from the case of an unexpected end of the record's payload
+	// while decoding at a higher-level (eg, version edit decoding). If a
+	// higher-level decoding routine returns record.ErrUnexpectedEOF, it
+	// unambiguously indicates that the log file itself ended unexpectedly. The
+	// record.Reader will never return io.ErrUnexpectedEOF, just record.ErrUnexpectedEOF.
+	ErrUnexpectedEOF = errors.New("pebble/record: unexpected EOF")
 )
 
 // IsInvalidRecord returns true if the error matches one of the error types
 // returned for invalid records. These are treated in a way similar to io.EOF
 // in recovery code.
 func IsInvalidRecord(err error) bool {
-	return err == ErrZeroedChunk || err == ErrInvalidChunk || err == io.ErrUnexpectedEOF
+	return err == ErrZeroedChunk || err == ErrInvalidChunk || err == ErrUnexpectedEOF
 }
 
 // Reader reads records from an underlying io.Reader.
@@ -269,7 +284,7 @@ func NewReader(r io.Reader, logNum base.DiskFileNum) *Reader {
 		logNum:   uint32(logNum),
 		blockNum: -1,
 		// invalidOffset is initialized as MaxUint64 so that reading ahead
-		// with the old chunk wire formats results in io.ErrUnexpectedEOF.
+		// with the old chunk wire formats results in ErrUnexpectedEOF.
 		invalidOffset: math.MaxUint64,
 	}
 }
@@ -396,7 +411,7 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 		if err != nil && err != io.ErrUnexpectedEOF {
 			if err == io.EOF && !wantFirst {
 				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
-				return io.ErrUnexpectedEOF
+				return ErrUnexpectedEOF
 			}
 			return err
 		}
@@ -454,20 +469,19 @@ func (r *Reader) readAheadForCorruption() error {
 		}
 
 		if errors.Is(err, io.EOF) {
-			// io.ErrUnexpectedEOF is returned instead of
-			// io.EOF because io library functions clear
-			// an error when it is io.EOF. io.ErrUnexpectedEOF
-			// is returned so that the error is not cleared
-			// when the io library makes calls to Reader.Read().
+			// ErrUnexpectedEOF is returned instead of io.EOF because io library
+			// functions clear an error when it is io.EOF. ErrUnexpectedEOF is
+			// returned so that the error is not cleared when the io library
+			// makes calls to Reader.Read().
 			//
-			// Since no sync offset was found to indicate that the
-			// invalid chunk should have been valid, the chunk represents
-			// an abrupt, unclean termination of the logical log. This
-			// abrupt end of file represented by io.ErrUnexpectedEOF.
+			// Since no sync offset was found to indicate that the invalid chunk
+			// should have been valid, the chunk represents an abrupt, unclean
+			// termination of the logical log. This abrupt end of file
+			// represented by ErrUnexpectedEOF.
 			if r.loggerForTesting != nil {
-				r.loggerForTesting.logf("\tEncountered io.EOF; returning io.ErrUnexpectedEOF since no sync offset found.\n")
+				r.loggerForTesting.logf("\tEncountered io.EOF; returning ErrUnexpectedEOF since no sync offset found.\n")
 			}
-			return io.ErrUnexpectedEOF
+			return ErrUnexpectedEOF
 		}
 		// The last block of a log can be less than 32KiB, which is
 		// the length of r.buf. Thus, we should still parse the data in

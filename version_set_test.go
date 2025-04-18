@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -25,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -328,4 +331,79 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.Equal(t, base.SeqNum(11), lastSeqNum)
 	// logSeqNum is always one greater than the last assigned sequence number.
 	require.Equal(t, d.mu.versions.logSeqNum.Load(), lastSeqNum+1)
+}
+
+// TestCrashDuringManifestWrite_LargeKeys tests a crash mid-manifest write. It
+// uses randomly-sized keys with a very high max in order to test version edits
+// of variable sizes. Large version edits may be broken into multiple 'chunks'
+// across multiple 32KiB blocks within the record package's encoding. There have
+// previously been issues specifically decoding these multi-block version edits.
+func TestCrashDuringManifestWrite_LargeKeys(t *testing.T) {
+	seed := rand.Uint64()
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(seed, 0))
+
+	// crashClone is nil until a clone of the memFS is constructed, where the
+	// clone will lose 50% of the unsynced data. Each iteration constructs one
+	// clone at a random time, and the DB keeps setting values until the clone
+	// is created. Then a new DB is opened with the cloned memFS.
+	var crashClone atomic.Pointer[vfs.MemFS]
+	makeFS := func(iter uint64) vfs.FS {
+		memFS := vfs.NewCrashableMem()
+		return errorfs.Wrap(memFS, errorfs.InjectorFunc(func(op errorfs.Op) error {
+			if crashClone.Load() != nil || op.Kind != errorfs.OpFileWrite {
+				return nil
+			}
+			typ, _, ok := base.ParseFilename(memFS, memFS.PathBase(op.Path))
+			if !ok || typ != base.FileTypeManifest {
+				return nil
+			}
+			if rng.IntN(5) == 0 {
+				crashClone.Store(memFS.CrashClone(vfs.CrashCloneCfg{
+					UnsyncedDataPercent: 50,
+					RNG:                 rand.New(rand.NewPCG(seed, iter)),
+				}))
+			}
+			return nil
+		}))
+	}
+
+	opts := &Options{Logger: testLogger{t: t}}
+	lel := MakeLoggingEventListener(opts.Logger)
+	opts.EventListener = &lel
+
+	k := slices.Concat([]byte("averyl"), bytes.Repeat([]byte{'o'}, rng.IntN(100000)), []byte("ngkey"))
+	baseLen := len(k)
+	newKey := func(i int) []byte {
+		return append(k[:baseLen], fmt.Sprintf("%10d", i)...)
+	}
+
+	const numIterations = 10
+	var keyIndex int
+	for i := 0; i < numIterations; i++ {
+		func() {
+			crashClone.Store(nil)
+
+			opts.FS = makeFS(uint64(i))
+			d, err := Open("foo", opts)
+			require.NoError(t, err)
+			func() {
+				defer func() { require.NoError(t, d.Close()) }()
+				for j := 0; crashClone.Load() == nil; j++ {
+					keyIndex++
+					require.NoError(t, d.Set(newKey(keyIndex), []byte("value"), Sync))
+					if j%10 == 0 {
+						_, err := d.AsyncFlush()
+						require.NoError(t, err)
+					}
+				}
+				require.NotNil(t, crashClone.Load())
+			}()
+
+			opts.FS = crashClone.Load()
+			d, err = Open("foo", opts)
+			require.NoError(t, err)
+			require.NoError(t, d.Close())
+		}()
+	}
 }

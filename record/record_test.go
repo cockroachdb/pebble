@@ -439,7 +439,7 @@ func TestCorruptBlock(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected a checksum mismatch error, got nil")
 	}
-	if err != io.ErrUnexpectedEOF {
+	if !errors.Is(err, ErrUnexpectedEOF) {
 		t.Fatalf("Unexpected error returned: %v", err)
 	}
 }
@@ -584,7 +584,7 @@ func TestSeekRecordEndOfFile(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Seek past the end of a file didn't cause an error")
 	}
-	if err != io.ErrUnexpectedEOF {
+	if err != ErrUnexpectedEOF {
 		t.Fatalf("Seeking past EOF raised unexpected error: %v", err)
 	}
 }
@@ -673,8 +673,8 @@ func TestInvalidLogNum(t *testing.T) {
 
 	{
 		r := NewReader(bytes.NewReader(buf.Bytes()), 2)
-		if _, err := r.Next(); err != io.ErrUnexpectedEOF {
-			t.Fatalf("expected %s, but found %s\n", io.ErrUnexpectedEOF, err)
+		if _, err := r.Next(); !errors.Is(err, ErrUnexpectedEOF) {
+			t.Fatalf("expected %s, but found %s\n", ErrUnexpectedEOF, err)
 		}
 	}
 }
@@ -759,7 +759,7 @@ func TestRecycleLog(t *testing.T) {
 			rr, err := r.Next()
 			if err != nil {
 				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
-				if limitedBuf.limit < 0 && (err == io.EOF || err == io.ErrUnexpectedEOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
+				if limitedBuf.limit < 0 && (err == io.EOF || IsInvalidRecord(err)) {
 					break
 				}
 				t.Fatalf("%d/%d: %v", i, j, err)
@@ -767,7 +767,7 @@ func TestRecycleLog(t *testing.T) {
 			x, err := io.ReadAll(rr)
 			if err != nil {
 				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
-				if limitedBuf.limit < 0 && (err == io.EOF || err == io.ErrUnexpectedEOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
+				if limitedBuf.limit < 0 && (err == io.EOF || IsInvalidRecord(err)) {
 					break
 				}
 				t.Fatalf("%d/%d: %v", i, j, err)
@@ -776,7 +776,7 @@ func TestRecycleLog(t *testing.T) {
 				t.Fatalf("%d/%d: expected record %d, but found %d", i, j, sizes[j], len(x))
 			}
 		}
-		if _, err := r.Next(); err != io.EOF && err != io.ErrUnexpectedEOF && err != ErrZeroedChunk && err != ErrInvalidChunk {
+		if _, err := r.Next(); err != io.EOF && err != ErrUnexpectedEOF && err != ErrZeroedChunk && err != ErrInvalidChunk {
 			t.Fatalf("%d: expected EOF, but found %v", i, err)
 		}
 	}
@@ -797,7 +797,7 @@ func TestTruncatedLog(t *testing.T) {
 	rr, err := r.Next()
 	require.NoError(t, err)
 	_, err = io.ReadAll(rr)
-	require.EqualValues(t, err, io.ErrUnexpectedEOF)
+	require.EqualValues(t, err, ErrUnexpectedEOF)
 }
 
 func TestRecycleLogWithPartialBlock(t *testing.T) {
@@ -901,7 +901,7 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = io.ReadAll(rr)
-	require.Equal(t, err, io.ErrUnexpectedEOF)
+	require.True(t, errors.Is(err, ErrUnexpectedEOF))
 }
 
 type readerLogger struct {

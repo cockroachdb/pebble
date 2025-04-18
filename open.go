@@ -950,16 +950,17 @@ func (d *DB) replayWAL(
 			// surfaces record.ErrInvalidChunk or record.ErrZeroedChunk. These
 			// errors are always indicative of corruption and data loss.
 			//
-			// Otherwise, the reader surfaces io.ErrUnexpectedEOF indicating that
-			// the WAL terminated uncleanly and ambiguously. If the WAL is the
-			// most recent logical WAL, the caller passes in (strictWALTail=false),
-			// indicating we should tolerate the unclean ending. If the WAL is an
-			// older WAL, the caller passes in (strictWALTail=true), indicating that
-			// the WAL should have been closed cleanly, and we should interpret
-			// the `io.ErrUnexpectedEOF` as corruption and stop recovery.
+			// Otherwise, the reader surfaces record.ErrUnexpectedEOF indicating
+			// that the WAL terminated uncleanly and ambiguously. If the WAL is
+			// the most recent logical WAL, the caller passes in
+			// (strictWALTail=false), indicating we should tolerate the unclean
+			// ending. If the WAL is an older WAL, the caller passes in
+			// (strictWALTail=true), indicating that the WAL should have been
+			// closed cleanly, and we should interpret the
+			// `record.ErrUnexpectedEOF` as corruption and stop recovery.
 			if errors.Is(err, io.EOF) {
 				break
-			} else if errors.Is(err, io.ErrUnexpectedEOF) && !strictWALTail {
+			} else if errors.Is(err, record.ErrUnexpectedEOF) && !strictWALTail {
 				break
 			} else if errors.Is(err, record.ErrInvalidChunk) || errors.Is(err, record.ErrZeroedChunk) {
 				// If a read-ahead returns one of these errors, they should be marked with corruption.
