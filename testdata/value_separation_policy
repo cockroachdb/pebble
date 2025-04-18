@@ -28,7 +28,7 @@ RawWriter.AddWithBlobHandle("foo#209,SET", "(f0,blk0[5:15])", 0, false)
 
 estimated-sizes
 ----
-file: 70, references: 70
+file: 68, references: 68
 
 close-output
 ----
@@ -36,8 +36,8 @@ close-output
 # close: 000001.sst
 # sync-data: 000002.blob
 # close: 000002.blob
-Blob file created: 000002 size:[61 (61B)] vals:[15 (15B)]
-{BlockCount: 1, ValueCount: 2, BlockLenLongest: 15, UncompressedValueBytes: 15, FileLen: 61}
+Blob file created: 000002 size:[71 (71B)] vals:[15 (15B)]
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 71}
 blobrefs:[
  0: 000002 15
 ]
@@ -178,8 +178,8 @@ close-output
 # close: 000007.sst
 # sync-data: 000008.blob
 # close: 000008.blob
-Blob file created: 000008 size:[74 (74B)] vals:[28 (28B)]
-{BlockCount: 1, ValueCount: 2, BlockLenLongest: 28, UncompressedValueBytes: 28, FileLen: 74}
+Blob file created: 000008 size:[84 (84B)] vals:[28 (28B)]
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 28, FileLen: 84}
 blobrefs:[
  0: 000008 28
 ]
