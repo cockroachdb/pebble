@@ -26,6 +26,10 @@ const (
 	SnappyCompression
 	ZstdCompression
 	MinlzCompression
+	// AdaptiveCompression dynamically chooses between snappy and zstd
+	// based on recent compression effectiveness. See comment for adaptiveCompressor
+	// for more details.
+	AdaptiveCompression
 	NCompression
 )
 
@@ -43,6 +47,8 @@ func (c Compression) String() string {
 		return "ZSTD"
 	case MinlzCompression:
 		return "Minlz"
+	case AdaptiveCompression:
+		return "Adaptive"
 	default:
 		return "Unknown"
 	}
@@ -62,6 +68,8 @@ func CompressionFromString(s string) Compression {
 		return ZstdCompression
 	case "Minlz":
 		return MinlzCompression
+	case "Adaptive":
+		return AdaptiveCompression
 	default:
 		return DefaultCompression
 	}
