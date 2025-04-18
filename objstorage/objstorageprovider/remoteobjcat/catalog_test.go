@@ -42,14 +42,18 @@ func TestCatalog(t *testing.T) {
 
 		parseAdd := func(args []string) remoteobjcat.RemoteObjectMetadata {
 			t.Helper()
-			if len(args) != 3 {
-				td.Fatalf(t, "add <file-num> <creator-id> <creator-file-num>")
+			if len(args) != 3 && len(args) != 4 {
+				td.Fatalf(t, "add <file-num> <creator-id> <creator-file-num> [sstable|blob]")
 			}
-			vals := toUInt64(args...)
+			fileType := base.FileTypeTable
+			if len(args) == 4 {
+				fileType = base.FileTypeFromName(args[3])
+			}
+
+			vals := toUInt64(args[:min(3, len(args))]...)
 			return remoteobjcat.RemoteObjectMetadata{
-				FileNum: base.DiskFileNum(vals[0]),
-				// When we support other file types, we should let the test determine this.
-				FileType:       base.FileTypeTable,
+				FileNum:        base.DiskFileNum(vals[0]),
+				FileType:       fileType,
 				CreatorID:      objstorage.CreatorID(vals[1]),
 				CreatorFileNum: base.DiskFileNum(vals[2]),
 			}
@@ -145,10 +149,10 @@ func TestCatalog(t *testing.T) {
 			var b remoteobjcat.Batch
 			for batchIdx := 0; batchIdx < n; batchIdx++ {
 				for i := 0; i < size; i++ {
+
 					b.AddObject(remoteobjcat.RemoteObjectMetadata{
-						FileNum: base.DiskFileNum(rand.Uint64()),
-						// When we support other file types, we should let the test determine this.
-						FileType:       base.FileTypeTable,
+						FileNum:        base.DiskFileNum(rand.Uint64()),
+						FileType:       supportedFileTypes[rand.IntN(len(supportedFileTypes))],
 						CreatorID:      objstorage.CreatorID(rand.Uint64()),
 						CreatorFileNum: base.DiskFileNum(rand.Uint64()),
 					})
@@ -191,4 +195,9 @@ func TestCatalog(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+var supportedFileTypes = []base.FileType{
+	base.FileTypeTable,
+	base.FileTypeBlob,
 }

@@ -48,12 +48,15 @@ const (
 // more general (and we want freedom to change it in the future).
 const (
 	objTypeTable = 1
+	objTypeBlob  = 2
 )
 
 func objTypeToFileType(objType uint64) (base.FileType, error) {
 	switch objType {
 	case objTypeTable:
 		return base.FileTypeTable, nil
+	case objTypeBlob:
+		return base.FileTypeBlob, nil
 	default:
 		return 0, errors.Newf("unknown object type %d", objType)
 	}
@@ -63,7 +66,8 @@ func fileTypeToObjType(fileType base.FileType) (uint64, error) {
 	switch fileType {
 	case base.FileTypeTable:
 		return objTypeTable, nil
-
+	case base.FileTypeBlob:
+		return objTypeBlob, nil
 	default:
 		return 0, errors.Newf("unknown object type for file type %d", fileType)
 	}

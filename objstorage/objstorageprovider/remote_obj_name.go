@@ -25,6 +25,11 @@ func remoteObjectName(meta objstorage.ObjectMetadata) string {
 			"%04x-%d-%06d.sst",
 			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
 		)
+	case base.FileTypeBlob:
+		return fmt.Sprintf(
+			"%04x-%d-%06d.blob",
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
+		)
 	}
 	panic("unknown FileType")
 }
@@ -51,6 +56,11 @@ func sharedObjectRefName(
 			"%04x-%d-%06d.sst.ref.%d.%06d",
 			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum, refCreatorID, refFileNum,
 		)
+	case base.FileTypeBlob:
+		return fmt.Sprintf(
+			"%04x-%d-%06d.blob.ref.%d.%06d",
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum, refCreatorID, refFileNum,
+		)
 	}
 	panic("unknown FileType")
 }
@@ -63,6 +73,11 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 	case base.FileTypeTable:
 		return fmt.Sprintf(
 			"%04x-%d-%06d.sst.ref.",
+			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
+		)
+	case base.FileTypeBlob:
+		return fmt.Sprintf(
+			"%04x-%d-%06d.blob.ref.",
 			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
 		)
 	}
