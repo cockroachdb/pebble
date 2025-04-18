@@ -120,6 +120,6 @@ Error types: (1) *hintdetail.withDetail (2) *errors.errorString`, filename)
 
 func TestRedactFileNum(t *testing.T) {
 	// Ensure that redaction never redacts file numbers.
-	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(FileNum(5)))
+	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(TableNum(5)))
 	require.Equal(t, redact.RedactableString("000005"), redact.Sprint(DiskFileNum(5)))
 }
