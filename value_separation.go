@@ -65,29 +65,29 @@ func (d *DB) determineCompactionValueSeparation(
 }
 
 // shouldWriteBlobFiles returns true if the compaction should write new blob
-// files. It also returns the maximum blob reference depth to assign to output
-// sstables (the actual value may be lower iff the output table references fewer
-// distinct blob files).
+// files. If it returns false, the referenceDepth return value contains the
+// maximum blob reference depth to assign to output sstables (the actual value
+// may be lower iff the output table references fewer distinct blob files).
 func shouldWriteBlobFiles(
 	c *compaction, policy ValueSeparationPolicy,
 ) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
 	// Flushes will have no existing references to blob files and should write
 	// their values to new blob files.
 	if c.kind == compactionKindFlush {
-		return true, 1
+		return true, 0
 	}
 	inputReferenceDepth := compactionBlobReferenceDepth(c.inputs)
 	if inputReferenceDepth == 0 {
 		// None of the input sstables reference blob files. It may be the case
 		// that these sstables were created before value separation was enabled.
 		// We should try to write to new blob files.
-		return true, 1
+		return true, 0
 	}
 	// If the compaction's output blob reference depth would be greater than the
 	// configured max, we should rewrite the values into new blob files to
 	// restore locality.
-	if inputReferenceDepth > policy.MaxBlobReferenceDepth {
-		return true, 1
+	if inputReferenceDepth > manifest.BlobReferenceDepth(policy.MaxBlobReferenceDepth) {
+		return true, 0
 	}
 	// Otherwise, we won't write any new blob files but will carry forward
 	// existing references.

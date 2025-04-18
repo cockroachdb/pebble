@@ -1652,12 +1652,10 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			if err != nil {
 				return err
 			}
-			var maxDepth int
-			maxDepth, err = strconv.Atoi(cmdArg.Vals[2])
+			policy.MaxBlobReferenceDepth, err = strconv.Atoi(cmdArg.Vals[2])
 			if err != nil {
 				return err
 			}
-			policy.MaxBlobReferenceDepth = manifest.BlobReferenceDepth(maxDepth)
 			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return policy
 			}
