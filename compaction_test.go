@@ -1232,8 +1232,8 @@ func TestCompaction(t *testing.T) {
 			maxVersion: internalFormatNewest,
 		},
 		"value_separation": {
-			minVersion: formatValueSeparation,
-			maxVersion: formatValueSeparation,
+			minVersion: FormatExperimentalValueSeparation,
+			maxVersion: FormatExperimentalValueSeparation,
 			verbose:    true,
 		},
 	}

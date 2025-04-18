@@ -28,7 +28,7 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 	require.Equal(t, FormatColumnarBlocks, FormatMajorVersion(19))
 	require.Equal(t, FormatWALSyncChunks, FormatMajorVersion(20))
 	require.Equal(t, FormatTableFormatV6, FormatMajorVersion(21))
-	require.Equal(t, formatValueSeparation, FormatMajorVersion(22))
+	require.Equal(t, FormatExperimentalValueSeparation, FormatMajorVersion(22))
 
 	// When we add a new version, we should add a check for the new version in
 	// addition to updating these expected values.
@@ -68,8 +68,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatWALSyncChunks, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatTableFormatV6))
 	require.Equal(t, FormatTableFormatV6, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(formatValueSeparation))
-	require.Equal(t, formatValueSeparation, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatExperimentalValueSeparation))
+	require.Equal(t, FormatExperimentalValueSeparation, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -219,17 +219,17 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	// fixture is intentionally verbose.
 
 	m := map[FormatMajorVersion][2]sstable.TableFormat{
-		FormatDefault:                    {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
-		FormatFlushableIngest:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
-		FormatPrePebblev1MarkedCompacted: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
-		FormatDeleteSizedAndObsolete:     {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
-		FormatVirtualSSTables:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
-		FormatSyntheticPrefixSuffix:      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
-		FormatFlushableIngestExcises:     {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
-		FormatColumnarBlocks:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
-		FormatWALSyncChunks:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
-		FormatTableFormatV6:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
-		formatValueSeparation:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
+		FormatDefault:                     {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatFlushableIngest:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatPrePebblev1MarkedCompacted:  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatDeleteSizedAndObsolete:      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
+		FormatVirtualSSTables:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
+		FormatSyntheticPrefixSuffix:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
+		FormatFlushableIngestExcises:      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev4},
+		FormatColumnarBlocks:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
+		FormatWALSyncChunks:               {sstable.TableFormatPebblev1, sstable.TableFormatPebblev5},
+		FormatTableFormatV6:               {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
+		FormatExperimentalValueSeparation: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
 	}
 
 	// Valid versions.
@@ -286,12 +286,12 @@ func TestFormatMajorVersions_ColumnarBlocks(t *testing.T) {
 			want:    sstable.TableFormatPebblev4,
 		},
 		{
-			fmv:     formatValueSeparation,
+			fmv:     FormatExperimentalValueSeparation,
 			colBlks: true,
 			want:    sstable.TableFormatPebblev6,
 		},
 		{
-			fmv:     formatValueSeparation,
+			fmv:     FormatExperimentalValueSeparation,
 			colBlks: false,
 			want:    sstable.TableFormatPebblev4,
 		},

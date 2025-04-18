@@ -1140,7 +1140,7 @@ type ValueSeparationPolicy struct {
 	// compaction may produce an output sstable referencing more than this many
 	// overlapping blob files, the compaction will instead rewrite referenced
 	// values into new blob files.
-	MaxBlobReferenceDepth manifest.BlobReferenceDepth
+	MaxBlobReferenceDepth int
 }
 
 // WALFailoverOptions configures the WAL failover mechanics to use during
@@ -1928,9 +1928,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				minimumSize, err = strconv.Atoi(value)
 				valSepPolicy.MinimumSize = minimumSize
 			case "max_blob_reference_depth":
-				var maxBlobReferenceDepth int
-				maxBlobReferenceDepth, err = strconv.Atoi(value)
-				valSepPolicy.MaxBlobReferenceDepth = manifest.BlobReferenceDepth(maxBlobReferenceDepth)
+				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
