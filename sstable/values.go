@@ -5,6 +5,9 @@
 package sstable
 
 import (
+	"fmt"
+	"io"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -41,6 +44,10 @@ type TableBlobContext struct {
 	// References provides a mapping from an index to a file number for a
 	// sstable's blob references.
 	References BlobReferences
+	// BlobHandleFn is an optional function that is invoked after an inline blob
+	// handle has had its preface decoded. Note that if this function is set,
+	// we will not do any work in making a lazy value.
+	BlobHandleFn func(preface blob.InlineHandlePreface, remainder []byte) base.InternalValue
 }
 
 // defaultInternalValueConstructor is the default implementation of the
@@ -79,7 +86,7 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 	// We can't convert a blob handle into an InternalValue without
 	// BlobReferences providing the mapping of a reference index to a blob file
 	// number.
-	if i.blobContext.References == nil {
+	if i.blobContext.References == nil && i.blobContext.BlobHandleFn == nil {
 		panic(errors.AssertionFailedf("blob references not configured"))
 	}
 
@@ -93,6 +100,13 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 	// within the blob file. We defer parsing of it until the user retrieves the
 	// value. We propagate it as LazyValue.ValueOrHandle.
 	preface, remainder := blob.DecodeInlineHandlePreface(handle[1:])
+
+	// If BlobHandleFn is specified, we don't care about our value at all; we
+	// just need to return what we have already decoded for our inline blob
+	// handle.
+	if i.blobContext.BlobHandleFn != nil {
+		return i.blobContext.BlobHandleFn(preface, remainder)
+	}
 
 	if i.env.Stats != nil {
 		// TODO(jackson): Add stats to differentiate between blob values and
@@ -113,4 +127,46 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 		ValueOrHandle: remainder,
 		Fetcher:       &i.lazyFetcher,
 	})
+}
+
+// BlobRefMode specifies how blob references should be handled.
+type BlobRefMode int
+
+const (
+	// BlobRefModeNone specifies the AssertNoBlobHandles TableBlobContext.
+	BlobRefModeNone BlobRefMode = iota
+	// BlobRefModePrint specifies a TableBlobContext that allows printing the
+	// raw blob handle without reading from any blob files.
+	BlobRefModePrint
+)
+
+func ConvertToBlobRefMode(s string) BlobRefMode {
+	switch s {
+	case "print":
+		return BlobRefModePrint
+	default:
+		return BlobRefModeNone
+	}
+}
+
+// NewTableBlobContext creates a TableBlobContext based on the specified mode.
+func NewTableBlobContext(mode BlobRefMode, stdout io.Writer) TableBlobContext {
+	switch mode {
+	case BlobRefModePrint:
+		return TableBlobContext{
+			ValueFetcher: nil,
+			References:   nil,
+			BlobHandleFn: func(preface blob.InlineHandlePreface, remainder []byte) base.InternalValue {
+				handleSuffix := blob.DecodeHandleSuffix(remainder)
+				ih := blob.InlineHandle{
+					InlineHandlePreface: preface,
+					HandleSuffix:        handleSuffix,
+				}
+				fmt.Fprintf(stdout, "%v\n", ih)
+				return base.InternalValue{}
+			},
+		}
+	default:
+		return AssertNoBlobHandles
+	}
 }
