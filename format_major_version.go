@@ -215,12 +215,16 @@ const (
 	// This format major version does not yet enable use of value separation.
 	FormatTableFormatV6
 
-	// formatValueSeparation enables the use of value separation, separating
-	// values into external blob files that do not participate in every
-	// compaction.
+	// FormatExperimentalValueSeparation enables the use of value separation,
+	// separating values into external blob files that do not participate in
+	// every compaction.
 	//
-	// TODO(jackson): Export this format major version once stable.
-	formatValueSeparation
+	// This format major version is experimental and its physical file formats
+	// are not yet stable. Do not use this format major version in production.
+	//
+	// TODO(jackson): Rename this format major version and update FormatNewest
+	// once stable.
+	FormatExperimentalValueSeparation
 
 	// -- Add new versions here --
 
@@ -262,7 +266,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev4
 	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
-	case FormatTableFormatV6, formatValueSeparation:
+	case FormatTableFormatV6, FormatExperimentalValueSeparation:
 		return sstable.TableFormatPebblev6
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -276,7 +280,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatTableFormatV6, formatValueSeparation:
+		FormatTableFormatV6, FormatExperimentalValueSeparation:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -325,8 +329,8 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	FormatTableFormatV6: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatTableFormatV6)
 	},
-	formatValueSeparation: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(formatValueSeparation)
+	FormatExperimentalValueSeparation: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatExperimentalValueSeparation)
 	},
 }
 
