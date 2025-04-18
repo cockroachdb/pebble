@@ -16,28 +16,32 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// FileNum is an internal DB identifier for a table. Tables can be physical (in
-// which case the FileNum also identifies the backing object) or virtual.
-type FileNum uint64
+// TableNum is an internal DB identifier for a table. Tables can be physical (in
+// which case the numeric TableNum value coincides with the DiskFileNum of the
+// backing object) or virtual.
+type TableNum uint64
+
+// FileNum is a deprecated alias for TableNum.
+type FileNum = TableNum
 
 // String returns a string representation of the file number.
-func (fn FileNum) String() string { return fmt.Sprintf("%06d", fn) }
+func (tn TableNum) String() string { return fmt.Sprintf("%06d", tn) }
 
 // SafeFormat implements redact.SafeFormatter.
-func (fn FileNum) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("%06d", redact.SafeUint(fn))
+func (tn TableNum) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("%06d", redact.SafeUint(tn))
 }
 
-// PhysicalTableDiskFileNum converts the FileNum of a physical table to the
+// PhysicalTableDiskFileNum converts the TableNum of a physical table to the
 // backing DiskFileNum. The underlying numbers always match for physical tables.
-func PhysicalTableDiskFileNum(n FileNum) DiskFileNum {
+func PhysicalTableDiskFileNum(n TableNum) DiskFileNum {
 	return DiskFileNum(n)
 }
 
 // PhysicalTableFileNum converts the DiskFileNum backing a physical table into
-// the table's FileNum. The underlying numbers always match for physical tables.
-func PhysicalTableFileNum(f DiskFileNum) FileNum {
-	return FileNum(f)
+// the table's TableNum. The underlying numbers always match for physical tables.
+func PhysicalTableFileNum(f DiskFileNum) TableNum {
+	return TableNum(f)
 }
 
 // A DiskFileNum identifies a file or object with exists on disk.
