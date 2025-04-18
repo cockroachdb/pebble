@@ -829,6 +829,11 @@ open db wal-failover=/failover-logs nondeterministic
 checkpoint db checkpoints/checkpoint7 nondeterministic
 ----
 
+# Close the database.
+
+close db
+----
+
 # Validate that we can open the checkpoint.
 
 open checkpoints/checkpoint7 readonly nondeterministic
