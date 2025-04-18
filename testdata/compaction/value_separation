@@ -222,7 +222,7 @@ L0.0:
   000031:[sted@1#342503,SET-uery@1#368888,SET] seqnums:[342503-368888] points:[sted@1#342503,SET-uery@1#368888,SET] size:406286 blobrefs:[(000032: 1688704); depth:1]
   000033:[uerz@1#368889,SET-vqfq@1#395271,SET] seqnums:[368889-395271] points:[uerz@1#368889,SET-vqfq@1#395271,SET] size:406985 blobrefs:[(000034: 1688512); depth:1]
   000035:[vqfr@1#395272,SET-xbqj@1#421574,SET] seqnums:[395272-421574] points:[vqfr@1#395272,SET-xbqj@1#421574,SET] size:410632 blobrefs:[(000036: 1683392); depth:1]
-  000037:[xbqk@1#421575,SET-ymzw@1#447842,SET] seqnums:[421575-447842] points:[xbqk@1#421575,SET-ymzw@1#447842,SET] size:412587 blobrefs:[(000038: 1681152); depth:1]
+  000037:[xbqk@1#421575,SET-ymzw@1#447842,SET] seqnums:[421575-447842] points:[xbqk@1#421575,SET-ymzw@1#447842,SET] size:412585 blobrefs:[(000038: 1681152); depth:1]
   000039:[ymzx@1#447843,SET-zyni@1#474219,SET] seqnums:[447843-474219] points:[ymzx@1#447843,SET-zyni@1#474219,SET] size:407748 blobrefs:[(000040: 1688128); depth:1]
   000041:[zynj@1#474220,SET-zzzz@1#475263,SET] seqnums:[474220-475263] points:[zynj@1#474220,SET-zzzz@1#475263,SET] size:16569 blobrefs:[(000042: 66816); depth:1]
 Blob files:
@@ -255,7 +255,7 @@ auto-compact
 ----
 L6:
   000044:[a@1#0,SET-czma@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-czma@1#0,SET] size:713597 blobrefs:[(000006: 1689536), (000008: 1689024), (000010: 106944); depth:1]
-  000045:[czmb@1#0,SET-fzac@1#0,SET] seqnums:[0-0] points:[czmb@1#0,SET-fzac@1#0,SET] size:710727 blobrefs:[(000010: 1577600), (000012: 1687552), (000014: 223808); depth:1]
+  000045:[czmb@1#0,SET-fzac@1#0,SET] seqnums:[0-0] points:[czmb@1#0,SET-fzac@1#0,SET] size:710726 blobrefs:[(000010: 1577600), (000012: 1687552), (000014: 223808); depth:1]
   000046:[fzad@1#0,SET-iyoz@1#0,SET] seqnums:[0-0] points:[fzad@1#0,SET-iyoz@1#0,SET] size:710124 blobrefs:[(000014: 1463104), (000016: 1685632), (000018: 341504); depth:1]
   000047:[iyp@1#0,SET-lxxp@1#0,SET] seqnums:[0-0] points:[iyp@1#0,SET-lxxp@1#0,SET] size:718439 blobrefs:[(000018: 1336960), (000020: 1684672), (000022: 457856); depth:1]
   000048:[lxxq@1#0,SET-oxlo@1#0,SET] seqnums:[0-0] points:[lxxq@1#0,SET-oxlo@1#0,SET] size:711593 blobrefs:[(000022: 1230400), (000024: 1685888), (000026: 572480); depth:1]
