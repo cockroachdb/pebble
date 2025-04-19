@@ -235,7 +235,7 @@ func (vs *versionSet) load(
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
-	bve.AddedTablesByFileNum = make(map[base.FileNum]*tableMetadata)
+	bve.AllAddedTables = make(map[base.FileNum]*tableMetadata)
 	manifestFile, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",

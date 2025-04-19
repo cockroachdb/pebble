@@ -351,7 +351,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 	}
 
 	be := manifest.BulkVersionEdit{}
-	be.AddedTablesByFileNum = make(map[base.FileNum]*manifest.TableMetadata)
+	be.AllAddedTables = make(map[base.FileNum]*manifest.TableMetadata)
 
 	// Coalesce all edits from [0, l.startEdit) into a BulkVersionEdit.
 	for _, ve := range edits[:l.startEdit] {
