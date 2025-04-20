@@ -355,24 +355,16 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			if td.HasArg("block-size") {
 				td.ScanArgs(t, "block-size", &blockSize)
 			}
-			var inPlaceValueBound UserKeyPrefixBound
-			if td.HasArg("in-place-bound") {
-				var l, u string
-				td.ScanArgs(t, "in-place-bound", &l, &u)
-				inPlaceValueBound.Lower = []byte(l)
-				inPlaceValueBound.Upper = []byte(u)
-			}
 			var disableValueBlocks bool
 			if td.HasArg("disable-value-blocks") {
 				td.ScanArgs(t, "disable-value-blocks", &disableValueBlocks)
 			}
 			meta, r, err = runBuildCmd(td, &WriterOptions{
-				BlockSize:                 blockSize,
-				Comparer:                  testkeys.Comparer,
-				TableFormat:               formatVersion,
-				RequiredInPlaceValueBound: inPlaceValueBound,
-				ShortAttributeExtractor:   attributeExtractor,
-				DisableValueBlocks:        disableValueBlocks,
+				BlockSize:               blockSize,
+				Comparer:                testkeys.Comparer,
+				TableFormat:             formatVersion,
+				ShortAttributeExtractor: attributeExtractor,
+				DisableValueBlocks:      disableValueBlocks,
 			}, nil /* cacheHandle */)
 			if err != nil {
 				return err.Error()

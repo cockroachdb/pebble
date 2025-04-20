@@ -3158,20 +3158,43 @@ func (d *DB) compactAndWrite(
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
 		GrantHandle:                c.grantHandle,
-		ValueSeparation:            valueSeparation,
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
+
+	var spanPolicyValid bool
+	var spanPolicy SpanPolicy
+	// If spanPolicyValid is true and spanPolicyEndKey is empty, then spanPolicy
+	// applies for the rest of the keyspace.
+	var spanPolicyEndKey []byte
+
 	for runner.MoreDataToWrite() {
 		if c.cancel.Load() {
 			return runner.Finish().WithError(ErrCancelledCompaction)
 		}
 		// Create a new table.
+		firstKey := runner.FirstKey()
+		if !spanPolicyValid || (len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0) {
+			var err error
+			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
+			if err != nil {
+				return runner.Finish().WithError(err)
+			}
+			spanPolicyValid = true
+		}
+
 		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
+		if spanPolicy.DisableValueSeparationBySuffix {
+			writerOpts.DisableValueBlocks = true
+		}
+		vSep := valueSeparation
+		if spanPolicy.ValueStoragePolicy == ValueStorageLowReadLatency {
+			vSep = compact.NeverSeparateValues{}
+		}
 		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
-		runner.WriteTable(objMeta, tw)
+		runner.WriteTable(objMeta, tw, spanPolicyEndKey, vSep)
 	}
 	result = runner.Finish()
 	if result.Err == nil {

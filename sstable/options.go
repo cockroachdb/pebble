@@ -238,10 +238,6 @@ type WriterOptions struct {
 	// Options.Experimental.ShortAttributeExtractor.
 	ShortAttributeExtractor base.ShortAttributeExtractor
 
-	// RequiredInPlaceValueBound mirrors
-	// Options.Experimental.RequiredInPlaceValueBound.
-	RequiredInPlaceValueBound UserKeyPrefixBound
-
 	// DisableValueBlocks is only used for TableFormat >= TableFormatPebblev3,
 	// and if set to true, does not write any values to value blocks. This is
 	// only intended for cases where the in-memory buffering of all value blocks

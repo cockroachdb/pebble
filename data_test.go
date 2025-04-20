@@ -1645,11 +1645,15 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			if len(cmdArg.Vals) != 2 {
 				return errors.New("required-in-place expects 2 arguments: <start-key> <end-key>")
 			}
-			start, end := cmdArg.Vals[0], cmdArg.Vals[1]
-			opts.Experimental.RequiredInPlaceValueBound = UserKeyPrefixBound{
-				Lower: []byte(start),
-				Upper: []byte(end),
+			span := KeyRange{
+				Start: []byte(cmdArg.Vals[0]),
+				End:   []byte(cmdArg.Vals[1]),
 			}
+			policy := SpanPolicy{
+				DisableValueSeparationBySuffix: true,
+				ValueStoragePolicy:             ValueStorageLowReadLatency,
+			}
+			opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(opts.Comparer.Compare, span, policy)
 		case "target-file-sizes":
 			if len(opts.Levels) < len(cmdArg.Vals) {
 				opts.Levels = slices.Grow(opts.Levels, len(cmdArg.Vals)-len(opts.Levels))[0:len(cmdArg.Vals)]

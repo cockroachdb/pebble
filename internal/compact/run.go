@@ -108,11 +108,6 @@ type RunnerConfig struct {
 	// GrantHandle is used to perform accounting of resource consumption by the
 	// CompactionScheduler.
 	GrantHandle base.CompactionGrantHandle
-
-	// ValueSeparation may be populated to write some values to a separate blob
-	// file. Implementations may implement heuristics that determine when to
-	// separate a value.
-	ValueSeparation ValueSeparation
 }
 
 // ValueSeparation defines an interface for writing some values to separate blob
@@ -184,9 +179,6 @@ func NewRunner(cfg RunnerConfig, iter *Iter) *Runner {
 		cfg:  cfg,
 		iter: iter,
 	}
-	if r.cfg.ValueSeparation == nil {
-		r.cfg.ValueSeparation = NeverSeparateValues{}
-	}
 	r.kv = r.iter.First()
 	return r
 }
@@ -199,11 +191,32 @@ func (r *Runner) MoreDataToWrite() bool {
 	return r.kv != nil || !r.lastRangeDelSpan.Empty() || !r.lastRangeKeySpan.Empty()
 }
 
+// FirstKey returns the first key that will be written; this can be a point key
+// or the beginning of a range del or range key span.
+//
+// FirstKey can only be called right after MoreDataToWrite() was called and
+// returned true.
+func (r *Runner) FirstKey() []byte {
+	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
+	if r.kv != nil && firstKey == nil {
+		firstKey = r.kv.K.UserKey
+	}
+	return firstKey
+}
+
 // WriteTable writes a new output table. This table will be part of
 // Result.Tables. Should only be called if MoreDataToWrite() returned true.
 //
+// limitKey (if non-empty) forces the sstable to be finished before reaching
+// this key.
+//
 // WriteTable always closes the Writer.
-func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWriter) {
+func (r *Runner) WriteTable(
+	objMeta objstorage.ObjectMetadata,
+	tw sstable.RawWriter,
+	limitKey []byte,
+	valueSeparation ValueSeparation,
+) {
 	if r.err != nil {
 		panic("error already encountered")
 	}
@@ -211,10 +224,10 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 		CreationTime: time.Now(),
 		ObjMeta:      objMeta,
 	})
-	splitKey, err := r.writeKeysToTable(tw)
+	splitKey, err := r.writeKeysToTable(tw, limitKey, valueSeparation)
 
 	// Inform the value separation policy that the table is finished.
-	valSepMeta, valSepErr := r.cfg.ValueSeparation.FinishOutput()
+	valSepMeta, valSepErr := valueSeparation.FinishOutput()
 	if valSepErr != nil {
 		r.err = errors.CombineErrors(r.err, valSepErr)
 	} else {
@@ -250,17 +263,17 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 	r.stats.CumulativeBlobFileSize += valSepMeta.BlobFileStats.FileLen
 }
 
-func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ error) {
+func (r *Runner) writeKeysToTable(
+	tw sstable.RawWriter, limitKey []byte, valueSeparation ValueSeparation,
+) (splitKey []byte, _ error) {
 	const updateGrantHandleEveryNKeys = 128
-	firstKey := base.MinUserKey(r.cmp, spanStartOrNil(&r.lastRangeDelSpan), spanStartOrNil(&r.lastRangeKeySpan))
-	if r.kv != nil && firstKey == nil {
-		firstKey = r.kv.K.UserKey
-	}
+	firstKey := r.FirstKey()
 	if firstKey == nil {
 		return nil, base.AssertionFailedf("no data to write")
 	}
+	limitKey = base.MinUserKey(r.cmp, limitKey, r.TableSplitLimit(firstKey))
 	splitter := NewOutputSplitter(
-		r.cmp, firstKey, r.TableSplitLimit(firstKey),
+		r.cmp, firstKey, limitKey,
 		r.cfg.TargetOutputFileSize, r.cfg.Grandparents.Iter(), r.iter.Frontiers(),
 	)
 	equalPrev := func(k []byte) bool {
@@ -278,12 +291,12 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 				// ValueSeparation.EstimatedFileSize does not either. So this
 				// CumWriteBytes is incomplete.
 				CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize() +
-					r.cfg.ValueSeparation.EstimatedFileSize(),
+					valueSeparation.EstimatedFileSize(),
 			})
 			r.cfg.GrantHandle.MeasureCPU(base.CompactionGoroutinePrimary)
 		}
 		outputSize := tw.EstimatedSize()
-		outputSize += r.cfg.ValueSeparation.EstimatedReferenceSize()
+		outputSize += valueSeparation.EstimatedReferenceSize()
 		if splitter.ShouldSplitBefore(kv.K.UserKey, outputSize, equalPrev) {
 			break
 		}
@@ -312,7 +325,7 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.
-		if err := r.cfg.ValueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
 			return nil, err
 		}
 		if r.iter.SnapshotPinned() {
@@ -344,7 +357,7 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 		// CumWriteBytes is incomplete.
 		CumWriteBytes: r.stats.CumulativeWrittenSize +
 			tw.EstimatedSize() +
-			r.cfg.ValueSeparation.EstimatedFileSize(),
+			valueSeparation.EstimatedFileSize(),
 	})
 	r.cfg.GrantHandle.MeasureCPU(base.CompactionGoroutinePrimary)
 	return splitKey, nil

@@ -113,8 +113,7 @@ type RawRowWriter struct {
 	lastPointKeyInfo pointKeyInfo
 
 	// For value blocks.
-	shortAttributeExtractor   base.ShortAttributeExtractor
-	requiredInPlaceValueBound UserKeyPrefixBound
+	shortAttributeExtractor base.ShortAttributeExtractor
 	// When w.tableFormat >= TableFormatPebblev3, valueBlockWriter is nil iff
 	// WriterOptions.DisableValueBlocks was true.
 	valueBlockWriter *valblk.Writer
@@ -590,18 +589,6 @@ func (w *RawRowWriter) makeAddPointDecisionV3(
 	prevKeyKind := prevPointKeyInfo.trailer.Kind()
 	considerWriteToValueBlock := prevKeyKind == InternalKeyKindSet &&
 		keyKind == InternalKeyKindSet
-	if considerWriteToValueBlock && !w.requiredInPlaceValueBound.IsEmpty() {
-		keyPrefix := key.UserKey[:w.lastPointKeyInfo.prefixLen]
-		cmpUpper := w.compare(
-			w.requiredInPlaceValueBound.Upper, keyPrefix)
-		if cmpUpper <= 0 {
-			// Common case for CockroachDB. Make it empty since all future keys in
-			// this sstable will also have cmpUpper <= 0.
-			w.requiredInPlaceValueBound = UserKeyPrefixBound{}
-		} else if w.compare(keyPrefix, w.requiredInPlaceValueBound.Lower) >= 0 {
-			considerWriteToValueBlock = false
-		}
-	}
 	// cmpPrefix is initialized iff considerWriteToValueBlock.
 	var cmpPrefix int
 	var cmpUser int
@@ -1694,7 +1681,6 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
-		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
 		if !o.DisableValueBlocks {
 			w.valueBlockWriter = valblk.NewWriter(
 				block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),

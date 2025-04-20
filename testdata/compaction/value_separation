@@ -177,16 +177,17 @@ set d dragonfruit
 set m mango
 ----
 
-# The flush should write a blob file, but only "mango" should be separated. This
+# The flush should write two sst files, and only "mango" should be separated. This
 # should be reflected in the 5-byte value bytes of the blob file and the table's
 # blob reference value size.
 
 flush
 ----
 L0.0:
-  000005:[a#10,SET-m#14,SET] seqnums:[10-14] points:[a#10,SET-m#14,SET] size:820 blobrefs:[(000006: 5); depth:1]
+  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:798
+  000006:[m#14,SET-m#14,SET] seqnums:[14-14] points:[m#14,SET-m#14,SET] size:762 blobrefs:[(000007: 5); depth:1]
 Blob files:
-  000006: 51 physical bytes, 5 value bytes
+  000007: 51 physical bytes, 5 value bytes
 
 
 define value-separation=(true,5,5) l0-compaction-threshold=1

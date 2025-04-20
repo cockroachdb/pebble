@@ -97,13 +97,6 @@ func TestValueSeparationPolicy(t *testing.T) {
 						},
 					}
 					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
-					if cmdArg, ok := d.Arg("required-in-place"); ok {
-						cmdArg.ExpectNumVals(t, 2)
-						newSep.requiredInPlaceValueBound = UserKeyPrefixBound{
-							Lower: []byte(cmdArg.Vals[0]),
-							Upper: []byte(cmdArg.Vals[1]),
-						}
-					}
 					vs = newSep
 				default:
 					t.Fatalf("unknown value separation policy: %s", x)
