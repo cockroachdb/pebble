@@ -1,0 +1,63 @@
+# Set max-concurrent-compactions to 2, since will add a fake ongoing
+# compaction below, which will use up 1 compaction slot, so we need another
+# one to run a manual compaction.
+define auto-compactions=off disable-multi-level max-concurrent-compactions=2
+L2
+  a.SET.2:v c.SET.4:v
+L2
+  d.SET.3:v e.SET.2:v
+L2
+  f.SET.2:v g.SET.1:v
+----
+L2:
+  000004:[a#2,SET-c#4,SET]
+  000005:[d#3,SET-e#2,SET]
+  000006:[f#2,SET-g#1,SET]
+
+# The key span of the second file cannot be manually compacted due to this
+# fake ongoing compaction.
+add-ongoing-compaction startLevel=2 outputLevel=3 start=d end=e
+----
+
+# Try to manually compact all the files. Due to the parallel specification,
+# this will create 3 manual compactions, the first of which, over the key span
+# [a, c], is not blocked by the ongoing compaction, and will run. The second
+# one, over the key span [d, e], is blocked, and also blocks the one over [f,
+# g], due to head-of-line blocking. The test will wait until it observes 2
+# blocked manual compactions, and the first manual compaction finishes, and
+# will then cancel the compaction, which should be observed, and result in
+# removal of the queued compactions.
+async-compact-with-cancellation a-z L2 parallel num-blocked=2
+----
+manual compaction cancelled: context canceled, current queued compactions: 0
+
+# One compaction was done.
+compaction-log
+----
+[JOB 1] compacted(move) L2 [000004] (760B) Score=0.00 + L3 [] (0B) Score=0.00 -> L3 [000004] (760B), in 1.0s (1.0s total), output rate 760B/s
+
+compact a-z L2 parallel
+----
+L3:
+  000004:[a#2,SET-c#4,SET]
+  000005:[d#3,SET-e#2,SET]
+  000006:[f#2,SET-g#1,SET]
+
+compaction-log sort
+----
+[JOB 1] compacted(move) L2 [000005] (760B) Score=0.00 + L3 [] (0B) Score=0.00 -> L3 [000005] (760B), in 1.0s (1.0s total), output rate 760B/s
+[JOB 1] compacted(move) L2 [000006] (760B) Score=0.00 + L3 [] (0B) Score=0.00 -> L3 [000006] (760B), in 1.0s (1.0s total), output rate 760B/s
+
+# Repeat with only blocking the last of the three manual compactions.
+add-ongoing-compaction startLevel=3 outputLevel=4 start=g end=h
+----
+
+async-compact-with-cancellation a-z L3 parallel num-blocked=1
+----
+manual compaction cancelled: context canceled, current queued compactions: 0
+
+# Two compactions were done.
+compaction-log
+----
+[JOB 1] compacted(move) L3 [000004] (760B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000004] (760B), in 1.0s (1.0s total), output rate 760B/s
+[JOB 1] compacted(move) L3 [000005] (760B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000005] (760B), in 1.0s (1.0s total), output rate 760B/s

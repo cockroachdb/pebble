@@ -136,7 +136,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			}
 			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
+			if err := d.Compact(context.Background(), nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
 			d.TestOnlyWaitForCleaning()
@@ -308,7 +308,7 @@ func TestCheckpointCompaction(t *testing.T) {
 		defer cancel()
 		defer wg.Done()
 		for ctx.Err() == nil {
-			if err := d.Compact([]byte("key"), []byte("key999999"), false); err != nil {
+			if err := d.Compact(context.Background(), []byte("key"), []byte("key999999"), false); err != nil {
 				t.Error(err)
 				return
 			}

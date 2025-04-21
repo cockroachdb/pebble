@@ -756,29 +756,53 @@ func runBuildSSTCmd(
 	return *metadata, nil
 }
 
-func runCompactCmd(td *datadriven.TestData, d *DB) error {
-	if len(td.CmdArgs) > 4 {
-		return errors.Errorf("%s expects at most four arguments", td.Cmd)
+func runCompactCmdAsync(
+	td *datadriven.TestData, d *DB, cancellable bool,
+) (compactFunc func() error, cancelFunc context.CancelFunc, err error) {
+	if len(td.CmdArgs) == 0 {
+		return nil, nil, errors.Errorf("%s expects at least one argument", td.Cmd)
 	}
 	parts := strings.Split(td.CmdArgs[0].Key, "-")
 	if len(parts) != 2 {
-		return errors.Errorf("expected <begin>-<end>: %s", td.Input)
+		return nil, nil, errors.Errorf("expected <begin>-<end>: %s", td.Input)
 	}
 	parallelize := td.HasArg("parallel")
+	ctx := context.Background()
+	if cancellable {
+		ctx, cancelFunc = context.WithCancel(ctx)
+	}
 	if len(td.CmdArgs) >= 2 && strings.HasPrefix(td.CmdArgs[1].Key, "L") {
 		levelString := td.CmdArgs[1].String()
 		iStart := base.MakeInternalKey([]byte(parts[0]), base.SeqNumMax, InternalKeyKindMax)
 		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
 		if levelString[0] != 'L' {
-			return errors.Errorf("expected L<n>: %s", levelString)
+			if cancelFunc != nil {
+				cancelFunc()
+			}
+			return nil, nil, errors.Errorf("expected L<n>: %s", levelString)
 		}
 		level, err := strconv.Atoi(levelString[1:])
 		if err != nil {
-			return err
+			if cancelFunc != nil {
+				cancelFunc()
+			}
+			return nil, nil, err
 		}
-		return d.manualCompact(iStart.UserKey, iEnd.UserKey, level, parallelize)
+		return func() error {
+			return d.manualCompact(ctx, iStart.UserKey, iEnd.UserKey, level, parallelize)
+		}, cancelFunc, nil
 	}
-	return d.Compact([]byte(parts[0]), []byte(parts[1]), parallelize)
+	return func() error {
+		return d.Compact(ctx, []byte(parts[0]), []byte(parts[1]), parallelize)
+	}, cancelFunc, nil
+}
+
+func runCompactCmd(td *datadriven.TestData, d *DB) error {
+	compactFunc, _, err := runCompactCmdAsync(td, d, false)
+	if err != nil {
+		return err
+	}
+	return compactFunc()
 }
 
 // runDBDefineCmd prepares a database state, returning the opened
@@ -1677,6 +1701,14 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				return err
 			}
 			opts.LBaseMaxBytes = lbaseMaxBytes
+		case "max-concurrent-compactions":
+			maxConcurrentCompactions, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.CompactionConcurrencyRange = func() (int, int) {
+				return 1, int(maxConcurrentCompactions)
+			}
 		case "memtable-size":
 			memTableSize, err := strconv.ParseUint(cmdArg.Vals[0], 10, 64)
 			if err != nil {

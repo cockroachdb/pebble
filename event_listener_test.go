@@ -104,7 +104,7 @@ func TestEventListener(t *testing.T) {
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
 			}
-			if err := d.Compact([]byte("a"), []byte("b"), false); err != nil {
+			if err := d.Compact(context.Background(), []byte("a"), []byte("b"), false); err != nil {
 				return err.Error()
 			}
 			return memLog.String()
@@ -558,7 +558,8 @@ func TestSSTCorruptionEvent(t *testing.T) {
 				d.Set(key(i), []byte(fmt.Sprintf("value-%05d", i)), nil)
 			}
 			require.NoError(t, d.Flush())
-			require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+			require.NoError(t, d.Compact(
+				context.Background(), []byte("a"), []byte("z"), false /* parallelize */))
 
 			// We expect a single sst file.
 			files := testutils.CheckErr(fs.List(""))

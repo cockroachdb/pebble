@@ -70,7 +70,8 @@ func makeBrokenExternalDB() {
 	if err := db.Flush(); err != nil {
 		log.Fatal(err)
 	}
-	if err := db.Compact([]byte("a"), []byte("b"), false /* parallelize */); err != nil {
+	if err := db.Compact(
+		context.Background(), []byte("a"), []byte("b"), false /* parallelize */); err != nil {
 		log.Fatal(err)
 	}
 	for _, k := range strings.Fields("c10 c20 c30") {
@@ -81,7 +82,8 @@ func makeBrokenExternalDB() {
 	if err := db.Flush(); err != nil {
 		log.Fatal(err)
 	}
-	if err := db.Compact([]byte("c"), []byte("d"), false /* parallelize */); err != nil {
+	if err := db.Compact(
+		context.Background(), []byte("c"), []byte("d"), false /* parallelize */); err != nil {
 		log.Fatal(err)
 	}
 
@@ -151,7 +153,8 @@ func makeCRSchemaDB() {
 	if err := db.Flush(); err != nil {
 		log.Fatal(err)
 	}
-	if err := db.Compact(keys[0], keys[len(keys)-1], false /* parallelize */); err != nil {
+	if err := db.Compact(
+		context.Background(), keys[0], keys[len(keys)-1], false /* parallelize */); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Generated db with following LSM:\n%s\n", db.DebugString())

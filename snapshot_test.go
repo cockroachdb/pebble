@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"reflect"
@@ -121,7 +122,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 					if len(keys) != 2 {
 						return fmt.Sprintf("malformed key range: %s", parts[1])
 					}
-					err = d.Compact([]byte(keys[0]), []byte(keys[1]), false)
+					err = d.Compact(context.Background(), []byte(keys[0]), []byte(keys[1]), false)
 				default:
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}
