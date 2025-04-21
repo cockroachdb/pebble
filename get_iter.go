@@ -267,7 +267,7 @@ func (g *getIter) getSSTableIterators(
 	}
 	// m is now positioned at the file containing the first point key ≥ `g.key`.
 	// Does it exist and possibly contain point keys with the user key 'g.key'?
-	if m == nil || !m.HasPointKeys || g.comparer.Compare(m.SmallestPointKey.UserKey, g.key) > 0 {
+	if m == nil || !m.HasPointKeys || g.comparer.Compare(m.PointKeyBounds.SmallestUserKey(), g.key) > 0 {
 		return emptyIter, nil, nil
 	}
 	// m may possibly contain point (or range deletion) keys relevant to g.key.

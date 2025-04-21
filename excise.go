@@ -259,11 +259,11 @@ func looseLeftTableBounds(
 	cmp Compare, originalTable, leftTable *tableMetadata, exciseSpanStart []byte,
 ) {
 	if originalTable.HasPointKeys {
-		largestPointKey := originalTable.LargestPointKey
+		largestPointKey := originalTable.PointKeyBounds.Largest()
 		if largestPointKey.IsUpperBoundFor(cmp, exciseSpanStart) {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(exciseSpanStart)
 		}
-		leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey, largestPointKey)
+		leftTable.ExtendPointKeyBounds(cmp, originalTable.PointKeyBounds.Smallest(), largestPointKey)
 	}
 	if originalTable.HasRangeKeys {
 		largestRangeKey := originalTable.RangeKeyBounds.Largest()
@@ -287,11 +287,11 @@ func looseRightTableBounds(
 	cmp Compare, originalTable, rightTable *tableMetadata, exciseSpanEnd []byte,
 ) {
 	if originalTable.HasPointKeys {
-		smallestPointKey := originalTable.SmallestPointKey
+		smallestPointKey := originalTable.PointKeyBounds.Smallest()
 		if !smallestPointKey.IsUpperBoundFor(cmp, exciseSpanEnd) {
 			smallestPointKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindMaxForSSTable)
 		}
-		rightTable.ExtendPointKeyBounds(cmp, smallestPointKey, originalTable.LargestPointKey)
+		rightTable.ExtendPointKeyBounds(cmp, smallestPointKey, originalTable.PointKeyBounds.Largest())
 	}
 	if originalTable.HasRangeKeys {
 		smallestRangeKey := originalTable.RangeKeyBounds.Smallest()
@@ -311,10 +311,10 @@ func looseRightTableBounds(
 func determineLeftTableBounds(
 	cmp Compare, originalTable, leftTable *tableMetadata, exciseSpanStart []byte, iters iterSet,
 ) error {
-	if originalTable.HasPointKeys && cmp(originalTable.SmallestPointKey.UserKey, exciseSpanStart) < 0 {
+	if originalTable.HasPointKeys && cmp(originalTable.PointKeyBounds.Smallest().UserKey, exciseSpanStart) < 0 {
 		// This file will probably contain point keys.
 		if kv := iters.Point().SeekLT(exciseSpanStart, base.SeekLTFlagsNone); kv != nil {
-			leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey, kv.K.Clone())
+			leftTable.ExtendPointKeyBounds(cmp, originalTable.PointKeyBounds.Smallest(), kv.K.Clone())
 		}
 		rdel, err := iters.RangeDeletion().SeekLT(exciseSpanStart)
 		if err != nil {
@@ -327,7 +327,7 @@ func determineLeftTableBounds(
 				// The key is owned by the range del iter, so we need to copy it.
 				lastRangeDel = slices.Clone(rdel.End)
 			}
-			leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey,
+			leftTable.ExtendPointKeyBounds(cmp, originalTable.PointKeyBounds.Smallest(),
 				base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, lastRangeDel))
 		}
 	}
@@ -367,12 +367,12 @@ func determineRightTableBounds(
 	exciseSpanEnd base.UserKeyBoundary,
 	iters iterSet,
 ) error {
-	if originalTable.HasPointKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.LargestPointKey) {
+	if originalTable.HasPointKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.PointKeyBounds.Largest()) {
 		if kv := iters.Point().SeekGE(exciseSpanEnd.Key, base.SeekGEFlagsNone); kv != nil {
 			if exciseSpanEnd.Kind == base.Inclusive && cmp(exciseSpanEnd.Key, kv.K.UserKey) == 0 {
 				return base.AssertionFailedf("cannot excise with an inclusive end key and data overlap at end key")
 			}
-			rightTable.ExtendPointKeyBounds(cmp, kv.K.Clone(), originalTable.LargestPointKey)
+			rightTable.ExtendPointKeyBounds(cmp, kv.K.Clone(), originalTable.PointKeyBounds.Largest())
 		}
 		rdel, err := iters.RangeDeletion().SeekGE(exciseSpanEnd.Key)
 		if err != nil {
@@ -390,7 +390,7 @@ func determineRightTableBounds(
 			rightTable.ExtendPointKeyBounds(cmp, base.InternalKey{
 				UserKey: firstRangeDel,
 				Trailer: rdel.SmallestKey().Trailer,
-			}, originalTable.LargestPointKey)
+			}, originalTable.PointKeyBounds.Largest())
 		}
 	}
 	if originalTable.HasRangeKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.RangeKeyBounds.Largest()) {

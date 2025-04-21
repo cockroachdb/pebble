@@ -203,7 +203,7 @@ func (b *lsmViewBuilder) tableDetails(
 	const maxRangeDels = 10
 	const maxRangeKeys = 10
 	if m.HasPointKeys {
-		outf("points: %s - %s", m.SmallestPointKey.Pretty(b.fmtKey), m.LargestPointKey.Pretty(b.fmtKey))
+		outf("points: %s - %s", m.PointKeyBounds.Smallest().Pretty(b.fmtKey), m.PointKeyBounds.Largest().Pretty(b.fmtKey))
 		if b.scanTables {
 			n := 0
 			if it := iters.point; it != nil {

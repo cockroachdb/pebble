@@ -878,7 +878,7 @@ func setSeqNumInMetadata(
 	// NB: we set the fields directly here, rather than via their Extend*
 	// methods, as we are updating sequence numbers.
 	if m.HasPointKeys {
-		m.SmallestPointKey = setSeqFn(m.SmallestPointKey)
+		m.PointKeyBounds.SetSmallest(setSeqFn(m.PointKeyBounds.Smallest()))
 	}
 	if m.HasRangeKeys {
 		m.RangeKeyBounds.SetSmallest(setSeqFn(m.RangeKeyBounds.Smallest()))
@@ -890,8 +890,8 @@ func setSeqNumInMetadata(
 	// table.
 	// NB: as the largest range key is always an exclusive sentinel, it is never
 	// updated.
-	if m.HasPointKeys && !m.LargestPointKey.IsExclusiveSentinel() {
-		m.LargestPointKey = setSeqFn(m.LargestPointKey)
+	if m.HasPointKeys && !m.PointKeyBounds.Largest().IsExclusiveSentinel() {
+		m.PointKeyBounds.SetLargest(setSeqFn(m.PointKeyBounds.Largest()))
 	}
 	// Setting smallestSeqNum == largestSeqNum triggers the setting of
 	// Properties.GlobalSeqNum when an sstable is loaded.

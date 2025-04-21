@@ -2994,8 +2994,8 @@ func (d *DB) checkVirtualBounds(m *tableMetadata) {
 		if err != nil {
 			panic(err)
 		}
-		if (rangeDel == nil || d.cmp(rangeDel.SmallestKey().UserKey, m.SmallestPointKey.UserKey) != 0) &&
-			(pointKV == nil || d.cmp(pointKV.K.UserKey, m.SmallestPointKey.UserKey) != 0) {
+		if (rangeDel == nil || d.cmp(rangeDel.SmallestKey().UserKey, m.PointKeyBounds.Smallest().UserKey) != 0) &&
+			(pointKV == nil || d.cmp(pointKV.K.UserKey, m.PointKeyBounds.Smallest().UserKey) != 0) {
 			panic(errors.Newf("pebble: virtual sstable %s lower point key bound is not tight", m.FileNum))
 		}
 
@@ -3005,23 +3005,23 @@ func (d *DB) checkVirtualBounds(m *tableMetadata) {
 		if err != nil {
 			panic(err)
 		}
-		if (rangeDel == nil || d.cmp(rangeDel.LargestKey().UserKey, m.LargestPointKey.UserKey) != 0) &&
-			(pointKV == nil || d.cmp(pointKV.K.UserKey, m.LargestPointKey.UserKey) != 0) {
+		if (rangeDel == nil || d.cmp(rangeDel.LargestKey().UserKey, m.PointKeyBounds.LargestUserKey()) != 0) &&
+			(pointKV == nil || d.cmp(pointKV.K.UserKey, m.PointKeyBounds.Largest().UserKey) != 0) {
 			panic(errors.Newf("pebble: virtual sstable %s upper point key bound is not tight", m.FileNum))
 		}
 
 		// Check that iterator keys are within bounds.
 		for kv := pointIter.First(); kv != nil; kv = pointIter.Next() {
-			if d.cmp(kv.K.UserKey, m.SmallestPointKey.UserKey) < 0 || d.cmp(kv.K.UserKey, m.LargestPointKey.UserKey) > 0 {
+			if d.cmp(kv.K.UserKey, m.PointKeyBounds.Smallest().UserKey) < 0 || d.cmp(kv.K.UserKey, m.PointKeyBounds.LargestUserKey()) > 0 {
 				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, kv.K.UserKey))
 			}
 		}
 		s, err := rangeDelIter.First()
 		for ; s != nil; s, err = rangeDelIter.Next() {
-			if d.cmp(s.SmallestKey().UserKey, m.SmallestPointKey.UserKey) < 0 {
+			if d.cmp(s.SmallestKey().UserKey, m.PointKeyBounds.Smallest().UserKey) < 0 {
 				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, s.SmallestKey().UserKey))
 			}
-			if d.cmp(s.LargestKey().UserKey, m.LargestPointKey.UserKey) > 0 {
+			if d.cmp(s.LargestKey().UserKey, m.PointKeyBounds.Largest().UserKey) > 0 {
 				panic(errors.Newf("pebble: virtual sstable %s point key %s is not within bounds", m.FileNum, s.LargestKey().UserKey))
 			}
 		}

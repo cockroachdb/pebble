@@ -942,12 +942,14 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		largestSeqNum := d.mu.versions.logSeqNum.Load()
 		ve.NewBlobFiles = append(ve.NewBlobFiles, newVE.NewBlobFiles...)
 		for _, f := range newVE.NewTables {
-			if start != nil {
-				f.Meta.SmallestPointKey = *start
+			if start != nil && end != nil {
+				f.Meta.PointKeyBounds.SetInternalKeyBounds(*start, *end)
+				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *start, *end)
+			} else if start != nil {
+				f.Meta.PointKeyBounds.SetSmallest(*start)
 				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *start, *start)
-			}
-			if end != nil {
-				f.Meta.LargestPointKey = *end
+			} else if end != nil {
+				f.Meta.PointKeyBounds.SetLargest(*end)
 				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *end, *end)
 			}
 			if blobDepth > 0 {
