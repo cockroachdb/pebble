@@ -1,0 +1,67 @@
+# Do a manual compaction when auto compaction is disabled.
+define disable-multi-level lbase-max-bytes=1
+L5
+  a.SET.2:v c.SET.4:v
+----
+L5:
+  000004:[a#2,SET-c#4,SET]
+
+compact a-b L5
+----
+L6:
+  000004:[a#2,SET-c#4,SET]
+
+# The score is 0.00 even though L2 score was high, since this was a manual
+# compaction.
+compaction-log
+----
+[JOB 1] compacted(move) L5 [000004] (760B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000004] (760B), in 1.0s (1.0s total), output rate 760B/s
+
+# Do an auto score-based compaction with the same LSM as the previous test.
+define disable-multi-level lbase-max-bytes=1
+L5
+  a.SET.2:v c.SET.4:v
+----
+L5:
+  000004:[a#2,SET-c#4,SET]
+
+auto-compact
+----
+L6:
+  000004:[a#2,SET-c#4,SET]
+
+# Note the score is > 1.0 since these is a score-based compaction.
+compaction-log
+----
+[JOB 1] compacted(move) L5 [000004] (760B) Score=974.36 + L6 [] (0B) Score=0.00 -> L6 [000004] (760B), in 1.0s (1.0s total), output rate 760B/s
+
+# With the same LSM as the previous test, try to do both a manual and
+# score-based compaction. The score-based compaction runs first.
+define disable-multi-level lbase-max-bytes=1
+L5
+  a.SET.2:v c.SET.4:v
+----
+L5:
+  000004:[a#2,SET-c#4,SET]
+
+
+# Enable auto compactions. But it won't start until maybeScheduleCompaction is
+# called when compact command is run.
+set-disable-auto-compact v=false
+----
+
+compaction-log
+----
+
+compact a-b L5
+----
+L6:
+  000004:[a#2,SET-c#4,SET]
+
+set-disable-auto-compact v=true
+----
+
+# The score-based compaction ran first.
+compaction-log
+----
+[JOB 1] compacted(move) L5 [000004] (760B) Score=974.36 + L6 [] (0B) Score=0.00 -> L6 [000004] (760B), in 1.0s (1.0s total), output rate 760B/s
