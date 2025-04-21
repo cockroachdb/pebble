@@ -323,7 +323,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	require.NoError(t, b.Set([]byte{'z'}, []byte{'z'}, nil))                           // SeqNum: +6
 	require.NoError(t, d.Apply(b, nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Compact([]byte{'a'}, []byte{'b'}, false))
+	require.NoError(t, d.Compact(context.Background(), []byte{'a'}, []byte{'b'}, false))
 	require.Equal(t, 1, int(d.Metrics().Levels[6].TablesCount))
 
 	d.mu.Lock()
@@ -549,7 +549,7 @@ func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
 	require.NoError(t, db2.Set(start, nil, nil))
 	require.NoError(t, db2.Flush())
 	require.NoError(t, db2.DeleteRange(start, end, nil))
-	require.NoError(t, db2.Compact(start, end, false))
+	require.NoError(t, db2.Compact(context.Background(), start, end, false))
 }
 
 // TestSharedFileCacheUsable ensures that a shared file cache is usable by more
@@ -586,7 +586,7 @@ func TestSharedFileCacheUsable(t *testing.T) {
 	require.NoError(t, db1.Set(start, nil, nil))
 	require.NoError(t, db1.Flush())
 	require.NoError(t, db1.DeleteRange(start, end, nil))
-	require.NoError(t, db1.Compact(start, end, false))
+	require.NoError(t, db1.Compact(context.Background(), start, end, false))
 
 	start = []byte("x")
 	end = []byte("y")
@@ -595,7 +595,7 @@ func TestSharedFileCacheUsable(t *testing.T) {
 	require.NoError(t, db2.Set(start, []byte{'a'}, nil))
 	require.NoError(t, db2.Flush())
 	require.NoError(t, db2.DeleteRange(start, end, nil))
-	require.NoError(t, db2.Compact(start, end, false))
+	require.NoError(t, db2.Compact(context.Background(), start, end, false))
 }
 
 func TestSharedTableConcurrent(t *testing.T) {
@@ -637,7 +637,7 @@ func TestSharedTableConcurrent(t *testing.T) {
 			require.NoError(t, db.Set(start, nil, nil))
 			require.NoError(t, db.Flush())
 			require.NoError(t, db.DeleteRange(start, end, nil))
-			require.NoError(t, db.Compact(start, end, false))
+			require.NoError(t, db.Compact(context.Background(), start, end, false))
 		}
 		wg.Done()
 	}
@@ -1141,7 +1141,7 @@ func TestFileCacheEvictClose(t *testing.T) {
 	require.NoError(t, db.Set(start, nil, nil))
 	require.NoError(t, db.Flush())
 	require.NoError(t, db.DeleteRange(start, end, nil))
-	require.NoError(t, db.Compact(start, end, false))
+	require.NoError(t, db.Compact(context.Background(), start, end, false))
 	require.NoError(t, db.Close())
 	close(errs)
 
@@ -1230,7 +1230,7 @@ func BenchmarkNewItersAlloc(b *testing.B) {
 
 	require.NoError(b, d.Set([]byte{'a'}, []byte{'a'}, nil))
 	require.NoError(b, d.Flush())
-	require.NoError(b, d.Compact([]byte{'a'}, []byte{'z'}, false))
+	require.NoError(b, d.Compact(context.Background(), []byte{'a'}, []byte{'z'}, false))
 
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
