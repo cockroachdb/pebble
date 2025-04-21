@@ -248,7 +248,7 @@ func (b *lsmViewBuilder) tableDetails(
 		}
 	}
 	if m.HasRangeKeys {
-		outf("range keys: %s - %s", m.SmallestRangeKey.Pretty(b.fmtKey), m.LargestRangeKey.Pretty(b.fmtKey))
+		outf("range keys: %s - %s", m.RangeKeyBounds.Smallest().Pretty(b.fmtKey), m.RangeKeyBounds.Largest().Pretty(b.fmtKey))
 		n := 0
 		if it := iters.rangeKey; it != nil {
 			span, err := it.First()
