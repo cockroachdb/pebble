@@ -426,7 +426,13 @@ mark-for-compaction file=000049
 ----
 marked L0.000049
 
+# No-score based compaction
 pick-auto l0_compaction_threshold=1000
+----
+nil
+
+# Marked for compaction file is picked using a non-score compaction.
+pick-auto non-score l0_compaction_threshold=1000
 ----
 L0 -> L0
 L0: 000049

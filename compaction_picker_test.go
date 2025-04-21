@@ -198,7 +198,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		if inProgressCompactions >= allowedCompactions {
 			return nil
 		}
-		return pickerByScore.pickAuto(env)
+		return pickerByScore.pickAutoScore(env)
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
@@ -572,11 +572,20 @@ func TestCompactionPickerL0(t *testing.T) {
 			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
 			td.MaybeScanArgs(t, "l0_compaction_file_threshold", &opts.L0CompactionFileThreshold)
 
-			pc = picker.pickAuto(compactionEnv{
+			score := true
+			if td.HasArg("non-score") {
+				score = false
+			}
+			env := compactionEnv{
 				diskAvailBytes:          math.MaxUint64,
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
-			})
+			}
+			if score {
+				pc = picker.pickAutoScore(env)
+			} else {
+				pc = picker.pickAutoNonScore(env)
+			}
 			var result strings.Builder
 			if pc != nil {
 				checkClone(t, pc)
@@ -804,7 +813,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			allowedCompactions := picker.getCompactionConcurrency()
 			var pc *pickedCompaction
 			if inProgressCount < allowedCompactions {
-				pc = picker.pickAuto(env)
+				pc = picker.pickAutoScore(env)
 			}
 			var result strings.Builder
 			fmt.Fprintf(&result, "picker.getCompactionConcurrency: %d\n", allowedCompactions)
@@ -946,14 +955,20 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			return sb.String()
 
 		case "pick-auto":
-			pc := picker.pickAuto(compactionEnv{
+			var result strings.Builder
+			var pc *pickedCompaction
+			env := compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
 				readCompactionEnv: readCompactionEnv{
 					readCompactions: &rcList,
 					flushing:        false,
 				},
-			})
-			var result strings.Builder
+			}
+			if pc = picker.pickAutoScore(env); pc != nil {
+				fmt.Fprintf(&result, "picked score-based compaction:\n")
+			} else if pc = picker.pickAutoNonScore(env); pc != nil {
+				fmt.Fprintf(&result, "picked non-score-based compaction:\n")
+			}
 			if pc != nil {
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
@@ -1334,7 +1349,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			return buf.String()
 
 		case "pick-auto":
-			pc := picker.pickAuto(compactionEnv{
+			pc := picker.pickAutoNonScore(compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
 				earliestSnapshotSeqNum:  math.MaxUint64,
 			})

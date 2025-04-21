@@ -86,7 +86,7 @@ func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64)
 
 func (p *compactionPickerForTesting) forceBaseLevel1() {}
 
-func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedCompaction) {
+func (p *compactionPickerForTesting) pickAutoScore(env compactionEnv) (pc *pickedCompaction) {
 	if p.score < 1 {
 		return nil
 	}
@@ -107,21 +107,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	return pickAutoLPositive(env, p.opts, p.vers, p.l0Organizer, cInfo, p.baseLevel)
 }
 
-func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
-	env compactionEnv,
-) (pc *pickedCompaction) {
-	return nil
-}
-
-func (p *compactionPickerForTesting) pickRewriteCompaction(
-	env compactionEnv,
-) (pc *pickedCompaction) {
-	return nil
-}
-
-func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
-	env compactionEnv,
-) (pc *pickedCompaction) {
+func (p *compactionPickerForTesting) pickAutoNonScore(env compactionEnv) (pc *pickedCompaction) {
 	return nil
 }
 
@@ -528,7 +514,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.versions.Init(nil)
 		vs.append(tc.picker.vers)
 		vs.picker = &tc.picker
-		pc, got := vs.picker.pickAuto(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
+		pc, got := vs.picker.pickAutoScore(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
 			c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
 
@@ -1075,6 +1061,14 @@ func TestCompaction(t *testing.T) {
 				d.mu.Unlock()
 				return describeLSM(d, verbose)
 
+			case "set-disable-auto-compact":
+				var v bool
+				td.ScanArgs(t, "v", &v)
+				d.mu.Lock()
+				d.opts.DisableAutomaticCompactions = v
+				d.mu.Unlock()
+				return ""
+
 			case "async-compact":
 				var s string
 				ch := make(chan error, 1)
@@ -1235,6 +1229,12 @@ func TestCompaction(t *testing.T) {
 			minVersion: FormatExperimentalValueSeparation,
 			maxVersion: FormatExperimentalValueSeparation,
 			verbose:    true,
+		},
+		"score_compaction_picked_before_manual": {
+			// Run at a specific version, so that a single sstable format is used,
+			// since the test prints the compaction log which includes file sizes.
+			minVersion: FormatExperimentalValueSeparation,
+			maxVersion: FormatExperimentalValueSeparation,
 		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {

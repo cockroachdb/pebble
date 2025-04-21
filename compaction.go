@@ -1807,11 +1807,20 @@ func (d *DB) makeCompactionEnvLocked() *compactionEnv {
 
 // pickAnyCompaction tries to pick a manual or automatic compaction.
 func (d *DB) pickAnyCompaction(env compactionEnv) (pc *pickedCompaction) {
-	pc = d.pickManualCompaction(env)
-	if pc == nil && !d.opts.DisableAutomaticCompactions {
-		pc = d.mu.versions.picker.pickAuto(env)
+	// Pick a score-based compaction first, since a misshapen LSM is bad.
+	if !d.opts.DisableAutomaticCompactions {
+		if pc = d.mu.versions.picker.pickAutoScore(env); pc != nil {
+			return pc
+		}
 	}
-	return pc
+	// Pick a manual compaction, if any.
+	if pc = d.pickManualCompaction(env); pc != nil {
+		return pc
+	}
+	if !d.opts.DisableAutomaticCompactions {
+		return d.mu.versions.picker.pickAutoNonScore(env)
+	}
+	return nil
 }
 
 // runPickedCompaction kicks off the provided pickedCompaction. In case the
