@@ -30,6 +30,7 @@ show-read-compactions
 
 pick-auto
 ----
+picked non-score-based compaction:
 L5 -> L6
 L5: 000101
 L6: 000010
@@ -62,6 +63,7 @@ show-read-compactions
 
 pick-auto
 ----
+picked score-based compaction:
 L5 -> L6
 L5: 000101
 L6: 000010

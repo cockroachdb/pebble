@@ -125,18 +125,20 @@ var scheduledCompactionMap map[compactionKind]compactionOptionalAndPriority
 var manualCompactionPriority int
 
 func init() {
-	// Manual compactions have the highest priority since DB.pickAnyCompaction
-	// first picks a manual compaction, before calling
-	// compactionPickerByScore.pickAuto.
-	manualCompactionPriority = 100
+	// Manual compactions have priority just below the score-rebased
+	// compactions, since DB.pickAnyCompaction first picks score-based
+	// compactions, and then manual compactions.
+	manualCompactionPriority = 70
 	scheduledCompactionMap = map[compactionKind]compactionOptionalAndPriority{}
+	// Score-based-compactions have priorities {100, 90, 80}.
+	//
 	// We don't actually know if it is a compactionKindMove or
 	// compactionKindCopy until a compactionKindDefault is turned from a
 	// pickedCompaction into a compaction struct. So we will never see those
 	// values here, but for completeness we include them.
-	scheduledCompactionMap[compactionKindMove] = compactionOptionalAndPriority{priority: 90}
-	scheduledCompactionMap[compactionKindCopy] = compactionOptionalAndPriority{priority: 80}
-	scheduledCompactionMap[compactionKindDefault] = compactionOptionalAndPriority{priority: 70}
+	scheduledCompactionMap[compactionKindMove] = compactionOptionalAndPriority{priority: 100}
+	scheduledCompactionMap[compactionKindCopy] = compactionOptionalAndPriority{priority: 90}
+	scheduledCompactionMap[compactionKindDefault] = compactionOptionalAndPriority{priority: 80}
 	scheduledCompactionMap[compactionKindTombstoneDensity] =
 		compactionOptionalAndPriority{optional: true, priority: 60}
 	scheduledCompactionMap[compactionKindElisionOnly] =

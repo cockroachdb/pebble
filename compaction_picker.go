@@ -50,10 +50,8 @@ type compactionPicker interface {
 	getScores([]compactionInfo) [numLevels]float64
 	getBaseLevel() int
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
-	pickAuto(env compactionEnv) (pc *pickedCompaction)
-	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
-	pickRewriteCompaction(env compactionEnv) (pc *pickedCompaction)
-	pickReadTriggeredCompaction(env compactionEnv) (pc *pickedCompaction)
+	pickAutoScore(env compactionEnv) (pc *pickedCompaction)
+	pickAutoNonScore(env compactionEnv) (pc *pickedCompaction)
 	forceBaseLevel1()
 }
 
@@ -1244,70 +1242,71 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	return max(min(maxConcurrentCompactions, max(l0ReadAmpCompactions, compactionDebtCompactions)), 1)
 }
 
-// pickAuto picks the best compaction, if any.
+// TODO(sumeer): remove unless someone actually finds this useful.
+func (p *compactionPickerByScore) logCompactionForTesting(
+	env compactionEnv, scores [numLevels]candidateLevelInfo, pc *pickedCompaction,
+) {
+	var buf bytes.Buffer
+	for i := 0; i < numLevels; i++ {
+		if i != 0 && i < p.baseLevel {
+			continue
+		}
+
+		var info *candidateLevelInfo
+		for j := range scores {
+			if scores[j].level == i {
+				info = &scores[j]
+				break
+			}
+		}
+
+		marker := " "
+		if pc.startLevel.level == info.level {
+			marker = "*"
+		}
+		fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f  %5.1f %8s  %8s",
+			marker, info.level, info.compensatedScoreRatio, info.compensatedScore,
+			info.uncompensatedScoreRatio, info.uncompensatedScore,
+			humanize.Bytes.Int64(int64(totalCompensatedSize(
+				p.vers.Levels[info.level].All(),
+			))),
+			humanize.Bytes.Int64(p.levelMaxBytes[info.level]),
+		)
+
+		count := 0
+		for i := range env.inProgressCompactions {
+			c := &env.inProgressCompactions[i]
+			if c.inputs[0].level != info.level {
+				continue
+			}
+			count++
+			if count == 1 {
+				fmt.Fprintf(&buf, "  [")
+			} else {
+				fmt.Fprintf(&buf, " ")
+			}
+			fmt.Fprintf(&buf, "L%d->L%d", c.inputs[0].level, c.outputLevel)
+		}
+		if count > 0 {
+			fmt.Fprintf(&buf, "]")
+		}
+		fmt.Fprintf(&buf, "\n")
+	}
+	p.opts.Logger.Infof("pickAuto: L%d->L%d\n%s",
+		pc.startLevel.level, pc.outputLevel.level, buf.String())
+}
+
+// pickAutoScore picks the best score-based compaction, if any.
 //
-// On each call, pickAuto computes per-level size adjustments based on
+// On each call, pickAutoScore computes per-level size adjustments based on
 // in-progress compactions, and computes a per-level score. The levels are
 // iterated over in decreasing score order trying to find a valid compaction
 // anchored at that level.
 //
 // If a score-based compaction cannot be found, pickAuto falls back to looking
 // for an elision-only compaction to remove obsolete keys.
-func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompaction) {
+func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) (pc *pickedCompaction) {
 	scores := p.calculateLevelScores(env.inProgressCompactions)
-
-	// TODO(bananabrick): Either remove, or change this into an event sent to the
-	// EventListener.
-	logCompaction := func(pc *pickedCompaction) {
-		var buf bytes.Buffer
-		for i := 0; i < numLevels; i++ {
-			if i != 0 && i < p.baseLevel {
-				continue
-			}
-
-			var info *candidateLevelInfo
-			for j := range scores {
-				if scores[j].level == i {
-					info = &scores[j]
-					break
-				}
-			}
-
-			marker := " "
-			if pc.startLevel.level == info.level {
-				marker = "*"
-			}
-			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f  %5.1f %8s  %8s",
-				marker, info.level, info.compensatedScoreRatio, info.compensatedScore,
-				info.uncompensatedScoreRatio, info.uncompensatedScore,
-				humanize.Bytes.Int64(int64(totalCompensatedSize(
-					p.vers.Levels[info.level].All(),
-				))),
-				humanize.Bytes.Int64(p.levelMaxBytes[info.level]),
-			)
-
-			count := 0
-			for i := range env.inProgressCompactions {
-				c := &env.inProgressCompactions[i]
-				if c.inputs[0].level != info.level {
-					continue
-				}
-				count++
-				if count == 1 {
-					fmt.Fprintf(&buf, "  [")
-				} else {
-					fmt.Fprintf(&buf, " ")
-				}
-				fmt.Fprintf(&buf, "L%d->L%d", c.inputs[0].level, c.outputLevel)
-			}
-			if count > 0 {
-				fmt.Fprintf(&buf, "]")
-			}
-			fmt.Fprintf(&buf, "\n")
-		}
-		p.opts.Logger.Infof("pickAuto: L%d->L%d\n%s",
-			pc.startLevel.level, pc.outputLevel.level, buf.String())
-	}
 
 	// Check for a score-based compaction. candidateLevelInfos are first sorted
 	// by whether they should be compacted, so if we find a level which shouldn't
@@ -1328,9 +1327,8 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				p.addScoresToPickedCompactionMetrics(pc, scores)
 				pc.score = info.compensatedScoreRatio
-				// TODO(bananabrick): Create an EventListener for logCompaction.
 				if false {
-					logCompaction(pc)
+					p.logCompactionForTesting(env, scores, pc)
 				}
 				return pc
 			}
@@ -1349,14 +1347,17 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
 			pc.score = info.compensatedScoreRatio
-			// TODO(bananabrick): Create an EventListener for logCompaction.
 			if false {
-				logCompaction(pc)
+				p.logCompactionForTesting(env, scores, pc)
 			}
 			return pc
 		}
 	}
+	return nil
+}
 
+// pickAutoNonScore picks the best non-score-based compaction, if any.
+func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc *pickedCompaction) {
 	// Check for files which contain excessive point tombstones that could slow
 	// down reads. Unlike elision-only compactions, these compactions may select
 	// a file at any level rather than only the lowest level.
