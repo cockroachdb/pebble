@@ -348,7 +348,7 @@ func TestExcise(t *testing.T) {
 			}
 			l := td.CmdArgs[0].Key
 			r := td.CmdArgs[1].Key
-			err := d.Compact([]byte(l), []byte(r), false)
+			err := d.Compact(context.Background(), []byte(l), []byte(r), false)
 			if err != nil {
 				return err.Error()
 			}

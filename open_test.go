@@ -153,7 +153,8 @@ func TestErrorIfNotPristine(t *testing.T) {
 	opts.ErrorIfNotPristine = false
 	d2, err := Open("", opts)
 	require.NoError(t, err)
-	require.NoError(t, d2.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	require.NoError(t, d2.Compact(
+		context.Background(), []byte("a"), []byte("z"), false /* parallelize */))
 	require.NoError(t, d2.Close())
 
 	opts.ErrorIfNotPristine = true
@@ -615,7 +616,8 @@ func TestOpenReadOnly(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify various write operations fail in read-only mode.
-		require.EqualValues(t, ErrReadOnly, d.Compact(nil, []byte("\xff"), false))
+		require.EqualValues(t, ErrReadOnly, d.Compact(
+			context.Background(), nil, []byte("\xff"), false))
 		require.EqualValues(t, ErrReadOnly, d.Flush())
 		require.EqualValues(t, ErrReadOnly, func() error { _, err := d.AsyncFlush(); return err }())
 
@@ -1127,7 +1129,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	// written to the MANIFEST. This produces a MANIFEST where the `logSeqNum`
 	// is greater than the sequence numbers contained in the
 	// `minUnflushedLogNum` log file
-	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("a\x00"), false))
 	d.mu.Lock()
 	for d.mu.compact.compactingCount > 0 {
 		d.mu.compact.cond.Wait()
@@ -1512,7 +1514,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	require.NoError(t, d.Set([]byte("foo"), []byte("value"), nil))
 	require.NoError(t, d.Set([]byte("bar"), []byte("value"), nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
 
 	// Create a shared file with the newest file num and then close the db.
 	d.mu.Lock()
@@ -1536,7 +1538,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	require.NoError(t, d.Set([]byte("foo2"), []byte("value"), nil))
 	require.NoError(t, d.Set([]byte("bar2"), []byte("value"), nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
 
 }
 

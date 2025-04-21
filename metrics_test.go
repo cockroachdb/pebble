@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"runtime"
@@ -448,7 +449,8 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 			require.NoError(t, d.Set(testkeys.Key(ks, j), v, &wo))
 		}
 		require.NoError(t, d.Flush())
-		require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+		require.NoError(t, d.Compact(
+			context.Background(), []byte("a"), []byte("z"), false /* parallelize */))
 	}
 	m := d.Metrics()
 	tot := m.Total()
