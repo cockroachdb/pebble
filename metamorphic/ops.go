@@ -299,7 +299,7 @@ type compactOp struct {
 
 func (o *compactOp) run(t *Test, h historyRecorder) {
 	err := t.withRetries(func() error {
-		return t.getDB(o.dbID).Compact(o.start, o.end, o.parallelize)
+		return t.getDB(o.dbID).Compact(context.Background(), o.start, o.end, o.parallelize)
 	})
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 }

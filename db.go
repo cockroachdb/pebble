@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1805,7 +1806,7 @@ func (d *DB) Close() error {
 }
 
 // Compact the specified range of keys in the database.
-func (d *DB) Compact(start, end []byte, parallelize bool) error {
+func (d *DB) Compact(ctx context.Context, start, end []byte, parallelize bool) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1871,13 +1872,17 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 		return err
 	}
 	if mem != nil {
-		<-mem.flushed
+		select {
+		case <-mem.flushed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
 		for {
 			if err := d.manualCompact(
-				start, end, level, parallelize); err != nil {
+				ctx, start, end, level, parallelize); err != nil {
 				if errors.Is(err, ErrCancelledCompaction) {
 					continue
 				}
@@ -1895,7 +1900,9 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	return nil
 }
 
-func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error {
+func (d *DB) manualCompact(
+	ctx context.Context, start, end []byte, level int, parallelize bool,
+) error {
 	d.mu.Lock()
 	curr := d.mu.versions.currentVersion()
 	files := curr.Overlaps(level, base.UserKeyBoundsInclusive(start, end))
@@ -1919,11 +1926,30 @@ func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error
 		d.mu.compact.manualID++
 		compactions[i].id = d.mu.compact.manualID
 	}
+	// [manualIDStart, manualIDEnd) are the compactions that have been added to
+	// d.mu.compact.manual.
+	var manualIDStart, manualIDEnd uint64
+	if n := len(compactions); n > 0 {
+		manualIDStart = compactions[0].id
+		manualIDEnd = compactions[n-1].id + 1
+	}
 	d.mu.compact.manual = append(d.mu.compact.manual, compactions...)
 	d.mu.compact.manualLen.Store(int32(len(d.mu.compact.manual)))
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
 
+	cancelPendingCompactions := func() {
+		d.mu.Lock()
+		for i := 0; i < len(d.mu.compact.manual); {
+			if d.mu.compact.manual[i].id >= manualIDStart && d.mu.compact.manual[i].id < manualIDEnd {
+				d.mu.compact.manual = slices.Delete(d.mu.compact.manual, i, i+1)
+				d.mu.compact.manualLen.Store(int32(len(d.mu.compact.manual)))
+			} else {
+				i++
+			}
+		}
+		d.mu.Unlock()
+	}
 	// Each of the channels is guaranteed to be eventually sent to once. After a
 	// compaction is possibly picked in d.maybeScheduleCompaction(), either the
 	// compaction is dropped, executed after being scheduled, or retried later.
@@ -1932,8 +1958,15 @@ func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error
 	// necessary to read from each channel, and so we can exit early in the event
 	// of an error.
 	for _, compaction := range compactions {
-		if err := <-compaction.done; err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			cancelPendingCompactions()
+			return ctx.Err()
+		case err := <-compaction.done:
+			if err != nil {
+				cancelPendingCompactions()
+				return err
+			}
 		}
 	}
 	return nil

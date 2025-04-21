@@ -1136,6 +1136,83 @@ func TestCompaction(t *testing.T) {
 				}
 				return "manual compaction blocked until ongoing finished\n" + s
 
+			case "async-compact-with-cancellation":
+				// Cancels a manual compaction that is blocked by an ongoing
+				// compaction. There can be multiple manual compactions created when
+				// parallel is specified.
+				var s string
+				ch := make(chan error, 1)
+				// Number of blocked manual compactions.
+				var numBlocked int
+				td.ScanArgs(t, "num-blocked", &numBlocked)
+				var cancelFunc atomic.Pointer[context.CancelFunc]
+				go func() {
+					compactFunc, cf, err := runCompactCmdAsync(td, d, true)
+					if err == nil {
+						cancelFunc.Store(&cf)
+						err = compactFunc()
+					}
+					if err != nil {
+						ch <- err
+						close(ch)
+						return
+					}
+					d.mu.Lock()
+					s = d.mu.versions.currentVersion().String()
+					d.mu.Unlock()
+					close(ch)
+				}()
+				var compErr error
+				var compDone bool
+				err := try(100*time.Microsecond, 5*time.Second, func() error {
+					select {
+					case compErr = <-ch:
+						// Unexpected, since compaction should be blocked.
+						compDone = true
+						return nil
+					default:
+					}
+					if cancelFunc.Load() == nil {
+						return errors.New("not yet attempted to run manual compactions")
+					}
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					if len(d.mu.compact.manual) != numBlocked {
+						return errors.Errorf("expected %d waiting manual compactions, versus actual %d",
+							numBlocked, len(d.mu.compact.manual))
+					}
+					// Expect to be back to the fake ongoing compactions when the
+					// non-blocked manual compactions are done.
+					if d.mu.compact.compactingCount != 1 {
+						return errors.Errorf("expected 1 ongoing compaction, versus actual %d",
+							d.mu.compact.compactingCount)
+					}
+					return nil
+				})
+				if err != nil {
+					return err.Error()
+				}
+				if compDone {
+					return "manual compaction did not block for ongoing\n" + s
+				}
+				// Cancel the manual compaction.
+				(*cancelFunc.Load())()
+				// Wait for the cancellation to succeed.
+				compErr = <-ch
+				if compErr == nil {
+					return "manual compaction did not have an error\n" + s
+				}
+				d.mu.Lock()
+				deleteOngoingCompaction(ongoingCompaction)
+				ongoingCompaction = nil
+				numQueuedManualCompactions := len(d.mu.compact.manual)
+				d.mu.Unlock()
+				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
+					adjustRunningCompactionsForTesting(-1)
+				return fmt.Sprintf(
+					"manual compaction cancelled: %s, current queued compactions: %d\n%s",
+					compErr.Error(), numQueuedManualCompactions, s)
+
 			case "add-ongoing-compaction":
 				var startLevel int
 				var outputLevel int
@@ -1235,6 +1312,10 @@ func TestCompaction(t *testing.T) {
 			minVersion: FormatExperimentalValueSeparation,
 			maxVersion: FormatExperimentalValueSeparation,
 			verbose:    true,
+		},
+		"compaction_cancellation": {
+			minVersion: FormatExperimentalValueSeparation,
+			maxVersion: FormatExperimentalValueSeparation,
 		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
@@ -2116,7 +2197,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	d.mu.Lock()
 	initialSetupDone = true
 	d.mu.Unlock()
-	err = d.Compact([]byte("a"), []byte("d"), false)
+	err = d.Compact(context.Background(), []byte("a"), []byte("d"), false)
 	require.Error(t, err, "injected error")
 
 	d.mu.Lock()
@@ -2294,7 +2375,7 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+		require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("a\x00"), false))
 		d.mu.Lock()
 		require.Equal(t, 1, len(d.mu.mem.queue))
 		d.mu.Unlock()
@@ -2349,7 +2430,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	require.Greater(t, len(d.mu.mem.queue), 1)
 	d.mu.Unlock()
 
-	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("a\x00"), false))
 	d.mu.Lock()
 	require.Equal(t, 1, len(d.mu.mem.queue))
 	d.mu.Unlock()
@@ -2430,9 +2511,9 @@ func TestCompactionInvalidBounds(t *testing.T) {
 	db, err := Open("", testingRandomized(t, opts))
 	require.NoError(t, err)
 	defer db.Close()
-	require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
-	require.Error(t, db.Compact([]byte("a"), []byte("a"), false))
-	require.Error(t, db.Compact([]byte("b"), []byte("a"), false))
+	require.NoError(t, db.Compact(context.Background(), []byte("a"), []byte("b"), false))
+	require.Error(t, db.Compact(context.Background(), []byte("a"), []byte("a"), false))
+	require.Error(t, db.Compact(context.Background(), []byte("b"), []byte("a"), false))
 }
 
 func TestMarkedForCompaction(t *testing.T) {
@@ -2701,14 +2782,14 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	const numKeys = 20
 	for i := 1; i <= numKeys; i++ {
 		require.NoError(t, d.Set([]byte(key(i)), randVal(), nil))
-		require.NoError(t, d.Compact([]byte(key(i)), []byte(key(i)+"1"), false))
+		require.NoError(t, d.Compact(context.Background(), []byte(key(i)), []byte(key(i)+"1"), false))
 	}
 
 	done := make(chan struct{})
 	go func() {
 		err = d.DeleteRange([]byte(key(5)), []byte(key(9)), nil)
 		if err == nil {
-			err = d.Compact([]byte(key(5)), []byte(key(9)), false)
+			err = d.Compact(context.Background(), []byte(key(5)), []byte(key(9)), false)
 		}
 		// Wait for objects to be deleted.
 		for {
@@ -2825,7 +2906,7 @@ func TestCompactionErrorStats(t *testing.T) {
 	useInjector = true
 	d.mu.Unlock()
 
-	err = d.Compact([]byte("a"), []byte("d"), false)
+	err = d.Compact(context.Background(), []byte("a"), []byte("d"), false)
 	require.Error(t, err, "injected error")
 
 	// Due to the error, stats shouldn't have been updated.
@@ -2839,7 +2920,7 @@ func TestCompactionErrorStats(t *testing.T) {
 
 	// The following compaction won't error, but snapshot is open, so snapshot
 	// pinned stats should update.
-	require.NoError(t, d.Compact([]byte("a"), []byte("d"), false))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("d"), false))
 	require.NoError(t, snap.Close())
 
 	d.mu.Lock()
