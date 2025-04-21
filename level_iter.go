@@ -335,7 +335,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *tableMetadat
 		//
 		// If the file does not contain point keys ≥ `key`, next to continue
 		// looking for a file that does.
-		if (m.HasRangeKeys || nextInsteadOfSeek) && l.cmp(m.LargestPointKey.UserKey, key) < 0 {
+		if (m.HasRangeKeys || nextInsteadOfSeek) && l.cmp(m.PointKeyBounds.LargestUserKey(), key) < 0 {
 			// If nextInsteadOfSeek is set and nextsUntilSeek is non-negative,
 			// the iterator has been nexting hoping to discover the relevant
 			// file without seeking. It's exhausted the allotted nextsUntilSeek
@@ -361,7 +361,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *tableMetadat
 		// a table which can't possibly contain the target key and is required
 		// for correctness by mergingIter.SeekGE (see the comment in that
 		// function).
-		if m.LargestPointKey.IsExclusiveSentinel() && l.cmp(m.LargestPointKey.UserKey, key) == 0 {
+		if m.PointKeyBounds.Largest().IsExclusiveSentinel() && l.cmp(m.PointKeyBounds.LargestUserKey(), key) == 0 {
 			m = l.files.Next()
 			continue
 		}
@@ -426,7 +426,7 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *tableMetadat
 		//
 		// If the file does not contain point keys < `key`, prev to continue
 		// looking for a file that does.
-		if (m.HasRangeKeys || prevInsteadOfSeek) && l.cmp(m.SmallestPointKey.UserKey, key) >= 0 {
+		if (m.HasRangeKeys || prevInsteadOfSeek) && l.cmp(m.PointKeyBounds.SmallestUserKey(), key) >= 0 {
 			m = l.files.Prev()
 			continue
 		}
@@ -443,11 +443,11 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *tableMetadat
 func (l *levelIter) initTableBounds(f *tableMetadata) int {
 	l.tableOpts.LowerBound = l.lower
 	if l.tableOpts.LowerBound != nil {
-		if l.cmp(f.LargestPointKey.UserKey, l.tableOpts.LowerBound) < 0 {
+		if l.cmp(f.PointKeyBounds.LargestUserKey(), l.tableOpts.LowerBound) < 0 {
 			// The largest key in the sstable is smaller than the lower bound.
 			return -1
 		}
-		if l.cmp(l.tableOpts.LowerBound, f.SmallestPointKey.UserKey) <= 0 {
+		if l.cmp(l.tableOpts.LowerBound, f.PointKeyBounds.SmallestUserKey()) <= 0 {
 			// The lower bound is smaller or equal to the smallest key in the
 			// table. Iteration within the table does not need to check the lower
 			// bound.
@@ -456,15 +456,15 @@ func (l *levelIter) initTableBounds(f *tableMetadata) int {
 	}
 	l.tableOpts.UpperBound = l.upper
 	if l.tableOpts.UpperBound != nil {
-		if l.cmp(f.SmallestPointKey.UserKey, l.tableOpts.UpperBound) >= 0 {
+		if l.cmp(f.PointKeyBounds.SmallestUserKey(), l.tableOpts.UpperBound) >= 0 {
 			// The smallest key in the sstable is greater than or equal to the upper
 			// bound.
 			return 1
 		}
-		if l.cmp(l.tableOpts.UpperBound, f.LargestPointKey.UserKey) > 0 {
+		if l.cmp(l.tableOpts.UpperBound, f.PointKeyBounds.LargestUserKey()) > 0 {
 			// The upper bound is greater than the largest key in the
 			// table. Iteration within the table does not need to check the upper
-			// bound. NB: tableOpts.UpperBound is exclusive and f.LargestPointKey is
+			// bound. NB: tableOpts.UpperBound is exclusive and f.PointKeyBounds.Largest() is
 			// inclusive.
 			l.tableOpts.UpperBound = nil
 		}
@@ -551,7 +551,7 @@ func (l *levelIter) loadFile(file *tableMetadata, dir int) loadFileReturnIndicat
 		// any keys within the iteration prefix. Loading the next file is
 		// unnecessary. This has been observed in practice on slow shared
 		// storage. See #3575.
-		if l.prefix != nil && l.cmp(l.split.Prefix(file.SmallestPointKey.UserKey), l.prefix) > 0 {
+		if l.prefix != nil && l.cmp(l.split.Prefix(file.PointKeyBounds.SmallestUserKey()), l.prefix) > 0 {
 			// Note that because l.iter is nil, a subsequent call to
 			// SeekPrefixGE with TrySeekUsingNext()=true will load the file
 			// (returning newFileLoaded) and disable TrySeekUsingNext before
@@ -840,7 +840,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 		// subsequent SeekPrefixGE with TrySeekUsingNext could mistakenly skip
 		// the file's relevant keys.
 		if l.prefix != nil {
-			if l.cmp(l.split.Prefix(l.iterFile.LargestPointKey.UserKey), l.prefix) > 0 {
+			if l.cmp(l.split.Prefix(l.iterFile.PointKeyBounds.LargestUserKey()), l.prefix) > 0 {
 				l.exhaustedForward()
 				return nil
 			}

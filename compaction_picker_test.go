@@ -1716,6 +1716,6 @@ func checkClone(t *testing.T, pc *pickedCompaction) {
 }
 
 func checkTableBoundary(a, b *tableMetadata, cmp base.Compare) (ok bool) {
-	c := cmp(a.LargestPointKey.UserKey, b.SmallestPointKey.UserKey)
-	return c < 0 || (c == 0 && a.LargestPointKey.IsExclusiveSentinel())
+	c := cmp(a.PointKeyBounds.LargestUserKey(), b.PointKeyBounds.SmallestUserKey())
+	return c < 0 || (c == 0 && a.PointKeyBounds.Largest().IsExclusiveSentinel())
 }

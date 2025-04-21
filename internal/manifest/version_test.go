@@ -846,7 +846,7 @@ func TestTableMetadataSize(t *testing.T) {
 	}
 	structSize := unsafe.Sizeof(TableMetadata{})
 
-	const tableMetadataSize = 424
+	const tableMetadataSize = 400
 	if structSize != tableMetadataSize {
 		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableMetadataSize)
