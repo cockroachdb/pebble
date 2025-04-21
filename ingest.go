@@ -881,7 +881,7 @@ func setSeqNumInMetadata(
 		m.SmallestPointKey = setSeqFn(m.SmallestPointKey)
 	}
 	if m.HasRangeKeys {
-		m.SmallestRangeKey = setSeqFn(m.SmallestRangeKey)
+		m.RangeKeyBounds.SetSmallest(setSeqFn(m.RangeKeyBounds.Smallest()))
 	}
 	// Only update the seqnum for the largest key if that key is not an
 	// "exclusive sentinel" (i.e. a range deletion sentinel or a range key

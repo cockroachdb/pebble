@@ -182,13 +182,14 @@ func (l *LevelIter) SeekGE(key []byte) (*keyspan.Span, error) {
 		l.setPosBeforeFile(nil)
 		return nil, nil
 	}
-	if l.straddleSpansEnabled() && l.cmp(key, file.SmallestRangeKey.UserKey) < 0 {
+	if l.straddleSpansEnabled() && l.cmp(key, file.RangeKeyBounds.SmallestUserKey()) < 0 {
 		// Peek at the previous file.
 		if prevFile := l.files.Prev(); prevFile != nil {
-			// We could unconditionally return an empty span between the seek key and
-			// f.SmallestRangeKey, however if this span is to the left of all range
-			// keys on this level, it could lead to inconsistent behaviour in relative
-			// positioning operations. Consider this example, with a b-c range key:
+			// We could unconditionally return an empty span between the seek
+			// key and f.RangeKeyBounds.Smallest(), however if this span is to
+			// the left of all range keys on this level, it could lead to
+			// inconsistent behaviour in relative positioning operations.
+			// Consider this example, with a b-c range key:
 			//   SeekGE(a) -> a-b:{}
 			//   Next() -> b-c{(#5,RANGEKEYSET,@4,foo)}
 			//   Prev() -> nil
@@ -221,7 +222,7 @@ func (l *LevelIter) SeekLT(key []byte) (*keyspan.Span, error) {
 		l.setPosAfterFile(nil)
 		return nil, nil
 	}
-	if l.straddleSpansEnabled() && l.cmp(file.LargestRangeKey.UserKey, key) < 0 {
+	if l.straddleSpansEnabled() && l.cmp(file.RangeKeyBounds.LargestUserKey(), key) < 0 {
 		// Peek at the next file.
 		if nextFile := l.files.Next(); nextFile != nil {
 			// We could unconditionally return an empty span between f.LargestRangeKey
@@ -488,15 +489,15 @@ func (l *LevelIter) straddleSpansEnabled() bool {
 func (l *LevelIter) needStraddleSpan(file, nextFile *manifest.TableMetadata) bool {
 	// We directly use range key bounds because that is the current condition for
 	// straddleSpansEnabled.
-	return l.straddleSpansEnabled() && l.cmp(file.LargestRangeKey.UserKey, nextFile.SmallestRangeKey.UserKey) < 0
+	return l.straddleSpansEnabled() && l.cmp(file.RangeKeyBounds.LargestUserKey(), nextFile.RangeKeyBounds.SmallestUserKey()) < 0
 }
 
 // makeStraddleSpan returns a straddle span that covers the gap between file and
 // nextFile.
 func (l *LevelIter) makeStraddleSpan(file, nextFile *manifest.TableMetadata) *keyspan.Span {
 	l.straddleSpan = keyspan.Span{
-		Start: file.LargestRangeKey.UserKey,
-		End:   nextFile.SmallestRangeKey.UserKey,
+		Start: file.RangeKeyBounds.LargestUserKey(),
+		End:   nextFile.RangeKeyBounds.SmallestUserKey(),
 		Keys:  nil,
 	}
 	return &l.straddleSpan

@@ -266,11 +266,11 @@ func looseLeftTableBounds(
 		leftTable.ExtendPointKeyBounds(cmp, originalTable.SmallestPointKey, largestPointKey)
 	}
 	if originalTable.HasRangeKeys {
-		largestRangeKey := originalTable.LargestRangeKey
+		largestRangeKey := originalTable.RangeKeyBounds.Largest()
 		if largestRangeKey.IsUpperBoundFor(cmp, exciseSpanStart) {
 			largestRangeKey = base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, exciseSpanStart)
 		}
-		leftTable.ExtendRangeKeyBounds(cmp, originalTable.SmallestRangeKey, largestRangeKey)
+		leftTable.ExtendRangeKeyBounds(cmp, originalTable.RangeKeyBounds.Smallest(), largestRangeKey)
 	}
 }
 
@@ -294,11 +294,11 @@ func looseRightTableBounds(
 		rightTable.ExtendPointKeyBounds(cmp, smallestPointKey, originalTable.LargestPointKey)
 	}
 	if originalTable.HasRangeKeys {
-		smallestRangeKey := originalTable.SmallestRangeKey
+		smallestRangeKey := originalTable.RangeKeyBounds.Smallest()
 		if !smallestRangeKey.IsUpperBoundFor(cmp, exciseSpanEnd) {
 			smallestRangeKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindRangeKeyMax)
 		}
-		rightTable.ExtendRangeKeyBounds(cmp, smallestRangeKey, originalTable.LargestRangeKey)
+		rightTable.ExtendRangeKeyBounds(cmp, smallestRangeKey, originalTable.RangeKeyBounds.Largest())
 	}
 }
 
@@ -332,7 +332,7 @@ func determineLeftTableBounds(
 		}
 	}
 
-	if originalTable.HasRangeKeys && cmp(originalTable.SmallestRangeKey.UserKey, exciseSpanStart) < 0 {
+	if originalTable.HasRangeKeys && cmp(originalTable.RangeKeyBounds.SmallestUserKey(), exciseSpanStart) < 0 {
 		rkey, err := iters.RangeKey().SeekLT(exciseSpanStart)
 		if err != nil {
 			return err
@@ -344,7 +344,7 @@ func determineLeftTableBounds(
 				// The key is owned by the range key iter, so we need to copy it.
 				lastRangeKey = slices.Clone(rkey.End)
 			}
-			leftTable.ExtendRangeKeyBounds(cmp, originalTable.SmallestRangeKey,
+			leftTable.ExtendRangeKeyBounds(cmp, originalTable.RangeKeyBounds.Smallest(),
 				base.MakeExclusiveSentinelKey(rkey.LargestKey().Kind(), lastRangeKey))
 		}
 	}
@@ -393,7 +393,7 @@ func determineRightTableBounds(
 			}, originalTable.LargestPointKey)
 		}
 	}
-	if originalTable.HasRangeKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.LargestRangeKey) {
+	if originalTable.HasRangeKeys && !exciseSpanEnd.IsUpperBoundForInternalKey(cmp, originalTable.RangeKeyBounds.Largest()) {
 		rkey, err := iters.RangeKey().SeekGE(exciseSpanEnd.Key)
 		if err != nil {
 			return err
@@ -410,7 +410,7 @@ func determineRightTableBounds(
 			rightTable.ExtendRangeKeyBounds(cmp, base.InternalKey{
 				UserKey: firstRangeKey,
 				Trailer: rkey.SmallestKey().Trailer,
-			}, originalTable.LargestRangeKey)
+			}, originalTable.RangeKeyBounds.Largest())
 		}
 	}
 	return nil

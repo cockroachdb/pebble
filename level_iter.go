@@ -204,8 +204,8 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *tableMetadata, dir int) 
 	// tell us whether the file has any RangeKeySets. Otherwise, we must
 	// fallback to assuming it does if HasRangeKeys=true.
 	if file != nil && file.HasRangeKeys && l.combinedIterState != nil && !l.combinedIterState.initialized &&
-		(l.upper == nil || l.cmp(file.SmallestRangeKey.UserKey, l.upper) < 0) &&
-		(l.lower == nil || l.cmp(file.LargestRangeKey.UserKey, l.lower) > 0) &&
+		(l.upper == nil || l.cmp(file.RangeKeyBounds.SmallestUserKey(), l.upper) < 0) &&
+		(l.lower == nil || l.cmp(file.RangeKeyBounds.LargestUserKey(), l.lower) > 0) &&
 		(!file.StatsValid() || file.Stats.NumRangeKeySets > 0) {
 		// The file contains range keys, and we're not using combined iteration yet.
 		// Trigger a switch to combined iteration. It's possible that a switch has
@@ -223,16 +223,16 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *tableMetadata, dir int) 
 		case +1:
 			if !l.combinedIterState.triggered {
 				l.combinedIterState.triggered = true
-				l.combinedIterState.key = file.SmallestRangeKey.UserKey
-			} else if l.cmp(l.combinedIterState.key, file.SmallestRangeKey.UserKey) > 0 {
-				l.combinedIterState.key = file.SmallestRangeKey.UserKey
+				l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
+			} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.SmallestUserKey()) > 0 {
+				l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
 			}
 		case -1:
 			if !l.combinedIterState.triggered {
 				l.combinedIterState.triggered = true
-				l.combinedIterState.key = file.LargestRangeKey.UserKey
-			} else if l.cmp(l.combinedIterState.key, file.LargestRangeKey.UserKey) < 0 {
-				l.combinedIterState.key = file.LargestRangeKey.UserKey
+				l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
+			} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.LargestUserKey()) < 0 {
+				l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
 			}
 		}
 	}
