@@ -941,7 +941,7 @@ func TestCacheEvict(t *testing.T) {
 		require.NoError(t, d.Delete(key, nil))
 	}
 
-	require.NoError(t, d.Compact([]byte("0"), []byte("1"), false))
+	require.NoError(t, d.Compact(context.Background(), []byte("0"), []byte("1"), false))
 
 	require.NoError(t, d.Close())
 
@@ -1093,7 +1093,7 @@ func TestRollManifest(t *testing.T) {
 	// adds 9 files in edits. We still need 6 more files in edits based on the
 	// last snapshot. But the current version has only 9 L0 files and 1 L6 file,
 	// for a total of 10 files. So 1 flush should push us over that threshold.
-	d.Compact([]byte("c"), []byte("d"), false)
+	d.Compact(context.Background(), []byte("c"), []byte("d"), false)
 	lastSnapshotCount, editsSinceSnapshotCount = sizeRolloverState()
 	require.EqualValues(t, 16, lastSnapshotCount)
 	require.EqualValues(t, 10, editsSinceSnapshotCount)
@@ -1127,7 +1127,7 @@ func TestDBClosed(t *testing.T) {
 
 	require.True(t, errors.Is(catch(func() { _ = d.Close() }), ErrClosed))
 
-	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil, false) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Compact(context.Background(), nil, nil, false) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Flush() }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _, _ = d.AsyncFlush() }), ErrClosed))
 
@@ -1166,7 +1166,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			var err error
 			switch i % 3 {
 			case 0:
-				err = d.Compact(nil, []byte("\xff"), false)
+				err = d.Compact(context.Background(), nil, []byte("\xff"), false)
 			case 1:
 				err = d.Flush()
 			case 2:
@@ -1270,7 +1270,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		it, _ := db.NewIter(nil)
 		require.NotNil(t, it)
 		require.NoError(t, db.DeleteRange([]byte("a"), []byte("b"), Sync))
-		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
+		require.NoError(t, db.Compact(context.Background(), []byte("a"), []byte("b"), false))
 		// Only the iterator is keeping the sstables alive.
 		files, err := mem.List("/")
 		require.NoError(t, err)
@@ -1608,7 +1608,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Set([]byte("d"), []byte("bar"), nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Compact([]byte("a"), []byte("z"), true))
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), true))
 
 	var baseCompactionSem, flushSem, intraL0Sem chan struct{}
 	// Block an L0 -> LBase compaction. This is necessary to induce intra-L0
@@ -2447,7 +2447,7 @@ func TestLoadBlockSema(t *testing.T) {
 		for j := 0; j < numKeys; j++ {
 			require.NoError(t, db.Set(key(i, j), []byte("value"), nil))
 		}
-		require.NoError(t, db.Compact(key(i, 0), key(i, numKeys-1), false))
+		require.NoError(t, db.Compact(context.Background(), key(i, 0), key(i, numKeys-1), false))
 	}
 
 	// Read all regions to warm up the file cache.

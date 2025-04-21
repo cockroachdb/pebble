@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1805,7 +1806,7 @@ func (d *DB) Close() error {
 }
 
 // Compact the specified range of keys in the database.
-func (d *DB) Compact(start, end []byte, parallelize bool) error {
+func (d *DB) Compact(ctx context.Context, start, end []byte, parallelize bool) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1871,13 +1872,17 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 		return err
 	}
 	if mem != nil {
-		<-mem.flushed
+		select {
+		case <-mem.flushed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
 		for {
 			if err := d.manualCompact(
-				start, end, level, parallelize); err != nil {
+				ctx, start, end, level, parallelize); err != nil {
 				if errors.Is(err, ErrCancelledCompaction) {
 					continue
 				}
@@ -1895,7 +1900,9 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	return nil
 }
 
-func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error {
+func (d *DB) manualCompact(
+	ctx context.Context, start, end []byte, level int, parallelize bool,
+) error {
 	d.mu.Lock()
 	curr := d.mu.versions.currentVersion()
 	files := curr.Overlaps(level, base.UserKeyBoundsInclusive(start, end))
@@ -1915,15 +1922,52 @@ func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error
 			end:   end,
 		})
 	}
+	n := len(compactions)
+	if n == 0 {
+		d.mu.Unlock()
+		return nil
+	}
 	for i := range compactions {
 		d.mu.compact.manualID++
 		compactions[i].id = d.mu.compact.manualID
 	}
+	// [manualIDStart, manualIDEnd] are the compactions that have been added to
+	// d.mu.compact.manual.
+	manualIDStart := compactions[0].id
+	manualIDEnd := compactions[n-1].id
 	d.mu.compact.manual = append(d.mu.compact.manual, compactions...)
 	d.mu.compact.manualLen.Store(int32(len(d.mu.compact.manual)))
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
 
+	// On context cancellation, we only cancel the compactions that have not yet
+	// started. The assumption is that it is relatively harmless to have the
+	// already started compactions run to completion. We don't wait for the
+	// ongoing compactions to finish, since the assumption is that the caller
+	// has already given up on the operation (and the cancellation error is
+	// going to be returned anyway).
+	//
+	// An alternative would be to store the context in each *manualCompaction,
+	// and have the goroutine that retrieves the *manualCompaction for running
+	// notice the cancellation and write the cancellation error to
+	// manualCompaction.done. That approach would require this method to wait
+	// for all the *manualCompactions it has enqueued to finish before returning
+	// (to not leak a context). Since there is no timeliness guarantee on when a
+	// *manualCompaction will be retrieved for running, the wait until a
+	// cancelled context causes this method to return is not bounded. Hence, we
+	// don't adopt that approach.
+	cancelPendingCompactions := func() {
+		d.mu.Lock()
+		for i := 0; i < len(d.mu.compact.manual); {
+			if d.mu.compact.manual[i].id >= manualIDStart && d.mu.compact.manual[i].id <= manualIDEnd {
+				d.mu.compact.manual = slices.Delete(d.mu.compact.manual, i, i+1)
+				d.mu.compact.manualLen.Store(int32(len(d.mu.compact.manual)))
+			} else {
+				i++
+			}
+		}
+		d.mu.Unlock()
+	}
 	// Each of the channels is guaranteed to be eventually sent to once. After a
 	// compaction is possibly picked in d.maybeScheduleCompaction(), either the
 	// compaction is dropped, executed after being scheduled, or retried later.
@@ -1932,8 +1976,15 @@ func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error
 	// necessary to read from each channel, and so we can exit early in the event
 	// of an error.
 	for _, compaction := range compactions {
-		if err := <-compaction.done; err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			cancelPendingCompactions()
+			return ctx.Err()
+		case err := <-compaction.done:
+			if err != nil {
+				cancelPendingCompactions()
+				return err
+			}
 		}
 	}
 	return nil
