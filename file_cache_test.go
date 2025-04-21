@@ -369,11 +369,11 @@ func TestVirtualReadsWiring(t *testing.T) {
 		LargestSeqNumAbsolute: parentFile.LargestSeqNumAbsolute,
 		SmallestPointKey:      base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
 		LargestPointKey:       base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
-		SmallestRangeKey:      base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
-		LargestRangeKey:       base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset),
 		HasPointKeys:          true,
 		Virtual:               true,
 	}
+	v2.RangeKeyBounds.SetSmallest(base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet))
+	v2.RangeKeyBounds.SetLargest(base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset))
 	v2.ExtendPointKeyBounds(DefaultComparer.Compare, v2.SmallestPointKey, v2.LargestPointKey)
 	v2.AttachVirtualBacking(parentFile.FileBacking)
 	v2.Stats.NumEntries = 6

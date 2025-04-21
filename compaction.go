@@ -2612,7 +2612,7 @@ func (d *DB) runCopyCompaction(
 		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.SmallestPointKey, inputMeta.LargestPointKey)
 	}
 	if inputMeta.HasRangeKeys {
-		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.SmallestRangeKey, inputMeta.LargestRangeKey)
+		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.RangeKeyBounds.Smallest(), inputMeta.RangeKeyBounds.Largest())
 	}
 	newMeta.FileNum = d.mu.versions.getNextFileNum()
 	if objMeta.IsExternal() {

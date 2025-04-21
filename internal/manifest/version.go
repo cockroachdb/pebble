@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -29,6 +30,62 @@ type Compare = base.Compare
 
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
+
+// InternalKeyBounds represents set of keys (smallest, largest) used for the
+// in-memory and on-disk partial DBs that make up a pebble DB.
+//
+// It consists of the smallest, largest keys and their respective trailers.
+// The keys are represented as a single string; their individual representations
+// are given by the userKeySeparatorIdx as:
+//   - smallest: [0, userKeySeparatorIdx)
+//   - largest: [userKeySeparatorIdx, len(userKeyData))
+//
+// This format allows us to save a couple of bytes that will add up
+// proportionally to the amount of sstables we have.
+type InternalKeyBounds struct {
+	userKeyData         string
+	userKeySeparatorIdx int
+	smallestTrailer     base.InternalKeyTrailer
+	largestTrailer      base.InternalKeyTrailer
+}
+
+func (ikr *InternalKeyBounds) SmallestUserKey() []byte {
+	return unsafe.Slice(unsafe.StringData(ikr.userKeyData), ikr.userKeySeparatorIdx)
+}
+
+func (ikr *InternalKeyBounds) Smallest() InternalKey {
+	return InternalKey{
+		UserKey: ikr.SmallestUserKey(),
+		Trailer: ikr.smallestTrailer,
+	}
+}
+
+func (ikr *InternalKeyBounds) LargestUserKey() []byte {
+	largestStart := unsafe.StringData(ikr.userKeyData[ikr.userKeySeparatorIdx:])
+	return unsafe.Slice(largestStart, len(ikr.userKeyData)-ikr.userKeySeparatorIdx)
+}
+
+func (ikr *InternalKeyBounds) Largest() InternalKey {
+	ik := InternalKey{
+		UserKey: ikr.LargestUserKey(),
+		Trailer: ikr.largestTrailer,
+	}
+	return ik
+}
+
+func (ikr *InternalKeyBounds) SetSmallest(ik InternalKey) {
+	largest := ikr.Largest()
+	ikr.userKeyData = string(ik.UserKey) + string(largest.UserKey)
+	ikr.smallestTrailer = ik.Trailer
+	ikr.userKeySeparatorIdx = len(ik.UserKey)
+}
+
+func (ikr *InternalKeyBounds) SetLargest(ik InternalKey) {
+	smallest := ikr.Smallest()
+	ikr.userKeyData = string(smallest.UserKey) + string(ik.UserKey)
+	ikr.largestTrailer = ik.Trailer
+	ikr.userKeySeparatorIdx = len(smallest.UserKey)
+}
 
 // TableInfo contains the common information for table related events.
 type TableInfo struct {
@@ -254,12 +311,11 @@ type TableMetadata struct {
 	// exported for reads as an optimization.
 	SmallestPointKey InternalKey
 	LargestPointKey  InternalKey
-	// SmallestRangeKey and LargestRangeKey are the inclusive bounds for the
+	// RangeKeyBounds.Smallest() and RangeKeyBounds.Largest() are the inclusive bounds for the
 	// internal range keys stored in the table.
 	// NB: these field should be set using ExtendRangeKeyBounds. They are left
 	// exported for reads as an optimization.
-	SmallestRangeKey InternalKey
-	LargestRangeKey  InternalKey
+	RangeKeyBounds InternalKeyBounds
 	// BlobReferences is a list of blob files containing values that are
 	// referenced by this sstable.
 	BlobReferences BlobReferences
@@ -408,7 +464,7 @@ func (m *TableMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds 
 	case KeyTypePoint:
 		return base.UserKeyBoundsFromInternal(m.SmallestPointKey, m.LargestPointKey)
 	case KeyTypeRange:
-		return base.UserKeyBoundsFromInternal(m.SmallestRangeKey, m.LargestRangeKey)
+		return base.UserKeyBoundsFromInternal(m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
 	default:
 		return base.UserKeyBoundsFromInternal(m.Smallest(), m.Largest())
 	}
@@ -656,18 +712,19 @@ func (m *TableMetadata) ExtendRangeKeyBounds(
 ) *TableMetadata {
 	// Update the range key bounds.
 	if !m.HasRangeKeys {
-		m.SmallestRangeKey, m.LargestRangeKey = smallest, largest
+		m.RangeKeyBounds.SetSmallest(smallest)
+		m.RangeKeyBounds.SetLargest(largest)
 		m.HasRangeKeys = true
 	} else {
-		if base.InternalCompare(cmp, smallest, m.SmallestRangeKey) < 0 {
-			m.SmallestRangeKey = smallest
+		if base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) < 0 {
+			m.RangeKeyBounds.SetSmallest(smallest)
 		}
-		if base.InternalCompare(cmp, largest, m.LargestRangeKey) > 0 {
-			m.LargestRangeKey = largest
+		if base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) > 0 {
+			m.RangeKeyBounds.SetLargest(largest)
 		}
 	}
 	// Update the overall bounds.
-	m.extendOverallBounds(cmp, m.SmallestRangeKey, m.LargestRangeKey, boundTypeRangeKey)
+	m.extendOverallBounds(cmp, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest(), boundTypeRangeKey)
 	return m
 }
 
@@ -730,7 +787,8 @@ func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 	case KeyTypePoint:
 		return &m.SmallestPointKey, m.HasPointKeys
 	case KeyTypeRange:
-		return &m.SmallestRangeKey, m.HasRangeKeys
+		srk := m.RangeKeyBounds.Smallest()
+		return &srk, m.HasRangeKeys
 	default:
 		panic("unrecognized key type")
 	}
@@ -747,7 +805,8 @@ func (m *TableMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
 	case KeyTypePoint:
 		return &m.LargestPointKey, m.HasPointKeys
 	case KeyTypeRange:
-		return &m.LargestRangeKey, m.HasRangeKeys
+		lrk := m.RangeKeyBounds.Largest()
+		return &lrk, m.HasRangeKeys
 	default:
 		panic("unrecognized key type")
 	}
@@ -815,7 +874,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	}
 	if m.HasRangeKeys {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
-			m.SmallestRangeKey.Pretty(format), m.LargestRangeKey.Pretty(format))
+			m.RangeKeyBounds.Smallest().Pretty(format), m.RangeKeyBounds.Largest().Pretty(format))
 	}
 	if m.Size != 0 {
 		fmt.Fprintf(&b, " size:%d", m.Size)
@@ -892,9 +951,9 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 
 		case "ranges":
 			p.Expect("[")
-			m.SmallestRangeKey = p.InternalKey()
+			m.RangeKeyBounds.SetSmallest(p.InternalKey())
 			p.Expect("-")
-			m.LargestRangeKey = p.InternalKey()
+			m.RangeKeyBounds.SetLargest(p.InternalKey())
 			m.HasRangeKeys = true
 			p.Expect("]")
 
@@ -930,12 +989,12 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	if base.InternalCompare(cmp, smallest, m.SmallestPointKey) == 0 {
 		m.boundTypeSmallest = boundTypePointKey
 
-	} else if base.InternalCompare(cmp, smallest, m.SmallestRangeKey) == 0 {
+	} else if base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypeRangeKey
 	}
 	if base.InternalCompare(cmp, largest, m.LargestPointKey) == 0 {
 		m.boundTypeLargest = boundTypePointKey
-	} else if base.InternalCompare(cmp, largest, m.LargestRangeKey) == 0 {
+	} else if base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypeRangeKey
 	}
 
@@ -1008,25 +1067,25 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Range key validation.
 
 	if m.HasRangeKeys {
-		if base.InternalCompare(cmp, m.SmallestRangeKey, m.LargestRangeKey) > 0 {
+		if base.InternalCompare(cmp, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest()) > 0 {
 			return base.CorruptionErrorf("file %s has inconsistent range key bounds: %s vs %s",
-				errors.Safe(m.FileNum), m.SmallestRangeKey.Pretty(formatKey),
-				m.LargestRangeKey.Pretty(formatKey))
+				errors.Safe(m.FileNum), m.RangeKeyBounds.Smallest().Pretty(formatKey),
+				m.RangeKeyBounds.Largest().Pretty(formatKey))
 		}
-		if base.InternalCompare(cmp, m.SmallestRangeKey, m.Smallest()) < 0 ||
-			base.InternalCompare(cmp, m.LargestRangeKey, m.Largest()) > 0 {
+		if base.InternalCompare(cmp, m.RangeKeyBounds.Smallest(), m.Smallest()) < 0 ||
+			base.InternalCompare(cmp, m.RangeKeyBounds.Largest(), m.Largest()) > 0 {
 			return base.CorruptionErrorf(
 				"file %s has inconsistent range key bounds relative to overall bounds: "+
 					"overall = [%s-%s], range keys = [%s-%s]",
 				errors.Safe(m.FileNum),
 				m.Smallest().Pretty(formatKey), m.Largest().Pretty(formatKey),
-				m.SmallestRangeKey.Pretty(formatKey), m.LargestRangeKey.Pretty(formatKey),
+				m.RangeKeyBounds.Smallest().Pretty(formatKey), m.RangeKeyBounds.Largest().Pretty(formatKey),
 			)
 		}
-		if !isValidRangeKeyBoundKeyKind[m.SmallestRangeKey.Kind()] {
+		if !isValidRangeKeyBoundKeyKind[m.RangeKeyBounds.Smallest().Kind()] {
 			return base.CorruptionErrorf("file %s has invalid smallest range key kind", m)
 		}
-		if !isValidRangeKeyBoundKeyKind[m.LargestRangeKey.Kind()] {
+		if !isValidRangeKeyBoundKeyKind[m.RangeKeyBounds.Largest().Kind()] {
 			return base.CorruptionErrorf("file %s has invalid largest range key kind", m)
 		}
 	}
@@ -1122,7 +1181,7 @@ func (m *TableMetadata) Smallest() InternalKey {
 	case boundTypePointKey:
 		return m.SmallestPointKey
 	case boundTypeRangeKey:
-		return m.SmallestRangeKey
+		return m.RangeKeyBounds.Smallest()
 	default:
 		return InternalKey{}
 	}
@@ -1135,7 +1194,7 @@ func (m *TableMetadata) Largest() InternalKey {
 	case boundTypePointKey:
 		return m.LargestPointKey
 	case boundTypeRangeKey:
-		return m.LargestRangeKey
+		return m.RangeKeyBounds.Largest()
 	default:
 		return InternalKey{}
 	}

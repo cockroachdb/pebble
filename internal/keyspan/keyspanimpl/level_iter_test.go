@@ -292,13 +292,13 @@ func TestLevelIterEquivalence(t *testing.T) {
 					SmallestSeqNum:        2,
 					LargestSeqNum:         2,
 					LargestSeqNumAbsolute: 2,
-					SmallestRangeKey:      base.MakeInternalKey(file[0].Start, file[0].SmallestKey().SeqNum(), file[0].SmallestKey().Kind()),
-					LargestRangeKey:       base.MakeExclusiveSentinelKey(file[len(file)-1].LargestKey().Kind(), file[len(file)-1].End),
 					HasPointKeys:          false,
 					HasRangeKeys:          true,
 				}
 				meta.InitPhysicalBacking()
-				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
+				meta.RangeKeyBounds.SetSmallest(base.MakeInternalKey(file[0].Start, file[0].SmallestKey().SeqNum(), file[0].SmallestKey().Kind()))
+				meta.RangeKeyBounds.SetLargest(base.MakeExclusiveSentinelKey(file[len(file)-1].LargestKey().Kind(), file[len(file)-1].End))
+				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.RangeKeyBounds.Smallest(), meta.RangeKeyBounds.Largest())
 				metas = append(metas, meta)
 			}
 
