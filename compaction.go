@@ -2609,7 +2609,7 @@ func (d *DB) runCopyCompaction(
 		SyntheticPrefixAndSuffix: inputMeta.SyntheticPrefixAndSuffix,
 	}
 	if inputMeta.HasPointKeys {
-		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.SmallestPointKey, inputMeta.LargestPointKey)
+		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.PointKeyBounds.Smallest(), inputMeta.PointKeyBounds.Largest())
 	}
 	if inputMeta.HasRangeKeys {
 		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.RangeKeyBounds.Smallest(), inputMeta.RangeKeyBounds.Largest())

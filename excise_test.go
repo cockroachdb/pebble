@@ -801,7 +801,7 @@ func TestExciseBounds(t *testing.T) {
 			fmt.Fprintf(&buf, "%s:\n", title)
 			fmt.Fprintf(&buf, "  overall: %v - %v\n", m.Smallest(), m.Largest())
 			if m.HasPointKeys {
-				fmt.Fprintf(&buf, "  point:   %v - %v\n", m.SmallestPointKey, m.LargestPointKey)
+				fmt.Fprintf(&buf, "  point:   %v - %v\n", m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
 			}
 			if m.HasRangeKeys {
 				fmt.Fprintf(&buf, "  range:   %v - %v\n", m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())

@@ -351,12 +351,12 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestSeqNum:        parentFile.SmallestSeqNum,
 		LargestSeqNum:         parentFile.LargestSeqNum,
 		LargestSeqNumAbsolute: parentFile.LargestSeqNumAbsolute,
-		SmallestPointKey:      base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
-		LargestPointKey:       base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet),
 		HasPointKeys:          true,
 		Virtual:               true,
 	}
-	v1.ExtendPointKeyBounds(DefaultComparer.Compare, v1.SmallestPointKey, v1.LargestPointKey)
+	v1.PointKeyBounds.SetSmallest(base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet))
+	v1.PointKeyBounds.SetLargest(base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet))
+	v1.ExtendPointKeyBounds(DefaultComparer.Compare, v1.PointKeyBounds.Smallest(), v1.PointKeyBounds.Largest())
 	v1.AttachVirtualBacking(parentFile.FileBacking)
 	v1.Stats.NumEntries = 1
 
@@ -367,22 +367,22 @@ func TestVirtualReadsWiring(t *testing.T) {
 		SmallestSeqNum:        parentFile.SmallestSeqNum,
 		LargestSeqNum:         parentFile.LargestSeqNum,
 		LargestSeqNumAbsolute: parentFile.LargestSeqNumAbsolute,
-		SmallestPointKey:      base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
-		LargestPointKey:       base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet),
 		HasPointKeys:          true,
 		Virtual:               true,
 	}
+	v2.PointKeyBounds.SetSmallest(base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete))
+	v2.PointKeyBounds.SetLargest(base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet))
 	v2.RangeKeyBounds.SetSmallest(base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet))
 	v2.RangeKeyBounds.SetLargest(base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset))
-	v2.ExtendPointKeyBounds(DefaultComparer.Compare, v2.SmallestPointKey, v2.LargestPointKey)
+	v2.ExtendPointKeyBounds(DefaultComparer.Compare, v2.PointKeyBounds.Smallest(), v2.PointKeyBounds.Largest())
 	v2.AttachVirtualBacking(parentFile.FileBacking)
 	v2.Stats.NumEntries = 6
 
-	v1.LargestPointKey = v1.Largest()
-	v1.SmallestPointKey = v1.Smallest()
+	v1.PointKeyBounds.SetLargest(v1.Largest())
+	v1.PointKeyBounds.SetSmallest(v1.Smallest())
 
-	v2.LargestPointKey = v2.Largest()
-	v2.SmallestPointKey = v2.Smallest()
+	v2.PointKeyBounds.SetLargest(v2.Largest())
+	v2.PointKeyBounds.SetSmallest(v2.Smallest())
 
 	v1.ValidateVirtual(parentFile)
 	d.checkVirtualBounds(v1)

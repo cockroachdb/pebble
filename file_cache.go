@@ -737,7 +737,7 @@ func newRangeDelIter(
 			cmp = handle.readerOpts.Comparer.Compare
 		}
 		rangeDelIter = keyspan.AssertBounds(
-			rangeDelIter, file.SmallestPointKey, file.LargestPointKey.UserKey, cmp,
+			rangeDelIter, file.PointKeyBounds.Smallest(), file.PointKeyBounds.LargestUserKey(), cmp,
 		)
 	}
 	return rangeDelIter, nil

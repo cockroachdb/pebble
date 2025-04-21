@@ -304,13 +304,12 @@ type TableMetadata struct {
 	// sstable bounds.
 	SmallestSeqNum base.SeqNum
 	LargestSeqNum  base.SeqNum
-	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
+	// PointKeyBounds.Smallest() and PointKeyBounds.Largest() are the inclusive bounds for the
 	// internal point keys stored in the table. This includes RANGEDELs, which
 	// alter point keys.
 	// NB: these field should be set using ExtendPointKeyBounds. They are left
 	// exported for reads as an optimization.
-	SmallestPointKey InternalKey
-	LargestPointKey  InternalKey
+	PointKeyBounds InternalKeyBounds
 	// RangeKeyBounds.Smallest() and RangeKeyBounds.Largest() are the inclusive bounds for the
 	// internal range keys stored in the table.
 	// NB: these field should be set using ExtendRangeKeyBounds. They are left
@@ -462,7 +461,7 @@ func (m *TableMetadata) UserKeyBounds() base.UserKeyBounds {
 func (m *TableMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds {
 	switch keyType {
 	case KeyTypePoint:
-		return base.UserKeyBoundsFromInternal(m.SmallestPointKey, m.LargestPointKey)
+		return base.UserKeyBoundsFromInternal(m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
 	case KeyTypeRange:
 		return base.UserKeyBoundsFromInternal(m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
 	default:
@@ -686,18 +685,19 @@ func (m *TableMetadata) ExtendPointKeyBounds(
 ) *TableMetadata {
 	// Update the point key bounds.
 	if !m.HasPointKeys {
-		m.SmallestPointKey, m.LargestPointKey = smallest, largest
+		m.PointKeyBounds.SetSmallest(smallest)
+		m.PointKeyBounds.SetLargest(largest)
 		m.HasPointKeys = true
 	} else {
-		if base.InternalCompare(cmp, smallest, m.SmallestPointKey) < 0 {
-			m.SmallestPointKey = smallest
+		if base.InternalCompare(cmp, smallest, m.PointKeyBounds.Smallest()) < 0 {
+			m.PointKeyBounds.SetSmallest(smallest)
 		}
-		if base.InternalCompare(cmp, largest, m.LargestPointKey) > 0 {
-			m.LargestPointKey = largest
+		if base.InternalCompare(cmp, largest, m.PointKeyBounds.Largest()) > 0 {
+			m.PointKeyBounds.SetLargest(largest)
 		}
 	}
 	// Update the overall bounds.
-	m.extendOverallBounds(cmp, m.SmallestPointKey, m.LargestPointKey, boundTypePointKey)
+	m.extendOverallBounds(cmp, m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest(), boundTypePointKey)
 	return m
 }
 
@@ -785,7 +785,8 @@ func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 		ik := m.Smallest()
 		return &ik, true
 	case KeyTypePoint:
-		return &m.SmallestPointKey, m.HasPointKeys
+		spk := m.PointKeyBounds.Smallest()
+		return &spk, m.HasPointKeys
 	case KeyTypeRange:
 		srk := m.RangeKeyBounds.Smallest()
 		return &srk, m.HasRangeKeys
@@ -803,7 +804,8 @@ func (m *TableMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
 		ik := m.Largest()
 		return &ik, true
 	case KeyTypePoint:
-		return &m.LargestPointKey, m.HasPointKeys
+		lpk := m.PointKeyBounds.Largest()
+		return &lpk, m.HasPointKeys
 	case KeyTypeRange:
 		lrk := m.RangeKeyBounds.Largest()
 		return &lrk, m.HasRangeKeys
@@ -870,7 +872,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	fmt.Fprintf(&b, " seqnums:[%d-%d]", m.SmallestSeqNum, m.LargestSeqNum)
 	if m.HasPointKeys {
 		fmt.Fprintf(&b, " points:[%s-%s]",
-			m.SmallestPointKey.Pretty(format), m.LargestPointKey.Pretty(format))
+			m.PointKeyBounds.Smallest().Pretty(format), m.PointKeyBounds.Largest().Pretty(format))
 	}
 	if m.HasRangeKeys {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
@@ -943,9 +945,9 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 
 		case "points":
 			p.Expect("[")
-			m.SmallestPointKey = p.InternalKey()
+			m.PointKeyBounds.SetSmallest(p.InternalKey())
 			p.Expect("-")
-			m.LargestPointKey = p.InternalKey()
+			m.PointKeyBounds.SetLargest(p.InternalKey())
 			m.HasPointKeys = true
 			p.Expect("]")
 
@@ -986,13 +988,13 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	}
 
 	cmp := base.DefaultComparer.Compare
-	if base.InternalCompare(cmp, smallest, m.SmallestPointKey) == 0 {
+	if base.InternalCompare(cmp, smallest, m.PointKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypePointKey
 
 	} else if base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypeRangeKey
 	}
-	if base.InternalCompare(cmp, largest, m.LargestPointKey) == 0 {
+	if base.InternalCompare(cmp, largest, m.PointKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypePointKey
 	} else if base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypeRangeKey
@@ -1002,7 +1004,8 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	// keys. This preserves backwards compatability with existing test cases that
 	// specify only the overall bounds.
 	if !m.HasPointKeys && !m.HasRangeKeys {
-		m.SmallestPointKey, m.LargestPointKey = smallest, largest
+		m.PointKeyBounds.SetSmallest(smallest)
+		m.PointKeyBounds.SetLargest(largest)
 		m.HasPointKeys = true
 		m.boundTypeSmallest, m.boundTypeLargest = boundTypePointKey, boundTypePointKey
 	}
@@ -1041,25 +1044,25 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Point key validation.
 
 	if m.HasPointKeys {
-		if base.InternalCompare(cmp, m.SmallestPointKey, m.LargestPointKey) > 0 {
+		if base.InternalCompare(cmp, m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest()) > 0 {
 			return base.CorruptionErrorf("file %s has inconsistent point key bounds: %s vs %s",
-				errors.Safe(m.FileNum), m.SmallestPointKey.Pretty(formatKey),
-				m.LargestPointKey.Pretty(formatKey))
+				errors.Safe(m.FileNum), m.PointKeyBounds.Smallest().Pretty(formatKey),
+				m.PointKeyBounds.Largest().Pretty(formatKey))
 		}
-		if base.InternalCompare(cmp, m.SmallestPointKey, m.Smallest()) < 0 ||
-			base.InternalCompare(cmp, m.LargestPointKey, m.Largest()) > 0 {
+		if base.InternalCompare(cmp, m.PointKeyBounds.Smallest(), m.Smallest()) < 0 ||
+			base.InternalCompare(cmp, m.PointKeyBounds.Largest(), m.Largest()) > 0 {
 			return base.CorruptionErrorf(
 				"file %s has inconsistent point key bounds relative to overall bounds: "+
 					"overall = [%s-%s], point keys = [%s-%s]",
 				errors.Safe(m.FileNum),
 				m.Smallest().Pretty(formatKey), m.Largest().Pretty(formatKey),
-				m.SmallestPointKey.Pretty(formatKey), m.LargestPointKey.Pretty(formatKey),
+				m.PointKeyBounds.Smallest().Pretty(formatKey), m.PointKeyBounds.Largest().Pretty(formatKey),
 			)
 		}
-		if !isValidPointBoundKeyKind[m.SmallestPointKey.Kind()] {
+		if !isValidPointBoundKeyKind[m.PointKeyBounds.Smallest().Kind()] {
 			return base.CorruptionErrorf("file %s has invalid smallest point key kind", m)
 		}
-		if !isValidPointBoundKeyKind[m.LargestPointKey.Kind()] {
+		if !isValidPointBoundKeyKind[m.PointKeyBounds.Largest().Kind()] {
 			return base.CorruptionErrorf("file %s has invalid largest point key kind", m)
 		}
 	}
@@ -1179,7 +1182,7 @@ func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
 func (m *TableMetadata) Smallest() InternalKey {
 	switch m.boundTypeSmallest {
 	case boundTypePointKey:
-		return m.SmallestPointKey
+		return m.PointKeyBounds.Smallest()
 	case boundTypeRangeKey:
 		return m.RangeKeyBounds.Smallest()
 	default:
@@ -1192,7 +1195,7 @@ func (m *TableMetadata) Smallest() InternalKey {
 func (m *TableMetadata) Largest() InternalKey {
 	switch m.boundTypeLargest {
 	case boundTypePointKey:
-		return m.LargestPointKey
+		return m.PointKeyBounds.Largest()
 	case boundTypeRangeKey:
 		return m.RangeKeyBounds.Largest()
 	default:

@@ -468,15 +468,15 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 
 			if tag != tagNewFile5 { // no range keys present
-				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
-				m.LargestPointKey = base.DecodeInternalKey(largestPointKey)
+				m.PointKeyBounds.SetSmallest(base.DecodeInternalKey(smallestPointKey))
+				m.PointKeyBounds.SetLargest(base.DecodeInternalKey(largestPointKey))
 				m.HasPointKeys = true
 				m.boundTypeSmallest, m.boundTypeLargest = boundTypePointKey, boundTypePointKey
 			} else { // range keys present
 				// Set point key bounds, if parsed.
 				if parsedPointBounds {
-					m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
-					m.LargestPointKey = base.DecodeInternalKey(largestPointKey)
+					m.PointKeyBounds.SetSmallest(base.DecodeInternalKey(smallestPointKey))
+					m.PointKeyBounds.SetLargest(base.DecodeInternalKey(largestPointKey))
 					m.HasPointKeys = true
 				}
 				// Set range key bounds.
@@ -758,8 +758,8 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		if !x.Meta.HasRangeKeys {
 			// If we have no range keys, preserve the original format and write the
 			// smallest and largest point keys.
-			e.writeKey(x.Meta.SmallestPointKey)
-			e.writeKey(x.Meta.LargestPointKey)
+			e.writeKey(x.Meta.PointKeyBounds.Smallest())
+			e.writeKey(x.Meta.PointKeyBounds.Largest())
 		} else {
 			// When range keys are present, we first write a marker byte that
 			// indicates if the table also contains point keys, in addition to how the
@@ -774,8 +774,8 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			}
 			// Write point key bounds (if present).
 			if x.Meta.HasPointKeys {
-				e.writeKey(x.Meta.SmallestPointKey)
-				e.writeKey(x.Meta.LargestPointKey)
+				e.writeKey(x.Meta.PointKeyBounds.Smallest())
+				e.writeKey(x.Meta.PointKeyBounds.Largest())
 			}
 			// Write range key bounds.
 			e.writeKey(x.Meta.RangeKeyBounds.Smallest())

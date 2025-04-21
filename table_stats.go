@@ -965,7 +965,7 @@ func newCombinedDeletionKeyspanIter(
 		// TODO(jackson): Only use AssertBounds in invariants builds in the
 		// following release.
 		iter = keyspan.AssertBounds(
-			iter, m.SmallestPointKey, m.LargestPointKey.UserKey, comparer.Compare,
+			iter, m.PointKeyBounds.Smallest(), m.PointKeyBounds.LargestUserKey(), comparer.Compare,
 		)
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(comparer, iter, equal, reducer, new(keyspan.DefragmentingBuffers))

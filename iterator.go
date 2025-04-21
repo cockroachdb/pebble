@@ -848,10 +848,10 @@ func (i *Iterator) sampleRead() {
 				var containsKey bool
 				if i.pos == iterPosNext || i.pos == iterPosCurForward ||
 					i.pos == iterPosCurForwardPaused {
-					containsKey = i.cmp(f.SmallestPointKey.UserKey, i.key) <= 0
+					containsKey = i.cmp(f.PointKeyBounds.SmallestUserKey(), i.key) <= 0
 				} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse ||
 					i.pos == iterPosCurReversePaused {
-					containsKey = i.cmp(f.LargestPointKey.UserKey, i.key) >= 0
+					containsKey = i.cmp(f.PointKeyBounds.LargestUserKey(), i.key) >= 0
 				}
 				// Do nothing if the current key is not contained in f's
 				// bounds. We could seek the LevelIterator at this level
@@ -887,8 +887,8 @@ func (i *Iterator) sampleRead() {
 			topFile.AllowedSeeks.Add(topFile.InitAllowedSeeks)
 
 			read := readCompaction{
-				start:   topFile.SmallestPointKey.UserKey,
-				end:     topFile.LargestPointKey.UserKey,
+				start:   topFile.PointKeyBounds.SmallestUserKey(),
+				end:     topFile.PointKeyBounds.LargestUserKey(),
 				level:   topLevel,
 				fileNum: topFile.FileNum,
 			}

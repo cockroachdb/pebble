@@ -943,11 +943,11 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		ve.NewBlobFiles = append(ve.NewBlobFiles, newVE.NewBlobFiles...)
 		for _, f := range newVE.NewTables {
 			if start != nil {
-				f.Meta.SmallestPointKey = *start
+				f.Meta.PointKeyBounds.SetSmallest(*start)
 				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *start, *start)
 			}
 			if end != nil {
-				f.Meta.LargestPointKey = *end
+				f.Meta.PointKeyBounds.SetLargest(*end)
 				f.Meta.ExtendPointKeyBounds(DefaultComparer.Compare, *end, *end)
 			}
 			if blobDepth > 0 {
