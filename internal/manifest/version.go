@@ -81,17 +81,16 @@ func (ikr *InternalKeyBounds) Largest() InternalKey {
 }
 
 func (ikr *InternalKeyBounds) SetSmallest(ik InternalKey) {
-	largest := ikr.Largest()
-	ikr.userKeyData = string(ik.UserKey) + string(largest.UserKey)
+	ikr.userKeyData = string(ik.UserKey) + string(ikr.LargestUserKey())
 	ikr.smallestTrailer = ik.Trailer
 	ikr.userKeySeparatorIdx = len(ik.UserKey)
 }
 
 func (ikr *InternalKeyBounds) SetLargest(ik InternalKey) {
-	smallest := ikr.Smallest()
-	ikr.userKeyData = string(smallest.UserKey) + string(ik.UserKey)
+	smallestUserKey := ikr.SmallestUserKey()
+	ikr.userKeyData = string(smallestUserKey) + string(ik.UserKey)
 	ikr.largestTrailer = ik.Trailer
-	ikr.userKeySeparatorIdx = len(smallest.UserKey)
+	ikr.userKeySeparatorIdx = len(smallestUserKey)
 }
 
 // TableInfo contains the common information for table related events.
@@ -237,8 +236,8 @@ func (s CompactionState) String() string {
 //
 // When using these fields in the context of a Virtual Table, These fields
 // have additional invariants imposed on them, and/or slightly varying meanings:
-//   - Smallest and Largest (and their counterparts
-//     {Smallest, Largest}{Point,Range}Key) remain tight bounds that represent a
+//   - boundTypeSmallest and boundTypeLargest (and their counterparts
+//     {Point,Range}KeyBounds.{Smallest(), Largest()}) remain tight bounds that represent a
 //     key at that exact bound. We make the effort to determine the next smallest
 //     or largest key in an sstable after virtualizing it, to maintain this
 //     tightness. If the largest is a sentinel key (IsExclusiveSentinel()), it
@@ -323,7 +322,7 @@ type TableMetadata struct {
 	// internal range keys stored in the table.
 	// NB: these field should be set using ExtendRangeKeyBounds. They are left
 	// exported for reads as an optimization.
-	RangeKeyBounds InternalKeyBounds
+	RangeKeyBounds *InternalKeyBounds
 	// BlobReferences is a list of blob files containing values that are
 	// referenced by this sstable.
 	BlobReferences BlobReferences
@@ -472,6 +471,9 @@ func (m *TableMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds 
 	case KeyTypePoint:
 		return base.UserKeyBoundsFromInternal(m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
 	case KeyTypeRange:
+		if !m.HasRangeKeys {
+			return base.UserKeyBounds{}
+		}
 		return base.UserKeyBoundsFromInternal(m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
 	default:
 		return base.UserKeyBoundsFromInternal(m.Smallest(), m.Largest())
@@ -723,6 +725,7 @@ func (m *TableMetadata) ExtendRangeKeyBounds(
 ) *TableMetadata {
 	// Update the range key bounds.
 	if !m.HasRangeKeys {
+		m.RangeKeyBounds = &InternalKeyBounds{}
 		m.RangeKeyBounds.SetInternalKeyBounds(smallest, largest)
 		m.HasRangeKeys = true
 	} else {
@@ -795,11 +798,13 @@ func (m *TableMetadata) ContainsKeyType(kt KeyType) bool {
 func (m *TableMetadata) SmallestBound(kt KeyType) (InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
-		ik := m.Smallest()
-		return ik, true
+		return m.Smallest(), true
 	case KeyTypePoint:
 		return m.PointKeyBounds.Smallest(), m.HasPointKeys
 	case KeyTypeRange:
+		if !m.HasRangeKeys {
+			return InternalKey{}, m.HasRangeKeys
+		}
 		return m.RangeKeyBounds.Smallest(), m.HasRangeKeys
 	default:
 		panic("unrecognized key type")
@@ -817,6 +822,9 @@ func (m *TableMetadata) LargestBound(kt KeyType) (InternalKey, bool) {
 	case KeyTypePoint:
 		return m.PointKeyBounds.Largest(), m.HasPointKeys
 	case KeyTypeRange:
+		if !m.HasRangeKeys {
+			return InternalKey{}, m.HasRangeKeys
+		}
 		return m.RangeKeyBounds.Largest(), m.HasRangeKeys
 	default:
 		panic("unrecognized key type")
@@ -961,6 +969,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 			p.Expect("]")
 
 		case "ranges":
+			m.RangeKeyBounds = &InternalKeyBounds{}
 			p.Expect("[")
 			smallest := p.InternalKey()
 			p.Expect("-")
@@ -999,13 +1008,12 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	cmp := base.DefaultComparer.Compare
 	if base.InternalCompare(cmp, smallest, m.PointKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypePointKey
-
-	} else if base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) == 0 {
+	} else if m.HasRangeKeys && base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypeRangeKey
 	}
 	if base.InternalCompare(cmp, largest, m.PointKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypePointKey
-	} else if base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) == 0 {
+	} else if m.HasRangeKeys && base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypeRangeKey
 	}
 
@@ -1192,6 +1200,9 @@ func (m *TableMetadata) Smallest() InternalKey {
 	case boundTypePointKey:
 		return m.PointKeyBounds.Smallest()
 	case boundTypeRangeKey:
+		if !m.HasRangeKeys {
+			return InternalKey{}
+		}
 		return m.RangeKeyBounds.Smallest()
 	default:
 		return InternalKey{}
@@ -1205,6 +1216,9 @@ func (m *TableMetadata) Largest() InternalKey {
 	case boundTypePointKey:
 		return m.PointKeyBounds.Largest()
 	case boundTypeRangeKey:
+		if !m.HasRangeKeys {
+			return InternalKey{}
+		}
 		return m.RangeKeyBounds.Largest()
 	default:
 		return InternalKey{}

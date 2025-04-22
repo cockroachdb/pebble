@@ -372,6 +372,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	}
 	v2.PointKeyBounds.SetInternalKeyBounds(base.MakeInternalKey([]byte{'d'}, seqNumCEDel, InternalKeyKindRangeDelete),
 		base.MakeInternalKey([]byte{'z'}, seqNumZ, InternalKeyKindSet))
+	v2.RangeKeyBounds = &manifest.InternalKeyBounds{}
 	v2.RangeKeyBounds.SetInternalKeyBounds(
 		base.MakeInternalKey([]byte{'f'}, seqNumRangeSet, InternalKeyKindRangeKeySet),
 		base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset))

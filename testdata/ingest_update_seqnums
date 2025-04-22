@@ -38,15 +38,12 @@ update-files
 file 0:
   combined: a#42,SET-c#42,SET
     points: a#42,SET-c#42,SET
-    ranges: #0,DEL-#0,DEL
 file 1:
   combined: a#43,RANGEDEL-c#43,SET
     points: a#43,RANGEDEL-c#43,SET
-    ranges: #0,DEL-#0,DEL
 file 2:
   combined: a#44,SET-c#inf,RANGEDEL
     points: a#44,SET-c#inf,RANGEDEL
-    ranges: #0,DEL-#0,DEL
 
 # Reset to the starting sequence number and reset the slice of files. The
 # following tests consider a single file at a time.

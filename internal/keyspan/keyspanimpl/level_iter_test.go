@@ -296,6 +296,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 					HasRangeKeys:          true,
 				}
 				meta.InitPhysicalBacking()
+				meta.RangeKeyBounds = &manifest.InternalKeyBounds{}
 				meta.RangeKeyBounds.SetInternalKeyBounds(
 					base.MakeInternalKey(file[0].Start, file[0].SmallestKey().SeqNum(), file[0].SmallestKey().Kind()),
 					base.MakeExclusiveSentinelKey(file[len(file)-1].LargestKey().Kind(), file[len(file)-1].End))
