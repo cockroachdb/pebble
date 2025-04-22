@@ -1303,7 +1303,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	props := r.Properties.String()
 	env := sstable.ReadEnv{}
 	if m != nil && m.Virtual {
-		env.Virtual = &m.VirtualParams
+		env.Virtual = m.VirtualParams
 		scaledProps := r.Properties.GetScaledProperties(m.FileBacking.Size, m.Size)
 		props = scaledProps.String()
 	}

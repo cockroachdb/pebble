@@ -402,7 +402,7 @@ type TableMetadata struct {
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
 	// VirtualParams are set only when Virtual is true.
-	VirtualParams virtual.VirtualReaderParams
+	VirtualParams *virtual.VirtualReaderParams
 
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
@@ -614,7 +614,7 @@ func (m *TableMetadata) AttachVirtualBacking(backing *FileBacking) {
 	if m.Smallest().UserKey == nil || m.Largest().UserKey == nil {
 		panic("bounds must be set before attaching backing")
 	}
-	m.VirtualParams = virtual.VirtualReaderParams{
+	m.VirtualParams = &virtual.VirtualReaderParams{
 		Lower:   m.Smallest(),
 		Upper:   m.Largest(),
 		FileNum: m.FileNum,

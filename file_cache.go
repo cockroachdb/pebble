@@ -320,7 +320,7 @@ func createReader(v *fileCacheValue, meta *tableMetadata) (*sstable.Reader, ssta
 				panic("virtual params not initialized")
 			}
 		}
-		env.Virtual = &meta.VirtualParams
+		env.Virtual = meta.VirtualParams
 		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 	return r, env
@@ -349,7 +349,7 @@ func (h *fileCacheHandle) withReader(
 				panic("virtual params not initialized")
 			}
 		}
-		env.Virtual = &meta.VirtualParams
+		env.Virtual = meta.VirtualParams
 		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
 
