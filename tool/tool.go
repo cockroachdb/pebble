@@ -5,11 +5,16 @@
 package tool
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -202,16 +207,54 @@ type BlobRefMode int
 const (
 	// BlobRefModeNone specifies the AssertNoBlobHandles TableBlobContext.
 	BlobRefModeNone BlobRefMode = iota
-	// BlobRefModePrint specifies a TableBlobContext that allows printing the
-	// raw blob handle without reading from any blob files.
+	// BlobRefModePrint specifies the DebugHandlesBlobContext TableBlobContext.
 	BlobRefModePrint
+	// BlobRefModeLoad specifies the LoadValBlobContext
+	// TableBlobContext.
+	BlobRefModeLoad
 )
 
 func ConvertToBlobRefMode(s string) BlobRefMode {
 	switch s {
 	case "print":
 		return BlobRefModePrint
+	case "load":
+		return BlobRefModeLoad
 	default:
 		return BlobRefModeNone
 	}
+}
+
+// debugReaderProvider is a cache-less ReaderProvider meant for debugging blob
+// files.
+type debugReaderProvider struct {
+	fs  vfs.FS
+	dir string
+}
+
+// Assert that *debugReaderProvider implements blob.ReaderProvider.
+var _ blob.ReaderProvider = (*debugReaderProvider)(nil)
+
+// GetValueReader returns a blob.ValueReader for a blob file identified by
+// fileNum.
+func (p *debugReaderProvider) GetValueReader(
+	ctx context.Context, fileNum base.DiskFileNum,
+) (blob.ValueReader, func(), error) {
+	settings := objstorageprovider.DefaultSettings(p.fs, p.dir)
+	provider, err := objstorageprovider.Open(settings)
+	if err != nil {
+		return nil, nil, err
+	}
+	readable, err := provider.OpenForReading(ctx, base.FileTypeBlob, fileNum, objstorage.OpenOptions{})
+	if err != nil {
+		return nil, nil, err
+	}
+	r, err := blob.NewFileReader(ctx, readable, blob.FileReaderOptions{})
+	if err != nil {
+		return nil, nil, err
+	}
+	closeHook := func() {
+		_ = r.Close()
+	}
+	return r, closeHook, nil
 }
