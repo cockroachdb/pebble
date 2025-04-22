@@ -179,9 +179,6 @@ type writeNewBlobFiles struct {
 	buf []byte
 }
 
-// Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
-var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
-
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
 func (vs *writeNewBlobFiles) EstimatedFileSize() uint64 {

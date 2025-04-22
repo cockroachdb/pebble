@@ -39,6 +39,19 @@ var DebugHandlesBlobContext = TableBlobContext{
 	},
 }
 
+// LoadValBlobContext is a TableBlobContext that configures a
+// sstable iterator to fetch the value stored in a blob file.
+func LoadValBlobContext(
+	rp blob.ReaderProvider, blobRefs BlobReferences,
+) (*blob.ValueFetcher, TableBlobContext) {
+	vf := &blob.ValueFetcher{}
+	vf.Init(rp, block.ReadEnv{})
+	return vf, TableBlobContext{
+		ValueFetcher: vf,
+		References:   blobRefs,
+	}
+}
+
 // BlobReferences provides a mapping from an index to a file number for a
 // sstable's blob references. In practice, this is implemented by
 // manifest.BlobReferences.

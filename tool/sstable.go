@@ -122,8 +122,6 @@ inclusive-inclusive range specified by --start and --end.
 
 	s.Check.Flags().Var(
 		&s.fmtKey, "key", "key formatter")
-	s.Check.Flags().StringVar(
-		&s.blobMode, "blob-mode", "none", "blob value formatter")
 	s.Layout.Flags().Var(
 		&s.fmtKey, "key", "key formatter")
 	s.Layout.Flags().Var(
@@ -168,17 +166,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		var blobContext sstable.TableBlobContext
-		switch ConvertToBlobRefMode(s.blobMode) {
-		case BlobRefModePrint:
-			blobContext = sstable.DebugHandlesBlobContext
-		default:
-			blobContext = sstable.AssertNoBlobHandles
-		}
-		// TODO(annie): Adjust to support two modes: one that surfaces the raw
-		// blob value handles, and one that fetches the blob values from blob
-		// files uncovered by scanning the directory entries. See #4448.
-		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, blobContext)
+		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return

@@ -138,3 +138,55 @@ hex:636363
 000002.sst
     test formatter: ccc#14,MERGE
 Unable to decode sstable find-mixed/000001.sst, pebble/table: invalid table 000001 (file size is too small)
+
+find
+testdata/find-db
+eee
+--blob-mode=print
+----
+000004.log
+    bbb-eee#19,RANGEDEL
+
+find
+testdata/find-db-val-sep
+crdb:aaa
+--blob-mode=print
+----
+000002.log
+    aaa\x00#10,SET [7975756d69]
+000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
+    (flushed to L0)
+    aaa\x00#10,SET [2866302c626c6b305b303a355d29]
+
+find
+testdata/find-db-val-sep
+crdb:ddd
+--blob-mode=print
+----
+000002.log
+    ddd\x00#13,SET [36]
+000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
+    (flushed to L0)
+    ddd\x00#13,SET [36]
+
+find
+testdata/find-db-val-sep
+crdb:aaa
+--blob-mode=load
+----
+000002.log
+    aaa\x00#10,SET [yuumi]
+000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
+    (flushed to L0)
+    aaa\x00#10,SET [yuumi]
+
+find
+testdata/find-db-val-sep
+crdb:ddd
+--blob-mode=load
+----
+000002.log
+    ddd\x00#13,SET [6]
+000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
+    (flushed to L0)
+    ddd\x00#13,SET [6]

@@ -421,3 +421,20 @@ tcpchosd@2210.960065030,0#0,SET [0d945d694573ff74244235cc405d3bde]
 tcpchosd@2073.542476344,0#0,SET [c3009bd907c208e4b2f8a721403502ee]
 tcpchosd@82.858934535,594919620#0,SET [0bac1470fab6a1e270410dda5f39f31d]
 tcrsfsqc@1366.233420574,0#0,SET [1b22f2128e75f0433e8eda52c41872e6]
+
+sstable scan
+./testdata/find-db-val-sep
+--blob-mode=print
+----
+find-db-val-sep/000005.sst
+aaa\x00#10,SET [2866302c626c6b305b303a355d29]
+bbb\x00#11,SET [2866302c626c6b305b353a385d29]
+ccc\x00#12,SET [2866302c626c6b305b383a31385d29]
+ddd\x00#13,SET [36]
+
+sstable scan
+--filter=armed
+--blob-mode=print
+../sstable/testdata/h.sst
+----
+h.sst: armed#0,SET [32]
