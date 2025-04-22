@@ -57,6 +57,9 @@ type LevelMetrics struct {
 	// The level's compaction score. This is the compensatedScoreRatio in the
 	// candidateLevelInfo.
 	Score float64
+	// The level's compensation factor. This is the ratio between the
+	// compensatedScore and the uncompensatedScore in candidateLevelInfo.
+	CompensationFactor float64
 	// The number of incoming bytes from other levels read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
 	// the bytes written to the WAL.
@@ -516,32 +519,35 @@ func (m *Metrics) RemoteTablesTotal() (count uint64, size uint64) {
 
 // String pretty-prints the metrics as below:
 //
-//	      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
-//	level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
-//	------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
-//	    0 |   101   102B     0B       0 | 103.0 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1  2.1
-//	    1 |   201   202B     0B       0 | 203.0 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2  2.0
-//	    2 |   301   302B     0B       0 | 303.0 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3  2.0
-//	    3 |   401   402B     0B       0 | 403.0 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4  2.0
-//	    4 |   501   502B     0B       0 | 503.0 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5  2.0
-//	    5 |   601   602B     0B       0 | 603.0 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6  2.0
-//	    6 |   701   702B     0B       0 |     - |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7  2.0
-//	total |  2.8K  2.7KB     0B       0 |     - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28  3.0
-//	-------------------------------------------------------------------------------------------------------------------
+//	      |                             |             |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
+//	level | tables  size val-bl vtables | score compf |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
+//	------+-----------------------------+-------------+-------+--------------+--------------+--------------+-------+----------+------------------
+//	    0 |   101   102B     0B     101 | 103.0 103.5 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1 2.09 |  104B  104B  104B
+//	    1 |   201   202B     0B     201 | 203.0 203.5 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2 2.04 |  204B  204B  204B
+//	    2 |   301   302B     0B     301 | 303.0 303.5 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3 2.03 |  304B  304B  304B
+//	    3 |   401   402B     0B     401 | 403.0 403.5 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4 2.02 |  404B  404B  404B
+//	    4 |   501   502B     0B     501 | 503.0 503.5 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5 2.02 |  504B  504B  504B
+//	    5 |   601   602B     0B     601 | 603.0 603.5 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6 2.01 |  604B  604B  604B
+//	    6 |   701   702B     0B     701 |     - 703.5 |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7 2.01 |  704B  704B  704B
+//	total |  2.8K  2.7KB     0B    2.8K |     -     0 | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28 3.00 | 2.8KB 2.8KB 2.8KB
+//	---------------------------------------------------------------------------------------------------------------------------------------------
 //	WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
 //	Flushes: 8
 //	Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
-//	default: 27  delete: 28  elision: 29  move: 30  read: 31  rewrite: 32  multi-level: 33
+//	             default: 27  delete: 28  elision: 29  move: 30  read: 31  tombstone-density: 16  rewrite: 32  copy: 33  multi-level: 34
 //	MemTables: 12 (11B)  zombie: 14 (13B)
-//	Zombie tables: 16 (15B)
-//	Backing tables: 0 (0B)
+//	Zombie tables: 16 (15B, local: 30B)
+//	Backing tables: 1 (2.0MB)
+//	Virtual tables: 2807 (2.8KB)
+//	Local tables size: 28B
+//	Compression types:
 //	Block cache: 2 entries (1B)  hit rate: 42.9%
 //	Table cache: 18 entries (17B)  hit rate: 48.7%
-//	Secondary cache: 40 entries (40B)  hit rate: 49.9%
 //	Snapshots: 4  earliest seq num: 1024
 //	Table iters: 21
 //	Filter utility: 47.4%
 //	Ingestions: 27  as flushable: 36 (34B in 35 tables)
+//	Cgo memory usage: 15KB  block cache: 9.0KB (data: 4.0KB, maps: 2.0KB, entries: 3.0KB)  memtables: 5.0KB
 func (m *Metrics) String() string {
 	return redact.StringWithoutMarkers(m)
 }
@@ -572,43 +578,25 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.SafeString("\n")
 	}
 
-	w.SafeString("      |                             |       |       |   ingested   |     moved    |    written   |       |    amp")
+	w.SafeString("      |                             |             |       |   ingested   |     moved    |    written   |       |    amp")
 	appendIfMulti("   |     multilevel")
 	newline()
-	w.SafeString("level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w")
+	w.SafeString("level | tables  size val-bl vtables | score compf |   in  | tables  size | tables  size | tables  size |  read |   r   w")
 	appendIfMulti("  |    top   in  read")
 	newline()
-	w.SafeString("------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------")
+	w.SafeString("------+-----------------------------+-------------+-------+--------------+--------------+--------------+-------+---------")
 	appendIfMulti("-+------------------")
 	newline()
 
 	// formatRow prints out a row of the table.
 	formatRow := func(m *LevelMetrics, score float64) {
-		scoreStr := "-"
-		if !math.IsNaN(score) {
-			// Try to keep the string no longer than 5 characters.
-			switch {
-			case score < 99.995:
-				scoreStr = fmt.Sprintf("%.2f", score)
-			case score < 999.95:
-				scoreStr = fmt.Sprintf("%.1f", score)
-			default:
-				scoreStr = fmt.Sprintf("%.0f", score)
-			}
-		}
-		var wampStr string
-		if wamp := m.WriteAmp(); wamp > 99.5 {
-			wampStr = fmt.Sprintf("%.0f", wamp)
-		} else {
-			wampStr = fmt.Sprintf("%.1f", wamp)
-		}
-
-		w.Printf("| %5s %6s %6s %7s | %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
+		w.Printf("| %5s %6s %6s %7s | %5s %5s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
 			humanize.Count.Int64(m.TablesCount),
 			humanize.Bytes.Int64(m.TablesSize),
 			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
 			humanize.Count.Uint64(m.VirtualTablesCount),
-			redact.Safe(scoreStr),
+			humanizeFloat(score, 5),
+			humanizeFloat(m.CompensationFactor, 5),
 			humanize.Bytes.Uint64(m.BytesIn),
 			humanize.Count.Uint64(m.TablesIngested),
 			humanize.Bytes.Uint64(m.BytesIngested),
@@ -618,7 +606,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			humanize.Bytes.Uint64(m.BytesFlushed+m.BytesCompacted),
 			humanize.Bytes.Uint64(m.BytesRead),
 			redact.Safe(m.Sublevels),
-			redact.Safe(wampStr))
+			humanizeFloat(m.WriteAmp(), 4),
+		)
 
 		if multiExists {
 			w.Printf(" | %5s %5s %5s",
@@ -652,7 +641,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("total ")
 	formatRow(&total, math.NaN())
 
-	w.SafeString("-------------------------------------------------------------------------------------------------------------------")
+	w.SafeString("-------------------------------------------------------------------------------------------------------------------------")
 	appendIfMulti("--------------------")
 	newline()
 	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)",
@@ -812,4 +801,24 @@ func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
 			m.Levels[i].Add(u)
 		}
 	}
+}
+
+// humanizeFloat formats a float64 value as a string. It shows up to two
+// decimals, depending on the target length. NaN is shown as "-".
+func humanizeFloat(v float64, targetLength int) redact.SafeString {
+	if math.IsNaN(v) {
+		return "-"
+	}
+	// We treat 0 specially. Values near zero will show up as 0.00.
+	if v == 0 {
+		return "0"
+	}
+	res := fmt.Sprintf("%.2f", v)
+	if len(res) <= targetLength {
+		return redact.SafeString(res)
+	}
+	if len(res) == targetLength+1 {
+		return redact.SafeString(fmt.Sprintf("%.1f", v))
+	}
+	return redact.SafeString(fmt.Sprintf("%.0f", v))
 }

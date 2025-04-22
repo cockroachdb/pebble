@@ -2049,8 +2049,10 @@ func (d *DB) Metrics() *Metrics {
 
 	if p := d.mu.versions.picker; p != nil {
 		compactions := d.getInProgressCompactionInfoLocked(nil)
-		for level, score := range p.getScores(compactions) {
-			metrics.Levels[level].Score = score
+		m := p.getMetrics(compactions)
+		for level, lm := range m.levels {
+			metrics.Levels[level].Score = lm.score
+			metrics.Levels[level].CompensationFactor = lm.compensationFactor
 		}
 	}
 	metrics.Table.ZombieCount = int64(d.mu.versions.zombieTables.Count())
