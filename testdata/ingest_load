@@ -17,7 +17,6 @@ a.SET.0:
 ----
 1: a#0,SET-a#0,SET
   points: a#0,SET-a#0,SET
-  ranges: #0,DEL-#0,DEL
 
 load
 a.SET.0:
@@ -25,14 +24,12 @@ b.SET.0:
 ----
 1: a#0,SET-b#0,SET
   points: a#0,SET-b#0,SET
-  ranges: #0,DEL-#0,DEL
 
 load
 a.DEL.0:
 ----
 1: a#0,DEL-a#0,DEL
   points: a#0,DEL-a#0,DEL
-  ranges: #0,DEL-#0,DEL
 
 load
 a.DEL.0:
@@ -40,14 +37,12 @@ b.DEL.0:
 ----
 1: a#0,DEL-b#0,DEL
   points: a#0,DEL-b#0,DEL
-  ranges: #0,DEL-#0,DEL
 
 load
 a.MERGE.0:
 ----
 1: a#0,MERGE-a#0,MERGE
   points: a#0,MERGE-a#0,MERGE
-  ranges: #0,DEL-#0,DEL
 
 load
 a.MERGE.0:
@@ -55,22 +50,12 @@ b.MERGE.0:
 ----
 1: a#0,MERGE-b#0,MERGE
   points: a#0,MERGE-b#0,MERGE
-  ranges: #0,DEL-#0,DEL
 
 load
 Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
-  ranges: #0,DEL-#0,DEL
-
-load
-a.SET.0:
-Span: a-b:{(#0,RANGEDEL)}
-----
-1: a#0,RANGEDEL-b#inf,RANGEDEL
-  points: a#0,RANGEDEL-b#inf,RANGEDEL
-  ranges: #0,DEL-#0,DEL
 
 load
 a.SET.0:
@@ -78,7 +63,13 @@ Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
-  ranges: #0,DEL-#0,DEL
+
+load
+a.SET.0:
+Span: a-b:{(#0,RANGEDEL)}
+----
+1: a#0,RANGEDEL-b#inf,RANGEDEL
+  points: a#0,RANGEDEL-b#inf,RANGEDEL
 
 load
 b.SET.0:
@@ -86,7 +77,6 @@ Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#0,SET
   points: a#0,RANGEDEL-b#0,SET
-  ranges: #0,DEL-#0,DEL
 
 # Loading tables at an unsupported table format results in an error.
 # Write a table at version 15 (Pebble,v4) into a DB at version 14 (Pebble,v3).

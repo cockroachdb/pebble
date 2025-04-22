@@ -155,7 +155,9 @@ func TestIngestLoad(t *testing.T) {
 			for _, m := range lr.local {
 				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest(), m.Largest())
 				fmt.Fprintf(&buf, "  points: %s-%s\n", m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
-				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
+				if m.HasRangeKeys {
+					fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
+				}
 			}
 			return buf.String()
 
@@ -2660,7 +2662,9 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 				fmt.Fprintf(&buf, "file %d:\n", i)
 				fmt.Fprintf(&buf, "  combined: %s-%s\n", m.Smallest(), m.Largest())
 				fmt.Fprintf(&buf, "    points: %s-%s\n", m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
-				fmt.Fprintf(&buf, "    ranges: %s-%s\n", m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
+				if m.HasRangeKeys {
+					fmt.Fprintf(&buf, "    ranges: %s-%s\n", m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
+				}
 			}
 
 			return buf.String()

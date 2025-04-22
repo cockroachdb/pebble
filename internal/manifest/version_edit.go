@@ -478,6 +478,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					m.HasPointKeys = true
 				}
 				// Set range key bounds.
+				m.RangeKeyBounds = &InternalKeyBounds{}
 				m.RangeKeyBounds.SetInternalKeyBounds(base.DecodeInternalKey(smallestRangeKey),
 					base.DecodeInternalKey(largestRangeKey))
 				m.HasRangeKeys = true
@@ -775,9 +776,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeKey(x.Meta.PointKeyBounds.Smallest())
 				e.writeKey(x.Meta.PointKeyBounds.Largest())
 			}
-			// Write range key bounds.
-			e.writeKey(x.Meta.RangeKeyBounds.Smallest())
-			e.writeKey(x.Meta.RangeKeyBounds.Largest())
+			// Write range key bounds (if present).
+			if x.Meta.HasRangeKeys {
+				e.writeKey(x.Meta.RangeKeyBounds.Smallest())
+				e.writeKey(x.Meta.RangeKeyBounds.Largest())
+			}
 		}
 		e.writeUvarint(uint64(x.Meta.SmallestSeqNum))
 		e.writeUvarint(uint64(x.Meta.LargestSeqNum))

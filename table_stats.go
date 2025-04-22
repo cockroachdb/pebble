@@ -1007,9 +1007,11 @@ func newCombinedDeletionKeyspanIter(
 	if iter != nil {
 		// Assert expected bounds in tests.
 		if invariants.Sometimes(50) {
-			iter = keyspan.AssertBounds(
-				iter, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.LargestUserKey(), comparer.Compare,
-			)
+			if m.HasRangeKeys {
+				iter = keyspan.AssertBounds(
+					iter, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.LargestUserKey(), comparer.Compare,
+				)
+			}
 		}
 		// Wrap the range key iterator in a filter that elides keys other than range
 		// key deletions.

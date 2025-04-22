@@ -3038,7 +3038,7 @@ func (d *DB) checkVirtualBounds(m *tableMetadata) {
 	// Check that the lower bound is tight.
 	if s, err := rangeKeyIter.First(); err != nil {
 		panic(err)
-	} else if d.cmp(s.SmallestKey().UserKey, m.RangeKeyBounds.SmallestUserKey()) != 0 {
+	} else if m.HasRangeKeys && d.cmp(s.SmallestKey().UserKey, m.RangeKeyBounds.SmallestUserKey()) != 0 {
 		panic(errors.Newf("pebble: virtual sstable %s lower range key bound is not tight", m.FileNum))
 	}
 
