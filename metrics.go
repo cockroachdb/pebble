@@ -9,6 +9,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -310,6 +311,12 @@ type Metrics struct {
 			// ZombieCount is the number of zombie tables.
 			ZombieCount uint64
 		}
+
+		// The count of sstables that need stats collection.
+		PendingStatsCollectionCount int64
+		// Whether the initial stats collection (for existing tables on Open) is
+		// complete.
+		InitialStatsCollectionComplete bool
 	}
 
 	BlobFiles struct {
@@ -724,6 +731,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf(" unknown: %d", redact.Safe(count))
 	}
 	w.Print("\n")
+	w.Printf("Tables with pending stats: %s (initial stats %s)\n",
+		humanize.Count.Int64(m.Table.PendingStatsCollectionCount),
+		redact.SafeString(crstrings.IfElse(m.Table.InitialStatsCollectionComplete, "loaded", "not loaded")),
+	)
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
