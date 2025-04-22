@@ -46,8 +46,16 @@ type compactionEnv struct {
 	problemSpans *problemspans.ByLevel
 }
 
+type compactionPickerMetrics struct {
+	levels [numLevels]struct {
+		// See candidateLevelInfo.
+		uncompensatedScore float64
+		compensatedScore   float64
+	}
+}
+
 type compactionPicker interface {
-	getScores([]compactionInfo) [numLevels]float64
+	getMetrics([]compactionInfo) compactionPickerMetrics
 	getBaseLevel() int
 	estimatedCompactionDebt(l0ExtraSize uint64) uint64
 	pickAutoScore(env compactionEnv) (pc *pickedCompaction)
@@ -176,8 +184,8 @@ func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []su
 	return levelSlices
 }
 
-// compactionPickerMetrics holds metrics related to the compaction picking process
-type compactionPickerMetrics struct {
+// pickedCompactionMetrics holds metrics related to the compaction picking process
+type pickedCompactionMetrics struct {
 	// scores contains the compensatedScoreRatio from the candidateLevelInfo.
 	scores                      []float64
 	singleLevelOverlappingRatio float64
@@ -232,7 +240,7 @@ type pickedCompaction struct {
 	largest       InternalKey
 	version       *version
 	l0Organizer   *manifest.L0Organizer
-	pickerMetrics compactionPickerMetrics
+	pickerMetrics pickedCompactionMetrics
 }
 
 func (pc *pickedCompaction) userKeyBounds() base.UserKeyBounds {
@@ -708,12 +716,13 @@ type compactionPickerByScore struct {
 
 var _ compactionPicker = &compactionPickerByScore{}
 
-func (p *compactionPickerByScore) getScores(inProgress []compactionInfo) [numLevels]float64 {
-	var scores [numLevels]float64
+func (p *compactionPickerByScore) getMetrics(inProgress []compactionInfo) compactionPickerMetrics {
+	var m compactionPickerMetrics
 	for _, info := range p.calculateLevelScores(inProgress) {
-		scores[info.level] = info.compensatedScoreRatio
+		m.levels[info.level].uncompensatedScore = info.uncompensatedScore
+		m.levels[info.level].compensatedScore = info.compensatedScore
 	}
-	return scores
+	return m
 }
 
 func (p *compactionPickerByScore) getBaseLevel() int {

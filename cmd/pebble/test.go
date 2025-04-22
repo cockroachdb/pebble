@@ -355,7 +355,7 @@ func runTest(dir string, t test) {
 		// only as an output level, so ignore it for the purposes of determining if
 		// background compactions are still needed.
 		for i := range p.Levels[:len(p.Levels)-1] {
-			if p.Levels[i].Score > 1 {
+			if p.Levels[i].CompensatedScore/p.Levels[i+1].UncompensatedScore > 1 {
 				return true
 			}
 		}

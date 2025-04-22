@@ -91,7 +91,8 @@ func exampleMetrics() Metrics {
 		l.VirtualTablesCount = uint64(base) + 1
 		l.VirtualTablesSize = base + 3
 		l.TablesSize = int64(base) + 2
-		l.Score = float64(base) + 3
+		l.UncompensatedScore = float64(base) + 3
+		l.CompensatedScore = float64(base) + 3.5
 		l.BytesIn = base + 4
 		l.BytesIngested = base + 4
 		l.BytesMoved = base + 6

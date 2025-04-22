@@ -298,7 +298,7 @@ type compaction struct {
 
 	metrics levelMetricsDelta
 
-	pickerMetrics compactionPickerMetrics
+	pickerMetrics pickedCompactionMetrics
 
 	grantHandle CompactionGrantHandle
 }
