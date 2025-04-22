@@ -480,6 +480,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					m.HasPointKeys = true
 				}
 				// Set range key bounds.
+				m.RangeKeyBounds = &InternalKeyBounds{}
 				m.RangeKeyBounds.SetSmallest(base.DecodeInternalKey(smallestRangeKey))
 				m.RangeKeyBounds.SetLargest(base.DecodeInternalKey(largestRangeKey))
 				m.HasRangeKeys = true
