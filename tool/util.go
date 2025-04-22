@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/sstable"
@@ -43,6 +44,9 @@ func (k *key) Set(v string) error {
 
 	case strings.HasPrefix(v, "raw:"):
 		*k = key(strings.TrimPrefix(v, "raw:"))
+
+	case strings.HasPrefix(v, "crdb:"):
+		*k = cockroachkvs.ParseFormattedKey(strings.TrimPrefix(v, "crdb:"))
 
 	default:
 		*k = key(v)

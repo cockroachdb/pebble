@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/spf13/cobra"
 )
@@ -71,6 +72,8 @@ type findT struct {
 	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
 	tableMeta map[base.FileNum]*manifest.TableMetadata
+	// Slice of references to a blob value file.
+	blobRefs manifest.BlobReferences
 	// List of error messages for SSTables that could not be decoded.
 	errors []string
 }
@@ -179,6 +182,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	f.manifests = nil
 	f.tables = nil
 	f.tableMeta = make(map[base.FileNum]*manifest.TableMetadata)
+	f.blobRefs = nil
 
 	if _, err := f.opts.FS.Stat(dir); err != nil {
 		return err
@@ -227,6 +231,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 // Read the manifests and populate the editRefs map which is used to determine
 // the provenance and metadata of tables.
 func (f *findT) readManifests(stdout io.Writer) {
+	blobMetas := make(map[base.DiskFileNum]struct{})
 	for _, fl := range f.manifests {
 		func() {
 			mf, err := f.opts.FS.Open(fl.path)
@@ -281,8 +286,21 @@ func (f *findT) readManifests(stdout io.Writer) {
 						f.tableMeta[nf.Meta.FileNum] = nf.Meta
 					}
 				}
+				for _, bf := range ve.NewBlobFiles {
+					if _, ok := blobMetas[bf.FileNum]; !ok {
+						blobMetas[bf.FileNum] = struct{}{}
+					}
+				}
 			}
 		}()
+	}
+	f.blobRefs = make(manifest.BlobReferences, len(blobMetas))
+	i := 0
+	for fn := range blobMetas {
+		f.blobRefs[i] = manifest.BlobReference{
+			FileNum: fn,
+		}
+		i++
 	}
 
 	if f.verbose {
@@ -476,12 +494,18 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			switch ConvertToBlobRefMode(f.blobMode) {
 			case BlobRefModePrint:
 				blobContext = sstable.DebugHandlesBlobContext
+			case BlobRefModeLoad:
+				provider := debugReaderProvider{
+					fs:  f.opts.FS,
+					dir: f.Root.Flags().Arg(0),
+				}
+				f.fmtValue.mustSet("[%s]")
+				var vf *blob.ValueFetcher
+				vf, blobContext = sstable.LoadValBlobContext(&provider, f.blobRefs)
+				defer func() { _ = vf.Close() }()
 			default:
 				blobContext = sstable.AssertNoBlobHandles
 			}
-			// TODO(annie): Adjust to support two modes: one that surfaces the
-			// raw blob value handles, and one that fetches the blob values from
-			// blob files uncovered by scanning the directory entries. See #4448.
 			iter, err := r.NewIter(transforms, nil, nil, blobContext)
 			if err != nil {
 				return err
