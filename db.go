@@ -2190,6 +2190,7 @@ func (b BackingType) String() string {
 // other file backing info.
 type SSTableInfo struct {
 	manifest.TableInfo
+	TableStats manifest.TableStats
 	// Virtual indicates whether the sstable is virtual.
 	Virtual bool
 	// BackingSSTNum is the disk file number associated with the backing sstable.
@@ -2249,7 +2250,14 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 					continue
 				}
 			}
-			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
+			var tableStats manifest.TableStats
+			if m.StatsValid() {
+				tableStats = m.Stats
+			}
+			destTables[j] = SSTableInfo{
+				TableInfo:  m.TableInfo(),
+				TableStats: tableStats,
+			}
 			if opt.withProperties {
 				p, err := d.fileCache.getTableProperties(
 					m,
