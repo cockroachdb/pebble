@@ -494,7 +494,7 @@ func (d *DB) writeCheckpointManifest(
 		// append a record after a raw data copy; see
 		// https://github.com/cockroachdb/cockroach/issues/100935).
 		r := record.NewReader(&io.LimitedReader{R: src, N: manifestSize}, manifestFileNum)
-		w := record.NewWriter(dst)
+		w := record.NewWriter(dst, manifestFileNum, d.FormatMajorVersion() >= FormatManifestSyncChunks)
 		for {
 			rr, err := r.Next()
 			if err != nil {

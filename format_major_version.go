@@ -226,6 +226,10 @@ const (
 	// once stable.
 	FormatExperimentalValueSeparation
 
+	// FormatManifestSyncChunks is a format major version enabling the writing of
+	// sync offset chunks for Manifest files. See comment for FormatWALSyncChunks.
+	FormatManifestSyncChunks
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -266,7 +270,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev4
 	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
-	case FormatTableFormatV6, FormatExperimentalValueSeparation:
+	case FormatTableFormatV6, FormatExperimentalValueSeparation, FormatManifestSyncChunks:
 		return sstable.TableFormatPebblev6
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -280,7 +284,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatTableFormatV6, FormatExperimentalValueSeparation:
+		FormatTableFormatV6, FormatExperimentalValueSeparation, FormatManifestSyncChunks:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -331,6 +335,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatExperimentalValueSeparation: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatExperimentalValueSeparation)
+	},
+	FormatManifestSyncChunks: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatManifestSyncChunks)
 	},
 }
 

@@ -692,10 +692,22 @@ type Writer struct {
 	err error
 	// buf is the buffer.
 	buf [blockSize]byte
+
+	// logNum is the log number of the log.
+	logNum base.DiskFileNum
+
+	// fillHeader fills in the header for the pending chunk.
+	// Its implementation is decided at runtime and is decided
+	// by whether or not the log is writing sync offsets or not.
+	fillHeader func(bool)
+
+	// headerSize is the size of the type of header that the writer
+	// is writing. It can either be legacyHeaderSize or walSyncHeaderSize.
+	headerSize int
 }
 
 // NewWriter returns a new Writer.
-func NewWriter(w io.Writer) *Writer {
+func NewWriter(w io.Writer, logNum base.DiskFileNum, writingSyncOffsets bool) *Writer {
 	f, _ := w.(flusher)
 
 	var o int64
@@ -705,16 +717,24 @@ func NewWriter(w io.Writer) *Writer {
 			o = 0
 		}
 	}
-	return &Writer{
+	wr := &Writer{
 		w:                w,
 		f:                f,
 		baseOffset:       o,
 		lastRecordOffset: -1,
+		logNum:           logNum,
 	}
+	if writingSyncOffsets {
+		wr.fillHeader = wr.fillHeaderSyncOffsets
+		wr.headerSize = walSyncHeaderSize
+	} else {
+		wr.fillHeader = wr.fillHeaderLegacy
+		wr.headerSize = legacyHeaderSize
+	}
+	return wr
 }
 
-// fillHeader fills in the header for the pending chunk.
-func (w *Writer) fillHeader(last bool) {
+func (w *Writer) fillHeaderLegacy(last bool) {
 	if w.i+legacyHeaderSize > w.j || w.j > blockSize {
 		panic("pebble/record: bad writer state")
 	}
@@ -735,12 +755,35 @@ func (w *Writer) fillHeader(last bool) {
 	binary.LittleEndian.PutUint16(w.buf[w.i+4:w.i+6], uint16(w.j-w.i-legacyHeaderSize))
 }
 
+func (w *Writer) fillHeaderSyncOffsets(last bool) {
+	if w.i+walSyncHeaderSize > w.j || w.j > blockSize {
+		panic("pebble/record: bad writer state")
+	}
+	if last {
+		if w.first {
+			w.buf[w.i+6] = walSyncFullChunkEncoding
+		} else {
+			w.buf[w.i+6] = walSyncLastChunkEncoding
+		}
+	} else {
+		if w.first {
+			w.buf[w.i+6] = walSyncFirstChunkEncoding
+		} else {
+			w.buf[w.i+6] = walSyncMiddleChunkEncoding
+		}
+	}
+	binary.LittleEndian.PutUint32(w.buf[w.i+7:w.i+11], uint32(w.logNum))
+	binary.LittleEndian.PutUint64(w.buf[w.i+11:w.i+19], uint64(w.lastRecordOffset)+uint64(w.written))
+	binary.LittleEndian.PutUint32(w.buf[w.i+0:w.i+4], crc.New(w.buf[w.i+6:w.j]).Value())
+	binary.LittleEndian.PutUint16(w.buf[w.i+4:w.i+6], uint16(w.j-w.i-walSyncHeaderSize))
+}
+
 // writeBlock writes the buffered block to the underlying writer, and reserves
 // space for the next chunk's header.
 func (w *Writer) writeBlock() {
 	_, w.err = w.w.Write(w.buf[w.written:])
 	w.i = 0
-	w.j = legacyHeaderSize
+	w.j = w.headerSize
 	w.written = 0
 	w.blockNumber++
 }
@@ -796,7 +839,7 @@ func (w *Writer) Next() (io.Writer, error) {
 		w.fillHeader(true)
 	}
 	w.i = w.j
-	w.j = w.j + legacyHeaderSize
+	w.j = w.j + w.headerSize
 	// Check if there is room in the block for the header.
 	if w.j > blockSize {
 		// Fill in the rest of the block with zeroes.

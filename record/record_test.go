@@ -89,7 +89,7 @@ func testGeneratorWriter(
 func testGenerator(t *testing.T, reset func(), gen func() (string, bool)) {
 	t.Run("Writer", func(t *testing.T) {
 		testGeneratorWriter(t, reset, gen, func(w io.Writer) recordWriter {
-			return NewWriter(w)
+			return NewWriter(w, 0, false)
 		})
 	})
 
@@ -175,7 +175,7 @@ func TestBoundary(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 	buf := new(bytes.Buffer)
-	w := NewWriter(buf)
+	w := NewWriter(buf, 0, false)
 	// Write a couple of records. Everything should still be held
 	// in the record.Writer buffer, so that buf.Len should be 0.
 	w0, _ := w.Next()
@@ -240,7 +240,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 	p := make([]byte, 10)
 	rnd := rand.New(rand.NewPCG(0, 1))
 
-	w := NewWriter(buf)
+	w := NewWriter(buf, 0, false)
 	for i := 0; i < n; i++ {
 		length := len(p) + rnd.IntN(3*blockSize)
 		s := string(uint8(i)) + "123456789abcdefgh"
@@ -267,7 +267,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 func TestStaleReader(t *testing.T) {
 	buf := new(bytes.Buffer)
 
-	w := NewWriter(buf)
+	w := NewWriter(buf, 0, false)
 	_, err := w.WriteRecord([]byte("0"))
 	require.NoError(t, err)
 
@@ -313,7 +313,7 @@ func makeTestRecords(recordLengths ...int) (*testRecords, error) {
 	}
 
 	buf := new(bytes.Buffer)
-	w := NewWriter(buf)
+	w := NewWriter(buf, base.DiskFileNum(0), false)
 	for i, rec := range ret.records {
 		wRec, err := w.Next()
 		if err != nil {
@@ -616,7 +616,7 @@ func TestLastRecordOffset(t *testing.T) {
 
 func TestNoLastRecordOffset(t *testing.T) {
 	buf := new(bytes.Buffer)
-	w := NewWriter(buf)
+	w := NewWriter(buf, 0, false)
 	defer w.Close()
 
 	if _, err := w.LastRecordOffset(); err != ErrNoLastRecord {
@@ -682,7 +682,7 @@ func TestInvalidLogNum(t *testing.T) {
 func TestSize(t *testing.T) {
 	var buf bytes.Buffer
 	zeroes := make([]byte, 8<<10)
-	w := NewWriter(&buf)
+	w := NewWriter(&buf, 0, false)
 	for i := 0; i < 100; i++ {
 		n := rand.IntN(len(zeroes))
 		_, err := w.WriteRecord(zeroes[:n])
@@ -1097,6 +1097,41 @@ func describeWALSyncBlocks(
 
 	f.SetAnchorOffset()
 	f.ToTreePrinter(n)
+}
+
+func TestManifestSyncOffset(t *testing.T) {
+	buf := new(bytes.Buffer)
+	w := NewWriter(buf, 0, true)
+	w.WriteRecord(bytes.Repeat([]byte{1}, blockSize-walSyncHeaderSize))
+	w.WriteRecord(bytes.Repeat([]byte{2}, blockSize-walSyncHeaderSize))
+
+	raw := buf.Bytes()
+	r := NewReader(bytes.NewReader(raw), 0)
+	r.loggerForTesting = &readerLogger{}
+	for {
+		_, err := r.Next()
+		if err != nil {
+			require.True(t, errors.Is(err, io.EOF))
+			require.True(t, r.loggerForTesting.(*readerLogger).getLog() == "")
+			break
+		}
+	}
+
+	// Check that corrupting a chunk should result in us reading ahead and returning
+	// an ErrInvalidChunk.
+	raw[0] ^= 0xFF
+	r = NewReader(bytes.NewReader(raw), 0)
+	r.loggerForTesting = &readerLogger{}
+	for {
+		_, err := r.Next()
+		if err != nil {
+			require.True(t, errors.Is(err, ErrInvalidChunk))
+			logStr := r.loggerForTesting.(*readerLogger).getLog()
+			require.True(t, logStr != "")
+			println(logStr)
+			break
+		}
+	}
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
