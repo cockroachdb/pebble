@@ -415,3 +415,62 @@ Deletion hints:
   (none)
 Compactions:
   [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.5KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+
+# Reset the database.
+
+reset
+----
+
+# Simulate an ingestion of a CockroachDB snapshot sstable with a range delete and a
+# range key delete covering the keyspace.
+
+ingest ext
+set c c
+set d d
+set e e
+set f f
+set g g
+del-range c h
+range-key-del c h
+----
+OK
+
+describe-lsm
+----
+L6:
+  000004:[c#10,RANGEKEYDEL-h#inf,RANGEDEL]
+
+snapshot
+----
+snapshot seqnum: 11
+
+# Simulate a replica removal of the previously ingested snapshot through a range
+# delete and range key delete.
+
+batch
+del-range c h
+range-key-del c h
+----
+
+flush
+----
+L0.0:
+  000006:[c#12,RANGEKEYDEL-h#inf,RANGEDEL]
+L6:
+  000004:[c#10,RANGEKEYDEL-h#inf,RANGEDEL]
+
+get-hints
+----
+L0.000006 c-h seqnums(tombstone=11-12, file-smallest=10, type=point-and-range-key)
+
+close-snapshot
+11
+----
+[JOB 100] compacted(elision-only) L6 [000004] (871B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000007] (621B), in 1.0s (2.0s total), output rate 621B/s
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  (none)
