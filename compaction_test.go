@@ -1384,6 +1384,17 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_delete_only_hints",
 		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
+			case "batch":
+				b := d.NewBatch()
+				err := runBatchDefineCmd(td, b)
+				if err != nil {
+					return err.Error()
+				}
+				if err = b.Commit(Sync); err != nil {
+					return err.Error()
+				}
+				return ""
+
 			case "define":
 				opts, err = reset()
 				if err != nil {
@@ -1397,6 +1408,12 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
+
+			case "flush":
+				if err := d.Flush(); err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
 
 			case "force-set-hints":
 				d.mu.Lock()
@@ -1547,6 +1564,13 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					return err.Error()
 				}
 				return ""
+
+			case "snapshot":
+				// NB: It's okay that we're letting the snapshot out of scope
+				// without closing it; the close snapshot command will pull the
+				// relevant seqnum off the DB to close it.
+				s := d.NewSnapshot()
+				return fmt.Sprintf("snapshot seqnum: %d", s.seqNum)
 
 			case "ingest":
 				if err = runBuildCmd(td, d, d.opts.FS); err != nil {
