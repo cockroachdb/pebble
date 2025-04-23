@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -447,18 +448,16 @@ func (d *DB) loadTableRangeDelStats(
 		if hintSeqNum == math.MaxUint64 {
 			continue
 		}
+		bounds := base.UserKeyBoundsEndExclusive(slices.Clone(start), slices.Clone(end))
 		hint := deleteCompactionHint{
 			hintType:                hintType,
-			start:                   make([]byte, len(start)),
-			end:                     make([]byte, len(end)),
+			bounds:                  bounds,
 			tombstoneFile:           meta,
 			tombstoneLevel:          level,
 			tombstoneLargestSeqNum:  s.LargestSeqNum(),
 			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
 			fileSmallestSeqNum:      hintSeqNum,
 		}
-		copy(hint.start, start)
-		copy(hint.end, end)
 		compactionHints = append(compactionHints, hint)
 	}
 	if err != nil {

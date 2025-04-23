@@ -2125,10 +2125,9 @@ type deleteCompactionHint struct {
 	// The type of key span that generated this hint (point key, range key, or
 	// both).
 	hintType deleteCompactionHintType
-	// start and end are user keys specifying a key range [start, end) of
-	// deleted keys.
-	start []byte
-	end   []byte
+	// bounds specifies the bounds of the keyspace deleted by the hint's
+	// tombstones.
+	bounds base.UserKeyBounds
 	// The level of the file containing the range tombstone(s) when the hint
 	// was created. Only lower levels need to be searched for files that may
 	// be deleted.
@@ -2153,8 +2152,8 @@ type deleteCompactionHint struct {
 
 func (h deleteCompactionHint) String() string {
 	return fmt.Sprintf(
-		"L%d.%s %s-%s seqnums(tombstone=%d-%d, file-smallest=%d, type=%s)",
-		h.tombstoneLevel, h.tombstoneFile.FileNum, h.start, h.end,
+		"L%d.%s %s seqnums(tombstone=%d-%d, file-smallest=%d, type=%s)",
+		h.tombstoneLevel, h.tombstoneFile.FileNum, h.bounds,
 		h.tombstoneSmallestSeqNum, h.tombstoneLargestSeqNum, h.fileSmallestSeqNum,
 		h.hintType,
 	)
@@ -2200,7 +2199,8 @@ func (h *deleteCompactionHint) canDelete(cmp Compare, m *fileMetadata, snapshots
 	}
 
 	// The file's keys must be completely contained within the hint range.
-	return cmp(h.start, m.Smallest.UserKey) <= 0 && cmp(m.Largest.UserKey, h.end) < 0
+	tableBounds := m.UserKeyBounds()
+	return h.bounds.ContainsBounds(cmp, &tableBounds)
 }
 
 func (d *DB) maybeUpdateDeleteCompactionHints(c *compaction) {
@@ -2226,7 +2226,8 @@ func (d *DB) maybeUpdateDeleteCompactionHints(c *compaction) {
 		// If the compaction's key space is disjoint from the hint's key
 		// space, the zeroing of sequence numbers won't affect the hint. Keep
 		// the hint.
-		keysDisjoint := d.cmp(h.end, c.smallest.UserKey) < 0 || d.cmp(h.start, c.largest.UserKey) > 0
+		compactionBounds := base.UserKeyBoundsFromInternal(c.smallest, c.largest)
+		keysDisjoint := !h.bounds.Overlaps(d.cmp, &compactionBounds)
 		if keysDisjoint {
 			updatedHints = append(updatedHints, h)
 			continue
@@ -2311,7 +2312,7 @@ func checkDeleteCompactionHints(
 		// The hint h will be resolved and dropped, regardless of whether
 		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end))
+			overlaps := v.Overlaps(l, h.bounds)
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
 				if m.IsCompacting() || !h.canDelete(cmp, m, snapshots) || files[m] {
