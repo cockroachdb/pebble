@@ -253,8 +253,8 @@ L3:
 compact a-h L1
 ----
 L2:
-  000009:[grandparent#2,RANGEDEL-m#inf,RANGEDEL]
-  000010:[m#2,RANGEDEL-z#inf,RANGEDEL]
+  000009:[grandparent#2,RANGEDEL-h#inf,RANGEDEL]
+  000010:[h#3,SET-z#inf,RANGEDEL]
 L3:
   000007:[grandparent#0,SET-grandparent#0,SET]
   000008:[m#0,SET-m#0,SET]
