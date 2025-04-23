@@ -336,7 +336,7 @@ a@2.SET.1:a2
 a@1.SET.1:a1
 b@2.SET.1:b2
 ----
-EstimatedSize()=53
+EstimatedSize()=163
 
 close
 ----
