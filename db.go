@@ -2205,6 +2205,8 @@ type SSTableInfo struct {
 	// ApproximateSpanBytes option is passed into DB.SSTables.
 	ApproximateSpanBytes uint64 `json:"ApproximateSpanBytes,omitempty"`
 
+	manifest.TableStats
+
 	// Properties is the sstable properties of this table. If Virtual is true,
 	// then the Properties are associated with the backing sst.
 	Properties *sstable.Properties
@@ -2249,7 +2251,10 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 					continue
 				}
 			}
-			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
+			destTables[j] = SSTableInfo{
+				TableInfo: m.TableInfo(),
+				TableStats: m.Stats,
+			}
 			if opt.withProperties {
 				p, err := d.fileCache.getTableProperties(
 					m,
