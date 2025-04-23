@@ -79,8 +79,14 @@ type RawColumnWriter struct {
 	// flushed in order after all the data blocks, and the top-level index block
 	// is constructed to point to all the individual index blocks.
 	indexBuffering struct {
-		// partitions holds all the completed index blocks.
+		// partitions holds all the completed, uncompressed index blocks.
+		//
+		// TODO(jackson): We should consider compressing these index blocks now,
+		// while buffering, to reduce the memory usage of the writer.
 		partitions []bufferedIndexBlock
+		// partitionSizeSum is the sum of the sizes of all the completed index
+		// blocks (in `partitions`).
+		partitionSizeSum uint64
 		// blockAlloc is used to bulk-allocate byte slices used to store index
 		// blocks in partitions. These live until the sstable is finished.
 		blockAlloc []byte
@@ -195,27 +201,38 @@ func (w *RawColumnWriter) Error() error {
 // EstimatedSize returns the estimated size of the sstable being written if
 // a call to Close() was made without adding additional keys.
 func (w *RawColumnWriter) EstimatedSize() uint64 {
+	// Start with the size of the footer, which is fixed, and the size of all
+	// the finished data blocks. The size of the finished data blocks is all
+	// post-compression and the footer is not compressed, so this initial
+	// quantity is exact.
 	sz := uint64(w.opts.TableFormat.FooterSize()) + w.queuedDataSize
-	// TODO(jackson): Avoid iterating over partitions by incrementally
-	// maintaining the size contribution of all buffered partitions.
-	for _, bib := range w.indexBuffering.partitions {
-		// We include the separator user key to account for its bytes in the
-		// top-level index block.
-		//
-		// TODO(jackson): We could incrementally build the top-level index block
-		// and produce an exact calculation of the current top-level index
-		// block's size.
-		sz += uint64(len(bib.block) + block.TrailerLen + len(bib.sep.UserKey))
+
+	// Add the size of value blocks. If any value blocks have already been
+	// finished, these blocks will contribute post-compression size. If there is
+	// currently an unfinished value block, it will contribute its pre-compression
+	// size.
+	if w.valueBlock != nil {
+		sz += w.valueBlock.Size()
 	}
+
+	// Add the size of the completed but unflushed index partitions, the
+	// unfinished data block, the unfinished index block, the unfinished range
+	// deletion block, and the unfinished range key block.
+	//
+	// All of these sizes are uncompressed sizes. It's okay to be pessimistic
+	// here and use the uncompressed size because all this memory is buffered
+	// until the sstable is finished.  Including the uncompressed size bounds
+	// the memory usage used by the writer to the physical size limit.
+	sz += w.indexBuffering.partitionSizeSum
+	sz += uint64(w.dataBlock.Size())
+	sz += uint64(w.indexBlockSize)
 	if w.rangeDelBlock.KeyCount() > 0 {
 		sz += uint64(w.rangeDelBlock.Size())
 	}
 	if w.rangeKeyBlock.KeyCount() > 0 {
 		sz += uint64(w.rangeKeyBlock.Size())
 	}
-	if w.valueBlock != nil {
-		sz += w.valueBlock.Size()
-	}
+
 	// TODO(jackson): Include an estimate of the properties, filter and meta
 	// index blocks sizes.
 	return sz
@@ -798,16 +815,23 @@ func (w *RawColumnWriter) finishIndexBlock(rows int) error {
 		w.indexBlock.UnsafeSeparator(rows - 1))
 
 	// Finish the index block and copy it so that w.indexBlock may be reused.
-	block := w.indexBlock.Finish(rows)
-	if len(w.indexBuffering.blockAlloc) < len(block) {
+	blk := w.indexBlock.Finish(rows)
+	if len(w.indexBuffering.blockAlloc) < len(blk) {
 		// Allocate enough bytes for approximately 16 index blocks.
-		w.indexBuffering.blockAlloc = make([]byte, len(block)*16)
+		w.indexBuffering.blockAlloc = make([]byte, len(blk)*16)
 	}
-	n := copy(w.indexBuffering.blockAlloc, block)
+	n := copy(w.indexBuffering.blockAlloc, blk)
 	bib.block = w.indexBuffering.blockAlloc[:n:n]
 	w.indexBuffering.blockAlloc = w.indexBuffering.blockAlloc[n:]
 
 	w.indexBuffering.partitions = append(w.indexBuffering.partitions, bib)
+	// We include the separator user key to account for its bytes in the
+	// top-level index block.
+	//
+	// TODO(jackson): We could incrementally build the top-level index block
+	// and produce an exact calculation of the current top-level index
+	// block's size.
+	w.indexBuffering.partitionSizeSum += uint64(len(blk) + block.TrailerLen + len(bib.sep.UserKey))
 	return nil
 }
 

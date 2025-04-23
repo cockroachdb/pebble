@@ -105,10 +105,13 @@ L0.0:
 iter-new c category=c
 ----
 
+# Two files, since the target file size is set to 50.
+
 compact a-z
 ----
 L6:
-  000008:[a#0,SET-b#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
 
 metrics
 ----
@@ -121,8 +124,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   743B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   743B | 1.4KB |   1  0.5
-total |     1   743B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.2KB | 1.4KB |   1 40.8
+    6 |     2  1.5KB     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     2  1.5KB | 1.4KB |   1  1.0
+total |     2  1.5KB     0B       0 |     - |   56B |     0     0B |     0     0B |     4  3.0KB | 1.4KB |   1 54.1
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
@@ -132,8 +135,8 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.4KB, local: 1.4KB)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 743B
-Compression types: snappy: 1
+Local tables size: 1.5KB
+Compression types: snappy: 2
 Block cache: 2 entries (795B)  hit rate: 33.3%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Snapshots: 0  earliest seq num: 0
@@ -149,7 +152,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.9KB
+4.6KB
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -167,8 +170,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   743B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   743B | 1.4KB |   1  0.5
-total |     1   743B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.2KB | 1.4KB |   1 40.8
+    6 |     2  1.5KB     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     2  1.5KB | 1.4KB |   1  1.0
+total |     2  1.5KB     0B       0 |     - |   56B |     0     0B |     0     0B |     4  3.0KB | 1.4KB |   1 54.1
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
@@ -178,8 +181,8 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 2 (1.4KB, local: 1.4KB)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 743B
-Compression types: snappy: 1
+Local tables size: 1.5KB
+Compression types: snappy: 2
 Block cache: 2 entries (795B)  hit rate: 33.3%
 Table cache: 2 entries (1.6KB)  hit rate: 66.7%
 Snapshots: 0  earliest seq num: 0
@@ -210,8 +213,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   743B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   743B | 1.4KB |   1  0.5
-total |     1   743B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.2KB | 1.4KB |   1 40.8
+    6 |     2  1.5KB     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     2  1.5KB | 1.4KB |   1  1.0
+total |     2  1.5KB     0B       0 |     - |   56B |     0     0B |     0     0B |     4  3.0KB | 1.4KB |   1 54.1
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
@@ -221,8 +224,8 @@ MemTables: 1 (256KB)  zombie: 2 (512KB)
 Zombie tables: 1 (742B, local: 742B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 743B
-Compression types: snappy: 1
+Local tables size: 1.5KB
+Compression types: snappy: 2
 Block cache: 2 entries (795B)  hit rate: 33.3%
 Table cache: 1 entries (832B)  hit rate: 66.7%
 Snapshots: 0  earliest seq num: 0
@@ -238,7 +241,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.2KB
+3.9KB
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -256,8 +259,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   743B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   743B | 1.4KB |   1  0.5
-total |     1   743B     0B       0 |     - |   56B |     0     0B |     0     0B |     3  2.2KB | 1.4KB |   1 40.8
+    6 |     2  1.5KB     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     2  1.5KB | 1.4KB |   1  1.0
+total |     2  1.5KB     0B       0 |     - |   56B |     0     0B |     0     0B |     4  3.0KB | 1.4KB |   1 54.1
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 34B  written: 56B (65% overhead)
 Flushes: 2
@@ -267,8 +270,8 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 743B
-Compression types: snappy: 1
+Local tables size: 1.5KB
+Compression types: snappy: 2
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Snapshots: 0  earliest seq num: 0
@@ -284,7 +287,7 @@ Iter category stats:
 
 disk-usage
 ----
-2.4KB
+3.2KB
 
 additional-metrics
 ----
@@ -296,7 +299,7 @@ block bytes written:
       3           0B           0B
       4           0B           0B
       5           0B           0B
-      6          82B           0B
+      6         168B           0B
 
 batch
 set c@20 c20
@@ -311,15 +314,16 @@ set c@14 c14
 flush
 ----
 L0.0:
-  000010:[c@20#12,SET-c@20#12,SET]
-  000011:[c@19#13,SET-c@19#13,SET]
-  000012:[c@18#14,SET-c@18#14,SET]
-  000013:[c@17#15,SET-c@17#15,SET]
-  000014:[c@16#16,SET-c@16#16,SET]
-  000015:[c@15#17,SET-c@15#17,SET]
-  000016:[c@14#18,SET-c@14#18,SET]
+  000011:[c@20#12,SET-c@20#12,SET]
+  000012:[c@19#13,SET-c@19#13,SET]
+  000013:[c@18#14,SET-c@18#14,SET]
+  000014:[c@17#15,SET-c@17#15,SET]
+  000015:[c@16#16,SET-c@16#16,SET]
+  000016:[c@15#17,SET-c@15#17,SET]
+  000017:[c@14#18,SET-c@14#18,SET]
 L6:
-  000008:[a#0,SET-b#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
 
 metrics
 ----
@@ -332,19 +336,19 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   743B     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     1   743B | 1.4KB |   1  0.5
-total |     8  5.9KB     0B       0 |     - |  149B |     0     0B |     0     0B |    10  7.5KB | 1.4KB |   2 51.5
+    6 |     2  1.5KB     0B       0 |     - | 1.4KB |     0     0B |     0     0B |     2  1.5KB | 1.4KB |   1  1.0
+total |     9  6.6KB     0B       0 |     - |  149B |     0     0B |     0     0B |    11  8.2KB | 1.4KB |   2 56.5
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 116B  written: 149B (28% overhead)
 Flushes: 3
-Compactions: 1  estimated debt: 5.9KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 6.6KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 5.9KB
-Compression types: snappy: 8
+Local tables size: 6.6KB
+Compression types: snappy: 9
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Snapshots: 0  earliest seq num: 0
@@ -368,13 +372,20 @@ block bytes written:
       3           0B           0B
       4           0B           0B
       5           0B           0B
-      6          82B           0B
+      6         168B           0B
 
 compact a-z
 ----
 L6:
-  000008:[a#0,SET-b#0,SET]
-  000017:[c@20#0,SET-c@14#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000018:[c@20#0,SET-c@20#0,SET]
+  000019:[c@19#0,SET-c@19#0,SET]
+  000020:[c@18#0,SET-c@18#0,SET]
+  000021:[c@17#0,SET-c@17#0,SET]
+  000022:[c@16#0,SET-c@16#0,SET]
+  000023:[c@15#0,SET-c@15#0,SET]
+  000024:[c@14#0,SET-c@14#0,SET]
 
 metrics
 ----
@@ -387,8 +398,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     2  1.6KB    31B       0 |     - | 6.6KB |     0     0B |     0     0B |     2  1.6KB | 6.6KB |   1  0.2
-total |     2  1.6KB    31B       0 |     - |  149B |     0     0B |     0     0B |    11  8.4KB | 6.6KB |   1 57.6
+    6 |     9  6.5KB     0B       0 |     - | 6.6KB |     0     0B |     0     0B |     9  6.5KB | 6.6KB |   1  1.0
+total |     9  6.5KB     0B       0 |     - |  149B |     0     0B |     0     0B |    18   13KB | 6.6KB |   1 91.5
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 116B  written: 149B (28% overhead)
 Flushes: 3
@@ -398,8 +409,8 @@ MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 1.6KB
-Compression types: snappy: 2
+Local tables size: 6.5KB
+Compression types: snappy: 9
 Block cache: 0 entries (0B)  hit rate: 10.0%
 Table cache: 0 entries (0B)  hit rate: 55.0%
 Snapshots: 0  earliest seq num: 0
@@ -423,7 +434,7 @@ block bytes written:
       3           0B           0B
       4           0B           0B
       5           0B           0B
-      6         220B          31B
+      6         754B           0B
 
 # Flushable ingestion metrics. This requires there be data in a memtable that
 # would overlap with the ingested table(s). Delayed flushes are disabled here to
@@ -466,16 +477,23 @@ disable
 flush
 ----
 L0.1:
-  000018:[d#22,SET-d#22,SET]
-  000019:[e#23,SET-e#23,SET]
-  000022:[f#24,SET-f#24,SET]
+  000025:[d#22,SET-d#22,SET]
+  000026:[e#23,SET-e#23,SET]
+  000029:[f#24,SET-f#24,SET]
 L0.0:
-  000026:[d#19,SET-d#19,SET]
-  000027:[e#20,SET-e#20,SET]
-  000028:[f#21,SET-f#21,SET]
+  000033:[d#19,SET-d#19,SET]
+  000034:[e#20,SET-e#20,SET]
+  000035:[f#21,SET-f#21,SET]
 L6:
-  000008:[a#0,SET-b#0,SET]
-  000017:[c@20#0,SET-c@14#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000018:[c@20#0,SET-c@20#0,SET]
+  000019:[c@19#0,SET-c@19#0,SET]
+  000020:[c@18#0,SET-c@18#0,SET]
+  000021:[c@17#0,SET-c@17#0,SET]
+  000022:[c@16#0,SET-c@16#0,SET]
+  000023:[c@15#0,SET-c@15#0,SET]
+  000024:[c@14#0,SET-c@14#0,SET]
 
 # We expect the ingested-as-flushable count to be three (one for each ingested
 # table). The unknown category in the iter category stats is because of a gap
@@ -493,19 +511,19 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     2  1.6KB    31B       0 |     - | 6.6KB |     0     0B |     0     0B |     2  1.6KB | 6.6KB |   1  0.2
-total |     8  6.0KB    31B       0 |     - | 2.4KB |     3  2.2KB |     0     0B |    14   13KB | 6.6KB |   3  5.4
+    6 |     9  6.5KB     0B       0 |     - | 6.6KB |     0     0B |     0     0B |     9  6.5KB | 6.6KB |   1  1.0
+total |    15   11KB     0B       0 |     - | 2.4KB |     3  2.2KB |     0     0B |    21   18KB | 6.6KB |   3  7.5
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 176B  written: 187B (6% overhead)
 Flushes: 8
-Compactions: 2  estimated debt: 6.0KB  in progress: 0 (0B)
+Compactions: 2  estimated debt: 11KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 6.0KB
-Compression types: snappy: 8
+Local tables size: 11KB
+Compression types: snappy: 15
 Block cache: 6 entries (2.3KB)  hit rate: 7.7%
 Table cache: 0 entries (0B)  hit rate: 55.0%
 Snapshots: 0  earliest seq num: 0
@@ -532,23 +550,30 @@ set m m
 flush
 ----
 L0.1:
-  000018:[d#22,SET-d#22,SET]
-  000019:[e#23,SET-e#23,SET]
-  000022:[f#24,SET-f#24,SET]
+  000025:[d#22,SET-d#22,SET]
+  000026:[e#23,SET-e#23,SET]
+  000029:[f#24,SET-f#24,SET]
 L0.0:
-  000026:[d#19,SET-d#19,SET]
-  000027:[e#20,SET-e#20,SET]
-  000028:[f#21,SET-f#21,SET]
-  000030:[g#25,SET-g#25,SET]
-  000031:[h#26,SET-h#26,SET]
-  000032:[i#27,SET-i#27,SET]
-  000033:[j#28,SET-j#28,SET]
-  000034:[k#29,SET-k#29,SET]
-  000035:[l#30,SET-l#30,SET]
-  000036:[m#31,SET-m#31,SET]
+  000033:[d#19,SET-d#19,SET]
+  000034:[e#20,SET-e#20,SET]
+  000035:[f#21,SET-f#21,SET]
+  000037:[g#25,SET-g#25,SET]
+  000038:[h#26,SET-h#26,SET]
+  000039:[i#27,SET-i#27,SET]
+  000040:[j#28,SET-j#28,SET]
+  000041:[k#29,SET-k#29,SET]
+  000042:[l#30,SET-l#30,SET]
+  000043:[m#31,SET-m#31,SET]
 L6:
-  000008:[a#0,SET-b#0,SET]
-  000017:[c@20#0,SET-c@14#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000018:[c@20#0,SET-c@20#0,SET]
+  000019:[c@19#0,SET-c@19#0,SET]
+  000020:[c@18#0,SET-c@18#0,SET]
+  000021:[c@17#0,SET-c@17#0,SET]
+  000022:[c@16#0,SET-c@16#0,SET]
+  000023:[c@15#0,SET-c@15#0,SET]
+  000024:[c@14#0,SET-c@14#0,SET]
 
 metrics
 ----
@@ -561,19 +586,19 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     2  1.6KB    31B       0 |     - | 6.6KB |     0     0B |     0     0B |     2  1.6KB | 6.6KB |   1  0.2
-total |    15   11KB    31B       0 |     - | 2.4KB |     3  2.2KB |     0     0B |    21   18KB | 6.6KB |   3  7.4
+    6 |     9  6.5KB     0B       0 |     - | 6.6KB |     0     0B |     0     0B |     9  6.5KB | 6.6KB |   1  1.0
+total |    22   16KB     0B       0 |     - | 2.4KB |     3  2.2KB |     0     0B |    28   23KB | 6.6KB |   3  9.4
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
-Compactions: 2  estimated debt: 11KB  in progress: 0 (0B)
+Compactions: 2  estimated debt: 16KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 11KB
-Compression types: snappy: 15
+Local tables size: 16KB
+Compression types: snappy: 22
 Block cache: 6 entries (2.3KB)  hit rate: 7.7%
 Table cache: 0 entries (0B)  hit rate: 55.0%
 Snapshots: 0  earliest seq num: 0
@@ -598,22 +623,29 @@ ingest-and-excise ext1 excise=i-k
 lsm
 ----
 L0.1:
-  000018:[d#22,SET-d#22,SET]
-  000019:[e#23,SET-e#23,SET]
-  000022:[f#24,SET-f#24,SET]
+  000025:[d#22,SET-d#22,SET]
+  000026:[e#23,SET-e#23,SET]
+  000029:[f#24,SET-f#24,SET]
 L0.0:
-  000026:[d#19,SET-d#19,SET]
-  000027:[e#20,SET-e#20,SET]
-  000028:[f#21,SET-f#21,SET]
-  000030:[g#25,SET-g#25,SET]
-  000031:[h#26,SET-h#26,SET]
-  000034:[k#29,SET-k#29,SET]
-  000035:[l#30,SET-l#30,SET]
-  000036:[m#31,SET-m#31,SET]
+  000033:[d#19,SET-d#19,SET]
+  000034:[e#20,SET-e#20,SET]
+  000035:[f#21,SET-f#21,SET]
+  000037:[g#25,SET-g#25,SET]
+  000038:[h#26,SET-h#26,SET]
+  000041:[k#29,SET-k#29,SET]
+  000042:[l#30,SET-l#30,SET]
+  000043:[m#31,SET-m#31,SET]
 L6:
-  000008:[a#0,SET-b#0,SET]
-  000017:[c@20#0,SET-c@14#0,SET]
-  000037:[z#33,SET-z#33,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000018:[c@20#0,SET-c@20#0,SET]
+  000019:[c@19#0,SET-c@19#0,SET]
+  000020:[c@18#0,SET-c@18#0,SET]
+  000021:[c@17#0,SET-c@17#0,SET]
+  000022:[c@16#0,SET-c@16#0,SET]
+  000023:[c@15#0,SET-c@15#0,SET]
+  000024:[c@14#0,SET-c@14#0,SET]
+  000044:[z#33,SET-z#33,SET]
 
 # There should be 2 backing tables. Note that tiny sstables have inaccurate
 # virtual sstable sizes.
@@ -641,19 +673,19 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     3  2.4KB    31B       0 |     - | 6.6KB |     1   745B |     0     0B |     2  1.6KB | 6.6KB |   1  0.2
-total |    14   10KB    31B       0 |     - | 3.1KB |     4  2.9KB |     0     0B |    21   19KB | 6.6KB |   3  5.9
+    6 |    10  7.3KB     0B       0 |     - | 6.6KB |     1   745B |     0     0B |     9  6.5KB | 6.6KB |   1  1.0
+total |    21   15KB     0B       0 |     - | 3.1KB |     4  2.9KB |     0     0B |    28   24KB | 6.6KB |   3  7.5
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
-Compactions: 2  estimated debt: 10KB  in progress: 0 (0B)
+Compactions: 2  estimated debt: 15KB  in progress: 0 (0B)
              default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 10KB
-Compression types: snappy: 14
+Local tables size: 15KB
+Compression types: snappy: 21
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -680,22 +712,29 @@ ingest-and-excise ext1 excise=k-l
 lsm
 ----
 L0.1:
-  000018:[d#22,SET-d#22,SET]
-  000019:[e#23,SET-e#23,SET]
-  000022:[f#24,SET-f#24,SET]
+  000025:[d#22,SET-d#22,SET]
+  000026:[e#23,SET-e#23,SET]
+  000029:[f#24,SET-f#24,SET]
 L0.0:
-  000026:[d#19,SET-d#19,SET]
-  000027:[e#20,SET-e#20,SET]
-  000028:[f#21,SET-f#21,SET]
-  000030:[g#25,SET-g#25,SET]
-  000031:[h#26,SET-h#26,SET]
-  000035:[l#30,SET-l#30,SET]
-  000036:[m#31,SET-m#31,SET]
+  000033:[d#19,SET-d#19,SET]
+  000034:[e#20,SET-e#20,SET]
+  000035:[f#21,SET-f#21,SET]
+  000037:[g#25,SET-g#25,SET]
+  000038:[h#26,SET-h#26,SET]
+  000042:[l#30,SET-l#30,SET]
+  000043:[m#31,SET-m#31,SET]
 L6:
-  000008:[a#0,SET-b#0,SET]
-  000017:[c@20#0,SET-c@14#0,SET]
-  000037:[z#33,SET-z#33,SET]
-  000038:[zz#35,SET-zz#35,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000018:[c@20#0,SET-c@20#0,SET]
+  000019:[c@19#0,SET-c@19#0,SET]
+  000020:[c@18#0,SET-c@18#0,SET]
+  000021:[c@17#0,SET-c@17#0,SET]
+  000022:[c@16#0,SET-c@16#0,SET]
+  000023:[c@15#0,SET-c@15#0,SET]
+  000024:[c@14#0,SET-c@14#0,SET]
+  000044:[z#33,SET-z#33,SET]
+  000045:[zz#35,SET-zz#35,SET]
 
 metrics-value
 num-backing
@@ -713,11 +752,24 @@ virtual-size
 compact a-z
 ----
 L6:
-  000008:[a#0,SET-b#0,SET]
-  000017:[c@20#0,SET-c@14#0,SET]
-  000039:[d#0,SET-m#0,SET]
-  000037:[z#33,SET-z#33,SET]
-  000038:[zz#35,SET-zz#35,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000018:[c@20#0,SET-c@20#0,SET]
+  000019:[c@19#0,SET-c@19#0,SET]
+  000020:[c@18#0,SET-c@18#0,SET]
+  000021:[c@17#0,SET-c@17#0,SET]
+  000022:[c@16#0,SET-c@16#0,SET]
+  000023:[c@15#0,SET-c@15#0,SET]
+  000024:[c@14#0,SET-c@14#0,SET]
+  000046:[d#0,SET-d#0,SET]
+  000047:[e#0,SET-e#0,SET]
+  000048:[f#0,SET-f#0,SET]
+  000049:[g#0,SET-g#0,SET]
+  000050:[h#0,SET-h#0,SET]
+  000051:[l#0,SET-l#0,SET]
+  000052:[m#0,SET-m#0,SET]
+  000044:[z#33,SET-z#33,SET]
+  000045:[zz#35,SET-zz#35,SET]
 
 # Virtual sstables metrics should be gone after the compaction.
 metrics-value
@@ -744,8 +796,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     5  3.8KB    31B       0 |     - |  14KB |     2  1.4KB |     0     0B |     3  2.4KB |  14KB |   1  0.2
-total |     5  3.8KB    31B       0 |     - | 3.9KB |     5  3.6KB |     0     0B |    22   20KB |  14KB |   1  5.2
+    6 |    18   13KB     0B       0 |     - |  14KB |     2  1.4KB |     0     0B |    16   12KB |  14KB |   1  0.8
+total |    18   13KB     0B       0 |     - | 3.9KB |     5  3.6KB |     0     0B |    35   29KB |  14KB |   1  7.6
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 245B (10% overhead)
 Flushes: 9
@@ -755,8 +807,8 @@ MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 3.8KB
-Compression types: snappy: 5
+Local tables size: 13KB
+Compression types: snappy: 18
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -826,7 +878,9 @@ Iter category stats:
 compact a-z
 ----
 L6:
-  000008:[a#0,SET-c#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
 
 # Table becomes shared, so local table size becomes 0.
 metrics
@@ -840,8 +894,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   758B     0B       0 |     - | 2.2KB |     0     0B |     0     0B |     1   758B | 2.2KB |   1  0.3
-total |     1   758B     0B       0 |     - |   38B |     0     0B |     0     0B |     4  3.0KB | 2.2KB |   1 79.5
+    6 |     3  2.2KB     0B       0 |     - | 2.2KB |     0     0B |     0     0B |     3  2.2KB | 2.2KB |   1  1.0
+total |     3  2.2KB     0B       0 |     - |   38B |     0     0B |     0     0B |     6  4.4KB | 2.2KB |   1  118
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
@@ -852,7 +906,7 @@ Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 0B
-Compression types: snappy: 1
+Compression types: snappy: 3
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 50.0%
 Snapshots: 0  earliest seq num: 0
@@ -870,12 +924,18 @@ set b 2
 ingest ext1.sst
 ----
 
+<<<<<<< HEAD
+=======
+metrics-value
+remote-count
+remote-size
+----
+unknown command: <<<<<<<
+
+>>>>>>> 73c27550 (sstable: improve writer EstimatedSize)
 lsm
 ----
-L0.0:
-  000009:[b#13,SET-b#13,SET]
-L6:
-  000008:[a#0,SET-c#0,SET]
+unknown command: >>>>>>>
 
 # Ingest is also shared table, so local table size stays 0.
 metrics
@@ -889,21 +949,21 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   758B     0B       0 |     - | 2.2KB |     0     0B |     0     0B |     1   758B | 2.2KB |   1  0.3
-total |     2  1.5KB     0B       0 |     - |  783B |     1   745B |     0     0B |     4  3.7KB | 2.2KB |   2  4.8
+    6 |     3  2.2KB     0B       0 |     - | 2.2KB |     0     0B |     0     0B |     3  2.2KB | 2.2KB |   1  1.0
+total |     4  2.9KB     0B       0 |     - |  783B |     1   745B |     0     0B |     6  5.1KB | 2.2KB |   2  6.7
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
 Flushes: 1
-Compactions: 1  estimated debt: 1.5KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 2.9KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 0B
-Compression types: snappy: 2
-Block cache: 4 entries (1.5KB)  hit rate: 0.0%
-Table cache: 1 entries (832B)  hit rate: 42.9%
+Compression types: snappy: 4
+Block cache: 2 entries (787B)  hit rate: 0.0%
+Table cache: 0 entries (0B)  hit rate: 50.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -911,7 +971,6 @@ Ingestions: 1  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
-       pebble-ingest,     latency: {BlockBytes:127 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 batch
 set b 3
@@ -920,11 +979,13 @@ set b 3
 flush
 ----
 L0.1:
-  000011:[b#14,SET-b#14,SET]
+  000013:[b#14,SET-b#14,SET]
 L0.0:
-  000009:[b#13,SET-b#13,SET]
+  000011:[b#13,SET-b#13,SET]
 L6:
-  000008:[a#0,SET-c#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
 
 # Local table size increases due to flush.
 metrics
@@ -938,21 +999,21 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   758B     0B       0 |     - | 2.2KB |     0     0B |     0     0B |     1   758B | 2.2KB |   1  0.3
-total |     3  2.2KB     0B       0 |     - |  811B |     1   745B |     0     0B |     5  4.4KB | 2.2KB |   3  5.6
+    6 |     3  2.2KB     0B       0 |     - | 2.2KB |     0     0B |     0     0B |     3  2.2KB | 2.2KB |   1  1.0
+total |     5  3.6KB     0B       0 |     - |  811B |     1   745B |     0     0B |     7  5.9KB | 2.2KB |   3  7.4
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 44B  written: 66B (50% overhead)
 Flushes: 2
-Compactions: 1  estimated debt: 2.2KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 3.6KB  in progress: 0 (0B)
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 742B
-Compression types: snappy: 3
-Block cache: 4 entries (1.5KB)  hit rate: 0.0%
-Table cache: 1 entries (832B)  hit rate: 42.9%
+Compression types: snappy: 5
+Block cache: 2 entries (787B)  hit rate: 0.0%
+Table cache: 0 entries (0B)  hit rate: 50.0%
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -960,7 +1021,6 @@ Ingestions: 1  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
-       pebble-ingest,     latency: {BlockBytes:127 BlockBytesInCache:0 BlockReadDuration:10ms}
 
 # Reopen DB, to ensure stats are consistent. Also, reopened DB is not
 # configured to write shared tables.
@@ -978,19 +1038,19 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   758B     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
-total |     3  2.2KB     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   3  0.0
+    6 |     3  2.2KB     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+total |     5  3.6KB     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   3  0.0
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 1
-Compactions: 0  estimated debt: 2.2KB  in progress: 0 (0B)
+Compactions: 0  estimated debt: 3.6KB  in progress: 0 (0B)
              default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (512KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 742B
-Compression types: snappy: 3
+Compression types: snappy: 5
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -1004,7 +1064,9 @@ Iter category stats:
 compact a-z
 ----
 L6:
-  000016:[a#0,SET-c#0,SET]
+  000008:[a#0,SET-a#0,SET]
+  000018:[b#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
 
 # All tables are local after compaction.
 metrics zero-cache-hits-misses
@@ -1018,8 +1080,8 @@ level | tables  size val-bl vtables | score |   in  | tables  size | tables  siz
     3 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     4 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
     5 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0
-    6 |     1   758B     0B       0 |     - | 1.5KB |     0     0B |     0     0B |     1   758B | 2.2KB |   1  0.5
-total |     1   758B     0B       0 |     - |    0B |     0     0B |     0     0B |     1   758B | 2.2KB |   1  0.0
+    6 |     3  2.2KB     0B       0 |     - | 1.5KB |     0     0B |     0     0B |     1   745B | 2.2KB |   1  0.5
+total |     3  2.2KB     0B       0 |     - |    0B |     0     0B |     0     0B |     1   745B | 2.2KB |   1  0.0
 -------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 1
@@ -1029,8 +1091,8 @@ MemTables: 1 (512KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 758B
-Compression types: snappy: 1
+Local tables size: 745B
+Compression types: snappy: 3
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -1039,4 +1101,4 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:354 BlockBytesInCache:0 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:342 BlockBytesInCache:0 BlockReadDuration:30ms}
