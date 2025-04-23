@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -90,6 +91,9 @@ type RawRowWriter struct {
 	// nil, or the full keys otherwise.
 	filter          filterWriter
 	indexPartitions []bufferedIndexBlock
+	// indexPartitionsSizeSum is the sum of the sizes of all index blocks in
+	// indexPartitions.
+	indexPartitionsSizeSum atomic.Uint64
 
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
@@ -1376,6 +1380,7 @@ func (w *RawRowWriter) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) e
 	part.block = w.indexBlockAlloc[:n:n]
 	w.indexBlockAlloc = w.indexBlockAlloc[n:]
 	w.indexPartitions = append(w.indexPartitions, part)
+	w.indexPartitionsSizeSum.Add(uint64(len(bk)))
 	return nil
 }
 
@@ -1702,9 +1707,33 @@ func (w *RawRowWriter) EstimatedSize() uint64 {
 	if w == nil {
 		return 0
 	}
-	return w.coordination.sizeEstimate.size() +
-		uint64(w.dataBlockBuf.dataBlock.EstimatedSize()) +
-		w.indexBlock.estimatedSize()
+
+	// Begin with the estimated size of the data blocks that have already been
+	// flushed to the file.
+	size := w.coordination.sizeEstimate.size()
+	// Add the size of value blocks. If any value blocks have already been
+	// finished, these blocks will contribute post-compression size. If there is
+	// currently an unfinished value block, it will contribute its pre-compression
+	// size.
+	if w.valueBlockWriter != nil {
+		size += w.valueBlockWriter.Size()
+	}
+
+	// Add the size of the completed but unflushed index partitions, the
+	// unfinished data block, the unfinished index block, the unfinished range
+	// deletion block, and the unfinished range key block.
+	//
+	// All of these sizes are uncompressed sizes. It's okay to be pessimistic
+	// here and use the uncompressed size because all this memory is buffered
+	// until the sstable is finished.  Including the uncompressed size bounds
+	// the memory usage used by the writer to the physical size limit.
+	size += w.indexPartitionsSizeSum.Load()
+	size += uint64(w.dataBlockBuf.dataBlock.EstimatedSize())
+	size += w.indexBlock.estimatedSize()
+	size += uint64(w.rangeDelBlock.EstimatedSize())
+	size += uint64(w.rangeKeyBlock.EstimatedSize())
+	// TODO(jackson): Account for the size of the filter block.
+	return size
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
