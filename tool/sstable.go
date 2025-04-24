@@ -15,14 +15,18 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -96,12 +100,15 @@ properties are pretty-printed or displayed in a verbose/raw format.
 		Run:  s.runProperties,
 	}
 	s.Scan = &cobra.Command{
-		Use:   "scan <sstables>",
+		Use:   "scan <sstables> [manifest-dir]",
 		Short: "print sstable records",
 		Long: `
 Print the records in the sstables. The sstables are scanned in command line
 order which means the records will be printed in that order. Raw range
 tombstones are displayed interleaved with point records.
+
+When --blob-mode=load is specified, the path to a directory containing a 
+manifest and blob file must be provided as the last argument.
 `,
 		Args: cobra.MinimumNArgs(1),
 		Run:  s.runScan,
@@ -320,6 +327,19 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	// If in blob load mode, the last argument is the path to our directory
+	// containing the manifest(s) and blob file(s).
+	blobMode := ConvertToBlobRefMode(s.blobMode)
+	var blobDir string
+	if blobMode == BlobRefModeLoad {
+		if len(args) < 2 {
+			fmt.Fprintf(stderr, "when --blob-mode=load is specified, the path to a "+
+				"directory containing a manifest and blob file must be provided as the last argument")
+			return
+		}
+		blobDir = args[len(args)-1]
+		args = args[:len(args)-1]
+	}
 	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
@@ -335,15 +355,26 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		var blobContext sstable.TableBlobContext
-		switch ConvertToBlobRefMode(s.blobMode) {
+		switch blobMode {
 		case BlobRefModePrint:
 			blobContext = sstable.DebugHandlesBlobContext
+		case BlobRefModeLoad:
+			blobRefs, err := findAndReadManifests(stderr, s.opts.FS, blobDir)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			provider := debugReaderProvider{
+				fs:  s.opts.FS,
+				dir: blobDir,
+			}
+			s.fmtValue.mustSet("[%s]")
+			var vf *blob.ValueFetcher
+			vf, blobContext = sstable.LoadValBlobContext(&provider, blobRefs)
+			defer func() { _ = vf.Close() }()
 		default:
 			blobContext = sstable.AssertNoBlobHandles
 		}
-		// TODO(annie): Adjust to support two modes: one that surfaces the raw
-		// blob value handles, and one that fetches the blob values from blob
-		// files uncovered by scanning the directory entries. See #4448.
 		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end, blobContext)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
@@ -555,4 +586,67 @@ func (s *sstableT) foreachSstable(
 			}
 		})
 	}
+}
+
+// findAndReadManifests finds and reads all manifests in the specified
+// directory to gather blob references.
+func findAndReadManifests(
+	stderr io.Writer, fs vfs.FS, dir string,
+) (manifest.BlobReferences, error) {
+	var manifests []fileLoc
+	walk(stderr, fs, dir, func(path string) {
+		ft, fileNum, ok := base.ParseFilename(fs, path)
+		if !ok {
+			return
+		}
+		fl := fileLoc{DiskFileNum: fileNum, path: path}
+		switch ft {
+		case base.FileTypeManifest:
+			manifests = append(manifests, fl)
+		}
+	})
+	if len(manifests) == 0 {
+		return nil, errors.New("no MANIFEST files found in the given path")
+	}
+	blobMetas := make(map[base.DiskFileNum]struct{})
+	for _, fl := range manifests {
+		func() {
+			mf, err := fs.Open(fl.path)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return
+			}
+			defer mf.Close()
+
+			rr := record.NewReader(mf, 0 /* logNum */)
+			for {
+				r, err := rr.Next()
+				if err != nil {
+					if err != io.EOF {
+						fmt.Fprintf(stderr, "%s: %s\n", fl.path, err)
+					}
+					break
+				}
+				var ve manifest.VersionEdit
+				if err = ve.Decode(r); err != nil {
+					fmt.Fprintf(stderr, "%s: %s\n", fl.path, err)
+					break
+				}
+				for _, bf := range ve.NewBlobFiles {
+					if _, ok := blobMetas[bf.FileNum]; !ok {
+						blobMetas[bf.FileNum] = struct{}{}
+					}
+				}
+			}
+		}()
+	}
+	blobRefs := make(manifest.BlobReferences, len(blobMetas))
+	i := 0
+	for fn := range blobMetas {
+		blobRefs[i] = manifest.BlobReference{
+			FileNum: fn,
+		}
+		i++
+	}
+	return blobRefs, nil
 }
