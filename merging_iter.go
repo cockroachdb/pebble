@@ -555,7 +555,7 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 			l.iterKV = nil
 			m.heap.pop()
 		} else if m.heap.len() > 1 {
-			m.heap.fix(0)
+			m.heap.fixTop()
 		}
 		if l.rangeDelIterGeneration != oldRangeDelIterGeneration {
 			// The rangeDelIter changed which indicates that the l.iter moved to the
@@ -760,7 +760,7 @@ func (m *mergingIter) prevEntry(l *mergingIterLevel) error {
 	oldRangeDelIterGeneration := l.rangeDelIterGeneration
 	if l.iterKV = l.iter.Prev(); l.iterKV != nil {
 		if m.heap.len() > 1 {
-			m.heap.fix(0)
+			m.heap.fixTop()
 		}
 		if l.rangeDelIterGeneration != oldRangeDelIterGeneration && l.rangeDelIter != nil {
 			// The rangeDelIter changed which indicates that the l.iter moved to the
