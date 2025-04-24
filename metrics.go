@@ -310,6 +310,14 @@ type Metrics struct {
 			// ZombieCount is the number of zombie tables.
 			ZombieCount uint64
 		}
+
+		// Whether the initial stats collection (for existing tables on Open) is
+		// complete.
+		InitialStatsCollectionComplete bool
+		// The count of recently created sstables that need stats collection. This
+		// does not include sstables that existed when the DB was opened, so the
+		// value is only useful when InitialStatsCollectionComplete is true.
+		PendingStatsCollectionCount int64
 	}
 
 	BlobFiles struct {
@@ -723,7 +731,17 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	if count := m.Table.CompressedCountUnknown; count > 0 {
 		w.Printf(" unknown: %d", redact.Safe(count))
 	}
-	w.Print("\n")
+	w.Printf("\n")
+
+	w.Printf("Table stats: ")
+	if !m.Table.InitialStatsCollectionComplete {
+		w.Printf("initial load in progress")
+	} else if m.Table.PendingStatsCollectionCount == 0 {
+		w.Printf("all loaded")
+	} else {
+		w.Printf("%s", humanize.Count.Int64(m.Table.PendingStatsCollectionCount))
+	}
+	w.Printf("\n")
 
 	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
