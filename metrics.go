@@ -764,6 +764,12 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		formatSharedCacheMetrics(w, &m.SecondaryCacheMetrics, "Secondary cache")
 	}
 
+	w.Printf("Range key sets: %s  Tombstones: %s  Total missized tombstones encountered: %s\n",
+		humanize.Count.Uint64(m.Keys.RangeKeySetsCount),
+		humanize.Count.Uint64(m.Keys.TombstoneCount),
+		humanize.Count.Uint64(m.Keys.MissizedTombstonesCount),
+	)
+
 	w.Printf("Snapshots: %d  earliest seq num: %d\n",
 		redact.Safe(m.Snapshots.Count),
 		redact.Safe(m.Snapshots.EarliestSeqNum))
