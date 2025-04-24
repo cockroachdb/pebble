@@ -2413,7 +2413,7 @@ func (i *Iterator) Close() error {
 			keyBuf               []byte
 			boundsBuf            [2][]byte
 			prefixOrFullSeekKey  []byte
-			mergingIterHeapItems []*mergingIterLevel
+			mergingIterHeapItems []mergingIterHeapItem
 		)
 
 		// Avoid caching the key buf if it is overly large. The constant is fairly

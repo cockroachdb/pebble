@@ -11,8 +11,24 @@ package pebble
 type mergingIterHeap struct {
 	cmp     Compare
 	reverse bool
-	items   []*mergingIterLevel
+	items   []mergingIterHeapItem
+	// TODO: remove.
+	cmpNeededCount int
+	cmpCalledCount int
 }
+
+type mergingIterHeapItem struct {
+	*mergingIterLevel
+	winnerChild winnerChild
+}
+
+type winnerChild uint8
+
+const (
+	winnerChildUnknown winnerChild = iota
+	winnerChildLeft
+	winnerChildRight
+)
 
 // len returns the number of elements in the heap.
 func (h *mergingIterHeap) len() int {
@@ -41,7 +57,8 @@ func (h *mergingIterHeap) less(i, j int) bool {
 
 // swap is an internal method, used to swap the elements at i and j.
 func (h *mergingIterHeap) swap(i, j int) {
-	h.items[i], h.items[j] = h.items[j], h.items[i]
+	h.items[i].mergingIterLevel, h.items[j].mergingIterLevel =
+		h.items[j].mergingIterLevel, h.items[i].mergingIterLevel
 }
 
 // init initializes the heap.
@@ -63,10 +80,11 @@ func (h *mergingIterHeap) fixTop() {
 func (h *mergingIterHeap) pop() *mergingIterLevel {
 	n := h.len() - 1
 	h.swap(0, n)
+	h.items[n/2].winnerChild = winnerChildUnknown
 	h.down(0, n)
 	item := h.items[n]
 	h.items = h.items[:n]
-	return item
+	return item.mergingIterLevel
 }
 
 // down is an internal method. It moves i down the heap, which has length n,
@@ -78,13 +96,27 @@ func (h *mergingIterHeap) down(i, n int) {
 			break
 		}
 		j := j1 // left child
-		if j2 := j1 + 1; j2 < n && h.less(j2, j1) {
-			j = j2 // = 2*i + 2  // right child
+		if j2 := j1 + 1; j2 < n {
+			h.cmpNeededCount++
+			if h.items[i].winnerChild == winnerChildUnknown {
+				h.cmpCalledCount++
+				if h.less(j2, j1) {
+					h.items[i].winnerChild = winnerChildRight
+				} else {
+					h.items[i].winnerChild = winnerChildLeft
+				}
+			}
+			if h.items[i].winnerChild == winnerChildRight {
+				j = j2 // = 2*i + 2  // right child
+			}
 		}
+		h.cmpNeededCount++
+		h.cmpCalledCount++
 		if !h.less(j, i) {
 			break
 		}
 		h.swap(i, j)
+		h.items[i].winnerChild = winnerChildUnknown
 		i = j
 	}
 }
