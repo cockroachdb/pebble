@@ -59,7 +59,7 @@ func newPebbleDB(dir string) DB {
 		CacheSize:                   cacheSize,
 		Comparer:                    &cockroachkvs.Comparer,
 		DisableWAL:                  disableWAL,
-		FormatMajorVersion:          pebble.FormatNewest,
+		FormatMajorVersion:          pebble.FormatExperimentalValueSeparation,
 		KeySchema:                   cockroachkvs.KeySchema.Name,
 		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
 		L0CompactionThreshold:       2,
@@ -79,6 +79,16 @@ func newPebbleDB(dir string) DB {
 	// In FormatColumnarBlocks (the value of FormatNewest at the time of
 	// writing), columnar blocks are only written if explicitly opted into.
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	// Enable value separation. Note the minimum size of 512 means that only the
+	// variant of the ycsb benchmarks that uses 1024 values will result in any
+	// value separation.
+	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+		return pebble.ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           512,
+			MaxBlobReferenceDepth: 10,
+		}
+	}
 
 	// Running the tool should not start compactions due to garbage.
 	opts.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 {
