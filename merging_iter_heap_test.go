@@ -31,9 +31,11 @@ func TestMergingIterHeap(t *testing.T) {
 			}
 		}
 	}
-	levels := make([]*mergingIterLevel, 2+rng.IntN(15))
+	// Memtable + 5 populated levels = 6 is the baseline. All levels populated +
+	// memtable + batch = 9.
+	levels := make([]mergingIterHeapItem, 6+rng.IntN(6))
 	for i := range levels {
-		levels[i] = &mergingIterLevel{
+		levels[i].mergingIterLevel = &mergingIterLevel{
 			index: i,
 			iterKV: &base.InternalKV{
 				K: InternalKey{
@@ -78,17 +80,25 @@ func TestMergingIterHeap(t *testing.T) {
 	}
 	heap.init()
 	checkHeap()
-	for i := 0; i < 50 && heap.len() > 0; i++ {
+	for i := 0; i < 400 && heap.len() > 0; i++ {
 		t.Logf("heap len: %d", heap.len())
-		if rng.IntN(10) == 0 {
+		if rn := rng.IntN(100); rn <= 1 {
+			// 1% of the cases, the iterator is exhausted.
 			t.Logf("%d: popping heap index %d", i, heap.items[0].index)
 			heap.items[0].iterKV = nil
 			heap.pop()
-		} else {
+		} else if rn <= 16 {
+			// 15% of the cases, change the key of the top element. It will stay the
+			// top in only 25% of these, so 11.25% will change the top of the heap.
 			t.Logf("%d: fixing heap", i)
 			heap.items[0].iterKV.K.UserKey = makeKey()
+			heap.fixTop()
+		} else {
+			t.Logf("%d: noop fixing heap", i)
 			heap.fixTop()
 		}
 		checkHeap()
 	}
+	t.Logf("cmp needed=%d called=%d(frac=%.2f)", heap.cmpNeededCount, heap.cmpCalledCount,
+		float64(heap.cmpCalledCount)/float64(heap.cmpNeededCount))
 }

@@ -332,7 +332,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 }
 
 func buildMergingIterTables(
-	b *testing.B, blockSize, restartInterval, count int,
+	b *testing.B, ch *cache.Handle, blockSize, restartInterval, count int,
 ) ([]*sstable.Reader, [][]byte, func()) {
 	mem := vfs.NewMem()
 	files := make([]vfs.File, count)
@@ -378,10 +378,6 @@ func buildMergingIterTables(
 			b.Fatal(err)
 		}
 	}
-	c := NewCache(128 << 20 /* 128MB */)
-	defer c.Unref()
-	ch := c.NewHandle()
-	defer ch.Close()
 
 	var opts sstable.ReaderOptions
 	opts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: ch}
@@ -417,7 +413,11 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, keys, cleanup := buildMergingIterTables(b, blockSize, restartInterval, count)
+							c := NewCache(128 << 20 /* 128MB */)
+							defer c.Unref()
+							ch := c.NewHandle()
+							defer ch.Close()
+							readers, keys, cleanup := buildMergingIterTables(b, ch, blockSize, restartInterval, count)
 							defer cleanup()
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
@@ -450,7 +450,11 @@ func BenchmarkMergingIterNext(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, _, cleanup := buildMergingIterTables(b, blockSize, restartInterval, count)
+							c := NewCache(128 << 20 /* 128MB */)
+							defer c.Unref()
+							ch := c.NewHandle()
+							defer ch.Close()
+							readers, _, cleanup := buildMergingIterTables(b, ch, blockSize, restartInterval, count)
 							defer cleanup()
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
@@ -486,7 +490,11 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 				for _, count := range []int{1, 2, 3, 4, 5} {
 					b.Run(fmt.Sprintf("count=%d", count),
 						func(b *testing.B) {
-							readers, _, cleanup := buildMergingIterTables(b, blockSize, restartInterval, count)
+							c := NewCache(128 << 20 /* 128MB */)
+							defer c.Unref()
+							ch := c.NewHandle()
+							defer ch.Close()
+							readers, _, cleanup := buildMergingIterTables(b, ch, blockSize, restartInterval, count)
 							defer cleanup()
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
