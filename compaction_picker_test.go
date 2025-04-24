@@ -407,7 +407,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 
 				vb := manifest.MakeVirtualBackings()
 				p := newCompactionPickerByScore(vers, l0Organizer, &vb, opts, nil)
-				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
+				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt())
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -1417,7 +1417,7 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 			f.InitPhysicalBacking()
 			f.Stats.PointDeletionsBytesEstimate = tc.pointDelEstimateBytes
 			f.Stats.RangeDeletionsBytesEstimate = tc.rangeDelEstimateBytes
-			gotBytes := compensatedSize(f)
+			gotBytes := tableCompensatedSize(f)
 			require.Equal(t, tc.wantBytes, gotBytes)
 		})
 	}
@@ -1690,7 +1690,7 @@ func TestCompactionPickerScores(t *testing.T) {
 			buf.Reset()
 			fmt.Fprintf(&buf, "L       Size   Score\n")
 			for l, lm := range d.Metrics().Levels {
-				fmt.Fprintf(&buf, "L%-3d\t%-7s%.1f\n", l, humanize.Bytes.Int64(lm.TablesSize), lm.CompensatedScore)
+				fmt.Fprintf(&buf, "L%-3d\t%-7s%.1f\n", l, humanize.Bytes.Int64(lm.AggregateSize()), lm.CompensatedScore)
 			}
 			return buf.String()
 

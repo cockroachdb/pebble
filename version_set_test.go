@@ -97,6 +97,9 @@ func TestVersionSet(t *testing.T) {
 			if err != nil {
 				td.Fatalf(t, "%v", err)
 			}
+			for _, bm := range ve.NewBlobFiles {
+				blobMetas[bm.FileNum] = bm
+			}
 			for _, nf := range ve.NewTables {
 				// Set a size that depends on FileNum.
 				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
@@ -105,9 +108,9 @@ func TestVersionSet(t *testing.T) {
 				if !nf.Meta.Virtual {
 					createFile(nf.Meta.FileBacking.DiskFileNum)
 				}
-			}
-			for _, bm := range ve.NewBlobFiles {
-				blobMetas[bm.FileNum] = bm
+				for i := range nf.Meta.BlobReferences {
+					nf.Meta.BlobReferences[i].Metadata = blobMetas[nf.Meta.BlobReferences[i].FileNum]
+				}
 			}
 
 			for de := range ve.DeletedTables {
@@ -134,6 +137,7 @@ func TestVersionSet(t *testing.T) {
 				}
 				lm.TablesCount--
 				lm.TablesSize -= int64(f.Size)
+				lm.EstimatedReferencesSize -= f.EstimatedReferenceSize()
 			}
 
 			mu.Lock()

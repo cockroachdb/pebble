@@ -133,7 +133,7 @@ func (d *DB) collectTableStats() bool {
 	maybeCompact := false
 	for _, c := range collected {
 		c.tableMetadata.Stats = c.TableStats
-		maybeCompact = maybeCompact || fileCompensation(c.tableMetadata) > 0
+		maybeCompact = maybeCompact || tableTombstoneCompensation(c.tableMetadata) > 0
 		sanityCheckStats(c.tableMetadata, d.opts.Logger, "collected stats")
 		c.tableMetadata.StatsMarkValid()
 	}

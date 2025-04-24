@@ -354,7 +354,7 @@ func (vs *versionSet) load(
 		l := &vs.metrics.Levels[i]
 		l.TablesCount = int64(newVersion.Levels[i].Len())
 		files := newVersion.Levels[i].Slice()
-		l.TablesSize = int64(files.SizeSum())
+		l.TablesSize = int64(files.TableSizeSum())
 	}
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
@@ -738,25 +738,33 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		l := &vs.metrics.Levels[i]
 		l.TablesCount = int64(newVersion.Levels[i].Len())
 		l.VirtualTablesCount = newVersion.Levels[i].NumVirtual
-		l.VirtualTablesSize = newVersion.Levels[i].VirtualSize
-		l.TablesSize = int64(newVersion.Levels[i].Size())
-
+		l.VirtualTablesSize = newVersion.Levels[i].VirtualTableSize
+		l.TablesSize = int64(newVersion.Levels[i].TableSize())
+		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
 		l.Sublevels = 0
 		if l.TablesCount > 0 {
 			l.Sublevels = 1
 		}
 		if invariants.Enabled {
 			levelFiles := newVersion.Levels[i].Slice()
-			if size := int64(levelFiles.SizeSum()); l.TablesSize != size {
+			if size := int64(levelFiles.TableSizeSum()); l.TablesSize != size {
 				vs.opts.Logger.Fatalf("versionSet metrics L%d Size = %d, actual size = %d", i, l.TablesSize, size)
 			}
+			refSize := uint64(0)
+			for f := range levelFiles.All() {
+				refSize += f.EstimatedReferenceSize()
+			}
+			if refSize != l.EstimatedReferencesSize {
+				vs.opts.Logger.Fatalf("versionSet metrics L%d EstimatedReferencesSize = %d, recomputed size = %d", i, l.EstimatedReferencesSize, refSize)
+			}
+
 			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTablesCount {
 				vs.opts.Logger.Fatalf(
 					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
 					i, l.VirtualTablesCount, nVirtual,
 				)
 			}
-			if vSize := levelFiles.VirtualSizeSum(); vSize != l.VirtualTablesSize {
+			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTablesSize {
 				vs.opts.Logger.Fatalf(
 					"versionSet metrics L%d Virtual size = %d, actual size = %d",
 					i, l.VirtualTablesSize, vSize,
@@ -1245,6 +1253,7 @@ func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
 		}
 		lm.TablesCount++
 		lm.TablesSize += int64(nf.Meta.Size)
+		lm.EstimatedReferencesSize += nf.Meta.EstimatedReferenceSize()
 	}
 	return m
 }

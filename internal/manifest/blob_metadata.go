@@ -40,6 +40,31 @@ type BlobReference struct {
 	Metadata *BlobFileMetadata
 }
 
+// EstimatedPhysicalSize returns an estimate of the physical size of the blob
+// reference, in bytes. It's calculated by scaling the blob file's physical size
+// according to the ValueSize of the blob reference relative to the total
+// ValueSize of the blob file.
+func (br *BlobReference) EstimatedPhysicalSize() uint64 {
+	if invariants.Enabled {
+		if br.ValueSize > br.Metadata.ValueSize {
+			panic(errors.AssertionFailedf("pebble: blob reference value size %d is greater than the blob file's value size %d",
+				br.ValueSize, br.Metadata.ValueSize))
+		}
+		if br.ValueSize == 0 {
+			panic(errors.AssertionFailedf("pebble: blob reference value size %d is zero", br.ValueSize))
+		}
+		if br.Metadata.ValueSize == 0 {
+			panic(errors.AssertionFailedf("pebble: blob file value size %d is zero", br.Metadata.ValueSize))
+		}
+	}
+	//                         br.ValueSize
+	//   Reference size =  --------------------   ×  br.Metadata.Size
+	//                     br.Metadata.ValueSize
+	//
+	// We perform the multiplication first to avoid floating point arithmetic.
+	return (br.ValueSize * br.Metadata.Size) / br.Metadata.ValueSize
+}
+
 // BlobFileMetadata is metadata describing a blob value file.
 type BlobFileMetadata struct {
 	// FileNum is the file number.

@@ -17,24 +17,26 @@ import (
 // LevelMetadata contains metadata for all of the files within
 // a level of the LSM.
 type LevelMetadata struct {
-	level     int
-	totalSize uint64
+	level          int
+	totalTableSize uint64
+	totalRefSize   uint64
 	// NumVirtual is the number of virtual sstables in the level.
 	NumVirtual uint64
-	// VirtualSize is the size of the virtual sstables in the level.
-	VirtualSize uint64
-	tree        btree
+	// VirtualTableSize is the size of the virtual sstables in the level.
+	VirtualTableSize uint64
+	tree             btree
 }
 
 // clone makes a copy of the level metadata, implicitly increasing the ref
 // count of every file contained within lm.
 func (lm *LevelMetadata) clone() LevelMetadata {
 	return LevelMetadata{
-		level:       lm.level,
-		totalSize:   lm.totalSize,
-		NumVirtual:  lm.NumVirtual,
-		VirtualSize: lm.VirtualSize,
-		tree:        lm.tree.Clone(),
+		level:            lm.level,
+		totalTableSize:   lm.totalTableSize,
+		totalRefSize:     lm.totalRefSize,
+		NumVirtual:       lm.NumVirtual,
+		VirtualTableSize: lm.VirtualTableSize,
+		tree:             lm.tree.Clone(),
 	}
 }
 
@@ -52,10 +54,11 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	lm.level = level
 	lm.tree = makeBTree(cmp, bcmp, files)
 	for _, f := range files {
-		lm.totalSize += f.Size
+		lm.totalTableSize += f.Size
+		lm.totalRefSize += f.EstimatedReferenceSize()
 		if f.Virtual {
 			lm.NumVirtual++
-			lm.VirtualSize += f.Size
+			lm.VirtualTableSize += f.Size
 		}
 	}
 	return lm
@@ -85,19 +88,21 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 	if err := lm.tree.Insert(f); err != nil {
 		return err
 	}
-	lm.totalSize += f.Size
+	lm.totalTableSize += f.Size
+	lm.totalRefSize += f.EstimatedReferenceSize()
 	if f.Virtual {
 		lm.NumVirtual++
-		lm.VirtualSize += f.Size
+		lm.VirtualTableSize += f.Size
 	}
 	return nil
 }
 
 func (lm *LevelMetadata) remove(f *TableMetadata) {
-	lm.totalSize -= f.Size
+	lm.totalTableSize -= f.Size
+	lm.totalRefSize -= f.EstimatedReferenceSize()
 	if f.Virtual {
 		lm.NumVirtual--
-		lm.VirtualSize -= f.Size
+		lm.VirtualTableSize -= f.Size
 	}
 	lm.tree.Delete(f, assertNoObsoleteFiles{})
 }
@@ -112,9 +117,24 @@ func (lm *LevelMetadata) Len() int {
 	return lm.tree.Count()
 }
 
-// Size returns the cumulative size of all the files within the level.
-func (lm *LevelMetadata) Size() uint64 {
-	return lm.totalSize
+// AggregateSize returns the aggregate size estimate of all sstables within the
+// level, plus an estimate of the physical size of values stored externally in
+// blob files. This quantity is equal to TableSize() + EstimatedReferenceSize().
+func (lm *LevelMetadata) AggregateSize() uint64 {
+	return lm.totalTableSize + lm.totalRefSize
+}
+
+// TableSize returns the cumulative size of all sstables within the level. This
+// quantity does NOT include the size of values stored externally in blob files.
+func (lm *LevelMetadata) TableSize() uint64 {
+	return lm.totalTableSize
+}
+
+// EstimatedReferenceSize returns an estimate of the physical size of all the
+// file's blob references in the table. This sum, added to TableSize(), yields
+// AggregateSize().
+func (lm *LevelMetadata) EstimatedReferenceSize() uint64 {
+	return lm.totalRefSize
 }
 
 // Iter constructs a LevelIterator over the entire level.
@@ -313,9 +333,20 @@ func (ls *LevelSlice) Len() int {
 	return ls.length
 }
 
-// SizeSum sums the size of all files in the slice. Its runtime is linear in
+// AggregateSizeSum sums the size of all sstables in the slice, inclusive of the
+// estimated physical size of tables' blob references. Its runtime is linear in
 // the length of the slice.
-func (ls *LevelSlice) SizeSum() uint64 {
+func (ls *LevelSlice) AggregateSizeSum() uint64 {
+	var sum uint64
+	for f := range ls.All() {
+		sum += f.Size + f.EstimatedReferenceSize()
+	}
+	return sum
+}
+
+// TableSizeSum sums the size of all sstables in the slice. Its runtime is
+// linear in the length of the slice.
+func (ls *LevelSlice) TableSizeSum() uint64 {
 	var sum uint64
 	for f := range ls.All() {
 		sum += f.Size
@@ -335,9 +366,9 @@ func (ls *LevelSlice) NumVirtual() uint64 {
 	return n
 }
 
-// VirtualSizeSum returns the sum of the sizes of the virtual sstables in the
-// level.
-func (ls *LevelSlice) VirtualSizeSum() uint64 {
+// VirtualTableSizeSum returns the sum of the sizes of the virtual sstables in
+// the level.
+func (ls *LevelSlice) VirtualTableSizeSum() uint64 {
 	var sum uint64
 	for f := range ls.All() {
 		if f.Virtual {

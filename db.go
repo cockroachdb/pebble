@@ -2056,7 +2056,7 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
 	*metrics = d.mu.versions.metrics
-	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
+	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt()
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
 	// TODO(radu): split this to separate the download compactions.
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount + d.mu.compact.downloadingCount)

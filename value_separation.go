@@ -299,21 +299,23 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		return compact.ValueSeparationMetadata{}, err
 	}
 	vs.writer = nil
+	meta := &manifest.BlobFileMetadata{
+		FileNum:      vs.objMeta.DiskFileNum,
+		Size:         stats.FileLen,
+		ValueSize:    stats.UncompressedValueBytes,
+		CreationTime: uint64(time.Now().Unix()),
+	}
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{{
 			FileNum:   vs.objMeta.DiskFileNum,
 			ValueSize: stats.UncompressedValueBytes,
+			Metadata:  meta,
 		}},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,
 		BlobFileStats:      stats,
 		BlobFileObject:     vs.objMeta,
-		BlobFileMetadata: &manifest.BlobFileMetadata{
-			FileNum:      vs.objMeta.DiskFileNum,
-			Size:         stats.FileLen,
-			ValueSize:    stats.UncompressedValueBytes,
-			CreationTime: uint64(time.Now().Unix()),
-		},
+		BlobFileMetadata:   meta,
 	}, nil
 }
 

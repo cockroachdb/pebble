@@ -413,7 +413,7 @@ func newCompaction(
 	c.kind = pc.kind
 
 	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
-		c.startLevel.files.Len() == 1 && c.grandparents.SizeSum() <= c.maxOverlapBytes {
+		c.startLevel.files.Len() == 1 && c.grandparents.AggregateSizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a move or copy from one level
 		// to the next. We avoid such a move if there is lots of overlapping
 		// grandparent data. Otherwise, the move could create a parent file
@@ -534,7 +534,7 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 	// incur this linear cost in compact.Runner.TableSplitLimit() too, so we are
 	// also willing to pay it now. We could approximate this cheaply by using the
 	// mean file size of Lbase.
-	grandparentFileBytes := c.grandparents.SizeSum()
+	grandparentFileBytes := c.grandparents.AggregateSizeSum()
 	fileCountUpperBoundDueToGrandparents :=
 		float64(grandparentFileBytes) / float64(c.maxOverlapBytes)
 	if fileCountUpperBoundDueToGrandparents > acceptableFileCount {
@@ -1289,9 +1289,11 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 		levelMetrics.TablesCount--
 		levelMetrics.TablesSize -= int64(m.Size)
+		levelMetrics.EstimatedReferencesSize -= m.EstimatedReferenceSize()
 		for i := range added {
 			levelMetrics.TablesCount++
 			levelMetrics.TablesSize += int64(added[i].Meta.Size)
+			levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
 		}
 	}
 
@@ -3206,14 +3208,21 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 			}] = f
 		}
 	}
+	// Add any newly constructed blob files to the version edit.
+	ve.NewBlobFiles = make([]*manifest.BlobFileMetadata, len(result.Blobs))
+	for i := range result.Blobs {
+		ve.NewBlobFiles[i] = result.Blobs[i].Metadata
+	}
 
-	startLevelBytes := c.startLevel.files.SizeSum()
+	startLevelBytes := c.startLevel.files.TableSizeSum()
 	outputMetrics := &LevelMetrics{
-		BytesIn:   startLevelBytes,
-		BytesRead: c.outputLevel.files.SizeSum(),
+		BytesIn: startLevelBytes,
+		// TODO(jackson):  This BytesRead value does not include any blob files
+		// written. It either should, or we should add a separate metric.
+		BytesRead: c.outputLevel.files.TableSizeSum(),
 	}
 	if len(c.extraLevels) > 0 {
-		outputMetrics.BytesIn += c.extraLevels[0].files.SizeSum()
+		outputMetrics.BytesIn += c.extraLevels[0].files.TableSizeSum()
 	}
 	outputMetrics.BytesRead += outputMetrics.BytesIn
 
@@ -3226,12 +3235,6 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		outputMetrics.MultiLevel.BytesInTop = startLevelBytes
 		outputMetrics.MultiLevel.BytesIn = outputMetrics.BytesIn
 		outputMetrics.MultiLevel.BytesRead = outputMetrics.BytesRead
-	}
-
-	// Add any newly constructed blob files to the version edit.
-	ve.NewBlobFiles = make([]*manifest.BlobFileMetadata, len(result.Blobs))
-	for i := range result.Blobs {
-		ve.NewBlobFiles[i] = result.Blobs[i].Metadata
 	}
 
 	inputLargestSeqNumAbsolute := c.inputLargestSeqNumAbsolute()
@@ -3288,6 +3291,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 			outputMetrics.TablesFlushed++
 			outputMetrics.BytesFlushed += fileMeta.Size
 		}
+		outputMetrics.EstimatedReferencesSize += fileMeta.EstimatedReferenceSize()
 		outputMetrics.TablesSize += int64(fileMeta.Size)
 		outputMetrics.TablesCount++
 		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize

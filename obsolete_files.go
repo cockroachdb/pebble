@@ -326,8 +326,9 @@ func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 	pacerInfo.freeBytes = d.calculateDiskAvailableBytes()
 	d.mu.Lock()
 	pacerInfo.obsoleteBytes = d.mu.versions.metrics.Table.ObsoleteSize
-	pacerInfo.liveBytes = uint64(d.mu.versions.metrics.Total().TablesSize)
+	total := d.mu.versions.metrics.Total()
 	d.mu.Unlock()
+	pacerInfo.liveBytes = uint64(total.AggregateSize())
 	return pacerInfo
 }
 
