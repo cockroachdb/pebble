@@ -4,15 +4,39 @@
 
 package pebble
 
+import "github.com/cockroachdb/pebble/internal/invariants"
+
 // mergingIterHeap is a heap of mergingIterLevels. It only reads
 // mergingIterLevel.iterKV.K.
 //
 // REQUIRES: Every mergingIterLevel.iterKV is non-nil.
+//
+// TODO(sumeer): consider using golang generics.
 type mergingIterHeap struct {
 	cmp     Compare
 	reverse bool
-	items   []*mergingIterLevel
+	items   []mergingIterHeapItem
 }
+
+type mergingIterHeapItem struct {
+	*mergingIterLevel
+	winnerChild winnerChild
+}
+
+// winnerChild represents the child that is less than the other child, i.e.,
+// would get promoted up the heap before the other child if the parent was
+// removed, or the parent's value "increased".
+//
+// It can be unknown, represented by winnerChildUnknown. If both children are
+// equal, or if there is only one child, any of the three values are
+// permitted.
+type winnerChild uint8
+
+const (
+	winnerChildUnknown winnerChild = iota
+	winnerChildLeft
+	winnerChildRight
+)
 
 // len returns the number of elements in the heap.
 func (h *mergingIterHeap) len() int {
@@ -41,7 +65,8 @@ func (h *mergingIterHeap) less(i, j int) bool {
 
 // swap is an internal method, used to swap the elements at i and j.
 func (h *mergingIterHeap) swap(i, j int) {
-	h.items[i], h.items[j] = h.items[j], h.items[i]
+	h.items[i].mergingIterLevel, h.items[j].mergingIterLevel =
+		h.items[j].mergingIterLevel, h.items[i].mergingIterLevel
 }
 
 // init initializes the heap.
@@ -63,10 +88,14 @@ func (h *mergingIterHeap) fixTop() {
 func (h *mergingIterHeap) pop() *mergingIterLevel {
 	n := h.len() - 1
 	h.swap(0, n)
+	// Parent of n does not know which child is the winner. But since index n is
+	// removed, the parent of n will have at most one child, and so the value of
+	// winnerChild is irrelevant, and we don't need to do:
+	//  h.items[(n-1)/2].winnerChild = winnerChildUnknown
 	h.down(0, n)
 	item := h.items[n]
 	h.items = h.items[:n]
-	return item
+	return item.mergingIterLevel
 }
 
 // down is an internal method. It moves i down the heap, which has length n,
@@ -78,13 +107,34 @@ func (h *mergingIterHeap) down(i, n int) {
 			break
 		}
 		j := j1 // left child
-		if j2 := j1 + 1; j2 < n && h.less(j2, j1) {
-			j = j2 // = 2*i + 2  // right child
+		if j2 := j1 + 1; j2 < n {
+			if h.items[i].winnerChild == winnerChildUnknown {
+				if h.less(j2, j1) {
+					h.items[i].winnerChild = winnerChildRight
+				} else {
+					h.items[i].winnerChild = winnerChildLeft
+				}
+			} else if invariants.Enabled {
+				wc := winnerChildUnknown
+				if h.less(j1, j2) {
+					wc = winnerChildLeft
+				} else if h.less(j2, j1) {
+					wc = winnerChildRight
+				}
+				if wc != winnerChildUnknown && wc != h.items[i].winnerChild {
+					panic("winnerChild mismatch")
+				}
+			}
+			if h.items[i].winnerChild == winnerChildRight {
+				j = j2 // = 2*i + 2  // right child
+			}
 		}
 		if !h.less(j, i) {
 			break
 		}
+		// NB: j is a child of i.
 		h.swap(i, j)
+		h.items[i].winnerChild = winnerChildUnknown
 		i = j
 	}
 }
