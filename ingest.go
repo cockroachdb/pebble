@@ -2070,6 +2070,7 @@ func (d *DB) ingestApply(
 			}
 			levelMetrics.TablesCount++
 			levelMetrics.TablesSize += int64(m.Size)
+			levelMetrics.EstimatedReferencesSize += m.EstimatedReferenceSize()
 			levelMetrics.BytesIngested += m.Size
 			levelMetrics.TablesIngested++
 		}
@@ -2088,9 +2089,11 @@ func (d *DB) ingestApply(
 			}
 			levelMetrics.TablesCount--
 			levelMetrics.TablesSize -= int64(m.Size)
+			levelMetrics.EstimatedReferencesSize -= m.EstimatedReferenceSize()
 			for i := range added {
 				levelMetrics.TablesCount++
 				levelMetrics.TablesSize += int64(added[i].Meta.Size)
+				levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
 			}
 		}
 		if exciseSpan.Valid() {

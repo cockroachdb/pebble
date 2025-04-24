@@ -48,12 +48,18 @@ type LevelMetrics struct {
 	Sublevels int32
 	// The total count of sstables in the level.
 	TablesCount int64
-	// The total size in bytes of the sstables in the level.
+	// The total size in bytes of the sstables in the level. Note that if tables
+	// contain references to blob files, this quantity does not include the the
+	// size of the blob files or the referenced values.
 	TablesSize int64
 	// The total number of virtual sstables in the level.
 	VirtualTablesCount uint64
 	// The total size of the virtual sstables in the level.
 	VirtualTablesSize uint64
+	// The estimated total physical size of all blob references across all
+	// sstables in the level. The physical size is estimated based on the size
+	// of referenced values and the values' blob file's compression ratios.
+	EstimatedReferencesSize uint64
 	// The level's compaction score, used to rank levels (0 if the level doesn't
 	// need compaction). This is equal to the uncompensatedScoreRatio in the
 	// candidateLevel or 0 depending on when candidateLevel.shouldCompact().
@@ -124,12 +130,22 @@ type LevelMetrics struct {
 	}
 }
 
+// AggregateSize returns an estimated physical size of the level's sstables and
+// their referenced values stored in blob files. The size of physical sstables
+// is exactly known. Virtual sstables' sizes are estimated, and the size of
+// values stored in blob files is estimated based on the volume of referenced
+// data and the blob file's compression ratio.
+func (m *LevelMetrics) AggregateSize() int64 {
+	return m.TablesSize + int64(m.EstimatedReferencesSize)
+}
+
 // Add updates the counter metrics for the level.
 func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesCount += u.TablesCount
+	m.TablesSize += u.TablesSize
 	m.VirtualTablesCount += u.VirtualTablesCount
 	m.VirtualTablesSize += u.VirtualTablesSize
-	m.TablesSize += u.TablesSize
+	m.EstimatedReferencesSize += u.EstimatedReferencesSize
 	m.BytesIn += u.BytesIn
 	m.BytesIngested += u.BytesIngested
 	m.BytesMoved += u.BytesMoved

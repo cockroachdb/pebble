@@ -221,15 +221,20 @@ func (vs *defineDBValueSeparator) Add(
 	lv := iv.LazyValue()
 	// If we haven't seen this blob file before, fabricate a metadata for it.
 	fileNum := lv.Fetcher.BlobFileNum
-	if _, ok := vs.metas[fileNum]; !ok {
-		vs.metas[fileNum] = &manifest.BlobFileMetadata{
+	meta, ok := vs.metas[fileNum]
+	if !ok {
+		meta = &manifest.BlobFileMetadata{
 			FileNum:      fileNum,
 			CreationTime: uint64(time.Now().Unix()),
 		}
+		vs.metas[fileNum] = meta
 	}
+	meta.Size += uint64(lv.Fetcher.Attribute.ValueLen)
+	meta.ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+
 	// If it's not already in pbr.inputBlobMetadatas, add it.
-	if !slices.Contains(vs.pbr.inputBlobMetadatas, vs.metas[fileNum]) {
-		vs.pbr.inputBlobMetadatas = append(vs.pbr.inputBlobMetadatas, vs.metas[fileNum])
+	if !slices.Contains(vs.pbr.inputBlobMetadatas, meta) {
+		vs.pbr.inputBlobMetadatas = append(vs.pbr.inputBlobMetadatas, meta)
 	}
 	// Return a KV that uses the original key but our constructed blob reference.
 	vs.kv.K = kv.K

@@ -525,6 +525,21 @@ func (m *TableMetadata) VirtualMeta() *TableMetadata {
 	return m
 }
 
+// EstimatedReferenceSize returns the estimated physical size of all the file's
+// blob references in the table. This sum, added to the sstable's size, yields
+// an approximation of the overall size of the data represented by the table.
+//
+// EstimatedReferenceSize is an estimate, but it's guaranteed to be stable over
+// the lifetime of the table. This is necessary to correctly maintain
+// incrementally-updated metrics.
+func (m *TableMetadata) EstimatedReferenceSize() uint64 {
+	var size uint64
+	for i := range m.BlobReferences {
+		size += m.BlobReferences[i].EstimatedPhysicalSize()
+	}
+	return size
+}
+
 // FileBacking either backs a single physical sstable, or one or more virtual
 // sstables.
 //
@@ -1311,7 +1326,7 @@ func NewVersionForTesting(
 			v.Levels[l].tree.bcmp = btreeCmpSmallestKey(comparer.Compare)
 		}
 		for _, f := range files[l] {
-			v.Levels[l].totalSize += f.Size
+			v.Levels[l].totalTableSize += f.Size
 		}
 	}
 	l0Organizer.ResetForTesting(v)

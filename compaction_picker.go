@@ -59,7 +59,7 @@ type compactionPickerMetrics struct {
 type compactionPicker interface {
 	getMetrics([]compactionInfo) compactionPickerMetrics
 	getBaseLevel() int
-	estimatedCompactionDebt(l0ExtraSize uint64) uint64
+	estimatedCompactionDebt() uint64
 	pickAutoScore(env compactionEnv) (pc *pickedCompaction)
 	pickAutoNonScore(env compactionEnv) (pc *pickedCompaction)
 	forceBaseLevel1()
@@ -512,7 +512,7 @@ func (pc *pickedCompaction) setupInputs(
 					sizeSum += f.Size
 				}
 			}
-			if sizeSum+pc.outputLevel.files.SizeSum() < maxExpandedBytes {
+			if sizeSum+pc.outputLevel.files.AggregateSizeSum() < maxExpandedBytes {
 				startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
 				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
 					startLevel.files.All(), pc.outputLevel.files.All())
@@ -552,7 +552,7 @@ func (pc *pickedCompaction) grow(
 	if grow0.Len() <= startLevel.files.Len() {
 		return false
 	}
-	if grow0.SizeSum()+pc.outputLevel.files.SizeSum() >= maxExpandedBytes {
+	if grow0.AggregateSizeSum()+pc.outputLevel.files.AggregateSizeSum() >= maxExpandedBytes {
 		return false
 	}
 	// We need to include the outputLevel iter because without it, in a multiLevel scenario,
@@ -570,10 +570,13 @@ func (pc *pickedCompaction) grow(
 	return true
 }
 
-func (pc *pickedCompaction) compactionSize() uint64 {
+// estimatedInputSize returns an estimate of the size of the compaction's
+// inputs, including the estimated physical size of input tables' blob
+// references.
+func (pc *pickedCompaction) estimatedInputSize() uint64 {
 	var bytesToCompact uint64
 	for i := range pc.inputs {
-		bytesToCompact += pc.inputs[i].files.SizeSum()
+		bytesToCompact += pc.inputs[i].files.AggregateSizeSum()
 	}
 	return bytesToCompact
 }
@@ -660,16 +663,17 @@ func (c *candidateLevelInfo) shouldCompact() bool {
 	return c.compensatedScoreRatio >= compactionScoreThreshold
 }
 
-func fileCompensation(f *tableMetadata) uint64 {
-	return f.Stats.PointDeletionsBytesEstimate + f.Stats.RangeDeletionsBytesEstimate
+func tableTombstoneCompensation(t *tableMetadata) uint64 {
+	return t.Stats.PointDeletionsBytesEstimate + t.Stats.RangeDeletionsBytesEstimate
 }
 
-// compensatedSize returns f's file size, inflated according to compaction
+// tableCompensatedSize returns t's size, including an estimate of the physical
+// size of its external references, and inflated according to compaction
 // priorities.
-func compensatedSize(f *tableMetadata) uint64 {
+func tableCompensatedSize(t *tableMetadata) uint64 {
 	// Add in the estimate of disk space that may be reclaimed by compacting the
-	// file's tombstones.
-	return f.Size + fileCompensation(f)
+	// table's tombstones.
+	return t.Size + t.EstimatedReferenceSize() + tableTombstoneCompensation(t)
 }
 
 // totalCompensatedSize computes the compensated size over a table metadata
@@ -679,7 +683,7 @@ func compensatedSize(f *tableMetadata) uint64 {
 func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 	var sz uint64
 	for f := range iter {
-		sz += compensatedSize(f)
+		sz += tableCompensatedSize(f)
 	}
 	return sz
 }
@@ -731,15 +735,15 @@ func (p *compactionPickerByScore) getBaseLevel() int {
 
 // estimatedCompactionDebt estimates the number of bytes which need to be
 // compacted before the LSM tree becomes stable.
-func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
+func (p *compactionPickerByScore) estimatedCompactionDebt() uint64 {
 	if p == nil {
 		return 0
 	}
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := l0ExtraSize + p.vers.Levels[0].Size()
-	lbaseSize := p.vers.Levels[p.baseLevel].Size()
+	bytesAddedToNextLevel := p.vers.Levels[0].AggregateSize()
+	lbaseSize := p.vers.Levels[p.baseLevel].AggregateSize()
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && lbaseSize > 0 {
@@ -752,8 +756,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 	// loop invariant: At the beginning of the loop, bytesAddedToNextLevel is the
 	// bytes added to `level` in the loop.
 	for level := p.baseLevel; level < numLevels-1; level++ {
-		levelSize := p.vers.Levels[level].Size() + bytesAddedToNextLevel
-		nextLevelSize := p.vers.Levels[level+1].Size()
+		levelSize := p.vers.Levels[level].AggregateSize() + bytesAddedToNextLevel
+		nextLevelSize := p.vers.Levels[level+1].AggregateSize()
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -795,11 +799,11 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	firstNonEmptyLevel := -1
 	var dbSize uint64
 	for level := 1; level < numLevels; level++ {
-		if p.vers.Levels[level].Size() > 0 {
+		if p.vers.Levels[level].AggregateSize() > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
 			}
-			dbSize += p.vers.Levels[level].Size()
+			dbSize += p.vers.Levels[level].AggregateSize()
 		}
 	}
 	for _, c := range inProgressCompactions {
@@ -819,7 +823,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	}
 
 	dbSizeBelowL0 := dbSize
-	dbSize += p.vers.Levels[0].Size()
+	dbSize += p.vers.Levels[0].AggregateSize()
 	p.dbSizeBytes = dbSize
 	if dbSizeBelowL0 == 0 {
 		// No levels for L1 and up contain any data. Target L0 compactions for the
@@ -911,7 +915,7 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]leve
 		}
 
 		for _, input := range c.inputs {
-			actualSize := input.files.SizeSum()
+			actualSize := input.files.AggregateSizeSum()
 			compensatedSize := totalCompensatedSize(input.files.All())
 
 			if input.level != c.outputLevel {
@@ -944,7 +948,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	for level := 1; level < numLevels; level++ {
 		compensatedLevelSize :=
 			// Actual file size.
-			p.vers.Levels[level].Size() +
+			p.vers.Levels[level].AggregateSize() +
 				// Point deletions.
 				*pointDeletionsBytesEstimateAnnotator.LevelAnnotation(p.vers.Levels[level]) +
 				// Range deletions.
@@ -952,7 +956,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 				// Adjustments for in-progress compactions.
 				sizeAdjust[level].compensated()
 		scores[level].compensatedScore = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
-		scores[level].uncompensatedScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		scores[level].uncompensatedScore = float64(p.vers.Levels[level].AggregateSize()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
 
 	// Adjust each level's {compensated, uncompensated}Score by the uncompensatedScore
@@ -1178,7 +1182,7 @@ func pickCompactionSeedFile(
 			continue
 		}
 
-		compSz := compensatedSize(f) + responsibleForGarbageBytes(virtualBackings, f)
+		compSz := tableCompensatedSize(f) + responsibleForGarbageBytes(virtualBackings, f)
 		scaledRatio := overlappingBytes * 1024 / compSz
 		if scaledRatio < smallestRatio {
 			smallestRatio = scaledRatio
@@ -1256,7 +1260,7 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	// compactions.
 	compactionDebtCompactions := 0
 	if p.opts.Experimental.CompactionDebtConcurrency > 0 {
-		compactionDebt := p.estimatedCompactionDebt(0)
+		compactionDebt := p.estimatedCompactionDebt()
 		compactionDebtCompactions = int(compactionDebt / p.opts.Experimental.CompactionDebtConcurrency)
 	}
 
@@ -1649,7 +1653,7 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 				continue
 			}
 			overlaps := p.vers.Overlaps(lastNonEmptyLevel, f.UserKeyBounds())
-			if float64(overlaps.SizeSum())/float64(f.Size) > maxOverlappingRatio {
+			if float64(overlaps.AggregateSizeSum())/float64(f.Size) > maxOverlappingRatio {
 				continue
 			}
 			if candidate == nil || candidate.Stats.TombstoneDenseBlocksRatio < f.Stats.TombstoneDenseBlocksRatio {
@@ -1715,7 +1719,7 @@ func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) 
 	if !opts.Experimental.MultiLevelCompactionHeuristic.allowL0() && pc.startLevel.level == 0 {
 		return pc
 	}
-	if pc.compactionSize() > expandedCompactionByteSizeLimit(
+	if pc.estimatedInputSize() > expandedCompactionByteSizeLimit(
 		opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes) {
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
@@ -1753,7 +1757,7 @@ func (pc *pickedCompaction) predictedWriteAmp() float64 {
 	var bytesToCompact uint64
 	var higherLevelBytes uint64
 	for i := range pc.inputs {
-		levelSize := pc.inputs[i].files.SizeSum()
+		levelSize := pc.inputs[i].files.AggregateSizeSum()
 		bytesToCompact += levelSize
 		if i != len(pc.inputs)-1 {
 			higherLevelBytes += levelSize
@@ -1766,7 +1770,7 @@ func (pc *pickedCompaction) overlappingRatio() float64 {
 	var higherLevelBytes uint64
 	var lowestLevelBytes uint64
 	for i := range pc.inputs {
-		levelSize := pc.inputs[i].files.SizeSum()
+		levelSize := pc.inputs[i].files.AggregateSizeSum()
 		if i == len(pc.inputs)-1 {
 			lowestLevelBytes += levelSize
 			continue
@@ -1806,7 +1810,7 @@ func (wa WriteAmpHeuristic) pick(
 	// We consider the addition of a level as an "expansion" of the compaction.
 	// If pcMulti is past the expanded compaction byte size limit already,
 	// we don't consider it.
-	if pcMulti.compactionSize() >= expandedCompactionByteSizeLimit(
+	if pcMulti.estimatedInputSize() >= expandedCompactionByteSizeLimit(
 		opts, adjustedOutputLevel(pcMulti.outputLevel.level, pcMulti.baseLevel), diskAvailBytes) {
 		return pcOrig
 	}
@@ -2021,14 +2025,14 @@ func pickReadTriggeredCompactionHelper(
 
 	// Prevent read compactions which are too wide.
 	outputOverlaps := pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
-	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
+	if outputOverlaps.AggregateSizeSum() > pc.maxReadCompactionBytes {
 		return nil
 	}
 
 	// Prevent compactions which start with a small seed file X, but overlap
 	// with over allowedCompactionWidth * X file sizes in the output layer.
 	const allowedCompactionWidth = 35
-	if outputOverlaps.SizeSum() > overlapSlice.SizeSum()*allowedCompactionWidth {
+	if outputOverlaps.AggregateSizeSum() > overlapSlice.AggregateSizeSum()*allowedCompactionWidth {
 		return nil
 	}
 

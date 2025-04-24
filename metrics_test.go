@@ -100,6 +100,7 @@ func exampleMetrics() Metrics {
 		l.VirtualTablesCount = uint64(base) + 1
 		l.VirtualTablesSize = base + 3
 		l.TablesSize = int64(base) + 2
+		l.EstimatedReferencesSize = base + 14
 		if i < numLevels-1 {
 			l.Score = 1.0 + float64(i+1)*0.1
 		}

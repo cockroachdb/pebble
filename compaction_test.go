@@ -80,7 +80,7 @@ func (p *compactionPickerForTesting) getBaseLevel() int {
 	return p.baseLevel
 }
 
-func (p *compactionPickerForTesting) estimatedCompactionDebt(l0ExtraSize uint64) uint64 {
+func (p *compactionPickerForTesting) estimatedCompactionDebt() uint64 {
 	return 0
 }
 
