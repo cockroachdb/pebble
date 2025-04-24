@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -392,6 +393,7 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
+		opts.CacheOpts.FileNum = base.DiskFileNum(i)
 		readers[i], err = sstable.NewReader(context.Background(), readable, opts)
 		if err != nil {
 			b.Fatal(err)
@@ -535,6 +537,7 @@ func buildLevelsForMergingIterSeqSeek(
 	b *testing.B,
 	ch *cache.Handle,
 	blockSize, restartInterval, levelCount int,
+	keyPrefix []byte,
 	keyOffset int,
 	writeRangeTombstoneToLowestLevel bool,
 	writeBloomFilters bool,
@@ -592,8 +595,11 @@ func buildLevelsForMergingIterSeqSeek(
 
 	i := keyOffset
 	w := writers[0][0]
+	makeKey := func(i int) []byte {
+		return append(slices.Clone(keyPrefix), []byte(fmt.Sprintf("%08d", i))...)
+	}
 	for ; w.EstimatedSize() < targetL6FirstFileSize; i++ {
-		key := []byte(fmt.Sprintf("%08d", i))
+		key := makeKey(i)
 		keys = append(keys, key)
 		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
 		require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */))
@@ -601,7 +607,7 @@ func buildLevelsForMergingIterSeqSeek(
 	if writeRangeTombstoneToLowestLevel {
 		require.NoError(b, w.EncodeSpan(keyspan.Span{
 			Start: keys[0],
-			End:   []byte(fmt.Sprintf("%08d", i)),
+			End:   makeKey(i),
 			Keys: []keyspan.Key{{
 				Trailer: base.MakeTrailer(1, InternalKeyKindRangeDelete),
 			}},
@@ -613,7 +619,7 @@ func buildLevelsForMergingIterSeqSeek(
 			require.NoError(b, writers[j][0].Add(ikey, nil, false /* forceObsolete */))
 		}
 	}
-	lastKey := []byte(fmt.Sprintf("%08d", i))
+	lastKey := makeKey(i)
 	keys = append(keys, lastKey)
 	for j := 0; j < len(files); j++ {
 		lastIKey := base.MakeInternalKey(lastKey, base.SeqNum(j), InternalKeyKindSet)
@@ -641,6 +647,7 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 
 	readers = make([][]*sstable.Reader, levelCount)
+	fileCount := 0
 	for i := range files {
 		for j := range files[i] {
 			f, err := mem.Open(fmt.Sprintf("bench%d_%d", i, j))
@@ -651,6 +658,8 @@ func buildLevelsForMergingIterSeqSeek(
 			if err != nil {
 				b.Fatal(err)
 			}
+			opts.CacheOpts.FileNum = base.DiskFileNum(fileCount)
+			fileCount++
 			r, err := sstable.NewReader(context.Background(), readable, opts)
 			if err != nil {
 				b.Fatal(err)
@@ -731,7 +740,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 				ch := c.NewHandle()
 				defer ch.Close()
 				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-					b, ch, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
+					b, ch, blockSize, restartInterval, levelCount, nil, 0 /* keyOffset */, false, false, false)
 				m := buildMergingIter(readers, levelSlices)
 				keyCount := len(keys)
 				b.ResetTimer()
@@ -764,7 +773,7 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 	ch := c.NewHandle()
 	defer ch.Close()
 	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-		b, ch, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
+		b, ch, blockSize, restartInterval, levelCount, nil, 0 /* keyOffset */, false, false, false)
 
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {
@@ -798,5 +807,39 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 		for j := range readers[i] {
 			readers[i][j].Close()
 		}
+	}
+}
+
+// Benchmarks seeking and nexting when almost all the data is in L6.
+func BenchmarkMergingIterSeekAndNextWithDominantL6AndLongKey(b *testing.B) {
+	const blockSize = 32 << 10
+
+	c := NewCache(128 << 20 /* 128MB */)
+	defer c.Unref()
+	restartInterval := 16
+	levelCount := 5
+	for _, keyPrefixLength := range []int{0, 20, 50, 100} {
+		b.Run(fmt.Sprintf("key-prefix=%d", keyPrefixLength),
+			func(b *testing.B) {
+				ch := c.NewHandle()
+				defer ch.Close()
+				keyPrefix := bytes.Repeat([]byte{'a'}, keyPrefixLength)
+				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
+					b, ch, blockSize, restartInterval, levelCount, keyPrefix, 0 /* keyOffset */, false, false, false)
+				m := buildMergingIter(readers, levelSlices)
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					k := m.SeekGE(keys[0], base.SeekGEFlagsNone)
+					for k != nil {
+						k = m.Next()
+					}
+				}
+				m.Close()
+				for i := range readers {
+					for j := range readers[i] {
+						readers[i][j].Close()
+					}
+				}
+			})
 	}
 }

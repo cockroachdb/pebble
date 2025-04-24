@@ -1726,7 +1726,7 @@ func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTo
 					levels = 1
 				}
 				readers[index], levelSlices[index], keys = buildLevelsForMergingIterSeqSeek(
-					b, ch, blockSize, restartInterval, levels, keyOffset, withTombstone, bloom, twoLevelIndex)
+					b, ch, blockSize, restartInterval, levels, nil, keyOffset, withTombstone, bloom, twoLevelIndex)
 			}
 		}
 	}
@@ -1892,7 +1892,7 @@ func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
 				ch := c.NewHandle()
 				defer ch.Close()
 				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-					b, ch, blockSize, restartInterval, levelCount, 0, /* keyOffset */
+					b, ch, blockSize, restartInterval, levelCount, nil, 0, /* keyOffset */
 					false, false, twoLevelIndex)
 				m := buildMergingIter(readers, levelSlices)
 				iter := Iterator{
@@ -1935,7 +1935,7 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 	ch := c.NewHandle()
 	defer ch.Close()
 	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
-		b, ch, blockSize, restartInterval, levelCount, keyOffset, false, false, false)
+		b, ch, blockSize, restartInterval, levelCount, nil, keyOffset, false, false, false)
 	var keys [][]byte
 	for i := 0; i < keyOffset; i++ {
 		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))
