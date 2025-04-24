@@ -245,7 +245,7 @@ func (r *Runner) WriteTable(objMeta objstorage.ObjectMetadata, tw sstable.RawWri
 		return
 	}
 	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
-	r.stats.CumulativeWrittenSize += writerMeta.Size
+	r.stats.CumulativeWrittenSize += writerMeta.Size + valSepMeta.BlobFileStats.FileLen
 	r.stats.CumulativeBlobReferenceSize += valSepMeta.BlobReferenceSize
 	r.stats.CumulativeBlobFileSize += valSepMeta.BlobFileStats.FileLen
 }
@@ -273,10 +273,6 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 		iteratedKeys++
 		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
 			r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
-				// TODO(jackson): CumulativeWrittenSize does not include blob files
-				// already written by this compaction, and
-				// ValueSeparation.EstimatedFileSize does not either. So this
-				// CumWriteBytes is incomplete.
 				CumWriteBytes: r.stats.CumulativeWrittenSize + tw.EstimatedSize() +
 					r.cfg.ValueSeparation.EstimatedFileSize(),
 			})
@@ -337,11 +333,12 @@ func (r *Runner) writeKeysToTable(tw sstable.RawWriter) (splitKey []byte, _ erro
 	r.stats.CumulativePinnedKeys += pinnedCount
 	r.stats.CumulativePinnedSize += pinnedKeySize + pinnedValueSize
 
+	// TODO(jackson): CumulativeStats may block if the compaction scheduler
+	// wants to pace the compaction. We should thread through knowledge of
+	// whether or not this is the final sstable of the compaction, in which case
+	// all work has been completed and pacing would only needlessly delay the
+	// installation of the version edit.
 	r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
-		// TODO(jackson): CumulativeWrittenSize does not include blob files
-		// already written by this compaction, and
-		// ValueSeparation.EstimatedFileSize does not either. So this
-		// CumWriteBytes is incomplete.
 		CumWriteBytes: r.stats.CumulativeWrittenSize +
 			tw.EstimatedSize() +
 			r.cfg.ValueSeparation.EstimatedFileSize(),
