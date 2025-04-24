@@ -1675,11 +1675,7 @@ func TestCompactionPickerScores(t *testing.T) {
 			buf.Reset()
 			fmt.Fprintf(&buf, "L       Size   Score\n")
 			for l, lm := range d.Metrics().Levels {
-				if l < numLevels-1 {
-					fmt.Fprintf(&buf, "L%-3d\t%-7s%.1f\n", l, humanize.Bytes.Int64(lm.TablesSize), lm.Score)
-				} else {
-					fmt.Fprintf(&buf, "L%-3d\t%-7s-\n", l, humanize.Bytes.Int64(lm.TablesSize))
-				}
+				fmt.Fprintf(&buf, "L%-3d\t%-7s%.1f\n", l, humanize.Bytes.Int64(lm.TablesSize), lm.CompensatedScore)
 			}
 			return buf.String()
 

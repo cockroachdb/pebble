@@ -529,7 +529,7 @@ func TestCompactionsQuiesce(t *testing.T) {
 			require.Greater(t, m.Final.Compact.Count, int64(5))
 			require.Equal(t, int64(0), m.Final.Compact.NumInProgress)
 			for l := 0; l < len(m.Final.Levels)-1; l++ {
-				require.Less(t, m.Final.Levels[l].Score, 1.0)
+				require.Zero(t, m.Final.Levels[l].Score)
 			}
 		}(i)
 	}
