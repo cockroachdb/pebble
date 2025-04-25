@@ -261,7 +261,7 @@ base: 4
 
 queue
 ----
-L5->L6: 6.2
+L5->L6: 1.1
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   500002:[0002#2,SET-0002#2,SET] marked as compacting
   500003:[0003#3,SET-0003#3,SET] marked as compacting
