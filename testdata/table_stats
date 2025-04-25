@@ -15,7 +15,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 57
+point-deletions-bytes-estimate: 2
 range-deletions-bytes-estimate: 0
 
 compact a-c
@@ -546,7 +546,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 2
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 112572
+point-deletions-bytes-estimate: 111127
 range-deletions-bytes-estimate: 0
 
 # Try a missized point tombstone. It should appear in the Metrics after the
@@ -676,7 +676,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 39
+point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -685,7 +685,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 39
+point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 0
 
 # Create an sstable with a range key set.

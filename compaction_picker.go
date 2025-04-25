@@ -661,7 +661,7 @@ func (c *candidateLevelInfo) shouldCompact() bool {
 }
 
 func fileCompensation(f *tableMetadata) uint64 {
-	return uint64(f.Stats.PointDeletionsBytesEstimate) + f.Stats.RangeDeletionsBytesEstimate
+	return f.Stats.PointDeletionsBytesEstimate + f.Stats.RangeDeletionsBytesEstimate
 }
 
 // compensatedSize returns f's file size, inflated according to compaction
@@ -671,14 +671,6 @@ func compensatedSize(f *tableMetadata) uint64 {
 	// file's tombstones.
 	return f.Size + fileCompensation(f)
 }
-
-// compensatedSizeAnnotator is a manifest.Annotator that annotates B-Tree
-// nodes with the sum of the files' compensated sizes. Compensated sizes may
-// change once a table's stats are loaded asynchronously, so its values are
-// marked as cacheable only if a file's stats have been loaded.
-var compensatedSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
-	return compensatedSize(f), f.StatsValid()
-})
 
 // totalCompensatedSize computes the compensated size over a table metadata
 // iterator. Note that this function is linear in the files available to the
@@ -947,7 +939,15 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	}
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
-		compensatedLevelSize := *compensatedSizeAnnotator.LevelAnnotation(p.vers.Levels[level]) + sizeAdjust[level].compensated()
+		compensatedLevelSize :=
+			// Actual file size.
+			p.vers.Levels[level].Size() +
+				// Point deletions.
+				*pointDeletionsBytesEstimateAnnotator.LevelAnnotation(p.vers.Levels[level]) +
+				// Range deletions.
+				*rangeDeletionsBytesEstimateAnnotator.LevelAnnotation(p.vers.Levels[level]) +
+				// Adjustments for in-progress compactions.
+				sizeAdjust[level].compensated()
 		scores[level].compensatedScore = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
 		scores[level].uncompensatedScore = float64(p.vers.Levels[level].Size()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}

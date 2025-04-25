@@ -496,6 +496,10 @@ func (d *DB) estimateSizesBeneath(
 	// calculate a compression ratio of 0 which is not accurate for the file's
 	// own tombstones.
 	fileSum += file.Size
+	// TODO(sumeer): The entryCount includes the tombstones, which can be small,
+	// resulting in a lower than expected avgValueLogicalSize. For an example of
+	// this effect see the estimate in testdata/compaction_picker_scores (search
+	// for "point-deletions-bytes-estimate: 163850").
 	entryCount += fileProps.NumEntries
 	keySum += fileProps.RawKeySize
 	valSum += fileProps.RawValueSize
@@ -551,6 +555,13 @@ func (d *DB) estimateSizesBeneath(
 	// additional compression ratio scaling if necessary.
 	uncompressedSum := float64(keySum + valSum)
 	compressionRatio = float64(fileSum) / uncompressedSum
+	if compressionRatio > 1 {
+		// We can get huge compression ratios due to the fixed overhead of files
+		// containing a tiny amount of data. By setting this to 1, we are ignoring
+		// that overhead, but we accept that tradeoff since the total bytes in
+		// such overhead is not large.
+		compressionRatio = 1
+	}
 	avgValueLogicalSize = (float64(valSum) / float64(entryCount))
 	return avgValueLogicalSize, compressionRatio, nil
 }
@@ -568,6 +579,9 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	// Otherwise, estimating the range for the file requires
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
+	// TODO(jbowens): When there are multiple sub-levels in L0 and the RANGEDEL
+	// is from a higher sub-level, we incorrectly skip the files in the lower
+	// sub-levels when estimating this overlap.
 	for l := level + 1; l < numLevels; l++ {
 		for file := range v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end)).All() {
 			// Determine whether we need to update size estimates and hint seqnums
@@ -831,6 +845,13 @@ func estimatePhysicalSizes(
 	//
 	uncompressedSum := props.RawKeySize + props.RawValueSize
 	compressionRatio = float64(fileSize) / float64(uncompressedSum)
+	if compressionRatio > 1 {
+		// We can get huge compression ratios due to the fixed overhead of files
+		// containing a tiny amount of data. By setting this to 1, we are ignoring
+		// that overhead, but we accept that tradeoff since the total bytes in
+		// such overhead is not large.
+		compressionRatio = 1
+	}
 	avgValLogicalSize = (float64(props.RawValueSize) / float64(props.NumEntries))
 	return avgValLogicalSize, compressionRatio
 }
@@ -1055,6 +1076,22 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) 
 // values are marked as cacheable only if a file's stats have been loaded.
 var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
 	return f.Stats.ValueBlocksSize, f.StatsValid()
+})
+
+// pointDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
+// B-Tree nodes with the sum of the files' PointDeletionsBytesEstimate. This
+// value may change once a table's stats are loaded asynchronously, so its
+// values are marked as cacheable only if a file's stats have been loaded.
+var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+	return f.Stats.PointDeletionsBytesEstimate, f.StatsValid()
+})
+
+// rangeDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
+// B-Tree nodes with the sum of the files' RangeDeletionsBytesEstimate. This
+// value may change once a table's stats are loaded asynchronously, so its
+// values are marked as cacheable only if a file's stats have been loaded.
+var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+	return f.Stats.RangeDeletionsBytesEstimate, f.StatsValid()
 })
 
 // compressionTypeAnnotator is a manifest.Annotator that annotates B-tree
