@@ -1083,3 +1083,81 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:354 BlockBytesInCache:0 BlockReadDuration:30ms}
+
+
+init
+----
+
+batch
+set a 1
+set b 2
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-a#10,SET]
+  000006:[b#11,SET-b#11,SET]
+
+batch
+del-sized c 500
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-a#10,SET]
+  000006:[b#11,SET-b#11,SET]
+  000008:[c#12,DELSIZED-c#12,DELSIZED]
+
+batch
+del-range a c
+----
+
+flush
+----
+L0.1:
+  000010:[a#13,RANGEDEL-b#inf,RANGEDEL]
+  000011:[b#13,RANGEDEL-c#inf,RANGEDEL]
+L0.0:
+  000005:[a#10,SET-a#10,SET]
+  000006:[b#11,SET-b#11,SET]
+  000008:[c#12,DELSIZED-c#12,DELSIZED]
+
+# TODO(sumeer): investigate (a) 35KB of point garbage bytes, (b) 0B of range garbage.
+metrics
+----
+      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
+    0 |     5  3.7KB     0B       0 |    - 0.50 0.50 |  106B |     0     0B |     0     0B |     5  3.7KB |    0B |   2 35.7
+    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    6 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+total |     5  3.7KB     0B       0 |    -    -    - |  106B |     0     0B |     0     0B |     5  3.8KB |    0B |   2 36.7
+----------------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (0B)  in: 57B  written: 106B (86% overhead)
+Flushes: 3
+Compactions: 0  estimated debt: 0B  in progress: 0 (0B)
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 1 (256KB)
+Zombie tables: 0 (0B, local: 0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Local tables size: 3.7KB
+Compression types: snappy: 5
+Garbage bytes: point-deletions 35KB range-deletions 0B
+Table stats: all loaded
+Block cache: 2 entries (774B)  hit rate: 0.0%
+Table cache: 2 entries (1.6KB)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
+Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}

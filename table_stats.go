@@ -1057,6 +1057,22 @@ var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint
 	return f.Stats.ValueBlocksSize, f.StatsValid()
 })
 
+// pointDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
+// B-Tree nodes with the sum of the files' PointDeletionsBytesEstimate. This
+// value may change once a table's stats are loaded asynchronously, so its
+// values are marked as cacheable only if a file's stats have been loaded.
+var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+	return f.Stats.PointDeletionsBytesEstimate, f.StatsValid()
+})
+
+// rangeDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
+// B-Tree nodes with the sum of the files' RangeDeletionsBytesEstimate. This
+// value may change once a table's stats are loaded asynchronously, so its
+// values are marked as cacheable only if a file's stats have been loaded.
+var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+	return f.Stats.RangeDeletionsBytesEstimate, f.StatsValid()
+})
+
 // compressionTypeAnnotator is a manifest.Annotator that annotates B-tree
 // nodes with the compression type of the file. Its annotation type is
 // compressionTypes. The compression type may change once a table's stats are
