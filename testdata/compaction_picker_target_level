@@ -1095,9 +1095,6 @@ L0->L5: 5.0
   000009:[0001#9,SET-0001#9,SET] marked as compacting
   000010:[0001#10,SET-0001#10,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
-L5->L6: 11.5
-  500005:[0005#5,SET-0005#5,SET] marked as compacting
-  600005:[0005#5,SET-0005#5,SET] marked as compacting
 
 init 5
 0: 10
@@ -1146,9 +1143,6 @@ L0->L5: 5.0
   000009:[0001#9,SET-0001#9,SET] marked as compacting
   000010:[0001#10,SET-0001#10,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
-L5->L6: 10.8
-  500002:[0002#2,SET-0002#2,SET] marked as compacting
-  600002:[0002#2,SET-0002#2,SET] marked as compacting
 
 # Verify that successive manual compactions interleaved with an automatic
 # compaction does not trigger an error.

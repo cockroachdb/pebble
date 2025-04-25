@@ -246,6 +246,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 			case "queue":
 				var b strings.Builder
 				var inProgress []compactionInfo
+				var l0InProgress []manifest.L0Compaction
 				for {
 					env := compactionEnv{
 						diskAvailBytes:          math.MaxUint64,
@@ -257,16 +258,23 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						break
 					}
 					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", pc.startLevel.level, pc.outputLevel.level, pc.score)
+					if pc.outputLevel.level == 0 {
+						// Once we pick one L0->L0 compaction, we'll keep on doing so
+						// because the test isn't marking files as Compacting.
+						break
+					}
 					inProgress = append(inProgress, compactionInfo{
 						inputs:      pc.inputs,
 						outputLevel: pc.outputLevel.level,
 						smallest:    pc.smallest,
 						largest:     pc.largest,
 					})
-					if pc.outputLevel.level == 0 {
-						// Once we pick one L0->L0 compaction, we'll keep on doing so
-						// because the test isn't marking files as Compacting.
-						break
+					if pc.startLevel.level == 0 {
+						l0InProgress = append(l0InProgress, manifest.L0Compaction{
+							Smallest:  pc.smallest,
+							Largest:   pc.largest,
+							IsIntraL0: pc.outputLevel.level == 0,
+						})
 					}
 					for _, cl := range pc.inputs {
 						for f := range cl.files.All() {
@@ -274,6 +282,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 							fmt.Fprintf(&b, "  %s marked as compacting\n", f)
 						}
 					}
+					l0Organizer.InitCompactingFileInfo(l0InProgress)
 				}
 
 				resetCompacting()
