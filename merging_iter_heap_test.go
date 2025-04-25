@@ -102,3 +102,84 @@ func TestMergingIterHeap(t *testing.T) {
 	t.Logf("cmp needed=%d called=%d(frac=%.2f)", heap.cmpNeededCount, heap.cmpCalledCount,
 		float64(heap.cmpCalledCount)/float64(heap.cmpNeededCount))
 }
+
+// TestMergingIterHeapInit only measures the comparison savings during init,
+// with uniform random keys. There is a ~3.7% saving, with the following being
+// a representative result: cmp needed=104325 called=100416(frac=0.9625).
+func TestMergingIterHeapInit(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("Using seed %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+
+	generatedKeys := map[string]struct{}{}
+	// Generates unique keys.
+	makeKey := func() []byte {
+		n := 10 + rng.IntN(20)
+		key := make([]byte, n)
+		for {
+			randStr(key, rng)
+			if _, ok := generatedKeys[string(key)]; ok {
+				continue
+			} else {
+				generatedKeys[string(key)] = struct{}{}
+				return key
+			}
+		}
+	}
+	var cmpNeededCount, cmpCalledCount int
+	for k := 0; k < 10000; k++ {
+		// Memtable + 5 populated levels = 6 is the baseline. All levels populated +
+		// memtable + batch = 9.
+		levels := make([]mergingIterHeapItem, 6+rng.IntN(6))
+		for i := range levels {
+			levels[i].mergingIterLevel = &mergingIterLevel{
+				index: i,
+				iterKV: &base.InternalKV{
+					K: InternalKey{
+						UserKey: makeKey(),
+					},
+				},
+			}
+		}
+		heap := mergingIterHeap{
+			cmp:     base.DefaultComparer.Compare,
+			reverse: rng.IntN(2) != 0,
+			items:   slices.Clone(levels),
+		}
+		checkHeap := func() {
+			for _, item := range heap.items {
+				require.NotNil(t, levels[item.index].iterKV)
+			}
+			count := 0
+			minIndex := 0
+			for i, item := range levels {
+				if item.iterKV == nil {
+					continue
+				}
+				if count == 0 {
+					minIndex = i
+				} else {
+					cmp := heap.cmp(item.iterKV.K.UserKey, levels[minIndex].iterKV.K.UserKey)
+					if (cmp < 0 && !heap.reverse) || (cmp > 0 && heap.reverse) {
+						minIndex = i
+					} else if cmp == 0 {
+						panic("test generated duplicate keys")
+					}
+				}
+				count++
+			}
+			if count == 0 {
+				require.Equal(t, 0, heap.len())
+			} else {
+				require.Equal(t, count, heap.len())
+				require.Equal(t, levels[minIndex].index, heap.items[0].index)
+			}
+		}
+		heap.init()
+		checkHeap()
+		cmpNeededCount += heap.cmpNeededCount
+		cmpCalledCount += heap.cmpCalledCount
+	}
+	t.Logf("cmp needed=%d called=%d(frac=%.4f)", cmpNeededCount, cmpCalledCount,
+		float64(cmpCalledCount)/float64(cmpNeededCount))
+}
