@@ -1404,6 +1404,10 @@ func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 // waitTableStatsInitialLoad waits until the statistics for all files that
 // existed during Open have been loaded; used in tests.
 // The d.mu mutex must be locked while calling this method.
+//
+// TODO(jackson): Consolidate waitTableStatsInitialLoad and waitTableStats. It
+// seems to be possible for loadedInitial to remain indefinitely false in some
+// tests that use waitTableStats today.
 func (d *DB) waitTableStatsInitialLoad() {
 	for !d.mu.tableStats.loadedInitial {
 		d.mu.tableStats.cond.Wait()
