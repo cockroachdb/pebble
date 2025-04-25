@@ -1774,6 +1774,7 @@ func TestIngest(t *testing.T) {
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
 			d.mu.Lock()
+			d.waitTableStatsInitialLoad()
 			d.waitTableStats()
 			d.mu.Unlock()
 
