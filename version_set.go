@@ -838,7 +838,7 @@ func sizeIfLocal(
 }
 
 func (vs *versionSet) incrementCompactions(
-	kind compactionKind, extraLevels []*compactionLevel, pickerMetrics compactionPickerMetrics,
+	kind compactionKind, extraLevels []*compactionLevel, pickerMetrics pickedCompactionMetrics,
 ) {
 	switch kind {
 	case compactionKindDefault:
