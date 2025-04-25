@@ -319,6 +319,20 @@ type Metrics struct {
 			ZombieCount uint64
 		}
 
+		// Garbage bytes.
+		Garbage struct {
+			// PointDeletionsBytesEstimate is the estimated file bytes that will be
+			// saved by compacting all point deletions. This is dependent on table
+			// stats collection, so can be very incomplete until
+			// InitialStatsCollectionComplete becomes true.
+			PointDeletionsBytesEstimate uint64
+			// RangeDeletionsBytesEstimate is the estimated file bytes that will be
+			// saved by compacting all range deletions. This is dependent on table
+			// stats collection, so can be very incomplete until
+			// InitialStatsCollectionComplete becomes true.
+			RangeDeletionsBytesEstimate uint64
+		}
+
 		// Whether the initial stats collection (for existing tables on Open) is
 		// complete.
 		InitialStatsCollectionComplete bool
@@ -725,7 +739,11 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf(" unknown: %d", redact.Safe(count))
 	}
 	w.Printf("\n")
-
+	if m.Table.Garbage.PointDeletionsBytesEstimate > 0 || m.Table.Garbage.RangeDeletionsBytesEstimate > 0 {
+		w.Printf("Garbage: point-deletions %s range-deletions %s\n",
+			humanize.Bytes.Uint64(m.Table.Garbage.PointDeletionsBytesEstimate),
+			humanize.Bytes.Uint64(m.Table.Garbage.RangeDeletionsBytesEstimate))
+	}
 	w.Printf("Table stats: ")
 	if !m.Table.InitialStatsCollectionComplete {
 		w.Printf("initial load in progress")

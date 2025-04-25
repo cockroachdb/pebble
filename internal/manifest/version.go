@@ -66,7 +66,9 @@ type TableStats struct {
 	// granularity and is not updated if compactions beneath the table reduce
 	// the amount of reclaimable disk space. It also does not account for
 	// overlapping data in L0 and ignores L0 sublevels, but the error that
-	// introduces is expected to be small.
+	// introduces is expected to be small. Similarly, multiple overlapping
+	// RANGEDELs can in different levels can count the same data to be deleted
+	// multiple times.
 	//
 	// Tables in the bottommost level of the LSM may have a nonzero estimate if
 	// snapshots or move compactions prevented the elision of their range
