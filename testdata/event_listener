@@ -229,6 +229,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 1.8KB
 Compression types: snappy: 3
+Table stats: initial load in progress
 Block cache: 6 entries (1002B)  hit rate: 0.0%
 Table cache: 1 entries (776B)  hit rate: 40.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -330,6 +331,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 3.6KB
 Compression types: snappy: 6
+Table stats: initial load in progress
 Block cache: 12 entries (2.0KB)  hit rate: 7.7%
 Table cache: 1 entries (776B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
