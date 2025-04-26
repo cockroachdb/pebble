@@ -2044,6 +2044,9 @@ func (d *DB) Metrics() *Metrics {
 		metrics.Table.CompressedCountNone += int64(compressionTypes.none)
 	}
 
+	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
+	metrics.Table.InitialStatsCollectionComplete = d.mu.tableStats.loadedInitial
+
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()

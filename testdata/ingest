@@ -53,6 +53,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 569B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 3 entries (1.1KB)  hit rate: 18.2%
 Table cache: 1 entries (920B)  hit rate: 50.0%
 Snapshots: 0  earliest seq num: 0
