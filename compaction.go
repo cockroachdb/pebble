@@ -263,7 +263,7 @@ type compaction struct {
 
 	metrics map[int]*LevelMetrics
 
-	pickerMetrics compactionPickerMetrics
+	pickerMetrics pickedCompactionMetrics
 
 	slot base.CompactionSlot
 }
