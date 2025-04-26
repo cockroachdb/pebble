@@ -263,7 +263,7 @@ type compaction struct {
 
 	metrics map[int]*LevelMetrics
 
-	pickerMetrics compactionPickerMetrics
+	pickerMetrics pickedCompactionMetrics
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
