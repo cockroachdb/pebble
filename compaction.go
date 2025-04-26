@@ -3077,7 +3077,7 @@ func (d *DB) runCompaction(
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
 		maybeSetStatsFromProperties(
-			meta.PhysicalMeta(), &writerMeta.Properties,
+			meta.PhysicalMeta(), &writerMeta.Properties, d.opts.Logger,
 		)
 
 		if c.flushing == nil {
