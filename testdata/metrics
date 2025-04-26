@@ -22,6 +22,7 @@ Backing tables: 1 (2.0MB)
 Virtual tables: 2807 (2.8KB)
 Local tables size: 28B
 Compression types:
+Table stats: 31
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -75,6 +76,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -135,6 +137,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -182,6 +185,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -226,6 +230,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 1 entries (760B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -273,6 +278,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 595B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -347,6 +353,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 3.3KB
 Compression types: snappy: 5
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -404,6 +411,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 2.0KB
 Compression types: snappy: 3
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 11.8%
 Table cache: 0 entries (0B)  hit rate: 57.1%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -510,6 +518,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 4.3KB
 Compression types: snappy: 7
+Table stats: all loaded
 Block cache: 8 entries (2.8KB)  hit rate: 8.0%
 Table cache: 1 entries (760B)  hit rate: 53.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -575,6 +584,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 6.1KB
 Compression types: snappy: 10
+Table stats: all loaded
 Block cache: 8 entries (2.8KB)  hit rate: 8.0%
 Table cache: 1 entries (760B)  hit rate: 53.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -654,6 +664,7 @@ Backing tables: 2 (1.2KB)
 Virtual tables: 2 (102B)
 Local tables size: 6.7KB
 Compression types: snappy: 9 unknown: 2
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -759,6 +770,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 4.4KB
 Compression types: snappy: 7
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -815,6 +827,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 604B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -854,6 +867,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 0B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -902,6 +916,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 0B
 Compression types: snappy: 2
+Table stats: all loaded
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -951,6 +966,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 3
+Table stats: all loaded
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -991,6 +1007,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 589B
 Compression types: snappy: 3
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
@@ -1030,6 +1047,7 @@ Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
 Local tables size: 603B
 Compression types: snappy: 1
+Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
