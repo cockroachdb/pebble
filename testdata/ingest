@@ -57,6 +57,7 @@ Table stats: all loaded
 Block cache: 3 entries (1.1KB)  hit rate: 18.2%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%

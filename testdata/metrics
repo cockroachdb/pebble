@@ -26,6 +26,7 @@ Table stats: 31
 Block cache: 2 entries (1B)  hit rate: 42.9%
 Table cache: 18 entries (17B)  hit rate: 48.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 123  Tombstones: 456  Total missized tombstones encountered: 789
 Snapshots: 4  earliest seq num: 1024
 Table iters: 21
 Filter utility: 47.4%
@@ -80,6 +81,7 @@ Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -141,6 +143,7 @@ Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
 Filter utility: 0.0%
@@ -189,6 +192,7 @@ Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 2 entries (1.5KB)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
 Filter utility: 0.0%
@@ -234,6 +238,7 @@ Table stats: all loaded
 Block cache: 2 entries (716B)  hit rate: 33.3%
 Table cache: 1 entries (760B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
 Filter utility: 0.0%
@@ -282,6 +287,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -357,6 +363,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 33.3%
 Table cache: 0 entries (0B)  hit rate: 66.7%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -415,6 +422,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 11.8%
 Table cache: 0 entries (0B)  hit rate: 57.1%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -522,6 +530,7 @@ Table stats: all loaded
 Block cache: 8 entries (2.8KB)  hit rate: 8.0%
 Table cache: 1 entries (760B)  hit rate: 53.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -588,6 +597,7 @@ Table stats: all loaded
 Block cache: 8 entries (2.8KB)  hit rate: 8.0%
 Table cache: 1 entries (760B)  hit rate: 53.3%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -668,6 +678,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -774,6 +785,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -831,6 +843,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -871,6 +884,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -920,6 +934,7 @@ Table stats: all loaded
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -970,6 +985,7 @@ Table stats: all loaded
 Block cache: 4 entries (1.4KB)  hit rate: 0.0%
 Table cache: 1 entries (760B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -1011,6 +1027,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -1051,6 +1068,7 @@ Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 0.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
