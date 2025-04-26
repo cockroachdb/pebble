@@ -236,6 +236,7 @@ Table stats: initial load in progress
 Block cache: 2 entries (784B)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
@@ -339,6 +340,7 @@ Table stats: initial load in progress
 Block cache: 6 entries (2.3KB)  hit rate: 0.0%
 Table cache: 0 entries (0B)  hit rate: 50.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
 Filter utility: 0.0%
