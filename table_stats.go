@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -17,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/redact"
 )
 
 // In-memory statistics about tables help inform compaction picking, but may
@@ -131,6 +134,7 @@ func (d *DB) collectTableStats() bool {
 	for _, c := range collected {
 		c.fileMetadata.Stats = c.TableStats
 		maybeCompact = maybeCompact || fileCompensation(c.fileMetadata) > 0
+		sanityCheckStats(c.fileMetadata, d.opts.Logger, "collected stats")
 		c.fileMetadata.StatsMarkValid()
 	}
 
@@ -643,7 +647,28 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	return estimate, hintSeqNum, nil
 }
 
-func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) bool {
+var processStartTime = time.Now()
+var lastSanityCheckStatsLog atomic.Int64 // time of last log as time.Duration since processStartTime.
+
+func sanityCheckStats(meta *fileMetadata, logger Logger, info string) {
+	// Values for PointDeletionsBytesEstimate and RangeDeletionsBytesEstimate that
+	// exceed this value are most likely indicative of a bug.
+	const maxDeletionBytesEstimate = 16 << 30 // 16 GiB
+
+	if meta.Stats.PointDeletionsBytesEstimate > maxDeletionBytesEstimate ||
+		meta.Stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
+		if v := lastSanityCheckStatsLog.Load(); v == 0 || time.Since(processStartTime)-time.Duration(v) > 30*time.Second {
+			logger.Errorf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
+				info, meta.FileNum,
+				redact.Safe(meta.Stats.PointDeletionsBytesEstimate),
+				redact.Safe(meta.Stats.RangeDeletionsBytesEstimate),
+			)
+			lastSanityCheckStatsLog.Store(int64(time.Since(processStartTime)))
+		}
+	}
+}
+
+func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties, logger Logger) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -687,6 +712,7 @@ func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) b
 	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
 	meta.Stats.CompressionType = block.CompressionFromString(props.CompressionName)
 	meta.StatsMarkValid()
+	sanityCheckStats(meta.FileMetadata, logger, "stats from properties")
 	return true
 }
 
