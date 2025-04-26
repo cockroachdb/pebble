@@ -350,7 +350,7 @@ type compaction struct {
 
 	metrics map[int]*LevelMetrics
 
-	pickerMetrics compactionPickerMetrics
+	pickerMetrics pickedCompactionMetrics
 }
 
 func (c *compaction) makeInfo(jobID JobID) CompactionInfo {

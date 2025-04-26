@@ -1960,8 +1960,14 @@ func (d *DB) Metrics() *Metrics {
 
 	if p := d.mu.versions.picker; p != nil {
 		compactions := d.getInProgressCompactionInfoLocked(nil)
-		for level, score := range p.getScores(compactions) {
-			metrics.Levels[level].Score = score
+		m := p.getMetrics(compactions)
+		for level, lm := range m.levels {
+			metrics.Levels[level].Score = 0
+			if lm.shouldCompact {
+				metrics.Levels[level].Score = lm.uncompensatedScoreRatio
+			}
+			metrics.Levels[level].UncompensatedScore = lm.uncompensatedScore
+			metrics.Levels[level].CompensatedScore = lm.compensatedScore
 		}
 	}
 	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))
