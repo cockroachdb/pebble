@@ -54,6 +54,9 @@ func exampleMetrics() Metrics {
 	m.MemTable.Count = 12
 	m.MemTable.ZombieSize = 13
 	m.MemTable.ZombieCount = 14
+	m.Keys.RangeKeySetsCount = 123
+	m.Keys.TombstoneCount = 456
+	m.Keys.MissizedTombstonesCount = 789
 	m.Snapshots.Count = 4
 	m.Snapshots.EarliestSeqNum = 1024
 	m.Table.ZombieSize = 15
