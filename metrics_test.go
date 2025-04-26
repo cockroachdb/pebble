@@ -88,7 +88,11 @@ func exampleMetrics() Metrics {
 		l.NumVirtualFiles = uint64(base) + 1
 		l.VirtualSize = base + 3
 		l.Size = int64(base) + 2
-		l.Score = float64(base) + 3
+		if i < numLevels-1 {
+			l.Score = 1.0 + float64(i+1)*0.1
+		}
+		l.UncompensatedScore = 2.0 + float64(i+1)*0.1
+		l.CompensatedScore = 3.0 * +float64(i+1) * 0.1
 		l.BytesIn = base + 4
 		l.BytesIngested = base + 4
 		l.BytesMoved = base + 6
