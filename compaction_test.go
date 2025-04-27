@@ -2897,15 +2897,13 @@ func TestCompactionCorruption(t *testing.T) {
 			},
 		},
 		L0CompactionThreshold:     1,
-		L0CompactionFileThreshold: 10,
+		L0CompactionFileThreshold: 5,
 	}
 	opts.WithFSDefaults()
 	remoteStorage := remote.NewInMem()
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"external-locator": remoteStorage,
 	})
-	opts.EnsureDefaults()
-	opts.Levels[0].TargetFileSize = 8192
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
@@ -2923,16 +2921,17 @@ func TestCompactionCorruption(t *testing.T) {
 			defer workloadWG.Done()
 			for !stopWorkload.Load() {
 				b := d.NewBatch()
-				// Write some random keys of the form a012345.
-				for i := 0; i < 100; i++ {
-					v := make([]byte, 100+rand.IntN(100))
-					for i := range v {
-						v[i] = byte(rand.Uint32())
-					}
-					key := fmt.Sprintf("%c%06d", 'a'+byte(rand.IntN(int('z'-'a'+1))), rand.IntN(1000000))
-					if err := b.Set([]byte(key), v, nil); err != nil {
-						panic(err)
-					}
+				// Write a random key of the form a012345 and flush it. This will result
+				// in (mostly) non-overlapping tables in L0.
+				var valSeed [32]byte
+				for i := range valSeed {
+					valSeed[i] = byte(rand.Uint32())
+				}
+				v := make([]byte, 1024+rand.IntN(10240))
+				_, _ = rand.NewChaCha8(valSeed).Read(v)
+				key := fmt.Sprintf("%c%06d", 'a'+byte(rand.IntN(int('z'-'a'+1))), rand.IntN(1000000))
+				if err := b.Set([]byte(key), v, nil); err != nil {
+					panic(err)
 				}
 				if err := b.Commit(nil); err != nil {
 					panic(err)
