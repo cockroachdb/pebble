@@ -216,13 +216,13 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// <level>: <size> [compensation]
 				var errMsg string
 				vers, l0Organizer, opts, errMsg = loadVersion(t, d)
-				opts.MaxConcurrentCompactions = func() int {
+				opts.MaxConcurrentCompactions = func() (int, int) {
 					// This test only limits the count based on the L0 read amp and
 					// compaction debt, so we would like to return math.MaxInt. But we
 					// don't since it is also used in expandedCompactionByteSizeLimit,
 					// and causes the expanded bytes to reduce. The test cases never
 					// pick more than 4 compactions, so we use 4.
-					return 4
+					return 1, 4
 				}
 				if errMsg != "" {
 					return errMsg
@@ -636,7 +636,8 @@ func TestCompactionPickerL0(t *testing.T) {
 func TestCompactionPickerConcurrency(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
-	opts.MaxConcurrentCompactions = func() int { return 4 }
+	baselineConcurrencyLimit, upperConcurrencyLimit := 1, 4
+	opts.MaxConcurrentCompactions = func() (int, int) { return baselineConcurrencyLimit, upperConcurrencyLimit }
 
 	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -804,6 +805,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
 			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.Experimental.L0CompactionConcurrency)
 			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.Experimental.CompactionDebtConcurrency)
+			td.MaybeScanArgs(t, "upper_concurrency_limit", &upperConcurrencyLimit)
+			td.MaybeScanArgs(t, "baseline_concurrency_limit", &baselineConcurrencyLimit)
 
 			env := compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
@@ -831,8 +834,10 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				fmt.Fprintf(&result, "nil")
 			}
 			return result.String()
+
+		default:
+			return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 		}
-		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
 }
 

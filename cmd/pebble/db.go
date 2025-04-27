@@ -72,8 +72,8 @@ func newPebbleDB(dir string) DB {
 		Merger: &pebble.Merger{
 			Name: "cockroach_merge_operator",
 		},
-		MaxConcurrentCompactions: func() int {
-			return 3
+		MaxConcurrentCompactions: func() (int, int) {
+			return 1, 3
 		},
 	}
 	// In FormatColumnarBlocks (the value of FormatNewest at the time of

@@ -899,15 +899,19 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// MaxConcurrentCompactions is the upper bound on the value returned by
-	// DB.GetAllowedWithoutPermission (reported to the CompactionScheduler).
-	// More abstractly, it is a rough upper bound on the number of concurrent
-	// compactions, not including download compactions (which have a separate
-	// limit specified by MaxConcurrentDownloads).
+	// MaxConcurrentCompactions is a range for the upper bound on the number of
+	// concurrent compactions (with the caveats below), not including download
+	// compactions (which have a separate limit specified by
+	// MaxConcurrentDownloads).
 	//
-	// This is a rough upper bound since delete-only compactions (a) do not use
-	// the CompactionScheduler, and (b) the CompactionScheduler may use other
-	// criteria to decide on how many compactions to permit.
+	// The baselineLimit is the maximum concurrency under normal circumstances.
+	// When L0 read amplification or compaction debt grows too much, Pebble
+	// dynamically increases the maximum concurrency up to the upperLimit.
+	//
+	// The maximum concurrency is a rough upper bound since delete-only
+	// compactions (a) do not use the CompactionScheduler, and (b) the
+	// CompactionScheduler may use other criteria to decide on how many
+	// compactions to permit.
 	//
 	// Elaborating on (b), when the ConcurrencyLimitScheduler is being used, the
 	// value returned by DB.GetAllowedWithoutPermission fully controls how many
@@ -924,16 +928,17 @@ type Options struct {
 	// ConcurrencyLimitScheduler can also start 3 other compactions, for a total
 	// of 6.
 	//
-	// DB.GetAllowedWithoutPermission returns a value in the interval [1,
-	// MaxConcurrentCompactions]. A value > 1 is returned:
+	// DB.GetAllowedWithoutPermission returns a value in the interval
+	// [baselineLimit, upperLimit]. A value > baselineLimit is returned:
 	//  - when L0 read-amplification passes the L0CompactionConcurrency threshold;
 	//  - when compaction debt passes the CompactionDebtConcurrency threshold;
 	//  - when there are multiple manual compactions waiting to run.
 	//
-	// MaxConcurrentCompactions() must be greater than 0.
+	// baselineLimit and upperLimit must be greater than 0. If baselineLimit is
+	// higher than the upperLimit, the upperLimit is used as both.
 	//
-	// The default value is 1.
-	MaxConcurrentCompactions func() int
+	// The default values are 1, 1.
+	MaxConcurrentCompactions func() (baselineLimit int, upperLimit int)
 
 	// MaxConcurrentDownloads specifies the maximum number of download
 	// compactions. These are compactions that copy an external file to the local
@@ -1287,7 +1292,7 @@ func (o *Options) EnsureDefaults() {
 		o.Merger = DefaultMerger
 	}
 	if o.MaxConcurrentCompactions == nil {
-		o.MaxConcurrentCompactions = func() int { return 1 }
+		o.MaxConcurrentCompactions = func() (int, int) { return 1, 1 }
 	}
 	if o.MaxConcurrentDownloads == nil {
 		o.MaxConcurrentDownloads = func() int { return 1 }
@@ -1455,7 +1460,9 @@ func (o *Options) String() string {
 	if o.Experimental.LevelMultiplier != defaultLevelMultiplier {
 		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.Experimental.LevelMultiplier)
 	}
-	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions())
+	baselineLimit, upperLimit := o.MaxConcurrentCompactions()
+	fmt.Fprintf(&buf, "  baseline_concurrent_compactions=%d\n", baselineLimit)
+	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", upperLimit)
 	fmt.Fprintf(&buf, "  max_concurrent_downloads=%d\n", o.MaxConcurrentDownloads())
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
@@ -1639,6 +1646,13 @@ type ParseHooks struct {
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	var valSepPolicy ValueSeparationPolicy
 	var valSepPolicyOk bool
+	var concurrencyLimit struct {
+		baseline    int
+		baselineSet bool
+		upper       int
+		upperSet    bool
+	}
+
 	visitKeyValue := func(i, j int, section, key, value string) error {
 		// WARNING: DO NOT remove entries from the switches below because doing so
 		// causes a key previously written to the OPTIONS file to be considered unknown,
@@ -1784,14 +1798,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "level_multiplier":
 				o.Experimental.LevelMultiplier, err = strconv.Atoi(value)
+			case "baseline_concurrent_compactions":
+				concurrencyLimit.baselineSet = true
+				concurrencyLimit.baseline, err = strconv.Atoi(value)
 			case "max_concurrent_compactions":
-				var concurrentCompactions int
-				concurrentCompactions, err = strconv.Atoi(value)
-				if concurrentCompactions <= 0 {
-					err = errors.New("max_concurrent_compactions cannot be <= 0")
-				} else {
-					o.MaxConcurrentCompactions = func() int { return concurrentCompactions }
-				}
+				concurrencyLimit.upperSet = true
+				concurrencyLimit.upper, err = strconv.Atoi(value)
 			case "max_concurrent_downloads":
 				var concurrentDownloads int
 				concurrentDownloads, err = strconv.Atoi(value)
@@ -2047,6 +2059,21 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	}
 	if valSepPolicyOk {
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
+	}
+	if concurrencyLimit.baselineSet || concurrencyLimit.upperSet {
+		if !concurrencyLimit.baselineSet {
+			concurrencyLimit.baseline = 1
+		} else if concurrencyLimit.baseline < 1 {
+			return errors.New("baseline_concurrent_compactions cannot be <= 0")
+		}
+		if !concurrencyLimit.upperSet {
+			concurrencyLimit.upper = concurrencyLimit.baseline
+		} else if concurrencyLimit.upper < concurrencyLimit.baseline {
+			return errors.Newf("max_concurrent_compactions cannot be < %d", concurrencyLimit.baseline)
+		}
+		o.MaxConcurrentCompactions = func() (int, int) {
+			return concurrencyLimit.baseline, concurrencyLimit.upper
+		}
 	}
 	return nil
 }

@@ -117,7 +117,10 @@ func TestOptionsRoundtrip(t *testing.T) {
 		if o.Opts.Experimental.IngestSplit != nil && o.Opts.Experimental.IngestSplit() {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
-		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
+		expBaseline, expUpper := o.Opts.MaxConcurrentCompactions()
+		parsedBaseline, parsedUpper := parsed.Opts.MaxConcurrentCompactions()
+		require.Equal(t, expBaseline, parsedBaseline)
+		require.Equal(t, expUpper, parsedUpper)
 		require.Equal(t, o.Opts.MaxConcurrentDownloads(), parsed.Opts.MaxConcurrentDownloads())
 		require.Equal(t, len(o.Opts.BlockPropertyCollectors), len(parsed.Opts.BlockPropertyCollectors))
 
