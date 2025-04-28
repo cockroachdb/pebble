@@ -8,6 +8,7 @@ on:
 jobs:
   tests:
     strategy:
+      fail-fast: false
       matrix:
         go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/tests.yaml
@@ -18,6 +19,7 @@ jobs:
 
   s390x:
     strategy:
+      fail-fast: false
       matrix:
         go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/s390x.yaml
@@ -28,6 +30,7 @@ jobs:
 
   stress:
     strategy:
+      fail-fast: false
       matrix:
         go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/stress.yaml
@@ -38,6 +41,7 @@ jobs:
 
   instrumented:
     strategy:
+      fail-fast: false
       matrix:
         go: [ '1.23', '1.24' ]
     uses: ./.github/workflows/instrumented.yaml
