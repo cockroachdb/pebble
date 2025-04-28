@@ -14,7 +14,7 @@ tree
        0      LOCK
      133      MANIFEST-000001
      205      MANIFEST-000010
-    1524      OPTIONS-000003
+    1551      OPTIONS-000003
        0      marker.format-version.000001.013
        0      marker.manifest.000002.MANIFEST-000010
             high_read_amp/
@@ -26,7 +26,7 @@ tree
       39        000008.log
      560        000009.sst
      157        MANIFEST-000010
-    1524        OPTIONS-000003
+    1551        OPTIONS-000003
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000010
 

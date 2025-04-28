@@ -57,8 +57,9 @@ func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64
 	// than this threshold before expansion.
 	//
 	// NB: this heuristic is an approximation since we may run more compactions
-	// than MaxConcurrentCompactions.
-	diskMax := (availBytes / 2) / uint64(opts.MaxConcurrentCompactions())
+	// than the upper concurrency limit.
+	_, maxConcurrency := opts.CompactionConcurrencyRange()
+	diskMax := (availBytes / 2) / uint64(maxConcurrency)
 	if v > diskMax {
 		v = diskMax
 	}
@@ -1918,7 +1919,7 @@ func (d *DB) GetAllowedWithoutPermission() int {
 	allowedBasedOnManual := 0
 	manualBacklog := int(d.mu.compact.manualLen.Load())
 	if manualBacklog > 0 {
-		maxAllowed := d.opts.MaxConcurrentCompactions()
+		_, maxAllowed := d.opts.CompactionConcurrencyRange()
 		allowedBasedOnManual = min(maxAllowed, manualBacklog+allowedBasedOnBacklog)
 	}
 	return max(allowedBasedOnBacklog, allowedBasedOnManual)
@@ -1982,8 +1983,10 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc *pickedCompaction) {
 // Returns true iff a compaction was started.
 func (d *DB) tryScheduleDeleteOnlyCompaction() bool {
 	if d.opts.private.disableDeleteOnlyCompactions || d.opts.DisableAutomaticCompactions ||
-		d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions() ||
 		len(d.mu.compact.deletionHints) == 0 {
+		return false
+	}
+	if _, maxConcurrency := d.opts.CompactionConcurrencyRange(); d.mu.compact.compactingCount >= maxConcurrency {
 		return false
 	}
 	v := d.mu.versions.currentVersion()
