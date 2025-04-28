@@ -73,6 +73,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"EventListener:",
 		"MaxConcurrentCompactions:",
 		"MaxConcurrentDownloads:",
+		"Experimental.CompactionGarbageFractionForMaxConcurrency:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.EnableColumnarBlocks:",
 		"Experimental.EnableValueBlocks:",
@@ -116,6 +117,12 @@ func TestOptionsRoundtrip(t *testing.T) {
 		}
 		if o.Opts.Experimental.IngestSplit != nil && o.Opts.Experimental.IngestSplit() {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
+		}
+		require.Equal(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency == nil,
+			parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency == nil)
+		if o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency != nil {
+			require.InDelta(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency(),
+				parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency(), 1e-5)
 		}
 		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
 		require.Equal(t, o.Opts.MaxConcurrentDownloads(), parsed.Opts.MaxConcurrentDownloads())

@@ -34,16 +34,7 @@ func loadVersion(
 	opts := &Options{}
 	opts.testingRandomized(t)
 	opts.EnsureDefaults()
-
-	if len(d.CmdArgs) != 1 {
-		return nil, nil, nil, fmt.Sprintf("%s expects 1 argument", d.Cmd)
-	}
-	var err error
-	opts.LBaseMaxBytes, err = strconv.ParseInt(d.CmdArgs[0].Key, 10, 64)
-	if err != nil {
-		return nil, nil, nil, err.Error()
-	}
-
+	d.ScanArgs(t, "l-base-max-bytes", &opts.LBaseMaxBytes)
 	var files [numLevels][]*tableMetadata
 	if len(d.Input) > 0 {
 		// Parse each line as
@@ -190,15 +181,16 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				f.CompactionState = manifest.CompactionStateNotCompacting
 			}
 		}
+		l0Organizer.ResetForTesting(vers)
 	}
 
-	pickAuto := func(env compactionEnv, pickerByScore *compactionPickerByScore) *pickedCompaction {
+	pickAuto := func(env compactionEnv, pickerByScore *compactionPickerByScore) (pc *pickedCompaction, allowedCompactions int) {
 		inProgressCompactions := len(env.inProgressCompactions)
-		allowedCompactions := pickerByScore.getCompactionConcurrency()
+		allowedCompactions = pickerByScore.getCompactionConcurrency()
 		if inProgressCompactions >= allowedCompactions {
-			return nil
+			return nil, allowedCompactions
 		}
-		return pickerByScore.pickAutoScore(env)
+		return pickerByScore.pickAutoScore(env), allowedCompactions
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
@@ -211,18 +203,26 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				// and optionally additional compensation to be added during
 				// compensated file size calculations. Eg:
 				//
-				// init <LBaseMaxBytes>
+				// init l-base-max-bytes=<LBaseMaxBytes>
 				// <level>: <size> [compensation]
 				// <level>: <size> [compensation]
 				var errMsg string
 				vers, l0Organizer, opts, errMsg = loadVersion(t, d)
+				// This test limits the count based on the L0 read amp, compaction
+				// debt, and deleted garbage, so we would like to return math.MaxInt
+				// for most test cases. But we don't since it is also used in
+				// expandedCompactionByteSizeLimit, and causes the expanded bytes to
+				// reduce. The test cases never pick more than 4 compactions, so we
+				// use 4 as the default.
+				maxConcurrentCompactions := 4
+				if d.HasArg("max-concurrent-compactions") {
+					d.ScanArgs(t, "max-concurrent-compactions", &maxConcurrentCompactions)
+				}
 				opts.MaxConcurrentCompactions = func() int {
-					// This test only limits the count based on the L0 read amp and
-					// compaction debt, so we would like to return math.MaxInt. But we
-					// don't since it is also used in expandedCompactionByteSizeLimit,
-					// and causes the expanded bytes to reduce. The test cases never
-					// pick more than 4 compactions, so we use 4.
-					return 4
+					return maxConcurrentCompactions
+				}
+				if d.HasArg("compaction-debt-concurrency") {
+					d.ScanArgs(t, "compaction-debt-concurrency", &opts.Experimental.CompactionDebtConcurrency)
 				}
 				if errMsg != "" {
 					return errMsg
@@ -246,13 +246,20 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 			case "queue":
 				var b strings.Builder
 				var inProgress []compactionInfo
+				printConcurrency := false
+				if d.HasArg("print-compaction-concurrency") {
+					printConcurrency = true
+				}
 				for {
 					env := compactionEnv{
 						diskAvailBytes:          math.MaxUint64,
 						earliestUnflushedSeqNum: base.SeqNumMax,
 						inProgressCompactions:   inProgress,
 					}
-					pc := pickAuto(env, pickerByScore)
+					pc, concurrency := pickAuto(env, pickerByScore)
+					if printConcurrency {
+						fmt.Fprintf(&b, "compaction concurrency: %d\n", concurrency)
+					}
 					if pc == nil {
 						break
 					}
@@ -267,6 +274,10 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						// Once we pick one L0->L0 compaction, we'll keep on doing so
 						// because the test isn't marking files as Compacting.
 						break
+					}
+					if pc.startLevel != nil && pc.startLevel.level == 0 {
+						require.NoError(t, l0Organizer.UpdateStateForStartedCompaction(
+							[]manifest.LevelSlice{pc.startLevel.files}, true /* isBase */))
 					}
 					for _, cl := range pc.inputs {
 						for f := range cl.files.All() {
@@ -336,7 +347,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 
 				var b strings.Builder
 				fmt.Fprintf(&b, "Initial state before pick:\n%s", runVersionFileSizes(vers))
-				pc := pickAuto(compactionEnv{
+				pc, _ := pickAuto(compactionEnv{
 					earliestUnflushedSeqNum: base.SeqNumMax,
 					inProgressCompactions:   inProgress,
 				}, pickerByScore)

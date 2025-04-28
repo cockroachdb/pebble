@@ -571,6 +571,13 @@ type Options struct {
 		// concurrency slots as determined by the two options is chosen.
 		CompactionDebtConcurrency uint64
 
+		// CompactionGarbageFractionForMaxConcurrency is the fraction of garbage
+		// due to DELs and RANGEDELs that causes MaxConcurrentCompactions to be
+		// allowed. Concurrent compactions are allowed in a linear manner upto
+		// this limit being reached. A value <= 0.0 disables adding concurrency
+		// due to garbage.
+		CompactionGarbageFractionForMaxConcurrency func() float64
+
 		// IngestSplit, if it returns true, allows for ingest-time splitting of
 		// existing sstables into two virtual sstables to allow ingestion sstables to
 		// slot into a lower level than they otherwise would have.
@@ -1208,6 +1215,11 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.CompactionDebtConcurrency <= 0 {
 		o.Experimental.CompactionDebtConcurrency = 1 << 30 // 1 GB
 	}
+	if o.Experimental.CompactionGarbageFractionForMaxConcurrency == nil {
+		// When 40% of the DB is garbage, the compaction concurrency is at the
+		// maximum permitted.
+		o.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 { return 0.4 }
+	}
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
 		o.KeySchema = ks.Name
@@ -1434,6 +1446,8 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  cache_size=%d\n", cacheSize)
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
+	fmt.Fprintf(&buf, "  compaction_garbage_fraction_for_max_concurrency=%.2f\n",
+		o.Experimental.CompactionGarbageFractionForMaxConcurrency())
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	if o.Experimental.DisableIngestAsFlushable != nil && o.Experimental.DisableIngestAsFlushable() {
@@ -1698,6 +1712,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "compaction_debt_concurrency":
 				o.Experimental.CompactionDebtConcurrency, err = strconv.ParseUint(value, 10, 64)
+			case "compaction_garbage_fraction_for_max_concurrency":
+				var frac float64
+				frac, err = strconv.ParseFloat(value, 64)
+				if err == nil {
+					o.Experimental.CompactionGarbageFractionForMaxConcurrency =
+						func() float64 { return frac }
+				}
 			case "delete_range_flush_delay":
 				// NB: This is a deprecated serialization of the
 				// `flush_delay_delete_range`.
