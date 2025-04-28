@@ -3021,6 +3021,17 @@ func TestCompactionCorruption(t *testing.T) {
 				return !hasExternalFiles(d)
 			})
 
+		case "manual-compaction":
+			if err := d.Compact([]byte("a"), []byte("z9999999"), true /* parallelize */); err != nil {
+				td.Fatalf(t, "manual compaction failed: %s", err)
+			}
+			v := d.DebugCurrentVersion()
+			for i := 0; i < numLevels-1; i++ {
+				if v.Levels[i].Len() > 0 {
+					td.Fatalf(t, "expected no tables on L%d", i)
+				}
+			}
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
