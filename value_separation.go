@@ -105,8 +105,27 @@ func shouldWriteBlobFiles(
 // files. In the worst case, these references are evenly distributed across the
 // keyspace and there is very little locality.
 func compactionBlobReferenceDepth(levels []compactionLevel) manifest.BlobReferenceDepth {
+	// TODO(jackson): Consider using a range tree to precisely compute the
+	// depth. This would require maintaining minimum and maximum keys.
 	var depth manifest.BlobReferenceDepth
 	for _, level := range levels {
+		// L0 allows files to overlap one another, so it's not sufficient to
+		// just take the maximum within the level. Instead, we need to sum the
+		// max of each sublevel.
+		//
+		// TODO(jackson): This and other compaction logic would likely be
+		// cleaner if we modeled each sublevel as its own `compactionLevel`.
+		if level.level == 0 {
+			for _, sublevel := range level.l0SublevelInfo {
+				var sublevelDepth int
+				for t := range sublevel.LevelSlice.All() {
+					sublevelDepth = max(sublevelDepth, int(t.BlobReferenceDepth))
+				}
+				depth += manifest.BlobReferenceDepth(sublevelDepth)
+			}
+			continue
+		}
+
 		var levelDepth manifest.BlobReferenceDepth
 		for t := range level.files.All() {
 			levelDepth = max(levelDepth, t.BlobReferenceDepth)
