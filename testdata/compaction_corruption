@@ -16,7 +16,7 @@ y#0,SET = yvalue
 z#0,SET = zvalue
 ----
 
-ingest-external file1
+ingest-external
 file1 bounds=(a,c0)
 file2 bounds=(d,w0)
 file3 bounds=(x,z0)
@@ -45,4 +45,30 @@ expire-spans
 # Compactions should now go through and eventually there should be no external
 # files.
 wait-for-no-external-files
+----
+
+build-remote file4-not-there
+a#0,SET = avalue
+u#0,SET = uvalue
+z#0,SET = zvalue
+----
+
+ingest-external
+file4 bounds=(a,z0)
+----
+
+# Verify that a problem span is set.
+wait-for-problem-span
+----
+
+stop-workload
+----
+
+# Make file4 appear.
+move-remote-object file4-not-there file4
+----
+file4-not-there -> file4
+
+# Verify that a manual compaction goes through despite the problem span.
+manual-compaction
 ----
