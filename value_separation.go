@@ -107,6 +107,25 @@ func shouldWriteBlobFiles(
 func compactionBlobReferenceDepth(levels []compactionLevel) manifest.BlobReferenceDepth {
 	var depth manifest.BlobReferenceDepth
 	for _, level := range levels {
+		// L0 allows files to overlap one another, so it's not sufficient to
+		// just take the maximum within the level. Instead, we need to sum the
+		// max of each sublevel.
+		//
+		// TODO(jackson): This and other compaction logic would likely be
+		// cleaner if we modeled each sublevel as its own `compactionLevel`.
+		if level.level == 0 {
+			var levelDepth manifest.BlobReferenceDepth
+			for _, sublevel := range level.l0SublevelInfo {
+				var sublevelDepth int
+				for t := range sublevel.LevelSlice.All() {
+					sublevelDepth = max(sublevelDepth, int(t.BlobReferenceDepth))
+				}
+				levelDepth += manifest.BlobReferenceDepth(sublevelDepth)
+			}
+			depth += levelDepth
+			continue
+		}
+
 		var levelDepth manifest.BlobReferenceDepth
 		for t := range level.files.All() {
 			levelDepth = max(levelDepth, t.BlobReferenceDepth)
