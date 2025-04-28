@@ -285,6 +285,11 @@ type IterConfig struct {
 	// Set/SetWithDelete/Merge. False positives are rare but possible (because of
 	// delete-only compactions).
 	NondeterministicSingleDeleteCallback func(userKey []byte)
+
+	// MissizedDELSIZEDCallback is called in compactions/flushes when a DELSIZED
+	// tombstone is found that did not accurately record the size of the value it
+	// deleted. This can lead to incorrect behavior in compactions.
+	MissizedDELSIZEDCallback func(userKey []byte)
 }
 
 func (c *IterConfig) ensureDefaults() {
@@ -293,6 +298,9 @@ func (c *IterConfig) ensureDefaults() {
 	}
 	if c.NondeterministicSingleDeleteCallback == nil {
 		c.NondeterministicSingleDeleteCallback = func(userKey []byte) {}
+	}
+	if c.MissizedDELSIZEDCallback == nil {
+		c.MissizedDELSIZEDCallback = func(userKey []byte) {}
 	}
 }
 
@@ -1167,6 +1175,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 				// The original DELSIZED key was missized. The key that the user
 				// thought they were deleting does not exist.
 				i.stats.CountMissizedDels++
+				i.cfg.MissizedDELSIZEDCallback(i.kv.K.UserKey)
 			}
 			// If the tombstone has a value, it must be in-place. To save it, we
 			// can just copy the in-place value directly.
@@ -1241,6 +1250,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 				// user-provided size for accuracy, so ordinary DEL heuristics
 				// are safer.
 				i.stats.CountMissizedDels++
+				i.cfg.MissizedDELSIZEDCallback(i.kv.K.UserKey)
 				i.kv.K.SetKind(base.InternalKeyKindDelete)
 				i.kv.V = base.InternalValue{}
 				// NB: We skipInStripe now, rather than returning leaving

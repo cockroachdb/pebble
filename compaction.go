@@ -3157,6 +3157,12 @@ func (d *DB) compactAndWrite(
 				UserKey: slices.Clone(userKey),
 			})
 		},
+		MissizedDELSIZEDCallback: func(userKey []byte) {
+			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
+				Kind:    MissizedDELSIZED,
+				UserKey: slices.Clone(userKey),
+			})
+		},
 	}
 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
 
