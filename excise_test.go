@@ -282,36 +282,10 @@ func TestExcise(t *testing.T) {
 			}
 			return ""
 		case "excise-dryrun":
-			ve := &versionEdit{
-				DeletedTables: map[deletedFileEntry]*tableMetadata{},
+			ve, err := runExciseDryRunCmd(td, d)
+			if err != nil {
+				td.Fatalf(t, err.Error())
 			}
-			var exciseSpan KeyRange
-			if len(td.CmdArgs) != 2 {
-				panic("insufficient args for compact command")
-			}
-			exciseSpan.Start = []byte(td.CmdArgs[0].Key)
-			exciseSpan.End = []byte(td.CmdArgs[1].Key)
-
-			d.mu.Lock()
-			d.mu.versions.logLock()
-			d.mu.Unlock()
-			current := d.mu.versions.currentVersion()
-
-			exciseBounds := exciseSpan.UserKeyBounds()
-			for l, ls := range current.AllLevelsAndSublevels() {
-				iter := ls.Iter()
-				for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest().UserKey, exciseSpan.End) < 0; m = iter.Next() {
-					leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, l.Level(), tightExciseBounds)
-					if err != nil {
-						td.Fatalf(t, "error when excising %s: %s", m.FileNum, err.Error())
-					}
-					applyExciseToVersionEdit(ve, m, leftTable, rightTable, l.Level())
-				}
-			}
-
-			d.mu.Lock()
-			d.mu.versions.logUnlock()
-			d.mu.Unlock()
 			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.DebugString(base.DefaultFormatter))
 		case "confirm-backing":
 			// Confirms that the files have the same FileBacking.

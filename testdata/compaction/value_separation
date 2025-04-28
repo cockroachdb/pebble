@@ -342,3 +342,12 @@ Blob files:
   000038: 1686698 physical bytes, 1681728 value bytes
   000040: 1691574 physical bytes, 1686592 value bytes
   000042: 113626 physical bytes, 113280 value bytes
+
+
+excise-dryrun b c
+----
+would excise 1 files.
+  del-table:     L6 000044
+  add-table:     L6 000053(000044):[a@1#0,SET-azzz@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-azzz@1#0,SET] size:238596 blobrefs:[(000006: 566234), (000008: 564260), (000010: 37624); depth:1]
+  add-table:     L6 000054(000044):[c@1#0,SET-czks@1#0,SET] seqnums:[0-0] points:[c@1#0,SET-czks@1#0,SET] size:235737 blobrefs:[(000006: 559450), (000008: 557499), (000010: 37173); depth:1]
+  add-backing:   000044

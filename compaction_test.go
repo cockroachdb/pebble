@@ -1004,6 +1004,13 @@ func TestCompaction(t *testing.T) {
 				}
 				return s
 
+			case "excise-dryrun":
+				ve, err := runExciseDryRunCmd(td, d)
+				if err != nil {
+					td.Fatalf(t, err.Error())
+				}
+				return fmt.Sprintf("would excise %d files.\n%s", len(ve.DeletedTables), ve.DebugString(base.DefaultFormatter))
+
 			case "file-sizes":
 				return runTableFileSizesCmd(td, d)
 
