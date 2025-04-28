@@ -80,6 +80,10 @@ func newPebbleDB(dir string) DB {
 	// writing), columnar blocks are only written if explicitly opted into.
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
+	// Running the tool should not start compactions due to garbage.
+	opts.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 {
+		return -1.0
+	}
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
 		l.BlockSize = 32 << 10       // 32 KB

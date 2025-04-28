@@ -690,6 +690,11 @@ func RandomOptions(
 	opts.MaxConcurrentCompactions = func() int {
 		return maxConcurrentCompactions
 	}
+	// [-0.2, 0.4], in steps of 0.2.
+	garbageFrac := float64(rng.IntN(5))/5.0 - 0.2
+	opts.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 {
+		return garbageFrac
+	}
 	maxConcurrentDownloads := rng.IntN(3) + 1 // 1-3
 	opts.MaxConcurrentDownloads = func() int {
 		return maxConcurrentDownloads
