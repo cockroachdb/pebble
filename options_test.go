@@ -84,6 +84,7 @@ func TestDefaultOptionsString(t *testing.T) {
   cache_size=8388608
   cleaner=delete
   compaction_debt_concurrency=1073741824
+  compaction_garbage_fraction_for_max_concurrency=0.40
   comparer=leveldb.BytewiseComparator
   disable_wal=false
   enable_columnar_blocks=true
