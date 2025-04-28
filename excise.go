@@ -135,7 +135,7 @@ func (d *DB) exciseTable(
 	// TODO(bilal): Some of this work can happen without grabbing the manifest
 	// lock; we could grab one currentVersion, release the lock, calculate excised
 	// files, then grab the lock again and recalculate for just the files that
-	// have changed since our previous calculation. Do this optimiaztino as part of
+	// have changed since our previous calculation. Do this optimization as part of
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest().UserKey, exciseBounds.Start) < 0 {
 		leftTable = &tableMetadata{
@@ -147,6 +147,7 @@ func (d *DB) exciseTable(
 			LargestSeqNum:            m.LargestSeqNum,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+			BlobReferenceDepth:       m.BlobReferenceDepth,
 		}
 		if looseBounds {
 			looseLeftTableBounds(d.cmp, m, leftTable, exciseBounds.Start)
@@ -159,6 +160,7 @@ func (d *DB) exciseTable(
 			if err := determineExcisedTableSize(d.fileCache, m, leftTable); err != nil {
 				return nil, nil, err
 			}
+			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, leftTable)
 			if err := leftTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, nil, err
 			}
@@ -182,6 +184,7 @@ func (d *DB) exciseTable(
 			LargestSeqNum:            m.LargestSeqNum,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+			BlobReferenceDepth:       m.BlobReferenceDepth,
 		}
 		if looseBounds {
 			// We already checked that the end bound is exclusive.
@@ -194,6 +197,7 @@ func (d *DB) exciseTable(
 			if err := determineExcisedTableSize(d.fileCache, m, rightTable); err != nil {
 				return nil, nil, err
 			}
+			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, rightTable)
 			if err := rightTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, nil, err
 			}
@@ -432,6 +436,21 @@ func determineExcisedTableSize(
 		excisedTable.Size = 1
 	}
 	return nil
+}
+
+// determineExcisedTableBlobReferences copies blob references from the original
+// table to the excised table, scaling each blob reference's value size
+// proportionally based on the ratio of the excised table's size to the original
+// table's size.
+func determineExcisedTableBlobReferences(
+	originalBlobReferences manifest.BlobReferences, originalSize uint64, excisedTable *tableMetadata,
+) {
+	newBlobReferences := make(manifest.BlobReferences, len(originalBlobReferences))
+	for i, bf := range originalBlobReferences {
+		bf.ValueSize = bf.ValueSize * excisedTable.Size / originalSize
+		newBlobReferences[i] = bf
+	}
+	excisedTable.BlobReferences = newBlobReferences
 }
 
 // applyExciseToVersionEdit updates ve with a table deletion for the original
