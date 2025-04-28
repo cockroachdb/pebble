@@ -724,15 +724,15 @@ func (m *TableMetadata) ContainsKeyType(kt KeyType) bool {
 // SmallestBound returns the file's smallest bound of the key type. It returns a
 // false second return value if the file does not contain any keys of the key
 // type.
-func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
+func (m *TableMetadata) SmallestBound(kt KeyType) (InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
 		ik := m.Smallest()
-		return &ik, true
+		return ik, true
 	case KeyTypePoint:
-		return &m.SmallestPointKey, m.HasPointKeys
+		return m.SmallestPointKey, m.HasPointKeys
 	case KeyTypeRange:
-		return &m.SmallestRangeKey, m.HasRangeKeys
+		return m.SmallestRangeKey, m.HasRangeKeys
 	default:
 		panic("unrecognized key type")
 	}
@@ -741,15 +741,15 @@ func (m *TableMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
 // LargestBound returns the file's largest bound of the key type. It returns a
 // false second return value if the file does not contain any keys of the key
 // type.
-func (m *TableMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
+func (m *TableMetadata) LargestBound(kt KeyType) (InternalKey, bool) {
 	switch kt {
 	case KeyTypePointAndRange:
 		ik := m.Largest()
-		return &ik, true
+		return ik, true
 	case KeyTypePoint:
-		return &m.LargestPointKey, m.HasPointKeys
+		return m.LargestPointKey, m.HasPointKeys
 	case KeyTypeRange:
-		return &m.LargestRangeKey, m.HasRangeKeys
+		return m.LargestRangeKey, m.HasRangeKeys
 	default:
 		panic("unrecognized key type")
 	}
