@@ -25,7 +25,9 @@ type BlobReference struct {
 	// FileNum identifies the referenced blob file.
 	FileNum base.DiskFileNum
 	// ValueSize is the sum of the lengths of the uncompressed values within the
-	// blob file for which there exists a reference in the sstable.
+	// blob file for which there exists a reference in the sstable. Note that if
+	// any of the referencing tables are virtualized tables, the ValueSize may
+	// be approximate).
 	//
 	// INVARIANT: ValueSize <= Metadata.ValueSize
 	ValueSize uint64

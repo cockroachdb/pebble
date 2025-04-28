@@ -1410,6 +1410,40 @@ func runExciseCmd(td *datadriven.TestData, d *DB) error {
 	return d.Excise(context.Background(), exciseSpan)
 }
 
+func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*versionEdit, error) {
+	ve := &versionEdit{
+		DeletedTables: map[deletedFileEntry]*tableMetadata{},
+	}
+	var exciseSpan KeyRange
+	if len(td.CmdArgs) != 2 {
+		panic("insufficient args for excise-dryrun command")
+	}
+	exciseSpan.Start = []byte(td.CmdArgs[0].Key)
+	exciseSpan.End = []byte(td.CmdArgs[1].Key)
+
+	d.mu.Lock()
+	d.mu.versions.logLock()
+	d.mu.Unlock()
+	current := d.mu.versions.currentVersion()
+
+	exciseBounds := exciseSpan.UserKeyBounds()
+	for l, ls := range current.AllLevelsAndSublevels() {
+		iter := ls.Iter()
+		for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest().UserKey, exciseSpan.End) < 0; m = iter.Next() {
+			leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, l.Level(), tightExciseBounds)
+			if err != nil {
+				return nil, errors.Errorf("error when excising %s: %s", m.FileNum, err.Error())
+			}
+			applyExciseToVersionEdit(ve, m, leftTable, rightTable, l.Level())
+		}
+	}
+
+	d.mu.Lock()
+	d.mu.versions.logUnlock()
+	d.mu.Unlock()
+	return ve, nil
+}
+
 func runIngestAndExciseCmd(td *datadriven.TestData, d *DB) error {
 	var exciseSpan KeyRange
 	paths := make([]string, 0, len(td.CmdArgs))
