@@ -92,7 +92,7 @@ Iter category stats:
 
 disk-usage
 ----
-2.3KB
+2.4KB
 
 batch
 set b 2
@@ -299,7 +299,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.2KB
+3.3KB
 
 additional-metrics
 ----

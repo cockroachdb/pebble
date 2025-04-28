@@ -1,4 +1,4 @@
-init 1
+init l-base-max-bytes=1
 ----
 
 init_cp
@@ -8,7 +8,7 @@ base: 6
 queue
 ----
 
-init 1
+init l-base-max-bytes=1
 6: 1
 ----
 L6:
@@ -21,7 +21,7 @@ base: 6
 queue
 ----
 
-init 1
+init l-base-max-bytes=1
 6: 1000000
 ----
 L6:
@@ -34,7 +34,7 @@ base: 1
 queue
 ----
 
-init 1
+init l-base-max-bytes=1
 5: 1
 6: 10
 ----
@@ -62,7 +62,7 @@ L5->L6: 1.0
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   600001:[0001#1,SET-0001#1,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 5: 2
 6: 10
 ----
@@ -98,7 +98,7 @@ L5->L6: 2.2
 # size(L5) = size(L4) * 30^(1/2) ~= 5
 # size(L6) = size(L5) * 30^(1/2) = 30
 
-init 1
+init l-base-max-bytes=1
 5: 2
 6: 30
 ----
@@ -144,7 +144,7 @@ base: 4
 queue
 ----
 
-init 1
+init l-base-max-bytes=1
 4: 2
 5: 2
 6: 100
@@ -168,7 +168,7 @@ L4->L5: 10.0
   400001:[0001#1,SET-0001#1,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 4: 1
 5: 2
 6: 100
@@ -191,7 +191,7 @@ L4->L5: 5.0
   400001:[0001#1,SET-0001#1,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 4: 1
 5: 11
 6: 100
@@ -233,7 +233,7 @@ L5->L6: 1.1
   500011:[0011#11,SET-0011#11,SET] marked as compacting
   600001:[0001#1,SET-0100#1,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 4: 1
 5: 11 50
 6: 100
@@ -275,7 +275,7 @@ L5->L6: 6.2
   500011:[0011#11,SET-0011#11,SET] marked as compacting
   600001:[0001#1,SET-0100#1,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 4: 2
 5: 11
 6: 100
@@ -308,7 +308,7 @@ L4->L5: 1.8
   400001:[0001#1,SET-0001#1,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 0: 4
 ----
 L0:
@@ -329,7 +329,7 @@ L0->L6: 200.0
   000003:[0001#3,SET-0001#3,SET] marked as compacting
   000004:[0001#4,SET-0001#4,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 0: 5
 ----
 L0:
@@ -352,7 +352,7 @@ L0->L6: 250.0
   000004:[0001#4,SET-0001#4,SET] marked as compacting
   000005:[0001#5,SET-0001#5,SET] marked as compacting
 
-init 1
+init l-base-max-bytes=1
 0: 5
 5: 2
 6: 10
@@ -438,7 +438,7 @@ L6:
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
 Picked: no compaction
 
-init 1
+init l-base-max-bytes=1
 0: 10
 4: 10
 5: 6
@@ -682,7 +682,7 @@ L6:
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
 Picked: no compaction
 
-init 1
+init l-base-max-bytes=1
 0: 20
 6: 10
 ----
@@ -824,7 +824,7 @@ Picked: L0->L0: 950.0
 # We'll only pick a concurrent compaction if it is "high" priority
 # (i.e. has a score >= highPriorityThreshold).
 
-init 1
+init l-base-max-bytes=1
 0: 20
 5: 1
 6: 10
@@ -973,7 +973,7 @@ Picked: L0->L4: 1000.0
 # Verify we can start concurrent Ln->Ln+1 compactions given sufficient
 # priority.
 
-init 1
+init l-base-max-bytes=1
 5: 4
 6: 10
 ----
@@ -1048,7 +1048,7 @@ Picked: no compaction
 
 # Verify that L0 score doesn't change with respect to L5's compensation.
 
-init 5
+init l-base-max-bytes=5
 0: 10
 5: 5 1
 6: 5
@@ -1099,7 +1099,7 @@ L5->L6: 11.5
   500005:[0005#5,SET-0005#5,SET] marked as compacting
   600005:[0005#5,SET-0005#5,SET] marked as compacting
 
-init 5
+init l-base-max-bytes=5
 0: 10
 5: 5 0
 6: 5
@@ -1153,7 +1153,7 @@ L5->L6: 10.8
 # Verify that successive manual compactions interleaved with an automatic
 # compaction does not trigger an error.
 
-init 5
+init l-base-max-bytes=5
 0: 10
 5: 10
 6: 5
@@ -1240,7 +1240,7 @@ Picked: L5->L6: 9.2
 # still going to try running a manual compaction from L5 -> L6 since L5 was the
 # output of the last manual compaction. No compaction should be picked.
 
-init 5
+init l-base-max-bytes=5
 0: 7
 6: 5
 ----
@@ -1272,7 +1272,7 @@ nil, retryLater = false
 # Prior to prioritizing levels by the score instead of rawSmoothed score, L5
 # would be picked for compaction over L0, because of its absurdly high compensated
 # score.
-init 5
+init l-base-max-bytes=5 max-concurrent-compactions=1
 0: 7
 5: 4 10000
 6: 5
@@ -1312,3 +1312,56 @@ L0->L5: 4.4
   000006:[0001#6,SET-0001#6,SET] marked as compacting
   000007:[0001#7,SET-0001#7,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
+
+# Repeat the previous test case, but allow up to 6 concurrent compactions. In
+# addition to the L0 => L5 compaction, three L5 => L6 compactions are picked,
+# due to the massive amount of garbage in the LSM.
+init l-base-max-bytes=5 max-concurrent-compactions=6
+0: 7
+5: 4 10000
+6: 5
+----
+L0:
+  000001:[0001#1,SET-0001#1,SET]: 1 bytes (1B)
+  000002:[0001#2,SET-0001#2,SET]: 1 bytes (1B)
+  000003:[0001#3,SET-0001#3,SET]: 1 bytes (1B)
+  000004:[0001#4,SET-0001#4,SET]: 1 bytes (1B)
+  000005:[0001#5,SET-0001#5,SET]: 1 bytes (1B)
+  000006:[0001#6,SET-0001#6,SET]: 1 bytes (1B)
+  000007:[0001#7,SET-0001#7,SET]: 1 bytes (1B)
+L5:
+  500001:[0001#1,SET-0001#1,SET]: 1 bytes (1B)
+  500002:[0002#2,SET-0002#2,SET]: 1 bytes (1B)
+  500003:[0003#3,SET-0003#3,SET]: 1 bytes (1B)
+  500004:[0004#4,SET-0004#4,SET]: 1 bytes (1B)
+L6:
+  600001:[0001#1,SET-0001#1,SET]: 1 bytes (1B)
+  600002:[0002#2,SET-0002#2,SET]: 1 bytes (1B)
+  600003:[0003#3,SET-0003#3,SET]: 1 bytes (1B)
+  600004:[0004#4,SET-0004#4,SET]: 1 bytes (1B)
+  600005:[0005#5,SET-0005#5,SET]: 1 bytes (1B)
+
+init_cp
+----
+base: 5
+
+queue
+----
+L0->L5: 4.4
+  000001:[0001#1,SET-0001#1,SET] marked as compacting
+  000002:[0001#2,SET-0001#2,SET] marked as compacting
+  000003:[0001#3,SET-0001#3,SET] marked as compacting
+  000004:[0001#4,SET-0001#4,SET] marked as compacting
+  000005:[0001#5,SET-0001#5,SET] marked as compacting
+  000006:[0001#6,SET-0001#6,SET] marked as compacting
+  000007:[0001#7,SET-0001#7,SET] marked as compacting
+  500001:[0001#1,SET-0001#1,SET] marked as compacting
+L5->L6: 6006.6
+  500004:[0004#4,SET-0004#4,SET] marked as compacting
+  600004:[0004#4,SET-0004#4,SET] marked as compacting
+L5->L6: 5.0
+  500002:[0002#2,SET-0002#2,SET] marked as compacting
+  600002:[0002#2,SET-0002#2,SET] marked as compacting
+L5->L6: 3.9
+  500003:[0003#3,SET-0003#3,SET] marked as compacting
+  600003:[0003#3,SET-0003#3,SET] marked as compacting
