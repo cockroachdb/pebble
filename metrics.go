@@ -299,7 +299,7 @@ type Metrics struct {
 		// The number of sstables that are compressed with zstd.
 		CompressedCountZstd int64
 		// The number of sstables that are compressed with minlz.
-		CompressedCountMinlz int64
+		CompressedCountMinLZ int64
 		// The number of sstables that are uncompressed.
 		CompressedCountNone int64
 
@@ -729,7 +729,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	if count := m.Table.CompressedCountZstd; count > 0 {
 		w.Printf(" zstd: %d", redact.Safe(count))
 	}
-	if count := m.Table.CompressedCountMinlz; count > 0 {
+	if count := m.Table.CompressedCountMinLZ; count > 0 {
 		w.Printf(" minlz: %d", redact.Safe(count))
 	}
 	if count := m.Table.CompressedCountNone; count > 0 {
