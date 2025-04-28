@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -174,6 +175,9 @@ type Writer struct {
 	// nil, or the full keys otherwise.
 	filter          filterWriter
 	indexPartitions []indexBlockAndBlockProperties
+	// indexPartitionsSizeSum is the sum of the sizes of all index blocks in
+	// indexPartitions.
+	indexPartitionsSizeSum atomic.Uint64
 
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
@@ -1701,6 +1705,7 @@ func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part.block = w.indexBlockAlloc[:n:n]
 	w.indexBlockAlloc = w.indexBlockAlloc[n:]
 	w.indexPartitions = append(w.indexPartitions, part)
+	w.indexPartitionsSizeSum.Add(uint64(len(bk)))
 	return nil
 }
 
@@ -2137,9 +2142,40 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // call to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
-	return w.coordination.sizeEstimate.size() +
-		uint64(w.dataBlockBuf.dataBlock.estimatedSize()) +
-		w.indexBlock.estimatedSize()
+	if w == nil {
+		return 0
+	}
+
+	// Begin with the estimated size of the data blocks that have already been
+	// flushed to the file.
+	size := w.coordination.sizeEstimate.size()
+	// Add the size of value blocks. If any value blocks have already been
+	// finished, these blocks will contribute post-compression size. If there is
+	// currently an unfinished value block, it will contribute its pre-compression
+	// size.
+	if w.valueBlockWriter != nil {
+		size += w.valueBlockWriter.totalBlockBytes
+		if w.valueBlockWriter.buf != nil {
+			size += uint64(len(w.valueBlockWriter.buf.b))
+		}
+	}
+
+	// Add the size of the completed but unflushed index partitions, the
+	// unfinished data block, the unfinished index block, the unfinished range
+	// deletion block, and the unfinished range key block.
+	//
+	// All of these sizes are uncompressed sizes. It's okay to be pessimistic
+	// here and use the uncompressed size because all this memory is buffered
+	// until the sstable is finished.  Including the uncompressed size bounds
+	// the memory usage used by the writer to the physical size limit.
+	size += w.indexPartitionsSizeSum.Load()
+	size += uint64(w.dataBlockBuf.dataBlock.estimatedSize())
+	size += w.indexBlock.estimatedSize()
+	size += uint64(w.rangeDelBlock.estimatedSize())
+	size += uint64(w.rangeKeyBlock.estimatedSize())
+	// TODO(jackson): Account for the size of the filter block.
+	return size
+
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call

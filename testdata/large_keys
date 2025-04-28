@@ -40,7 +40,14 @@ set a(p,1000000)rove
 flush verbose
 ----
 L0.0:
-  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] seqnums:[10-38] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] size:4084896
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] seqnums:[10-13] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] size:563939
+  000006:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] seqnums:[14-17] points:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] size:563957
+  000007:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] seqnums:[18-23] points:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] size:563948
+  000008:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] seqnums:[21-25] points:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] size:563942
+  000009:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] seqnums:[26-29] points:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] size:563939
+  000010:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] seqnums:[30-33] points:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] size:563954
+  000011:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] seqnums:[34-37] points:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] size:563957
+  000012:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] seqnums:[38-38] points:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] size:94435
 
 layout filename=000005.sst
 ----
@@ -48,65 +55,15 @@ layout filename=000005.sst
      46949  data (46945)
      93899  data (46941)
     140845  data (46944)
-    187794  data (46947)
-    234746  data (46945)
-    281696  data (46945)
-    328646  data (46943)
-    375594  data (46945)
-    422544  data (46940)
-    469489  data (46951)
-    516445  data (46941)
-    563391  data (46944)
-    610340  data (46945)
-    657290  data (46946)
-    704241  data (46940)
-    751186  data (46943)
-    798134  data (46942)
-    845081  data (46944)
-    892030  data (46945)
-    938980  data (46944)
-    985929  data (46945)
-   1032879  data (46945)
-   1079829  data (46945)
-   1126779  data (46946)
-   1173730  data (46947)
-   1220682  data (46943)
-   1267630  data (46944)
-   1314579  data (46942)
-   1361526  index (46942)
-   1408473  index (46946)
-   1455424  index (46942)
-   1502371  index (46945)
-   1549321  index (46948)
-   1596274  index (46946)
-   1643225  index (46946)
-   1690176  index (46944)
-   1737125  index (46946)
-   1784076  index (46941)
-   1831022  index (46952)
-   1877979  index (46942)
-   1924926  index (46945)
-   1971876  index (46946)
-   2018827  index (46947)
-   2065779  index (46941)
-   2112725  index (46944)
-   2159674  index (46943)
-   2206622  index (46945)
-   2253572  index (46946)
-   2300523  index (46945)
-   2347473  index (46946)
-   2394424  index (46946)
-   2441375  index (46946)
-   2488326  index (46947)
-   2535278  index (46948)
-   2582231  index (46944)
-   2629180  index (46945)
-   2676130  index (46943)
-   2723078  top-index (1361225)
-   4084308  properties (490)
-   4084803  meta-index (35)
-   4084843  footer (53)
-   4084896  EOF
+    187794  index (46942)
+    234741  index (46946)
+    281692  index (46942)
+    328639  index (46945)
+    375589  top-index (187759)
+    563353  properties (489)
+    563847  meta-index (34)
+    563886  footer (53)
+    563939  EOF
 
 properties file=000005
 raw.key.size
@@ -114,12 +71,12 @@ index.size
 index.partitions
 ----
 raw.key.size:
-  rocksdb.raw.key.size: 29000440
+  rocksdb.raw.key.size: 4000058
 index.size:
-  rocksdb.index.size: 58001886
-  rocksdb.top-level.index.size: 29000892
+  rocksdb.index.size: 8000259
+  rocksdb.top-level.index.size: 4000122
 index.partitions:
-  rocksdb.index.partitions: 29
+  rocksdb.index.partitions: 4
 
 batch-commit
 del-range a(p,1000000)arition a(p,1000000)eal
@@ -136,11 +93,18 @@ del-range a(p,1000000)rovals a(p,1000000)rove
 flush verbose
 ----
 L0.1:
-  000008:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[39-47] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:18000961
+  000015:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[39-47] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:18000961
 L0.0:
-  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] seqnums:[10-38] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)rove#38,SET] size:4084896
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] seqnums:[10-13] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] size:563939
+  000006:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] seqnums:[14-17] points:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] size:563957
+  000007:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] seqnums:[18-23] points:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] size:563948
+  000008:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] seqnums:[21-25] points:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] size:563942
+  000009:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] seqnums:[26-29] points:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] size:563939
+  000010:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] seqnums:[30-33] points:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] size:563954
+  000011:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] seqnums:[34-37] points:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] size:563957
+  000012:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] seqnums:[38-38] points:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] size:94435
 
-layout filename=000008.sst
+layout filename=000015.sst
 ----
          0  data (8)
         13  index (24)
@@ -150,7 +114,7 @@ layout filename=000008.sst
   18000908  footer (53)
   18000961  EOF
 
-properties file=000008
+properties file=000015
 rocksdb.raw
 ----
 rocksdb.raw:
