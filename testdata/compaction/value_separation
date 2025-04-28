@@ -188,6 +188,65 @@ L0.0:
 Blob files:
   000006: 51 physical bytes, 5 value bytes
 
+# Construct an initial state with two overlapping files in L0, both with blob
+# references. Because these files overlap and are in separate sublevels, a
+# compaction that preserves blob references should sum their depths.
+
+define value-separation=(true,1,5) l0-compaction-threshold=2
+L0 blob-depth=1
+  a.SET.9:a
+  d.SET.9:blob{fileNum=100001 value=d}
+L0 blob-depth=3
+  a.SET.1:a
+  b.SET.1:blob{fileNum=100002 value=bar}
+  f.SET.1:blob{fileNum=100003 value=foo}
+  k.SET.1:k
+  z.SET.1:blob{fileNum=100004 value=zoo}
+----
+L0.1:
+  000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:775 blobrefs:[(100001: 1); depth:1]
+L0.0:
+  000005:[a#1,SET-z#1,SET] seqnums:[1-1] points:[a#1,SET-z#1,SET] size:795 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
+
+compact a-z
+----
+L1:
+  000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:819 blobrefs:[(100002: 3), (100001: 1), (100003: 3), (100004: 3); depth:4]
+Blob files:
+  100001: 47 physical bytes, 1 value bytes
+  100002: 49 physical bytes, 3 value bytes
+  100003: 49 physical bytes, 3 value bytes
+  100004: 49 physical bytes, 3 value bytes
+
+# Construct an initial state with two non-overlapping files in L0, both with
+# blob references. Because these files do NOT overlap and are in the same
+# sublevel, a compaction that preserves blob references should take the MAX of
+# their depths.
+
+define value-separation=(true,1,5) l0-compaction-threshold=2
+L0 blob-depth=1
+  a.SET.9:a
+  d.SET.9:blob{fileNum=100001 value=d}
+L0 blob-depth=3
+  e.SET.1:a
+  f.SET.1:blob{fileNum=100002 value=bar}
+  g.SET.1:blob{fileNum=100003 value=foo}
+  k.SET.1:k
+  z.SET.1:blob{fileNum=100004 value=zoo}
+----
+L0.0:
+  000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:775 blobrefs:[(100001: 1); depth:1]
+  000005:[e#1,SET-z#1,SET] seqnums:[1-1] points:[e#1,SET-z#1,SET] size:795 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
+
+compact a-z
+----
+L1:
+  000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:813 blobrefs:[(100001: 1), (100002: 3), (100003: 3), (100004: 3); depth:3]
+Blob files:
+  100001: 47 physical bytes, 1 value bytes
+  100002: 49 physical bytes, 3 value bytes
+  100003: 49 physical bytes, 3 value bytes
+  100004: 49 physical bytes, 3 value bytes
 
 define value-separation=(true,5,5) l0-compaction-threshold=1
 ----
