@@ -1157,10 +1157,12 @@ func TestCompaction(t *testing.T) {
 				return ""
 
 			case "set-concurrent-compactions":
-				var concurrentCompactions int
-				td.ScanArgs(t, "num", &concurrentCompactions)
-				d.opts.MaxConcurrentCompactions = func() int {
-					return concurrentCompactions
+				var upperLimit int
+				baselineLimit := 1
+				td.ScanArgs(t, "max", &upperLimit)
+				td.MaybeScanArgs(t, "baseline", &baselineLimit)
+				d.opts.CompactionConcurrencyRange = func() (int, int) {
+					return baselineLimit, upperLimit
 				}
 				return ""
 

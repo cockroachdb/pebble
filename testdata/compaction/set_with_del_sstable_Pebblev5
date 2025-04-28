@@ -645,7 +645,7 @@ L3:
 add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 ----
 
-set-concurrent-compactions num=2
+set-concurrent-compactions max=2
 ----
 
 async-compact a-b L3

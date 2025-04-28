@@ -687,8 +687,12 @@ func RandomOptions(
 	}
 	opts.LBaseMaxBytes = 1 << uint(rng.IntN(30)) // 1B - 1GB
 	maxConcurrentCompactions := rng.IntN(3) + 1  // 1-3
-	opts.MaxConcurrentCompactions = func() int {
-		return maxConcurrentCompactions
+	baselineConcurrentCompactions := 1
+	if rng.IntN(4) == 0 {
+		baselineConcurrentCompactions = rng.IntN(maxConcurrentCompactions) + 1
+	}
+	opts.CompactionConcurrencyRange = func() (int, int) {
+		return baselineConcurrentCompactions, maxConcurrentCompactions
 	}
 	maxConcurrentDownloads := rng.IntN(3) + 1 // 1-3
 	opts.MaxConcurrentDownloads = func() int {

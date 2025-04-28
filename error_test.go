@@ -460,7 +460,7 @@ func TestDBCompactionCrash(t *testing.T) {
 			FS:                          fs,
 			Logger:                      testLogger{t: t},
 			MemTableSize:                128 << 10,
-			MaxConcurrentCompactions:    func() int { return maxConcurrentCompactions },
+			CompactionConcurrencyRange:  func() (int, int) { return 1, maxConcurrentCompactions },
 			LBaseMaxBytes:               64 << 10,
 			L0CompactionThreshold:       2,
 			L0CompactionFileThreshold:   2,
