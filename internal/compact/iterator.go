@@ -289,7 +289,11 @@ type IterConfig struct {
 	// MissizedDeleteCallback is called in compactions/flushes when a DELSIZED
 	// tombstone is found that did not accurately record the size of the value it
 	// deleted. This can lead to incorrect behavior in compactions.
-	MissizedDeleteCallback func(userKey []byte)
+	//
+	// For the second case, elidedSize and expectedSize will be set to the actual
+	// size of the elided key and the expected size that was recorded in the
+	// tombstone. For the first case (when a key doesn't exist), these will be 0.
+	MissizedDeleteCallback func(userKey []byte, elidedSize, expectedSize uint64)
 }
 
 func (c *IterConfig) ensureDefaults() {
@@ -300,7 +304,7 @@ func (c *IterConfig) ensureDefaults() {
 		c.NondeterministicSingleDeleteCallback = func(userKey []byte) {}
 	}
 	if c.MissizedDeleteCallback == nil {
-		c.MissizedDeleteCallback = func(userKey []byte) {}
+		c.MissizedDeleteCallback = func(userKey []byte, _, _ uint64) {}
 	}
 }
 
@@ -1175,7 +1179,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 				// The original DELSIZED key was missized. The key that the user
 				// thought they were deleting does not exist.
 				i.stats.CountMissizedDels++
-				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey)
+				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey, 0, 0)
 			}
 			// If the tombstone has a value, it must be in-place. To save it, we
 			// can just copy the in-place value directly.
@@ -1250,7 +1254,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 				// user-provided size for accuracy, so ordinary DEL heuristics
 				// are safer.
 				i.stats.CountMissizedDels++
-				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey)
+				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey, elidedSize, expectedSize)
 				i.kv.K.SetKind(base.InternalKeyKindDelete)
 				i.kv.V = base.InternalValue{}
 				// NB: We skipInStripe now, rather than returning leaving
