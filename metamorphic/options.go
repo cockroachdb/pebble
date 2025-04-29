@@ -286,27 +286,34 @@ func defaultOptions() *pebble.Options {
 		BlockPropertyCollectors: blockPropertyCollectorConstructors,
 	}
 
-	// We don't want to run the level checker every time because it can slow down
-	// downloads and background compactions too much.
+	// The level checker runs every time a new read state is installed: every
+	// compaction, flush, ingest completion, etc. It runs while the database
+	// mutex DB.mu is held, preventing the scheduling of new compactions or
+	// flushes.
 	//
-	// We aim to run it once every 500ms (on average). To do this with some
-	// randomization, each time we get a callback we see how much time passed
-	// since the last call and run the check with a proportional probability.
-	const meanTimeBetweenChecks = 500 * time.Millisecond
+	// We only consider running the level checker 50% of the time (to ensure
+	// we're not obscuring races post-read state installation).
+	//
+	// Additionally, some option configurations can create pathological numbers
+	// of sstables, causing the level checker to consume an excessive amount of
+	// time. To prevent pathological cases, we limit the cumulative time spent
+	// in the level checker to 25% of the test's runtime. If DebugCheck is
+	// invoked but we've spent more than 25% of our total test time wihtin the
+	// level checker, we skip invoking DebugCheckLevels.
 	startTime := time.Now()
-	// lastCallTime stores the time of the last DebugCheck call, as the duration
-	// since startTime.
-	var lastCallTime atomic.Uint64
+	var cumulativeTime atomic.Int64
 	opts.DebugCheck = func(db *pebble.DB) error {
-		now := time.Since(startTime)
-		last := time.Duration(lastCallTime.Swap(uint64(now)))
-		// Run the check with probability equal to the time (as a fraction of
-		// meanTimeBetweenChecks) passed since the last time we had a chance, as a
-		// fraction of meanTimeBetweenChecks.
-		if rand.Float64() < float64(now-last)/float64(meanTimeBetweenChecks) {
-			return pebble.DebugCheckLevels(db)
+		if rand.Float64() < 0.50 {
+			return nil
 		}
-		return nil
+		now := time.Now()
+		testDur := now.Sub(startTime)
+		if checkerDur := time.Duration(cumulativeTime.Load()); checkerDur > testDur/4 {
+			return nil
+		}
+		err := pebble.DebugCheckLevels(db)
+		cumulativeTime.Add(int64(time.Since(now)))
+		return err
 	}
 
 	return opts
