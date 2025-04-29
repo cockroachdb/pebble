@@ -12,7 +12,7 @@ tree
        0      LOCK
       98      MANIFEST-000001
      122      MANIFEST-000008
-    1240      OPTIONS-000003
+    1267      OPTIONS-000003
        0      marker.format-version.000001.013
        0      marker.manifest.000002.MANIFEST-000008
             simple/
@@ -23,7 +23,7 @@ tree
       25        000004.log
      586        000005.sst
       98        MANIFEST-000001
-    1240        OPTIONS-000003
+    1267        OPTIONS-000003
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -49,6 +49,7 @@ cat build/OPTIONS-000003
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
+  concurrent_compactions=1
   max_concurrent_compactions=1
   max_concurrent_downloads=1
   max_manifest_file_size=96

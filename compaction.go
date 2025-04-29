@@ -64,7 +64,8 @@ func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64
 	// compactions to half of available disk space. Note that this will not
 	// prevent compaction picking from pursuing compactions that are larger
 	// than this threshold before expansion.
-	diskMax := (availBytes / 2) / uint64(opts.MaxConcurrentCompactions())
+	_, maxConcurrency := opts.CompactionConcurrencyRange()
+	diskMax := (availBytes / 2) / uint64(maxConcurrency)
 	if v > diskMax {
 		v = diskMax
 	}
@@ -1939,7 +1940,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
-	maxCompactions := d.opts.MaxConcurrentCompactions()
+	_, maxCompactions := d.opts.CompactionConcurrencyRange()
 	maxDownloads := d.opts.MaxConcurrentDownloads()
 
 	if d.mu.compact.compactingCount >= maxCompactions &&

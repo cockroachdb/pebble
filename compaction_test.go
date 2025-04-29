@@ -1441,10 +1441,12 @@ func TestManualCompaction(t *testing.T) {
 				return ""
 
 			case "set-concurrent-compactions":
-				var concurrentCompactions int
-				td.ScanArgs(t, "num", &concurrentCompactions)
-				d.opts.MaxConcurrentCompactions = func() int {
-					return concurrentCompactions
+				lower := 1
+				upper := 1
+				td.MaybeScanArgs(t, "max", &upper)
+				td.MaybeScanArgs(t, "range", &lower, upper)
+				d.opts.CompactionConcurrencyRange = func() (int, int) {
+					return lower, upper
 				}
 				return ""
 
