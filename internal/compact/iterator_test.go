@@ -58,9 +58,11 @@ func TestCompactionIter(t *testing.T) {
 	var allowZeroSeqnum bool
 	var ineffectualSingleDeleteKeys []string
 	var invariantViolationSingleDeleteKeys []string
+	var missizedDeleteInfo []string
 	resetSingleDelStats := func() {
 		ineffectualSingleDeleteKeys = ineffectualSingleDeleteKeys[:0]
 		invariantViolationSingleDeleteKeys = invariantViolationSingleDeleteKeys[:0]
+		missizedDeleteInfo = missizedDeleteInfo[:0]
 	}
 	newIter := func() *Iter {
 		resetSingleDelStats()
@@ -88,6 +90,10 @@ func TestCompactionIter(t *testing.T) {
 			},
 			NondeterministicSingleDeleteCallback: func(userKey []byte) {
 				invariantViolationSingleDeleteKeys = append(invariantViolationSingleDeleteKeys, string(userKey))
+			},
+			MissizedDeleteCallback: func(userKey []byte, elidedSize, expectedSize uint64) {
+				info := fmt.Sprintf("%s (elided=%d, expected=%d)", string(userKey), elidedSize, expectedSize)
+				missizedDeleteInfo = append(missizedDeleteInfo, info)
 			},
 		}
 		pointIter, rangeDelIter, rangeKeyIter := makeInputIters(kvs, rangeDels, rangeKeys)
@@ -158,6 +164,7 @@ func TestCompactionIter(t *testing.T) {
 				printSnapshotPinned := false
 				printMissizedDels := false
 				printForceObsolete := false
+				printMissizedDelInfo := false
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "snapshots":
@@ -180,6 +187,8 @@ func TestCompactionIter(t *testing.T) {
 						printSnapshotPinned = true
 					case "print-missized-dels":
 						printMissizedDels = true
+					case "print-missized-del-info":
+						printMissizedDelInfo = true
 					case "print-force-obsolete":
 						printForceObsolete = true
 					default:
@@ -262,6 +271,10 @@ func TestCompactionIter(t *testing.T) {
 				if len(invariantViolationSingleDeleteKeys) > 0 {
 					fmt.Fprintf(&b, "invariant-violation-single-deletes: %s\n",
 						strings.Join(invariantViolationSingleDeleteKeys, ","))
+				}
+				if printMissizedDelInfo && len(missizedDeleteInfo) > 0 {
+					fmt.Fprintf(&b, "missized-delete-info: %s\n",
+						strings.Join(missizedDeleteInfo, "; "))
 				}
 				return b.String()
 
