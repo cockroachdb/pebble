@@ -157,14 +157,14 @@ pick-auto l0_compaction_concurrency=10 compaction_debt_concurrency=5120000
 ----
 nil
 
-pick-auto l0_compaction_concurrency=10 compaction_debt_concurrency=512000
+pick-auto l0_compaction_concurrency=10 compaction_debt_concurrency=5120000 concurrency=(2,4)
 ----
 L0 -> L1
 L0: 000301,000302,000303,000304,000305
 L1: 000201
 grandparents: 000101
 
-pick-auto l0_compaction_concurrency=5 compaction_debt_concurrency=5120000
+pick-auto l0_compaction_concurrency=5 compaction_debt_concurrency=5120000 concurrency=(1,5)
 ----
 L0 -> L1
 L0: 000301,000302,000303,000304,000305

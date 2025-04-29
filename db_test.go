@@ -1163,8 +1163,8 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		opts := &Options{
 			FS: mem,
-			MaxConcurrentCompactions: func() int {
-				return 2
+			CompactionConcurrencyRange: func() (int, int) {
+				return 1, 2
 			},
 		}
 		d, err := Open("", testingRandomized(t, opts))
@@ -1498,8 +1498,8 @@ func TestMemtableIngestInversion(t *testing.T) {
 		MemTableStopWritesThreshold: 1000,
 		L0StopWritesThreshold:       1000,
 		L0CompactionThreshold:       2,
-		MaxConcurrentCompactions: func() int {
-			return 1000
+		CompactionConcurrencyRange: func() (int, int) {
+			return 1, 1000
 		},
 	}
 

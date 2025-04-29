@@ -1181,7 +1181,8 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	// debt as a second signal to prevent compaction concurrency from dropping
 	// significantly right after a base compaction finishes, and before those
 	// bytes have been compacted further down the LSM.
-	if n := len(env.inProgressCompactions); n > 0 {
+	lower, _ := p.opts.CompactionConcurrencyRange()
+	if n := len(env.inProgressCompactions); n >= lower {
 		l0ReadAmp := p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
 		compactionDebt := p.estimatedCompactionDebt(0)
 		ccSignal1 := n * p.opts.Experimental.L0CompactionConcurrency
