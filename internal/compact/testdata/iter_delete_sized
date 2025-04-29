@@ -1824,3 +1824,56 @@ a#2,SET:a2
 b#4,SETWITHDEL:b4
 .
 invariant-violation-single-deletes: a,b
+
+# Add a test specifically for MissizedDeleteCallback
+# This test creates a scenario where a DELSIZED tombstone's expected size
+# doesn't match the actual size of the deleted entry.
+
+define
+a.DELSIZED.8:varint(25)
+a.SET.5:hello
+----
+
+iter print-missized-dels print-missized-del-info
+first
+next
+----
+a#8,DEL:
+.
+missized-dels=1
+missized-delete-info: a (elided=6, expected=25)
+
+# Test a DELSIZED that never deletes a key (key doesn't exist)
+define
+a.DELSIZED.8:varint(10)
+b.SET.5:hello
+----
+
+iter print-missized-dels print-missized-del-info
+first
+next
+----
+a#8,DELSIZED:varint(10)
+b#5,SET:hello
+missized-dels=0
+
+# Test multiple missized DELSIZEDs in the same run
+define
+a.DELSIZED.9:varint(20)
+a.SET.8:foo
+b.DELSIZED.7:varint(15)
+b.SET.5:bar
+c.DELSIZED.6:varint(4)
+c.SET.3:xyz
+----
+
+iter print-missized-dels print-missized-del-info
+first
+next
+next
+----
+a#9,DEL:
+b#7,DEL:
+c#6,DELSIZED:
+missized-dels=2
+missized-delete-info: a (elided=4, expected=20); b (elided=4, expected=15)
