@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // ReadAll returns all point keys, range del spans, and range key spans from an
@@ -273,6 +274,16 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 
 		case "format", "leveldb":
 			return errors.Errorf("%q is deprecated", key)
+
+		case "compression":
+			o.Compression, err = func() (block.Compression, error) {
+				for c := block.DefaultCompression; c < block.NCompression; c++ {
+					if strings.EqualFold(c.String(), value) {
+						return c, nil
+					}
+				}
+				return 0, errors.Errorf("unknown compresion %q", value)
+			}()
 
 		default:
 			// TODO(radu): ignoring unknown keys is error-prone; we need to find an

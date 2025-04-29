@@ -342,3 +342,24 @@ close
 ----
 point:    [a@2#1,SET-b@2#1,SET]
 seqnums:  [1-1]
+
+build compression=zstd
+a.SET.1:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
+----
+point:    [a#1,SET-a#1,SET]
+seqnums:  [1-1]
+
+props rocksdb.compression
+----
+rocksdb.compression: ZSTD
+
+# MinLZ is not supported in v5; we should fall back to Snappy.
+build compression=minlz
+a.SET.1:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
+----
+point:    [a#1,SET-a#1,SET]
+seqnums:  [1-1]
+
+props rocksdb.compression
+----
+rocksdb.compression: Snappy
