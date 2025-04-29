@@ -648,6 +648,10 @@ type PossibleAPIMisuseInfo struct {
 	//  - NondeterministicSingleDelete,
 	//  - MissizedDelete.
 	UserKey []byte
+
+	// ExtraInfo is set for the following kinds:
+	//  - MissizedDelete: contains "elidedSize=<size>,expectedSize=<size>"
+	ExtraInfo string
 }
 
 func (i PossibleAPIMisuseInfo) String() string {
@@ -657,8 +661,10 @@ func (i PossibleAPIMisuseInfo) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (i PossibleAPIMisuseInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	switch i.Kind {
-	case IneffectualSingleDelete, NondeterministicSingleDelete, MissizedDelete:
+	case IneffectualSingleDelete, NondeterministicSingleDelete:
 		w.Printf("possible API misuse: %s (key=%q)", redact.Safe(i.Kind), i.UserKey)
+	case MissizedDelete:
+		w.Printf("possible API misuse: %s (key=%q, %s)", redact.Safe(i.Kind), i.UserKey, redact.Safe(i.ExtraInfo))
 	default:
 		if invariants.Enabled {
 			panic("invalid API misuse event")
