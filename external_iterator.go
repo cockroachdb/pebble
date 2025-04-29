@@ -310,7 +310,7 @@ func openExternalTables(
 		if err != nil {
 			return readers, err
 		}
-		if r.Properties.NumValuesInBlobFiles > 0 {
+		if r.Attributes.Has(sstable.AttributeBlobValues) {
 			return readers, errors.Newf("pebble: NewExternalIter does not support blob references")
 		}
 		readers = append(readers, r)

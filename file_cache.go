@@ -759,7 +759,7 @@ func newRangeKeyIter(
 	// file's range key blocks may surface deleted range keys below. This is
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
-	if r.Properties.NumRangeKeyDels == 0 && len(opts.RangeKeyFilters) > 0 {
+	if !r.Attributes.Has(sstable.AttributeRangeKeyDels) && len(opts.RangeKeyFilters) > 0 {
 		ok, _, err := checkAndIntersectFilters(r, opts.RangeKeyFilters, nil, transforms.SyntheticSuffix())
 		if err != nil {
 			return nil, err

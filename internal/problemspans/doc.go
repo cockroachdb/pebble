@@ -10,7 +10,7 @@
 // This package is designed for efficiently tracking key ranges that may need
 // special handling.
 //
-// Key Features:
+// Key Attributes:
 //
 //   - **Span Registration:**
 //     Add spans with specified expiration times so that they automatically
