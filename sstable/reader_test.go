@@ -558,6 +558,18 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 		})
 }
 
+func TestReaderAttributes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	opts := WriterOptions{
+		// Use format supporting blob handles.
+		TableFormat:    TableFormatPebblev6,
+		BlockSize:      math.MaxInt32,
+		IndexBlockSize: math.MaxInt32,
+		Comparer:       testkeys.Comparer,
+	}
+	runTestReader(t, opts, "testdata/reader_attributes", nil /* Reader */, false)
+}
+
 func TestInjectedErrors(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	for _, fixture := range TestFixtures {
@@ -702,11 +714,12 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 					r = nil
 				}
 				var cacheSize int
-				var printLayout bool
+				var printLayout, printAttributes bool
 				d.MaybeScanArgs(t, "cache-size", &cacheSize)
 				d.MaybeScanArgs(t, "print-layout", &printLayout)
 				d.MaybeScanArgs(t, "block-size", &o.BlockSize)
 				d.MaybeScanArgs(t, "index-block-size", &o.IndexBlockSize)
+				d.MaybeScanArgs(t, "print-attributes", &printAttributes)
 
 				closeCache()
 				c = cache.New(int64(cacheSize))
@@ -716,10 +729,15 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 				if err != nil {
 					return err.Error()
 				}
+				var buf bytes.Buffer
 				if printLayout {
-					return indexLayoutString(t, r)
+					buf.WriteString(indexLayoutString(t, r))
 				}
-				return ""
+				if printAttributes {
+					buf.WriteString("attributes: ")
+					buf.WriteString(r.Attributes.String())
+				}
+				return buf.String()
 
 			case "iter":
 				var globalSeqNum uint64

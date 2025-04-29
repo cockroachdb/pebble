@@ -65,6 +65,7 @@ type Reader struct {
 
 	Properties  Properties
 	tableFormat TableFormat
+	Attributes  Attributes
 }
 
 type ReadEnv struct {
@@ -130,7 +131,7 @@ func (r *Reader) newPointIter(ctx context.Context, opts IterOptions) (Iterator, 
 	// until the final iterator closes.
 	var res Iterator
 	var err error
-	if r.Properties.IndexType == twoLevelIndex {
+	if r.Attributes.Has(AttributeTwoLevelIndex) {
 		if r.tableFormat.BlockColumnar() {
 			res, err = newColumnBlockTwoLevelIterator(
 				ctx, r, opts)
@@ -204,7 +205,7 @@ func (r *Reader) newCompactionIter(
 		BlobContext:          blobContext,
 	}
 
-	if r.Properties.IndexType == twoLevelIndex {
+	if r.Attributes.Has(AttributeTwoLevelIndex) {
 		if !r.tableFormat.BlockColumnar() {
 			i, err := newRowBlockTwoLevelIterator(ctx, r, opts)
 			if err != nil {
@@ -895,6 +896,29 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	if err := r.readMetaindex(ctx, rh, o.Filters, o.DeniedUserProperties); err != nil {
 		r.err = err
 		return nil, r.Close()
+	}
+
+	// Set which attributes are in use based on property values.
+	if r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0 {
+		r.Attributes.Add(AttributeValueBlocks)
+	}
+	if r.Properties.NumRangeKeySets > 0 {
+		r.Attributes.Add(AttributeRangeKeySets)
+	}
+	if r.Properties.NumRangeKeyUnsets > 0 {
+		r.Attributes.Add(AttributeRangeKeyUnsets)
+	}
+	if r.Properties.NumRangeKeyDels > 0 {
+		r.Attributes.Add(AttributeRangeKeyDels)
+	}
+	if r.Properties.NumRangeDeletions > 0 {
+		r.Attributes.Add(AttributeRangeDels)
+	}
+	if r.Properties.IndexType == twoLevelIndex {
+		r.Attributes.Add(AttributeTwoLevelIndex)
+	}
+	if r.Properties.NumValuesInBlobFiles > 0 {
+		r.Attributes.Add(AttributeBlobValues)
 	}
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {

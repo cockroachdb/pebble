@@ -87,7 +87,7 @@ func rewriteKeySuffixesInBlocks(
 	switch {
 	case concurrency < 1:
 		return nil, TableFormatUnspecified, errors.New("concurrency must be >= 1")
-	case r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0:
+	case r.Attributes.Has(AttributeValueBlocks):
 		return nil, TableFormatUnspecified,
 			errors.New("sstable with a single suffix should not have value blocks")
 	case r.Properties.ComparerName != o.Comparer.Name:
@@ -308,7 +308,7 @@ func RewriteKeySuffixesViaWriter(
 	if o.Comparer == nil || o.Comparer.Split == nil {
 		return nil, errors.New("a valid splitter is required to rewrite suffixes")
 	}
-	if r.Properties.NumValuesInBlobFiles > 0 {
+	if r.Attributes.Has(AttributeBlobValues) {
 		return nil, errors.New("cannot rewrite suffixes of sstable with blob values")
 	}
 
