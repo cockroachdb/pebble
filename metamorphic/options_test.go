@@ -70,7 +70,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		// Function pointers
 		"BlockPropertyCollectors:",
 		"EventListener:",
-		"MaxConcurrentCompactions:",
+		"CompactionConcurrencyRange:",
 		"MaxConcurrentDownloads:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.EnableColumnarBlocks:",
@@ -125,7 +125,12 @@ func TestOptionsRoundtrip(t *testing.T) {
 		if o.Opts.Experimental.IngestSplit != nil && o.Opts.Experimental.IngestSplit() {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
-		require.Equal(t, o.Opts.MaxConcurrentCompactions(), parsed.Opts.MaxConcurrentCompactions())
+
+		expBaseline, expUpper := o.Opts.CompactionConcurrencyRange()
+		parsedBaseline, parsedUpper := parsed.Opts.CompactionConcurrencyRange()
+		require.Equal(t, expBaseline, parsedBaseline)
+		require.Equal(t, expUpper, parsedUpper)
+
 		require.Equal(t, o.Opts.MaxConcurrentDownloads(), parsed.Opts.MaxConcurrentDownloads())
 		require.Equal(t, len(o.Opts.BlockPropertyCollectors), len(parsed.Opts.BlockPropertyCollectors))
 

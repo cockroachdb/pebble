@@ -558,7 +558,7 @@ type Options struct {
 		// The threshold of L0 read-amplification at which compaction concurrency
 		// is enabled (if CompactionDebtConcurrency was not already exceeded).
 		// Every multiple of this value enables another concurrent
-		// compaction up to MaxConcurrentCompactions.
+		// compaction up to the upper value returned by CompactionConcurrencyRange.
 		L0CompactionConcurrency int
 
 		// CompactionDebtConcurrency controls the threshold of compaction debt
@@ -998,25 +998,31 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// MaxConcurrentCompactions specifies the maximum number of concurrent
-	// compactions (not including download compactions).
+	// CompactionConcurrencyRange returns a [lower, upper] range for the number of
+	// compactions Pebble runs in parallel, not including download compactions
+	// (which have a separate limit specified by MaxConcurrentDownloads).
+	//
+	// The lower value is the concurrency allowed under normal circumstances.
+	// Pebble can dynamically increase the concurrency based on heuristics (like
+	// high read amplification or compaction debt) up to the maximum.
 	//
 	// Concurrent compactions are performed:
 	//  - when L0 read-amplification passes the L0CompactionConcurrency threshold;
 	//  - for automatic background compactions;
 	//  - when a manual compaction for a level is split and parallelized.
 	//
-	// MaxConcurrentCompactions() must be greater than 0.
+	// lower and upper must be greater than 0. If lower > upper, then upper is
+	// used for both.
 	//
-	// The default value is 1.
-	MaxConcurrentCompactions func() int
+	// The default values are 1, 1.
+	CompactionConcurrencyRange func() (lower, upper int)
 
 	// MaxConcurrentDownloads specifies the maximum number of download
 	// compactions. These are compactions that copy an external file to the local
 	// store.
 	//
-	// This limit is independent of MaxConcurrentCompactions; at any point in
-	// time, we may be running MaxConcurrentCompactions non-download compactions
+	// This limit is independent of CompactionConcurrencyRange; at any point in
+	// time, we may be running CompactionConcurrencyRange non-download compactions
 	// and MaxConcurrentDownloads download compactions.
 	//
 	// MaxConcurrentDownloads() must be greater than 0.
@@ -1309,8 +1315,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
-	if o.MaxConcurrentCompactions == nil {
-		o.MaxConcurrentCompactions = func() int { return 1 }
+	if o.CompactionConcurrencyRange == nil {
+		o.CompactionConcurrencyRange = func() (int, int) { return 1, 1 }
 	}
 	if o.MaxConcurrentDownloads == nil {
 		o.MaxConcurrentDownloads = func() int { return 1 }
@@ -1471,7 +1477,9 @@ func (o *Options) String() string {
 	if o.Experimental.LevelMultiplier != defaultLevelMultiplier {
 		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.Experimental.LevelMultiplier)
 	}
-	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions())
+	lower, upper := o.CompactionConcurrencyRange()
+	fmt.Fprintf(&buf, "  concurrent_compactions=%d\n", lower)
+	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", upper)
 	fmt.Fprintf(&buf, "  max_concurrent_downloads=%d\n", o.MaxConcurrentDownloads())
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
@@ -1643,6 +1651,13 @@ type ParseHooks struct {
 // options cannot be parsed into populated fields. For example, comparer and
 // merger.
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
+	var concurrencyLimit struct {
+		lower    int
+		lowerSet bool
+		upper    int
+		upperSet bool
+	}
+
 	visitKeyValue := func(i, j int, section, key, value string) error {
 		// WARNING: DO NOT remove entries from the switches below because doing so
 		// causes a key previously written to the OPTIONS file to be considered unknown,
@@ -1797,14 +1812,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "level_multiplier":
 				o.Experimental.LevelMultiplier, err = strconv.Atoi(value)
+			case "concurrent_compactions":
+				concurrencyLimit.lowerSet = true
+				concurrencyLimit.lower, err = strconv.Atoi(value)
 			case "max_concurrent_compactions":
-				var concurrentCompactions int
-				concurrentCompactions, err = strconv.Atoi(value)
-				if concurrentCompactions <= 0 {
-					err = errors.New("max_concurrent_compactions cannot be <= 0")
-				} else {
-					o.MaxConcurrentCompactions = func() int { return concurrentCompactions }
-				}
+				concurrencyLimit.upperSet = true
+				concurrencyLimit.upper, err = strconv.Atoi(value)
 			case "max_concurrent_downloads":
 				var concurrentDownloads int
 				concurrentDownloads, err = strconv.Atoi(value)
@@ -2022,9 +2035,27 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		}
 		return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
 	}
-	return parseOptions(s, parseOptionsFuncs{
+	if err := parseOptions(s, parseOptionsFuncs{
 		visitKeyValue: visitKeyValue,
-	})
+	}); err != nil {
+		return err
+	}
+	if concurrencyLimit.lowerSet || concurrencyLimit.upperSet {
+		if !concurrencyLimit.lowerSet {
+			concurrencyLimit.lower = 1
+		} else if concurrencyLimit.lower < 1 {
+			return errors.New("baseline_concurrent_compactions cannot be <= 0")
+		}
+		if !concurrencyLimit.upperSet {
+			concurrencyLimit.upper = concurrencyLimit.lower
+		} else if concurrencyLimit.upper < concurrencyLimit.lower {
+			return errors.Newf("max_concurrent_compactions cannot be < %d", concurrencyLimit.lower)
+		}
+		o.CompactionConcurrencyRange = func() (int, int) {
+			return concurrencyLimit.lower, concurrencyLimit.upper
+		}
+	}
+	return nil
 }
 
 // ErrMissingWALRecoveryDir is an error returned when a database is attempted to be
