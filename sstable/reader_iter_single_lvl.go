@@ -209,7 +209,7 @@ func newColumnBlockSingleLevelIterator(
 	}
 	i := singleLevelIterColumnBlockPool.Get().(*singleLevelIteratorColumnBlocks)
 	i.init(ctx, r, opts)
-	if r.Properties.NumValueBlocks > 0 {
+	if r.Features().IsSet(FeatureValueBlocks) {
 		i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
@@ -244,7 +244,7 @@ func newRowBlockSingleLevelIterator(
 	i := singleLevelIterRowBlockPool.Get().(*singleLevelIteratorRowBlocks)
 	i.init(ctx, r, opts)
 	if r.tableFormat >= TableFormatPebblev3 {
-		if r.Properties.NumValueBlocks > 0 {
+		if r.Features().IsSet(FeatureValueBlocks) {
 			i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
 			// We can set the GetLazyValuer directly to the vbReader because
 			// rowblk sstables never contain blob value handles.

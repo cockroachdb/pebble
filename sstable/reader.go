@@ -65,6 +65,7 @@ type Reader struct {
 
 	Properties  Properties
 	tableFormat TableFormat
+	features    FeatureSet
 }
 
 type ReadEnv struct {
@@ -130,7 +131,7 @@ func (r *Reader) newPointIter(ctx context.Context, opts IterOptions) (Iterator, 
 	// until the final iterator closes.
 	var res Iterator
 	var err error
-	if r.Properties.IndexType == twoLevelIndex {
+	if r.Features().IsSet(FeatureTwoLevelIndex) {
 		if r.tableFormat.BlockColumnar() {
 			res, err = newColumnBlockTwoLevelIterator(
 				ctx, r, opts)
@@ -204,7 +205,7 @@ func (r *Reader) newCompactionIter(
 		BlobContext:          blobContext,
 	}
 
-	if r.Properties.IndexType == twoLevelIndex {
+	if r.Features().IsSet(FeatureTwoLevelIndex) {
 		if !r.tableFormat.BlockColumnar() {
 			i, err := newRowBlockTwoLevelIterator(ctx, r, opts)
 			if err != nil {
@@ -859,6 +860,10 @@ func (r *Reader) TableFormat() (TableFormat, error) {
 	return r.tableFormat, nil
 }
 
+func (r *Reader) Features() FeatureSet {
+	return r.features
+}
+
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 //
@@ -895,6 +900,29 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	if err := r.readMetaindex(ctx, rh, o.Filters, o.DeniedUserProperties); err != nil {
 		r.err = err
 		return nil, r.Close()
+	}
+
+	// Set which features are in use based on property values.
+	if r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0 {
+		r.features = r.features.Set(FeatureValueBlocks)
+	}
+	if r.Properties.NumRangeKeySets > 0 {
+		r.features = r.features.Set(FeatureRangeKeySets)
+	}
+	if r.Properties.NumRangeKeyUnsets > 0 {
+		r.features = r.features.Set(FeatureRangeKeyUnsets)
+	}
+	if r.Properties.NumRangeKeyDels > 0 {
+		r.features = r.features.Set(FeatureRangeKeyDels)
+	}
+	if r.Properties.NumRangeDeletions > 0 {
+		r.features = r.features.Set(FeatureRangeDels)
+	}
+	if r.Properties.IndexType == twoLevelIndex {
+		r.features = r.features.Set(FeatureTwoLevelIndex)
+	}
+	if r.Properties.NumValuesInBlobFiles > 0 {
+		r.features = r.features.Set(FeatureBlobValues)
 	}
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
