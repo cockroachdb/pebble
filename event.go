@@ -645,8 +645,8 @@ type PossibleAPIMisuseInfo struct {
 
 	// UserKey is set for the following kinds:
 	//  - IneffectualSingleDelete,
-	//  - NondeterministicSingleDelete.
-	//  - MissizedDELSIZED
+	//  - NondeterministicSingleDelete,
+	//  - MissizedDelete.
 	UserKey []byte
 }
 
@@ -657,7 +657,7 @@ func (i PossibleAPIMisuseInfo) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (i PossibleAPIMisuseInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	switch i.Kind {
-	case IneffectualSingleDelete, NondeterministicSingleDelete, MissizedDELSIZED:
+	case IneffectualSingleDelete, NondeterministicSingleDelete, MissizedDelete:
 		w.Printf("possible API misuse: %s (key=%q)", redact.Safe(i.Kind), i.UserKey)
 	default:
 		if invariants.Enabled {
@@ -749,10 +749,10 @@ const (
 	// happens, resulting in the invariant violation callback.
 	NondeterministicSingleDelete
 
-	// MissizedDELSIZED is emitted when a DELSIZED tombstone is found that did
+	// MissizedDelete is emitted when a DELSIZED tombstone is found that did
 	// not accurately record the size of the value it deleted. This can lead to
 	// incorrect behavior in compactions.
-	MissizedDELSIZED
+	MissizedDelete
 )
 
 func (k APIMisuseKind) String() string {
@@ -761,7 +761,7 @@ func (k APIMisuseKind) String() string {
 		return "ineffectual SINGLEDEL"
 	case NondeterministicSingleDelete:
 		return "nondeterministic SINGLEDEL"
-	case MissizedDELSIZED:
+	case MissizedDelete:
 		return "missized DELSIZED"
 	default:
 		return "unknown"
