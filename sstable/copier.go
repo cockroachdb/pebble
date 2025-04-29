@@ -51,7 +51,9 @@ func CopySpan(
 ) (size uint64, _ error) {
 	defer func() { _ = input.Close() }()
 
-	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
+	const unsupportedCopyFeatures = FeatureValueBlocks | FeatureRangeKeySets | FeatureRangeKeyUnsets | FeatureRangeKeyDels | FeatureRangeDels
+
+	if r.Features.IsSet(unsupportedCopyFeatures) {
 		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, output) // Finishes/Aborts output.
 	}
 
@@ -77,8 +79,9 @@ func CopySpan(
 		}
 	}()
 
-	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
+	if r.Features.IsSet(unsupportedCopyFeatures) {
 		// We just checked for these conditions above.
+		// TODO(xin): Question - why are we checking this again?
 		return 0, base.AssertionFailedf("cannot CopySpan sstables with value blocks or range keys")
 	}
 
@@ -224,7 +227,7 @@ func intersectingIndexEntries(
 		if err != nil {
 			return nil, err
 		}
-		if r.Properties.IndexType != twoLevelIndex {
+		if !r.Features.IsSet(FeatureTwoLevelIndex) {
 			entry := indexEntry{bh: bh, sep: top.Separator()}
 			alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
 			alloc, entry.sep = alloc.Copy(entry.sep)
