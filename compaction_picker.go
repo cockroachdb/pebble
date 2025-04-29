@@ -1221,7 +1221,10 @@ func responsibleForGarbageBytes(
 }
 
 func (p *compactionPickerByScore) getCompactionConcurrency() int {
-	maxConcurrentCompactions := p.opts.MaxConcurrentCompactions()
+	lower, upper := p.opts.CompactionConcurrencyRange()
+	if lower >= upper {
+		return upper
+	}
 	// Compaction concurrency is controlled by L0 read-amp. We allow one
 	// additional compaction per L0CompactionConcurrency sublevels, as well as
 	// one additional compaction per CompactionDebtConcurrency bytes of
@@ -1238,23 +1241,25 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	// Rearranging,
 	// n <= l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency.
 	// So we can run up to
-	// l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency + 1 compactions
-	l0ReadAmpCompactions := 1
+	// l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency extra compactions.
+	l0ReadAmpCompactions := 0
 	if p.opts.Experimental.L0CompactionConcurrency > 0 {
 		l0ReadAmp := p.l0Organizer.MaxDepthAfterOngoingCompactions()
-		l0ReadAmpCompactions = (l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency) + 1
+		l0ReadAmpCompactions = (l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency)
 	}
 	// compactionDebt >= ccSignal2 then can run another compaction, where
 	// ccSignal2 = uint64(n) * p.opts.Experimental.CompactionDebtConcurrency
 	// Rearranging,
 	// n <= compactionDebt / p.opts.Experimental.CompactionDebtConcurrency
 	// So we can run up to
-	// compactionDebt / p.opts.Experimental.CompactionDebtConcurrency + 1 compactions.
-	compactionDebtCompactions := 1
+	// compactionDebt / p.opts.Experimental.CompactionDebtConcurrency extra
+	// compactions.
+	compactionDebtCompactions := 0
 	if p.opts.Experimental.CompactionDebtConcurrency > 0 {
 		compactionDebt := p.estimatedCompactionDebt(0)
-		compactionDebtCompactions = int(compactionDebt/p.opts.Experimental.CompactionDebtConcurrency) + 1
+		compactionDebtCompactions = int(compactionDebt / p.opts.Experimental.CompactionDebtConcurrency)
 	}
+
 	compactableGarbageCompactions := 0
 	garbageFractionLimit := p.opts.Experimental.CompactionGarbageFractionForMaxConcurrency()
 	if garbageFractionLimit > 0 && p.dbSizeBytes > 0 {
@@ -1263,11 +1268,12 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 				*rangeDeletionsBytesEstimateAnnotator.MultiLevelAnnotation(p.vers.Levels[:])
 		garbageFraction := float64(compactableGarbageBytes) / float64(p.dbSizeBytes)
 		compactableGarbageCompactions =
-			int((garbageFraction / garbageFractionLimit) * float64(maxConcurrentCompactions))
+			int((garbageFraction / garbageFractionLimit) * float64(upper-lower))
 	}
-	concurrencyBasedOnSignals :=
-		max(l0ReadAmpCompactions, compactionDebtCompactions, compactableGarbageCompactions)
-	return min(maxConcurrentCompactions, max(concurrencyBasedOnSignals, 1))
+
+	extraCompactions := max(l0ReadAmpCompactions, compactionDebtCompactions, compactableGarbageCompactions, 0)
+
+	return min(lower+extraCompactions, upper)
 }
 
 // TODO(sumeer): remove unless someone actually finds this useful.
