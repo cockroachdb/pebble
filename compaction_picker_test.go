@@ -587,6 +587,8 @@ func TestCompactionPickerL0(t *testing.T) {
 func TestCompactionPickerConcurrency(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
 	opts.Experimental.L0CompactionConcurrency = 1
+	lowerConcurrencyLimit, upperConcurrencyLimit := 1, 4
+	opts.CompactionConcurrencyRange = func() (int, int) { return lowerConcurrencyLimit, upperConcurrencyLimit }
 
 	parseMeta := func(s string) (*fileMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -754,6 +756,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
 			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.Experimental.L0CompactionConcurrency)
 			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.Experimental.CompactionDebtConcurrency)
+			td.MaybeScanArgs(t, "concurrency", &lowerConcurrencyLimit, &upperConcurrencyLimit)
 
 			pc := picker.pickAuto(compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
@@ -774,8 +777,10 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				return "nil"
 			}
 			return result.String()
+
+		default:
+			return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 		}
-		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
 }
 
