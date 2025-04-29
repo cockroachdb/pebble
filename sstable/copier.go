@@ -8,7 +8,6 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -51,7 +50,8 @@ func CopySpan(
 ) (size uint64, _ error) {
 	defer func() { _ = input.Close() }()
 
-	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
+	const unsupportedCopyFeatures = AttributeValueBlocks | AttributeRangeKeySets | AttributeRangeKeyUnsets | AttributeRangeKeyDels | AttributeRangeDels
+	if r.Features.AnyIntersection(unsupportedCopyFeatures) {
 		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, output) // Finishes/Aborts output.
 	}
 
@@ -76,11 +76,6 @@ func CopySpan(
 			_ = w.Close()
 		}
 	}()
-
-	if r.Properties.NumValueBlocks > 0 || r.Properties.NumRangeKeys() > 0 || r.Properties.NumRangeDeletions > 0 {
-		// We just checked for these conditions above.
-		return 0, base.AssertionFailedf("cannot CopySpan sstables with value blocks or range keys")
-	}
 
 	var preallocRH objstorageprovider.PreallocatedReadHandle
 	// ReadBeforeForIndexAndFilter attempts to read the top-level index, filter
@@ -224,7 +219,7 @@ func intersectingIndexEntries(
 		if err != nil {
 			return nil, err
 		}
-		if r.Properties.IndexType != twoLevelIndex {
+		if !r.Features.AnyIntersection(AttributeTwoLevelIndex) {
 			entry := indexEntry{bh: bh, sep: top.Separator()}
 			alloc, entry.bh.Props = alloc.Copy(entry.bh.Props)
 			alloc, entry.sep = alloc.Copy(entry.sep)

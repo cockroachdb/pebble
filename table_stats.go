@@ -328,7 +328,7 @@ func (d *DB) loadTableStats(
 					return
 				}
 			}
-			if props.NumRangeDeletions > 0 || props.NumRangeKeyDels > 0 {
+			if r.Features.AnyIntersection(sstable.AttributeRangeDels | sstable.AttributeRangeKeyDels) {
 				if compactionHints, err = d.loadTableRangeDelStats(
 					r, v, level, meta, &stats, env,
 				); err != nil {

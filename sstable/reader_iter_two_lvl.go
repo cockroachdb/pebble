@@ -166,7 +166,7 @@ func newColumnBlockTwoLevelIterator(
 	i.useFilterBlock = i.secondLevel.useFilterBlock
 	i.secondLevel.useFilterBlock = false
 
-	if r.Properties.NumValueBlocks > 0 {
+	if r.Features.AnyIntersection(AttributeValueBlocks) {
 		// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 		// can outlive the singleLevelIterator due to be being embedded in a
 		// LazyValue. This consumes ~2% in microbenchmark CPU profiles, but we
@@ -215,7 +215,7 @@ func newRowBlockTwoLevelIterator(
 	i.secondLevel.useFilterBlock = false
 
 	if r.tableFormat >= TableFormatPebblev3 {
-		if r.Properties.NumValueBlocks > 0 {
+		if r.Features.AnyIntersection(AttributeValueBlocks) {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
 			// can outlive the singleLevelIterator due to be being embedded in a
 			// LazyValue. This consumes ~2% in microbenchmark CPU profiles, but we
