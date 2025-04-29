@@ -218,8 +218,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				if d.HasArg("max-concurrent-compactions") {
 					d.ScanArgs(t, "max-concurrent-compactions", &maxConcurrentCompactions)
 				}
-				opts.MaxConcurrentCompactions = func() int {
-					return maxConcurrentCompactions
+				opts.CompactionConcurrencyRange = func() (int, int) {
+					return 1, maxConcurrentCompactions
 				}
 				if d.HasArg("compaction-debt-concurrency") {
 					d.ScanArgs(t, "compaction-debt-concurrency", &opts.Experimental.CompactionDebtConcurrency)
@@ -647,7 +647,8 @@ func TestCompactionPickerL0(t *testing.T) {
 func TestCompactionPickerConcurrency(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
-	opts.MaxConcurrentCompactions = func() int { return 4 }
+	lowerConcurrencyLimit, upperConcurrencyLimit := 1, 4
+	opts.CompactionConcurrencyRange = func() (int, int) { return lowerConcurrencyLimit, upperConcurrencyLimit }
 
 	parseMeta := func(s string) (*tableMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -815,6 +816,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
 			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.Experimental.L0CompactionConcurrency)
 			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.Experimental.CompactionDebtConcurrency)
+			td.MaybeScanArgs(t, "concurrency", &lowerConcurrencyLimit, &upperConcurrencyLimit)
 
 			env := compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
@@ -842,8 +844,10 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 				fmt.Fprintf(&result, "nil")
 			}
 			return result.String()
+
+		default:
+			return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 		}
-		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
 }
 
