@@ -1586,7 +1586,7 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 	})
 }
 
-// TestWALFailoverRandomized is a randomzied test exercising recovery in the
+// TestWALFailoverRandomized is a randomized test exercising recovery in the
 // presence of WAL failover. It repeatedly opens a database, writes a number of
 // batches concurrently and simulates a hard crash using vfs.NewCrashableMem. It
 // ensures that the resulting DB state opens successfully, and the contents of
@@ -1596,7 +1596,6 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 func TestWALFailoverRandomized(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
-	mem := vfs.NewCrashableMem()
 	makeOptions := func(mem *vfs.MemFS) *Options {
 		failoverOpts := WALFailoverOptions{
 			Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
@@ -1625,7 +1624,26 @@ func TestWALFailoverRandomized(t *testing.T) {
 			WALFailover:                 &failoverOpts,
 		}
 	}
+	runRandomizedCrashTest(t, randomizedCrashTestOptions{
+		makeOptions:         makeOptions,
+		maxValueSize:        4096,
+		seed:                seed,
+		unsyncedDataPercent: 50,
+		opCrashWeight:       1,
+		opBatchWeight:       20,
+	})
+}
 
+type randomizedCrashTestOptions struct {
+	makeOptions         func(*vfs.MemFS) *Options
+	maxValueSize        int
+	seed                int64
+	unsyncedDataPercent int
+	opCrashWeight       int
+	opBatchWeight       int
+}
+
+func runRandomizedCrashTest(t *testing.T, opts randomizedCrashTestOptions) {
 	// KV state tracking.
 	//
 	// This test uses all uint16 big-endian integers as a keyspace. Values are
@@ -1697,29 +1715,33 @@ func TestWALFailoverRandomized(t *testing.T) {
 		require.NoError(t, it.Close())
 	}
 
-	d, err := Open("primary", makeOptions(mem))
+	mem := vfs.NewCrashableMem()
+	d, err := Open("primary", opts.makeOptions(mem))
 	require.NoError(t, err)
-	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+	rng := rand.New(rand.NewPCG(0, uint64(opts.seed)))
 	var wg sync.WaitGroup
 	var n uint64
+	v := make([]byte, opts.maxValueSize)
 	randomOps := metamorphic.Weighted[func()]{
-		{Weight: 1, Item: func() {
+		{Weight: opts.opCrashWeight, Item: func() {
 			time.Sleep(time.Microsecond * time.Duration(rand.IntN(30)))
 			t.Log("initiating hard crash")
 			setIsCrashing(true)
 			// Take a crash-consistent clone of the filesystem and use that going forward.
-			mem = mem.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 50, RNG: rng})
+			mem = mem.CrashClone(vfs.CrashCloneCfg{
+				UnsyncedDataPercent: opts.unsyncedDataPercent,
+				RNG:                 rng,
+			})
 			wg.Wait() // Wait for outstanding batch commits to finish.
 			_ = d.Close()
-			d, err = Open("primary", makeOptions(mem))
+			d, err = Open("primary", opts.makeOptions(mem))
 			require.NoError(t, err)
 			validateState(d)
 			setIsCrashing(false)
 		}},
-		{Weight: 20, Item: func() {
+		{Weight: opts.opBatchWeight, Item: func() {
 			count := rng.IntN(14) + 1
 			var k [2]byte
-			var v [4096]byte
 			b := d.NewBatch()
 			for i := 0; i < count; i++ {
 				j := uint16((n + uint64(i)) % keyspaceSize)
@@ -1748,6 +1770,40 @@ func TestWALFailoverRandomized(t *testing.T) {
 	for o := 0; o < 1000; o++ {
 		nextRandomOp()()
 	}
+}
+
+// TestWALHardCrashRandomized is a randomized test exercising recovery in the
+// presence of a hard crash. It repeatedly opens a database, writes a number of
+// batches concurrently and simulates a hard crash using vfs.NewCrashableMem. It
+// ensures that the resulting DB state opens successfully, and the contents of
+// the DB match the expectations based on the keys written.
+func TestWALHardCrashRandomized(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("seed %d", seed)
+	prng := rand.New(rand.NewPCG(0, uint64(seed)))
+	makeOptions := func(mem *vfs.MemFS) *Options {
+		l := testLogger{t}
+		opts := &Options{
+			FS:                          mem,
+			FormatMajorVersion:          internalFormatNewest,
+			Logger:                      l,
+			MemTableSize:                32 << (10 + prng.IntN(6)), // [32 KiB, 256 KiB]
+			MemTableStopWritesThreshold: 4,
+		}
+		testingRandomized(t, opts)
+		return opts
+	}
+	// The configuration options are randomized to exercise different failure
+	// scenarios. Some runs result in sufficient number of memtable rotations
+	// between crashes that we do get recycled logs.
+	runRandomizedCrashTest(t, randomizedCrashTestOptions{
+		makeOptions:         makeOptions,
+		maxValueSize:        1 << (prng.IntN(19)), // [1, 256 KiB]
+		unsyncedDataPercent: prng.IntN(101),       // [0, 100]
+		seed:                seed,
+		opCrashWeight:       1,
+		opBatchWeight:       20 << prng.IntN(3),
+	})
 }
 
 func TestWALCorruption(t *testing.T) {
