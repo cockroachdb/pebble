@@ -22,7 +22,15 @@ func TestParseOptionsStr(t *testing.T) {
 	testCases := []testCase{
 		{
 			c:       replayConfig{optionsString: `[Options] max_concurrent_compactions=9`},
-			options: &pebble.Options{MaxConcurrentCompactions: func() int { return 9 }},
+			options: &pebble.Options{CompactionConcurrencyRange: func() (int, int) { return 1, 9 }},
+		},
+		{
+			c:       replayConfig{optionsString: `[Options] concurrent_compactions=4`},
+			options: &pebble.Options{CompactionConcurrencyRange: func() (int, int) { return 4, 4 }},
+		},
+		{
+			c:       replayConfig{optionsString: `[Options] concurrent_compactions=4 max_concurrent_compactions=9`},
+			options: &pebble.Options{CompactionConcurrencyRange: func() (int, int) { return 4, 9 }},
 		},
 		{
 			c:       replayConfig{optionsString: `[Options] bytes_per_sync=90000`},
