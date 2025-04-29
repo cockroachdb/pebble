@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -55,7 +56,7 @@ type Test struct {
 	writeOpts *pebble.WriteOptions
 	tmpDir    string
 	// The DBs the test is run on.
-	dbs []*pebble.DB
+	dbs []*testDB
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
 	batches      []*pebble.Batch
@@ -98,13 +99,7 @@ func (t *Test) init(
 	t.opts.Logger = h
 	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
 	t.opts.EventListener = &lel
-	// If the test options set a DebugCheck func, wrap it with retrying of
-	// retriable errors (according to the test's retry policy).
-	if debugCheck := t.opts.DebugCheck; debugCheck != nil {
-		t.opts.DebugCheck = func(db *pebble.DB) error {
-			return t.withRetries(func() error { return debugCheck(db) })
-		}
-	}
+
 	if numInstances < 1 {
 		numInstances = 1
 	}
@@ -184,9 +179,10 @@ func (t *Test) init(
 		}
 	}
 
-	t.dbs = make([]*pebble.DB, numInstances)
+	t.dbs = make([]*testDB, numInstances)
 	for i := range t.dbs {
-		var db *pebble.DB
+		tdb := &testDB{}
+		t.dbs[i] = tdb
 		var err error
 		if len(t.dbs) > 1 {
 			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
@@ -196,18 +192,31 @@ func (t *Test) init(
 			o := *t.opts
 			o.Experimental.CompactionScheduler =
 				pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-			db, err = pebble.Open(dir, &o)
+			// If the test options set a DebugCheck func, wrap it with retrying of
+			// retriable errors (according to the test's retry policy), and perform the
+			// check asynchronously.
+			if debugCheck := o.DebugCheck; debugCheck != nil {
+				o.DebugCheck = func(db *pebble.DB) error {
+					tdb.async(func() {
+						if err := t.withRetries(func() error { return debugCheck(db) }); err != nil {
+							h.Fatalf("debug check failed: %s", err)
+						}
+					})
+					return nil
+				}
+			}
+
+			tdb.DB, err = pebble.Open(dir, &o)
 			return err
 		})
 		if err != nil {
 			return err
 		}
-		t.dbs[i] = db
 		h.log.Printf("// db%d.Open() %v", i+1, err)
 
 		if t.testOpts.sharedStorageEnabled {
 			err = t.withRetries(func() error {
-				return db.SetCreatorID(uint64(i + 1))
+				return tdb.DB.SetCreatorID(uint64(i + 1))
 			})
 			if err != nil {
 				return err
@@ -258,7 +267,7 @@ func (t *Test) withRetries(fn func() error) error {
 
 func (t *Test) isFMV(dbID objID, fmv pebble.FormatMajorVersion) bool {
 	db := t.getDB(dbID)
-	return db.FormatMajorVersion() >= fmv
+	return db.DB.FormatMajorVersion() >= fmv
 }
 
 // minFMV returns the minimum FormatMajorVersion between all databases.
@@ -266,7 +275,7 @@ func (t *Test) minFMV() pebble.FormatMajorVersion {
 	minVersion := pebble.FormatNewest
 	for _, db := range t.dbs {
 		if db != nil {
-			minVersion = min(minVersion, db.FormatMajorVersion())
+			minVersion = min(minVersion, db.DB.FormatMajorVersion())
 		}
 	}
 	return minVersion
@@ -330,7 +339,7 @@ func (t *Test) restartDB(dbID objID) error {
 		o := *t.opts
 		o.Experimental.CompactionScheduler =
 			pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-		t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
+		t.dbs[dbID.slot()-1].DB, err = pebble.Open(dir, &o)
 		if err != nil {
 			return err
 		}
@@ -562,13 +571,39 @@ func (t *Test) getWriter(id objID) pebble.Writer {
 	}
 }
 
-func (t *Test) getDB(id objID) *pebble.DB {
+func (t *Test) getDB(id objID) *testDB {
 	switch id.tag() {
 	case dbTag:
 		return t.dbs[id.slot()-1]
 	default:
 		panic(fmt.Sprintf("invalid writer tag: %v", id.tag()))
 	}
+}
+
+type testDB struct {
+	*pebble.DB
+	// wg is used to synchronize long-running operations against the database.
+	// The metamorphic tests install a DebugCheck function on the DB which
+	// launches a new goroutine to perform the check asynchronously. A closer of
+	// the database must wait for any of these asynchronous checks to complete
+	// before closing the database.
+	wg sync.WaitGroup
+}
+
+// async runs fn in a new goroutine, updating the testDB's wait group so that
+// any call to Close will wait for the goroutine to complete.
+func (t *testDB) async(fn func()) {
+	t.wg.Add(1)
+	go func() {
+		defer t.wg.Done()
+		fn()
+	}()
+}
+
+// Close waits for all pending operations to complete and then closes the DB.
+func (t *testDB) Close() error {
+	t.wg.Wait()
+	return t.DB.Close()
 }
 
 // Compute the synchronization points between operations. When operating

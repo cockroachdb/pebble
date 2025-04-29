@@ -578,8 +578,8 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	// when we use --try-to-reduce.
 	for i, db := range m.dbs {
 		if db != nil {
-			fmt.Fprintf(os.Stderr, "\ndb%d:\n%s", i+1, db.DebugString())
-			fmt.Fprintf(os.Stderr, "\n%s\n", db.LSMViewURL())
+			fmt.Fprintf(os.Stderr, "\ndb%d:\n%s", i+1, db.DB.DebugString())
+			fmt.Fprintf(os.Stderr, "\n%s\n", db.DB.LSMViewURL())
 		}
 	}
 	// Don't let the test pass if it issued a Fatalf.

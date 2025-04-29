@@ -116,7 +116,7 @@ func (o *applyOp) run(t *Test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	var err error
 	if o.writerID.tag() == dbTag && t.testOpts.asyncApplyToDB && t.writeOpts.Sync {
-		err = w.(*pebble.DB).ApplyNoSyncWait(b, t.writeOpts)
+		err = w.(*testDB).ApplyNoSyncWait(b, t.writeOpts)
 		if err == nil {
 			err = b.SyncWait()
 		}
@@ -708,9 +708,9 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 		b := t.getBatch(id)
 		iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 		db := t.getDB(o.dbID)
-		c, err := o.collapseBatch(t, db, iter, rangeDelIter, rangeKeyIter, b)
+		c, err := o.collapseBatch(t, db.DB, iter, rangeDelIter, rangeKeyIter, b)
 		if err == nil {
-			err = db.Apply(c, t.writeOpts)
+			err = db.DB.Apply(c, t.writeOpts)
 		}
 		_ = b.Close()
 		_ = c.Close()
@@ -736,7 +736,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 	}
 
 	err = firstError(err, t.withRetries(func() error {
-		return t.getDB(o.dbID).Ingest(context.Background(), paths)
+		return t.getDB(o.dbID).DB.Ingest(context.Background(), paths)
 	}))
 
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
@@ -929,7 +929,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.dbID)
 	if b.Empty() {
 		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat),
-			o.simulateExcise(db, t))
+			o.simulateExcise(db.DB, t))
 		return
 	}
 
@@ -941,7 +941,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	err = firstError(err, b.Close())
 
 	if writerMeta.Properties.NumEntries == 0 && writerMeta.Properties.NumRangeKeys() == 0 {
-		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), o.simulateExcise(db, t))
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), o.simulateExcise(db.DB, t))
 		return
 	}
 
@@ -956,9 +956,9 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 			return err
 		}))
 	} else {
-		err = firstError(err, o.simulateExcise(db, t))
+		err = firstError(err, o.simulateExcise(db.DB, t))
 		err = firstError(err, t.withRetries(func() error {
-			return db.Ingest(context.Background(), []string{path})
+			return db.DB.Ingest(context.Background(), []string{path})
 		}))
 	}
 
@@ -2146,11 +2146,11 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	// external replication if both are enabled, as those are likely to hit
 	// widespread usage first.
 	if useExternalIngest {
-		r.runExternalReplicate(t, h, source, dest, w, sstPath)
+		r.runExternalReplicate(t, h, source.DB, dest.DB, w, sstPath)
 		return
 	}
 	if useSharedIngest {
-		r.runSharedReplicate(t, h, source, dest, w, sstPath)
+		r.runSharedReplicate(t, h, source.DB, dest.DB, w, sstPath)
 		return
 	}
 
