@@ -2341,10 +2341,11 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	maxProcs := runtime.GOMAXPROCS(0)
 
 	opts1 := &Options{
-		FS:                       vfs.NewStrictMem(),
-		Comparer:                 testkeys.Comparer,
-		FormatMajorVersion:       FormatNewest,
-		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
+		FS:                         vfs.NewStrictMem(),
+		Comparer:                   testkeys.Comparer,
+		FormatMajorVersion:         FormatNewest,
+		CompactionConcurrencyRange: func() (int, int) { return 1, maxProcs/2 + 1 },
+
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			sstable.NewTestKeysBlockPropertyCollector,
 		},
@@ -2354,10 +2355,10 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	require.NoError(t, err)
 
 	opts2 := &Options{
-		FS:                       vfs.NewStrictMem(),
-		Comparer:                 testkeys.Comparer,
-		FormatMajorVersion:       FormatNewest,
-		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
+		FS:                         vfs.NewStrictMem(),
+		Comparer:                   testkeys.Comparer,
+		FormatMajorVersion:         FormatNewest,
+		CompactionConcurrencyRange: func() (int, int) { return 1, maxProcs/2 + 1 },
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			sstable.NewTestKeysBlockPropertyCollector,
 		},
@@ -2482,10 +2483,10 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 	mem := vfs.NewStrictMem()
 	maxProcs := runtime.GOMAXPROCS(0)
 	opts := &Options{
-		FS:                       mem,
-		Comparer:                 testkeys.Comparer,
-		FormatMajorVersion:       FormatNewest,
-		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
+		FS:                         mem,
+		Comparer:                   testkeys.Comparer,
+		FormatMajorVersion:         FormatNewest,
+		CompactionConcurrencyRange: func() (int, int) { return 1, maxProcs/2 + 1 },
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			sstable.NewTestKeysBlockPropertyCollector,
 		},

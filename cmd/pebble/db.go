@@ -70,8 +70,8 @@ func newPebbleDB(dir string) DB {
 		Merger: &pebble.Merger{
 			Name: "cockroach_merge_operator",
 		},
-		MaxConcurrentCompactions: func() int {
-			return 3
+		CompactionConcurrencyRange: func() (int, int) {
+			return 1, 3
 		},
 	}
 
