@@ -3153,9 +3153,9 @@ func (d *DB) compactAndWrite(
 				UserKey: slices.Clone(userKey),
 			})
 		},
-		MissizedDELSIZEDCallback: func(userKey []byte) {
+		MissizedDeleteCallback: func(userKey []byte) {
 			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
-				Kind:    MissizedDELSIZED,
+				Kind:    MissizedDelete,
 				UserKey: slices.Clone(userKey),
 			})
 		},
