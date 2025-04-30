@@ -25,6 +25,8 @@ const (
 	NoCompression
 	SnappyCompression
 	ZstdCompression
+	// MinLZCompression is only supported with table formats v6+. Older formats
+	// fall back to snappy.
 	MinLZCompression
 	NCompression
 )

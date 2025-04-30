@@ -330,9 +330,6 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.Comparer == nil {
 		o.Comparer = base.DefaultComparer
 	}
-	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression {
-		o.Compression = block.SnappyCompression
-	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
 	}
@@ -356,6 +353,10 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.KeySchema == nil && o.TableFormat.BlockColumnar() {
 		s := colblk.DefaultKeySchema(o.Comparer, 16 /* bundle size */)
 		o.KeySchema = &s
+	}
+	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression ||
+		(o.Compression == block.MinLZCompression && o.TableFormat < TableFormatPebblev6) {
+		o.Compression = block.SnappyCompression
 	}
 	return o
 }

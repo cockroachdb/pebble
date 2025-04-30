@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -304,7 +305,22 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return formatWriterMetadata(td, meta)
 
 		case "props":
-			return r.Properties.String()
+			var buf strings.Builder
+			for _, p := range crstrings.Lines(r.Properties.String()) {
+				if len(td.CmdArgs) > 0 {
+					ok := false
+					for i := range td.CmdArgs {
+						if strings.HasPrefix(p, td.CmdArgs[i].String()+":") {
+							ok = true
+						}
+					}
+					if !ok {
+						continue
+					}
+				}
+				fmt.Fprintf(&buf, "%s\n", p)
+			}
+			return buf.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
