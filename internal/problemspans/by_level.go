@@ -96,6 +96,22 @@ func (bl *ByLevel) Excise(bounds base.UserKeyBounds) {
 	}
 }
 
+// Len returns the number of non-overlapping spans that have not expired. Two
+// spans that touch are both counted if they have different expiration times.
+func (bl *ByLevel) Len() int {
+	if bl.empty.Load() {
+		// Fast path.
+		return 0
+	}
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	n := 0
+	for i := range bl.levels {
+		n += bl.levels[i].Len()
+	}
+	return n
+}
+
 // String prints all active (non-expired) span fragments.
 func (bl *ByLevel) String() string {
 	bl.mu.Lock()
