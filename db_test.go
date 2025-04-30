@@ -1394,7 +1394,7 @@ func TestSSTables(t *testing.T) {
 	require.NoError(t, d.Set([]byte("world"), nil, nil))
 	require.NoError(t, d.Flush())
 
-	// by default returned table infos should not contain Properties
+	// By default, returned table infos should not contain Properties.
 	tableInfos, err := d.SSTables()
 	require.NoError(t, err)
 	for _, levelTables := range tableInfos {
@@ -1403,12 +1403,63 @@ func TestSSTables(t *testing.T) {
 		}
 	}
 
-	// with opt `WithProperties()` the `Properties` in table info should not be nil
+	// With opt `WithProperties()` the `Properties` in table info should not be
+	// nil.
 	tableInfos, err = d.SSTables(WithProperties())
 	require.NoError(t, err)
 	for _, levelTables := range tableInfos {
 		for _, info := range levelTables {
 			require.NotNil(t, info.Properties)
+		}
+	}
+}
+
+func TestVirtualSSTables(t *testing.T) {
+	d, err := Open("", &Options{
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatTableFormatV6,
+	})
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	require.NoError(t, d.Set([]byte("aaa"), []byte("mai"), nil))
+	require.NoError(t, d.Set([]byte("aab"), []byte("calico"), nil))
+	require.NoError(t, d.Set([]byte("aac"), []byte("october"), nil))
+	require.NoError(t, d.Set([]byte("aad"), []byte("rowdy"), nil))
+	require.NoError(t, d.Set([]byte("aae"), []byte("hairballs"), nil))
+	require.NoError(t, d.Flush())
+
+	// Get the original properties.
+	tableInfos, err := d.SSTables(WithProperties())
+	require.NoError(t, err)
+	originalProps := tableInfos[0][0].Properties
+
+	// Excise to create virtual ssts.
+	exciseSpan := KeyRange{
+		Start: []byte("aab"),
+		End:   []byte("aac"),
+	}
+	err = d.Excise(context.Background(), exciseSpan)
+	require.NoError(t, err)
+
+	tableInfos, err = d.SSTables(WithProperties())
+	require.NoError(t, err)
+
+	// Find the virtual sstables and ensure that some of its common properties
+	// have been scaled down correctly.
+	for _, levelTables := range tableInfos {
+		for _, info := range levelTables {
+			if info.Virtual {
+				virtualProps := info.Properties
+				require.NotNil(t, virtualProps)
+				require.Less(t, virtualProps.NumEntries, originalProps.NumEntries)
+				require.Less(t, virtualProps.RawKeySize, originalProps.RawKeySize)
+				require.Less(t, virtualProps.RawValueSize, originalProps.RawValueSize)
+			}
 		}
 	}
 }
