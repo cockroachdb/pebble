@@ -6,7 +6,10 @@
 
 package invariants
 
-import "math/rand/v2"
+import (
+	"fmt"
+	"math/rand/v2"
+)
 
 // Sometimes returns true percent% of the time if invariants are Enabled (i.e.
 // we were built with the "invariants" or "race" build tags). Otherwise, always
@@ -71,4 +74,12 @@ func (v *Value[V]) Get() V {
 // Set the value; no-op in non-invariant builds.
 func (v *Value[V]) Set(inner V) {
 	v.v = inner
+}
+
+// CheckBounds panics if the index is not in the range [0, n). No-op in
+// non-invariant builds.
+func CheckBounds(i int, n int) {
+	if i < 0 || i >= n {
+		panic(fmt.Sprintf("index %d out of bounds [0, %d)", i, n))
+	}
 }

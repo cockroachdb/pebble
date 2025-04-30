@@ -282,6 +282,7 @@ func (i *PrefixBytesIter) Init(maxKeyLength int, syntheticPrefix block.Synthetic
 func (b *PrefixBytes) SetAt(it *PrefixBytesIter, i int) {
 	// Determine the offset and length of the bundle prefix.
 	bundleOffsetIndex := b.bundleOffsetIndexForRow(i)
+	invariants.CheckBounds(bundleOffsetIndex, b.rawBytes.slices)
 	bundleOffsetStart, bundleOffsetEnd := b.rawBytes.offsets.At2(bundleOffsetIndex)
 	bundlePrefixLen := bundleOffsetEnd - bundleOffsetStart
 
@@ -329,6 +330,7 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 	// If the next row is in the same bundle, we can take a fast path of only
 	// updating the per-row suffix.
 	if it.offsetIndex < it.nextBundleOffsetIndex {
+		invariants.CheckBounds(it.offsetIndex, b.rawBytes.slices)
 		rowSuffixStart, rowSuffixEnd := b.rawBytes.offsets.At2(it.offsetIndex)
 		rowSuffixLen := rowSuffixEnd - rowSuffixStart
 		if rowSuffixLen == 0 {
@@ -351,6 +353,7 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 	// The offsetIndex is currently pointing to the start of the new bundle
 	// prefix. Increment it to point at the start of the new row suffix.
 	it.offsetIndex++
+	invariants.CheckBounds(it.offsetIndex, b.rawBytes.slices)
 	rowSuffixStart, rowSuffixEnd := b.rawBytes.offsets.At2(it.offsetIndex)
 	rowSuffixLen := rowSuffixEnd - rowSuffixStart
 
@@ -391,7 +394,8 @@ func (b *PrefixBytes) SharedPrefix() []byte {
 // prefix for the column. The returned slice should not be mutated.
 func (b *PrefixBytes) RowBundlePrefix(row int) []byte {
 	i := b.bundleOffsetIndexForRow(row)
-	return b.rawBytes.slice(b.rawBytes.offsets.At(i), b.rawBytes.offsets.At(i+1))
+	invariants.CheckBounds(i, b.rawBytes.slices)
+	return b.rawBytes.slice(b.rawBytes.offsets.At2(i))
 }
 
 // BundlePrefix returns the prefix of the i-th bundle in the column. The
@@ -399,7 +403,8 @@ func (b *PrefixBytes) RowBundlePrefix(row int) []byte {
 // not be mutated.
 func (b *PrefixBytes) BundlePrefix(i int) []byte {
 	j := b.offsetIndexByBundleIndex(i)
-	return b.rawBytes.slice(b.rawBytes.offsets.At(j), b.rawBytes.offsets.At(j+1))
+	invariants.CheckBounds(j, b.rawBytes.slices)
+	return b.rawBytes.slice(b.rawBytes.offsets.At2(j))
 }
 
 // RowSuffix returns a []byte of the suffix unique to the row. A row's full key
@@ -415,6 +420,7 @@ func (b *PrefixBytes) RowSuffix(row int) []byte {
 // accounting for duplicate keys. It takes the index of the row, and the value
 // of rowSuffixIndex(row).
 func (b *PrefixBytes) rowSuffixOffsets(row, i int) (low uint32, high uint32) {
+	invariants.CheckBounds(i, b.rawBytes.slices)
 	// Retrieve the low and high offsets indicating the start and end of the
 	// row's suffix slice.
 	low, high = b.rawBytes.offsets.At2(i)
@@ -493,6 +499,7 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 		//     offset(j)             offset(j+1)                       offset(j+2)
 		//
 		j := b.offsetIndexByBundleIndex(h)
+		invariants.CheckBounds(j+1, b.rawBytes.slices)
 		bundleFirstKey := b.rawBytes.slice(b.rawBytes.offsets.At(j), b.rawBytes.offsets.At(j+2))
 		c = bytes.Compare(k, bundleFirstKey)
 		switch {
@@ -516,7 +523,8 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 	// among them, but if the seek key doesn't share the previous bundle's
 	// prefix there's no need.
 	j := b.offsetIndexByBundleIndex(bi - 1)
-	bundlePrefix := b.rawBytes.slice(b.rawBytes.offsets.At(j), b.rawBytes.offsets.At(j+1))
+	invariants.CheckBounds(j, b.rawBytes.slices)
+	bundlePrefix := b.rawBytes.slice(b.rawBytes.offsets.At2(j))
 
 	// The row we are looking for might still be in the previous bundle even
 	// though the seek key is greater than the first key. This is possible only
@@ -553,6 +561,7 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 		// The beginning of the zero-indexed i-th key of the bundle is at
 		// offset(j+i+1).
 		//
+		invariants.CheckBounds(j+h+1, b.rawBytes.slices)
 		hStart, hEnd := b.rawBytes.offsets.At2(j + h + 1)
 		// There's a complication with duplicate keys. When keys are repeated,
 		// the PrefixBytes encoding avoids re-encoding the duplicate key,
