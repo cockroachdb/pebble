@@ -234,7 +234,7 @@ total |     3  2.2KB     0B       0 |    -    -    - |  827B |     1   746B |   
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 48B  written: 81B (69% overhead)
 Flushes: 3
-Compactions: 1  estimated debt: 2.2KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 2.2KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
@@ -337,7 +337,7 @@ total |     6  4.4KB     0B       0 |    -    -    - | 2.3KB |     3  2.2KB |   
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 82B  written: 108B (32% overhead)
 Flushes: 6
-Compactions: 1  estimated debt: 4.4KB  in progress: 0 (0B)
+Compactions: 1  estimated debt: 4.4KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (512KB)  zombie: 1 (512KB)
 Zombie tables: 0 (0B, local: 0B)

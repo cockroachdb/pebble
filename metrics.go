@@ -197,6 +197,11 @@ type Metrics struct {
 		// CancelledBytes the number of bytes written by compactions that were
 		// cancelled.
 		CancelledBytes int64
+		// Total number of compactions that hit an error.
+		FailedCount int64
+		// NumProblemSpans is the current (instantaneous) count of "problem spans"
+		// which temporarily block compactions.
+		NumProblemSpans int
 		// MarkedFiles is a count of files that are marked for
 		// compaction. Such files are compacted in a rewrite compaction
 		// when no other compactions are picked.
@@ -596,11 +601,16 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 
 	w.Printf("Flushes: %d\n", redact.Safe(m.Flush.Count))
 
-	w.Printf("Compactions: %d  estimated debt: %s  in progress: %d (%s)\n",
+	w.Printf("Compactions: %d  estimated debt: %s  in progress: %d (%s)  canceled: %d (%s)  failed: %d  problem spans: %d\n",
 		redact.Safe(m.Compact.Count),
 		humanize.Bytes.Uint64(m.Compact.EstimatedDebt),
 		redact.Safe(m.Compact.NumInProgress),
-		humanize.Bytes.Int64(m.Compact.InProgressBytes))
+		humanize.Bytes.Int64(m.Compact.InProgressBytes),
+		redact.Safe(m.Compact.CancelledCount),
+		humanize.Bytes.Int64(m.Compact.CancelledBytes),
+		redact.Safe(m.Compact.FailedCount),
+		redact.Safe(m.Compact.NumProblemSpans),
+	)
 
 	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  tombstone-density: %d  rewrite: %d  copy: %d  multi-level: %d\n",
 		redact.Safe(m.Compact.DefaultCount),
@@ -611,7 +621,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.Compact.TombstoneDensityCount),
 		redact.Safe(m.Compact.RewriteCount),
 		redact.Safe(m.Compact.CopyCount),
-		redact.Safe(m.Compact.MultiLevelCount))
+		redact.Safe(m.Compact.MultiLevelCount),
+	)
 
 	w.Printf("MemTables: %d (%s)  zombie: %d (%s)\n",
 		redact.Safe(m.MemTable.Count),
