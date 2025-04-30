@@ -140,8 +140,8 @@ func TestBufferRandomized(t *testing.T) {
 	}
 }
 
-func TestMinlzEncodingLimit(t *testing.T) {
-	// Tests that Minlz compression has a strict limit of minlz.MaxBlockSize: 8<<20 (8MiB)
+func TestMinLZEncodingLimit(t *testing.T) {
+	// Tests that MinLZ compression has a strict limit of minlz.MaxBlockSize: 8<<20 (8MiB)
 	_, err := minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize-1), minlz.LevelFastest)
 	require.NoError(t, err)
 	_, err = minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize), minlz.LevelFastest)
@@ -151,12 +151,12 @@ func TestMinlzEncodingLimit(t *testing.T) {
 		require.Fail(t, "Expected minlz.ErrTooLarge Error")
 	}
 
-	c := GetCompressor(MinlzCompression)
+	c := GetCompressor(MinLZCompression)
 	defer c.Close()
 	algo, _ := c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize-1))
-	require.Equal(t, algo, MinlzCompressionIndicator)
+	require.Equal(t, algo, MinLZCompressionIndicator)
 	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize))
-	require.Equal(t, algo, MinlzCompressionIndicator)
+	require.Equal(t, algo, MinLZCompressionIndicator)
 	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize+1))
 	require.Equal(t, algo, SnappyCompressionIndicator)
 }

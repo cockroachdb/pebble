@@ -25,7 +25,7 @@ const (
 	NoCompression
 	SnappyCompression
 	ZstdCompression
-	MinlzCompression
+	MinLZCompression
 	NCompression
 )
 
@@ -41,8 +41,8 @@ func (c Compression) String() string {
 		return "Snappy"
 	case ZstdCompression:
 		return "ZSTD"
-	case MinlzCompression:
-		return "Minlz"
+	case MinLZCompression:
+		return "MinLZ"
 	default:
 		return "Unknown"
 	}
@@ -60,8 +60,8 @@ func CompressionFromString(s string) Compression {
 		return SnappyCompression
 	case "ZSTD":
 		return ZstdCompression
-	case "Minlz":
-		return MinlzCompression
+	case "MinLZ":
+		return MinLZCompression
 	default:
 		return DefaultCompression
 	}
@@ -89,7 +89,7 @@ const (
 	Lz4hcCompressionIndicator  CompressionIndicator = 5
 	XpressCompressionIndicator CompressionIndicator = 6
 	ZstdCompressionIndicator   CompressionIndicator = 7
-	MinlzCompressionIndicator  CompressionIndicator = 8
+	MinLZCompressionIndicator  CompressionIndicator = 8
 )
 
 // String implements fmt.Stringer.
