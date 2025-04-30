@@ -39,7 +39,7 @@ func (snappyCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte)
 func (snappyCompressor) Close() {}
 
 func (minlzCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
-	// Minlz cannot encode blocks greater than 8MB. Fall back to Snappy in those cases.
+	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those cases.
 	if len(src) > minlz.MaxBlockSize {
 		return (snappyCompressor{}).Compress(dst, src)
 	}
@@ -48,7 +48,7 @@ func (minlzCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) 
 	if err != nil {
 		panic(errors.Wrap(err, "minlz compression"))
 	}
-	return MinlzCompressionIndicator, compressed
+	return MinLZCompressionIndicator, compressed
 }
 
 func (minlzCompressor) Close() {}
@@ -61,7 +61,7 @@ func GetCompressor(c Compression) Compressor {
 		return snappyCompressor{}
 	case ZstdCompression:
 		return getZstdCompressor()
-	case MinlzCompression:
+	case MinLZCompression:
 		return minlzCompressor{}
 	default:
 		panic("Invalid compression type.")
@@ -156,7 +156,7 @@ func GetDecompressor(c CompressionIndicator) Decompressor {
 		return snappyDecompressor{}
 	case ZstdCompressionIndicator:
 		return getZstdDecompressor()
-	case MinlzCompressionIndicator:
+	case MinLZCompressionIndicator:
 		return minlzDecompressor{}
 	default:
 		panic("Invalid compression type.")
