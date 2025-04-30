@@ -307,6 +307,8 @@ type Metrics struct {
 		CompressedCountMinlz int64
 		// The number of sstables that are uncompressed.
 		CompressedCountNone int64
+		// The number of sstables that are compressed with adaptive.
+		CompressedCountAdaptive int64
 
 		// Local file sizes.
 		Local struct {
@@ -742,6 +744,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 	if count := m.Table.CompressedCountMinlz; count > 0 {
 		w.Printf(" minlz: %d", redact.Safe(count))
+	}
+	if count := m.Table.CompressedCountAdaptive; count > 0 {
+		w.Printf(" adaptive: %d", redact.Safe(count))
 	}
 	if count := m.Table.CompressedCountNone; count > 0 {
 		w.Printf(" none: %d", redact.Safe(count))
