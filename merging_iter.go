@@ -315,8 +315,10 @@ func (m *mergingIter) init(
 	m.stats = stats
 	if cap(m.heap.items) < len(levels) {
 		m.heap.items = make([]mergingIterHeapItem, 0, len(levels))
+		m.heap.winners = make([]winnerChild, 0, len(levels))
 	} else {
 		m.heap.items = m.heap.items[:0]
+		m.heap.winners = m.heap.winners[:0]
 	}
 	for l := range m.levels {
 		m.levels[l].index = l
@@ -330,6 +332,7 @@ func (m *mergingIter) initHeap() {
 			m.heap.items = append(m.heap.items, mergingIterHeapItem{mergingIterLevel: l})
 		}
 	}
+	m.heap.winners = m.heap.winners[:len(m.heap.items)]
 	m.heap.init()
 }
 
@@ -1130,6 +1133,7 @@ func (m *mergingIter) First() *base.InternalKV {
 	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	m.heap.items = m.heap.items[:0]
+	m.heap.winners = m.heap.winners[:0]
 	for i := range m.levels {
 		l := &m.levels[i]
 		l.iterKV = l.iter.First()
@@ -1311,6 +1315,7 @@ func (m *mergingIter) Close() error {
 	}
 	m.levels = nil
 	m.heap.items = m.heap.items[:0]
+	m.heap.winners = m.heap.winners[:0]
 	return m.err
 }
 

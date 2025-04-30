@@ -1,13 +1,12 @@
 package pebble
 
 import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/stretchr/testify/require"
 	"math/rand/v2"
 	"slices"
 	"testing"
 	"time"
-
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMergingIterHeap(t *testing.T) {
@@ -48,6 +47,7 @@ func TestMergingIterHeap(t *testing.T) {
 		cmp:     base.DefaultComparer.Compare,
 		reverse: rng.IntN(2) != 0,
 		items:   slices.Clone(levels),
+		winners: make([]winnerChild, len(levels)),
 	}
 	checkHeap := func() {
 		for _, item := range heap.items {
@@ -99,8 +99,8 @@ func TestMergingIterHeap(t *testing.T) {
 		}
 		checkHeap()
 	}
-	t.Logf("cmp needed=%d called=%d(frac=%.2f)", heap.cmpNeededCount, heap.cmpCalledCount,
-		float64(heap.cmpCalledCount)/float64(heap.cmpNeededCount))
+	// t.Logf("cmp needed=%d called=%d(frac=%.2f)", heap.cmpNeededCount, heap.cmpCalledCount,
+	// 	float64(heap.cmpCalledCount)/float64(heap.cmpNeededCount))
 }
 
 // TestMergingIterHeapInit only measures the comparison savings during init,
@@ -145,6 +145,7 @@ func TestMergingIterHeapInit(t *testing.T) {
 			cmp:     base.DefaultComparer.Compare,
 			reverse: rng.IntN(2) != 0,
 			items:   slices.Clone(levels),
+			winners: make([]winnerChild, len(levels)),
 		}
 		checkHeap := func() {
 			for _, item := range heap.items {
@@ -177,8 +178,8 @@ func TestMergingIterHeapInit(t *testing.T) {
 		}
 		heap.init()
 		checkHeap()
-		cmpNeededCount += heap.cmpNeededCount
-		cmpCalledCount += heap.cmpCalledCount
+		// cmpNeededCount += heap.cmpNeededCount
+		// cmpCalledCount += heap.cmpCalledCount
 	}
 	t.Logf("cmp needed=%d called=%d(frac=%.4f)", cmpNeededCount, cmpCalledCount,
 		float64(cmpCalledCount)/float64(cmpNeededCount))

@@ -2414,6 +2414,7 @@ func (i *Iterator) Close() error {
 			boundsBuf            [2][]byte
 			prefixOrFullSeekKey  []byte
 			mergingIterHeapItems []mergingIterHeapItem
+			mergingIterHeapWinners []winnerChild
 		)
 
 		// Avoid caching the key buf if it is overly large. The constant is fairly
@@ -2430,6 +2431,7 @@ func (i *Iterator) Close() error {
 			}
 		}
 		mergingIterHeapItems = alloc.merging.heap.items
+		mergingIterHeapWinners = alloc.merging.heap.winners
 
 		// Reset the alloc struct, re-assign the fields that are being recycled, and
 		// then return it to the pool. Splitting the first two steps performs better
@@ -2452,6 +2454,7 @@ func (i *Iterator) Close() error {
 		alloc.boundsBuf = boundsBuf
 		alloc.prefixOrFullSeekKey = prefixOrFullSeekKey
 		alloc.merging.heap.items = mergingIterHeapItems
+		alloc.merging.heap.winners = mergingIterHeapWinners
 
 		iterAllocPool.Put(alloc)
 	} else if alloc := i.getIterAlloc; alloc != nil {

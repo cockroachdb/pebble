@@ -18,14 +18,15 @@ type mergingIterHeap struct {
 	cmp     Compare
 	reverse bool
 	items   []mergingIterHeapItem
+	winners []winnerChild
 	// TODO: remove.
-	cmpNeededCount int
-	cmpCalledCount int
+	// cmpNeededCount int
+	// cmpCalledCount int
 }
 
 type mergingIterHeapItem struct {
 	*mergingIterLevel
-	winnerChild winnerChild
+	// winnerChild winnerChild
 }
 
 type winnerChild uint8
@@ -44,6 +45,7 @@ func (h *mergingIterHeap) len() int {
 // clear empties the heap.
 func (h *mergingIterHeap) clear() {
 	h.items = h.items[:0]
+	h.winners = h.winners[:0]
 }
 
 // less is an internal method, to compare the elements at i and j.
@@ -93,6 +95,7 @@ func (h *mergingIterHeap) pop() *mergingIterLevel {
 	h.down(0, n)
 	item := h.items[n]
 	h.items = h.items[:n]
+	h.winners = h.winners[:n]
 	return item.mergingIterLevel
 }
 
@@ -106,13 +109,13 @@ func (h *mergingIterHeap) down(i, n int) {
 		}
 		j := j1 // left child
 		if j2 := j1 + 1; j2 < n {
-			h.cmpNeededCount++
-			if h.items[i].winnerChild == winnerChildUnknown {
-				h.cmpCalledCount++
+			// h.cmpNeededCount++
+			if h.winners[i] == winnerChildUnknown {
+				// h.cmpCalledCount++
 				if h.less(j2, j1) {
-					h.items[i].winnerChild = winnerChildRight
+					h.winners[i] = winnerChildRight
 				} else {
-					h.items[i].winnerChild = winnerChildLeft
+					h.winners[i] = winnerChildLeft
 				}
 			} else if invariants.Enabled {
 				wc := winnerChildUnknown
@@ -121,22 +124,22 @@ func (h *mergingIterHeap) down(i, n int) {
 				} else if h.less(j2, j1) {
 					wc = winnerChildRight
 				}
-				if wc != winnerChildUnknown && wc != h.items[i].winnerChild {
+				if wc != winnerChildUnknown && wc != h.winners[i] {
 					panic("winnerChild mismatch")
 				}
 			}
-			if h.items[i].winnerChild == winnerChildRight {
+			if h.winners[i] == winnerChildRight {
 				j = j2 // = 2*i + 2  // right child
 			}
 		}
-		h.cmpNeededCount++
-		h.cmpCalledCount++
+		// h.cmpNeededCount++
+		// h.cmpCalledCount++
 		if !h.less(j, i) {
 			break
 		}
 		// NB: j is a child of i.
 		h.swap(i, j)
-		h.items[i].winnerChild = winnerChildUnknown
+		h.winners[i] = winnerChildUnknown
 		i = j
 	}
 }
