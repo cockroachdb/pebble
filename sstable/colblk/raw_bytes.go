@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -117,6 +118,7 @@ func (b *RawBytes) slice(start, end uint32) []byte {
 
 // At returns the []byte at index i. The returned slice should not be mutated.
 func (b RawBytes) At(i int) []byte {
+	invariants.CheckBounds(i, b.slices)
 	return b.slice(b.offsets.At2(i))
 }
 

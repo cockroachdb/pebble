@@ -69,6 +69,7 @@ func (b Bitmap) At(i int) bool {
 		// zero bitmap case.
 		return false
 	}
+	invariants.CheckBounds(i, b.bitCount)
 	val := b.data.At(int(uint(i) >> 6)) // aka At(i/64)
 	return val&(1<<(uint(i)&63)) != 0
 }
@@ -96,6 +97,10 @@ func (b Bitmap) SeekSetBitGE(i int) int {
 	// on the summary word to get the index of which word has a set bit, if any.
 	summaryTableOffset, summaryTableEnd := b.summaryTableBounds()
 	summaryWordIdx := summaryTableOffset + wordIdx>>6
+	if invariants.Enabled {
+		sz := bitmapRequiredSize(b.bitCount)
+		invariants.CheckBounds(summaryTableEnd-1, sz)
+	}
 	summaryNext := nextBitInWord(b.data.At(summaryWordIdx), uint(wordIdx%64)+1)
 	// If [summaryNext] == 64, then there are no set bits in any of the earlier
 	// words represented by the summary word at [summaryWordIdx]. In that case,
@@ -171,11 +176,11 @@ func (b Bitmap) SeekSetBitLE(i int) int {
 // in the bitmap. The i parameter must be in [0, bitCount). Returns the number
 // of bits represented by the bitmap if no next bit is unset.
 func (b Bitmap) SeekUnsetBitGE(i int) int {
+	invariants.CheckBounds(i, b.bitCount)
 	if b.data.ptr == nil {
 		// Zero bitmap case.
 		return i
 	}
-
 	wordIdx := i >> 6 // i/64
 	// If the there's a bit ≥ i unset in the same word, return it.
 	if next := nextBitInWord(^b.data.At(wordIdx), uint(i)&63); next < 64 {
@@ -199,6 +204,7 @@ func (b Bitmap) SeekUnsetBitGE(i int) int {
 // bitmap. The i parameter must be in [0, bitCount). Returns -1 if no previous
 // bit is unset.
 func (b Bitmap) SeekUnsetBitLE(i int) int {
+	invariants.CheckBounds(i, b.bitCount)
 	if b.data.ptr == nil {
 		// Zero bitmap case.
 		return i
