@@ -2280,6 +2280,10 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				if err != nil {
 					return nil, err
 				}
+				if m.Virtual {
+					commonProps := p.GetScaledProperties(m.FileBacking.Size, m.Size)
+					p = &sstable.Properties{CommonProperties: commonProps}
+				}
 				destTables[j].Properties = p
 			}
 			destTables[j].Virtual = m.Virtual
