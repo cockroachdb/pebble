@@ -15,9 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -47,6 +50,11 @@ func exampleMetrics() Metrics {
 	m.Compact.EstimatedDebt = 6
 	m.Compact.InProgressBytes = 7
 	m.Compact.NumInProgress = 2
+	m.Compact.CounterLevelCount = 10
+	m.Compact.CancelledCount = 3
+	m.Compact.CancelledBytes = 3 * 1024
+	m.Compact.FailedCount = 5
+	m.Compact.NumProblemSpans = 2
 	m.Flush.Count = 8
 	m.Flush.AsIngestBytes = 34
 	m.Flush.AsIngestTableCount = 35
@@ -439,6 +447,22 @@ func TestMetrics(t *testing.T) {
 					humanize.Bytes.Uint64(m.Levels[i].Additional.BytesWrittenValueBlocks))
 			}
 			return b.String()
+
+		case "problem-spans":
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			d.problemSpans.Init(manifest.NumLevels, d.cmp)
+			for _, line := range crstrings.Lines(td.Input) {
+				var level int
+				var span1, span2 string
+				n, err := fmt.Sscanf(line, "L%d %s %s", &level, &span1, &span2)
+				if err != nil || n != 3 {
+					td.Fatalf(t, "malformed problem span %q", line)
+				}
+				bounds := base.ParseUserKeyBounds(span1 + " " + span2)
+				d.problemSpans.Add(level, bounds, time.Hour*10)
+			}
+			return ""
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

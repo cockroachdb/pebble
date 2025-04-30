@@ -934,42 +934,51 @@ func sizeIfLocal(
 }
 
 func (vs *versionSet) incrementCompactions(
-	kind compactionKind, extraLevels []*compactionLevel, pickerMetrics pickedCompactionMetrics,
+	kind compactionKind,
+	extraLevels []*compactionLevel,
+	pickerMetrics pickedCompactionMetrics,
+	bytesWritten int64,
+	compactionErr error,
 ) {
+	if kind == compactionKindFlush || kind == compactionKindIngestedFlushable {
+		vs.metrics.Flush.Count++
+	} else {
+		vs.metrics.Compact.Count++
+		if compactionErr != nil {
+			if errors.Is(compactionErr, ErrCancelledCompaction) {
+				vs.metrics.Compact.CancelledCount++
+				vs.metrics.Compact.CancelledBytes += bytesWritten
+			} else {
+				vs.metrics.Compact.FailedCount++
+			}
+		}
+	}
+
 	switch kind {
 	case compactionKindDefault:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.DefaultCount++
 
 	case compactionKindFlush, compactionKindIngestedFlushable:
-		vs.metrics.Flush.Count++
 
 	case compactionKindMove:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.MoveCount++
 
 	case compactionKindDeleteOnly:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.DeleteOnlyCount++
 
 	case compactionKindElisionOnly:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.ElisionOnlyCount++
 
 	case compactionKindRead:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.ReadCount++
 
 	case compactionKindTombstoneDensity:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.TombstoneDensityCount++
 
 	case compactionKindRewrite:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.RewriteCount++
 
 	case compactionKindCopy:
-		vs.metrics.Compact.Count++
 		vs.metrics.Compact.CopyCount++
 
 	default:
