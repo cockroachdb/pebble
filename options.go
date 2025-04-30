@@ -49,7 +49,9 @@ const (
 	NoCompression      = block.NoCompression
 	SnappyCompression  = block.SnappyCompression
 	ZstdCompression    = block.ZstdCompression
-	MinLZCompression   = block.MinLZCompression
+	// MinLZCompression is only supported with table formats v6+. Older formats
+	// fall back to snappy.
+	MinLZCompression = block.MinLZCompression
 )
 
 // FilterType exports the base.FilterType type.
