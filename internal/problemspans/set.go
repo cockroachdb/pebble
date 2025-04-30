@@ -101,6 +101,18 @@ func (s *Set) IsEmpty() bool {
 	return s.rt.IsEmpty()
 }
 
+// Len returns the number of non-overlapping spans that have not expired. Two
+// spans that touch are both counted if they have different expiration times.
+func (s *Set) Len() int {
+	s.now = s.nowFn()
+	n := 0
+	s.rt.EnumerateAll(func(start, end axisds.Endpoint[[]byte], prop expirationTime) bool {
+		n++
+		return true
+	})
+	return n
+}
+
 // String prints all active (non-expired) span fragments.
 func (s *Set) String() string {
 	var buf strings.Builder

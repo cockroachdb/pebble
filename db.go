@@ -2016,6 +2016,7 @@ func (d *DB) Metrics() *Metrics {
 			metrics.Compact.Duration += d.timeNow().Sub(c.beganAt)
 		}
 	}
+	metrics.Compact.NumProblemSpans = d.problemSpans.Len()
 
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
