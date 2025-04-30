@@ -1078,7 +1078,7 @@ func (a compressionTypeAggregator) Accumulate(
 		dst.snappy++
 	case ZstdCompression:
 		dst.zstd++
-	case MinlzCompression:
+	case MinLZCompression:
 		dst.minlz++
 	case NoCompression:
 		dst.none++
