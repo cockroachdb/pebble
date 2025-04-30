@@ -1336,6 +1336,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 	}
+	invariants.CheckBounds(i.row, i.d.values.slices)
 	// Inline i.d.values.At(row).
 	v := i.d.values.slice(i.d.values.offsets.At2(i.row))
 	if i.d.isValueExternal.At(i.row) {
@@ -1504,9 +1505,10 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 				i.kv.K.SetSeqNum(base.SeqNum(n))
 			}
 		}
+		invariants.CheckBounds(i.row, i.d.values.slices)
 		// Inline i.d.values.At(row).
-		startOffset := i.d.values.offsets.At(i.row)
-		v := unsafe.Slice((*byte)(i.d.values.ptr(startOffset)), i.d.values.offsets.At(i.row+1)-startOffset)
+		v := i.d.values.slice(i.d.values.offsets.At2(i.row))
+		invariants.CheckBounds(i.row, i.d.values.slices)
 		if i.d.isValueExternal.At(i.row) {
 			i.kv.V = i.getLazyValuer.GetInternalValueForPrefixAndValueHandle(v)
 		} else {

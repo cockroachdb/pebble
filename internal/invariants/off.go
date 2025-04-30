@@ -49,3 +49,7 @@ func (*Value[V]) Get() V {
 
 // Set the value; no-op in non-invariant builds.
 func (*Value[V]) Set(v V) {}
+
+// CheckBounds panics if the index is not in the range [0, n). No-op in
+// non-invariant builds.
+func CheckBounds(i int, n int) {}
