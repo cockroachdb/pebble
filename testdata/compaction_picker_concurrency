@@ -49,7 +49,9 @@ compactions
 pick-auto l0_compaction_threshold=10
 ----
 picker.getCompactionConcurrency: 4
-nil
+L0 -> L0
+L0: 000301,000302,000303,000304,000305
+grandparents: 000201
 
 # Test that lowering L0CompactionConcurrency opens up more compaction slots.
 

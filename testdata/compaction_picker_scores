@@ -47,7 +47,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	750B   5.0
+L5  	750B   0.0
 L6  	321KB  1.1
 
 # Ensure that point deletions in a higher level result in a compensated level
@@ -103,7 +103,7 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	776B   2.5
+L5  	776B   0.0
 L6  	321KB  1.1
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -206,8 +206,8 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	642KB  2.6
-L6  	386KB  0.4
+L5  	642KB  6.3
+L6  	386KB  0.0
 
 lsm verbose
 ----
@@ -238,8 +238,8 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	129KB  0.5
-L6  	898KB  1.0
+L5  	129KB  0.0
+L6  	898KB  0.0
 
 lsm
 ----
@@ -260,5 +260,5 @@ L1  	0B     0.0
 L2  	0B     0.0
 L3  	0B     0.0
 L4  	0B     0.0
-L5  	129KB  0.5
-L6  	898KB  1.0
+L5  	129KB  0.0
+L6  	898KB  0.0
