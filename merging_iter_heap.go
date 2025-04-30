@@ -4,10 +4,16 @@
 
 package pebble
 
+import (
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
+
 // mergingIterHeap is a heap of mergingIterLevels. It only reads
 // mergingIterLevel.iterKV.K.
 //
 // REQUIRES: Every mergingIterLevel.iterKV is non-nil.
+//
+// TODO(sumeer): use golang generics.
 type mergingIterHeap struct {
 	cmp     Compare
 	reverse bool
@@ -80,7 +86,10 @@ func (h *mergingIterHeap) fixTop() {
 func (h *mergingIterHeap) pop() *mergingIterLevel {
 	n := h.len() - 1
 	h.swap(0, n)
-	h.items[n/2].winnerChild = winnerChildUnknown
+	// Parent of n does not know which child is the winner. But since index n is
+	// removed, the parent of n will have at most one child, and so the value of
+	// winnerChild is irrelevant, and we don't need to do:
+	//  h.items[(n-1)/2].winnerChild = winnerChildUnknown
 	h.down(0, n)
 	item := h.items[n]
 	h.items = h.items[:n]
@@ -105,6 +114,16 @@ func (h *mergingIterHeap) down(i, n int) {
 				} else {
 					h.items[i].winnerChild = winnerChildLeft
 				}
+			} else if invariants.Enabled {
+				wc := winnerChildUnknown
+				if h.less(j1, j2) {
+					wc = winnerChildLeft
+				} else if h.less(j2, j1) {
+					wc = winnerChildRight
+				}
+				if wc != winnerChildUnknown && wc != h.items[i].winnerChild {
+					panic("winnerChild mismatch")
+				}
 			}
 			if h.items[i].winnerChild == winnerChildRight {
 				j = j2 // = 2*i + 2  // right child
@@ -115,6 +134,7 @@ func (h *mergingIterHeap) down(i, n int) {
 		if !h.less(j, i) {
 			break
 		}
+		// NB: j is a child of i.
 		h.swap(i, j)
 		h.items[i].winnerChild = winnerChildUnknown
 		i = j
