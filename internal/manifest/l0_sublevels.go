@@ -728,24 +728,26 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 
 	for f := range s.levelMetadata.All() {
 		if invariants.Enabled {
-			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest().UserKey) {
+			bounds := f.UserKeyBounds()
+			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, bounds.Start) {
 				panic(fmt.Sprintf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
-					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(f.Smallest().UserKey)))
+					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(bounds.Start)))
 			}
-			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest().UserKey) {
+			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, bounds.End.Key) {
 				panic(fmt.Sprintf("f.maxIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
-					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(f.Smallest().UserKey)))
+					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(bounds.End.Key)))
 			}
 		}
 		if !f.IsCompacting() {
 			continue
 		}
 		if invariants.Enabled {
-			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest().UserKey) != 0 ||
-				s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest().UserKey) != 0 {
+			bounds := f.UserKeyBounds()
+			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, bounds.Start) != 0 ||
+				s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, bounds.End.Key) != 0 {
 				panic(fmt.Sprintf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.FileNum,
 					s.orderedIntervals[f.minIntervalIndex].startKey.key, s.orderedIntervals[f.maxIntervalIndex+1].startKey.key,
-					f.Smallest().UserKey, f.Largest().UserKey))
+					bounds.Start, bounds.End.Key))
 			}
 		}
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
