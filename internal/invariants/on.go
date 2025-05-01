@@ -6,7 +6,10 @@
 
 package invariants
 
-import "math/rand/v2"
+import (
+	"fmt"
+	"math/rand/v2"
+)
 
 // Sometimes returns true percent% of the time if invariants are Enabled (i.e.
 // we were built with the "invariants" or "race" build tags). Otherwise, always
@@ -71,4 +74,18 @@ func (v *Value[V]) Get() V {
 // Set the value; no-op in non-invariant builds.
 func (v *Value[V]) Set(inner V) {
 	v.v = inner
+}
+
+// SafeSub returns a - b. If a < b, it panics in invariant builds and returns 0
+// in non-invariant builds.
+func SafeSub[T Integer](a, b T) T {
+	if a < b {
+		panic(fmt.Sprintf("underflow: %d - %d", a, b))
+	}
+	return a - b
+}
+
+// Integer is a constraint that permits any integer type.
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
 }
