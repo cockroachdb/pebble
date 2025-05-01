@@ -56,10 +56,12 @@ func (ikr *InternalKeyBounds) SetInternalKeyBounds(smallest, largest InternalKey
 	ikr.userKeySeparatorIdx = len(smallest.UserKey)
 }
 
+//gcassert:inline
 func (ikr *InternalKeyBounds) SmallestUserKey() []byte {
 	return unsafe.Slice(unsafe.StringData(ikr.userKeyData), ikr.userKeySeparatorIdx)
 }
 
+//gcassert:inline
 func (ikr *InternalKeyBounds) Smallest() InternalKey {
 	return InternalKey{
 		UserKey: ikr.SmallestUserKey(),
@@ -67,11 +69,13 @@ func (ikr *InternalKeyBounds) Smallest() InternalKey {
 	}
 }
 
+//gcassert:inline
 func (ikr *InternalKeyBounds) LargestUserKey() []byte {
 	largestStart := unsafe.StringData(ikr.userKeyData[ikr.userKeySeparatorIdx:])
 	return unsafe.Slice(largestStart, len(ikr.userKeyData)-ikr.userKeySeparatorIdx)
 }
 
+//gcassert:inline
 func (ikr *InternalKeyBounds) Largest() InternalKey {
 	ik := InternalKey{
 		UserKey: ikr.LargestUserKey(),
@@ -1195,34 +1199,26 @@ func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
 
 // Smallest returns the smallest key based on the bound type of
 // boundTypeSmallest.
+//
+//gcassert:inline
 func (m *TableMetadata) Smallest() InternalKey {
-	switch m.boundTypeSmallest {
-	case boundTypePointKey:
-		return m.PointKeyBounds.Smallest()
-	case boundTypeRangeKey:
-		if !m.HasRangeKeys {
-			return InternalKey{}
-		}
-		return m.RangeKeyBounds.Smallest()
-	default:
-		return InternalKey{}
+	x := &m.PointKeyBounds
+	if m.boundTypeSmallest == boundTypeRangeKey {
+		x = m.RangeKeyBounds
 	}
+	return x.Smallest()
 }
 
 // Largest returns the largest key based on the bound type of
 // boundTypeLargest.
+//
+//gcassert:inline
 func (m *TableMetadata) Largest() InternalKey {
-	switch m.boundTypeLargest {
-	case boundTypePointKey:
-		return m.PointKeyBounds.Largest()
-	case boundTypeRangeKey:
-		if !m.HasRangeKeys {
-			return InternalKey{}
-		}
-		return m.RangeKeyBounds.Largest()
-	default:
-		return InternalKey{}
+	x := &m.PointKeyBounds
+	if m.boundTypeLargest == boundTypeRangeKey {
+		x = m.RangeKeyBounds
 	}
+	return x.Largest()
 }
 
 // KeyRange returns the minimum smallest and maximum largest internalKey for
