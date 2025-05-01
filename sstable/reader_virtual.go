@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -68,22 +69,33 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 	scale := func(a uint64) uint64 {
 		return (a*p.Size + p.BackingSize - 1) / p.BackingSize
 	}
+	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
+	// become zero (or vice-versa).
+	if invariants.Enabled && (scale(1) != 1 || scale(0) != 0) {
+		panic("bad scale()")
+	}
 
-	v.Properties.RawKeySize = scale(reader.Properties.RawKeySize)
-	v.Properties.RawValueSize = scale(reader.Properties.RawValueSize)
-	v.Properties.NumEntries = scale(reader.Properties.NumEntries)
-	v.Properties.NumDeletions = scale(reader.Properties.NumDeletions)
-	v.Properties.NumRangeDeletions = scale(reader.Properties.NumRangeDeletions)
-	v.Properties.NumRangeKeyDels = scale(reader.Properties.NumRangeKeyDels)
+	physical := &reader.Properties
+	virtual := &v.Properties
 
-	// Note that we rely on NumRangeKeySets for correctness. If the sstable may
-	// contain range keys, then NumRangeKeySets must be > 0. ceilDiv works because
-	// meta.Size will not be 0 for virtual sstables.
-	v.Properties.NumRangeKeySets = scale(reader.Properties.NumRangeKeySets)
-	v.Properties.ValueBlocksSize = scale(reader.Properties.ValueBlocksSize)
-	v.Properties.NumSizedDeletions = scale(reader.Properties.NumSizedDeletions)
-	v.Properties.RawPointTombstoneKeySize = scale(reader.Properties.RawPointTombstoneKeySize)
-	v.Properties.RawPointTombstoneValueSize = scale(reader.Properties.RawPointTombstoneValueSize)
+	virtual.RawKeySize = scale(physical.RawKeySize)
+	virtual.RawValueSize = scale(physical.RawValueSize)
+	virtual.NumEntries = scale(physical.NumEntries)
+
+	virtual.NumRangeDeletions = scale(physical.NumRangeDeletions)
+	virtual.NumSizedDeletions = scale(physical.NumSizedDeletions)
+	// We cannot directly scale NumDeletions, because it is supposed to be the sum
+	// of various types of deletions. See #4670.
+	numOtherDeletions := scale(invariants.SafeSub(physical.NumDeletions, physical.NumRangeDeletions) + physical.NumSizedDeletions)
+	virtual.NumDeletions = numOtherDeletions + virtual.NumRangeDeletions + virtual.NumSizedDeletions
+
+	virtual.NumRangeKeyDels = scale(physical.NumRangeKeyDels)
+	virtual.NumRangeKeySets = scale(physical.NumRangeKeySets)
+
+	virtual.ValueBlocksSize = scale(physical.ValueBlocksSize)
+
+	virtual.RawPointTombstoneKeySize = scale(physical.RawPointTombstoneKeySize)
+	virtual.RawPointTombstoneValueSize = scale(physical.RawPointTombstoneValueSize)
 
 	return v
 }

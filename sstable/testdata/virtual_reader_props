@@ -143,3 +143,27 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
+
+build
+a.DEL.1:
+b.DELSIZED.1:
+c.RANGEDEL.1:d
+----
+point:    [a#1,DEL-b#1,DELSIZED]
+rangedel: [c#1,RANGEDEL-d#72057594037927935,RANGEDEL]
+seqnums:  [1-1]
+
+# Verify that we get 3 deletions instead of 1 (because it has to be the sum of
+# its components).
+virtualize lower=a.DEL.1 upper=a0.SET.1 show-props
+----
+bounds:  [a#1,DEL-a0#1,SET]
+filenum: 000005
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 2
+  rocksdb.raw.value.size: 1
+  pebble.raw.point-tombstone.key.size: 1
+  pebble.num.deletions.sized: 1
+  rocksdb.deleted.keys: 3
+  rocksdb.num.range-deletions: 1
