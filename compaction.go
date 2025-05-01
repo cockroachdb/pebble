@@ -2603,6 +2603,11 @@ func (d *DB) runCopyCompaction(
 	if c.cancel.Load() {
 		return nil, compact.Stats{}, ErrCancelledCompaction
 	}
+	if inputMeta.BlobReferenceDepth > 0 || len(inputMeta.BlobReferences) > 0 {
+		return nil, compact.Stats{},
+			base.AssertionFailedf("copy compaction for %d with non-zero blob reference "+
+				"depth %d or references %v", inputMeta.TableNum, inputMeta.BlobReferenceDepth)
+	}
 	ve = &versionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
 			{Level: c.startLevel.level, FileNum: inputMeta.TableNum}: inputMeta,
@@ -3302,6 +3307,13 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	ve.NewTables = make([]newTableEntry, len(result.Tables))
 	for i := range result.Tables {
 		t := &result.Tables[i]
+
+		if t.WriterMeta.Properties.NumValuesInBlobFiles > 0 {
+			if len(t.BlobReferences) == 0 {
+				return nil, base.AssertionFailedf("num values in blob files %d but no blob references",
+					t.WriterMeta.Properties.NumValuesInBlobFiles)
+			}
+		}
 
 		fileMeta := &tableMetadata{
 			TableNum:           base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
