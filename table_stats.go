@@ -680,6 +680,13 @@ func sanityCheckStats(meta *tableMetadata, logger Logger, info string) {
 
 	if meta.Stats.PointDeletionsBytesEstimate > maxDeletionBytesEstimate ||
 		meta.Stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
+		if invariants.Enabled {
+			panic(fmt.Sprintf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
+				info, meta.FileNum,
+				redact.Safe(meta.Stats.PointDeletionsBytesEstimate),
+				redact.Safe(meta.Stats.RangeDeletionsBytesEstimate),
+			))
+		}
 		if v := lastSanityCheckStatsLog.Load(); v == 0 || v.Elapsed() > 30*time.Second {
 			logger.Errorf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
 				info, meta.FileNum,
@@ -803,7 +810,7 @@ func pointDeletionsBytesEstimate(
 
 	// 2b. Calculate the contribution of the KV entries shadowed by ordinary DEL
 	// keys.
-	numUnsizedDels := numPointDels - props.NumSizedDeletions
+	numUnsizedDels := invariants.SafeSub(numPointDels, props.NumSizedDeletions)
 	{
 		// The shadowed keys have the same exact user keys as the tombstones
 		// themselves, so we can use the `tombstonesLogicalSize` we computed
