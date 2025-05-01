@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/intern"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
@@ -117,7 +118,7 @@ func (c *CommonProperties) String() string {
 // NumPointDeletions is the number of point deletions in the sstable. For virtual
 // sstables, this is an estimate.
 func (c *CommonProperties) NumPointDeletions() uint64 {
-	return c.NumDeletions - c.NumRangeDeletions
+	return invariants.SafeSub(c.NumDeletions, c.NumRangeDeletions)
 }
 
 // Properties holds the sstable property values. The properties are
