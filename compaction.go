@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -425,6 +426,11 @@ func newCompaction(
 		if provider != nil {
 			isRemote = !objstorage.IsLocalTable(provider, meta.FileBacking.DiskFileNum)
 		}
+		// For value separation, we want to just continue with the default
+		// compaction.
+		if meta.BlobReferenceDepth > 0 {
+			return c
+		}
 		// Avoid a trivial move or copy if all of these are true, as rewriting a
 		// new file is better:
 		//
@@ -436,6 +442,9 @@ func newCompaction(
 			// If the source is virtual, it's best to just rewrite the file as all
 			// conditions in the above comment are met.
 			if !meta.Virtual {
+				// When we set up a compaction that would use shared storage,
+				// disable value separation.
+				c.getValueSeparation = neverSeparateValues
 				c.kind = compactionKindCopy
 			}
 		} else {
@@ -2569,6 +2578,12 @@ func (d *DB) runCopyCompaction(
 	if c.cancel.Load() {
 		return nil, compact.Stats{}, ErrCancelledCompaction
 	}
+	if invariants.Enabled {
+		if inputMeta.BlobReferenceDepth > 0 || len(inputMeta.BlobReferences) > 0 {
+			panic(errors.AssertionFailedf("copy compaction for %d with non-zero blob reference "+
+				"depth %d or references %v", inputMeta.FileNum, inputMeta.BlobReferenceDepth))
+		}
+	}
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{
 			{Level: c.startLevel.level, FileNum: inputMeta.FileNum}: inputMeta,
@@ -3264,6 +3279,13 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	ve.NewTables = make([]newTableEntry, len(result.Tables))
 	for i := range result.Tables {
 		t := &result.Tables[i]
+
+		if invariants.Enabled && t.WriterMeta.Properties.NumValuesInBlobFiles > 0 {
+			if len(t.BlobReferences) == 0 {
+				panic(errors.AssertionFailedf("num values in blob files %d but no blob references",
+					t.WriterMeta.Properties.NumValuesInBlobFiles))
+			}
+		}
 
 		fileMeta := &tableMetadata{
 			FileNum:            base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
