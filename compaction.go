@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -2577,6 +2578,12 @@ func (d *DB) runCopyCompaction(
 	if c.cancel.Load() {
 		return nil, compact.Stats{}, ErrCancelledCompaction
 	}
+	if invariants.Enabled {
+		if inputMeta.BlobReferenceDepth > 0 || len(inputMeta.BlobReferences) > 0 {
+			panic(errors.AssertionFailedf("copy compaction for %d with non-zero blob reference "+
+				"depth %d or references %v", inputMeta.TableNum, inputMeta.BlobReferenceDepth))
+		}
+	}
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{
 			{Level: c.startLevel.level, FileNum: inputMeta.TableNum}: inputMeta,
@@ -3276,6 +3283,13 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	ve.NewTables = make([]newTableEntry, len(result.Tables))
 	for i := range result.Tables {
 		t := &result.Tables[i]
+
+		if invariants.Enabled && t.WriterMeta.Properties.NumValuesInBlobFiles > 0 {
+			if len(t.BlobReferences) == 0 {
+				panic(errors.AssertionFailedf("num values in blob files %d but no blob references",
+					t.WriterMeta.Properties.NumValuesInBlobFiles))
+			}
+		}
 
 		fileMeta := &tableMetadata{
 			TableNum:           base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
