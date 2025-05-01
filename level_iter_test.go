@@ -192,7 +192,7 @@ func (lt *levelIterTest) newIters(
 			ReaderProvider:       sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]),
 			BlobContext: sstable.TableBlobContext{
 				ValueFetcher: iio.blobValueFetcher,
-				References:   file.BlobReferences,
+				References:   &file.BlobReferences,
 			},
 		})
 		if err != nil {

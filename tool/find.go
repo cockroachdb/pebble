@@ -501,7 +501,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				}
 				f.fmtValue.mustSet("[%s]")
 				var vf *blob.ValueFetcher
-				vf, blobContext = sstable.LoadValBlobContext(&provider, f.blobRefs)
+				vf, blobContext = sstable.LoadValBlobContext(&provider, &f.blobRefs)
 				defer func() { _ = vf.Close() }()
 			default:
 				blobContext = sstable.AssertNoBlobHandles

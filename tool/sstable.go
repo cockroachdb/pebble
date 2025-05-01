@@ -370,7 +370,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			}
 			s.fmtValue.mustSet("[%s]")
 			var vf *blob.ValueFetcher
-			vf, blobContext = sstable.LoadValBlobContext(&provider, blobRefs)
+			vf, blobContext = sstable.LoadValBlobContext(&provider, &blobRefs)
 			defer func() { _ = vf.Close() }()
 		default:
 			blobContext = sstable.AssertNoBlobHandles

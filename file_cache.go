@@ -659,11 +659,15 @@ func (h *fileCacheHandle) newPointIter(
 	if internalOpts.readEnv.Block.IterStats == nil && opts != nil {
 		internalOpts.readEnv.Block.IterStats = handle.SSTStatsCollector().Accumulator(uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
+	var blobReferences sstable.BlobReferences
+	if r.Attributes.Has(sstable.AttributeBlobValues) {
+		blobReferences = &file.BlobReferences
+	}
 	if internalOpts.compaction {
 		iter, err = reader.NewCompactionIter(transforms, internalOpts.readEnv,
 			&v.readerProvider, sstable.TableBlobContext{
 				ValueFetcher: internalOpts.blobValueFetcher,
-				References:   file.BlobReferences,
+				References:   blobReferences,
 			})
 	} else {
 		iter, err = reader.NewPointIter(ctx, sstable.IterOptions{
@@ -676,7 +680,7 @@ func (h *fileCacheHandle) newPointIter(
 			ReaderProvider:       &v.readerProvider,
 			BlobContext: sstable.TableBlobContext{
 				ValueFetcher: internalOpts.blobValueFetcher,
-				References:   file.BlobReferences,
+				References:   blobReferences,
 			},
 		})
 	}
