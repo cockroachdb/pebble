@@ -186,7 +186,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					ReaderProvider:       sstable.MakeTrivialReaderProvider(r),
 					BlobContext: sstable.TableBlobContext{
 						ValueFetcher: iio.blobValueFetcher,
-						References:   file.BlobReferences,
+						References:   &file.BlobReferences,
 					},
 				})
 				if err != nil {
