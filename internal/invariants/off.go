@@ -53,3 +53,17 @@ func (*Value[V]) Set(v V) {}
 // CheckBounds panics if the index is not in the range [0, n). No-op in
 // non-invariant builds.
 func CheckBounds(i int, n int) {}
+
+// SafeSub returns a - b. If a < b, it panics in invariant builds and returns 0
+// in non-invariant builds.
+func SafeSub[T Integer](a, b T) T {
+	if a < b {
+		return 0
+	}
+	return a - b
+}
+
+// Integer is a constraint that permits any integer type.
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
