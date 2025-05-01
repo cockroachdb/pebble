@@ -181,24 +181,24 @@ type BlobReferenceDepth int
 // persisted to the manifest.
 type BlobReferences []BlobReference
 
-// Assert that BlobReferences implements sstable.BlobReferences.
-var _ sstable.BlobReferences = BlobReferences{}
+// Assert that *BlobReferences implements sstable.BlobReferences.
+var _ sstable.BlobReferences = (*BlobReferences)(nil)
 
 // FileNumByID returns the FileNum for the identified BlobReference.
-func (br BlobReferences) FileNumByID(i blob.ReferenceID) base.DiskFileNum {
-	return br[i].FileNum
+func (br *BlobReferences) FileNumByID(i blob.ReferenceID) base.DiskFileNum {
+	return (*br)[i].FileNum
 }
 
 // IDByFileNum returns the reference ID for the given FileNum. If the file
 // number is not found, the second return value is false. IDByFileNum is linear
 // in the length of the BlobReferences slice.
-func (br BlobReferences) IDByFileNum(fileNum base.DiskFileNum) (blob.ReferenceID, bool) {
-	for i, ref := range br {
+func (br *BlobReferences) IDByFileNum(fileNum base.DiskFileNum) (blob.ReferenceID, bool) {
+	for i, ref := range *br {
 		if ref.FileNum == fileNum {
 			return blob.ReferenceID(i), true
 		}
 	}
-	return blob.ReferenceID(len(br)), false
+	return blob.ReferenceID(len(*br)), false
 }
 
 // AggregateBlobFileStats records cumulative stats across blob files.
