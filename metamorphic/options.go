@@ -192,6 +192,19 @@ func parseOptions(
 			case "TestOptions.use_jemalloc_size_classes":
 				opts.Opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 				return true
+			case "TestOptions.disable_value_separation":
+				v, err := strconv.ParseBool(value)
+				if err != nil {
+					panic(err)
+				}
+				if v {
+					opts.Opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+						return pebble.ValueSeparationPolicy{
+							Enabled: false,
+						}
+					}
+				}
+				return true
 			default:
 				if customOptionParsers == nil {
 					return false
@@ -334,6 +347,14 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+
+	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+		return pebble.ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           5,
+			MaxBlobReferenceDepth: 3,
+		}
+	}
 
 	// The level checker runs every time a new read state is installed: every
 	// compaction, flush, ingest completion, etc. It runs while the database
@@ -628,6 +649,10 @@ func standardOptions(kf KeyFormat) []*TestOptions {
   external_storage_enabled=true
   secondary_cache_enabled=false
 `, pebble.FormatSyntheticPrefixSuffix),
+		29: `
+[TestOptions]
+  disable_value_separation=true
+`,
 	}
 
 	opts := make([]*TestOptions, len(stdOpts))
@@ -852,7 +877,7 @@ func RandomOptions(
 	}
 	testOpts.disableValueBlocksForIngestSSTables = rng.IntN(2) == 0
 	testOpts.asyncApplyToDB = rng.IntN(2) != 0
-	// 20% of time, enable shared storage.
+	// 20% of the time, enable shared storage.
 	if rng.IntN(5) == 0 {
 		testOpts.sharedStorageEnabled = true
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
@@ -865,7 +890,7 @@ func RandomOptions(
 		if rng.IntN(2) == 0 {
 			testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
 		}
-		// If shared storage is enabled, enable secondary cache 50% of time.
+		// If shared storage is enabled, enable secondary cache 50% of the time.
 		if rng.IntN(2) == 0 {
 			testOpts.secondaryCacheEnabled = true
 			// TODO(josh): Randomize various secondary cache settings.
@@ -875,13 +900,29 @@ func RandomOptions(
 		testOpts.useSharedReplicate = rng.IntN(2) == 0
 	}
 
-	// 50% of time, enable external storage.
+	// 50% of the time, enable external storage.
 	if rng.IntN(2) == 0 {
 		testOpts.externalStorageEnabled = true
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatSyntheticPrefixSuffix {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatSyntheticPrefixSuffix
 		}
 		testOpts.externalStorageFS = remote.NewInMem()
+	}
+
+	// 75% of the time, randomize value separation parameters.
+	if rng.IntN(4) > 0 {
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatExperimentalValueSeparation {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatExperimentalValueSeparation
+		}
+		minSize := 1 + rng.IntN(maxValueSize)
+		maxBlobReferenceDepth := 2 + rng.IntN(9) // 2-10
+		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+			return pebble.ValueSeparationPolicy{
+				Enabled:               true,
+				MinimumSize:           minSize,
+				MaxBlobReferenceDepth: maxBlobReferenceDepth,
+			}
+		}
 	}
 
 	testOpts.seedEFOS = rng.Uint64()
