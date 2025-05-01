@@ -12,7 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/metamorphic"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -116,4 +120,118 @@ type testWriter struct {
 func (w *testWriter) Write(b []byte) (int, error) {
 	w.t.Log(string(bytes.TrimSpace(b)))
 	return len(b), nil
+}
+
+func BenchmarkPointLookupSeparatedValues(b *testing.B) {
+	type config struct {
+		name string
+		buildSeparatedValuesDBOpts
+	}
+	configs := []config{
+		{
+			name: "keys=1m,valueLen=100",
+			buildSeparatedValuesDBOpts: buildSeparatedValuesDBOpts{
+				KeyCount: 1_000_000,
+				ValueLen: 100,
+			},
+		},
+		{
+			name: "keys=1m,valueLen=1024",
+			buildSeparatedValuesDBOpts: buildSeparatedValuesDBOpts{
+				KeyCount: 1_000_000,
+				ValueLen: 1024,
+			},
+		},
+	}
+
+	for _, c := range configs {
+		b.Run(c.name, func(b *testing.B) {
+			db, keys := buildSeparatedValuesDB(b, c.buildSeparatedValuesDBOpts)
+			defer func() { require.NoError(b, db.Close()) }()
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				func() {
+					iter, err := db.NewIter(nil)
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer iter.Close()
+					iter.SeekGE(keys[i%len(keys)])
+					if !iter.Valid() {
+						b.Fatal("no key found")
+					}
+					_, err = iter.ValueAndErr()
+					if err != nil {
+						b.Fatal(err)
+					}
+				}()
+			}
+		})
+	}
+}
+
+type buildSeparatedValuesDBOpts struct {
+	KeyCount int
+	ValueLen int
+}
+
+func buildSeparatedValuesDB(
+	tb testing.TB, opts buildSeparatedValuesDBOpts,
+) (db *pebble.DB, keys [][]byte) {
+	o := &pebble.Options{
+		Comparer:                &cockroachkvs.Comparer,
+		BlockPropertyCollectors: cockroachkvs.BlockPropertyCollectors,
+		FormatMajorVersion:      pebble.FormatExperimentalValueSeparation,
+		FS:                      vfs.NewMem(),
+		KeySchema:               cockroachkvs.KeySchema.Name,
+		KeySchemas:              sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
+		Levels:                  make([]pebble.LevelOptions, 7),
+		MemTableSize:            2 << 20,
+	}
+	o.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+		return pebble.ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           50,
+			MaxBlobReferenceDepth: 10,
+		}
+	}
+	for i := 0; i < len(o.Levels); i++ {
+		l := &o.Levels[i]
+		l.BlockSize = 32 << 10       // 32 KB
+		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.FilterPolicy = bloom.FilterPolicy(10)
+		l.FilterType = pebble.TableFilter
+		if i > 0 {
+			l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
+		}
+		l.EnsureDefaults()
+	}
+	db, err := pebble.Open("", o)
+	require.NoError(tb, err)
+
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
+	keys, vals := cockroachkvs.RandomKVs(rng, opts.KeyCount, cockroachkvs.KeyGenConfig{
+		PrefixAlphabetLen:  26,
+		PrefixLenShared:    2,
+		RoachKeyLen:        10,
+		AvgKeysPerPrefix:   10,
+		BaseWallTime:       uint64(time.Now().UnixNano()),
+		PercentLogical:     0,
+		PercentEmptySuffix: 0,
+		PercentLockSuffix:  0,
+	}, opts.ValueLen)
+
+	keysToWrite := keys
+	for len(keysToWrite) > 0 {
+		b := db.NewBatch()
+		n := min(len(keysToWrite), 100)
+		for i := 0; i < n; i++ {
+			require.NoError(tb, b.Set(keysToWrite[i], vals[i], nil))
+		}
+		require.NoError(tb, b.Commit(nil))
+		keysToWrite = keysToWrite[n:]
+	}
+
+	return db, keys
 }
