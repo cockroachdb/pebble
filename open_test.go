@@ -35,6 +35,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -1417,6 +1418,11 @@ func TestCheckConsistency(t *testing.T) {
 			FileNum: base.FileNum(fileNum),
 			Size:    uint64(size),
 		}
+		ik := base.InternalKey{
+			UserKey: binary.AppendUvarint([]byte(nil), uint64(fileNum)),
+			Trailer: base.MakeTrailer(base.SeqNum(fileNum), base.InternalKeyKindSet),
+		}
+		m.ExtendPointKeyBounds(testkeys.Comparer.Compare, ik, ik)
 		m.InitPhysicalBacking()
 		return m, nil
 	}
