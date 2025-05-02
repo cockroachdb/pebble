@@ -1095,37 +1095,22 @@ func (i *iterator) ascend() {
 	i.pos = f.pos
 }
 
-// seek repositions the iterator over the first file for which fn returns
-// true, mirroring the semantics of the standard library's sort.Search
-// function.  Like sort.Search, seek requires the iterator's B-Tree to be
-// ordered such that fn returns false for some (possibly empty) prefix of the
-// tree's files, and then true for the (possibly empty) remainder.
-func (i *iterator) seek(fn func(*TableMetadata) bool) {
+// find seeks the iterator to the provided table metadata if it exists in the
+// tree. It returns true if the table metadata is found and false otherwise. If
+// find returns false, the position of the iterator is undefined.
+func (i *iterator) find(m *TableMetadata) bool {
 	i.reset()
 	if i.r == nil {
-		return
+		return false
 	}
-
+	i.n = i.r
 	for {
-		// Logic copied from sort.Search.
-		j, k := 0, int(i.n.count)
-		for j < k {
-			h := int(uint(j+k) >> 1) // avoid overflow when computing h
-
-			// j ≤ h < k
-			if !fn(i.n.items[h]) {
-				j = h + 1 // preserves f(j-1) == false
-			} else {
-				k = h // preserves f(k) == true
-			}
-		}
-
+		j, found := i.n.find(i.cmp, m)
 		i.pos = int16(j)
-		if i.n.leaf {
-			if i.pos == i.n.count {
-				i.next()
-			}
-			return
+		if found {
+			return true
+		} else if i.n.leaf {
+			return false
 		}
 		i.descend(i.n, i.pos)
 	}
