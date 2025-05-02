@@ -55,16 +55,13 @@ type LevelMetrics struct {
 	// The total size of the virtual sstables in the level.
 	VirtualTablesSize uint64
 	// The level's compaction score, used to rank levels (0 if the level doesn't
-	// need compaction). This is equal to the uncompensatedScoreRatio in the
-	// candidateLevel or 0 depending on when candidateLevel.shouldCompact().
+	// need compaction). See candidateLevelInfo.
 	Score float64
-	// The level's compaction score. This is the uncompensatedStore in the
-	// candidateLevelInfo.
-	UncompensatedScore float64
-	// The level's compaction score, compensated with an estimate of the disk
-	// space that can be reclaimed. This is the compensatedScore in the
-	// candidateLevelInfo.
-	CompensatedScore float64
+	// The level's fill factor (the ratio between the size of the level and the
+	// ideal size). See candidateLevelInfo.
+	FillFactor float64
+	// The level's compensated fill factor. See candidateLevelInfo.
+	CompensatedFillFactor float64
 	// The number of incoming bytes from other levels read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
 	// the bytes written to the WAL.
@@ -609,7 +606,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("      |                             |                |       |   ingested   |     moved    |    written   |       |    amp")
 	appendIfMulti("   |     multilevel")
 	newline()
-	w.SafeString("level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w")
+	w.SafeString("level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w")
 	appendIfMulti("  |    top   in  read")
 	newline()
 	w.SafeString("------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------")
@@ -629,8 +626,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
 			humanize.Count.Uint64(m.VirtualTablesCount),
 			humanizeFloat(score, 4),
-			humanizeFloat(m.UncompensatedScore, 4),
-			humanizeFloat(m.CompensatedScore, 4),
+			humanizeFloat(m.FillFactor, 4),
+			humanizeFloat(m.CompensatedFillFactor, 4),
 			humanize.Bytes.Uint64(m.BytesIn),
 			humanize.Count.Uint64(m.TablesIngested),
 			humanize.Bytes.Uint64(m.BytesIngested),
@@ -667,8 +664,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// ingested.
 	total.BytesFlushed += total.BytesIn
 	total.Score = math.NaN()
-	total.CompensatedScore = math.NaN()
-	total.UncompensatedScore = math.NaN()
+	total.FillFactor = math.NaN()
+	total.CompensatedFillFactor = math.NaN()
 	w.SafeString("total ")
 	formatRow(&total)
 
