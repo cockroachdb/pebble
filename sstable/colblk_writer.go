@@ -1052,6 +1052,10 @@ func (w *RawColumnWriter) Close() (err error) {
 		}
 	}
 
+	if w.opts.TableFormat >= TableFormatPebblev7 {
+		w.layout.attributes = w.props.toAttributes()
+	}
+
 	// Write the table footer.
 	w.meta.Size, err = w.layout.Finish()
 	if err != nil {

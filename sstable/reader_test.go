@@ -561,13 +561,18 @@ func TestReaderWithBlockPropertyFilter(t *testing.T) {
 func TestReaderAttributes(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	opts := WriterOptions{
-		// Use format supporting blob handles.
-		TableFormat:    TableFormatPebblev6,
 		BlockSize:      math.MaxInt32,
 		IndexBlockSize: math.MaxInt32,
 		Comparer:       testkeys.Comparer,
 	}
-	runTestReader(t, opts, "testdata/reader_attributes", nil /* Reader */, false)
+	// Iterate through TableFormats >= TableFormatPebblev6, which
+	// introduces blob handles.
+	for tf := TableFormatPebblev6; tf <= TableFormatMax; tf++ {
+		opts.TableFormat = tf
+		t.Run(tf.String(), func(t *testing.T) {
+			runTestReader(t, opts, "testdata/reader_attributes", nil /* Reader */, false)
+		})
+	}
 }
 
 func TestInjectedErrors(t *testing.T) {

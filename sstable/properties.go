@@ -510,6 +510,34 @@ func (p *Properties) saveToColWriter(tblFormat TableFormat, w *colblk.KeyValueBl
 	}
 }
 
+func (p *Properties) toAttributes() Attributes {
+	var attributes Attributes
+
+	if p.NumValueBlocks > 0 || p.NumValuesInValueBlocks > 0 {
+		attributes.Add(AttributeValueBlocks)
+	}
+	if p.NumRangeKeySets > 0 {
+		attributes.Add(AttributeRangeKeySets)
+	}
+	if p.NumRangeKeyUnsets > 0 {
+		attributes.Add(AttributeRangeKeyUnsets)
+	}
+	if p.NumRangeKeyDels > 0 {
+		attributes.Add(AttributeRangeKeyDels)
+	}
+	if p.NumRangeDeletions > 0 {
+		attributes.Add(AttributeRangeDels)
+	}
+	if p.IndexType == twoLevelIndex {
+		attributes.Add(AttributeTwoLevelIndex)
+	}
+	if p.NumValuesInBlobFiles > 0 {
+		attributes.Add(AttributeBlobValues)
+	}
+
+	return attributes
+}
+
 var (
 	singleZeroSlice = []byte{0x00}
 	maxInt32Slice   = binary.AppendUvarint([]byte(nil), math.MaxInt32)

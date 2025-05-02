@@ -899,26 +899,12 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	}
 
 	// Set which attributes are in use based on property values.
-	if r.Properties.NumValueBlocks > 0 || r.Properties.NumValuesInValueBlocks > 0 {
-		r.Attributes.Add(AttributeValueBlocks)
-	}
-	if r.Properties.NumRangeKeySets > 0 {
-		r.Attributes.Add(AttributeRangeKeySets)
-	}
-	if r.Properties.NumRangeKeyUnsets > 0 {
-		r.Attributes.Add(AttributeRangeKeyUnsets)
-	}
-	if r.Properties.NumRangeKeyDels > 0 {
-		r.Attributes.Add(AttributeRangeKeyDels)
-	}
-	if r.Properties.NumRangeDeletions > 0 {
-		r.Attributes.Add(AttributeRangeDels)
-	}
-	if r.Properties.IndexType == twoLevelIndex {
-		r.Attributes.Add(AttributeTwoLevelIndex)
-	}
-	if r.Properties.NumValuesInBlobFiles > 0 {
-		r.Attributes.Add(AttributeBlobValues)
+	r.Attributes = r.Properties.toAttributes()
+	if footer.format >= TableFormatPebblev7 && footer.attributes != r.Attributes {
+		// For now we just verify that our derived attributes from the properties match the bitset
+		// on the footer.
+		r.err = base.CorruptionErrorf("pebble/table: %d: attributes mismatch: %s (footer) vs %s (derived)",
+			errors.Safe(r.blockReader.FileNum()), errors.Safe(footer.attributes), errors.Safe(r.Attributes))
 	}
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {

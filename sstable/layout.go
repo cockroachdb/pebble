@@ -153,11 +153,15 @@ func (l *Layout) Describe(
 			var computedChecksum uint32
 			var encodedChecksum uint32
 			if format >= TableFormatPebblev6 {
+				checksumOffset := checkedPebbleDBChecksumOffset
+				if format >= TableFormatPebblev7 {
+					checksumOffset = pebbleDBv7FooterChecksumOffset
+				}
 				computedChecksum = crc.CRC(0).
-					Update(trailer[:checkedPebbleDBChecksumOffset]).
-					Update(trailer[checkedPebbleDBVersionOffset:]).
+					Update(trailer[:checksumOffset]).
+					Update(trailer[checksumOffset+checksumLen:]).
 					Value()
-				encodedChecksum = binary.LittleEndian.Uint32(trailer[checkedPebbleDBChecksumOffset:])
+				encodedChecksum = binary.LittleEndian.Uint32(trailer[checksumOffset:])
 			}
 
 			if b.Name == "footer" {
@@ -176,18 +180,29 @@ func (l *Layout) Describe(
 			tpNode.Childf("%03d  index: offset=%d, length=%d", offset, indexHandle, indexLen)
 			trailer, offset = trailer[n+m:], offset+n+m
 
-			trailing := 12
-			if b.Name == "leveldb-footer" {
-				trailing = 8
+			// Set the offset to the start of footer's remaining trailing fields.
+			trailing := magicLen
+			if b.Name != "leveldb-footer" {
+				trailing += versionLen
+			}
+			if format >= TableFormatPebblev6 {
+				trailing += checksumLen
 			}
 			offset += len(trailer) - trailing
 
+			if format >= TableFormatPebblev7 {
+				// Attributes should be just prior to the checksum.
+				attributes := Attributes(binary.LittleEndian.Uint32(trailer[pebbleDBV7FooterAttributesOffset:]))
+				tpNode.Childf("%03d  attributes: %s", offset-attributesLen, attributes.String())
+			}
+
 			if format >= TableFormatPebblev6 {
 				if computedChecksum == encodedChecksum {
-					tpNode.Childf("%03d  footer checksum: 0x%04x", offset-4, encodedChecksum)
+					tpNode.Childf("%03d  footer checksum: 0x%04x", offset, encodedChecksum)
 				} else {
-					tpNode.Childf("%03d  invalid footer checksum: 0x%04x, expected: 0x%04x", offset-4, encodedChecksum, computedChecksum)
+					tpNode.Childf("%03d  invalid footer checksum: 0x%04x, expected: 0x%04x", offset, encodedChecksum, computedChecksum)
 				}
+				offset += checksumLen
 			}
 
 			tpNode.Childf("%03d  version: %d", offset, version)
@@ -765,6 +780,10 @@ type layoutWriter struct {
 	compression  block.Compression
 	checksumType block.ChecksumType
 
+	// Attribute bitset of the sstable, derived from sstable Properties at the time
+	// of writing.
+	attributes Attributes
+
 	// offset tracks the current write offset within the writable.
 	offset uint64
 	// lastIndexBlockHandle holds the handle to the most recently-written index
@@ -996,6 +1015,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 		checksum:    w.checksumType,
 		metaindexBH: metaIndexHandle,
 		indexBH:     w.lastIndexBlockHandle,
+		attributes:  w.attributes,
 	}
 	encodedFooter := footer.encode(w.tmp[:])
 	if err := w.writable.Write(encodedFooter); err != nil {

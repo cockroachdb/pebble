@@ -1,0 +1,246 @@
+build block-size=1 index-block-size=1 filter
+a@xyz.SET.1:a
+b@xyz.SET.1:b
+c@xyz.SET.1:c
+----
+point:    [a@xyz#1,SET-c@xyz#1,SET]
+seqnums:  [1-1]
+
+rewrite from=@xyz to=@123 block-size=1 index-block-size=1 filter comparer=split-4b-suffix
+----
+rewrite failed: mismatched Comparer pebble.internal.testkeys vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
+
+build block-size=1 index-block-size=1 filter
+aa@xyz.SET.1:a
+ba@xyz.SET.1:b
+ca@xyz.SET.1:c
+----
+point:    [aa@xyz#1,SET-ca@xyz#1,SET]
+seqnums:  [1-1]
+
+rewrite from=yz to=23 block-size=1 index-block-size=1 filter
+----
+rewrite failed: rewriting data blocks: key aa@xyz#1,SET has suffix 0x4078797a; require 0x797a
+
+rewrite from=a@xyz to=a@123 block-size=1 index-block-size=1 filter
+----
+rewrite failed: rewriting data blocks: key aa@xyz#1,SET has suffix 0x4078797a; require 0x614078797a
+
+build block-size=1 index-block-size=1 filter
+a@0.SET.1:a
+b@0.SET.1:b
+c@0.SET.1:c
+----
+point:    [a@0#1,SET-c@0#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 38
+ ├── index  offset: 319  length: 39
+ ├── index  offset: 363  length: 37
+ ├── top-index  offset: 405  length: 52
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 462  length: 69
+ ├── properties  offset: 536  length: 572
+ ├── meta-index  offset: 1113  length: 88
+ └── footer  offset: 1206  length: 61
+
+scan
+----
+a@0#1,SET:a
+b@0#1,SET:b
+c@0#1,SET:c
+
+get
+b@0
+f@0
+c@0
+----
+b
+get f@0: pebble: not found
+c
+
+rewrite from=@0 to=@123 block-size=1 index-block-size=1 filter
+----
+point:    [a@123#1,SET-c@123#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 40
+ ├── index  offset: 321  length: 41
+ ├── index  offset: 367  length: 37
+ ├── top-index  offset: 409  length: 56
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
+ ├── properties  offset: 544  length: 572
+ ├── meta-index  offset: 1121  length: 88
+ └── footer  offset: 1214  length: 61
+
+scan
+----
+a@123#1,SET:a
+b@123#1,SET:b
+c@123#1,SET:c
+
+get
+b@123
+f@123
+c@123
+----
+b
+get f@123: pebble: not found
+c
+
+rewrite from=@123 to=@456 block-size=1 index-block-size=1 filter concurrency=2
+----
+point:    [a@456#1,SET-c@456#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 40
+ ├── index  offset: 321  length: 41
+ ├── index  offset: 367  length: 37
+ ├── top-index  offset: 409  length: 56
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
+ ├── properties  offset: 544  length: 572
+ ├── meta-index  offset: 1121  length: 88
+ └── footer  offset: 1214  length: 61
+
+scan
+----
+a@456#1,SET:a
+b@456#1,SET:b
+c@456#1,SET:c
+
+get
+b@456
+f@456
+c@456
+----
+b
+get f@456: pebble: not found
+c
+
+rewrite from=@456 to=@123 block-size=1 index-block-size=1 filter concurrency=3
+----
+point:    [a@123#1,SET-c@123#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 40
+ ├── index  offset: 321  length: 41
+ ├── index  offset: 367  length: 37
+ ├── top-index  offset: 409  length: 56
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
+ ├── properties  offset: 544  length: 572
+ ├── meta-index  offset: 1121  length: 88
+ └── footer  offset: 1214  length: 61
+
+scan
+----
+a@123#1,SET:a
+b@123#1,SET:b
+c@123#1,SET:c
+
+get
+b@123
+f@123
+c@123
+----
+b
+get f@123: pebble: not found
+c
+
+
+rewrite from=@123 to=@0 block-size=1 index-block-size=1 filter concurrency=4
+----
+point:    [a@0#1,SET-c@0#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 87
+ ├── data  offset: 92  length: 87
+ ├── data  offset: 184  length: 87
+ ├── index  offset: 276  length: 38
+ ├── index  offset: 319  length: 39
+ ├── index  offset: 363  length: 37
+ ├── top-index  offset: 405  length: 52
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 462  length: 69
+ ├── properties  offset: 536  length: 572
+ ├── meta-index  offset: 1113  length: 88
+ └── footer  offset: 1206  length: 61
+
+scan
+----
+a@0#1,SET:a
+b@0#1,SET:b
+c@0#1,SET:c
+
+get
+b@0
+f@0
+c@0
+----
+b
+get f@0: pebble: not found
+c
+
+# Rewrite a table that contain only range keys.
+
+build block-size=1 index-block-size=1 filter
+Span: a-b:{(#1,RANGEKEYSET,@0)}
+Span: b-c:{(#1,RANGEKEYSET,@0)}
+Span: c-d:{(#1,RANGEKEYSET,@0)}
+----
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-1]
+
+scan-range-key
+----
+a-b:{(#1,RANGEKEYSET,@0)}
+b-c:{(#1,RANGEKEYSET,@0)}
+c-d:{(#1,RANGEKEYSET,@0)}
+
+rewrite from=@0 to=@123 block-size=1 index-block-size=1 filter
+----
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-1]
+
+scan-range-key
+----
+a-b:{(#1,RANGEKEYSET,@123)}
+b-c:{(#1,RANGEKEYSET,@123)}
+c-d:{(#1,RANGEKEYSET,@123)}
+
+build block-size=1 index-block-size=1 filter
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:    [a#1,SET-c#1,SET]
+seqnums:  [1-1]
+
+rewrite from= to=@123 block-size=1 index-block-size=1 filter
+----
+point:    [a@123#1,SET-c@123#1,SET]
+seqnums:  [1-1]
