@@ -1095,31 +1095,57 @@ func (i *iterator) ascend() {
 	i.pos = f.pos
 }
 
-// seek repositions the iterator over the first file for which fn returns
-// true, mirroring the semantics of the standard library's sort.Search
-// function.  Like sort.Search, seek requires the iterator's B-Tree to be
-// ordered such that fn returns false for some (possibly empty) prefix of the
-// tree's files, and then true for the (possibly empty) remainder.
-func (i *iterator) seek(fn func(*TableMetadata) bool) {
+// find seeks the iterator to the provided table metadata if it exists in the
+// tree. It returns true if the table metadata is found and false otherwise. If
+// find returns false, the position of the iterator is undefined.
+func (i *iterator) find(m *TableMetadata) bool {
+	i.reset()
+	if i.r == nil {
+		return false
+	}
+	i.n = i.r
+	for {
+		j, found := i.n.find(i.cmp, m)
+		i.pos = int16(j)
+		if found {
+			return true
+		} else if i.n.leaf {
+			return false
+		}
+		i.descend(i.n, i.pos)
+	}
+}
+
+// seekLargestGE repositions the iterator over the first table whose largest key
+// is an upper bound for the given user key. If there is no such table,
+// seekLargestGE positions the iterator before the first table. seekLargestGE
+// requires the iterator's B-Tree to be ordered by user keys (i.e, L1+ or a
+// single sublevel of L0).
+func (i *iterator) seekLargestGE(cmp base.Compare, userKey []byte) {
 	i.reset()
 	if i.r == nil {
 		return
 	}
-
 	for {
 		// Logic copied from sort.Search.
+		//
+		// INVARIANT A: items[j-1].Largest().IsUpperBoundFor(cmp, userKey) == false
+		// INVARIANT B: items[k].Largest().IsUpperBoundFor(cmp, userKey) == true
 		j, k := 0, int(i.n.count)
 		for j < k {
 			h := int(uint(j+k) >> 1) // avoid overflow when computing h
-
 			// j ≤ h < k
-			if !fn(i.n.items[h]) {
-				j = h + 1 // preserves f(j-1) == false
+			ik := &i.n.items[h].PointKeyBounds
+			if i.n.items[h].boundTypeLargest == boundTypeRangeKey {
+				ik = i.n.items[h].RangeKeyBounds
+			}
+			c := cmp(userKey, ik.LargestUserKey())
+			if c > 0 || (c == 0 && ik.largestTrailer.IsExclusiveSentinel()) {
+				j = h + 1 // preserves INVARIANT A
 			} else {
-				k = h // preserves f(k) == true
+				k = h // preserves INVARIANT B
 			}
 		}
-
 		i.pos = int16(j)
 		if i.n.leaf {
 			if i.pos == i.n.count {
