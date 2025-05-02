@@ -1095,31 +1095,101 @@ func (i *iterator) ascend() {
 	i.pos = f.pos
 }
 
-// seek repositions the iterator over the first file for which fn returns
-// true, mirroring the semantics of the standard library's sort.Search
-// function.  Like sort.Search, seek requires the iterator's B-Tree to be
-// ordered such that fn returns false for some (possibly empty) prefix of the
-// tree's files, and then true for the (possibly empty) remainder.
-func (i *iterator) seek(fn func(*TableMetadata) bool) {
+// seekSeqNumL0 seeks an iterator over L0 files (ordered by sequence number) to
+// the provided table metadata if it exists.
+func (i *iterator) seekSeqNumL0(m *TableMetadata) {
 	i.reset()
 	if i.r == nil {
 		return
 	}
-
 	for {
 		// Logic copied from sort.Search.
+		//
+		// INVARIANT A: items[j-1].cmpSeqNum(m) < 0
+		// INVARIANT B: items[k].cmpSeqNum(m) >= 0
 		j, k := 0, int(i.n.count)
 		for j < k {
 			h := int(uint(j+k) >> 1) // avoid overflow when computing h
-
 			// j ≤ h < k
-			if !fn(i.n.items[h]) {
-				j = h + 1 // preserves f(j-1) == false
+			if i.n.items[h].cmpSeqNum(m) < 0 {
+				j = h + 1 // preserves INVARIANT A
 			} else {
-				k = h // preserves f(k) == true
+				k = h // preserves INVARIANT B
 			}
 		}
+		i.pos = int16(j)
+		if i.n.leaf {
+			if i.pos == i.n.count {
+				i.next()
+			}
+			return
+		}
+		i.descend(i.n, i.pos)
+	}
+}
 
+// seekLargest repositions the iterator over the first table whose largest key
+// is an upper bound for the given user key. seekLargest requires the iterator's
+// B-Tree to be ordered by user keys (i.e, L1+ or a single sublevel of L0).
+func (i *iterator) seekLargest(cmp base.Compare, userKey []byte) {
+	i.reset()
+	if i.r == nil {
+		return
+	}
+	for {
+		// Logic copied from sort.Search.
+		//
+		// INVARIANT A: items[j-1].Largest().IsUpperBoundFor(cmp, userKey) == false
+		// INVARIANT B: items[k].Largest().IsUpperBoundFor(cmp, userKey) == true
+		j, k := 0, int(i.n.count)
+		for j < k {
+			h := int(uint(j+k) >> 1) // avoid overflow when computing h
+			// j ≤ h < k
+			ik := &i.n.items[h].PointKeyBounds
+			if i.n.items[h].boundTypeLargest == boundTypeRangeKey {
+				ik = i.n.items[h].RangeKeyBounds
+			}
+			c := cmp(userKey, ik.LargestUserKey())
+			if c > 0 || (c == 0 && ik.largestTrailer.IsExclusiveSentinel()) {
+				j = h + 1 // preserves INVARIANT A
+			} else {
+				k = h // preserves INVARIANT B
+			}
+		}
+		i.pos = int16(j)
+		if i.n.leaf {
+			if i.pos == i.n.count {
+				i.next()
+			}
+			return
+		}
+		i.descend(i.n, i.pos)
+	}
+}
+
+// seekSmallest repositions the iterator over the first table whose smallest key
+// is a lower bound for the given user key. seekSmallest requires the iterator's
+// B-Tree to be ordered by user keys (i.e, L1+ or a single sublevel of L0).
+func (i *iterator) seekSmallest(cmp base.Compare, userKey []byte) {
+	i.reset()
+	if i.r == nil {
+		return
+	}
+	for {
+		// Logic copied from sort.Search.
+		//
+		// INVARIANT A: items[j-1].Smallest().UserKey < userKey
+		// INVARIANT B: items[k].Smallest().UserKey >= 0
+		j, k := 0, int(i.n.count)
+		for j < k {
+			h := int(uint(j+k) >> 1) // avoid overflow when computing h
+			// j ≤ h < k
+			if cmp(i.n.items[h].Smallest().UserKey, userKey) < 0 {
+				j = h + 1 // preserves INVARIANT A
+			} else {
+				k = h // preserves INVARIANT B
+			}
+		}
 		i.pos = int16(j)
 		if i.n.leaf {
 			if i.pos == i.n.count {

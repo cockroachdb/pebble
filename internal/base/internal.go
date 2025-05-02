@@ -247,6 +247,12 @@ func (t InternalKeyTrailer) Kind() InternalKeyKind {
 	return InternalKeyKind(t & 0xff)
 }
 
+// IsExclusiveSentinel returns true if the trailer is a sentinel for an
+// exclusive boundary.
+func (t InternalKeyTrailer) IsExclusiveSentinel() bool {
+	return t.SeqNum() == SeqNumMax
+}
+
 // InternalKey is a key used for the in-memory and on-disk partial DBs that
 // make up a pebble DB.
 //

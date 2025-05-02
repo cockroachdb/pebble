@@ -146,9 +146,8 @@ func (lm *LevelMetadata) Find(cmp base.Compare, m *TableMetadata) LevelSlice {
 	if lm.level == 0 {
 		// We only need to look at the portion of files that are "equal" to m with
 		// respect to the L0 ordering.
-		f := iter.seek(func(f *TableMetadata) bool {
-			return f.cmpSeqNum(m) >= 0
-		})
+		iter.iter.seekSeqNumL0(m)
+		f := iter.constrainToIteratorBounds()
 		for ; f != nil && f.cmpSeqNum(m) == 0; f = iter.Next() {
 			if f == m {
 				return iter.Take().slice
@@ -157,7 +156,7 @@ func (lm *LevelMetadata) Find(cmp base.Compare, m *TableMetadata) LevelSlice {
 	} else {
 		// For levels other than L0, UserKeyBounds in the level are non-overlapping
 		// so we only need to check one file.
-		if f := iter.SeekGE(cmp, m.UserKeyBounds().Start); f == m {
+		if f := iter.SeekGE(cmp, m.Smallest().UserKey); f == m {
 			return iter.Take().slice
 		}
 	}
@@ -572,9 +571,8 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *TableMetadata {
 		return nil
 	}
 	i.assertNotL0Cmp()
-	m := i.seek(func(m *TableMetadata) bool {
-		return m.Largest().IsUpperBoundFor(cmp, userKey)
-	})
+	i.iter.seekLargest(cmp, userKey)
+	m := i.constrainToIteratorBounds()
 	if i.filter != KeyTypePointAndRange && m != nil {
 		b, ok := m.LargestBound(i.filter)
 		if !ok || !b.IsUpperBoundFor(cmp, userKey) {
@@ -598,9 +596,8 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 		return nil
 	}
 	i.assertNotL0Cmp()
-	i.seek(func(m *TableMetadata) bool {
-		return cmp(m.Smallest().UserKey, userKey) >= 0
-	})
+	i.iter.seekSmallest(cmp, userKey)
+	_ = i.constrainToIteratorBounds()
 	m := i.Prev()
 	// Although i.Prev() guarantees that the current file contains keys of the
 	// relevant type, it doesn't guarantee that the keys of the relevant type
@@ -682,16 +679,12 @@ func (i *LevelIterator) skipFilteredBackward(meta *TableMetadata) *TableMetadata
 	return meta
 }
 
-// seek repositions the iterator over the first file for which fn returns true,
-// mirroring the semantics of the standard library's sort.Search function: fn
-// returns false for some (possibly empty) prefix of the tree's files, and then
-// true for the (possibly empty) remainder.
-func (i *LevelIterator) seek(fn func(*TableMetadata) bool) *TableMetadata {
-	i.iter.seek(fn)
-
-	// i.iter.seek seeked in the unbounded underlying B-Tree. If the iterator
-	// has start or end bounds, we may have exceeded them. Reset to the bounds
-	// if necessary.
+// constrainToIteratorBounds adjusts the iterator position to ensure it's
+// positioned within the iterator's bounds.
+func (i *LevelIterator) constrainToIteratorBounds() *TableMetadata {
+	// i.iter.{seekLargest,seekSmallest,seekSeqNumL0} all seek in the unbounded
+	// underlying B-Tree. If the iterator has start or end bounds, we may have
+	// exceeded them. Reset to the bounds if necessary.
 	//
 	// NB: The LevelIterator and LevelSlice semantics require that a bounded
 	// LevelIterator/LevelSlice containing files x0, x1, ..., xn behave
