@@ -145,5 +145,154 @@ sstable
       ├── 045  version: 6
       └── 049  magic number: 0xf09faab3f09faab3
 
+build table-format=Pebble,v7
+a@2.SET.1:blob{fileNum=1 blockNum=1 offset=10 valueLen=10}attr=7
+b@5.SET.7:blob{fileNum=1 blockNum=2 offset=110 value=foo valueLen=200}attr=7
+b@4.DEL.3:
+b@3.SET.2:blob{fileNum=2 blockNum=0 offset=0 valueLen=200}attr=7
+b@2.SET.1:blob{fileNum=2 blockNum=1 offset=294 valueLen=103}attr=7
+----
+blob-separated-values: num-values 4
+
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 154
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-004: x 03000000 # maximum key length: 3
+ │    │    │    ├── 004-005: x 01       # version 1
+ │    │    │    ├── 005-007: x 0700     # 7 columns
+ │    │    │    ├── 007-011: x 05000000 # 5 rows
+ │    │    │    ├── 011-012: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 012-016: x 2e000000 # col 0: page start 46
+ │    │    │    ├── 016-017: b 00000011 # col 1: bytes
+ │    │    │    ├── 017-021: x 39000000 # col 1: page start 57
+ │    │    │    ├── 021-022: b 00000010 # col 2: uint
+ │    │    │    ├── 022-026: x 4a000000 # col 2: page start 74
+ │    │    │    ├── 026-027: b 00000001 # col 3: bool
+ │    │    │    ├── 027-031: x 56000000 # col 3: page start 86
+ │    │    │    ├── 031-032: b 00000011 # col 4: bytes
+ │    │    │    ├── 032-036: x 68000000 # col 4: page start 104
+ │    │    │    ├── 036-037: b 00000001 # col 5: bool
+ │    │    │    ├── 037-041: x 86000000 # col 5: page start 134
+ │    │    │    ├── 041-042: b 00000001 # col 6: bool
+ │    │    │    └── 042-046: x 98000000 # col 6: page start 152
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 046-047: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 047-048: x 01 # encoding: 1b
+ │    │    │    │    ├── 048-049: x 00 # data[0] = 0 [55 overall]
+ │    │    │    │    ├── 049-050: x 00 # data[1] = 0 [55 overall]
+ │    │    │    │    ├── 050-051: x 01 # data[2] = 1 [56 overall]
+ │    │    │    │    ├── 051-052: x 02 # data[3] = 2 [57 overall]
+ │    │    │    │    ├── 052-053: x 02 # data[4] = 2 [57 overall]
+ │    │    │    │    ├── 053-054: x 02 # data[5] = 2 [57 overall]
+ │    │    │    │    └── 054-055: x 02 # data[6] = 2 [57 overall]
+ │    │    │    └── data
+ │    │    │         ├── 055-055: x    # data[00]:  (block prefix)
+ │    │    │         ├── 055-055: x    # data[01]:  (bundle prefix)
+ │    │    │         ├── 055-056: x 61 # data[02]: a
+ │    │    │         ├── 056-057: x 62 # data[03]: b
+ │    │    │         ├── 057-057: x    # data[04]: .
+ │    │    │         ├── 057-057: x    # data[05]: .
+ │    │    │         └── 057-057: x    # data[06]: .
+ │    │    ├── data for column 1 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 057-058: x 01 # encoding: 1b
+ │    │    │    │    ├── 058-059: x 00 # data[0] = 0 [64 overall]
+ │    │    │    │    ├── 059-060: x 02 # data[1] = 2 [66 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[2] = 4 [68 overall]
+ │    │    │    │    ├── 061-062: x 06 # data[3] = 6 [70 overall]
+ │    │    │    │    ├── 062-063: x 08 # data[4] = 8 [72 overall]
+ │    │    │    │    └── 063-064: x 0a # data[5] = 10 [74 overall]
+ │    │    │    └── data
+ │    │    │         ├── 064-066: x 4032 # data[0]: @2
+ │    │    │         ├── 066-068: x 4035 # data[1]: @5
+ │    │    │         ├── 068-070: x 4034 # data[2]: @4
+ │    │    │         ├── 070-072: x 4033 # data[3]: @3
+ │    │    │         └── 072-074: x 4032 # data[4]: @2
+ │    │    ├── data for column 2 (uint)
+ │    │    │    ├── 074-075: x 02   # encoding: 2b
+ │    │    │    ├── 075-076: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 076-078: x 0101 # data[0] = 257
+ │    │    │    ├── 078-080: x 0107 # data[1] = 1793
+ │    │    │    ├── 080-082: x 0003 # data[2] = 768
+ │    │    │    ├── 082-084: x 0102 # data[3] = 513
+ │    │    │    └── 084-086: x 0101 # data[4] = 257
+ │    │    ├── data for column 3 (bool)
+ │    │    │    ├── 086-087: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 087-088: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 088-096: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 096-104: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 4 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 104-105: x 01 # encoding: 1b
+ │    │    │    │    ├── 105-106: x 00 # data[0] = 0 [111 overall]
+ │    │    │    │    ├── 106-107: x 05 # data[1] = 5 [116 overall]
+ │    │    │    │    ├── 107-108: x 0b # data[2] = 11 [122 overall]
+ │    │    │    │    ├── 108-109: x 0b # data[3] = 11 [122 overall]
+ │    │    │    │    ├── 109-110: x 11 # data[4] = 17 [128 overall]
+ │    │    │    │    └── 110-111: x 17 # data[5] = 23 [134 overall]
+ │    │    │    └── data
+ │    │    │         ├── 111-116: x 47000a010a   # data[0]: "G\x00\n\x01\n"
+ │    │    │         ├── 116-122: x 4700c801026e # data[1]: "G\x00\xc8\x01\x02n"
+ │    │    │         ├── 122-122: x              # data[2]:
+ │    │    │         ├── 122-128: x 6701c8010000 # data[3]: "g\x01\xc8\x01\x00\x00"
+ │    │    │         └── 128-134: x 67016701a602 # data[4]: "g\x01g\x01\xa6\x02"
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 134-135: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 135-136: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 136-144: b 0001101100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 144-152: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bool)
+ │    │    │    └── 152-153: x 01 # zero bitmap encoding
+ │    │    └── 153-154: x 00 # block padding byte
+ │    ├── a@2#1,SET:blob handle (f0,blk1[10:20])
+ │    ├── b@5#7,SET:blob handle (f0,blk2[110:310])
+ │    ├── b@4#3,DEL:
+ │    ├── b@3#2,SET:blob handle (f1,blk0[0:200])
+ │    ├── b@2#1,SET:blob handle (f1,blk1[294:397])
+ │    └── trailer [compression=none checksum=0x834a75d7]
+ ├── index  offset: 159  length: 36
+ │    ├── 00000    block:0/154
+ │    │   
+ │    └── trailer [compression=none checksum=0xda1c8436]
+ ├── properties  offset: 200  length: 562
+ │    ├── 00000    obsolete-key (13)
+ │    ├── 00013    pebble.colblk.schema (65)
+ │    ├── 00078    pebble.num.values.in.blob-files (32)
+ │    ├── 00110    pebble.raw.point-tombstone.key.size (36)
+ │    ├── 00146    rocksdb.block.based.table.index.type (40)
+ │    ├── 00186    rocksdb.comparator (42)
+ │    ├── 00228    rocksdb.compression (25)
+ │    ├── 00253    rocksdb.compression_options (122)
+ │    ├── 00375    rocksdb.data.size (19)
+ │    ├── 00394    rocksdb.deleted.keys (21)
+ │    ├── 00415    rocksdb.filter.size (20)
+ │    ├── 00435    rocksdb.index.size (19)
+ │    ├── 00454    rocksdb.merge.operands (23)
+ │    ├── 00477    rocksdb.merge.operator (40)
+ │    ├── 00517    rocksdb.num.data.blocks (24)
+ │    ├── 00541    rocksdb.num.entries (20)
+ │    ├── 00561    rocksdb.num.range-deletions (28)
+ │    ├── 00589    rocksdb.property.collectors (41)
+ │    ├── 00630    rocksdb.raw.key.size (21)
+ │    ├── 00651    rocksdb.raw.value.size (24)
+ │    └── trailer [compression=snappy checksum=0x277c72db]
+ ├── meta-index  offset: 767  length: 46
+ │    ├── 0000    rocksdb.properties block:200/562
+ │    │   
+ │    └── trailer [compression=none checksum=0xaa86f2de]
+ └── footer  offset: 818  length: 61
+      ├── 000  checksum type: crc32c
+      ├── 001  meta: offset=767, length=46
+      ├── 004  index: offset=159, length=36
+      ├── 041  attributes: [RangeKeySets,RangeKeyUnsets,RangeKeyDels,TwoLevelIndex]
+      ├── 045  footer checksum: 0x2ee54544
+      ├── 049  version: 7
+      └── 053  magic number: 0xf09faab3f09faab3
+
 # TODO(jackson): Test iteration over the blob-separated values when that's
 # supported.

@@ -50,7 +50,7 @@ var footerSizes [NumTableFormats]int = [NumTableFormats]int{
 	TableFormatPebblev4:  rocksDBFooterLen,
 	TableFormatPebblev5:  rocksDBFooterLen,
 	TableFormatPebblev6:  checkedPebbleDBFooterLen,
-	TableFormatPebblev7:  checkedPebbleDBFooterLen,
+	TableFormatPebblev7:  pebbleDBv7FooterLen,
 }
 
 // TableFormatPebblev4, in addition to DELSIZED, introduces the use of

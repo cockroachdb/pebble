@@ -1323,7 +1323,7 @@ func TestCompaction(t *testing.T) {
 		},
 		"set_with_del_sstable_Pebblev6": {
 			minVersion: FormatTableFormatV6,
-			maxVersion: internalFormatNewest,
+			maxVersion: FormatNewest,
 		},
 		"value_separation": {
 			minVersion: FormatExperimentalValueSeparation,
