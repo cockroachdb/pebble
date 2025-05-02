@@ -226,7 +226,7 @@ remove: ext/0
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     2  1.5KB     0B       0 |    - 0.40 0.40 |   97B |     1   746B |     0     0B |     3  2.2KB |    0B |   2 23.0
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -329,7 +329,7 @@ sync: db/MANIFEST-000023
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     4  2.9KB     0B       0 |    - 0.80 0.80 |  132B |     2  1.5KB |     0     0B |     4  2.9KB |    0B |   4 22.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
