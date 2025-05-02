@@ -441,7 +441,8 @@ func supportsTwoLevelIndex(format TableFormat) bool {
 	switch format {
 	case TableFormatLevelDB:
 		return false
-	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4, TableFormatPebblev5, TableFormatPebblev6:
+	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4,
+		TableFormatPebblev5, TableFormatPebblev6, TableFormatPebblev7:
 		return true
 	default:
 		panic("sstable: unspecified table format version")

@@ -60,7 +60,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000001.MANIFEST-000001
 
 # Test basic WAL replay
@@ -81,7 +81,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -390,7 +390,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -410,7 +410,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -443,7 +443,7 @@ MANIFEST-000001
 MANIFEST-000011
 OPTIONS-000014
 ext
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000002.MANIFEST-000011
 
 # Make sure that the new mutable memtable can accept writes.
@@ -586,7 +586,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -605,7 +605,7 @@ MANIFEST-000001
 OPTIONS-000003
 ext
 ext1
-marker.format-version.000009.022
+marker.format-version.000010.023
 marker.manifest.000001.MANIFEST-000001
 
 open
