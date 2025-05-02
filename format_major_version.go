@@ -236,6 +236,10 @@ const (
 
 	// -- Add experimental versions here --
 
+	// formatFooterAttributes is a format major version that adds support for
+	// writing sstable.Attributes in the footer of sstables.
+	formatFooterAttributes FormatMajorVersion = iota - 1
+
 	// internalFormatNewest is the most recent, possibly experimental format major
 	// version.
 	internalFormatNewest FormatMajorVersion = iota - 2
@@ -268,6 +272,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev5
 	case FormatTableFormatV6, FormatExperimentalValueSeparation:
 		return sstable.TableFormatPebblev6
+	case formatFooterAttributes:
+		return sstable.TableFormatPebblev7
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
@@ -280,7 +286,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatTableFormatV6, FormatExperimentalValueSeparation:
+		FormatTableFormatV6, FormatExperimentalValueSeparation, formatFooterAttributes:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -331,6 +337,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatExperimentalValueSeparation: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatExperimentalValueSeparation)
+	},
+	formatFooterAttributes: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(formatFooterAttributes)
 	},
 }
 
