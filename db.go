@@ -2053,11 +2053,9 @@ func (d *DB) Metrics() *Metrics {
 		m := p.getMetrics(compactions)
 		for level, lm := range m.levels {
 			metrics.Levels[level].Score = 0
-			if lm.shouldCompact {
-				metrics.Levels[level].Score = lm.uncompensatedScoreRatio
-			}
-			metrics.Levels[level].UncompensatedScore = lm.uncompensatedScore
-			metrics.Levels[level].CompensatedScore = lm.compensatedScore
+			metrics.Levels[level].Score = lm.score
+			metrics.Levels[level].FillFactor = lm.fillFactor
+			metrics.Levels[level].CompensatedFillFactor = lm.compensatedFillFactor
 		}
 	}
 	metrics.Table.ZombieCount = int64(d.mu.versions.zombieTables.Count())

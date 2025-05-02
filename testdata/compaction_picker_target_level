@@ -261,7 +261,7 @@ base: 4
 
 queue
 ----
-L5->L6: 6.2
+L5->L6: 1.1
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   500002:[0002#2,SET-0002#2,SET] marked as compacting
   500003:[0003#3,SET-0003#3,SET] marked as compacting
@@ -1095,7 +1095,7 @@ L0->L5: 5.0
   000009:[0001#9,SET-0001#9,SET] marked as compacting
   000010:[0001#10,SET-0001#10,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
-L5->L6: 11.5
+L5->L6: 10.8
   500005:[0005#5,SET-0005#5,SET] marked as compacting
   600005:[0005#5,SET-0005#5,SET] marked as compacting
 L5->L6: 8.4
@@ -1362,7 +1362,7 @@ L0->L5: 4.4
   000006:[0001#6,SET-0001#6,SET] marked as compacting
   000007:[0001#7,SET-0001#7,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
-L5->L6: 6006.6
+L5->L6: 6.6
   500004:[0004#4,SET-0004#4,SET] marked as compacting
   600004:[0004#4,SET-0004#4,SET] marked as compacting
 L5->L6: 5.0
@@ -1399,7 +1399,7 @@ base: 5
 queue print-compaction-concurrency
 ----
 compaction concurrency: 4
-L5->L6: 2.0
+L5->L6: 0.5
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   600001:[0001#1,SET-0001#1,SET] marked as compacting
 compaction concurrency: 4
