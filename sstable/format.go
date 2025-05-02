@@ -30,6 +30,7 @@ const (
 	TableFormatPebblev4 // DELSIZED tombstones.
 	TableFormatPebblev5 // Columnar blocks.
 	TableFormatPebblev6 // Checksum footer + blob value handles + columnar metaindex/properties + MinLZ compression support.
+	TableFormatPebblev7 // Footer attributes.
 	NumTableFormats
 
 	TableFormatMax = NumTableFormats - 1
@@ -49,6 +50,7 @@ var footerSizes [NumTableFormats]int = [NumTableFormats]int{
 	TableFormatPebblev4:  rocksDBFooterLen,
 	TableFormatPebblev5:  rocksDBFooterLen,
 	TableFormatPebblev6:  checkedPebbleDBFooterLen,
+	TableFormatPebblev7:  checkedPebbleDBFooterLen,
 }
 
 // TableFormatPebblev4, in addition to DELSIZED, introduces the use of
@@ -250,6 +252,8 @@ func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 			return TableFormatPebblev5, nil
 		case 6:
 			return TableFormatPebblev6, nil
+		case 7:
+			return TableFormatPebblev7, nil
 		default:
 			return TableFormatUnspecified, base.CorruptionErrorf(
 				"(unsupported pebble format version %d)", errors.Safe(version))
@@ -297,6 +301,8 @@ func (f TableFormat) AsTuple() (string, uint32) {
 		return pebbleDBMagic, 5
 	case TableFormatPebblev6:
 		return pebbleDBMagic, 6
+	case TableFormatPebblev7:
+		return pebbleDBMagic, 7
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
@@ -323,6 +329,8 @@ func (f TableFormat) String() string {
 		return "(Pebble,v5)"
 	case TableFormatPebblev6:
 		return "(Pebble,v6)"
+	case TableFormatPebblev7:
+		return "(Pebble,v7)"
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
