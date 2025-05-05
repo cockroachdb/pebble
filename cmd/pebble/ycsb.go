@@ -344,6 +344,22 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 		fmt.Printf("inserted keys [%d-%d)\n",
 			1+ycsbConfig.prepopulatedKeys,
 			1+ycsbConfig.prepopulatedKeys+ycsbConfig.initialKeys)
+
+		// Wait for compactions to stabilize.
+		fmt.Println("waiting for compactions to stabilize...")
+		m := db.Metrics()
+		for {
+			maxScore := 0.0
+			for i := range m.Levels {
+				maxScore = max(maxScore, m.Levels[i].Score)
+			}
+			if maxScore <= 1.05 && m.Compact.NumInProgress == 0 {
+				break
+			}
+			time.Sleep(250 * time.Millisecond)
+			m = db.Metrics()
+		}
+		fmt.Println(m.String())
 	}
 	y.keyNum = ackseq.New(uint64(ycsbConfig.initialKeys + ycsbConfig.prepopulatedKeys))
 
