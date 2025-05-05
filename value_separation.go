@@ -58,9 +58,6 @@ func (d *DB) determineCompactionValueSeparation(
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
 		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level),
 		minimumSize:        policy.MinimumSize,
-		// TODO(jackson): Don't propagate these bounds if they don't
-		// overlap with the compaction's bounds.
-		requiredInPlaceValueBound: d.opts.Experimental.RequiredInPlaceValueBound,
 	}
 }
 
@@ -167,10 +164,6 @@ type writeNewBlobFiles struct {
 	// to the sstable (but may still be written to a value block within the
 	// sstable).
 	minimumSize int
-	// requiredInPlaceValueBound configures a region of the keyspace that must
-	// be written to the sstable in place, and are not eligible for value
-	// separation.
-	requiredInPlaceValueBound UserKeyPrefixBound
 
 	// Current blob writer state
 	writer  *blob.FileWriter
@@ -223,19 +216,6 @@ func (vs *writeNewBlobFiles) Add(
 	// Merge keys are never separated.
 	if kv.K.Kind() == base.InternalKeyKindMerge {
 		return tw.Add(kv.K, v, forceObsolete)
-	}
-	// If the user configured bounds requiring some keys' values to be in-place,
-	// compare the user key's prefix against the bounds.
-	if !vs.requiredInPlaceValueBound.IsEmpty() {
-		kPrefix := vs.comparer.Split.Prefix(kv.K.UserKey)
-		if vs.comparer.Compare(vs.requiredInPlaceValueBound.Upper, kPrefix) <= 0 {
-			// Common case for CockroachDB. Clear it since all future keys will
-			// be >= this key.
-			vs.requiredInPlaceValueBound = UserKeyPrefixBound{}
-		} else if vs.comparer.Compare(kPrefix, vs.requiredInPlaceValueBound.Lower) >= 0 {
-			// Don't separate the value if the key is within the bounds.
-			return tw.Add(kv.K, v, forceObsolete)
-		}
 	}
 
 	// This KV met all the criteria and its value will be separated.

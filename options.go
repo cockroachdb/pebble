@@ -693,27 +693,6 @@ type Options struct {
 		// value and stored with the key, when the value is stored elsewhere.
 		ShortAttributeExtractor ShortAttributeExtractor
 
-		// RequiredInPlaceValueBound specifies an optional span of user key
-		// prefixes that are not-MVCC, but have a suffix. For these the values
-		// must be stored with the key, since the concept of "older versions" is
-		// not defined. It is also useful for statically known exclusions to value
-		// separation. In CockroachDB, this will be used for the lock table key
-		// space that has non-empty suffixes, but those locks don't represent
-		// actual MVCC versions (the suffix ordering is arbitrary). We will also
-		// need to add support for dynamically configured exclusions (we want the
-		// default to be to allow Pebble to decide whether to separate the value
-		// or not, hence this is structured as exclusions), for example, for users
-		// of CockroachDB to dynamically exclude certain tables.
-		//
-		// Any change in exclusion behavior takes effect only on future written
-		// sstables, and does not start rewriting existing sstables.
-		//
-		// Even ignoring changes in this setting, exclusions are interpreted as a
-		// guidance by Pebble, and not necessarily honored. Specifically, user
-		// keys with multiple Pebble-versions *may* have the older versions stored
-		// in value blocks.
-		RequiredInPlaceValueBound UserKeyPrefixBound
-
 		// DisableIngestAsFlushable disables lazy ingestion of sstables through
 		// a WAL write and memtable rotation. Only effectual if the format
 		// major version is at least `FormatFlushableIngest`.
@@ -756,6 +735,9 @@ type Options struct {
 		// external blob files. If nil, value separation is disabled. The value
 		// separation policy is ignored if EnableColumnarBlocks() is false.
 		ValueSeparationPolicy func() ValueSeparationPolicy
+
+		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
+		SpanPolicyFunc SpanPolicyFunc
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1156,6 +1138,79 @@ type ValueSeparationPolicy struct {
 	MaxBlobReferenceDepth int
 }
 
+// SpanPolicy contains policies that can vary by key range. The zero value is
+// the default value.
+type SpanPolicy struct {
+	// DisableValueSeparationBySuffix disables discriminating KVs depending on
+	// suffix.
+	//
+	// Among a set of keys with the same prefix, Pebble's default heuristics
+	// optimize access to the KV with the smallest suffix. This is useful for MVCC
+	// keys (where the smallest suffix is the latest version), but should be
+	// disabled for keys where the suffix does not correspond to a version.
+	DisableValueSeparationBySuffix bool
+
+	// ValueStoragePolicy is a hint used to determine where to store the values
+	// for KVs.
+	ValueStoragePolicy ValueStoragePolicy
+}
+
+// ValueStoragePolicy is a hint used to determine where to store the values for
+// KVs.
+type ValueStoragePolicy uint8
+
+const (
+	// ValueStorageDefault is the default value; Pebble will respect global
+	// configuration for value blocks and value separation.
+	ValueStorageDefault ValueStoragePolicy = iota
+
+	// ValueStorageLowReadLatency indicates Pebble should prefer storing values
+	// in-place.
+	ValueStorageLowReadLatency
+)
+
+// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
+//
+// The returned policy is valid from the start key until (and not including) the
+// end key.
+//
+// A flush or compaction will call this function once for the first key to be
+// output. If the compaction reaches the end key, the current output sst is
+// finished and the function is called again.
+//
+// The end key can be empty, in which case the policy is valid for the entire
+// keyspace after startKey.
+type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, endKey []byte, err error)
+
+// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
+// to the given span (and the default policy outside the span).
+func MakeStaticSpanPolicyFunc(cmp base.Compare, span KeyRange, policy SpanPolicy) SpanPolicyFunc {
+	return func(startKey []byte) (_ SpanPolicy, endKey []byte, _ error) {
+		if cmp(startKey, span.End) >= 0 {
+			//      Start     End
+			//      v         v
+			// -----|---------|-----|---
+			//                      ^
+			//                      startKey
+			return SpanPolicy{}, nil, nil
+		}
+		if cmp(startKey, span.Start) < 0 {
+			//      Start     End
+			//      v         v
+			// --|--|---------|-----
+			//   ^
+			//   startKey
+			return SpanPolicy{}, span.Start, nil
+		}
+		//      Start     End
+		//      v         v
+		// -----|----|----|-----
+		//           ^
+		//           startKey
+		return policy, span.End, nil
+	}
+}
+
 // WALFailoverOptions configures the WAL failover mechanics to use during
 // transient write unavailability on the primary WAL volume.
 type WALFailoverOptions struct {
@@ -1356,6 +1411,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
+	}
+	if o.Experimental.SpanPolicyFunc == nil {
+		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
@@ -2228,7 +2286,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	}
 	if format >= sstable.TableFormatPebblev3 {
 		writerOpts.ShortAttributeExtractor = o.Experimental.ShortAttributeExtractor
-		writerOpts.RequiredInPlaceValueBound = o.Experimental.RequiredInPlaceValueBound
 		if format >= sstable.TableFormatPebblev4 && level == numLevels-1 {
 			writerOpts.WritingToLowestLevel = true
 		}

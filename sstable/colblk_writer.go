@@ -649,19 +649,6 @@ func (w *RawColumnWriter) evaluatePoint(
 	// NB: it is possible that eval.kcmp.UserKeyComparison == 0, i.e., these two
 	// SETs have identical user keys (because of an open snapshot). This should
 	// be the rare case.
-
-	// If there are bounds requiring some keys' values to be in-place, compare
-	// the prefix against the bounds.
-	if !w.opts.RequiredInPlaceValueBound.IsEmpty() {
-		if w.comparer.Compare(w.opts.RequiredInPlaceValueBound.Upper, key.UserKey[:eval.kcmp.PrefixLen]) <= 0 {
-			// Common case for CockroachDB. Make it empty since all future keys
-			// will be >= this key.
-			w.opts.RequiredInPlaceValueBound = UserKeyPrefixBound{}
-		} else if w.comparer.Compare(key.UserKey[:eval.kcmp.PrefixLen], w.opts.RequiredInPlaceValueBound.Lower) >= 0 {
-			// Don't write to value block if the key is within the bounds.
-			return eval, nil
-		}
-	}
 	eval.writeToValueBlock = true
 	return eval, nil
 }
