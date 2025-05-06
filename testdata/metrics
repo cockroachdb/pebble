@@ -1,7 +1,7 @@
 example
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+------------------
     0 |   101   102B     0B     101 | 1.10 2.10 0.30 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1 2.09 |  104B  104B  104B
     1 |   201   202B     0B     201 | 1.20 2.20 0.60 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2 2.04 |  204B  204B  204B
@@ -55,7 +55,7 @@ iter-new b category=b
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     1   751B     0B       0 |    - 0.25 0.25 |   28B |     0     0B |     0     0B |     1   751B |    0B |   1 26.8
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -120,7 +120,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -168,7 +168,7 @@ iter-close a
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -213,7 +213,7 @@ iter-close c
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -261,7 +261,7 @@ iter-close b
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -340,7 +340,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     7  5.2KB     0B       0 |    - 0.25 0.25 |  165B |     0     0B |     0     0B |     9  6.7KB |    0B |   1 41.6
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -404,7 +404,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |  165B |     0     0B |     0     0B |     9  6.7KB |    0B |   0 41.6
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -519,7 +519,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     6  4.4KB     0B       0 |    - 0.50 0.50 |  211B |     3  2.2KB |     0     0B |    12  8.9KB |    0B |   2 43.2
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -596,7 +596,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |    13  9.5KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 51.9
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -685,7 +685,7 @@ virtual-size
 metrics zero-cache-hits-misses
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |    11  8.1KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 51.9
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -810,7 +810,7 @@ virtual-size
 metrics zero-cache-hits-misses
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   0 51.9
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -868,7 +868,7 @@ L0.0:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     3  2.2KB     0B       0 |    - 0.25 0.25 |   38B |     0     0B |     0     0B |     3  2.2KB |    0B |   1 59.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -912,7 +912,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |   38B |     0     0B |     0     0B |     3  2.2KB |    0B |   0 59.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -972,7 +972,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     1   754B     0B       0 |    - 0.25 0.25 |   38B |     1   754B |     0     0B |     3  2.2KB |    0B |   1 59.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -1024,7 +1024,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     2  1.5KB     0B       0 |    - 0.50 0.50 |   74B |     1   754B |     0     0B |     4  2.9KB |    0B |   2 40.6
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -1065,7 +1065,7 @@ init reopen
 metrics zero-cache-hits-misses
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     2  1.5KB     0B       0 |    - 0.50 0.50 |    0B |     0     0B |     0     0B |     0     0B |    0B |   2    0
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -1109,7 +1109,7 @@ L6:
 metrics zero-cache-hits-misses
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -1191,7 +1191,7 @@ L6:
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     2  1.5KB     0B       0 |    - 0.25 0.25 |  106B |     0     0B |     0     0B |     5  3.7KB |    0B |   1 35.7
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -1233,7 +1233,7 @@ L6 [u, v]
 metrics
 ----
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
     0 |     2  1.5KB     0B       0 |    - 0.25 0.25 |  106B |     0     0B |     0     0B |     5  3.7KB |    0B |   1 35.7
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0

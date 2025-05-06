@@ -103,8 +103,8 @@ func exampleMetrics() Metrics {
 		if i < numLevels-1 {
 			l.Score = 1.0 + float64(i+1)*0.1
 		}
-		l.UncompensatedScore = 2.0 + float64(i+1)*0.1
-		l.CompensatedScore = 3.0 * +float64(i+1) * 0.1
+		l.FillFactor = 2.0 + float64(i+1)*0.1
+		l.CompensatedFillFactor = 3.0 * +float64(i+1) * 0.1
 		l.BytesIn = base + 4
 		l.BytesIngested = base + 4
 		l.BytesMoved = base + 6
