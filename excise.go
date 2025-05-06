@@ -445,9 +445,12 @@ func determineExcisedTableSize(
 func determineExcisedTableBlobReferences(
 	originalBlobReferences manifest.BlobReferences, originalSize uint64, excisedTable *tableMetadata,
 ) {
+	if len(originalBlobReferences) == 0 {
+		return
+	}
 	newBlobReferences := make(manifest.BlobReferences, len(originalBlobReferences))
 	for i, bf := range originalBlobReferences {
-		bf.ValueSize = bf.ValueSize * excisedTable.Size / originalSize
+		bf.ValueSize = max(bf.ValueSize*excisedTable.Size/originalSize, 1)
 		newBlobReferences[i] = bf
 	}
 	excisedTable.BlobReferences = newBlobReferences
