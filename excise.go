@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"context"
+	"math"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -445,9 +446,18 @@ func determineExcisedTableSize(
 func determineExcisedTableBlobReferences(
 	originalBlobReferences manifest.BlobReferences, originalSize uint64, excisedTable *tableMetadata,
 ) {
+	if len(originalBlobReferences) == 0 {
+		return
+	}
 	newBlobReferences := make(manifest.BlobReferences, len(originalBlobReferences))
 	for i, bf := range originalBlobReferences {
-		bf.ValueSize = bf.ValueSize * excisedTable.Size / originalSize
+		adjustedSize := math.Ceil(float64(bf.ValueSize*excisedTable.Size) / float64(originalSize))
+		if invariants.Enabled && adjustedSize < 1 {
+			panic(errors.AssertionFailedf("invalid adjusted blob reference value size %.2f, "+
+				"original size %d, ratio of excised to original %d", adjustedSize, bf.ValueSize,
+				excisedTable.Size/originalSize))
+		}
+		bf.ValueSize = uint64(adjustedSize)
 		newBlobReferences[i] = bf
 	}
 	excisedTable.BlobReferences = newBlobReferences
