@@ -26,9 +26,20 @@ foo#209,SET:poiandyaya
 RawWriter.AddWithBlobHandle("baz#202,SET", "(f0,blk0[0:5])", 0, false)
 RawWriter.AddWithBlobHandle("foo#209,SET", "(f0,blk0[5:15])", 0, false)
 
+# Ensure that merge and deletesized keys do not get separated if they meet the
+# minimum size.
+add
+gaa#210,MERGE:chickenpigeon
+gaa#209,DELSIZED:varint(16)
+gac#211,SET:yuumiisthebest
+----
+RawWriter.Add("gaa#210,MERGE", "chickenpigeon", false)
+RawWriter.Add("gaa#209,DELSIZED", "varint(16)", false)
+RawWriter.AddWithBlobHandle("gac#211,SET", "(f0,blk0[15:29])", 0, false)
+
 estimated-sizes
 ----
-file: 70, references: 70
+file: 84, references: 84
 
 close-output
 ----
@@ -36,10 +47,10 @@ close-output
 # close: 000001.sst
 # sync-data: 000002.blob
 # close: 000002.blob
-Blob file created: 000002 size:[61 (61B)] vals:[15 (15B)]
-{BlockCount: 1, ValueCount: 2, BlockLenLongest: 15, UncompressedValueBytes: 15, FileLen: 61}
+Blob file created: 000002 size:[75 (75B)] vals:[29 (29B)]
+{BlockCount: 1, ValueCount: 3, BlockLenLongest: 29, UncompressedValueBytes: 29, FileLen: 75}
 blobrefs:[
- 0: 000002 15
+ 0: 000002 29
 ]
 
 add

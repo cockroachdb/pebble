@@ -213,13 +213,13 @@ func (vs *writeNewBlobFiles) Add(
 	if len(v) < vs.minimumSize {
 		return tw.Add(kv.K, v, forceObsolete)
 	}
-	// Merge keys are never separated.
-	if kv.K.Kind() == base.InternalKeyKindMerge {
+	// Merge and deletesized keys are never separated.
+	switch kv.K.Kind() {
+	case base.InternalKeyKindMerge, base.InternalKeyKindDeleteSized:
 		return tw.Add(kv.K, v, forceObsolete)
 	}
 
 	// This KV met all the criteria and its value will be separated.
-
 	// If there's a configured short attribute extractor, extract the value's
 	// short attribute.
 	var shortAttr base.ShortAttribute
