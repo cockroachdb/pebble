@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"text/tabwriter"
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -1688,10 +1689,13 @@ func TestCompactionPickerScores(t *testing.T) {
 			}
 
 			buf.Reset()
-			fmt.Fprintf(&buf, "L       Size   Score\n")
+			tw := tabwriter.NewWriter(&buf, 2, 1, 4, ' ', 0)
+			fmt.Fprintf(tw, "Level\tSize\tScore\tFill factor\tCompensated fill factor\n")
 			for l, lm := range d.Metrics().Levels {
-				fmt.Fprintf(&buf, "L%-3d\t%-7s%.1f\n", l, humanize.Bytes.Int64(lm.AggregateSize()), lm.CompensatedScore)
+				fmt.Fprintf(tw, "L%d\t%s\t%.2f\t%.2f\t%.2f\n", l, humanize.Bytes.Int64(lm.AggregateSize()).String(),
+					lm.Score, lm.FillFactor, lm.CompensatedFillFactor)
 			}
+			tw.Flush()
 			return buf.String()
 
 		case "wait-pending-table-stats":

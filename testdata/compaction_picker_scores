@@ -18,14 +18,14 @@ L6:
 
 scores
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	750B   0.0
-L6  	321KB  1.1
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       750B     0.00     0.01           0.01
+L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
 ----
@@ -41,14 +41,14 @@ range-deletions-bytes-estimate: 328891
 
 scores
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	750B   5.0
-L6  	321KB  1.1
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       750B     0.01     0.01           5.03
+L6       321KB    1.11     1.11           1.11
 
 # Ensure that point deletions in a higher level result in a compensated level
 # size and higher level scores as a result.
@@ -74,14 +74,14 @@ L6:
 
 scores
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	776B   0.0
-L6  	321KB  1.1
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       776B     0.00     0.01           0.01
+L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
 ----
@@ -97,14 +97,14 @@ range-deletions-bytes-estimate: 0
 
 scores
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	776B   2.5
-L6  	321KB  1.1
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       776B     0.01     0.01           2.51
+L6       321KB    1.11     1.11           1.11
 
 # Run a similar test as above, but this time the table containing the DELs is
 # ingested after the database is initialized. When the ingested sstable's stats
@@ -156,14 +156,14 @@ maybe-compact
 
 scores
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	0B     0.0
-L6  	321KB  1.1
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       0B       0.00     0.00           0.00
+L6       321KB    1.11     1.11           1.11
 
 lsm
 ----
@@ -200,14 +200,14 @@ L6:
 
 scores
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	642KB  2.6
-L6  	386KB  0.4
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       642KB    6.32     2.64           2.64
+L6       386KB    0.00     0.42           0.42
 
 lsm verbose
 ----
@@ -232,14 +232,14 @@ maybe-compact
 
 scores wait-for-compaction=version-edit
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	129KB  0.5
-L6  	898KB  1.0
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       129KB    0.00     0.53           0.53
+L6       898KB    0.00     0.97           0.97
 
 lsm
 ----
@@ -254,11 +254,11 @@ resume-cleaning
 
 scores wait-for-compaction=completion
 ----
-L       Size   Score
-L0  	0B     0.0
-L1  	0B     0.0
-L2  	0B     0.0
-L3  	0B     0.0
-L4  	0B     0.0
-L5  	129KB  0.5
-L6  	898KB  1.0
+Level    Size     Score    Fill factor    Compensated fill factor
+L0       0B       0.00     0.00           0.00
+L1       0B       0.00     0.00           0.00
+L2       0B       0.00     0.00           0.00
+L3       0B       0.00     0.00           0.00
+L4       0B       0.00     0.00           0.00
+L5       129KB    0.00     0.53           0.53
+L6       898KB    0.00     0.97           0.97
