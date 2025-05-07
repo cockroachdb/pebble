@@ -8,7 +8,6 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -63,45 +62,10 @@ func MakeVirtualReader(reader *Reader, p VirtualReaderParams) VirtualReader {
 		isSharedIngested: p.IsSharedIngested,
 	}
 	v := VirtualReader{
-		vState: vState,
-		reader: reader,
+		vState:     vState,
+		reader:     reader,
+		Properties: reader.Properties.GetScaledProperties(p.BackingSize, p.Size),
 	}
-
-	// Scales the given value by the (Size / BackingSize) ratio, rounding up.
-	scale := func(a uint64) uint64 {
-		return (a*p.Size + p.BackingSize - 1) / p.BackingSize
-	}
-	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
-	// become zero (or vice-versa).
-	if invariants.Enabled && (scale(1) != 1 || scale(0) != 0) {
-		panic("bad scale()")
-	}
-
-	physical := &reader.Properties
-	virtual := &v.Properties
-
-	virtual.RawKeySize = scale(physical.RawKeySize)
-	virtual.RawValueSize = scale(physical.RawValueSize)
-	virtual.NumEntries = scale(physical.NumEntries)
-	virtual.NumDataBlocks = scale(physical.NumDataBlocks)
-	virtual.NumTombstoneDenseBlocks = scale(physical.NumTombstoneDenseBlocks)
-
-	virtual.NumRangeDeletions = scale(physical.NumRangeDeletions)
-	virtual.NumSizedDeletions = scale(physical.NumSizedDeletions)
-	// We cannot directly scale NumDeletions, because it is supposed to be the sum
-	// of various types of deletions. See #4670.
-	numOtherDeletions := scale(invariants.SafeSub(physical.NumDeletions, physical.NumRangeDeletions) + physical.NumSizedDeletions)
-	virtual.NumDeletions = numOtherDeletions + virtual.NumRangeDeletions + virtual.NumSizedDeletions
-
-	virtual.NumRangeKeyDels = scale(physical.NumRangeKeyDels)
-	virtual.NumRangeKeySets = scale(physical.NumRangeKeySets)
-
-	virtual.ValueBlocksSize = scale(physical.ValueBlocksSize)
-
-	virtual.RawPointTombstoneKeySize = scale(physical.RawPointTombstoneKeySize)
-	virtual.RawPointTombstoneValueSize = scale(physical.RawPointTombstoneValueSize)
-
-	v.Properties.CompressionName = reader.Properties.CompressionName
 
 	return v
 }
