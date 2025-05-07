@@ -36,3 +36,11 @@ db space --start=z --end=z
 ../testdata/db-stage-4
 ----
 0
+
+# covers the whole 000005.sst
+
+db space --start=a --end=z
+testdata/find-db-val-sep
+----
+826
+

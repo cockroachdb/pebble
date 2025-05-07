@@ -2441,6 +2441,22 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	totalSize = *d.mu.annotators.totalSize.VersionRangeAnnotation(readState.current, bounds)
 	remoteSize = *d.mu.annotators.remoteSize.VersionRangeAnnotation(readState.current, bounds)
 	externalSize = *d.mu.annotators.externalSize.VersionRangeAnnotation(readState.current, bounds)
+
+	var blobSize uint64
+	for level := range numLevels {
+		overlapping := readState.current.Overlaps(level, bounds)
+		iter := overlapping.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			overlappingSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
+			if err != nil {
+				continue
+			}
+			overlapFraction := float64(overlappingSize) / float64(f.Size)
+			blobSize += uint64(float64(f.EstimatedReferenceSize()) * overlapFraction)
+		}
+	}
+
+	totalSize += blobSize
 	return
 }
 
