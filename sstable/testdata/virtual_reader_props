@@ -21,6 +21,7 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 3
   rocksdb.raw.value.size: 1
+  rocksdb.compression: Snappy
 
 # Test 2: Similar to test 1 but force two level iterators.
 build block-size=1 index-block-size=1
@@ -40,6 +41,7 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 2
   rocksdb.raw.value.size: 1
+  rocksdb.compression: Snappy
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -121,6 +123,7 @@ props:
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1
   pebble.num.range-key-sets: 1
+  rocksdb.compression: Snappy
 
 build
 a.SET.1:a
@@ -143,6 +146,7 @@ props:
   rocksdb.num.entries: 1
   rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
+  rocksdb.compression: Snappy
 
 build
 a.DEL.1:
@@ -167,3 +171,4 @@ props:
   pebble.num.deletions.sized: 1
   rocksdb.deleted.keys: 3
   rocksdb.num.range-deletions: 1
+  rocksdb.compression: Snappy

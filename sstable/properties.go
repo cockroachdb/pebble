@@ -241,6 +241,47 @@ func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Bu
 	}
 }
 
+// GetScaledProperties returns a new CommonProperties struct with the values
+// scaled according to the size:backingSize ratio.
+func (p *Properties) GetScaledProperties(backingSize, size uint64) CommonProperties {
+	// Make sure the sizes are sane, just in case.
+	size = max(size, 1)
+	backingSize = max(backingSize, size)
+
+	scale := func(a uint64) uint64 {
+		return (a*size + backingSize - 1) / backingSize
+	}
+	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
+	// become zero (or vice-versa).
+	if invariants.Enabled && (scale(1) != 1 || scale(0) != 0) {
+		panic("bad scale()")
+	}
+
+	var props CommonProperties
+	props.RawKeySize = scale(p.RawKeySize)
+	props.RawValueSize = scale(p.RawValueSize)
+	props.NumEntries = scale(p.NumEntries)
+
+	props.NumRangeDeletions = scale(p.NumRangeDeletions)
+	props.NumSizedDeletions = scale(p.NumSizedDeletions)
+	// We cannot directly scale NumDeletions, because it is supposed to be the sum
+	// of various types of deletions. See #4670.
+	numOtherDeletions := scale(invariants.SafeSub(p.NumDeletions, p.NumRangeDeletions) + p.NumSizedDeletions)
+	props.NumDeletions = numOtherDeletions + props.NumRangeDeletions + props.NumSizedDeletions
+
+	props.NumRangeKeyDels = scale(p.NumRangeKeyDels)
+	props.NumRangeKeySets = scale(p.NumRangeKeySets)
+
+	props.ValueBlocksSize = scale(p.ValueBlocksSize)
+
+	props.RawPointTombstoneKeySize = scale(p.RawPointTombstoneKeySize)
+	props.RawPointTombstoneValueSize = scale(p.RawPointTombstoneValueSize)
+
+	props.CompressionName = p.CompressionName
+
+	return props
+}
+
 func (p *Properties) String() string {
 	var buf bytes.Buffer
 	v := reflect.ValueOf(*p)
