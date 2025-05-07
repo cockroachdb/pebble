@@ -341,7 +341,7 @@ func ingestLoad1(
 
 	meta = &fileMetadata{}
 	meta.FileNum = fileNum
-	meta.Size = uint64(readable.Size())
+	meta.Size = max(uint64(readable.Size()), 1)
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
 
@@ -761,13 +761,14 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		// We have to attach the remote object (and assign it a DiskFileNum). For
 		// simplicity, we use the same number for both the FileNum and the
 		// DiskFileNum (even though this is a virtual sstable).
+		size := max(lr.external[i].external.Size, 1)
 		meta.InitProviderBacking(base.DiskFileNum(meta.FileNum), lr.external[i].external.Size)
 
 		// Set the underlying FileBacking's size to the same size as the virtualized
 		// view of the sstable. This ensures that we don't over-prioritize this
 		// sstable for compaction just yet, as we do not have a clear sense of
 		// what parts of this sstable are referenced by other nodes.
-		meta.FileBacking.Size = lr.external[i].external.Size
+		meta.FileBacking.Size = size
 		newFileBackings[key] = meta.FileBacking
 
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
@@ -801,7 +802,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 			if err != nil {
 				return err
 			}
-			lr.shared[i].FileBacking.Size = uint64(size)
+			lr.shared[i].FileBacking.Size = max(uint64(size), 1)
 		}
 	}
 
