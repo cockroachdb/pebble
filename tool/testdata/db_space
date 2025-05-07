@@ -2,37 +2,49 @@ db space
 ----
 accepts 1 arg(s), received 0
 
-# covers the whole 4.sst
-
+# Covers the whole 4.sst.
 db space --start=a --end=z
 ../testdata/db-stage-4
 ----
 709
 
-# covers from left of 4.sst to its only data block
-
+# Covers from left of 4.sst to its only data block.
 db space --start=a --end=bar
 ../testdata/db-stage-4
 ----
 62
 
-# covers from 4.sst's only data block to its right
-
+# Covers from 4.sst's only data block to its right.
 db space --start=foo --end=z
 ../testdata/db-stage-4
 ----
 62
 
-# covers non-overlapping range to left of 4.sst
-
+# Covers non-overlapping range to left of 4.sst.
 db space --start=a --end=a
 ../testdata/db-stage-4
 ----
 0
 
-# covers non-overlapping range to right of 4.sst
-
+# Covers non-overlapping range to right of 4.sst.
 db space --start=z --end=z
 ../testdata/db-stage-4
 ----
 0
+
+# Covers the whole 000005.sst and referenced blob file 000006.blob. The size of
+# the referenced blob file is 74 bytes. Note that this sst only has 1 data block
+# with in bounds [a, d].
+db space --start=a --end=z
+testdata/find-db-val-sep
+----
+888
+
+# Covers part of 000005.sst and part of referenced blob file 000006.blob. Note 
+# that the estimated size of the sst from [c, d] is the size of the entire data 
+# block + the estimated partial size of 000006.blob (14 bytes as more bytes are 
+# in [a, b]).
+db space --start=c --end=d
+testdata/find-db-val-sep
+----
+173
