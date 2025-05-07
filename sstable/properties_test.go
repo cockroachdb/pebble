@@ -130,6 +130,21 @@ func TestPropertiesSave(t *testing.T) {
 	}
 }
 
+func TestScalePropertiesZeroSize(t *testing.T) {
+	// Verify that GetScaledProperties works correctly even if the size is 0.
+	p := Properties{
+		CommonProperties: CommonProperties{
+			NumDeletions:  0,
+			NumEntries:    1,
+			NumDataBlocks: 2,
+		},
+	}
+	scaled := p.GetScaledProperties(100, 0)
+	require.Equal(t, uint64(0), scaled.NumDeletions)
+	require.Equal(t, uint64(1), scaled.NumEntries)
+	require.Equal(t, uint64(1), scaled.NumDataBlocks)
+}
+
 func BenchmarkPropertiesLoad(b *testing.B) {
 	var w rowblk.Writer
 	w.RestartInterval = propertiesBlockRestartInterval

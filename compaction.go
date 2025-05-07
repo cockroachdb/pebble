@@ -2708,8 +2708,8 @@ func (d *DB) runCopyCompaction(
 			}
 			return nil, compact.Stats{}, err
 		}
-		newMeta.FileBacking.Size = wrote
-		newMeta.Size = wrote
+		newMeta.FileBacking.Size = max(wrote, 1)
+		newMeta.Size = newMeta.FileBacking.Size
 	} else {
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
 			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.FileBacking.DiskFileNum,
