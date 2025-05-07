@@ -39,9 +39,12 @@ func (snappyCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte)
 func (snappyCompressor) Close() {}
 
 func (minlzCompressor) Compress(dst, src []byte) (CompressionIndicator, []byte) {
-	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those cases.
+	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those
+	// cases. Note that MinLZ can read the decoded length of a Snappy compressed
+	// block.
 	if len(src) > minlz.MaxBlockSize {
-		return (snappyCompressor{}).Compress(dst, src)
+		_, result := (snappyCompressor{}).Compress(dst, src)
+		return MinLZCompressionIndicator, result
 	}
 
 	compressed, err := minlz.Encode(dst, src, minlz.LevelFastest)
@@ -133,6 +136,15 @@ func (zstdDecompressor) DecompressedLen(b []byte) (decompressedLen int, err erro
 }
 
 func (minlzDecompressor) DecompressInto(buf, compressed []byte) error {
+	// IsMinLZ returns an error if the block is neither MinLZ or Snappy/S2.
+	isMinLZ, _, err := minlz.IsMinLZ(compressed)
+	if err != nil {
+		return err
+	}
+	if !isMinLZ {
+		// We must have fallen back onto Snappy.
+		return snappyDecompressor{}.DecompressInto(buf, compressed)
+	}
 	result, err := minlz.Decode(buf, compressed)
 	if len(result) != len(buf) || (len(result) > 0 && &result[0] != &buf[0]) {
 		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
