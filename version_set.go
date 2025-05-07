@@ -242,23 +242,28 @@ func (vs *versionSet) load(
 			errors.Safe(manifestFilename), dirname)
 	}
 	defer manifestFile.Close()
-	rr := record.NewReader(manifestFile, 0 /* logNum */)
+	rr := record.NewReader(manifestFile, manifestFileNum)
 	for {
 		r, err := rr.Next()
-		if err == io.EOF || record.IsInvalidRecord(err) {
+		if errors.Is(err, io.EOF) || errors.Is(err, record.ErrUnexpectedEOF) {
 			break
-		}
-		if err != nil {
+		} else if errors.Is(err, record.ErrInvalidChunk) || errors.Is(err, record.ErrZeroedChunk) {
+			// If a read-ahead returns one of these errors, they should be marked with corruption.
+			// Other I/O related errors should not be marked with corruption and simply returned.
+			err = errors.Mark(err, ErrCorruption)
 			return errors.Wrapf(err, "pebble: error when loading manifest file %q",
 				errors.Safe(manifestFilename))
 		}
 		var ve versionEdit
 		err = ve.Decode(r)
 		if err != nil {
-			// Break instead of returning an error if the record is corrupted
-			// or invalid.
-			if err == io.EOF || record.IsInvalidRecord(err) {
+			if errors.Is(err, io.EOF) || errors.Is(err, record.ErrUnexpectedEOF) {
 				break
+			} else if errors.Is(err, record.ErrInvalidChunk) || errors.Is(err, record.ErrZeroedChunk) {
+				// If a read-ahead returns one of these errors, they should be marked with corruption.
+				// Other I/O related errors should not be marked with corruption and simply returned.
+				err = errors.Mark(err, ErrCorruption)
+				return errors.Wrap(err, "pebble: error when loading manifest")
 			}
 			return err
 		}
@@ -1030,7 +1035,7 @@ func (vs *versionSet) createManifest(
 	if err != nil {
 		return err
 	}
-	manifestWriter = record.NewWriter(manifestFile)
+	manifestWriter = record.NewWriter(manifestFile, fileNum, vs.getFormatMajorVersion() >= FormatManifestSyncChunks)
 
 	snapshot := manifest.VersionEdit{
 		ComparerName: vs.cmp.Name,

@@ -339,7 +339,7 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 	if err != nil {
 		return err
 	}
-	recWriter := record.NewWriter(file)
+	recWriter := record.NewWriter(file, 0, false)
 	err = func() error {
 		// Create a VersionEdit that gets us from an empty catalog to the current state.
 		var ve VersionEdit
