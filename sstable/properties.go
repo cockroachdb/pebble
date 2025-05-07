@@ -254,6 +254,10 @@ func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Bu
 }
 
 func (p *Properties) GetScaledProperties(backingSize, size uint64) CommonProperties {
+	// Make sure the sizes are sane, just in case.
+	size = max(size, 1)
+	backingSize = max(backingSize, size)
+
 	scale := func(a uint64) uint64 {
 		return (a*size + backingSize - 1) / backingSize
 	}
