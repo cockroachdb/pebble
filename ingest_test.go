@@ -1506,6 +1506,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 func TestKeyRangeBasic(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	k1 := KeyRange{Start: []byte("b"), End: []byte("c")}
+	k1UserKeyBounds := k1.UserKeyBounds()
 
 	// Tests for Contains()
 	require.True(t, k1.Contains(cmp, base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet)))
@@ -1516,19 +1517,19 @@ func TestKeyRangeBasic(t *testing.T) {
 	m1 := &tableMetadata{}
 	m1.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
 		base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet))
-	require.True(t, k1.Overlaps(cmp, m1))
+	require.True(t, m1.Overlaps(cmp, &k1UserKeyBounds))
 	m2 := &tableMetadata{}
 	m2.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
 		base.MakeInternalKey([]byte("d"), 1, InternalKeyKindSet))
-	require.False(t, k1.Overlaps(cmp, m2))
+	require.False(t, m2.Overlaps(cmp, &k1UserKeyBounds))
 	m3 := &tableMetadata{}
 	m3.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
 		base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("b")))
-	require.False(t, k1.Overlaps(cmp, m3))
+	require.False(t, m3.Overlaps(cmp, &k1UserKeyBounds))
 	m4 := &tableMetadata{}
 	m4.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
 		base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet))
-	require.True(t, k1.Overlaps(cmp, m4))
+	require.True(t, m4.Overlaps(cmp, &k1UserKeyBounds))
 }
 
 func BenchmarkIngestOverlappingMemtable(b *testing.B) {
