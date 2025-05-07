@@ -123,6 +123,27 @@ func TestPropertiesSave(t *testing.T) {
 	}
 }
 
+func TestScalePropertiesBadSizes(t *testing.T) {
+	// Verify that GetScaledProperties works even if the given sizes are not
+	// valid.
+	p := Properties{
+		CommonProperties: CommonProperties{
+			NumDeletions:    0,
+			NumEntries:      1,
+			ValueBlocksSize: 10,
+		},
+	}
+	scaled := p.GetScaledProperties(100, 0)
+	require.Equal(t, uint64(0), scaled.NumDeletions)
+	require.Equal(t, uint64(1), scaled.NumEntries)
+	require.Equal(t, uint64(1), scaled.ValueBlocksSize)
+
+	scaled = p.GetScaledProperties(100, 1000)
+	require.Equal(t, uint64(0), scaled.NumDeletions)
+	require.Equal(t, uint64(1), scaled.NumEntries)
+	require.Equal(t, uint64(10), scaled.ValueBlocksSize)
+}
+
 func BenchmarkPropertiesLoad(b *testing.B) {
 	var w rawBlockWriter
 	w.restartInterval = propertiesBlockRestartInterval
