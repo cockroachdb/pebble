@@ -297,7 +297,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 			l0Sublevels := m.Levels[0].Sublevels
 			nLevels := 0
 			for _, l := range m.Levels {
-				if l.BytesIn > 0 {
+				if l.TableBytesIn > 0 {
 					nLevels++
 				}
 			}
