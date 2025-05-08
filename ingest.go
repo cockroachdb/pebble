@@ -708,7 +708,8 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		}
 		key := remote.MakeObjectKey(lr.external[i].external.Locator, lr.external[i].external.ObjName)
 		if backing, ok := newFileBackings[key]; ok {
-			// We already created the same backing in this loop.
+			// We already created the same backing in this loop. Update its size.
+			backing.Size += lr.external[i].external.Size
 			meta.AttachVirtualBacking(backing)
 			continue
 		}
@@ -799,6 +800,11 @@ func (d *DB) findExistingBackingsForExternalObjects(metas []ingestExternalMeta) 
 				d.mu.versions.virtualBackings.Protect(n)
 				metas[i].usedExistingBacking = true
 				metas[i].AttachVirtualBacking(backing)
+
+				// We can't update the size of the backing here, so make sure the
+				// virtual size is sane.
+				// TODO(radu): investigate what would it take to update the backing size.
+				metas[i].Size = min(metas[i].Size, backing.Size)
 				break
 			}
 		}
