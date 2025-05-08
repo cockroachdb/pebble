@@ -1,6 +1,10 @@
+// Copyright 2025 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
 //go:build cgo
 
-package block
+package compression
 
 import (
 	"encoding/binary"
@@ -8,6 +12,7 @@ import (
 
 	"github.com/DataDog/zstd"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type zstdCompressor struct {
@@ -38,7 +43,7 @@ const UseStandardZstdLib = true
 // is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
 // the length of `b` before calling Compress. It returns the encoded byte
 // slice, including the `compressedBuf[:varIntLen]` prefix.
-func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) (CompressionIndicator, []byte) {
+func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) []byte {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
@@ -60,7 +65,7 @@ func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) (CompressionIn
 		panic("Allocated a new buffer despite checking CompressBound.")
 	}
 
-	return ZstdCompressionIndicator, compressedBuf[:varIntLen+len(result)]
+	return compressedBuf[:varIntLen+len(result)]
 }
 
 func (z *zstdCompressor) Close() {
@@ -95,6 +100,16 @@ func (z *zstdDecompressor) DecompressInto(dst, src []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (zstdDecompressor) DecompressedLen(b []byte) (decompressedLen int, err error) {
+	// This will also be used by zlib, bzip2 and lz4 to retrieve the decodedLen
+	// if we implement these algorithms in the future.
+	decodedLenU64, varIntLen := binary.Uvarint(b)
+	if varIntLen <= 0 {
+		return 0, base.CorruptionErrorf("pebble: compression block has invalid length")
+	}
+	return int(decodedLenU64), nil
 }
 
 func (z *zstdDecompressor) Close() {
