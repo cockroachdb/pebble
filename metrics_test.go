@@ -106,19 +106,19 @@ func exampleMetrics() Metrics {
 		}
 		l.FillFactor = 2.0 + float64(i+1)*0.1
 		l.CompensatedFillFactor = 3.0 * +float64(i+1) * 0.1
-		l.BytesIn = base + 4
-		l.BytesIngested = base + 4
-		l.BytesMoved = base + 6
-		l.BytesRead = base + 7
-		l.BytesCompacted = base + 8
-		l.BytesFlushed = base + 9
+		l.TableBytesIn = base + 4
+		l.TableBytesIngested = base + 4
+		l.TableBytesMoved = base + 6
+		l.TableBytesRead = base + 7
+		l.TableBytesCompacted = base + 8
+		l.TableBytesFlushed = base + 9
 		l.TablesCompacted = base + 10
 		l.TablesFlushed = base + 11
 		l.TablesIngested = base + 12
 		l.TablesMoved = base + 13
-		l.MultiLevel.BytesInTop = base + 4
-		l.MultiLevel.BytesIn = base + 4
-		l.MultiLevel.BytesRead = base + 4
+		l.MultiLevel.TableBytesInTop = base + 4
+		l.MultiLevel.TableBytesIn = base + 4
+		l.MultiLevel.TableBytesRead = base + 4
 	}
 	for i := range m.manualMemory {
 		m.manualMemory[i].InUseBytes = uint64((i + 1) * 1024)

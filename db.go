@@ -2096,7 +2096,7 @@ func (d *DB) Metrics() *Metrics {
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
 	}
-	metrics.WAL.BytesWritten = metrics.Levels[0].BytesIn + metrics.WAL.Size
+	metrics.WAL.BytesWritten = metrics.Levels[0].TableBytesIn + metrics.WAL.Size
 	metrics.WAL.Failover = walStats.Failover
 
 	if p := d.mu.versions.picker; p != nil {
