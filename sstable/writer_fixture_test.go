@@ -22,6 +22,7 @@ import (
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -82,7 +83,7 @@ func TestFixtureOutput(t *testing.T) {
 		// <https://github.com/klauspost/compress/issues/109#issuecomment-498763233>.
 		// Since the fixture test requires bit-to-bit reproducibility, we cannot
 		// run the zstd test when the implementation is not based on facebook/zstd.
-		if !block.UseStandardZstdLib && fixture.Compression == block.ZstdCompression {
+		if !compression.UseStandardZstdLib && fixture.Compression == block.ZstdCompression {
 			continue
 		}
 		t.Run(fixture.Filename, func(t *testing.T) {
