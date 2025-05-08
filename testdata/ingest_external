@@ -675,43 +675,44 @@ set j j
 ----
 
 # Test reuse of backings within a single ingestion. We should see only two
-# backings.
+# backings; their sizes should be the sum of the corresponding ingestions.
 ingest-external
-reuse1 bounds=(a,b)
-reuse2 bounds=(f,g)
-reuse2 bounds=(h,i)
-reuse1 bounds=(d,e)
-reuse1 bounds=(u,v)
-reuse2 bounds=(j,k)
+reuse1 bounds=(a,b) size=100
+reuse2 bounds=(f,g) size=200
+reuse2 bounds=(h,i) size=300
+reuse1 bounds=(d,e) size=400
+reuse1 bounds=(u,v) size=500
+reuse2 bounds=(j,k) size=600
 ----
 
-lsm
+lsm verbose
 ----
 L6:
-  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
-  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL]
-  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL]
-  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL]
-  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL]
-  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL] seqnums:[10-10] points:[a#10,DELSIZED-b#inf,RANGEDEL] size:100(1000)
+  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL] seqnums:[11-11] points:[d#11,DELSIZED-e#inf,RANGEDEL] size:400(1000)
+  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL] seqnums:[12-12] points:[f#12,DELSIZED-g#inf,RANGEDEL] size:200(1100)
+  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL] seqnums:[13-13] points:[h#13,DELSIZED-i#inf,RANGEDEL] size:300(1100)
+  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL] seqnums:[14-14] points:[j#14,DELSIZED-k#inf,RANGEDEL] size:600(1100)
+  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL] seqnums:[15-15] points:[u#15,DELSIZED-v#inf,RANGEDEL] size:500(1000)
 
 # Test reuse of backings across separate requests.
 ingest-external
-reuse1 bounds=(xu,xv) synthetic-prefix=x
-reuse2 bounds=(yj,yk) synthetic-prefix=y
+reuse1 bounds=(xu,xv) synthetic-prefix=x size=5000
+reuse2 bounds=(yj,yk) synthetic-prefix=y size=6000
 ----
 
-lsm
+# The sizes for the new tables should be capped to the backing size.
+lsm verbose
 ----
 L6:
-  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL]
-  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL]
-  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL]
-  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL]
-  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL]
-  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL]
-  000010(000004):[xu#16,DELSIZED-xv#inf,RANGEDEL]
-  000011(000005):[yj#17,DELSIZED-yk#inf,RANGEDEL]
+  000004(000004):[a#10,DELSIZED-b#inf,RANGEDEL] seqnums:[10-10] points:[a#10,DELSIZED-b#inf,RANGEDEL] size:100(1000)
+  000007(000004):[d#11,DELSIZED-e#inf,RANGEDEL] seqnums:[11-11] points:[d#11,DELSIZED-e#inf,RANGEDEL] size:400(1000)
+  000005(000005):[f#12,DELSIZED-g#inf,RANGEDEL] seqnums:[12-12] points:[f#12,DELSIZED-g#inf,RANGEDEL] size:200(1100)
+  000006(000005):[h#13,DELSIZED-i#inf,RANGEDEL] seqnums:[13-13] points:[h#13,DELSIZED-i#inf,RANGEDEL] size:300(1100)
+  000009(000005):[j#14,DELSIZED-k#inf,RANGEDEL] seqnums:[14-14] points:[j#14,DELSIZED-k#inf,RANGEDEL] size:600(1100)
+  000008(000004):[u#15,DELSIZED-v#inf,RANGEDEL] seqnums:[15-15] points:[u#15,DELSIZED-v#inf,RANGEDEL] size:500(1000)
+  000010(000004):[xu#16,DELSIZED-xv#inf,RANGEDEL] seqnums:[16-16] points:[xu#16,DELSIZED-xv#inf,RANGEDEL] size:1000(1000)
+  000011(000005):[yj#17,DELSIZED-yk#inf,RANGEDEL] seqnums:[17-17] points:[yj#17,DELSIZED-yk#inf,RANGEDEL] size:1100(1100)
 
 batch
 del-range a z
@@ -721,37 +722,37 @@ compact a z
 ----
 
 ingest-external
-reuse1 bounds=(a,b)
-reuse2 bounds=(f,g)
+reuse1 bounds=(a,b) size=100
+reuse2 bounds=(f,g) size=200
 ----
 
-lsm
+lsm verbose
 ----
 L6:
-  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL]
-  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL]
+  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL] seqnums:[19-19] points:[a#19,DELSIZED-b#inf,RANGEDEL] size:100(100)
+  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL] seqnums:[20-20] points:[f#20,DELSIZED-g#inf,RANGEDEL] size:200(200)
 
 # Multiple reuse of existing backings in one request.
 ingest-external
-reuse2 bounds=(h,i)
-reuse1 bounds=(d,e)
-reuse1 bounds=(u,v)
-reuse2 bounds=(j,k)
-reuse1 bounds=(xu,xv) synthetic-prefix=x
-reuse2 bounds=(yj,yk) synthetic-prefix=y
+reuse2 bounds=(h,i) size=300
+reuse1 bounds=(d,e) size=400
+reuse1 bounds=(u,v) size=500
+reuse2 bounds=(j,k) size=600
+reuse1 bounds=(xu,xv) synthetic-prefix=x size=700
+reuse2 bounds=(yj,yk) synthetic-prefix=y size=800
 ----
 
-lsm
+lsm verbose
 ----
 L6:
-  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL]
-  000017(000014):[d#21,DELSIZED-e#inf,RANGEDEL]
-  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL]
-  000016(000015):[h#22,DELSIZED-i#inf,RANGEDEL]
-  000019(000015):[j#23,DELSIZED-k#inf,RANGEDEL]
-  000018(000014):[u#24,DELSIZED-v#inf,RANGEDEL]
-  000020(000014):[xu#25,DELSIZED-xv#inf,RANGEDEL]
-  000021(000015):[yj#26,DELSIZED-yk#inf,RANGEDEL]
+  000014(000014):[a#19,DELSIZED-b#inf,RANGEDEL] seqnums:[19-19] points:[a#19,DELSIZED-b#inf,RANGEDEL] size:100(100)
+  000017(000014):[d#21,DELSIZED-e#inf,RANGEDEL] seqnums:[21-21] points:[d#21,DELSIZED-e#inf,RANGEDEL] size:100(100)
+  000015(000015):[f#20,DELSIZED-g#inf,RANGEDEL] seqnums:[20-20] points:[f#20,DELSIZED-g#inf,RANGEDEL] size:200(200)
+  000016(000015):[h#22,DELSIZED-i#inf,RANGEDEL] seqnums:[22-22] points:[h#22,DELSIZED-i#inf,RANGEDEL] size:200(200)
+  000019(000015):[j#23,DELSIZED-k#inf,RANGEDEL] seqnums:[23-23] points:[j#23,DELSIZED-k#inf,RANGEDEL] size:200(200)
+  000018(000014):[u#24,DELSIZED-v#inf,RANGEDEL] seqnums:[24-24] points:[u#24,DELSIZED-v#inf,RANGEDEL] size:100(100)
+  000020(000014):[xu#25,DELSIZED-xv#inf,RANGEDEL] seqnums:[25-25] points:[xu#25,DELSIZED-xv#inf,RANGEDEL] size:100(100)
+  000021(000015):[yj#26,DELSIZED-yk#inf,RANGEDEL] seqnums:[26-26] points:[yj#26,DELSIZED-yk#inf,RANGEDEL] size:200(200)
 
 # Test that reusing the same backing region with different prefix and suffix
 # works as expected. In particular, make sure the synthetic suffix doesn't
