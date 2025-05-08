@@ -30,7 +30,12 @@ func (DeleteCleaner) String() string {
 }
 
 // ArchiveCleaner archives file instead delete.
-type ArchiveCleaner struct{}
+type ArchiveCleaner struct {
+	// OnArchived is an optional callback that is invoked after the file has been
+	// moved to the archive directory. It is not invoked on errors. This method
+	// must not block or synchronously interact with pebble.
+	OnArchived func(fs vfs.FS, fileType FileType, destPath string)
+}
 
 var _ NeedsFileContents = ArchiveCleaner{}
 
@@ -38,7 +43,7 @@ var _ NeedsFileContents = ArchiveCleaner{}
 //
 // TODO(sumeer): for log files written to the secondary FS, the archiving will
 // also write to the secondary. We should consider archiving to the primary.
-func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
+func (c ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
 	switch fileType {
 	case FileTypeLog, FileTypeManifest, FileTypeTable, FileTypeBlob:
 		destDir := fs.PathJoin(fs.PathDir(path), "archive")
@@ -48,8 +53,14 @@ func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
 		}
 
 		destPath := fs.PathJoin(destDir, fs.PathBase(path))
-		return fs.Rename(path, destPath)
 
+		if err := fs.Rename(path, destPath); err != nil {
+			return err
+		}
+		if c.OnArchived != nil {
+			c.OnArchived(fs, fileType, destPath)
+		}
+		return nil
 	default:
 		return fs.Remove(path)
 	}
