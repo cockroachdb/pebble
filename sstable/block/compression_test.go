@@ -5,7 +5,6 @@
 package block
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/minio/minlz"
 	"github.com/stretchr/testify/require"
@@ -140,23 +138,21 @@ func TestBufferRandomized(t *testing.T) {
 	}
 }
 
-func TestMinLZEncodingLimit(t *testing.T) {
-	// Tests that MinLZ compression has a strict limit of minlz.MaxBlockSize: 8<<20 (8MiB)
-	_, err := minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize-1), minlz.LevelFastest)
-	require.NoError(t, err)
-	_, err = minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize), minlz.LevelFastest)
-	require.NoError(t, err)
-	_, err = minlz.Encode([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize+1), minlz.LevelFastest)
-	if !errors.Is(err, minlz.ErrTooLarge) {
-		require.Fail(t, "Expected minlz.ErrTooLarge Error")
-	}
+func TestMinLZLargeBlock(t *testing.T) {
+	for _, delta := range []int{-1, 0, 1, 1 << rand.IntN(24)} {
+		b := make([]byte, minlz.MaxBlockSize+delta)
+		for i := range b {
+			b[i] = byte(i)
+		}
+		c := GetCompressor(MinLZCompression)
+		defer c.Close()
+		algo, compressed := c.Compress(nil, b)
+		require.Equal(t, MinLZCompressionIndicator, algo)
+		d := GetDecompressor(algo)
+		decompressed := make([]byte, len(b))
+		defer d.Close()
 
-	c := GetCompressor(MinLZCompression)
-	defer c.Close()
-	algo, _ := c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize-1))
-	require.Equal(t, algo, MinLZCompressionIndicator)
-	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize))
-	require.Equal(t, algo, MinLZCompressionIndicator)
-	algo, _ = c.Compress([]byte{}, bytes.Repeat([]byte{0}, minlz.MaxBlockSize+1))
-	require.Equal(t, algo, SnappyCompressionIndicator)
+		require.NoError(t, d.DecompressInto(decompressed, compressed))
+		require.Equal(t, b, decompressed)
+	}
 }
