@@ -114,6 +114,40 @@ f: (foo, .)
 k: (k, .)
 z: (zoo, .)
 
+metrics
+----
+      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
+------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+------------------
+    0 |     0     0B     0B       0 |    -    0    0 |   41B |     0     0B |     0     0B |     1   765B |    0B |   0 8.46 |    0B    0B    0B
+    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   765B |     0     0B |    0B |   0    0 |    0B    0B    0B
+    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B    0B    0B
+    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   765B |     0     0B |    0B |   0    0 |    0B    0B    0B
+    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B    0B    0B
+    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   765B |     0     0B |    0B |   0    0 |    0B    0B    0B
+    6 |     1   815B     0B       0 |    - 0.00 0.00 |  765B |     0     0B |     0     0B |     1   815B | 1.5KB |   1 0.98 |    0B    0B    0B
+total |     1   815B     0B       0 |    -    -    - |   41B |     0     0B |     3  2.2KB |     2  1.6KB | 1.5KB |   1 10.4 |    0B    0B    0B
+------------------------------------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (0B)  in: 30B  written: 41B (37% overhead)
+Flushes: 1
+Compactions: 4  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
+             default: 1  delete: 0  elision: 0  move: 3  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 2
+MemTables: 1 (256KB)  zombie: 1 (256KB)
+Zombie tables: 0 (0B, local: 0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Local tables size: 815B
+Compression types: snappy: 1
+Table stats: all loaded
+Block cache: 4 entries (1.5KB)  hit rate: 70.3%
+Table cache: 2 entries (1.1KB)  hit rate: 82.2%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
+Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+
 # Set the minimum size for a separated value to 5.
 
 define value-separation=(true, 5, 3)
