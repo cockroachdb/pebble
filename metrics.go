@@ -101,6 +101,17 @@ type LevelMetrics struct {
 	TablesDeleted uint64
 	// The number of sstables excised in a level by a delete-only compaction.
 	TablesExcised uint64
+	// BlobBytesReadEstimate is an estimate of the physical bytes corresponding
+	// to values referenced by sstables that were inputs into compactions
+	// outputting into this level.
+	BlobBytesReadEstimate uint64
+	// BlobBytesWritten is the number of bytes written to blob files while
+	// compacting sstables in this level.
+	BlobBytesWritten uint64
+	// BlobBytesFlushed is the number of bytes written to blob files while
+	// flushing sstables. This metric is always zero for all levels other than
+	// L0.
+	BlobBytesFlushed uint64
 
 	MultiLevel struct {
 		// TableBytesInTop are the total bytes in a multilevel compaction coming
@@ -154,6 +165,9 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
 	m.TablesMoved += u.TablesMoved
+	m.BlobBytesWritten += u.BlobBytesWritten
+	m.BlobBytesFlushed += u.BlobBytesFlushed
+	m.BlobBytesReadEstimate += u.BlobBytesReadEstimate
 	m.MultiLevel.TableBytesInTop += u.MultiLevel.TableBytesInTop
 	m.MultiLevel.TableBytesRead += u.MultiLevel.TableBytesRead
 	m.MultiLevel.TableBytesIn += u.MultiLevel.TableBytesIn
@@ -163,12 +177,16 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 }
 
 // WriteAmp computes the write amplification for compactions at this
-// level. Computed as (BytesFlushed + BytesCompacted) / BytesIn.
+// level. Computed as:
+//
+//	TableBytesFlushed + TableBytesCompacted + BlobBytesFlushed
+//	---------------------------------------------------------
+//	            TableBytesIn + BlobBytesWritten
 func (m *LevelMetrics) WriteAmp() float64 {
 	if m.TableBytesIn == 0 {
 		return 0
 	}
-	return float64(m.TableBytesFlushed+m.TableBytesCompacted) / float64(m.TableBytesIn)
+	return float64(m.TableBytesFlushed+m.TableBytesCompacted+m.BlobBytesFlushed) / float64(m.TableBytesIn+m.BlobBytesWritten)
 }
 
 var categoryCompaction = block.RegisterCategory("pebble-compaction", block.NonLatencySensitiveQoSLevel)
