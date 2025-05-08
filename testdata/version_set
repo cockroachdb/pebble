@@ -42,7 +42,7 @@ applied:
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
+    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300(2000)
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=300
 no zombie tables
@@ -60,8 +60,8 @@ applied:
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
-    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300(2000)
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
 no zombie tables
@@ -81,9 +81,9 @@ applied:
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
   L3:
-    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300
+    000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300(2000)
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
 no zombie tables
@@ -101,7 +101,7 @@ applied:
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
 no zombie tables
@@ -114,7 +114,7 @@ reopen
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
-    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400
+    000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
 1 virtual backings, total size 2000:
   000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
 no zombie tables
@@ -150,7 +150,7 @@ applied:
   add-backing:   000100
 current version:
   L1:
-    000005(000100):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500
+    000005(000100):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500(100000)
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 100000:
@@ -164,7 +164,7 @@ ref-version r1
 ----
 current version:
   L1:
-    000005(000100):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500
+    000005(000100):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:500(100000)
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 100000:
@@ -218,8 +218,8 @@ applied:
   add-backing:   000101
 current version:
   L1:
-    000006(000101):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:600
-    000007(000101):[w#1,SET-x#1,SET] seqnums:[0-0] points:[w#1,SET-x#1,SET] size:700
+    000006(000101):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:600(101000)
+    000007(000101):[w#1,SET-x#1,SET] seqnums:[0-0] points:[w#1,SET-x#1,SET] size:700(101000)
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
@@ -233,8 +233,8 @@ protect-backing 101
 ----
 current version:
   L1:
-    000006(000101):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:600
-    000007(000101):[w#1,SET-x#1,SET] seqnums:[0-0] points:[w#1,SET-x#1,SET] size:700
+    000006(000101):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:600(101000)
+    000007(000101):[w#1,SET-x#1,SET] seqnums:[0-0] points:[w#1,SET-x#1,SET] size:700(101000)
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
@@ -307,7 +307,7 @@ applied:
   add-backing:   000102
 current version:
   L1:
-    000009(000102):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:900
+    000009(000102):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:900(102000)
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
   L3:
@@ -323,7 +323,7 @@ protect-backing 102
 ----
 current version:
   L1:
-    000009(000102):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:900
+    000009(000102):[u#1,SET-v#1,SET] seqnums:[0-0] points:[u#1,SET-v#1,SET] size:900(102000)
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
   L3:
