@@ -840,6 +840,9 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	}
 	if m.Size != 0 {
 		fmt.Fprintf(&b, " size:%d", m.Size)
+		if m.Virtual && m.FileBacking != nil {
+			fmt.Fprintf(&b, "(%d)", m.FileBacking.Size)
+		}
 	}
 	if len(m.BlobReferences) > 0 {
 		fmt.Fprint(&b, " blobrefs:[")
