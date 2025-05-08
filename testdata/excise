@@ -33,8 +33,8 @@ excise-dryrun c k
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
   del-table:     L6 000004
-  add-table:     L6 000007(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
-  add-table:     L6 000008(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33
+  add-table:     L6 000007(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33(654)
+  add-table:     L6 000008(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33(654)
   add-backing:   000004
 
 
@@ -43,8 +43,8 @@ excise-dryrun a e
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
   del-table:     L6 000004
-  add-table:     L0 000009(000006):[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET] size:45
-  add-table:     L6 000010(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33
+  add-table:     L0 000009(000006):[f#12,SET-f#12,SET] seqnums:[11-12] points:[f#12,SET-f#12,SET] size:45(696)
+  add-table:     L6 000010(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33(654)
   add-backing:   000006
   add-backing:   000004
 
@@ -53,8 +53,8 @@ excise-dryrun e z
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
   del-table:     L6 000004
-  add-table:     L0 000011(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45
-  add-table:     L6 000012(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
+  add-table:     L0 000011(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45(696)
+  add-table:     L6 000012(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33(654)
   add-backing:   000006
   add-backing:   000004
 
@@ -63,9 +63,9 @@ excise-dryrun f l
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
   del-table:     L6 000004
-  add-table:     L0 000013(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45
-  add-table:     L6 000014(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
-  add-table:     L6 000015(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33
+  add-table:     L0 000013(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45(696)
+  add-table:     L6 000014(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33(654)
+  add-table:     L6 000015(000004):[l#10,SET-l#10,SET] seqnums:[10-10] points:[l#10,SET-l#10,SET] size:33(654)
   add-backing:   000006
   add-backing:   000004
 
@@ -74,8 +74,8 @@ excise-dryrun f ll
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000006
   del-table:     L6 000004
-  add-table:     L0 000016(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45
-  add-table:     L6 000017(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33
+  add-table:     L0 000016(000006):[d#11,SET-d#11,SET] seqnums:[11-12] points:[d#11,SET-d#11,SET] size:45(696)
+  add-table:     L6 000017(000004):[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] size:33(654)
   add-backing:   000006
   add-backing:   000004
 
@@ -163,15 +163,15 @@ excise-dryrun f g
 ----
 would excise 1 files, use ingest-and-excise to excise.
   del-table:     L0 000005
-  add-table:     L0 000006(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28
-  add-table:     L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
+  add-table:     L0 000006(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28(702)
+  add-table:     L0 000007(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1(702)
   add-backing:   000005
 
 excise-dryrun b c
 ----
 would excise 1 files, use ingest-and-excise to excise.
   del-table:     L0 000005
-  add-table:     L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
+  add-table:     L0 000008(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1(702)
   add-backing:   000005
 
 excise-dryrun i j
@@ -186,9 +186,9 @@ excise-dryrun c d
 would excise 2 files, use ingest-and-excise to excise.
   del-table:     L0 000005
   del-table:     L6 000004
-  add-table:     L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28
-  add-table:     L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1
-  add-table:     L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] size:1
+  add-table:     L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28(702)
+  add-table:     L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1(702)
+  add-table:     L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] size:1(760)
   add-backing:   000005
   add-backing:   000004
 
