@@ -2029,7 +2029,7 @@ func (d *DB) ingestApply(
 			levelMetrics.TablesCount++
 			levelMetrics.TablesSize += int64(m.Size)
 			levelMetrics.EstimatedReferencesSize += m.EstimatedReferenceSize()
-			levelMetrics.BytesIngested += m.Size
+			levelMetrics.TableBytesIngested += m.Size
 			levelMetrics.TablesIngested++
 		}
 		// replacedFiles maps files excised due to exciseSpan (or splitFiles returned

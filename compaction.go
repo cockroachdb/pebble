@@ -1353,7 +1353,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			levelMetrics = &LevelMetrics{}
 			c.metrics[level] = levelMetrics
 		}
-		levelMetrics.BytesIngested += file.Size
+		levelMetrics.TableBytesIngested += file.Size
 		levelMetrics.TablesIngested++
 	}
 	if ingestFlushable.exciseSpan.Valid() {
@@ -1534,10 +1534,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// resulting in zero bytes in. Instead, use the number of bytes we
 				// flushed as the BytesIn. This ensures we get a reasonable w-amp
 				// calculation even when the WAL is disabled.
-				l0Metrics.BytesIn = l0Metrics.BytesFlushed
+				l0Metrics.TableBytesIn = l0Metrics.TableBytesFlushed
 			} else {
 				for i := 0; i < n; i++ {
-					l0Metrics.BytesIn += d.mu.mem.queue[i].logSize
+					l0Metrics.TableBytesIn += d.mu.mem.queue[i].logSize
 				}
 			}
 		} else {
@@ -1603,7 +1603,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			d.mu.versions.metrics.Flush.AsIngestCount++
 			for _, l := range c.metrics {
 				if l != nil {
-					d.mu.versions.metrics.Flush.AsIngestBytes += l.BytesIngested
+					d.mu.versions.metrics.Flush.AsIngestBytes += l.TableBytesIngested
 					d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
 				}
 			}
@@ -2701,7 +2701,7 @@ func (d *DB) runCopyCompaction(
 				// The virtual table was empty. Just remove the backing file.
 				// Note that deleteOnExit is true so we will delete the created object.
 				c.metrics[c.outputLevel.level] = &LevelMetrics{
-					BytesIn: inputMeta.Size,
+					TableBytesIn: inputMeta.Size,
 				}
 
 				return ve, compact.Stats{}, nil
@@ -2727,9 +2727,9 @@ func (d *DB) runCopyCompaction(
 		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
 	}
 	c.metrics[c.outputLevel.level] = &LevelMetrics{
-		BytesIn:         inputMeta.Size,
-		BytesCompacted:  newMeta.Size,
-		TablesCompacted: 1,
+		TableBytesIn:        inputMeta.Size,
+		TableBytesCompacted: newMeta.Size,
+		TablesCompacted:     1,
 	}
 
 	if err := d.objProvider.Sync(); err != nil {
@@ -2954,8 +2954,8 @@ func (d *DB) runMoveCompaction(
 		return ve, stats, ErrCancelledCompaction
 	}
 	c.metrics[c.outputLevel.level] = &LevelMetrics{
-		BytesMoved:  meta.Size,
-		TablesMoved: 1,
+		TableBytesMoved: meta.Size,
+		TablesMoved:     1,
 	}
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{
@@ -3239,15 +3239,15 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 
 	startLevelBytes := c.startLevel.files.TableSizeSum()
 	outputMetrics := &LevelMetrics{
-		BytesIn: startLevelBytes,
+		TableBytesIn: startLevelBytes,
 		// TODO(jackson):  This BytesRead value does not include any blob files
 		// written. It either should, or we should add a separate metric.
-		BytesRead: c.outputLevel.files.TableSizeSum(),
+		TableBytesRead: c.outputLevel.files.TableSizeSum(),
 	}
 	if len(c.extraLevels) > 0 {
-		outputMetrics.BytesIn += c.extraLevels[0].files.TableSizeSum()
+		outputMetrics.TableBytesIn += c.extraLevels[0].files.TableSizeSum()
 	}
-	outputMetrics.BytesRead += outputMetrics.BytesIn
+	outputMetrics.TableBytesRead += outputMetrics.TableBytesIn
 
 	c.metrics[c.outputLevel.level] = outputMetrics
 	if len(c.flushing) == 0 && c.metrics[c.startLevel.level] == nil {
@@ -3255,9 +3255,9 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	}
 	if len(c.extraLevels) > 0 {
 		c.metrics[c.extraLevels[0].level] = &LevelMetrics{}
-		outputMetrics.MultiLevel.BytesInTop = startLevelBytes
-		outputMetrics.MultiLevel.BytesIn = outputMetrics.BytesIn
-		outputMetrics.MultiLevel.BytesRead = outputMetrics.BytesRead
+		outputMetrics.MultiLevel.TableBytesInTop = startLevelBytes
+		outputMetrics.MultiLevel.TableBytesIn = outputMetrics.TableBytesIn
+		outputMetrics.MultiLevel.TableBytesRead = outputMetrics.TableBytesRead
 	}
 
 	inputLargestSeqNumAbsolute := c.inputLargestSeqNumAbsolute()
@@ -3309,10 +3309,10 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		// Update metrics.
 		if c.flushing == nil {
 			outputMetrics.TablesCompacted++
-			outputMetrics.BytesCompacted += fileMeta.Size
+			outputMetrics.TableBytesCompacted += fileMeta.Size
 		} else {
 			outputMetrics.TablesFlushed++
-			outputMetrics.BytesFlushed += fileMeta.Size
+			outputMetrics.TableBytesFlushed += fileMeta.Size
 		}
 		outputMetrics.EstimatedReferencesSize += fileMeta.EstimatedReferenceSize()
 		outputMetrics.TablesSize += int64(fileMeta.Size)

@@ -68,27 +68,27 @@ type LevelMetrics struct {
 	FillFactor float64
 	// The level's compensated fill factor. See candidateLevelInfo.
 	CompensatedFillFactor float64
-	// The number of incoming bytes from other levels read during
+	// The number of incoming bytes from other levels' sstables read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
 	// the bytes written to the WAL.
-	BytesIn uint64
-	// The number of bytes ingested. The sibling metric for tables is
+	TableBytesIn uint64
+	// The number of sstable bytes ingested. The sibling metric for tables is
 	// TablesIngested.
-	BytesIngested uint64
-	// The number of bytes moved into the level by a "move" compaction. The
-	// sibling metric for tables is TablesMoved.
-	BytesMoved uint64
+	TableBytesIngested uint64
+	// The number of sstable bytes moved into the level by a "move" compaction.
+	// The sibling metric for tables is TablesMoved.
+	TableBytesMoved uint64
 	// The number of bytes read for compactions at the level. This includes bytes
 	// read from other levels (BytesIn), as well as bytes read for the level.
-	BytesRead uint64
-	// The number of bytes written during compactions. The sibling
-	// metric for tables is TablesCompacted. This metric may be summed
-	// with BytesFlushed to compute the total bytes written for the level.
-	BytesCompacted uint64
-	// The number of bytes written during flushes. The sibling
-	// metrics for tables is TablesFlushed. This metric is always
-	// zero for all levels other than L0.
-	BytesFlushed uint64
+	TableBytesRead uint64
+	// The number of bytes written to sstables during compactions. The sibling
+	// metric for tables is TablesCompacted. This metric may be summed with
+	// BytesFlushed to compute the total bytes written for the level.
+	TableBytesCompacted uint64
+	// The number of bytes written to sstables during flushes. The sibling
+	// metrics for tables is TablesFlushed. This metric is always zero for all
+	// levels other than L0.
+	TableBytesFlushed uint64
 	// The number of sstables compacted to this level.
 	TablesCompacted uint64
 	// The number of sstables flushed to this level.
@@ -103,14 +103,15 @@ type LevelMetrics struct {
 	TablesExcised uint64
 
 	MultiLevel struct {
-		// BytesInTop are the total bytes in a multilevel compaction coming from the top level.
-		BytesInTop uint64
+		// TableBytesInTop are the total bytes in a multilevel compaction coming
+		// from the top level.
+		TableBytesInTop uint64
 
-		// BytesIn, exclusively for multiLevel compactions.
-		BytesIn uint64
+		// TableBytesIn, exclusively for multiLevel compactions.
+		TableBytesIn uint64
 
-		// BytesRead, exclusively for multilevel compactions.
-		BytesRead uint64
+		// TableBytesRead, exclusively for multilevel compactions.
+		TableBytesRead uint64
 	}
 
 	// Additional contains misc additional metrics that are not always printed.
@@ -143,19 +144,19 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.VirtualTablesCount += u.VirtualTablesCount
 	m.VirtualTablesSize += u.VirtualTablesSize
 	m.EstimatedReferencesSize += u.EstimatedReferencesSize
-	m.BytesIn += u.BytesIn
-	m.BytesIngested += u.BytesIngested
-	m.BytesMoved += u.BytesMoved
-	m.BytesRead += u.BytesRead
-	m.BytesCompacted += u.BytesCompacted
-	m.BytesFlushed += u.BytesFlushed
+	m.TableBytesIn += u.TableBytesIn
+	m.TableBytesIngested += u.TableBytesIngested
+	m.TableBytesMoved += u.TableBytesMoved
+	m.TableBytesRead += u.TableBytesRead
+	m.TableBytesCompacted += u.TableBytesCompacted
+	m.TableBytesFlushed += u.TableBytesFlushed
 	m.TablesCompacted += u.TablesCompacted
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
 	m.TablesMoved += u.TablesMoved
-	m.MultiLevel.BytesInTop += u.MultiLevel.BytesInTop
-	m.MultiLevel.BytesRead += u.MultiLevel.BytesRead
-	m.MultiLevel.BytesIn += u.MultiLevel.BytesIn
+	m.MultiLevel.TableBytesInTop += u.MultiLevel.TableBytesInTop
+	m.MultiLevel.TableBytesRead += u.MultiLevel.TableBytesRead
+	m.MultiLevel.TableBytesIn += u.MultiLevel.TableBytesIn
 	m.Additional.BytesWrittenDataBlocks += u.Additional.BytesWrittenDataBlocks
 	m.Additional.BytesWrittenValueBlocks += u.Additional.BytesWrittenValueBlocks
 	m.Additional.ValueBlocksSize += u.Additional.ValueBlocksSize
@@ -164,10 +165,10 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 // WriteAmp computes the write amplification for compactions at this
 // level. Computed as (BytesFlushed + BytesCompacted) / BytesIn.
 func (m *LevelMetrics) WriteAmp() float64 {
-	if m.BytesIn == 0 {
+	if m.TableBytesIn == 0 {
 		return 0
 	}
-	return float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
+	return float64(m.TableBytesFlushed+m.TableBytesCompacted) / float64(m.TableBytesIn)
 }
 
 var categoryCompaction = block.RegisterCategory("pebble-compaction", block.NonLatencySensitiveQoSLevel)
@@ -534,11 +535,11 @@ func (m *Metrics) Total() LevelMetrics {
 		total.Sublevels += l.Sublevels
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
-	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
+	total.TableBytesIn = m.WAL.BytesWritten + total.TableBytesIngested
 	// Add the total bytes-in to the total bytes-flushed. This is to account for
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
-	total.BytesFlushed += total.BytesIn
+	total.TableBytesFlushed += total.TableBytesIn
 	return total
 }
 
@@ -644,23 +645,23 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			humanizeFloat(score, 4),
 			humanizeFloat(m.FillFactor, 4),
 			humanizeFloat(m.CompensatedFillFactor, 4),
-			humanize.Bytes.Uint64(m.BytesIn),
+			humanize.Bytes.Uint64(m.TableBytesIn),
 			humanize.Count.Uint64(m.TablesIngested),
-			humanize.Bytes.Uint64(m.BytesIngested),
+			humanize.Bytes.Uint64(m.TableBytesIngested),
 			humanize.Count.Uint64(m.TablesMoved),
-			humanize.Bytes.Uint64(m.BytesMoved),
+			humanize.Bytes.Uint64(m.TableBytesMoved),
 			humanize.Count.Uint64(m.TablesFlushed+m.TablesCompacted),
-			humanize.Bytes.Uint64(m.BytesFlushed+m.BytesCompacted),
-			humanize.Bytes.Uint64(m.BytesRead),
+			humanize.Bytes.Uint64(m.TableBytesFlushed+m.TableBytesCompacted),
+			humanize.Bytes.Uint64(m.TableBytesRead),
 			redact.Safe(m.Sublevels),
 			humanizeFloat(m.WriteAmp(), 4),
 		)
 
 		if multiExists {
 			w.Printf(" | %5s %5s %5s",
-				humanize.Bytes.Uint64(m.MultiLevel.BytesInTop),
-				humanize.Bytes.Uint64(m.MultiLevel.BytesIn),
-				humanize.Bytes.Uint64(m.MultiLevel.BytesRead))
+				humanize.Bytes.Uint64(m.MultiLevel.TableBytesInTop),
+				humanize.Bytes.Uint64(m.MultiLevel.TableBytesIn),
+				humanize.Bytes.Uint64(m.MultiLevel.TableBytesRead))
 		}
 		newline()
 	}
@@ -674,11 +675,11 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		total.Sublevels += l.Sublevels
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
-	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
+	total.TableBytesIn = m.WAL.BytesWritten + total.TableBytesIngested
 	// Add the total bytes-in to the total bytes-flushed. This is to account for
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
-	total.BytesFlushed += total.BytesIn
+	total.TableBytesFlushed += total.TableBytesIn
 	total.Score = math.NaN()
 	total.FillFactor = math.NaN()
 	total.CompensatedFillFactor = math.NaN()
