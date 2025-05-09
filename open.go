@@ -417,17 +417,17 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
-	d.mu.annotators.totalSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
+	d.mu.annotators.totalDiskUsageSize = d.makeStorageSizeAnnotator(func(f *manifest.TableMetadata) bool {
 		return true
 	})
-	d.mu.annotators.remoteSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
+	d.mu.annotators.remoteSize = d.makeStorageSizeAnnotator(func(f *manifest.TableMetadata) bool {
 		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 		if err != nil {
 			return false
 		}
 		return meta.IsRemote()
 	})
-	d.mu.annotators.externalSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
+	d.mu.annotators.externalSize = d.makeStorageSizeAnnotator(func(f *manifest.TableMetadata) bool {
 		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
 		if err != nil {
 			return false

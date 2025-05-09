@@ -501,9 +501,9 @@ type DB struct {
 		// annotators contains various instances of manifest.Annotator which
 		// should be protected from concurrent access.
 		annotators struct {
-			totalSize    *manifest.Annotator[uint64]
-			remoteSize   *manifest.Annotator[uint64]
-			externalSize *manifest.Annotator[uint64]
+			totalDiskUsageSize *manifest.Annotator[uint64]
+			remoteSize         *manifest.Annotator[uint64]
+			externalSize       *manifest.Annotator[uint64]
 		}
 	}
 
@@ -2375,24 +2375,32 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	return destLevels, nil
 }
 
-// makeFileSizeAnnotator returns an annotator that computes the total size of
-// files that meet some criteria defined by filter.
-func (d *DB) makeFileSizeAnnotator(filter func(f *tableMetadata) bool) *manifest.Annotator[uint64] {
+// makeStorageSizeAnnotator returns an annotator that computes the total
+// storage size of files that meet some criteria defined by filter. When
+// applicable, this includes both the sstable size and the size of any
+// referenced blob files.
+func (d *DB) makeStorageSizeAnnotator(
+	filter func(f *tableMetadata) bool,
+) *manifest.Annotator[uint64] {
 	return &manifest.Annotator[uint64]{
 		Aggregator: manifest.SumAggregator{
 			AccumulateFunc: func(f *tableMetadata) (uint64, bool) {
 				if filter(f) {
-					return f.Size, true
+					return f.Size + f.EstimatedReferenceSize(), true
 				}
 				return 0, true
 			},
 			AccumulatePartialOverlapFunc: func(f *tableMetadata, bounds base.UserKeyBounds) uint64 {
 				if filter(f) {
-					size, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
+					overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
 					if err != nil {
 						return 0
 					}
-					return size
+					overlapFraction := float64(overlappingFileSize) / float64(f.Size)
+					// Scale the blob reference size proportionally to the file
+					// overlap from the bounds to include only the blob
+					// references that overlap with the requested bounds.
+					return overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
 				}
 				return 0
 			},
@@ -2438,9 +2446,10 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	readState := d.loadReadState()
 	defer readState.unref()
 
-	totalSize = *d.mu.annotators.totalSize.VersionRangeAnnotation(readState.current, bounds)
+	totalSize = *d.mu.annotators.totalDiskUsageSize.VersionRangeAnnotation(readState.current, bounds)
 	remoteSize = *d.mu.annotators.remoteSize.VersionRangeAnnotation(readState.current, bounds)
 	externalSize = *d.mu.annotators.externalSize.VersionRangeAnnotation(readState.current, bounds)
+
 	return
 }
 
