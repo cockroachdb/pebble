@@ -410,7 +410,7 @@ func (f *pebbleVersions) String() string {
 		if i > 0 {
 			fmt.Fprint(&buf, " ")
 		}
-		fmt.Fprintf(&buf, v.SHA)
+		fmt.Fprint(&buf, v.SHA)
 	}
 	return buf.String()
 }

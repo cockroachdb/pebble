@@ -284,7 +284,7 @@ func TestExcise(t *testing.T) {
 		case "excise-dryrun":
 			ve, err := runExciseDryRunCmd(td, d)
 			if err != nil {
-				td.Fatalf(t, err.Error())
+				td.Fatalf(t, "%s", err.Error())
 			}
 			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.DebugString(base.DefaultFormatter))
 		case "confirm-backing":
