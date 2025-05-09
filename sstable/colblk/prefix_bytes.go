@@ -239,7 +239,7 @@ func (b PrefixBytes) At(i int) []byte {
 // UnsafeFirstSlice returns first slice in the PrefixBytes. The returned slice
 // points directly into the PrefixBytes buffer and must not be mutated.
 func (b *PrefixBytes) UnsafeFirstSlice() []byte {
-	return b.rawBytes.slice(0, b.rawBytes.offsets.At(2))
+	return b.rawBytes.Slice(0, b.rawBytes.offsets.At(2))
 }
 
 // PrefixBytesIter is an iterator and associated buffers for PrefixBytes. It
@@ -386,7 +386,7 @@ func (b *PrefixBytes) SetNext(it *PrefixBytesIter) {
 // mutated.
 func (b *PrefixBytes) SharedPrefix() []byte {
 	// The very first slice is the prefix for the entire column.
-	return b.rawBytes.slice(0, b.rawBytes.offsets.At(0))
+	return b.rawBytes.Slice(0, b.rawBytes.offsets.At(0))
 }
 
 // RowBundlePrefix takes a row index and returns a []byte of the prefix shared
@@ -395,7 +395,7 @@ func (b *PrefixBytes) SharedPrefix() []byte {
 func (b *PrefixBytes) RowBundlePrefix(row int) []byte {
 	i := b.bundleOffsetIndexForRow(row)
 	invariants.CheckBounds(i, b.rawBytes.slices)
-	return b.rawBytes.slice(b.rawBytes.offsets.At2(i))
+	return b.rawBytes.Slice(b.rawBytes.offsets.At2(i))
 }
 
 // BundlePrefix returns the prefix of the i-th bundle in the column. The
@@ -404,7 +404,7 @@ func (b *PrefixBytes) RowBundlePrefix(row int) []byte {
 func (b *PrefixBytes) BundlePrefix(i int) []byte {
 	j := b.offsetIndexByBundleIndex(i)
 	invariants.CheckBounds(j, b.rawBytes.slices)
-	return b.rawBytes.slice(b.rawBytes.offsets.At2(j))
+	return b.rawBytes.Slice(b.rawBytes.offsets.At2(j))
 }
 
 // RowSuffix returns a []byte of the suffix unique to the row. A row's full key
@@ -413,7 +413,7 @@ func (b *PrefixBytes) BundlePrefix(i int) []byte {
 //
 // The returned slice should not be mutated.
 func (b *PrefixBytes) RowSuffix(row int) []byte {
-	return b.rawBytes.slice(b.rowSuffixOffsets(row, b.rowSuffixIndex(row)))
+	return b.rawBytes.Slice(b.rowSuffixOffsets(row, b.rowSuffixIndex(row)))
 }
 
 // rowSuffixOffsets finds the start and end offsets of the row's suffix slice,
@@ -500,7 +500,7 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 		//
 		j := b.offsetIndexByBundleIndex(h)
 		invariants.CheckBounds(j+1, b.rawBytes.slices)
-		bundleFirstKey := b.rawBytes.slice(b.rawBytes.offsets.At(j), b.rawBytes.offsets.At(j+2))
+		bundleFirstKey := b.rawBytes.Slice(b.rawBytes.offsets.At(j), b.rawBytes.offsets.At(j+2))
 		c = bytes.Compare(k, bundleFirstKey)
 		switch {
 		case c > 0:
@@ -524,7 +524,7 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 	// prefix there's no need.
 	j := b.offsetIndexByBundleIndex(bi - 1)
 	invariants.CheckBounds(j, b.rawBytes.slices)
-	bundlePrefix := b.rawBytes.slice(b.rawBytes.offsets.At2(j))
+	bundlePrefix := b.rawBytes.Slice(b.rawBytes.offsets.At2(j))
 
 	// The row we are looking for might still be in the previous bundle even
 	// though the seek key is greater than the first key. This is possible only
@@ -588,7 +588,7 @@ func (b *PrefixBytes) Search(k []byte) (rowIndex int, isEqual bool) {
 				continue
 			}
 		}
-		rem := b.rawBytes.slice(hStart, hEnd)
+		rem := b.rawBytes.Slice(hStart, hEnd)
 		c = bytes.Compare(k, rem)
 		switch {
 		case c > 0:
@@ -632,7 +632,7 @@ func prefixBytesToBinFormatter(
 	// The first offset encodes the length of the block prefix.
 	blockPrefixLen := pb.rawBytes.offsets.At(0)
 	f.HexBytesln(int(blockPrefixLen), "data[00]: %s (block prefix)",
-		sliceFormatter(pb.rawBytes.slice(0, blockPrefixLen)))
+		sliceFormatter(pb.rawBytes.Slice(0, blockPrefixLen)))
 
 	k := 2 + (count-1)>>pb.bundleShift + count
 	startOff := blockPrefixLen

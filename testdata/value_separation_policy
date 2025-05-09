@@ -23,8 +23,8 @@ baz#202,SET:blob{value=yuumi}
 foo#209,SET:poiandyaya
 ----
 # create: 000002.blob
-RawWriter.AddWithBlobHandle("baz#202,SET", "(f0,blk0[0:5])", 0, false)
-RawWriter.AddWithBlobHandle("foo#209,SET", "(f0,blk0[5:15])", 0, false)
+RawWriter.AddWithBlobHandle("baz#202,SET", "(f0,blk0,id0,len5)", 0, false)
+RawWriter.AddWithBlobHandle("foo#209,SET", "(f0,blk0,id1,len10)", 0, false)
 
 # Ensure that merge and deletesized keys do not get separated if they meet the
 # minimum size.
@@ -35,11 +35,11 @@ gac#211,SET:yuumiisthebest
 ----
 RawWriter.Add("gaa#210,MERGE", "chickenpigeon", false)
 RawWriter.Add("gaa#209,DELSIZED", "varint(16)", false)
-RawWriter.AddWithBlobHandle("gac#211,SET", "(f0,blk0[15:29])", 0, false)
+RawWriter.AddWithBlobHandle("gac#211,SET", "(f0,blk0,id2,len14)", 0, false)
 
 estimated-sizes
 ----
-file: 73, references: 73
+file: 91, references: 91
 
 close-output
 ----
@@ -47,8 +47,8 @@ close-output
 # close: 000001.sst
 # sync-data: 000002.blob
 # close: 000002.blob
-Blob file created: 000002 size:[85 (85B)] vals:[29 (29B)]
-{BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 29, FileLen: 85}
+Blob file created: 000002 size:[112 (112B)] vals:[29 (29B)]
+{BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 29, FileLen: 112}
 blobrefs:[
  0: 000002 29
 ]
@@ -116,8 +116,8 @@ b#2,DEL:
 c#9,SET:paddy
 ----
 # create: 000005.sst
-RawWriter.AddWithBlobHandle("a#9,SET", "(f0,blk0[0:5])", 5, false)
-RawWriter.AddWithBlobHandle("a#5,SET", "(f1,blk0[0:4])", 4, false)
+RawWriter.AddWithBlobHandle("a#9,SET", "(f0,blk0,id0,len5)", 5, false)
+RawWriter.AddWithBlobHandle("a#5,SET", "(f1,blk0,id0,len4)", 4, false)
 RawWriter.Add("b#2,DEL", "", false)
 RawWriter.Add("c#9,SET", "paddy", false)
 
@@ -141,7 +141,7 @@ e#9,SET:blob{value=yayoi}
 ----
 # create: 000006.sst
 RawWriter.Add("d#2,DEL", "", false)
-RawWriter.AddWithBlobHandle("e#9,SET", "(f0,blk0[4:9])", 5, false)
+RawWriter.AddWithBlobHandle("e#9,SET", "(f0,blk0,id1,len5)", 5, false)
 
 estimated-sizes
 ----
