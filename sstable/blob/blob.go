@@ -93,16 +93,17 @@ func (s FileWriterStats) String() string {
 
 // A FileWriter writes a blob file.
 type FileWriter struct {
-	fileNum      base.DiskFileNum
-	w            objstorage.Writable
-	b            block.Buffer
-	stats        FileWriterStats
-	flushGov     block.FlushGovernor
-	indexEncoder indexBlockEncoder
-	err          error
-	checksumType block.ChecksumType
-	cpuMeasurer  base.CPUMeasurer
-	writeQueue   struct {
+	fileNum       base.DiskFileNum
+	w             objstorage.Writable
+	err           error
+	valuesEncoder blobValueBlockEncoder
+	indexEncoder  indexBlockEncoder
+	stats         FileWriterStats
+	flushGov      block.FlushGovernor
+	checksummer   block.Checksummer
+	compression   block.Compression
+	cpuMeasurer   base.CPUMeasurer
+	writeQueue    struct {
 		wg  sync.WaitGroup
 		ch  chan compressedBlock
 		err error
@@ -121,10 +122,11 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw := writerPool.Get().(*FileWriter)
 	fw.fileNum = fn
 	fw.w = w
-	fw.b.Init(opts.Compression, opts.ChecksumType)
+	fw.valuesEncoder.Init()
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
-	fw.checksumType = opts.ChecksumType
+	fw.checksummer = block.Checksummer{Type: opts.ChecksumType}
+	fw.compression = opts.Compression
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)
@@ -140,25 +142,46 @@ var writerPool = sync.Pool{
 // identifying the location of the value.
 func (w *FileWriter) AddValue(v []byte) Handle {
 	// Determine if we should first flush the block.
-	if sz := w.b.Size(); sz != 0 && w.flushGov.ShouldFlush(sz, sz+len(v)) {
-		w.flush()
+	valuesInBlock := w.valuesEncoder.Count()
+	if valuesInBlock > 0 {
+		if sz := w.valuesEncoder.size(); w.flushGov.ShouldFlush(sz, sz+len(v)) {
+			w.flush()
+			valuesInBlock = 0
+		}
 	}
 	w.stats.ValueCount++
 	w.stats.UncompressedValueBytes += uint64(len(v))
-	off := uint32(w.b.Append(v))
+	w.valuesEncoder.AddValue(v)
 	return Handle{
-		FileNum:       w.fileNum,
-		BlockNum:      uint32(w.stats.BlockCount),
-		OffsetInBlock: off,
-		ValueLen:      uint32(len(v)),
+		FileNum:  w.fileNum,
+		ValueLen: uint32(len(v)),
+		BlockID:  BlockID(w.stats.BlockCount),
+		ValueID:  BlockValueID(valuesInBlock),
 	}
+}
+
+// BeginNewVirtualBlock adds a virtual block mapping to the current physical
+// block and valueID offset within the block.
+//
+// When a blob file is rewritten, BeginNewVirtualBlock is called for each block
+// in the original blob file before adding any of the block's extant values.
+// BeginNewVirtualBlock records a mapping from the original block ID (referred
+// to as a virtual block) to a tuple of the physical block index and the offset
+// of the BlockValueIDs within the new physical block.
+//
+// This mapping is used by readers to determine which physical block contains a
+// given virtual block, and how to map BlockValueIDs from the given virtual
+// block to BlockValueIDs in the physical block.
+func (w *FileWriter) BeginNewVirtualBlock(vblockID BlockID) {
+	w.indexEncoder.AddVirtualBlockMapping(vblockID, int(w.stats.BlockCount),
+		BlockValueID(w.valuesEncoder.Count()))
 }
 
 // EstimatedSize returns an estimate of the disk space consumed by the blob file
 // if it were closed now.
 func (w *FileWriter) EstimatedSize() uint64 {
-	sz := w.stats.FileLen                       // Completed blocks
-	sz += uint64(w.b.Size()) + block.TrailerLen // Pending uncompressed block
+	sz := w.stats.FileLen                                   // Completed blocks
+	sz += uint64(w.valuesEncoder.size()) + block.TrailerLen // Pending uncompressed block
 	// We estimate the size of the index block as 4 bytes per offset, and n+1
 	// offsets for n block handles. We don't use an exact accounting because the
 	// index block is constructed from the write queue goroutine, so using the
@@ -177,19 +200,24 @@ func (w *FileWriter) EstimatedSize() uint64 {
 // It's exposed so that tests can force flushes to construct blob files with
 // arbitrary structures.
 func (w *FileWriter) FlushForTesting() {
-	if w.b.Size() == 0 {
+	if w.valuesEncoder.Count() == 0 {
 		return
 	}
 	w.flush()
 }
 
+// flush flushes the current block to the write queue.
 func (w *FileWriter) flush() {
-	pb, bh := w.b.CompressAndChecksum()
+	if w.valuesEncoder.Count() == 0 {
+		panic(errors.AssertionFailedf("no values to flush"))
+	}
+	pb, bh := block.CompressAndChecksumBufHandle(w.valuesEncoder.Finish(), w.compression, &w.checksummer)
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	off := w.stats.FileLen
 	w.stats.FileLen += compressedLen + block.TrailerLen
 	w.writeQueue.ch <- compressedBlock{pb: pb, bh: bh, off: off}
+	w.valuesEncoder.Reset()
 }
 
 // drainWriteQueue runs in its own goroutine and is responsible for writing
@@ -224,7 +252,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		return FileWriterStats{}, w.err
 	}
 	// Flush the last block to the write queue if it's non-empty.
-	if w.b.Size() > 0 {
+	if w.valuesEncoder.Count() > 0 {
 		w.flush()
 	}
 	// Inform the write queue we're finished by closing the channel and wait
@@ -253,7 +281,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	{
 		indexBlock := w.indexEncoder.Finish()
 		var compressedBuf []byte
-		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoCompression, w.b.Checksummer())
+		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoCompression, &w.checksummer)
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
 			err = w.err
 			if w.w != nil {
@@ -269,11 +297,10 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	// Write the footer.
 	footer := fileFooter{
 		format:      FileFormatV1,
-		checksum:    w.checksumType,
+		checksum:    w.checksummer.Type,
 		indexHandle: indexBlockHandle,
 	}
-	w.b.Resize(fileFooterLength)
-	footerBuf := w.b.Get()
+	footerBuf := make([]byte, fileFooterLength)
 	footer.encode(footerBuf)
 	if w.err = w.w.Write(footerBuf); w.err != nil {
 		err = w.err
@@ -292,8 +319,8 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	}
 
 	// Clean up w and return it to the pool.
-	w.b.Release()
 	w.indexEncoder.Reset()
+	w.valuesEncoder.Reset()
 	w.w = nil
 	w.stats = FileWriterStats{}
 	w.err = errClosed
@@ -424,7 +451,7 @@ func (r *FileReader) InitReadHandle(
 func (r *FileReader) ReadValueBlock(
 	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle, h block.Handle,
 ) (block.BufferHandle, error) {
-	return r.r.Read(ctx, env, rh, h, noInitBlockMetadata)
+	return r.r.Read(ctx, env, rh, h, initBlobValueBlockMetadata)
 }
 
 // ReadIndexBlock reads the index block from the file.
@@ -438,5 +465,3 @@ func (r *FileReader) ReadIndexBlock(
 func (r *FileReader) IndexHandle() block.Handle {
 	return r.footer.indexHandle
 }
-
-func noInitBlockMetadata(_ *block.Metadata, _ []byte) error { return nil }

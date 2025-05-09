@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,7 +60,7 @@ func TestValueFetcher(t *testing.T) {
 		}
 	}()
 
-	var handleBuf [valblk.HandleMaxLen]byte
+	var handleBuf [MaxInlineHandleLength]byte
 	datadriven.RunTest(t, "testdata/value_fetcher", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
@@ -73,7 +72,7 @@ func TestValueFetcher(t *testing.T) {
 			w := NewFileWriter(base.DiskFileNum(fileNum), obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
 				h := w.AddValue([]byte(l))
-				fmt.Fprintln(&buf, h)
+				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
 			stats, err := w.Close()
 			if err != nil {
@@ -101,22 +100,28 @@ func TestValueFetcher(t *testing.T) {
 			return ""
 		case "fetch":
 			var (
-				name                            string
-				blobFileNum                     uint64
-				valLen, blockNum, offsetInBlock uint32
+				name            string
+				blobFileNum     uint64
+				valLen, valueID uint32
+				blockID         uint32
 			)
 			td.ScanArgs(t, "name", &name)
 			td.ScanArgs(t, "filenum", &blobFileNum)
 			td.ScanArgs(t, "valLen", &valLen)
-			td.ScanArgs(t, "blknum", &blockNum)
-			td.ScanArgs(t, "off", &offsetInBlock)
+			td.ScanArgs(t, "blockID", &blockID)
+			td.ScanArgs(t, "valueID", &valueID)
 			fetcher := fetchers[name]
 			if fetcher == nil {
 				t.Fatalf("fetcher %s not found", name)
 			}
-			handle := encodeRemainingHandle(handleBuf[:], blockNum, offsetInBlock)
 
-			val, _, err := fetcher.Fetch(ctx, handle, base.DiskFileNum(blobFileNum), valLen, nil)
+			n := HandleSuffix{
+				BlockID: BlockID(blockID),
+				ValueID: BlockValueID(valueID),
+			}.Encode(handleBuf[:])
+			encodedHandleSuffix := handleBuf[:n]
+
+			val, _, err := fetcher.Fetch(ctx, encodedHandleSuffix, base.DiskFileNum(blobFileNum), valLen, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,15 +134,6 @@ func TestValueFetcher(t *testing.T) {
 	})
 }
 
-func encodeRemainingHandle(dst []byte, blockNum uint32, offsetInBlock uint32) []byte {
-	n := valblk.EncodeHandle(dst, valblk.Handle{
-		ValueLen:      0,
-		BlockNum:      blockNum,
-		OffsetInBlock: offsetInBlock,
-	})
-	return dst[1:n]
-}
-
 func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 	fmt.Fprintf(w, "ValueFetcher{\n")
 	for _, cr := range f.readers {
@@ -145,7 +141,7 @@ func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 			fmt.Fprintln(w, "  empty")
 			continue
 		}
-		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentBlockNum)
+		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentValueBlock.physicalIndex)
 	}
 	fmt.Fprintf(w, "}\n")
 }
