@@ -44,10 +44,10 @@ func (bv *Values) Fetch(
 
 	decodedHandleSuffix := blob.DecodeHandleSuffix(handleSuffix)
 	decodedHandle := blob.Handle{
-		FileNum:       blobFileNum,
-		BlockNum:      decodedHandleSuffix.BlockNum,
-		OffsetInBlock: decodedHandleSuffix.OffsetInBlock,
-		ValueLen:      valLen,
+		FileNum:  blobFileNum,
+		ValueLen: valLen,
+		BlockID:  decodedHandleSuffix.BlockID,
+		ValueID:  decodedHandleSuffix.ValueID,
 	}
 
 	value, ok := bv.trackedHandles[decodedHandle]
@@ -64,7 +64,7 @@ func (bv *Values) Fetch(
 }
 
 func deriveValueFromHandle(handle blob.Handle) []byte {
-	rng := rand.New(rand.NewPCG((uint64(handle.FileNum)<<32)|uint64(handle.BlockNum), uint64(handle.OffsetInBlock)))
+	rng := rand.New(rand.NewPCG((uint64(handle.FileNum)<<32)|uint64(handle.BlockID), uint64(handle.ValueID)))
 	b := make([]byte, handle.ValueLen)
 	for i := range b {
 		b[i] = 'a' + byte(rng.IntN(26))
@@ -82,8 +82,8 @@ func (bv *Values) ParseInternalValue(input string) (base.InternalValue, error) {
 
 	// Encode the handle suffix to be the 'ValueOrHandle' of the InternalValue.
 	handleSuffix := blob.HandleSuffix{
-		BlockNum:      h.BlockNum,
-		OffsetInBlock: h.OffsetInBlock,
+		BlockID: h.BlockID,
+		ValueID: h.ValueID,
 	}
 	handleSuffixBytes := make([]byte, blob.MaxInlineHandleLength)
 	i := handleSuffix.Encode(handleSuffixBytes)
@@ -126,7 +126,7 @@ func (bv *Values) Parse(input string) (h blob.Handle, remaining string, err erro
 	p.Expect("blob")
 	p.Expect("{")
 	var value string
-	var fileNumSet, blockNumSet, offsetSet, valueLenSet bool
+	var fileNumSet, blockIDSet, valueLenSet, valueIDSet bool
 	for done := false; !done; {
 		if p.Done() {
 			return blob.Handle{}, "", errors.New("unexpected end of input")
@@ -138,14 +138,14 @@ func (bv *Values) Parse(input string) (h blob.Handle, remaining string, err erro
 			p.Expect("=")
 			h.FileNum = p.DiskFileNum()
 			fileNumSet = true
-		case "blockNum":
+		case "blockID":
 			p.Expect("=")
-			h.BlockNum = p.Uint32()
-			blockNumSet = true
-		case "offset":
+			h.BlockID = blob.BlockID(p.Uint32())
+			blockIDSet = true
+		case "valueID":
 			p.Expect("=")
-			h.OffsetInBlock = p.Uint32()
-			offsetSet = true
+			h.ValueID = blob.BlockValueID(p.Uint32())
+			valueIDSet = true
 		case "valueLen":
 			p.Expect("=")
 			h.ValueLen = p.Uint32()
@@ -164,11 +164,15 @@ func (bv *Values) Parse(input string) (h blob.Handle, remaining string, err erro
 	if !fileNumSet {
 		h.FileNum = bv.mostRecentFileNum
 	}
-	if !blockNumSet {
-		h.BlockNum = bv.mostRecentHandles[h.FileNum].BlockNum
+	if !blockIDSet {
+		h.BlockID = bv.mostRecentHandles[h.FileNum].BlockID
 	}
-	if !offsetSet {
-		h.OffsetInBlock = bv.mostRecentHandles[h.FileNum].OffsetInBlock + bv.mostRecentHandles[h.FileNum].ValueLen
+	if !valueIDSet {
+		if recentHandle, ok := bv.mostRecentHandles[h.FileNum]; ok {
+			h.ValueID = recentHandle.ValueID + 1
+		} else {
+			h.ValueID = 0
+		}
 	}
 	if !valueLenSet {
 		if len(value) > 0 {
@@ -201,8 +205,8 @@ func (bv *Values) ParseInlineHandle(
 			ValueLen:    fullHandle.ValueLen,
 		},
 		HandleSuffix: blob.HandleSuffix{
-			BlockNum:      fullHandle.BlockNum,
-			OffsetInBlock: fullHandle.OffsetInBlock,
+			BlockID: fullHandle.BlockID,
+			ValueID: fullHandle.ValueID,
 		},
 	}
 	return h, remaining, nil
@@ -225,20 +229,36 @@ func (bv *Values) WriteFiles(
 	stats := make(map[base.DiskFileNum]blob.FileWriterStats)
 	for fileNum, handles := range files {
 		slices.SortFunc(handles, func(a, b blob.Handle) int {
-			if v := cmp.Compare(a.BlockNum, b.BlockNum); v != 0 {
+			if v := cmp.Compare(a.BlockID, b.BlockID); v != 0 {
 				return v
 			}
-			return cmp.Compare(a.OffsetInBlock, b.OffsetInBlock)
+			return cmp.Compare(a.ValueID, b.ValueID)
 		})
 		writable, err := newBlobObject(fileNum)
 		if err != nil {
 			return nil, err
 		}
 		writer := blob.NewFileWriter(fileNum, writable, writerOpts)
+		prevID := -1
 		for i, handle := range handles {
-			if i > 0 && handles[i-1].BlockNum != handle.BlockNum {
+			if i > 0 && handles[i-1].BlockID != handle.BlockID {
 				writer.FlushForTesting()
+				prevID = -1
 			}
+			// The user of a blobtest.Values may specify a value ID for a handle. If
+			// there's a gap in the value IDs, we need to fill in the missing values
+			// with synthesized values.
+			prevID++
+			for prevID < int(handle.ValueID) {
+				writer.AddValue(deriveValueFromHandle(blob.Handle{
+					FileNum:  fileNum,
+					BlockID:  handle.BlockID,
+					ValueID:  blob.BlockValueID(prevID),
+					ValueLen: 12,
+				}))
+				prevID++
+			}
+
 			if value, ok := bv.trackedHandles[handle]; ok {
 				writer.AddValue([]byte(value))
 			} else {

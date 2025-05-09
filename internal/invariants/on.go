@@ -78,7 +78,7 @@ func (v *Value[V]) Set(inner V) {
 
 // CheckBounds panics if the index is not in the range [0, n). No-op in
 // non-invariant builds.
-func CheckBounds(i int, n int) {
+func CheckBounds[T Integer](i T, n T) {
 	if i < 0 || i >= n {
 		panic(fmt.Sprintf("index %d out of bounds [0, %d)", i, n))
 	}
