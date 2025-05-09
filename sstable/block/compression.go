@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 )
@@ -30,6 +31,18 @@ const (
 	MinLZCompression
 	NCompression
 )
+
+var algorithm = [...]compression.Algorithm{
+	DefaultCompression: compression.Snappy,
+	NoCompression:      compression.None,
+	SnappyCompression:  compression.Snappy,
+	ZstdCompression:    compression.Zstd,
+	MinLZCompression:   compression.MinLZ,
+}
+
+func (c Compression) algorithm() compression.Algorithm {
+	return algorithm[c]
+}
 
 // String implements fmt.Stringer, returning a human-readable name for the
 // compression algorithm.
@@ -120,11 +133,41 @@ func (i CompressionIndicator) String() string {
 	}
 }
 
+func (i CompressionIndicator) algorithm() compression.Algorithm {
+	switch i {
+	case NoCompressionIndicator:
+		return compression.None
+	case SnappyCompressionIndicator:
+		return compression.Snappy
+	case ZstdCompressionIndicator:
+		return compression.Zstd
+	case MinLZCompressionIndicator:
+		return compression.MinLZ
+	default:
+		panic("Invalid compression type.")
+	}
+}
+
+func compressionIndicatorFromAlgorithm(algo compression.Algorithm) CompressionIndicator {
+	switch algo {
+	case compression.None:
+		return NoCompressionIndicator
+	case compression.Snappy:
+		return SnappyCompressionIndicator
+	case compression.Zstd:
+		return ZstdCompressionIndicator
+	case compression.MinLZ:
+		return MinLZCompressionIndicator
+	default:
+		panic("invalid algorithm")
+	}
+}
+
 // DecompressedLen returns the length of the provided block once decompressed,
 // allowing the caller to allocate a buffer exactly sized to the decompressed
 // payload.
-func DecompressedLen(algo CompressionIndicator, b []byte) (decompressedLen int, err error) {
-	decompressor := GetDecompressor(algo)
+func DecompressedLen(ci CompressionIndicator, b []byte) (decompressedLen int, err error) {
+	decompressor := GetDecompressor(ci)
 	defer decompressor.Close()
 	return decompressor.DecompressedLen(b)
 }
@@ -132,8 +175,8 @@ func DecompressedLen(algo CompressionIndicator, b []byte) (decompressedLen int, 
 // DecompressInto decompresses compressed into buf. The buf slice must have the
 // exact size as the decompressed value. Callers may use DecompressedLen to
 // determine the correct size.
-func DecompressInto(algo CompressionIndicator, compressed []byte, buf []byte) error {
-	decompressor := GetDecompressor(algo)
+func DecompressInto(ci CompressionIndicator, compressed []byte, buf []byte) error {
+	decompressor := GetDecompressor(ci)
 	defer decompressor.Close()
 	err := decompressor.DecompressInto(buf, compressed)
 	if err != nil {
@@ -218,9 +261,9 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 // the compressed payload is discarded and the original, uncompressed block data
 // is used to avoid unnecessary decompression overhead at read time.
 func CompressAndChecksum(
-	dst *[]byte, blockData []byte, compression Compression, checksummer *Checksummer,
+	dst *[]byte, blockData []byte, c Compression, checksummer *Checksummer,
 ) PhysicalBlock {
-	compressor := GetCompressor(compression)
+	compressor := GetCompressor(c)
 	defer compressor.Close()
 	return CompressAndChecksumWithCompressor(dst, blockData, compressor, checksummer)
 }
@@ -231,17 +274,18 @@ func CompressAndChecksumWithCompressor(
 	buf := (*dst)[:0]
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	algo, buf := compressor.Compress(buf, blockData)
-	if len(buf) >= len(blockData)-len(blockData)/8 && algo != NoCompressionIndicator {
-		algo, buf = (noopCompressor{}).Compress(buf, blockData)
+	ci, buf := compressor.Compress(buf, blockData)
+	if len(buf) >= len(blockData)-len(blockData)/8 && ci != NoCompressionIndicator {
+		ci = NoCompressionIndicator
+		buf = append(buf[:0], blockData...)
 	}
 
 	*dst = buf
 
 	// Calculate the checksum.
 	pb := PhysicalBlock{data: buf}
-	checksum := checksummer.Checksum(buf, byte(algo))
-	pb.trailer = MakeTrailer(byte(algo), checksum)
+	checksum := checksummer.Checksum(buf, byte(ci))
+	pb.trailer = MakeTrailer(byte(ci), checksum)
 	return pb
 }
 
