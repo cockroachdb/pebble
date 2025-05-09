@@ -754,3 +754,10 @@ uints
  ├── 42-43: x 00 # data[41] = 0
  ├── 43-44: x 00 # data[42] = 0
  └── 44-45: x 01 # data[43] = 1
+
+init
+----
+
+finish rows=0
+----
+uints

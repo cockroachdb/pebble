@@ -52,7 +52,7 @@ func (*Value[V]) Set(v V) {}
 
 // CheckBounds panics if the index is not in the range [0, n). No-op in
 // non-invariant builds.
-func CheckBounds(i int, n int) {}
+func CheckBounds[T Integer](i T, n T) {}
 
 // SafeSub returns a - b. If a < b, it panics in invariant builds and returns 0
 // in non-invariant builds.
