@@ -523,7 +523,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	total := pm.Total()
 	var ingestBytesWeighted uint64
 	for l := 0; l < len(pm.Levels); l++ {
-		ingestBytesWeighted += pm.Levels[l].BytesIngested * uint64(len(pm.Levels)-l-1)
+		ingestBytesWeighted += pm.Levels[l].TableBytesIngested * uint64(len(pm.Levels)-l-1)
 	}
 
 	m := Metrics{
@@ -560,7 +560,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	m.CompactionCounts.Rewrite = pm.Compact.RewriteCount
 	m.CompactionCounts.Copy = pm.Compact.CopyCount
 	m.CompactionCounts.MultiLevel = pm.Compact.MultiLevelCount
-	m.Ingest.BytesIntoL0 = pm.Levels[0].BytesIngested
+	m.Ingest.BytesIntoL0 = pm.Levels[0].TableBytesIngested
 	m.Ingest.BytesWeightedByLevel = ingestBytesWeighted
 	return m, err
 }

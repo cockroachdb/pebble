@@ -1049,6 +1049,10 @@ func TestCompaction(t *testing.T) {
 			case "lsm":
 				return runLSMCmd(td, d)
 
+			case "metrics":
+				m := d.Metrics()
+				return m.StringForTests()
+
 			case "populate":
 				b := d.NewBatch()
 				runPopulateCmd(t, td, b)
@@ -1353,16 +1357,14 @@ func TestCompaction(t *testing.T) {
 		if !ok {
 			t.Fatalf("unknown test config: %s", filename)
 		}
-		t.Run(filename, func(t *testing.T) {
-			minVersion, maxVersion := tc.minVersion, tc.maxVersion
-			if minVersion == 0 {
-				minVersion = FormatMinSupported
-			}
-			if maxVersion == 0 {
-				maxVersion = internalFormatNewest
-			}
-			runTest(t, path, minVersion, maxVersion, tc.verbose)
-		})
+		minVersion, maxVersion := tc.minVersion, tc.maxVersion
+		if minVersion == 0 {
+			minVersion = FormatMinSupported
+		}
+		if maxVersion == 0 {
+			maxVersion = internalFormatNewest
+		}
+		runTest(t, path, minVersion, maxVersion, tc.verbose)
 	})
 }
 

@@ -617,8 +617,8 @@ func (y *ycsb) done(elapsed time.Duration) {
 		ycsbConfig.workload, ycsbConfig.values,
 		resultHist.TotalCount(),
 		float64(resultHist.TotalCount())/elapsed.Seconds(),
-		total.BytesRead,
-		total.BytesFlushed+total.BytesCompacted,
+		total.TableBytesRead,
+		total.TableBytesFlushed+total.TableBytesCompacted,
 		float64(readAmpSum)/float64(readAmpCount),
 		total.WriteAmp(),
 	)
