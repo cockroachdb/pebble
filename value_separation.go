@@ -261,8 +261,8 @@ func (vs *writeNewBlobFiles) Add(
 			ValueLen:    handle.ValueLen,
 		},
 		HandleSuffix: blob.HandleSuffix{
-			BlockNum:      handle.BlockNum,
-			OffsetInBlock: handle.OffsetInBlock,
+			BlockID: handle.BlockID,
+			ValueID: handle.ValueID,
 		},
 	}
 	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete)

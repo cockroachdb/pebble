@@ -253,6 +253,17 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 	return len(b.data) + len(b.trailer), nil
 }
 
+// CompressAndChecksumBufHandle is like CompressAndChecksum, but it will
+// retrieve a buffer for the compressed block from a sync.Pool and return a
+// *BufHandle that the caller can use to release the buffer back to the pool.
+func CompressAndChecksumBufHandle(
+	blockData []byte, compression Compression, checksummer *Checksummer,
+) (PhysicalBlock, *BufHandle) {
+	compressedBuf := compressedBuffers.Get()
+	pb := CompressAndChecksum(&compressedBuf.b, blockData, compression, checksummer)
+	return pb, compressedBuf
+}
+
 // CompressAndChecksum compresses and checksums the provided block, returning
 // the compressed block and its trailer. The result is appended to the dst
 // argument.

@@ -1338,7 +1338,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 	}
 	invariants.CheckBounds(i.row, i.d.values.slices)
 	// Inline i.d.values.At(row).
-	v := i.d.values.slice(i.d.values.offsets.At2(i.row))
+	v := i.d.values.Slice(i.d.values.offsets.At2(i.row))
 	if i.d.isValueExternal.At(i.row) {
 		i.kv.V = i.getLazyValuer.GetInternalValueForPrefixAndValueHandle(v)
 	} else {
@@ -1507,7 +1507,7 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 		}
 		invariants.CheckBounds(i.row, i.d.values.slices)
 		// Inline i.d.values.At(row).
-		v := i.d.values.slice(i.d.values.offsets.At2(i.row))
+		v := i.d.values.Slice(i.d.values.offsets.At2(i.row))
 		invariants.CheckBounds(i.row, i.d.values.slices)
 		if i.d.isValueExternal.At(i.row) {
 			i.kv.V = i.getLazyValuer.GetInternalValueForPrefixAndValueHandle(v)
