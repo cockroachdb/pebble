@@ -3178,3 +3178,338 @@ func hasExternalFiles(d *DB) bool {
 	}
 	return false
 }
+
+// TestTombstoneDensityCompactionMoveOptimization verifies that a tombstone density compaction
+// is optimized to a move when:
+// - There is a single input file with high tombstone density
+// - There are no overlapping files in the output level
+// - The grandparent overlap is below the threshold
+func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
+	const (
+		inputLevel  = 4
+		outputLevel = 5
+	)
+
+	opts := DefaultOptions()
+	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
+	opts.Experimental.NumDeletionsThreshold = 1
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.WithFSDefaults()
+
+	// Create a file with high tombstone density.
+	meta := &tableMetadata{
+		FileNum: 1,
+		Size:    1024,
+		Stats: manifest.TableStats{
+			NumEntries:                10,
+			NumDeletions:              8,
+			TombstoneDenseBlocksRatio: 0.9, // Above threshold
+		},
+	}
+	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("a.SET.1"),
+		base.ParseInternalKey("z.SET.2"),
+	)
+	meta.InitPhysicalBacking()
+	meta.StatsMarkValid()
+
+	// Set up the version: L4 has the file, L5 and L6 are empty.
+	var files [numLevels][]*tableMetadata
+	files[inputLevel] = []*tableMetadata{meta}
+	vers, l0org := newVersionAndL0Organizer(opts, files)
+	virtualBackings := manifest.MakeVirtualBackings()
+
+	// Set up a versionSet and compaction picker.
+	vs := &versionSet{
+		opts: opts,
+		cmp:  opts.Comparer,
+	}
+	vs.versions.Init(nil)
+	vs.append(vers)
+	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+
+	// Pick a compaction.
+	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
+	require.NotNil(t, pc, "expected a compaction to be picked")
+
+	// Create the compaction.
+	c := newCompaction(pc, opts, time.Now(), nil, noopGrantHandle{}, neverSeparateValues)
+
+	// The compaction should be converted to a move.
+	require.Equal(t, compactionKindMove, c.kind, "expected compaction to be optimized to a move")
+
+	// In the compaction plan, input level contains the file, output level is empty.
+	require.Equal(t, 1, c.startLevel.files.Len(), "input level should still contain the file in the compaction plan")
+	require.Equal(t, 0, c.outputLevel.files.Len(), "output level should be empty in the compaction plan")
+	iter := c.startLevel.files.Iter()
+	inFile := iter.First()
+	require.NotNil(t, inFile)
+	require.Equal(t, meta.FileNum, inFile.FileNum, "file should be the one planned for move")
+
+	t.Logf("Compaction kind: %v", c.kind)
+	t.Logf("Input file: %v", meta)
+	iterOut := c.outputLevel.files.Iter()
+	t.Logf("Output file: %v", iterOut.First())
+
+	// Apply the compaction to the version and verify the file is moved
+	// Create a manifest.VersionEdit to simulate the move.
+	ve := &manifest.VersionEdit{
+		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
+	}
+	i := c.startLevel.files.Iter()
+	for meta := i.First(); meta != nil; meta = i.Next() {
+		ve.DeletedTables[manifest.DeletedTableEntry{
+			Level:   inputLevel,
+			FileNum: meta.FileNum,
+		}] = meta
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{
+			Level: outputLevel,
+			Meta:  meta,
+		})
+	}
+
+	// Accumulate and apply the edit.
+	var bve manifest.BulkVersionEdit
+	require.NoError(t, bve.Accumulate(ve))
+	newVersion, err := bve.Apply(vers, 0 /* readCompactionRate */)
+	require.NoError(t, err)
+
+	// Inspect the new version.
+	require.Equal(t, 0, newVersion.Levels[inputLevel].Len(), "input level should be empty after move")
+	require.Equal(t, 1, newVersion.Levels[outputLevel].Len(), "output level should contain the moved file")
+}
+
+// TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap verifies that
+// the move optimization does NOT apply when there is an overlapping file in the output level.
+func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing.T) {
+	const (
+		inputLevel  = 4
+		outputLevel = 5
+	)
+
+	opts := DefaultOptions()
+	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
+	opts.Experimental.NumDeletionsThreshold = 1
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.WithFSDefaults()
+
+	// Create a file with high tombstone density in L4.
+	metaL4 := &tableMetadata{
+		FileNum: 1,
+		Size:    1024,
+		Stats: manifest.TableStats{
+			NumEntries:                10,
+			NumDeletions:              8,
+			TombstoneDenseBlocksRatio: 0.9, // Above threshold
+		},
+	}
+	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("a.SET.1"),
+		base.ParseInternalKey("z.SET.2"),
+	)
+	metaL4.InitPhysicalBacking()
+	metaL4.StatsMarkValid()
+
+	// Create an overlapping file in L5.
+	metaL5 := &tableMetadata{
+		FileNum: 2,
+		Size:    1024,
+	}
+	metaL5.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("m.SET.1"),
+		base.ParseInternalKey("z.SET.3"),
+	)
+	metaL5.InitPhysicalBacking()
+	metaL5.StatsMarkValid()
+
+	// Set up the version: L4 has metaL4, L5 has metaL5.
+	var files [numLevels][]*tableMetadata
+	files[inputLevel] = []*tableMetadata{metaL4}
+	files[outputLevel] = []*tableMetadata{metaL5}
+	vers, l0org := newVersionAndL0Organizer(opts, files)
+	virtualBackings := manifest.MakeVirtualBackings()
+
+	// Set up a versionSet and compaction picker.
+	vs := &versionSet{
+		opts: opts,
+		cmp:  opts.Comparer,
+	}
+	vs.versions.Init(nil)
+	vs.append(vers)
+	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+
+	// Pick a compaction.
+	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
+	require.NotNil(t, pc, "expected a compaction to be picked")
+
+	// Create the compaction.
+	c := newCompaction(pc, opts, time.Now(), nil, noopGrantHandle{}, neverSeparateValues)
+
+	// The compaction should NOT be converted to a move.
+	require.NotEqual(t, compactionKindMove, c.kind, "move optimization should NOT apply when there is overlap in output level")
+	require.Equal(t, compactionKindTombstoneDensity, c.kind, "compaction should be categorized as tombstone-density")
+
+	t.Logf("Compaction kind: %v", c.kind)
+	iterIn := c.startLevel.files.Iter()
+	t.Logf("Input file: %v", iterIn.First())
+	iterOut := c.outputLevel.files.Iter()
+	t.Logf("Output file: %v", iterOut.First())
+}
+
+// TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge
+// verifies that the move optimization does NOT apply if the grandparent overlap exceeds the threshold.
+func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t *testing.T) {
+	const (
+		inputLevel       = 4
+		outputLevel      = 5
+		grandparentLevel = 6
+	)
+
+	opts := DefaultOptions()
+	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
+	opts.Experimental.NumDeletionsThreshold = 1
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.WithFSDefaults()
+
+	// File in L4 with high tombstone density.
+	metaL4 := &tableMetadata{
+		FileNum: 1,
+		Size:    1024,
+		Stats: manifest.TableStats{
+			NumEntries:                10,
+			NumDeletions:              8,
+			TombstoneDenseBlocksRatio: 0.9,
+		},
+	}
+	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("a.SET.1"),
+		base.ParseInternalKey("z.SET.2"),
+	)
+	metaL4.InitPhysicalBacking()
+	metaL4.StatsMarkValid()
+
+	// Large overlapping file in L6 (grandparent level).
+	metaL6 := &tableMetadata{
+		FileNum: 3,
+		Size:    1 << 30, // 1GB, exceeds overlap threshold
+	}
+	metaL6.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("a.SET.1"),
+		base.ParseInternalKey("z.SET.3"),
+	)
+	metaL6.InitPhysicalBacking()
+	metaL6.StatsMarkValid()
+
+	var files [numLevels][]*tableMetadata
+	files[inputLevel] = []*tableMetadata{metaL4}
+	files[grandparentLevel] = []*tableMetadata{metaL6}
+	vers, l0org := newVersionAndL0Organizer(opts, files)
+	virtualBackings := manifest.MakeVirtualBackings()
+
+	vs := &versionSet{
+		opts: opts,
+		cmp:  opts.Comparer,
+	}
+	vs.versions.Init(nil)
+	vs.append(vers)
+	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+
+	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
+	// When grandparent overlap is too large, no compaction is picked.
+	require.Nil(t, pc, "no compaction should be picked if grandparent overlap is too large")
+}
+
+// TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold
+// verifies that the move optimization does NOT apply if the file's tombstone density is below the threshold.
+func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *testing.T) {
+	const (
+		inputLevel  = 4
+		outputLevel = 5
+	)
+
+	opts := DefaultOptions()
+	opts.Experimental.TombstoneDenseCompactionThreshold = 0.9 // Set high threshold
+	opts.Experimental.NumDeletionsThreshold = 1
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.WithFSDefaults()
+
+	meta := &tableMetadata{
+		FileNum: 1,
+		Size:    1024,
+		Stats: manifest.TableStats{
+			NumEntries:                10,
+			NumDeletions:              5,
+			TombstoneDenseBlocksRatio: 0.5, // Below threshold
+		},
+	}
+	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("a.SET.1"),
+		base.ParseInternalKey("z.SET.2"),
+	)
+	meta.InitPhysicalBacking()
+	meta.StatsMarkValid()
+
+	var files [numLevels][]*tableMetadata
+	files[inputLevel] = []*tableMetadata{meta}
+	vers, l0org := newVersionAndL0Organizer(opts, files)
+	virtualBackings := manifest.MakeVirtualBackings()
+
+	vs := &versionSet{
+		opts: opts,
+		cmp:  opts.Comparer,
+	}
+	vs.versions.Init(nil)
+	vs.append(vers)
+	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+
+	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
+	require.Nil(t, pc, "no compaction should be picked if density is below threshold")
+}
+
+// TestTombstoneDensityCompactionMoveOptimization_InvalidStats
+// verifies that the move optimization does NOT apply if the file's stats are missing or invalid.
+func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
+	const (
+		inputLevel  = 4
+		outputLevel = 5
+	)
+
+	opts := DefaultOptions()
+	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
+	opts.Experimental.NumDeletionsThreshold = 1
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.WithFSDefaults()
+
+	meta := &tableMetadata{
+		FileNum: 1,
+		Size:    1024,
+		// No stats set, or stats are invalid
+	}
+	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
+		base.ParseInternalKey("a.SET.1"),
+		base.ParseInternalKey("z.SET.2"),
+	)
+	meta.InitPhysicalBacking()
+	// meta.StatsMarkValid() is NOT called
+
+	var files [numLevels][]*tableMetadata
+	files[inputLevel] = []*tableMetadata{meta}
+	vers, l0org := newVersionAndL0Organizer(opts, files)
+	virtualBackings := manifest.MakeVirtualBackings()
+
+	vs := &versionSet{
+		opts: opts,
+		cmp:  opts.Comparer,
+	}
+	vs.versions.Init(nil)
+	vs.append(vers)
+	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+
+	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
+	require.Nil(t, pc, "no compaction should be picked if stats are missing or invalid")
+}

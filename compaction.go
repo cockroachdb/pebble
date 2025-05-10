@@ -412,7 +412,8 @@ func newCompaction(
 	)
 	c.kind = pc.kind
 
-	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
+	if (c.kind == compactionKindDefault || (c.kind == compactionKindTombstoneDensity && c.outputLevel.level != numLevels-1)) &&
+		c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
 		c.startLevel.files.Len() == 1 && c.grandparents.AggregateSizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a move or copy from one level
 		// to the next. We avoid such a move if there is lots of overlapping
