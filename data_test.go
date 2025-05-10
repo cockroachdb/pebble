@@ -1197,6 +1197,18 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 }
 
 func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
+	// In the original test file, parse the command args first
+	var forceTombstoneDensityRatio float64 = -1.0
+	for _, arg := range td.CmdArgs {
+		if arg.Key == "force-tombstone-density-ratio" && len(arg.Vals) > 0 {
+			ratio, err := strconv.ParseFloat(arg.Vals[0], 64)
+			if err != nil {
+				return fmt.Sprintf("error parsing force-tombstone-density-ratio: %v", err)
+			}
+			forceTombstoneDensityRatio = ratio
+		}
+	}
+
 	u, err := strconv.ParseUint(strings.TrimSpace(td.Input), 10, 64)
 	if err != nil {
 		return err.Error()
@@ -1206,6 +1218,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	v := d.mu.versions.currentVersion()
+
 	for _, levelMetadata := range v.Levels {
 		for f := range levelMetadata.All() {
 			if f.FileNum != fileNum {
@@ -1222,6 +1235,16 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 			fmt.Fprintf(&b, "num-range-key-sets: %d\n", f.Stats.NumRangeKeySets)
 			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", f.Stats.PointDeletionsBytesEstimate)
 			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", f.Stats.RangeDeletionsBytesEstimate)
+
+			// If requested, override the tombstone density ratio for testing
+			if forceTombstoneDensityRatio >= 0 {
+				f.Stats.TombstoneDenseBlocksRatio = forceTombstoneDensityRatio
+			}
+			// Only include the tombstone-dense-blocks-ratio if it was forced or is non-zero
+			if forceTombstoneDensityRatio >= 0 || f.Stats.TombstoneDenseBlocksRatio > 0 {
+				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", f.Stats.TombstoneDenseBlocksRatio)
+			}
+
 			return b.String()
 		}
 	}
