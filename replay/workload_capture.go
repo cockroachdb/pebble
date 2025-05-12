@@ -39,10 +39,10 @@ type WorkloadCollector struct {
 	mu struct {
 		sync.Mutex
 		fileState map[string]workloadCaptureState
-		// pendingSSTables holds a slice of file paths to sstables that need to
+		// pendingFiles holds a slice of file paths to files that need to
 		// be copied but haven't yet. The `copyFiles` goroutine grabs these
 		// files, and the flush and ingest event handlers append them.
-		pendingSSTables []string
+		pendingFiles []string
 		// manifestIndex is an index into `manifests`, pointing to the
 		// manifest currently being copied.
 		manifestIndex int
@@ -54,9 +54,9 @@ type WorkloadCollector struct {
 
 		// The following condition variable and counts are used in tests to
 		// synchronize with the copying goroutine.
-		copyCond       sync.Cond
-		tablesCopied   int
-		tablesEnqueued int
+		copyCond      sync.Cond
+		filesCopied   int
+		filesEnqueued int
 	}
 	// Stores the current manifest that is being used by the database.
 	curManifest atomic.Uint64
@@ -117,13 +117,13 @@ func (w *WorkloadCollector) Attach(opts *pebble.Options) {
 	w.config.srcFS = opts.FS
 }
 
-// enqueueCopyLocked enqueues the sstable with the provided filenum be copied in
+// enqueueCopyLocked enqueues the file with the provided filenum be copied in
 // the background. Requires w.mu.
-func (w *WorkloadCollector) enqueueCopyLocked(fileNum base.DiskFileNum) {
-	fileName := base.MakeFilename(base.FileTypeTable, fileNum)
+func (w *WorkloadCollector) enqueueCopyLocked(fileNum base.DiskFileNum, fileType base.FileType) {
+	fileName := base.MakeFilename(fileType, fileNum)
 	w.mu.fileState[fileName] |= readyForProcessing
-	w.mu.pendingSSTables = append(w.mu.pendingSSTables, w.srcFilepath(fileName))
-	w.mu.tablesEnqueued++
+	w.mu.pendingFiles = append(w.mu.pendingFiles, w.srcFilepath(fileName))
+	w.mu.filesEnqueued++
 }
 
 // cleanFile calls the cleaner on the specified path and removes the path from
@@ -166,7 +166,7 @@ func (w *WorkloadCollector) onTableIngest(info pebble.TableIngestInfo) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
-		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum))
+		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum), base.FileTypeTable)
 	}
 	w.copier.Broadcast()
 }
@@ -179,10 +179,13 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	// TODO(jackson): Copy blob files.
 	for _, table := range info.Output {
-		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum))
+		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum), base.FileTypeTable)
+		for _, fn := range table.GetBlobReferenceFiles() {
+			w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(base.TableNum(fn)), base.FileTypeBlob)
+		}
 	}
+
 	w.copier.Broadcast()
 }
 
@@ -216,14 +219,14 @@ func (w *WorkloadCollector) copyFiles() {
 		// The following performs the workload capture. It waits on a condition
 		// variable (fileListener) to let it know when new files are available to be
 		// collected.
-		if len(w.mu.pendingSSTables) == 0 {
+		if len(w.mu.pendingFiles) == 0 {
 			w.copier.Wait()
 		}
 		// Grab the manifests to copy.
 		index := w.mu.manifestIndex
 		pendingManifests := w.mu.manifests[index:]
 		var pending []string
-		pending, w.mu.pendingSSTables = w.mu.pendingSSTables, nil
+		pending, w.mu.pendingFiles = w.mu.pendingFiles, nil
 		func() {
 			// Note the unusual lock order; Temporarily unlock the
 			// mutex, but re-acquire it before returning.
@@ -232,14 +235,14 @@ func (w *WorkloadCollector) copyFiles() {
 
 			// Copy any updates to the manifests files.
 			w.copyManifests(index, pendingManifests)
-			// Copy the SSTables provided in pending. copySSTables takes
-			// ownership of the pending slice.
-			w.copySSTables(pending)
+			// Copy the SSTables and blob files provided in pending.
+			// copySSTablesAndBlobs takes ownership of the pending slice.
+			w.copySSTablesAndBlobs(pending)
 		}()
 
 		// This helps in tests; Tests can wait on the copyCond condition
 		// variable until the necessary bits have been copied.
-		w.mu.tablesCopied += len(pending)
+		w.mu.filesCopied += len(pending)
 		w.mu.copyCond.Broadcast()
 	}
 
@@ -310,11 +313,11 @@ func (w *WorkloadCollector) copyManifests(startAtIndex int, manifests []*manifes
 	}
 }
 
-// copySSTables copies the provided sstables to the stored workload. If a file
-// has already been marked as obsolete, then file will be cleaned by the
-// w.config.cleaner after it is copied. The provided slice will be mutated and
-// should not be used following the call to this function.
-func (w *WorkloadCollector) copySSTables(pending []string) {
+// copySSTablesAndBlobs copies the provided sstables and blobs to the stored
+// workload. If a file has already been marked as obsolete, then file will be
+// cleaned by the w.config.cleaner after it is copied. The provided slice will
+// be mutated and should not be used following the call to this function.
+func (w *WorkloadCollector) copySSTablesAndBlobs(pending []string) {
 	for _, filePath := range pending {
 		err := vfs.CopyAcrossFS(w.config.srcFS,
 			filePath,
@@ -388,7 +391,7 @@ func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 // manifest's latest version edit will exist in the copy directory.
 func (w *WorkloadCollector) WaitAndStop() {
 	w.mu.Lock()
-	for w.mu.tablesEnqueued != w.mu.tablesCopied {
+	for w.mu.filesEnqueued != w.mu.filesCopied {
 		w.mu.copyCond.Wait()
 	}
 	w.mu.Unlock()

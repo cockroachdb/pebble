@@ -36,6 +36,7 @@ find-workload-files capture
 ----
 manifests
 sstables
+blob files
 error
   no manifests found
 
@@ -74,4 +75,5 @@ manifests
 sstables
   000001
   000004
+blob files
 error
