@@ -25,7 +25,7 @@ func TestCache(t *testing.T) {
 	f, err := os.Open("testdata/cache")
 	require.NoError(t, err)
 
-	cache := newCache(200, 1)
+	cache := NewWithShards(200, 1)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -70,7 +70,7 @@ func setTestValue(c *Handle, fileNum base.DiskFileNum, offset uint64, s string, 
 }
 
 func TestCacheDelete(t *testing.T) {
-	cache := newCache(100, 1)
+	cache := NewWithShards(100, 1)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -101,7 +101,7 @@ func TestCacheDelete(t *testing.T) {
 }
 
 func TestEvictFile(t *testing.T) {
-	cache := newCache(100, 1)
+	cache := NewWithShards(100, 1)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -131,7 +131,7 @@ func TestEvictFile(t *testing.T) {
 func TestEvictAll(t *testing.T) {
 	// Verify that it is okay to evict all of the data from a cache. Previously
 	// this would trigger a nil-pointer dereference.
-	cache := newCache(100, 1)
+	cache := NewWithShards(100, 1)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -141,7 +141,7 @@ func TestEvictAll(t *testing.T) {
 }
 
 func TestMultipleDBs(t *testing.T) {
-	cache := newCache(100, 1)
+	cache := NewWithShards(100, 1)
 	defer cache.Unref()
 	h1 := cache.NewHandle()
 	defer h1.Close()
@@ -177,7 +177,7 @@ func TestZeroSize(t *testing.T) {
 }
 
 func TestReserve(t *testing.T) {
-	cache := newCache(4, 2)
+	cache := NewWithShards(4, 2)
 	defer cache.Unref()
 	h1 := cache.NewHandle()
 	defer h1.Close()
@@ -207,7 +207,7 @@ func TestReserve(t *testing.T) {
 }
 
 func TestReserveDoubleRelease(t *testing.T) {
-	cache := newCache(100, 1)
+	cache := NewWithShards(100, 1)
 	defer cache.Unref()
 
 	r := cache.Reserve(10)
@@ -229,7 +229,7 @@ func TestReserveDoubleRelease(t *testing.T) {
 }
 
 func TestCacheStressSetExisting(t *testing.T) {
-	cache := newCache(1, 1)
+	cache := NewWithShards(1, 1)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -252,7 +252,7 @@ func BenchmarkCacheGet(b *testing.B) {
 	const size = 100000
 
 	n := runtime.GOMAXPROCS(0)
-	cache := newCache(size*int64(n), n)
+	cache := NewWithShards(size*int64(n), n)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()

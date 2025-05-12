@@ -120,10 +120,12 @@ func New(size int64) *Cache {
 	if m > 4 && int(size)/m < minimumShardSize {
 		m = 4
 	}
-	return newCache(size, m)
+	return NewWithShards(size, m)
 }
 
-func newCache(size int64, shards int) *Cache {
+// NewWithShards creates a new cache with the specified size and number of
+// shards.
+func NewWithShards(size int64, shards int) *Cache {
 	c := &Cache{
 		maxSize: size,
 		shards:  make([]shard, shards),

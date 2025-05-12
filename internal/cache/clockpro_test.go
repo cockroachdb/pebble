@@ -15,7 +15,7 @@ func TestReserveColdTarget(t *testing.T) {
 	// then we unnecessarily remove nodes from the
 	// cache.
 
-	cache := newCache(100, 1)
+	cache := NewWithShards(100, 1)
 	defer cache.Unref()
 	h := make([]*Handle, 50)
 	for i := range h {
