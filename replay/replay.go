@@ -314,6 +314,8 @@ type Runner struct {
 		manifestOff int64
 		// sstables records the set of captured workload sstables by file num.
 		sstables map[base.FileNum]struct{}
+		// blobFiles records the set of captured workload blob files by file num.
+		blobFiles map[base.FileNum]struct{}
 	}
 }
 
@@ -325,7 +327,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	// A prefix of the workload's manifest edits are expected to have already
 	// been applied to the checkpointed existing database state.
 	var err error
-	r.workload.manifests, r.workload.sstables, err = findWorkloadFiles(r.WorkloadPath, r.WorkloadFS)
+	r.workload.manifests, r.workload.sstables, r.workload.blobFiles, err = findWorkloadFiles(r.WorkloadPath, r.WorkloadFS)
 	if err != nil {
 		return err
 	}
@@ -787,10 +789,14 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					s.kind = ingestStepKind
 				}
 				var newFiles []base.DiskFileNum
+				blobRefMap := make(map[base.DiskFileNum]manifest.BlobReferences)
 				for _, nf := range ve.NewTables {
 					newFiles = append(newFiles, nf.Meta.TableBacking.DiskFileNum)
 					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum || nf.Level != 0) {
 						s.kind = flushStepKind
+					}
+					if nf.Meta.BlobReferenceDepth > 0 {
+						blobRefMap[nf.Meta.TableBacking.DiskFileNum] = nf.Meta.BlobReferences
 					}
 				}
 				if previousVersion != nil {
@@ -819,7 +825,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 
 				// It's possible that the workload collector captured this
 				// version edit, but wasn't able to collect all of the
-				// corresponding sstables before being terminated.
+				// corresponding sstables or blob files before being terminated.
 				if s.kind == flushStepKind || s.kind == ingestStepKind {
 					for _, fileNum := range newFiles {
 						if _, ok := r.workload.sstables[base.PhysicalTableFileNum(fileNum)]; !ok {
@@ -830,6 +836,16 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 							// corresponding sstables collected?
 							return errors.Newf("sstable %s not found", fileNum)
 						}
+						// Now check that all of the blob files (if any)
+						// referenced by the sstable are present.
+						if refs, ok := blobRefMap[fileNum]; ok {
+							for _, bf := range refs {
+								if _, ok := r.workload.blobFiles[base.FileNum(bf.FileNum)]; !ok {
+									return errors.Newf("blob file %s not found for sstable %s",
+										bf.FileNum, fileNum)
+								}
+							}
+						}
 					}
 				}
 
@@ -837,7 +853,9 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				case flushStepKind:
 					// Load all of the flushed sstables' keys into a batch.
 					s.flushBatch = r.d.NewBatch()
-					if err := loadFlushedSSTableKeys(s.flushBatch, r.WorkloadFS, r.WorkloadPath, newFiles, r.readerOpts, &flushBufs); err != nil {
+					err := loadFlushedSSTableKeys(s.flushBatch, r.WorkloadFS, r.WorkloadPath,
+						newFiles, blobRefMap, r.Opts, r.readerOpts, &flushBufs)
+					if err != nil {
 						return errors.Wrapf(err, "flush in %q at offset %d", manifestName, rr.Offset())
 					}
 					cumulativeWriteBytes += uint64(s.flushBatch.Len())
@@ -889,15 +907,22 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	return nil
 }
 
-// findWorkloadFiles finds all manifests and tables in the provided path on fs.
+// findWorkloadFiles finds all manifests, tables, and blob files in the provided
+// path on fs.
 func findWorkloadFiles(
 	path string, fs vfs.FS,
-) (manifests []string, sstables map[base.FileNum]struct{}, err error) {
+) (
+	manifests []string,
+	sstables map[base.FileNum]struct{},
+	blobs map[base.FileNum]struct{},
+	err error,
+) {
 	dirents, err := fs.List(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	sstables = make(map[base.FileNum]struct{})
+	blobs = make(map[base.FileNum]struct{})
 	for _, dirent := range dirents {
 		typ, fileNum, ok := base.ParseFilename(fs, dirent)
 		if !ok {
@@ -908,13 +933,15 @@ func findWorkloadFiles(
 			manifests = append(manifests, dirent)
 		case base.FileTypeTable:
 			sstables[base.PhysicalTableFileNum(fileNum)] = struct{}{}
+		case base.FileTypeBlob:
+			blobs[base.PhysicalTableFileNum(fileNum)] = struct{}{}
 		}
 	}
 	if len(manifests) == 0 {
-		return nil, nil, errors.Newf("no manifests found")
+		return nil, nil, nil, errors.Newf("no manifests found")
 	}
 	sort.Strings(manifests)
-	return manifests, sstables, err
+	return manifests, sstables, blobs, nil
 }
 
 // findManifestStart takes a database directory and FS containing the initial
@@ -976,9 +1003,17 @@ func loadFlushedSSTableKeys(
 	fs vfs.FS,
 	path string,
 	fileNums []base.DiskFileNum,
+	blobRefMap map[base.DiskFileNum]manifest.BlobReferences,
+	opts *pebble.Options,
 	readOpts sstable.ReaderOptions,
 	bufs *flushBuffers,
 ) error {
+	provider, closeFunc, err := pebble.SetupBlobReaderProvider(fs, path, opts, readOpts)
+	if err != nil {
+		return err
+	}
+	defer closeFunc()
+
 	// Load all the keys across all the sstables.
 	for _, fileNum := range fileNums {
 		if err := func() error {
@@ -999,13 +1034,14 @@ func loadFlushedSSTableKeys(
 			defer func() { _ = r.Close() }()
 
 			// Load all the point keys.
-			iter, err := r.NewIter(sstable.NoTransforms, nil, nil,
-				// TODO(jackson): We should update this to use a
-				// blob.ValueFetcher configured with a custom reader provider
-				// that opens the appropriate blob files. We'll also need to
-				// update the workload capture-side to collect blob files.
-				// See #4459.
-				sstable.AssertNoBlobHandles)
+			var blobRefs sstable.BlobReferences
+			// If the sstable has references to blob files, we need to load them.
+			if bf, ok := blobRefMap[fileNum]; ok {
+				blobRefs = &bf
+			}
+			vf, blobContext := sstable.LoadValBlobContext(provider, blobRefs)
+			defer func() { _ = vf.Close() }()
+			iter, err := r.NewIter(sstable.NoTransforms, nil, nil, blobContext)
 			if err != nil {
 				return err
 			}

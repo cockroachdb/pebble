@@ -156,7 +156,7 @@ func TestWorkloadCollector(t *testing.T) {
 				// Wait until all pending sstables have been copied, then list
 				// the files in the destination directory.
 				c.mu.Lock()
-				for c.mu.tablesEnqueued != c.mu.tablesCopied {
+				for c.mu.filesEnqueued != c.mu.filesCopied {
 					c.mu.copyCond.Wait()
 				}
 				c.mu.Unlock()

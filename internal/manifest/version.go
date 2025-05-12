@@ -111,6 +111,8 @@ type TableInfo struct {
 	SmallestSeqNum base.SeqNum
 	// LargestSeqNum is the largest sequence number in the table.
 	LargestSeqNum base.SeqNum
+	// BlobReferences is the list of blob files referenced by the table.
+	BlobReferences BlobReferences
 }
 
 // TableStats contains statistics on a table used for compaction heuristics,
@@ -1189,6 +1191,7 @@ func (m *TableMetadata) TableInfo() TableInfo {
 		Largest:        m.Largest(),
 		SmallestSeqNum: m.SmallestSeqNum,
 		LargestSeqNum:  m.LargestSeqNum,
+		BlobReferences: m.BlobReferences,
 	}
 }
 

@@ -1,0 +1,108 @@
+open-val-sep
+----
+
+list-files build
+----
+build:
+  000002.log
+  LOCK
+  MANIFEST-000001
+  OPTIONS-000003
+  marker.format-version.000009.022
+  marker.manifest.000001.MANIFEST-000001
+
+commit
+set a a
+set b byaya
+set c cyuumi
+set d d
+----
+
+flush
+----
+
+commit
+set e elephant
+set f f
+set g g
+----
+
+flush
+----
+
+commit
+set h h
+----
+
+
+flush
+----
+
+list-files build
+----
+build:
+  000005.sst
+  000006.blob
+  000007.log
+  000008.sst
+  000009.blob
+  000011.log
+  000012.sst
+  LOCK
+  MANIFEST-000010
+  MANIFEST-000013
+  OPTIONS-000003
+  marker.format-version.000009.022
+  marker.manifest.000003.MANIFEST-000013
+
+start
+----
+started
+
+list-files simple_val_sep
+----
+simple_val_sep:
+  checkpoint
+
+list-files simple_val_sep/checkpoint
+----
+simple_val_sep/checkpoint:
+  000005.sst
+  000006.blob
+  000008.sst
+  000009.blob
+  000011.log
+  000012.sst
+  MANIFEST-000013
+  OPTIONS-000003
+  marker.format-version.000001.022
+  marker.manifest.000001.MANIFEST-000013
+
+commit
+set i icecream
+set j j
+----
+
+flush
+----
+
+stop
+----
+stopped
+
+list-files simple_val_sep
+----
+simple_val_sep:
+  000015.sst
+  000016.blob
+  MANIFEST-000013
+  checkpoint
+
+stat simple_val_sep/MANIFEST-000013 simple_val_sep/000015.sst simple_val_sep/000016.blob
+----
+simple_val_sep/MANIFEST-000013:
+  size: 247
+simple_val_sep/000015.sst:
+  size: 790
+simple_val_sep/000016.blob:
+  size: 64
