@@ -16,7 +16,8 @@ import (
 )
 
 type zstdCompressor struct {
-	ctx zstd.Ctx
+	level int
+	ctx   zstd.Ctx
 }
 
 var _ Compressor = (*zstdCompressor)(nil)
@@ -38,11 +39,6 @@ var zstdCompressorPool = sync.Pool{
 // relies on CGo.
 const UseStandardZstdLib = true
 
-// Compress compresses b with the Zstandard algorithm at default compression
-// level (level 3). It reuses the preallocated capacity of compressedBuf if it
-// is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
-// the length of `b` before calling Compress. It returns the encoded byte
-// slice, including the `compressedBuf[:varIntLen]` prefix.
 func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) []byte {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
@@ -57,7 +53,7 @@ func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) []byte {
 	}
 
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	result, err := z.ctx.CompressLevel(compressedBuf[varIntLen:varIntLen+bound], b, 3)
+	result, err := z.ctx.CompressLevel(compressedBuf[varIntLen:varIntLen+bound], b, z.level)
 	if err != nil {
 		panic("Error while compressing using Zstd.")
 	}
@@ -72,8 +68,10 @@ func (z *zstdCompressor) Close() {
 	zstdCompressorPool.Put(z)
 }
 
-func getZstdCompressor() *zstdCompressor {
-	return zstdCompressorPool.Get().(*zstdCompressor)
+func getZstdCompressor(level int) *zstdCompressor {
+	z := zstdCompressorPool.Get().(*zstdCompressor)
+	z.level = level
+	return z
 }
 
 type zstdDecompressor struct {

@@ -18,7 +18,7 @@ func TestMinLZLargeBlock(t *testing.T) {
 		for i := range b {
 			b[i] = byte(i)
 		}
-		c := GetCompressor(MinLZ)
+		c := GetCompressor(MinLZFastest)
 		defer c.Close()
 		compressed := c.Compress(nil, b)
 		d := GetDecompressor(MinLZ)
