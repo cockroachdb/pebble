@@ -431,11 +431,20 @@ func newCompaction(
 		// 1) The source file is a virtual sstable
 		// 2) The existing file `meta` is on non-remote storage
 		// 3) The output level prefers shared storage
-		mustCopy := !isRemote && remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
+		//
+		// We also want to prevent ssts with blob references from being
+		// selected for copy compaction, as we currently lack a mechanism
+		// to propagate blob references along with the sstable.
+		mustCopy := !isRemote &&
+			remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level) &&
+			meta.BlobReferenceDepth == 0
 		if mustCopy {
-			// If the source is virtual, it's best to just rewrite the file as all
-			// conditions in the above comment are met.
+			// If the source is virtual, it's best to just rewrite the file as
+			// all conditions in the above comment are met.
 			if !meta.Virtual {
+				// Disable value separation for copy compaction as we do not
+				// support blob files on shared storage.
+				c.getValueSeparation = neverSeparateValues
 				c.kind = compactionKindCopy
 			}
 		} else {
