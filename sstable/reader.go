@@ -860,6 +860,12 @@ func (r *Reader) TableFormat() (TableFormat, error) {
 	return r.tableFormat, nil
 }
 
+// BlockReader returns the block.Reader that can be used to directly read
+// blocks from the sstable.
+func (r *Reader) BlockReader() *block.Reader {
+	return &r.blockReader
+}
+
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
 //
