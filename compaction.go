@@ -109,12 +109,12 @@ func (cl compactionLevel) String() string {
 
 // compactionWritable is a objstorage.Writable wrapper that, on every write,
 // updates a metric in `versions` on bytes written by in-progress compactions so
-// far. It also increments a per-compaction `written` int.
+// far. It also increments a per-compaction `written` atomic int.
 type compactionWritable struct {
 	objstorage.Writable
 
 	versions *versionSet
-	written  *int64
+	written  *atomic.Int64
 }
 
 // Write is part of the objstorage.Writable interface.
@@ -123,7 +123,7 @@ func (c *compactionWritable) Write(p []byte) error {
 		return err
 	}
 
-	*c.written += int64(len(p))
+	c.written.Add(int64(len(p)))
 	c.versions.incrementCompactionBytes(int64(len(p)))
 	return nil
 }
@@ -259,7 +259,7 @@ type compaction struct {
 	// flushing contains the flushables (aka memtables) that are being flushed.
 	flushing flushableList
 	// bytesWritten contains the number of bytes that have been written to outputs.
-	bytesWritten int64
+	bytesWritten atomic.Int64
 
 	// The boundaries of the input data.
 	smallest InternalKey
@@ -1591,7 +1591,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	d.clearCompactingState(c, err != nil)
 	delete(d.mu.compact.inProgress, c)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten, err)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten.Load(), err)
 
 	var flushed flushableList
 	if err == nil {
@@ -2529,8 +2529,8 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten, err)
-	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactionBytes(-c.bytesWritten.Load())
 
 	info.TotalDuration = d.timeNow().Sub(c.beganAt)
 	d.opts.EventListener.CompactionEnd(info)
