@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -150,28 +151,69 @@ func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 
 func BenchmarkValueFetcherRetrieve(b *testing.B) {
 	defer leaktest.AfterTest(b)()
+	b.Run("uncached", func(b *testing.B) {
+		b.Run("2MiB", func(b *testing.B) {
+			benchmarkValueFetcherRetrieve(b, 2<<20, nil)
+		})
+		b.Run("16MiB", func(b *testing.B) {
+			benchmarkValueFetcherRetrieve(b, 16<<20, nil)
+		})
+		b.Run("64MiB", func(b *testing.B) {
+			benchmarkValueFetcherRetrieve(b, 64<<20, nil)
+		})
+	})
+	// The cache variants use a cache double the size of the files' uncompressed
+	// value size to ensure all blocks fit in the cache. Each run uses a fresh
+	// cache to ensure there's no interference between variants.
+	b.Run("cache", func(b *testing.B) {
+		b.Run("2MiB", func(b *testing.B) {
+			c := cache.NewWithShards(4<<20, 1)
+			defer c.Unref()
+			ch := c.NewHandle()
+			defer ch.Close()
+			benchmarkValueFetcherRetrieve(b, 2<<20, ch)
+		})
+		b.Run("16MiB", func(b *testing.B) {
+			c := cache.NewWithShards(32<<20, 1)
+			defer c.Unref()
+			ch := c.NewHandle()
+			defer ch.Close()
+			benchmarkValueFetcherRetrieve(b, 16<<20, ch)
+		})
+		b.Run("64MiB", func(b *testing.B) {
+			c := cache.NewWithShards(128<<20, 1)
+			defer c.Unref()
+			ch := c.NewHandle()
+			defer ch.Close()
+			benchmarkValueFetcherRetrieve(b, 64<<20, ch)
+		})
+	})
+}
 
+func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle) {
 	ctx := context.Background()
 	opts := FileWriterOptions{}
 	obj := &objstorage.MemObj{}
 	w := NewFileWriter(000001, obj, opts)
 	rng := rand.New(rand.NewPCG(0, 0))
 	var handles []Handle
-	for v := 4 << 20; v > 0; {
+	for v := valueSize; v > 0; {
 		n := testutils.RandIntInRange(rng, 1, 4096)
 		h := w.AddValue(testutils.RandBytes(rng, n))
 		handles = append(handles, h)
 		v -= n
 	}
-	_, err := w.Close()
+	stats, err := w.Close()
 	if err != nil {
 		b.Fatal(err)
 	}
+	b.Logf("%d blocks, %d values", stats.BlockCount, stats.ValueCount)
 
 	r, err := NewFileReader(ctx, obj, FileReaderOptions{
 		ReaderOptions: block.ReaderOptions{
 			CacheOpts: sstableinternal.CacheOptions{
-				FileNum: base.DiskFileNum(1),
+				CacheHandle: ch,
+				FileNum:     base.DiskFileNum(1),
 			},
 		},
 	})
