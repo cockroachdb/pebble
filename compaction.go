@@ -302,6 +302,8 @@ type compaction struct {
 	pickerMetrics pickedCompactionMetrics
 
 	grantHandle CompactionGrantHandle
+
+	opts objstorage.CreateOptions
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -431,10 +433,16 @@ func newCompaction(
 		// 1) The source file is a virtual sstable
 		// 2) The existing file `meta` is on non-remote storage
 		// 3) The output level prefers shared storage
-		mustCopy := !isRemote && remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
+		//
+		// We also want to prevent ssts with blob references from being
+		// selected for copy compaction, as we currently lack a mechanism
+		// to propagate blob references along with the sstable.
+		mustCopy := !isRemote &&
+			remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level) &&
+			meta.BlobReferenceDepth == 0
 		if mustCopy {
-			// If the source is virtual, it's best to just rewrite the file as all
-			// conditions in the above comment are met.
+			// If the source is virtual, it's best to just rewrite the file as
+			// all conditions in the above comment are met.
 			if !meta.Virtual {
 				c.kind = compactionKindCopy
 			}
@@ -3344,6 +3352,11 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 func (d *DB) newCompactionOutputTable(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
+	// Prefer shared storage if present.
+	c.opts = objstorage.CreateOptions{
+		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+		WriteCategory:       getDiskWriteCategoryForCompaction(d.opts, c.kind),
+	}
 	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeTable)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
@@ -3369,6 +3382,12 @@ func (d *DB) newCompactionOutputTable(
 func (d *DB) newCompactionOutputBlob(
 	jobID JobID, c *compaction,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
+	// Disable value separation for copy compaction as we do not
+	// support blob files on shared storage.
+	c.opts = objstorage.CreateOptions{
+		PreferSharedStorage: false,
+		WriteCategory:       getDiskWriteCategoryForCompaction(d.opts, c.kind),
+	}
 	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeBlob)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
@@ -3387,20 +3406,8 @@ func (d *DB) newCompactionOutputObj(
 	c *compaction, typ base.FileType,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
-
-	var writeCategory vfs.DiskWriteCategory
-	if d.opts.EnableSQLRowSpillMetrics {
-		// In the scenario that the Pebble engine is used for SQL row spills the
-		// data written to the memtable will correspond to spills to disk and
-		// should be categorized as such.
-		writeCategory = "sql-row-spill"
-	} else if c.kind == compactionKindFlush {
-		writeCategory = "pebble-memtable-flush"
-	} else {
-		writeCategory = "pebble-compaction"
-	}
-
 	ctx := context.TODO()
+
 	if objiotracing.Enabled {
 		ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
 		if c.kind == compactionKindFlush {
@@ -3410,12 +3417,7 @@ func (d *DB) newCompactionOutputObj(
 		}
 	}
 
-	// Prefer shared storage if present.
-	createOpts := objstorage.CreateOptions{
-		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
-		WriteCategory:       writeCategory,
-	}
-	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, createOpts)
+	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, c.opts)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
@@ -3449,5 +3451,18 @@ func validateVersionEdit(
 	for _, m := range ve.DeletedTables {
 		validateKey(m, m.Smallest().UserKey)
 		validateKey(m, m.Largest().UserKey)
+	}
+}
+
+func getDiskWriteCategoryForCompaction(opts *Options, kind compactionKind) vfs.DiskWriteCategory {
+	if opts.EnableSQLRowSpillMetrics {
+		// In the scenario that the Pebble engine is used for SQL row spills the
+		// data written to the memtable will correspond to spills to disk and
+		// should be categorized as such.
+		return "sql-row-spill"
+	} else if kind == compactionKindFlush {
+		return "pebble-memtable-flush"
+	} else {
+		return "pebble-compaction"
 	}
 }
