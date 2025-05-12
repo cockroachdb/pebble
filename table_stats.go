@@ -652,8 +652,8 @@ var lastSanityCheckStatsLog crtime.AtomicMono
 
 func sanityCheckStats(meta *tableMetadata, logger Logger, info string) {
 	// Values for PointDeletionsBytesEstimate and RangeDeletionsBytesEstimate that
-	// exceed this value are most likely indicative of a bug.
-	const maxDeletionBytesEstimate = 16 << 30 // 16 GiB
+	// exceed this value are likely indicative of a bug (eg, underflow).
+	const maxDeletionBytesEstimate = 1 << 50 // 1 PiB
 
 	if meta.Stats.PointDeletionsBytesEstimate > maxDeletionBytesEstimate ||
 		meta.Stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
