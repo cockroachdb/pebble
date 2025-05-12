@@ -162,6 +162,10 @@ func TestReplayPaced(t *testing.T) {
 	runReplayTest(t, "testdata/replay_paced")
 }
 
+func TestReplayValSep(t *testing.T) {
+	runReplayTest(t, "testdata/replay_val_sep")
+}
+
 func TestLoadFlushedSSTableKeys(t *testing.T) {
 	var buf bytes.Buffer
 	var diskFileNums []base.DiskFileNum
@@ -178,6 +182,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 		Comparer:           testkeys.Comparer,
 		FormatMajorVersion: pebble.FormatMinSupported,
 	}
+	setDefaultExperimentalOpts(opts)
 	d, err := pebble.Open("", opts)
 	require.NoError(t, err)
 	defer d.Close()
@@ -200,7 +205,14 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 			}
 
 			b := d.NewBatch()
-			err := loadFlushedSSTableKeys(b, opts.FS, "", diskFileNums, opts.MakeReaderOptions(), &flushBufs)
+			readerOpts := opts.MakeReaderOptions()
+			provider, closeFunc, err := pebble.SetupBlobReaderProvider(opts.FS, "", opts, readerOpts)
+			if err != nil {
+				return err.Error()
+			}
+			defer closeFunc()
+			err = loadFlushedSSTableKeys(b, opts.FS, "", diskFileNums, nil /* blobRefMap */, provider,
+				readerOpts, &flushBufs)
 			if err != nil {
 				b.Close()
 				return err.Error()
@@ -294,6 +306,28 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			d, err = pebble.Open("build", opts)
 			require.NoError(t, err)
 			return ""
+		case "open-val-sep":
+			wc = NewWorkloadCollector("build")
+			opts := &pebble.Options{
+				Comparer:                    testkeys.Comparer,
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          pebble.FormatExperimentalValueSeparation,
+				FS:                          fs,
+				MaxManifestFileSize:         96,
+			}
+			opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+				return pebble.ValueSeparationPolicy{
+					Enabled:               true,
+					MinimumSize:           3,
+					MaxBlobReferenceDepth: 5,
+				}
+			}
+			setDefaultExperimentalOpts(opts)
+			wc.Attach(opts)
+			var err error
+			d, err = pebble.Open("build", opts)
+			require.NoError(t, err)
+			return ""
 		case "close":
 			err := d.Close()
 			require.NoError(t, err)
@@ -319,7 +353,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			return buf.String()
 		case "stop":
 			wc.mu.Lock()
-			for wc.mu.tablesEnqueued != wc.mu.tablesCopied {
+			for wc.mu.filesEnqueued != wc.mu.filesCopied {
 				wc.mu.copyCond.Wait()
 			}
 			wc.mu.Unlock()
@@ -358,21 +392,28 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 		case "find-workload-files":
 			var buf bytes.Buffer
 			dir := td.CmdArgs[0].String()
-			m, s, err := findWorkloadFiles(dir, fs)
+			m, s, b, err := findWorkloadFiles(dir, fs)
 
 			fmt.Fprintln(&buf, "manifests")
 			sort.Strings(m)
 			for _, elem := range m {
 				fmt.Fprintf(&buf, "  %s\n", elem)
 			}
-			var res []string
-			for key := range s {
-				res = append(res, key.String())
+			mapToSortedStrings := func(m map[base.FileNum]struct{}) []string {
+				var res []string
+				for key := range m {
+					res = append(res, key.String())
+				}
+				sort.Strings(res)
+				return res
 			}
-			sort.Strings(res)
 
 			fmt.Fprintln(&buf, "sstables")
-			for _, elem := range res {
+			for _, elem := range mapToSortedStrings(s) {
+				fmt.Fprintf(&buf, "  %s\n", elem)
+			}
+			fmt.Fprintln(&buf, "blob files")
+			for _, elem := range mapToSortedStrings(b) {
 				fmt.Fprintf(&buf, "  %s\n", elem)
 			}
 			fmt.Fprintln(&buf, "error")
@@ -383,7 +424,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 		case "find-manifest-start":
 			var buf bytes.Buffer
 			dir := td.CmdArgs[0].String()
-			m, _, err := findWorkloadFiles(dir, fs)
+			m, _, _, err := findWorkloadFiles(dir, fs)
 			sort.Strings(m)
 			require.NoError(t, err)
 			i, o, err := findManifestStart(dir, fs, m)
