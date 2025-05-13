@@ -613,12 +613,16 @@ func (y *ycsb) done(elapsed time.Duration) {
 		readAmpCount = 1
 	}
 
+	// TODO(jackson): Is the bytes read metric useful? It only reports
+	// compaction bytes read. Maybe we should report the iterator stats' bytes
+	// read instead or in combination?
+
 	fmt.Printf("Benchmarkycsb/%s/values=%s %d  %0.1f ops/sec  %d read  %d write  %.2f r-amp  %0.2f w-amp\n\n",
 		ycsbConfig.workload, ycsbConfig.values,
 		resultHist.TotalCount(),
 		float64(resultHist.TotalCount())/elapsed.Seconds(),
 		total.TableBytesRead,
-		total.TableBytesFlushed+total.TableBytesCompacted,
+		total.TableBytesFlushed+total.TableBytesCompacted+total.BlobBytesFlushed+total.BlobBytesWritten,
 		float64(readAmpSum)/float64(readAmpCount),
 		total.WriteAmp(),
 	)
