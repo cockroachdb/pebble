@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
@@ -147,6 +148,63 @@ func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentBlockNum)
 	}
 	fmt.Fprintf(w, "}\n")
+}
+
+func TestValueFetcherRetrieveRandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+
+	ctx := context.Background()
+	opts := FileWriterOptions{}
+	obj := &objstorage.MemObj{}
+	w := NewFileWriter(000001, obj, opts)
+	rng := rand.New(rand.NewPCG(seed, seed))
+	var handles []Handle
+	var values [][]byte
+	for v := 4 << 20; v > 0; {
+		n := testutils.RandIntInRange(rng, 1, 4096)
+		val := testutils.RandBytes(rng, n)
+		h := w.AddValue(val)
+		handles = append(handles, h)
+		values = append(values, val)
+		v -= n
+	}
+	_, err := w.Close()
+	require.NoError(t, err)
+
+	r, err := NewFileReader(ctx, obj, FileReaderOptions{
+		ReaderOptions: block.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				FileNum: base.DiskFileNum(1),
+			},
+		},
+	})
+	require.NoError(t, err)
+	rp := &mockReaderProvider{readers: map[base.DiskFileNum]*FileReader{000001: r}}
+
+	t.Run("sequential", func(t *testing.T) {
+		var fetcher ValueFetcher
+		fetcher.Init(rp, block.ReadEnv{})
+		for i := 0; i < len(handles); i++ {
+			val, err := fetcher.retrieve(ctx, handles[i])
+			require.NoError(t, err)
+			require.Equal(t, values[i], val)
+		}
+	})
+	t.Run("random", func(t *testing.T) {
+		indices := make([]int, len(handles))
+		for i := 0; i < len(handles); i++ {
+			indices[i] = testutils.RandIntInRange(rng, 0, len(handles))
+		}
+		var fetcher ValueFetcher
+		fetcher.Init(rp, block.ReadEnv{})
+		for i := 0; i < len(indices); i++ {
+			val, err := fetcher.retrieve(ctx, handles[indices[i]])
+			require.NoError(t, err)
+			require.Equal(t, values[indices[i]], val)
+		}
+	})
 }
 
 func BenchmarkValueFetcherRetrieve(b *testing.B) {
