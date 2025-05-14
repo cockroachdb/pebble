@@ -484,16 +484,11 @@ func (r *Reader) readMetaindex(
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.blockReader.Read(ctx, metaEnv, readHandle, bh, noInitBlockMetadataFn)
-		if err != nil {
-			return err
-		}
 		r.propertiesBH = bh
-		r.Properties, err = decodePropertiesBlock(r.tableFormat, b.BlockData(), deniedUserProperties)
+		r.Properties, err = r.readPropertiesBlockInternal(ctx, metaEnv.BufferPool, readHandle, deniedUserProperties)
 		if err != nil {
 			return err
 		}
-		b.Release()
 	} else {
 		return errors.New("did not read any value for the properties block in the meta index")
 	}
@@ -546,6 +541,48 @@ func decodePropertiesBlock(
 		}
 	}
 	return props, nil
+}
+
+var PropertiesBlockBufPools = sync.Pool{
+	New: func() any {
+		bp := new(block.BufferPool)
+		// New pools are initialized with a capacity of 2 to accommodate
+		// both the compressed properties block (1) and decompressed
+		// properties block (1).
+		bp.Init(2)
+		return bp
+	},
+}
+
+// ReadPropertiesBlock reads the properties block from the table.
+// We always read the properties block into a buffer pool instead
+// of the block cache.
+func (r *Reader) ReadPropertiesBlock(
+	ctx context.Context, bufferPool *block.BufferPool, deniedUserProperties map[string]struct{},
+) (Properties, error) {
+	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle, deniedUserProperties)
+}
+
+func (r *Reader) readPropertiesBlockInternal(
+	ctx context.Context,
+	bufferPool *block.BufferPool,
+	readHandle objstorage.ReadHandle,
+	deniedUserProperties map[string]struct{},
+) (Properties, error) {
+	if bufferPool == nil {
+		// We always use a buffer pool when reading the properties block as
+		// we don't want it in the block cache.
+		bufferPool = PropertiesBlockBufPools.Get().(*block.BufferPool)
+		defer PropertiesBlockBufPools.Put(bufferPool)
+		defer bufferPool.Release()
+	}
+	env := block.ReadEnv{BufferPool: bufferPool}
+	b, err := r.blockReader.Read(ctx, env, readHandle, r.propertiesBH, noInitBlockMetadataFn)
+	if err != nil {
+		return Properties{}, err
+	}
+	defer b.Release()
+	return decodePropertiesBlock(r.tableFormat, b.BlockData(), deniedUserProperties)
 }
 
 // Layout returns the layout (block organization) for an sstable.
