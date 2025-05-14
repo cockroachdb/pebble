@@ -111,7 +111,7 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 					if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
 						continue
 					}
-					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
+					fmt.Fprintf(stdout, "  %s:%d", f.TableNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 					smallest := f.Smallest()
 					largest := f.Largest()
@@ -129,7 +129,7 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 			if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
 				continue
 			}
-			fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
+			fmt.Fprintf(stdout, "  %s:%d", f.TableNum, f.Size)
 			formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 			smallest := f.Smallest()
 			largest := f.Largest()
@@ -238,7 +238,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				for _, nf := range ve.NewTables {
 					empty = false
 					fmt.Fprintf(stdout, "  added:         L%d %s:%d",
-						nf.Level, nf.Meta.FileNum, nf.Meta.Size)
+						nf.Level, nf.Meta.TableNum, nf.Meta.Size)
 					formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
 					smallest := nf.Meta.Smallest()
 					largest := nf.Meta.Largest()
@@ -375,13 +375,13 @@ func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 		isIntraL0Compaction := isLikelyCompaction && ve.NewTables[0].Level == 0
 		veNewest := newestOverall
 		for _, nf := range ve.NewTables {
-			_, seen := metadatas[nf.Meta.FileNum]
+			_, seen := metadatas[nf.Meta.TableNum]
 			if seen && !isLikelyCompaction {
 				// Output error and continue processing as usual.
 				fmt.Fprintf(stdout, "error: flush/ingest has file that is already known %d size %s\n",
-					nf.Meta.FileNum, humanize.Bytes.Uint64(nf.Meta.Size))
+					nf.Meta.TableNum, humanize.Bytes.Uint64(nf.Meta.Size))
 			}
-			metadatas[nf.Meta.FileNum] = nf.Meta
+			metadatas[nf.Meta.TableNum] = nf.Meta
 			if nf.Meta.CreationTime == 0 {
 				continue
 			}
@@ -659,7 +659,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					}
 					for _, nf := range ve.NewTables {
 						fmt.Fprintf(stdout, "  added: L%d %s:%d",
-							nf.Level, nf.Meta.FileNum, nf.Meta.Size)
+							nf.Level, nf.Meta.TableNum, nf.Meta.Size)
 						formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
 						smallest := nf.Meta.Smallest()
 						largest := nf.Meta.Largest()

@@ -42,7 +42,7 @@ func TestLevelIterator(t *testing.T) {
 						if len(parts) != 2 {
 							t.Fatalf("malformed table spec: %q", metaStr)
 						}
-						m := &TableMetadata{FileNum: base.FileNum(len(files) + 1)}
+						m := &TableMetadata{TableNum: base.FileNum(len(files) + 1)}
 						m.ExtendPointKeyBounds(
 							base.DefaultComparer.Compare,
 							base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -184,7 +184,7 @@ func makeTestTableMetadata() (tables []*TableMetadata, keys [][]byte) {
 		balloc, userKey = balloc.Copy(buf[:n])
 		keys = append(keys, userKey)
 
-		tablesAlloc[i] = TableMetadata{FileNum: base.FileNum(2*i + 1)}
+		tablesAlloc[i] = TableMetadata{TableNum: base.FileNum(2*i + 1)}
 		tablesAlloc[i].ExtendPointKeyBounds(testkeys.Comparer.Compare,
 			base.MakeInternalKey(userKey, base.SeqNum(i), base.InternalKeyKindSet),
 			base.MakeInternalKey(userKey, base.SeqNum(i), base.InternalKeyKindSet))
@@ -214,8 +214,8 @@ func TestLevelIteratorSeek(t *testing.T) {
 			want := i + (i+1)%2
 			if m == nil {
 				t.Fatalf("SeekGE(%q [%d]) = nil", keys[i], i)
-			} else if int(m.FileNum) != want {
-				t.Fatalf("SeekGE(%q [%d]) = %s", keys[i], i, m.FileNum)
+			} else if int(m.TableNum) != want {
+				t.Fatalf("SeekGE(%q [%d]) = %s", keys[i], i, m.TableNum)
 			}
 		}
 	})
@@ -239,8 +239,8 @@ func TestLevelIteratorSeek(t *testing.T) {
 			want := i - 1 - i%2
 			if m == nil {
 				t.Fatalf("SeekLT(%q [%d]) = nil", keys[i], i)
-			} else if int(m.FileNum) != want {
-				t.Fatalf("SeekLT(%q [%d]) = %s", keys[i], i, m.FileNum)
+			} else if int(m.TableNum) != want {
+				t.Fatalf("SeekLT(%q [%d]) = %s", keys[i], i, m.TableNum)
 			}
 		}
 	})
@@ -255,7 +255,7 @@ func TestLevelIteratorFind(t *testing.T) {
 				got := slices.Collect(lm.Find(testkeys.Comparer.Compare, m).All())
 				if len(got) != 1 {
 					t.Fatalf("Find(%s) = %s", m, got)
-				} else if got[0].FileNum != m.FileNum {
+				} else if got[0].TableNum != m.TableNum {
 					t.Fatalf("Find(%s) = %s", m, got)
 				}
 			}

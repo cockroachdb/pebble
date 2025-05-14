@@ -31,7 +31,7 @@ func BenchmarkLevelIteratorSeekGE(b *testing.B) {
 	}, 0)
 	for i := 0; i < countTables; i++ {
 		fileAlloc[i] = manifest.TableMetadata{
-			FileNum: base.FileNum(i),
+			TableNum: base.FileNum(i),
 		}
 		fileAlloc[i].ExtendPointKeyBounds(cockroachkvs.Compare,
 			base.MakeInternalKey(keys[i*2], base.SeqNum(i), base.InternalKeyKindSet),

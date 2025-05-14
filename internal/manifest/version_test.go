@@ -78,7 +78,7 @@ func TestIkeyRange(t *testing.T) {
 		if tc.input != "" {
 			for i, s := range strings.Split(tc.input, " ") {
 				m := (&TableMetadata{
-					FileNum: base.FileNum(i),
+					TableNum: base.FileNum(i),
 				}).ExtendPointKeyBounds(cmp, ikey(s[0:1]), ikey(s[2:3]))
 				m.InitPhysicalBacking()
 				f = append(f, m)
@@ -131,8 +131,8 @@ func TestContains(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *TableMetadata {
 		m := (&TableMetadata{
-			FileNum: fileNum,
-			Size:    size,
+			TableNum: fileNum,
+			Size:     size,
 		}).ExtendPointKeyBounds(cmp, smallest, largest)
 		m.InitPhysicalBacking()
 		return m
@@ -442,8 +442,8 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 func TestCalculateInuseKeyRanges(t *testing.T) {
 	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *TableMetadata {
 		m := &TableMetadata{
-			FileNum: fileNum,
-			Size:    size,
+			TableNum: fileNum,
+			Size:     size,
 		}
 		m.ExtendPointKeyBounds(base.DefaultComparer.Compare, smallest, largest)
 		m.InitPhysicalBacking()
@@ -704,7 +704,7 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 		}
 		makeFile := func(level, start, end int) *TableMetadata {
 			fileNum++
-			m := &TableMetadata{FileNum: fileNum}
+			m := &TableMetadata{TableNum: fileNum}
 			m.ExtendPointKeyBounds(
 				cmp,
 				makeIK(level, start),
@@ -794,7 +794,7 @@ func TestIterAllocs(t *testing.T) {
 			var tables []*TableMetadata
 			for i := 0; i < n; i++ {
 				tables = append(tables, &TableMetadata{
-					FileNum:     base.FileNum(i),
+					TableNum:    base.FileNum(i),
 					FileBacking: &FileBacking{},
 				})
 			}
@@ -817,7 +817,7 @@ func TestIterAllocs(t *testing.T) {
 			var tables []*TableMetadata
 			for i := 0; i < n; i++ {
 				tables = append(tables, &TableMetadata{
-					FileNum:     base.FileNum(i),
+					TableNum:    base.FileNum(i),
 					FileBacking: &FileBacking{},
 				})
 			}

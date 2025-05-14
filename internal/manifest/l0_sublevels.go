@@ -426,7 +426,7 @@ func (s *l0Sublevels) canUseAddL0Files(
 	iter := levelMetadata.Iter()
 	t := iter.Last()
 	for i := len(addedTables) - 1; i >= 0; i-- {
-		if addedTables[t.FileNum] == nil {
+		if addedTables[t.TableNum] == nil {
 			// t is an existing table that sorts after some of the new tables
 			// (specifically the ones we haven't yet seen).
 			return nil, false
@@ -745,7 +745,7 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 			bounds := f.UserKeyBounds()
 			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, bounds.Start) != 0 ||
 				s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, bounds.End.Key) != 0 {
-				panic(fmt.Sprintf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.FileNum,
+				panic(fmt.Sprintf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.TableNum,
 					s.orderedIntervals[f.minIntervalIndex].startKey.key, s.orderedIntervals[f.maxIntervalIndex+1].startKey.key,
 					bounds.Start, bounds.End.Key))
 			}
@@ -872,7 +872,7 @@ func (s *l0Sublevels) describe(verbose bool) string {
 					intervalsBytes += s.orderedIntervals[k].estimatedBytes
 				}
 				fmt.Fprintf(&buf, "wide file: %d, [%d, %d], byte fraction: %f\n",
-					f.FileNum, f.minIntervalIndex, f.maxIntervalIndex,
+					f.TableNum, f.minIntervalIndex, f.maxIntervalIndex,
 					float64(intervalsBytes)/float64(s.fileBytes))
 			}
 		}
@@ -1088,7 +1088,7 @@ func (s *l0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 			if c.isIntraL0 && f.LargestSeqNum >= c.earliestUnflushedSeqNum {
 				return errors.Errorf(
 					"sstable %s in compaction has sequence numbers higher than the earliest unflushed seqnum %d: %d-%d",
-					f.FileNum, c.earliestUnflushedSeqNum, f.SmallestSeqNum,
+					f.TableNum, c.earliestUnflushedSeqNum, f.SmallestSeqNum,
 					f.LargestSeqNum)
 			}
 			if !includedFiles[f.L0Index] {
@@ -1096,16 +1096,16 @@ func (s *l0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 				fmt.Fprintf(&buf, "bug %t, seed interval: %d: level %d, sl index %d, f.index %d, min %d, max %d, pre-min %d, pre-max %d, f.min %d, f.max %d, filenum: %d, isCompacting: %t\n%s\n",
 					c.isIntraL0, c.seedInterval, level, index, f.L0Index, min, max, c.preExtensionMinInterval, c.preExtensionMaxInterval,
 					f.minIntervalIndex, f.maxIntervalIndex,
-					f.FileNum, f.IsCompacting(), s)
+					f.TableNum, f.IsCompacting(), s)
 				fmt.Fprintf(&buf, "files included:\n")
 				for _, f := range c.Files {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
-						f.FileNum, f.SubLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
+						f.TableNum, f.SubLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
 				}
 				fmt.Fprintf(&buf, "files added:\n")
 				for _, f := range c.filesAdded {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
-						f.FileNum, f.SubLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
+						f.TableNum, f.SubLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
 				}
 				return errors.New(buf.String())
 			}
@@ -1471,7 +1471,7 @@ func (s *l0Sublevels) PickBaseCompaction(
 			// We chose a compaction seed file that should not be compacting; this
 			// indicates that the the internal state is inconsistent. Note that
 			// base.AssertionFailedf panics in invariant builds.
-			logger.Errorf("%v", base.AssertionFailedf("seed file %s should not be compacting", f.FileNum))
+			logger.Errorf("%v", base.AssertionFailedf("seed file %s should not be compacting", f.TableNum))
 			continue
 		}
 
@@ -2068,7 +2068,7 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 			if f.IsCompacting() {
 				// TODO(bilal): Do a logger.Fatalf instead of a panic, for
 				// cleaner unwinding and error messages.
-				panic(fmt.Sprintf("expected %s to not be compacting", f.FileNum))
+				panic(fmt.Sprintf("expected %s to not be compacting", f.TableNum))
 			}
 			if candidate.isIntraL0 && f.LargestSeqNum >= candidate.earliestUnflushedSeqNum {
 				continue
@@ -2249,7 +2249,7 @@ func verifyLevelMetadataTransition(
 	m := make(map[base.FileNum]*TableMetadata, oldLevel.Len())
 	iter := oldLevel.Iter()
 	for t := iter.First(); t != nil; t = iter.Next() {
-		m[t.FileNum] = t
+		m[t.TableNum] = t
 	}
 	for n, t := range addedTables {
 		if m[n] != nil {
@@ -2268,10 +2268,10 @@ func verifyLevelMetadataTransition(
 	}
 	iter = newLevel.Iter()
 	for t := iter.First(); t != nil; t = iter.Next() {
-		if m[t.FileNum] == nil {
+		if m[t.TableNum] == nil {
 			panic("unknown table in new level")
 		}
-		delete(m, t.FileNum)
+		delete(m, t.TableNum)
 	}
 	if len(m) != 0 {
 		panic("tables missing from the new level")

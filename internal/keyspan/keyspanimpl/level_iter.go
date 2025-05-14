@@ -416,7 +416,7 @@ func (l *LevelIter) Close() {
 // String implements keyspan.FragmentIterator.
 func (l *LevelIter) String() string {
 	if l.file != nil {
-		return fmt.Sprintf("%s: fileNum=%s", l.level, l.file.FileNum)
+		return fmt.Sprintf("%s: fileNum=%s", l.level, l.file.TableNum)
 	}
 	return fmt.Sprintf("%s: fileNum=<nil>", l.level)
 }

@@ -29,7 +29,7 @@ func TestChecker(t *testing.T) {
 			tt := testTable{
 				name: d.CmdArgs[0].String(),
 				meta: &manifest.TableMetadata{
-					FileNum: base.FileNum(1 + len(tables.tables)),
+					TableNum: base.FileNum(1 + len(tables.tables)),
 				},
 			}
 			tt.meta.InitPhysicalBacking()

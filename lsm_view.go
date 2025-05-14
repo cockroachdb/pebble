@@ -143,9 +143,9 @@ func (b *lsmViewBuilder) Build(
 		for j, f := range files {
 			t := &l.Tables[j]
 			if !f.Virtual {
-				t.Label = fmt.Sprintf("%d", f.FileNum)
+				t.Label = fmt.Sprintf("%d", f.TableNum)
 			} else {
-				t.Label = fmt.Sprintf("%d (%d)", f.FileNum, f.FileBacking.DiskFileNum)
+				t.Label = fmt.Sprintf("%d (%d)", f.TableNum, f.FileBacking.DiskFileNum)
 			}
 
 			t.Size = f.Size
@@ -165,7 +165,7 @@ func (b *lsmViewBuilder) tableDetails(
 		res = append(res, fmt.Sprintf(format, args...))
 	}
 
-	outf("%s: %s - %s", m.FileNum, m.Smallest().Pretty(b.fmtKey), m.Largest().Pretty(b.fmtKey))
+	outf("%s: %s - %s", m.TableNum, m.Smallest().Pretty(b.fmtKey), m.Largest().Pretty(b.fmtKey))
 	outf("size: %s", humanize.Bytes.Uint64(m.Size))
 	if m.Virtual {
 		meta, err := objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)

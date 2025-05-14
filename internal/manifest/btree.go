@@ -432,7 +432,7 @@ func (n *node) Insert(bcmp btreeCmp, item *TableMetadata) error {
 		// If we're inserting a metadata that's equal to an existing item
 		// in the tree, we're inserting a file into a level twice.
 		return errors.Errorf("files %s and %s collided on sort keys",
-			errors.Safe(item.FileNum), errors.Safe(n.items[i].FileNum))
+			errors.Safe(item.TableNum), errors.Safe(n.items[i].TableNum))
 	}
 	if n.leaf {
 		n.insertAt(i, item, nil)
@@ -453,7 +453,7 @@ func (n *node) Insert(bcmp btreeCmp, item *TableMetadata) error {
 			// If we're inserting a metadata that's equal to an existing item
 			// in the tree, we're inserting a file into a level twice.
 			return errors.Errorf("files %s and %s collided on sort keys",
-				errors.Safe(item.FileNum), errors.Safe(n.items[i].FileNum))
+				errors.Safe(item.TableNum), errors.Safe(n.items[i].TableNum))
 		}
 	}
 

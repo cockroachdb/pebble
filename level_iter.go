@@ -950,7 +950,7 @@ func (l *levelIter) DebugTree(tp treeprinter.Node) {
 
 func (l *levelIter) String() string {
 	if l.iterFile != nil {
-		return fmt.Sprintf("%s: fileNum=%s", l.layer, l.iterFile.FileNum.String())
+		return fmt.Sprintf("%s: fileNum=%s", l.layer, l.iterFile.TableNum.String())
 	}
 	return fmt.Sprintf("%s: fileNum=<nil>", l.layer)
 }

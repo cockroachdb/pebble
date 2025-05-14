@@ -395,7 +395,7 @@ func checkRangeTombstones(c *checkConfig) error {
 			if err != nil {
 				return err
 			}
-			tombstones, err = addTombstonesFromIter(iters.RangeDeletion(), level, lsmLevel, f.FileNum,
+			tombstones, err = addTombstonesFromIter(iters.RangeDeletion(), level, lsmLevel, f.TableNum,
 				tombstones, c.seqNum, c.cmp, c.formatKey)
 			_ = iters.CloseAll()
 

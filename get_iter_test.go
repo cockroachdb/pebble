@@ -388,7 +388,7 @@ func TestGetIter(t *testing.T) {
 		newIter := func(
 			_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
-			d, ok := m[file.FileNum]
+			d, ok := m[file.TableNum]
 			if !ok {
 				return iterSet{}, errors.New("no such file")
 			}
@@ -401,7 +401,7 @@ func TestGetIter(t *testing.T) {
 			m[tt.fileNum] = d
 
 			meta := &tableMetadata{
-				FileNum: tt.fileNum,
+				TableNum: tt.fileNum,
 			}
 			meta.InitPhysicalBacking()
 			for i, datum := range tt.data {

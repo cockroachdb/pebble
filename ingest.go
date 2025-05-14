@@ -68,7 +68,7 @@ func ingestSynthesizeShared(
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &tableMetadata{
-		FileNum:      fileNum,
+		TableNum:     fileNum,
 		CreationTime: time.Now().Unix(),
 		Virtual:      true,
 		Size:         sm.Size,
@@ -157,7 +157,7 @@ func ingestLoad1External(
 	// Don't load table stats. Doing a round trip to shared storage, one SST
 	// at a time is not worth it as it slows down ingestion.
 	meta := &tableMetadata{
-		FileNum:      fileNum,
+		TableNum:     fileNum,
 		CreationTime: time.Now().Unix(),
 		Size:         e.Size,
 		Virtual:      true,
@@ -294,7 +294,7 @@ func ingestLoad1(
 	}
 
 	meta = &tableMetadata{}
-	meta.FileNum = fileNum
+	meta.TableNum = fileNum
 	meta.Size = max(uint64(readable.Size()), 1)
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
@@ -669,7 +669,7 @@ func ingestLinkLocal(
 				JobID:   int(jobID),
 				Reason:  "ingesting",
 				Path:    objProvider.Path(objMeta),
-				FileNum: base.PhysicalTableDiskFileNum(localMetas[i].FileNum),
+				FileNum: base.PhysicalTableDiskFileNum(localMetas[i].TableNum),
 			})
 		}
 	}
@@ -721,7 +721,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		// simplicity, we use the same number for both the FileNum and the
 		// DiskFileNum (even though this is a virtual sstable).
 		size := max(lr.external[i].external.Size, 1)
-		meta.InitVirtualBacking(base.DiskFileNum(meta.FileNum), size)
+		meta.InitVirtualBacking(base.DiskFileNum(meta.TableNum), size)
 
 		// Set the underlying FileBacking's size to the same size as the virtualized
 		// view of the sstable. This ensures that we don't over-prioritize this
@@ -1330,7 +1330,7 @@ func (d *DB) handleIngestAsFlushable(
 		b.excise(exciseSpan.Start, exciseSpan.End)
 	}
 	for _, m := range meta {
-		b.ingestSST(m.FileNum)
+		b.ingestSST(m.TableNum)
 	}
 	b.setSeqNum(seqNum)
 
@@ -1544,7 +1544,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 					// pipeline while we perform I/O to check for overlap may be
 					// more disruptive than enqueueing this ingestion on the
 					// flushable queue and switching to a new memtable.
-					metaFlushableOverlaps[v.FileNum] = true
+					metaFlushableOverlaps[v.TableNum] = true
 				case *KeyRange:
 					// An excise span or an EventuallyFileOnlySnapshot protected range;
 					// not a file.
@@ -1723,7 +1723,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 				if e.Level == 0 {
 					stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
 				}
-				if metaFlushableOverlaps[e.Meta.FileNum] {
+				if metaFlushableOverlaps[e.Meta.TableNum] {
 					stats.MemtableOverlappingFiles++
 				}
 			}
@@ -1745,7 +1745,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 				// before entering the commit pipeline, we can use that overlap to
 				// improve our approximation by incorporating overlap with L0, not
 				// just memtables.
-				if metaFlushableOverlaps[f.FileNum] {
+				if metaFlushableOverlaps[f.TableNum] {
 					stats.ApproxIngestedIntoL0Bytes += f.Size
 					stats.MemtableOverlappingFiles++
 				}
@@ -1794,7 +1794,7 @@ func (d *DB) ingestSplit(
 		// to go into this level without necessitating another ingest split.
 		splitFile := s.splitFile
 		for splitFile != nil {
-			replaced, ok := replacedFiles[splitFile.FileNum]
+			replaced, ok := replacedFiles[splitFile.TableNum]
 			if !ok {
 				break
 			}
@@ -1847,7 +1847,7 @@ func (d *DB) ingestSplit(
 			return err
 		}
 		added := applyExciseToVersionEdit(ve, splitFile, leftTable, rightTable, s.level)
-		replacedFiles[splitFile.FileNum] = added
+		replacedFiles[splitFile.TableNum] = added
 		for i := range added {
 			addedBounds := added[i].Meta.UserKeyBounds()
 			if s.ingestFile.Overlaps(d.cmp, &addedBounds) {
@@ -1860,7 +1860,7 @@ func (d *DB) ingestSplit(
 	// are also in ve.DeletedFiles.
 	newNewFiles := ve.NewTables[:0]
 	for i := range ve.NewTables {
-		fn := ve.NewTables[i].Meta.FileNum
+		fn := ve.NewTables[i].Meta.TableNum
 		deEntry := deletedFileEntry{Level: ve.NewTables[i].Level, FileNum: fn}
 		if _, ok := ve.DeletedTables[deEntry]; ok {
 			delete(ve.DeletedTables, deEntry)
@@ -1958,7 +1958,7 @@ func (d *DB) ingestApply(
 			//
 			// Shared files always have a new backing. External files have new backings
 			// iff the backing disk file num and the file num match (see ingestAttachRemote).
-			if isShared || (isExternal && m.FileBacking.DiskFileNum == base.DiskFileNum(m.FileNum)) {
+			if isShared || (isExternal && m.FileBacking.DiskFileNum == base.DiskFileNum(m.TableNum)) {
 				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
 			}
 
@@ -2078,7 +2078,7 @@ func (d *DB) ingestApply(
 						return versionUpdate{}, err
 					}
 					newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
-					replacedFiles[m.FileNum] = newFiles
+					replacedFiles[m.TableNum] = newFiles
 					updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 				}
 			}
@@ -2114,7 +2114,7 @@ func (d *DB) ingestApply(
 				if checkCompactions {
 					for i := range c.inputs {
 						for f := range c.inputs[i].files.All() {
-							if _, ok := replacedFiles[f.FileNum]; ok {
+							if _, ok := replacedFiles[f.TableNum]; ok {
 								c.cancel.Store(true)
 								break
 							}

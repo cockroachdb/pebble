@@ -153,7 +153,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			var buf bytes.Buffer
 			for _, m := range lr.local {
-				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest(), m.Largest())
+				fmt.Fprintf(&buf, "%d: %s-%s\n", m.TableNum, m.Smallest(), m.Largest())
 				fmt.Fprintf(&buf, "  points: %s-%s\n", m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
 				if m.HasRangeKeys {
 					fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest())
@@ -189,7 +189,7 @@ func TestIngestLoadRand(t *testing.T) {
 		pending[i] = base.FileNum(rng.Uint64())
 		expected[i] = ingestLocalMeta{
 			tableMetadata: &tableMetadata{
-				FileNum: pending[i],
+				TableNum: pending[i],
 			},
 			path: paths[i],
 		}
@@ -343,7 +343,7 @@ func TestIngestLink(t *testing.T) {
 			for j := range meta {
 				meta[j].path = fmt.Sprintf("external%d", j)
 				meta[j].tableMetadata = &tableMetadata{}
-				meta[j].FileNum = base.FileNum(j)
+				meta[j].TableNum = base.FileNum(j)
 				meta[j].InitPhysicalBacking()
 				f, err := opts.FS.Create(meta[j].path, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
@@ -426,7 +426,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer objProvider.Close()
 
-	meta := &tableMetadata{FileNum: 1}
+	meta := &tableMetadata{TableNum: 1}
 	meta.InitPhysicalBacking()
 	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{tableMetadata: meta, path: "source"}})
 	require.NoError(t, err)
@@ -937,7 +937,7 @@ func testIngestSharedImpl(
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
 						d.mu.Unlock()
-						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
+						return fmt.Sprintf("error when excising %s: %s", m.TableNum, err.Error())
 					}
 					applyExciseToVersionEdit(ve, m, leftTable, rightTable, level)
 				}
@@ -1655,7 +1655,7 @@ func TestIngestTargetLevel(t *testing.T) {
 					return err.Error()
 				}
 				if overlapFile != nil {
-					fmt.Fprintf(&buf, "%d (split file: %s)\n", level, overlapFile.FileNum)
+					fmt.Fprintf(&buf, "%d (split file: %s)\n", level, overlapFile.TableNum)
 				} else {
 					fmt.Fprintf(&buf, "%d\n", level)
 				}
@@ -2738,7 +2738,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Cleanup the set of files in the FS.
 			var toRemove []ingestLocalMeta
 			for _, fn := range tc.cleanupFiles {
-				m := &tableMetadata{FileNum: fn}
+				m := &tableMetadata{TableNum: fn}
 				m.InitPhysicalBacking()
 				toRemove = append(toRemove, ingestLocalMeta{tableMetadata: m})
 			}

@@ -81,7 +81,7 @@ func loadVersion(
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), base.SeqNum(i), InternalKeyKindSet)
 				}
 				m := (&tableMetadata{
-					FileNum:               base.FileNum(uint64(level)*100_000 + i),
+					TableNum:              base.FileNum(uint64(level)*100_000 + i),
 					SmallestSeqNum:        key.SeqNum(),
 					LargestSeqNum:         key.SeqNum(),
 					LargestSeqNumAbsolute: key.SeqNum(),
@@ -432,7 +432,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
 		m := (&tableMetadata{
-			FileNum: base.FileNum(fileNum),
+			TableNum: base.FileNum(fileNum),
 		}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -521,7 +521,7 @@ func TestCompactionPickerL0(t *testing.T) {
 						}
 						var compactFile *tableMetadata
 						for _, m := range fileMetas[level] {
-							if m.FileNum == base.FileNum(fileNum) {
+							if m.TableNum == base.FileNum(fileNum) {
 								compactFile = m
 							}
 						}
@@ -620,13 +620,13 @@ func TestCompactionPickerL0(t *testing.T) {
 			for l, lm := range picker.vers.Levels {
 				iter := lm.Iter()
 				for f := iter.First(); f != nil; f = iter.Next() {
-					if f.FileNum != base.FileNum(fileNum) {
+					if f.TableNum != base.FileNum(fileNum) {
 						continue
 					}
 					f.MarkedForCompaction = true
 					picker.vers.Stats.MarkedForCompaction++
 					markedForCompactionAnnotator.InvalidateLevelAnnotation(picker.vers.Levels[l])
-					return fmt.Sprintf("marked L%d.%s", l, f.FileNum)
+					return fmt.Sprintf("marked L%d.%s", l, f.TableNum)
 				}
 			}
 			return "not-found"
@@ -663,8 +663,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
 		m := (&tableMetadata{
-			FileNum: base.FileNum(fileNum),
-			Size:    1028,
+			TableNum: base.FileNum(fileNum),
+			Size:     1028,
 		}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -754,7 +754,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 						}
 						var compactFile *tableMetadata
 						for _, m := range fileMetas[level] {
-							if m.FileNum == base.FileNum(fileNum) {
+							if m.TableNum == base.FileNum(fileNum) {
 								compactFile = m
 							}
 						}
@@ -869,8 +869,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
 		}
 		m := (&tableMetadata{
-			FileNum: base.FileNum(fileNum),
-			Size:    1028,
+			TableNum: base.FileNum(fileNum),
+			Size:     1028,
 		}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -1116,7 +1116,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 					}
 				default:
 					meta := parseMeta(data)
-					meta.FileNum = fileNum
+					meta.TableNum = fileNum
 					fileNum++
 					files[currentLevel] = append(files[currentLevel], meta)
 				}
@@ -1223,7 +1223,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				}
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.FileNum = base.FileNum(len(files))
+					meta.TableNum = base.FileNum(len(files))
 					files = append(files, meta)
 				}
 				manifest.SortBySmallest(files, cmp)
@@ -1263,7 +1263,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 
 				var buf bytes.Buffer
 				for f := range iter.Take().Slice().All() {
-					fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest(), f.Largest())
+					fmt.Fprintf(&buf, "%d: %s-%s\n", f.TableNum, f.Smallest(), f.Largest())
 				}
 				return buf.String()
 
@@ -1289,8 +1289,8 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
 		}
 		m := (&tableMetadata{
-			FileNum: base.FileNum(fileNum),
-			Size:    1028,
+			TableNum: base.FileNum(fileNum),
+			Size:     1028,
 		}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -1710,7 +1710,7 @@ func TestCompactionPickerScores(t *testing.T) {
 func fileNums(files manifest.LevelSlice) string {
 	var ss []string
 	for f := range files.All() {
-		ss = append(ss, f.FileNum.String())
+		ss = append(ss, f.TableNum.String())
 	}
 	sort.Strings(ss)
 	return strings.Join(ss, ",")

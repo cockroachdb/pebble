@@ -170,7 +170,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 		) (iterSet, error) {
 			var set iterSet
 			var err error
-			r := readers[file.FileNum]
+			r := readers[file.TableNum]
 			if kinds.RangeDeletion() {
 				set.rangeDeletion, err = r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, iio.readEnv)
 				if err != nil {
@@ -194,8 +194,8 @@ func TestMergingIterDataDriven(t *testing.T) {
 					return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 				}
 			}
-			set.point = itertest.Attach(set.point, itertest.ProbeState{Log: &buf}, pointProbes[file.FileNum]...)
-			set.rangeDeletion = attachKeyspanProbes(set.rangeDeletion, keyspanProbeContext{log: &buf}, rangeDelProbes[file.FileNum]...)
+			set.point = itertest.Attach(set.point, itertest.ProbeState{Log: &buf}, pointProbes[file.TableNum]...)
+			set.rangeDeletion = attachKeyspanProbes(set.rangeDeletion, keyspanProbeContext{log: &buf}, rangeDelProbes[file.TableNum]...)
 			return set, nil
 		}
 
@@ -270,7 +270,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-					readers[m.FileNum] = r
+					readers[m.TableNum] = r
 				}
 			}
 			v = newVersion(opts, files)
@@ -678,7 +678,7 @@ func buildLevelsForMergingIterSeqSeek(
 			// The same FileNum is being reused across different levels, which
 			// is harmless for the benchmark since each level has its own iterator
 			// creation func.
-			meta[j].FileNum = base.FileNum(j)
+			meta[j].TableNum = base.FileNum(j)
 			largest := iter.Last()
 			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
 			meta[j].InitPhysicalBacking()
@@ -696,12 +696,12 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		newIters := func(
 			_ context.Context, file *manifest.TableMetadata, opts *IterOptions, iio internalIterOpts, _ iterKinds,
 		) (iterSet, error) {
-			iter, err := readers[levelIndex][file.FileNum].NewIter(
+			iter, err := readers[levelIndex][file.TableNum].NewIter(
 				sstable.NoTransforms, opts.LowerBound, opts.UpperBound, sstable.AssertNoBlobHandles)
 			if err != nil {
 				return iterSet{}, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.readEnv)
+			rdIter, err := readers[levelIndex][file.TableNum].NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.readEnv)
 			if err != nil {
 				iter.Close()
 				return iterSet{}, err

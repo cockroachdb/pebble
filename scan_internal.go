@@ -96,7 +96,7 @@ func (s *SharedSSTMeta) cloneFromFileMeta(f *tableMetadata) {
 		SmallestPointKey: f.PointKeyBounds.Smallest().Clone(),
 		LargestPointKey:  f.PointKeyBounds.Largest().Clone(),
 		Size:             f.Size,
-		fileNum:          f.FileNum,
+		fileNum:          f.TableNum,
 	}
 	if f.HasRangeKeys {
 		s.SmallestRangeKey = f.RangeKeyBounds.Smallest().Clone()

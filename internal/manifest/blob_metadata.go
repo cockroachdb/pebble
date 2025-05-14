@@ -359,7 +359,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 	// files should already exist in s.files.
 	newTables := make(map[base.FileNum]struct{})
 	for _, e := range ve.NewTables {
-		newTables[e.Meta.FileNum] = struct{}{}
+		newTables[e.Meta.TableNum] = struct{}{}
 		for _, ref := range e.Meta.BlobReferences {
 			cbf, ok := s.files[ref.FileNum]
 			if !ok {
@@ -390,7 +390,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				}
 				if _, ok := cbf.references[meta]; !ok {
 					return errors.AssertionFailedf("pebble: deleted table %s's reference to blob file %d not known",
-						meta.FileNum, ref.FileNum)
+						meta.TableNum, ref.FileNum)
 				}
 			}
 
@@ -398,7 +398,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			cbf.referencedValueSize -= ref.ValueSize
 			s.stats.ReferencedValueSize -= ref.ValueSize
 			s.stats.ReferencesCount--
-			if _, ok := newTables[meta.FileNum]; ok {
+			if _, ok := newTables[meta.TableNum]; ok {
 				// This table was added to a different level of the LSM in the
 				// same version edit. It's being moved. We can preserve the
 				// existing reference.  We still needed to reduce the counts

@@ -59,13 +59,13 @@ func TestCurrentBlobFileSet(t *testing.T) {
 		ve, err := ParseVersionEditDebug(s)
 		require.NoError(t, err)
 		for i, m := range ve.NewTables {
-			if existingMeta, ok := tableMetas[m.Meta.FileNum]; ok {
+			if existingMeta, ok := tableMetas[m.Meta.TableNum]; ok {
 				// Ensure pointer equality of the *TableMetadata.
 				// ParseVersionEditDebug will return a new *TableMetadata every
 				// time it decodes it.
 				ve.NewTables[i].Meta = existingMeta
 			} else {
-				tableMetas[m.Meta.FileNum] = m.Meta
+				tableMetas[m.Meta.TableNum] = m.Meta
 			}
 		}
 		for dte := range ve.DeletedTables {

@@ -42,7 +42,7 @@ func TestLevelIter(t *testing.T) {
 	newIters := func(
 		_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {
-		f := base.NewFakeIter(iterKVs[file.FileNum])
+		f := base.NewFakeIter(iterKVs[file.TableNum])
 		f.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
 		return iterSet{point: f}, nil
 	}
@@ -61,7 +61,7 @@ func TestLevelIter(t *testing.T) {
 				iterKVs = append(iterKVs, kvs)
 
 				meta := (&tableMetadata{
-					FileNum: base.FileNum(len(metas)),
+					TableNum: base.FileNum(len(metas)),
 				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
 					kvs[0].K,
@@ -183,13 +183,13 @@ func (lt *levelIterTest) newIters(
 	transforms := file.IterTransforms()
 	var set iterSet
 	if kinds.Point() {
-		iter, err := lt.readers[file.FileNum].NewPointIter(ctx, sstable.IterOptions{
+		iter, err := lt.readers[file.TableNum].NewPointIter(ctx, sstable.IterOptions{
 			Lower:                opts.GetLowerBound(),
 			Upper:                opts.GetUpperBound(),
 			Transforms:           transforms,
 			FilterBlockSizeLimit: sstable.AlwaysUseFilterBlock,
 			Env:                  iio.readEnv,
-			ReaderProvider:       sstable.MakeTrivialReaderProvider(lt.readers[file.FileNum]),
+			ReaderProvider:       sstable.MakeTrivialReaderProvider(lt.readers[file.TableNum]),
 			BlobContext: sstable.TableBlobContext{
 				ValueFetcher: iio.blobValueFetcher,
 				References:   &file.BlobReferences,
@@ -201,7 +201,7 @@ func (lt *levelIterTest) newIters(
 		set.point = iter
 	}
 	if kinds.RangeDeletion() {
-		rangeDelIter, err := lt.readers[file.FileNum].NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), sstable.NoReadEnv)
+		rangeDelIter, err := lt.readers[file.TableNum].NewRawRangeDelIter(ctx, file.FragmentIterTransforms(), sstable.NoReadEnv)
 		if err != nil {
 			return iterSet{}, errors.CombineErrors(err, set.CloseAll())
 		}
@@ -302,7 +302,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	m := &tableMetadata{FileNum: fileNum}
+	m := &tableMetadata{TableNum: fileNum}
 	if meta.HasPointKeys {
 		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestPoint, meta.LargestPoint)
 	}
@@ -317,7 +317,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 
 	var buf bytes.Buffer
 	for _, f := range lt.metas {
-		fmt.Fprintf(&buf, "%d: %s-%s\n", f.FileNum, f.Smallest(), f.Largest())
+		fmt.Fprintf(&buf, "%d: %s-%s\n", f.TableNum, f.Smallest(), f.Largest())
 	}
 	return buf.String()
 }
@@ -383,9 +383,9 @@ func TestLevelIterBoundaries(t *testing.T) {
 				return "nil iterFile"
 			}
 			if iter.iter != nil {
-				return fmt.Sprintf("file %s [loaded]", iter.iterFile.FileNum)
+				return fmt.Sprintf("file %s [loaded]", iter.iterFile.TableNum)
 			}
-			return fmt.Sprintf("file %s [not loaded]", iter.iterFile.FileNum)
+			return fmt.Sprintf("file %s [not loaded]", iter.iterFile.TableNum)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -581,7 +581,7 @@ func buildLevelIterTables(
 		require.NoError(b, err)
 		smallest := iter.First()
 		meta[i] = &tableMetadata{}
-		meta[i].FileNum = base.FileNum(i)
+		meta[i].TableNum = base.FileNum(i)
 		largest := iter.Last()
 		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
 		meta[i].InitPhysicalBacking()
@@ -604,7 +604,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							newIters := func(
 								_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
-								iter, err := readers[file.FileNum].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
+								iter, err := readers[file.TableNum].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
 								return iterSet{point: iter}, err
 							}
 							l := newLevelIter(context.Background(), IterOptions{}, DefaultComparer, newIters, metas.Iter(), manifest.Level(level), internalIterOpts{})
@@ -645,7 +645,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							newIters := func(
 								_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
-								iter, err := readers[file.FileNum].NewIter(
+								iter, err := readers[file.TableNum].NewIter(
 									sstable.NoTransforms, opts.LowerBound, opts.UpperBound, sstable.AssertNoBlobHandles)
 								return iterSet{point: iter}, err
 							}
@@ -691,7 +691,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 	newIters := func(
 		_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {
-		iter, err := readers[file.FileNum].NewIter(
+		iter, err := readers[file.TableNum].NewIter(
 			sstable.NoTransforms, opts.LowerBound, opts.UpperBound, sstable.AssertNoBlobHandles)
 		return iterSet{point: iter}, err
 	}
@@ -746,7 +746,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							newIters := func(
 								_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
-								iter, err := readers[file.FileNum].NewIter(sstable.NoTransforms,
+								iter, err := readers[file.TableNum].NewIter(sstable.NoTransforms,
 									nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
 								return iterSet{point: iter}, err
 							}
@@ -781,7 +781,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							newIters := func(
 								_ context.Context, file *manifest.TableMetadata, _ *IterOptions, _ internalIterOpts, _ iterKinds,
 							) (iterSet, error) {
-								iter, err := readers[file.FileNum].NewIter(
+								iter, err := readers[file.TableNum].NewIter(
 									sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
 								return iterSet{point: iter}, err
 							}

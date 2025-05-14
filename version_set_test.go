@@ -102,9 +102,9 @@ func TestVersionSet(t *testing.T) {
 			}
 			for _, nf := range ve.NewTables {
 				// Set a size that depends on FileNum.
-				nf.Meta.Size = uint64(nf.Meta.FileNum) * 100
+				nf.Meta.Size = uint64(nf.Meta.TableNum) * 100
 				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
-				tableMetas[nf.Meta.FileNum] = nf.Meta
+				tableMetas[nf.Meta.TableNum] = nf.Meta
 				if !nf.Meta.Virtual {
 					createFile(nf.Meta.FileBacking.DiskFileNum)
 				}
@@ -203,7 +203,7 @@ func TestVersionSet(t *testing.T) {
 			v := vs.currentVersion()
 			for _, l := range v.Levels {
 				for f := range l.All() {
-					tableMetas[f.FileNum] = f
+					tableMetas[f.TableNum] = f
 					for _, b := range f.BlobReferences {
 						blobMetas[b.FileNum] = b.Metadata
 					}

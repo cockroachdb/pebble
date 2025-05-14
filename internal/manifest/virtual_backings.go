@@ -135,7 +135,7 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 // must be in the set already.
 func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 	if !m.Virtual {
-		panic(errors.AssertionFailedf("table %s not virtual", m.FileNum))
+		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
 	}
 	v := bv.mustGet(m.FileBacking.DiskFileNum)
 	if !v.inUse() {
@@ -150,7 +150,7 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 // not removed from the set, even if it becomes unused.
 func (bv *VirtualBackings) RemoveTable(m *TableMetadata) {
 	if !m.Virtual {
-		panic(errors.AssertionFailedf("table %s not virtual", m.FileNum))
+		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
 	}
 	v := bv.mustGet(m.FileBacking.DiskFileNum)
 

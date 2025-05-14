@@ -51,7 +51,7 @@ func checkRoundTrip(e0 VersionEdit) error {
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&TableMetadata{
-		FileNum:                  810,
+		TableNum:                 810,
 		Size:                     8090,
 		CreationTime:             809060,
 		SmallestSeqNum:           9,
@@ -70,7 +70,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 	m1.InitPhysicalBacking()
 
 	m2 := (&TableMetadata{
-		FileNum:               812,
+		TableNum:              812,
 		Size:                  8090,
 		CreationTime:          809060,
 		SmallestSeqNum:        9,
@@ -121,7 +121,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 func TestVersionEditRoundTrip(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&TableMetadata{
-		FileNum:      805,
+		TableNum:     805,
 		Size:         8050,
 		CreationTime: 805030,
 	}).ExtendPointKeyBounds(
@@ -132,7 +132,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m1.InitPhysicalBacking()
 
 	m2 := (&TableMetadata{
-		FileNum:                  806,
+		TableNum:                 806,
 		Size:                     8060,
 		CreationTime:             806040,
 		SmallestSeqNum:           3,
@@ -148,7 +148,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m2.InitPhysicalBacking()
 
 	m3 := (&TableMetadata{
-		FileNum:      807,
+		TableNum:     807,
 		Size:         8070,
 		CreationTime: 807050,
 	}).ExtendRangeKeyBounds(
@@ -159,7 +159,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m3.InitPhysicalBacking()
 
 	m4 := (&TableMetadata{
-		FileNum:               809,
+		TableNum:              809,
 		Size:                  8090,
 		CreationTime:          809060,
 		SmallestSeqNum:        9,
@@ -177,7 +177,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m4.InitPhysicalBacking()
 
 	m5 := (&TableMetadata{
-		FileNum:               810,
+		TableNum:              810,
 		Size:                  8090,
 		CreationTime:          809060,
 		SmallestSeqNum:        9,
@@ -195,7 +195,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m5.InitPhysicalBacking()
 
 	m6 := (&TableMetadata{
-		FileNum:               811,
+		TableNum:              811,
 		Size:                  8090,
 		CreationTime:          809060,
 		SmallestSeqNum:        9,
@@ -421,7 +421,7 @@ func TestVersionEditApply(t *testing.T) {
 				bve.AllAddedTables = make(map[base.FileNum]*TableMetadata)
 				for _, l := range v.Levels {
 					for f := range l.All() {
-						bve.AllAddedTables[f.FileNum] = f
+						bve.AllAddedTables[f.TableNum] = f
 					}
 				}
 

@@ -399,7 +399,7 @@ func TestReadSampling(t *testing.T) {
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
 				for f := range l.All() {
-					if f.FileNum == base.FileNum(fileNum) {
+					if f.TableNum == base.FileNum(fileNum) {
 						actualAllowedSeeks := f.AllowedSeeks.Load()
 						foundAllowedSeeks = actualAllowedSeeks
 					}

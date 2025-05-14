@@ -115,7 +115,7 @@ func TestPickCompaction(t *testing.T) {
 	fileNums := func(files manifest.LevelSlice) string {
 		var ss []string
 		for meta := range files.All() {
-			ss = append(ss, strconv.Itoa(int(meta.FileNum)))
+			ss = append(ss, strconv.Itoa(int(meta.TableNum)))
 		}
 		sort.Strings(ss)
 		return strings.Join(ss, ",")
@@ -124,8 +124,8 @@ func TestPickCompaction(t *testing.T) {
 	opts := DefaultOptions()
 	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *tableMetadata {
 		m := (&tableMetadata{
-			FileNum: fileNum,
-			Size:    size,
+			TableNum: fileNum,
+			Size:     size,
 		}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
 		m.InitPhysicalBacking()
 		return m
@@ -1513,7 +1513,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 					// Set file number to the value provided in the input.
 					tombstoneFile = &tableMetadata{
-						FileNum: base.FileNum(parseUint64(parts[1])),
+						TableNum: base.FileNum(parseUint64(parts[1])),
 					}
 
 					var hintType deleteCompactionHintType
@@ -2042,7 +2042,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 		}
 		fileNum++
 		meta = (&tableMetadata{
-			FileNum: fileNum,
+			TableNum: fileNum,
 		}).ExtendPointKeyBounds(
 			d.cmp,
 			InternalKey{UserKey: []byte(match[2])},
@@ -2171,7 +2171,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.FileNum = fileNum
+					meta.TableNum = fileNum
 					fileNum++
 					files = append(files, manifest.NewTableEntry{Level: 1, Meta: meta})
 				}
@@ -2356,7 +2356,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						}
 					} else {
 						meta := parseMeta(data)
-						meta.FileNum = fileNum
+						meta.TableNum = fileNum
 						fileNum++
 						*files = append(*files, meta)
 						if parsingSublevel {
@@ -2524,7 +2524,7 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 	var lbaseFiles []*manifest.TableMetadata
 	const lbaseSize = 5 << 20
 	for i := 0; i < 100; i++ {
-		m := &manifest.TableMetadata{Size: lbaseSize, FileNum: base.FileNum(i)}
+		m := &manifest.TableMetadata{Size: lbaseSize, TableNum: base.FileNum(i)}
 		m.InitPhysicalBacking()
 		lbaseFiles =
 			append(lbaseFiles, m)
@@ -2644,13 +2644,13 @@ func TestMarkedForCompaction(t *testing.T) {
 			td.ScanArgs(t, "file", &fileNum)
 			for l, lm := range vers.Levels {
 				for f := range lm.All() {
-					if f.FileNum != base.FileNum(fileNum) {
+					if f.TableNum != base.FileNum(fileNum) {
 						continue
 					}
 					f.MarkedForCompaction = true
 					vers.Stats.MarkedForCompaction++
 					markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
-					return fmt.Sprintf("marked L%d.%s", l, f.FileNum)
+					return fmt.Sprintf("marked L%d.%s", l, f.TableNum)
 				}
 			}
 			return "not-found"

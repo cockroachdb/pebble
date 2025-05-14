@@ -298,8 +298,8 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			if b, ok := backings[nf.BackingFileNum]; ok && nf.Meta.Virtual {
 				nf.Meta.AttachVirtualBacking(b)
 			}
-			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
-				l.state.Files[nf.Meta.FileNum] = lsmTableMetadata{
+			if _, ok := l.state.Files[nf.Meta.TableNum]; !ok {
+				l.state.Files[nf.Meta.TableNum] = lsmTableMetadata{
 					Size:           nf.Meta.Size,
 					Smallest:       l.findKey(nf.Meta.Smallest()),
 					Largest:        l.findKey(nf.Meta.Largest()),
@@ -308,14 +308,14 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 					Virtual:        nf.Meta.Virtual,
 				}
 			}
-			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
+			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.TableNum)
 			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
 		}
 
 		for df := range ve.DeletedTables {
 			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
 			for j, f := range currentFiles[df.Level] {
-				if f.FileNum == df.FileNum {
+				if f.TableNum == df.FileNum {
 					copy(currentFiles[df.Level][j:], currentFiles[df.Level][j+1:])
 					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
 				}
@@ -329,11 +329,11 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			for f := range files.All() {
 				if len(l.state.Edits) > 0 {
 					lastEdit := l.state.Edits[len(l.state.Edits)-1]
-					if sublevel2, ok := lastEdit.Sublevels[f.FileNum]; ok && sublevel == sublevel2 {
+					if sublevel2, ok := lastEdit.Sublevels[f.TableNum]; ok && sublevel == sublevel2 {
 						continue
 					}
 				}
-				edit.Sublevels[f.FileNum] = sublevel
+				edit.Sublevels[f.TableNum] = sublevel
 			}
 		}
 		l.state.Edits = append(l.state.Edits, edit)
@@ -369,7 +369,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 		for _, file := range deletedFiles {
 			dfe := manifest.DeletedTableEntry{
 				Level:   level,
-				FileNum: file.FileNum,
+				FileNum: file.TableNum,
 			}
 			beDeletedFiles[dfe] = file
 		}
@@ -380,7 +380,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 		for _, file := range newFiles {
 			dfe := manifest.DeletedTableEntry{
 				Level:   level,
-				FileNum: file.FileNum,
+				FileNum: file.TableNum,
 			}
 
 			if _, ok := beDeletedFiles[dfe]; !ok {

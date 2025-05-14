@@ -138,9 +138,9 @@ func TestDownloadTask(t *testing.T) {
 			}
 			for _, lm := range vers.Levels {
 				for f := range lm.All() {
-					if _, ok := compacting[f.FileNum]; ok {
+					if _, ok := compacting[f.TableNum]; ok {
 						f.CompactionState = manifest.CompactionStateCompacting
-						delete(compacting, f.FileNum)
+						delete(compacting, f.TableNum)
 					} else {
 						f.CompactionState = manifest.CompactionStateNotCompacting
 					}
@@ -177,12 +177,12 @@ func TestDownloadTask(t *testing.T) {
 			task.testing.launchDownloadCompaction = func(f *tableMetadata) (chan error, bool) {
 				ch := make(chan error, 1)
 				if td.HasArg("fail") {
-					fmt.Fprintf(&buf, "launching download for %s and cancelling it\n", f.FileNum)
+					fmt.Fprintf(&buf, "launching download for %s and cancelling it\n", f.TableNum)
 					ch <- ErrCancelledCompaction
 				} else {
-					fmt.Fprintf(&buf, "downloading %s\n", f.FileNum)
+					fmt.Fprintf(&buf, "downloading %s\n", f.TableNum)
 					f.Virtual = false
-					f.FileBacking.DiskFileNum = base.DiskFileNum(f.FileNum)
+					f.FileBacking.DiskFileNum = base.DiskFileNum(f.TableNum)
 					ch <- nil
 				}
 				return ch, true

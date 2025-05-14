@@ -287,7 +287,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			for k, file := range level {
 				fileIters = append(fileIters, keyspan.NewIter(base.DefaultComparer.Compare, file))
 				meta := &manifest.TableMetadata{
-					FileNum:               base.FileNum(k + 1),
+					TableNum:              base.FileNum(k + 1),
 					Size:                  1024,
 					SmallestSeqNum:        2,
 					LargestSeqNum:         2,
@@ -305,13 +305,13 @@ func TestLevelIterEquivalence(t *testing.T) {
 			}
 
 			tableNewIters := func(ctx context.Context, file *manifest.TableMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-				return keyspan.NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
+				return keyspan.NewIter(base.DefaultComparer.Compare, tc.levels[j][file.TableNum-1]), nil
 			}
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
 			amap := make(map[base.FileNum]*manifest.TableMetadata)
 			for i := range metas {
-				amap[metas[i].FileNum] = metas[i]
+				amap[metas[i].TableNum] = metas[i]
 			}
 			b.AddedTables[6] = amap
 			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, 0 /* flushSplitBytes */)
@@ -372,7 +372,7 @@ func TestLevelIter(t *testing.T) {
 			for _, key := range strings.Split(d.Input, "\n") {
 				if strings.HasPrefix(key, "file") {
 					meta := &manifest.TableMetadata{
-						FileNum: base.FileNum(len(files) + 1),
+						TableNum: base.FileNum(len(files) + 1),
 					}
 					meta.InitPhysicalBacking()
 
@@ -422,7 +422,7 @@ func TestLevelIter(t *testing.T) {
 				}
 			}
 			tableNewIters := func(ctx context.Context, file *manifest.TableMetadata, _ keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-				f := files[file.FileNum-1]
+				f := files[file.TableNum-1]
 				if keyType == manifest.KeyTypePoint {
 					return keyspan.NewIter(cmp, f.rangeDels), nil
 				}
