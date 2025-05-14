@@ -688,8 +688,8 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 			c.cmp(prevMeta.Largest().UserKey, meta.Smallest().UserKey) >= 0 {
 			return errors.Errorf("pebble: compaction split user key across two sstables: %s in %s and %s",
 				prevMeta.Largest().Pretty(c.formatKey),
-				prevMeta.FileNum,
-				meta.FileNum)
+				prevMeta.TableNum,
+				meta.TableNum)
 		}
 	}
 	return nil
@@ -856,7 +856,7 @@ func (c *compaction) newInputIters(
 				if err != nil {
 					// The error will already be annotated with the BackingFileNum, so
 					// we annotate it with the FileNum.
-					return errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
+					return errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.TableNum))
 				}
 				if rangeDelIter == nil {
 					continue
@@ -1001,7 +1001,7 @@ func (c *compaction) String() string {
 		i := level - c.startLevel.level
 		fmt.Fprintf(&buf, "%d:", level)
 		for f := range c.inputs[i].files.All() {
-			fmt.Fprintf(&buf, " %s:%s-%s", f.FileNum, f.Smallest(), f.Largest())
+			fmt.Fprintf(&buf, " %s:%s-%s", f.TableNum, f.Smallest(), f.Largest())
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
@@ -1039,7 +1039,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
 			if f.IsCompacting() {
-				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.TableNum)
 			}
 			f.SetCompactionState(manifest.CompactionStateCompacting)
 			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
@@ -1076,7 +1076,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
 			if !f.IsCompacting() {
-				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
+				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.TableNum)
 			}
 			if !rollback {
 				// On success all compactions other than move and delete-only compactions
@@ -1366,7 +1366,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 					return nil, err
 				}
 				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
-				replacedFiles[m.FileNum] = newFiles
+				replacedFiles[m.TableNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
 		}
@@ -1564,7 +1564,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				for c2 := range d.mu.compact.inProgress {
 					for i := range c2.inputs {
 						for f := range c2.inputs[i].files.All() {
-							if _, ok := ve.DeletedTables[deletedFileEntry{FileNum: f.FileNum, Level: c2.inputs[i].level}]; ok {
+							if _, ok := ve.DeletedTables[deletedFileEntry{FileNum: f.TableNum, Level: c2.inputs[i].level}]; ok {
 								c2.cancel.Store(true)
 								break
 							}
@@ -2108,7 +2108,7 @@ const (
 func (h deleteCompactionHint) String() string {
 	return fmt.Sprintf(
 		"L%d.%s %s-%s seqnums(tombstone=%d-%d, file-smallest=%d, type=%s)",
-		h.tombstoneLevel, h.tombstoneFile.FileNum, h.start, h.end,
+		h.tombstoneLevel, h.tombstoneFile.TableNum, h.start, h.end,
 		h.tombstoneSmallestSeqNum, h.tombstoneLargestSeqNum, h.fileSmallestSeqNum,
 		h.hintType,
 	)
@@ -2440,7 +2440,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 			// We handle backing files separately.
 			continue
 		}
-		if _, ok := deletedFiles[ve.NewTables[i].Meta.FileNum]; ok {
+		if _, ok := deletedFiles[ve.NewTables[i].Meta.TableNum]; ok {
 			// This file is being moved in this ve to a different level.
 			// Don't mark it as obsolete.
 			continue
@@ -2571,7 +2571,7 @@ func (d *DB) runCopyCompaction(
 	}
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{
-			{Level: c.startLevel.level, FileNum: inputMeta.FileNum}: inputMeta,
+			{Level: c.startLevel.level, FileNum: inputMeta.TableNum}: inputMeta,
 		},
 	}
 
@@ -2612,11 +2612,11 @@ func (d *DB) runCopyCompaction(
 	if inputMeta.HasRangeKeys {
 		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.RangeKeyBounds.Smallest(), inputMeta.RangeKeyBounds.Largest())
 	}
-	newMeta.FileNum = d.mu.versions.getNextFileNum()
+	newMeta.TableNum = d.mu.versions.getNextFileNum()
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
 		// We will update this size later after we produce the new backing file.
-		newMeta.InitVirtualBacking(base.DiskFileNum(newMeta.FileNum), inputMeta.FileBacking.Size)
+		newMeta.InitVirtualBacking(base.DiskFileNum(newMeta.TableNum), inputMeta.FileBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
 		newMeta.InitPhysicalBacking()
@@ -2761,7 +2761,7 @@ func (d *DB) applyHintOnFile(
 		// The hint deletes the entirety of this file.
 		ve.DeletedTables[deletedFileEntry{
 			Level:   level,
-			FileNum: f.FileNum,
+			FileNum: f.TableNum,
 		}] = f
 		levelMetrics.TablesDeleted++
 		return nil, nil
@@ -2832,7 +2832,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 				if err != nil {
 					return err
 				}
-				if _, ok := ve.DeletedTables[manifest.DeletedTableEntry{Level: cl.level, FileNum: curFile.FileNum}]; ok {
+				if _, ok := ve.DeletedTables[manifest.DeletedTableEntry{Level: cl.level, FileNum: curFile.TableNum}]; ok {
 					curFile = nil
 				}
 				if len(newFiles) > 0 {
@@ -2849,7 +2849,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 		}
 		if _, ok := ve.DeletedTables[deletedFileEntry{
 			Level:   cl.level,
-			FileNum: f.FileNum,
+			FileNum: f.TableNum,
 		}]; !ok {
 			panic("pebble: delete-only compaction scheduled with hints that did not delete or excise a file")
 		}
@@ -2917,7 +2917,7 @@ func (d *DB) runDeleteOnlyCompaction(
 	}
 	// Remove any files that were added and deleted in the same versionEdit.
 	ve.NewTables = slices.DeleteFunc(ve.NewTables, func(e manifest.NewTableEntry) bool {
-		deletedFileEntry := manifest.DeletedTableEntry{Level: e.Level, FileNum: e.Meta.FileNum}
+		deletedFileEntry := manifest.DeletedTableEntry{Level: e.Level, FileNum: e.Meta.TableNum}
 		if _, deleted := ve.DeletedTables[deletedFileEntry]; deleted {
 			delete(ve.DeletedTables, deletedFileEntry)
 			return true
@@ -2959,7 +2959,7 @@ func (d *DB) runMoveCompaction(
 	}
 	ve = &versionEdit{
 		DeletedTables: map[deletedFileEntry]*tableMetadata{
-			{Level: c.startLevel.level, FileNum: meta.FileNum}: meta,
+			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
 		},
 		NewTables: []newTableEntry{
 			{Level: c.outputLevel.level, Meta: meta},
@@ -3227,7 +3227,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		for f := range cl.files.All() {
 			ve.DeletedTables[deletedFileEntry{
 				Level:   cl.level,
-				FileNum: f.FileNum,
+				FileNum: f.TableNum,
 			}] = f
 		}
 	}
@@ -3270,7 +3270,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		t := &result.Tables[i]
 
 		fileMeta := &tableMetadata{
-			FileNum:            base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
+			TableNum:           base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
 			CreationTime:       t.CreationTime.Unix(),
 			Size:               t.WriterMeta.Size,
 			SmallestSeqNum:     t.WriterMeta.SmallestSeqNum,

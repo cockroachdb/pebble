@@ -94,7 +94,7 @@ func (info compactionInfo) String() string {
 		}
 		fmt.Fprintf(&buf, "L%d", in.level)
 		for f := range in.files.All() {
-			fmt.Fprintf(&buf, " %s", f.FileNum)
+			fmt.Fprintf(&buf, " %s", f.TableNum)
 		}
 		if largest < in.level {
 			largest = in.level
@@ -1551,12 +1551,12 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 	if invariants.Enabled {
 		found := false
 		for f := range inputs.All() {
-			if f.FileNum == candidate.FileNum {
+			if f.TableNum == candidate.TableNum {
 				found = true
 			}
 		}
 		if !found {
-			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, startLevel))
+			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.TableNum, startLevel))
 		}
 	}
 
@@ -2003,7 +2003,7 @@ func pickReadTriggeredCompactionHelper(
 	overlapSlice := p.vers.Overlaps(rc.level, base.UserKeyBoundsInclusive(rc.start, rc.end))
 	var fileMatches bool
 	for f := range overlapSlice.All() {
-		if f.FileNum == rc.fileNum {
+		if f.TableNum == rc.fileNum {
 			fileMatches = true
 			break
 		}

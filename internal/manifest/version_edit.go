@@ -452,7 +452,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m := &TableMetadata{
-				FileNum:                  fileNum,
+				TableNum:                 fileNum,
 				Size:                     size,
 				CreationTime:             int64(creationTime),
 				SmallestSeqNum:           smallestSeqNum,
@@ -752,7 +752,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		}
 		e.writeUvarint(tag)
 		e.writeUvarint(uint64(x.Level))
-		e.writeUvarint(uint64(x.Meta.FileNum))
+		e.writeUvarint(uint64(x.Meta.TableNum))
 		e.writeUvarint(x.Meta.Size)
 		if !x.Meta.HasRangeKeys {
 			// If we have no range keys, preserve the original format and write the
@@ -1092,8 +1092,8 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		// A new file should not have been deleted in this or a preceding
 		// VersionEdit at the same level (though files can move across levels).
 		if dmap := b.DeletedTables[nf.Level]; dmap != nil {
-			if _, ok := dmap[nf.Meta.FileNum]; ok {
-				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
+			if _, ok := dmap[nf.Meta.TableNum]; ok {
+				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.TableNum)
 			}
 		}
 		if nf.Meta.Virtual && nf.Meta.FileBacking == nil {
@@ -1105,15 +1105,15 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			}
 			nf.Meta.AttachVirtualBacking(backing)
 		} else if nf.Meta.FileBacking == nil {
-			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.FileNum)
+			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.TableNum)
 		}
 
 		if b.AddedTables[nf.Level] == nil {
 			b.AddedTables[nf.Level] = make(map[base.FileNum]*TableMetadata)
 		}
-		b.AddedTables[nf.Level][nf.Meta.FileNum] = nf.Meta
+		b.AddedTables[nf.Level][nf.Meta.TableNum] = nf.Meta
 		if b.AllAddedTables != nil {
-			b.AllAddedTables[nf.Meta.FileNum] = nf.Meta
+			b.AllAddedTables[nf.Meta.TableNum] = nf.Meta
 		}
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++
@@ -1129,7 +1129,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			nf.Meta.BlobReferences[i].Metadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileNum)
 			if nf.Meta.BlobReferences[i].Metadata == nil {
 				return errors.Errorf("blob file %s referenced by L%d.%s not found",
-					nf.Meta.BlobReferences[i].FileNum, nf.Level, nf.Meta.FileNum)
+					nf.Meta.BlobReferences[i].FileNum, nf.Level, nf.Meta.TableNum)
 			}
 		}
 	}
@@ -1213,7 +1213,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 		// replay invalid manifests check the error output, and the error output
 		// depends on the order in which files are added to the btree.
 		slices.SortFunc(addedTables, func(a, b *TableMetadata) int {
-			return stdcmp.Compare(a.FileNum, b.FileNum)
+			return stdcmp.Compare(a.TableNum, b.TableNum)
 		})
 
 		var sm, la *TableMetadata

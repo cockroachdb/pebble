@@ -182,7 +182,7 @@ func TestL0Sublevels(t *testing.T) {
 			m.LargestSeqNum = m.SmallestSeqNum
 		}
 		m.LargestSeqNumAbsolute = m.LargestSeqNum
-		m.FileNum = base.FileNum(fileNum)
+		m.TableNum = base.FileNum(fileNum)
 		m.Size = uint64(256)
 		m.InitPhysicalBacking()
 		if len(fields) > 1 {
@@ -262,7 +262,7 @@ func TestL0Sublevels(t *testing.T) {
 					}
 					fileMetas[level] = append(fileMetas[level], meta)
 					if level == 0 {
-						addedL0Files[meta.FileNum] = meta
+						addedL0Files[meta.TableNum] = meta
 					}
 					if sublevel != -1 {
 						for len(explicitSublevels) <= sublevel {
@@ -395,7 +395,7 @@ func TestL0Sublevels(t *testing.T) {
 			var builder strings.Builder
 			builder.WriteString(fmt.Sprintf("compaction picked with stack depth reduction %d\n", lcf.seedIntervalStackDepthReduction))
 			for i, file := range lcf.Files {
-				builder.WriteString(file.FileNum.String())
+				builder.WriteString(file.TableNum.String())
 				if i < len(lcf.Files)-1 {
 					builder.WriteByte(',')
 				}
@@ -471,7 +471,7 @@ func TestL0Sublevels(t *testing.T) {
 			files := make([]*TableMetadata, 0, len(fileNums))
 			for _, num := range fileNums {
 				for _, f := range fileMetas[0] {
-					if f.FileNum == num {
+					if f.TableNum == num {
 						f.CompactionState = CompactionStateCompacting
 						files = append(files, f)
 						break
@@ -531,7 +531,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 				continue
 			}
 			meta := (&TableMetadata{
-				FileNum:               base.FileNum(i*10 + j + 1),
+				TableNum:              base.FileNum(i*10 + j + 1),
 				Size:                  rng.Uint64N(1 << 20),
 				SmallestSeqNum:        base.SeqNum(2*i + 1),
 				LargestSeqNum:         base.SeqNum(2*i + 2),
@@ -543,7 +543,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			)
 			meta.InitPhysicalBacking()
 			fileMetas = append(fileMetas, meta)
-			filesToAdd[meta.FileNum] = meta
+			filesToAdd[meta.TableNum] = meta
 		}
 		if len(filesToAdd) == 0 {
 			continue

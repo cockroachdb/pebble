@@ -662,7 +662,7 @@ func (h *fileCacheHandle) newPointIter(
 	var blobReferences sstable.BlobReferences
 	if r.Attributes.Has(sstable.AttributeBlobValues) {
 		if len(file.BlobReferences) == 0 {
-			return nil, errors.AssertionFailedf("pebble: sstable %s has blob values but no blob references", file.FileNum)
+			return nil, errors.AssertionFailedf("pebble: sstable %s has blob values but no blob references", file.TableNum)
 		}
 		blobReferences = &file.BlobReferences
 	}

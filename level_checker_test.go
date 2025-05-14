@@ -104,7 +104,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	var fileNum base.FileNum
 	newIters :=
 		func(_ context.Context, file *manifest.TableMetadata, _ *IterOptions, iio internalIterOpts, _ iterKinds) (iterSet, error) {
-			r := readers[file.FileNum]
+			r := readers[file.TableNum]
 			rangeDelIter, err := r.NewRawRangeDelIter(context.Background(), sstable.NoFragmentTransforms, iio.readEnv)
 			if err != nil {
 				return iterSet{}, err
@@ -150,7 +150,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
 				m := (&tableMetadata{
-					FileNum: fileNum,
+					TableNum: fileNum,
 				}).ExtendPointKeyBounds(testkeys.Comparer.Compare, smallestKey, largestKey)
 				m.InitPhysicalBacking()
 				*li = append(*li, m)

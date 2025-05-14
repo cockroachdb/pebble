@@ -890,7 +890,7 @@ func (i *Iterator) sampleRead() {
 				start:   topFile.PointKeyBounds.SmallestUserKey(),
 				end:     topFile.PointKeyBounds.LargestUserKey(),
 				level:   topLevel,
-				fileNum: topFile.FileNum,
+				fileNum: topFile.TableNum,
 			}
 			i.readSampling.pendingCompactions.add(&read, i.cmp)
 		}

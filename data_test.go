@@ -1208,7 +1208,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	v := d.mu.versions.currentVersion()
 	for _, levelMetadata := range v.Levels {
 		for f := range levelMetadata.All() {
-			if f.FileNum != fileNum {
+			if f.TableNum != fileNum {
 				continue
 			}
 
@@ -1262,7 +1262,7 @@ func runMetadataCommand(t *testing.T, td *datadriven.TestData, d *DB) string {
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
 		for f := range level.All() {
-			if f.FileNum == base.FileNum(uint64(file)) {
+			if f.TableNum == base.FileNum(uint64(file)) {
 				m = f
 				break
 			}
@@ -1286,7 +1286,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
 		for f := range level.All() {
-			if f.FileNum == base.FileNum(uint64(file)) {
+			if f.TableNum == base.FileNum(uint64(file)) {
 				m = f
 				break
 			}
@@ -1461,7 +1461,7 @@ func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*versionEdit, error) {
 		for m := iter.SeekGE(d.cmp, exciseSpan.Start); m != nil && d.cmp(m.Smallest().UserKey, exciseSpan.End) < 0; m = iter.Next() {
 			leftTable, rightTable, err := d.exciseTable(context.Background(), exciseBounds, m, l.Level(), tightExciseBounds)
 			if err != nil {
-				return nil, errors.Errorf("error when excising %s: %s", m.FileNum, err.Error())
+				return nil, errors.Errorf("error when excising %s: %s", m.TableNum, err.Error())
 			}
 			applyExciseToVersionEdit(ve, m, leftTable, rightTable, l.Level())
 		}

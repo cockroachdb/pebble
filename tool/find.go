@@ -277,13 +277,13 @@ func (f *findT) readManifests(stdout io.Writer) {
 					// The same file can be deleted and added in a single version edit
 					// which indicates a "move" compaction. Only add the edit to the list
 					// once.
-					diskFileNum := base.PhysicalTableDiskFileNum(nf.Meta.FileNum)
+					diskFileNum := base.PhysicalTableDiskFileNum(nf.Meta.TableNum)
 					refs := f.editRefs[diskFileNum]
 					if n := len(refs); n == 0 || refs[n-1] != i {
 						f.editRefs[diskFileNum] = append(refs, i)
 					}
-					if _, ok := f.tableMeta[nf.Meta.FileNum]; !ok {
-						f.tableMeta[nf.Meta.FileNum] = nf.Meta
+					if _, ok := f.tableMeta[nf.Meta.TableNum]; !ok {
+						f.tableMeta[nf.Meta.TableNum] = nf.Meta
 					}
 				}
 				for _, bf := range ve.NewBlobFiles {
@@ -614,7 +614,7 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 		ve := f.edits[editRefs[0]]
 		editRefs = editRefs[1:]
 		for _, nf := range ve.NewTables {
-			if fileNum != nf.Meta.FileNum {
+			if fileNum != nf.Meta.TableNum {
 				continue
 			}
 
@@ -694,7 +694,7 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 				ve := f.edits[editRefs[0]]
 				editRefs = editRefs[1:]
 				for _, nf := range ve.NewTables {
-					if fileNum == nf.Meta.FileNum {
+					if fileNum == nf.Meta.TableNum {
 						for df := range ve.DeletedTables {
 							if fileNum == df.FileNum {
 								fmt.Fprintf(&buf, ", moved to L%d", nf.Level)

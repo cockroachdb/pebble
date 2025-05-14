@@ -303,7 +303,7 @@ func TestExcise(t *testing.T) {
 			var ptr *manifest.FileBacking
 			for _, level := range currVersion.Levels {
 				for f := range level.All() {
-					if _, ok := fileNums[f.FileNum]; ok {
+					if _, ok := fileNums[f.TableNum]; ok {
 						if ptr == nil {
 							ptr = f.FileBacking
 							continue
@@ -662,7 +662,7 @@ func TestConcurrentExcise(t *testing.T) {
 						d.mu.Lock()
 						d.mu.versions.logUnlock()
 						d.mu.Unlock()
-						return fmt.Sprintf("error when excising %s: %s", m.FileNum, err.Error())
+						return fmt.Sprintf("error when excising %s: %s", m.TableNum, err.Error())
 					}
 					applyExciseToVersionEdit(ve, m, leftTable, rightTable, level)
 				}

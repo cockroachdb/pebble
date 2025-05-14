@@ -555,7 +555,7 @@ func TestRandomizedBTree(t *testing.T) {
 
 	var metadataAlloc [maxFileNum]TableMetadata
 	for i := 0; i < len(metadataAlloc); i++ {
-		metadataAlloc[i].FileNum = base.FileNum(i)
+		metadataAlloc[i].TableNum = base.FileNum(i)
 		metadataAlloc[i].InitPhysicalBacking()
 	}
 
@@ -563,7 +563,7 @@ func TestRandomizedBTree(t *testing.T) {
 	// prevent duplicates or overlaps.
 	tree := btree{
 		bcmp: func(a *TableMetadata, b *TableMetadata) int {
-			return stdcmp.Compare(a.FileNum, b.FileNum)
+			return stdcmp.Compare(a.TableNum, b.TableNum)
 		},
 	}
 
@@ -578,10 +578,10 @@ func TestRandomizedBTree(t *testing.T) {
 			fn: func() {
 				f := &metadataAlloc[rng.IntN(maxFileNum)]
 				err := tree.Insert(f)
-				if ref[f.FileNum] {
+				if ref[f.TableNum] {
 					require.Error(t, err, "btree.Insert should error if file already exists")
 				} else {
-					ref[f.FileNum] = true
+					ref[f.TableNum] = true
 					require.NoError(t, err)
 				}
 			},
@@ -592,7 +592,7 @@ func TestRandomizedBTree(t *testing.T) {
 			fn: func() {
 				f := &metadataAlloc[rng.IntN(maxFileNum)]
 				tree.Delete(f, ignoreObsoleteFiles{})
-				delete(ref, f.FileNum)
+				delete(ref, f.TableNum)
 			},
 			weight: 10,
 		},
@@ -603,7 +603,7 @@ func TestRandomizedBTree(t *testing.T) {
 				count := 0
 				var prev base.FileNum
 				for iter.first(); iter.valid(); iter.next() {
-					fn := iter.cur().FileNum
+					fn := iter.cur().TableNum
 					require.True(t, ref[fn])
 					if count > 0 {
 						require.Less(t, prev, fn)

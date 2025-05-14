@@ -223,8 +223,8 @@ func (s CompactionState) String() string {
 //
 // We maintain some invariants:
 //
-//  1. Each physical and virtual sst will have a unique TableMetadata.FileNum,
-//     and there will be exactly one TableMetadata associated with the FileNum.
+//  1. Each physical and virtual sst will have a unique TableMetadata.TableNum,
+//     and there will be exactly one TableMetadata associated with the TableNum.
 //
 //  2. Within a version, a backing-sst is either only referred to by one
 //     physical sst or one or more virtual ssts.
@@ -284,10 +284,10 @@ type TableMetadata struct {
 	// InitAllowedSeeks is the inital value of allowed seeks. This is used
 	// to re-set allowed seeks on a file once it hits 0.
 	InitAllowedSeeks int64
-	// FileNum is the file number.
+	// TableNum is the table number, unique across the lifetime of a DB.
 	//
-	// INVARIANT: when !TableMetadata.Virtual, FileNum == FileBacking.DiskFileNum.
-	FileNum base.FileNum
+	// INVARIANT: when !TableMetadata.Virtual, TableNum == FileBacking.DiskFileNum.
+	TableNum base.TableNum
 	// Size is the size of the file, in bytes. Size is an approximate value for
 	// virtual sstables.
 	//
@@ -426,7 +426,7 @@ func (m *TableMetadata) Ref() {
 			// set it explicitly when constructing the TableMetadata (during
 			// compactions, flushes).
 			if blobRef.Metadata == nil {
-				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.FileNum, blobRef.FileNum))
+				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.TableNum, blobRef.FileNum))
 			}
 			blobRef.Metadata.ref()
 		}
@@ -439,7 +439,7 @@ func (m *TableMetadata) Ref() {
 func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 	v := m.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
-		panic(errors.AssertionFailedf("pebble: invalid TableMetadata refcounting for table %s", m.FileNum))
+		panic(errors.AssertionFailedf("pebble: invalid TableMetadata refcounting for table %s", m.TableNum))
 	}
 	// When the reference count reaches zero, release the table's references.
 	if v == 0 {
@@ -592,7 +592,7 @@ func (b *FileBacking) Unref() int32 {
 // InitPhysicalBacking allocates and sets the FileBacking which is required by a
 // physical sstable TableMetadata.
 //
-// Ensure that the state required by FileBacking, such as the FileNum, is
+// Ensure that the state required by FileBacking, such as the TableNum, is
 // already set on the TableMetadata before InitPhysicalBacking is called.
 // Calling InitPhysicalBacking only after the relevant state has been set in the
 // TableMetadata is not necessary in tests which don't rely on FileBacking.
@@ -604,7 +604,7 @@ func (m *TableMetadata) InitPhysicalBacking() {
 		panic("backing already initialized")
 	}
 	m.FileBacking = &FileBacking{
-		DiskFileNum: base.PhysicalTableDiskFileNum(m.FileNum),
+		DiskFileNum: base.PhysicalTableDiskFileNum(m.TableNum),
 		Size:        m.Size,
 	}
 }
@@ -636,7 +636,7 @@ func (m *TableMetadata) AttachVirtualBacking(backing *FileBacking) {
 	m.VirtualParams = &virtual.VirtualReaderParams{
 		Lower:   m.Smallest(),
 		Upper:   m.Largest(),
-		FileNum: m.FileNum,
+		FileNum: m.TableNum,
 	}
 }
 
@@ -871,7 +871,7 @@ func (m *TableMetadata) boundsMarker() (sentinel uint8, err error) {
 	case boundTypeRangeKey:
 		// No op - leave bit unset.
 	default:
-		return 0, base.CorruptionErrorf("file %s has neither point nor range key as smallest key", m.FileNum)
+		return 0, base.CorruptionErrorf("file %s has neither point nor range key as smallest key", m.TableNum)
 	}
 	switch m.boundTypeLargest {
 	case boundTypePointKey:
@@ -879,7 +879,7 @@ func (m *TableMetadata) boundsMarker() (sentinel uint8, err error) {
 	case boundTypeRangeKey:
 		// No op - leave bit unset.
 	default:
-		return 0, base.CorruptionErrorf("file %s has neither point nor range key as largest key", m.FileNum)
+		return 0, base.CorruptionErrorf("file %s has neither point nor range key as largest key", m.TableNum)
 	}
 	return
 }
@@ -887,7 +887,7 @@ func (m *TableMetadata) boundsMarker() (sentinel uint8, err error) {
 // String implements fmt.Stringer, printing the file number and the overall
 // table bounds.
 func (m *TableMetadata) String() string {
-	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest(), m.Largest())
+	return fmt.Sprintf("%s:[%s-%s]", m.TableNum, m.Smallest(), m.Largest())
 }
 
 // DebugString returns a verbose representation of TableMetadata, typically for
@@ -897,10 +897,10 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	var b bytes.Buffer
 	if m.Virtual {
 		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
-			m.FileNum, m.FileBacking.DiskFileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
+			m.TableNum, m.FileBacking.DiskFileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
 	} else {
 		fmt.Fprintf(&b, "%s:[%s-%s]",
-			m.FileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
+			m.TableNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
 	}
 	if !verbose {
 		return b.String()
@@ -956,7 +956,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...] size:5
 	m := &TableMetadata{}
 	p := strparse.MakeParser(debugParserSeparators, s)
-	m.FileNum = p.FileNum()
+	m.TableNum = p.FileNum()
 	var backingNum base.DiskFileNum
 	if p.Peek() == "(" {
 		p.Expect("(")
@@ -1063,20 +1063,20 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 
 	if !m.HasPointKeys && !m.HasRangeKeys {
 		return base.CorruptionErrorf("file %s has neither point nor range keys",
-			errors.Safe(m.FileNum))
+			errors.Safe(m.TableNum))
 	}
 	if base.InternalCompare(cmp, m.Smallest(), m.Largest()) > 0 {
 		return base.CorruptionErrorf("file %s has inconsistent bounds: %s vs %s",
-			errors.Safe(m.FileNum), m.Smallest().Pretty(formatKey),
+			errors.Safe(m.TableNum), m.Smallest().Pretty(formatKey),
 			m.Largest().Pretty(formatKey))
 	}
 	if m.SmallestSeqNum > m.LargestSeqNum {
 		return base.CorruptionErrorf("file %s has inconsistent seqnum bounds: %d vs %d",
-			errors.Safe(m.FileNum), m.SmallestSeqNum, m.LargestSeqNum)
+			errors.Safe(m.TableNum), m.SmallestSeqNum, m.LargestSeqNum)
 	}
 	if m.LargestSeqNumAbsolute < m.LargestSeqNum {
 		return base.CorruptionErrorf("file %s has inconsistent absolute largest seqnum bounds: %d vs %d",
-			errors.Safe(m.FileNum), m.LargestSeqNumAbsolute, m.LargestSeqNum)
+			errors.Safe(m.TableNum), m.LargestSeqNumAbsolute, m.LargestSeqNum)
 	}
 
 	// Point key validation.
@@ -1084,7 +1084,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	if m.HasPointKeys {
 		if base.InternalCompare(cmp, m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest()) > 0 {
 			return base.CorruptionErrorf("file %s has inconsistent point key bounds: %s vs %s",
-				errors.Safe(m.FileNum), m.PointKeyBounds.Smallest().Pretty(formatKey),
+				errors.Safe(m.TableNum), m.PointKeyBounds.Smallest().Pretty(formatKey),
 				m.PointKeyBounds.Largest().Pretty(formatKey))
 		}
 		if base.InternalCompare(cmp, m.PointKeyBounds.Smallest(), m.Smallest()) < 0 ||
@@ -1092,7 +1092,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 			return base.CorruptionErrorf(
 				"file %s has inconsistent point key bounds relative to overall bounds: "+
 					"overall = [%s-%s], point keys = [%s-%s]",
-				errors.Safe(m.FileNum),
+				errors.Safe(m.TableNum),
 				m.Smallest().Pretty(formatKey), m.Largest().Pretty(formatKey),
 				m.PointKeyBounds.Smallest().Pretty(formatKey), m.PointKeyBounds.Largest().Pretty(formatKey),
 			)
@@ -1110,7 +1110,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	if m.HasRangeKeys {
 		if base.InternalCompare(cmp, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest()) > 0 {
 			return base.CorruptionErrorf("file %s has inconsistent range key bounds: %s vs %s",
-				errors.Safe(m.FileNum), m.RangeKeyBounds.Smallest().Pretty(formatKey),
+				errors.Safe(m.TableNum), m.RangeKeyBounds.Smallest().Pretty(formatKey),
 				m.RangeKeyBounds.Largest().Pretty(formatKey))
 		}
 		if base.InternalCompare(cmp, m.RangeKeyBounds.Smallest(), m.Smallest()) < 0 ||
@@ -1118,7 +1118,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 			return base.CorruptionErrorf(
 				"file %s has inconsistent range key bounds relative to overall bounds: "+
 					"overall = [%s-%s], range keys = [%s-%s]",
-				errors.Safe(m.FileNum),
+				errors.Safe(m.TableNum),
 				m.Smallest().Pretty(formatKey), m.Largest().Pretty(formatKey),
 				m.RangeKeyBounds.Smallest().Pretty(formatKey), m.RangeKeyBounds.Largest().Pretty(formatKey),
 			)
@@ -1140,7 +1140,7 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// blob reference depth should be bounded by the number of blob references.
 	if (len(m.BlobReferences) == 0) != (m.BlobReferenceDepth == 0) || m.BlobReferenceDepth > BlobReferenceDepth(len(m.BlobReferences)) {
 		return base.CorruptionErrorf("table %s with %d blob refs but %d blob ref depth",
-			m.FileNum, len(m.BlobReferences), m.BlobReferenceDepth)
+			m.TableNum, len(m.BlobReferences), m.BlobReferenceDepth)
 	}
 	if m.SyntheticPrefixAndSuffix.HasPrefix() {
 		if !m.Virtual {
@@ -1183,7 +1183,7 @@ var (
 // TableInfo.
 func (m *TableMetadata) TableInfo() TableInfo {
 	return TableInfo{
-		FileNum:        m.FileNum,
+		FileNum:        m.TableNum,
 		Size:           m.Size,
 		Smallest:       m.Smallest(),
 		Largest:        m.Largest(),
@@ -1204,7 +1204,7 @@ func (m *TableMetadata) cmpSeqNum(b *TableMetadata) int {
 		return v
 	}
 	// Break ties by file number.
-	return stdcmp.Compare(m.FileNum, b.FileNum)
+	return stdcmp.Compare(m.TableNum, b.TableNum)
 }
 
 func (m *TableMetadata) lessSeqNum(b *TableMetadata) bool {
@@ -1928,7 +1928,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 				// Multiple files satisfying case 2 mentioned above.
 			} else if !prev.lessSeqNum(f) {
 				return base.CorruptionErrorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
-					errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+					errors.Safe(prev.TableNum), errors.Safe(f.TableNum),
 					errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),
 					errors.Safe(f.SmallestSeqNum), errors.Safe(f.LargestSeqNum))
 			}
@@ -1942,7 +1942,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 			if prev != nil {
 				if prev.cmpSmallestKey(f, cmp) >= 0 {
 					return base.CorruptionErrorf("%s files %s and %s are not properly ordered: [%s-%s] vs [%s-%s]",
-						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+						errors.Safe(level), errors.Safe(prev.TableNum), errors.Safe(f.TableNum),
 						prev.Smallest().Pretty(format), prev.Largest().Pretty(format),
 						f.Smallest().Pretty(format), f.Largest().Pretty(format))
 				}
@@ -1953,7 +1953,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 				// boundary must have a InternalKeyTrailer indicating that it's exclusive.
 				if v := cmp(prev.Largest().UserKey, f.Smallest().UserKey); v > 0 || (v == 0 && !prev.Largest().IsExclusiveSentinel()) {
 					return base.CorruptionErrorf("%s files %s and %s have overlapping ranges: [%s-%s] vs [%s-%s]",
-						errors.Safe(level), errors.Safe(prev.FileNum), errors.Safe(f.FileNum),
+						errors.Safe(level), errors.Safe(prev.TableNum), errors.Safe(f.TableNum),
 						prev.Smallest().Pretty(format), prev.Largest().Pretty(format),
 						f.Smallest().Pretty(format), f.Largest().Pretty(format))
 				}

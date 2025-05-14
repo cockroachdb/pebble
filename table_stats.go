@@ -274,7 +274,7 @@ func (d *DB) scanReadStateTableStats(
 				if size != int64(fileSize) {
 					err := errors.Errorf(
 						"during consistency check in loadTableStats: L%d: %s: object size mismatch (%s): %d (provider) != %d (MANIFEST)",
-						errors.Safe(l), f.FileNum, d.objProvider.Path(objMeta),
+						errors.Safe(l), f.TableNum, d.objProvider.Path(objMeta),
 						errors.Safe(size), errors.Safe(fileSize))
 					d.opts.EventListener.BackgroundError(err)
 					d.opts.Logger.Fatalf("%s", err)
@@ -682,14 +682,14 @@ func sanityCheckStats(meta *tableMetadata, logger Logger, info string) {
 		meta.Stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
 		if invariants.Enabled {
 			panic(fmt.Sprintf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
-				info, meta.FileNum,
+				info, meta.TableNum,
 				redact.Safe(meta.Stats.PointDeletionsBytesEstimate),
 				redact.Safe(meta.Stats.RangeDeletionsBytesEstimate),
 			))
 		}
 		if v := lastSanityCheckStatsLog.Load(); v == 0 || v.Elapsed() > 30*time.Second {
 			logger.Errorf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
-				info, meta.FileNum,
+				info, meta.TableNum,
 				redact.Safe(meta.Stats.PointDeletionsBytesEstimate),
 				redact.Safe(meta.Stats.RangeDeletionsBytesEstimate),
 			)

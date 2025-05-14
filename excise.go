@@ -139,8 +139,8 @@ func (d *DB) exciseTable(
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest().UserKey, exciseBounds.Start) < 0 {
 		leftTable = &tableMetadata{
-			Virtual: true,
-			FileNum: d.mu.versions.getNextFileNum(),
+			Virtual:  true,
+			TableNum: d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:           m.SmallestSeqNum,
@@ -176,8 +176,8 @@ func (d *DB) exciseTable(
 		// See comment before the definition of leftFile for the motivation behind
 		// calculating tight user-key bounds.
 		rightTable = &tableMetadata{
-			Virtual: true,
-			FileNum: d.mu.versions.getNextFileNum(),
+			Virtual:  true,
+			TableNum: d.mu.versions.getNextFileNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:           m.SmallestSeqNum,
@@ -465,7 +465,7 @@ func applyExciseToVersionEdit(
 ) (newFiles []manifest.NewTableEntry) {
 	ve.DeletedTables[deletedFileEntry{
 		Level:   level,
-		FileNum: originalTable.FileNum,
+		FileNum: originalTable.TableNum,
 	}] = originalTable
 	if leftTable == nil && rightTable == nil {
 		return

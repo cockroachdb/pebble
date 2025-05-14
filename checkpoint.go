@@ -301,7 +301,7 @@ func (d *DB) Checkpoint(
 				}
 				excludedTables[deletedFileEntry{
 					Level:   l,
-					FileNum: f.FileNum,
+					FileNum: f.TableNum,
 				}] = f
 				continue
 			}
