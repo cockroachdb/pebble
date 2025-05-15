@@ -412,6 +412,12 @@ func newCompaction(
 	)
 	c.kind = pc.kind
 
+	// In addition to the default compaction, we also check whether a tombstone density compaction can be optimized into
+	// a move compaction. However, we want to avoid performing a move compaction into the lowest level, since the goal
+	// there is to actually remove the tombstones.
+	//
+	// Tombstone density compaction is meant to address cases where tombstones don't reclaim much space but are still
+	// expensive to scan over. We can only remove the tombstones once there's nothing at all underneath them.
 	if (c.kind == compactionKindDefault || (c.kind == compactionKindTombstoneDensity && c.outputLevel.level != numLevels-1)) &&
 		c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
 		c.startLevel.files.Len() == 1 && c.grandparents.AggregateSizeSum() <= c.maxOverlapBytes {
