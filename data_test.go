@@ -1436,7 +1436,7 @@ func runExciseCmd(td *datadriven.TestData, d *DB) error {
 
 func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*versionEdit, error) {
 	ve := &versionEdit{
-		DeletedTables: map[deletedFileEntry]*tableMetadata{},
+		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
 	}
 	var exciseSpan KeyRange
 	if len(td.CmdArgs) != 2 {

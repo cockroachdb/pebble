@@ -915,7 +915,7 @@ func testIngestSharedImpl(
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedTables: map[deletedFileEntry]*tableMetadata{},
+				DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {

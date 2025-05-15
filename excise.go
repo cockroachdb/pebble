@@ -463,7 +463,7 @@ func determineExcisedTableBlobReferences(
 func applyExciseToVersionEdit(
 	ve *versionEdit, originalTable, leftTable, rightTable *tableMetadata, level int,
 ) (newFiles []manifest.NewTableEntry) {
-	ve.DeletedTables[deletedFileEntry{
+	ve.DeletedTables[manifest.DeletedTableEntry{
 		Level:   level,
 		FileNum: originalTable.TableNum,
 	}] = originalTable
