@@ -26,7 +26,6 @@ const manifestMarkerName = `manifest`
 
 // Provide type aliases for the various manifest structs.
 type bulkVersionEdit = manifest.BulkVersionEdit
-type deletedFileEntry = manifest.DeletedTableEntry
 type tableMetadata = manifest.TableMetadata
 type fileBacking = manifest.FileBacking
 type newTableEntry = manifest.NewTableEntry

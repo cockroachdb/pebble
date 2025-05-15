@@ -1861,7 +1861,7 @@ func (d *DB) ingestSplit(
 	newNewFiles := ve.NewTables[:0]
 	for i := range ve.NewTables {
 		fn := ve.NewTables[i].Meta.TableNum
-		deEntry := deletedFileEntry{Level: ve.NewTables[i].Level, FileNum: fn}
+		deEntry := manifest.DeletedTableEntry{Level: ve.NewTables[i].Level, FileNum: fn}
 		if _, ok := ve.DeletedTables[deEntry]; ok {
 			delete(ve.DeletedTables, deEntry)
 		} else {

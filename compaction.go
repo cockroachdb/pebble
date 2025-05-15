@@ -1564,7 +1564,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				for c2 := range d.mu.compact.inProgress {
 					for i := range c2.inputs {
 						for f := range c2.inputs[i].files.All() {
-							if _, ok := ve.DeletedTables[deletedFileEntry{FileNum: f.TableNum, Level: c2.inputs[i].level}]; ok {
+							if _, ok := ve.DeletedTables[manifest.DeletedTableEntry{FileNum: f.TableNum, Level: c2.inputs[i].level}]; ok {
 								c2.cancel.Store(true)
 								break
 							}
@@ -2570,7 +2570,7 @@ func (d *DB) runCopyCompaction(
 		return nil, compact.Stats{}, ErrCancelledCompaction
 	}
 	ve = &versionEdit{
-		DeletedTables: map[deletedFileEntry]*tableMetadata{
+		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
 			{Level: c.startLevel.level, FileNum: inputMeta.TableNum}: inputMeta,
 		},
 	}
@@ -2759,7 +2759,7 @@ func (d *DB) applyHintOnFile(
 	// The hint overlaps with at least part of the file.
 	if hintOverlap == hintDeletesFile {
 		// The hint deletes the entirety of this file.
-		ve.DeletedTables[deletedFileEntry{
+		ve.DeletedTables[manifest.DeletedTableEntry{
 			Level:   level,
 			FileNum: f.TableNum,
 		}] = f
@@ -2847,7 +2847,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 				break
 			}
 		}
-		if _, ok := ve.DeletedTables[deletedFileEntry{
+		if _, ok := ve.DeletedTables[manifest.DeletedTableEntry{
 			Level:   cl.level,
 			FileNum: f.TableNum,
 		}]; !ok {
@@ -2906,7 +2906,7 @@ func (d *DB) runDeleteOnlyCompaction(
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deletionHints)
 	ve = &versionEdit{
-		DeletedTables: map[deletedFileEntry]*tableMetadata{},
+		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
 	}
 	for _, cl := range c.inputs {
 		levelMetrics := &LevelMetrics{}
@@ -2917,9 +2917,9 @@ func (d *DB) runDeleteOnlyCompaction(
 	}
 	// Remove any files that were added and deleted in the same versionEdit.
 	ve.NewTables = slices.DeleteFunc(ve.NewTables, func(e manifest.NewTableEntry) bool {
-		deletedFileEntry := manifest.DeletedTableEntry{Level: e.Level, FileNum: e.Meta.TableNum}
-		if _, deleted := ve.DeletedTables[deletedFileEntry]; deleted {
-			delete(ve.DeletedTables, deletedFileEntry)
+		entry := manifest.DeletedTableEntry{Level: e.Level, FileNum: e.Meta.TableNum}
+		if _, deleted := ve.DeletedTables[entry]; deleted {
+			delete(ve.DeletedTables, entry)
 			return true
 		}
 		return false
@@ -2958,7 +2958,7 @@ func (d *DB) runMoveCompaction(
 		TablesMoved:     1,
 	}
 	ve = &versionEdit{
-		DeletedTables: map[deletedFileEntry]*tableMetadata{
+		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
 			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
 		},
 		NewTables: []newTableEntry{
@@ -3221,11 +3221,11 @@ func (d *DB) compactAndWrite(
 // tables in compact.Result.
 func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error) {
 	ve := &versionEdit{
-		DeletedTables: map[deletedFileEntry]*tableMetadata{},
+		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
 	}
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
-			ve.DeletedTables[deletedFileEntry{
+			ve.DeletedTables[manifest.DeletedTableEntry{
 				Level:   cl.level,
 				FileNum: f.TableNum,
 			}] = f

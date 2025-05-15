@@ -264,7 +264,7 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	var excludedTables map[deletedFileEntry]*tableMetadata
+	var excludedTables map[manifest.DeletedTableEntry]*tableMetadata
 	var includedBlobFiles map[base.DiskFileNum]struct{}
 	var remoteFiles []base.DiskFileNum
 	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
@@ -297,9 +297,9 @@ func (d *DB) Checkpoint(
 		for f := iter.First(); f != nil; f = iter.Next() {
 			if excludeFromCheckpoint(f, opt, d.cmp) {
 				if excludedTables == nil {
-					excludedTables = make(map[deletedFileEntry]*tableMetadata)
+					excludedTables = make(map[manifest.DeletedTableEntry]*tableMetadata)
 				}
-				excludedTables[deletedFileEntry{
+				excludedTables[manifest.DeletedTableEntry{
 					Level:   l,
 					FileNum: f.TableNum,
 				}] = f
@@ -462,7 +462,7 @@ func (d *DB) writeCheckpointManifest(
 	destDir vfs.File,
 	manifestFileNum base.DiskFileNum,
 	manifestSize int64,
-	excludedTables map[deletedFileEntry]*tableMetadata,
+	excludedTables map[manifest.DeletedTableEntry]*tableMetadata,
 	removeBackingTables []base.DiskFileNum,
 	excludedBlobFiles map[base.DiskFileNum]*manifest.BlobFileMetadata,
 ) error {

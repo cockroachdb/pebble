@@ -751,7 +751,7 @@ func TestValidateVersionEdit(t *testing.T) {
 			desc: "single deleted file; start key",
 			ve: &versionEdit{
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
-					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
+					{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte(badKey)},
 						manifest.InternalKey{UserKey: []byte("z")},
 					),
@@ -764,7 +764,7 @@ func TestValidateVersionEdit(t *testing.T) {
 			desc: "single deleted file; end key",
 			ve: &versionEdit{
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
-					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
+					{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte(badKey)},
 					),
@@ -777,11 +777,11 @@ func TestValidateVersionEdit(t *testing.T) {
 			desc: "multiple deleted files",
 			ve: &versionEdit{
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
-					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
+					{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte("c")},
 					),
-					deletedFileEntry{Level: 0, FileNum: 1}: newFileMeta(
+					{Level: 0, FileNum: 1}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte(badKey)},
 						manifest.InternalKey{UserKey: []byte("z")},
 					),
@@ -810,11 +810,11 @@ func TestValidateVersionEdit(t *testing.T) {
 					},
 				},
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
-					deletedFileEntry{Level: 6, FileNum: 0}: newFileMeta(
+					{Level: 6, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
 						manifest.InternalKey{UserKey: []byte("d")},
 					),
-					deletedFileEntry{Level: 6, FileNum: 1}: newFileMeta(
+					{Level: 6, FileNum: 1}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("x")},
 						manifest.InternalKey{UserKey: []byte("z")},
 					),
