@@ -3199,8 +3199,8 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 
 	// Create a file with high tombstone density.
 	meta := &tableMetadata{
-		FileNum: 1,
-		Size:    1024,
+		TableNum: 1,
+		Size:     1024,
 		Stats: manifest.TableStats{
 			NumEntries:                10,
 			NumDeletions:              8,
@@ -3245,7 +3245,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	iter := c.startLevel.files.Iter()
 	inFile := iter.First()
 	require.NotNil(t, inFile)
-	require.Equal(t, meta.FileNum, inFile.FileNum, "file should be the one planned for move")
+	require.Equal(t, meta.TableNum, inFile.TableNum, "file should be the one planned for move")
 
 	t.Logf("Compaction kind: %v", c.kind)
 	t.Logf("Input file: %v", meta)
@@ -3261,7 +3261,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	for meta := i.First(); meta != nil; meta = i.Next() {
 		ve.DeletedTables[manifest.DeletedTableEntry{
 			Level:   inputLevel,
-			FileNum: meta.FileNum,
+			FileNum: meta.TableNum,
 		}] = meta
 		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{
 			Level: outputLevel,
@@ -3297,8 +3297,8 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 
 	// Create a file with high tombstone density in L4.
 	metaL4 := &tableMetadata{
-		FileNum: 1,
-		Size:    1024,
+		TableNum: 1,
+		Size:     1024,
 		Stats: manifest.TableStats{
 			NumEntries:                10,
 			NumDeletions:              8,
@@ -3314,8 +3314,8 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 
 	// Create an overlapping file in L5.
 	metaL5 := &tableMetadata{
-		FileNum: 2,
-		Size:    1024,
+		TableNum: 2,
+		Size:     1024,
 	}
 	metaL5.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("m.SET.1"),
@@ -3376,8 +3376,8 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 
 	// File in L4 with high tombstone density.
 	metaL4 := &tableMetadata{
-		FileNum: 1,
-		Size:    1024,
+		TableNum: 1,
+		Size:     1024,
 		Stats: manifest.TableStats{
 			NumEntries:                10,
 			NumDeletions:              8,
@@ -3393,8 +3393,8 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 
 	// Large overlapping file in L6 (grandparent level).
 	metaL6 := &tableMetadata{
-		FileNum: 3,
-		Size:    1 << 30, // 1GB, exceeds overlap threshold
+		TableNum: 3,
+		Size:     1 << 30, // 1GB, exceeds overlap threshold
 	}
 	metaL6.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
@@ -3438,8 +3438,8 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	opts.WithFSDefaults()
 
 	meta := &tableMetadata{
-		FileNum: 1,
-		Size:    1024,
+		TableNum: 1,
+		Size:     1024,
 		Stats: manifest.TableStats{
 			NumEntries:                10,
 			NumDeletions:              5,
@@ -3486,8 +3486,8 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	opts.WithFSDefaults()
 
 	meta := &tableMetadata{
-		FileNum: 1,
-		Size:    1024,
+		TableNum: 1,
+		Size:     1024,
 		// No stats set, or stats are invalid
 	}
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
