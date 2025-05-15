@@ -223,15 +223,6 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	if w.w == nil {
 		return FileWriterStats{}, w.err
 	}
-	defer func() {
-		if w.w != nil {
-			w.w.Abort()
-			w.w = nil
-		}
-		if w.err == nil {
-			w.err = errClosed
-		}
-	}()
 	// Flush the last block to the write queue if it's non-empty.
 	if w.b.Size() > 0 {
 		w.flush()
@@ -240,9 +231,13 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	// for it to complete.
 	close(w.writeQueue.ch)
 	w.writeQueue.wg.Wait()
+	var err error
 	if w.writeQueue.err != nil {
-		w.err = w.writeQueue.err
-		return FileWriterStats{}, w.err
+		err = w.writeQueue.err
+		if w.w != nil {
+			w.w.Abort()
+		}
+		return FileWriterStats{}, err
 	}
 	stats := w.stats
 	if stats.BlockCount != uint32(w.indexEncoder.countBlocks) {
@@ -260,7 +255,11 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		var compressedBuf []byte
 		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoCompression, w.b.Checksummer())
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
-			return FileWriterStats{}, w.err
+			err = w.err
+			if w.w != nil {
+				w.w.Abort()
+			}
+			return FileWriterStats{}, err
 		}
 		indexBlockHandle.Offset = stats.FileLen
 		indexBlockHandle.Length = uint64(pb.LengthWithoutTrailer())
@@ -277,11 +276,19 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	footerBuf := w.b.Get()
 	footer.encode(footerBuf)
 	if w.err = w.w.Write(footerBuf); w.err != nil {
-		return FileWriterStats{}, w.err
+		err = w.err
+		if w.w != nil {
+			w.w.Abort()
+		}
+		return FileWriterStats{}, err
 	}
 	stats.FileLen += fileFooterLength
 	if w.err = w.w.Finish(); w.err != nil {
-		return FileWriterStats{}, w.err
+		err = w.err
+		if w.w != nil {
+			w.w.Abort()
+		}
+		return FileWriterStats{}, err
 	}
 
 	// Clean up w and return it to the pool.
@@ -289,7 +296,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	w.indexEncoder.Reset()
 	w.w = nil
 	w.stats = FileWriterStats{}
-	w.err = nil
+	w.err = errClosed
 	w.writeQueue.ch = nil
 	w.writeQueue.err = nil
 	writerPool.Put(w)
