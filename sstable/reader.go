@@ -487,20 +487,9 @@ func (r *Reader) readMetaindex(
 			return err
 		}
 		r.propertiesBH = bh
-		if r.tableFormat >= TableFormatPebblev6 {
-			var decoder colblk.KeyValueBlockDecoder
-			decoder.Init(b.BlockData())
-			if err := r.Properties.load(decoder.All(), deniedUserProperties); err != nil {
-				return err
-			}
-		} else {
-			i, err := rowblk.NewRawIter(bytes.Compare, b.BlockData())
-			if err != nil {
-				return err
-			}
-			if err := r.Properties.load(i.All(), deniedUserProperties); err != nil {
-				return err
-			}
+		r.Properties, err = readPropertiesBlock(r.tableFormat, b.BlockData(), deniedUserProperties)
+		if err != nil {
+			return err
 		}
 		b.Release()
 	} else {
@@ -532,6 +521,29 @@ func (r *Reader) readMetaindex(
 		}
 	}
 	return nil
+}
+
+// readProperties decodes the (uncompressed) properties block.
+func readPropertiesBlock(
+	tableFormat TableFormat, blockData []byte, deniedUserProperties map[string]struct{},
+) (Properties, error) {
+	var props Properties
+	if tableFormat >= TableFormatPebblev7 {
+		var decoder colblk.KeyValueBlockDecoder
+		decoder.Init(blockData)
+		if err := props.load(decoder.All(), deniedUserProperties); err != nil {
+			return Properties{}, err
+		}
+	} else {
+		i, err := rowblk.NewRawIter(bytes.Compare, blockData)
+		if err != nil {
+			return Properties{}, err
+		}
+		if err := props.load(i.All(), deniedUserProperties); err != nil {
+			return Properties{}, err
+		}
+	}
+	return props, nil
 }
 
 // Layout returns the layout (block organization) for an sstable.

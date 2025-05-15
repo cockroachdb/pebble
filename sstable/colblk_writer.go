@@ -1031,7 +1031,7 @@ func (w *RawColumnWriter) Close() (err error) {
 
 		var toWrite []byte
 		w.props.CompressionOptions = rocksDBCompressionOptions
-		if w.opts.TableFormat >= TableFormatPebblev6 {
+		if w.opts.TableFormat >= TableFormatPebblev7 {
 			var cw colblk.KeyValueBlockWriter
 			cw.Init()
 			w.props.saveToColWriter(w.opts.TableFormat, &cw)

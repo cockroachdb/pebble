@@ -235,9 +235,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 554
- ├── meta-index  offset: 974  length: 46
- └── footer  offset: 1025  length: 57
+ ├── properties  offset: 415  length: 548
+ ├── meta-index  offset: 968  length: 46
+ └── footer  offset: 1019  length: 57
 
 props
 ----
@@ -274,9 +274,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 554
- ├── meta-index  offset: 974  length: 46
- └── footer  offset: 1025  length: 57
+ ├── properties  offset: 415  length: 548
+ ├── meta-index  offset: 968  length: 46
+ └── footer  offset: 1019  length: 57
 
 scan
 ----
@@ -321,9 +321,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 577
- ├── meta-index  offset: 704  length: 65
- └── footer  offset: 774  length: 57
+ ├── properties  offset: 122  length: 589
+ ├── meta-index  offset: 716  length: 65
+ └── footer  offset: 786  length: 57
 
 props
 ----

@@ -269,7 +269,7 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				if r.tableFormat >= TableFormatPebblev6 {
+				if r.tableFormat >= TableFormatPebblev7 {
 					var decoder colblk.KeyValueBlockDecoder
 					decoder.Init(h.BlockData())
 					offset := 0
@@ -583,25 +583,13 @@ func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat)
 		Footer:     foot.footerBH,
 		Format:     foot.format,
 	}
-	var props Properties
 	decompressedProps, err := decompressInMemory(data, layout.Properties)
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing properties")
 	}
-	if tableFormat >= TableFormatPebblev6 {
-		var decoder colblk.KeyValueBlockDecoder
-		decoder.Init(decompressedProps)
-		if err = props.load(decoder.All(), map[string]struct{}{}); err != nil {
-			return Layout{}, err
-		}
-	} else {
-		i, err := rowblk.NewRawIter(bytes.Compare, decompressedProps)
-		if err != nil {
-			return Layout{}, err
-		}
-		if err = props.load(i.All(), map[string]struct{}{}); err != nil {
-			return Layout{}, err
-		}
+	props, err := readPropertiesBlock(tableFormat, decompressedProps, nil /* deniedUserPropertie */)
+	if err != nil {
+		return Layout{}, err
 	}
 
 	if props.IndexType == twoLevelIndex {
@@ -865,7 +853,7 @@ func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err er
 // and writes the block and trailer to the writer. It automatically adds the
 // properties block to the file's meta index when the writer is finished.
 func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
-	if w.tableFormat >= TableFormatPebblev6 {
+	if w.tableFormat >= TableFormatPebblev7 {
 		return w.writeNamedBlock(b, w.compression, metaPropertiesName)
 	}
 	return w.writeNamedBlock(b, block.NoCompression, metaPropertiesName)
