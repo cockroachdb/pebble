@@ -734,7 +734,9 @@ L6:
   000024(000018):[f#0,SET-f#0,SET]
   000025(000018):[x#0,SET-x#0,SET]
 
-build-remote remote1
+# We set the block size to prevent randomization of block sizes (which affects
+# the size).
+build-remote remote1 block-size=1024 index-block-size=1024
 g#0,SET = foo
 h#0,SET = bar
 i#0,SET = foobar
@@ -759,17 +761,50 @@ L6:
 excise ga ha
 ----
 
-lsm
+lsm verbose
 ----
 L0.0:
-  000019:[a#22,SET-a#22,SET]
-  000020:[b#23,SET-f#23,SET]
+  000019:[a#22,SET-a#22,SET] seqnums:[22-22] points:[a#22,SET-a#22,SET] size:688
+  000020:[b#23,SET-f#23,SET] seqnums:[23-23] points:[b#23,SET-f#23,SET] size:743
 L6:
-  000023(000018):[a#0,SET-a#0,SET]
-  000024(000018):[f#0,SET-f#0,SET]
-  000027(000026):[g#26,DELSIZED-ga#inf,RANGEDEL]
-  000028(000026):[ha#0,DELSIZED-j#inf,RANGEDEL]
-  000025(000018):[x#0,SET-x#0,SET]
+  000023(000018):[a#0,SET-a#0,SET] seqnums:[0-0] points:[a#0,SET-a#0,SET] size:71(721)
+  000024(000018):[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:71(721)
+  000027(000026):[g#26,DELSIZED-ga#inf,RANGEDEL] seqnums:[26-26] points:[g#26,DELSIZED-ga#inf,RANGEDEL] size:350(700)
+  000028(000026):[ha#0,DELSIZED-j#inf,RANGEDEL] seqnums:[26-26] points:[ha#0,DELSIZED-j#inf,RANGEDEL] size:350(700)
+  000025(000018):[x#0,SET-x#0,SET] seqnums:[0-0] points:[x#0,SET-x#0,SET] size:71(721)
+
+# Non-local tables are excised without data access.
+
+build-remote remote2
+u#0,SET = foo
+v#0,SET = bar
+w#0,SET = foobar
+----
+
+ingest-external
+remote1 bounds=(u,w)
+----
+
+move-remote-object remote2 remote2-moved
+----
+remote2 -> remote2-moved
+
+excise uk vk
+----
+
+lsm verbose
+----
+L0.0:
+  000019:[a#22,SET-a#22,SET] seqnums:[22-22] points:[a#22,SET-a#22,SET] size:688
+  000020:[b#23,SET-f#23,SET] seqnums:[23-23] points:[b#23,SET-f#23,SET] size:743
+L6:
+  000023(000018):[a#0,SET-a#0,SET] seqnums:[0-0] points:[a#0,SET-a#0,SET] size:71(721)
+  000024(000018):[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:71(721)
+  000027(000026):[g#26,DELSIZED-ga#inf,RANGEDEL] seqnums:[26-26] points:[g#26,DELSIZED-ga#inf,RANGEDEL] size:350(700)
+  000028(000026):[ha#0,DELSIZED-j#inf,RANGEDEL] seqnums:[26-26] points:[ha#0,DELSIZED-j#inf,RANGEDEL] size:350(700)
+  000030(000026):[u#28,DELSIZED-uk#inf,RANGEDEL] seqnums:[28-28] points:[u#28,DELSIZED-uk#inf,RANGEDEL] size:350(700)
+  000031(000026):[vk#0,DELSIZED-w#inf,RANGEDEL] seqnums:[28-28] points:[vk#0,DELSIZED-w#inf,RANGEDEL] size:350(700)
+  000025(000018):[x#0,SET-x#0,SET] seqnums:[0-0] points:[x#0,SET-x#0,SET] size:71(721)
 
 excise a z
 ----

@@ -157,7 +157,10 @@ func (d *DB) exciseTable(
 
 		if leftTable.HasRangeKeys || leftTable.HasPointKeys {
 			leftTable.AttachVirtualBacking(m.FileBacking)
-			if err := determineExcisedTableSize(d.fileCache, m, leftTable); err != nil {
+			if looseBounds {
+				// We don't want to access the object; make up a size.
+				leftTable.Size = (m.Size + 1) / 2
+			} else if err := determineExcisedTableSize(d.fileCache, m, leftTable); err != nil {
 				return nil, nil, err
 			}
 			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, leftTable)
@@ -194,7 +197,10 @@ func (d *DB) exciseTable(
 		}
 		if rightTable.HasRangeKeys || rightTable.HasPointKeys {
 			rightTable.AttachVirtualBacking(m.FileBacking)
-			if err := determineExcisedTableSize(d.fileCache, m, rightTable); err != nil {
+			if looseBounds {
+				// We don't want to access the object; make up a size.
+				rightTable.Size = (m.Size + 1) / 2
+			} else if err := determineExcisedTableSize(d.fileCache, m, rightTable); err != nil {
 				return nil, nil, err
 			}
 			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, rightTable)
