@@ -24,13 +24,38 @@ const (
 	TableFormatUnspecified TableFormat = iota
 	TableFormatLevelDB
 	TableFormatRocksDBv2
-	TableFormatPebblev1 // Block properties.
-	TableFormatPebblev2 // Range keys.
-	TableFormatPebblev3 // Value blocks.
-	TableFormatPebblev4 // DELSIZED tombstones.
+
+	// TableFormatPebblev1 adds block properties.
+	TableFormatPebblev1
+
+	// TableFormatPebblev2 adds range keys
+	TableFormatPebblev2
+
+	// TableFormatPebblev3 adds value blocks.
+	TableFormatPebblev3
+
+	// TableFormatPebblev4 adds DELSIZED tombstones.
+	TableFormatPebblev4
+
+	// TableFormatPebblev5 adds columnar blocks.
 	TableFormatPebblev5 // Columnar blocks.
-	TableFormatPebblev6 // Checksum footer + blob value handles + columnar metaindex/properties + MinLZ compression support.
-	TableFormatPebblev7 // Footer attributes.
+
+	// TableFormatPebblev6 adds:
+	//  - checksum for footer;
+	//  - blob value handles;
+	//  - columnar metaindex;
+	//  - MinLZ compression support.
+	//
+	// Supported by CockroachDB v25.2 and later.
+	TableFormatPebblev6
+
+	// TableFormatPebblev7 adds:
+	//  - columnar + compressed properties block;
+	//  - footer attributes.
+	//
+	// Supported by CockroachDB v25.3 and later.
+	TableFormatPebblev7
+
 	NumTableFormats
 
 	TableFormatMax = NumTableFormats - 1
