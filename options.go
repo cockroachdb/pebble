@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -2063,15 +2064,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			return err
 
 		case strings.HasPrefix(section, "Level "):
-			var index int
-			if n, err := fmt.Sscanf(section, `Level "%d"`, &index); err != nil {
-				return err
-			} else if n != 1 {
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section, value) {
-					return nil
-				}
+			m := regexp.MustCompile(`Level\s*"?(\d+)"?\s*$`).FindStringSubmatch(section)
+			if m == nil {
 				return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
 			}
+			index, _ := strconv.Atoi(m[1])
 
 			if len(o.Levels) <= index {
 				newLevels := make([]LevelOptions, index+1)
