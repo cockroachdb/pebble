@@ -251,7 +251,7 @@ func (d *DB) newDownloadSpanTask(vers *version, sp DownloadSpan) (_ *downloadSpa
 	for _, ls := range vers.AllLevelsAndSublevels() {
 		iter := ls.Iter()
 		if f := iter.SeekGE(d.cmp, sp.StartKey); f != nil &&
-			objstorage.IsExternalTable(d.objProvider, f.FileBacking.DiskFileNum) &&
+			objstorage.IsExternalTable(d.objProvider, f.TableBacking.DiskFileNum) &&
 			d.cmp(f.Smallest().UserKey, bounds.Start) < 0 {
 			bounds.Start = f.Smallest().UserKey
 		}
@@ -403,7 +403,7 @@ func firstExternalFileInLevelIter(
 		f = it.Next()
 	}
 	for ; f != nil && endBound.IsUpperBoundFor(cmp, f.Smallest().UserKey); f = it.Next() {
-		if f.Virtual && objstorage.IsExternalTable(objProvider, f.FileBacking.DiskFileNum) {
+		if f.Virtual && objstorage.IsExternalTable(objProvider, f.TableBacking.DiskFileNum) {
 			return f
 		}
 	}

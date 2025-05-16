@@ -788,7 +788,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				}
 				var newFiles []base.DiskFileNum
 				for _, nf := range ve.NewTables {
-					newFiles = append(newFiles, nf.Meta.FileBacking.DiskFileNum)
+					newFiles = append(newFiles, nf.Meta.TableBacking.DiskFileNum)
 					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum || nf.Level != 0) {
 						s.kind = flushStepKind
 					}

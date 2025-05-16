@@ -794,8 +794,8 @@ func TestIterAllocs(t *testing.T) {
 			var tables []*TableMetadata
 			for i := 0; i < n; i++ {
 				tables = append(tables, &TableMetadata{
-					TableNum:    base.FileNum(i),
-					FileBacking: &FileBacking{},
+					TableNum:     base.FileNum(i),
+					TableBacking: &TableBacking{},
 				})
 			}
 			return NewLevelSliceSeqSorted(tables)
@@ -817,8 +817,8 @@ func TestIterAllocs(t *testing.T) {
 			var tables []*TableMetadata
 			for i := 0; i < n; i++ {
 				tables = append(tables, &TableMetadata{
-					TableNum:    base.FileNum(i),
-					FileBacking: &FileBacking{},
+					TableNum:     base.FileNum(i),
+					TableBacking: &TableBacking{},
 				})
 			}
 			return MakeLevelMetadata(base.DefaultComparer.Compare, 0, tables)

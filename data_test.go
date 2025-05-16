@@ -1322,7 +1322,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 
 	backingFileNum := base.DiskFileNum(file)
 	if m != nil {
-		backingFileNum = m.FileBacking.DiskFileNum
+		backingFileNum = m.TableBacking.DiskFileNum
 	}
 	fileName := base.MakeFilename(base.FileTypeTable, backingFileNum)
 	f, err := d.opts.FS.Open(fileName)
@@ -1351,7 +1351,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	env := sstable.ReadEnv{}
 	if m != nil && m.Virtual {
 		env.Virtual = m.VirtualParams
-		scaledProps := r.Properties.GetScaledProperties(m.FileBacking.Size, m.Size)
+		scaledProps := r.Properties.GetScaledProperties(m.TableBacking.Size, m.Size)
 		props = scaledProps.String()
 	}
 	if len(td.Input) == 0 {

@@ -960,7 +960,7 @@ func (p *props) update(o props) {
 
 func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadata, p *props) error {
 	ctx := context.Background()
-	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileBacking.DiskFileNum, objstorage.OpenOptions{})
+	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.TableBacking.DiskFileNum, objstorage.OpenOptions{})
 	if err != nil {
 		return err
 	}
@@ -968,7 +968,7 @@ func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadat
 	opts.Mergers = d.mergers
 	opts.Comparers = d.comparers
 	opts.ReaderOptions.CacheOpts = sstableinternal.CacheOptions{
-		FileNum: m.FileBacking.DiskFileNum,
+		FileNum: m.TableBacking.DiskFileNum,
 	}
 	r, err := sstable.NewReader(ctx, f, opts)
 	if err != nil {
