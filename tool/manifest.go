@@ -117,7 +117,7 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 					largest := f.Largest()
 					formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
 					if f.Virtual {
-						fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.FileBacking.DiskFileNum)
+						fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.TableBacking.DiskFileNum)
 					}
 					fmt.Fprintf(stdout, "\n")
 				}
@@ -135,7 +135,7 @@ func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.
 			largest := f.Largest()
 			formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
 			if f.Virtual {
-				fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.FileBacking.DiskFileNum)
+				fmt.Fprintf(stdout, "(virtual:backingNum=%s)", f.TableBacking.DiskFileNum)
 			}
 			fmt.Fprintf(stdout, "\n")
 		}

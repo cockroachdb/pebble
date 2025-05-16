@@ -143,8 +143,8 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			return memLog.String()
 
 		case "print-backing":
-			// prints contents of the file backing map in the version. Used to
-			// test whether the checkpoint removed the filebackings correctly.
+			// Print the virtual backings in the version. Used to test whether the
+			// checkpoint removed the backings correctly.
 			if len(td.CmdArgs) != 1 {
 				return "print-backing <db>"
 			}

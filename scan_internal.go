@@ -711,7 +711,7 @@ func scanInternalImpl(
 
 				var objMeta objstorage.ObjectMetadata
 				var err error
-				objMeta, err = provider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
+				objMeta, err = provider.Lookup(base.FileTypeTable, f.TableBacking.DiskFileNum)
 				if err != nil {
 					return err
 				}
@@ -939,7 +939,7 @@ func (i *scanInternalIterator) constructPointIter(
 		if level == skipStart {
 			nonRemoteFiles := make([]*manifest.TableMetadata, 0)
 			for f := levIter.First(); f != nil; f = levIter.Next() {
-				meta, err := i.db.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
+				meta, err := i.db.objProvider.Lookup(base.FileTypeTable, f.TableBacking.DiskFileNum)
 				if err != nil {
 					return err
 				}
@@ -1051,7 +1051,7 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 		if level == skipStart {
 			nonRemoteFiles := make([]*manifest.TableMetadata, 0)
 			for f := levIter.First(); f != nil; f = levIter.Next() {
-				meta, err := i.db.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
+				meta, err := i.db.objProvider.Lookup(base.FileTypeTable, f.TableBacking.DiskFileNum)
 				if err != nil {
 					return err
 				}

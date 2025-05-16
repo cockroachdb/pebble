@@ -28,7 +28,7 @@ func TestVirtualBackings(t *testing.T) {
 
 		switch d.Cmd {
 		case "add":
-			bv.AddAndRef(&FileBacking{
+			bv.AddAndRef(&TableBacking{
 				DiskFileNum: n,
 				Size:        size,
 			})
@@ -38,17 +38,17 @@ func TestVirtualBackings(t *testing.T) {
 
 		case "add-table":
 			m := &TableMetadata{
-				FileBacking: &FileBacking{DiskFileNum: n},
-				Size:        size,
-				Virtual:     true,
+				TableBacking: &TableBacking{DiskFileNum: n},
+				Size:         size,
+				Virtual:      true,
 			}
 			bv.AddTable(m)
 
 		case "remove-table":
 			m := &TableMetadata{
-				FileBacking: &FileBacking{DiskFileNum: n},
-				Size:        size,
-				Virtual:     true,
+				TableBacking: &TableBacking{DiskFileNum: n},
+				Size:         size,
+				Virtual:      true,
 			}
 			bv.RemoveTable(m)
 

@@ -45,9 +45,9 @@ func checkRoundTrip(e0 VersionEdit) error {
 }
 
 // Version edits with virtual sstables will not be the same after a round trip
-// as the Decode function will not set the FileBacking for a virtual sstable.
+// as the Decode function will not set the TableBacking for a virtual sstable.
 // We test round trip + bve accumulation here, after which the virtual sstable
-// FileBacking should be set.
+// TableBacking should be set.
 func TestVERoundTripAndAccumulate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&TableMetadata{
@@ -82,7 +82,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
 		base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet),
 	)
-	m2.AttachVirtualBacking(m1.FileBacking)
+	m2.AttachVirtualBacking(m1.TableBacking)
 
 	ve1 := VersionEdit{
 		ComparerName:         "11",
@@ -90,13 +90,13 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		ObsoletePrevLogNum:   33,
 		NextFileNum:          44,
 		LastSeqNum:           55,
-		CreatedBackingTables: []*FileBacking{m1.FileBacking},
+		CreatedBackingTables: []*TableBacking{m1.TableBacking},
 		NewTables: []NewTableEntry{
 			{
 				Level: 4,
 				Meta:  m2,
 				// Only set for the test.
-				BackingFileNum: m2.FileBacking.DiskFileNum,
+				BackingFileNum: m2.TableBacking.DiskFileNum,
 			},
 		},
 	}
@@ -109,7 +109,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 	if err = ve2.Decode(buf); err != nil {
 		t.Error(err)
 	}
-	// Perform accumulation to set the FileBacking on the files in the Decoded
+	// Perform accumulation to set the TableBacking on the files in the Decoded
 	// version edit.
 	var bve BulkVersionEdit
 	require.NoError(t, bve.Accumulate(&ve2))
@@ -223,7 +223,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			NextFileNum:          44,
 			LastSeqNum:           55,
 			RemovedBackingTables: []base.DiskFileNum{10, 11},
-			CreatedBackingTables: []*FileBacking{m5.FileBacking, m6.FileBacking},
+			CreatedBackingTables: []*TableBacking{m5.TableBacking, m6.TableBacking},
 			DeletedTables: map[DeletedTableEntry]*TableMetadata{
 				{
 					Level:   3,

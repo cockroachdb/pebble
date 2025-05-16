@@ -70,7 +70,7 @@ type VirtualBackings struct {
 
 	// unused are all the backings in m that are not inUse(). Used for
 	// implementing Unused() efficiently.
-	unused map[*FileBacking]struct{}
+	unused map[*TableBacking]struct{}
 
 	totalSize uint64
 }
@@ -79,12 +79,12 @@ type VirtualBackings struct {
 func MakeVirtualBackings() VirtualBackings {
 	return VirtualBackings{
 		m:      make(map[base.DiskFileNum]backingWithMetadata),
-		unused: make(map[*FileBacking]struct{}),
+		unused: make(map[*TableBacking]struct{}),
 	}
 }
 
 type backingWithMetadata struct {
-	backing *FileBacking
+	backing *TableBacking
 
 	// A backing initially has a useCount of 0. The useCount is increased by
 	// AddTable and decreased by RemoveTable. Backings that have useCount=0 are
@@ -103,7 +103,7 @@ type backingWithMetadata struct {
 //
 // The added backing is unused until it is associated with a table via AddTable
 // or protected via Protect.
-func (bv *VirtualBackings) AddAndRef(backing *FileBacking) {
+func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
 	// We take a reference on the backing because in case of protected backings
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
@@ -137,13 +137,13 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 	if !m.Virtual {
 		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
 	}
-	v := bv.mustGet(m.FileBacking.DiskFileNum)
+	v := bv.mustGet(m.TableBacking.DiskFileNum)
 	if !v.inUse() {
 		delete(bv.unused, v.backing)
 	}
 	v.useCount++
 	v.virtualizedSize += m.Size
-	bv.m[m.FileBacking.DiskFileNum] = v
+	bv.m[m.TableBacking.DiskFileNum] = v
 }
 
 // RemoveTable is used when a table using a backing is removed. The backing is
@@ -152,14 +152,14 @@ func (bv *VirtualBackings) RemoveTable(m *TableMetadata) {
 	if !m.Virtual {
 		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
 	}
-	v := bv.mustGet(m.FileBacking.DiskFileNum)
+	v := bv.mustGet(m.TableBacking.DiskFileNum)
 
 	if v.useCount <= 0 {
 		panic(errors.AssertionFailedf("invalid useCount"))
 	}
 	v.useCount--
 	v.virtualizedSize -= m.Size
-	bv.m[m.FileBacking.DiskFileNum] = v
+	bv.m[m.TableBacking.DiskFileNum] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -204,8 +204,8 @@ func (bv *VirtualBackings) Stats() (count int, totalSize uint64) {
 //     backing.
 //
 // During compaction picking, we compensate a virtual sstable file size by
-// (FileBacking.Size - virtualizedSize) / useCount.
-// The intuition is that if FileBacking.Size - virtualizedSize is high, then the
+// (TableBacking.Size - virtualizedSize) / useCount.
+// The intuition is that if TableBacking.Size - virtualizedSize is high, then the
 // space amplification due to virtual sstables is high, and we should pick the
 // virtual sstable with a higher priority.
 func (bv *VirtualBackings) Usage(n base.DiskFileNum) (useCount int, virtualizedSize uint64) {
@@ -215,19 +215,19 @@ func (bv *VirtualBackings) Usage(n base.DiskFileNum) (useCount int, virtualizedS
 
 // Unused returns all backings that are and no longer used by the latest version
 // and are not protected, in DiskFileNum order.
-func (bv *VirtualBackings) Unused() []*FileBacking {
-	res := make([]*FileBacking, 0, len(bv.unused))
+func (bv *VirtualBackings) Unused() []*TableBacking {
+	res := make([]*TableBacking, 0, len(bv.unused))
 	for b := range bv.unused {
 		res = append(res, b)
 	}
-	slices.SortFunc(res, func(a, b *FileBacking) int {
+	slices.SortFunc(res, func(a, b *TableBacking) int {
 		return stdcmp.Compare(a.DiskFileNum, b.DiskFileNum)
 	})
 	return res
 }
 
 // Get returns the backing with the given DiskFileNum, if it is in the set.
-func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *FileBacking, ok bool) {
+func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *TableBacking, ok bool) {
 	v, ok := bv.m[n]
 	if ok {
 		return v.backing, true
@@ -236,7 +236,7 @@ func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *FileBacking, ok bool) {
 }
 
 // ForEach calls fn on each backing, in unspecified order.
-func (bv *VirtualBackings) ForEach(fn func(backing *FileBacking)) {
+func (bv *VirtualBackings) ForEach(fn func(backing *TableBacking)) {
 	for _, v := range bv.m {
 		fn(v.backing)
 	}
@@ -254,8 +254,8 @@ func (bv *VirtualBackings) DiskFileNums() []base.DiskFileNum {
 }
 
 // Backings returns all backings in the set, in unspecified order.
-func (bv *VirtualBackings) Backings() []*FileBacking {
-	res := make([]*FileBacking, 0, len(bv.m))
+func (bv *VirtualBackings) Backings() []*TableBacking {
+	res := make([]*TableBacking, 0, len(bv.m))
 	for _, v := range bv.m {
 		res = append(res, v.backing)
 	}

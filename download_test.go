@@ -182,7 +182,7 @@ func TestDownloadTask(t *testing.T) {
 				} else {
 					fmt.Fprintf(&buf, "downloading %s\n", f.TableNum)
 					f.Virtual = false
-					f.FileBacking.DiskFileNum = base.DiskFileNum(f.TableNum)
+					f.TableBacking.DiskFileNum = base.DiskFileNum(f.TableNum)
 					ch <- nil
 				}
 				return ch, true

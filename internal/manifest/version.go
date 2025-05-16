@@ -215,7 +215,7 @@ func (s CompactionState) String() string {
 // since such leveled-ssts can move across levels in different versions, while
 // sharing the same TableMetadata. There are two kinds of leveled-ssts, physical
 // and virtual. Underlying both leveled-ssts is a backing-sst, for which the
-// only state is FileBacking. A backing-sst is level-less. It is possible for a
+// only state is TableBacking. A backing-sst is level-less. It is possible for a
 // backing-sst to be referred to by a physical sst in one version and by one or
 // more virtual ssts in one or more versions. A backing-sst becomes obsolete and
 // can be deleted once it is no longer required by any physical or virtual sst
@@ -235,7 +235,7 @@ func (s CompactionState) String() string {
 //
 // Once a physical sst is no longer needed by any version, we will no longer
 // maintain the table metadata associated with it. We will still maintain the
-// FileBacking associated with the physical sst if the backing sst is required
+// TableBacking associated with the physical sst if the backing sst is required
 // by any virtual ssts in any version.
 //
 // When using these fields in the context of a Virtual Table, These fields
@@ -255,7 +255,7 @@ func (s CompactionState) String() string {
 //     sstable, those could get uncovered by this truncation. We enforce this
 //     invariant in calls to keyspan.Truncate.
 //   - Size is an estimate of the size of the virtualized portion of this sstable.
-//     The underlying file's size is stored in FileBacking.Size, though it could
+//     The underlying file's size is stored in TableBacking.Size, though it could
 //     also be estimated or could correspond to just the referenced portion of
 //     a file (eg. if the file originated on another node).
 //   - Size must be > 0.
@@ -277,22 +277,22 @@ type TableMetadata struct {
 	// TableStats structure is populated only if valid is true.
 	statsValid atomic.Bool
 
-	// FileBacking is the state which backs either a physical or virtual
+	// TableBacking is the physical file that backs either physical or virtual
 	// sstables.
-	FileBacking *FileBacking
+	TableBacking *TableBacking
 
 	// InitAllowedSeeks is the inital value of allowed seeks. This is used
 	// to re-set allowed seeks on a file once it hits 0.
 	InitAllowedSeeks int64
 	// TableNum is the table number, unique across the lifetime of a DB.
 	//
-	// INVARIANT: when !TableMetadata.Virtual, TableNum == FileBacking.DiskFileNum.
+	// INVARIANT: when !TableMetadata.Virtual, TableNum == TableBacking.DiskFileNum.
 	TableNum base.TableNum
 	// Size is the size of the file, in bytes. Size is an approximate value for
 	// virtual sstables.
 	//
 	// INVARIANTS:
-	// - When !TableMetadata.Virtual, Size == FileBacking.Size.
+	// - When !TableMetadata.Virtual, Size == TableBacking.Size.
 	// - Size should be non-zero. Size 0 virtual sstables must not be created.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
@@ -414,11 +414,11 @@ type TableMetadata struct {
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,
-// Ref will increment the reference of the table's FileBacking and referenced
+// Ref will increment the reference of the table's TableBacking and referenced
 // blob files.
 func (m *TableMetadata) Ref() {
 	if v := m.refs.Add(1); v == 1 {
-		m.FileBacking.Ref()
+		m.TableBacking.Ref()
 		for _, blobRef := range m.BlobReferences {
 			// BlobReference.Metadata is allowed to be nil when first decoded
 			// from a VersionEdit, but BulkVersionEdit.Accumulate should have
@@ -443,8 +443,8 @@ func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 	}
 	// When the reference count reaches zero, release the table's references.
 	if v == 0 {
-		if m.FileBacking.Unref() == 0 {
-			obsoleteFiles.AddBacking(m.FileBacking)
+		if m.TableBacking.Unref() == 0 {
+			obsoleteFiles.AddBacking(m.TableBacking)
 		}
 		for _, blobRef := range m.BlobReferences {
 			if blobRef.Metadata.unref() == 0 {
@@ -540,11 +540,11 @@ func (m *TableMetadata) EstimatedReferenceSize() uint64 {
 	return size
 }
 
-// FileBacking either backs a single physical sstable, or one or more virtual
+// TableBacking either backs a single physical sstable, or one or more virtual
 // sstables.
 //
 // See the comment above the TableMetadata type for sstable terminology.
-type FileBacking struct {
+type TableBacking struct {
 	DiskFileNum base.DiskFileNum
 	Size        uint64
 
@@ -562,7 +562,7 @@ type FileBacking struct {
 }
 
 // MustHaveRefs asserts that the backing has a positive refcount.
-func (b *FileBacking) MustHaveRefs() {
+func (b *TableBacking) MustHaveRefs() {
 	if refs := b.refs.Load(); refs <= 0 {
 		panic(errors.AssertionFailedf("backing %s must have positive refcount (refs=%d)",
 			b.DiskFileNum, refs))
@@ -570,66 +570,66 @@ func (b *FileBacking) MustHaveRefs() {
 }
 
 // Ref increments the backing's ref count.
-func (b *FileBacking) Ref() {
+func (b *TableBacking) Ref() {
 	b.refs.Add(1)
 }
 
 // IsUnused returns if the backing is not being used by any tables in a version
 // or btree.
-func (b *FileBacking) IsUnused() bool {
+func (b *TableBacking) IsUnused() bool {
 	return b.refs.Load() == 0
 }
 
 // Unref decrements the backing's ref count (and returns the new count).
-func (b *FileBacking) Unref() int32 {
+func (b *TableBacking) Unref() int32 {
 	v := b.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
-		panic(errors.AssertionFailedf("pebble: invalid FileBacking refcounting: file %s has refcount %d", b.DiskFileNum, v))
+		panic(errors.AssertionFailedf("pebble: invalid TableBacking refcounting: file %s has refcount %d", b.DiskFileNum, v))
 	}
 	return v
 }
 
-// InitPhysicalBacking allocates and sets the FileBacking which is required by a
+// InitPhysicalBacking allocates and sets the TableBacking which is required by a
 // physical sstable TableMetadata.
 //
-// Ensure that the state required by FileBacking, such as the TableNum, is
+// Ensure that the state required by TableBacking, such as the TableNum, is
 // already set on the TableMetadata before InitPhysicalBacking is called.
 // Calling InitPhysicalBacking only after the relevant state has been set in the
-// TableMetadata is not necessary in tests which don't rely on FileBacking.
+// TableMetadata is not necessary in tests which don't rely on TableBacking.
 func (m *TableMetadata) InitPhysicalBacking() {
 	if m.Virtual {
-		panic("pebble: virtual sstables should use a pre-existing FileBacking")
+		panic("pebble: virtual sstables should use a pre-existing TableBacking")
 	}
-	if m.FileBacking != nil {
+	if m.TableBacking != nil {
 		panic("backing already initialized")
 	}
-	m.FileBacking = &FileBacking{
+	m.TableBacking = &TableBacking{
 		DiskFileNum: base.PhysicalTableDiskFileNum(m.TableNum),
 		Size:        m.Size,
 	}
 }
 
-// InitVirtualBacking creates a new FileBacking for a virtual table.
+// InitVirtualBacking creates a new TableBacking for a virtual table.
 //
 // The Smallest/Largest bounds must already be set to their final values.
 func (m *TableMetadata) InitVirtualBacking(fileNum base.DiskFileNum, size uint64) {
-	m.AttachVirtualBacking(&FileBacking{
+	m.AttachVirtualBacking(&TableBacking{
 		DiskFileNum: fileNum,
 		Size:        size,
 	})
 }
 
-// AttachVirtualBacking attaches an existing FileBacking for a virtual table.
+// AttachVirtualBacking attaches an existing TableBacking for a virtual table.
 //
 // The Smallest/Largest bounds must already be set to their final values.
-func (m *TableMetadata) AttachVirtualBacking(backing *FileBacking) {
+func (m *TableMetadata) AttachVirtualBacking(backing *TableBacking) {
 	if !m.Virtual {
 		panic("pebble: provider-backed sstables must be virtual")
 	}
-	if m.FileBacking != nil {
+	if m.TableBacking != nil {
 		panic("backing already initialized")
 	}
-	m.FileBacking = backing
+	m.TableBacking = backing
 	if m.Smallest().UserKey == nil || m.Largest().UserKey == nil {
 		panic("bounds must be set before attaching backing")
 	}
@@ -652,7 +652,7 @@ func (m *TableMetadata) ValidateVirtual(createdFrom *TableMetadata) {
 		panic("pebble: invalid largest sequence number for virtual sstable")
 	case createdFrom.LargestSeqNumAbsolute != m.LargestSeqNumAbsolute:
 		panic("pebble: invalid largest absolute sequence number for virtual sstable")
-	case createdFrom.FileBacking != nil && createdFrom.FileBacking != m.FileBacking:
+	case createdFrom.TableBacking != nil && createdFrom.TableBacking != m.TableBacking:
 		panic("pebble: invalid physical sstable state for virtual sstable")
 	case m.Size == 0:
 		panic("pebble: virtual sstable size must be set upon creation")
@@ -897,7 +897,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	var b bytes.Buffer
 	if m.Virtual {
 		fmt.Fprintf(&b, "%s(%s):[%s-%s]",
-			m.TableNum, m.FileBacking.DiskFileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
+			m.TableNum, m.TableBacking.DiskFileNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
 	} else {
 		fmt.Fprintf(&b, "%s:[%s-%s]",
 			m.TableNum, m.Smallest().Pretty(format), m.Largest().Pretty(format))
@@ -916,8 +916,8 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	}
 	if m.Size != 0 {
 		fmt.Fprintf(&b, " size:%d", m.Size)
-		if m.Virtual && m.FileBacking != nil {
-			fmt.Fprintf(&b, "(%d)", m.FileBacking.Size)
+		if m.Virtual && m.TableBacking != nil {
+			fmt.Fprintf(&b, "(%d)", m.TableBacking.Size)
 		}
 	}
 	if len(m.BlobReferences) > 0 {
@@ -1132,8 +1132,8 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	}
 
 	// Ensure that TableMetadata.Init was called.
-	if m.FileBacking == nil {
-		return base.CorruptionErrorf("table metadata FileBacking not set")
+	if m.TableBacking == nil {
+		return base.CorruptionErrorf("table metadata TableBacking not set")
 	}
 	// Assert that there's a nonzero blob reference depth if and only if the
 	// table has a nonzero count of blob references. Additionally, the file's
@@ -1519,13 +1519,13 @@ func (v *Version) unrefFiles() ObsoleteFiles {
 // ObsoleteFiles holds a set of files that are no longer referenced by any
 // referenced Version.
 type ObsoleteFiles struct {
-	FileBackings []*FileBacking
-	BlobFiles    []*BlobFileMetadata
+	TableBackings []*TableBacking
+	BlobFiles     []*BlobFileMetadata
 }
 
-// AddBacking appends the provided FileBacking to the list of obsolete files.
-func (of *ObsoleteFiles) AddBacking(fb *FileBacking) {
-	of.FileBackings = append(of.FileBackings, fb)
+// AddBacking appends the provided TableBacking to the list of obsolete files.
+func (of *ObsoleteFiles) AddBacking(fb *TableBacking) {
+	of.TableBackings = append(of.TableBackings, fb)
 }
 
 // AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
@@ -1535,7 +1535,7 @@ func (of *ObsoleteFiles) AddBlob(bm *BlobFileMetadata) {
 
 // Count returns the number of files in the ObsoleteFiles.
 func (of *ObsoleteFiles) Count() int {
-	return len(of.FileBackings) + len(of.BlobFiles)
+	return len(of.TableBackings) + len(of.BlobFiles)
 }
 
 // Assert that ObsoleteFiles implements the obsoleteFiles interface.

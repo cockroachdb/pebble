@@ -27,7 +27,6 @@ const manifestMarkerName = `manifest`
 // Provide type aliases for the various manifest structs.
 type bulkVersionEdit = manifest.BulkVersionEdit
 type tableMetadata = manifest.TableMetadata
-type fileBacking = manifest.FileBacking
 type newTableEntry = manifest.NewTableEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
@@ -312,8 +311,8 @@ func (vs *versionSet) load(
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	// Populate the fileBackingMap and the FileBacking for virtual sstables since
-	// we have finished version edit accumulation.
+	// Populate the virtual backings for virtual sstables since we have finished
+	// version edit accumulation.
 	for _, b := range bve.AddedFileBacking {
 		vs.virtualBackings.AddAndRef(b)
 	}
@@ -358,7 +357,7 @@ func (vs *versionSet) load(
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
 			if !f.Virtual {
-				isLocal, localSize := sizeIfLocal(f.FileBacking, vs.provider)
+				isLocal, localSize := sizeIfLocal(f.TableBacking, vs.provider)
 				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 				if isLocal {
 					vs.metrics.Table.Local.LiveCount++
@@ -366,7 +365,7 @@ func (vs *versionSet) load(
 			}
 		}
 	}
-	vs.virtualBackings.ForEach(func(backing *fileBacking) {
+	vs.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
 		isLocal, localSize := sizeIfLocal(backing, vs.provider)
 		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 		if isLocal {
@@ -453,7 +452,7 @@ type versionUpdate struct {
 // the edit (as per vs.virtualBackings). Other than these fields, the
 // VersionEdit must be complete.
 //
-// New table backing references (FileBacking.Ref) are taken as part of applying
+// New table backing references (TableBacking.Ref) are taken as part of applying
 // the version edit. The state of the virtual backings (vs.virtualBackings) is
 // updated before logging to the manifest and installing the latest version;
 // this is ok because any failure in those steps is fatal.
@@ -563,7 +562,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	}
 	var newManifestFileNum base.DiskFileNum
 	var prevManifestFileSize uint64
-	var newManifestVirtualBackings []*fileBacking
+	var newManifestVirtualBackings []*manifest.TableBacking
 	if requireRotation {
 		newManifestFileNum = vs.getNextDiskFileNum()
 		prevManifestFileSize = uint64(vs.manifest.Size())
@@ -707,7 +706,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	var obsoleteVirtualBackings manifest.ObsoleteFiles
 	for _, b := range removedVirtualBackings {
 		if b.backing.Unref() == 0 {
-			obsoleteVirtualBackings.FileBackings = append(obsoleteVirtualBackings.FileBackings, b.backing)
+			obsoleteVirtualBackings.TableBackings = append(obsoleteVirtualBackings.TableBackings, b.backing)
 		}
 	}
 	vs.addObsoleteLocked(obsoleteVirtualBackings)
@@ -790,8 +789,8 @@ func (vs *versionSet) setCompactionPicker(picker *compactionPickerByScore) {
 	vs.curCompactionConcurrency.Store(int32(picker.getCompactionConcurrency()))
 }
 
-type fileBackingInfo struct {
-	backing *fileBacking
+type tableBackingInfo struct {
+	backing *manifest.TableBacking
 	isLocal bool
 }
 
@@ -811,7 +810,7 @@ type fileMetricDelta struct {
 //   - localLiveSizeDelta: the delta in local live bytes.
 func getZombieTablesAndUpdateVirtualBackings(
 	ve *versionEdit, virtualBackings *manifest.VirtualBackings, provider objstorage.Provider,
-) (zombieBackings, removedVirtualBackings []fileBackingInfo, localLiveDelta fileMetricDelta) {
+) (zombieBackings, removedVirtualBackings []tableBackingInfo, localLiveDelta fileMetricDelta) {
 	// First, deal with the physical tables.
 	//
 	// A physical backing has become unused if it is in DeletedFiles but not in
@@ -822,8 +821,8 @@ func getZombieTablesAndUpdateVirtualBackings(
 	stillUsed := make(map[base.DiskFileNum]struct{})
 	for _, nf := range ve.NewTables {
 		if !nf.Meta.Virtual {
-			stillUsed[nf.Meta.FileBacking.DiskFileNum] = struct{}{}
-			isLocal, localFileDelta := sizeIfLocal(nf.Meta.FileBacking, provider)
+			stillUsed[nf.Meta.TableBacking.DiskFileNum] = struct{}{}
+			isLocal, localFileDelta := sizeIfLocal(nf.Meta.TableBacking, provider)
 			localLiveDelta.size += localFileDelta
 			if isLocal {
 				localLiveDelta.count++
@@ -840,14 +839,14 @@ func getZombieTablesAndUpdateVirtualBackings(
 			// becoming virtualized. In which case there is no change due to this
 			// file in the localLiveSizeDelta -- the subtraction below compensates
 			// for the addition.
-			isLocal, localFileDelta := sizeIfLocal(m.FileBacking, provider)
+			isLocal, localFileDelta := sizeIfLocal(m.TableBacking, provider)
 			localLiveDelta.size -= localFileDelta
 			if isLocal {
 				localLiveDelta.count--
 			}
-			if _, ok := stillUsed[m.FileBacking.DiskFileNum]; !ok {
-				zombieBackings = append(zombieBackings, fileBackingInfo{
-					backing: m.FileBacking,
+			if _, ok := stillUsed[m.TableBacking.DiskFileNum]; !ok {
+				zombieBackings = append(zombieBackings, tableBackingInfo{
+					backing: m.TableBacking,
 					isLocal: isLocal,
 				})
 			}
@@ -888,7 +887,7 @@ func getZombieTablesAndUpdateVirtualBackings(
 				localLiveDelta.count--
 			}
 			ve.RemovedBackingTables[i] = b.DiskFileNum
-			zombieBackings = append(zombieBackings, fileBackingInfo{
+			zombieBackings = append(zombieBackings, tableBackingInfo{
 				backing: b,
 				isLocal: isLocal,
 			})
@@ -931,7 +930,7 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 
 // sizeIfLocal returns backing.Size if the backing is a local file, else 0.
 func sizeIfLocal(
-	backing *fileBacking, provider objstorage.Provider,
+	backing *manifest.TableBacking, provider objstorage.Provider,
 ) (isLocal bool, localSize int64) {
 	isLocal = objstorage.IsLocalTable(provider, backing.DiskFileNum)
 	if isLocal {
@@ -1007,7 +1006,7 @@ func (vs *versionSet) createManifest(
 	dirname string,
 	fileNum, minUnflushedLogNum base.DiskFileNum,
 	nextFileNum uint64,
-	virtualBackings []*fileBacking,
+	virtualBackings []*manifest.TableBacking,
 ) (err error) {
 	var (
 		filename       = base.MakeFilepath(vs.fs, dirname, base.FileTypeManifest, fileNum)
@@ -1120,8 +1119,8 @@ func (vs *versionSet) append(v *version) {
 		for _, l := range v.Levels {
 			for f := range l.All() {
 				if f.Virtual {
-					if _, ok := vs.virtualBackings.Get(f.FileBacking.DiskFileNum); !ok {
-						panic(fmt.Sprintf("%s is not in virtualBackings", f.FileBacking.DiskFileNum))
+					if _, ok := vs.virtualBackings.Get(f.TableBacking.DiskFileNum); !ok {
+						panic(fmt.Sprintf("%s is not in virtualBackings", f.TableBacking.DiskFileNum))
 					}
 				}
 			}
@@ -1138,7 +1137,7 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 	for v := vs.versions.Front(); true; v = v.Next() {
 		for _, lm := range v.Levels {
 			for f := range lm.All() {
-				m[f.FileBacking.DiskFileNum] = struct{}{}
+				m[f.TableBacking.DiskFileNum] = struct{}{}
 				for _, ref := range f.BlobReferences {
 					m[ref.FileNum] = struct{}{}
 				}
@@ -1153,7 +1152,7 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 	// are not but are still alive because of the protection mechanism (see
 	// manifset.VirtualBackings). This loop ensures the latter get added to the
 	// map.
-	vs.virtualBackings.ForEach(func(b *fileBacking) {
+	vs.virtualBackings.ForEach(func(b *manifest.TableBacking) {
 		m[b.DiskFileNum] = struct{}{}
 	})
 }
@@ -1172,8 +1171,8 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 	// Note that the zombie objects transition from zombie *to* obsolete, and
 	// will no longer be considered zombie.
 
-	newlyObsoleteTables := make([]objectInfo, len(obsolete.FileBackings))
-	for i, bs := range obsolete.FileBackings {
+	newlyObsoleteTables := make([]objectInfo, len(obsolete.TableBackings))
+	for i, bs := range obsolete.TableBackings {
 		newlyObsoleteTables[i] = vs.zombieTables.Extract(bs.DiskFileNum)
 	}
 	vs.obsoleteTables = mergeObjectInfos(vs.obsoleteTables, newlyObsoleteTables)

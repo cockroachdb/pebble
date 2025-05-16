@@ -1208,11 +1208,11 @@ func responsibleForGarbageBytes(
 	if !m.Virtual {
 		return 0
 	}
-	useCount, virtualizedSize := virtualBackings.Usage(m.FileBacking.DiskFileNum)
+	useCount, virtualizedSize := virtualBackings.Usage(m.TableBacking.DiskFileNum)
 	// Since virtualizedSize is the sum of the estimated size of all virtual
 	// ssts, we allow for the possibility that virtualizedSize could exceed
-	// m.FileBacking.Size.
-	totalGarbage := int64(m.FileBacking.Size) - int64(virtualizedSize)
+	// m.TableBacking.Size.
+	totalGarbage := int64(m.TableBacking.Size) - int64(virtualizedSize)
 	if totalGarbage <= 0 {
 		return 0
 	}

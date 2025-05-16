@@ -117,7 +117,7 @@ func ingestSynthesizeShared(
 
 	// For simplicity, we use the same number for both the FileNum and the
 	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
-	// FileBacking's size to the same size as the virtualized view of the sstable.
+	// TableBacking's size to the same size as the virtualized view of the sstable.
 	// This ensures that we don't over-prioritize this sstable for compaction just
 	// yet, as we do not have a clear sense of what parts of this sstable are
 	// referenced by other nodes.
@@ -637,7 +637,7 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 func ingestCleanup(objProvider objstorage.Provider, meta []ingestLocalMeta) error {
 	var firstErr error
 	for i := range meta {
-		if err := objProvider.Remove(base.FileTypeTable, meta[i].FileBacking.DiskFileNum); err != nil {
+		if err := objProvider.Remove(base.FileTypeTable, meta[i].TableBacking.DiskFileNum); err != nil {
 			firstErr = firstError(firstErr, err)
 		}
 	}
@@ -655,7 +655,7 @@ func ingestLinkLocal(
 ) error {
 	for i := range localMetas {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
-			ctx, opts.FS, localMetas[i].path, base.FileTypeTable, localMetas[i].FileBacking.DiskFileNum,
+			ctx, opts.FS, localMetas[i].path, base.FileTypeTable, localMetas[i].TableBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true},
 		)
 		if err != nil {
@@ -691,7 +691,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 			return err
 		}
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
-			FileNum:  lr.shared[i].FileBacking.DiskFileNum,
+			FileNum:  lr.shared[i].TableBacking.DiskFileNum,
 			FileType: base.FileTypeTable,
 			Backing:  backing,
 		})
@@ -699,15 +699,15 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 
 	d.findExistingBackingsForExternalObjects(lr.external)
 
-	newFileBackings := make(map[remote.ObjectKey]*fileBacking, len(lr.external))
+	newTableBackings := make(map[remote.ObjectKey]*manifest.TableBacking, len(lr.external))
 	for i := range lr.external {
 		meta := lr.external[i].tableMetadata
-		if meta.FileBacking != nil {
+		if meta.TableBacking != nil {
 			// The backing was filled in by findExistingBackingsForExternalObjects().
 			continue
 		}
 		key := remote.MakeObjectKey(lr.external[i].external.Locator, lr.external[i].external.ObjName)
-		if backing, ok := newFileBackings[key]; ok {
+		if backing, ok := newTableBackings[key]; ok {
 			// We already created the same backing in this loop. Update its size.
 			backing.Size += lr.external[i].external.Size
 			meta.AttachVirtualBacking(backing)
@@ -723,15 +723,15 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 		size := max(lr.external[i].external.Size, 1)
 		meta.InitVirtualBacking(base.DiskFileNum(meta.TableNum), size)
 
-		// Set the underlying FileBacking's size to the same size as the virtualized
+		// Set the underlying TableBacking's size to the same size as the virtualized
 		// view of the sstable. This ensures that we don't over-prioritize this
 		// sstable for compaction just yet, as we do not have a clear sense of
 		// what parts of this sstable are referenced by other nodes.
-		meta.FileBacking.Size = size
-		newFileBackings[key] = meta.FileBacking
+		meta.TableBacking.Size = size
+		newTableBackings[key] = meta.TableBacking
 
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
-			FileNum:  meta.FileBacking.DiskFileNum,
+			FileNum:  meta.TableBacking.DiskFileNum,
 			FileType: base.FileTypeTable,
 			Backing:  providerBacking,
 		})
@@ -751,7 +751,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 	for i := range lr.shared {
 		// One corner case around file sizes we need to be mindful of, is that
 		// if one of the shareObjs was initially created by us (and has boomeranged
-		// back from another node), we'll need to update the FileBacking's size
+		// back from another node), we'll need to update the TableBacking's size
 		// to be the true underlying size. Otherwise, we could hit errors when we
 		// open the db again after a crash/restart (see checkConsistency in open.go),
 		// plus it more accurately allows us to prioritize compactions of files
@@ -761,7 +761,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 			if err != nil {
 				return err
 			}
-			lr.shared[i].FileBacking.Size = max(uint64(size), 1)
+			lr.shared[i].TableBacking.Size = max(uint64(size), 1)
 		}
 	}
 
@@ -779,7 +779,7 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 	return nil
 }
 
-// findExistingBackingsForExternalObjects populates the FileBacking for external
+// findExistingBackingsForExternalObjects populates the TableBacking for external
 // files which are already in use by the current version.
 //
 // We take a Ref and LatestRef on populated backings.
@@ -822,7 +822,7 @@ func (d *DB) ingestUnprotectExternalBackings(lr ingestLoadResult) {
 			// If the backing is not use anywhere else and the ingest failed (or the
 			// ingested tables were already compacted away), this call will cause in
 			// the next version update to remove the backing.
-			d.mu.versions.virtualBackings.Unprotect(meta.FileBacking.DiskFileNum)
+			d.mu.versions.virtualBackings.Unprotect(meta.TableBacking.DiskFileNum)
 		}
 	}
 }
@@ -1958,8 +1958,8 @@ func (d *DB) ingestApply(
 			//
 			// Shared files always have a new backing. External files have new backings
 			// iff the backing disk file num and the file num match (see ingestAttachRemote).
-			if isShared || (isExternal && m.FileBacking.DiskFileNum == base.DiskFileNum(m.TableNum)) {
-				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.FileBacking)
+			if isShared || (isExternal && m.TableBacking.DiskFileNum == base.DiskFileNum(m.TableNum)) {
+				ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.TableBacking)
 			}
 
 			f := &ve.NewTables[i]
@@ -2173,9 +2173,9 @@ func (d *DB) ingestApply(
 	var toValidate []manifest.NewTableEntry
 	dedup := make(map[base.DiskFileNum]struct{})
 	for _, entry := range ve.NewTables {
-		if _, ok := dedup[entry.Meta.FileBacking.DiskFileNum]; !ok {
+		if _, ok := dedup[entry.Meta.TableBacking.DiskFileNum]; !ok {
 			toValidate = append(toValidate, entry)
-			dedup[entry.Meta.FileBacking.DiskFileNum] = struct{}{}
+			dedup[entry.Meta.TableBacking.DiskFileNum] = struct{}{}
 		}
 	}
 	d.maybeValidateSSTablesLocked(toValidate)

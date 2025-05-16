@@ -232,7 +232,7 @@ func TestBTree(t *testing.T) {
 	for i := 0; i < count; i++ {
 		var obsolete ObsoleteFiles
 		tr.Delete(items[i], &obsolete)
-		if len(obsolete.FileBackings) == 0 {
+		if len(obsolete.TableBackings) == 0 {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
 		tr.Verify(t)
@@ -256,7 +256,7 @@ func TestBTree(t *testing.T) {
 	for i := 1; i <= count; i++ {
 		var obsolete ObsoleteFiles
 		tr.Delete(items[count-i], &obsolete)
-		if len(obsolete.FileBackings) == 0 {
+		if len(obsolete.TableBackings) == 0 {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
 		tr.Verify(t)
@@ -494,8 +494,8 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	for i := range trees {
 		trees[i].Release(&obsoleteFiles)
 	}
-	if len(obsoleteFiles.FileBackings) != len(p) {
-		t.Errorf("got %d obsolete trees, expected %d", len(obsoleteFiles.FileBackings), len(p))
+	if len(obsoleteFiles.TableBackings) != len(p) {
+		t.Errorf("got %d obsolete trees, expected %d", len(obsoleteFiles.TableBackings), len(p))
 	}
 }
 

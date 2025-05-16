@@ -145,7 +145,7 @@ func (b *lsmViewBuilder) Build(
 			if !f.Virtual {
 				t.Label = fmt.Sprintf("%d", f.TableNum)
 			} else {
-				t.Label = fmt.Sprintf("%d (%d)", f.TableNum, f.FileBacking.DiskFileNum)
+				t.Label = fmt.Sprintf("%d (%d)", f.TableNum, f.TableBacking.DiskFileNum)
 			}
 
 			t.Size = f.Size
@@ -168,7 +168,7 @@ func (b *lsmViewBuilder) tableDetails(
 	outf("%s: %s - %s", m.TableNum, m.Smallest().Pretty(b.fmtKey), m.Largest().Pretty(b.fmtKey))
 	outf("size: %s", humanize.Bytes.Uint64(m.Size))
 	if m.Virtual {
-		meta, err := objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
+		meta, err := objProvider.Lookup(base.FileTypeTable, m.TableBacking.DiskFileNum)
 		var backingInfo string
 		switch {
 		case err != nil:
@@ -178,7 +178,7 @@ func (b *lsmViewBuilder) tableDetails(
 		case meta.IsExternal():
 			backingInfo = "external; "
 		}
-		outf("virtual; backed by %s (%ssize: %s)", m.FileBacking.DiskFileNum, backingInfo, humanize.Bytes.Uint64(m.FileBacking.Size))
+		outf("virtual; backed by %s (%ssize: %s)", m.TableBacking.DiskFileNum, backingInfo, humanize.Bytes.Uint64(m.TableBacking.Size))
 	}
 	outf("seqnums: %d - %d", m.SmallestSeqNum, m.LargestSeqNum)
 	if m.SyntheticPrefixAndSuffix.HasPrefix() {

@@ -194,7 +194,7 @@ func (d *DB) Checkpoint(
 	optionsFileNum := d.optionsFileNum
 
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
-	d.mu.versions.virtualBackings.ForEach(func(backing *fileBacking) {
+	d.mu.versions.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
 		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
 	})
 	versionBlobFiles := d.mu.versions.blobFiles.Metadatas()
@@ -267,7 +267,7 @@ func (d *DB) Checkpoint(
 	var excludedTables map[manifest.DeletedTableEntry]*tableMetadata
 	var includedBlobFiles map[base.DiskFileNum]struct{}
 	var remoteFiles []base.DiskFileNum
-	// Set of FileBacking.DiskFileNum which will be required by virtual sstables
+	// Set of TableBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
 	requiredVirtualBackingFiles := make(map[base.DiskFileNum]struct{})
 
@@ -322,14 +322,14 @@ func (d *DB) Checkpoint(
 				}
 			}
 
-			fileBacking := f.FileBacking
+			tableBacking := f.TableBacking
 			if f.Virtual {
-				if _, ok := requiredVirtualBackingFiles[fileBacking.DiskFileNum]; ok {
+				if _, ok := requiredVirtualBackingFiles[tableBacking.DiskFileNum]; ok {
 					continue
 				}
-				requiredVirtualBackingFiles[fileBacking.DiskFileNum] = struct{}{}
+				requiredVirtualBackingFiles[tableBacking.DiskFileNum] = struct{}{}
 			}
-			ckErr = copyFile(base.FileTypeTable, fileBacking.DiskFileNum)
+			ckErr = copyFile(base.FileTypeTable, tableBacking.DiskFileNum)
 			if ckErr != nil {
 				return ckErr
 			}
