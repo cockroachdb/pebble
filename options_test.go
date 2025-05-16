@@ -320,6 +320,36 @@ func TestOptionsParse(t *testing.T) {
 	}
 }
 
+func TestOptionsParseLevelNoQuotes(t *testing.T) {
+	withQuotes := `
+[Options]
+[Level "1"]
+  block_restart_interval=8
+  block_size=10
+[Level "6"]
+  block_restart_interval=8
+  block_size=10
+`
+	withoutQuotes := `
+[Options]
+[Level 1]
+  block_restart_interval=8
+  block_size=10
+[Level 6]
+  block_restart_interval=8
+  block_size=10
+`
+	o1 := &Options{}
+	require.NoError(t, o1.Parse(withQuotes, nil))
+	o1.EnsureDefaults()
+
+	o2 := &Options{}
+	require.NoError(t, o2.Parse(withoutQuotes, nil))
+	o2.EnsureDefaults()
+
+	require.Equal(t, o1.String(), o2.String())
+}
+
 func TestOptionsParseComparerOverwrite(t *testing.T) {
 	// Test that an unrecognized comparer in the OPTIONS file does not nil out
 	// the Comparer field.
