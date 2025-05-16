@@ -2127,8 +2127,10 @@ func (r *replicateOp) runExternalReplicate(
 }
 
 func (r *replicateOp) run(t *Test, h historyRecorder) {
-	// Shared replication only works if shared storage is enabled.
-	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled
+	// Shared replication only works if shared storage is enabled and value
+	// separation is disabled.
+	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled &&
+		!t.testOpts.Opts.Experimental.ValueSeparationPolicy().Enabled
 	useExternalIngest := t.testOpts.useExternalReplicate && t.testOpts.externalStorageEnabled
 
 	source := t.getDB(r.source)

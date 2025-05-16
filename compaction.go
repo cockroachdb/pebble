@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -109,12 +110,12 @@ func (cl compactionLevel) String() string {
 
 // compactionWritable is a objstorage.Writable wrapper that, on every write,
 // updates a metric in `versions` on bytes written by in-progress compactions so
-// far. It also increments a per-compaction `written` int.
+// far. It also increments a per-compaction `written` atomic int.
 type compactionWritable struct {
 	objstorage.Writable
 
 	versions *versionSet
-	written  *int64
+	written  *atomic.Int64
 }
 
 // Write is part of the objstorage.Writable interface.
@@ -123,7 +124,7 @@ func (c *compactionWritable) Write(p []byte) error {
 		return err
 	}
 
-	*c.written += int64(len(p))
+	c.written.Add(int64(len(p)))
 	c.versions.incrementCompactionBytes(int64(len(p)))
 	return nil
 }
@@ -259,7 +260,7 @@ type compaction struct {
 	// flushing contains the flushables (aka memtables) that are being flushed.
 	flushing flushableList
 	// bytesWritten contains the number of bytes that have been written to outputs.
-	bytesWritten int64
+	bytesWritten atomic.Int64
 
 	// The boundaries of the input data.
 	smallest InternalKey
@@ -302,6 +303,8 @@ type compaction struct {
 	pickerMetrics pickedCompactionMetrics
 
 	grantHandle CompactionGrantHandle
+
+	opts objstorage.CreateOptions
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -438,10 +441,16 @@ func newCompaction(
 		// 1) The source file is a virtual sstable
 		// 2) The existing file `meta` is on non-remote storage
 		// 3) The output level prefers shared storage
-		mustCopy := !isRemote && remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
+		//
+		// We also want to prevent ssts with blob references from being
+		// selected for copy compaction, as we currently lack a mechanism
+		// to propagate blob references along with the sstable.
+		mustCopy := !isRemote &&
+			remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level) &&
+			meta.BlobReferenceDepth == 0
 		if mustCopy {
-			// If the source is virtual, it's best to just rewrite the file as all
-			// conditions in the above comment are met.
+			// If the source is virtual, it's best to just rewrite the file as
+			// all conditions in the above comment are met.
 			if !meta.Virtual {
 				c.kind = compactionKindCopy
 			}
@@ -1598,7 +1607,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	d.clearCompactingState(c, err != nil)
 	delete(d.mu.compact.inProgress, c)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten, err)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten.Load(), err)
 
 	var flushed flushableList
 	if err == nil {
@@ -2536,8 +2545,8 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten, err)
-	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactionBytes(-c.bytesWritten.Load())
 
 	info.TotalDuration = d.timeNow().Sub(c.beganAt)
 	d.opts.EventListener.CompactionEnd(info)
@@ -2575,6 +2584,12 @@ func (d *DB) runCopyCompaction(
 	}
 	if c.cancel.Load() {
 		return nil, compact.Stats{}, ErrCancelledCompaction
+	}
+	if invariants.Enabled {
+		if inputMeta.BlobReferenceDepth > 0 || len(inputMeta.BlobReferences) > 0 {
+			panic(errors.AssertionFailedf("copy compaction for %d with non-zero blob reference "+
+				"depth %d or references %v", inputMeta.TableNum, inputMeta.BlobReferenceDepth))
+		}
 	}
 	ve = &versionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
@@ -3276,6 +3291,13 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	for i := range result.Tables {
 		t := &result.Tables[i]
 
+		if invariants.Enabled && t.WriterMeta.Properties.NumValuesInBlobFiles > 0 {
+			if len(t.BlobReferences) == 0 {
+				panic(errors.AssertionFailedf("num values in blob files %d but no blob references",
+					t.WriterMeta.Properties.NumValuesInBlobFiles))
+			}
+		}
+
 		fileMeta := &tableMetadata{
 			TableNum:           base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
 			CreationTime:       t.CreationTime.Unix(),
@@ -3351,6 +3373,11 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 func (d *DB) newCompactionOutputTable(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
+	// Prefer shared storage if present.
+	c.opts = objstorage.CreateOptions{
+		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+		WriteCategory:       getDiskWriteCategoryForCompaction(d.opts, c.kind),
+	}
 	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeTable)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
@@ -3376,6 +3403,12 @@ func (d *DB) newCompactionOutputTable(
 func (d *DB) newCompactionOutputBlob(
 	jobID JobID, c *compaction,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
+	// Disable value separation for copy compaction as we do not
+	// support blob files on shared storage.
+	c.opts = objstorage.CreateOptions{
+		PreferSharedStorage: false,
+		WriteCategory:       getDiskWriteCategoryForCompaction(d.opts, c.kind),
+	}
 	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeBlob)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
@@ -3394,20 +3427,8 @@ func (d *DB) newCompactionOutputObj(
 	c *compaction, typ base.FileType,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
-
-	var writeCategory vfs.DiskWriteCategory
-	if d.opts.EnableSQLRowSpillMetrics {
-		// In the scenario that the Pebble engine is used for SQL row spills the
-		// data written to the memtable will correspond to spills to disk and
-		// should be categorized as such.
-		writeCategory = "sql-row-spill"
-	} else if c.kind == compactionKindFlush {
-		writeCategory = "pebble-memtable-flush"
-	} else {
-		writeCategory = "pebble-compaction"
-	}
-
 	ctx := context.TODO()
+
 	if objiotracing.Enabled {
 		ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
 		if c.kind == compactionKindFlush {
@@ -3417,12 +3438,7 @@ func (d *DB) newCompactionOutputObj(
 		}
 	}
 
-	// Prefer shared storage if present.
-	createOpts := objstorage.CreateOptions{
-		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
-		WriteCategory:       writeCategory,
-	}
-	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, createOpts)
+	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, c.opts)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
@@ -3456,5 +3472,18 @@ func validateVersionEdit(
 	for _, m := range ve.DeletedTables {
 		validateKey(m, m.Smallest().UserKey)
 		validateKey(m, m.Largest().UserKey)
+	}
+}
+
+func getDiskWriteCategoryForCompaction(opts *Options, kind compactionKind) vfs.DiskWriteCategory {
+	if opts.EnableSQLRowSpillMetrics {
+		// In the scenario that the Pebble engine is used for SQL row spills the
+		// data written to the memtable will correspond to spills to disk and
+		// should be categorized as such.
+		return "sql-row-spill"
+	} else if kind == compactionKindFlush {
+		return "pebble-memtable-flush"
+	} else {
+		return "pebble-compaction"
 	}
 }
