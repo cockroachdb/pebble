@@ -327,6 +327,27 @@ func TestExcise(t *testing.T) {
 				return err.Error()
 			}
 
+		case "move-remote-object":
+			if len(td.CmdArgs) < 2 {
+				td.Fatalf(t, "build <path> <new-path> argument missing")
+			}
+			before := td.CmdArgs[0].String()
+			after := td.CmdArgs[1].String()
+			ctx := context.Background()
+			reader, objSize, err := remoteStorage.ReadObject(ctx, before)
+			require.NoError(t, err)
+			buf := make([]byte, objSize)
+			require.NoError(t, reader.ReadAt(ctx, buf, 0))
+			require.NoError(t, reader.Close())
+			require.NoError(t, remoteStorage.Delete(before))
+			writer, err := remoteStorage.CreateObject(after)
+			require.NoError(t, err)
+			n, err := writer.Write(buf)
+			require.NoError(t, err)
+			require.Equal(t, len(buf), n)
+			require.NoError(t, writer.Close())
+			return fmt.Sprintf("%s -> %s", before, after)
+
 		default:
 			td.Fatalf(t, "unknown command: %s", td.Cmd)
 		}
