@@ -14,9 +14,13 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-type zstdCompressor struct{}
+type zstdCompressor zstd.Encoder
 
-var _ Compressor = zstdCompressor{}
+var _ Compressor = (*zstdCompressor)(nil)
+
+func getZstdCompressor(level int) *zstdCompressor {
+	return (*zstdCompressor)(zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level))))
+}
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
 // official one in the facebook/zstd repository.
@@ -29,28 +33,22 @@ var _ Compressor = zstdCompressor{}
 // relies on CGo.
 const UseStandardZstdLib = false
 
-// Compress compresses b with the Zstandard algorithm at default compression
-// level (level 3). It reuses the preallocated capacity of compressedBuf if it
-// is sufficient. The subslice `compressedBuf[:varIntLen]` should already encode
-// the length of `b` before calling Compress. It returns the encoded byte
-// slice, including the `compressedBuf[:varIntLen]` prefix.
-func (zstdCompressor) Compress(compressedBuf, b []byte) []byte {
+func (z *zstdCompressor) Compress(compressedBuf, b []byte) []byte {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	encoder, _ := zstd.NewWriter(nil)
-	result := encoder.EncodeAll(b, compressedBuf[:varIntLen])
+	result := (*zstd.Encoder)(z).EncodeAll(b, compressedBuf[:varIntLen])
 	if err := encoder.Close(); err != nil {
 		panic(err)
 	}
 	return result
 }
 
-func (zstdCompressor) Close() {}
-
-func getZstdCompressor() zstdCompressor {
-	return zstdCompressor{}
+func (z *zstdCompressor) Close() {
+	if err := (*zstd.Encoder)(z).Close(); err != nil {
+		panic(err)
+	}
 }
 
 type zstdDecompressor struct{}

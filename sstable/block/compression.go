@@ -32,16 +32,16 @@ const (
 	NCompression
 )
 
-var algorithm = [...]compression.Algorithm{
+var setting = [...]compression.Setting{
 	DefaultCompression: compression.Snappy,
 	NoCompression:      compression.None,
 	SnappyCompression:  compression.Snappy,
-	ZstdCompression:    compression.Zstd,
-	MinLZCompression:   compression.MinLZ,
+	ZstdCompression:    compression.ZstdLevel3,
+	MinLZCompression:   compression.MinLZFastest,
 }
 
-func (c Compression) algorithm() compression.Algorithm {
-	return algorithm[c]
+func (c Compression) setting() compression.Setting {
+	return setting[c]
 }
 
 // String implements fmt.Stringer, returning a human-readable name for the
@@ -136,9 +136,9 @@ func (i CompressionIndicator) String() string {
 func (i CompressionIndicator) algorithm() compression.Algorithm {
 	switch i {
 	case NoCompressionIndicator:
-		return compression.None
+		return compression.NoCompression
 	case SnappyCompressionIndicator:
-		return compression.Snappy
+		return compression.SnappyAlgorithm
 	case ZstdCompressionIndicator:
 		return compression.Zstd
 	case MinLZCompressionIndicator:
@@ -150,9 +150,9 @@ func (i CompressionIndicator) algorithm() compression.Algorithm {
 
 func compressionIndicatorFromAlgorithm(algo compression.Algorithm) CompressionIndicator {
 	switch algo {
-	case compression.None:
+	case compression.NoCompression:
 		return NoCompressionIndicator
-	case compression.Snappy:
+	case compression.SnappyAlgorithm:
 		return SnappyCompressionIndicator
 	case compression.Zstd:
 		return ZstdCompressionIndicator
