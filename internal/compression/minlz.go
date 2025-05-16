@@ -10,25 +10,41 @@ import (
 	"github.com/minio/minlz"
 )
 
-type minlzCompressor struct{}
+type minlzCompressor struct {
+	level int
+}
 
-var _ Compressor = minlzCompressor{}
+var _ Compressor = (*minlzCompressor)(nil)
 
-func (minlzCompressor) Compress(dst, src []byte) []byte {
+func (c *minlzCompressor) Compress(dst, src []byte) []byte {
 	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those
 	// cases. Note that MinLZ can decode the Snappy compressed block.
 	if len(src) > minlz.MaxBlockSize {
 		return (snappyCompressor{}).Compress(dst, src)
 	}
 
-	compressed, err := minlz.Encode(dst, src, minlz.LevelFastest)
+	compressed, err := minlz.Encode(dst, src, c.level)
 	if err != nil {
 		panic(errors.Wrap(err, "minlz compression"))
 	}
 	return compressed
 }
 
-func (minlzCompressor) Close() {}
+func (c *minlzCompressor) Close() {}
+
+var minlzCompressorFastest = &minlzCompressor{level: minlz.LevelFastest}
+var minlzCompressorBalanced = &minlzCompressor{level: minlz.LevelBalanced}
+
+func getMinlzCompressor(level int) Compressor {
+	switch level {
+	case minlz.LevelFastest:
+		return minlzCompressorFastest
+	case minlz.LevelBalanced:
+		return minlzCompressorBalanced
+	default:
+		panic(errors.AssertionFailedf("unexpected MinLZ level %d", level))
+	}
+}
 
 type minlzDecompressor struct{}
 

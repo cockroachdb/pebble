@@ -16,10 +16,10 @@ type Compressor struct {
 // GetCompressor returns a Compressor that applies the given compression. Close
 // must be called when it is no longer needed.
 func GetCompressor(c Compression) Compressor {
-	algorithm := c.algorithm()
+	s := c.setting()
 	return Compressor{
-		algorithm:  algorithm,
-		compressor: compression.GetCompressor(algorithm),
+		algorithm:  s.Algorithm,
+		compressor: compression.GetCompressor(s),
 	}
 }
 

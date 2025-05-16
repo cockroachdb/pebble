@@ -21,8 +21,8 @@ func TestCompressionRoundtrip(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
 
-	for algo := None; algo < nAlgorithms; algo++ {
-		t.Run(algo.String(), func(t *testing.T) {
+	for _, s := range presets {
+		t.Run(s.String(), func(t *testing.T) {
 			payload := make([]byte, 1+rng.IntN(10<<10 /* 10 KiB */))
 			for i := range payload {
 				payload[i] = byte(rng.Uint32())
@@ -30,10 +30,10 @@ func TestCompressionRoundtrip(t *testing.T) {
 			// Create a randomly-sized buffer to house the compressed output. If it's
 			// not sufficient, Compress should allocate one that is.
 			compressedBuf := make([]byte, 1+rng.IntN(1<<10 /* 1 KiB */))
-			compressor := GetCompressor(algo)
+			compressor := GetCompressor(s)
 			defer compressor.Close()
 			compressed := compressor.Compress(compressedBuf, payload)
-			got, err := decompress(algo, compressed)
+			got, err := decompress(s.Algorithm, compressed)
 			require.NoError(t, err)
 			require.Equal(t, payload, got)
 		})

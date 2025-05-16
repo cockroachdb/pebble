@@ -12,6 +12,7 @@ import (
 	"math/rand/v2"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -32,19 +33,20 @@ import (
 // dbT implements db-level tools, including both configuration state and the
 // commands themselves.
 type dbT struct {
-	Root       *cobra.Command
-	Check      *cobra.Command
-	Upgrade    *cobra.Command
-	Checkpoint *cobra.Command
-	Get        *cobra.Command
-	Logs       *cobra.Command
-	LSM        *cobra.Command
-	Properties *cobra.Command
-	Scan       *cobra.Command
-	Set        *cobra.Command
-	Space      *cobra.Command
-	IOBench    *cobra.Command
-	Excise     *cobra.Command
+	Root        *cobra.Command
+	Check       *cobra.Command
+	Upgrade     *cobra.Command
+	Checkpoint  *cobra.Command
+	Get         *cobra.Command
+	Logs        *cobra.Command
+	LSM         *cobra.Command
+	Properties  *cobra.Command
+	Scan        *cobra.Command
+	Set         *cobra.Command
+	Space       *cobra.Command
+	IOBench     *cobra.Command
+	Excise      *cobra.Command
+	AnalyzeData *cobra.Command
 
 	// Configuration.
 	opts            *pebble.Options
@@ -55,13 +57,14 @@ type dbT struct {
 	exciseSpanFn    DBExciseSpanFn
 
 	// Flags.
-	comparerName  string
-	mergerName    string
-	fmtKey        keyFormatter
-	fmtValue      valueFormatter
-	start         key
-	end           key
-	count         int64
+	comparerName string
+	mergerName   string
+	fmtKey       keyFormatter
+	fmtValue     valueFormatter
+	start        key
+	end          key
+	count        int64
+	// TOOD(radu): move flags specific to a single command to substructs.
 	allLevels     bool
 	ioCount       int
 	ioParallelism int
@@ -69,6 +72,12 @@ type dbT struct {
 	verbose       bool
 	bypassPrompt  bool
 	lsmURL        bool
+	analyzeData   struct {
+		samplePercent int
+		timeout       time.Duration
+		readMBPerSec  int
+		outputCSVFile string
+	}
 }
 
 func newDB(
@@ -212,11 +221,21 @@ specified database.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runIOBench,
 	}
+	d.AnalyzeData = &cobra.Command{
+		Use:   "analyze-data <dir>",
+		Short: "analyze data compressibility",
+		Long: `
+Sample blocks from the files in the database directory to run compression
+experiments and produce a CSV file of the results.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runAnalyzeData,
+	}
 
-	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench)
+	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench, d.AnalyzeData)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.Upgrade, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise} {
+	for _, cmd := range []*cobra.Command{d.Check, d.Upgrade, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.AnalyzeData} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
@@ -263,7 +282,39 @@ specified database.
 	d.IOBench.Flags().StringVar(
 		&d.ioSizes, "io-sizes-kb", "4,16,64,128,256,512,1024", "comma separated list of IO sizes in KB")
 
+	d.AnalyzeData.Flags().IntVar(
+		&d.analyzeData.samplePercent, "sample-percent", 100, "percentage of data to sample (default 100%)")
+
+	d.AnalyzeData.Flags().DurationVar(
+		&d.analyzeData.timeout, "timeout", 0, "stop after this much time has passed (default 0 = no timeout)")
+
+	d.AnalyzeData.Flags().IntVar(
+		&d.analyzeData.readMBPerSec, "read-mb-per-sec", 0, "limit read IO bandwidth (default 0 = no limit)")
+
+	d.AnalyzeData.Flags().StringVar(
+		&d.analyzeData.outputCSVFile, "output", "", "path for the output CSV file")
+	_ = d.AnalyzeData.MarkFlagRequired("output")
+
 	return d
+}
+
+func (d *dbT) initOptions(dir string) error {
+	if err := d.loadOptions(dir); err != nil {
+		return errors.Wrap(err, "error loading options")
+	}
+	if d.comparerName != "" {
+		d.opts.Comparer = d.comparers[d.comparerName]
+		if d.opts.Comparer == nil {
+			return errors.Errorf("unknown comparer %q", errors.Safe(d.comparerName))
+		}
+	}
+	if d.mergerName != "" {
+		d.opts.Merger = d.mergers[d.mergerName]
+		if d.opts.Merger == nil {
+			return errors.Errorf("unknown merger %q", errors.Safe(d.mergerName))
+		}
+	}
+	return nil
 }
 
 func (d *dbT) loadOptions(dir string) error {
@@ -356,20 +407,8 @@ func (d *dbT) openDB(dir string, openOptions ...OpenOption) (*pebble.DB, error) 
 }
 
 func (d *dbT) openDBInternal(dir string, openOptions ...OpenOption) (*pebble.DB, error) {
-	if err := d.loadOptions(dir); err != nil {
-		return nil, errors.Wrap(err, "error loading options")
-	}
-	if d.comparerName != "" {
-		d.opts.Comparer = d.comparers[d.comparerName]
-		if d.opts.Comparer == nil {
-			return nil, errors.Errorf("unknown comparer %q", errors.Safe(d.comparerName))
-		}
-	}
-	if d.mergerName != "" {
-		d.opts.Merger = d.mergers[d.mergerName]
-		if d.opts.Merger == nil {
-			return nil, errors.Errorf("unknown merger %q", errors.Safe(d.mergerName))
-		}
+	if err := d.initOptions(dir); err != nil {
+		return nil, err
 	}
 	opts := *d.opts
 	for _, opt := range openOptions {
