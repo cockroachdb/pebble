@@ -371,7 +371,7 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 	// file scan to avoid double-deleting these files.
 	for _, f := range flushableIngests {
 		for _, file := range f.files {
-			liveFileNums[file.FileBacking.DiskFileNum] = struct{}{}
+			liveFileNums[file.TableBacking.DiskFileNum] = struct{}{}
 		}
 	}
 

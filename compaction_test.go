@@ -589,7 +589,7 @@ func TestAutomaticFlush(t *testing.T) {
 				if meta.Virtual {
 					continue
 				}
-				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.FileBacking.DiskFileNum, objstorage.OpenOptions{})
+				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.TableBacking.DiskFileNum, objstorage.OpenOptions{})
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}
@@ -3166,7 +3166,7 @@ func hasExternalFiles(d *DB) bool {
 		iter := v.Levels[level].Iter()
 		for m := iter.First(); m != nil; m = iter.Next() {
 			if m.Virtual {
-				meta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
+				meta, err := d.objProvider.Lookup(base.FileTypeTable, m.TableBacking.DiskFileNum)
 				if err != nil {
 					panic(err)
 				}

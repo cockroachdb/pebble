@@ -430,7 +430,7 @@ func newCompaction(
 		isRemote := false
 		// We should always be passed a provider, except in some unit tests.
 		if provider != nil {
-			isRemote = !objstorage.IsLocalTable(provider, meta.FileBacking.DiskFileNum)
+			isRemote = !objstorage.IsLocalTable(provider, meta.TableBacking.DiskFileNum)
 		}
 		// Avoid a trivial move or copy if all of these are true, as rewriting a
 		// new file is better:
@@ -2425,8 +2425,8 @@ func (d *DB) handleCompactFailure(c *compaction, err error) {
 // d.mu must be held when calling this method.
 func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 	obsoleteFiles := manifest.ObsoleteFiles{
-		FileBackings: make([]*fileBacking, 0, len(ve.NewTables)),
-		BlobFiles:    make([]*manifest.BlobFileMetadata, 0, len(ve.NewBlobFiles)),
+		TableBackings: make([]*manifest.TableBacking, 0, len(ve.NewTables)),
+		BlobFiles:     make([]*manifest.BlobFileMetadata, 0, len(ve.NewBlobFiles)),
 	}
 	deletedFiles := make(map[base.FileNum]struct{})
 	for key := range ve.DeletedTables {
@@ -2452,14 +2452,14 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 			// Don't mark it as obsolete.
 			continue
 		}
-		obsoleteFiles.AddBacking(ve.NewTables[i].Meta.PhysicalMeta().FileBacking)
+		obsoleteFiles.AddBacking(ve.NewTables[i].Meta.PhysicalMeta().TableBacking)
 	}
 	for i := range ve.CreatedBackingTables {
 		if ve.CreatedBackingTables[i].IsUnused() {
 			obsoleteFiles.AddBacking(ve.CreatedBackingTables[i])
 		}
 	}
-	for _, of := range obsoleteFiles.FileBackings {
+	for _, of := range obsoleteFiles.TableBackings {
 		// Add this file to zombie tables as well, as the versionSet
 		// asserts on whether every obsolete file was at one point
 		// marked zombie.
@@ -2582,7 +2582,7 @@ func (d *DB) runCopyCompaction(
 		},
 	}
 
-	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, inputMeta.FileBacking.DiskFileNum)
+	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, inputMeta.TableBacking.DiskFileNum)
 	if err != nil {
 		return nil, compact.Stats{}, err
 	}
@@ -2623,7 +2623,7 @@ func (d *DB) runCopyCompaction(
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
 		// We will update this size later after we produce the new backing file.
-		newMeta.InitVirtualBacking(base.DiskFileNum(newMeta.TableNum), inputMeta.FileBacking.Size)
+		newMeta.InitVirtualBacking(base.DiskFileNum(newMeta.TableNum), inputMeta.TableBacking.Size)
 	} else {
 		// local -> shared copy. New file is guaranteed to not be virtual.
 		newMeta.InitPhysicalBacking()
@@ -2644,7 +2644,7 @@ func (d *DB) runCopyCompaction(
 	deleteOnExit := false
 	defer func() {
 		if deleteOnExit {
-			_ = d.objProvider.Remove(base.FileTypeTable, newMeta.FileBacking.DiskFileNum)
+			_ = d.objProvider.Remove(base.FileTypeTable, newMeta.TableBacking.DiskFileNum)
 		}
 	}()
 
@@ -2652,7 +2652,7 @@ func (d *DB) runCopyCompaction(
 	if objMeta.IsExternal() {
 		ctx := context.TODO()
 		src, err := d.objProvider.OpenForReading(
-			ctx, base.FileTypeTable, inputMeta.FileBacking.DiskFileNum, objstorage.OpenOptions{},
+			ctx, base.FileTypeTable, inputMeta.TableBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
 			return nil, compact.Stats{}, err
@@ -2664,7 +2664,7 @@ func (d *DB) runCopyCompaction(
 		}()
 
 		w, _, err := d.objProvider.Create(
-			ctx, base.FileTypeTable, newMeta.FileBacking.DiskFileNum,
+			ctx, base.FileTypeTable, newMeta.TableBacking.DiskFileNum,
 			objstorage.CreateOptions{
 				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
 			},
@@ -2715,11 +2715,11 @@ func (d *DB) runCopyCompaction(
 			}
 			return nil, compact.Stats{}, err
 		}
-		newMeta.FileBacking.Size = wrote
+		newMeta.TableBacking.Size = wrote
 		newMeta.Size = wrote
 	} else {
 		_, err := d.objProvider.LinkOrCopyFromLocal(context.TODO(), d.opts.FS,
-			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.FileBacking.DiskFileNum,
+			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.TableBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true})
 		if err != nil {
 			return nil, compact.Stats{}, err
@@ -2731,7 +2731,7 @@ func (d *DB) runCopyCompaction(
 		Meta:  newMeta,
 	}}
 	if newMeta.Virtual {
-		ve.CreatedBackingTables = []*fileBacking{newMeta.FileBacking}
+		ve.CreatedBackingTables = []*manifest.TableBacking{newMeta.TableBacking}
 	}
 	c.metrics[c.outputLevel.level] = &LevelMetrics{
 		TableBytesIn:        inputMeta.Size,
@@ -2936,10 +2936,10 @@ func (d *DB) runDeleteOnlyCompaction(
 	usedBackingFiles := make(map[base.DiskFileNum]struct{})
 	for _, e := range ve.NewTables {
 		if e.Meta.Virtual {
-			usedBackingFiles[e.Meta.FileBacking.DiskFileNum] = struct{}{}
+			usedBackingFiles[e.Meta.TableBacking.DiskFileNum] = struct{}{}
 		}
 	}
-	ve.CreatedBackingTables = slices.DeleteFunc(ve.CreatedBackingTables, func(b *fileBacking) bool {
+	ve.CreatedBackingTables = slices.DeleteFunc(ve.CreatedBackingTables, func(b *manifest.TableBacking) bool {
 		_, used := usedBackingFiles[b.DiskFileNum]
 		return !used
 	})
@@ -3052,12 +3052,12 @@ func (d *DB) runCompaction(
 	if result.Err != nil {
 		// Delete any created tables or blob files.
 		obsoleteFiles := manifest.ObsoleteFiles{
-			FileBackings: make([]*fileBacking, 0, len(result.Tables)),
-			BlobFiles:    make([]*manifest.BlobFileMetadata, 0, len(result.Blobs)),
+			TableBackings: make([]*manifest.TableBacking, 0, len(result.Tables)),
+			BlobFiles:     make([]*manifest.BlobFileMetadata, 0, len(result.Blobs)),
 		}
 		d.mu.Lock()
 		for i := range result.Tables {
-			backing := &fileBacking{
+			backing := &manifest.TableBacking{
 				DiskFileNum: result.Tables[i].ObjMeta.DiskFileNum,
 				Size:        result.Tables[i].WriterMeta.Size,
 			}

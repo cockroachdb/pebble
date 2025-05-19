@@ -66,11 +66,11 @@ func TestVersionSet(t *testing.T) {
 	vs.logSeqNum.Store(100)
 
 	tableMetas := make(map[base.FileNum]*manifest.TableMetadata)
-	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
+	backings := make(map[base.DiskFileNum]*manifest.TableBacking)
 	blobMetas := make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
-	// When we parse VersionEdits, we get a new FileBacking each time. We need to
+	// When we parse VersionEdits, we get a new TableBacking each time. We need to
 	// deduplicate them, since they hold a ref count.
-	dedupBacking := func(b *manifest.FileBacking) *manifest.FileBacking {
+	dedupBacking := func(b *manifest.TableBacking) *manifest.TableBacking {
 		if existing, ok := backings[b.DiskFileNum]; ok {
 			return existing
 		}
@@ -103,10 +103,10 @@ func TestVersionSet(t *testing.T) {
 			for _, nf := range ve.NewTables {
 				// Set a size that depends on FileNum.
 				nf.Meta.Size = uint64(nf.Meta.TableNum) * 100
-				nf.Meta.FileBacking = dedupBacking(nf.Meta.FileBacking)
+				nf.Meta.TableBacking = dedupBacking(nf.Meta.TableBacking)
 				tableMetas[nf.Meta.TableNum] = nf.Meta
 				if !nf.Meta.Virtual {
-					createFile(nf.Meta.FileBacking.DiskFileNum)
+					createFile(nf.Meta.TableBacking.DiskFileNum)
 				}
 				for i := range nf.Meta.BlobReferences {
 					nf.Meta.BlobReferences[i].Metadata = blobMetas[nf.Meta.BlobReferences[i].FileNum]
@@ -198,7 +198,7 @@ func TestVersionSet(t *testing.T) {
 
 			// Repopulate the maps.
 			tableMetas = make(map[base.FileNum]*manifest.TableMetadata)
-			backings = make(map[base.DiskFileNum]*manifest.FileBacking)
+			backings = make(map[base.DiskFileNum]*manifest.TableBacking)
 			blobMetas = make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
 			v := vs.currentVersion()
 			for _, l := range v.Levels {
@@ -207,7 +207,7 @@ func TestVersionSet(t *testing.T) {
 					for _, b := range f.BlobReferences {
 						blobMetas[b.FileNum] = b.Metadata
 					}
-					dedupBacking(f.FileBacking)
+					dedupBacking(f.TableBacking)
 				}
 			}
 

@@ -237,7 +237,7 @@ func (h *fileCacheHandle) findOrCreateTable(
 ) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
 	key := fileCacheKey{
 		handle:   h,
-		fileNum:  meta.FileBacking.DiskFileNum,
+		fileNum:  meta.TableBacking.DiskFileNum,
 		fileType: base.FileTypeTable,
 	}
 	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
