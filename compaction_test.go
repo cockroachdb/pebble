@@ -589,20 +589,27 @@ func TestAutomaticFlush(t *testing.T) {
 				if meta.Virtual {
 					continue
 				}
-				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.TableBacking.DiskFileNum, objstorage.OpenOptions{})
-				if err != nil {
-					return "", "", errors.WithStack(err)
-				}
-				r, err := sstable.NewReader(context.Background(), f, opts.MakeReaderOptions())
-				if err != nil {
-					return "", "", errors.WithStack(err)
-				}
-				defer r.Close()
-				iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
-				if err != nil {
-					return "", "", errors.WithStack(err)
-				}
-				ss = append(ss, get1(iter)+".")
+				err := func() error {
+					fetcher, blobContext := sstable.LoadValBlobContext(d.fileCache, &meta.BlobReferences)
+					defer fetcher.Close()
+
+					f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.TableBacking.DiskFileNum, objstorage.OpenOptions{})
+					if err != nil {
+						return errors.WithStack(err)
+					}
+					r, err := sstable.NewReader(context.Background(), f, opts.MakeReaderOptions())
+					if err != nil {
+						return errors.WithStack(err)
+					}
+					defer r.Close()
+					iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, blobContext)
+					if err != nil {
+						return errors.WithStack(err)
+					}
+					ss = append(ss, get1(iter)+".")
+					return nil
+				}()
+				require.NoError(t, err)
 			}
 		}
 		sort.Strings(ss)
