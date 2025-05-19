@@ -1213,7 +1213,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	if err != nil {
 		return err.Error()
 	}
-	fileNum := base.FileNum(u)
+	tableNum := base.TableNum(u)
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -1221,7 +1221,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 
 	for _, levelMetadata := range v.Levels {
 		for f := range levelMetadata.All() {
-			if f.TableNum != fileNum {
+			if f.TableNum != tableNum {
 				continue
 			}
 
@@ -1278,14 +1278,14 @@ func runVersionFileSizes(v *version) string {
 // Prints some metadata about some sstable which is currently in the latest
 // version.
 func runMetadataCommand(t *testing.T, td *datadriven.TestData, d *DB) string {
-	var file int
-	td.ScanArgs(t, "file", &file)
+	var table int
+	td.ScanArgs(t, "file", &table)
 	var m *tableMetadata
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
 		for f := range level.All() {
-			if f.TableNum == base.FileNum(uint64(file)) {
+			if f.TableNum == base.TableNum(table) {
 				m = f
 				break
 			}
@@ -1309,7 +1309,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
 		for f := range level.All() {
-			if f.TableNum == base.FileNum(uint64(file)) {
+			if f.TableNum == base.TableNum(uint64(file)) {
 				m = f
 				break
 			}

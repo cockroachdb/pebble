@@ -140,7 +140,7 @@ func (d *DB) exciseTable(
 	if d.cmp(m.Smallest().UserKey, exciseBounds.Start) < 0 {
 		leftTable = &tableMetadata{
 			Virtual:  true,
-			TableNum: d.mu.versions.getNextFileNum(),
+			TableNum: d.mu.versions.getNextTableNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:           m.SmallestSeqNum,
@@ -180,7 +180,7 @@ func (d *DB) exciseTable(
 		// calculating tight user-key bounds.
 		rightTable = &tableMetadata{
 			Virtual:  true,
-			TableNum: d.mu.versions.getNextFileNum(),
+			TableNum: d.mu.versions.getNextTableNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
 			SmallestSeqNum:           m.SmallestSeqNum,

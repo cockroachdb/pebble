@@ -152,7 +152,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Indexed by FileNum.
-	readers := make(map[base.FileNum]*sstable.Reader)
+	readers := make(map[base.TableNum]*sstable.Reader)
 	defer func() {
 		for _, r := range readers {
 			r.Close()
@@ -161,9 +161,9 @@ func TestMergingIterDataDriven(t *testing.T) {
 	parser := itertest.NewParser()
 
 	var (
-		pointProbes    map[base.FileNum][]itertest.Probe
-		rangeDelProbes map[base.FileNum][]keyspanProbe
-		fileNum        base.FileNum
+		pointProbes    map[base.TableNum][]itertest.Probe
+		rangeDelProbes map[base.TableNum][]keyspanProbe
+		tableNum       base.TableNum
 	)
 	newIters :=
 		func(ctx context.Context, file *manifest.TableMetadata, opts *IterOptions, iio internalIterOpts, kinds iterKinds,
@@ -218,8 +218,8 @@ func TestMergingIterDataDriven(t *testing.T) {
 					}
 					files[l+1] = append(files[l+1], m)
 
-					name := fmt.Sprint(fileNum)
-					fileNum++
+					name := fmt.Sprint(tableNum)
+					tableNum++
 					f, err := memFS.Create(name, vfs.WriteCategoryUnspecified)
 					if err != nil {
 						return err.Error()
@@ -277,8 +277,8 @@ func TestMergingIterDataDriven(t *testing.T) {
 			return v.String()
 		case "iter":
 			buf.Reset()
-			pointProbes = make(map[base.FileNum][]itertest.Probe, len(v.Levels))
-			rangeDelProbes = make(map[base.FileNum][]keyspanProbe, len(v.Levels))
+			pointProbes = make(map[base.TableNum][]itertest.Probe, len(v.Levels))
+			rangeDelProbes = make(map[base.TableNum][]keyspanProbe, len(v.Levels))
 			for _, cmdArg := range d.CmdArgs {
 				switch key := cmdArg.Key; key {
 				case "probe-points":
@@ -286,13 +286,13 @@ func TestMergingIterDataDriven(t *testing.T) {
 					if err != nil {
 						require.NoError(t, err)
 					}
-					pointProbes[base.FileNum(i)] = itertest.MustParseProbes(parser, cmdArg.Vals[1:]...)
+					pointProbes[base.TableNum(i)] = itertest.MustParseProbes(parser, cmdArg.Vals[1:]...)
 				case "probe-rangedels":
 					i, err := strconv.Atoi(cmdArg.Vals[0][1:])
 					if err != nil {
 						require.NoError(t, err)
 					}
-					rangeDelProbes[base.FileNum(i)] = parseKeyspanProbes(cmdArg.Vals[1:]...)
+					rangeDelProbes[base.TableNum(i)] = parseKeyspanProbes(cmdArg.Vals[1:]...)
 				default:
 					// Might be a command understood by the RunInternalIterCmd
 					// command, so don't error.
@@ -678,7 +678,7 @@ func buildLevelsForMergingIterSeqSeek(
 			// The same FileNum is being reused across different levels, which
 			// is harmless for the benchmark since each level has its own iterator
 			// creation func.
-			meta[j].TableNum = base.FileNum(j)
+			meta[j].TableNum = base.TableNum(j)
 			largest := iter.Last()
 			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
 			meta[j].InitPhysicalBacking()

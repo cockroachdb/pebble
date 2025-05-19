@@ -233,7 +233,7 @@ func (vs *versionSet) load(
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
-	bve.AllAddedTables = make(map[base.FileNum]*tableMetadata)
+	bve.AllAddedTables = make(map[base.TableNum]*tableMetadata)
 	manifestFile, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
@@ -1089,12 +1089,12 @@ func (vs *versionSet) markFileNumUsed(fileNum base.DiskFileNum) {
 	}
 }
 
-// getNextFileNum returns the next file number to be used.
+// getNextTableNum returns a new table number.
 //
 // Can be called without the versionSet's mutex being held.
-func (vs *versionSet) getNextFileNum() base.FileNum {
+func (vs *versionSet) getNextTableNum() base.TableNum {
 	x := vs.nextFileNum.Add(1) - 1
-	return base.FileNum(x)
+	return base.TableNum(x)
 }
 
 // Can be called without the versionSet's mutex being held.

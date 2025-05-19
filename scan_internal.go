@@ -84,9 +84,9 @@ type SharedSSTMeta struct {
 	// Size contains an estimate of the size of this sstable.
 	Size uint64
 
-	// fileNum at time of creation in the creator instance. Only used for
+	// tableNum at time of creation in the creator instance. Only used for
 	// debugging/tests.
-	fileNum base.FileNum
+	tableNum base.TableNum
 }
 
 func (s *SharedSSTMeta) cloneFromFileMeta(f *tableMetadata) {
@@ -96,7 +96,7 @@ func (s *SharedSSTMeta) cloneFromFileMeta(f *tableMetadata) {
 		SmallestPointKey: f.PointKeyBounds.Smallest().Clone(),
 		LargestPointKey:  f.PointKeyBounds.Largest().Clone(),
 		Size:             f.Size,
-		fileNum:          f.TableNum,
+		tableNum:         f.TableNum,
 	}
 	if f.HasRangeKeys {
 		s.SmallestRangeKey = f.RangeKeyBounds.Smallest().Clone()

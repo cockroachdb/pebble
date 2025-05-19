@@ -101,7 +101,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 		}
 	}()
 
-	var fileNum base.FileNum
+	var tableNum base.TableNum
 	newIters :=
 		func(_ context.Context, file *manifest.TableMetadata, _ *IterOptions, iio internalIterOpts, _ iterKinds) (iterSet, error) {
 			r := readers[file.TableNum]
@@ -150,7 +150,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
 				m := (&tableMetadata{
-					TableNum: fileNum,
+					TableNum: tableNum,
 				}).ExtendPointKeyBounds(testkeys.Comparer.Compare, smallestKey, largestKey)
 				m.InitPhysicalBacking()
 				*li = append(*li, m)
@@ -158,8 +158,8 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				i++
 				line = lines[i]
 				line = strings.TrimSpace(line)
-				name := fmt.Sprint(fileNum)
-				fileNum++
+				name := fmt.Sprint(tableNum)
+				tableNum++
 				f, err := memFS.Create(name, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err.Error()
@@ -240,7 +240,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					Comparer:   testkeys.Comparer,
 					KeySchemas: sstable.KeySchemas{writerOpts.KeySchema.Name: writerOpts.KeySchema},
 				}
-				readerOpts.CacheOpts = sstableinternal.CacheOptions{FileNum: base.DiskFileNum(fileNum - 1)}
+				readerOpts.CacheOpts = sstableinternal.CacheOptions{FileNum: base.DiskFileNum(tableNum - 1)}
 				r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 				if err != nil {
 					return err.Error()

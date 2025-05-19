@@ -887,10 +887,10 @@ func (i *Iterator) sampleRead() {
 			topFile.AllowedSeeks.Add(topFile.InitAllowedSeeks)
 
 			read := readCompaction{
-				start:   topFile.PointKeyBounds.SmallestUserKey(),
-				end:     topFile.PointKeyBounds.LargestUserKey(),
-				level:   topLevel,
-				fileNum: topFile.TableNum,
+				start:    topFile.PointKeyBounds.SmallestUserKey(),
+				end:      topFile.PointKeyBounds.LargestUserKey(),
+				level:    topLevel,
+				tableNum: topFile.TableNum,
 			}
 			i.readSampling.pendingCompactions.add(&read, i.cmp)
 		}

@@ -60,9 +60,10 @@ func TestLevelIter(t *testing.T) {
 				}
 				iterKVs = append(iterKVs, kvs)
 
-				meta := (&tableMetadata{
-					TableNum: base.FileNum(len(metas)),
-				}).ExtendPointKeyBounds(
+				meta := &tableMetadata{
+					TableNum: base.TableNum(len(metas)),
+				}
+				meta.ExtendPointKeyBounds(
 					DefaultComparer.Compare,
 					kvs[0].K,
 					kvs[len(kvs)-1].K,
@@ -222,8 +223,8 @@ func (lt *levelIterTest) runClear() string {
 }
 
 func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
-	fileNum := base.FileNum(len(lt.readers))
-	name := fmt.Sprint(fileNum)
+	tableNum := base.TableNum(len(lt.readers))
+	name := fmt.Sprint(tableNum)
 	f0, err := lt.mem.Create(name, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err.Error()
@@ -302,7 +303,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	m := &tableMetadata{TableNum: fileNum}
+	m := &tableMetadata{TableNum: tableNum}
 	if meta.HasPointKeys {
 		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestPoint, meta.LargestPoint)
 	}
@@ -581,7 +582,7 @@ func buildLevelIterTables(
 		require.NoError(b, err)
 		smallest := iter.First()
 		meta[i] = &tableMetadata{}
-		meta[i].TableNum = base.FileNum(i)
+		meta[i].TableNum = base.TableNum(i)
 		largest := iter.Last()
 		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.K.Clone(), largest.K.Clone())
 		meta[i].InitPhysicalBacking()

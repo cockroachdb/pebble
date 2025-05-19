@@ -130,11 +130,11 @@ func TestDownloadTask(t *testing.T) {
 		case "set-compacting":
 			// Parse a list of tables that are compacting and set compacting status on
 			// all tables in the current version.
-			compacting := make(map[base.FileNum]struct{})
+			compacting := make(map[base.TableNum]struct{})
 			for _, f := range strings.Fields(td.Input) {
 				n, err := strconv.Atoi(f)
 				require.NoError(t, err)
-				compacting[base.FileNum(n)] = struct{}{}
+				compacting[base.TableNum(n)] = struct{}{}
 			}
 			for _, lm := range vers.Levels {
 				for f := range lm.All() {

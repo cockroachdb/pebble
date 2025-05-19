@@ -2003,7 +2003,7 @@ func pickReadTriggeredCompactionHelper(
 	overlapSlice := p.vers.Overlaps(rc.level, base.UserKeyBoundsInclusive(rc.start, rc.end))
 	var fileMatches bool
 	for f := range overlapSlice.All() {
-		if f.TableNum == rc.fileNum {
+		if f.TableNum == rc.tableNum {
 			fileMatches = true
 			break
 		}

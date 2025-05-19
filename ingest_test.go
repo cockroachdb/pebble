@@ -147,7 +147,7 @@ func TestIngestLoad(t *testing.T) {
 				FS:         mem,
 			}
 			opts.WithFSDefaults()
-			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, []base.FileNum{1})
+			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, []base.TableNum{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -182,11 +182,11 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	paths := make([]string, 1+rng.IntN(10))
-	pending := make([]base.FileNum, len(paths))
+	pending := make([]base.TableNum, len(paths))
 	expected := make([]ingestLocalMeta, len(paths))
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = base.FileNum(rng.Uint64())
+		pending[i] = base.TableNum(rng.Uint64())
 		expected[i] = ingestLocalMeta{
 			tableMetadata: &tableMetadata{
 				TableNum: pending[i],
@@ -263,7 +263,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
-	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, []base.FileNum{1}); err == nil {
+	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, []base.TableNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -343,7 +343,7 @@ func TestIngestLink(t *testing.T) {
 			for j := range meta {
 				meta[j].path = fmt.Sprintf("external%d", j)
 				meta[j].tableMetadata = &tableMetadata{}
-				meta[j].TableNum = base.FileNum(j)
+				meta[j].TableNum = base.TableNum(j)
 				meta[j].InitPhysicalBacking()
 				f, err := opts.FS.Create(meta[j].path, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
@@ -1075,7 +1075,7 @@ func TestSimpleIngestShared(t *testing.T) {
 
 	{
 		// Create a shared file.
-		fn := base.FileNum(2)
+		fn := base.TableNum(2)
 		f, meta, err := provider2.Create(context.TODO(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn),
 			objstorage.CreateOptions{PreferSharedStorage: true})
 		require.NoError(t, err)
@@ -2677,11 +2677,11 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 }
 
 func TestIngestCleanup(t *testing.T) {
-	fns := []base.FileNum{0, 1, 2}
+	fns := []base.TableNum{0, 1, 2}
 
 	testCases := []struct {
-		closeFiles   []base.FileNum
-		cleanupFiles []base.FileNum
+		closeFiles   []base.TableNum
+		cleanupFiles []base.TableNum
 		wantErr      string
 	}{
 		// Close and remove all files.
@@ -2692,19 +2692,19 @@ func TestIngestCleanup(t *testing.T) {
 		// Remove a non-existent file.
 		{
 			closeFiles:   fns,
-			cleanupFiles: []base.FileNum{3},
+			cleanupFiles: []base.TableNum{3},
 			wantErr:      "unknown to the objstorage provider",
 		},
 		// Remove a file that has not been closed.
 		{
-			closeFiles:   []base.FileNum{0, 2},
+			closeFiles:   []base.TableNum{0, 2},
 			cleanupFiles: fns,
 			wantErr:      oserror.ErrInvalid.Error(),
 		},
 		// Remove all files, one of which is still open, plus a file that does not exist.
 		{
-			closeFiles:   []base.FileNum{0, 2},
-			cleanupFiles: []base.FileNum{0, 1, 2, 3},
+			closeFiles:   []base.TableNum{0, 2},
+			cleanupFiles: []base.TableNum{0, 1, 2, 3},
 			wantErr:      oserror.ErrInvalid.Error(), // The first error encountered is due to the open file.
 		},
 	}
@@ -2718,7 +2718,7 @@ func TestIngestCleanup(t *testing.T) {
 			defer objProvider.Close()
 
 			// Create the files in the VFS.
-			metaMap := make(map[base.FileNum]objstorage.Writable)
+			metaMap := make(map[base.TableNum]objstorage.Writable)
 			for _, fn := range fns {
 				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{})
 				require.NoError(t, err)

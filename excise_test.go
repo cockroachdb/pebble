@@ -289,13 +289,13 @@ func TestExcise(t *testing.T) {
 			return fmt.Sprintf("would excise %d files, use ingest-and-excise to excise.\n%s", len(ve.DeletedTables), ve.DebugString(base.DefaultFormatter))
 		case "confirm-backing":
 			// Confirms that the files have the same TableBacking.
-			fileNums := make(map[base.FileNum]struct{})
+			tableNums := make(map[base.TableNum]struct{})
 			for i := range td.CmdArgs {
 				fNum, err := strconv.Atoi(td.CmdArgs[i].Key)
 				if err != nil {
 					panic("invalid file number")
 				}
-				fileNums[base.FileNum(fNum)] = struct{}{}
+				tableNums[base.TableNum(fNum)] = struct{}{}
 			}
 			d.mu.Lock()
 			defer d.mu.Unlock()
@@ -303,7 +303,7 @@ func TestExcise(t *testing.T) {
 			var ptr *manifest.TableBacking
 			for _, level := range currVersion.Levels {
 				for f := range level.All() {
-					if _, ok := fileNums[f.TableNum]; ok {
+					if _, ok := tableNums[f.TableNum]; ok {
 						if ptr == nil {
 							ptr = f.TableBacking
 							continue

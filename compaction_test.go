@@ -122,11 +122,12 @@ func TestPickCompaction(t *testing.T) {
 	}
 
 	opts := DefaultOptions()
-	newFileMeta := func(fileNum base.FileNum, size uint64, smallest, largest base.InternalKey) *tableMetadata {
-		m := (&tableMetadata{
-			TableNum: fileNum,
+	newFileMeta := func(tableNum base.TableNum, size uint64, smallest, largest base.InternalKey) *tableMetadata {
+		m := &tableMetadata{
+			TableNum: tableNum,
 			Size:     size,
-		}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		}
+		m.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
 		m.InitPhysicalBacking()
 		return m
 	}
@@ -1520,7 +1521,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 					// Set file number to the value provided in the input.
 					tombstoneFile = &tableMetadata{
-						TableNum: base.FileNum(parseUint64(parts[1])),
+						TableNum: base.TableNum(parseUint64(parts[1])),
 					}
 
 					var hintType deleteCompactionHintType
@@ -1842,7 +1843,7 @@ func TestCompactionReadTriggeredQueue(t *testing.T) {
 	// understands.
 	showRC := func(rc *readCompaction) string {
 		return fmt.Sprintf(
-			"L%d: %s-%s %d\n", rc.level, string(rc.start), string(rc.end), rc.fileNum,
+			"L%d: %s-%s %d\n", rc.level, string(rc.start), string(rc.end), rc.tableNum,
 		)
 	}
 
@@ -1863,12 +1864,12 @@ func TestCompactionReadTriggeredQueue(t *testing.T) {
 					}
 					if l, err := strconv.Atoi(parts[0][1:2]); err == nil {
 						keys := strings.Split(parts[1], "-")
-						fileNum, _ := strconv.Atoi(parts[2])
+						tableNum := parseTableNum(t, parts[2])
 						rc := readCompaction{
-							level:   l,
-							start:   []byte(keys[0]),
-							end:     []byte(keys[1]),
-							fileNum: base.FileNum(fileNum),
+							level:    l,
+							start:    []byte(keys[0]),
+							end:      []byte(keys[1]),
+							tableNum: tableNum,
 						}
 						queue.add(&rc, DefaultComparer.Compare)
 					} else {
@@ -1979,12 +1980,11 @@ func TestCompactionReadTriggered(t *testing.T) {
 					}
 					if l, err := strconv.Atoi(parts[0][:1]); err == nil {
 						keys := strings.Split(parts[1], "-")
-						fileNum, _ := strconv.Atoi(parts[2])
 						rc := readCompaction{
-							level:   l,
-							start:   []byte(keys[0]),
-							end:     []byte(keys[1]),
-							fileNum: base.FileNum(fileNum),
+							level:    l,
+							start:    []byte(keys[0]),
+							end:      []byte(keys[1]),
+							tableNum: parseTableNum(t, parts[2]),
 						}
 						d.mu.compact.readCompactions.add(&rc, DefaultComparer.Compare)
 					} else {
@@ -2037,7 +2037,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	}()
 
 	metaRE := regexp.MustCompile(`^L([0-9]+):([^-]+)-(.+)$`)
-	var fileNum base.FileNum
+	var tableNum base.TableNum
 	parseMeta := func(s string) (level int, meta *tableMetadata) {
 		match := metaRE.FindStringSubmatch(s)
 		if match == nil {
@@ -2047,10 +2047,9 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 		if err != nil {
 			t.Fatalf("malformed table spec: %s: %s", s, err)
 		}
-		fileNum++
-		meta = (&tableMetadata{
-			TableNum: fileNum,
-		}).ExtendPointKeyBounds(
+		tableNum++
+		meta = &tableMetadata{TableNum: tableNum}
+		meta.ExtendPointKeyBounds(
 			d.cmp,
 			InternalKey{UserKey: []byte(match[2])},
 			InternalKey{UserKey: []byte(match[3])},
@@ -2174,12 +2173,12 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 					formatKey: DefaultComparer.FormatKey,
 				}
 				var files []manifest.NewTableEntry
-				fileNum := base.FileNum(1)
+				tableNum := base.TableNum(1)
 
 				for _, data := range strings.Split(d.Input, "\n") {
 					meta := parseMeta(data)
-					meta.TableNum = fileNum
-					fileNum++
+					meta.TableNum = tableNum
+					tableNum++
 					files = append(files, manifest.NewTableEntry{Level: 1, Meta: meta})
 				}
 
@@ -2314,7 +2313,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				var sublevel []*tableMetadata
 				var sublevelNum int
 				var parsingSublevel bool
-				fileNum := base.FileNum(1)
+				tableNum := base.TableNum(1)
 
 				switchSublevel := func() {
 					if sublevel != nil {
@@ -2363,8 +2362,8 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						}
 					} else {
 						meta := parseMeta(data)
-						meta.TableNum = fileNum
-						fileNum++
+						meta.TableNum = tableNum
+						tableNum++
 						*files = append(*files, meta)
 						if parsingSublevel {
 							meta.SubLevel = sublevelNum
@@ -2531,7 +2530,7 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 	var lbaseFiles []*manifest.TableMetadata
 	const lbaseSize = 5 << 20
 	for i := 0; i < 100; i++ {
-		m := &manifest.TableMetadata{Size: lbaseSize, TableNum: base.FileNum(i)}
+		m := &manifest.TableMetadata{Size: lbaseSize, TableNum: base.TableNum(i)}
 		m.InitPhysicalBacking()
 		lbaseFiles =
 			append(lbaseFiles, m)
@@ -2647,11 +2646,11 @@ func TestMarkedForCompaction(t *testing.T) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			vers := d.mu.versions.currentVersion()
-			var fileNum uint64
-			td.ScanArgs(t, "file", &fileNum)
+			var tableNum uint64
+			td.ScanArgs(t, "file", &tableNum)
 			for l, lm := range vers.Levels {
 				for f := range lm.All() {
-					if f.TableNum != base.FileNum(fileNum) {
+					if f.TableNum != base.TableNum(tableNum) {
 						continue
 					}
 					f.MarkedForCompaction = true

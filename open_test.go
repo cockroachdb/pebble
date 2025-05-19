@@ -1417,7 +1417,7 @@ func TestCheckConsistency(t *testing.T) {
 			return nil, err
 		}
 		m := &manifest.TableMetadata{
-			TableNum: base.FileNum(fileNum),
+			TableNum: base.TableNum(fileNum),
 			Size:     uint64(size),
 		}
 		ik := base.InternalKey{
