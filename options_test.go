@@ -39,6 +39,16 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 	if o.FormatMajorVersion >= FormatColumnarBlocks && o.Experimental.EnableColumnarBlocks == nil && rand.Int64N(4) > 0 {
 		o.Experimental.EnableColumnarBlocks = func() bool { return true }
 	}
+	// Enable value separation if using a format major version that supports it.
+	if o.FormatMajorVersion >= FormatExperimentalValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
+		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			return ValueSeparationPolicy{
+				Enabled:               true,
+				MinimumSize:           1 << rand.IntN(10), // [1, 512]
+				MaxBlobReferenceDepth: rand.IntN(10),      // [0, 10)
+			}
+		}
+	}
 	o.EnsureDefaults()
 	return o
 }
