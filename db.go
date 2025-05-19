@@ -2332,14 +2332,14 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 					return nil, err
 				}
 				if m.Virtual {
-					commonProps := p.GetScaledProperties(m.FileBacking.Size, m.Size)
+					commonProps := p.GetScaledProperties(m.TableBacking.Size, m.Size)
 					p = &sstable.Properties{CommonProperties: commonProps}
 				}
 				destTables[j].Properties = p
 			}
 			destTables[j].Virtual = m.Virtual
-			destTables[j].BackingSSTNum = m.FileBacking.DiskFileNum
-			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
+			destTables[j].BackingSSTNum = m.TableBacking.DiskFileNum
+			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.TableBacking.DiskFileNum)
 			if err != nil {
 				return nil, err
 			}
@@ -3037,7 +3037,7 @@ func (d *DB) checkVirtualBounds(m *tableMetadata) {
 		return
 	}
 
-	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.FileBacking.DiskFileNum)
+	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.TableBacking.DiskFileNum)
 	if err != nil {
 		panic(err)
 	}

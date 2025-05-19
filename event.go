@@ -1232,7 +1232,7 @@ func (r *lowDiskSpaceReporter) findThreshold(
 func (d *DB) reportCorruption(meta any, err error) error {
 	switch meta := meta.(type) {
 	case *manifest.TableMetadata:
-		return d.reportFileCorruption(base.FileTypeTable, meta.FileBacking.DiskFileNum, meta.UserKeyBounds(), err)
+		return d.reportFileCorruption(base.FileTypeTable, meta.TableBacking.DiskFileNum, meta.UserKeyBounds(), err)
 	case *manifest.BlobFileMetadata:
 		// TODO(jackson): Add bounds for blob files.
 		return d.reportFileCorruption(base.FileTypeBlob, meta.FileNum, base.UserKeyBounds{}, err)

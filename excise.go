@@ -92,7 +92,7 @@ func (d *DB) exciseTable(
 	}
 
 	looseBounds := boundsPolicy == looseExciseBounds ||
-		(boundsPolicy == tightExciseBoundsIfLocal && !objstorage.IsLocalTable(d.objProvider, m.FileBacking.DiskFileNum))
+		(boundsPolicy == tightExciseBoundsIfLocal && !objstorage.IsLocalTable(d.objProvider, m.TableBacking.DiskFileNum))
 
 	if exciseBounds.End.Kind == base.Inclusive {
 		// Loose bounds are not allowed with end-inclusive bounds. This can only
@@ -156,7 +156,7 @@ func (d *DB) exciseTable(
 		}
 
 		if leftTable.HasRangeKeys || leftTable.HasPointKeys {
-			leftTable.AttachVirtualBacking(m.FileBacking)
+			leftTable.AttachVirtualBacking(m.TableBacking)
 			if looseBounds {
 				// We don't want to access the object; make up a size.
 				leftTable.Size = (m.Size + 1) / 2
@@ -196,7 +196,7 @@ func (d *DB) exciseTable(
 			return nil, nil, err
 		}
 		if rightTable.HasRangeKeys || rightTable.HasPointKeys {
-			rightTable.AttachVirtualBacking(m.FileBacking)
+			rightTable.AttachVirtualBacking(m.TableBacking)
 			if looseBounds {
 				// We don't want to access the object; make up a size.
 				rightTable.Size = (m.Size + 1) / 2
@@ -481,7 +481,7 @@ func applyExciseToVersionEdit(
 		// to the manifest; we don't need to create another file backing. Note that
 		// there must be only one CreatedBackingTables entry per backing sstable.
 		// This is indicated by the VersionEdit.CreatedBackingTables invariant.
-		ve.CreatedBackingTables = append(ve.CreatedBackingTables, originalTable.FileBacking)
+		ve.CreatedBackingTables = append(ve.CreatedBackingTables, originalTable.TableBacking)
 	}
 	originalLen := len(ve.NewTables)
 	if leftTable != nil {

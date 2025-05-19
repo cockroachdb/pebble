@@ -125,22 +125,22 @@ type VersionEdit struct {
 	// found that there was no overlapping file at the higher level).
 	DeletedTables map[DeletedTableEntry]*TableMetadata
 	NewTables     []NewTableEntry
-	// CreatedBackingTables can be used to preserve the FileBacking associated
+	// CreatedBackingTables can be used to preserve the TableBacking associated
 	// with a physical sstable. This is useful when virtual sstables in the
 	// latest version are reconstructed during manifest replay, and we also need
-	// to reconstruct the FileBacking which is required by these virtual
+	// to reconstruct the TableBacking which is required by these virtual
 	// sstables.
 	//
-	// INVARIANT: The FileBacking associated with a physical sstable must only
+	// INVARIANT: The TableBacking associated with a physical sstable must only
 	// be added as a backing file in the same version edit where the physical
 	// sstable is first virtualized. This means that the physical sstable must
 	// be present in DeletedFiles and that there must be at least one virtual
-	// sstable with the same FileBacking as the physical sstable in NewFiles. A
+	// sstable with the same TableBacking as the physical sstable in NewFiles. A
 	// file must be present in CreatedBackingTables in exactly one version edit.
-	// The physical sstable associated with the FileBacking must also not be
+	// The physical sstable associated with the TableBacking must also not be
 	// present in NewFiles.
-	CreatedBackingTables []*FileBacking
-	// RemovedBackingTables is used to remove the FileBacking associated with a
+	CreatedBackingTables []*TableBacking
+	// RemovedBackingTables is used to remove the TableBacking associated with a
 	// virtual sstable. Note that a backing sstable can be removed as soon as
 	// there are no virtual sstables in the latest version which are using the
 	// backing sstable, but the backing sstable doesn't necessarily have to be
@@ -168,7 +168,7 @@ type VersionEdit struct {
 
 // Decode decodes an edit from the specified reader.
 //
-// Note that the Decode step will not set the FileBacking for virtual sstables
+// Note that the Decode step will not set the TableBacking for virtual sstables
 // and the responsibility is left to the caller. However, the Decode step will
 // populate the NewFileEntry.BackingFileNum in VersionEdit.NewFiles.
 func (v *VersionEdit) Decode(r io.Reader) error {
@@ -240,7 +240,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			fileBacking := &FileBacking{
+			fileBacking := &TableBacking{
 				DiskFileNum: base.DiskFileNum(dfn),
 				Size:        size,
 			}
@@ -669,7 +669,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 
 		case "add-backing":
 			n := p.DiskFileNum()
-			ve.CreatedBackingTables = append(ve.CreatedBackingTables, &FileBacking{
+			ve.CreatedBackingTables = append(ve.CreatedBackingTables, &TableBacking{
 				DiskFileNum: n,
 				Size:        100,
 			})
@@ -797,7 +797,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			}
 			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
-				e.writeUvarint(uint64(x.Meta.FileBacking.DiskFileNum))
+				e.writeUvarint(uint64(x.Meta.TableBacking.DiskFileNum))
 			}
 			if x.Meta.SyntheticPrefixAndSuffix.HasPrefix() {
 				e.writeUvarint(customTagSyntheticPrefix)
@@ -953,8 +953,8 @@ type BulkVersionEdit struct {
 	}
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
-	// FileBacking of virtual sstables during manifest replay.
-	AddedFileBacking   map[base.DiskFileNum]*FileBacking
+	// TableBacking of virtual sstables during manifest replay.
+	AddedFileBacking   map[base.DiskFileNum]*TableBacking
 	RemovedFileBacking []base.DiskFileNum
 
 	// AllAddedTables maps table number to table metadata for all added sstables
@@ -1076,12 +1076,12 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	// before we loop through the NewFiles, because we need to populate the
 	// FileBackings which might be used by the NewFiles loop.
 	if b.AddedFileBacking == nil {
-		b.AddedFileBacking = make(map[base.DiskFileNum]*FileBacking)
+		b.AddedFileBacking = make(map[base.DiskFileNum]*TableBacking)
 	}
 	for _, fb := range ve.CreatedBackingTables {
 		if _, ok := b.AddedFileBacking[fb.DiskFileNum]; ok {
-			// There is already a FileBacking associated with fb.DiskFileNum.
-			// This should never happen. There must always be only one FileBacking
+			// There is already a TableBacking associated with fb.DiskFileNum.
+			// This should never happen. There must always be only one TableBacking
 			// associated with a backing sstable.
 			panic(fmt.Sprintf("pebble: duplicate file backing %s", fb.DiskFileNum.String()))
 		}
@@ -1096,16 +1096,16 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.TableNum)
 			}
 		}
-		if nf.Meta.Virtual && nf.Meta.FileBacking == nil {
-			// FileBacking for a virtual sstable must only be nil if we're performing
+		if nf.Meta.Virtual && nf.Meta.TableBacking == nil {
+			// TableBacking for a virtual sstable must only be nil if we're performing
 			// manifest replay.
 			backing := b.AddedFileBacking[nf.BackingFileNum]
 			if backing == nil {
-				return errors.Errorf("FileBacking for virtual sstable must not be nil")
+				return errors.Errorf("TableBacking for virtual sstable must not be nil")
 			}
 			nf.Meta.AttachVirtualBacking(backing)
-		} else if nf.Meta.FileBacking == nil {
-			return errors.Errorf("Added file L%d.%s's has no FileBacking", nf.Level, nf.Meta.TableNum)
+		} else if nf.Meta.TableBacking == nil {
+			return errors.Errorf("Added file L%d.%s's has no TableBacking", nf.Level, nf.Meta.TableNum)
 		}
 
 		if b.AddedTables[nf.Level] == nil {

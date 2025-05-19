@@ -421,14 +421,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		return true
 	})
 	d.mu.annotators.remoteSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
-		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
+		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.TableBacking.DiskFileNum)
 		if err != nil {
 			return false
 		}
 		return meta.IsRemote()
 	})
 	d.mu.annotators.externalSize = d.makeFileSizeAnnotator(func(f *manifest.TableMetadata) bool {
-		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
+		meta, err := d.objProvider.Lookup(base.FileTypeTable, f.TableBacking.DiskFileNum)
 		if err != nil {
 			return false
 		}
@@ -1271,7 +1271,7 @@ func checkConsistency(v *manifest.Version, objProvider objstorage.Provider) erro
 	dedup := make(map[base.DiskFileNum]struct{})
 	for level, files := range v.Levels {
 		for f := range files.All() {
-			backingState := f.FileBacking
+			backingState := f.TableBacking
 			if _, ok := dedup[backingState.DiskFileNum]; ok {
 				continue
 			}

@@ -249,10 +249,10 @@ func (d *DB) scanReadStateTableStats(
 			// matches. This is because checkConsistency skips over remote files.
 			//
 			// SharedForeign and External files are skipped as their sizes are allowed
-			// to have a mismatch; the size stored in the FileBacking is just the part
+			// to have a mismatch; the size stored in the TableBacking is just the part
 			// of the file that is referenced by this Pebble instance, not the size of
 			// the whole object.
-			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, f.FileBacking.DiskFileNum)
+			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, f.TableBacking.DiskFileNum)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
@@ -263,9 +263,9 @@ func (d *DB) scanReadStateTableStats(
 			shouldCheckSize := objMeta.IsRemote() &&
 				!d.objProvider.IsSharedForeign(objMeta) &&
 				!objMeta.IsExternal()
-			if _, ok := sizesChecked[f.FileBacking.DiskFileNum]; !ok && shouldCheckSize {
+			if _, ok := sizesChecked[f.TableBacking.DiskFileNum]; !ok && shouldCheckSize {
 				size, err := d.objProvider.Size(objMeta)
-				fileSize := f.FileBacking.Size
+				fileSize := f.TableBacking.Size
 				if err != nil {
 					moreRemain = true
 					d.opts.EventListener.BackgroundError(err)
@@ -280,7 +280,7 @@ func (d *DB) scanReadStateTableStats(
 					d.opts.Logger.Fatalf("%s", err)
 				}
 
-				sizesChecked[f.FileBacking.DiskFileNum] = struct{}{}
+				sizesChecked[f.TableBacking.DiskFileNum] = struct{}{}
 			}
 
 			stats, newHints, err := d.loadTableStats(
@@ -312,7 +312,7 @@ func (d *DB) loadTableStats(
 		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
 			props := r.Properties.CommonProperties
 			if meta.Virtual {
-				props = r.Properties.GetScaledProperties(meta.FileBacking.Size, meta.Size)
+				props = r.Properties.GetScaledProperties(meta.TableBacking.Size, meta.Size)
 			}
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions

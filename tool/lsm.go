@@ -277,7 +277,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 	l.state.Files = make(map[base.FileNum]lsmTableMetadata)
 	var currentFiles [manifest.NumLevels][]*manifest.TableMetadata
 
-	backings := make(map[base.DiskFileNum]*manifest.FileBacking)
+	backings := make(map[base.DiskFileNum]*manifest.TableBacking)
 
 	for _, ve := range edits {
 		for _, i := range ve.CreatedBackingTables {

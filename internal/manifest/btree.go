@@ -138,9 +138,9 @@ func mut(n **node) *node {
 
 // ObsoleteFilesSet accumulates files that now have zero references.
 type ObsoleteFilesSet interface {
-	// AddBacking appends the provided FileBacking to the list of obsolete
+	// AddBacking appends the provided TableBacking to the list of obsolete
 	// files.
-	AddBacking(*FileBacking)
+	AddBacking(*TableBacking)
 	// AddBlob appends the provided BlobFileMetadata to the list of obsolete
 	// files.
 	AddBlob(*BlobFileMetadata)
@@ -157,8 +157,8 @@ type assertNoObsoleteFiles struct{}
 // Assert that assertNoObsoleteFiles implements ObsoleteFilesSet.
 var _ ObsoleteFilesSet = assertNoObsoleteFiles{}
 
-// AddBacking appends the provided FileBacking to the list of obsolete files.
-func (assertNoObsoleteFiles) AddBacking(fb *FileBacking) {
+// AddBacking appends the provided TableBacking to the list of obsolete files.
+func (assertNoObsoleteFiles) AddBacking(fb *TableBacking) {
 	panic(errors.AssertionFailedf("file backing %s dereferenced to zero during tree mutation", fb.DiskFileNum))
 }
 
@@ -175,8 +175,8 @@ type ignoreObsoleteFiles struct{}
 // Assert that ignoreObsoleteFiles implements ObsoleteFilesSet.
 var _ ObsoleteFilesSet = ignoreObsoleteFiles{}
 
-// AddBacking appends the provided FileBacking to the list of obsolete files.
-func (ignoreObsoleteFiles) AddBacking(fb *FileBacking) {}
+// AddBacking appends the provided TableBacking to the list of obsolete files.
+func (ignoreObsoleteFiles) AddBacking(fb *TableBacking) {}
 
 // AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
 func (ignoreObsoleteFiles) AddBlob(bm *BlobFileMetadata) {}
