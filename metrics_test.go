@@ -162,7 +162,7 @@ func TestMetrics(t *testing.T) {
 		opts := &Options{
 			Cache:                 c,
 			Comparer:              testkeys.Comparer,
-			FormatMajorVersion:    FormatNewest,
+			FormatMajorVersion:    internalFormatNewest,
 			FS:                    memFS,
 			L0CompactionThreshold: 8,
 			// Large value for determinism.
@@ -170,6 +170,13 @@ func TestMetrics(t *testing.T) {
 		}
 		opts.Experimental.EnableValueBlocks = func() bool { return true }
 		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+		opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			return ValueSeparationPolicy{
+				Enabled:               true,
+				MinimumSize:           3,
+				MaxBlobReferenceDepth: 5,
+			}
+		}
 		opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
 
 		// Prevent foreground flushes and compactions from triggering asynchronous

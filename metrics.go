@@ -504,6 +504,9 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 	usageBytes += m.Table.Local.LiveSize
 	usageBytes += m.Table.Local.ObsoleteSize
 	usageBytes += m.Table.Local.ZombieSize
+	usageBytes += m.BlobFiles.Local.LiveSize
+	usageBytes += m.BlobFiles.Local.ObsoleteSize
+	usageBytes += m.BlobFiles.Local.ZombieSize
 	usageBytes += m.private.optionsFileSize
 	usageBytes += m.private.manifestFileSize
 	// TODO(sumeer): InProgressBytes does not distinguish between local and
