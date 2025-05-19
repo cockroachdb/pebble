@@ -357,7 +357,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 
 	// Update references to blob files from new tables. Any referenced blob
 	// files should already exist in s.files.
-	newTables := make(map[base.FileNum]struct{})
+	newTables := make(map[base.TableNum]struct{})
 	for _, e := range ve.NewTables {
 		newTables[e.Meta.TableNum] = struct{}{}
 		for _, ref := range e.Meta.BlobReferences {

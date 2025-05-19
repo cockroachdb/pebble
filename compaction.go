@@ -137,7 +137,7 @@ const (
 	// retained and linked in a new level without being obsoleted.
 	compactionKindMove
 	// compactionKindCopy denotes a copy compaction where the input file is
-	// copied byte-by-byte into a new file with a new FileNum in the output level.
+	// copied byte-by-byte into a new file with a new TableNum in the output level.
 	compactionKindCopy
 	// compactionKindDeleteOnly denotes a compaction that only deletes input
 	// files. It can occur when wide range tombstones completely contain sstables.
@@ -1060,7 +1060,7 @@ type readCompaction struct {
 	// The file associated with the compaction.
 	// If the file no longer belongs in the same
 	// level, then we skip the compaction.
-	fileNum base.FileNum
+	tableNum base.TableNum
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {
@@ -1345,7 +1345,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		},
 		v: c.version,
 	}
-	replacedFiles := make(map[base.FileNum][]newTableEntry)
+	replacedTables := make(map[base.TableNum][]newTableEntry)
 	for _, file := range ingestFlushable.files {
 		var fileToSplit *tableMetadata
 		var level int
@@ -1396,14 +1396,14 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 					return nil, err
 				}
 				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
-				replacedFiles[m.TableNum] = newFiles
+				replacedTables[m.TableNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
 		}
 	}
 
 	if len(ingestSplitFiles) > 0 {
-		if err := d.ingestSplit(context.TODO(), ve, updateLevelMetricsOnExcise, ingestSplitFiles, replacedFiles); err != nil {
+		if err := d.ingestSplit(context.TODO(), ve, updateLevelMetricsOnExcise, ingestSplitFiles, replacedTables); err != nil {
 			return nil, err
 		}
 	}
@@ -2451,9 +2451,9 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 		TableBackings: make([]*manifest.TableBacking, 0, len(ve.NewTables)),
 		BlobFiles:     make([]*manifest.BlobFileMetadata, 0, len(ve.NewBlobFiles)),
 	}
-	deletedFiles := make(map[base.FileNum]struct{})
+	deletedTables := make(map[base.TableNum]struct{})
 	for key := range ve.DeletedTables {
-		deletedFiles[key.FileNum] = struct{}{}
+		deletedTables[key.FileNum] = struct{}{}
 	}
 	for i := range ve.NewBlobFiles {
 		obsoleteFiles.AddBlob(ve.NewBlobFiles[i])
@@ -2470,7 +2470,7 @@ func (d *DB) cleanupVersionEdit(ve *versionEdit) {
 			// We handle backing files separately.
 			continue
 		}
-		if _, ok := deletedFiles[ve.NewTables[i].Meta.TableNum]; ok {
+		if _, ok := deletedTables[ve.NewTables[i].Meta.TableNum]; ok {
 			// This file is being moved in this ve to a different level.
 			// Don't mark it as obsolete.
 			continue
@@ -2578,7 +2578,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	return err
 }
 
-// runCopyCompaction runs a copy compaction where a new FileNum is created that
+// runCopyCompaction runs a copy compaction where a new TableNum is created that
 // is a byte-for-byte copy of the input file or span thereof in some cases. This
 // is used in lieu of a move compaction when a file is being moved across the
 // local/remote storage boundary. It could also be used in lieu of a rewrite
@@ -2647,7 +2647,7 @@ func (d *DB) runCopyCompaction(
 	if inputMeta.HasRangeKeys {
 		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.RangeKeyBounds.Smallest(), inputMeta.RangeKeyBounds.Largest())
 	}
-	newMeta.TableNum = d.mu.versions.getNextFileNum()
+	newMeta.TableNum = d.mu.versions.getNextTableNum()
 	if objMeta.IsExternal() {
 		// external -> local/shared copy. File must be virtual.
 		// We will update this size later after we produce the new backing file.

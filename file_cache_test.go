@@ -333,7 +333,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	l6 := currVersion.Levels[6]
 	l6FileIter := l6.Iter()
 	parentFile := l6FileIter.First()
-	f1 := base.FileNum(d.mu.versions.nextFileNum.Load())
+	f1 := base.TableNum(d.mu.versions.nextFileNum.Load())
 	f2 := f1 + 1
 	d.mu.versions.nextFileNum.Add(2)
 
@@ -662,15 +662,15 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 	for i := 0; i < N; i++ {
 		go func(i int) {
 			rngMu.Lock()
-			fileNum, sleepTime := rng.IntN(fileCacheTestNumTables), rng.IntN(1000)
+			tableNum, sleepTime := rng.IntN(fileCacheTestNumTables), rng.IntN(1000)
 			rngMu.Unlock()
-			m := &tableMetadata{TableNum: base.FileNum(fileNum)}
+			m := &tableMetadata{TableNum: base.TableNum(tableNum)}
 			m.InitPhysicalBacking()
 			m.TableBacking.Ref()
 			defer m.TableBacking.Unref()
 			iters, err := h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
 			if err != nil {
-				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
+				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, tableNum, err)
 				return
 			}
 			iter := iters.Point()
@@ -679,23 +679,23 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}
 			if kv == nil {
-				errc <- errors.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, fileNum)
+				errc <- errors.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, tableNum)
 				return
 			}
 			v, _, err := kv.Value(nil)
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: err extracting value: %v", err)
 			}
-			if got := len(v); got != fileNum {
-				errc <- errors.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
+			if got := len(v); got != tableNum {
+				errc <- errors.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, tableNum, got, tableNum)
 				return
 			}
 			if kv := iter.Next(); kv != nil {
-				errc <- errors.Errorf("i=%d, fileNum=%d: next.1: got true, want false", i, fileNum)
+				errc <- errors.Errorf("i=%d, fileNum=%d: next.1: got true, want false", i, tableNum)
 				return
 			}
 			if err := iter.Close(); err != nil {
-				errc <- errors.Wrapf(err, "close error i=%d, fileNum=%dv", i, fileNum)
+				errc <- errors.Wrapf(err, "close error i=%d, fileNum=%dv", i, tableNum)
 				return
 			}
 			errc <- nil
@@ -738,7 +738,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			}
 			var iters iterSet
 			var err error
-			m := &tableMetadata{TableNum: base.FileNum(fn)}
+			m := &tableMetadata{TableNum: base.TableNum(fn)}
 			m.InitPhysicalBacking()
 			m.TableBacking.Ref()
 			if rangeIter {
@@ -796,7 +796,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 				closeFunc()
 				continue
 			}
-			m := &tableMetadata{TableNum: base.FileNum(fn)}
+			m := &tableMetadata{TableNum: base.TableNum(fn)}
 			m.InitPhysicalBacking()
 			m.TableBacking.Ref()
 			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -857,7 +857,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		} else {
 			var iters iterSet
 			var err error
-			m := &tableMetadata{TableNum: base.FileNum(fn)}
+			m := &tableMetadata{TableNum: base.TableNum(fn)}
 			m.InitPhysicalBacking()
 			m.TableBacking.Ref()
 			if rangeIter {
@@ -936,7 +936,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 			closeFunc1()
 			closeFunc2()
 		} else {
-			m := &tableMetadata{TableNum: base.FileNum(fn)}
+			m := &tableMetadata{TableNum: base.TableNum(fn)}
 			m.InitPhysicalBacking()
 			m.TableBacking.Ref()
 			iters1, err := h1.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
@@ -1203,7 +1203,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		}
 
 		oldHits := fcs.fileCache.c.Metrics().Hits
-		m := &tableMetadata{TableNum: base.FileNum(key)}
+		m := &tableMetadata{TableNum: base.TableNum(key)}
 		m.InitPhysicalBacking()
 		m.TableBacking.Ref()
 		v, err := h.findOrCreateTable(context.Background(), m)

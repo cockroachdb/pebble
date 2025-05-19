@@ -1179,9 +1179,9 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	return nil
 }
 
-// IngestSST adds the FileNum for an sstable to the batch. The data will only be
+// IngestSST adds the TableNum for an sstable to the batch. The data will only be
 // written to the WAL (not added to memtables or sstables).
-func (b *Batch) ingestSST(fileNum base.FileNum) {
+func (b *Batch) ingestSST(tableNum base.TableNum) {
 	if b.Empty() {
 		b.ingestedSSTBatch = true
 	} else if !b.ingestedSSTBatch {
@@ -1191,7 +1191,7 @@ func (b *Batch) ingestSST(fileNum base.FileNum) {
 
 	origMemTableSize := b.memTableSize
 	var buf [binary.MaxVarintLen64]byte
-	length := binary.PutUvarint(buf[:], uint64(fileNum))
+	length := binary.PutUvarint(buf[:], uint64(tableNum))
 	b.prepareDeferredKeyRecord(length, InternalKeyKindIngestSST)
 	copy(b.deferredOp.Key, buf[:length])
 	// Since IngestSST writes only to the WAL and does not affect the memtable,

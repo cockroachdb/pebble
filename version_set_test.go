@@ -65,7 +65,7 @@ func TestVersionSet(t *testing.T) {
 	))
 	vs.logSeqNum.Store(100)
 
-	tableMetas := make(map[base.FileNum]*manifest.TableMetadata)
+	tableMetas := make(map[base.TableNum]*manifest.TableMetadata)
 	backings := make(map[base.DiskFileNum]*manifest.TableBacking)
 	blobMetas := make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
 	// When we parse VersionEdits, we get a new TableBacking each time. We need to
@@ -197,7 +197,7 @@ func TestVersionSet(t *testing.T) {
 			}
 
 			// Repopulate the maps.
-			tableMetas = make(map[base.FileNum]*manifest.TableMetadata)
+			tableMetas = make(map[base.TableNum]*manifest.TableMetadata)
 			backings = make(map[base.DiskFileNum]*manifest.TableBacking)
 			blobMetas = make(map[base.DiskFileNum]*manifest.BlobFileMetadata)
 			v := vs.currentVersion()

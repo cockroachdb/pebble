@@ -68,22 +68,22 @@ func testBatch(t *testing.T, size int) {
 		}
 	}
 
-	encodeFileNum := func(n base.FileNum) string {
+	encodeTableNum := func(n base.TableNum) string {
 		return string(binary.AppendUvarint(nil, uint64(n)))
 	}
-	decodeFileNum := func(d []byte) base.FileNum {
+	decodeTableNum := func(d []byte) base.TableNum {
 		val, n := binary.Uvarint(d)
 		if n <= 0 {
 			t.Fatalf("invalid filenum encoding")
 		}
-		return base.FileNum(val)
+		return base.TableNum(val)
 	}
 
 	// RangeKeySet and RangeKeyUnset are untested here because they don't expose
 	// deferred variants. This is a consequence of these keys' more complex
 	// value encodings.
 	testCases := []testCase{
-		{InternalKeyKindIngestSST, encodeFileNum(1), "", 0},
+		{InternalKeyKindIngestSST, encodeTableNum(1), "", 0},
 		{InternalKeyKindSet, "roses", "red", 0},
 		{InternalKeyKindSet, "violets", "blue", 0},
 		{InternalKeyKindDelete, "roses", "", 0},
@@ -131,7 +131,7 @@ func testBatch(t *testing.T, size int) {
 		case InternalKeyKindRangeKeyDelete:
 			_ = b.RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindIngestSST:
-			b.ingestSST(decodeFileNum([]byte(tc.key)))
+			b.ingestSST(decodeTableNum([]byte(tc.key)))
 		}
 	}
 	verifyTestCases(b, testCases, false /* indexedKindsOnly */)
@@ -175,7 +175,7 @@ func testBatch(t *testing.T, size int) {
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindIngestSST:
-			b.ingestSST(decodeFileNum([]byte(tc.key)))
+			b.ingestSST(decodeTableNum([]byte(tc.key)))
 		case InternalKeyKindRangeKeyDelete:
 			d := b.RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)

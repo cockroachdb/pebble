@@ -318,7 +318,7 @@ type tombstoneWithLevel struct {
 	level int
 	// The level in LSM. A -1 means it's a memtable.
 	lsmLevel int
-	fileNum  base.FileNum
+	tableNum base.TableNum
 }
 
 func iterateAndCheckTombstones(
@@ -339,8 +339,8 @@ func iterateAndCheckTombstones(
 		if cmp(lastTombstone.Start, t.Start) == 0 && lastTombstone.level > t.level {
 			return errors.Errorf("encountered tombstone %s in %s"+
 				" that has a lower seqnum than the same tombstone in %s",
-				t.Span.Pretty(formatKey), levelOrMemtable(t.lsmLevel, t.fileNum),
-				levelOrMemtable(lastTombstone.lsmLevel, lastTombstone.fileNum))
+				t.Span.Pretty(formatKey), levelOrMemtable(t.lsmLevel, t.tableNum),
+				levelOrMemtable(lastTombstone.lsmLevel, lastTombstone.tableNum))
 		}
 		lastTombstone = t
 	}
@@ -432,18 +432,18 @@ func checkRangeTombstones(c *checkConfig) error {
 	return iterateAndCheckTombstones(c.cmp, c.formatKey, tombstones)
 }
 
-func levelOrMemtable(lsmLevel int, fileNum base.FileNum) string {
+func levelOrMemtable(lsmLevel int, tableNum base.TableNum) string {
 	if lsmLevel == -1 {
 		return "memtable"
 	}
-	return fmt.Sprintf("L%d: fileNum=%s", lsmLevel, fileNum)
+	return fmt.Sprintf("L%d: fileNum=%s", lsmLevel, tableNum)
 }
 
 func addTombstonesFromIter(
 	iter keyspan.FragmentIterator,
 	level int,
 	lsmLevel int,
-	fileNum base.FileNum,
+	tableNum base.TableNum,
 	tombstones []tombstoneWithLevel,
 	seqNum base.SeqNum,
 	cmp Compare,
@@ -462,7 +462,7 @@ func addTombstonesFromIter(
 		// rangeDelV1 as well.
 		if cmp(prevTombstone.End, t.Start) > 0 {
 			return nil, errors.Errorf("unordered or unfragmented range delete tombstones %s, %s in %s",
-				prevTombstone.Pretty(formatKey), t.Pretty(formatKey), levelOrMemtable(lsmLevel, fileNum))
+				prevTombstone.Pretty(formatKey), t.Pretty(formatKey), levelOrMemtable(lsmLevel, tableNum))
 		}
 		prevTombstone = t
 
@@ -471,7 +471,7 @@ func addTombstonesFromIter(
 				Span:     t,
 				level:    level,
 				lsmLevel: lsmLevel,
-				fileNum:  fileNum,
+				tableNum: tableNum,
 			})
 		}
 	}

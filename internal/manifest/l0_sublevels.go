@@ -405,7 +405,7 @@ func mergeIntervals(
 }
 
 func (s *l0Sublevels) canUseAddL0Files(
-	addedTables map[base.FileNum]*TableMetadata, levelMetadata *LevelMetadata,
+	addedTables map[base.TableNum]*TableMetadata, levelMetadata *LevelMetadata,
 ) (filesToAddInOrder []*TableMetadata, ok bool) {
 	if s.addL0FilesCalled {
 		if invariants.Enabled {
@@ -2243,10 +2243,10 @@ func (o *L0Organizer) ResetForTesting(v *Version) {
 // adding and removing the specified tables.
 func verifyLevelMetadataTransition(
 	oldLevel, newLevel *LevelMetadata,
-	addedTables map[base.FileNum]*TableMetadata,
-	deletedTables map[base.FileNum]*TableMetadata,
+	addedTables map[base.TableNum]*TableMetadata,
+	deletedTables map[base.TableNum]*TableMetadata,
 ) {
-	m := make(map[base.FileNum]*TableMetadata, oldLevel.Len())
+	m := make(map[base.TableNum]*TableMetadata, oldLevel.Len())
 	iter := oldLevel.Iter()
 	for t := iter.First(); t != nil; t = iter.Next() {
 		m[t.TableNum] = t

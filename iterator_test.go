@@ -380,7 +380,7 @@ func TestReadSampling(t *testing.T) {
 				return fmt.Sprintf("%s: db is not defined", td.Cmd)
 			}
 
-			var fileNum int64
+			var tableNum int64
 			for _, arg := range td.CmdArgs {
 				if len(arg.Vals) != 2 {
 					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
@@ -388,7 +388,7 @@ func TestReadSampling(t *testing.T) {
 				switch arg.Key {
 				case "allowed-seeks":
 					var err error
-					fileNum, err = strconv.ParseInt(arg.Vals[0], 10, 64)
+					tableNum, err = strconv.ParseInt(arg.Vals[0], 10, 64)
 					if err != nil {
 						return err.Error()
 					}
@@ -399,7 +399,7 @@ func TestReadSampling(t *testing.T) {
 			d.mu.Lock()
 			for _, l := range d.mu.versions.currentVersion().Levels {
 				for f := range l.All() {
-					if f.TableNum == base.FileNum(fileNum) {
+					if f.TableNum == base.TableNum(tableNum) {
 						actualAllowedSeeks := f.AllowedSeeks.Load()
 						foundAllowedSeeks = actualAllowedSeeks
 					}
@@ -408,7 +408,7 @@ func TestReadSampling(t *testing.T) {
 			d.mu.Unlock()
 
 			if foundAllowedSeeks == -1 {
-				return fmt.Sprintf("invalid file num: %d", fileNum)
+				return fmt.Sprintf("invalid file num: %d", tableNum)
 			}
 			return fmt.Sprintf("%d", foundAllowedSeeks)
 

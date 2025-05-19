@@ -23,8 +23,8 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// FileNum is an identifier for a file within a database.
-type FileNum = base.FileNum
+// TableNum is an identifier for a table within a database.
+type TableNum = base.TableNum
 
 // TableInfo exports the manifest.TableInfo type.
 type TableInfo = manifest.TableInfo
