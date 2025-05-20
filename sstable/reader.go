@@ -42,6 +42,8 @@ const (
 )
 
 // Reader is a table reader.
+// If you update this struct, make sure you also update the magic number in
+// StringForTests() in metrics.go.
 type Reader struct {
 	blockReader block.Reader
 

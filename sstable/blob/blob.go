@@ -352,6 +352,8 @@ func (f *fileFooter) encode(b []byte) {
 }
 
 // FileReader reads a blob file.
+// If you update this struct, make sure you also update the magic number in
+// StringForTests() in metrics.go.
 type FileReader struct {
 	r      block.Reader
 	footer fileFooter
