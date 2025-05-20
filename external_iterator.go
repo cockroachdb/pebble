@@ -271,7 +271,6 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			}
 			if len(rangeKeyIters) > 0 {
 				it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-				it.rangeKey.init(it.comparer.Compare, it.comparer.Split, &it.opts)
 				it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
 					&it.comparer,
 					base.SeqNumMax,

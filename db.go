@@ -1209,7 +1209,6 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 			}
 			if dbi.rangeKey == nil {
 				dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-				dbi.rangeKey.init(dbi.comparer.Compare, dbi.comparer.Split, &dbi.opts)
 				dbi.constructRangeKeyIter()
 			} else {
 				dbi.rangeKey.iterConfig.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
@@ -1392,7 +1391,6 @@ func finishInitializingInternalIter(
 	// For internal iterators, we skip the lazy combined iteration optimization
 	// entirely, and create the range key iterator stack directly.
 	i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-	i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts.IterOptions)
 	if err := i.constructRangeKeyIter(); err != nil {
 		return nil, err
 	}

@@ -336,9 +336,6 @@ func (i *Iterator) equal(a, b []byte) bool {
 
 // iteratorRangeKeyState holds an iterator's range key iteration state.
 type iteratorRangeKeyState struct {
-	opts  *IterOptions
-	cmp   base.Compare
-	split base.Split
 	// rangeKeyIter holds the range key iterator stack that iterates over the
 	// merged spans across the entirety of the LSM.
 	rangeKeyIter keyspan.FragmentIterator
@@ -415,12 +412,6 @@ func (b *rangeKeyBuffers) PrepareForReuse() {
 		b.buf = b.buf[:0]
 	}
 	b.internal.PrepareForReuse()
-}
-
-func (i *iteratorRangeKeyState) init(cmp base.Compare, split base.Split, opts *IterOptions) {
-	i.cmp = cmp
-	i.split = split
-	i.opts = opts
 }
 
 var iterRangeKeyStateAllocPool = sync.Pool{
