@@ -1002,6 +1002,10 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// must've already iterated over it.
 			// This is the final entry at this user key, so we may return
 			i.rangeKey.rangeKeyOnly = i.iterValidityState != IterValid
+			if i.rangeKey.rangeKeyOnly {
+				// The point iterator is now invalid, so clear the point value.
+				i.value = base.InternalValue{}
+			}
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.iterValidityState = IterValid

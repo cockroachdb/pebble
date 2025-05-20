@@ -136,6 +136,8 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					op = "seeklt"
 				}
 				fmt.Fprintf(&b, "%s=%q\n", field, op)
+			case "value.Len()":
+				fmt.Fprintf(&b, "%s=%d\n", field, iter.value.Len())
 			default:
 				return fmt.Sprintf("unrecognized inspect field %q\n", field)
 			}
