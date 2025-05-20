@@ -19,7 +19,8 @@ type zstdCompressor zstd.Encoder
 var _ Compressor = (*zstdCompressor)(nil)
 
 func getZstdCompressor(level int) *zstdCompressor {
-	return (*zstdCompressor)(zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level))))
+	writer, _ := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)))
+	return (*zstdCompressor)(writer)
 }
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
@@ -38,11 +39,7 @@ func (z *zstdCompressor) Compress(compressedBuf, b []byte) []byte {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	result := (*zstd.Encoder)(z).EncodeAll(b, compressedBuf[:varIntLen])
-	if err := encoder.Close(); err != nil {
-		panic(err)
-	}
-	return result
+	return (*zstd.Encoder)(z).EncodeAll(b, compressedBuf[:varIntLen])
 }
 
 func (z *zstdCompressor) Close() {
