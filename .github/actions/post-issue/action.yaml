@@ -38,12 +38,12 @@ runs:
       shell: bash
       id: get-issue-number
       run: |
-        issues=$(cat <<EOF
+        num=$(jq -r '.[0].number' <<'EOF'
         ${{ steps.find-issue.outputs.issues }}
         EOF
         )
-        if [ "$issues" != "[]" ]; then
-          echo "issue-number=$(echo $issues | jq -r '.[0].number')" >> $GITHUB_OUTPUT
+        if [ -n "$num" ]; then
+          echo "issue-number=$num >> $GITHUB_OUTPUT
         fi
 
     - name: Create issue
