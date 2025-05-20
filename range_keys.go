@@ -558,7 +558,6 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	// the range key iterator stack. It must not exist, otherwise we'd already
 	// be performing combined iteration.
 	i.parent.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-	i.parent.rangeKey.init(i.parent.comparer.Compare, i.parent.comparer.Split, &i.parent.opts)
 	i.parent.constructRangeKeyIter()
 
 	// Initialize the Iterator's interleaving iterator.
