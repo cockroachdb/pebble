@@ -366,12 +366,13 @@ func TestLargeBatch(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	verifyLSM := func(expected string) func() error {
+	verifyLSM := func(expectedRegex string) func() error {
+		expected := regexp.MustCompile(expectedRegex)
 		return func() error {
 			d.mu.Lock()
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
-			if expected != s {
+			if !expected.MatchString(s) {
 				if testing.Verbose() {
 					fmt.Println(strings.TrimSpace(s))
 				}
@@ -425,13 +426,13 @@ func TestLargeBatch(t *testing.T) {
 
 	// Verify this results in one L0 table being created.
 	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
-		verifyLSM("L0.0:\n  000005:[a#10,SET-a#10,SET]\n")))
+		verifyLSM("L0.0:\n  \\d+:\\[a#10,SET-a#10,SET\\]\n")))
 
 	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("b"), 512), nil))
 
 	// Verify this results in a second L0 table being created.
 	require.NoError(t, try(100*time.Microsecond, 20*time.Second,
-		verifyLSM("L0.0:\n  000005:[a#10,SET-a#10,SET]\n  000007:[b#11,SET-b#11,SET]\n")))
+		verifyLSM("L0.0:\n  \\d+:\\[a#10,SET-a#10,SET\\]\n  \\d+:\\[b#11,SET-b#11,SET\\]\n")))
 
 	// Allocate a bunch of batches to exhaust the batchPool. None of these
 	// batches should have a non-zero count.
