@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -50,9 +51,10 @@ func newFileReadable(
 		readaheadConfig: readaheadConfig,
 	}
 	if invariants.UseFinalizers {
+		stack := debug.Stack()
 		invariants.SetFinalizer(r, func(obj interface{}) {
 			if obj.(*fileReadable).file != nil {
-				fmt.Fprintf(os.Stderr, "Readable was not closed")
+				fmt.Fprintf(os.Stderr, "Readable was not closed\n%s", stack)
 				os.Exit(1)
 			}
 		})
