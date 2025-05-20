@@ -195,3 +195,30 @@ l: (peach, .)
 stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 0B cached, 341B not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
 .
 stats: seeked 1 times (1 internal); stepped 12 times (12 internal); blocks: 0B cached, 341B not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
+
+# Regression test for #4741.
+#
+# Previously an iterator traversing in reverse direction would not reset i.value
+# to an empty InternalValue if it landed on a range key. While i.Value() would
+# never use the garbage value in i.value, maybeSampleRead would in order to
+# retrieve the value length. This resulted in a data race if the underlying
+# sstable iterator backing a LazyValue stored in i.value was pooled and reused.
+
+define verbose format-major-version=21
+L6
+  rangekey:a-d:{(#5,RANGEKEYSET,@2,foo)}
+  b.SETWITHDEL.2:blob{fileNum=000009 value=keylime}
+----
+L6:
+  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:1029 blobrefs:[(000009: 7); depth:1]
+Blob files:
+  000009: 63 physical bytes, 7 value bytes
+
+combined-iter
+seek-lt c
+seek-lt b
+inspect value.Len()
+----
+b: (keylime, [a-d) @2=foo UPDATED)
+a: (., [a-d) @2=foo)
+value.Len()=0
