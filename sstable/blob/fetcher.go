@@ -52,6 +52,9 @@ type ReaderProvider interface {
 //
 // A single ValueFetcher can be used to fetch values from multiple files, and it
 // will internally cache readers for each file.
+//
+// When finished with a ValueFetcher, one must call Close to release all cached
+// readers and block buffers.
 type ValueFetcher struct {
 	readerProvider ReaderProvider
 	env            block.ReadEnv
