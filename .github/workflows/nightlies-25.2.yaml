@@ -33,6 +33,7 @@ jobs:
     with:
       sha: ${{ needs.resolve-sha.outputs.sha }}
       file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
 
   s390x:
     needs: resolve-sha
@@ -40,6 +41,7 @@ jobs:
     with:
       sha: ${{ needs.resolve-sha.outputs.sha }}
       file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
 
   stress:
     needs: resolve-sha
@@ -47,6 +49,7 @@ jobs:
     with:
       sha: ${{ needs.resolve-sha.outputs.sha }}
       file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
 
   instrumented:
     needs: resolve-sha
@@ -54,3 +57,4 @@ jobs:
     with:
       sha: ${{ needs.resolve-sha.outputs.sha }}
       file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
