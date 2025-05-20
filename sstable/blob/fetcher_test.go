@@ -186,6 +186,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 	t.Run("sequential", func(t *testing.T) {
 		var fetcher ValueFetcher
 		fetcher.Init(rp, block.ReadEnv{})
+		defer fetcher.Close()
 		for i := 0; i < len(handles); i++ {
 			val, err := fetcher.retrieve(ctx, handles[i])
 			require.NoError(t, err)
@@ -195,6 +196,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 	t.Run("random", func(t *testing.T) {
 		var fetcher ValueFetcher
 		fetcher.Init(rp, block.ReadEnv{})
+		defer fetcher.Close()
 		for _, i := range rng.Perm(len(handles)) {
 			val, err := fetcher.retrieve(ctx, handles[i])
 			require.NoError(t, err)
@@ -277,6 +279,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 	b.Run("sequential", func(b *testing.B) {
 		var fetcher ValueFetcher
 		fetcher.Init(rp, block.ReadEnv{})
+		defer fetcher.Close()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			h := handles[i%len(handles)]
@@ -285,6 +288,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 				b.Fatal(err)
 			}
 		}
+		b.StopTimer()
 	})
 	b.Run("random", func(b *testing.B) {
 		indices := make([]int, b.N)
@@ -293,6 +297,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 		}
 		var fetcher ValueFetcher
 		fetcher.Init(rp, block.ReadEnv{})
+		defer fetcher.Close()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			h := handles[indices[i]]
@@ -301,5 +306,6 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 				b.Fatal(err)
 			}
 		}
+		b.StopTimer()
 	})
 }
