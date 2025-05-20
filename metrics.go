@@ -872,9 +872,15 @@ func percent(numerator, denominator int64) float64 {
 func (m *Metrics) StringForTests() string {
 	mCopy := *m
 	if math.MaxInt == math.MaxInt32 {
-		// This is the difference in Sizeof(sstable.Reader{})) between 64 and 32 bit
-		// platforms.
-		const tableCacheSizeAdjustment = 212
+		// README: This is the difference in Sizeof(sstable.Reader{})) + Sizeof(blob.FileReader{})
+		// between 64 and 32 bit platforms. See Metrics() in file_cache.go for more details.
+		// This magic number must be updated if the sstable.Reader or blob.FileReader struct changes.
+		// On 64-bit platforms, the size of the sstable.Reader struct is 616 bytes.
+		// On 32-bit platforms, the size of the sstable.Reader struct is 496 bytes.
+		// On 64-bit platforms, the size of the blob.FileReader struct is 88 bytes.
+		// On 32-bit platforms, the size of the blob.FileReader struct is 56 bytes.
+		// The difference is 616 - 496 + 88 - 56 = 152 bytes.
+		const tableCacheSizeAdjustment = 152
 		mCopy.FileCache.Size += mCopy.FileCache.Count * tableCacheSizeAdjustment
 	}
 	// Don't show cgo memory statistics as they can vary based on architecture,
