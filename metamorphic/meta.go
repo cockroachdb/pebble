@@ -241,7 +241,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		cmd := exec.Command(binary, args...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf(`
+			t.Fatalf(`error running %v
 ===== SEED =====
 %d
 ===== ERR =====
@@ -255,6 +255,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 ===== HISTORY =====
 %s
 To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir %s --try-to-reduce -v`,
+				cmd.String(),
 				runOpts.seed,
 				err,
 				out,
@@ -525,13 +526,13 @@ func RunOnce(
 		testOpts.Threads = runOpts.maxThreads
 	}
 
-	dir := opts.FS.PathJoin(runDir, "data")
+	dataDir := opts.FS.PathJoin(runDir, "data")
 	// Set up the initial database state if configured to start from a non-empty
 	// database. By default tests start from an empty database, but split
 	// version testing may configure a previous metamorphic tests's database
 	// state as the initial state.
 	if testOpts.initialStatePath != "" {
-		require.NoError(t, setupInitialState(dir, testOpts))
+		require.NoError(t, setupInitialState(dataDir, testOpts))
 	}
 
 	if testOpts.Opts.WALFailover != nil {
@@ -563,7 +564,7 @@ func RunOnce(
 	defer h.Close()
 
 	m := newTest(ops)
-	require.NoError(t, m.init(h, dir, testOpts, runOpts.numInstances, runOpts.opTimeout))
+	require.NoError(t, m.init(h, dataDir, testOpts, runOpts.numInstances, runOpts.opTimeout))
 
 	if err := Execute(m); err != nil {
 		fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
