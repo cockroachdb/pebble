@@ -217,7 +217,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 			if err != nil {
 				return errors.CombineErrors(err, readable.Close())
 			}
-			_, ok := r.Properties.UserProperties[opts.Opts.BlockPropertyCollectors[0]().Name()]
+			_, ok := r.UserProperties[opts.Opts.BlockPropertyCollectors[0]().Name()]
 			foundTableBlockProperty = foundTableBlockProperty || ok
 			return r.Close()
 		}))

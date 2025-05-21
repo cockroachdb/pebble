@@ -270,7 +270,7 @@ func getShortIDs(
 		shortIDs[i] = invalidShortID
 	}
 	for i, p := range collectors {
-		prop, ok := r.Properties.UserProperties[p.Name()]
+		prop, ok := r.UserProperties[p.Name()]
 		if !ok {
 			return nil, 0, errors.Errorf("sstable does not contain property %s", p.Name())
 		}

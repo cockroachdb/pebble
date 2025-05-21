@@ -509,7 +509,7 @@ func checkAndIntersectFilters(
 		filterer, err = sstable.IntersectsTable(
 			blockPropertyFilters,
 			boundLimitedFilter,
-			r.Properties.UserProperties,
+			r.UserProperties,
 			syntheticSuffix,
 		)
 		// NB: IntersectsTable will return a nil filterer if the table-level
