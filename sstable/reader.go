@@ -543,7 +543,7 @@ func decodePropertiesBlock(
 	return props, nil
 }
 
-var PropertiesBlockBufPools = sync.Pool{
+var propertiesBlockBufPools = sync.Pool{
 	New: func() any {
 		bp := new(block.BufferPool)
 		// New pools are initialized with a capacity of 2 to accommodate
@@ -572,8 +572,8 @@ func (r *Reader) readPropertiesBlockInternal(
 	if bufferPool == nil {
 		// We always use a buffer pool when reading the properties block as
 		// we don't want it in the block cache.
-		bufferPool = PropertiesBlockBufPools.Get().(*block.BufferPool)
-		defer PropertiesBlockBufPools.Put(bufferPool)
+		bufferPool = propertiesBlockBufPools.Get().(*block.BufferPool)
+		defer propertiesBlockBufPools.Put(bufferPool)
 		defer bufferPool.Release()
 	}
 	env := block.ReadEnv{BufferPool: bufferPool}
