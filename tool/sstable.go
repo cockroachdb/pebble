@@ -174,7 +174,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(stdout, "%s\n", path)
 
 		defer bp.Release()
-		props, err := r.ReadPropertiesBlock(context.Background(), bp, nil)
+		props, err := r.ReadPropertiesBlock(context.Background(), bp)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -238,7 +238,7 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(stdout, "%s\n", path)
 
 		defer bp.Release()
-		props, err := r.ReadPropertiesBlock(context.Background(), bp, nil)
+		props, err := r.ReadPropertiesBlock(context.Background(), bp)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -276,7 +276,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 
 		// Load properties.
 		opts := s.opts.MakeReaderOptions()
-		props, err := r.ReadPropertiesBlock(context.Background(), bp, opts.DeniedUserProperties)
+		props, err := r.ReadPropertiesBlock(context.Background(), bp)
 
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -346,13 +346,14 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  options\t%s\n", props.CompressionOptions)
 		fmt.Fprintf(tw, "user properties\t\n")
 		fmt.Fprintf(tw, "  collectors\t%s\n", props.PropertyCollectorNames)
-		keys := make([]string, 0, len(props.UserProperties))
-		for key := range props.UserProperties {
+		// Read UserProperties directly from reader.
+		keys := make([]string, 0, len(r.UserProperties))
+		for key := range r.UserProperties {
 			keys = append(keys, key)
 		}
 		slices.Sort(keys)
 		for _, key := range keys {
-			fmt.Fprintf(tw, "  %s\t%s\n", key, props.UserProperties[key])
+			fmt.Fprintf(tw, "  %s\t%s\n", key, r.UserProperties[key])
 		}
 		_ = tw.Flush()
 	})
@@ -378,7 +379,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	defer sstable.PropertiesBlockBufPools.Put(bp)
 	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
 		defer bp.Release()
-		props, err := r.ReadPropertiesBlock(context.Background(), bp, nil)
+		props, err := r.ReadPropertiesBlock(context.Background(), bp)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return

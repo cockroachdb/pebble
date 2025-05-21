@@ -41,6 +41,8 @@ const (
 	loadBlockIrrelevant
 )
 
+var noDeniedUserProps = map[string]struct{}{}
+
 // Reader is a table reader.
 type Reader struct {
 	blockReader block.Reader
@@ -63,9 +65,10 @@ type Reader struct {
 	metaindexBH  block.Handle
 	footerBH     block.Handle
 
-	Properties  Properties
-	tableFormat TableFormat
-	Attributes  Attributes
+	Properties     Properties
+	tableFormat    TableFormat
+	Attributes     Attributes
+	UserProperties map[string]string
 }
 
 type ReadEnv struct {
@@ -487,6 +490,7 @@ func (r *Reader) readMetaindex(
 		if err != nil {
 			return err
 		}
+		r.UserProperties = r.Properties.UserProperties
 	} else {
 		return errors.New("did not read any value for the properties block in the meta index")
 	}
@@ -554,11 +558,14 @@ var PropertiesBlockBufPools = sync.Pool{
 
 // ReadPropertiesBlock reads the properties block from the table.
 // We always read the properties block into a buffer pool instead
-// of the block cache.
+// of the block cache. Note that UserProperties should not be read
+// from the properties returned from this method as they won't filter
+// out denied user properties (those that pebble doesn't care about).
+// UserProperties should be read directly from the Reader struct.
 func (r *Reader) ReadPropertiesBlock(
-	ctx context.Context, bufferPool *block.BufferPool, deniedUserProperties map[string]struct{},
+	ctx context.Context, bufferPool *block.BufferPool,
 ) (Properties, error) {
-	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle, deniedUserProperties)
+	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle, noDeniedUserProps)
 }
 
 func (r *Reader) readPropertiesBlockInternal(

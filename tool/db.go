@@ -976,7 +976,7 @@ func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadat
 		return err
 	}
 
-	properties, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */, opts.DeniedUserProperties)
+	properties, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
 	if err != nil {
 		_ = f.Close()
 		return err
