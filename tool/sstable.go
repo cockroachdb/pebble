@@ -167,11 +167,12 @@ func (s *sstableT) newReader(f vfs.File, cacheHandle *cache.Handle) (*sstable.Re
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
 		fmt.Fprintf(stdout, "%s\n", path)
+
 		// Update the internal formatter if this comparator has one specified.
-		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
-		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtKey.setForComparer(props.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(props.ComparerName, s.comparers)
 
 		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
 		if err != nil {
@@ -220,12 +221,13 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
+		// If the file is empty, print a message and return.
 		fmt.Fprintf(stdout, "%s\n", path)
 
 		// Update the internal formatter if this comparator has one specified.
-		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
-		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtKey.setForComparer(props.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(props.ComparerName, s.comparers)
 
 		l, err := r.Layout()
 		if err != nil {
@@ -247,11 +249,11 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
 		fmt.Fprintf(stdout, "%s\n", path)
 
 		if s.verbose {
-			fmt.Fprintf(stdout, "%s", r.Properties.String())
+			fmt.Fprintf(stdout, "%s", props.String())
 			return
 		}
 
@@ -279,47 +281,47 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		}
 		fmt.Fprintf(tw, "size\t\n")
 		fmt.Fprintf(tw, "  file\t%s\n", humanize.Bytes.Int64(stat.Size()))
-		fmt.Fprintf(tw, "  data\t%s\n", humanize.Bytes.Uint64(r.Properties.DataSize))
-		fmt.Fprintf(tw, "    blocks\t%d\n", r.Properties.NumDataBlocks)
-		fmt.Fprintf(tw, "  index\t%s\n", humanize.Bytes.Uint64(r.Properties.IndexSize))
-		fmt.Fprintf(tw, "    blocks\t%d\n", 1+r.Properties.IndexPartitions)
-		fmt.Fprintf(tw, "    top-level\t%s\n", humanize.Bytes.Uint64(r.Properties.TopLevelIndexSize))
-		fmt.Fprintf(tw, "  filter\t%s\n", humanize.Bytes.Uint64(r.Properties.FilterSize))
-		fmt.Fprintf(tw, "  raw-key\t%s\n", humanize.Bytes.Uint64(r.Properties.RawKeySize))
-		fmt.Fprintf(tw, "  raw-value\t%s\n", humanize.Bytes.Uint64(r.Properties.RawValueSize))
-		fmt.Fprintf(tw, "  pinned-key\t%d\n", r.Properties.SnapshotPinnedKeySize)
-		fmt.Fprintf(tw, "  pinned-val\t%d\n", r.Properties.SnapshotPinnedValueSize)
-		fmt.Fprintf(tw, "  point-del-key-size\t%d\n", r.Properties.RawPointTombstoneKeySize)
-		fmt.Fprintf(tw, "  point-del-value-size\t%d\n", r.Properties.RawPointTombstoneValueSize)
-		fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
-		fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
-			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
-		fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumPointDeletions())
-		fmt.Fprintf(tw, "  delete-sized\t%d\n", r.Properties.NumSizedDeletions)
-		fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
-		fmt.Fprintf(tw, "  range-key-set\t%d\n", r.Properties.NumRangeKeySets)
-		fmt.Fprintf(tw, "  range-key-unset\t%d\n", r.Properties.NumRangeKeyUnsets)
-		fmt.Fprintf(tw, "  range-key-delete\t%d\n", r.Properties.NumRangeKeyDels)
-		fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
-		fmt.Fprintf(tw, "  pinned\t%d\n", r.Properties.SnapshotPinnedKeys)
+		fmt.Fprintf(tw, "  data\t%s\n", humanize.Bytes.Uint64(props.DataSize))
+		fmt.Fprintf(tw, "    blocks\t%d\n", props.NumDataBlocks)
+		fmt.Fprintf(tw, "  index\t%s\n", humanize.Bytes.Uint64(props.IndexSize))
+		fmt.Fprintf(tw, "    blocks\t%d\n", 1+props.IndexPartitions)
+		fmt.Fprintf(tw, "    top-level\t%s\n", humanize.Bytes.Uint64(props.TopLevelIndexSize))
+		fmt.Fprintf(tw, "  filter\t%s\n", humanize.Bytes.Uint64(props.FilterSize))
+		fmt.Fprintf(tw, "  raw-key\t%s\n", humanize.Bytes.Uint64(props.RawKeySize))
+		fmt.Fprintf(tw, "  raw-value\t%s\n", humanize.Bytes.Uint64(props.RawValueSize))
+		fmt.Fprintf(tw, "  pinned-key\t%d\n", props.SnapshotPinnedKeySize)
+		fmt.Fprintf(tw, "  pinned-val\t%d\n", props.SnapshotPinnedValueSize)
+		fmt.Fprintf(tw, "  point-del-key-size\t%d\n", props.RawPointTombstoneKeySize)
+		fmt.Fprintf(tw, "  point-del-value-size\t%d\n", props.RawPointTombstoneValueSize)
+		fmt.Fprintf(tw, "records\t%d\n", props.NumEntries)
+		fmt.Fprintf(tw, "  set\t%d\n", props.NumEntries-
+			(props.NumDeletions+props.NumMergeOperands))
+		fmt.Fprintf(tw, "  delete\t%d\n", props.NumPointDeletions())
+		fmt.Fprintf(tw, "  delete-sized\t%d\n", props.NumSizedDeletions)
+		fmt.Fprintf(tw, "  range-delete\t%d\n", props.NumRangeDeletions)
+		fmt.Fprintf(tw, "  range-key-set\t%d\n", props.NumRangeKeySets)
+		fmt.Fprintf(tw, "  range-key-unset\t%d\n", props.NumRangeKeyUnsets)
+		fmt.Fprintf(tw, "  range-key-delete\t%d\n", props.NumRangeKeyDels)
+		fmt.Fprintf(tw, "  merge\t%d\n", props.NumMergeOperands)
+		fmt.Fprintf(tw, "  pinned\t%d\n", props.SnapshotPinnedKeys)
 		fmt.Fprintf(tw, "index\t\n")
 		fmt.Fprintf(tw, "  key\t")
 		fmt.Fprintf(tw, "  value\t")
-		fmt.Fprintf(tw, "comparer\t%s\n", r.Properties.ComparerName)
-		fmt.Fprintf(tw, "key-schema\t%s\n", formatNull(r.Properties.KeySchemaName))
-		fmt.Fprintf(tw, "merger\t%s\n", formatNull(r.Properties.MergerName))
-		fmt.Fprintf(tw, "filter\t%s\n", formatNull(r.Properties.FilterPolicyName))
-		fmt.Fprintf(tw, "compression\t%s\n", r.Properties.CompressionName)
-		fmt.Fprintf(tw, "  options\t%s\n", r.Properties.CompressionOptions)
+		fmt.Fprintf(tw, "comparer\t%s\n", props.ComparerName)
+		fmt.Fprintf(tw, "key-schema\t%s\n", formatNull(props.KeySchemaName))
+		fmt.Fprintf(tw, "merger\t%s\n", formatNull(props.MergerName))
+		fmt.Fprintf(tw, "filter\t%s\n", formatNull(props.FilterPolicyName))
+		fmt.Fprintf(tw, "compression\t%s\n", props.CompressionName)
+		fmt.Fprintf(tw, "  options\t%s\n", props.CompressionOptions)
 		fmt.Fprintf(tw, "user properties\t\n")
-		fmt.Fprintf(tw, "  collectors\t%s\n", r.Properties.PropertyCollectorNames)
-		keys := make([]string, 0, len(r.Properties.UserProperties))
-		for key := range r.Properties.UserProperties {
+		fmt.Fprintf(tw, "  collectors\t%s\n", props.PropertyCollectorNames)
+		keys := make([]string, 0, len(props.UserProperties))
+		for key := range props.UserProperties {
 			keys = append(keys, key)
 		}
 		slices.Sort(keys)
 		for _, key := range keys {
-			fmt.Fprintf(tw, "  %s\t%s\n", key, r.Properties.UserProperties[key])
+			fmt.Fprintf(tw, "  %s\t%s\n", key, props.UserProperties[key])
 		}
 		_ = tw.Flush()
 	})
@@ -340,10 +342,11 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		blobDir = args[len(args)-1]
 		args = args[:len(args)-1]
 	}
-	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
 		// Update the internal formatter if this comparator has one specified.
-		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
-		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
+		s.fmtKey.setForComparer(props.ComparerName, s.comparers)
+		s.fmtValue.setForComparer(props.ComparerName, s.comparers)
 
 		// In filter-mode, we prefix ever line that is output with the sstable
 		// filename.
@@ -541,7 +544,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader) {
+	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
 		bytes, err := r.EstimateDiskUsage(s.start, s.end, sstable.NoReadEnv)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -554,7 +557,9 @@ func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
 // foreachSstable opens each sstable specified in the args (if an arg is a
 // directory, it is walked for sstable files) and calls the given function.
 func (s *sstableT) foreachSstable(
-	stderr io.Writer, args []string, fn func(path string, r *sstable.Reader),
+	stderr io.Writer,
+	args []string,
+	fn func(path string, r *sstable.Reader, props sstable.Properties),
 ) {
 	pathFn := func(path string) {
 		f, err := s.opts.FS.Open(path)
@@ -574,7 +579,14 @@ func (s *sstableT) foreachSstable(
 			return
 		}
 		defer func() { _ = r.Close() }()
-		fn(path, r)
+
+		deniedUserProps := s.opts.MakeReaderOptions().DeniedUserProperties
+		props, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */, deniedUserProps)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+		fn(path, r, props)
 	}
 
 	// listed and fn is invoked on any file with an .sst or .ldb suffix.
