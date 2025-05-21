@@ -319,13 +319,14 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  options\t%s\n", props.CompressionOptions)
 		fmt.Fprintf(tw, "user properties\t\n")
 		fmt.Fprintf(tw, "  collectors\t%s\n", props.PropertyCollectorNames)
-		keys := make([]string, 0, len(props.UserProperties))
-		for key := range props.UserProperties {
+		// Read UserProperties directly from reader.
+		keys := make([]string, 0, len(r.UserProperties))
+		for key := range r.UserProperties {
 			keys = append(keys, key)
 		}
 		slices.Sort(keys)
 		for _, key := range keys {
-			fmt.Fprintf(tw, "  %s\t%s\n", key, props.UserProperties[key])
+			fmt.Fprintf(tw, "  %s\t%s\n", key, r.UserProperties[key])
 		}
 		_ = tw.Flush()
 	})
@@ -584,8 +585,7 @@ func (s *sstableT) foreachSstable(
 		}
 		defer func() { _ = r.Close() }()
 
-		deniedUserProps := s.opts.MakeReaderOptions().DeniedUserProperties
-		props, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */, deniedUserProps)
+		props, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return

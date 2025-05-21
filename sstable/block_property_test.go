@@ -892,7 +892,7 @@ func TestBlockProperties(t *testing.T) {
 			buf.WriteString("points: ")
 			if len(points) > 0 {
 				f = newBlockPropertiesFilterer(points, nil, syntheticSuffix)
-				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+				ok, err := f.intersectsUserPropsAndFinishInit(r.UserProperties)
 				if err != nil {
 					return err.Error()
 				}
@@ -949,7 +949,7 @@ func TestBlockProperties(t *testing.T) {
 			buf.WriteString("ranges: ")
 			if len(ranges) > 0 {
 				f := newBlockPropertiesFilterer(ranges, nil, nil)
-				ok, err := f.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+				ok, err := f.intersectsUserPropsAndFinishInit(r.UserProperties)
 				if err != nil {
 					return err.Error()
 				}
@@ -980,7 +980,7 @@ func TestBlockProperties(t *testing.T) {
 				}
 			}
 			filterer := newBlockPropertiesFilterer(filters, nil, nil)
-			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+			ok, err := filterer.intersectsUserPropsAndFinishInit(r.UserProperties)
 			if err != nil {
 				return err.Error()
 			} else if !ok {
@@ -1070,7 +1070,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			}
 
 			filterer := newBlockPropertiesFilterer(nil, &filter, syntheticSuffix)
-			ok, err := filterer.intersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+			ok, err := filterer.intersectsUserPropsAndFinishInit(r.UserProperties)
 			if err != nil {
 				return err.Error()
 			} else if !ok {
@@ -1193,7 +1193,7 @@ func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
 
 func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
 	var lines []string
-	for k, v := range r.Properties.UserProperties {
+	for k, v := range r.UserProperties {
 		lines = append(lines, fmt.Sprintf("%d: %s", v[0], k))
 	}
 	linesSorted := sort.StringSlice(lines)
@@ -1203,7 +1203,7 @@ func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
 
 func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
 	var lines []string
-	for _, val := range r.Properties.UserProperties {
+	for _, val := range r.UserProperties {
 		id := shortID(val[0])
 		i, err := decodeBlockInterval([]byte(val[1:]))
 		if err != nil {

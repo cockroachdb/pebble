@@ -65,9 +65,10 @@ type Reader struct {
 	metaindexBH  block.Handle
 	footerBH     block.Handle
 
-	Properties  Properties
-	tableFormat TableFormat
-	Attributes  Attributes
+	Properties     Properties
+	tableFormat    TableFormat
+	Attributes     Attributes
+	UserProperties map[string]string
 }
 
 type ReadEnv struct {
@@ -486,6 +487,7 @@ func (r *Reader) readMetaindex(
 		if err != nil {
 			return err
 		}
+		r.UserProperties = r.Properties.UserProperties
 	} else {
 		return errors.New("did not read any value for the properties block in the meta index")
 	}
@@ -549,11 +551,11 @@ var propertiesBlockBufPools = sync.Pool{
 	},
 }
 
-// ReadPropertiesBlock reads the properties block from the table.
-// We always read the properties block into a buffer pool instead
-// of the block cache.
+// ReadPropertiesBlock reads the properties block
+// from the table. We always read the properties block into a buffer pool
+// instead of the block cache.
 func (r *Reader) ReadPropertiesBlock(
-	ctx context.Context, bufferPool *block.BufferPool, deniedUserProperties map[string]struct{},
+	ctx context.Context, bufferPool *block.BufferPool,
 ) (Properties, error) {
 	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle)
 }
