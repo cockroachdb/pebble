@@ -975,31 +975,38 @@ func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadat
 		_ = f.Close()
 		return err
 	}
+
+	properties, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */, opts.DeniedUserProperties)
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+
 	p.update(props{
 		Count:                      1,
 		SmallestSeqNum:             m.SmallestSeqNum,
 		LargestSeqNum:              m.LargestSeqNum,
-		DataSize:                   r.Properties.DataSize,
-		FilterSize:                 r.Properties.FilterSize,
-		IndexSize:                  r.Properties.IndexSize,
-		NumDataBlocks:              r.Properties.NumDataBlocks,
-		NumIndexBlocks:             1 + r.Properties.IndexPartitions,
-		NumDeletions:               r.Properties.NumDeletions,
-		NumSizedDeletions:          r.Properties.NumSizedDeletions,
-		NumEntries:                 r.Properties.NumEntries,
-		NumMergeOperands:           r.Properties.NumMergeOperands,
-		NumRangeDeletions:          r.Properties.NumRangeDeletions,
-		NumRangeKeySets:            r.Properties.NumRangeKeySets,
-		NumRangeKeyUnSets:          r.Properties.NumRangeKeyUnsets,
-		NumRangeKeyDeletes:         r.Properties.NumRangeKeyDels,
-		RawKeySize:                 r.Properties.RawKeySize,
-		RawPointTombstoneKeySize:   r.Properties.RawPointTombstoneKeySize,
-		RawPointTombstoneValueSize: r.Properties.RawPointTombstoneValueSize,
-		RawValueSize:               r.Properties.RawValueSize,
-		SnapshotPinnedKeySize:      r.Properties.SnapshotPinnedKeySize,
-		SnapshotPinnedValueSize:    r.Properties.SnapshotPinnedValueSize,
-		SnapshotPinnedKeys:         r.Properties.SnapshotPinnedKeys,
-		TopLevelIndexSize:          r.Properties.TopLevelIndexSize,
+		DataSize:                   properties.DataSize,
+		FilterSize:                 properties.FilterSize,
+		IndexSize:                  properties.IndexSize,
+		NumDataBlocks:              properties.NumDataBlocks,
+		NumIndexBlocks:             1 + properties.IndexPartitions,
+		NumDeletions:               properties.NumDeletions,
+		NumSizedDeletions:          properties.NumSizedDeletions,
+		NumEntries:                 properties.NumEntries,
+		NumMergeOperands:           properties.NumMergeOperands,
+		NumRangeDeletions:          properties.NumRangeDeletions,
+		NumRangeKeySets:            properties.NumRangeKeySets,
+		NumRangeKeyUnSets:          properties.NumRangeKeyUnsets,
+		NumRangeKeyDeletes:         properties.NumRangeKeyDels,
+		RawKeySize:                 properties.RawKeySize,
+		RawPointTombstoneKeySize:   properties.RawPointTombstoneKeySize,
+		RawPointTombstoneValueSize: properties.RawPointTombstoneValueSize,
+		RawValueSize:               properties.RawValueSize,
+		SnapshotPinnedKeySize:      properties.SnapshotPinnedKeySize,
+		SnapshotPinnedValueSize:    properties.SnapshotPinnedValueSize,
+		SnapshotPinnedKeys:         properties.SnapshotPinnedKeys,
+		TopLevelIndexSize:          properties.TopLevelIndexSize,
 	})
 	return r.Close()
 }
