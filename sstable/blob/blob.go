@@ -375,6 +375,9 @@ func (o FileReaderOptions) ensureDefaults() FileReaderOptions {
 }
 
 // NewFileReader opens a blob file for reading.
+//
+// In error cases, the objstorage.Readable is still open. The caller remains
+// responsible for closing it if necessary.
 func NewFileReader(
 	ctx context.Context, r objstorage.Readable, ro FileReaderOptions,
 ) (*FileReader, error) {

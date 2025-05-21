@@ -1060,27 +1060,46 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 }
 
 func TestFileCacheRetryAfterFailure(t *testing.T) {
+	ctx := context.Background()
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
 	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
-	h, fs := fct.newTestHandle()
 
-	fs.setOpenError(true /* enabled */)
-	m := &tableMetadata{TableNum: 0}
-	m.InitPhysicalBacking()
-	m.TableBacking.Ref()
-	defer m.TableBacking.Unref()
-	_, err := h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
-	if err == nil {
-		t.Fatalf("expected failure, but found success")
-	}
-	require.Equal(t, "pebble: backing file 000000 error: injected error", err.Error())
-	fs.setOpenError(false /* enabled */)
-	var iters iterSet
-	iters, err = h.newIters(context.Background(), m, nil, internalIterOpts{}, iterPointKeys)
-	require.NoError(t, err)
-	require.NoError(t, iters.Point().Close())
-	fs.validateAndCloseHandle(t, h, nil)
+	t.Run("sstable", func(t *testing.T) {
+		h, fs := fct.newTestHandle()
+
+		fs.setOpenError(true /* enabled */)
+		m := &tableMetadata{TableNum: 0}
+		m.InitPhysicalBacking()
+		m.TableBacking.Ref()
+		defer m.TableBacking.Unref()
+		_, err := h.newIters(ctx, m, nil, internalIterOpts{}, iterPointKeys)
+		if err == nil {
+			t.Fatalf("expected failure, but found success")
+		}
+		require.Equal(t, "pebble: backing file 000000 error: injected error", err.Error())
+		fs.setOpenError(false /* enabled */)
+		var iters iterSet
+		iters, err = h.newIters(ctx, m, nil, internalIterOpts{}, iterPointKeys)
+		require.NoError(t, err)
+		require.NoError(t, iters.Point().Close())
+		fs.validateAndCloseHandle(t, h, nil)
+	})
+	t.Run("blob", func(t *testing.T) {
+		h, fs := fct.newTestHandle()
+
+		fs.setOpenError(true /* enabled */)
+		_, _, err := h.GetValueReader(ctx, fileCacheTestNumTables)
+		if err == nil {
+			t.Fatalf("expected failure, but found success")
+		}
+		require.Equal(t, "pebble: backing file 000200 error: injected error", err.Error())
+		fs.setOpenError(false /* enabled */)
+		_, closeFunc, err := h.GetValueReader(ctx, fileCacheTestNumTables)
+		require.NoError(t, err)
+		closeFunc()
+		fs.validateAndCloseHandle(t, h, nil)
+	})
 }
 
 func TestFileCacheErrorBadMagicNumber(t *testing.T) {
