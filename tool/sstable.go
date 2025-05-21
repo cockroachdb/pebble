@@ -162,7 +162,11 @@ func (s *sstableT) newReader(f vfs.File, cacheHandle *cache.Handle) (*sstable.Re
 	o.Comparers = s.comparers
 	o.Mergers = s.mergers
 	o.CacheOpts = sstableinternal.CacheOptions{CacheHandle: cacheHandle}
-	return sstable.NewReader(context.Background(), readable, o)
+	reader, err := sstable.NewReader(context.Background(), readable, o)
+	if err != nil {
+		return nil, errors.CombineErrors(err, readable.Close())
+	}
+	return reader, nil
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {

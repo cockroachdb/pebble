@@ -7,6 +7,7 @@ package compressionanalyzer
 import (
 	"context"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -60,7 +61,7 @@ func (fa *FileAnalyzer) SSTable(ctx context.Context, fs vfs.FS, path string) err
 	}
 	r, err := sstable.NewReader(ctx, readable, fa.sstReadOpts)
 	if err != nil {
-		return err
+		return errors.CombineErrors(err, readable.Close())
 	}
 	defer func() { _ = r.Close() }()
 	layout, err := r.Layout()

@@ -600,6 +600,7 @@ func TestAutomaticFlush(t *testing.T) {
 					}
 					r, err := sstable.NewReader(context.Background(), f, opts.MakeReaderOptions())
 					if err != nil {
+						err = errors.CombineErrors(err, f.Close())
 						return errors.WithStack(err)
 					}
 					defer r.Close()

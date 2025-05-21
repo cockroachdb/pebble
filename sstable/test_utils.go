@@ -31,7 +31,7 @@ func ReadAll(
 ) (points []base.InternalKV, rangeDels, rangeKeys []keyspan.Span, err error) {
 	reader, err := NewReader(context.Background(), r, ro)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, errors.CombineErrors(err, r.Close())
 	}
 	defer func() { _ = reader.Close() }()
 	pointIter, err := reader.NewIter(NoTransforms, nil /* lower */, nil /* upper */, AssertNoBlobHandles)

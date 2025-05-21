@@ -1011,8 +1011,7 @@ func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadat
 	}
 	r, err := sstable.NewReader(ctx, f, opts)
 	if err != nil {
-		_ = f.Close()
-		return err
+		return errors.CombineErrors(err, f.Close())
 	}
 	p.update(props{
 		Count:                      1,

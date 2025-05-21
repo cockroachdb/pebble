@@ -268,7 +268,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					}
 					r, err := sstable.NewReader(context.Background(), readable, opts.MakeReaderOptions())
 					if err != nil {
-						return err.Error()
+						return errors.CombineErrors(err, readable.Close()).Error()
 					}
 					readers[m.TableNum] = r
 				}
@@ -396,7 +396,7 @@ func buildMergingIterTables(
 		opts.CacheOpts.FileNum = base.DiskFileNum(i)
 		readers[i], err = sstable.NewReader(context.Background(), readable, opts)
 		if err != nil {
-			b.Fatal(err)
+			b.Fatal(errors.CombineErrors(err, readable.Close()))
 		}
 	}
 	return readers, keys, func() {
@@ -662,7 +662,7 @@ func buildLevelsForMergingIterSeqSeek(
 			fileCount++
 			r, err := sstable.NewReader(context.Background(), readable, opts)
 			if err != nil {
-				b.Fatal(err)
+				b.Fatal(errors.CombineErrors(err, readable.Close()))
 			}
 			readers[i] = append(readers[i], r)
 		}

@@ -213,7 +213,9 @@ func (h *fileCacheHandle) openFile(
 	case base.FileTypeTable:
 		r, err := sstable.NewReader(ctx, f, o)
 		if err != nil {
-			return nil, objMeta, err
+			// If opening the sstable reader fails, we're responsible for
+			// closing the objstorage.Readable.
+			return nil, objMeta, errors.CombineErrors(err, f.Close())
 		}
 		return r, objMeta, nil
 	case base.FileTypeBlob:

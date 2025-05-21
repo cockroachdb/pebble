@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
@@ -100,7 +101,7 @@ func TestCopySpan(t *testing.T) {
 			r, err := NewReader(context.TODO(), readable, rOpts)
 			defer r.Close()
 			if err != nil {
-				return err.Error()
+				return errors.CombineErrors(err, readable.Close()).Error()
 			}
 			iter, err := r.NewIter(block.NoTransforms, start, end, AssertNoBlobHandles)
 			if err != nil {
@@ -151,7 +152,7 @@ func TestCopySpan(t *testing.T) {
 			}
 			r, err := NewReader(context.TODO(), readable, rOpts)
 			if err != nil {
-				return err.Error()
+				return errors.CombineErrors(err, readable.Close()).Error()
 			}
 			defer r.Close()
 			wOpts := WriterOptions{
@@ -187,7 +188,7 @@ func TestCopySpan(t *testing.T) {
 				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			})
 			if err != nil {
-				return err.Error()
+				return errors.CombineErrors(err, readable.Close()).Error()
 			}
 			defer r.Close()
 			l, err := r.Layout()

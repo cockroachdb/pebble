@@ -1345,7 +1345,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	}
 	r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 	if err != nil {
-		return err.Error()
+		return errors.CombineErrors(err, readable.Close()).Error()
 	}
 	defer r.Close()
 
@@ -1385,7 +1385,7 @@ func runLayoutCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
 	}
 	r, err := sstable.NewReader(context.Background(), readable, d.opts.MakeReaderOptions())
 	if err != nil {
-		return err.Error()
+		return errors.CombineErrors(err, readable.Close()).Error()
 	}
 	defer r.Close()
 	l, err := r.Layout()
