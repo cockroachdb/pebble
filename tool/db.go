@@ -1014,7 +1014,7 @@ func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadat
 		return errors.CombineErrors(err, f.Close())
 	}
 
-	properties, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */, opts.DeniedUserProperties)
+	properties, err := r.ReadPropertiesBlockExcludeUserProps(context.TODO(), nil /* buffer pool */)
 	if err != nil {
 		return errors.CombineErrors(err, r.Close())
 	}

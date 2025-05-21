@@ -112,7 +112,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 						defer rRewritten.Close()
 
 						foundValues := make(map[string][]byte)
-						for k, v := range rRewritten.Properties.UserProperties {
+						for k, v := range rRewritten.UserProperties {
 							if k == "obsolete-key" {
 								continue
 							}
