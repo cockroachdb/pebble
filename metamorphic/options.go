@@ -830,27 +830,50 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 	// If the test opts are not configured to use a WAL dir, we add the WAL dir
 	// as a 'WAL recovery dir' so that we'll read any WALs in the directory in
 	// Open.
-	walRecoveryPath := testOpts.Opts.FS.PathJoin(dataDir, "wal")
-	if testOpts.Opts.WALDir != "" {
-		// If the test opts are configured to use a WAL dir, we add the data
-		// directory itself as a 'WAL recovery dir' so that we'll read any WALs if
-		// the previous test was writing them to the data directory.
-		walRecoveryPath = dataDir
+	fs := testOpts.Opts.FS
+	walRecoveryPath := fs.PathJoin(dataDir, "wal")
+	if _, err := fs.Stat(walRecoveryPath); err == nil {
+		// Previous test used a WAL dir.
+		if testOpts.Opts.WALDir == "" {
+			// This test is not using a WAL dir. Add the previous WAL dir as a
+			// recovery dir.
+			testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+				FS:      fs,
+				Dirname: pebble.MakeStoreRelativePath(fs, "wal"),
+			})
+		} else {
+			// Both the previous test and the current test are using a WAL dir. We
+			// assume that they are the same.
+			if testOpts.Opts.WALDir != pebble.MakeStoreRelativePath(fs, "wal") {
+				return errors.Errorf("unsupported wal dir value %q", testOpts.Opts.WALDir)
+			}
+		}
+	} else {
+		// Previous test did not use a WAL dir.
+		if testOpts.Opts.WALDir != "" {
+			// The current test is using a WAL dir; we add the data directory itself
+			// as a 'WAL recovery dir' so that we'll read any WALs if the previous
+			// test was writing them to the data directory.
+			testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+				FS:      fs,
+				Dirname: pebble.MakeStoreRelativePath(fs, ""),
+			})
+		}
 	}
-	testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
-		FS:      testOpts.Opts.FS,
-		Dirname: walRecoveryPath,
-	})
 
-	// If the failover dir exists and the test opts are not configured to use
-	// WAL failover, add the failover directory as a 'WAL recovery dir' in case
-	// the previous test was configured to use failover.
+	// If the previous test used WAL failover and this test does not use failover,
+	// add the failover directory as a 'WAL recovery dir' in case the previous
+	// test was configured to use failover.
 	failoverDir := testOpts.Opts.FS.PathJoin(dataDir, "wal_secondary")
-	if _, err := testOpts.Opts.FS.Stat(failoverDir); err == nil && testOpts.Opts.WALFailover == nil {
-		testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
-			FS:      testOpts.Opts.FS,
-			Dirname: failoverDir,
-		})
+	if _, err := testOpts.Opts.FS.Stat(failoverDir); err == nil {
+		if testOpts.Opts.WALFailover == nil {
+			testOpts.Opts.WALRecoveryDirs = append(testOpts.Opts.WALRecoveryDirs, wal.Dir{
+				FS:      testOpts.Opts.FS,
+				Dirname: pebble.MakeStoreRelativePath(testOpts.Opts.FS, "wal_secondary"),
+			})
+		} else if testOpts.Opts.WALFailover.Secondary.Dirname != pebble.MakeStoreRelativePath(testOpts.Opts.FS, "wal_secondary") {
+			return errors.Errorf("unsupported wal failover dir value %q", testOpts.Opts.WALFailover.Secondary.Dirname)
+		}
 	}
 	return nil
 }
