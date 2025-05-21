@@ -2012,6 +2012,8 @@ func (o *Options) CheckCompatibility(previousOptions string) error {
 			}
 		case "Options.wal_dir", "WAL Failover.secondary_dir":
 			switch {
+			case value == "":
+				return nil
 			case o.WALDir == value:
 				return nil
 			case o.WALFailover != nil && o.WALFailover.Secondary.Dirname == value:
