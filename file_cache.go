@@ -221,7 +221,9 @@ func (h *fileCacheHandle) openFile(
 			ReaderOptions: o.ReaderOptions,
 		})
 		if err != nil {
-			return nil, objMeta, err
+			// If opening the blob file reader fails, we're responsible for
+			// closing the objstorage.Readable.
+			return nil, objMeta, errors.CombineErrors(err, f.Close())
 		}
 		return r, objMeta, nil
 	default:

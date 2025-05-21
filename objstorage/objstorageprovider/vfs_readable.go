@@ -54,7 +54,7 @@ func newFileReadable(
 		stack := debug.Stack()
 		invariants.SetFinalizer(r, func(obj interface{}) {
 			if obj.(*fileReadable).file != nil {
-				fmt.Fprintf(os.Stderr, "Readable was not closed\n%s", stack)
+				fmt.Fprintf(os.Stderr, "Readable %s was not closed\n%s", filename, stack)
 				os.Exit(1)
 			}
 		})
