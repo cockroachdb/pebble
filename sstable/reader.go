@@ -886,7 +886,8 @@ func (r *Reader) BlockReader() *block.Reader {
 // The context is used for tracing any operations performed by NewReader; it is
 // NOT stored for future use.
 //
-// In error cases, the Readable is closed.
+// In error cases, the objstorage.Readable is still open. The caller remains
+// responsible for closing it if necessary.
 func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Reader, error) {
 	if f == nil {
 		return nil, errors.New("pebble/table: nil file")
@@ -904,7 +905,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 
 	footer, err := readFooter(ctx, f, rh, o.LoggerAndTracer, o.CacheOpts.FileNum)
 	if err != nil {
-		return nil, errors.CombineErrors(err, f.Close())
+		return nil, err
 	}
 	r.blockReader.Init(f, o.ReaderOptions, footer.checksum)
 	r.tableFormat = footer.format
@@ -915,7 +916,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	// Read the metaindex and properties blocks.
 	if err := r.readMetaindex(ctx, rh, o.Filters, o.DeniedUserProperties); err != nil {
 		r.err = err
-		return nil, r.Close()
+		return nil, err
 	}
 
 	// Set which attributes are in use based on property values.
@@ -964,9 +965,8 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	}
 
 	if r.err != nil {
-		return nil, r.Close()
+		return nil, r.err
 	}
-
 	return r, nil
 }
 

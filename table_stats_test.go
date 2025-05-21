@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -246,7 +247,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				KeySchemas: sstable.KeySchemas{keySchema.Name: &keySchema},
 			})
 			if err != nil {
-				return err.Error()
+				return errors.CombineErrors(err, readable.Close()).Error()
 			}
 			defer r.Close()
 			iter, err := newCombinedDeletionKeyspanIter(cmp, r, m, sstable.NoReadEnv)

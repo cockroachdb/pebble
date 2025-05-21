@@ -243,7 +243,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				readerOpts.CacheOpts = sstableinternal.CacheOptions{FileNum: base.DiskFileNum(tableNum - 1)}
 				r, err := sstable.NewReader(context.Background(), readable, readerOpts)
 				if err != nil {
-					return err.Error()
+					return errors.CombineErrors(err, readable.Close()).Error()
 				}
 				readers = append(readers, r)
 			}

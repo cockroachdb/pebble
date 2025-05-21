@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
@@ -214,7 +215,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 			}
 			r, err := sstable.NewReader(context.Background(), readable, opts.Opts.MakeReaderOptions())
 			if err != nil {
-				return err
+				return errors.CombineErrors(err, readable.Close())
 			}
 			_, ok := r.Properties.UserProperties[opts.Opts.BlockPropertyCollectors[0]().Name()]
 			foundTableBlockProperty = foundTableBlockProperty || ok

@@ -266,7 +266,7 @@ func ingestLoad1(
 	}
 	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
-		return nil, keyspan.Span{}, err
+		return nil, keyspan.Span{}, errors.CombineErrors(err, readable.Close())
 	}
 	defer func() { _ = r.Close() }()
 

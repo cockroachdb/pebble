@@ -163,7 +163,7 @@ func runBuildRawCmd(
 		KeySchemas: KeySchemas{opts.KeySchema.Name: opts.KeySchema},
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.CombineErrors(err, f1.Close())
 	}
 	return meta, r, nil
 }

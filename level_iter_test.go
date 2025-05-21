@@ -300,7 +300,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		},
 	})
 	if err != nil {
-		return err.Error()
+		return errors.CombineErrors(err, readable.Close()).Error()
 	}
 	lt.readers = append(lt.readers, r)
 	m := &tableMetadata{TableNum: tableNum}
@@ -566,7 +566,7 @@ func buildLevelIterTables(
 		}
 		readers[i], err = sstable.NewReader(context.Background(), readable, opts)
 		if err != nil {
-			b.Fatal(err)
+			b.Fatal(errors.CombineErrors(err, readable.Close()))
 		}
 	}
 

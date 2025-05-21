@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -476,6 +477,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}
 			r, err := sstable.NewReader(context.Background(), readable, opts)
 			if err != nil {
+				err = errors.CombineErrors(err, readable.Close())
 				f.errors = append(f.errors, fmt.Sprintf("Unable to decode sstable %s, %s", fl.path, err.Error()))
 				// Ensure the error only gets printed once.
 				err = nil

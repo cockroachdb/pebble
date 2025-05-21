@@ -994,7 +994,7 @@ func loadFlushedSSTableKeys(
 			}
 			r, err := sstable.NewReader(context.Background(), readable, readOpts)
 			if err != nil {
-				return err
+				return errors.CombineErrors(err, readable.Close())
 			}
 			defer func() { _ = r.Close() }()
 

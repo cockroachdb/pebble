@@ -2559,7 +2559,11 @@ func newReader(r ReadableFile, o ReaderOptions) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(context.Background(), readable, o)
+	reader, err := NewReader(context.Background(), readable, o)
+	if err != nil {
+		return nil, errors.CombineErrors(err, readable.Close())
+	}
+	return reader, nil
 }
 
 // TestReaderReportsCorruption tests that the reader reports corruption when
