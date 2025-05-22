@@ -2159,12 +2159,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 // opened without supplying a Options.WALRecoveryDir entry for a directory that
 // may contain WALs required to recover a consistent database state.
 type ErrMissingWALRecoveryDir struct {
-	Dir string
+	Dir       string
+	ExtraInfo string
 }
 
 // Error implements error.
 func (e ErrMissingWALRecoveryDir) Error() string {
-	return fmt.Sprintf("directory %q may contain relevant WALs", e.Dir)
+	return fmt.Sprintf("directory %q may contain relevant WALs%s", e.Dir, e.ExtraInfo)
 }
 
 // CheckCompatibility verifies the options are compatible with the previous options
@@ -2200,7 +2201,18 @@ func (o *Options) CheckCompatibility(previousOptions string) error {
 						return nil
 					}
 				}
-				return ErrMissingWALRecoveryDir{Dir: value}
+				var buf bytes.Buffer
+				fmt.Fprintf(&buf, "\n  OPTIONS key: %s\n", section+"."+key)
+				if o.WALDir != "" {
+					fmt.Fprintf(&buf, "  o.WALDir: %s\n", o.WALDir)
+				}
+				if o.WALFailover != nil {
+					fmt.Fprintf(&buf, "  o.WALFailover.Secondary.Dirname: %s\n", o.WALFailover.Secondary.Dirname)
+				}
+				for _, d := range o.WALRecoveryDirs {
+					fmt.Fprintf(&buf, "  WALRecoveryDir: %s\n", d)
+				}
+				return ErrMissingWALRecoveryDir{Dir: value, ExtraInfo: buf.String()}
 			}
 		}
 		return nil
@@ -2425,4 +2437,27 @@ func (kc *UserKeyCategories) CategorizeKeyRange(startUserKey, endUserKey []byte)
 		return kc.cmp(endUserKey, kc.categories[p+1+i].UpperBound) < 0
 	})
 	return kc.rangeNames[p][q]
+}
+
+const storePathIdentifier = "{store_path}"
+
+// MakeStoreRelativePath takes a path that is relative to the store directory
+// and creates a path that can be used for Options.WALDir and wal.Dir.Dirname.
+//
+// This is used in metamorphic tests, so that the test run directory can be
+// copied or moved.
+func MakeStoreRelativePath(fs vfs.FS, relativePath string) string {
+	if relativePath == "" {
+		return storePathIdentifier
+	}
+	return fs.PathJoin(storePathIdentifier, relativePath)
+}
+
+// resolveStorePath is the inverse of MakeStoreRelativePath(). It replaces any
+// storePathIdentifier prefix with the store dir.
+func resolveStorePath(storeDir, path string) string {
+	if remainder, ok := strings.CutPrefix(path, storePathIdentifier); ok {
+		return storeDir + remainder
+	}
+	return path
 }
