@@ -223,8 +223,9 @@ c-d:{(#1,RANGEKEYSET,_xyz)}
 
 rewrite from=_xyz to=_123 block-size=1 index-block-size=1 filter comparer=split-4b-suffix
 ----
+point:    [#0,DEL-#0,DEL]
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-1]
+seqnums:  [0-1]
 
 scan-range-key
 ----

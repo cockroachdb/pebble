@@ -17,6 +17,7 @@ const (
 	AttributeRangeDels
 	AttributeTwoLevelIndex
 	AttributeBlobValues
+	AttributePointKeys
 )
 
 // Intersects checks if any bits in attr are set in a.
@@ -57,6 +58,9 @@ func (a Attributes) String() string {
 	}
 	if a.Has(AttributeBlobValues) {
 		attributes = append(attributes, "BlobValues")
+	}
+	if a.Has(AttributePointKeys) {
+		attributes = append(attributes, "PointKeys")
 	}
 	return "[" + strings.Join(attributes, ",") + "]"
 }
