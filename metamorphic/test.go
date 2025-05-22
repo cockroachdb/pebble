@@ -5,12 +5,10 @@
 package metamorphic
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -107,12 +105,6 @@ func (t *Test) init(
 	if numInstances < 1 {
 		numInstances = 1
 	}
-	if t.testOpts.externalStorageEnabled {
-		t.externalStorage = t.testOpts.externalStorageFS
-	} else {
-		t.externalStorage = remote.NewInMem()
-	}
-
 	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
 
 	defer t.opts.Cache.Unref()
@@ -189,7 +181,8 @@ func (t *Test) init(
 			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
 		}
 		err = t.withRetries(func() error {
-			db, err = pebble.Open(dir, t.opts)
+			o := t.finalizeOptions(dir)
+			db, err = pebble.Open(dir, &o)
 			return err
 		})
 		if err != nil {
@@ -243,6 +236,42 @@ func (t *Test) init(
 	}
 
 	return nil
+}
+
+// finalizeOptions returns the options that need to be passed to pebble.Open().
+//
+// It initializes t.externalStorage and creates the compaction scheduler and
+// remote storage factory.
+func (t *Test) finalizeOptions(dataDir string) pebble.Options {
+	o := *t.opts
+
+	// Set up external/shared storage.
+	externalDir := o.FS.PathJoin(dataDir, "external")
+	if err := o.FS.MkdirAll(externalDir, 0755); err != nil {
+		panic(fmt.Sprintf("failed to create directory %q: %s", externalDir, err))
+	}
+	// Even if externalStorageEnabled is false, the test uses externalStorage to
+	// emulate external ingestion.
+	t.externalStorage = remote.NewLocalFS(externalDir, o.FS)
+
+	m := make(map[remote.Locator]remote.Storage)
+	// If we are starting from an initial state (initialStatePath != ""), the
+	// existing store might use shared or external storage, so we set them up
+	// unconditionally.
+	if t.testOpts.sharedStorageEnabled || t.testOpts.initialStatePath != "" {
+		sharedDir := o.FS.PathJoin(dataDir, "shared")
+		if err := o.FS.MkdirAll(sharedDir, 0755); err != nil {
+			panic(fmt.Sprintf("failed to create directory %q: %s", sharedDir, err))
+		}
+		m[""] = remote.NewLocalFS(sharedDir, o.FS)
+	}
+	if t.testOpts.externalStorageEnabled || t.testOpts.initialStatePath != "" {
+		m["external"] = t.externalStorage
+	}
+	if len(m) > 0 {
+		o.Experimental.RemoteStorage = remote.MakeSimpleFactory(m)
+	}
+	return o
 }
 
 func (t *Test) withRetries(fn func() error) error {
@@ -307,7 +336,8 @@ func (t *Test) restartDB(dbID objID) error {
 		if len(t.dbs) > 1 {
 			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
 		}
-		t.dbs[dbID.slot()-1], err = pebble.Open(dir, t.opts)
+		o := t.finalizeOptions(dir)
+		t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
 		if err != nil {
 			return err
 		}
@@ -324,49 +354,6 @@ func (t *Test) saveInMemoryDataInternal() error {
 			return err
 		}
 		if _, err := vfs.Clone(rootFS, vfs.Default, t.dir, t.dir); err != nil {
-			return err
-		}
-	}
-	if t.testOpts.sharedStorageEnabled {
-		if err := copyRemoteStorage(t.testOpts.sharedStorageFS, filepath.Join(t.dir, "shared")); err != nil {
-			return err
-		}
-	}
-	if t.testOpts.externalStorageEnabled {
-		if err := copyRemoteStorage(t.testOpts.externalStorageFS, filepath.Join(t.dir, "external")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func copyRemoteStorage(fs remote.Storage, outputDir string) error {
-	if err := vfs.Default.MkdirAll(outputDir, 0755); err != nil {
-		return err
-	}
-	objs, err := fs.List("", "")
-	if err != nil {
-		return err
-	}
-	for i := range objs {
-		reader, readSize, err := fs.ReadObject(context.TODO(), objs[i])
-		if err != nil {
-			return err
-		}
-		buf := make([]byte, readSize)
-		if err := reader.ReadAt(context.TODO(), buf, 0); err != nil {
-			return err
-		}
-		outputPath := vfs.Default.PathJoin(outputDir, objs[i])
-		outputFile, err := vfs.Default.Create(outputPath)
-		if err != nil {
-			return err
-		}
-		if _, err := outputFile.Write(buf); err != nil {
-			outputFile.Close()
-			return err
-		}
-		if err := outputFile.Close(); err != nil {
 			return err
 		}
 	}
