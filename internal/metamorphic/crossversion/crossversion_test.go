@@ -218,8 +218,9 @@ type subrunResult struct {
 }
 
 type initialState struct {
-	desc string
-	path string
+	desc    string
+	path    string
+	opsPath string
 }
 
 func (s initialState) String() string {
@@ -288,7 +289,7 @@ func runVersion(
 
 				if err := r.run(ctx, t, out); err != nil {
 					fatalf(t, fatalOnce, []string{r.dir},
-						"Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
+						"Metamorphic test failed: %s. Output:\n%s\n", err, buf.String())
 				}
 
 				// dir is a directory containing the ops file and subdirectories for
@@ -313,8 +314,9 @@ func runVersion(
 						runDir:      dir,
 						historyPath: filepath.Join(dir, subrunDir, "history"),
 						initialState: initialState{
-							path: filepath.Join(dir, subrunDir),
-							desc: fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+							desc:    fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+							path:    filepath.Join(dir, subrunDir),
+							opsPath: filepath.Join(dir, "ops"),
 						},
 					})
 				}
@@ -381,9 +383,9 @@ func (r *metamorphicTestRun) run(ctx context.Context, t *testing.T, output io.Wr
 		args = append(args, "-test.v")
 	}
 	if r.initialState.path != "" {
-		args = append(args,
-			"--initial-state", r.initialState.path,
-			"--initial-state-desc", r.initialState.desc)
+		args = append(args, "--initial-state-desc", r.initialState.desc)
+		args = append(args, "--initial-state", r.initialState.path)
+		args = append(args, "--previous-ops", r.initialState.opsPath)
 	}
 	cmd := exec.CommandContext(ctx, r.testBinaryPath, args...)
 	cmd.Dir = r.dir
