@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/metamorphic"
@@ -196,10 +197,12 @@ with --run-dir or --compare`)
 	// the `ops` file and one of the previous run's data directories.
 
 	flag.StringVar(&r.PreviousOps, "previous-ops", "",
-		"path to an ops file, used to prepopulate the set of keys operations draw from")
+		`path to an ops file, used to prepopulate the set of keys operations draw from." +
+		Must be used in conjunction with --initial-state`)
 
 	flag.StringVar(&r.InitialStatePath, "initial-state", "",
-		"path to a database's data directory, used to prepopulate the test run's databases")
+		`path to a database's data directory, used to prepopulate the test run's databases.
+		Must be used in conjunction with --previous-ops.`)
 
 	flag.StringVar(&r.InitialStateDesc, "initial-state-desc", "",
 		`a human-readable description of the initial database state.
@@ -274,7 +277,7 @@ func (ro *RunOnceFlags) tryParseCompare() (testRootDir string, runSubdirs []stri
 }
 
 // MakeRunOptions constructs RunOptions based on the flags.
-func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
+func (r *RunFlags) MakeRunOptions() ([]metamorphic.RunOption, error) {
 	opts := []metamorphic.RunOption{
 		metamorphic.Seed(r.Seed),
 		metamorphic.OpCount(r.Ops.Static),
@@ -295,7 +298,12 @@ func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
 		opts = append(opts, metamorphic.RuntimeTrace(r.TraceFile))
 	}
 	if r.PreviousOps != "" {
+		if r.InitialStatePath == "" {
+			return nil, errors.Newf("--previous-ops requires --initial-state")
+		}
 		opts = append(opts, metamorphic.ExtendPreviousRun(r.PreviousOps, r.InitialStatePath, r.InitialStateDesc))
+	} else if r.InitialStatePath != "" {
+		return nil, errors.Newf("--initial-state requires --previous-ops")
 	}
 	if r.NumInstances > 1 {
 		opts = append(opts, metamorphic.MultiInstance(r.NumInstances))
@@ -315,5 +323,5 @@ func (r *RunFlags) MakeRunOptions() []metamorphic.RunOption {
 	if r.InnerBinary != "" {
 		opts = append(opts, metamorphic.InnerBinary(r.InnerBinary))
 	}
-	return opts
+	return opts, nil
 }
