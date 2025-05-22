@@ -300,21 +300,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	jobID := d.newJobIDLocked()
 
-	providerSettings := objstorageprovider.Settings{
-		Logger:              opts.Logger,
-		FS:                  opts.FS,
-		FSDirName:           dirname,
-		FSDirInitialListing: ls,
-		FSCleaner:           opts.Cleaner,
-		NoSyncOnClose:       opts.NoSyncOnClose,
-		BytesPerSync:        opts.BytesPerSync,
-	}
-	providerSettings.Local.ReadaheadConfig = opts.Local.ReadaheadConfig
-	providerSettings.Remote.StorageFactory = opts.Experimental.RemoteStorage
-	providerSettings.Remote.CreateOnShared = opts.Experimental.CreateOnShared
-	providerSettings.Remote.CreateOnSharedLocator = opts.Experimental.CreateOnSharedLocator
-	providerSettings.Remote.CacheSizeBytes = opts.Experimental.SecondaryCacheSizeBytes
-
+	providerSettings := opts.MakeObjStorageProviderSettings(dirname)
+	providerSettings.FSDirInitialListing = ls
 	d.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {
 		return nil, err
