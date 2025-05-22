@@ -2025,3 +2025,22 @@ func resolveDefaultCompression(c Compression) Compression {
 	}
 	return c
 }
+
+// MakeObjStorageProviderSettings creates the object storage provider settings.
+// Note that FSDirInitialListing is not initialized.
+func (o *Options) MakeObjStorageProviderSettings(dirname string) objstorageprovider.Settings {
+	s := objstorageprovider.Settings{
+		Logger:        o.Logger,
+		FS:            o.FS,
+		FSDirName:     dirname,
+		FSCleaner:     o.Cleaner,
+		NoSyncOnClose: o.NoSyncOnClose,
+		BytesPerSync:  o.BytesPerSync,
+	}
+	s.Local.ReadaheadConfig = o.Local.ReadaheadConfig
+	s.Remote.StorageFactory = o.Experimental.RemoteStorage
+	s.Remote.CreateOnShared = o.Experimental.CreateOnShared
+	s.Remote.CreateOnSharedLocator = o.Experimental.CreateOnSharedLocator
+	s.Remote.CacheSizeBytes = o.Experimental.SecondaryCacheSizeBytes
+	return s
+}
