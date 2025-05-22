@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -2993,6 +2994,9 @@ func TestCompactionErrorStats(t *testing.T) {
 }
 
 func TestCompactionCorruption(t *testing.T) {
+	if buildtags.Race {
+		t.Skip("disabled in race mode to avoid timeouts")
+	}
 	mem := vfs.NewMem()
 	var numFinishedCompactions atomic.Int32
 	var once sync.Once
