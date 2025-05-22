@@ -441,10 +441,7 @@ var metaBufferPools = sync.Pool{
 }
 
 func (r *Reader) readMetaindex(
-	ctx context.Context,
-	readHandle objstorage.ReadHandle,
-	filters map[string]FilterPolicy,
-	deniedUserProperties map[string]struct{},
+	ctx context.Context, readHandle objstorage.ReadHandle, filters map[string]FilterPolicy,
 ) error {
 	// We use a BufferPool when reading metaindex blocks in order to avoid
 	// populating the block cache with these blocks. In heavy-write workloads,
@@ -485,7 +482,7 @@ func (r *Reader) readMetaindex(
 
 	if bh, ok := meta[metaPropertiesName]; ok {
 		r.propertiesBH = bh
-		r.Properties, err = r.readPropertiesBlockInternal(ctx, metaEnv.BufferPool, readHandle, deniedUserProperties)
+		r.Properties, err = r.readPropertiesBlockInternal(ctx, metaEnv.BufferPool, readHandle)
 		if err != nil {
 			return err
 		}
@@ -521,14 +518,12 @@ func (r *Reader) readMetaindex(
 }
 
 // decodePropertiesBlock decodes the (uncompressed) properties block.
-func decodePropertiesBlock(
-	tableFormat TableFormat, blockData []byte, deniedUserProperties map[string]struct{},
-) (Properties, error) {
+func decodePropertiesBlock(tableFormat TableFormat, blockData []byte) (Properties, error) {
 	var props Properties
 	if tableFormat >= TableFormatPebblev7 {
 		var decoder colblk.KeyValueBlockDecoder
 		decoder.Init(blockData)
-		if err := props.load(decoder.All(), deniedUserProperties); err != nil {
+		if err := props.load(decoder.All()); err != nil {
 			return Properties{}, err
 		}
 	} else {
@@ -536,7 +531,7 @@ func decodePropertiesBlock(
 		if err != nil {
 			return Properties{}, err
 		}
-		if err := props.load(i.All(), deniedUserProperties); err != nil {
+		if err := props.load(i.All()); err != nil {
 			return Properties{}, err
 		}
 	}
@@ -560,14 +555,11 @@ var propertiesBlockBufPools = sync.Pool{
 func (r *Reader) ReadPropertiesBlock(
 	ctx context.Context, bufferPool *block.BufferPool, deniedUserProperties map[string]struct{},
 ) (Properties, error) {
-	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle, deniedUserProperties)
+	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle)
 }
 
 func (r *Reader) readPropertiesBlockInternal(
-	ctx context.Context,
-	bufferPool *block.BufferPool,
-	readHandle objstorage.ReadHandle,
-	deniedUserProperties map[string]struct{},
+	ctx context.Context, bufferPool *block.BufferPool, readHandle objstorage.ReadHandle,
 ) (Properties, error) {
 	if bufferPool == nil {
 		// We always use a buffer pool when reading the properties block as
@@ -582,7 +574,7 @@ func (r *Reader) readPropertiesBlockInternal(
 		return Properties{}, err
 	}
 	defer b.Release()
-	return decodePropertiesBlock(r.tableFormat, b.BlockData(), deniedUserProperties)
+	return decodePropertiesBlock(r.tableFormat, b.BlockData())
 }
 
 // Layout returns the layout (block organization) for an sstable.
@@ -951,7 +943,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r.footerBH = footer.footerBH
 
 	// Read the metaindex and properties blocks.
-	if err := r.readMetaindex(ctx, rh, o.Filters, o.DeniedUserProperties); err != nil {
+	if err := r.readMetaindex(ctx, rh, o.Filters); err != nil {
 		r.err = err
 		return nil, err
 	}

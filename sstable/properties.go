@@ -317,9 +317,7 @@ func (p *Properties) String() string {
 	return buf.String()
 }
 
-func (p *Properties) load(
-	i iter.Seq2[[]byte, []byte], deniedUserProperties map[string]struct{},
-) error {
+func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 	p.Loaded = make(map[uintptr]struct{})
 	v := reflect.ValueOf(p).Elem()
 
@@ -346,7 +344,7 @@ func (p *Properties) load(
 			p.UserProperties = make(map[string]string)
 		}
 
-		if _, denied := deniedUserProperties[string(key)]; !denied {
+		if _, denied := ignoredInternalProperties[string(key)]; !denied {
 			p.UserProperties[intern.Bytes(key)] = string(val)
 		}
 	}
