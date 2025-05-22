@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -123,6 +124,7 @@ func (t *Test) init(
 		}
 		t.saveInMemoryData()
 		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, string(debug.Stack()))
 		os.Exit(1)
 	}
 
@@ -185,24 +187,47 @@ func (t *Test) init(
 		}
 		err = t.withRetries(func() error {
 			o := t.finalizeOptions(dir)
+			// We need to make sure we set the creator ID before we start using
+			// CreateOnShared; otherwise, we could receive a background error if the
+			// store exists already.
+			o.Experimental.CreateOnShared = remote.CreateOnSharedNone
 			db, err = pebble.Open(dir, &o)
 			return err
 		})
 		if err != nil {
+			fmt.Printf("Open(): %v\n", err)
 			return err
 		}
-		t.dbs[i] = db
-		h.log.Printf("// db%d.Open() %v", i+1, err)
 
 		if t.testOpts.sharedStorageEnabled {
 			err = t.withRetries(func() error {
 				return db.SetCreatorID(uint64(i + 1))
 			})
 			if err != nil {
+				fmt.Printf("SetCreatorID(): %v\n", err)
 				return err
 			}
 			h.log.Printf("// db%d.SetCreatorID() %v", i+1, err)
 		}
+
+		if t.opts.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+			// Close and reopen the db with the right CreateOnShared value.
+			if err := db.Close(); err != nil {
+				return errors.Wrapf(err, "failed to close db prior to reopen with CreateOnShared")
+			}
+			err = t.withRetries(func() error {
+				o := t.finalizeOptions(dir)
+				db, err = pebble.Open(dir, &o)
+				return err
+			})
+			if err != nil {
+				fmt.Printf("re-Open(): %v\n", err)
+				return err
+			}
+		}
+
+		t.dbs[i] = db
+		h.log.Printf("// db%d.Open() %v", i+1, err)
 	}
 
 	var err error
