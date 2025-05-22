@@ -535,6 +535,9 @@ func (p *Properties) toAttributes() Attributes {
 	if p.NumValuesInBlobFiles > 0 {
 		attributes.Add(AttributeBlobValues)
 	}
+	if p.NumDataBlocks > 0 {
+		attributes.Add(AttributePointKeys)
+	}
 
 	return attributes
 }
