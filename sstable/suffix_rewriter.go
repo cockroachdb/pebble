@@ -140,7 +140,7 @@ func rewriteDataBlocksInParallel(
 	concurrency int,
 	newDataBlockRewriter func() blockRewriter,
 ) ([]blockWithSpan, error) {
-	if r.Properties.NumEntries == 0 {
+	if !r.Attributes.Has(AttributePointKeys) {
 		// No point keys.
 		return nil, nil
 	}

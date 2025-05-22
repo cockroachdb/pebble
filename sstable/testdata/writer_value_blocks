@@ -1254,8 +1254,8 @@ sstable
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=845, length=72
       ├── 004  index: offset=191, length=36
-      ├── 041  attributes: [ValueBlocks]
-      ├── 045  footer checksum: 0xca64ec92
+      ├── 041  attributes: [ValueBlocks,PointKeys]
+      ├── 045  footer checksum: 0x4e964eb0
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3
 
@@ -1397,7 +1397,7 @@ sstable
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=676, length=46
       ├── 004  index: offset=105, length=36
-      ├── 041  attributes: []
-      ├── 045  footer checksum: 0xbcb59445
+      ├── 041  attributes: [PointKeys]
+      ├── 045  footer checksum: 0x3446b5e7
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3
