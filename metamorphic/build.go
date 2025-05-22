@@ -258,7 +258,8 @@ func openExternalObj(
 	rangeDelIter keyspan.FragmentIterator,
 	rangeKeyIter keyspan.FragmentIterator,
 ) {
-	objReader, objSize, err := t.externalStorage.ReadObject(context.Background(), externalObjName(externalObjID))
+	objMeta := t.getExternalObj(externalObjID)
+	objReader, objSize, err := t.externalStorage.ReadObject(context.Background(), objMeta.objName)
 	panicIfErr(err)
 	opts := t.opts.MakeReaderOptions()
 	reader, err = sstable.NewReader(
