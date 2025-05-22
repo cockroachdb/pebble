@@ -533,19 +533,13 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 			testOpts.Opts.WALFailover = nil
 		} else {
 			testOpts.Opts.WALFailover.Secondary.FS = opts.FS
-			testOpts.Opts.WALFailover.Secondary.Dirname = opts.FS.PathJoin(
-				runDir, testOpts.Opts.WALFailover.Secondary.Dirname)
 		}
 	}
 
-	if opts.WALDir != "" {
-		if runOpts.numInstances > 1 {
-			// TODO(bilal): Allow opts to diverge on a per-instance basis, and use
-			// that to set unique WAL dirs for all instances in multi-instance mode.
-			opts.WALDir = ""
-		} else {
-			opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
-		}
+	if runOpts.numInstances > 1 {
+		// TODO(bilal): Allow opts to diverge on a per-instance basis, and use
+		// that to set unique WAL dirs for all instances in multi-instance mode.
+		opts.WALDir = ""
 	}
 
 	historyFile, err := os.Create(historyPath)
