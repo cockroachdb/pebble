@@ -2,14 +2,14 @@
 build print-attributes=true
 a.SET.1:A
 ----
-attributes: []
+attributes: [PointKeys]
 
 # Test building an sstable with value blocks.
 build print-attributes=true block-size=1
 a.SET.2:A2
 a.SET.1:A1
 ----
-attributes: [ValueBlocks]
+attributes: [ValueBlocks,PointKeys]
 
 # Test building an sstable with just range keys.
 build print-attributes=true
@@ -23,7 +23,7 @@ attributes: [RangeKeySets,RangeKeyUnsets,RangeKeyDels]
 build print-attributes=true
 Span: a-b:{(#1,RANGEDEL)}
 ----
-attributes: [RangeDels]
+attributes: [RangeDels,PointKeys]
 
 # Test building an sstable with two-level index.
 build print-attributes=true index-block-size=1
@@ -32,13 +32,13 @@ b.SET.2:B
 c.SET.3:C
 d.SET.4:D
 ----
-attributes: [TwoLevelIndex]
+attributes: [TwoLevelIndex,PointKeys]
 
 # Test building an sstable with blob values.
 build print-attributes=true
 a.SET.1:blob{fileNum=1 value=foo}
 ----
-attributes: [BlobValues]
+attributes: [BlobValues,PointKeys]
 
 # Test building an sstable with all available flags.
 build index-block-size=1 block-size=1 print-attributes=true
@@ -51,4 +51,4 @@ g.SET.2:GG
 g.SET.1:G
 h.SET.1:blob{fileNum=1 value=foo}
 ----
-attributes: [ValueBlocks,RangeKeySets,RangeKeyUnsets,RangeKeyDels,RangeDels,TwoLevelIndex,BlobValues]
+attributes: [ValueBlocks,RangeKeySets,RangeKeyUnsets,RangeKeyDels,RangeDels,TwoLevelIndex,BlobValues,PointKeys]
