@@ -7,9 +7,11 @@ package remote
 import (
 	"context"
 	"io"
-	"os"
 	"path"
+	"strings"
 
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -78,24 +80,66 @@ func (r *localFSReader) Close() error {
 	return nil
 }
 
+func (s *localFSStore) sync() error {
+	file, err := s.vfs.OpenDir(s.dirname)
+	if err != nil {
+		return err
+	}
+	return errors.CombineErrors(file.Sync(), file.Close())
+}
+
+type objWriter struct {
+	vfs.File
+	store *localFSStore
+}
+
+func (w *objWriter) Close() error {
+	if w.File == nil {
+		return nil
+	}
+	err := w.File.Sync()
+	err = errors.CombineErrors(err, w.File.Close())
+	err = errors.CombineErrors(err, w.store.sync())
+	*w = objWriter{}
+	return err
+}
+
 // CreateObject is part of the remote.Storage interface.
 func (s *localFSStore) CreateObject(objName string) (io.WriteCloser, error) {
 	file, err := s.vfs.Create(path.Join(s.dirname, objName))
-	return file, err
+	if err != nil {
+		return nil, err
+	}
+	return &objWriter{
+		File:  file,
+		store: s,
+	}, nil
 }
 
 // List is part of the remote.Storage interface.
 func (s *localFSStore) List(prefix, delimiter string) ([]string, error) {
-	// TODO(josh): For the intended use case of localfs.go of running 'pebble bench',
-	// List can always return <nil, nil>, since this indicates a file has only one ref,
-	// and since `pebble bench` implies running in a single-pebble-instance context.
-	// https://github.com/cockroachdb/pebble/blob/a9a079d4fb6bf4a9ebc52e4d83a76ad4cbf676cb/objstorage/objstorageprovider/shared.go#L292
-	return nil, nil
+	if delimiter != "" {
+		panic("delimiter unimplemented")
+	}
+	files, err := s.vfs.List(s.dirname)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]string, 0, len(files))
+	for _, name := range files {
+		if strings.HasPrefix(name, prefix) {
+			res = append(res, name)
+		}
+	}
+	return res, nil
 }
 
 // Delete is part of the remote.Storage interface.
 func (s *localFSStore) Delete(objName string) error {
-	return s.vfs.Remove(path.Join(s.dirname, objName))
+	if err := s.vfs.Remove(path.Join(s.dirname, objName)); err != nil {
+		return err
+	}
+	return s.sync()
 }
 
 // Size is part of the remote.Storage interface.
@@ -114,5 +158,5 @@ func (s *localFSStore) Size(objName string) (int64, error) {
 
 // IsNotExistError is part of the remote.Storage interface.
 func (s *localFSStore) IsNotExistError(err error) bool {
-	return err == os.ErrNotExist
+	return oserror.IsNotExist(err)
 }
