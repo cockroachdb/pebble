@@ -97,7 +97,10 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 			filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:
-		opts := runFlags.MakeRunOptions()
+		opts, err := runFlags.MakeRunOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, opt := range addtlOptions {
 			opts = append(opts, opt)
 		}
