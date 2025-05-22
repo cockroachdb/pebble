@@ -9,12 +9,15 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -123,6 +126,7 @@ func (t *Test) init(
 		}
 		t.saveInMemoryData()
 		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, string(debug.Stack()))
 		os.Exit(1)
 	}
 
@@ -178,31 +182,40 @@ func (t *Test) init(
 
 	t.dbs = make([]*pebble.DB, numInstances)
 	for i := range t.dbs {
-		var db *pebble.DB
-		var err error
 		if len(t.dbs) > 1 {
 			dir = path.Join(t.dir, fmt.Sprintf("db%d", i+1))
 		}
-		err = t.withRetries(func() error {
-			o := t.finalizeOptions(dir)
-			db, err = pebble.Open(dir, &o)
+		var db *pebble.DB
+		err := t.withRetries(func() error {
+			opts := t.finalizeOptions(dir)
+			// If shared storage is enabled, we want to set up the CreatorID. We could
+			// call db.SetCreatorID() after Open() but this is fragile in the case
+			// where we are using an existing store (via --initial-state) which did
+			// not use shared storage. In that case, flushes or compactions issued
+			// during Open() can fail to create shared objects (leading to background
+			// errors which fail the metamorphic test).
+			if t.testOpts.sharedStorageEnabled {
+				providerSettings := opts.MakeObjStorageProviderSettings(dir)
+				objProvider, err := objstorageprovider.Open(providerSettings)
+				if err != nil {
+					return errors.Wrapf(err, "opening objstorage provider")
+				}
+				err = objProvider.SetCreatorID(objstorage.CreatorID(i + 1))
+				err = errors.CombineErrors(err, objProvider.Close())
+				if err != nil {
+					return errors.Wrapf(err, "setting creator ID")
+				}
+			}
+			var err error
+			db, err = pebble.Open(dir, &opts)
 			return err
 		})
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "opening store")
 		}
+
 		t.dbs[i] = db
 		h.log.Printf("// db%d.Open() %v", i+1, err)
-
-		if t.testOpts.sharedStorageEnabled {
-			err = t.withRetries(func() error {
-				return db.SetCreatorID(uint64(i + 1))
-			})
-			if err != nil {
-				return err
-			}
-			h.log.Printf("// db%d.SetCreatorID() %v", i+1, err)
-		}
 	}
 
 	var err error

@@ -2331,6 +2331,23 @@ func resolveDefaultCompression(c Compression) Compression {
 	return c
 }
 
+func (o *Options) MakeObjStorageProviderSettings(dirname string) objstorageprovider.Settings {
+	s := objstorageprovider.Settings{
+		Logger:        o.Logger,
+		FS:            o.FS,
+		FSDirName:     dirname,
+		FSCleaner:     o.Cleaner,
+		NoSyncOnClose: o.NoSyncOnClose,
+		BytesPerSync:  o.BytesPerSync,
+	}
+	s.Local.ReadaheadConfig = o.Local.ReadaheadConfig
+	s.Remote.StorageFactory = o.Experimental.RemoteStorage
+	s.Remote.CreateOnShared = o.Experimental.CreateOnShared
+	s.Remote.CreateOnSharedLocator = o.Experimental.CreateOnSharedLocator
+	s.Remote.CacheSizeBytes = o.Experimental.SecondaryCacheSizeBytes
+	return s
+}
+
 // UserKeyCategories describes a partitioning of the user key space. Each
 // partition is a category with a name. The categories are used for informative
 // purposes only (like pprof labels). Pebble does not treat keys differently
