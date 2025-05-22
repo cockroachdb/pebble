@@ -126,14 +126,12 @@ func parseOptions(
 				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
-				opts.sharedStorageFS = remote.NewInMem()
 				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
 					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 				}
 				return true
 			case "TestOptions.external_storage_enabled":
 				opts.externalStorageEnabled = true
-				opts.externalStorageFS = remote.NewInMem()
 				return true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
@@ -215,7 +213,6 @@ func parseOptions(
 	if opts.Opts.WALFailover != nil {
 		opts.Opts.WALFailover.Secondary.FS = opts.Opts.FS
 	}
-	opts.InitRemoteStorageFactory()
 	opts.Opts.EnsureDefaults()
 	return err
 }
@@ -410,10 +407,8 @@ type TestOptions struct {
 	asyncApplyToDB bool
 	// Enable the use of shared storage.
 	sharedStorageEnabled bool
-	sharedStorageFS      remote.Storage
 	// Enable the use of shared storage for external file ingestion.
 	externalStorageEnabled bool
-	externalStorageFS      remote.Storage
 	// Enables the use of shared replication in TestOptions.
 	useSharedReplicate bool
 	// Enables the use of external replication in TestOptions.
@@ -446,20 +441,6 @@ type TestOptions struct {
 	useDeleteOnlyCompactionExcises bool
 	// disableDownloads, if true, makes downloadOp a no-op.
 	disableDownloads bool
-}
-
-// InitRemoteStorageFactory initializes Opts.Experimental.RemoteStorage.
-func (testOpts *TestOptions) InitRemoteStorageFactory() {
-	if testOpts.sharedStorageEnabled || testOpts.externalStorageEnabled {
-		m := make(map[remote.Locator]remote.Storage)
-		if testOpts.sharedStorageEnabled {
-			m[""] = testOpts.sharedStorageFS
-		}
-		if testOpts.externalStorageEnabled {
-			m["external"] = testOpts.externalStorageFS
-		}
-		testOpts.Opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(m)
-	}
 }
 
 // CustomOption defines a custom option that configures the behavior of an
@@ -859,7 +840,6 @@ func RandomOptions(
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
 		}
-		testOpts.sharedStorageFS = remote.NewInMem()
 		// If shared storage is enabled, pick between writing all files on shared
 		// vs. lower levels only, 50% of the time.
 		testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
@@ -882,7 +862,6 @@ func RandomOptions(
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatSyntheticPrefixSuffix {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatSyntheticPrefixSuffix
 		}
-		testOpts.externalStorageFS = remote.NewInMem()
 	}
 
 	testOpts.seedEFOS = rng.Uint64()
@@ -899,7 +878,6 @@ func RandomOptions(
 		return testOpts.useDeleteOnlyCompactionExcises
 	}
 	testOpts.disableDownloads = rng.IntN(2) == 0
-	testOpts.InitRemoteStorageFactory()
 	testOpts.Opts.EnsureDefaults()
 	return testOpts
 }
