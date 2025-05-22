@@ -109,7 +109,7 @@ func TestPropertiesSave(t *testing.T) {
 
 		i, err := rowblk.NewRawIter(bytes.Compare, w.Finish())
 		require.NoError(t, err)
-		require.NoError(t, props.load(i.All(), make(map[string]struct{})))
+		require.NoError(t, props.load(i.All()))
 		props.Loaded = nil
 		if diff := pretty.Diff(*e, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
@@ -163,6 +163,6 @@ func BenchmarkPropertiesLoad(b *testing.B) {
 		*p = Properties{}
 		it, err := rowblk.NewRawIter(bytes.Compare, block)
 		require.NoError(b, err)
-		require.NoError(b, p.load(it.All(), nil))
+		require.NoError(b, p.load(it.All()))
 	}
 }

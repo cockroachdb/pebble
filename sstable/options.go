@@ -84,9 +84,6 @@ func MakeKeySchemas(keySchemas ...*colblk.KeySchema) KeySchemas {
 type ReaderOptions struct {
 	block.ReaderOptions
 
-	// User properties specified in this map will not be added to sst.Properties.UserProperties.
-	DeniedUserProperties map[string]struct{}
-
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads
 	// and writes over the lifetime of the DB.
@@ -121,9 +118,6 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 	}
 	if o.LoggerAndTracer == nil {
 		o.LoggerAndTracer = base.NoopLoggerAndTracer{}
-	}
-	if o.DeniedUserProperties == nil {
-		o.DeniedUserProperties = ignoredInternalProperties
 	}
 	if o.KeySchemas == nil {
 		o.KeySchemas = defaultKeySchemas

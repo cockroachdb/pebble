@@ -587,7 +587,7 @@ func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat)
 	if err != nil {
 		return Layout{}, errors.Wrap(err, "decompressing properties")
 	}
-	props, err := decodePropertiesBlock(tableFormat, decompressedProps, nil /* deniedUserProperties */)
+	props, err := decodePropertiesBlock(tableFormat, decompressedProps)
 	if err != nil {
 		return Layout{}, err
 	}
