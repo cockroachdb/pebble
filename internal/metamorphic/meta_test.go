@@ -87,7 +87,10 @@ func runTestMeta(t *testing.T, multiInstance bool) {
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed, filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:
-		opts := runFlags.MakeRunOptions()
+		opts, err := runFlags.MakeRunOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if multiInstance {
 			opts = append(opts, metamorphic.MultiInstance(2))
 		}
