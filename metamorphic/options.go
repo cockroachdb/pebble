@@ -518,7 +518,7 @@ func standardOptions(kf KeyFormat) []*TestOptions {
 `,
 		10: `
 [Options]
-  wal_dir=data/wal
+  wal_dir={store_path}/wal
 `,
 		11: `
 [Level "0"]
@@ -687,7 +687,7 @@ func RandomOptions(
 	opts.MemTableSize = 2 << (10 + uint(rng.IntN(16))) // 2KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.IntN(5) // 2 - 5
 	if rng.IntN(2) == 0 {
-		opts.WALDir = "data/wal"
+		opts.WALDir = pebble.MakeStoreRelativePath(opts.FS, "wal")
 	}
 
 	// Half the time enable WAL failover.
@@ -710,7 +710,7 @@ func RandomOptions(
 		// must not exceed 119x the probe interval.
 		healthyInterval := scaleDuration(probeInterval, 1.0, 119.0)
 		opts.WALFailover = &pebble.WALFailoverOptions{
-			Secondary: wal.Dir{FS: vfs.Default, Dirname: "data/wal_secondary"},
+			Secondary: wal.Dir{FS: vfs.Default, Dirname: pebble.MakeStoreRelativePath(vfs.Default, "wal_secondary")},
 			FailoverOptions: wal.FailoverOptions{
 				PrimaryDirProbeInterval:      probeInterval,
 				HealthyProbeLatencyThreshold: healthyThreshold,
