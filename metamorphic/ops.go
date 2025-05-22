@@ -7,10 +7,11 @@ package metamorphic
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"path"
 	"path/filepath"
 	"slices"
@@ -1053,7 +1054,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 			meta := t.getExternalObj(obj.externalObjID)
 			external[i] = pebble.ExternalFile{
 				Locator:           "external",
-				ObjName:           externalObjName(obj.externalObjID),
+				ObjName:           meta.objName,
 				Size:              meta.sstMeta.Size,
 				StartKey:          obj.bounds.Start,
 				EndKey:            obj.bounds.End,
@@ -1199,8 +1200,8 @@ func (o *newIterOp) run(t *Test, h historyRecorder) {
 	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
 	// the user-provided bounds.
 	if opts != nil {
-		rand.Read(opts.LowerBound[:])
-		rand.Read(opts.UpperBound[:])
+		cryptorand.Read(opts.LowerBound[:])
+		cryptorand.Read(opts.UpperBound[:])
 	}
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
@@ -1318,8 +1319,8 @@ func (o *iterSetBoundsOp) run(t *Test, h historyRecorder) {
 
 	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
 	// the user-provided bounds.
-	rand.Read(lower[:])
-	rand.Read(upper[:])
+	cryptorand.Read(lower[:])
+	cryptorand.Read(upper[:])
 
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
@@ -1363,8 +1364,8 @@ func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 
 	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
 	// the user-provided bounds.
-	rand.Read(opts.LowerBound[:])
-	rand.Read(opts.UpperBound[:])
+	cryptorand.Read(opts.LowerBound[:])
+	cryptorand.Read(opts.UpperBound[:])
 
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), i.Error())
 }
@@ -1872,18 +1873,20 @@ type newExternalObjOp struct {
 	externalObjID objID
 }
 
-func externalObjName(externalObjID objID) string {
-	if externalObjID.tag() != externalObjTag {
-		panic(fmt.Sprintf("invalid externalObjID %s", externalObjID))
-	}
-	return fmt.Sprintf("external-for-ingest-%d.sst", externalObjID.slot())
-}
-
 func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
 
-	writeCloser, err := t.externalStorage.CreateObject(externalObjName(o.externalObjID))
+	if o.externalObjID.tag() != externalObjTag {
+		panic(fmt.Sprintf("invalid externalObjID %s", o.externalObjID))
+	}
+	// We add a unique number to the object name to avoid collisions with existing
+	// external objects (when using an initial starting state).
+	//
+	// Note that the number is not based on the seed, in case we run using the
+	// same seed that was used in a previous run with the same store.
+	objName := fmt.Sprintf("external-for-ingest-%d-%d.sst", o.externalObjID.slot(), rand.Uint64())
+	writeCloser, err := t.externalStorage.CreateObject(objName)
 	if err != nil {
 		panic(err)
 	}
@@ -1908,6 +1911,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 		panic("metamorphic test internal error: external object empty")
 	}
 	t.setExternalObj(o.externalObjID, externalObjMeta{
+		objName: objName,
 		sstMeta: sstMeta,
 	})
 	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
