@@ -366,6 +366,7 @@ func TestNewDBFilenames(t *testing.T) {
 func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 	opts := testingRandomized(t, &Options{FS: fs})
 
+	useStoreRelativeWALPath := rand.IntN(2) == 0
 	for _, startFromEmpty := range []bool{false, true} {
 		for _, walDirname := range []string{"", "wal"} {
 			for _, length := range []int{-1, 0, 1, 1000, 10000, 100000} {
@@ -377,7 +378,11 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 				if walDirname == "" {
 					opts.WALDir = ""
 				} else {
-					opts.WALDir = fs.PathJoin(dirname, walDirname)
+					if useStoreRelativeWALPath {
+						opts.WALDir = MakeStoreRelativePath(fs, walDirname)
+					} else {
+						opts.WALDir = fs.PathJoin(dirname, walDirname)
+					}
 				}
 
 				got, xxx := []byte(nil), ""

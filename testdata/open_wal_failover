@@ -59,6 +59,7 @@ grep-between path=(a,data/OPTIONS-000007) start=(\[WAL Failover\]) end=^$
 open path=(a,data)
 ----
 directory "secondary-wals" may contain relevant WALs
+  OPTIONS key: WAL Failover.secondary_dir
 
 # But opening the same directory while providing the secondary path as a WAL
 # recovery dir should succeed.
