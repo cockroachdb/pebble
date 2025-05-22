@@ -229,8 +229,7 @@ func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Bu
 		}
 
 		f := v.Field(i)
-		// TODO(peter): Use f.IsZero() when we can rely on go1.13.
-		if zero := reflect.Zero(f.Type()); zero.Interface() == f.Interface() {
+		if f.IsZero() {
 			// Skip printing of zero values which were not loaded from disk.
 			if _, ok := loaded[ft.Offset]; !ok {
 				continue
