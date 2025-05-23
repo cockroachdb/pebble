@@ -309,8 +309,12 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return formatWriterMetadata(td, meta)
 
 		case "props":
+			props, err := r.ReadPropertiesBlock(context.Background(), nil)
+			if err != nil {
+				return err.Error()
+			}
 			var buf strings.Builder
-			for _, p := range crstrings.Lines(r.Properties.String()) {
+			for _, p := range crstrings.Lines(props.String()) {
 				if len(td.CmdArgs) > 0 {
 					ok := false
 					for i := range td.CmdArgs {

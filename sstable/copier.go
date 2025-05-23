@@ -90,6 +90,11 @@ func CopySpan(
 	}
 	defer indexH.Release()
 
+	props, err := r.readPropertiesBlockInternal(ctx, nil /* buffer pool */, rh)
+	if err != nil {
+		return 0, errors.Wrap(err, "reading properties")
+	}
+
 	// Set the filter block to be copied over if it exists. It will return false
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
@@ -100,7 +105,7 @@ func CopySpan(
 		}
 		filterBytes := append([]byte{}, filterBlock.BlockData()...)
 		filterBlock.Release()
-		if err := w.copyFilter(filterBytes, r.Properties.FilterPolicyName); err != nil {
+		if err := w.copyFilter(filterBytes, props.FilterPolicyName); err != nil {
 			return 0, errors.Wrap(err, "copying filter")
 		}
 	}
@@ -109,10 +114,10 @@ func CopySpan(
 	// that depend on seeing every key, such as total count or size so we copy the
 	// original props instead. This will result in over-counts but that is safer
 	// than under-counts.
-	w.copyProperties(r.Properties)
+	w.copyProperties(props)
 
 	// Find the blocks that intersect our span.
-	blocks, err := intersectingIndexEntries(ctx, r, rh, indexH, start, end)
+	blocks, err := intersectingIndexEntries(ctx, r, rh, indexH, start, end, props.NumDataBlocks)
 	if err != nil {
 		return 0, err
 	}
@@ -204,6 +209,7 @@ func intersectingIndexEntries(
 	rh objstorage.ReadHandle,
 	indexH block.BufferHandle,
 	start, end InternalKey,
+	numDataBlocks uint64,
 ) ([]indexEntry, error) {
 	top := r.tableFormat.newIndexIter()
 	err := top.Init(r.Comparer, indexH.BlockData(), NoTransforms)
@@ -213,7 +219,7 @@ func intersectingIndexEntries(
 	defer func() { _ = top.Close() }()
 
 	var alloc bytealloc.A
-	res := make([]indexEntry, 0, r.Properties.NumDataBlocks)
+	res := make([]indexEntry, 0, numDataBlocks)
 	for valid := top.SeekGE(start.UserKey); valid; valid = top.Next() {
 		bh, err := top.BlockHandleWithProperties()
 		if err != nil {
