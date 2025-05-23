@@ -281,16 +281,24 @@ func ingestLoad1(
 			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
-	if tf.BlockColumnar() {
-		if _, ok := opts.KeySchemas[r.Properties.KeySchemaName]; !ok {
-			return nil, keyspan.Span{}, errors.Newf(
-				"pebble: table uses key schema %q unknown to the database",
-				r.Properties.KeySchemaName)
-		}
-	}
-	if r.Properties.NumValuesInBlobFiles > 0 {
+
+	if r.Attributes.Has(sstable.AttributeBlobValues) {
 		return nil, keyspan.Span{}, errors.Newf(
 			"pebble: ingesting tables with blob references is not supported")
+	}
+
+	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+	if err != nil {
+		return nil, keyspan.Span{}, err
+	}
+
+	// If this is a columnar block, read key schema name from properties block.
+	if tf.BlockColumnar() {
+		if _, ok := opts.KeySchemas[props.KeySchemaName]; !ok {
+			return nil, keyspan.Span{}, errors.Newf(
+				"pebble: table uses key schema %q unknown to the database",
+				props.KeySchemaName)
+		}
 	}
 
 	meta = &tableMetadata{}
@@ -308,7 +316,7 @@ func ingestLoad1(
 	// disallowing removal of an open file. Under MemFS, if we don't populate
 	// meta.Stats here, the file will be loaded into the file cache for
 	// calculating stats before we can remove the original link.
-	maybeSetStatsFromProperties(meta.PhysicalMeta(), &r.Properties.CommonProperties, opts.Logger)
+	maybeSetStatsFromProperties(meta.PhysicalMeta(), &props.CommonProperties, opts.Logger)
 
 	{
 		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
