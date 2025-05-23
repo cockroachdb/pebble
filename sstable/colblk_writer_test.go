@@ -69,7 +69,11 @@ func TestColumnarWriter(t *testing.T) {
 				}
 				return l.Describe(true /* verbose */, r, nil /* fmtKV */)
 			case "props":
-				return r.Properties.String()
+				props, err := r.ReadPropertiesBlock(context.Background(), nil)
+				if err != nil {
+					return err.Error()
+				}
+				return props.String()
 			default:
 				panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
 			}

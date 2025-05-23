@@ -143,7 +143,9 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 		if showProps {
 			fmt.Fprintf(&b, "filenum: %s\n", env.Virtual.FileNum.String())
 			fmt.Fprintf(&b, "props:\n")
-			p := r.Properties.GetScaledProperties(backingSize, tableSize)
+			props, err := r.ReadPropertiesBlock(context.Background(), nil)
+			require.NoError(t, err)
+			p := props.GetScaledProperties(backingSize, tableSize)
 			for _, line := range strings.Split(strings.TrimSpace(p.String()), "\n") {
 				fmt.Fprintf(&b, "  %s\n", line)
 			}
@@ -657,7 +659,7 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder
-	twoLevelIndex := r.Properties.IndexType == twoLevelIndex
+	twoLevelIndex := r.Attributes.Has(AttributeTwoLevelIndex)
 	buf.WriteString("index entries:\n")
 	iter := r.tableFormat.newIndexIter()
 	require.NoError(t, iter.Init(r.Comparer, indexH.BlockData(), NoTransforms))
@@ -1896,7 +1898,7 @@ func buildBenchmarkTable(
 	if err != nil {
 		b.Fatal(err)
 	}
-	if confirmTwoLevelIndex && r.Properties.IndexPartitions == 0 {
+	if confirmTwoLevelIndex && !r.Attributes.Has(AttributeTwoLevelIndex) {
 		b.Fatalf("should have constructed two level index")
 	}
 	return r, keys

@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	randv1 "math/rand"
 	"path/filepath"
 	"reflect"
@@ -51,9 +52,12 @@ func TestPropertiesLoad(t *testing.T) {
 		require.NoError(t, err)
 		defer r.Close()
 
-		r.Properties.Loaded = nil
+		loadedProps, err := r.ReadPropertiesBlock(context.Background(), nil)
+		require.NoError(t, err)
 
-		if diff := pretty.Diff(expected, r.Properties); diff != nil {
+		loadedProps.Loaded = nil
+
+		if diff := pretty.Diff(expected, loadedProps); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
 	}
