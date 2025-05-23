@@ -105,9 +105,9 @@ type LevelMetrics struct {
 	// to values referenced by sstables that were inputs into compactions
 	// outputting into this level.
 	BlobBytesReadEstimate uint64
-	// BlobBytesWritten is the number of bytes written to blob files while
+	// BlobBytesCompacted is the number of bytes written to blob files while
 	// compacting sstables in this level.
-	BlobBytesWritten uint64
+	BlobBytesCompacted uint64
 	// BlobBytesFlushed is the number of bytes written to blob files while
 	// flushing sstables. This metric is always zero for all levels other than
 	// L0.
@@ -165,7 +165,7 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
 	m.TablesMoved += u.TablesMoved
-	m.BlobBytesWritten += u.BlobBytesWritten
+	m.BlobBytesCompacted += u.BlobBytesCompacted
 	m.BlobBytesFlushed += u.BlobBytesFlushed
 	m.BlobBytesReadEstimate += u.BlobBytesReadEstimate
 	m.MultiLevel.TableBytesInTop += u.MultiLevel.TableBytesInTop
@@ -177,16 +177,22 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 }
 
 // WriteAmp computes the write amplification for compactions at this
-// level. Computed as:
+// level.
 //
-//	TableBytesFlushed + TableBytesCompacted + BlobBytesFlushed
-//	---------------------------------------------------------
-//	            TableBytesIn + BlobBytesWritten
+// The write amplification is computed as the quantity of physical bytes written
+// divided by the quantity of logical bytes written.
+//
+// Concretely, it's computed as:
+//
+//	TableBytesFlushed + TableBytesCompacted + BlobBytesFlushed + BlobBytesCompacted
+//	-------------------------------------------------------------------------------
+//	                              TableBytesIn
 func (m *LevelMetrics) WriteAmp() float64 {
 	if m.TableBytesIn == 0 {
 		return 0
 	}
-	return float64(m.TableBytesFlushed+m.TableBytesCompacted+m.BlobBytesFlushed) / float64(m.TableBytesIn+m.BlobBytesWritten)
+	return float64(m.TableBytesFlushed+m.TableBytesCompacted+m.BlobBytesFlushed+m.BlobBytesCompacted) /
+		float64(m.TableBytesIn)
 }
 
 var categoryCompaction = block.RegisterCategory("pebble-compaction", block.NonLatencySensitiveQoSLevel)

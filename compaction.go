@@ -1564,7 +1564,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// resulting in zero bytes in. Instead, use the number of bytes we
 				// flushed as the BytesIn. This ensures we get a reasonable w-amp
 				// calculation even when the WAL is disabled.
-				l0Metrics.TableBytesIn = l0Metrics.TableBytesFlushed
+				l0Metrics.TableBytesIn = l0Metrics.TableBytesFlushed + l0Metrics.BlobBytesFlushed
 			} else {
 				for i := 0; i < n; i++ {
 					l0Metrics.TableBytesIn += d.mu.mem.queue[i].logSize
@@ -3277,8 +3277,8 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 		TableBytesIn: startLevelBytes,
 		// TODO(jackson):  This BytesRead value does not include any blob files
 		// written. It either should, or we should add a separate metric.
-		TableBytesRead:   c.outputLevel.files.TableSizeSum(),
-		BlobBytesWritten: result.Stats.CumulativeBlobFileSize,
+		TableBytesRead:     c.outputLevel.files.TableSizeSum(),
+		BlobBytesCompacted: result.Stats.CumulativeBlobFileSize,
 	}
 	if c.flushing != nil {
 		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
