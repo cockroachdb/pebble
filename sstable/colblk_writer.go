@@ -1133,10 +1133,14 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	}
 
 	if len(blocks) > 0 {
+		props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+		if err != nil {
+			return errors.Wrap(err, "reading properties block")
+		}
 		w.meta.updateSeqNum(blocks[0].start.SeqNum())
-		w.props.NumEntries = r.Properties.NumEntries
-		w.props.RawKeySize = r.Properties.RawKeySize
-		w.props.RawValueSize = r.Properties.RawValueSize
+		w.props.NumEntries = props.NumEntries
+		w.props.RawKeySize = props.RawKeySize
+		w.props.RawValueSize = props.RawValueSize
 		w.meta.SetSmallestPointKey(blocks[0].start)
 		w.meta.SetLargestPointKey(blocks[len(blocks)-1].end)
 	}

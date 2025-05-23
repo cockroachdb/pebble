@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -123,7 +124,10 @@ func TestRewriteSuffixProps(t *testing.T) {
 							t.Logf("%q => %q", k, foundValues[k])
 						}
 						require.Equal(t, expectedProps, foundValues)
-						require.False(t, rRewritten.Properties.IsStrictObsolete)
+
+						props, err := rRewritten.ReadPropertiesBlock(context.Background(), nil)
+						require.NoError(t, err)
+						require.False(t, props.IsStrictObsolete)
 
 						// Compare the block level props from the data blocks in the layout,
 						// only if we did not do a rewrite from one format to another. If the

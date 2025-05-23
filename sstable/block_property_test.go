@@ -1289,7 +1289,7 @@ func runBlockPropsCmd(r *Reader) string {
 		return err.Error()
 	}
 	defer bh.Release()
-	twoLevelIndex := r.Properties.IndexPartitions > 0
+	twoLevelIndex := r.Attributes.Has(AttributeTwoLevelIndex)
 	i := r.tableFormat.newIndexIter()
 	if err := i.Init(r.Comparer, bh.BlockData(), NoTransforms); err != nil {
 		return err.Error()

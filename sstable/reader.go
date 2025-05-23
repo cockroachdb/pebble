@@ -442,23 +442,12 @@ var metaBufferPools = sync.Pool{
 }
 
 func (r *Reader) readMetaindex(
-	ctx context.Context, readHandle objstorage.ReadHandle, filters map[string]FilterPolicy,
+	ctx context.Context,
+	bufferPool *block.BufferPool,
+	readHandle objstorage.ReadHandle,
+	filters map[string]FilterPolicy,
 ) error {
-	// We use a BufferPool when reading metaindex blocks in order to avoid
-	// populating the block cache with these blocks. In heavy-write workloads,
-	// especially with high compaction concurrency, new tables may be created
-	// frequently. Populating the block cache with these metaindex blocks adds
-	// additional contention on the block cache mutexes (see #1997).
-	// Additionally, these blocks are exceedingly unlikely to be read again
-	// while they're still in the block cache except in misconfigurations with
-	// excessive sstables counts or a file cache that's far too small.
-	bufferPool := metaBufferPools.Get().(*block.BufferPool)
-	defer metaBufferPools.Put(bufferPool)
-	// When we're finished, release the buffers we've allocated back to memory
-	// allocator.
-	defer bufferPool.Release()
 	metaEnv := block.ReadEnv{BufferPool: bufferPool}
-
 	b, err := r.readMetaindexBlock(ctx, metaEnv, readHandle)
 	if err != nil {
 		return err
@@ -483,11 +472,6 @@ func (r *Reader) readMetaindex(
 
 	if bh, ok := meta[metaPropertiesName]; ok {
 		r.propertiesBH = bh
-		r.Properties, err = r.readPropertiesBlockInternal(ctx, metaEnv.BufferPool, readHandle)
-		if err != nil {
-			return err
-		}
-		r.UserProperties = r.Properties.UserProperties
 	} else {
 		return errors.New("did not read any value for the properties block in the meta index")
 	}
@@ -586,7 +570,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	l := &Layout{
-		Data:       make([]block.HandleWithProperties, 0, r.Properties.NumDataBlocks),
+		Data:       make([]block.HandleWithProperties, 0),
 		RangeDel:   r.rangeDelBH,
 		RangeKey:   r.rangeKeyBH,
 		ValueIndex: r.valueBIH.Handle,
@@ -608,7 +592,7 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	var alloc bytealloc.A
 
-	if r.Properties.IndexPartitions == 0 {
+	if !r.Attributes.Has(AttributeTwoLevelIndex) {
 		l.Index = append(l.Index, r.indexBH)
 		iter := r.tableFormat.newIndexIter()
 		err := iter.Init(r.Comparer, indexH.BlockData(), NoTransforms)
@@ -808,7 +792,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 	// These may be different in case of partitioned index but will both point
 	// to the same blockIter over the single index in the unpartitioned case.
 	var startIdxIter, endIdxIter PI
-	if r.Properties.IndexPartitions == 0 {
+	if !r.Attributes.Has(AttributeTwoLevelIndex) {
 		startIdxIter = new(I)
 		if err := startIdxIter.InitHandle(r.Comparer, indexH, NoTransforms); err != nil {
 			return 0, err
@@ -867,8 +851,13 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 		return 0, errCorruptIndexEntry(err)
 	}
 
+	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+	if err != nil {
+		return 0, err
+	}
+
 	includeInterpolatedValueBlocksSize := func(dataBlockSize uint64) uint64 {
-		// INVARIANT: r.Properties.DataSize > 0 since startIdxIter is not nil.
+		// INVARIANT: props.DataSize > 0 since startIdxIter is not nil.
 		// Linearly interpolate what is stored in value blocks.
 		//
 		// TODO(sumeer): if we need more accuracy, without loading any data blocks
@@ -878,16 +867,16 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 		// each data block in the index block entry. This increases the size of
 		// the BlockHandle, so wait until this becomes necessary.
 		return dataBlockSize +
-			uint64((float64(dataBlockSize)/float64(r.Properties.DataSize))*
-				float64(r.Properties.ValueBlocksSize))
+			uint64((float64(dataBlockSize)/float64(props.DataSize))*
+				float64(props.ValueBlocksSize))
 	}
 	if endIdxIter == nil {
 		// The range spans beyond this file. Include data blocks through the last.
-		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
+		return includeInterpolatedValueBlocksSize(props.DataSize - startBH.Offset), nil
 	}
 	if !endIdxIter.SeekGE(end) {
 		// The range spans beyond this file. Include data blocks through the last.
-		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
+		return includeInterpolatedValueBlocksSize(props.DataSize - startBH.Offset), nil
 	}
 	endBH, err := endIdxIter.BlockHandleWithProperties()
 	if err != nil {
@@ -945,13 +934,35 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	r.footerBH = footer.footerBH
 
 	// Read the metaindex and properties blocks.
-	if err := r.readMetaindex(ctx, rh, o.Filters); err != nil {
+	// We use a BufferPool when reading metaindex blocks in order to avoid
+	// populating the block cache with these blocks. In heavy-write workloads,
+	// especially with high compaction concurrency, new tables may be created
+	// frequently. Populating the block cache with these metaindex blocks adds
+	// additional contention on the block cache mutexes (see #1997).
+	// Additionally, these blocks are exceedingly unlikely to be read again
+	// while they're still in the block cache except in misconfigurations with
+	// excessive sstables counts or a file cache that's far too small.
+	bufferPool := metaBufferPools.Get().(*block.BufferPool)
+	defer metaBufferPools.Put(bufferPool)
+	// When we're finished, release the buffers we've allocated back to memory
+	// allocator.
+	defer bufferPool.Release()
+
+	if err := r.readMetaindex(ctx, bufferPool, rh, o.Filters); err != nil {
 		r.err = err
 		return nil, err
 	}
 
+	props, err := r.readPropertiesBlockInternal(ctx, bufferPool, rh)
+	if err != nil {
+		r.err = err
+		return nil, err
+	}
+	r.Properties = props
+	r.UserProperties = props.UserProperties
+
 	// Set which attributes are in use based on property values.
-	r.Attributes = r.Properties.toAttributes()
+	r.Attributes = props.toAttributes()
 	if footer.format >= TableFormatPebblev7 && footer.attributes != r.Attributes {
 		// For now we just verify that our derived attributes from the properties match the bitset
 		// on the footer.
@@ -959,28 +970,28 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 			errors.Safe(r.blockReader.FileNum()), errors.Safe(footer.attributes), errors.Safe(r.Attributes))
 	}
 
-	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
+	if props.ComparerName == "" || o.Comparer.Name == props.ComparerName {
 		r.Comparer = o.Comparer
-	} else if comparer, ok := o.Comparers[r.Properties.ComparerName]; ok {
+	} else if comparer, ok := o.Comparers[props.ComparerName]; ok {
 		r.Comparer = comparer
 	} else {
 		r.err = errors.Errorf("pebble/table: %d: unknown comparer %s",
-			errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.ComparerName))
+			errors.Safe(r.blockReader.FileNum()), errors.Safe(props.ComparerName))
 	}
 
-	if mergerName := r.Properties.MergerName; mergerName != "" && mergerName != "nullptr" {
+	if mergerName := props.MergerName; mergerName != "" && mergerName != "nullptr" {
 		if o.Merger != nil && o.Merger.Name == mergerName {
 			// opts.Merger matches.
 		} else if _, ok := o.Mergers[mergerName]; ok {
 			// Known merger.
 		} else {
 			r.err = errors.Errorf("pebble/table: %d: unknown merger %s",
-				errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.MergerName))
+				errors.Safe(r.blockReader.FileNum()), errors.Safe(props.MergerName))
 		}
 	}
 
 	if r.tableFormat.BlockColumnar() {
-		if ks, ok := o.KeySchemas[r.Properties.KeySchemaName]; ok {
+		if ks, ok := o.KeySchemas[props.KeySchemaName]; ok {
 			r.keySchema = ks
 		} else {
 			var known []string
@@ -990,7 +1001,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 			slices.Sort(known)
 
 			r.err = errors.Newf("pebble/table: %d: unknown key schema %q; known key schemas: %s",
-				errors.Safe(r.blockReader.FileNum()), errors.Safe(r.Properties.KeySchemaName), errors.Safe(known))
+				errors.Safe(r.blockReader.FileNum()), errors.Safe(props.KeySchemaName), errors.Safe(known))
 			panic(r.err)
 		}
 	}
