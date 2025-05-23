@@ -310,9 +310,13 @@ func (d *DB) loadTableStats(
 
 	err := d.fileCache.withReader(
 		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
-			props := r.Properties.CommonProperties
+			loadedProps, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+			if err != nil {
+				return err
+			}
+			props := loadedProps.CommonProperties
 			if meta.Virtual {
-				props = r.Properties.GetScaledProperties(meta.TableBacking.Size, meta.Size)
+				props = loadedProps.GetScaledProperties(meta.TableBacking.Size, meta.Size)
 			}
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
@@ -505,17 +509,25 @@ func (d *DB) estimateSizesBeneath(
 	valSum += fileProps.RawValueSize
 
 	addPhysicalTableStats := func(r *sstable.Reader, _ sstable.ReadEnv) (err error) {
+		props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+		if err != nil {
+			return err
+		}
 		fileSum += file.Size
-		entryCount += r.Properties.NumEntries
-		keySum += r.Properties.RawKeySize
-		valSum += r.Properties.RawValueSize
+		entryCount += props.NumEntries
+		keySum += props.RawKeySize
+		valSum += props.RawValueSize
 		return nil
 	}
 	addVirtualTableStats := func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
+		props, err := v.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+		if err != nil {
+			return err
+		}
 		fileSum += file.Size
 		entryCount += file.Stats.NumEntries
-		keySum += v.Properties.RawKeySize
-		valSum += v.Properties.RawValueSize
+		keySum += props.RawKeySize
+		valSum += props.RawValueSize
 		return nil
 	}
 

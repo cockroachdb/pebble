@@ -281,14 +281,8 @@ func ingestLoad1(
 			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
-	if tf.BlockColumnar() {
-		if _, ok := opts.KeySchemas[r.Properties.KeySchemaName]; !ok {
-			return nil, keyspan.Span{}, errors.Newf(
-				"pebble: table uses key schema %q unknown to the database",
-				r.Properties.KeySchemaName)
-		}
-	}
-	if r.Properties.NumValuesInBlobFiles > 0 {
+
+	if r.Attributes.Has(sstable.AttributeBlobValues) {
 		return nil, keyspan.Span{}, errors.Newf(
 			"pebble: ingesting tables with blob references is not supported")
 	}
@@ -299,16 +293,38 @@ func ingestLoad1(
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
 
-	// Avoid loading into the file cache for collecting stats if we
-	// don't need to. If there are no range deletions, we have all the
-	// information to compute the stats here.
-	//
-	// This is helpful in tests for avoiding awkwardness around deletion of
-	// ingested files from MemFS. MemFS implements the Windows semantics of
-	// disallowing removal of an open file. Under MemFS, if we don't populate
-	// meta.Stats here, the file will be loaded into the file cache for
-	// calculating stats before we can remove the original link.
-	maybeSetStatsFromProperties(meta.PhysicalMeta(), &r.Properties.CommonProperties, opts.Logger)
+	containsRangeDeletions := r.Attributes.Intersects(sstable.AttributeRangeDels | sstable.AttributeRangeKeyDels)
+	if tf.BlockColumnar() || !containsRangeDeletions {
+		props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+		if err != nil {
+			return nil, keyspan.Span{}, err
+		}
+
+		// If this is a columnar block, read key schema name from properties block.
+		if tf.BlockColumnar() {
+			if _, ok := opts.KeySchemas[props.KeySchemaName]; !ok {
+				return nil, keyspan.Span{}, errors.Newf(
+					"pebble: table uses key schema %q unknown to the database",
+					props.KeySchemaName)
+			}
+		}
+
+		// Avoid loading into the file cache for collecting stats if we
+		// don't need to. If there are no range deletions, we have all the
+		// information to compute the stats here.
+		//
+		// This is helpful in tests for avoiding awkwardness around deletion of
+		// ingested files from MemFS. MemFS implements the Windows semantics of
+		// disallowing removal of an open file. Under MemFS, if we don't populate
+		// meta.Stats here, the file will be loaded into the file cache for
+		// calculating stats before we can remove the original link.
+		if !containsRangeDeletions {
+			// TODO (xinhaoz): look into refactoring maybeSetStatsFromProperties as we're doing
+			// the check for range deletions and range key deletes in the below function since it's
+			// also used in compaction code.
+			maybeSetStatsFromProperties(meta.PhysicalMeta(), &props.CommonProperties, opts.Logger)
+		}
+	}
 
 	{
 		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)

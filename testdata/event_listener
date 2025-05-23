@@ -209,6 +209,7 @@ open: ext/0
 read-at(689, 61): ext/0
 read-at(639, 50): ext/0
 read-at(122, 517): ext/0
+read-at(122, 517): ext/0
 read-at(81, 41): ext/0
 read-at(0, 81): ext/0
 close: ext/0
@@ -273,12 +274,14 @@ open: ext/a
 read-at(689, 61): ext/a
 read-at(639, 50): ext/a
 read-at(122, 517): ext/a
+read-at(122, 517): ext/a
 read-at(81, 41): ext/a
 read-at(0, 81): ext/a
 close: ext/a
 open: ext/b
 read-at(689, 61): ext/b
 read-at(639, 50): ext/b
+read-at(122, 517): ext/b
 read-at(122, 517): ext/b
 read-at(81, 41): ext/b
 read-at(0, 81): ext/b
