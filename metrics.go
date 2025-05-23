@@ -177,16 +177,22 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 }
 
 // WriteAmp computes the write amplification for compactions at this
-// level. Computed as:
+// level.
 //
-//	TableBytesFlushed + TableBytesCompacted + BlobBytesFlushed
-//	---------------------------------------------------------
-//	            TableBytesIn + BlobBytesWritten
+// The write amplification is computed as the quantity of physical bytes written
+// divided by the quantity of logical bytes written.
+//
+// Concretely, it's computed as:
+//
+//	TableBytesFlushed + TableBytesCompacted + BlobBytesFlushed + BlobBytesWritten
+//	-----------------------------------------------------------------------------
+//	                      TableBytesIn + BlobBytesFlushed
 func (m *LevelMetrics) WriteAmp() float64 {
 	if m.TableBytesIn == 0 {
 		return 0
 	}
-	return float64(m.TableBytesFlushed+m.TableBytesCompacted+m.BlobBytesFlushed) / float64(m.TableBytesIn+m.BlobBytesWritten)
+	return float64(m.TableBytesFlushed+m.TableBytesCompacted+m.BlobBytesFlushed+m.BlobBytesWritten) /
+		float64(m.TableBytesIn+m.BlobBytesFlushed)
 }
 
 var categoryCompaction = block.RegisterCategory("pebble-compaction", block.NonLatencySensitiveQoSLevel)
