@@ -9,22 +9,25 @@ build
 index-block-decoder
  └── index block header
       ├── columnar block header
-      │    ├── 00-01: x 01       # version 1
-      │    ├── 01-03: x 0100     # 1 columns
-      │    ├── 03-07: x 06000000 # 6 rows
-      │    ├── 07-08: b 00000010 # col 0: uint
-      │    └── 08-12: x 0c000000 # col 0: page start 12
+      │    ├── 00-04: x 00000000 # virtual block count: 0
+      │    ├── 04-05: x 01       # version 1
+      │    ├── 05-07: x 0200     # 2 columns
+      │    ├── 07-11: x 06000000 # 6 rows
+      │    ├── 11-12: b 00000010 # col 0: uint
+      │    ├── 12-16: x 15000000 # col 0: page start 21
+      │    ├── 16-17: b 00000010 # col 1: uint
+      │    └── 17-21: x 15000000 # col 1: page start 21
       ├── data for column 0 (uint)
-      │    ├── 12-13: x 02   # encoding: 2b
-      │    ├── 13-14: x 00   # padding (aligning to 16-bit boundary)
-      │    ├── 14-16: x 0a00 # data[0] = 10
-      │    ├── 16-18: x 2300 # data[1] = 35
-      │    ├── 18-20: x 8c00 # data[2] = 140
-      │    ├── 20-22: x 9b00 # data[3] = 155
-      │    ├── 22-24: x 0401 # data[4] = 260
-      │    ├── 24-26: x 3c01 # data[5] = 316
-      │    └── 26-28: x 4b01 # data[6] = 331
-      └── 28-29: x 00 # block padding byte
+      ├── data for column 1 (uint)
+      │    ├── 21-22: x 02   # encoding: 2b
+      │    ├── 22-24: x 0a00 # data[0] = 10
+      │    ├── 24-26: x 2300 # data[1] = 35
+      │    ├── 26-28: x 8c00 # data[2] = 140
+      │    ├── 28-30: x 9b00 # data[3] = 155
+      │    ├── 30-32: x 0401 # data[4] = 260
+      │    ├── 32-34: x 3c01 # data[5] = 316
+      │    └── 34-36: x 4b01 # data[6] = 331
+      └── 36-37: x 00 # block padding byte
 
 get 0 1 2 3 4 5
 ----
@@ -34,3 +37,61 @@ get 0 1 2 3 4 5
 3: (155, 100)
 4: (260, 51)
 5: (316, 10)
+
+# Build an index block that includes a mapping of virtual block IDs to (physical
+# block index, valueID offset) tuples.
+
+build
+10 20
+35 100
+140 10
+155 100
+260 51
+316 10
+virtual-block-mappings
+0 0 0
+1 0 7
+2 1 2
+3 1 3
+4 2 4
+----
+index-block-decoder
+ └── index block header
+      ├── columnar block header
+      │    ├── 00-04: x 05000000 # virtual block count: 5
+      │    ├── 04-05: x 01       # version 1
+      │    ├── 05-07: x 0200     # 2 columns
+      │    ├── 07-11: x 06000000 # 6 rows
+      │    ├── 11-12: b 00000010 # col 0: uint
+      │    ├── 12-16: x 15000000 # col 0: page start 21
+      │    ├── 16-17: b 00000010 # col 1: uint
+      │    └── 17-21: x 40000000 # col 1: page start 64
+      ├── data for column 0 (uint)
+      │    ├── 21-22: x 08               # encoding: 8b
+      │    ├── 22-24: x 0000             # padding (aligning to 64-bit boundary)
+      │    ├── 24-32: x 0000000000000000 # data[0] = 0
+      │    ├── 32-40: x 0000000007000000 # data[1] = 30064771072
+      │    ├── 40-48: x 0100000002000000 # data[2] = 8589934593
+      │    ├── 48-56: x 0100000003000000 # data[3] = 12884901889
+      │    └── 56-64: x 0200000004000000 # data[4] = 17179869186
+      ├── data for column 1 (uint)
+      │    ├── 64-65: x 02   # encoding: 2b
+      │    ├── 65-66: x 00   # padding (aligning to 16-bit boundary)
+      │    ├── 66-68: x 0a00 # data[0] = 10
+      │    ├── 68-70: x 2300 # data[1] = 35
+      │    ├── 70-72: x 8c00 # data[2] = 140
+      │    ├── 72-74: x 9b00 # data[3] = 155
+      │    ├── 74-76: x 0401 # data[4] = 260
+      │    ├── 76-78: x 3c01 # data[5] = 316
+      │    └── 78-80: x 4b01 # data[6] = 331
+      └── 80-81: x 00 # block padding byte
+
+# Read back the virtual block mappings.
+
+remap-virtual-blockid 0 1 2 3 4
+----
+0 -> block 0, with valueID offset 0
+1 -> block 0, with valueID offset 7
+2 -> block 1, with valueID offset 2
+3 -> block 1, with valueID offset 3
+4 -> block 2, with valueID offset 4

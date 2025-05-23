@@ -26,40 +26,83 @@ peach
 apricot
 nectarine
 ----
-(000001,blk0[0:10])
-(000001,blk0[10:15])
-(000001,blk0[15:21])
-(000001,blk0[21:30])
-(000001,blk0[30:34])
-(000001,blk0[34:43])
-(000001,blk0[43:47])
-(000001,blk0[47:58])
-(000001,blk0[58:63])
-(000001,blk1[0:10])
-(000001,blk1[10:13])
-(000001,blk1[13:17])
-(000001,blk1[17:26])
-(000001,blk1[26:36])
-(000001,blk1[36:42])
-(000001,blk1[42:50])
-(000001,blk1[50:59])
-(000001,blk1[59:64])
-(000001,blk2[0:5])
-(000001,blk2[5:11])
-(000001,blk2[11:17])
-(000001,blk2[17:26])
-(000001,blk2[26:34])
-(000001,blk2[34:39])
-(000001,blk2[39:46])
-(000001,blk2[46:55])
+(000001,blk0,id0,len10)  : "canteloupe"
+(000001,blk0,id1,len5)   : "apple"
+(000001,blk0,id2,len6)   : "orange"
+(000001,blk0,id3,len9)   : "blueberry"
+(000001,blk0,id4,len4)   : "kiwi"
+(000001,blk0,id5,len9)   : "tangerine"
+(000001,blk1,id0,len4)   : "pear"
+(000001,blk1,id1,len11)  : "pomegranate"
+(000001,blk1,id2,len5)   : "guava"
+(000001,blk1,id3,len10)  : "watermelon"
+(000001,blk1,id4,len3)   : "fig"
+(000001,blk1,id5,len4)   : "plum"
+(000001,blk2,id0,len9)   : "raspberry"
+(000001,blk2,id1,len10)  : "strawberry"
+(000001,blk2,id2,len6)   : "durian"
+(000001,blk2,id3,len8)   : "honeydew"
+(000001,blk2,id4,len9)   : "starfruit"
+(000001,blk3,id0,len5)   : "mango"
+(000001,blk3,id1,len5)   : "grape"
+(000001,blk3,id2,len6)   : "papaya"
+(000001,blk3,id3,len6)   : "lychee"
+(000001,blk3,id4,len9)   : "persimmon"
+(000001,blk3,id5,len8)   : "mandarin"
+(000001,blk4,id0,len5)   : "peach"
+(000001,blk4,id1,len7)   : "apricot"
+(000001,blk4,id2,len9)   : "nectarine"
 Stats:
-  BlockCount: 3
+  BlockCount: 5
   ValueCount: 26
   UncompressedValueBytes: 182
-  FileLen: 250
+  FileLen: 378
 
 open
 ----
 TableFormat: blobV1
 ChecksumType: crc32c
-IndexHandle: (197, 18)
+IndexHandle: (308, 35)
+
+# Build a sparse table containing a subset of the previous block's values.
+
+build-sparse
+---add-vblock---
+canteloupe
+apple
+orange
+
+kiwi
+---flush---
+---add-vblock---
+---add-vblock---
+---add-vblock---
+grape
+papaya
+lychee
+persimmon
+---flush---
+---add-vblock---
+nectarine
+----
+(000001,blk0,id0,len10)  : "canteloupe"
+(000001,blk0,id1,len5)   : "apple"
+(000001,blk0,id2,len6)   : "orange"
+(000001,blk0,id3,len0)   : ""
+(000001,blk0,id4,len4)   : "kiwi"
+(000001,blk1,id0,len5)   : "grape"
+(000001,blk1,id1,len6)   : "papaya"
+(000001,blk1,id2,len6)   : "lychee"
+(000001,blk1,id3,len9)   : "persimmon"
+(000001,blk2,id0,len9)   : "nectarine"
+Stats:
+  BlockCount: 3
+  ValueCount: 10
+  UncompressedValueBytes: 60
+  FileLen: 198
+
+open
+----
+TableFormat: blobV1
+ChecksumType: crc32c
+IndexHandle: (130, 33)

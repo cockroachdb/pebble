@@ -107,19 +107,26 @@ func rawBytesToBinFormatter(
 	f.ToTreePrinter(n)
 }
 
+//gcassert:inline
 func (b *RawBytes) ptr(offset uint32) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(b.data) + uintptr(offset))
 }
 
 //gcassert:inline
-func (b *RawBytes) slice(start, end uint32) []byte {
+func (b *RawBytes) Slice(start, end uint32) []byte {
 	return unsafe.Slice((*byte)(b.ptr(start)), end-start)
+}
+
+//gcassert:inline
+func (b *RawBytes) Offsets(i int) (start, end uint32) {
+	invariants.CheckBounds(i, b.slices)
+	return b.offsets.At2(i)
 }
 
 // At returns the []byte at index i. The returned slice should not be mutated.
 func (b RawBytes) At(i int) []byte {
 	invariants.CheckBounds(i, b.slices)
-	return b.slice(b.offsets.At2(i))
+	return b.Slice(b.offsets.At2(i))
 }
 
 // Slices returns the number of []byte slices encoded within the RawBytes.

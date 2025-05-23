@@ -1021,9 +1021,9 @@ read-at(172, 527): checkpoints/checkpoint8/000005.sst
 read-at(131, 41): checkpoints/checkpoint8/000005.sst
 read-at(0, 131): checkpoints/checkpoint8/000005.sst
 open: checkpoints/checkpoint8/000006.blob (options: *vfs.randomReadsOption)
+read-at(62, 30): checkpoints/checkpoint8/000006.blob
 read-at(32, 30): checkpoints/checkpoint8/000006.blob
-read-at(11, 21): checkpoints/checkpoint8/000006.blob
-read-at(0, 11): checkpoints/checkpoint8/000006.blob
+read-at(0, 32): checkpoints/checkpoint8/000006.blob
 a a
 b b
 c c
@@ -1131,9 +1131,9 @@ read-at(172, 527): checkpoints/checkpoint9/000005.sst
 read-at(131, 41): checkpoints/checkpoint9/000005.sst
 read-at(0, 131): checkpoints/checkpoint9/000005.sst
 open: checkpoints/checkpoint9/000006.blob (options: *vfs.randomReadsOption)
+read-at(62, 30): checkpoints/checkpoint9/000006.blob
 read-at(32, 30): checkpoints/checkpoint9/000006.blob
-read-at(11, 21): checkpoints/checkpoint9/000006.blob
-read-at(0, 11): checkpoints/checkpoint9/000006.blob
+read-at(0, 32): checkpoints/checkpoint9/000006.blob
 a a
 b b
 c c

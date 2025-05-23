@@ -26,7 +26,14 @@ func TestIndexBlockEncoding(t *testing.T) {
 		case "build":
 			var e indexBlockEncoder
 			e.Init()
-			for _, line := range crstrings.Lines(d.Input) {
+			lines := crstrings.Lines(d.Input)
+			var i int
+			for i = 0; i < len(lines); i++ {
+				line := lines[i]
+				if line == "virtual-block-mappings" {
+					i += 1
+					break
+				}
 				fields := strings.Fields(line)
 				require.Len(t, fields, 2)
 				var err error
@@ -37,19 +44,43 @@ func TestIndexBlockEncoding(t *testing.T) {
 				require.NoError(t, err)
 				e.AddBlockHandle(h)
 			}
+			if i < len(lines) {
+				for _, line := range lines[i:] {
+					fields := strings.Fields(line)
+					require.Len(t, fields, 3)
+					vblockID, err := strconv.ParseInt(fields[0], 10, 64)
+					require.NoError(t, err)
+					physicalBlockIndex, err := strconv.ParseInt(fields[1], 10, 64)
+					require.NoError(t, err)
+					valueID, err := strconv.ParseInt(fields[2], 10, 64)
+					require.NoError(t, err)
+					e.AddVirtualBlockMapping(BlockID(vblockID), int(physicalBlockIndex), BlockValueID(valueID))
+				}
+			}
 
 			data := e.Finish()
 			decoder.Init(data)
 			fmt.Fprint(&buf, decoder.DebugString())
 			return buf.String()
+
 		case "get":
 			for _, arg := range d.CmdArgs {
-				blockNum, err := strconv.Atoi(arg.Key)
+				blockIndex, err := strconv.Atoi(arg.Key)
 				require.NoError(t, err)
-				h := decoder.BlockHandle(uint32(blockNum))
-				fmt.Fprintf(&buf, "%d: %s\n", blockNum, h)
+				h := decoder.BlockHandle(blockIndex)
+				fmt.Fprintf(&buf, "%d: %s\n", blockIndex, h)
 			}
 			return buf.String()
+
+		case "remap-virtual-blockid":
+			for _, arg := range d.CmdArgs {
+				blockID, err := strconv.ParseInt(arg.Key, 10, 64)
+				require.NoError(t, err)
+				blockIndex, valueIDOffset := decoder.RemapVirtualBlockID(BlockID(blockID))
+				fmt.Fprintf(&buf, "%d -> block %d, with valueID offset %d\n", blockID, blockIndex, valueIDOffset)
+			}
+			return buf.String()
+
 		default:
 			panic(fmt.Sprintf("unknown command: %s", d.Cmd))
 		}

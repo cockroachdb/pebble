@@ -6,14 +6,14 @@ tree
           /
             build/
      826      000005.sst
-      67      000006.blob
+      93      000006.blob
      795      000008.sst
-      64      000009.blob
+      89      000009.blob
       92      000011.log
      742      000012.sst
       63      000014.log
      790      000015.sst
-      64      000016.blob
+      89      000016.blob
        0      LOCK
      150      MANIFEST-000010
      247      MANIFEST-000013
@@ -22,13 +22,13 @@ tree
        0      marker.manifest.000003.MANIFEST-000013
             simple_val_sep/
      790      000015.sst
-      64      000016.blob
+      89      000016.blob
      247      MANIFEST-000013
               checkpoint/
      826        000005.sst
-      67        000006.blob
+      93        000006.blob
      795        000008.sst
-      64        000009.blob
+      89        000009.blob
       64        000011.log
      742        000012.sst
      185        MANIFEST-000013

@@ -22,13 +22,14 @@ import (
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/stretchr/testify/require"
 )
 
 type mockReaderProvider struct {
 	w       *bytes.Buffer
 	readers map[base.DiskFileNum]*FileReader
+	ch      *cache.Handle
+	c       *cache.Cache
 }
 
 func (rp *mockReaderProvider) GetValueReader(
@@ -42,6 +43,15 @@ func (rp *mockReaderProvider) GetValueReader(
 		return nil, nil, errors.Newf("no reader for file %s", fileNum)
 	}
 	return vr, func() {}, nil
+}
+
+func (rp *mockReaderProvider) Close() {
+	if rp.ch != nil {
+		rp.ch.Close()
+	}
+	if rp.c != nil {
+		rp.c.Unref()
+	}
 }
 
 func TestValueFetcher(t *testing.T) {
@@ -61,7 +71,7 @@ func TestValueFetcher(t *testing.T) {
 		}
 	}()
 
-	var handleBuf [valblk.HandleMaxLen]byte
+	var handleBuf [MaxInlineHandleLength]byte
 	datadriven.RunTest(t, "testdata/value_fetcher", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
@@ -73,7 +83,7 @@ func TestValueFetcher(t *testing.T) {
 			w := NewFileWriter(base.DiskFileNum(fileNum), obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
 				h := w.AddValue([]byte(l))
-				fmt.Fprintln(&buf, h)
+				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
 			stats, err := w.Close()
 			if err != nil {
@@ -101,22 +111,28 @@ func TestValueFetcher(t *testing.T) {
 			return ""
 		case "fetch":
 			var (
-				name                            string
-				blobFileNum                     uint64
-				valLen, blockNum, offsetInBlock uint32
+				name            string
+				blobFileNum     uint64
+				valLen, valueID uint32
+				blockID         uint32
 			)
 			td.ScanArgs(t, "name", &name)
 			td.ScanArgs(t, "filenum", &blobFileNum)
 			td.ScanArgs(t, "valLen", &valLen)
-			td.ScanArgs(t, "blknum", &blockNum)
-			td.ScanArgs(t, "off", &offsetInBlock)
+			td.ScanArgs(t, "blockID", &blockID)
+			td.ScanArgs(t, "valueID", &valueID)
 			fetcher := fetchers[name]
 			if fetcher == nil {
 				t.Fatalf("fetcher %s not found", name)
 			}
-			handle := encodeRemainingHandle(handleBuf[:], blockNum, offsetInBlock)
 
-			val, _, err := fetcher.Fetch(ctx, handle, base.DiskFileNum(blobFileNum), valLen, nil)
+			n := HandleSuffix{
+				BlockID: BlockID(blockID),
+				ValueID: BlockValueID(valueID),
+			}.Encode(handleBuf[:])
+			encodedHandleSuffix := handleBuf[:n]
+
+			val, _, err := fetcher.Fetch(ctx, encodedHandleSuffix, base.DiskFileNum(blobFileNum), valLen, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,15 +145,6 @@ func TestValueFetcher(t *testing.T) {
 	})
 }
 
-func encodeRemainingHandle(dst []byte, blockNum uint32, offsetInBlock uint32) []byte {
-	n := valblk.EncodeHandle(dst, valblk.Handle{
-		ValueLen:      0,
-		BlockNum:      blockNum,
-		OffsetInBlock: offsetInBlock,
-	})
-	return dst[1:n]
-}
-
 func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 	fmt.Fprintf(w, "ValueFetcher{\n")
 	for _, cr := range f.readers {
@@ -145,7 +152,7 @@ func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 			fmt.Fprintln(w, "  empty")
 			continue
 		}
-		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentBlockNum)
+		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentValueBlock.physicalIndex)
 	}
 	fmt.Fprintf(w, "}\n")
 }
@@ -209,44 +216,32 @@ func BenchmarkValueFetcherRetrieve(b *testing.B) {
 	defer leaktest.AfterTest(b)()
 	b.Run("uncached", func(b *testing.B) {
 		b.Run("2MiB", func(b *testing.B) {
-			benchmarkValueFetcherRetrieve(b, 2<<20, nil)
+			benchmarkValueFetcherRetrieve(b, 2<<20, 0)
 		})
 		b.Run("16MiB", func(b *testing.B) {
-			benchmarkValueFetcherRetrieve(b, 16<<20, nil)
+			benchmarkValueFetcherRetrieve(b, 16<<20, 0)
 		})
 		b.Run("64MiB", func(b *testing.B) {
-			benchmarkValueFetcherRetrieve(b, 64<<20, nil)
+			benchmarkValueFetcherRetrieve(b, 64<<20, 0)
 		})
 	})
-	// The cache variants use a cache double the size of the files' uncompressed
-	// value size to ensure all blocks fit in the cache. Each run uses a fresh
-	// cache to ensure there's no interference between variants.
-	b.Run("cache", func(b *testing.B) {
+	// The cached variants use a cache double the size of the files'
+	// uncompressed value size to ensure all blocks fit in the cache. Each run
+	// uses a fresh cache to ensure there's no interference between variants.
+	b.Run("cached", func(b *testing.B) {
 		b.Run("2MiB", func(b *testing.B) {
-			c := cache.NewWithShards(4<<20, 1)
-			defer c.Unref()
-			ch := c.NewHandle()
-			defer ch.Close()
-			benchmarkValueFetcherRetrieve(b, 2<<20, ch)
+			benchmarkValueFetcherRetrieve(b, 2<<20, 4<<20)
 		})
 		b.Run("16MiB", func(b *testing.B) {
-			c := cache.NewWithShards(32<<20, 1)
-			defer c.Unref()
-			ch := c.NewHandle()
-			defer ch.Close()
-			benchmarkValueFetcherRetrieve(b, 16<<20, ch)
+			benchmarkValueFetcherRetrieve(b, 16<<20, 32<<20)
 		})
 		b.Run("64MiB", func(b *testing.B) {
-			c := cache.NewWithShards(128<<20, 1)
-			defer c.Unref()
-			ch := c.NewHandle()
-			defer ch.Close()
-			benchmarkValueFetcherRetrieve(b, 64<<20, ch)
+			benchmarkValueFetcherRetrieve(b, 64<<20, 128<<20)
 		})
 	})
 }
 
-func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle) {
+func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64) {
 	ctx := context.Background()
 	opts := FileWriterOptions{}
 	obj := &objstorage.MemObj{}
@@ -265,18 +260,9 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 	}
 	b.Logf("%d blocks, %d values", stats.BlockCount, stats.ValueCount)
 
-	r, err := NewFileReader(ctx, obj, FileReaderOptions{
-		ReaderOptions: block.ReaderOptions{
-			CacheOpts: sstableinternal.CacheOptions{
-				CacheHandle: ch,
-				FileNum:     base.DiskFileNum(1),
-			},
-		},
-	})
-	require.NoError(b, err)
-	rp := &mockReaderProvider{readers: map[base.DiskFileNum]*FileReader{000001: r}}
-
 	b.Run("sequential", func(b *testing.B) {
+		rp := makeMockReaderProvider(b, obj, cacheSize, handles)
+		defer rp.Close()
 		var fetcher ValueFetcher
 		fetcher.Init(rp, block.ReadEnv{})
 		defer fetcher.Close()
@@ -291,6 +277,8 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 		b.StopTimer()
 	})
 	b.Run("random", func(b *testing.B) {
+		rp := makeMockReaderProvider(b, obj, cacheSize, handles)
+		defer rp.Close()
 		indices := make([]int, b.N)
 		for i := 0; i < b.N; i++ {
 			indices[i] = testutils.RandIntInRange(rng, 0, len(handles))
@@ -308,4 +296,42 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, ch *cache.Handle
 		}
 		b.StopTimer()
 	})
+}
+
+func makeMockReaderProvider(
+	tb testing.TB, obj objstorage.Readable, cacheSize int64, handles []Handle,
+) *mockReaderProvider {
+	ctx := context.Background()
+	rp := &mockReaderProvider{readers: map[base.DiskFileNum]*FileReader{}}
+	if cacheSize > 0 {
+		rp.c = cache.NewWithShards(cacheSize, 1)
+		rp.ch = rp.c.NewHandle()
+	}
+	r, err := NewFileReader(ctx, obj, FileReaderOptions{
+		ReaderOptions: block.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{
+				CacheHandle: rp.ch,
+				FileNum:     base.DiskFileNum(1),
+			},
+		},
+	})
+	require.NoError(tb, err)
+	rp.readers[000001] = r
+
+	// If configured with a cache, populate the cache by retrieving all the
+	// blocks.
+	if cacheSize > 0 {
+		var fetcher ValueFetcher
+		fetcher.Init(rp, block.ReadEnv{})
+		defer fetcher.Close()
+		for i, h := range handles {
+			if i > 0 && handles[i-1].BlockID == h.BlockID {
+				// Already retrieved this block.
+				continue
+			}
+			_, err := fetcher.retrieve(ctx, h)
+			require.NoError(tb, err)
+		}
+	}
+	return rp
 }

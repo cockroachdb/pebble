@@ -26,37 +26,37 @@ peach
 apricot
 nectarine
 ----
-(000001,blk0[0:10])
-(000001,blk0[10:15])
-(000001,blk0[15:21])
-(000001,blk0[21:30])
-(000001,blk0[30:34])
-(000001,blk0[34:43])
-(000001,blk0[43:47])
-(000001,blk0[47:58])
-(000001,blk0[58:63])
-(000001,blk1[0:10])
-(000001,blk1[10:13])
-(000001,blk1[13:17])
-(000001,blk1[17:26])
-(000001,blk1[26:36])
-(000001,blk1[36:42])
-(000001,blk1[42:50])
-(000001,blk1[50:59])
-(000001,blk1[59:64])
-(000001,blk2[0:5])
-(000001,blk2[5:11])
-(000001,blk2[11:17])
-(000001,blk2[17:26])
-(000001,blk2[26:34])
-(000001,blk2[34:39])
-(000001,blk2[39:46])
-(000001,blk2[46:55])
+(000001,blk0,id0,len10)  : "canteloupe"
+(000001,blk0,id1,len5)   : "apple"
+(000001,blk0,id2,len6)   : "orange"
+(000001,blk0,id3,len9)   : "blueberry"
+(000001,blk0,id4,len4)   : "kiwi"
+(000001,blk0,id5,len9)   : "tangerine"
+(000001,blk1,id0,len4)   : "pear"
+(000001,blk1,id1,len11)  : "pomegranate"
+(000001,blk1,id2,len5)   : "guava"
+(000001,blk1,id3,len10)  : "watermelon"
+(000001,blk1,id4,len3)   : "fig"
+(000001,blk1,id5,len4)   : "plum"
+(000001,blk2,id0,len9)   : "raspberry"
+(000001,blk2,id1,len10)  : "strawberry"
+(000001,blk2,id2,len6)   : "durian"
+(000001,blk2,id3,len8)   : "honeydew"
+(000001,blk2,id4,len9)   : "starfruit"
+(000001,blk3,id0,len5)   : "mango"
+(000001,blk3,id1,len5)   : "grape"
+(000001,blk3,id2,len6)   : "papaya"
+(000001,blk3,id3,len6)   : "lychee"
+(000001,blk3,id4,len9)   : "persimmon"
+(000001,blk3,id5,len8)   : "mandarin"
+(000001,blk4,id0,len5)   : "peach"
+(000001,blk4,id1,len7)   : "apricot"
+(000001,blk4,id2,len9)   : "nectarine"
 Stats:
-  BlockCount: 3
+  BlockCount: 5
   ValueCount: 26
   UncompressedValueBytes: 182
-  FileLen: 250
+  FileLen: 378
 
 define filenum=000002 target-block-size=64 block-size-threshold=90
 kale
@@ -73,24 +73,24 @@ mustard greens
 collard greens
 microgreens
 ----
-(000002,blk0[0:4])
-(000002,blk0[4:11])
-(000002,blk0[11:21])
-(000002,blk0[21:27])
-(000002,blk0[27:34])
-(000002,blk0[34:41])
-(000002,blk0[41:46])
-(000002,blk0[46:52])
-(000002,blk0[52:60])
-(000002,blk1[0:6])
-(000002,blk1[6:20])
-(000002,blk1[20:34])
-(000002,blk1[34:45])
+(000002,blk0,id0,len4)   : "kale"
+(000002,blk0,id1,len7)   : "spinach"
+(000002,blk0,id2,len10)  : "watercress"
+(000002,blk0,id3,len6)   : "argula"
+(000002,blk0,id4,len7)   : "lettuce"
+(000002,blk0,id5,len7)   : "cabbage"
+(000002,blk1,id0,len5)   : "chard"
+(000002,blk1,id1,len6)   : "endive"
+(000002,blk1,id2,len8)   : "bok choy"
+(000002,blk1,id3,len6)   : "sorrel"
+(000002,blk1,id4,len14)  : "mustard greens"
+(000002,blk2,id0,len14)  : "collard greens"
+(000002,blk2,id1,len11)  : "microgreens"
 Stats:
-  BlockCount: 2
+  BlockCount: 3
   ValueCount: 13
   UncompressedValueBytes: 105
-  FileLen: 167
+  FileLen: 240
 
 define filenum=000003 target-block-size=64 block-size-threshold=90
 beet
@@ -102,19 +102,19 @@ celery
 sweet potato
 potato
 ----
-(000003,blk0[0:4])
-(000003,blk0[4:10])
-(000003,blk0[10:16])
-(000003,blk0[16:24])
-(000003,blk0[24:31])
-(000003,blk0[31:37])
-(000003,blk0[37:49])
-(000003,blk0[49:55])
+(000003,blk0,id0,len4)   : "beet"
+(000003,blk0,id1,len6)   : "carrot"
+(000003,blk0,id2,len6)   : "turnip"
+(000003,blk0,id3,len8)   : "rutabaga"
+(000003,blk0,id4,len7)   : "parsnip"
+(000003,blk0,id5,len6)   : "celery"
+(000003,blk1,id0,len12)  : "sweet potato"
+(000003,blk1,id1,len6)   : "potato"
 Stats:
-  BlockCount: 1
+  BlockCount: 2
   ValueCount: 8
   UncompressedValueBytes: 55
-  FileLen: 111
+  FileLen: 164
 
 define filenum=000004 target-block-size=64 block-size-threshold=90
 onion
@@ -125,18 +125,18 @@ shallots
 ramps
 chives
 ----
-(000004,blk0[0:5])
-(000004,blk0[5:11])
-(000004,blk0[11:15])
-(000004,blk0[15:23])
-(000004,blk0[23:31])
-(000004,blk0[31:36])
-(000004,blk0[36:42])
+(000004,blk0,id0,len5)   : "onion"
+(000004,blk0,id1,len6)   : "garlic"
+(000004,blk0,id2,len4)   : "leek"
+(000004,blk0,id3,len8)   : "scallion"
+(000004,blk0,id4,len8)   : "shallots"
+(000004,blk0,id5,len5)   : "ramps"
+(000004,blk0,id6,len6)   : "chives"
 Stats:
   BlockCount: 1
   ValueCount: 7
   UncompressedValueBytes: 42
-  FileLen: 98
+  FileLen: 129
 
 define filenum=000005 target-block-size=64 block-size-threshold=90
 shitake
@@ -149,39 +149,39 @@ chanterelle
 cremini
 maitake
 ----
-(000005,blk0[0:7])
-(000005,blk0[7:13])
-(000005,blk0[13:18])
-(000005,blk0[18:28])
-(000005,blk0[28:35])
-(000005,blk0[35:40])
-(000005,blk0[40:51])
-(000005,blk0[51:58])
-(000005,blk1[0:7])
+(000005,blk0,id0,len7)   : "shitake"
+(000005,blk0,id1,len6)   : "oyster"
+(000005,blk0,id2,len5)   : "enoki"
+(000005,blk0,id3,len10)  : "portobello"
+(000005,blk0,id4,len7)   : "porcini"
+(000005,blk0,id5,len5)   : "morel"
+(000005,blk1,id0,len11)  : "chanterelle"
+(000005,blk1,id1,len7)   : "cremini"
+(000005,blk1,id2,len7)   : "maitake"
 Stats:
   BlockCount: 2
   ValueCount: 9
   UncompressedValueBytes: 65
-  FileLen: 127
+  FileLen: 175
 
 define filenum=000006 target-block-size=64 block-size-threshold=90
 squash
 pumpkin
 cucumber
 ----
-(000006,blk0[0:6])
-(000006,blk0[6:13])
-(000006,blk0[13:21])
+(000006,blk0,id0,len6)   : "squash"
+(000006,blk0,id1,len7)   : "pumpkin"
+(000006,blk0,id2,len8)   : "cucumber"
 Stats:
   BlockCount: 1
   ValueCount: 3
   UncompressedValueBytes: 21
-  FileLen: 77
+  FileLen: 104
 
 new-fetcher name=iter1
 ----
 
-fetch name=iter1 filenum=000001 valLen=10 blknum=0 off=0
+fetch name=iter1 filenum=000001 valLen=10 blockID=0 valueID=0
 ----
 # GetValueReader(000001)
 ValueFetcher{
@@ -193,7 +193,7 @@ ValueFetcher{
 }
 canteloupe
 
-fetch name=iter1 filenum=000001 valLen=5 blknum=0 off=10
+fetch name=iter1 filenum=000001 valLen=5 blockID=0 valueID=1
 ----
 ValueFetcher{
   000001 (blk0)
@@ -207,11 +207,11 @@ apple
 new-fetcher name=iter2
 ----
 
-fetch name=iter2 filenum=000001 blknum=2 valLen=5 off=34
+fetch name=iter2 filenum=000001 valLen=5 blockID=4 valueID=0
 ----
 # GetValueReader(000001)
 ValueFetcher{
-  000001 (blk2)
+  000001 (blk4)
   empty
   empty
   empty
@@ -219,7 +219,7 @@ ValueFetcher{
 }
 peach
 
-fetch name=iter1 filenum=000001 valLen=4 blknum=1 off=13
+fetch name=iter1 filenum=000001 valLen=4 blockID=1 valueID=5
 ----
 ValueFetcher{
   000001 (blk1)
@@ -230,11 +230,11 @@ ValueFetcher{
 }
 plum
 
-fetch name=iter2 filenum=000006 blknum=0 valLen=7 off=6
+fetch name=iter2 filenum=000006 valLen=7 blockID=0 valueID=1
 ----
 # GetValueReader(000006)
 ValueFetcher{
-  000001 (blk2)
+  000001 (blk4)
   000006 (blk0)
   empty
   empty
@@ -242,11 +242,11 @@ ValueFetcher{
 }
 pumpkin
 
-fetch name=iter2 filenum=000005 blknum=1 valLen=7 off=0
+fetch name=iter2 filenum=000005 valLen=7 blockID=1 valueID=2
 ----
 # GetValueReader(000005)
 ValueFetcher{
-  000001 (blk2)
+  000001 (blk4)
   000006 (blk0)
   000005 (blk1)
   empty
@@ -254,49 +254,49 @@ ValueFetcher{
 }
 maitake
 
-fetch name=iter2 filenum=000003 blknum=0 valLen=12 off=37
+fetch name=iter2 filenum=000003 valLen=12 blockID=1 valueID=0
 ----
 # GetValueReader(000003)
 ValueFetcher{
-  000001 (blk2)
+  000001 (blk4)
   000006 (blk0)
   000005 (blk1)
-  000003 (blk0)
+  000003 (blk1)
   empty
 }
 sweet potato
 
-fetch name=iter2 filenum=000002 blknum=1 valLen=14 off=6
+fetch name=iter2 filenum=000002 valLen=14 blockID=1 valueID=4
 ----
 # GetValueReader(000002)
 ValueFetcher{
-  000001 (blk2)
+  000001 (blk4)
   000006 (blk0)
   000005 (blk1)
-  000003 (blk0)
+  000003 (blk1)
   000002 (blk1)
 }
 mustard greens
 
-fetch name=iter2 filenum=000004 blknum=0 valLen=5 off=31
+fetch name=iter2 filenum=000004 valLen=5 blockID=0 valueID=5
 ----
 # GetValueReader(000004)
 ValueFetcher{
   000004 (blk0)
   000006 (blk0)
   000005 (blk1)
-  000003 (blk0)
+  000003 (blk1)
   000002 (blk1)
 }
 ramps
 
-fetch name=iter2 filenum=000004 blknum=0 valLen=6 off=36
+fetch name=iter2 filenum=000004 valLen=6 blockID=0 valueID=6
 ----
 ValueFetcher{
   000004 (blk0)
   000006 (blk0)
   000005 (blk1)
-  000003 (blk0)
+  000003 (blk1)
   000002 (blk1)
 }
 chives
@@ -306,14 +306,14 @@ chives
 # following fetch from filenum 000001 should log a GetValueReader(000001) as we
 # need to reobtain a blob file reader.
 
-fetch name=iter2 filenum=000001 blknum=2 valLen=9 off=17
+fetch name=iter2 filenum=000001 valLen=9 blockID=3 valueID=4
 ----
 # GetValueReader(000001)
 ValueFetcher{
   000004 (blk0)
-  000001 (blk2)
+  000001 (blk3)
   000005 (blk1)
-  000003 (blk0)
+  000003 (blk1)
   000002 (blk1)
 }
 persimmon

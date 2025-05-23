@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -32,7 +33,31 @@ func TestBlobWriter(t *testing.T) {
 			w := NewFileWriter(000001, obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
 				h := w.AddValue([]byte(l))
-				fmt.Fprintln(&buf, h)
+				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
+			}
+			stats, err := w.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			printFileWriterStats(&buf, stats)
+			return buf.String()
+		case "build-sparse":
+			opts := scanFileWriterOptions(t, td)
+			opts.FlushGovernor = block.MakeFlushGovernor(math.MaxInt, 100, 0, nil)
+			obj = &objstorage.MemObj{}
+			w := NewFileWriter(000001, obj, opts)
+			vBlockID := 0
+			for _, l := range crstrings.Lines(td.Input) {
+				switch {
+				case l == "---flush---":
+					w.flush()
+				case l == "---add-vblock---":
+					w.BeginNewVirtualBlock(BlockID(vBlockID))
+					vBlockID++
+				default:
+					h := w.AddValue([]byte(l))
+					fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
+				}
 			}
 			stats, err := w.Close()
 			if err != nil {
@@ -90,8 +115,8 @@ func TestHandleRoundtrip(t *testing.T) {
 				ValueLen:    29357353,
 			},
 			HandleSuffix: HandleSuffix{
-				BlockNum:      194,
-				OffsetInBlock: 32911,
+				BlockID: 194,
+				ValueID: 2952,
 			},
 		},
 		{
@@ -100,8 +125,8 @@ func TestHandleRoundtrip(t *testing.T) {
 				ValueLen:    205,
 			},
 			HandleSuffix: HandleSuffix{
-				BlockNum:      2,
-				OffsetInBlock: 20,
+				BlockID: 2,
+				ValueID: 4,
 			},
 		},
 	}

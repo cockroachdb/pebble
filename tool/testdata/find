@@ -156,7 +156,7 @@ crdb:aaa
     aaa\x00#10,SET [7975756d69]
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
-    aaa\x00#10,SET [2866302c626c6b305b303a355d29]
+    aaa\x00#10,SET [2866302c626c6b302c6964302c6c656e3529]
 
 find
 testdata/find-db-val-sep
