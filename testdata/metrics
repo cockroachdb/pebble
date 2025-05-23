@@ -78,7 +78,7 @@ Local tables size: 755B
 Compression types: snappy: 1
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 0.0%
-Table cache: 1 entries (840B)  hit rate: 0.0%
+Table cache: 1 entries (480B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -143,7 +143,7 @@ Local tables size: 1.5KB
 Compression types: snappy: 2
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 33.3%
-Table cache: 2 entries (1.6KB)  hit rate: 66.7%
+Table cache: 2 entries (960B)  hit rate: 66.7%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -191,7 +191,7 @@ Local tables size: 1.5KB
 Compression types: snappy: 2
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 33.3%
-Table cache: 2 entries (1.6KB)  hit rate: 66.7%
+Table cache: 2 entries (960B)  hit rate: 66.7%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -236,7 +236,7 @@ Local tables size: 1.5KB
 Compression types: snappy: 2
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 33.3%
-Table cache: 1 entries (840B)  hit rate: 66.7%
+Table cache: 1 entries (480B)  hit rate: 66.7%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -541,7 +541,7 @@ Virtual tables: 0 (0B)
 Local tables size: 11KB
 Compression types: snappy: 15
 Table stats: all loaded
-Block cache: 6 entries (2.3KB)  hit rate: 7.7%
+Block cache: 6 entries (2.3KB)  hit rate: 7.3%
 Table cache: 0 entries (0B)  hit rate: 55.0%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
@@ -618,7 +618,7 @@ Virtual tables: 0 (0B)
 Local tables size: 16KB
 Compression types: snappy: 22
 Table stats: all loaded
-Block cache: 6 entries (2.3KB)  hit rate: 7.7%
+Block cache: 6 entries (2.3KB)  hit rate: 7.3%
 Table cache: 0 entries (0B)  hit rate: 55.0%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
@@ -1215,7 +1215,7 @@ Compression types: snappy: 5
 Garbage: point-deletions 502B range-deletions 1.5KB
 Table stats: all loaded
 Block cache: 2 entries (774B)  hit rate: 0.0%
-Table cache: 2 entries (1.6KB)  hit rate: 0.0%
+Table cache: 2 entries (960B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -1257,7 +1257,7 @@ Compression types: snappy: 5
 Garbage: point-deletions 502B range-deletions 1.5KB
 Table stats: all loaded
 Block cache: 2 entries (774B)  hit rate: 0.0%
-Table cache: 2 entries (1.6KB)  hit rate: 0.0%
+Table cache: 2 entries (960B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0

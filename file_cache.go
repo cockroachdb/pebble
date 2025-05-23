@@ -946,7 +946,11 @@ func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Prop
 	defer v.Unref()
 
 	r := v.Value().mustSSTableReader()
-	return &r.Properties, nil
+	props, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+	if err != nil {
+		return nil, err
+	}
+	return &props, nil
 }
 
 type fileCacheValue struct {

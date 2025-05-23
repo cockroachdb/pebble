@@ -1349,11 +1349,15 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	}
 	defer r.Close()
 
-	props := r.Properties.String()
+	loadedProps, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */)
+	if err != nil {
+		return err.Error()
+	}
+	props := loadedProps.String()
 	env := sstable.ReadEnv{}
 	if m != nil && m.Virtual {
 		env.Virtual = m.VirtualParams
-		scaledProps := r.Properties.GetScaledProperties(m.TableBacking.Size, m.Size)
+		scaledProps := loadedProps.GetScaledProperties(m.TableBacking.Size, m.Size)
 		props = scaledProps.String()
 	}
 	if len(td.Input) == 0 {

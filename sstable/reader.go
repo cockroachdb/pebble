@@ -65,7 +65,6 @@ type Reader struct {
 	metaindexBH  block.Handle
 	footerBH     block.Handle
 
-	Properties     Properties
 	tableFormat    TableFormat
 	Attributes     Attributes
 	UserProperties map[string]string
@@ -958,7 +957,6 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		r.err = err
 		return nil, err
 	}
-	r.Properties = props
 	r.UserProperties = props.UserProperties
 
 	// Set which attributes are in use based on property values.
