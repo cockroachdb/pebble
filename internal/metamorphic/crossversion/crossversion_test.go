@@ -174,6 +174,9 @@ func runCrossVersion(
 		// version's metamorphic runs used the same seed, so all of the
 		// resulting histories should be identical.
 		histories := subrunResults.historyPaths()
+		if len(histories) == 0 {
+			t.Fatal("no subrun histories")
+		}
 		if h, diff := metamorphic.CompareHistories(t, histories); h > 0 {
 			fatalf(t, &fatalOnce, []string{subrunResults[0].runDir, subrunResults[h].runDir},
 				"Metamorphic test divergence between %q and %q:\nDiff:\n%s",
@@ -215,8 +218,9 @@ type subrunResult struct {
 }
 
 type initialState struct {
-	desc string
-	path string
+	desc    string
+	path    string
+	opsPath string
 }
 
 func (s initialState) String() string {
@@ -280,11 +284,12 @@ func runVersion(
 				if streamOutput {
 					out = io.MultiWriter(out, os.Stderr)
 				}
-				t.Logf("  Running test with version %s with initial state %s.",
-					vers.SHA, s)
-				if err := r.run(ctx, out); err != nil {
+				t.Logf("  Running test with version %s with initial state %s (dir=%s initial=%s).",
+					vers.SHA, s, r.dir, s.path)
+
+				if err := r.run(ctx, t, out); err != nil {
 					fatalf(t, fatalOnce, []string{r.dir},
-						"Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
+						"Metamorphic test failed: %s. Output:\n%s\n", err, buf.String())
 				}
 
 				// dir is a directory containing the ops file and subdirectories for
@@ -309,8 +314,9 @@ func runVersion(
 						runDir:      dir,
 						historyPath: filepath.Join(dir, subrunDir, "history"),
 						initialState: initialState{
-							path: filepath.Join(dir, subrunDir),
-							desc: fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+							desc:    fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+							path:    filepath.Join(dir, subrunDir),
+							opsPath: filepath.Join(dir, "ops"),
 						},
 					})
 				}
@@ -356,7 +362,7 @@ type metamorphicTestRun struct {
 	testBinaryPath string
 }
 
-func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
+func (r *metamorphicTestRun) run(ctx context.Context, t *testing.T, output io.Writer) error {
 	args := []string{
 		"-test.run", "TestMeta$",
 		"-seed", strconv.FormatUint(r.seed, 10),
@@ -377,9 +383,9 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 		args = append(args, "-test.v")
 	}
 	if r.initialState.path != "" {
-		args = append(args,
-			"--initial-state", r.initialState.path,
-			"--initial-state-desc", r.initialState.desc)
+		args = append(args, "--initial-state-desc", r.initialState.desc)
+		args = append(args, "--initial-state", r.initialState.path)
+		args = append(args, "--previous-ops", r.initialState.opsPath)
 	}
 	cmd := exec.CommandContext(ctx, r.testBinaryPath, args...)
 	cmd.Dir = r.dir
@@ -387,8 +393,9 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 	cmd.Stdout = output
 
 	// Print the command itself before executing it.
+	fmt.Println(output, cmd)
 	if testing.Verbose() {
-		fmt.Fprintln(output, cmd)
+		t.Logf("running: %s", cmd.String())
 	}
 
 	return cmd.Run()
