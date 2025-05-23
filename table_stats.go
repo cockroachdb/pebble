@@ -310,9 +310,13 @@ func (d *DB) loadTableStats(
 
 	err := d.fileCache.withReader(
 		context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
-			props := r.Properties.CommonProperties
+			loadedProps, err := r.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+			if err != nil {
+				return err
+			}
+			props := loadedProps.CommonProperties
 			if meta.Virtual {
-				props = r.Properties.GetScaledProperties(meta.TableBacking.Size, meta.Size)
+				props = loadedProps.GetScaledProperties(meta.TableBacking.Size, meta.Size)
 			}
 			stats.NumEntries = props.NumEntries
 			stats.NumDeletions = props.NumDeletions
@@ -504,32 +508,38 @@ func (d *DB) estimateSizesBeneath(
 	keySum += fileProps.RawKeySize
 	valSum += fileProps.RawValueSize
 
-	addPhysicalTableStats := func(r *sstable.Reader, _ sstable.ReadEnv) (err error) {
-		fileSum += file.Size
-		entryCount += r.Properties.NumEntries
-		keySum += r.Properties.RawKeySize
-		valSum += r.Properties.RawValueSize
-		return nil
-	}
-	addVirtualTableStats := func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
-		fileSum += file.Size
-		entryCount += file.Stats.NumEntries
-		keySum += v.Properties.RawKeySize
-		valSum += v.Properties.RawValueSize
-		return nil
-	}
-
 	for l := level + 1; l < numLevels; l++ {
 		// NB: This is subtle. The addPhysicalTableStats and
 		// addVirtualTableStats functions close over file, which is the loop
 		// variable.
 		for file = range v.Overlaps(l, meta.UserKeyBounds()).All() {
 			var err error
+			var tableMeta *tableMetadata
 			if file.Virtual {
-				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.VirtualMeta(), addVirtualTableStats)
+				tableMeta = file.VirtualMeta()
 			} else {
-				err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, file.PhysicalMeta(), addPhysicalTableStats)
+				tableMeta = file.PhysicalMeta()
 			}
+
+			err = d.fileCache.withReader(context.TODO(), block.NoReadEnv, tableMeta, func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
+				// TODO(xinhaoz): We should avoid reading the properties block here.
+				// See https://github.com/cockroachdb/pebble/issues/4792.
+				loadedProps, err := v.ReadPropertiesBlock(context.TODO(), nil /* buffer pool */)
+				if err != nil {
+					return err
+				}
+
+				props := loadedProps.CommonProperties
+				if meta.Virtual {
+					props = loadedProps.GetScaledProperties(meta.TableBacking.Size, meta.Size)
+				}
+
+				fileSum += file.Size
+				entryCount += file.Stats.NumEntries
+				keySum += props.RawKeySize
+				valSum += props.RawValueSize
+				return nil
+			})
 			if err != nil {
 				return 0, 0, err
 			}
