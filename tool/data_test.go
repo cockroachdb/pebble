@@ -25,6 +25,8 @@ import (
 )
 
 func runTests(t *testing.T, path string) {
+	defer overrideRenderMetricsForDeterminism()()
+
 	paths, err := filepath.Glob(path)
 	require.NoError(t, err)
 
@@ -156,12 +158,6 @@ func runTests(t *testing.T, path string) {
 				output = strings.TrimSuffix(output, "\n")
 				buf.Reset()
 				for _, l := range strings.Split(output, "\n") {
-					for _, flakyPrefix := range []string{"Table stats:", "Cgo memory usage:"} {
-						if strings.HasPrefix(l, flakyPrefix) {
-							l = flakyPrefix + " <redacted>"
-							break
-						}
-					}
 					buf.WriteString(l)
 					buf.WriteString("\n")
 				}
@@ -169,4 +165,14 @@ func runTests(t *testing.T, path string) {
 			})
 		})
 	}
+}
+
+// overrideRenderMetricsForDeterminism overrides the renderMetrics function to
+// return a deterministic string for the metrics. This is useful for tests that
+// need to compare the output of the metrics function. It returns a function
+// that resets the renderMetrics function to its previous value.
+func overrideRenderMetricsForDeterminism() func() {
+	previousRenderMetrics := renderMetrics
+	renderMetrics = (*pebble.Metrics).StringForTests
+	return func() { renderMetrics = previousRenderMetrics }
 }

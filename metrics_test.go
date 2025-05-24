@@ -92,6 +92,12 @@ func exampleMetrics() Metrics {
 	m.Table.Local.ZombieSize = 30
 	m.Table.PendingStatsCollectionCount = 31
 	m.Table.InitialStatsCollectionComplete = true
+	m.Table.Garbage.PointDeletionsBytesEstimate = 1024
+	m.Table.Garbage.RangeDeletionsBytesEstimate = 2048
+	m.Table.CompressedCountMinLZ = 32
+	m.Table.CompressedCountSnappy = 33
+	m.Table.CompressedCountZstd = 34
+	m.Table.CompressedCountNone = 35
 
 	for i := range m.Levels {
 		l := &m.Levels[i]
@@ -117,6 +123,10 @@ func exampleMetrics() Metrics {
 		l.TablesFlushed = base + 11
 		l.TablesIngested = base + 12
 		l.TablesMoved = base + 13
+		l.Additional.ValueBlocksSize = base + 14
+		l.BlobBytesCompacted = base + 15
+		l.BlobBytesFlushed = base + 16
+		l.BlobBytesRead = base + 17
 		l.MultiLevel.TableBytesInTop = base + 4
 		l.MultiLevel.TableBytesIn = base + 4
 		l.MultiLevel.TableBytesRead = base + 4
@@ -380,7 +390,7 @@ func TestMetrics(t *testing.T) {
 			var buf strings.Builder
 			fmt.Fprintf(&buf, "%s", m.StringForTests())
 			if len(m.CategoryStats) > 0 {
-				fmt.Fprintf(&buf, "Iter category stats:\n")
+				fmt.Fprintf(&buf, "\nIter category stats:\n")
 				for _, stats := range m.CategoryStats {
 					fmt.Fprintf(&buf, "%20s, %11s: %+v\n", stats.Category,
 						redact.StringWithoutMarkers(stats.Category.QoSLevel()), stats.CategoryStats)
