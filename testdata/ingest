@@ -31,37 +31,48 @@ L6:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     1   569B     0B       0 |    - 0.00 0.00 |    0B |     1   569B |     0     0B |     0     0B |    0B |   1    0
-total |     1   569B     0B       0 |    -    -    - |  569B |     1   569B |     0     0B |     0   569B |    0B |   1 1.00
-----------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
-Flushes: 0
-Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 0 (0B)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 569B
-Compression types: snappy: 1
-Table stats: all loaded
-Block cache: 3 entries (1.1KB)  hit rate: 15.4%
-Table cache: 1 entries (480B)  hit rate: 50.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 1  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM   |                        |    virtual   |   value sep   |        |   ingested   |    amp
+level | aggsize | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+------+---------+--------------+--------------+---------------+--------+--------------+----------
+    0 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    1 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6 |    569B |      1  569B |      0     0 |     0B     0B |     0B |      1  569B |   1     0
+total |    569B |      1  569B |      0     0 |     0B     0B |   569B |      1  569B |   1  1.00
+-------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     0  0.00  0.00 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0   569B     0B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE           ITERATORS             TABLES                  CGO MEMORY        COMPACTIONS
+wals                      block cache           stats all loaded          0B tot          0B estimated debt
+  1 files (0B)              3 entries (1.1KB)   backing: 0B (0)         block cache       0 in-progress (0B)
+  0B  written: 0B           15.4% hit rate      zombie:  0B (0)           0B tot          0 cancelled (0B)
+  (0.0% overhead)         file cache                     0B local         0B data         0 failed
+memtables                   1 entries (480B)                              0B maps         0 problem spans
+  flushes: 0                50.0% hit rate      BLOB FILES                0B ents
+  live:    1 (256KB)      bloom filter          live:   0 (0B)          memtables         COMPRESSION
+  zombie:  0 (0B)           0.0% util           zombie: 0 (0B)            0B tot            snappy: 1
+ingestions                sstable iters         values
+  total: 1                  0 open                0B total              KEYS
+  as flushable: 0 (0B)    snapshots               0B referenced         range keys
+                            0 open                0% referenced           0 sets
+                                                                        tombstones
+                                                                          0 total
 
 
 iter
