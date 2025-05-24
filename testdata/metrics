@@ -1,36 +1,67 @@
 example
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep    |     multilevel
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk |   top   in  read
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+---------------+------------------
-    0 |   101   102B     0B     101 | 1.10 2.10 0.30 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1 2.09 |  114B      0B |  104B  104B  104B
-    1 |   201   202B     0B     201 | 1.20 2.20 0.60 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2 2.04 |  214B      0B |  204B  204B  204B
-    2 |   301   302B     0B     301 | 1.30 2.30 0.90 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3 2.03 |  314B      0B |  304B  304B  304B
-    3 |   401   402B     0B     401 | 1.40 2.40 1.20 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4 2.02 |  414B      0B |  404B  404B  404B
-    4 |   501   502B     0B     501 | 1.50 2.50 1.50 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5 2.02 |  514B      0B |  504B  504B  504B
-    5 |   601   602B     0B     601 | 1.60 2.60 1.80 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6 2.01 |  614B      0B |  604B  604B  604B
-    6 |   701   702B     0B     701 |    - 2.70 2.10 |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7 2.01 |  714B      0B |  704B  704B  704B
-total |  2.8K  2.7KB     0B    2.8K |    -    -    - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28 3.00 | 2.8KB      0B | 2.8KB 2.8KB 2.8KB
-----------------------------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
-Flushes: 8
-Compactions: 5  estimated debt: 6B  in progress: 2 (7B)  canceled: 3 (3.0KB)  failed: 5  problem spans: 2
-             default: 27  delete: 28  elision: 29  move: 30  read: 31  tombstone-density: 16  rewrite: 32  copy: 33  multi-level: 34  blob-file-rewrite:  0
-MemTables: 12 (11B)  zombie: 14 (13B)
-Zombie tables: 16 (15B, local: 30B)
-Backing tables: 1 (2.0MB)
-Virtual tables: 2807 (2.8KB)
-Local tables size: 28B
-Compression types:
-Table stats: 31
-Block cache: 2 entries (1B)  hit rate: 42.9%
-File cache: 180 tables, 181 blobfiles (17B)  hit rate: 48.7%
-Range key sets: 123  Tombstones: 456  Total missized tombstones encountered: 789
-Snapshots: 4  earliest seq num: 1024
-Table iters: 21
-Filter utility: 47.4%
-Ingestions: 27  as flushable: 36 (34B in 35 tables)
-Cgo memory usage: 15KB  block cache: 9.0KB (data: 4.0KB, maps: 2.0KB, entries: 3.0KB)  memtables: 5.0KB
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      216 B |    101 102 B |    101   103 |  114 B  114 B |  104 B |    112 104 B |   1  4.31
+    1      416 B |    201 202 B |    201   203 |  214 B  214 B |  204 B |    212 204 B |   2  4.16
+    2      616 B |    301 302 B |    301   303 |  314 B  314 B |  304 B |    312 304 B |   3  4.11
+    3      816 B |    401 402 B |    401   403 |  414 B  414 B |  404 B |    412 404 B |   4  4.08
+    4      1 KiB |    501 502 B |    501   503 |  514 B  514 B |  504 B |    512 504 B |   5  4.06
+    5    1.2 KiB |    601 602 B |    601   603 |  614 B  614 B |  604 B |    612 604 B |   6  4.05
+total    1.4 KiB |    701 702 B |    701   703 |  714 B  714 B |  704 B |    712 704 B |   7  4.05
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |  1.10  2.10  0.30 |    113 106 B | 104 B 104 B 104 B |  107 B 117 B |    221  217 B  231 B
+    1 |  1.20  2.20  0.60 |    213 206 B | 204 B 204 B 204 B |  207 B 217 B |    421  417 B  431 B
+    2 |  1.30  2.30  0.90 |    313 306 B | 304 B 304 B 304 B |  307 B 317 B |    621  617 B  631 B
+    3 |  1.40  2.40  1.20 |    413 406 B | 404 B 404 B 404 B |  407 B 417 B |    821  817 B  831 B
+    4 |  1.50  2.50  1.50 |    513 506 B | 504 B 504 B 504 B |  507 B 517 B |    1 K  1 KiB  1 KiB
+    5 |  1.60  2.60  1.80 |    613 606 B | 604 B 604 B 604 B |  607 B 617 B |  1.2 K 1.2 Ki 1.2 KiB
+total |     0  2.70  2.10 |    713 706 B | 704 B 704 B 704 B |  707 B 717 B |  1.4 K 1.4 Ki 1.4 KiB
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |        27       28       29       30       31       16       32       33       34
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+ 22 (24B) |   25B: 26B |      4.0% |         8 |   12 (11B) |   14 (13B) |        51 |    36 (34B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      2 (1B) |       42.9% |    180 (17B) |       48.7% |        47.4% |          21 |           4
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   31 pending | 2.0MB (1) |  15B (16) |       30B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+         15KB |         9.0KB |          4.0KB |           2.0KB |           3.0KB |         5.0KB
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               6B |            2 (7B) |         3 (3.0KB) |                 5 |                2!!
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+             123 |              456 |                    789!! |           1.0KB |           2.0KB
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  minlz:  32
+  snappy: 33
+  zstd:   34
+  none:   35
 
 init
 ----
@@ -54,37 +85,65 @@ iter-new b category=b
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     1   756B     0B       0 |    - 0.25 0.25 |   28B |     0     0B |     0     0B |     1   756B |    0B |   1 27.0 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-total |     1   756B     0B       0 |    -    -    - |   28B |     0     0B |     0     0B |     1   784B |    0B |   1 28.0 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 17B  written: 28B (65% overhead)
-Flushes: 1
-Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 756B
-Compression types: snappy: 1
-Table stats: all loaded
-Block cache: 2 entries (795B)  hit rate: 0.0%
-File cache: 1 tables, 0 blobfiles (280B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 1
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      756 B |      1 756 B |      0     0 |    0 B    0 B |   28 B |      0   0 B |   1 27.00
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.25  0.25 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      1  756 B    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   17B: 28B |     64.7% |         1 |  1 (256KB) |  1 (256KB) |        45 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (795B) |        0.0% |     1 (280B) |        0.0% |         0.0% |           1 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 1
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -119,37 +178,65 @@ L6:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.6 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.01 |    0B      0B
-total |     2  1.5KB     0B       0 |    -    -    - |   64B |     0     0B |     0     0B |     4  3.0KB | 1.5KB |   1 48.5 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 34B  written: 64B (88% overhead)
-Flushes: 2
-Compactions: 1  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 2 (1.5KB, local: 1.5KB)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 1.5KB
-Compression types: snappy: 2
-Table stats: all loaded
-Block cache: 2 entries (795B)  hit rate: 33.3%
-File cache: 2 tables, 0 blobfiles (560B)  hit rate: 66.7%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 2
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |   64 B |      0   0 B |   0 23.62
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      2 1.5 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 1.5 Ki   0 B |      2 1.5 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  2 (512KB) |        98 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (795B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) | 1.5KB (2) |     1.5KB |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 2
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -167,37 +254,65 @@ iter-close a
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.6 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.01 |    0B      0B
-total |     2  1.5KB     0B       0 |    -    -    - |   64B |     0     0B |     0     0B |     4  3.0KB | 1.5KB |   1 48.5 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 34B  written: 64B (88% overhead)
-Flushes: 2
-Compactions: 1  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 2 (1.5KB, local: 1.5KB)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 1.5KB
-Compression types: snappy: 2
-Table stats: all loaded
-Block cache: 2 entries (795B)  hit rate: 33.3%
-File cache: 2 tables, 0 blobfiles (560B)  hit rate: 66.7%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 2
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |   64 B |      0   0 B |   0 23.62
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      2 1.5 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 1.5 Ki   0 B |      2 1.5 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  2 (512KB) |        98 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (795B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) | 1.5KB (2) |     1.5KB |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 2
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -212,37 +327,65 @@ iter-close c
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.6 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.01 |    0B      0B
-total |     2  1.5KB     0B       0 |    -    -    - |   64B |     0     0B |     0     0B |     4  3.0KB | 1.5KB |   1 48.5 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 34B  written: 64B (88% overhead)
-Flushes: 2
-Compactions: 1  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 2 (512KB)
-Zombie tables: 1 (756B, local: 756B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 1.5KB
-Compression types: snappy: 2
-Table stats: all loaded
-Block cache: 2 entries (795B)  hit rate: 33.3%
-File cache: 1 tables, 0 blobfiles (280B)  hit rate: 66.7%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 1
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |   64 B |      0   0 B |   0 23.62
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      2 1.5 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 1.5 Ki   0 B |      2 1.5 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  2 (512KB) |        98 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (795B) |       33.3% |     1 (280B) |       66.7% |         0.0% |           1 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |  756B (1) |      756B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 2
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -260,37 +403,65 @@ iter-close b
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |   64B |     0     0B |     0     0B |     2  1.5KB |    0B |   0 23.6 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.01 |    0B      0B
-total |     2  1.5KB     0B       0 |    -    -    - |   64B |     0     0B |     0     0B |     4  3.0KB | 1.5KB |   1 48.5 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 34B  written: 64B (88% overhead)
-Flushes: 2
-Compactions: 1  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 1.5KB
-Compression types: snappy: 2
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 33.3%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 66.7%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |   64 B |      0   0 B |   0 23.62
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      2 1.5 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 1.5 Ki   0 B |      2 1.5 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  1 (256KB) |        98 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |       33.3% |       0 (0B) |       66.7% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 2
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -347,37 +518,65 @@ Blob files:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     7  5.9KB     0B       0 |    - 0.25 0.25 |  165B |     0     0B |     0     0B |     9  7.4KB |    0B |   1 53.5 |  644B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.01 |    0B      0B
-total |     9  7.4KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    11  9.0KB | 1.5KB |   2 63.7 |  644B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 116B  written: 165B (42% overhead)
-Flushes: 3
-Compactions: 1  estimated debt: 8.0KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 7.4KB
-Compression types: snappy: 9
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 33.3%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 66.7%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    6.5 KiB |      7 5.9 K |      0     0 |  644 B    0 B |  165 B |      0   0 B |   1 53.45
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.25  0.25 |      0   0 B |   0 B   0 B   0 B |    0 B 644 B |      9 7.4 Ki 1.3 KiB
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 1.5 Ki   0 B |      2 1.5 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 116B: 165B |     42.2% |         3 |  1 (256KB) |  1 (256KB) |       281 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |       33.3% |       0 (0B) |       66.7% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            8.0KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 9
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -419,37 +618,65 @@ Blob files:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |  165B |     0     0B |     0     0B |     9  7.4KB |    0B |   0 53.5 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     9  7.4KB     0B       0 |    - 0.00 0.00 | 7.4KB |     0     0B |     0     0B |     9  7.4KB | 7.4KB |   1 1.00 |  644B      0B
-total |     9  7.4KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    18   15KB | 7.4KB |   1  100 |  644B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 116B  written: 165B (42% overhead)
-Flushes: 3
-Compactions: 2  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 7.4KB
-Compression types: snappy: 9
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 10.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 55.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |  165 B |      0   0 B |   0 53.45
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total      8 KiB |      9 7.4 K |      0     0 |  644 B    0 B | 7.4 Ki |      0   0 B |   1  1.00
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B 644 B |      9 7.4 Ki 1.3 KiB
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 7.4 Ki 644 B |      9 7.4 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         2        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 116B: 165B |     42.2% |         3 |  1 (256KB) |  1 (256KB) |       281 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |       10.0% |       0 (0B) |       55.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 9
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -542,37 +769,65 @@ Blob files:
 # iterator.
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     6  4.5KB     0B       0 |    - 0.50 0.50 |  211B |     3  2.2KB |     0     0B |    12  9.6KB |    0B |   2 52.5 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     9  7.4KB     0B       0 |    - 0.00 0.00 | 7.4KB |     0     0B |     0     0B |     9  7.4KB | 7.4KB |   1 1.00 |  644B      0B
-total |    15   12KB     0B       0 |    -    -    - | 2.4KB |     3  2.2KB |     0     0B |    21   19KB | 7.4KB |   3 8.45 |  644B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 176B  written: 211B (20% overhead)
-Flushes: 8
-Compactions: 2  estimated debt: 12KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 12KB
-Compression types: snappy: 15
-Table stats: all loaded
-Block cache: 6 entries (2.3KB)  hit rate: 7.3%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 55.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 2  as flushable: 2 (2.2KB in 3 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    4.5 KiB |      6 4.5 K |      0     0 |    0 B    0 B |  211 B |      3 2.2 K |   2 52.55
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total      8 KiB |      9 7.4 K |      0     0 |  644 B    0 B | 7.4 Ki |      0   0 B |   1  1.00
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0   0 B |   0 B   0 B   0 B |    0 B 644 B |     12 9.6 Ki 1.3 KiB
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 7.4 Ki 644 B |      9 7.4 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         2        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 176B: 211B |     19.9% |         8 |  1 (1.0MB) |  1 (1.0MB) |       387 |   2 (2.2KB)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+   6 (2.3KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+             12KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 15
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -627,37 +882,65 @@ Blob files:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |    13  9.6KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   15KB |    0B |   2 59.1 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     9  7.4KB     0B       0 |    - 0.00 0.00 | 7.4KB |     0     0B |     0     0B |     9  7.4KB | 7.4KB |   1 1.00 |  644B      0B
-total |    22   17KB     0B       0 |    -    -    - | 2.5KB |     3  2.2KB |     0     0B |    28   25KB | 7.4KB |   3 10.3 |  644B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
-Flushes: 9
-Compactions: 2  estimated debt: 18KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 17KB
-Compression types: snappy: 22
-Table stats: all loaded
-Block cache: 6 entries (2.3KB)  hit rate: 7.3%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 55.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 2  as flushable: 2 (2.2KB in 3 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    9.6 KiB |     13 9.6 K |      0     0 |    0 B    0 B |  277 B |      3 2.2 K |   2 59.13
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total      8 KiB |      9 7.4 K |      0     0 |  644 B    0 B | 7.4 Ki |      0   0 B |   1  1.00
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0   0 B |   0 B   0 B   0 B |    0 B 644 B |     19 15 KiB 1.3 KiB
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 7.4 Ki 644 B |      9 7.4 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         2        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 223B: 277B |     24.2% |         9 |  1 (1.0MB) |  1 (1.0MB) |       500 |   2 (2.2KB)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+   6 (2.3KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+             18KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 22
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -724,37 +1007,65 @@ virtual-size
 
 metrics zero-cache-hits-misses
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |    11  8.1KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   15KB |    0B |   2 59.1 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |    10  8.1KB     0B       0 |    - 0.00 0.00 | 7.4KB |     1   763B |     0     0B |     9  7.4KB | 7.4KB |   1 1.00 |  644B      0B
-total |    21   16KB     0B       0 |    -    -    - | 3.3KB |     4  3.0KB |     0     0B |    28   25KB | 7.4KB |   3 8.18 |  644B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
-Flushes: 9
-Compactions: 2  estimated debt: 17KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 2  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 16KB
-Compression types: snappy: 21
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 3  as flushable: 2 (2.2KB in 3 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    8.1 KiB |     11 8.1 K |      0     0 |    0 B    0 B |  277 B |      3 2.2 K |   2 59.13
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    8.7 KiB |     10 8.1 K |      0     0 |  644 B    0 B | 7.4 Ki |      1 763 B |   1  1.00
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0   0 B |   0 B   0 B   0 B |    0 B 644 B |     19 15 KiB 1.3 KiB
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 7.4 Ki 644 B |      9 7.4 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         2        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 223B: 277B |     24.2% |         9 |  1 (1.0MB) |  1 (1.0MB) |       500 |   2 (2.2KB)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+             17KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 21
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -865,37 +1176,65 @@ virtual-size
 
 metrics zero-cache-hits-misses
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |  277B |     3  2.2KB |     0     0B |    19   15KB |    0B |   0 59.1 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |    18   14KB     0B       0 |    - 0.00 0.00 |  15KB |     2  1.5KB |     0     0B |    16   13KB |  15KB |   1 0.85 |  644B      0B
-total |    18   14KB     0B       0 |    -    -    - | 4.0KB |     5  3.7KB |     0     0B |    35   31KB |  15KB |   1 8.18 |  644B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
-Flushes: 9
-Compactions: 3  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 3  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (1.0MB)  zombie: 1 (1.0MB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 14KB
-Compression types: snappy: 18
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 4  as flushable: 2 (2.2KB in 3 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |  277 B |      3 2.2 K |   0 59.13
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total     15 KiB |     18 14 Ki |      0     0 |  644 B    0 B | 15 KiB |      2 1.5 K |   1  0.85
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B 644 B |     19 15 KiB 1.3 KiB
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 15 KiB 644 B |     16 13 KiB    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         3        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 223B: 277B |     24.2% |         9 |  1 (1.0MB) |  1 (1.0MB) |       500 |   2 (2.2KB)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 18
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:2235 BlockBytesInCache:457 BlockReadDuration:150ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -923,37 +1262,65 @@ L0.0:
 # One local table.
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     3  2.2KB     0B       0 |    - 0.25 0.25 |   38B |     0     0B |     0     0B |     3  2.2KB |    0B |   1 59.7 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-total |     3  2.2KB     0B       0 |    -    -    - |   38B |     0     0B |     0     0B |     3  2.3KB |    0B |   1 60.7 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
-Flushes: 1
-Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 2.2KB
-Compression types: snappy: 3
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    2.2 KiB |      3 2.2 K |      0     0 |    0 B    0 B |   38 B |      0   0 B |   1 59.68
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.25  0.25 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      3 2.2 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   27B: 38B |     40.7% |         1 |  1 (256KB) |  1 (256KB) |        65 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 3
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 
@@ -967,37 +1334,65 @@ L6:
 # Table becomes shared, so local table size becomes 0.
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |   38B |     0     0B |     0     0B |     3  2.2KB |    0B |   0 59.7 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.2KB     0B       0 |    - 0.00 0.00 | 2.2KB |     0     0B |     0     0B |     3  2.2KB | 2.2KB |   1 1.01 |    0B      0B
-total |     3  2.2KB     0B       0 |    -    -    - |   38B |     0     0B |     0     0B |     6  4.5KB | 2.2KB |   1  121 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
-Flushes: 1
-Compactions: 1  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 0B
-Compression types: snappy: 3
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 50.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |   38 B |      0   0 B |   0 59.68
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.2 KiB |      3 2.2 K |      0     0 |    0 B    0 B | 2.2 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      3 2.2 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 2.2 Ki   0 B |      3 2.2 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   27B: 38B |     40.7% |         1 |  1 (256KB) |  1 (256KB) |        65 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 3
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
 
@@ -1027,37 +1422,65 @@ L6:
 # Ingest is also shared table, so local table size stays 0.
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     1   763B     0B       0 |    - 0.25 0.25 |   38B |     1   763B |     0     0B |     3  2.2KB |    0B |   1 59.7 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.2KB     0B       0 |    - 0.00 0.00 | 2.2KB |     0     0B |     0     0B |     3  2.2KB | 2.2KB |   1 1.01 |    0B      0B
-total |     4  3.0KB     0B       0 |    -    -    - |  801B |     1   763B |     0     0B |     6  5.2KB | 2.2KB |   2 6.69 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 27B  written: 38B (41% overhead)
-Flushes: 1
-Compactions: 1  estimated debt: 3.0KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 0B
-Compression types: snappy: 4
-Table stats: all loaded
-Block cache: 2 entries (787B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 50.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 1  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      763 B |      1 763 B |      0     0 |    0 B    0 B |   38 B |      1 763 B |   1 59.68
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.2 KiB |      3 2.2 K |      0     0 |    0 B    0 B | 2.2 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.25  0.25 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      3 2.2 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 2.2 Ki   0 B |      3 2.2 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   27B: 38B |     40.7% |         1 |  1 (256KB) |  1 (256KB) |        65 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (787B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            3.0KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 4
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
 
@@ -1079,37 +1502,65 @@ L6:
 # Local table size increases due to flush.
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     2  1.5KB     0B       0 |    - 0.50 0.50 |   74B |     1   763B |     0     0B |     4  3.0KB |    0B |   2 40.9 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.2KB     0B       0 |    - 0.00 0.00 | 2.2KB |     0     0B |     0     0B |     3  2.2KB | 2.2KB |   1 1.01 |    0B      0B
-total |     5  3.7KB     0B       0 |    -    -    - |  837B |     1   763B |     0     0B |     7  6.0KB | 2.2KB |   3 7.35 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 44B  written: 74B (68% overhead)
-Flushes: 2
-Compactions: 1  estimated debt: 3.7KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 756B
-Compression types: snappy: 5
-Table stats: all loaded
-Block cache: 2 entries (787B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 50.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 1  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B |   74 B |      1 763 B |   2 40.86
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.2 KiB |      3 2.2 K |      0     0 |    0 B    0 B | 2.2 Ki |      0   0 B |   1  1.01
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      4  3 KiB    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 2.2 Ki   0 B |      3 2.2 Ki    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   44B: 74B |     68.2% |         2 |  1 (256KB) |  1 (256KB) |       118 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (787B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            3.7KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 5
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
 
@@ -1120,37 +1571,65 @@ init reopen
 
 metrics zero-cache-hits-misses
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     2  1.5KB     0B       0 |    - 0.50 0.50 |    0B |     0     0B |     0     0B |     0     0B |    0B |   2    0 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.2KB     0B       0 |    - 0.00 0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1    0 |    0B      0B
-total |     5  3.7KB     0B       0 |    -    -    - |    0B |     0     0B |     0     0B |     0     0B |    0B |   3    0 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
-Flushes: 1
-Compactions: 0  estimated debt: 3.7KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (512KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 756B
-Compression types: snappy: 5
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B |    0 B |      0   0 B |   2     0
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.2 KiB |      3 2.2 K |      0     0 |    0 B    0 B |    0 B |      0   0 B |   1     0
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |     0B: 0B |      0.0% |         1 |  1 (512KB) |  1 (256KB) |         0 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            3.7KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 5
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 
@@ -1164,37 +1643,65 @@ L6:
 # All tables are local after compaction.
 metrics zero-cache-hits-misses
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.2KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     1   763B | 2.2KB |   1 0.50 |    0B      0B
-total |     3  2.2KB     0B       0 |    -    -    - |    0B |     0     0B |     0     0B |     1   763B | 2.2KB |   1    0 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
-Flushes: 1
-Compactions: 1  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (512KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 763B
-Compression types: snappy: 3
-Table stats: all loaded
-Block cache: 0 entries (0B)  hit rate: 0.0%
-File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.2 KiB |      3 2.2 K |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  0.50
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B | 2.2 Ki   0 B |      1  763 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         1        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |     0B: 0B |      0.0% |         1 |  1 (512KB) |  1 (256KB) |         0 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 3
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:342 BlockBytesInCache:0 BlockReadDuration:30ms}
 
@@ -1246,38 +1753,65 @@ L6:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     2  1.5KB     0B       0 |    - 0.25 0.25 |  106B |     0     0B |     0     0B |     5  3.7KB |    0B |   1 36.2 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.3KB     0B       0 |    - 0.00 0.00 |    0B |     0     0B |     3  2.3KB |     0     0B |    0B |   1    0 |    0B      0B
-total |     5  3.7KB     0B       0 |    -    -    - |  106B |     0     0B |     3  2.3KB |     5  3.9KB |    0B |   2 37.2 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 57B  written: 106B (86% overhead)
-Flushes: 3
-Compactions: 3  estimated debt: 3.7KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 3  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 3.7KB
-Compression types: snappy: 5
-Garbage: point-deletions 502B range-deletions 1.5KB
-Table stats: all loaded
-Block cache: 2 entries (774B)  hit rate: 0.0%
-File cache: 2 tables, 0 blobfiles (560B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B |  106 B |      0   0 B |   1 36.22
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.3 KiB |      3 2.3 K |      0     0 |    0 B    0 B |    0 B |      0   0 B |   1     0
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.25  0.25 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      5 3.7 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      3 2.3 K |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        3        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |  57B: 106B |     86.0% |         3 |  1 (256KB) |  1 (256KB) |       163 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (774B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            3.7KB |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                3 |                        0 |            502B |           1.5KB
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 5
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 
@@ -1288,37 +1822,64 @@ L6 [u, v]
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     2  1.5KB     0B       0 |    - 0.25 0.25 |  106B |     0     0B |     0     0B |     5  3.7KB |    0B |   1 36.2 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     3  2.3KB     0B       0 |    - 0.00 0.00 |    0B |     0     0B |     3  2.3KB |     0     0B |    0B |   1    0 |    0B      0B
-total |     5  3.7KB     0B       0 |    -    -    - |  106B |     0     0B |     3  2.3KB |     5  3.9KB |    0B |   2 37.2 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 57B  written: 106B (86% overhead)
-Flushes: 3
-Compactions: 3  estimated debt: 3.7KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 2
-             default: 0  delete: 0  elision: 0  move: 3  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 1 (256KB)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 3.7KB
-Compression types: snappy: 5
-Garbage: point-deletions 502B range-deletions 1.5KB
-Table stats: all loaded
-Block cache: 2 entries (774B)  hit rate: 0.0%
-File cache: 2 tables, 0 blobfiles (560B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B |  106 B |      0   0 B |   1 36.22
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total    2.3 KiB |      3 2.3 K |      0     0 |    0 B    0 B |    0 B |      0   0 B |   1     0
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.25  0.25 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      5 3.7 Ki    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      3 2.3 K |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        3        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |  57B: 106B |     86.0% |         3 |  1 (256KB) |  1 (256KB) |       163 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+    2 (774B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY               block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            3.7KB |            0 (0B) |            0 (0B) |                 0 |                2!!
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                3 |                        0 |            502B |           1.5KB
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 5
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}

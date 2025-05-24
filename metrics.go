@@ -7,9 +7,13 @@ package pebble
 import (
 	"fmt"
 	"math"
+	"slices"
+	"strings"
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/pebble/internal/ascii"
+	"github.com/cockroachdb/pebble/internal/ascii/table"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -23,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/exp/constraints"
 )
 
 // CacheMetrics holds metrics for the block and file cache.
@@ -152,6 +157,7 @@ func (m *LevelMetrics) AggregateSize() int64 {
 
 // Add updates the counter metrics for the level.
 func (m *LevelMetrics) Add(u *LevelMetrics) {
+	m.Sublevels += u.Sublevels
 	m.TablesCount += u.TablesCount
 	m.TablesSize += u.TablesSize
 	m.VirtualTablesCount += u.VirtualTablesCount
@@ -567,7 +573,6 @@ func (m *Metrics) Total() LevelMetrics {
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
 		total.Add(l)
-		total.Sublevels += l.Sublevels
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
 	total.TableBytesIn = m.WAL.BytesWritten + total.TableBytesIngested
@@ -598,121 +603,299 @@ func (m *Metrics) RemoteTablesTotal() (count uint64, size uint64) {
 	return remoteCount, remoteSize
 }
 
-// String pretty-prints the metrics as below (semi-adjusted visually to avoid
-// the crlfmt from auto-reformatting):
-//
-//	      |                             |                |       |   ingested   |     moved    |  written  |       |   amp   |    val sep   |     multilevel
-//	level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size |tables size|  read |  r   w  | refsz  valblk|   top   in  read
-//	------+-----------------------------+----------------+-------+--------------+--------------+-----------+-------+---------+--------------+------------------
-//	    0 |   101   102B     0B     101 | 1.10 2.10 0.30 |  104B |   112   104B |   113   106B | 221   217B|  107B |  1 2.09 | 114B       0B|  104B  104B  104B
-//	    1 |   201   202B     0B     201 | 1.20 2.20 0.60 |  204B |   212   204B |   213   206B | 421   417B|  207B |  2 2.04 | 214B       0B|  204B  204B  204B
-//	    2 |   301   302B     0B     301 | 1.30 2.30 0.90 |  304B |   312   304B |   313   306B | 621   617B|  307B |  3 2.03 | 314B       0B|  304B  304B  304B
-//	    3 |   401   402B     0B     401 | 1.40 2.40 1.20 |  404B |   412   404B |   413   406B | 821   817B|  407B |  4 2.02 | 414B       0B|  404B  404B  404B
-//	    4 |   501   502B     0B     501 | 1.50 2.50 1.50 |  504B |   512   504B |   513   506B |1.0K  1017B|  507B |  5 2.02 | 514B       0B|  504B  504B  504B
-//	    5 |   601   602B     0B     601 | 1.60 2.60 1.80 |  604B |   612   604B |   613   606B |1.2K  1.2KB|  607B |  6 2.01 | 614B       0B|  604B  604B  604B
-//	    6 |   701   702B     0B     701 |    - 2.70 2.10 |  704B |   712   704B |   713   706B |1.4K  1.4KB|  707B |  7 2.01 | 714B       0B|  704B  704B  704B
-//	total |  2.8K  2.7KB     0B    2.8K |    -    -    - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |5.7K  8.4KB| 2.8KB | 28 3.00 |2.8KB       0B| 2.8KB 2.8KB 2.8KB
-//
-//	WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
-//	Flushes: 8
-//	Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
-//	             default: 27  delete: 28  elision: 29  move: 30  read: 31  tombstone-density: 16  rewrite: 32  copy: 33  multi-level: 34
-//	MemTables: 12 (11B)  zombie: 14 (13B)
-//	Zombie tables: 16 (15B, local: 30B)
-//	Backing tables: 1 (2.0MB)
-//	Virtual tables: 2807 (2.8KB)
-//	Local tables size: 28B
-//	Compression types:
-//	Table stats: 31
-//	Block cache: 2 entries (1B)  hit rate: 42.9%
-//	Table cache: 18 entries (17B)  hit rate: 48.7%
-//	Range key sets: 123  Tombstones: 456  Total missized tombstones encountered: 789
-//	Snapshots: 4  earliest seq num: 1024
-//	Table iters: 21
-//	Filter utility: 47.4%
-//	Ingestions: 27  as flushable: 36 (34B in 35 tables)
-//	Cgo memory usage: 15KB  block cache: 9.0KB (data: 4.0KB, maps: 2.0KB, entries: 3.0KB)  memtables: 5.0KB
-//
-//nolint:lll
-func (m *Metrics) String() string {
-	return redact.StringWithoutMarkers(m)
-}
-
-var _ redact.SafeFormatter = &Metrics{}
+// Assert that Metrics implements redact.SafeFormatter.
+var _ redact.SafeFormatter = (*Metrics)(nil)
 
 // SafeFormat implements redact.SafeFormatter.
 func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
-	// NB: Pebble does not make any assumptions as to which Go primitive types
-	// have been registered as safe with redact.RegisterSafeType and does not
-	// register any types itself. Some of the calls to `redact.Safe`, etc are
-	// superfluous in the context of CockroachDB, which registers all the Go
-	// numeric types as safe.
+	w.SafeString(redact.SafeString(m.String()))
+}
 
-	multiExists := m.Compact.MultiLevelCount > 0
-	appendIfMulti := func(line redact.SafeString) {
-		if multiExists {
-			w.SafeString(line)
-		}
-	}
-	newline := func() {
-		w.SafeString("\n")
-	}
+var (
+	levelMetricsTableTopHeader = `LSM                             |    vtables   |   value sep   |        |   ingested   |    amp`
+	levelMetricsTable          = table.Define[*LevelMetrics](
+		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
+		table.Bytes("size", 11, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
+		table.Div(),
+		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesSize }),
+		table.Div(),
+		table.Count("count", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesCount }),
+		table.Literal[*LevelMetrics](" "),
+		table.Count("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesSize }),
+		table.Div(),
+		table.Bytes("refsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.EstimatedReferencesSize }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("valblk", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Additional.ValueBlocksSize }),
+		table.Div(),
+		table.Bytes("in", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIn }),
+		table.Div(),
+		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIngested }),
+		table.Div(),
+		table.Int("r", 3, table.AlignRight, func(m *LevelMetrics) int { return int(m.Sublevels) }),
+		table.Literal[*LevelMetrics](" "),
+		table.Float("w", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.WriteAmp() }),
+	)
+	levelMetricsTableBottomDivider       = strings.Repeat("-", levelMetricsTable.CumulativeFieldWidth)
+	levelCompactionMetricsTableTopHeader = `COMPACTIONS               |     moved    |     multilevel    |     read     |       written`
+	compactionLevelMetricsTable          = table.Define[*LevelMetrics](
+		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
+		table.Div(),
+		table.Float("score", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.Score }),
+		table.Literal[*LevelMetrics](" "),
+		table.Float("ff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.FillFactor }),
+		table.Literal[*LevelMetrics](" "),
+		table.Float("cff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.CompensatedFillFactor }),
+		table.Div(),
+		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesMoved }),
+		table.Div(),
+		table.Bytes("top", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesInTop }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("in", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesIn }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("read", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesRead }),
+		table.Div(),
+		table.Bytes("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesRead }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("blob", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesReadEstimate }),
+		table.Div(),
+		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed + m.TablesCompacted }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
+		table.Literal[*LevelMetrics](" "),
+		table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
+	)
+	compactionKindTable = table.Define[pair[string, int64]](
+		table.String("kind", 9, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
+		table.Count("count", 9, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
+	)
+	commitPipelineInfoTableTopHeader = `COMMIT PIPELINE`
+	commitPipelineInfoTableSubHeader = `               wals                |              memtables              |       ingestions`
+	commitPipelineInfoTable          = table.Define[commitPipelineInfo](
+		table.String("files", 9, table.AlignRight, func(i commitPipelineInfo) string { return i.files }),
+		table.Div(),
+		table.String("written", 10, table.AlignRight, func(i commitPipelineInfo) string { return i.written }),
+		table.Div(),
+		table.String("overhead", 9, table.AlignRight, func(i commitPipelineInfo) string { return i.overhead }),
+		table.Div(),
+		table.String("flushes", 9, table.AlignRight, func(i commitPipelineInfo) string { return i.flushes }),
+		table.Div(),
+		table.String("live", 10, table.AlignRight, func(i commitPipelineInfo) string { return i.live }),
+		table.Div(),
+		table.String("zombie", 10, table.AlignRight, func(i commitPipelineInfo) string { return i.zombie }),
+		table.Div(),
+		table.String("total", 9, table.AlignRight, func(i commitPipelineInfo) string { return i.total }),
+		table.Div(),
+		table.String("flushable", 11, table.AlignRight, func(i commitPipelineInfo) string { return i.flushable }),
+	)
+	iteratorInfoTableTopHeader = `ITERATORS`
+	iteratorInfoTableSubHeader = `        block cache        |         file cache         |    filter    |  sst iters  |  snapshots`
+	iteratorInfoTable          = table.Define[iteratorInfo](
+		table.String("entries", 12, table.AlignRight, func(i iteratorInfo) string { return i.bcEntries }),
+		table.Div(),
+		table.String("hit rate", 11, table.AlignRight, func(i iteratorInfo) string { return i.bcHitRate }),
+		table.Div(),
+		table.String("entries", 12, table.AlignRight, func(i iteratorInfo) string { return i.fcEntries }),
+		table.Div(),
+		table.String("hit rate", 11, table.AlignRight, func(i iteratorInfo) string { return i.fcHitRate }),
+		table.Div(),
+		table.String("util", 12, table.AlignRight, func(i iteratorInfo) string { return i.bloomFilterUtil }),
+		table.Div(),
+		table.String("open", 11, table.AlignRight, func(i iteratorInfo) string { return i.sstableItersOpen }),
+		table.Div(),
+		table.String("open", 11, table.AlignRight, func(i iteratorInfo) string { return i.snapshotsOpen }),
+	)
+	fileInfoTableHeader = `FILES                 tables                      |     blob files     |        blob values`
+	fileInfoTable       = table.Define[tableAndBlobInfo](
+		table.String("stats prog", 13, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.stats }),
+		table.Div(),
+		table.String("backing", 9, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.backing }),
+		table.Div(),
+		table.String("zombie", 9, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.zombie }),
+		table.Div(),
+		table.String("loc zomb", 9, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.localZombie }),
+		table.Div(),
+		table.String("live", 7, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.live }),
+		table.Div(),
+		table.String("zombie", 8, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.zombie }),
+		table.Div(),
+		table.String("total", 6, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.total }),
+		table.Div(),
+		table.String("refed", 6, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.referenced }),
+		table.Div(),
+		table.String("refed %", 7, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.referencedPercent }),
+	)
+	cgoMemInfoTableHeader = `CGO MEMORY               block cache           |                     memtables`
+	cgoMemInfoTable       = table.Define[cgoMemInfo](
+		table.String("tot", 13, table.AlignRight, func(i cgoMemInfo) string { return i.tot }),
+		table.Div(),
+		table.String("tot", 13, table.AlignRight, func(i cgoMemInfo) string { return i.bcTot }),
+		table.Div(),
+		table.String("data", 14, table.AlignRight, func(i cgoMemInfo) string { return i.bcData }),
+		table.Div(),
+		table.String("maps", 15, table.AlignRight, func(i cgoMemInfo) string { return i.bcMaps }),
+		table.Div(),
+		table.String("ents", 15, table.AlignRight, func(i cgoMemInfo) string { return i.bcEnts }),
+		table.Div(),
+		table.String("tot", 13, table.AlignRight, func(i cgoMemInfo) string { return i.memtablesTot }),
+	)
+	compactionInfoTableTopHeader = `COMPACTIONS`
+	compactionInfoTable          = table.Define[compactionMetricsInfo](
+		table.String("estimated debt", 17, table.AlignRight, func(i compactionMetricsInfo) string { return i.estimatedDebt }),
+		table.Div(),
+		table.String("in progress", 17, table.AlignRight, func(i compactionMetricsInfo) string { return i.inProgress }),
+		table.Div(),
+		table.String("cancelled", 17, table.AlignRight, func(i compactionMetricsInfo) string { return i.cancelled }),
+		table.Div(),
+		table.String("failed", 17, table.AlignRight, func(i compactionMetricsInfo) string { return fmt.Sprint(i.failed) }),
+		table.Div(),
+		table.String("problem spans", 18, table.AlignRight, func(i compactionMetricsInfo) string { return i.problemSpans }),
+	)
+	keysInfoTableTopHeader = `KEYS`
+	keysInfoTable          = table.Define[keysInfo](
+		table.String("range keys", 16, table.AlignRight, func(i keysInfo) string { return i.rangeKeys }),
+		table.Div(),
+		table.String("tombstones", 16, table.AlignRight, func(i keysInfo) string { return i.tombstones }),
+		table.Div(),
+		table.String("missized tombstones", 24, table.AlignRight, func(i keysInfo) string { return i.missizedTombstones }),
+		table.Div(),
+		table.String("point dels", 15, table.AlignRight, func(i keysInfo) string { return i.pointDels }),
+		table.Div(),
+		table.String("range dels", 15, table.AlignRight, func(i keysInfo) string { return i.rangeDels }),
+	)
+)
 
-	w.SafeString("      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep")
-	appendIfMulti("    |     multilevel")
-	newline()
-	w.SafeString("level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk")
-	appendIfMulti(" |   top   in  read")
-	newline()
-	w.SafeString("------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------")
-	appendIfMulti("-+------------------")
-	newline()
+type commitPipelineInfo struct {
+	files     string
+	written   string
+	overhead  string
+	flushes   string
+	live      string
+	zombie    string
+	total     string
+	flushable string
+}
 
-	// formatRow prints out a row of the table.
-	formatRow := func(m *LevelMetrics) {
-		score := m.Score
-		if score == 0 {
-			// Format a zero level score as a dash.
-			score = math.NaN()
-		}
-		w.Printf("| %5s %6s %6s %7s | %4s %4s %4s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s | %5s %7s",
-			humanize.Count.Int64(m.TablesCount),
-			humanize.Bytes.Int64(m.TablesSize),
-			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
-			humanize.Count.Uint64(m.VirtualTablesCount),
-			humanizeFloat(score, 4),
-			humanizeFloat(m.FillFactor, 4),
-			humanizeFloat(m.CompensatedFillFactor, 4),
-			humanize.Bytes.Uint64(m.TableBytesIn),
-			humanize.Count.Uint64(m.TablesIngested),
-			humanize.Bytes.Uint64(m.TableBytesIngested),
-			humanize.Count.Uint64(m.TablesMoved),
-			humanize.Bytes.Uint64(m.TableBytesMoved),
-			humanize.Count.Uint64(m.TablesFlushed+m.TablesCompacted),
-			humanize.Bytes.Uint64(m.TableBytesFlushed+m.TableBytesCompacted),
-			humanize.Bytes.Uint64(m.TableBytesRead),
-			redact.Safe(m.Sublevels),
-			humanizeFloat(m.WriteAmp(), 4),
-			humanize.Bytes.Uint64(m.EstimatedReferencesSize),
-			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
-		)
+type iteratorInfo struct {
+	bcEntries        string
+	bcHitRate        string
+	fcEntries        string
+	fcHitRate        string
+	bloomFilterUtil  string
+	sstableItersOpen string
+	snapshotsOpen    string
+}
+type tableInfo struct {
+	stats       string
+	backing     string
+	zombie      string
+	localZombie string
+}
 
-		if multiExists {
-			w.Printf(" | %5s %5s %5s",
-				humanize.Bytes.Uint64(m.MultiLevel.TableBytesInTop),
-				humanize.Bytes.Uint64(m.MultiLevel.TableBytesIn),
-				humanize.Bytes.Uint64(m.MultiLevel.TableBytesRead))
-		}
-		newline()
-	}
+type blobInfo struct {
+	live              string
+	zombie            string
+	total             string
+	referenced        string
+	referencedPercent string
+}
 
+type tableAndBlobInfo struct {
+	tableInfo tableInfo
+	blobInfo  blobInfo
+}
+
+type cgoMemInfo struct {
+	tot          string
+	bcTot        string
+	bcData       string
+	bcMaps       string
+	bcEnts       string
+	memtablesTot string
+}
+
+type compactionMetricsInfo struct {
+	estimatedDebt string
+	inProgress    string
+	cancelled     string
+	failed        int64
+	problemSpans  string
+}
+
+type keysInfo struct {
+	rangeKeys          string
+	tombstones         string
+	missizedTombstones string
+	pointDels          string
+	rangeDels          string
+}
+
+type pair[k, v any] struct {
+	k k
+	v v
+}
+
+// String pretty-prints the metrics as below:
+//
+//	LSM   |                        |    virtual   |   value sep   |        |   ingested   |    amp
+//	level | aggsize | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+//	------+---------+--------------+--------------+---------------+--------+--------------+----------
+//	    0 |    216B |    101  102B |    101   103 |   114B   114B |   104B |    112  104B |   1  1.52
+//	    1 |    416B |    201  202B |    201   203 |   214B   214B |   204B |    212  204B |   2  1.51
+//	    2 |    616B |    301  302B |    301   303 |   314B   314B |   304B |    312  304B |   3  1.51
+//	    3 |    816B |    401  402B |    401   403 |   414B   414B |   404B |    412  404B |   4  1.51
+//	    4 |   1016B |    501  502B |    501   503 |   514B   514B |   504B |    512  504B |   5  1.50
+//	    5 |   1.2KB |    601  602B |    601   603 |   614B   614B |   604B |    612  604B |   6  1.50
+//	    6 |   1.4KB |    701  702B |    701   703 |   714B   714B |   704B |    712  704B |   7  1.50
+//	total |   5.6KB |   2.8K 2.7KB |   2.8K  2.8K |  2.8KB  2.8KB |  2.8KB |   2.9K 2.8KB |  28  1.99
+//	-------------------------------------------------------------------------------------------------
+//	COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+//	level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+//	------+-------------------+--------------+-------------------+--------------+---------------------
+//	    0 |  1.10  2.10  0.30 |    113  106B |  104B  104B  104B |   107B  117B |    221   217B   231B
+//	    1 |  1.20  2.20  0.60 |    213  206B |  204B  204B  204B |   207B  217B |    421   417B   431B
+//	    2 |  1.30  2.30  0.90 |    313  306B |  304B  304B  304B |   307B  317B |    621   617B   631B
+//	    3 |  1.40  2.40  1.20 |    413  406B |  404B  404B  404B |   407B  417B |    821   817B   831B
+//	    4 |  1.50  2.50  1.50 |    513  506B |  504B  504B  504B |   507B  517B |   1.0K  1017B  1.0KB
+//	    5 |  1.60  2.60  1.80 |    613  606B |  604B  604B  604B |   607B  617B |   1.2K  1.2KB  1.2KB
+//	    6 |     0  2.70  2.10 |    713  706B |  704B  704B  704B |   707B  717B |   1.4K  1.4KB  1.4KB
+//	total |     -     -     - |   2.9K 2.8KB | 2.8KB 2.8KB 2.8KB |  2.8KB 2.9KB |   5.7K  8.4KB  5.7KB
+//	--------------------------------------------------------------------------------------------------
+//	kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+//	count     |        27       28       29       30       31       16       32       33       34
+//	--------------------------------------------------------------------------------------------------
+//
+// COMMIT PIPELINE           ITERATORS             TABLES                  CGO MEMORY        COMPACTIONS
+// wals                      block cache           stats 31 pending          15KB tot        6B estimated debt
+//
+//	22 files (24B)            2 entries (1B)      backing: 2.0MB (1)      block cache       2 in-progress (7B)
+//	25B  written: 26B         42.9% hit rate      zombie:  15B (16)         9.0KB tot       3 cancelled (3.0KB)
+//	(4.0% overhead)         file cache                     30B local        4.0KB data      5 failed
+//
+// memtables                   18 entries (17B)                              2.0KB maps      2 problem spans !
+//
+//	flushes: 8                48.7% hit rate      BLOB FILES                3.0KB ents
+//	live:    12 (11B)       bloom filter          live:   0 (0B)          memtables         GARBAGE
+//	zombie:  14 (13B)         47.4% util          zombie: 0 (0B)            5.0KB tot       1.0KB point dels
+//
+// ingestions                sstable iters         values                                    2.0KB range dels
+//
+//	total: 27                 21 open               0B total              KEYS
+//	as flushable: 36 (34B)  snapshots               0B referenced         range keys        COMPRESSION
+//	                          4 open                0% referenced           123 sets          minlz:  32
+//	                                                                      tombstones          snappy: 33
+//	                                                                        456 total         zstd:   34
+//	                                                                        789 missized !    none:   35
+func (m *Metrics) String() string {
+	wb := ascii.Make(92, levelMetricsTable.CumulativeFieldWidth)
 	var total LevelMetrics
-	for level := 0; level < numLevels; level++ {
-		l := &m.Levels[level]
-		w.Printf("%5d ", redact.Safe(level))
-		formatRow(l)
-		total.Add(l)
-		total.Sublevels += l.Sublevels
+	for l := range numLevels {
+		total.Add(&m.Levels[l])
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
 	total.TableBytesIn = m.WAL.BytesWritten + total.TableBytesIngested
@@ -723,142 +906,127 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	total.Score = math.NaN()
 	total.FillFactor = math.NaN()
 	total.CompensatedFillFactor = math.NaN()
-	w.SafeString("total ")
-	formatRow(&total)
 
-	w.SafeString("--------------------------------------------------------------------------------------------------------------------------------------------")
-	appendIfMulti("--------------------")
-	newline()
-	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)",
-		redact.Safe(m.WAL.Files),
-		humanize.Bytes.Uint64(m.WAL.Size),
-		humanize.Bytes.Uint64(m.WAL.BytesIn),
-		humanize.Bytes.Uint64(m.WAL.BytesWritten),
-		redact.Safe(percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))))
-	failoverStats := m.WAL.Failover
-	failoverStats.FailoverWriteAndSyncLatency = nil
-	if failoverStats == (wal.FailoverStats{}) {
-		w.Printf("\n")
-	} else {
-		w.Printf(" failover: (switches: %d, primary: %s, secondary: %s)\n", m.WAL.Failover.DirSwitchCount,
-			m.WAL.Failover.PrimaryWriteDuration.String(), m.WAL.Failover.SecondaryWriteDuration.String())
+	// LSM level metrics.
+	cur := wb.At(0, 0)
+	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
+	levelIter := func(yield func(*LevelMetrics) bool) {
+		for i := range m.Levels {
+			if !yield(&m.Levels[i]) {
+				break
+			}
+		}
 	}
+	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
+	cur.Offset(-1, 0).WriteString("total")
+	cur = cur.WriteString(levelMetricsTableBottomDivider).NewlineReturn()
 
-	w.Printf("Flushes: %d\n", redact.Safe(m.Flush.Count))
+	// Compaction level metrics.
+	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
+	compactionLevelIter := func(yield func(*LevelMetrics) bool) {
+		for i := range m.Levels {
+			if !yield(&m.Levels[i]) {
+				break
+			}
+		}
+	}
+	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
+	cur.Offset(-1, 0).WriteString("total")
 
-	w.Printf("Compactions: %d  estimated debt: %s  in progress: %d (%s)  canceled: %d (%s)  failed: %d  problem spans: %d\n",
-		redact.Safe(m.Compact.Count),
-		humanize.Bytes.Uint64(m.Compact.EstimatedDebt),
-		redact.Safe(m.Compact.NumInProgress),
-		humanize.Bytes.Int64(m.Compact.InProgressBytes),
-		redact.Safe(m.Compact.CancelledCount),
-		humanize.Bytes.Int64(m.Compact.CancelledBytes),
-		redact.Safe(m.Compact.FailedCount),
-		redact.Safe(m.Compact.NumProblemSpans),
-	)
+	renderTableWithDivider := func(
+		cur ascii.Cursor, renderFunc func(ascii.Cursor) ascii.Cursor, dividerLen int, dr int,
+	) ascii.Cursor {
+		startCur := cur.NewlineReturn()
+		cur = renderFunc(startCur)
+		startCur.Offset(dr, 0).RepeatByte(dividerLen, '-')
+		cur = cur.NewlineReturn()
+		return cur
+	}
+	compactionKindContents := []pair[string, int64]{
+		{k: "default", v: m.Compact.DefaultCount},
+		{k: "delete", v: m.Compact.DeleteOnlyCount},
+		{k: "elision", v: m.Compact.ElisionOnlyCount},
+		{k: "move", v: m.Compact.MoveCount},
+		{k: "read", v: m.Compact.ReadCount},
+		{k: "tomb", v: m.Compact.TombstoneDensityCount},
+		{k: "rewrite", v: m.Compact.RewriteCount},
+		{k: "copy", v: m.Compact.CopyCount},
+		{k: "multi", v: m.Compact.MultiLevelCount},
+	}
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return compactionKindTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compactionKindContents))
+	}, max(compactionLevelMetricsTable.CumulativeFieldWidth, cur.Column()), -1)
 
-	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  tombstone-density: %d  rewrite: %d  copy: %d  multi-level: %d  blob-file-rewrite:  %d\n",
-		redact.Safe(m.Compact.DefaultCount),
-		redact.Safe(m.Compact.DeleteOnlyCount),
-		redact.Safe(m.Compact.ElisionOnlyCount),
-		redact.Safe(m.Compact.MoveCount),
-		redact.Safe(m.Compact.ReadCount),
-		redact.Safe(m.Compact.TombstoneDensityCount),
-		redact.Safe(m.Compact.RewriteCount),
-		redact.Safe(m.Compact.CopyCount),
-		redact.Safe(m.Compact.MultiLevelCount),
-		redact.Safe(m.Compact.BlobFileRewriteCount),
-	)
+	commitPipelineInfoContents := commitPipelineInfo{
+		// wals.
+		files:    fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.WAL.Files), humanize.Bytes.Uint64(m.WAL.Size)),
+		written:  fmt.Sprintf("%s: %s", humanize.Bytes.Uint64(m.WAL.BytesIn), humanize.Bytes.Uint64(m.WAL.BytesWritten)),
+		overhead: fmt.Sprintf("%.1f%%", percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))),
+		// memtables.
+		flushes: humanize.Count.Int64(m.Flush.Count).String(),
+		live:    fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.MemTable.Count), humanize.Bytes.Uint64(m.MemTable.Size)),
+		zombie:  fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.MemTable.ZombieCount), humanize.Bytes.Uint64(m.MemTable.ZombieSize)),
+		// ingestions.
+		total:     humanize.Count.Uint64(m.WAL.BytesIn + m.WAL.BytesWritten).String(),
+		flushable: fmt.Sprintf("%s (%s)", humanize.Count.Uint64(m.Flush.AsIngestCount), humanize.Bytes.Uint64(m.Flush.AsIngestBytes)),
+	}
+	commitPipelineInfoIter := func(yield func(commitPipelineInfo) bool) {
+		yield(commitPipelineInfoContents)
+	}
+	cur = cur.WriteString(commitPipelineInfoTableTopHeader).NewlineReturn()
+	cur = cur.WriteString(commitPipelineInfoTableSubHeader)
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return commitPipelineInfoTable.Render(cur, table.RenderOptions{}, commitPipelineInfoIter)
+	}, max(commitPipelineInfoTable.CumulativeFieldWidth, cur.Column()), -3)
 
-	w.Printf("MemTables: %d (%s)  zombie: %d (%s)\n",
-		redact.Safe(m.MemTable.Count),
-		humanize.Bytes.Uint64(m.MemTable.Size),
-		redact.Safe(m.MemTable.ZombieCount),
-		humanize.Bytes.Uint64(m.MemTable.ZombieSize))
+	iteratorInfoContents := iteratorInfo{
+		bcEntries:        fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.BlockCache.Count), humanize.Bytes.Int64(m.BlockCache.Size)),
+		bcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.BlockCache.Hits, m.BlockCache.Misses)),
+		fcEntries:        fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.FileCache.TableCount), humanize.Bytes.Int64(m.FileCache.Size)),
+		fcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.FileCache.Hits, m.FileCache.Misses)),
+		bloomFilterUtil:  fmt.Sprintf("%.1f%%", hitRate(m.Filter.Hits, m.Filter.Misses)),
+		sstableItersOpen: humanize.Count.Int64(m.TableIters).String(),
+		snapshotsOpen:    humanize.Count.Uint64(uint64(m.Snapshots.Count)).String(),
+	}
+	iteratorInfoIter := func(yield func(iteratorInfo) bool) {
+		yield(iteratorInfoContents)
+	}
+	cur = cur.WriteString(iteratorInfoTableTopHeader).NewlineReturn()
+	cur = cur.WriteString(iteratorInfoTableSubHeader)
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return iteratorInfoTable.Render(cur, table.RenderOptions{}, iteratorInfoIter)
+	}, max(iteratorInfoTable.CumulativeFieldWidth, cur.Column()), -3)
 
-	w.Printf("Zombie tables: %d (%s, local: %s)\n",
-		redact.Safe(m.Table.ZombieCount),
-		humanize.Bytes.Uint64(m.Table.ZombieSize),
-		humanize.Bytes.Uint64(m.Table.Local.ZombieSize))
-
-	w.Printf("Backing tables: %d (%s)\n",
-		redact.Safe(m.Table.BackingTableCount),
-		humanize.Bytes.Uint64(m.Table.BackingTableSize))
-	w.Printf("Virtual tables: %d (%s)\n",
-		redact.Safe(m.NumVirtual()),
-		humanize.Bytes.Uint64(m.VirtualSize()))
-	w.Printf("Local tables size: %s\n", humanize.Bytes.Uint64(m.Table.Local.LiveSize))
-	w.SafeString("Compression types:")
-	if count := m.Table.CompressedCountSnappy; count > 0 {
-		w.Printf(" snappy: %d", redact.Safe(count))
-	}
-	if count := m.Table.CompressedCountZstd; count > 0 {
-		w.Printf(" zstd: %d", redact.Safe(count))
-	}
-	if count := m.Table.CompressedCountMinLZ; count > 0 {
-		w.Printf(" minlz: %d", redact.Safe(count))
-	}
-	if count := m.Table.CompressedCountNone; count > 0 {
-		w.Printf(" none: %d", redact.Safe(count))
-	}
-	if count := m.Table.CompressedCountUnknown; count > 0 {
-		w.Printf(" unknown: %d", redact.Safe(count))
-	}
-	w.Printf("\n")
-	if m.Table.Garbage.PointDeletionsBytesEstimate > 0 || m.Table.Garbage.RangeDeletionsBytesEstimate > 0 {
-		w.Printf("Garbage: point-deletions %s range-deletions %s\n",
-			humanize.Bytes.Uint64(m.Table.Garbage.PointDeletionsBytesEstimate),
-			humanize.Bytes.Uint64(m.Table.Garbage.RangeDeletionsBytesEstimate))
-	}
-	w.Printf("Table stats: ")
+	status := fmt.Sprintf("%s pending", humanize.Count.Int64(m.Table.PendingStatsCollectionCount))
 	if !m.Table.InitialStatsCollectionComplete {
-		w.Printf("initial load in progress")
+		status = "loading"
 	} else if m.Table.PendingStatsCollectionCount == 0 {
-		w.Printf("all loaded")
-	} else {
-		w.Printf("%s", humanize.Count.Int64(m.Table.PendingStatsCollectionCount))
+		status = "all loaded"
 	}
-	w.Printf("\n")
-
-	w.Printf("Block cache: %s entries (%s)  hit rate: %.1f%%\n",
-		humanize.Count.Int64(m.BlockCache.Count),
-		humanize.Bytes.Int64(m.BlockCache.Size),
-		redact.Safe(hitRate(m.BlockCache.Hits, m.BlockCache.Misses)))
-
-	w.Printf("File cache: %s tables, %s blobfiles (%s)  hit rate: %.1f%%\n",
-		humanize.Count.Int64(m.FileCache.TableCount),
-		humanize.Count.Int64(m.FileCache.BlobFileCount),
-		humanize.Bytes.Int64(m.FileCache.Size),
-		redact.Safe(hitRate(m.FileCache.Hits, m.FileCache.Misses)))
-
-	formatSharedCacheMetrics := func(w redact.SafePrinter, m *SecondaryCacheMetrics, name redact.SafeString) {
-		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
-			name,
-			humanize.Count.Int64(m.Count),
-			humanize.Bytes.Int64(m.Size),
-			redact.Safe(hitRate(m.ReadsWithFullHit, m.ReadsWithPartialHit+m.ReadsWithNoHit)))
+	tableInfoContents := tableInfo{
+		stats:       status,
+		backing:     fmt.Sprintf("%s (%d)", humanize.Bytes.Uint64(m.Table.BackingTableSize), m.Table.BackingTableCount),
+		zombie:      fmt.Sprintf("%s (%d)", humanize.Bytes.Uint64(m.Table.ZombieSize), m.Table.ZombieCount),
+		localZombie: humanize.Bytes.Uint64(m.Table.Local.ZombieSize).String(),
 	}
-	if m.SecondaryCacheMetrics.Size > 0 || m.SecondaryCacheMetrics.ReadsWithFullHit > 0 {
-		formatSharedCacheMetrics(w, &m.SecondaryCacheMetrics, "Secondary cache")
+	blobInfoContents := blobInfo{
+		live:              fmt.Sprintf("%s (%s)", humanize.Count.Uint64(m.BlobFiles.LiveCount), humanize.Bytes.Uint64(m.BlobFiles.LiveSize)),
+		zombie:            fmt.Sprintf("%s (%s)", humanize.Count.Uint64(m.BlobFiles.ZombieCount), humanize.Bytes.Uint64(m.BlobFiles.ZombieSize)),
+		total:             humanize.Bytes.Uint64(m.BlobFiles.ValueSize).String(),
+		referenced:        humanize.Bytes.Uint64(m.BlobFiles.ReferencedValueSize).String(),
+		referencedPercent: fmt.Sprintf("%.0f%%", percent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize)),
 	}
-
-	w.Printf("Range key sets: %s  Tombstones: %s  Total missized tombstones encountered: %s\n",
-		humanize.Count.Uint64(m.Keys.RangeKeySetsCount),
-		humanize.Count.Uint64(m.Keys.TombstoneCount),
-		humanize.Count.Uint64(m.Keys.MissizedTombstonesCount),
-	)
-
-	w.Printf("Snapshots: %d  earliest seq num: %d\n",
-		redact.Safe(m.Snapshots.Count),
-		redact.Safe(m.Snapshots.EarliestSeqNum))
-
-	w.Printf("Table iters: %d\n", redact.Safe(m.TableIters))
-	w.Printf("Filter utility: %.1f%%\n", redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
-	w.Printf("Ingestions: %d  as flushable: %d (%s in %d tables)\n",
-		redact.Safe(m.Ingest.Count),
-		redact.Safe(m.Flush.AsIngestCount),
-		humanize.Bytes.Uint64(m.Flush.AsIngestBytes),
-		redact.Safe(m.Flush.AsIngestTableCount))
+	fileInfoContents := tableAndBlobInfo{
+		tableInfo: tableInfoContents,
+		blobInfo:  blobInfoContents,
+	}
+	fileInfoIter := func(yield func(tableAndBlobInfo) bool) {
+		yield(fileInfoContents)
+	}
+	cur = cur.WriteString(fileInfoTableHeader)
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return fileInfoTable.Render(cur, table.RenderOptions{}, fileInfoIter)
+	}, max(fileInfoTable.CumulativeFieldWidth, cur.Column()), -2)
 
 	var inUseTotal uint64
 	for i := range m.manualMemory {
@@ -867,21 +1035,87 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	inUse := func(purpose manual.Purpose) uint64 {
 		return m.manualMemory[purpose].InUseBytes
 	}
-	w.Printf("Cgo memory usage: %s  block cache: %s (data: %s, maps: %s, entries: %s)  memtables: %s\n",
-		humanize.Bytes.Uint64(inUseTotal),
-		humanize.Bytes.Uint64(inUse(manual.BlockCacheData)+inUse(manual.BlockCacheMap)+inUse(manual.BlockCacheEntry)),
-		humanize.Bytes.Uint64(inUse(manual.BlockCacheData)),
-		humanize.Bytes.Uint64(inUse(manual.BlockCacheMap)),
-		humanize.Bytes.Uint64(inUse(manual.BlockCacheEntry)),
-		humanize.Bytes.Uint64(inUse(manual.MemTable)),
-	)
+	cgoMemInfoContents := cgoMemInfo{
+		tot: humanize.Bytes.Uint64(inUseTotal).String(),
+		bcTot: humanize.Bytes.Uint64(inUse(manual.BlockCacheData) +
+			inUse(manual.BlockCacheMap) + inUse(manual.BlockCacheEntry)).String(),
+		bcData:       humanize.Bytes.Uint64(inUse(manual.BlockCacheData)).String(),
+		bcMaps:       humanize.Bytes.Uint64(inUse(manual.BlockCacheMap)).String(),
+		bcEnts:       humanize.Bytes.Uint64(inUse(manual.BlockCacheEntry)).String(),
+		memtablesTot: humanize.Bytes.Uint64(inUse(manual.MemTable)).String(),
+	}
+	cgoMemInfoIter := func(yield func(cgoMemInfo) bool) {
+		yield(cgoMemInfoContents)
+	}
+	cur = cur.WriteString(cgoMemInfoTableHeader)
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return cgoMemInfoTable.Render(cur, table.RenderOptions{}, cgoMemInfoIter)
+	}, max(cgoMemInfoTable.CumulativeFieldWidth, cur.Column()), -2)
+
+	compactionMetricsInfoContents := compactionMetricsInfo{
+		estimatedDebt: humanize.Bytes.Uint64(m.Compact.EstimatedDebt).String(),
+		inProgress: fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.Compact.NumInProgress),
+			humanize.Bytes.Int64(m.Compact.InProgressBytes)),
+		cancelled: fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.Compact.CancelledCount),
+			humanize.Bytes.Int64(m.Compact.CancelledBytes)),
+		failed:       m.Compact.FailedCount,
+		problemSpans: fmt.Sprintf("%d%s", m.Compact.NumProblemSpans, ifNonZero(m.Compact.NumProblemSpans, "!!")),
+	}
+	compactionMetricsInfoIter := func(yield func(compactionMetricsInfo) bool) {
+		yield(compactionMetricsInfoContents)
+	}
+	cur = cur.WriteString(compactionInfoTableTopHeader)
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return compactionInfoTable.Render(cur, table.RenderOptions{}, compactionMetricsInfoIter)
+	}, max(compactionInfoTable.CumulativeFieldWidth, cur.Column()), -2)
+
+	keysInfoContents := keysInfo{
+		rangeKeys:          humanize.Count.Uint64(m.Keys.RangeKeySetsCount).String(),
+		tombstones:         humanize.Count.Uint64(m.Keys.TombstoneCount).String(),
+		missizedTombstones: fmt.Sprintf("%d%s", m.Keys.MissizedTombstonesCount, ifNonZero(m.Keys.MissizedTombstonesCount, "!!")),
+		pointDels:          humanize.Bytes.Uint64(m.Table.Garbage.PointDeletionsBytesEstimate).String(),
+		rangeDels:          humanize.Bytes.Uint64(m.Table.Garbage.RangeDeletionsBytesEstimate).String(),
+	}
+	keysInfoIter := func(yield func(keysInfo) bool) {
+		yield(keysInfoContents)
+	}
+	cur = cur.WriteString(keysInfoTableTopHeader)
+	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
+		return keysInfoTable.Render(cur, table.RenderOptions{}, keysInfoIter)
+	}, max(keysInfoTable.CumulativeFieldWidth, cur.Column()), -2)
+	cur.Offset(-1, 0).RepeatByte(max(keysInfoTable.CumulativeFieldWidth, cur.Column()), '-')
+
+	func(cur ascii.Cursor) {
+		maybePrintCompression := func(pos ascii.Cursor, name string, value int64) ascii.Cursor {
+			if value > 0 {
+				pos = pos.Printf("  %s %s", name, humanize.Count.Int64(value)).NewlineReturn()
+			}
+			return pos
+		}
+		cur = cur.WriteString("COMPRESSION").NewlineReturn()
+		cur = maybePrintCompression(cur, "minlz: ", m.Table.CompressedCountMinLZ)
+		cur = maybePrintCompression(cur, "snappy:", m.Table.CompressedCountSnappy)
+		cur = maybePrintCompression(cur, "zstd:  ", m.Table.CompressedCountZstd)
+		cur = maybePrintCompression(cur, "none:  ", m.Table.CompressedCountNone)
+		cur = maybePrintCompression(cur, "???:   ", m.Table.CompressedCountUnknown)
+		_ = cur
+	}(cur)
+
+	return wb.String()
+}
+
+func ifNonZero[T constraints.Integer](v T, s string) string {
+	if v > 0 {
+		return s
+	}
+	return ""
 }
 
 func hitRate(hits, misses int64) float64 {
 	return percent(hits, hits+misses)
 }
 
-func percent(numerator, denominator int64) float64 {
+func percent[T constraints.Integer](numerator, denominator T) float64 {
 	if denominator == 0 {
 		return 0
 	}
@@ -930,24 +1164,4 @@ func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
 			m.Levels[i].Add(u)
 		}
 	}
-}
-
-// humanizeFloat formats a float64 value as a string. It shows up to two
-// decimals, depending on the target length. NaN is shown as "-".
-func humanizeFloat(v float64, targetLength int) redact.SafeString {
-	if math.IsNaN(v) {
-		return "-"
-	}
-	// We treat 0 specially. Values near zero will show up as 0.00.
-	if v == 0 {
-		return "0"
-	}
-	res := fmt.Sprintf("%.2f", v)
-	if len(res) <= targetLength {
-		return redact.SafeString(res)
-	}
-	if len(res) == targetLength+1 {
-		return redact.SafeString(fmt.Sprintf("%.1f", v))
-	}
-	return redact.SafeString(fmt.Sprintf("%.0f", v))
 }
