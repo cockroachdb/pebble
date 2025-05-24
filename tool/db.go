@@ -531,6 +531,8 @@ func (d *dbT) runGet(cmd *cobra.Command, args []string) {
 	}
 }
 
+var renderMetrics func(*pebble.Metrics) string = (*pebble.Metrics).String
+
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	db, err := d.openDB(args[0])
@@ -540,7 +542,7 @@ func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
 	}
 	defer d.closeDB(stderr, db)
 
-	fmt.Fprintf(stdout, "%s", db.Metrics())
+	fmt.Fprintf(stdout, "%s", renderMetrics(db.Metrics()))
 	if d.lsmURL {
 		fmt.Fprintf(stdout, "\nLSM viewer: %s\n", db.LSMViewURL())
 	}
