@@ -31,37 +31,65 @@ L6:
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------
-    0 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B      0B
-    6 |     1   569B     0B       0 |    - 0.00 0.00 |    0B |     1   569B |     0     0B |     0     0B |    0B |   1    0 |    0B      0B
-total |     1   569B     0B       0 |    -    -    - |  569B |     1   569B |     0     0B |     0   569B |    0B |   1 1.00 |    0B      0B
---------------------------------------------------------------------------------------------------------------------------------------------
-WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
-Flushes: 0
-Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
-MemTables: 1 (256KB)  zombie: 0 (0B)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 569B
-Compression types: snappy: 1
-Table stats: all loaded
-Block cache: 3 entries (1.1KB)  hit rate: 15.4%
-File cache: 1 tables, 0 blobfiles (280B)  hit rate: 50.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 1  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
+total      569 B |      1 569 B |      0     0 |    0 B    0 B |    0 B |      1 569 B |   1     0
+--------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |     0B: 0B |      0.0% |         0 |  1 (256KB) |     0 (0B) |         0 |      0 (0B)
+--------------------------------------------------------------------------------------------------
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+   3 (1.1KB) |       15.4% |     1 (280B) |       50.0% |         0.0% |           0 |           0
+--------------------------------------------------------------------------------------------------
+FILES                 tables                      |     blob files     |        blob values
+   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
+--------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
+   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+--------------------------------------------------------------------------------------------------
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+--------------------------------------------------------------------------------------------------
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+--------------------------------------------------------------------------------------------------
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+--------------------------------------------------------------------------------------------------
+COMPRESSION
+  snappy: 1
 
 
 iter
