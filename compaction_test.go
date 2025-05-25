@@ -2994,8 +2994,8 @@ func TestCompactionErrorStats(t *testing.T) {
 }
 
 func TestCompactionCorruption(t *testing.T) {
-	if buildtags.Race {
-		t.Skip("disabled in race mode to avoid timeouts")
+	if buildtags.SlowBuild {
+		t.Skip("disabled in slow builds")
 	}
 	mem := vfs.NewMem()
 	var numFinishedCompactions atomic.Int32
