@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -60,6 +61,7 @@ type ValueFetcher struct {
 	env            block.ReadEnv
 	fetchCount     int
 	readers        [maxCachedReaders]cachedReader
+	bufMangler     invariants.BufMangler
 }
 
 // TODO(jackson): Support setting up a read handle for compaction when relevant.
@@ -89,6 +91,9 @@ func (r *ValueFetcher) Fetch(
 		OffsetInBlock: handleSuffix.OffsetInBlock,
 	}
 	v, err := r.retrieve(ctx, vh)
+	if invariants.Enabled {
+		v = r.bufMangler.MaybeMangleLater(v)
+	}
 	return v, false, err
 }
 
