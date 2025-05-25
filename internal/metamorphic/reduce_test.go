@@ -163,6 +163,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 	// removed important ops.
 	if err == nil ||
 		strings.Contains(output.String(), "metamorphic test internal error") ||
+		strings.Contains(output.String(), "element has outstanding references") ||
 		strings.Contains(output.String(), "leaked iterators") ||
 		strings.Contains(output.String(), "leaked snapshots") ||
 		strings.Contains(output.String(), "test timed out") {
