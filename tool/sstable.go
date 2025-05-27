@@ -365,6 +365,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		var blobContext sstable.TableBlobContext
 		switch blobMode {
 		case BlobRefModePrint:
+			s.fmtValue.mustSet("[%s]")
 			blobContext = sstable.DebugHandlesBlobContext
 		case BlobRefModeLoad:
 			blobRefs, err := findAndReadManifests(stderr, s.opts.FS, blobDir)
