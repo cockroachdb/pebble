@@ -66,6 +66,10 @@ func parseOptions(
 			return pebble.KeySchema{}, errors.Newf("unknown key schema %q", name)
 		},
 		SkipUnknown: func(name, value string) bool {
+			if strings.EqualFold(value, "false") {
+				// TODO(radu): audit all settings and use ParseBool wherever necessary.
+				panic(fmt.Sprintf("%s: boolean options can only be set to true", name))
+			}
 			switch name {
 			case "TestOptions":
 				return true
@@ -628,7 +632,6 @@ func standardOptions(kf KeyFormat) []*TestOptions {
 [TestOptions]
   shared_storage_enabled=true
   external_storage_enabled=true
-  secondary_cache_enabled=false
 `, pebble.FormatSyntheticPrefixSuffix),
 		29: `
 [TestOptions]
