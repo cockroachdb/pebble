@@ -291,7 +291,7 @@ sstable
       ├── 000  checksum type: crc32c
       ├── 001  meta: offset=767, length=46
       ├── 004  index: offset=159, length=36
-      ├── 041  attributes: [RangeKeySets,RangeKeyUnsets,RangeKeyDels,TwoLevelIndex]
+      ├── 041  attributes: [BlobValues]
       ├── 045  footer checksum: 0x2ee54544
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3

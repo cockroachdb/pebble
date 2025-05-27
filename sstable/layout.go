@@ -150,6 +150,11 @@ func (l *Layout) Describe(
 				panic("Error parsing table format.")
 			}
 
+			var attributes Attributes
+			if format >= TableFormatPebblev7 {
+				attributes = Attributes(binary.LittleEndian.Uint32(trailer[pebbleDBV7FooterAttributesOffset:]))
+			}
+
 			var computedChecksum uint32
 			var encodedChecksum uint32
 			if format >= TableFormatPebblev6 {
@@ -192,7 +197,6 @@ func (l *Layout) Describe(
 
 			if format >= TableFormatPebblev7 {
 				// Attributes should be just prior to the checksum.
-				attributes := Attributes(binary.LittleEndian.Uint32(trailer[pebbleDBV7FooterAttributesOffset:]))
 				tpNode.Childf("%03d  attributes: %s", offset-attributesLen, attributes.String())
 			}
 
