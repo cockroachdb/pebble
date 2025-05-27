@@ -185,7 +185,7 @@ func (t *Test) init(
 		}
 		var db *pebble.DB
 		err := t.withRetries(func() error {
-			opts := t.finalizeOptions(dir)
+			opts := t.finalizeOptions()
 			// If shared storage is enabled, we want to set up the CreatorID. We could
 			// call db.SetCreatorID() after Open() but this is fragile in the case
 			// where we are using an existing store (via --initial-state) which did
@@ -193,6 +193,9 @@ func (t *Test) init(
 			// during Open() can fail to create shared objects (leading to background
 			// errors which fail the metamorphic test).
 			if t.testOpts.sharedStorageEnabled {
+				if err := t.opts.FS.MkdirAll(dir, 0755); err != nil {
+					return err
+				}
 				providerSettings := opts.MakeObjStorageProviderSettings(dir)
 				objProvider, err := objstorageprovider.Open(providerSettings)
 				if err != nil {
@@ -256,11 +259,12 @@ func (t *Test) init(
 //
 // It initializes t.externalStorage and creates the compaction scheduler and
 // remote storage factory.
-func (t *Test) finalizeOptions(dataDir string) pebble.Options {
+func (t *Test) finalizeOptions() pebble.Options {
 	o := *t.opts
 
-	// Set up external/shared storage.
-	externalDir := o.FS.PathJoin(dataDir, "external")
+	// Set up external/shared storage. These directories are created inside the
+	// test's data dir and can be shared among multiple dbs.
+	externalDir := o.FS.PathJoin(t.dir, "external")
 	if err := o.FS.MkdirAll(externalDir, 0755); err != nil {
 		panic(fmt.Sprintf("failed to create directory %q: %s", externalDir, err))
 	}
@@ -273,7 +277,7 @@ func (t *Test) finalizeOptions(dataDir string) pebble.Options {
 	// existing store might use shared or external storage, so we set them up
 	// unconditionally.
 	if t.testOpts.sharedStorageEnabled || t.testOpts.initialStatePath != "" {
-		sharedDir := o.FS.PathJoin(dataDir, "shared")
+		sharedDir := o.FS.PathJoin(t.dir, "shared")
 		if err := o.FS.MkdirAll(sharedDir, 0755); err != nil {
 			panic(fmt.Sprintf("failed to create directory %q: %s", sharedDir, err))
 		}
@@ -350,7 +354,7 @@ func (t *Test) restartDB(dbID objID) error {
 		if len(t.dbs) > 1 {
 			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
 		}
-		o := t.finalizeOptions(dir)
+		o := t.finalizeOptions()
 		t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
 		if err != nil {
 			return err
