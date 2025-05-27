@@ -168,6 +168,7 @@ func parseOptions(
 				opts.ioLatencySeed = v
 				return true
 			case "TestOptions.ingest_split":
+				// TODO(radu): this should be on by default.
 				opts.ingestSplit = true
 				opts.Opts.Experimental.IngestSplit = func() bool {
 					return true
@@ -180,6 +181,7 @@ func parseOptions(
 				opts.useExternalReplicate = true
 				return true
 			case "TestOptions.use_excise":
+				// TODO(radu): this should be on by default.
 				opts.useExcise = true
 				return true
 			case "TestOptions.use_delete_only_compaction_excises":
@@ -193,19 +195,6 @@ func parseOptions(
 				return true
 			case "TestOptions.use_jemalloc_size_classes":
 				opts.Opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
-				return true
-			case "TestOptions.disable_value_separation":
-				v, err := strconv.ParseBool(value)
-				if err != nil {
-					panic(err)
-				}
-				if v {
-					opts.Opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
-						return pebble.ValueSeparationPolicy{
-							Enabled: false,
-						}
-					}
-				}
 				return true
 			default:
 				if customOptionParsers == nil {
@@ -312,11 +301,6 @@ func optionsToString(opts *TestOptions) string {
 		}
 		fmt.Fprint(&buf, "  use_jemalloc_size_classes=true\n")
 	}
-	if policy := opts.Opts.Experimental.ValueSeparationPolicy(); policy.Enabled {
-
-	} else {
-		fmt.Fprint(&buf, "  disable_value_separation=true\n")
-	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
 	}
@@ -352,6 +336,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		}},
 		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
+	opts.Experimental.IngestSplit = func() bool { return false }
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
@@ -638,8 +623,8 @@ func standardOptions(kf KeyFormat) []*TestOptions {
   external_storage_enabled=true
 `, pebble.FormatSyntheticPrefixSuffix),
 		29: `
-[TestOptions]
-  disable_value_separation=true
+[Value Separation]
+enabled = false
 `,
 	}
 
@@ -898,7 +883,7 @@ func RandomOptions(
 	// Value separation:
 	//  - 25% of the time (n = 0), use default value separation parameters;
 	//  - 25% of the time (n = 1), disable value separation;
-	//  - 50% of the time (n > 1), randomize value separation parameters.
+	//  - 50% of the time (n = 2,3), enable value separation and randomize parameters.
 	if n := rng.IntN(4); n == 1 {
 		// 25% of the time, disable value separation.
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {

@@ -2126,7 +2126,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 			return nil
 		}
-		return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
+		return errors.Errorf("pebble: unknown section %q or key %q", errors.Safe(section), errors.Safe(key))
 	}
 	err := parseOptions(s, parseOptionsFuncs{
 		visitKeyValue: visitKeyValue,

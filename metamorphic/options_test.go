@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -109,24 +110,11 @@ func TestOptionsRoundtrip(t *testing.T) {
 
 		// In some options, the closure obscures the underlying value. Check
 		// that the return values are equal.
-		require.Equal(t, o.Opts.Experimental.EnableValueBlocks == nil, parsed.Opts.Experimental.EnableValueBlocks == nil)
-		if o.Opts.Experimental.EnableValueBlocks != nil {
-			require.Equal(t, o.Opts.Experimental.EnableValueBlocks(), parsed.Opts.Experimental.EnableValueBlocks())
-		}
-		require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable == nil, parsed.Opts.Experimental.DisableIngestAsFlushable == nil)
-		if o.Opts.Experimental.DisableIngestAsFlushable != nil {
-			require.Equal(t, o.Opts.Experimental.DisableIngestAsFlushable(), parsed.Opts.Experimental.DisableIngestAsFlushable())
-		}
-		if o.Opts.Experimental.IngestSplit != nil && o.Opts.Experimental.IngestSplit() {
-			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
-		}
-
-		require.Equal(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency == nil,
-			parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency == nil)
-		if o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency != nil {
-			require.InDelta(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency(),
-				parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency(), 1e-5)
-		}
+		expectEqualFn(t, o.Opts.Experimental.EnableValueBlocks, parsed.Opts.Experimental.EnableValueBlocks)
+		expectEqualFn(t, o.Opts.Experimental.DisableIngestAsFlushable, parsed.Opts.Experimental.DisableIngestAsFlushable)
+		expectEqualFn(t, o.Opts.Experimental.IngestSplit, parsed.Opts.Experimental.IngestSplit)
+		expectEqualFn(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency, parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency)
+		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
 
 		expBaseline, expUpper := o.Opts.CompactionConcurrencyRange()
 		parsedBaseline, parsedUpper := parsed.Opts.CompactionConcurrencyRange()
@@ -165,6 +153,25 @@ func TestOptionsRoundtrip(t *testing.T) {
 			o := RandomOptions(rng, TestkeysKeyFormat, nil)
 			checkOptions(t, o)
 		})
+	}
+}
+
+// expectEqualFn verifies that either the two values return the same value.
+// both expected and actual are nil, or they
+// are both non-nil and return equal values.
+// defaultValue can be nil, or can be a value of type T that is used
+func expectEqualFn[T any](t *testing.T, expected func() T, actual func() T) {
+	t.Helper()
+	if expected == nil {
+		require.Nil(t, actual)
+	} else {
+		require.NotNil(t, actual)
+		var zeroT T
+		if reflect.TypeOf(zeroT) == reflect.TypeOf(float64(0)) {
+			require.InDelta(t, expected(), actual(), 1e-5)
+		} else {
+			require.Equal(t, expected(), actual())
+		}
 	}
 }
 
