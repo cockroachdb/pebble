@@ -312,6 +312,11 @@ func optionsToString(opts *TestOptions) string {
 		}
 		fmt.Fprint(&buf, "  use_jemalloc_size_classes=true\n")
 	}
+	if policy := opts.Opts.Experimental.ValueSeparationPolicy(); policy.Enabled {
+
+	} else {
+		fmt.Fprint(&buf, "  disable_value_separation=true\n")
+	}
 	for _, customOpt := range opts.CustomOpts {
 		fmt.Fprintf(&buf, "  %s=%s\n", customOpt.Name(), customOpt.Value())
 	}
@@ -617,7 +622,6 @@ func standardOptions(kf KeyFormat) []*TestOptions {
   format_major_version=%s
 [TestOptions]
   shared_storage_enabled=true
-  secondary_cache_enabled=true
 `, pebble.FormatMinForSharedObjects),
 		27: fmt.Sprintf(`
 [Options]
@@ -873,8 +877,8 @@ func RandomOptions(
 		if rng.IntN(2) == 0 {
 			testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
 		}
-		// If shared storage is enabled, enable secondary cache 50% of the time.
-		if rng.IntN(2) == 0 {
+		// If shared storage is enabled, enable secondary cache 20% of the time.
+		if rng.IntN(100) < 20 {
 			testOpts.secondaryCacheEnabled = true
 			// TODO(josh): Randomize various secondary cache settings.
 			testOpts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
@@ -891,8 +895,16 @@ func RandomOptions(
 		}
 	}
 
-	// 75% of the time, randomize value separation parameters.
-	if rng.IntN(4) > 0 {
+	// Value separation:
+	//  - 25% of the time (n = 0), use default value separation parameters;
+	//  - 25% of the time (n = 1), disable value separation;
+	//  - 50% of the time (n > 1), randomize value separation parameters.
+	if n := rng.IntN(4); n == 1 {
+		// 25% of the time, disable value separation.
+		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+			return pebble.ValueSeparationPolicy{Enabled: false}
+		}
+	} else if n > 1 {
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatExperimentalValueSeparation {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatExperimentalValueSeparation
 		}
