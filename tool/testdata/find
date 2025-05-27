@@ -152,8 +152,6 @@ testdata/find-db-val-sep
 crdb:aaa
 --blob-mode=print
 ----
-000002.log
-    aaa\x00#10,SET [yuumi]
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
     aaa\x00#10,SET [(f0,blk0[0:5])]
@@ -163,8 +161,6 @@ testdata/find-db-val-sep
 crdb:ddd
 --blob-mode=print
 ----
-000002.log
-    ddd\x00#13,SET [6]
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
     ddd\x00#13,SET [6]
@@ -174,8 +170,6 @@ testdata/find-db-val-sep
 crdb:aaa
 --blob-mode=load
 ----
-000002.log
-    aaa\x00#10,SET [yuumi]
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
     aaa\x00#10,SET [yuumi]
@@ -185,8 +179,6 @@ testdata/find-db-val-sep
 crdb:ddd
 --blob-mode=load
 ----
-000002.log
-    ddd\x00#13,SET [6]
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
     ddd\x00#13,SET [6]

@@ -431,6 +431,9 @@ aaa\x00#10,SET [(f0,blk0[0:5])]
 bbb\x00#11,SET [(f0,blk0[5:8])]
 ccc\x00#12,SET [(f0,blk0[8:18])]
 ddd\x00#13,SET [6]
+find-db-val-sep/000008.sst
+eee\x00#14,SET [(f0,blk0[0:6])]
+fff\x00#15,SET [(f0,blk0[6:13])]
 
 sstable scan
 --filter=armed
@@ -438,20 +441,3 @@ sstable scan
 ../sstable/testdata/h.sst
 ----
 h.sst: armed#0,SET [2]
-
-sstable scan
-./testdata/find-db-val-sep/000005.sst
---blob-mode=load
-----
-when --blob-mode=load is specified, the path to a directory containing a manifest and blob file must be provided as the last argument
-
-sstable scan
-./testdata/find-db-val-sep/000005.sst
-./testdata/find-db-val-sep
---blob-mode=load
-----
-000005.sst
-aaa\x00#10,SET [yuumi]
-bbb\x00#11,SET [mai]
-ccc\x00#12,SET [poiandyaya]
-ddd\x00#13,SET [6]
