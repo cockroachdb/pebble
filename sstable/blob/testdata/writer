@@ -56,7 +56,7 @@ Stats:
   BlockCount: 5
   ValueCount: 26
   UncompressedValueBytes: 182
-  FileLen: 378
+  FileLen: 386
 
 open
 ----
@@ -99,7 +99,7 @@ Stats:
   BlockCount: 3
   ValueCount: 10
   UncompressedValueBytes: 60
-  FileLen: 198
+  FileLen: 206
 
 open
 ----
