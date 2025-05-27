@@ -427,17 +427,17 @@ sstable scan
 --blob-mode=print
 ----
 find-db-val-sep/000005.sst
-aaa\x00#10,SET [2866302c626c6b302c6964302c6c656e3529]
-bbb\x00#11,SET [2866302c626c6b302c6964312c6c656e3329]
-ccc\x00#12,SET [2866302c626c6b302c6964322c6c656e313029]
-ddd\x00#13,SET [36]
+aaa\x00#10,SET [(f0,blk0,id0,len5)]
+bbb\x00#11,SET [(f0,blk0,id1,len3)]
+ccc\x00#12,SET [(f0,blk0,id2,len10)]
+ddd\x00#13,SET [6]
 
 sstable scan
 --filter=armed
 --blob-mode=print
 ../sstable/testdata/h.sst
 ----
-h.sst: armed#0,SET [32]
+h.sst: armed#0,SET [2]
 
 sstable scan
 ./testdata/find-db-val-sep/000005.sst
