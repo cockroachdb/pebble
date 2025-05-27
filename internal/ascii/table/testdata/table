@@ -1,0 +1,25 @@
+cats-nodiv
+----
+name    agecuteness
+-------------------
+Chicken   5      10
+Heart     4      10
+Mai       2      10
+Poi      15      10
+Pigeon    2      10
+Sugar     8      10
+Yaya      5      10
+Yuumi     5      10
+
+cats-autoincrement
+----
+idx |    name
+----+--------
+0   | Chicken
+1   |   Heart
+2   |     Mai
+3   |     Poi
+4   |  Pigeon
+5   |   Sugar
+6   |    Yaya
+7   |   Yuumi
