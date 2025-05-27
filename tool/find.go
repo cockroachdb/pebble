@@ -495,6 +495,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			var blobContext sstable.TableBlobContext
 			switch ConvertToBlobRefMode(f.blobMode) {
 			case BlobRefModePrint:
+				f.fmtValue.mustSet("[%s]")
 				blobContext = sstable.DebugHandlesBlobContext
 			case BlobRefModeLoad:
 				provider := debugReaderProvider{
