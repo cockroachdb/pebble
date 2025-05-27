@@ -431,6 +431,9 @@ aaa\x00#10,SET [(f0,blk0,id0,len5)]
 bbb\x00#11,SET [(f0,blk0,id1,len3)]
 ccc\x00#12,SET [(f0,blk0,id2,len10)]
 ddd\x00#13,SET [6]
+find-db-val-sep/000008.sst
+eee\x00#14,SET [(f0,blk0,id0,len6)]
+fff\x00#15,SET [(f0,blk0,id1,len7)]
 
 sstable scan
 --filter=armed
