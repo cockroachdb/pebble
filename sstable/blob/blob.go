@@ -42,7 +42,7 @@ const (
 )
 
 const (
-	fileFooterLength = 30
+	fileFooterLength = 38
 	fileMagic        = "\xf0\x9f\xaa\xb3\xf0\x9f\xa6\x80" // 🪳🦀
 )
 
@@ -297,9 +297,10 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 
 	// Write the footer.
 	footer := fileFooter{
-		format:      FileFormatV1,
-		checksum:    w.checksummer.Type,
-		indexHandle: indexBlockHandle,
+		format:          FileFormatV1,
+		checksum:        w.checksummer.Type,
+		indexHandle:     indexBlockHandle,
+		originalFileNum: w.fileNum,
 	}
 	footerBuf := make([]byte, fileFooterLength)
 	footer.encode(footerBuf)
@@ -340,11 +341,13 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 //   - index block length (8 bytes)
 //   - checksum type (1 byte)
 //   - format (1 byte)
+//   - original file number (8 bytes)
 //   - blob file magic string (8 bytes)
 type fileFooter struct {
-	format      FileFormat
-	checksum    block.ChecksumType
-	indexHandle block.Handle
+	format          FileFormat
+	checksum        block.ChecksumType
+	indexHandle     block.Handle
+	originalFileNum base.DiskFileNum
 }
 
 func (f *fileFooter) decode(b []byte) error {
@@ -363,8 +366,9 @@ func (f *fileFooter) decode(b []byte) error {
 	if f.format != FileFormatV1 {
 		return base.CorruptionErrorf("invalid blob file format %x", f.format)
 	}
-	if string(b[22:]) != fileMagic {
-		return base.CorruptionErrorf("invalid blob file magic string %x", b[22:])
+	f.originalFileNum = base.DiskFileNum(binary.LittleEndian.Uint64(b[22:]))
+	if string(b[30:]) != fileMagic {
+		return base.CorruptionErrorf("invalid blob file magic string %x", b[30:])
 	}
 	return nil
 }
@@ -374,8 +378,9 @@ func (f *fileFooter) encode(b []byte) {
 	binary.LittleEndian.PutUint64(b[12:], f.indexHandle.Length)
 	b[20] = byte(f.checksum)
 	b[21] = byte(f.format)
-	copy(b[22:], fileMagic)
-	footerChecksum := crc.New(b[4 : 22+len(fileMagic)]).Value()
+	binary.LittleEndian.PutUint64(b[22:], uint64(f.originalFileNum))
+	copy(b[30:], fileMagic)
+	footerChecksum := crc.New(b[4 : 30+len(fileMagic)]).Value()
 	binary.LittleEndian.PutUint32(b[:4], footerChecksum)
 }
 
