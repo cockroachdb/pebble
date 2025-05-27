@@ -79,4 +79,8 @@ func main() {
 	tdb.set("ccc", "poiandyaya")
 	tdb.set("ddd", "6")
 	tdb.flush()
+
+	tdb.set("eee", "pigeon")
+	tdb.set("fff", "chicken")
+	tdb.flush()
 }

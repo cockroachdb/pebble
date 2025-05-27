@@ -657,6 +657,7 @@ func findAndReadManifests(
 			}
 		}()
 	}
+	slices.SortFunc(manifests, cmpFileLoc)
 	blobRefs := make(manifest.BlobReferences, len(blobMetas))
 	i := 0
 	for fn := range blobMetas {
