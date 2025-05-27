@@ -56,7 +56,7 @@ Stats:
   BlockCount: 5
   ValueCount: 26
   UncompressedValueBytes: 182
-  FileLen: 378
+  FileLen: 386
 
 define filenum=000002 target-block-size=64 block-size-threshold=90
 kale
@@ -90,7 +90,7 @@ Stats:
   BlockCount: 3
   ValueCount: 13
   UncompressedValueBytes: 105
-  FileLen: 240
+  FileLen: 248
 
 define filenum=000003 target-block-size=64 block-size-threshold=90
 beet
@@ -114,7 +114,7 @@ Stats:
   BlockCount: 2
   ValueCount: 8
   UncompressedValueBytes: 55
-  FileLen: 164
+  FileLen: 172
 
 define filenum=000004 target-block-size=64 block-size-threshold=90
 onion
@@ -136,7 +136,7 @@ Stats:
   BlockCount: 1
   ValueCount: 7
   UncompressedValueBytes: 42
-  FileLen: 129
+  FileLen: 137
 
 define filenum=000005 target-block-size=64 block-size-threshold=90
 shitake
@@ -162,7 +162,7 @@ Stats:
   BlockCount: 2
   ValueCount: 9
   UncompressedValueBytes: 65
-  FileLen: 175
+  FileLen: 183
 
 define filenum=000006 target-block-size=64 block-size-threshold=90
 squash
@@ -176,7 +176,7 @@ Stats:
   BlockCount: 1
   ValueCount: 3
   UncompressedValueBytes: 21
-  FileLen: 104
+  FileLen: 112
 
 new-fetcher name=iter1
 ----
