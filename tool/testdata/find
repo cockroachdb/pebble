@@ -158,6 +158,17 @@ crdb:aaa
 
 find
 testdata/find-db-val-sep
+crdb:eee
+--blob-mode=print
+----
+000004.log
+    eee\x00#14,SET [pigeon]
+000008.sst [eee\x00#14,SET-fff\x00#15,SET]
+    (flushed to L0)
+    eee\x00#14,SET [(f0,blk0[0:6])]
+
+find
+testdata/find-db-val-sep
 crdb:ddd
 --blob-mode=print
 ----
@@ -182,3 +193,14 @@ crdb:ddd
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
     ddd\x00#13,SET [6]
+
+find
+testdata/find-db-val-sep
+crdb:eee
+--blob-mode=load
+----
+000004.log
+    eee\x00#14,SET [pigeon]
+000008.sst [eee\x00#14,SET-fff\x00#15,SET]
+    (flushed to L0)
+    eee\x00#14,SET [pigeon]
