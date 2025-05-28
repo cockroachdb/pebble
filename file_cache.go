@@ -274,6 +274,11 @@ func (h *fileCacheHandle) findOrCreateBlob(
 
 // Evict the given file from the file cache and the block cache.
 func (h *fileCacheHandle) Evict(fileNum base.DiskFileNum, fileType base.FileType) {
+	defer func() {
+		if p := recover(); p != nil {
+			panic(fmt.Sprintf("pebble: evicting in-use file %s(%s): %v", fileNum, fileType, p))
+		}
+	}()
 	h.fileCache.c.Evict(fileCacheKey{handle: h, fileNum: fileNum, fileType: fileType})
 	h.blockCacheHandle.EvictFile(fileNum)
 }
