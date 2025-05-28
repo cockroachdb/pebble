@@ -2133,12 +2133,7 @@ func (r *replicateOp) runExternalReplicate(
 func (r *replicateOp) run(t *Test, h historyRecorder) {
 	// Shared replication only works if shared storage is enabled and value
 	// separation is disabled.
-	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled &&
-		// TODO(radu): allow shared ingest with value separation. We automatically
-		// disable value separation when the output is on shared storage, so it
-		// should work. We curently get a crash in ScanInternal in this combination
-		// which we need to root cause.
-		!t.testOpts.Opts.Experimental.ValueSeparationPolicy().Enabled
+	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled
 	useExternalIngest := t.testOpts.useExternalReplicate && t.testOpts.externalStorageEnabled
 
 	source := t.getDB(r.source)
