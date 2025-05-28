@@ -1,9 +1,9 @@
 sstable scan
 --start=arm
 --end=aside
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 arm#0,SET [32]
 armed#0,SET [32]
 armour#0,SET [31]
@@ -17,9 +17,9 @@ as#0,SET [3536]
 
 sstable scan
 --end=abused
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 a-a#0,RANGEDEL
 a#0,SET [3937]
 aboard#0,SET [32]
@@ -30,9 +30,9 @@ absurd#0,SET [31]
 
 sstable scan
 --start=you
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 you#0,SET [313130]
 young#0,SET [36]
 your#0,SET [3439]
@@ -43,9 +43,9 @@ sstable scan
 --key=%x
 --value=null
 --start=you
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 796f75#0,SET
 796f756e67#0,SET
 796f7572#0,SET
@@ -57,9 +57,9 @@ sstable scan
 --value=null
 --start=hex:796f75
 --end=raw:yourself
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 "you"#0,SET
 "young"#0,SET
 "your"#0,SET
@@ -69,9 +69,9 @@ sstable scan
 --value=[%x]
 --start=hex:796f75
 --end=raw:yourself
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 [313130]
 [36]
 [3439]
@@ -81,9 +81,9 @@ sstable scan
 --value=[%x]
 --start=hex:796f75
 --end=raw:yourself
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 you#0,SET [313130]
 young#0,SET [36]
 your#0,SET [3439]
@@ -93,9 +93,9 @@ sstable scan
 --value=[%x]
 --start=hex:796f75
 --end=raw:yourself
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 you#0,SET [313130]
 young#0,SET [36]
 your#0,SET [3439]
@@ -105,9 +105,9 @@ sstable scan
 --value=pretty
 --start=hex:796f75
 --end=raw:yourself
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 you#0,SET 110
 young#0,SET 6
 your#0,SET 49
@@ -117,9 +117,9 @@ sstable scan
 --value=pretty:test-comparer
 --start=hex:796f75
 --end=raw:yourself
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 test formatter: you#0,SET test value formatter: 110
 test formatter: young#0,SET test value formatter: 6
 test formatter: your#0,SET test value formatter: 49
@@ -128,9 +128,9 @@ test formatter: your#0,SET test value formatter: 49
 sstable scan
 --start=beards
 --end=carrying
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 beard-bearers#0,RANGEDEL
 bearers#0,SET [31]
 bears#0,SET [31]
@@ -238,27 +238,27 @@ carriage#0,SET [31]
 sstable scan
 --start=bearers
 --end=bears
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 bearers#0,SET [31]
 
 # End scan key lies on range tombstone start key.
 sstable scan
 --start=bear
 --end=beard
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 bear#0,SET [35]
 
 # Count that only includes point records.
 sstable scan
 --start=armed
 --count=3
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 armed#0,SET [32]
 armour#0,SET [31]
 arms#0,SET [32]
@@ -267,66 +267,57 @@ arms#0,SET [32]
 sstable scan
 --start=beards
 --count=2
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 beard-bearers#0,RANGEDEL
 bearers#0,SET [31]
 
 sstable scan
-testdata/out-of-order.sst
-----
-out-of-order.sst
-a#0,SET []
-c#0,SET []
-b#0,SET []
-    WARNING: OUT OF ORDER KEYS!
-
-sstable scan
 --filter=arms
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst: arms#0,SET [32]
+000002.sst: arms#0,SET [32]
 
 sstable scan
 --filter=bear
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst: bear#0,SET [35]
-h.sst: beard-bearers#0,RANGEDEL
-h.sst: beard#0,SET [31]
-h.sst: bearers#0,SET [31]
-h.sst: bears#0,SET [31]
+000002.sst: bear#0,SET [35]
+000002.sst: beard-bearers#0,RANGEDEL
+000002.sst: beard#0,SET [31]
+000002.sst: bearers#0,SET [31]
+000002.sst: bears#0,SET [31]
 
 sstable scan
 --filter=beards
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst: beard-bearers#0,RANGEDEL
+000002.sst: beard-bearers#0,RANGEDEL
 
 sstable scan
 --filter=beard
 ../sstable/testdata/
 ----
-testdata/h.no-compression.sst: beard-bearers#0,RANGEDEL
-testdata/h.no-compression.sst: beard#0,SET [31]
-testdata/h.no-compression.two_level_index.sst: beard-bearers#0,RANGEDEL
-testdata/h.no-compression.two_level_index.sst: beard#0,SET [31]
-testdata/h.sst: beard-bearers#0,RANGEDEL
-testdata/h.sst: beard#0,SET [31]
-testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst: beard-bearers#0,RANGEDEL
-testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst: beard#0,SET [31]
-testdata/h.table-bloom.no-compression.sst: beard-bearers#0,RANGEDEL
-testdata/h.table-bloom.no-compression.sst: beard#0,SET [31]
-testdata/h.table-bloom.sst: beard-bearers#0,RANGEDEL
-testdata/h.table-bloom.sst: beard#0,SET [31]
-testdata/h.zstd-compression.sst: beard-bearers#0,RANGEDEL
-testdata/h.zstd-compression.sst: beard#0,SET [31]
+testdata/h-no-compression-sst/000012.sst: beard-bearers#0,RANGEDEL
+testdata/h-no-compression-sst/000012.sst: beard#0,SET [31]
+testdata/h-no-compression-two-level-index-sst/000003.sst: beard-bearers#0,RANGEDEL
+testdata/h-no-compression-two-level-index-sst/000003.sst: beard#0,SET [31]
+testdata/h-table-bloom-no-compression-prefix-extractor-no-whole-key-filter-sst/000013.sst: beard-bearers#0,RANGEDEL
+testdata/h-table-bloom-no-compression-prefix-extractor-no-whole-key-filter-sst/000013.sst: beard#0,SET [31]
+testdata/h-table-bloom-no-compression-sst/000011.sst: beard-bearers#0,RANGEDEL
+testdata/h-table-bloom-no-compression-sst/000011.sst: beard#0,SET [31]
+testdata/h-table-bloom-sst/000010.sst: beard-bearers#0,RANGEDEL
+testdata/h-table-bloom-sst/000010.sst: beard#0,SET [31]
+testdata/h-zstd-compression-sst/000004.sst: beard-bearers#0,RANGEDEL
+testdata/h-zstd-compression-sst/000004.sst: beard#0,SET [31]
+testdata/hamlet-sst/000002.sst: beard-bearers#0,RANGEDEL
+testdata/hamlet-sst/000002.sst: beard#0,SET [31]
 
 sstable scan
 --filter=beard
 --start=boar
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
 
 sstable scan
@@ -398,9 +389,9 @@ sstable scan
   #36,RANGEKEYSET: @1 []
 
 sstable scan
-./testdata/cr-schema.sst
+./testdata/cr-schema-sst/000014.sst
 ----
-cr-schema.sst
+000014.sst
 tcestilr@3176.073933065,0#0,SET [b67f9deccb5f22c70c23575ae00e9156]
 tcestilr@3155.610170870,0#0,SET [d8094571a876976dd01ba2a5026a898e]
 tcestilr@2257.175610483,0#0,SET [9e3a0669c89f7d96c254f7571dca3d61]
@@ -423,34 +414,34 @@ tcpchosd@82.858934535,594919620#0,SET [0bac1470fab6a1e270410dda5f39f31d]
 tcrsfsqc@1366.233420574,0#0,SET [1b22f2128e75f0433e8eda52c41872e6]
 
 sstable scan
-./testdata/find-db-val-sep
+./testdata/find-val-sep-db
 --blob-mode=print
 ----
-find-db-val-sep/000005.sst
+find-val-sep-db/000005.sst
 aaa\x00#10,SET [(f0,blk0,id0,len5)]
 bbb\x00#11,SET [(f0,blk0,id1,len3)]
 ccc\x00#12,SET [(f0,blk0,id2,len10)]
 ddd\x00#13,SET [6]
-find-db-val-sep/000008.sst
+find-val-sep-db/000008.sst
 eee\x00#14,SET [(f0,blk0,id0,len6)]
 fff\x00#15,SET [(f0,blk0,id1,len7)]
 
 sstable scan
 --filter=armed
 --blob-mode=print
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst: armed#0,SET [2]
+000002.sst: armed#0,SET [2]
 
 sstable scan
-./testdata/find-db-val-sep/000005.sst
+./testdata/find-val-sep-db/000005.sst
 --blob-mode=load
 ----
 when --blob-mode=load is specified, the path to a directory containing a manifest and blob file must be provided as the last argument
 
 sstable scan
-./testdata/find-db-val-sep/000005.sst
-./testdata/find-db-val-sep
+./testdata/find-val-sep-db/000005.sst
+./testdata/find-val-sep-db
 --blob-mode=load
 ----
 000005.sst

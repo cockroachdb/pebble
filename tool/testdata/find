@@ -148,7 +148,7 @@ eee
     bbb-eee#19,RANGEDEL
 
 find
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 crdb:aaa
 --blob-mode=print
 ----
@@ -157,7 +157,7 @@ crdb:aaa
     aaa\x00#10,SET [(f0,blk0,id0,len5)]
 
 find
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 crdb:eee
 --blob-mode=print
 ----
@@ -168,7 +168,7 @@ crdb:eee
     eee\x00#14,SET [(f0,blk0,id0,len6)]
 
 find
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 crdb:ddd
 --blob-mode=print
 ----
@@ -177,7 +177,7 @@ crdb:ddd
     ddd\x00#13,SET [6]
 
 find
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 crdb:aaa
 --blob-mode=load
 ----
@@ -186,7 +186,7 @@ crdb:aaa
     aaa\x00#10,SET [yuumi]
 
 find
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 crdb:ddd
 --blob-mode=load
 ----
@@ -195,7 +195,7 @@ crdb:ddd
     ddd\x00#13,SET [6]
 
 find
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 crdb:eee
 --blob-mode=load
 ----

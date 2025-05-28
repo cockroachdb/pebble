@@ -36,7 +36,7 @@ db space --start=z --end=z
 # the referenced blob file is 74 bytes. Note that this sst only has 1 data block
 # with in bounds [a, d].
 db space --start=a --end=z
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 ----
 1762
 
@@ -45,6 +45,6 @@ testdata/find-db-val-sep
 # block + the estimated partial size of 000006.blob (14 bytes as more bytes are 
 # in [a, b]).
 db space --start=c --end=d
-testdata/find-db-val-sep
+testdata/find-val-sep-db
 ----
 157

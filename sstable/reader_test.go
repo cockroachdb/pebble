@@ -1628,7 +1628,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 		{
 			name: "top index block corruption",
 			files: []string{
-				"h.no-compression.two_level_index.sst",
+				"h-no-compression-two-level-index-sst/000003.sst",
 			},
 			corruptionLocations: []corruptionLocation{
 				corruptionLocationTopIndex,
@@ -1637,9 +1637,9 @@ func TestValidateBlockChecksums(t *testing.T) {
 		{
 			name: "filter block corruption",
 			files: []string{
-				"h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
-				"h.table-bloom.no-compression.sst",
-				"h.table-bloom.sst",
+				"h-table-bloom-no-compression-prefix-extractor-no-whole-key-filter-sst/000013.sst",
+				"h-table-bloom-no-compression-sst/000011.sst",
+				"h-table-bloom-sst/000010.sst",
 			},
 			corruptionLocations: []corruptionLocation{
 				corruptionLocationFilter,
