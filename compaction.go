@@ -415,48 +415,7 @@ func newCompaction(
 	c.kind = pc.kind
 
 	preferSharedStorage := remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
-	// In addition to the default compaction, we also check whether a tombstone density compaction can be optimized into
-	// a move compaction. However, we want to avoid performing a move compaction into the lowest level, since the goal
-	// there is to actually remove the tombstones.
-	//
-	// Tombstone density compaction is meant to address cases where tombstones don't reclaim much space but are still
-	// expensive to scan over. We can only remove the tombstones once there's nothing at all underneath them.
-	if (c.kind == compactionKindDefault || (c.kind == compactionKindTombstoneDensity && c.outputLevel.level != numLevels-1)) &&
-		c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
-		c.startLevel.files.Len() == 1 && c.grandparents.AggregateSizeSum() <= c.maxOverlapBytes {
-		// This compaction can be converted into a move or copy from one level
-		// to the next. We avoid such a move if there is lots of overlapping
-		// grandparent data. Otherwise, the move could create a parent file
-		// that will require a very expensive merge later on.
-		iter := c.startLevel.files.Iter()
-		meta := iter.First()
-		isRemote := false
-		// We should always be passed a provider, except in some unit tests.
-		if provider != nil {
-			isRemote = !objstorage.IsLocalTable(provider, meta.TableBacking.DiskFileNum)
-		}
-		// Avoid a trivial move or copy if all of these are true, as rewriting a
-		// new file is better:
-		//
-		// 1) The source file is a virtual sstable
-		// 2) The existing file `meta` is on non-remote storage
-		// 3) The output level prefers shared storage
-		//
-		// We also want to prevent ssts with blob references from being
-		// selected for copy compaction, as we currently lack a mechanism
-		// to propagate blob references along with the sstable.
-		mustCopy := !isRemote && preferSharedStorage && meta.BlobReferenceDepth == 0
-		if mustCopy {
-			// If the source is virtual, it's best to just rewrite the file as
-			// all conditions in the above comment are met.
-			if !meta.Virtual {
-				c.kind = compactionKindCopy
-			}
-		} else {
-			c.kind = compactionKindMove
-		}
-	}
-
+	c.maybeSwitchToMoveOrCopy(preferSharedStorage, provider)
 	c.opts = objstorage.CreateOptions{
 		PreferSharedStorage: preferSharedStorage,
 		WriteCategory:       getDiskWriteCategoryForCompaction(opts, c.kind),
@@ -466,6 +425,76 @@ func newCompaction(
 	}
 
 	return c
+}
+
+// maybeSwitchToMoveOrCopy decides if the compaction can be changed into a move
+// or copy compaction, in which case c.kind is updated.
+func (c *compaction) maybeSwitchToMoveOrCopy(
+	preferSharedStorage bool, provider objstorage.Provider,
+) {
+	// Only non-multi-level compactions with a single input file can be
+	// considered.
+	if c.startLevel.files.Len() != 1 || !c.outputLevel.files.Empty() || c.hasExtraLevelData() {
+		return
+	}
+
+	// In addition to the default compaction, we also check whether a tombstone
+	// density compaction can be optimized into a move compaction. However, we
+	// want to avoid performing a move compaction into the lowest level, since the
+	// goal there is to actually remove the tombstones.
+	//
+	// Tombstone density compaction is meant to address cases where tombstones
+	// don't reclaim much space but are still expensive to scan over. We can only
+	// remove the tombstones once there's nothing at all underneath them.
+	switch c.kind {
+	case compactionKindDefault:
+		// Proceed.
+	case compactionKindTombstoneDensity:
+		// Tombstone density compaction can be optimized into a move compaction.
+		// However, we want to avoid performing a move compaction into the lowest
+		// level, since the goal there is to actually remove the tombstones; even if
+		// they don't prevent a lot of space from being reclaimed, tombstones can
+		// still be expensive to scan over.
+		if c.outputLevel.level == numLevels-1 {
+			return
+		}
+	default:
+		// Other compaction kinds not supported.
+		return
+	}
+
+	// We avoid a move or copy if there is lots of overlapping grandparent data.
+	// Otherwise, the move could create a parent file that will require a very
+	// expensive merge later on.
+	if c.grandparents.AggregateSizeSum() > c.maxOverlapBytes {
+		return
+	}
+
+	iter := c.startLevel.files.Iter()
+	meta := iter.First()
+
+	// We should always be passed a provider, except in some unit tests.
+	isRemote := provider != nil && !objstorage.IsLocalTable(provider, meta.TableBacking.DiskFileNum)
+
+	// Shared and external tables can always be moved. We can also move a local
+	// table unless we need the result to be on shared storage.
+	if isRemote || !preferSharedStorage {
+		c.kind = compactionKindMove
+		return
+	}
+
+	// We can rewrite the table (regular compaction) or we can use a copy compaction.
+	switch {
+	case meta.Virtual:
+		// We want to avoid a copy compaction if the table is virtual, as we may end
+		// up copying a lot more data than necessary.
+	case meta.BlobReferenceDepth != 0:
+		// We also want to avoid copy compactions for tables with blob references,
+		// as we currently lack a mechanism to propagate blob references along with
+		// the sstable.
+	default:
+		c.kind = compactionKindCopy
+	}
 }
 
 func newDeleteOnlyCompaction(
@@ -2591,18 +2620,19 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 func (d *DB) runCopyCompaction(
 	jobID JobID, c *compaction,
 ) (ve *versionEdit, stats compact.Stats, _ error) {
+	if c.cancel.Load() {
+		return nil, compact.Stats{}, ErrCancelledCompaction
+	}
 	iter := c.startLevel.files.Iter()
 	inputMeta := iter.First()
 	if iter.Next() != nil {
 		return nil, compact.Stats{}, base.AssertionFailedf("got more than one file for a move compaction")
 	}
-	if c.cancel.Load() {
-		return nil, compact.Stats{}, ErrCancelledCompaction
-	}
 	if inputMeta.BlobReferenceDepth > 0 || len(inputMeta.BlobReferences) > 0 {
-		return nil, compact.Stats{},
-			base.AssertionFailedf("copy compaction for %d with non-zero blob reference "+
-				"depth %d or references %v", inputMeta.TableNum, inputMeta.BlobReferenceDepth)
+		return nil, compact.Stats{}, base.AssertionFailedf(
+			"copy compaction for %s with blob references (depth=%d, refs=%d)",
+			inputMeta.TableNum, inputMeta.BlobReferenceDepth, len(inputMeta.BlobReferences),
+		)
 	}
 	ve = &versionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
@@ -2614,15 +2644,9 @@ func (d *DB) runCopyCompaction(
 	if err != nil {
 		return nil, compact.Stats{}, err
 	}
-	if !objMeta.IsExternal() {
-		if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
-			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
-		}
-		// Note that based on logic in the compaction picker, we're guaranteed
-		// inputMeta.Virtual is nil.
-		if inputMeta.Virtual {
-			panic(errors.AssertionFailedf("cannot do a copy compaction of a virtual sstable across local/remote storage"))
-		}
+	// This code does not support copying a shared table (which should never be necessary).
+	if objMeta.IsShared() {
+		return nil, compact.Stats{}, base.AssertionFailedf("copy compaction of shared table")
 	}
 
 	// We are in the relatively more complex case where we need to copy this
