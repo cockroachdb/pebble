@@ -1,11 +1,7 @@
 sstable layout
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-requires at least 1 arg(s), only received 0
-
-sstable layout
-../sstable/testdata/h.sst
-----
-h.sst
+000002.sst
 sstable
  ├── data  offset: 0  length: 1094
  ├── data  offset: 1099  length: 1057
@@ -28,9 +24,9 @@ sstable
  └── footer  offset: 15070  length: 53
 
 sstable layout
-../sstable/testdata/h.table-bloom.no-compression.sst
+../sstable/testdata/h-table-bloom-no-compression-sst/000011.sst
 ----
-h.table-bloom.no-compression.sst
+000011.sst
 sstable
  ├── data  offset: 0  length: 2041
  ├── data  offset: 2046  length: 2044
@@ -54,9 +50,9 @@ sstable
  └── footer  offset: 30381  length: 53
 
 sstable layout
-../sstable/testdata/h.no-compression.two_level_index.sst
+../sstable/testdata/h-no-compression-two-level-index-sst/000003.sst
 ----
-h.no-compression.two_level_index.sst
+000003.sst
 sstable
  ├── data  offset: 0  length: 2041
  ├── data  offset: 2046  length: 2044
@@ -84,9 +80,9 @@ sstable
 sstable layout
 -v
 --value=pretty:test-comparer
-../sstable/testdata/h.no-compression.two_level_index.sst
+../sstable/testdata/h-no-compression-two-level-index-sst/000003.sst
 ----
-h.no-compression.two_level_index.sst
+000003.sst
 sstable
  ├── data  offset: 0  length: 2041
  │    ├── 00000    record (14 = 3 [0] + 9 + 2) [restart]
@@ -3802,9 +3798,9 @@ sstable
 
 sstable layout
 -v
-testdata/out-of-order.sst
+testdata/out-of-order-sst/000001.sst
 ----
-out-of-order.sst
+000001.sst
 sstable
  ├── data  offset: 0  length: 28
  │    ├── 00000    record (12 = 3 [0] + 9 + 0) [restart]

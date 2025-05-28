@@ -20,7 +20,7 @@ import (
 
 func makeOutOfOrderSST() {
 	fs := vfs.Default
-	f, err := fs.Create("tool/testdata/out-of-order.sst", vfs.WriteCategoryUnspecified)
+	f, err := fs.Create("tool/testdata/000002.sst", vfs.WriteCategoryUnspecified)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func makeOutOfOrderSST() {
 
 func makeCockroachSchemaSST() {
 	fs := vfs.Default
-	f, err := fs.Create("tool/testdata/cr-schema.sst", vfs.WriteCategoryUnspecified)
+	f, err := fs.Create("tool/testdata/000014.sst", vfs.WriteCategoryUnspecified)
 	if err != nil {
 		log.Fatal(err)
 	}
