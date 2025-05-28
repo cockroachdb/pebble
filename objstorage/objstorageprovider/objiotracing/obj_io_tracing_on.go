@@ -42,6 +42,8 @@ type Tracer struct {
 	workerStopCh chan struct{}
 	workerDataCh chan eventBuf
 	workerWait   sync.WaitGroup
+
+	closed atomic.Bool
 }
 
 // Open creates a Tracer which generates trace files in the given directory.
@@ -317,7 +319,7 @@ func makeEventGenerator(baseCtxInfo ctxInfo, t *Tracer) eventGenerator {
 }
 
 func (g *eventGenerator) flush() {
-	if g.buf.num > 0 {
+	if g.buf.num > 0 && !g.t.closed.Load() {
 		g.t.workerDataCh <- g.buf
 		g.buf.num = 0
 	}
@@ -352,6 +354,7 @@ func (t *Tracer) workerLoop() {
 	for {
 		select {
 		case <-stopCh:
+			t.closed.Store(true)
 			close(dataCh)
 			// Flush any remaining traces.
 			for data := range dataCh {
