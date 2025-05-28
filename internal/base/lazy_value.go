@@ -4,11 +4,7 @@
 
 package base
 
-import (
-	"context"
-
-	"github.com/cockroachdb/errors"
-)
+import "context"
 
 // A value can have user-defined attributes that are a function of the value
 // byte slice. For now, we only support "short attributes", which can be
@@ -286,22 +282,17 @@ func (lv *LazyValue) Clone(buf []byte, fetcher *LazyFetcher) (LazyValue, []byte)
 // NoBlobFetches is a ValueFetcher that returns an error. It's intended to be
 // used in situations where sstables should not encode a blob value, or the
 // caller should not fetch the handle's value.
-var NoBlobFetches = &errValueFetcher{
-	Err: errors.AssertionFailedf("unexpected blob value"),
-}
+var NoBlobFetches = errValueFetcher{}
 
 // errValueFetcher is a ValueFetcher that returns an error.
-type errValueFetcher struct {
-	Err error
-}
+type errValueFetcher struct{}
 
-// Assert that *errValueFetcher implements base.ValueFetcher.
-var _ ValueFetcher = (*errValueFetcher)(nil)
+var _ ValueFetcher = errValueFetcher{}
 
 // Fetch implements base.ValueFetcher.
-func (e *errValueFetcher) Fetch(
+func (e errValueFetcher) Fetch(
 	_ context.Context, _ []byte, blobFileNum DiskFileNum, valLen uint32, _ []byte,
 ) (val []byte, callerOwned bool, err error) {
-	err = errors.Wrapf(e.Err, "fetching %d-byte value from %s", valLen, blobFileNum)
+	err = AssertionFailedf("unexpected blob value: %d-byte from %s", valLen, blobFileNum)
 	return nil, false, err
 }

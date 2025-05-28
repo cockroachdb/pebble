@@ -1346,6 +1346,8 @@ func (d *DB) newInternalIter(
 		seqNum:          seqNum,
 		mergingIter:     &buf.merging,
 	}
+	dbi.blobValueFetcher.Init(d.fileCache, block.ReadEnv{})
+
 	dbi.opts = *o
 	dbi.opts.logger = d.opts.Logger
 	if d.opts.private.disableLazyCombinedIteration {

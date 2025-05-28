@@ -144,8 +144,13 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 		i.env.Stats.SeparatedPointValue.ValueBytes += uint64(preface.ValueLen)
 	}
 
+	fetcher := i.blobContext.ValueFetcher
+	if fetcher == nil {
+		fetcher = base.NoBlobFetches
+	}
+
 	i.lazyFetcher = base.LazyFetcher{
-		Fetcher: i.blobContext.ValueFetcher,
+		Fetcher: fetcher,
 		Attribute: base.AttributeAndLen{
 			ValueLen:       preface.ValueLen,
 			ShortAttribute: vp.ShortAttribute(),

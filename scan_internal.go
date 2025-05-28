@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -418,23 +419,24 @@ type IteratorLevel struct {
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
-	ctx             context.Context
-	db              *DB
-	opts            scanInternalOptions
-	comparer        *base.Comparer
-	merge           Merge
-	iter            internalIterator
-	readState       *readState
-	version         *version
-	rangeKey        *iteratorRangeKeyState
-	pointKeyIter    internalIterator
-	iterKV          *base.InternalKV
-	alloc           *iterAlloc
-	newIters        tableNewIters
-	newIterRangeKey keyspanimpl.TableNewSpanIter
-	seqNum          base.SeqNum
-	iterLevels      []IteratorLevel
-	mergingIter     *mergingIter
+	ctx              context.Context
+	db               *DB
+	opts             scanInternalOptions
+	comparer         *base.Comparer
+	merge            Merge
+	iter             internalIterator
+	readState        *readState
+	version          *version
+	rangeKey         *iteratorRangeKeyState
+	pointKeyIter     internalIterator
+	iterKV           *base.InternalKV
+	alloc            *iterAlloc
+	newIters         tableNewIters
+	newIterRangeKey  keyspanimpl.TableNewSpanIter
+	seqNum           base.SeqNum
+	iterLevels       []IteratorLevel
+	mergingIter      *mergingIter
+	blobValueFetcher blob.ValueFetcher
 
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the InternalIterator's bounds change, the new bounds are copied
@@ -900,13 +902,16 @@ func (i *scanInternalIterator) constructPointIter(
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
 	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
 	i.opts.IterOptions.Category = category
+
+	internalOpts := internalIterOpts{
+		blobValueFetcher: &i.blobValueFetcher,
+	}
+
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]
 
-		li.init(
-			i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level,
-			internalIterOpts{})
+		li.init(i.ctx, i.opts.IterOptions, i.comparer, i.newIters, files, level, internalOpts)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(i.ctx, keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
 			i.comparer.Compare, tableNewRangeDelIter(i.newIters), files, level,
@@ -1136,6 +1141,7 @@ func (i *scanInternalIterator) close() {
 		iterRangeKeyStateAllocPool.Put(i.rangeKey)
 		i.rangeKey = nil
 	}
+	_ = i.blobValueFetcher.Close()
 	if alloc := i.alloc; alloc != nil {
 		for j := range i.boundsBuf {
 			if cap(i.boundsBuf[j]) >= maxKeyBufCacheSize {
