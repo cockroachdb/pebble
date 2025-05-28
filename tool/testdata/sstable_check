@@ -1,52 +1,52 @@
 sstable check
-../sstable/testdata/h.sst
+../sstable/testdata/hamlet-sst/000002.sst
 ----
-h.sst
+000002.sst
 
 sstable check
-testdata/out-of-order.sst
+testdata/out-of-order-sst/000001.sst
 ----
-out-of-order.sst
+000001.sst
 WARNING: OUT OF ORDER KEYS!
     c#0,SET >= b#0,SET
 
 sstable check
 --key=%x
-testdata/out-of-order.sst
+testdata/out-of-order-sst/000001.sst
 ----
-out-of-order.sst
+000001.sst
 WARNING: OUT OF ORDER KEYS!
     63#0,SET >= 62#0,SET
 
 sstable check
 --key=pretty
-testdata/out-of-order.sst
+testdata/out-of-order-sst/000001.sst
 ----
-out-of-order.sst
+000001.sst
 WARNING: OUT OF ORDER KEYS!
     c#0,SET >= b#0,SET
 
 sstable check
 --key=pretty:test-comparer
-testdata/out-of-order.sst
+testdata/out-of-order-sst/000001.sst
 ----
-out-of-order.sst
+000001.sst
 WARNING: OUT OF ORDER KEYS!
     test formatter: c#0,SET >= test formatter: b#0,SET
 
 sstable check
 --key=null
-testdata/out-of-order.sst
+testdata/out-of-order-sst/000001.sst
 ----
-out-of-order.sst
+000001.sst
 WARNING: OUT OF ORDER KEYS!
 
 sstable check
-testdata/corrupted.sst
+testdata/corrupted-sst/000003.sst
 ----
-corrupted.sst: pebble: file 000000: block 87/465: crc32c checksum mismatch c8539ba5 != b972e324
+000003.sst: pebble: file 000000: block 87/465: crc32c checksum mismatch c8539ba5 != b972e324
 
 sstable check
-testdata/bad-magic.sst
+testdata/bad-magic-sst/000015.sst
 ----
-bad-magic.sst: pebble/table: invalid table 000000: (bad magic number: 0xf6cff485b741e288)
+000015.sst: pebble/table: invalid table 000000: (bad magic number: 0xf6cff485b741e288)

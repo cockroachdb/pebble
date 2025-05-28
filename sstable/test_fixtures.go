@@ -188,7 +188,7 @@ type TestFixtureInfo struct {
 // TestFixtures contains all metadata necessary to generate the test SSTs.
 var TestFixtures = []TestFixtureInfo{
 	{
-		Filename:           "h.sst",
+		Filename:           "hamlet-sst/000002.sst",
 		Compression:        block.SnappyCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
@@ -196,7 +196,7 @@ var TestFixtures = []TestFixtureInfo{
 		UseFixtureComparer: false,
 	},
 	{
-		Filename:           "h.no-compression.sst",
+		Filename:           "h-no-compression-sst/000012.sst",
 		Compression:        block.NoCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
@@ -204,7 +204,7 @@ var TestFixtures = []TestFixtureInfo{
 		UseFixtureComparer: false,
 	},
 	{
-		Filename:           "h.table-bloom.sst",
+		Filename:           "h-table-bloom-sst/000010.sst",
 		Compression:        block.SnappyCompression,
 		FullKeyFilter:      true,
 		PrefixFilter:       false,
@@ -212,7 +212,7 @@ var TestFixtures = []TestFixtureInfo{
 		UseFixtureComparer: false,
 	},
 	{
-		Filename:           "h.table-bloom.no-compression.sst",
+		Filename:           "h-table-bloom-no-compression-sst/000011.sst",
 		Compression:        block.NoCompression,
 		FullKeyFilter:      true,
 		PrefixFilter:       false,
@@ -220,7 +220,7 @@ var TestFixtures = []TestFixtureInfo{
 		UseFixtureComparer: false,
 	},
 	{
-		Filename:           "h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+		Filename:           "h-table-bloom-no-compression-prefix-extractor-no-whole-key-filter-sst/000013.sst",
 		Compression:        block.NoCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       true,
@@ -228,7 +228,7 @@ var TestFixtures = []TestFixtureInfo{
 		UseFixtureComparer: true,
 	},
 	{
-		Filename:           "h.no-compression.two_level_index.sst",
+		Filename:           "h-no-compression-two-level-index-sst/000003.sst",
 		Compression:        block.NoCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,
@@ -236,7 +236,7 @@ var TestFixtures = []TestFixtureInfo{
 		UseFixtureComparer: false,
 	},
 	{
-		Filename:           "h.zstd-compression.sst",
+		Filename:           "h-zstd-compression-sst/000004.sst",
 		Compression:        block.ZstdCompression,
 		FullKeyFilter:      false,
 		PrefixFilter:       false,

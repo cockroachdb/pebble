@@ -44,7 +44,7 @@ func TestPropertiesLoad(t *testing.T) {
 
 	{
 		// Check that we can read properties from a table.
-		f, err := vfs.Default.Open(filepath.FromSlash("testdata/h.sst"))
+		f, err := vfs.Default.Open(filepath.FromSlash("testdata/hamlet-sst/000002.sst"))
 		require.NoError(t, err)
 
 		r, err := newReader(f, ReaderOptions{})
