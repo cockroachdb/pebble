@@ -1127,6 +1127,7 @@ func (i *scanInternalIterator) error() error {
 // close closes this iterator, and releases any pooled objects.
 func (i *scanInternalIterator) close() {
 	_ = i.iter.Close()
+	_ = i.blobValueFetcher.Close()
 	if i.readState != nil {
 		i.readState.unref()
 	}
@@ -1141,7 +1142,6 @@ func (i *scanInternalIterator) close() {
 		iterRangeKeyStateAllocPool.Put(i.rangeKey)
 		i.rangeKey = nil
 	}
-	_ = i.blobValueFetcher.Close()
 	if alloc := i.alloc; alloc != nil {
 		for j := range i.boundsBuf {
 			if cap(i.boundsBuf[j]) >= maxKeyBufCacheSize {
