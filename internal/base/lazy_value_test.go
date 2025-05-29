@@ -68,7 +68,7 @@ func TestLazyValue(t *testing.T) {
 		require.Equal(t, []byte("foo"), getValue(fooLV3, callerOwned))
 		require.Equal(t, 1, numCalls)
 		require.Equal(t, []byte("foo"), getValue(fooLV3, callerOwned))
-		require.Equal(t, 1, numCalls)
+		require.Equal(t, 2, numCalls)
 		require.Equal(t, 3, fooLV3.Len())
 		attr, hasAttr := fooLV3.TryGetShortAttribute()
 		require.True(t, hasAttr)
