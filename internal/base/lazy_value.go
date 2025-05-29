@@ -157,20 +157,15 @@ type LazyValue struct {
 
 // LazyFetcher supports fetching a lazy value.
 //
-// Fetcher and Attribute are to be initialized at creation time. The fields
-// are arranged to reduce the sizeof this struct.
+// The fields are to be initialized at creation time.
 type LazyFetcher struct {
 	// Fetcher, given a handle, returns the value.
 	Fetcher ValueFetcher
-	err     error
-	value   []byte
 	// Attribute includes the short attribute and value length.
 	Attribute AttributeAndLen
 	// BlobFileNum identifies the blob file containing the value. It is only
 	// populated if the value is stored in a blob file.
 	BlobFileNum DiskFileNum
-	fetched     bool
-	callerOwned bool
 }
 
 // ValueFetcher is an interface for fetching a value.
@@ -193,32 +188,12 @@ type ValueFetcher interface {
 
 // Value returns the underlying value.
 func (lv *LazyValue) Value(buf []byte) (val []byte, callerOwned bool, err error) {
-	if lv.Fetcher == nil {
+	f := lv.Fetcher
+	if f == nil {
 		return lv.ValueOrHandle, false, nil
 	}
-	// Do the rest of the work in a separate method to attempt mid-stack
-	// inlining of Value(). Unfortunately, this still does not inline since the
-	// cost of 85 exceeds the budget of 80.
-	//
-	// TODO(sumeer): Packing the return values into a struct{[]byte error bool}
-	// causes it to be below the budget. Consider this if we need to recover
-	// more performance. I suspect that inlining this only matters in
-	// micro-benchmarks, and in actual use cases in CockroachDB it will not
-	// matter because there is substantial work done with a fetched value.
-	return lv.fetchValue(context.TODO(), buf)
-}
-
-// INVARIANT: lv.Fetcher != nil
-func (lv *LazyValue) fetchValue(
-	ctx context.Context, buf []byte,
-) (val []byte, callerOwned bool, err error) {
-	f := lv.Fetcher
-	if !f.fetched {
-		f.fetched = true
-		f.value, f.callerOwned, f.err = f.Fetcher.Fetch(ctx,
-			lv.ValueOrHandle, f.BlobFileNum, f.Attribute.ValueLen, buf)
-	}
-	return f.value, f.callerOwned, f.err
+	return f.Fetcher.Fetch(context.TODO(),
+		lv.ValueOrHandle, f.BlobFileNum, f.Attribute.ValueLen, buf)
 }
 
 // Len returns the length of the value.
