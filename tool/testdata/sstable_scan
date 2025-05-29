@@ -449,3 +449,12 @@ aaa\x00#10,SET [yuumi]
 bbb\x00#11,SET [mai]
 ccc\x00#12,SET [poiandyaya]
 ddd\x00#13,SET [6]
+
+sstable scan
+./testdata/find-val-sep-db/000008.sst
+./testdata/find-val-sep-db
+--blob-mode=load
+----
+000008.sst
+eee\x00#14,SET [pigeon]
+fff\x00#15,SET [chicken]
