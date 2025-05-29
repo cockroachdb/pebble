@@ -1791,6 +1791,8 @@ func (d *DB) Close() error {
 		err = firstError(err, errors.Errorf("non-zero zombie blob count: %d", zblobs))
 	}
 
+	err = firstError(err, d.fileCache.Close())
+
 	err = firstError(err, d.objProvider.Close())
 
 	// If the options include a closer to 'close' the filesystem, close it.
@@ -1802,8 +1804,6 @@ func (d *DB) Close() error {
 	if v := d.mu.snapshots.count(); v > 0 {
 		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
 	}
-
-	err = firstError(err, d.fileCache.Close())
 
 	return err
 }
