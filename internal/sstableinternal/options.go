@@ -12,8 +12,8 @@ import (
 // CacheOptions contains the information needed to interact with the block
 // cache.
 type CacheOptions struct {
-	// CacheHandle can be nil, in which case no cache is used. When non-nil, the other
-	// fields must be set accordingly.
+	// CacheHandle can be nil, in which case no cache is used. When non-nil, the
+	// other fields must be set accordingly.
 	CacheHandle *cache.Handle
 	FileNum     base.DiskFileNum
 }

@@ -1,5 +1,5 @@
 sst
-../testdata/h.sst
+../testdata/hamlet-sst/000002.sst
 ----
 Kind   Size Range  Test CR  Samples  Size                 Snappy      MinLZ1      MinLZ2      ZSTD1       ZSTD3       ZSTD5       ZSTD7
 data   <24KB       1.5-2.5  14       1.9KB ± 25%  CR      1.9 ± 5%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%

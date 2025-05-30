@@ -153,7 +153,9 @@ inclusive-inclusive range specified by --start and --end.
 	return s
 }
 
-func (s *sstableT) newReader(f vfs.File, cacheHandle *cache.Handle) (*sstable.Reader, error) {
+func (s *sstableT) newReader(
+	f vfs.File, cacheHandle *cache.Handle, fn string,
+) (*sstable.Reader, error) {
 	readable, err := sstable.NewSimpleReadable(f)
 	if err != nil {
 		return nil, err
@@ -162,6 +164,13 @@ func (s *sstableT) newReader(f vfs.File, cacheHandle *cache.Handle) (*sstable.Re
 	o.Comparers = s.comparers
 	o.Mergers = s.mergers
 	o.CacheOpts = sstableinternal.CacheOptions{CacheHandle: cacheHandle}
+	if cacheHandle != nil {
+		_, fileNum, ok := base.ParseFilename(s.opts.FS, fn)
+		if !ok {
+			return nil, errors.Newf("failed to parse filename %s", fn)
+		}
+		o.CacheOpts.FileNum = fileNum
+	}
 	reader, err := sstable.NewReader(context.Background(), readable, o)
 	if err != nil {
 		return nil, errors.CombineErrors(err, readable.Close())
@@ -338,6 +347,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	// containing the manifest(s) and blob file(s).
 	blobMode := ConvertToBlobRefMode(s.blobMode)
 	var blobDir string
+	var blobRefsMap map[base.FileNum]*manifest.BlobReferences
 	if blobMode == BlobRefModeLoad {
 		if len(args) < 2 {
 			fmt.Fprintf(stderr, "when --blob-mode=load is specified, the path to a "+
@@ -346,6 +356,12 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 		blobDir = args[len(args)-1]
 		args = args[:len(args)-1]
+		var err error
+		blobRefsMap, err = findAndReadManifests(stderr, s.opts.FS, blobDir)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
 	}
 
 	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
@@ -368,18 +384,14 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			s.fmtValue.mustSet("[%s]")
 			blobContext = sstable.DebugHandlesBlobContext
 		case BlobRefModeLoad:
-			blobRefs, err := findAndReadManifests(stderr, s.opts.FS, blobDir)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
 			provider := debugReaderProvider{
 				fs:  s.opts.FS,
 				dir: blobDir,
 			}
 			s.fmtValue.mustSet("[%s]")
 			var vf *blob.ValueFetcher
-			vf, blobContext = sstable.LoadValBlobContext(&provider, &blobRefs)
+			blobRefs := blobRefsMap[base.PhysicalTableFileNum(r.BlockReader().FileNum())]
+			vf, blobContext = sstable.LoadValBlobContext(&provider, blobRefs)
 			defer func() { _ = vf.Close() }()
 		default:
 			blobContext = sstable.AssertNoBlobHandles
@@ -579,7 +591,7 @@ func (s *sstableT) foreachSstable(
 		ch := c.NewHandle()
 		defer ch.Close()
 
-		r, err := s.newReader(f, ch)
+		r, err := s.newReader(f, ch, path)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s: %s\n", path, err)
 			return
@@ -606,10 +618,11 @@ func (s *sstableT) foreachSstable(
 }
 
 // findAndReadManifests finds and reads all manifests in the specified
-// directory to gather blob references.
+// directory to gather blob references for each sstable.
 func findAndReadManifests(
 	stderr io.Writer, fs vfs.FS, dir string,
-) (manifest.BlobReferences, error) {
+) (map[base.FileNum]*manifest.BlobReferences, error) {
+	blobRefsMap := make(map[base.FileNum]*manifest.BlobReferences)
 	var manifests []fileLoc
 	walk(stderr, fs, dir, func(path string) {
 		ft, fileNum, ok := base.ParseFilename(fs, path)
@@ -625,7 +638,7 @@ func findAndReadManifests(
 	if len(manifests) == 0 {
 		return nil, errors.New("no MANIFEST files found in the given path")
 	}
-	blobMetas := make(map[base.DiskFileNum]struct{})
+	slices.SortFunc(manifests, cmpFileLoc)
 	for _, fl := range manifests {
 		func() {
 			mf, err := fs.Open(fl.path)
@@ -649,22 +662,11 @@ func findAndReadManifests(
 					fmt.Fprintf(stderr, "%s: %s\n", fl.path, err)
 					break
 				}
-				for _, bf := range ve.NewBlobFiles {
-					if _, ok := blobMetas[bf.FileNum]; !ok {
-						blobMetas[bf.FileNum] = struct{}{}
-					}
+				for _, nf := range ve.NewTables {
+					blobRefsMap[nf.Meta.TableNum] = &nf.Meta.BlobReferences
 				}
 			}
 		}()
 	}
-	slices.SortFunc(manifests, cmpFileLoc)
-	blobRefs := make(manifest.BlobReferences, len(blobMetas))
-	i := 0
-	for fn := range blobMetas {
-		blobRefs[i] = manifest.BlobReference{
-			FileNum: fn,
-		}
-		i++
-	}
-	return blobRefs, nil
+	return blobRefsMap, nil
 }

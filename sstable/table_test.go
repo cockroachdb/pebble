@@ -250,17 +250,17 @@ func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPoli
 
 func TestReaderDefaultCompression(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	testReader(t, "h.sst", nil, nil)
+	testReader(t, "hamlet-sst/000002.sst", nil, nil)
 }
 
 func TestReaderNoCompression(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	testReader(t, "h.no-compression.sst", nil, nil)
+	testReader(t, "h-no-compression-sst/000012.sst", nil, nil)
 }
 
 func TestReaderTableBloom(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	testReader(t, "h.table-bloom.no-compression.sst", nil, nil)
+	testReader(t, "h-table-bloom-no-compression-sst/000011.sst", nil, nil)
 }
 
 func TestReaderBloomUsed(t *testing.T) {
@@ -283,8 +283,8 @@ func TestReaderBloomUsed(t *testing.T) {
 		path     string
 		comparer *Comparer
 	}{
-		{"h.table-bloom.no-compression.sst", nil},
-		{"h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst", fixtureComparer},
+		{"h-table-bloom-no-compression-sst/000011.sst", nil},
+		{"h-table-bloom-no-compression-prefix-extractor-no-whole-key-filter-sst/000013.sst", fixtureComparer},
 	}
 	for _, tc := range files {
 		t.Run(tc.path, func(t *testing.T) {
@@ -325,7 +325,7 @@ func TestReaderBloomUsed(t *testing.T) {
 
 func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	f, err := vfs.Default.Open(filepath.FromSlash("testdata/h.table-bloom.no-compression.sst"))
+	f, err := vfs.Default.Open(filepath.FromSlash("testdata/h-table-bloom-no-compression-sst/000011.sst"))
 	require.NoError(t, err)
 
 	c := &countingFilterPolicy{
@@ -500,7 +500,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 
 func TestReaderSymtheticSeqNum(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	f, err := vfs.Default.Open(filepath.FromSlash("testdata/h.sst"))
+	f, err := vfs.Default.Open(filepath.FromSlash("testdata/hamlet-sst/000002.sst"))
 	require.NoError(t, err)
 
 	r, err := newReader(f, ReaderOptions{})

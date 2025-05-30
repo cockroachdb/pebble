@@ -44,7 +44,7 @@ func (d *db) close() {
 }
 
 func main() {
-	const dir = "tool/testdata/find-db-val-sep"
+	const dir = "tool/testdata/find-val-sep-db"
 
 	fs := vfs.Default
 	if err := fs.RemoveAll(dir); err != nil {
