@@ -2,12 +2,12 @@ sst
 ../testdata/h.sst
 ----
 Kind   Size Range  Test CR  Samples  Size                 Snappy      MinLZ1      MinLZ2      ZSTD1       ZSTD3       ZSTD5       ZSTD7
-data   <24KB       1.5-2.5  14       1.9KB ± 25%  CR      1.9 ± 5%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%
-                                                  Comp    0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%
-                                                  Decomp  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%
-index  <24KB       1.1-1.5  1        0.3KB ± 0%   CR      1.3 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%
-                                                  Comp    0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%
-                                                  Decomp  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%
-other  <24KB       1.1-1.5  1        0.4KB ± 0%   CR      1.3 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%    0.0 ± 0%
-                                                  Comp    0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%
-                                                  Decomp  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%  0.0us ± 0%
+data   <24KB       1.5-2.5  14       1.9KB ± 25%  CR      1.93 ± 3%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%
+                                                  Comp    0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%
+                                                  Decomp  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%
+index  <24KB       1.1-1.5  1        0.3KB ± 0%   CR      1.31 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%
+                                                  Comp    0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%
+                                                  Decomp  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%
+other  <24KB       1.1-1.5  1        0.4KB ± 0%   CR      1.28 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%   0.00 ± 0%
+                                                  Comp    0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%
+                                                  Decomp  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%  0MBps ± 0%

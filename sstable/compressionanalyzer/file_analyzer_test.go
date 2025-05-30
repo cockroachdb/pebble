@@ -36,10 +36,10 @@ func TestFileAnalyzer(t *testing.T) {
 							// Snappy always has the same output in all configurations and on
 							// all platforms.
 							if Settings[l].Algorithm != compression.SnappyAlgorithm {
-								bucket.Experiments[l].CompressionRatio = Welford{}
+								bucket.Experiments[l].CompressionRatio = WeightedWelford{}
 							}
-							bucket.Experiments[l].CompressionTime = Welford{}
-							bucket.Experiments[l].DecompressionTime = Welford{}
+							bucket.Experiments[l].CompressionTime = WeightedWelford{}
+							bucket.Experiments[l].DecompressionTime = WeightedWelford{}
 						}
 					}
 				}

@@ -88,10 +88,10 @@ func (a *BlockAnalyzer) runExperiment(
 	}
 	decompressionTime := t2.Elapsed()
 
-	// CPU times are in microseconds.
-	pa.CompressionTime.Add(compressionTime.Seconds() * 1e6)
-	pa.DecompressionTime.Add(decompressionTime.Seconds() * 1e6)
-	pa.CompressionRatio.Add(float64(len(block)) / float64(len(compressed)))
+	// CPU times are in nanoseconds / byte.
+	pa.CompressionTime.Add(float64(compressionTime)/float64(len(block)), uint64(len(block)))
+	pa.DecompressionTime.Add(float64(decompressionTime)/float64(len(block)), uint64(len(block)))
+	pa.CompressionRatio.Add(float64(len(block))/float64(len(compressed)), uint64(len(block)))
 }
 
 func ensureLen(b []byte, n int) []byte {
