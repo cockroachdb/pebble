@@ -250,7 +250,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return errors.CombineErrors(err, readable.Close()).Error()
 			}
 			defer r.Close()
-			iter, err := newCombinedDeletionKeyspanIter(cmp, r, m, sstable.NoReadEnv)
+			iter, err := newCombinedDeletionKeyspanIter(context.Background(), cmp, r, m, sstable.NoReadEnv)
 			if err != nil {
 				return err.Error()
 			}
