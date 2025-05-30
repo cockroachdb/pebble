@@ -44,14 +44,14 @@ type sstableT struct {
 	mergers   sstable.Mergers
 
 	// Flags.
-	fmtKey   keyFormatter
-	fmtValue valueFormatter
-	start    key
-	end      key
-	filter   key
-	count    int64
-	verbose  bool
-	blobMode string
+	fmtKey       keyFormatter
+	fmtValue     valueFormatter
+	start        key
+	end          key
+	filter       key
+	count        int64
+	verbose      bool
+	blobModeLoad string
 }
 
 func newSSTable(
@@ -103,9 +103,6 @@ properties are pretty-printed or displayed in a verbose/raw format.
 Print the records in the sstables. The sstables are scanned in command line
 order which means the records will be printed in that order. Raw range
 tombstones are displayed interleaved with point records.
-
-When --blob-mode=load is specified, the path to a directory containing a
-manifest and blob file must be provided as the last argument.
 `,
 		Args: cobra.MinimumNArgs(1),
 		Run:  s.runScan,
@@ -145,7 +142,8 @@ inclusive-inclusive range specified by --start and --end.
 	s.Scan.Flags().Int64Var(
 		&s.count, "count", 0, "key count for scan (0 is unlimited)")
 	s.Scan.Flags().StringVar(
-		&s.blobMode, "blob-mode", "none", "blob value formatter")
+		&s.blobModeLoad, "blob-mode-load", "", "relative path to a directory containing a manifest and "+
+			"blob file to load values from")
 
 	return s
 }
@@ -339,25 +337,14 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	// If in blob load mode, the last argument is the path to our directory
-	// containing the manifest(s) and blob file(s).
-	blobMode := ConvertToBlobRefMode(s.blobMode)
-	var blobDir string
 	var blobMappings *blobFileMappings
-	if blobMode == BlobRefModeLoad {
-		if len(args) < 2 {
-			fmt.Fprintf(stderr, "when --blob-mode=load is specified, the path to a "+
-				"directory containing a manifest and blob file must be provided as the last argument")
-			return
-		}
-		blobDir = args[len(args)-1]
-		args = args[:len(args)-1]
-		manifests, err := findManifests(stderr, s.opts.FS, blobDir)
+	if s.blobModeLoad != "" {
+		manifests, err := findManifests(stderr, s.opts.FS, s.blobModeLoad)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
-		blobMappings, err = newBlobFileMappings(stderr, s.opts.FS, blobDir, manifests)
+		blobMappings, err = newBlobFileMappings(stderr, s.opts.FS, s.blobModeLoad, manifests)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -379,22 +366,15 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			prefix = fmt.Sprintf("%s: ", path)
 		}
 
-		var blobContext sstable.TableBlobContext
-		switch blobMode {
-		case BlobRefModePrint:
-			s.fmtValue.mustSet("[%s]")
-			blobContext = sstable.DebugHandlesBlobContext
-		case BlobRefModeLoad:
+		blobContext := sstable.DebugHandlesBlobContext
+		if s.blobModeLoad != "" {
 			// If the file number is unset, we are likely trying to read a
 			// non numerically named file.
 			if r.BlockReader().FileNum() == 0 {
 				fmt.Fprintf(stderr, "unset file in path %s\n", path)
 				return
 			}
-			s.fmtValue.mustSet("[%s]")
 			blobContext = blobMappings.LoadValueBlobContext(base.PhysicalTableFileNum(r.BlockReader().FileNum()))
-		default:
-			blobContext = sstable.AssertNoBlobHandles
 		}
 		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end, blobContext)
 		if err != nil {

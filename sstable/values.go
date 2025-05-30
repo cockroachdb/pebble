@@ -35,7 +35,16 @@ var DebugHandlesBlobContext = TableBlobContext{
 			InlineHandlePreface: preface,
 			HandleSuffix:        handleSuffix,
 		}
-		return base.MakeInPlaceValue([]byte(ih.String()))
+		// Preappend "blob-value:" to the handle to help identify blob values
+		// from inline values later on (we want to be able to format the former
+		// differenently during value formatting).
+		//
+		// TODO(annie): Revisit this once we support determining the type
+		// of value we are dealing with in our sstable internal iterator.
+		// We can use some information about the ValuePrefix to separate
+		// how we want to format in-place values and blob value handles
+		// (via a new formatter) instead of prepending "blob-value:".
+		return base.MakeInPlaceValue([]byte("blob-value:" + ih.String()))
 	},
 }
 

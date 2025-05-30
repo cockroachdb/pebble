@@ -5,6 +5,7 @@
 package tool
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -175,6 +176,15 @@ func (f *valueFormatter) Set(spec string) error {
 		f.fn = func(k, v []byte) fmt.Formatter {
 			return fmtFormatter{f.spec, v}
 		}
+	}
+	fn := f.fn
+	// Format blob values differently from inline values.
+	f.fn = func(k, v []byte) fmt.Formatter {
+		valuePrefix := []byte("blob-value:")
+		if bytes.HasPrefix(v, valuePrefix) {
+			return fmtFormatter{"[%s]", v[len(valuePrefix):]}
+		}
+		return fn(k, v)
 	}
 	return nil
 }
