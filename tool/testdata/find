@@ -142,7 +142,15 @@ Unable to decode sstable find-mixed/000001.sst, pebble/table: invalid table 0000
 find
 testdata/find-db
 eee
---blob-mode=print
+--blob-mode-print
+--blob-mode-load
+----
+cannot use --blob-mode-load and --blob-mode-print together
+
+find
+testdata/find-db
+eee
+--blob-mode-print
 ----
 000004.log
     bbb-eee#19,RANGEDEL
@@ -150,7 +158,7 @@ eee
 find
 testdata/find-val-sep-db
 crdb:aaa
---blob-mode=print
+--blob-mode-print
 ----
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
@@ -159,7 +167,7 @@ crdb:aaa
 find
 testdata/find-val-sep-db
 crdb:eee
---blob-mode=print
+--blob-mode-print
 ----
 000004.log
     eee\x00#14,SET [pigeon]
@@ -170,7 +178,7 @@ crdb:eee
 find
 testdata/find-val-sep-db
 crdb:ddd
---blob-mode=print
+--blob-mode-print
 ----
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
@@ -179,7 +187,8 @@ crdb:ddd
 find
 testdata/find-val-sep-db
 crdb:aaa
---blob-mode=load
+--blob-mode-load
+--value=[%s]
 ----
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
@@ -188,7 +197,8 @@ crdb:aaa
 find
 testdata/find-val-sep-db
 crdb:ddd
---blob-mode=load
+--blob-mode-load
+--value=[%s]
 ----
 000005.sst [aaa\x00#10,SET-ddd\x00#13,SET]
     (flushed to L0)
@@ -197,7 +207,8 @@ crdb:ddd
 find
 testdata/find-val-sep-db
 crdb:eee
---blob-mode=load
+--blob-mode-load
+--value=[%s]
 ----
 000004.log
     eee\x00#14,SET [pigeon]

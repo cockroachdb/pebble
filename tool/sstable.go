@@ -44,14 +44,15 @@ type sstableT struct {
 	mergers   sstable.Mergers
 
 	// Flags.
-	fmtKey   keyFormatter
-	fmtValue valueFormatter
-	start    key
-	end      key
-	filter   key
-	count    int64
-	verbose  bool
-	blobMode string
+	fmtKey        keyFormatter
+	fmtValue      valueFormatter
+	start         key
+	end           key
+	filter        key
+	count         int64
+	verbose       bool
+	blobModePrint bool
+	blobModeLoad  string
 }
 
 func newSSTable(
@@ -103,9 +104,6 @@ properties are pretty-printed or displayed in a verbose/raw format.
 Print the records in the sstables. The sstables are scanned in command line
 order which means the records will be printed in that order. Raw range
 tombstones are displayed interleaved with point records.
-
-When --blob-mode=load is specified, the path to a directory containing a
-manifest and blob file must be provided as the last argument.
 `,
 		Args: cobra.MinimumNArgs(1),
 		Run:  s.runScan,
@@ -144,8 +142,12 @@ inclusive-inclusive range specified by --start and --end.
 		&s.filter, "filter", "only output records with matching prefix or overlapping range tombstones")
 	s.Scan.Flags().Int64Var(
 		&s.count, "count", 0, "key count for scan (0 is unlimited)")
+	s.Scan.Flags().BoolVar(
+		&s.blobModePrint, "blob-mode-print", false, "print blob value handles when encountered. "+
+			"Cannot be used in conjunction with --blob-mode-load")
 	s.Scan.Flags().StringVar(
-		&s.blobMode, "blob-mode", "none", "blob value formatter")
+		&s.blobModeLoad, "blob-mode-load", "", "relative path to a directory containing a manifest and "+
+			"blob file to load values from. Cannot be used in conjunction with --blob-mode-print")
 
 	return s
 }
@@ -339,25 +341,19 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
-	// If in blob load mode, the last argument is the path to our directory
-	// containing the manifest(s) and blob file(s).
-	blobMode := ConvertToBlobRefMode(s.blobMode)
-	var blobDir string
+	if s.blobModeLoad != "" && s.blobModePrint {
+		fmt.Fprintf(stderr, "cannot use --blob-mode-load and --blob-mode-print together")
+		return
+	}
 	var blobMappings *blobFileMappings
-	if blobMode == BlobRefModeLoad {
-		if len(args) < 2 {
-			fmt.Fprintf(stderr, "when --blob-mode=load is specified, the path to a "+
-				"directory containing a manifest and blob file must be provided as the last argument")
-			return
-		}
-		blobDir = args[len(args)-1]
-		args = args[:len(args)-1]
-		manifests, err := findManifests(stderr, s.opts.FS, blobDir)
+	if s.blobModeLoad != "" {
+		var err error
+		manifests, err := findManifests(stderr, s.opts.FS, s.blobModeLoad)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
-		blobMappings, err = newBlobFileMappings(stderr, s.opts.FS, blobDir, manifests)
+		blobMappings, err = newBlobFileMappings(stderr, s.opts.FS, s.blobModeLoad, manifests)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -379,22 +375,25 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			prefix = fmt.Sprintf("%s: ", path)
 		}
 
-		var blobContext sstable.TableBlobContext
-		switch blobMode {
-		case BlobRefModePrint:
+		blobContext := sstable.AssertNoBlobHandles
+		if s.blobModePrint {
+			// TODO(annie): Revisit this once we support determining the type
+			// of value we are dealing with in our sstable internal iterator.
+			// We can use some information about the ValuePrefix to separate
+			// how we want to format in-place values and blob value handles
+			// (via a new formatter). Then, we can make printing blob value
+			// handles the default.
 			s.fmtValue.mustSet("[%s]")
 			blobContext = sstable.DebugHandlesBlobContext
-		case BlobRefModeLoad:
+		}
+		if s.blobModeLoad != "" {
 			// If the file number is unset, we are likely trying to read a
 			// non numerically named file.
 			if r.BlockReader().FileNum() == 0 {
 				fmt.Fprintf(stderr, "unset file in path %s\n", path)
 				return
 			}
-			s.fmtValue.mustSet("[%s]")
 			blobContext = blobMappings.LoadValueBlobContext(base.PhysicalTableFileNum(r.BlockReader().FileNum()))
-		default:
-			blobContext = sstable.AssertNoBlobHandles
 		}
 		iter, err := r.NewIter(sstable.NoTransforms, nil, s.end, blobContext)
 		if err != nil {
