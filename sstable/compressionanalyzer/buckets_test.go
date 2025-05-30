@@ -69,9 +69,10 @@ func exampleBuckets() Buckets {
 			b.UncompressedSize.Add(100 + float64(r.IntN(64*1024)))
 			for j := range b.Experiments {
 				e := &b.Experiments[j]
-				e.CompressionRatio.Add(float64(j+1) + 0.1*float64(r.IntN(10)))
-				e.CompressionTime.Add(float64((j+1)*10) + 0.1*float64(r.IntN(10)))
-				e.DecompressionTime.Add(float64((j+1)*100) + 0.1*float64(r.IntN(10)))
+				blockSize := uint64(50 + r.IntN(100))
+				e.CompressionRatio.Add(float64(j+1)+0.1*float64(r.IntN(10)), blockSize)
+				e.CompressionTime.Add(float64((j+1)*10)+0.1*float64(r.IntN(10)), blockSize)
+				e.DecompressionTime.Add(float64((j+1)*100)+0.1*float64(r.IntN(10)), blockSize)
 			}
 		}
 	}

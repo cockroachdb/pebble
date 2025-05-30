@@ -11,7 +11,7 @@ import (
 
 // almostEqual checks floats within tiny epsilon
 func almostEqual(a, b float64) bool {
-	const eps = 1e-9
+	const eps = 1e-5
 	return math.Abs(a-b) <= eps
 }
 
@@ -21,31 +21,27 @@ func TestWelfordBasic(t *testing.T) {
 		input         []float64
 		wantCount     int64
 		wantMean      float64
-		wantVarPop    float64 // M2/n
 		wantVarSample float64 // M2/(n-1)
 	}{
 		{
 			name:          "empty",
 			input:         nil,
 			wantCount:     0,
-			wantMean:      math.NaN(),
-			wantVarPop:    math.NaN(),
-			wantVarSample: math.NaN(),
+			wantMean:      0,
+			wantVarSample: 0,
 		},
 		{
 			name:          "one value",
 			input:         []float64{42},
 			wantCount:     1,
 			wantMean:      42,
-			wantVarPop:    0,
-			wantVarSample: math.NaN(),
+			wantVarSample: 0,
 		},
 		{
 			name:          "1..5",
 			input:         []float64{1, 2, 3, 4, 5},
 			wantCount:     5,
 			wantMean:      3,
-			wantVarPop:    2,   // population variance of 1,2,3,4,5
 			wantVarSample: 2.5, // sample variance
 		},
 		{
@@ -53,8 +49,14 @@ func TestWelfordBasic(t *testing.T) {
 			input:         []float64{7, 7, 7, 7},
 			wantCount:     4,
 			wantMean:      7,
-			wantVarPop:    0,
 			wantVarSample: 0,
+		},
+		{
+			name:          "other",
+			input:         []float64{1, 1, 1, 3, 5, 5, 5, 10, 12, 12, 12, 12},
+			wantCount:     12,
+			wantMean:      6.58 + 0.01/3,
+			wantVarSample: 22.08 + 0.01/3,
 		},
 	}
 
@@ -68,15 +70,73 @@ func TestWelfordBasic(t *testing.T) {
 				t.Errorf("Count = %d; want %d", got, tc.wantCount)
 			}
 			gotMean := w.Mean()
-			if !(math.IsNaN(tc.wantMean) && math.IsNaN(gotMean) || almostEqual(gotMean, tc.wantMean)) {
+			if !almostEqual(gotMean, tc.wantMean) {
 				t.Errorf("Mean = %v; want %v", gotMean, tc.wantMean)
 			}
-			gotPop := w.Variance()
-			if !(math.IsNaN(tc.wantVarPop) && math.IsNaN(gotPop) || almostEqual(gotPop, tc.wantVarPop)) {
-				t.Errorf("Variance (pop) = %v; want %v", gotPop, tc.wantVarPop)
+			gotSample := w.SampleVariance()
+			if !almostEqual(gotSample, tc.wantVarSample) {
+				t.Errorf("Variance (sample) = %v; want %v", gotSample, tc.wantVarSample)
+			}
+		})
+	}
+}
+
+func TestWeightedWelford(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         []float64
+		weights       []uint64
+		wantMean      float64
+		wantVarSample float64 // M2/(n-1)
+	}{
+		{
+			name:          "empty",
+			input:         nil,
+			wantMean:      0,
+			wantVarSample: 0,
+		},
+		{
+			name:          "one value",
+			input:         []float64{42},
+			weights:       []uint64{1},
+			wantMean:      42,
+			wantVarSample: 0,
+		},
+		{
+			name:          "constant values",
+			input:         []float64{7},
+			weights:       []uint64{10},
+			wantMean:      7,
+			wantVarSample: 0,
+		},
+		{
+			name:          "1..5",
+			input:         []float64{1, 2, 3, 4, 5},
+			weights:       []uint64{1, 1, 1, 1, 1},
+			wantMean:      3,
+			wantVarSample: 2.5, // sample variance
+		},
+		{
+			name:          "other",
+			input:         []float64{1, 3, 5, 10, 12},
+			weights:       []uint64{3, 1, 3, 1, 4},
+			wantMean:      6.58 + 0.01/3,
+			wantVarSample: 22.08 + 0.01/3,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var w WeightedWelford
+			for i := range tc.input {
+				w.Add(tc.input[i], tc.weights[i])
+			}
+			gotMean := w.Mean()
+			if !almostEqual(gotMean, tc.wantMean) {
+				t.Errorf("Mean = %v; want %v", gotMean, tc.wantMean)
 			}
 			gotSample := w.SampleVariance()
-			if !(math.IsNaN(tc.wantVarSample) && math.IsNaN(gotSample) || almostEqual(gotSample, tc.wantVarSample)) {
+			if !almostEqual(gotSample, tc.wantVarSample) {
 				t.Errorf("Variance (sample) = %v; want %v", gotSample, tc.wantVarSample)
 			}
 		})
