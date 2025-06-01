@@ -25,7 +25,6 @@ const numLevels = manifest.NumLevels
 const manifestMarkerName = `manifest`
 
 // Provide type aliases for the various manifest structs.
-type bulkVersionEdit = manifest.BulkVersionEdit
 type newTableEntry = manifest.NewTableEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
@@ -231,7 +230,7 @@ func (vs *versionSet) load(
 	manifestFilename := opts.FS.PathBase(manifestPath)
 
 	// Read the versionEdits in the manifest file.
-	var bve bulkVersionEdit
+	var bve manifest.BulkVersionEdit
 	bve.AllAddedTables = make(map[base.TableNum]*manifest.TableMetadata)
 	manifestFile, err := vs.fs.Open(manifestPath)
 	if err != nil {
@@ -618,7 +617,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 			return errors.Wrap(err, "MANIFEST blob files apply and update failed")
 		}
 
-		var bulkEdit bulkVersionEdit
+		var bulkEdit manifest.BulkVersionEdit
 		err := bulkEdit.Accumulate(ve)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST accumulate failed")
