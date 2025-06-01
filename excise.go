@@ -490,10 +490,10 @@ func applyExciseToVersionEdit(
 	}
 	originalLen := len(ve.NewTables)
 	if leftTable != nil {
-		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: leftTable})
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: level, Meta: leftTable})
 	}
 	if rightTable != nil {
-		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: rightTable})
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: level, Meta: rightTable})
 	}
 	return ve.NewTables[originalLen:]
 }

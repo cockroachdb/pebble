@@ -25,7 +25,6 @@ const numLevels = manifest.NumLevels
 const manifestMarkerName = `manifest`
 
 // Provide type aliases for the various manifest structs.
-type newTableEntry = manifest.NewTableEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
 type versionList = manifest.VersionList
@@ -1046,7 +1045,7 @@ func (vs *versionSet) createManifest(
 	// Add all extant sstables in the current version.
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		for meta := range levelMetadata.All() {
-			snapshot.NewTables = append(snapshot.NewTables, newTableEntry{
+			snapshot.NewTables = append(snapshot.NewTables, manifest.NewTableEntry{
 				Level: level,
 				Meta:  meta,
 			})
