@@ -472,7 +472,7 @@ func determineExcisedTableBlobReferences(
 //
 // Either or both of leftTable/rightTable can be nil.
 func applyExciseToVersionEdit(
-	ve *versionEdit, originalTable, leftTable, rightTable *manifest.TableMetadata, level int,
+	ve *manifest.VersionEdit, originalTable, leftTable, rightTable *manifest.TableMetadata, level int,
 ) (newFiles []manifest.NewTableEntry) {
 	ve.DeletedTables[manifest.DeletedTableEntry{
 		Level:   level,

@@ -148,7 +148,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 	cmp := DefaultComparer.Compare
 	fmtKey := DefaultComparer.FormatKey
 	opts := DefaultOptions()
-	var v *version
+	var v *manifest.Version
 	var buf bytes.Buffer
 
 	// Indexed by FileNum.

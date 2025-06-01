@@ -1027,7 +1027,7 @@ var iterAllocPool = sync.Pool{
 //     Only `seqNum` and `readState` are set.
 type snapshotIterOpts struct {
 	seqNum    base.SeqNum
-	vers      *version
+	vers      *manifest.Version
 	readState *readState
 }
 
@@ -1450,7 +1450,7 @@ func (i *Iterator) constructPointIter(
 		numMergingLevels++
 	}
 
-	var current *version
+	var current *manifest.Version
 	if !i.batchOnlyIter {
 		numMergingLevels += len(memtables)
 

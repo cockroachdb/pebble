@@ -203,7 +203,7 @@ type compaction struct {
 	comparer  *base.Comparer
 	formatKey base.FormatKey
 	logger    Logger
-	version   *version
+	version   *manifest.Version
 	stats     base.InternalIteratorStats
 	beganAt   time.Time
 	// versionEditApplied is set to true when a compaction has completed and the
@@ -499,7 +499,7 @@ func (c *compaction) maybeSwitchToMoveOrCopy(
 
 func newDeleteOnlyCompaction(
 	opts *Options,
-	cur *version,
+	cur *manifest.Version,
 	inputs []compactionLevel,
 	beganAt time.Time,
 	hints []deleteCompactionHint,
@@ -598,7 +598,7 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 
 func newFlush(
 	opts *Options,
-	cur *version,
+	cur *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	baseLevel int,
 	flushing flushableList,
@@ -739,7 +739,7 @@ func (c *compaction) hasExtraLevelData() bool {
 // errorOnUserKeyOverlap returns an error if the last two written sstables in
 // this compaction have revisions of the same user key present in both sstables,
 // when it shouldn't (eg. when splitting flushes).
-func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
+func (c *compaction) errorOnUserKeyOverlap(ve *manifest.VersionEdit) error {
 	if n := len(ve.NewTables); n > 1 {
 		meta := ve.NewTables[n-1].Meta
 		prevMeta := ve.NewTables[n-2].Meta
@@ -1336,7 +1336,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	c.version = d.mu.versions.currentVersion()
 
 	baseLevel := d.mu.versions.picker.getBaseLevel()
-	ve := &versionEdit{}
+	ve := &manifest.VersionEdit{}
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
 
@@ -2245,7 +2245,7 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 // The files that the resolved hints apply to, are returned as compactionLevels.
 func checkDeleteCompactionHints(
 	cmp Compare,
-	v *version,
+	v *manifest.Version,
 	hints []deleteCompactionHint,
 	snapshots compact.Snapshots,
 	exciseEnabled bool,
@@ -2475,7 +2475,7 @@ func (d *DB) handleCompactFailure(c *compaction, err error) {
 // for the application of a versionEdit that is no longer going to be applied.
 //
 // d.mu must be held when calling this method.
-func (d *DB) cleanupVersionEdit(ve *versionEdit) {
+func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 	obsoleteFiles := manifest.ObsoleteFiles{
 		TableBackings: make([]*manifest.TableBacking, 0, len(ve.NewTables)),
 		BlobFiles:     make([]*manifest.BlobFileMetadata, 0, len(ve.NewBlobFiles)),
@@ -2619,7 +2619,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // doing IO.
 func (d *DB) runCopyCompaction(
 	jobID JobID, c *compaction,
-) (ve *versionEdit, stats compact.Stats, _ error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, _ error) {
 	if c.cancel.Load() {
 		return nil, compact.Stats{}, ErrCancelledCompaction
 	}
@@ -2634,7 +2634,7 @@ func (d *DB) runCopyCompaction(
 			inputMeta.TableNum, inputMeta.BlobReferenceDepth, len(inputMeta.BlobReferences),
 		)
 	}
-	ve = &versionEdit{
+	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: inputMeta.TableNum}: inputMeta,
 		},
@@ -2808,7 +2808,7 @@ func (d *DB) applyHintOnFile(
 	f *manifest.TableMetadata,
 	level int,
 	levelMetrics *LevelMetrics,
-	ve *versionEdit,
+	ve *manifest.VersionEdit,
 	hintOverlap deletionHintOverlap,
 ) (newFiles []manifest.NewTableEntry, err error) {
 	if hintOverlap == hintDoesNotApply {
@@ -2844,7 +2844,7 @@ func (d *DB) applyHintOnFile(
 func (d *DB) runDeleteOnlyCompactionForLevel(
 	cl compactionLevel,
 	levelMetrics *LevelMetrics,
-	ve *versionEdit,
+	ve *manifest.VersionEdit,
 	snapshots compact.Snapshots,
 	fragments []deleteCompactionHintFragment,
 	exciseEnabled bool,
@@ -2962,9 +2962,9 @@ func fragmentDeleteCompactionHints(
 // d.mu must *not* be held when calling this.
 func (d *DB) runDeleteOnlyCompaction(
 	jobID JobID, c *compaction, snapshots compact.Snapshots,
-) (ve *versionEdit, stats compact.Stats, retErr error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deletionHints)
-	ve = &versionEdit{
+	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
@@ -3003,7 +3003,7 @@ func (d *DB) runDeleteOnlyCompaction(
 
 func (d *DB) runMoveCompaction(
 	jobID JobID, c *compaction,
-) (ve *versionEdit, stats compact.Stats, _ error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, _ error) {
 	iter := c.startLevel.files.Iter()
 	meta := iter.First()
 	if iter.Next() != nil {
@@ -3016,7 +3016,7 @@ func (d *DB) runMoveCompaction(
 		TableBytesMoved: meta.Size,
 		TablesMoved:     1,
 	}
-	ve = &versionEdit{
+	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
 		},
@@ -3037,7 +3037,7 @@ func (d *DB) runMoveCompaction(
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID JobID, c *compaction,
-) (ve *versionEdit, stats compact.Stats, retErr error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
 	}
@@ -3278,8 +3278,8 @@ func (d *DB) compactAndWrite(
 
 // makeVersionEdit creates the version edit for a compaction, based on the
 // tables in compact.Result.
-func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error) {
-	ve := &versionEdit{
+func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEdit, error) {
+	ve := &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
@@ -3482,7 +3482,7 @@ func (d *DB) newCompactionOutputObj(
 // validateVersionEdit validates that start and end keys across new and deleted
 // files in a versionEdit pass the given validation function.
 func validateVersionEdit(
-	ve *versionEdit, vk base.ValidateKey, format base.FormatKey, logger Logger,
+	ve *manifest.VersionEdit, vk base.ValidateKey, format base.FormatKey, logger Logger,
 ) {
 	validateKey := func(f *manifest.TableMetadata, key []byte) {
 		if err := vk.Validate(key); err != nil {

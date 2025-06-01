@@ -43,14 +43,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newVersion(opts *Options, files [numLevels][]*manifest.TableMetadata) *version {
+func newVersion(opts *Options, files [numLevels][]*manifest.TableMetadata) *manifest.Version {
 	v, _ := newVersionAndL0Organizer(opts, files)
 	return v
 }
 
 func newVersionAndL0Organizer(
 	opts *Options, files [numLevels][]*manifest.TableMetadata,
-) (*version, *manifest.L0Organizer) {
+) (*manifest.Version, *manifest.L0Organizer) {
 	l0Organizer := manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
 	v := manifest.NewVersionForTesting(
 		opts.Comparer,
@@ -702,13 +702,13 @@ func TestValidateVersionEdit(t *testing.T) {
 
 	testCases := []struct {
 		desc    string
-		ve      *versionEdit
+		ve      *manifest.VersionEdit
 		vFunc   func([]byte) error
 		wantErr error
 	}{
 		{
 			desc: "single new file; start key",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				NewTables: []manifest.NewTableEntry{
 					{
 						Meta: newFileMeta(
@@ -723,7 +723,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		},
 		{
 			desc: "single new file; end key",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				NewTables: []manifest.NewTableEntry{
 					{
 						Meta: newFileMeta(
@@ -738,7 +738,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		},
 		{
 			desc: "multiple new files",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				NewTables: []manifest.NewTableEntry{
 					{
 						Meta: newFileMeta(
@@ -759,7 +759,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		},
 		{
 			desc: "single deleted file; start key",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte(badKey)},
@@ -772,7 +772,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		},
 		{
 			desc: "single deleted file; end key",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
@@ -785,7 +785,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		},
 		{
 			desc: "multiple deleted files",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 					{Level: 0, FileNum: 0}: newFileMeta(
 						manifest.InternalKey{UserKey: []byte("a")},
@@ -802,7 +802,7 @@ func TestValidateVersionEdit(t *testing.T) {
 		},
 		{
 			desc: "no errors",
-			ve: &versionEdit{
+			ve: &manifest.VersionEdit{
 				NewTables: []manifest.NewTableEntry{
 					{
 						Level: 0,
@@ -2185,7 +2185,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 				}
 
 				result := "OK"
-				ve := &versionEdit{
+				ve := &manifest.VersionEdit{
 					NewTables: files,
 				}
 				if err := c.errorOnUserKeyOverlap(ve); err != nil {
@@ -3163,7 +3163,7 @@ func TestCompactionCorruption(t *testing.T) {
 }
 
 func hasExternalFiles(d *DB) bool {
-	v := func() *version {
+	v := func() *manifest.Version {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 

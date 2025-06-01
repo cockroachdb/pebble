@@ -426,7 +426,7 @@ type scanInternalIterator struct {
 	merge            Merge
 	iter             internalIterator
 	readState        *readState
-	version          *version
+	version          *manifest.Version
 	rangeKey         *iteratorRangeKeyState
 	pointKeyIter     internalIterator
 	iterKV           *base.InternalKV

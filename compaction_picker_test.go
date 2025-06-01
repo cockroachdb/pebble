@@ -30,7 +30,7 @@ import (
 
 func loadVersion(
 	t *testing.T, d *datadriven.TestData,
-) (*version, *manifest.L0Organizer, *Options, string) {
+) (*manifest.Version, *manifest.L0Organizer, *Options, string) {
 	var sizes [numLevels]int64
 	opts := &Options{}
 	opts.testingRandomized(t)
@@ -146,7 +146,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 }
 
 func TestCompactionPickerTargetLevel(t *testing.T) {
-	var vers *version
+	var vers *manifest.Version
 	var l0Organizer *manifest.L0Organizer
 	var opts *Options
 	var pickerByScore *compactionPickerByScore

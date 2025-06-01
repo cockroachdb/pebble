@@ -80,7 +80,7 @@ func TestVersionSet(t *testing.T) {
 		return b
 	}
 
-	refs := make(map[string]*version)
+	refs := make(map[string]*manifest.Version)
 	datadriven.RunTest(t, "testdata/version_set", func(t *testing.T, td *datadriven.TestData) (retVal string) {
 		// createFile only exists to prevent versionSet from complaining that a
 		// file that is becoming a zombie does not exist.
@@ -310,17 +310,17 @@ func TestVersionSetSeqNums(t *testing.T) {
 	// observed SeqNum.
 	filenames, err := mem.List("")
 	require.NoError(t, err)
-	var manifest vfs.File
+	var manifestFile vfs.File
 	for _, filename := range filenames {
 		fileType, _, ok := base.ParseFilename(mem, filename)
 		if ok && fileType == base.FileTypeManifest {
-			manifest, err = mem.Open(filename)
+			manifestFile, err = mem.Open(filename)
 			require.NoError(t, err)
 		}
 	}
-	require.NotNil(t, manifest)
-	defer manifest.Close()
-	rr := record.NewReader(manifest, 0 /* logNum */)
+	require.NotNil(t, manifestFile)
+	defer manifestFile.Close()
+	rr := record.NewReader(manifestFile, 0 /* logNum */)
 	var lastSeqNum base.SeqNum
 	for {
 		r, err := rr.Next()
@@ -328,7 +328,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
-		var ve versionEdit
+		var ve manifest.VersionEdit
 		err = ve.Decode(r)
 		require.NoError(t, err)
 		if ve.LastSeqNum != 0 {

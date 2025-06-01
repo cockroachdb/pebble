@@ -515,7 +515,7 @@ func (d *DB) writeCheckpointManifest(
 
 		if len(excludedTables) > 0 || len(excludedBlobFiles) > 0 {
 			// Write out an additional VersionEdit that deletes the excluded SST files.
-			ve := versionEdit{
+			ve := manifest.VersionEdit{
 				DeletedTables:        excludedTables,
 				RemovedBackingTables: removeBackingTables,
 				DeletedBlobFiles:     excludedBlobFiles,
