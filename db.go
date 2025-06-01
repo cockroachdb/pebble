@@ -493,7 +493,7 @@ type DB struct {
 			// pending is a slice of metadata for sstables waiting to be
 			// validated. Only physical sstables should be added to the pending
 			// queue.
-			pending []newTableEntry
+			pending []manifest.NewTableEntry
 			// validating is set to true when validation is running.
 			validating bool
 		}

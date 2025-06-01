@@ -1340,7 +1340,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
 
-	updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []newTableEntry) {
+	updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []manifest.NewTableEntry) {
 		levelMetrics := c.metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
@@ -1374,7 +1374,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		},
 		v: c.version,
 	}
-	replacedTables := make(map[base.TableNum][]newTableEntry)
+	replacedTables := make(map[base.TableNum][]manifest.NewTableEntry)
 	for _, file := range ingestFlushable.files {
 		var fileToSplit *manifest.TableMetadata
 		var level int
@@ -1399,7 +1399,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		}
 
 		// Add the current flushableIngest file to the version.
-		ve.NewTables = append(ve.NewTables, newTableEntry{Level: level, Meta: file})
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: level, Meta: file})
 		if fileToSplit != nil {
 			ingestSplitFiles = append(ingestSplitFiles, ingestSplitFile{
 				ingestFile: file,
@@ -2778,7 +2778,7 @@ func (d *DB) runCopyCompaction(
 		}
 		deleteOnExit = true
 	}
-	ve.NewTables = []newTableEntry{{
+	ve.NewTables = []manifest.NewTableEntry{{
 		Level: c.outputLevel.level,
 		Meta:  newMeta,
 	}}
@@ -3020,7 +3020,7 @@ func (d *DB) runMoveCompaction(
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
 		},
-		NewTables: []newTableEntry{
+		NewTables: []manifest.NewTableEntry{
 			{Level: c.outputLevel.level, Meta: meta},
 		},
 	}
@@ -3324,7 +3324,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 	}
 
 	inputLargestSeqNumAbsolute := c.inputLargestSeqNumAbsolute()
-	ve.NewTables = make([]newTableEntry, len(result.Tables))
+	ve.NewTables = make([]manifest.NewTableEntry, len(result.Tables))
 	for i := range result.Tables {
 		t := &result.Tables[i]
 
@@ -3371,7 +3371,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 			fileMeta.ExtendRangeKeyBounds(c.cmp, t.WriterMeta.SmallestRangeKey, t.WriterMeta.LargestRangeKey)
 		}
 
-		ve.NewTables[i] = newTableEntry{
+		ve.NewTables[i] = manifest.NewTableEntry{
 			Level: c.outputLevel.level,
 			Meta:  fileMeta,
 		}

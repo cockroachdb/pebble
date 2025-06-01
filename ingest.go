@@ -1785,9 +1785,9 @@ type ingestSplitFile struct {
 func (d *DB) ingestSplit(
 	ctx context.Context,
 	ve *versionEdit,
-	updateMetrics func(*manifest.TableMetadata, int, []newTableEntry),
+	updateMetrics func(*manifest.TableMetadata, int, []manifest.NewTableEntry),
 	files []ingestSplitFile,
-	replacedTables map[base.TableNum][]newTableEntry,
+	replacedTables map[base.TableNum][]manifest.NewTableEntry,
 ) error {
 	for _, s := range files {
 		ingestFileBounds := s.ingestFile.UserKeyBounds()
@@ -1893,7 +1893,7 @@ func (d *DB) ingestApply(
 	defer d.mu.Unlock()
 
 	ve := &versionEdit{
-		NewTables: make([]newTableEntry, lr.fileCount()),
+		NewTables: make([]manifest.NewTableEntry, lr.fileCount()),
 	}
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
 		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.TableMetadata{}
@@ -2046,8 +2046,8 @@ func (d *DB) ingestApply(
 		// possible for a file that we want to split to no longer exist or have a
 		// newer fileMetadata due to a split induced by another ingestion file, or an
 		// excise.
-		replacedTables := make(map[base.TableNum][]newTableEntry)
-		updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []newTableEntry) {
+		replacedTables := make(map[base.TableNum][]manifest.NewTableEntry)
+		updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []manifest.NewTableEntry) {
 			levelMetrics := metrics[level]
 			if levelMetrics == nil {
 				levelMetrics = &LevelMetrics{}
@@ -2197,7 +2197,7 @@ func (d *DB) ingestApply(
 // block checksums for the backing file will be validated twice.
 //
 // DB.mu must be locked when calling.
-func (d *DB) maybeValidateSSTablesLocked(newFiles []newTableEntry) {
+func (d *DB) maybeValidateSSTablesLocked(newFiles []manifest.NewTableEntry) {
 	// Only add to the validation queue when the feature is enabled.
 	if !d.opts.Experimental.ValidateOnIngest {
 		return

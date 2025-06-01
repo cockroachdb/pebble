@@ -984,7 +984,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			if largestSeqNum <= f.Meta.LargestSeqNum {
 				largestSeqNum = f.Meta.LargestSeqNum + 1
 			}
-			ve.NewTables = append(ve.NewTables, newTableEntry{
+			ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{
 				Level: level,
 				Meta:  f.Meta,
 			})
