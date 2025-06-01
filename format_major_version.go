@@ -543,7 +543,7 @@ func (d *DB) compactMarkedFilesLocked() error {
 // findFilesFunc scans the LSM for files, returning true if at least one
 // file was found. The returned array contains the matched files, if any, per
 // level.
-type findFilesFunc func(v *version) (found bool, files [numLevels][]*tableMetadata, _ error)
+type findFilesFunc func(v *version) (found bool, files [numLevels][]*manifest.TableMetadata, _ error)
 
 // This method is not used currently, but it will be useful the next time we need
 // to mark files for compaction.
@@ -561,7 +561,7 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	rs := d.loadReadState()
 	var (
 		found bool
-		files [numLevels][]*tableMetadata
+		files [numLevels][]*manifest.TableMetadata
 		err   error
 	)
 	func() {

@@ -395,12 +395,12 @@ func TestGetIter(t *testing.T) {
 			return iterSet{point: d.newIter(nil)}, nil
 		}
 
-		var files [numLevels][]*tableMetadata
+		var files [numLevels][]*manifest.TableMetadata
 		for _, tt := range tc.tables {
 			d := newMemTable(memTableOptions{})
 			m[tt.tableNum] = d
 
-			meta := &tableMetadata{
+			meta := &manifest.TableMetadata{
 				TableNum: tt.tableNum,
 			}
 			meta.InitPhysicalBacking()

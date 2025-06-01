@@ -54,7 +54,7 @@ type bounded interface {
 	UserKeyBounds() base.UserKeyBounds
 }
 
-var _ bounded = (*tableMetadata)(nil)
+var _ bounded = (*manifest.TableMetadata)(nil)
 var _ bounded = KeyRange{}
 
 func sliceAsBounded[B bounded](s []B) []bounded {
@@ -152,7 +152,7 @@ type flushableList []*flushableEntry
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
 	// files are non-overlapping and ordered (according to their bounds).
-	files            []*tableMetadata
+	files            []*manifest.TableMetadata
 	comparer         *Comparer
 	newIters         tableNewIters
 	newRangeKeyIters keyspanimpl.TableNewSpanIter
@@ -169,7 +169,7 @@ type ingestedFlushable struct {
 }
 
 func newIngestedFlushable(
-	files []*tableMetadata,
+	files []*manifest.TableMetadata,
 	comparer *Comparer,
 	newIters tableNewIters,
 	newRangeKeyIters keyspanimpl.TableNewSpanIter,
@@ -185,7 +185,7 @@ func newIngestedFlushable(
 			}
 		}
 	}
-	var physicalFiles []*tableMetadata
+	var physicalFiles []*manifest.TableMetadata
 	var hasRangeKeys bool
 	for _, f := range files {
 		if f.HasRangeKeys {

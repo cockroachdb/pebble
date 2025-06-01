@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +49,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 	}
 	reset()
 
-	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*tableMetadata {
+	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*manifest.TableMetadata {
 		pendingOutputs := make([]base.TableNum, len(paths))
 		for i := range paths {
 			pendingOutputs[i] = d.mu.versions.getNextTableNum()
@@ -61,12 +62,12 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		meta := make([]*tableMetadata, len(lr.local))
+		meta := make([]*manifest.TableMetadata, len(lr.local))
 		if exciseSpan.Valid() {
 			seqNum++
 		}
 		for i := range meta {
-			meta[i] = lr.local[i].tableMetadata
+			meta[i] = lr.local[i].TableMetadata
 			if err := setSeqNumInMetadata(meta[i], seqNum+base.SeqNum(i), d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				t.Fatal(err)
 			}

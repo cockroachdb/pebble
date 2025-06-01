@@ -1340,7 +1340,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
 
-	updateLevelMetricsOnExcise := func(m *tableMetadata, level int, added []newTableEntry) {
+	updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []newTableEntry) {
 		levelMetrics := c.metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
@@ -1376,7 +1376,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	}
 	replacedTables := make(map[base.TableNum][]newTableEntry)
 	for _, file := range ingestFlushable.files {
-		var fileToSplit *tableMetadata
+		var fileToSplit *manifest.TableMetadata
 		var level int
 
 		// This file fits perfectly within the excise span, so we can slot it at L6.
@@ -2135,7 +2135,7 @@ type deleteCompactionHint struct {
 	// be deleted.
 	tombstoneLevel int
 	// The file containing the range tombstone(s) that created the hint.
-	tombstoneFile *tableMetadata
+	tombstoneFile *manifest.TableMetadata
 	// The smallest and largest sequence numbers of the abutting tombstones
 	// merged to form this hint. All of a tables' keys must be less than the
 	// tombstone smallest sequence number to be deleted. All of a tables'
@@ -2174,7 +2174,7 @@ func (h deleteCompactionHint) String() string {
 }
 
 func (h *deleteCompactionHint) canDeleteOrExcise(
-	cmp Compare, m *tableMetadata, snapshots compact.Snapshots, exciseEnabled bool,
+	cmp Compare, m *manifest.TableMetadata, snapshots compact.Snapshots, exciseEnabled bool,
 ) deletionHintOverlap {
 	// The file can only be deleted if all of its keys are older than the
 	// earliest tombstone aggregated into the hint. Note that we use
@@ -2250,8 +2250,8 @@ func checkDeleteCompactionHints(
 	snapshots compact.Snapshots,
 	exciseEnabled bool,
 ) (levels []compactionLevel, resolved, unresolved []deleteCompactionHint) {
-	var files map[*tableMetadata]bool
-	var byLevel [numLevels][]*tableMetadata
+	var files map[*manifest.TableMetadata]bool
+	var byLevel [numLevels][]*manifest.TableMetadata
 
 	// Delete-only compactions can be quadratic (O(mn)) in terms of runtime
 	// where m = number of files in the delete-only compaction and n = number
@@ -2316,7 +2316,7 @@ func checkDeleteCompactionHints(
 		// equal to the number of files it deletes. First, determine how many files are
 		// affected by this hint.
 		filesDeletedByCurrentHint := 0
-		var filesDeletedByLevel [7][]*tableMetadata
+		var filesDeletedByLevel [7][]*manifest.TableMetadata
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
 			for m := range v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end)).All() {
 				doesHintApply := h.canDeleteOrExcise(cmp, m, snapshots, exciseEnabled)
@@ -2357,7 +2357,7 @@ func checkDeleteCompactionHints(
 				if files == nil {
 					// Construct files lazily, assuming most calls will not
 					// produce delete-only compactions.
-					files = make(map[*tableMetadata]bool)
+					files = make(map[*manifest.TableMetadata]bool)
 				}
 				files[m] = true
 			}
@@ -2635,7 +2635,7 @@ func (d *DB) runCopyCompaction(
 		)
 	}
 	ve = &versionEdit{
-		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
+		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: inputMeta.TableNum}: inputMeta,
 		},
 	}
@@ -2655,7 +2655,7 @@ func (d *DB) runCopyCompaction(
 	// To ease up cleanup of the local file and tracking of refs, we create
 	// a new FileNum. This has the potential of making the block cache less
 	// effective, however.
-	newMeta := &tableMetadata{
+	newMeta := &manifest.TableMetadata{
 		Size:                     inputMeta.Size,
 		CreationTime:             inputMeta.CreationTime,
 		SmallestSeqNum:           inputMeta.SmallestSeqNum,
@@ -2805,7 +2805,7 @@ func (d *DB) runCopyCompaction(
 // of tables deleted or excised.
 func (d *DB) applyHintOnFile(
 	h deleteCompactionHint,
-	f *tableMetadata,
+	f *manifest.TableMetadata,
 	level int,
 	levelMetrics *LevelMetrics,
 	ve *versionEdit,
@@ -2965,7 +2965,7 @@ func (d *DB) runDeleteOnlyCompaction(
 ) (ve *versionEdit, stats compact.Stats, retErr error) {
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deletionHints)
 	ve = &versionEdit{
-		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
+		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
 		levelMetrics := &LevelMetrics{}
@@ -3017,7 +3017,7 @@ func (d *DB) runMoveCompaction(
 		TablesMoved:     1,
 	}
 	ve = &versionEdit{
-		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{
+		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
 		},
 		NewTables: []newTableEntry{
@@ -3280,7 +3280,7 @@ func (d *DB) compactAndWrite(
 // tables in compact.Result.
 func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error) {
 	ve := &versionEdit{
-		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
+		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
@@ -3335,7 +3335,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 			}
 		}
 
-		fileMeta := &tableMetadata{
+		fileMeta := &manifest.TableMetadata{
 			TableNum:           base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
 			CreationTime:       t.CreationTime.Unix(),
 			Size:               t.WriterMeta.Size,

@@ -90,7 +90,7 @@ type SharedSSTMeta struct {
 	tableNum base.TableNum
 }
 
-func (s *SharedSSTMeta) cloneFromFileMeta(f *tableMetadata) {
+func (s *SharedSSTMeta) cloneFromFileMeta(f *manifest.TableMetadata) {
 	*s = SharedSSTMeta{
 		Smallest:         f.Smallest().Clone(),
 		Largest:          f.Largest().Clone(),
@@ -463,7 +463,7 @@ func (d *DB) truncateExternalFile(
 	ctx context.Context,
 	lower, upper []byte,
 	level int,
-	file *tableMetadata,
+	file *manifest.TableMetadata,
 	objMeta objstorage.ObjectMetadata,
 ) (*ExternalFile, error) {
 	cmp := d.cmp
@@ -518,7 +518,7 @@ func (d *DB) truncateSharedFile(
 	ctx context.Context,
 	lower, upper []byte,
 	level int,
-	file *tableMetadata,
+	file *manifest.TableMetadata,
 	objMeta objstorage.ObjectMetadata,
 ) (sst *SharedSSTMeta, shouldSkip bool, err error) {
 	cmp := d.cmp

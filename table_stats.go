@@ -1071,7 +1071,7 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) 
 // nodes with the sum of the files' Properties.ValueBlocksSize. The value block
 // size may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
-var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
 	return f.Stats.ValueBlocksSize, f.StatsValid()
 })
 
@@ -1079,7 +1079,7 @@ var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint
 // B-Tree nodes with the sum of the files' PointDeletionsBytesEstimate. This
 // value may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
-var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
 	return f.Stats.PointDeletionsBytesEstimate, f.StatsValid()
 })
 
@@ -1087,7 +1087,7 @@ var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMe
 // B-Tree nodes with the sum of the files' RangeDeletionsBytesEstimate. This
 // value may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
-var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *tableMetadata) (uint64, bool) {
+var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
 	return f.Stats.RangeDeletionsBytesEstimate, f.StatsValid()
 })
 
@@ -1115,7 +1115,7 @@ func (a compressionTypeAggregator) Zero(dst *compressionTypes) *compressionTypes
 }
 
 func (a compressionTypeAggregator) Accumulate(
-	f *tableMetadata, dst *compressionTypes,
+	f *manifest.TableMetadata, dst *compressionTypes,
 ) (v *compressionTypes, cacheOK bool) {
 	switch f.Stats.CompressionType {
 	case SnappyCompression:

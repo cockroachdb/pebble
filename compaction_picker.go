@@ -126,7 +126,7 @@ func (cl sublevelInfo) String() string {
 // generateSublevelInfo will generate the level slices for each of the sublevels
 // from the level slice for all of L0.
 func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []sublevelInfo {
-	sublevelMap := make(map[uint64][]*tableMetadata)
+	sublevelMap := make(map[uint64][]*manifest.TableMetadata)
 	for f := range levelFiles.All() {
 		sublevelMap[uint64(f.SubLevel)] = append(sublevelMap[uint64(f.SubLevel)], f)
 	}
@@ -467,7 +467,7 @@ func (pc *pickedCompaction) setupInputs(
 		}
 		oldLcf := pc.lcf.Clone()
 		if pc.l0Organizer.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
-			var newStartLevelFiles []*tableMetadata
+			var newStartLevelFiles []*manifest.TableMetadata
 			iter := pc.version.Levels[0].Iter()
 			var sizeSum uint64
 			for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
@@ -644,14 +644,14 @@ func (c *candidateLevelInfo) shouldCompact() bool {
 	return c.score > 0
 }
 
-func tableTombstoneCompensation(t *tableMetadata) uint64 {
+func tableTombstoneCompensation(t *manifest.TableMetadata) uint64 {
 	return t.Stats.PointDeletionsBytesEstimate + t.Stats.RangeDeletionsBytesEstimate
 }
 
 // tableCompensatedSize returns t's size, including an estimate of the physical
 // size of its external references, and inflated according to compaction
 // priorities.
-func tableCompensatedSize(t *tableMetadata) uint64 {
+func tableCompensatedSize(t *manifest.TableMetadata) uint64 {
 	// Add in the estimate of disk space that may be reclaimed by compacting the
 	// table's tombstones.
 	return t.Size + t.EstimatedReferenceSize() + tableTombstoneCompensation(t)
@@ -1203,7 +1203,7 @@ func pickCompactionSeedFile(
 // the garbage cannot be reclaimed until all the referencing virtual sstables
 // are compacted.
 func responsibleForGarbageBytes(
-	virtualBackings *manifest.VirtualBackings, m *tableMetadata,
+	virtualBackings *manifest.VirtualBackings, m *manifest.TableMetadata,
 ) uint64 {
 	if !m.Virtual {
 		return 0
@@ -1485,9 +1485,9 @@ func (p *compactionPickerByScore) addScoresToPickedCompactionMetrics(
 // the criteria, it chooses whichever file has the lowest LargestSeqNum. The
 // lowest LargestSeqNum file will be the first eligible for an elision-only
 // compaction once snapshots less than or equal to its LargestSeqNum are closed.
-var elisionOnlyAnnotator = &manifest.Annotator[tableMetadata]{
+var elisionOnlyAnnotator = &manifest.Annotator[manifest.TableMetadata]{
 	Aggregator: manifest.PickFileAggregator{
-		Filter: func(f *tableMetadata) (eligible bool, cacheOK bool) {
+		Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
 			if f.IsCompacting() {
 				return false, true
 			}
@@ -1510,7 +1510,7 @@ var elisionOnlyAnnotator = &manifest.Annotator[tableMetadata]{
 			// TODO(travers): Consider an alternative heuristic for elision of range-keys.
 			return f.Stats.RangeDeletionsBytesEstimate*10 >= f.Size || f.Stats.NumDeletions*10 > f.Stats.NumEntries, true
 		},
-		Compare: func(f1 *tableMetadata, f2 *tableMetadata) bool {
+		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
 			return f1.LargestSeqNum < f2.LargestSeqNum
 		},
 	},
@@ -1520,12 +1520,12 @@ var elisionOnlyAnnotator = &manifest.Annotator[tableMetadata]{
 // nodes with the *fileMetadata of a file that is marked for compaction
 // within the subtree. If multiple files meet the criteria, it chooses
 // whichever file has the lowest LargestSeqNum.
-var markedForCompactionAnnotator = &manifest.Annotator[tableMetadata]{
+var markedForCompactionAnnotator = &manifest.Annotator[manifest.TableMetadata]{
 	Aggregator: manifest.PickFileAggregator{
-		Filter: func(f *tableMetadata) (eligible bool, cacheOK bool) {
+		Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
 			return f.MarkedForCompaction, true
 		},
-		Compare: func(f1 *tableMetadata, f2 *tableMetadata) bool {
+		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
 			return f1.LargestSeqNum < f2.LargestSeqNum
 		},
 	},
@@ -1535,7 +1535,11 @@ var markedForCompactionAnnotator = &manifest.Annotator[tableMetadata]{
 // with various checks to ensure that the file still exists in the expected level
 // and isn't already being compacted.
 func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
-	candidate *tableMetadata, env compactionEnv, startLevel int, outputLevel int, kind compactionKind,
+	candidate *manifest.TableMetadata,
+	env compactionEnv,
+	startLevel int,
+	outputLevel int,
+	kind compactionKind,
 ) *pickedCompaction {
 	if candidate == nil || candidate.IsCompacting() {
 		return nil
@@ -1631,7 +1635,7 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 		return nil
 	}
 
-	var candidate *tableMetadata
+	var candidate *manifest.TableMetadata
 	var level int
 	// If a candidate file has a very high overlapping ratio, point tombstones
 	// in it are likely sparse in keyspace even if the sstable itself is tombstone
@@ -1952,7 +1956,7 @@ func pickDownloadCompaction(
 	baseLevel int,
 	kind compactionKind,
 	level int,
-	file *tableMetadata,
+	file *manifest.TableMetadata,
 ) (pc *pickedCompaction) {
 	// Check if the file is compacting already.
 	if file.CompactionState == manifest.CompactionStateCompacting {
@@ -1963,7 +1967,7 @@ func pickDownloadCompaction(
 	}
 	pc = newPickedCompaction(opts, vers, l0Organizer, level, level, baseLevel)
 	pc.kind = kind
-	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*tableMetadata{file})
+	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*manifest.TableMetadata{file})
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, nil /* problemSpans */) {
 		// setupInputs returned false indicating there's a conflicting
 		// concurrent compaction.
